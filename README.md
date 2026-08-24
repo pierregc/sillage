@@ -13,14 +13,45 @@ configuration, the same particle storage and the same renderer.
 | Level | Model | Cost | State |
 |---|---|---|---|
 | 1 | Massless test particles in rigid analytic potentials (Toomre & Toomre, 1972) | O(N) | implemented, CPU and GPU |
-| 2 | Self-gravitating particles on a Barnes-Hut tree | O(N log N) | planned |
+| 2 | Self-gravitating particles on a Barnes-Hut tree | O(N log N) | implemented, GPU |
 
 Level 1 is deliberately first: it reproduces the bridges and tails that make an encounter
 worth looking at, and it is cheap enough that the particle budget goes entirely into what is
 visible. Each galaxy's bulge and dark halo are an analytic potential rather than particles,
 so no part of the budget is spent on mass that never reaches a pixel.
 
+## Level 2: self-gravity
+
+Particles carry mass and attract each other through a Barnes-Hut tree. The tree is built on
+the CPU in Morton order and traversed on the GPU: the build wants a radix sort and a
+pointerless hierarchy, which is the awkward half of a GPU N-body solver, while the traversal
+is where the time actually goes. Unified memory means the CPU reads the same buffer the GPU
+writes, so the build costs no transfer.
+
+Threads traverse in Morton order rather than in sampling order. Neighbouring lanes then take
+almost the same path through the tree, which cut the force kernel from 154 ms to 69 ms at one
+million particles.
+
+Two things this mode needs that level 1 does not:
+
+**Initial conditions.** A cold disk fragments within an orbit once self-gravity is on. The
+velocity structure comes from Toomre's criterion instead: the radial dispersion is set by the
+requested Q, the azimuthal dispersion follows from the epicyclic ratio rather than being
+chosen, and the mean rotation lags the circular speed by the asymmetric drift. Measured over
+roughly one orbit on an isolated disk carrying 60% of the mass, Q = 0.4 thickens it by a
+factor 1.6 while Q = 1.4 holds it to 1.24.
+
+**A rigid halo.** The dark halo stays an analytic potential riding on its own galaxy's centre
+of mass. It carries most of the mass but none of the inertia, so there is no dynamical
+friction against it and two galaxies keep orbiting instead of settling into a merger. Live
+halos would fix that at the cost of five to ten times more particles, none of them visible.
+
+The disks then grow their own bars and spiral arms, so the render-time density wave is
+switched off in this mode: the structure is real rather than painted.
+
 ## Measured on an Apple Silicon
+
+Level 1:
 
 | | Per step | Notes |
 |---|---|---|
@@ -28,6 +59,18 @@ so no part of the budget is spent on mass that never reaches a pixel.
 | GPU, 1 M | 0.102 ms | 170x the CPU path |
 | GPU, 5 M | 0.893 ms | over 1000 steps per second |
 | GPU, 16 M | 2.85 ms | |
+
+Level 2, at an opening angle of 0.6:
+
+| | Per step | Tree build | Force traversal |
+|---|---|---|---|
+| 200 k | 19.9 ms | 7.5 ms | 10.5 ms |
+| 500 k | 50.9 ms | 20.6 ms | 30.0 ms |
+| 1 M | 112 ms | 42.6 ms | 69.0 ms |
+
+So level 2 runs interactively to a few hundred thousand particles and offline beyond that,
+while level 1 stays the mode for exploring a scene. The tree build is single-threaded CPU and
+is the obvious next thing to parallelise.
 
 The interactive app holds 3 million particles at 2.4 ms per frame, which is the display
 refresh rate rather than a GPU limit. Past roughly 20 million particles the extra points
@@ -73,7 +116,8 @@ extent, arm count, arm contrast and pitch.
 Add `--frames N` for an image sequence to encode into video. Rendering offline beats a
 screen recording: any resolution, no capture compression, no dropped frames.
 
-Useful flags: `--preset merger|flyby|disk`, `--solver gpu|cpu`, `--seed`, `--radius`,
+Useful flags: `--preset merger|flyby|disk`, `--solver restricted|barnes-hut|cpu`,
+`--theta`, `--softening`, `--seed`, `--radius`,
 `--elevation`, `--brightness`, `--stretch`, `--saturation`, `--bloom`, `--dust`, `--stars`,
 `--star-size`, `--arms`, `--supersample`.
 

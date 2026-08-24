@@ -22,7 +22,10 @@ public struct DiskFrame {
         scene.galaxies.enumerated().map { index, galaxy in
             let orientation = galaxy.orientation
             let center = index < centers.count ? centers[index] : galaxy.position
-            let armed = galaxy.kind == .spiral ? min(max(galaxy.armStrength * strength, 0), 1) : 0
+            // A self-gravitating disk grows its own arms, so painting a density wave on top
+            // would count the same structure twice.
+            let painted = scene.solver == .barnesHut ? 0 : strength
+            let armed = galaxy.kind == .spiral ? min(max(galaxy.armStrength * painted, 0), 1) : 0
 
             // A pattern speed of roughly half the material rotation at two scale lengths is
             // typical, and is what keeps the arms from either freezing or winding up.
