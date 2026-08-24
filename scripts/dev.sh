@@ -19,6 +19,17 @@ build_core() {
         -o "$BUILD/libSillageCore.dylib"
 }
 
+build_render() {
+    build_core
+    swiftc -O -emit-library -emit-module \
+        -module-name SillageRender -I "$BUILD" -L "$BUILD" -lSillageCore \
+        "$ROOT"/Sources/SillageRender/*.swift \
+        -emit-module-path "$BUILD/SillageRender.swiftmodule" \
+        -o "$BUILD/libSillageRender.dylib"
+    swiftc -O -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender \
+        "$ROOT"/Sources/sillage-render/main.swift -o "$BUILD/sillage-render"
+}
+
 run_tests() {
     cat > "$BUILD/runner.swift" <<'SWIFT'
 import Testing
@@ -36,8 +47,10 @@ SWIFT
 }
 
 case "${1:-test}" in
-    build) build_core ;;
-    lint)  swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
-    test)  shift || true; build_core; run_tests "$@" ;;
-    *)     echo "usage: ${BASH_SOURCE[0]} [build|test|lint]" >&2; exit 2 ;;
+    build)  build_render ;;
+    lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
+    test)   shift || true; build_core; run_tests "$@" ;;
+    render) shift || true; build_render
+            DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
+    *)      echo "usage: ${BASH_SOURCE[0]} [build|test|lint|render]" >&2; exit 2 ;;
 esac
