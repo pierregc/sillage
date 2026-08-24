@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.swiftpm/
+Packages/
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+*.metallib
+/captures/
+/out/
