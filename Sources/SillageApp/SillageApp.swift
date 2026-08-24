@@ -1,15 +1,46 @@
+import AppKit
 import Foundation
 import SillageRender
 import SwiftUI
 
+/// Pins the AppKit appearance to dark. SwiftUI's `preferredColorScheme` recolours SwiftUI's
+/// own text but leaves NSColor-derived backgrounds following the system theme, which is how
+/// a light system ends up drawing dark labels on the black canvas.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+    }
+}
+
 @main
 struct SillageApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = SimulationModel()!
 
     init() {
         if CommandLine.arguments.contains("--selftest") {
             MainActor.assumeIsolated { SillageApp.runSelfTest() }
         }
+        if CommandLine.arguments.contains("--uishot") {
+            MainActor.assumeIsolated { SillageApp.renderInterface() }
+        }
+    }
+
+    var body: some Scene {
+        WindowGroup("Sillage") {
+            Group {
+                switch model.stage {
+                case .setup: SetupView(model: model)
+                case .running: RunningView(model: model)
+                }
+            }
+            .frame(minWidth: 1100, minHeight: 720)
+            // The panel draws on the system background, so the appearance is pinned rather
+            // than letting a light theme put dark text on the black canvas.
+            .preferredColorScheme(.dark)
+            .onAppear { startFrameCheck() }
+        }
+        .windowResizability(.contentMinSize)
     }
 
     /// Opens the real window, lets the display link run, then reports how many frames the
@@ -17,6 +48,7 @@ struct SillageApp: App {
     @MainActor
     private func startFrameCheck() {
         guard CommandLine.arguments.contains("--verify") else { return }
+        model.start()
         Task {
             try? await Task.sleep(for: .seconds(4))
             let drawn = model.framesDrawn
@@ -36,6 +68,41 @@ struct SillageApp: App {
         }
     }
 
+    /// Renders the panels offscreen with `ImageRenderer` so their legibility can be checked
+    /// without a window server. Catches things a running app hides, such as text drawn in a
+    /// colour that matches its own background.
+    @MainActor
+    private static func renderInterface() {
+        guard let model = SimulationModel() else { exit(1) }
+        NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        model.start()
+        write(AnyView(SetupContent(model: model).padding(20).frame(width: 720)), to: "out/ui-setup.png")
+        write(
+            AnyView(ControlPanelContent(model: model).padding(14).frame(width: 276)), to: "out/ui-panel.png")
+        exit(0)
+    }
+
+    @MainActor
+    private static func write(_ view: AnyView, to path: String) {
+        let renderer = ImageRenderer(
+            content: view.environment(\.colorScheme, .dark).background(Palette.panel))
+        renderer.proposedSize = .unspecified
+        renderer.scale = 2
+        guard let image = renderer.nsImage,
+            let tiff = image.tiffRepresentation,
+            let rep = NSBitmapImageRep(data: tiff),
+            let png = rep.representation(using: .png, properties: [:])
+        else {
+            FileHandle.standardError.write(Data("uishot: render failed for \(path)\n".utf8))
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? png.write(to: url)
+        print("uishot wrote \(path)")
+    }
+
     /// Exercises model creation, resize, stepping and rendering without opening a window,
     /// then exits. Keeps the app path verifiable on machines where a window cannot be shown.
     @MainActor
@@ -45,36 +112,20 @@ struct SillageApp: App {
             exit(1)
         }
         model.setTotalParticles(2_000_000)
+        model.start()
         model.resize(to: CGSize(width: 1280, height: 720))
-        model.frameCamera()
         guard let pixels = model.snapshot(steps: 3_000) else {
             FileHandle.standardError.write(Data("selftest: renderer unavailable\n".utf8))
             exit(1)
         }
         let lit = pixels.enumerated().filter { $0.offset % 4 != 3 && $0.element > 8 }.count
+        print("selftest stage       \(model.stage)")
         print("selftest particles   \(model.particleCount)")
-        print("selftest time        \(String(format: "%.0f", model.elapsedMyr)) Myr")
         print("selftest lit samples \(lit)")
         let url = URL(fileURLWithPath: "out/selftest.png")
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? PNGWriter.write(pixels, width: 1280, height: 720, to: url)
-        print("selftest wrote       \(url.path)")
         exit(lit > 10_000 ? 0 : 1)
-    }
-
-    var body: some Scene {
-        WindowGroup("Sillage") {
-            HStack(spacing: 0) {
-                MetalCanvas(model: model)
-                    .frame(minWidth: 640, minHeight: 400)
-                Divider()
-                ControlPanel(model: model)
-            }
-            .frame(minWidth: 1100, minHeight: 700)
-            .background(.black)
-            .onAppear { startFrameCheck() }
-        }
-        .windowResizability(.contentMinSize)
     }
 }

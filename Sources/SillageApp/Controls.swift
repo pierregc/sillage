@@ -16,7 +16,7 @@ struct ParameterSlider: View {
                 Spacer()
                 Text(String(format: format, value))
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.secondary)
             }
             Slider(value: $value, in: range) { editing in
                 if !editing { onCommit?() }
