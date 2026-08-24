@@ -1,8 +1,11 @@
 import simd
 
 extension SceneConfig {
-    /// Two comparable disks on a bound, prograde, near-coplanar encounter. Prograde
-    /// coplanar passages are what produce long symmetric tidal tails.
+    /// Two comparable disks on a bound, prograde, near-coplanar encounter. The orbit targets
+    /// a pericentre near 9 kpc, which is where the companion's tidal pull at the disk edge
+    /// overtakes the disk's own gravity: further out nothing is stripped, closer in the disks
+    /// are destroyed before they can raise a tail. The disks run to five scale lengths so
+    /// there is loosely bound material for the passage to pull out.
     public static func merger(particleCount: Int = 500_000, seed: UInt64 = 1) -> SceneConfig {
         let half = particleCount / 2
         let potential = GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5)
@@ -15,8 +18,9 @@ extension SceneConfig {
                     particleCount: half,
                     potential: potential,
                     diskScaleLength: 4,
+                    diskTruncation: 5,
                     position: SIMD3<Float>(-30, 0, 0),
-                    velocity: SIMD3<Float>(0.70, 0.15, 0),
+                    velocity: SIMD3<Float>(0.554, 0.340, 0),
                     inclination: 0,
                     spin: .prograde
                 ),
@@ -25,10 +29,11 @@ extension SceneConfig {
                     particleCount: particleCount - half,
                     potential: potential,
                     diskScaleLength: 4,
+                    diskTruncation: 5,
                     position: SIMD3<Float>(30, 0, 0),
-                    velocity: SIMD3<Float>(-0.70, -0.15, 0),
-                    inclination: 0.35,
-                    positionAngle: 0.6,
+                    velocity: SIMD3<Float>(-0.554, -0.340, 0),
+                    inclination: 0.3,
+                    positionAngle: 0.5,
                     spin: .prograde
                 ),
             ],
