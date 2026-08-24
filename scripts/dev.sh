@@ -21,7 +21,7 @@ build_core() {
 
 build_render() {
     build_core
-    swiftc -O -emit-library -emit-module \
+    swiftc -O -emit-library -emit-module -enable-testing \
         -module-name SillageRender -I "$BUILD" -L "$BUILD" -lSillageCore \
         "$ROOT"/Sources/SillageRender/*.swift \
         -emit-module-path "$BUILD/SillageRender.swiftmodule" \
@@ -38,10 +38,11 @@ import Testing
     static func main() async { _ = await __swiftPMEntryPoint() as CInt }
 }
 SWIFT
-    swiftc -O -I "$BUILD" -L "$BUILD" -lSillageCore \
+    swiftc -O -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender \
         -F "$FRAMEWORKS" -framework Testing \
         -load-plugin-library "$PLUGIN" -parse-as-library \
-        "$ROOT"/Tests/SillageCoreTests/*.swift "$BUILD/runner.swift" \
+        "$ROOT"/Tests/SillageCoreTests/*.swift "$ROOT"/Tests/SillageRenderTests/*.swift \
+        "$BUILD/runner.swift" \
         -o "$BUILD/tests"
     DYLD_LIBRARY_PATH="$BUILD:$INTEROP" DYLD_FRAMEWORK_PATH="$FRAMEWORKS" "$BUILD/tests" "$@"
 }
@@ -49,7 +50,7 @@ SWIFT
 case "${1:-test}" in
     build)  build_render ;;
     lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
-    test)   shift || true; build_core; run_tests "$@" ;;
+    test)   shift || true; build_render; run_tests "$@" ;;
     render) shift || true; build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
     *)      echo "usage: ${BASH_SOURCE[0]} [build|test|lint|render]" >&2; exit 2 ;;

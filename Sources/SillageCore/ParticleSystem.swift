@@ -23,6 +23,15 @@ public struct ParticleSystem: Sendable {
         birthRadius.reserveCapacity(capacity)
     }
 
+    /// Exposes positions and velocities together for in-place integration. Going through the
+    /// struct keeps the two exclusive accesses distinct, which nesting them at the call site
+    /// would not.
+    public mutating func withState(
+        _ body: (inout [SIMD3<Float>], inout [SIMD3<Float>]) -> Void
+    ) {
+        body(&positions, &velocities)
+    }
+
     public mutating func append(
         position: SIMD3<Float>,
         velocity: SIMD3<Float>,

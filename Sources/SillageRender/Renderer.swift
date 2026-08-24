@@ -115,10 +115,13 @@ public final class Renderer {
     /// The buffer holding particle positions, so a GPU solver can write into it directly.
     public var positions: MTLBuffer { positionBuffer }
 
+    /// `externalPositions` lets a GPU solver own the position buffer, so particle state
+    /// never crosses the bus between the integrator and the rasteriser.
     public init(
         device: MTLDevice? = nil,
         particles: ParticleSystem,
-        settings: RenderSettings
+        settings: RenderSettings,
+        externalPositions: MTLBuffer? = nil
     ) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
@@ -214,8 +217,8 @@ public final class Renderer {
         let stride = MemoryLayout<SIMD3<Float>>.stride
         let count = max(particles.count, 1)
         guard
-            let positionBuffer = device.makeBuffer(
-                length: count * stride, options: .storageModeShared),
+            let positionBuffer = externalPositions
+                ?? device.makeBuffer(length: count * stride, options: .storageModeShared),
             let radiusBuffer = device.makeBuffer(
                 bytes: particles.birthRadius.isEmpty ? [Float(0)] : particles.birthRadius,
                 length: count * 4, options: .storageModeShared),
@@ -228,7 +231,9 @@ public final class Renderer {
         self.positionBuffer = positionBuffer
         self.radiusBuffer = radiusBuffer
         self.galaxyBuffer = galaxyBuffer
-        upload(positions: particles.positions)
+        if externalPositions == nil {
+            upload(positions: particles.positions)
+        }
     }
 
     /// Unified memory means this is a plain memcpy into a buffer the GPU already sees.
