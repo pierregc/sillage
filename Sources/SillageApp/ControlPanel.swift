@@ -126,7 +126,7 @@ struct ControlPanelContent: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Rendu").font(.headline)
             ParameterSlider(
-                title: "Luminosité", value: $model.brightness, range: 0.005...0.4, format: "%.3f")
+                title: "Luminosité", value: $model.brightness, range: 0.02...2.0, format: "%.2f")
             ParameterSlider(
                 title: "Étirement logarithmique", value: $model.stretch, range: 0...60,
                 format: "%.0f")

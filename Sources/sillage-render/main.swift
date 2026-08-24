@@ -48,7 +48,7 @@ let settings = RenderSettings(
     supersample: Int(number("supersample", 2)),
     pointSize: Float(number("point-size", 1.7)),
     exposure: Float(number("exposure", 1.0)),
-    brightness: Float(number("brightness", 0.055)),
+    brightness: Float(number("brightness", 0.15)),
     dustStrength: Float(number("dust", 0.16)),
     starCount: Int(number("stars", 2600)),
     starSize: Float(number("star-size", 2.2)),
@@ -67,6 +67,12 @@ let gpuSolver: (any GPUSolver)? =
 let solver: any Solver = gpuSolver ?? RestrictedSolver(scene: scene, particles: seeded)
 let renderer = try Renderer(
     particles: seeded, settings: settings, externalPositions: gpuSolver?.positions)
+// Each particle's kernel spans its own local interparticle spacing, so the surface stays
+// continuous instead of resolving the sampling.
+let smoothing = try SmoothingField(device: renderer.device, particleCount: seeded.count)
+smoothing.scale = Float(number("smoothing", 1.0))
+smoothing.neighbours = Float(number("neighbours", 64))
+renderer.setSmoothing(smoothing.buffer)
 print("solver     \(backend) (\(scene.solver.rawValue))")
 print("gpu        \(renderer.gpuName)")
 
@@ -102,6 +108,7 @@ for frame in 0..<frames {
         frozenRadius = framingRadius(solver.particles.positions, percentile: percentile) / zoom
     }
 
+    smoothing.update(positions: solver.particles.positions)
     renderer.setDiskFrames(
         DiskFrame.make(
             scene: scene, centers: solver.centers, time: solver.time,

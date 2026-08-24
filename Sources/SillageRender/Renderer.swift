@@ -9,6 +9,11 @@ struct SplatUniforms {
     var brightness: Float
     var dustStrength: Float
     var starSize: Float
+    var projectionScale: Float
+    var referenceArea: Float
+    var minimumSize: Float
+    var maximumSize: Float
+    var pad: Float = 0
 }
 
 struct BackgroundStar {
@@ -47,6 +52,9 @@ public struct RenderSettings: Sendable {
     public var starCount: Int
     /// Point size of the field stars before their magnitude scaling.
     public var starSize: Float
+    /// Smallest and largest kernel a particle may cover, in output pixels.
+    public var minimumKernel: Float
+    public var maximumKernel: Float
     public var bloomThreshold: Float
     public var bloomSoftKnee: Float
     public var bloomIntensity: Float
@@ -62,10 +70,12 @@ public struct RenderSettings: Sendable {
         supersample: Int = 2,
         pointSize: Float = 1.7,
         exposure: Float = 1.0,
-        brightness: Float = 0.055,
+        brightness: Float = 0.15,
         dustStrength: Float = 0.055,
         starCount: Int = 14000,
         starSize: Float = 1.15,
+        minimumKernel: Float = 1.1,
+        maximumKernel: Float = 64,
         bloomThreshold: Float = 0.55,
         bloomSoftKnee: Float = 0.6,
         bloomIntensity: Float = 0.45,
@@ -82,6 +92,8 @@ public struct RenderSettings: Sendable {
         self.dustStrength = dustStrength
         self.starCount = starCount
         self.starSize = starSize
+        self.minimumKernel = minimumKernel
+        self.maximumKernel = maximumKernel
         self.bloomThreshold = bloomThreshold
         self.bloomSoftKnee = bloomSoftKnee
         self.bloomIntensity = bloomIntensity
@@ -136,6 +148,7 @@ public final class Renderer {
     private let componentBuffer: MTLBuffer
     private let galaxyBuffer: MTLBuffer
     private var frameBuffer: MTLBuffer?
+    private var smoothingBuffer: MTLBuffer?
     private var frameCount = 1
     private let starBuffer: MTLBuffer?
     private let particleCount: Int
@@ -320,6 +333,10 @@ public final class Renderer {
             options: .storageModeShared)
     }
 
+    /// Binds the per-particle smoothing lengths. Without them every particle covers the same
+    /// fixed number of pixels and the image resolves the sampling rather than the galaxy.
+    public func setSmoothing(_ buffer: MTLBuffer?) { smoothingBuffer = buffer }
+
     /// Updates the spiral pattern for each galaxy. Called once per frame with the current
     /// galaxy centres and elapsed time, so the arms turn as a density wave.
     public func setDiskFrames(_ frames: [DiskFrame]) {
@@ -355,21 +372,24 @@ public final class Renderer {
         let scale = settings.supersample
         let aspect = Float(settings.width) / Float(settings.height)
 
-        // Emission and optical depth are quantities per unit sky area, but a splat deposits
-        // them per pixel. Without this, zooming out packs more particles into each pixel and
-        // the image saturates, which is why the exposure had to be retuned for every framing.
-        let distance = simd_length(camera.eye - camera.target)
-        let kpcPerPixel =
-            2 * tan(camera.fieldOfView / 2) * distance / Float(max(settings.height, 1))
-        let areaScale = pow(Renderer.referenceKpcPerPixel / max(kpcPerPixel, 1e-6), 2)
+        // Pixels per unit length at unit depth. The vertex shader divides a particle's
+        // smoothing length by its view depth to get the kernel's size on screen.
+        let projectionScale =
+            Float(settings.height * scale) / (2 * tan(camera.fieldOfView / 2))
+        // Conserving flux per particle already makes surface brightness independent of the
+        // zoom, so no separate area correction is needed here.
         let perParticle = 1_000_000 / Float(max(particleCount, 1))
 
         var splat = SplatUniforms(
             viewProjection: camera.viewProjection(aspectRatio: aspect),
             pointSize: settings.pointSize * Float(scale),
-            brightness: settings.brightness * perParticle * areaScale,
-            dustStrength: settings.dustStrength * perParticle * areaScale,
-            starSize: settings.starSize * Float(scale))
+            brightness: settings.brightness * perParticle,
+            dustStrength: settings.dustStrength * perParticle,
+            starSize: settings.starSize * Float(scale),
+            projectionScale: projectionScale,
+            referenceArea: 0.01,
+            minimumSize: settings.minimumKernel * Float(scale),
+            maximumSize: settings.maximumKernel * Float(scale))
 
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {
@@ -397,6 +417,7 @@ public final class Renderer {
             encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
             encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
             encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
+            encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
             encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: particleCount)
             encoder.endEncoding()
         }

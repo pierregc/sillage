@@ -266,7 +266,7 @@ public enum DiskSampler {
             complexes.append(
                 Clump(
                     radius: placed.radius, phi: placed.phi,
-                    spread: scale * (0.10 + 0.42 * u * u)))
+                    spread: scale * (0.09 + 0.30 * u * u)))
         }
 
         var clumps: [Clump] = []
@@ -278,7 +278,7 @@ public enum DiskSampler {
             clumps.append(
                 Clump(
                     radius: placed.radius, phi: placed.phi,
-                    spread: scale * (0.008 + 0.085 * u * u * u)))
+                    spread: scale * (0.006 + 0.045 * u * u * u)))
         }
 
         for _ in 0..<config.particleCount {
