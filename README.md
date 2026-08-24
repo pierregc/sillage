@@ -39,14 +39,31 @@ land in pixels that are already smooth, so the picture stops improving.
 ./scripts/dev.sh app && open .build/dev/Sillage.app
 ```
 
-Drag to orbit, scroll to zoom. The panel edits the running scene: preset, particle count,
-time step, and every galaxy's mass, scale radius, disk length, truncation, thickness,
-velocity dispersion, inclination, position angle, spin, position and velocity. Structural
-changes rebuild the simulation when the slider is released, never mid-drag. Render controls
-apply live.
+It opens on a setup screen. Add or remove galaxies, and for each one choose its kind, mass
+profile, particle count, mass, scale radius, size, extent, thickness, velocity dispersion,
+inclination, position angle, spin, position and velocity. The footer shows the total particle
+count and an estimate of the cost per frame, so the count can be chosen knowing whether the
+run will stay real time.
+
+Starting the run switches to the live view: drag to orbit, scroll to zoom, space to pause.
+The side panel there only holds things that apply immediately, brightness and stretch and
+bloom and camera, plus a button back to the setup screen. Nothing heavy is built until the
+run starts, so the setup screen opens instantly.
+
+### Galaxy kinds
+
+| Kind | Distribution |
+|---|---|
+| Spirale | Thin rotating disk with a logarithmic spiral density modulation, sampled by rejection so the radial profile is untouched |
+| Disque | Thin rotating disk, featureless |
+| Globulaire | Pressure-supported sphere, no ordered rotation. Plummer spheres are drawn from their exact distribution function; Hernquist uses the Jeans dispersion |
 
 Spin matters more than it looks. Prograde coplanar passages raise the long symmetric tails;
 retrograde ones stay dull.
+
+Spiral arms are an initial pattern, not a self-sustaining density wave. Without self-gravity
+they wind up under differential rotation within a few hundred million years, which is the
+classic winding problem and is correct for this model. Arms that persist need level 2.
 
 ## Offline rendering
 
@@ -95,15 +112,18 @@ same test suite through `swiftc` directly if you hit that:
 ./scripts/dev.sh lint
 ```
 
-`Sillage.app --selftest` renders one frame offscreen and exits; `--verify` opens the real
-window, counts the frames the view actually drew, and reports.
+`Sillage.app --selftest` renders one frame offscreen and exits. `--verify` opens the real
+window, counts the frames the view actually drew, and reports. `--uishot` renders the panels
+through `ImageRenderer` to `out/`, which is how the interface gets checked on a machine that
+cannot grant screen recording. Sliders and pickers come out as placeholders there; the point
+is that every label is legible against its own background.
 
 ## Layout
 
 ```
 Sources/SillageCore/     physics, no rendering dependency
 Sources/SillageRender/   Metal solver, splat renderer, camera
-Sources/SillageApp/      SwiftUI interactive app
+Sources/SillageApp/      SwiftUI setup screen and live view
 Sources/sillage-render/  headless PNG renderer
 Tests/
 ```
