@@ -39,15 +39,16 @@ let settings = RenderSettings(
     width: width,
     height: height,
     supersample: Int(number("supersample", 2)),
-    pointSize: Float(number("point-size", 2.0)),
+    pointSize: Float(number("point-size", 1.7)),
     exposure: Float(number("exposure", 1.0)),
-    brightness: Float(number("brightness", 0.02)),
+    brightness: Float(number("brightness", 0.055)),
     colorRadius: Float(number("color-radius", 14)),
     bloomThreshold: Float(number("bloom-threshold", 0.55)),
     bloomSoftKnee: Float(number("bloom-knee", 0.6)),
-    bloomIntensity: Float(number("bloom", 0.5)),
+    bloomIntensity: Float(number("bloom", 0.45)),
     bloomLevels: Int(number("bloom-levels", 6)),
-    stretch: Float(number("stretch", 24)))
+    stretch: Float(number("stretch", 18)),
+    saturation: Float(number("saturation", 1.8)))
 
 print("scene      \(scene.name), \(scene.totalParticleCount) particles")
 
@@ -73,7 +74,7 @@ try FileManager.default.createDirectory(
 let stepsPerFrame = max(steps / max(frames, 1), 1)
 let zoom = Float(number("zoom", 1))
 let percentile = Float(number("percentile", 0.98))
-let elevation = Float(number("elevation", 0.45))
+let elevation = Float(number("elevation", 1.15))
 let clock = Date()
 
 // Framing is fixed once so the camera does not drift as the tails grow.

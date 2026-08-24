@@ -21,7 +21,7 @@ struct CompositeParams {
     var exposure: Float
     var bloomIntensity: Float
     var stretch: Float
-    var pad: Float = 0
+    var saturation: Float
 }
 
 public struct RenderSettings: Sendable {
@@ -31,6 +31,8 @@ public struct RenderSettings: Sendable {
     public var supersample: Int
     public var pointSize: Float
     public var exposure: Float
+    /// Emission per particle, expressed per million particles. Normalising by count keeps a
+    /// scene looking the same whether it runs at 500 000 particles or at 20 million.
     public var brightness: Float
     /// Radius, in kpc, at which the colour ramp reaches its outermost stop.
     public var colorRadius: Float
@@ -40,20 +42,23 @@ public struct RenderSettings: Sendable {
     public var bloomLevels: Int
     /// Strength of the logarithmic stretch applied before tone mapping. 0 disables it.
     public var stretch: Float
+    /// 1 leaves colour untouched, above 1 pushes the two disks further apart in hue.
+    public var saturation: Float
 
     public init(
         width: Int = 1920,
         height: Int = 1080,
         supersample: Int = 2,
-        pointSize: Float = 2.4,
+        pointSize: Float = 1.7,
         exposure: Float = 1.0,
-        brightness: Float = 0.05,
+        brightness: Float = 0.055,
         colorRadius: Float = 14,
         bloomThreshold: Float = 0.55,
         bloomSoftKnee: Float = 0.6,
-        bloomIntensity: Float = 0.85,
+        bloomIntensity: Float = 0.45,
         bloomLevels: Int = 6,
-        stretch: Float = 24
+        stretch: Float = 18,
+        saturation: Float = 1.8
     ) {
         self.width = width
         self.height = height
@@ -67,6 +72,7 @@ public struct RenderSettings: Sendable {
         self.bloomIntensity = bloomIntensity
         self.bloomLevels = bloomLevels
         self.stretch = stretch
+        self.saturation = saturation
     }
 }
 
@@ -250,6 +256,7 @@ public final class Renderer {
     public func setPointSize(_ size: Float) { settings.pointSize = size }
     public func setColorRadius(_ radius: Float) { settings.colorRadius = radius }
     public func setStretch(_ stretch: Float) { settings.stretch = stretch }
+    public func setSaturation(_ saturation: Float) { settings.saturation = saturation }
 
     /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
@@ -258,7 +265,7 @@ public final class Renderer {
         var splat = SplatUniforms(
             viewProjection: camera.viewProjection(aspectRatio: aspect),
             pointSize: settings.pointSize * Float(scale),
-            brightness: settings.brightness,
+            brightness: settings.brightness * 1_000_000 / Float(max(particleCount, 1)),
             colorRadius: settings.colorRadius)
 
         let pass = MTLRenderPassDescriptor()
@@ -319,7 +326,8 @@ public final class Renderer {
         var composite = CompositeParams(
             exposure: settings.exposure,
             bloomIntensity: bloomResult == nil ? 0 : settings.bloomIntensity,
-            stretch: settings.stretch)
+            stretch: settings.stretch,
+            saturation: settings.saturation)
         let target = present ?? output
         dispatch(compute, compositePipeline, into: target) { encoder in
             encoder.setTexture(resolved, index: 0)
