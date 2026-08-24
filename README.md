@@ -61,8 +61,8 @@ run starts, so the setup screen opens instantly.
 Spin matters more than it looks. Prograde coplanar passages raise the long symmetric tails;
 retrograde ones stay dull.
 
-Dust, star-forming knots and the stellar population gradient are set per galaxy: dust share,
-star-forming share, bulge extent, arm count, arm contrast and pitch.
+Set per galaxy: colour, clumpiness, arm irregularity, dust share, star-forming share, bulge
+extent, arm count, arm contrast and pitch.
 
 ## Offline rendering
 
@@ -91,10 +91,22 @@ There is no depth sorting, so the dust column includes grains behind the stars a
 front. Roughly half lies in front, so the depth is halved and clamped; without the clamp an
 encounter that stacks both galaxies along the line of sight goes black.
 
-Every particle carries a stellar population, a luminosity and a component. Old K and G giants
-are warm, young O and B associations are blue, and HII regions glow pink in Halpha. Dust
-absorbs instead of emitting. Foreground field stars are drawn from a steep magnitude law with
-a tight core and diffraction spikes on the brightest.
+Each galaxy emits in a single colour of its own, so material pulled out of one and wrapped
+around the other stays legible after the encounter has mixed them. Star-forming knots are
+brighter rather than differently coloured. Dust absorbs instead of emitting. Foreground field
+stars are drawn from a steep magnitude law with a tight core and diffraction spikes on the
+brightest.
+
+### Clumping
+
+Stars are placed in a hierarchy: about a hundred giant complexes, five thousand clumps within
+them, and stars within those, with sizes following a steep power law so a few are large and
+most are small. Roughly half the disk stays smooth underneath. Clumps are generated already
+stretched along the direction of rotation, because differential rotation shears a cloud into
+an arc within a fraction of an orbit, and a disk of round blobs does not look like a galaxy.
+
+The result is flocculent structure at every scale rather than the airbrushed look of drawing
+every particle straight from a smooth profile.
 
 ### Spiral arms as a density wave
 
@@ -102,8 +114,12 @@ Arms baked into the initial conditions wind up within about one orbit, because a
 differentially. Real arms are a density wave that turns at its own slower speed while stars
 pass through it, which is why a galaxy keeps two clean arms far longer than any material
 pattern could. The renderer evaluates that pattern at each particle's current position and
-modulates colour, brightness and extinction with it, so the arms stay sharp and star
-formation happens where the wave is now rather than where it once was.
+modulates brightness and extinction with it, so the arms stay sharp and star formation
+happens where the wave is now rather than where it once was.
+
+The ideal logarithmic spiral is then made to wander and to break into segments with value
+noise. No real galaxy has two unbroken arms of constant pitch, and `armIrregularity` controls
+how far from the textbook shape a given galaxy sits.
 
 ### Calibration
 

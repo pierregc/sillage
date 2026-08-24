@@ -34,6 +34,15 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public var starFormingFraction: Float
     /// Radius of the old central population, in scale lengths.
     public var bulgeExtent: Float
+    /// Emission colour of this galaxy's stars. One tint per galaxy makes it obvious which
+    /// stars end up in the other galaxy after the encounter.
+    public var color: SIMD3<Float>
+    /// Share of stars placed in a hierarchy of clumps rather than smoothly. Real disks are
+    /// patchy at every scale; a smooth draw looks airbrushed.
+    public var clumpiness: Float
+    /// How far the arms wander from a perfect logarithmic spiral, and how much they break
+    /// into segments.
+    public var armIrregularity: Float
 
     public var position: SIMD3<Float>
     public var velocity: SIMD3<Float>
@@ -56,8 +65,11 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         armStrength: Float = 0.82,
         armPitch: Float = 0.46,
         dustFraction: Float = 0.26,
-        starFormingFraction: Float = 0.005,
+        starFormingFraction: Float = 0.02,
         bulgeExtent: Float = 0.35,
+        color: SIMD3<Float> = SIMD3<Float>(1.0, 0.90, 0.74),
+        clumpiness: Float = 0.48,
+        armIrregularity: Float = 0.55,
         position: SIMD3<Float> = .zero,
         velocity: SIMD3<Float> = .zero,
         inclination: Float = 0,
@@ -78,6 +90,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.dustFraction = dustFraction
         self.starFormingFraction = starFormingFraction
         self.bulgeExtent = bulgeExtent
+        self.color = color
+        self.clumpiness = clumpiness
+        self.armIrregularity = armIrregularity
         self.position = position
         self.velocity = velocity
         self.inclination = inclination

@@ -13,6 +13,7 @@ public struct DiskFrame {
     public var axisU: SIMD4<Float>
     public var axisV: SIMD4<Float>
     public var pattern: SIMD4<Float>
+    public var tint: SIMD4<Float>
 
     /// Builds one frame per galaxy from the scene, the current centres and the elapsed time.
     public static func make(
@@ -39,7 +40,9 @@ public struct DiskFrame {
                     orientation.columns.1.x, orientation.columns.1.y, orientation.columns.1.z,
                     armed),
                 pattern: SIMD4<Float>(
-                    1 / max(tan(galaxy.armPitch), 1e-3), patternSpeed * time, 0, 0))
+                    1 / max(tan(galaxy.armPitch), 1e-3), patternSpeed * time,
+                    galaxy.armIrregularity, Float(index) * 37.4 + 5.1),
+                tint: SIMD4<Float>(galaxy.color.x, galaxy.color.y, galaxy.color.z, 0))
         }
     }
 }
