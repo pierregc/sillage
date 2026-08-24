@@ -166,12 +166,17 @@ public final class MetalSolver: Solver {
 
 /// A solver whose particle state already lives in a Metal buffer, so the renderer can bind it
 /// directly instead of uploading a copy every frame.
-public protocol GPUSolver: Solver {
+///
+/// Marked `Sendable` without checking because recording steps the solver on a background
+/// queue while the renderer reads its position buffer on the main one. Only the recording
+/// queue ever mutates the solver, and a renderer that catches particles mid-update draws a
+/// frame a fraction of a step stale, which is invisible in a point cloud.
+public protocol GPUSolver: Solver, Sendable {
     var positions: MTLBuffer { get }
 }
 
-extension MetalSolver: GPUSolver {}
-extension MetalBarnesHutSolver: GPUSolver {}
+extension MetalSolver: GPUSolver, @unchecked Sendable {}
+extension MetalBarnesHutSolver: GPUSolver, @unchecked Sendable {}
 
 public enum GPUSolverFactory {
     public static func make(

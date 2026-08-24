@@ -10,6 +10,40 @@ enum Stage {
     case running
 }
 
+/// What the viewer is showing. Live steps the solver inside the draw loop, which is fine when
+/// a step costs a millisecond and unusable when it costs half a second. Recording runs the
+/// solver on its own queue and captures snapshots; playback replays them at display rate.
+/// A cancellation flag the recording queue can read without hopping back to the main actor.
+/// Asking the main queue synchronously from a worker is how a background job deadlocks.
+final class CancellationFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
+    }
+
+    func reset() {
+        lock.lock()
+        value = false
+        lock.unlock()
+    }
+}
+
+enum ViewerMode {
+    case live
+    case recording
+    case playback
+}
+
 @MainActor
 final class SimulationModel: ObservableObject {
     @Published var stage: Stage = .setup
@@ -17,7 +51,6 @@ final class SimulationModel: ObservableObject {
     /// Edited by the setup screen. Applied to `scene` only when the user starts the run.
     @Published var draft: SceneConfig
     @Published var camera = OrbitCamera()
-    @Published var isPlaying = true
     @Published var stepsPerFrame = 4
     @Published private(set) var particleCount = 0
     @Published private(set) var elapsedMyr = 0.0
@@ -33,6 +66,28 @@ final class SimulationModel: ObservableObject {
 
     func drawOnce() { canvas?.draw() }
     @Published private(set) var failure: String?
+
+    @Published private(set) var mode: ViewerMode = .live
+    @Published private(set) var recordedFrames = 0
+    @Published var targetFrames = 300
+    @Published var playbackSpeed: Float = 30
+    @Published var playbackPosition: Double = 0
+    @Published var isPlaying = true
+    private(set) var recording: Recording?
+    private var expander: SnapshotExpander?
+    private var playbackPositions: MTLBuffer?
+    private let cancelRecording = CancellationFlag()
+    private let simulationQueue = DispatchQueue(label: "dev.pierregc.sillage.simulation")
+
+    var recordedSeconds: Double { Double(recordedFrames) / 60 }
+    var recordingMegabytes: Double {
+        Double(Recording.estimatedBytes(particleCount: particleCount, frames: recordedFrames))
+            / 1_048_576
+    }
+    var projectedGigabytes: Double {
+        Double(Recording.estimatedBytes(particleCount: draft.totalParticleCount, frames: targetFrames))
+            / 1_073_741_824
+    }
 
     @Published var brightness: Float = 0.055 { didSet { renderer?.setBrightness(brightness) } }
     @Published var exposure: Float = 1.0 { didSet { renderer?.setExposure(exposure) } }
@@ -67,8 +122,72 @@ final class SimulationModel: ObservableObject {
     }
 
     func returnToSetup() {
+        cancelRecording.set()
         stage = .setup
+        mode = .live
+        recording = nil
+        playbackPositions = nil
         isPlaying = false
+    }
+
+    /// Runs the solver on its own queue, capturing one snapshot per requested frame. The
+    /// canvas keeps drawing the live buffer, so the encounter can be watched as it is built.
+    func startRecording() {
+        guard let solver, mode != .recording else { return }
+        cancelRecording.reset()
+        mode = .recording
+        recordedFrames = 0
+        isPlaying = true
+
+        let target = max(targetFrames, 2)
+        let steps = max(stepsPerFrame, 1)
+        let count = particleCount
+        let capture = solver
+        let cancelled = cancelRecording
+        simulationQueue.async { [weak self] in
+            let reel = Recording(particleCount: count)
+            let positions = capture.positions.contents().bindMemory(
+                to: SIMD3<Float>.self, capacity: count)
+            reel.append(positions: positions, time: capture.time)
+            for _ in 1..<target {
+                if cancelled.isSet { break }
+                capture.step(count: steps)
+                reel.append(positions: positions, time: capture.time)
+                DispatchQueue.main.async { self?.recordedFrames = reel.count }
+            }
+            DispatchQueue.main.async { self?.finishRecording(reel) }
+        }
+    }
+
+    func stopRecording() { cancelRecording.set() }
+
+    private func finishRecording(_ reel: Recording) {
+        guard reel.count >= 2 else {
+            mode = .live
+            return
+        }
+        recording = reel
+        recordedFrames = reel.count
+        playbackPosition = 0
+        do {
+            expander = try SnapshotExpander(device: device, particleCount: reel.particleCount)
+            playbackPositions = device.makeBuffer(
+                length: reel.particleCount * MemoryLayout<SIMD3<Float>>.stride,
+                options: .storageModeShared)
+            mode = .playback
+            rebuildRenderer()
+        } catch {
+            failure = "\(error)"
+            mode = .live
+        }
+    }
+
+    func discardRecording() {
+        recording = nil
+        playbackPositions = nil
+        expander = nil
+        mode = .live
+        rebuildRenderer()
     }
 
     var gpuName: String { device.name }
@@ -153,6 +272,7 @@ final class SimulationModel: ObservableObject {
 
     private func rebuildRenderer() {
         guard let solver else { return }
+        let bound = mode == .playback ? playbackPositions : solver.positions
         let settings = RenderSettings(
             width: Int(drawableSize.width),
             height: Int(drawableSize.height),
@@ -166,12 +286,31 @@ final class SimulationModel: ObservableObject {
             saturation: saturation)
         do {
             renderer = try Renderer(
-                device: device, particles: seeded, settings: settings,
-                externalPositions: solver.positions)
+                device: device, particles: seeded, settings: settings, externalPositions: bound)
         } catch {
             failure = "\(error)"
             renderer = nil
         }
+    }
+
+    /// Steps the playback cursor and blends the two surrounding snapshots into the buffer the
+    /// renderer draws from.
+    private func advancePlayback() {
+        guard let recording, let expander, let positions = playbackPositions,
+            recording.count >= 2
+        else { return }
+        let last = Double(recording.count - 1)
+        if isPlaying {
+            playbackPosition += Double(playbackSpeed) / 60
+            if playbackPosition >= last { playbackPosition -= last }
+        }
+        playbackPosition = min(max(playbackPosition, 0), last)
+
+        let index = Int(playbackPosition)
+        let blend = Float(playbackPosition - Double(index))
+        let pair = recording.upload(pair: index, into: expander.stagingBuffer)
+        expander.expand(first: pair.0, second: pair.1, blend: blend, into: positions)
+        elapsedMyr = Double(pair.0.time) * Physics.megayearsPerTimeUnit
     }
 
     /// Runs the exact model path a frame takes, but offscreen. Used by `--selftest` so the
@@ -191,9 +330,18 @@ final class SimulationModel: ObservableObject {
         drawAttempts += 1
         guard let renderer, let solver, let drawable = view.currentDrawable else { return }
         let start = CACurrentMediaTime()
-        if isPlaying {
-            solver.step(count: stepsPerFrame)
+
+        switch mode {
+        case .live:
+            if isPlaying {
+                solver.step(count: stepsPerFrame)
+                elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
+            }
+        case .recording:
+            // The solver is being advanced on its own queue; just show where it has got to.
             elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
+        case .playback:
+            advancePlayback()
         }
         renderer.setDiskFrames(
             DiskFrame.make(

@@ -24,6 +24,8 @@ struct ControlPanelContent: View {
         VStack(alignment: .leading, spacing: 16) {
             transport
             Divider()
+            capture
+            Divider()
             rendering
             Divider()
             view
@@ -35,7 +37,8 @@ struct ControlPanelContent: View {
             HStack {
                 Button(model.isPlaying ? "Pause" : "Lecture") { model.isPlaying.toggle() }
                     .keyboardShortcut(.space, modifiers: [])
-                Button("Rejouer") { model.restart() }
+                Button("Relancer") { model.restart() }
+                    .disabled(model.mode == .recording)
             }
             .buttonStyle(.bordered)
 
@@ -44,6 +47,7 @@ struct ControlPanelContent: View {
 
             Stepper("Pas par image : \(model.stepsPerFrame)", value: $model.stepsPerFrame, in: 1...64)
                 .font(.caption)
+                .disabled(model.mode == .playback)
 
             Text(String(format: "t = %.0f Myr", model.elapsedMyr))
                 .font(.callout.monospacedDigit())
@@ -59,6 +63,61 @@ struct ControlPanelContent: View {
 
             if let failure = model.failure {
                 Text(failure).font(.caption).foregroundStyle(Palette.warning)
+            }
+        }
+    }
+
+    /// Recording and playback. Self-gravity costs hundreds of milliseconds a step, so the
+    /// only way to watch it without touching the physics is to stop making the display wait
+    /// for it.
+    @ViewBuilder
+    private var capture: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Prise").font(.headline)
+
+            switch model.mode {
+            case .live:
+                Text(
+                    "Enregistre la suite du calcul en mémoire, puis rejoue à la fréquence de l'écran."
+                )
+                .font(.caption)
+                .foregroundStyle(Palette.secondary)
+                Stepper("Images : \(model.targetFrames)", value: $model.targetFrames, in: 30...3000, step: 30)
+                    .font(.caption)
+                Text(String(format: "environ %.1f Go en mémoire", model.projectedGigabytes))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(model.projectedGigabytes > 12 ? Palette.warning : Palette.secondary)
+                Button("Enregistrer") { model.startRecording() }
+                    .buttonStyle(.borderedProminent)
+
+            case .recording:
+                ProgressView(
+                    value: Double(model.recordedFrames), total: Double(max(model.targetFrames, 1)))
+                Text(
+                    String(
+                        format: "%d / %d images · %.0f Mo", model.recordedFrames,
+                        model.targetFrames, model.recordingMegabytes)
+                )
+                .font(.caption.monospacedDigit())
+                Button("Arrêter et rejouer") { model.stopRecording() }
+                    .buttonStyle(.bordered)
+
+            case .playback:
+                Text(
+                    String(
+                        format: "%d images · %.0f Mo", model.recordedFrames,
+                        model.recordingMegabytes)
+                )
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(Palette.secondary)
+                Slider(
+                    value: $model.playbackPosition,
+                    in: 0...Double(max(model.recordedFrames - 1, 1)))
+                ParameterSlider(
+                    title: "Vitesse (images/s)", value: $model.playbackSpeed, range: 1...120,
+                    format: "%.0f")
+                Button("Nouvelle prise") { model.discardRecording() }
+                    .buttonStyle(.bordered)
             }
         }
     }
