@@ -31,6 +31,7 @@ final class SimulationModel: ObservableObject {
     @Published var saturation: Float = 1.8 { didSet { renderer?.setSaturation(saturation) } }
     @Published var bloom: Float = 0.45 { didSet { renderer?.setBloomIntensity(bloom) } }
     @Published var pointSize: Float = 1.7 { didSet { renderer?.setPointSize(pointSize) } }
+    @Published var dustStrength: Float = 0.16 { didSet { renderer?.setDustStrength(dustStrength) } }
     @Published var supersample = 1 { didSet { rebuildRenderer() } }
 
     let device: MTLDevice
@@ -146,7 +147,7 @@ final class SimulationModel: ObservableObject {
             pointSize: pointSize,
             exposure: exposure,
             brightness: brightness,
-            colorRadius: max(scene.galaxies.map { $0.diskScaleLength * $0.diskTruncation }.max() ?? 14, 1),
+            dustStrength: dustStrength,
             bloomIntensity: bloom,
             stretch: stretch,
             saturation: saturation)

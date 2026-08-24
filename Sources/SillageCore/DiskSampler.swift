@@ -98,7 +98,7 @@ public enum DiskSampler {
         return sqrt(max(inner - outer * ratio, 0))
     }
 
-    static func randomDirection(_ generator: inout SeededGenerator) -> SIMD3<Float> {
+    public static func randomDirection(_ generator: inout SeededGenerator) -> SIMD3<Float> {
         let cosTheta = generator.uniform(in: -1...1)
         let sinTheta = sqrt(max(1 - cosTheta * cosTheta, 0))
         let phi = generator.uniform() * 2 * .pi
@@ -157,6 +157,50 @@ public enum DiskSampler {
         }
     }
 
+    public static func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
+        let t = min(max((x - edge0) / max(edge1 - edge0, 1e-6), 0), 1)
+        return t * t * (3 - 2 * t)
+    }
+
+    /// One position in the disk plane, together with how close it landed to an arm ridge.
+    /// Rejection against a logarithmic spiral shapes the azimuthal density without touching
+    /// the exponential radial profile. `contrast` above the galaxy's own arm strength makes a
+    /// population hug the arms more tightly, which is what dust and HII regions do.
+    private static func samplePlanePosition(
+        _ config: GalaxyConfig,
+        arms: Int,
+        contrast: Float,
+        windRate: Float,
+        minimumRadius: Float,
+        phaseOffset: Float = 0,
+        scaleMultiplier: Float = 1,
+        using generator: inout SeededGenerator
+    ) -> (radius: Float, phi: Float, armProximity: Float) {
+        var radius: Float = 0
+        var phi: Float = 0
+        var density: Float = 1
+        for _ in 0..<32 {
+            radius =
+                config.diskScaleLength * scaleMultiplier
+                * inverseExponentialCDF(generator.uniform(), truncation: config.diskTruncation)
+            phi = generator.uniform() * 2 * .pi
+            if radius < minimumRadius { continue }
+            if contrast <= 0 {
+                density = 1
+                break
+            }
+            // A logarithmic spiral winds without limit toward the centre, so the pattern is
+            // faded out inside the bulge where real arms do not reach either.
+            let envelope = smoothstep(0.25, 1.1, radius / config.diskScaleLength)
+            let local = contrast * envelope
+            let wound = phi - windRate * log(max(radius, 1e-3) / config.diskScaleLength)
+            density = 1 + local * cos(Float(arms) * wound - phaseOffset)
+            if generator.uniform() * (1 + contrast) <= density { break }
+        }
+        let proximity = contrast > 0 ? min(max((density - 1 + contrast) / (2 * contrast), 0), 1) : 0.5
+        return (radius, phi, proximity)
+    }
+
     private static func sampleDisk(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
@@ -168,24 +212,59 @@ public enum DiskSampler {
         let arms = config.kind == .spiral ? max(config.armCount, 0) : 0
         let strength = arms > 0 ? min(max(config.armStrength, 0), 0.95) : 0
         let windRate = 1 / max(tan(config.armPitch), 1e-3)
+        let bulgeRadius = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
+        let dustShare = min(max(config.dustFraction, 0), 0.8)
+        let hiiShare = min(max(config.starFormingFraction, 0), 0.2)
+
+        // Star-forming regions are discrete knots strung along the arms, not a smooth
+        // sprinkle, so their positions come from a small set of seeds.
+        let knotCount = 320
+        var knots: [SIMD2<Float>] = []
+        knots.reserveCapacity(knotCount)
+        for _ in 0..<knotCount {
+            let placed = samplePlanePosition(
+                config, arms: arms, contrast: min(strength * 1.7, 0.95), windRate: windRate,
+                minimumRadius: bulgeRadius, using: &generator)
+            knots.append(SIMD2<Float>(placed.radius, placed.phi))
+        }
+        let knotSpread = config.diskScaleLength * 0.022
 
         for _ in 0..<config.particleCount {
-            var radius: Float = 0
-            var phi: Float = 0
-            // Rejection sampling against a logarithmic spiral gives arms without changing
-            // the underlying exponential radial profile.
-            for _ in 0..<24 {
-                radius =
-                    config.diskScaleLength
-                    * inverseExponentialCDF(generator.uniform(), truncation: config.diskTruncation)
-                phi = generator.uniform() * 2 * .pi
-                if strength <= 0 { break }
-                let wound = phi - windRate * log(max(radius, 1e-3) / config.diskScaleLength)
-                let density = 1 + strength * cos(Float(arms) * wound)
-                if generator.uniform() * (1 + strength) <= density { break }
+            let roll = generator.uniform()
+            let component: ParticleComponent =
+                roll < dustShare
+                ? .dust : (roll < dustShare + hiiShare ? .hiiRegion : .star)
+
+            var radius: Float
+            var phi: Float
+            var proximity: Float
+
+            if component == .hiiRegion, !knots.isEmpty {
+                let knot = knots[Int(generator.uniform() * Float(knots.count)) % knots.count]
+                radius = max(knot.x + generator.normal() * knotSpread, 0.05)
+                phi = knot.y + generator.normal() * knotSpread / max(knot.x, 0.5)
+                proximity = 1
+            } else {
+                // Dust lanes are narrower than the stellar arms they trace.
+                // Dust lanes are narrower than the stellar arms and sit slightly ahead of
+                // them, on the concave side, which is what makes both readable at once.
+                let contrast = component == .dust ? min(strength * 1.4, 0.95) : strength
+                let placed = samplePlanePosition(
+                    config, arms: arms, contrast: contrast, windRate: windRate,
+                    minimumRadius: component == .dust ? bulgeRadius * 0.5 : 0,
+                    phaseOffset: component == .dust ? 0.85 : 0,
+                    // Gas and dust are far less centrally concentrated than the stars, so
+                    // drawing them from the stellar profile buries the inner disk.
+                    scaleMultiplier: component == .dust ? 1.6 : 1,
+                    using: &generator)
+                radius = placed.radius
+                phi = placed.phi
+                proximity = placed.armProximity
             }
 
-            let height = config.diskThickness * inverseSech2CDF(generator.uniform())
+            // Dust settles into a thinner layer than the stars.
+            let thickness = component == .dust ? config.diskThickness * 0.45 : config.diskThickness
+            let height = thickness * inverseSech2CDF(generator.uniform())
             let local = SIMD3<Float>(radius * cos(phi), radius * sin(phi), height)
 
             let speed = config.potential.circularSpeed(atRadius: radius)
@@ -193,11 +272,34 @@ public enum DiskSampler {
             let scatter = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
             let localVelocity = tangential + scatter * (speed * config.velocityDispersion)
 
+            // Young blue stars sit on the arms; the centre is an old warm population.
+            let diskAge = 0.30 + 0.68 * proximity
+            let bulgeWeight = 1 - smoothstep(bulgeRadius * 0.4, bulgeRadius * 1.8, radius)
+            var population = diskAge * (1 - bulgeWeight)
+            // Real disks fade out; a hard cut at the truncation radius reads as a drawn edge.
+            let edge = radius / config.diskScaleLength
+            let taper = 1 - smoothstep(config.diskTruncation - 2.1, config.diskTruncation, edge)
+            var brightness = (0.75 + 0.5 * generator.uniform()) * max(taper, 0.02)
+
+            switch component {
+            case .hiiRegion:
+                population = 1
+                brightness = (5 + 9 * generator.uniform()) * max(taper, 0.04)
+            case .dust:
+                population = 0
+                brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.04)
+            case .star:
+                break
+            }
+
             system.append(
                 position: rotation * local + config.position,
                 velocity: rotation * localVelocity + config.velocity,
                 galaxy: galaxyIndex,
-                radius: radius
+                radius: radius,
+                population: population,
+                luminosity: brightness,
+                component: component
             )
         }
     }
@@ -227,7 +329,10 @@ public enum DiskSampler {
                 position: direction * radius + config.position,
                 velocity: velocity + config.velocity,
                 galaxy: galaxyIndex,
-                radius: radius
+                radius: radius,
+                population: 0.04,
+                luminosity: 0.8 + 0.5 * generator.uniform(),
+                component: .star
             )
         }
     }

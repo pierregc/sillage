@@ -45,12 +45,13 @@ extension SceneConfig {
 
     /// A small companion on a fast retrograde pass. Shorter, sharper features.
     public static func flyby(particleCount: Int = 500_000, seed: UInt64 = 1) -> SceneConfig {
-        SceneConfig(
+        let companion = particleCount * 3 / 25
+        return SceneConfig(
             name: "Flyby",
             galaxies: [
                 GalaxyConfig(
                     name: "Host",
-                    particleCount: particleCount * 4 / 5,
+                    particleCount: particleCount - companion,
                     potential: GalaxyPotential(profile: .hernquist, mass: 60, scaleRadius: 5),
                     diskScaleLength: 4.5,
                     position: .zero,
@@ -60,9 +61,10 @@ extension SceneConfig {
                 ),
                 GalaxyConfig(
                     name: "Companion",
-                    particleCount: particleCount / 5,
-                    potential: GalaxyPotential(profile: .plummer, mass: 12, scaleRadius: 2.5),
-                    diskScaleLength: 2,
+                    particleCount: companion,
+                    kind: .globular,
+                    potential: GalaxyPotential(profile: .plummer, mass: 12, scaleRadius: 1.6),
+                    diskScaleLength: 1.8,
                     position: SIMD3<Float>(-45, 25, 10),
                     velocity: SIMD3<Float>(1.1, -0.5, -0.15),
                     inclination: 1.1,

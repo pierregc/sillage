@@ -1,5 +1,13 @@
 import simd
 
+/// What a particle represents. Stars emit, HII regions emit strongly in a narrow band, and
+/// dust absorbs rather than emits, so the renderer treats them differently.
+public enum ParticleComponent: UInt32, Codable, Sendable, CaseIterable {
+    case star = 0
+    case hiiRegion = 1
+    case dust = 2
+}
+
 /// Structure-of-arrays particle storage. `positions` is laid out so it can back a
 /// Metal buffer directly: SIMD3<Float> has a 16-byte stride, matching float3 in MSL.
 public struct ParticleSystem: Sendable {
@@ -9,6 +17,11 @@ public struct ParticleSystem: Sendable {
     public var galaxyIndex: [UInt32]
     /// Galactocentric radius at t = 0, for radial colour ramps.
     public var birthRadius: [Float]
+    /// Stellar population, 0 for an old warm population and 1 for young blue stars.
+    public var population: [Float]
+    /// Per-particle brightness multiplier. Star-forming knots are far brighter than the mean.
+    public var luminosity: [Float]
+    public var component: [UInt32]
 
     public var count: Int { positions.count }
 
@@ -17,10 +30,20 @@ public struct ParticleSystem: Sendable {
         velocities = []
         galaxyIndex = []
         birthRadius = []
+        population = []
+        luminosity = []
+        component = []
+        reserveCapacity(capacity)
+    }
+
+    public mutating func reserveCapacity(_ capacity: Int) {
         positions.reserveCapacity(capacity)
         velocities.reserveCapacity(capacity)
         galaxyIndex.reserveCapacity(capacity)
         birthRadius.reserveCapacity(capacity)
+        population.reserveCapacity(capacity)
+        luminosity.reserveCapacity(capacity)
+        component.reserveCapacity(capacity)
     }
 
     /// Exposes positions and velocities together for in-place integration. Going through the
@@ -36,11 +59,17 @@ public struct ParticleSystem: Sendable {
         position: SIMD3<Float>,
         velocity: SIMD3<Float>,
         galaxy: UInt32,
-        radius: Float
+        radius: Float,
+        population stellarAge: Float = 0.5,
+        luminosity brightness: Float = 1,
+        component kind: ParticleComponent = .star
     ) {
         positions.append(position)
         velocities.append(velocity)
         galaxyIndex.append(galaxy)
         birthRadius.append(radius)
+        population.append(stellarAge)
+        luminosity.append(brightness)
+        component.append(kind.rawValue)
     }
 }

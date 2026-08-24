@@ -7,8 +7,13 @@ struct SplatUniforms {
     var viewProjection: simd_float4x4
     var pointSize: Float
     var brightness: Float
-    var colorRadius: Float
-    var pad: Float = 0
+    var dustStrength: Float
+    var starSize: Float
+}
+
+struct BackgroundStar {
+    var direction: SIMD4<Float>
+    var color: SIMD4<Float>
 }
 
 struct BloomParams {
@@ -35,8 +40,13 @@ public struct RenderSettings: Sendable {
     /// Emission per particle, expressed per million particles. Normalising by count keeps a
     /// scene looking the same whether it runs at 500 000 particles or at 20 million.
     public var brightness: Float
-    /// Radius, in kpc, at which the colour ramp reaches its outermost stop.
-    public var colorRadius: Float
+    /// Optical depth per dust particle, expressed per million particles so a scene keeps the
+    /// same column density whichever count it runs at.
+    public var dustStrength: Float
+    /// Number of foreground field stars.
+    public var starCount: Int
+    /// Point size of the field stars before their magnitude scaling.
+    public var starSize: Float
     public var bloomThreshold: Float
     public var bloomSoftKnee: Float
     public var bloomIntensity: Float
@@ -53,7 +63,9 @@ public struct RenderSettings: Sendable {
         pointSize: Float = 1.7,
         exposure: Float = 1.0,
         brightness: Float = 0.055,
-        colorRadius: Float = 14,
+        dustStrength: Float = 0.055,
+        starCount: Int = 11000,
+        starSize: Float = 1.15,
         bloomThreshold: Float = 0.55,
         bloomSoftKnee: Float = 0.6,
         bloomIntensity: Float = 0.45,
@@ -67,7 +79,9 @@ public struct RenderSettings: Sendable {
         self.pointSize = pointSize
         self.exposure = exposure
         self.brightness = brightness
-        self.colorRadius = colorRadius
+        self.dustStrength = dustStrength
+        self.starCount = starCount
+        self.starSize = starSize
         self.bloomThreshold = bloomThreshold
         self.bloomSoftKnee = bloomSoftKnee
         self.bloomIntensity = bloomIntensity
@@ -102,6 +116,7 @@ public final class Renderer {
 
     private let queue: MTLCommandQueue
     private let splatPipeline: MTLRenderPipelineState
+    private let starfieldPipeline: MTLRenderPipelineState
     private let resolvePipeline: MTLComputePipelineState
     private let brightPassPipeline: MTLComputePipelineState
     private let downsamplePipeline: MTLComputePipelineState
@@ -109,15 +124,21 @@ public final class Renderer {
     private let compositePipeline: MTLComputePipelineState
 
     private let accumulation: MTLTexture
+    private let dustAccumulation: MTLTexture
     private let resolved: MTLTexture
     private let bloomDown: [MTLTexture]
     private let bloomUp: [MTLTexture]
     public let output: MTLTexture
 
     private let positionBuffer: MTLBuffer
-    private let radiusBuffer: MTLBuffer
-    private let galaxyBuffer: MTLBuffer
+    private let populationBuffer: MTLBuffer
+    private let luminosityBuffer: MTLBuffer
+    private let componentBuffer: MTLBuffer
+    private let starBuffer: MTLBuffer?
     private let particleCount: Int
+
+    /// Framing at which the brightness and dust settings are calibrated, in kpc per pixel.
+    static let referenceKpcPerPixel: Float = 0.0436
 
     /// The buffer holding particle positions, so a GPU solver can write into it directly.
     public var positions: MTLBuffer { positionBuffer }
@@ -155,23 +176,29 @@ public final class Renderer {
             }
         }
 
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = library.makeFunction(name: "splatVertex")
-        descriptor.fragmentFunction = library.makeFunction(name: "splatFragment")
-        let attachment = descriptor.colorAttachments[0]!
-        attachment.pixelFormat = .rgba16Float
-        attachment.isBlendingEnabled = true
-        attachment.rgbBlendOperation = .add
-        attachment.alphaBlendOperation = .add
-        attachment.sourceRGBBlendFactor = .one
-        attachment.sourceAlphaBlendFactor = .one
-        attachment.destinationRGBBlendFactor = .one
-        attachment.destinationAlphaBlendFactor = .one
-        do {
-            splatPipeline = try device.makeRenderPipelineState(descriptor: descriptor)
-        } catch {
-            throw RenderError.pipelineCreation("splat: \(error)")
+        func additive(_ vertexFunction: String) throws -> MTLRenderPipelineState {
+            let descriptor = MTLRenderPipelineDescriptor()
+            descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
+            descriptor.fragmentFunction = library.makeFunction(name: "splatFragment")
+            for (index, format) in [MTLPixelFormat.rgba16Float, .r16Float].enumerated() {
+                guard let attachment = descriptor.colorAttachments[index] else { continue }
+                attachment.pixelFormat = format
+                attachment.isBlendingEnabled = true
+                attachment.rgbBlendOperation = .add
+                attachment.alphaBlendOperation = .add
+                attachment.sourceRGBBlendFactor = .one
+                attachment.sourceAlphaBlendFactor = .one
+                attachment.destinationRGBBlendFactor = .one
+                attachment.destinationAlphaBlendFactor = .one
+            }
+            do {
+                return try device.makeRenderPipelineState(descriptor: descriptor)
+            } catch {
+                throw RenderError.pipelineCreation("\(vertexFunction): \(error)")
+            }
         }
+        splatPipeline = try additive("splatVertex")
+        starfieldPipeline = try additive("starfieldVertex")
 
         resolvePipeline = try compute("resolve")
         brightPassPipeline = try compute("brightPass")
@@ -200,6 +227,9 @@ public final class Renderer {
         accumulation = try texture(
             settings.width * scale, settings.height * scale, .rgba16Float,
             [.renderTarget, .shaderRead])
+        dustAccumulation = try texture(
+            settings.width * scale, settings.height * scale, .r16Float,
+            [.renderTarget, .shaderRead])
         resolved = try texture(
             settings.width, settings.height, .rgba16Float, [.shaderRead, .shaderWrite])
 
@@ -226,21 +256,58 @@ public final class Renderer {
         guard
             let positionBuffer = externalPositions
                 ?? device.makeBuffer(length: count * stride, options: .storageModeShared),
-            let radiusBuffer = device.makeBuffer(
-                bytes: particles.birthRadius.isEmpty ? [Float(0)] : particles.birthRadius,
+            let populationBuffer = device.makeBuffer(
+                bytes: particles.population.isEmpty ? [Float(0.5)] : particles.population,
                 length: count * 4, options: .storageModeShared),
-            let galaxyBuffer = device.makeBuffer(
-                bytes: particles.galaxyIndex.isEmpty ? [UInt32(0)] : particles.galaxyIndex,
+            let luminosityBuffer = device.makeBuffer(
+                bytes: particles.luminosity.isEmpty ? [Float(1)] : particles.luminosity,
+                length: count * 4, options: .storageModeShared),
+            let componentBuffer = device.makeBuffer(
+                bytes: particles.component.isEmpty ? [UInt32(0)] : particles.component,
                 length: count * 4, options: .storageModeShared)
         else {
             throw RenderError.textureAllocation
         }
         self.positionBuffer = positionBuffer
-        self.radiusBuffer = radiusBuffer
-        self.galaxyBuffer = galaxyBuffer
+        self.populationBuffer = populationBuffer
+        self.luminosityBuffer = luminosityBuffer
+        self.componentBuffer = componentBuffer
+        self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
         if externalPositions == nil {
             upload(positions: particles.positions)
         }
+    }
+
+    /// Field stars, placed far enough out that orbiting the galaxy does not parallax them.
+    /// Magnitudes follow a steep power law so a handful are bright and the rest are faint,
+    /// and colours run from common cool dwarfs to rare hot blue stars.
+    private static func makeStarfield(device: MTLDevice, count: Int) -> MTLBuffer? {
+        guard count > 0 else { return nil }
+        var generator = SeededGenerator(seed: 0x5111_1A6E)
+        var stars: [BackgroundStar] = []
+        stars.reserveCapacity(count)
+        let shell: Float = 6_000
+
+        for _ in 0..<count {
+            let direction = DiskSampler.randomDirection(&generator)
+            let magnitude = pow(generator.uniform(), 3.2)
+            let warmth = generator.uniform()
+            let color =
+                warmth < 0.62
+                ? SIMD3<Float>(1.0, 0.72 + 0.18 * warmth, 0.50 + 0.22 * warmth)
+                : (warmth < 0.9
+                    ? SIMD3<Float>(1.0, 0.96, 0.90)
+                    : SIMD3<Float>(0.72, 0.82, 1.0))
+            let spike = DiskSampler.smoothstep(0.45, 0.9, magnitude)
+            stars.append(
+                BackgroundStar(
+                    direction: SIMD4<Float>(
+                        direction.x * shell, direction.y * shell, direction.z * shell, magnitude),
+                    color: SIMD4<Float>(color.x, color.y, color.z, spike)))
+        }
+        return device.makeBuffer(
+            bytes: stars, length: stars.count * MemoryLayout<BackgroundStar>.stride,
+            options: .storageModeShared)
     }
 
     /// Unified memory means this is a plain memcpy into a buffer the GPU already sees.
@@ -255,7 +322,7 @@ public final class Renderer {
     public func setBrightness(_ brightness: Float) { settings.brightness = brightness }
     public func setBloomIntensity(_ intensity: Float) { settings.bloomIntensity = intensity }
     public func setPointSize(_ size: Float) { settings.pointSize = size }
-    public func setColorRadius(_ radius: Float) { settings.colorRadius = radius }
+    public func setDustStrength(_ strength: Float) { settings.dustStrength = strength }
     public func setStretch(_ stretch: Float) { settings.stretch = stretch }
     public func setSaturation(_ saturation: Float) { settings.saturation = saturation }
 
@@ -263,24 +330,47 @@ public final class Renderer {
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
         let scale = settings.supersample
         let aspect = Float(settings.width) / Float(settings.height)
+
+        // Emission and optical depth are quantities per unit sky area, but a splat deposits
+        // them per pixel. Without this, zooming out packs more particles into each pixel and
+        // the image saturates, which is why the exposure had to be retuned for every framing.
+        let distance = simd_length(camera.eye - camera.target)
+        let kpcPerPixel =
+            2 * tan(camera.fieldOfView / 2) * distance / Float(max(settings.height, 1))
+        let areaScale = pow(Renderer.referenceKpcPerPixel / max(kpcPerPixel, 1e-6), 2)
+        let perParticle = 1_000_000 / Float(max(particleCount, 1))
+
         var splat = SplatUniforms(
             viewProjection: camera.viewProjection(aspectRatio: aspect),
             pointSize: settings.pointSize * Float(scale),
-            brightness: settings.brightness * 1_000_000 / Float(max(particleCount, 1)),
-            colorRadius: settings.colorRadius)
+            brightness: settings.brightness * perParticle * areaScale,
+            dustStrength: settings.dustStrength * perParticle * areaScale,
+            starSize: settings.starSize * Float(scale))
 
         let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = accumulation
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        pass.colorAttachments[0].storeAction = .store
+        for (index, target) in [accumulation, dustAccumulation].enumerated() {
+            pass.colorAttachments[index].texture = target
+            pass.colorAttachments[index].loadAction = .clear
+            pass.colorAttachments[index].clearColor = MTLClearColor(
+                red: 0, green: 0, blue: 0, alpha: 0)
+            pass.colorAttachments[index].storeAction = .store
+        }
 
         if let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) {
+            encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
+
+            if let starBuffer {
+                encoder.setRenderPipelineState(starfieldPipeline)
+                encoder.setVertexBuffer(starBuffer, offset: 0, index: 0)
+                encoder.drawPrimitives(
+                    type: .point, vertexStart: 0, vertexCount: settings.starCount)
+            }
+
             encoder.setRenderPipelineState(splatPipeline)
             encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
-            encoder.setVertexBuffer(radiusBuffer, offset: 0, index: 1)
-            encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 2)
-            encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 3)
+            encoder.setVertexBuffer(populationBuffer, offset: 0, index: 1)
+            encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
+            encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
             encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: particleCount)
             encoder.endEncoding()
         }
@@ -290,7 +380,8 @@ public final class Renderer {
         var factor = UInt32(scale)
         dispatch(compute, resolvePipeline, into: resolved) { encoder in
             encoder.setTexture(accumulation, index: 0)
-            encoder.setTexture(resolved, index: 1)
+            encoder.setTexture(dustAccumulation, index: 1)
+            encoder.setTexture(resolved, index: 2)
             encoder.setBytes(&factor, length: 4, index: 0)
         }
 
