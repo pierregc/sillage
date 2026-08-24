@@ -49,8 +49,8 @@ struct MetalSolverTests {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let render = try device.makeLibrary(source: Shaders.source, options: nil)
         for name in [
-            "splatVertex", "splatFragment", "resolve", "brightPass", "downsample", "upsampleAdd",
-            "composite",
+            "splatVertex", "splatFragment", "starfieldVertex", "resolve", "brightPass",
+            "downsample", "upsampleAdd", "diffractionSpikes", "composite",
         ] {
             #expect(render.makeFunction(name: name) != nil, "missing \(name)")
         }
@@ -63,7 +63,8 @@ struct MetalSolverTests {
         #expect(MemoryLayout<IntegrateParams>.stride == 16)
         #expect(MemoryLayout<SplatUniforms>.stride == 112)
         #expect(MemoryLayout<BloomParams>.stride == 16)
-        #expect(MemoryLayout<CompositeParams>.stride == 16)
+        #expect(MemoryLayout<CompositeParams>.stride == 32)
+        #expect(MemoryLayout<SpikeParams>.stride == 32)
         #expect(MemoryLayout<SIMD3<Float>>.stride == 16)
     }
 

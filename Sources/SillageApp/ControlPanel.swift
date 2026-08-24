@@ -137,6 +137,16 @@ struct ControlPanelContent: View {
                 format: "%.3f")
             ParameterSlider(title: "Taille des points", value: $model.pointSize, range: 0.8...6)
             ParameterSlider(title: "Exposition", value: $model.exposure, range: 0.1...4)
+            ParameterSlider(
+                title: "Lissage (taille du noyau)", value: $model.smoothingScale,
+                range: 0.4...3.0)
+            ParameterSlider(
+                title: "Aigrettes de diffraction", value: $model.spikeIntensity, range: 0...1.5)
+            ParameterSlider(
+                title: "Fond de ciel", value: $model.skyLevel, range: 0...0.01, format: "%.4f")
+            ParameterSlider(
+                title: "Bruit de détecteur", value: $model.noiseLevel, range: 0...0.01,
+                format: "%.4f")
             Picker("Suréchantillonnage", selection: $model.supersample) {
                 Text("1×").tag(1)
                 Text("2×").tag(2)
