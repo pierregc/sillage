@@ -64,13 +64,33 @@ Level 2, at an opening angle of 0.6:
 
 | | Per step | Tree build | Force traversal |
 |---|---|---|---|
-| 200 k | 19.9 ms | 7.5 ms | 10.5 ms |
-| 500 k | 50.9 ms | 20.6 ms | 30.0 ms |
-| 1 M | 112 ms | 42.6 ms | 69.0 ms |
+| 1 M | 84 ms | 19 ms | 64 ms |
+| 3 M | 352 ms | 56 ms | 294 ms |
 
-So level 2 runs interactively to a few hundred thousand particles and offline beyond that,
-while level 1 stays the mode for exploring a scene. The tree build is single-threaded CPU and
-is the obvious next thing to parallelise.
+The tree build went from 133 ms to 56 ms at three million particles by parallelising the
+Morton codes and the leaf accumulation, halving the number of radix passes, materialising the
+codes in sorted order so the node split scans linearly instead of chasing a permutation, and
+shrinking the node from 48 bytes to 32. Total step time only improved by about a third,
+because the force traversal dominates and is bound by divergence rather than by node size.
+Sharing one stack across a SIMD group is the next thing worth trying there.
+
+## Watching a slow simulation
+
+At three hundred milliseconds a step, stepping inside the draw loop makes the camera, the
+sliders and the whole interface run at that rate too. Recording separates them: the solver
+advances on its own queue while the viewer plays back from memory at the display rate, with
+scrubbing and without touching the physics.
+
+Snapshots are three 16-bit fixed-point values per particle inside each frame's own bounding
+box. Over a 200 kpc box that resolves 0.003 kpc, far below the force softening, for six bytes
+a particle instead of twelve. Playback blends the two surrounding snapshots on the GPU, so a
+run captured at three steps per second still moves continuously.
+
+| Particles | Per snapshot | 300 snapshots |
+|---|---|---|
+| 1 M | 6 MB | 1.8 GB |
+| 3 M | 18 MB | 5.4 GB |
+| 5 M | 30 MB | 9 GB |
 
 The interactive app holds 3 million particles at 2.4 ms per frame, which is the display
 refresh rate rather than a GPU limit. Past roughly 20 million particles the extra points
