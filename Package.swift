@@ -15,5 +15,7 @@ let package = Package(
         .target(name: "SillageRender", dependencies: ["SillageCore"]),
         .executableTarget(name: "sillage-render", dependencies: ["SillageCore", "SillageRender"]),
         .testTarget(name: "SillageCoreTests", dependencies: ["SillageCore"]),
+        .testTarget(
+            name: "SillageRenderTests", dependencies: ["SillageCore", "SillageRender"]),
     ]
 )

@@ -16,11 +16,12 @@ func number(_ name: String, _ fallback: Double) -> Double {
 
 let presetName = argument("preset", default: "merger")!
 let particles = Int(number("particles", 1_000_000))
-let steps = Int(number("steps", 1_200))
+let steps = Int(number("steps", 3_000))
 let frames = Int(number("frames", 1))
 let width = Int(number("width", 1920))
 let height = Int(number("height", 1080))
 let outputPath = argument("out", default: "out/sillage.png")!
+let backend = argument("solver", default: "gpu")!
 
 var scene: SceneConfig
 switch presetName {
@@ -31,6 +32,8 @@ default:
     FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
     exit(2)
 }
+if let seed = argument("seed").flatMap(UInt64.init) { scene.seed = seed }
+if let dt = argument("dt").flatMap(Float.init) { scene.timeStep = dt }
 
 let settings = RenderSettings(
     width: width,
@@ -38,18 +41,22 @@ let settings = RenderSettings(
     supersample: Int(number("supersample", 2)),
     pointSize: Float(number("point-size", 2.0)),
     exposure: Float(number("exposure", 1.0)),
-    brightness: Float(number("brightness", 0.05)),
+    brightness: Float(number("brightness", 0.02)),
     colorRadius: Float(number("color-radius", 14)),
     bloomThreshold: Float(number("bloom-threshold", 0.55)),
     bloomSoftKnee: Float(number("bloom-knee", 0.6)),
-    bloomIntensity: Float(number("bloom", 0.85)),
+    bloomIntensity: Float(number("bloom", 0.5)),
     bloomLevels: Int(number("bloom-levels", 6)),
     stretch: Float(number("stretch", 24)))
 
-print("scene      \(scene.name), \(scene.totalParticleCount) particles, solver \(scene.solver.rawValue)")
+print("scene      \(scene.name), \(scene.totalParticleCount) particles")
 
-let solver = try SolverFactory.make(scene)
-let renderer = try Renderer(particles: solver.particles, settings: settings)
+let seeded = RestrictedSolver.sampleParticles(for: scene)
+let gpuSolver: MetalSolver? = backend == "gpu" ? try MetalSolver(scene: scene, particles: seeded) : nil
+let solver: any Solver = gpuSolver ?? RestrictedSolver(scene: scene, particles: seeded)
+let renderer = try Renderer(
+    particles: seeded, settings: settings, externalPositions: gpuSolver?.positions)
+print("solver     \(gpuSolver == nil ? "cpu" : "gpu")")
 print("gpu        \(renderer.gpuName)")
 
 /// Radius holding a given fraction of the particles, so a few escapers do not shrink the frame.
@@ -77,10 +84,13 @@ for frame in 0..<frames {
     solver.step(count: stepsPerFrame)
     let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
 
-    renderer.upload(positions: solver.particles.positions)
+    if gpuSolver == nil {
+        renderer.upload(positions: solver.particles.positions)
+    }
     if frozenRadius <= 0 {
         frozenRadius = framingRadius(solver.particles.positions, percentile: percentile) / zoom
     }
+
     let camera = Camera.framing(radius: frozenRadius, elevation: elevation)
     let renderStart = Date()
     let pixels = renderer.render(camera: camera)
@@ -95,9 +105,9 @@ for frame in 0..<frames {
 
     print(
         String(
-            format: "frame %04d  t=%.1f Myr  sim %6.1f ms  render %5.1f ms  %@",
-            frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs, renderMs,
-            url.lastPathComponent))
+            format: "frame %04d  t=%.1f Myr  sim %7.1f ms (%.3f ms/step)  render %5.1f ms  %@",
+            frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
+            simulationMs / Double(stepsPerFrame), renderMs, url.lastPathComponent))
 }
 
 print(String(format: "done in %.1f s", Date().timeIntervalSince(clock)))
