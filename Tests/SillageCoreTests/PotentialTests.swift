@@ -1,5 +1,6 @@
 import Testing
 import simd
+
 @testable import SillageCore
 
 @Suite("Potentials")

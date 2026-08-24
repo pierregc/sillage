@@ -1,5 +1,6 @@
 import Testing
 import simd
+
 @testable import SillageCore
 
 @Suite("Restricted solver")
@@ -56,7 +57,8 @@ struct SolverTests {
             var maximum: Float = 0
             let centres = solver.centers
             for (index, position) in solver.particles.positions.enumerated() {
-                maximum = max(maximum, simd_length(position - centres[Int(solver.particles.galaxyIndex[index])]))
+                maximum = max(
+                    maximum, simd_length(position - centres[Int(solver.particles.galaxyIndex[index])]))
             }
             return maximum
         }

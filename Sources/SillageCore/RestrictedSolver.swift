@@ -93,7 +93,7 @@ public final class RestrictedSolver: Solver {
                 let offset = centerPositions[j] - centerPositions[i]
                 let d2 = simd_length_squared(offset) + softeningSquared
                 let invD3 = 1 / (d2 * d2.squareRoot())
-                let g = Double(Physics.G) * invD3
+                let g = Double(Physics.gravitationalConstant) * invD3
                 centerAccelerations[i] += offset * (g * centerMasses[j])
                 centerAccelerations[j] -= offset * (g * centerMasses[i])
             }
@@ -123,7 +123,8 @@ public final class RestrictedSolver: Solver {
         for i in 0..<centerPositions.count {
             for j in (i + 1)..<centerPositions.count {
                 let d2 = simd_length_squared(centerPositions[j] - centerPositions[i]) + softeningSquared
-                potential -= Double(Physics.G) * centerMasses[i] * centerMasses[j] / d2.squareRoot()
+                let pair = centerMasses[i] * centerMasses[j] / d2.squareRoot()
+                potential -= Double(Physics.gravitationalConstant) * pair
             }
         }
         return kinetic + potential

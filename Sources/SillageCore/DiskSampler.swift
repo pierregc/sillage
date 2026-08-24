@@ -34,7 +34,8 @@ public enum DiskSampler {
         let spin = config.spin.sign
 
         for _ in 0..<config.particleCount {
-            let radius = config.diskScaleLength
+            let radius =
+                config.diskScaleLength
                 * inverseExponentialCDF(generator.uniform(), truncation: config.diskTruncation)
             let phi = generator.uniform() * 2 * .pi
             let height = config.diskThickness * inverseSech2CDF(generator.uniform())

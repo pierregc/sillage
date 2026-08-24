@@ -60,8 +60,10 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
 
     /// Maps the disk plane onto its world orientation.
     public var orientation: simd_float3x3 {
-        let ci = cos(inclination), si = sin(inclination)
-        let cp = cos(positionAngle), sp = sin(positionAngle)
+        let ci = cos(inclination)
+        let si = sin(inclination)
+        let cp = cos(positionAngle)
+        let sp = sin(positionAngle)
         let tilt = simd_float3x3(
             SIMD3<Float>(1, 0, 0),
             SIMD3<Float>(0, ci, si),

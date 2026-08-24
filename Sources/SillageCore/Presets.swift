@@ -30,7 +30,7 @@ extension SceneConfig {
                     inclination: 0.35,
                     positionAngle: 0.6,
                     spin: .prograde
-                )
+                ),
             ],
             solver: .restricted,
             seed: seed,
@@ -63,7 +63,7 @@ extension SceneConfig {
                     inclination: 1.1,
                     positionAngle: 0.3,
                     spin: .retrograde
-                )
+                ),
             ],
             solver: .restricted,
             seed: seed,

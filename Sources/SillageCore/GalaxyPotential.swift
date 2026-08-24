@@ -23,11 +23,11 @@ public struct GalaxyPotential: Codable, Sendable, Equatable {
         switch profile {
         case .plummer:
             let d2 = simd_length_squared(offset) + a * a
-            return -Physics.G * mass * offset / (d2 * sqrt(d2))
+            return -Physics.gravitationalConstant * mass * offset / (d2 * sqrt(d2))
         case .hernquist:
             let r = max(simd_length(offset), 1e-6)
             let s = r + a
-            return -Physics.G * mass * offset / (r * s * s)
+            return -Physics.gravitationalConstant * mass * offset / (r * s * s)
         }
     }
 
@@ -37,10 +37,10 @@ public struct GalaxyPotential: Codable, Sendable, Equatable {
         switch profile {
         case .plummer:
             let d2 = r * r + a * a
-            return sqrt(Physics.G * mass * r * r / (d2 * sqrt(d2)))
+            return sqrt(Physics.gravitationalConstant * mass * r * r / (d2 * sqrt(d2)))
         case .hernquist:
             let s = r + a
-            return sqrt(Physics.G * mass * r / (s * s))
+            return sqrt(Physics.gravitationalConstant * mass * r / (s * s))
         }
     }
 
@@ -48,9 +48,9 @@ public struct GalaxyPotential: Codable, Sendable, Equatable {
         let a = scaleRadius
         switch profile {
         case .plummer:
-            return -Physics.G * mass / sqrt(simd_length_squared(offset) + a * a)
+            return -Physics.gravitationalConstant * mass / sqrt(simd_length_squared(offset) + a * a)
         case .hernquist:
-            return -Physics.G * mass / (simd_length(offset) + a)
+            return -Physics.gravitationalConstant * mass / (simd_length(offset) + a)
         }
     }
 }
