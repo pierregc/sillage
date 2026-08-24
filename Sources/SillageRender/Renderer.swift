@@ -1,4 +1,5 @@
 import Metal
+import QuartzCore
 import SillageCore
 import simd
 
@@ -353,6 +354,14 @@ public final class Renderer {
                 height: (texture.height + side - 1) / side,
                 depth: 1),
             threadsPerThreadgroup: MTLSize(width: side, height: side, depth: 1))
+    }
+
+    /// Renders straight into a view's drawable.
+    public func present(camera: Camera, drawable: CAMetalDrawable) {
+        guard let buffer = queue.makeCommandBuffer() else { return }
+        encode(camera: camera, into: buffer, present: drawable.texture)
+        buffer.present(drawable)
+        buffer.commit()
     }
 
     /// Renders offscreen and reads the result back as 8-bit RGBA.
