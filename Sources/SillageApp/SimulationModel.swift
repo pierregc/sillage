@@ -23,6 +23,15 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var elapsedMyr = 0.0
     @Published private(set) var frameMilliseconds = 0.0
     private(set) var framesDrawn = 0
+    private(set) var drawAttempts = 0
+    private weak var canvas: MTKView?
+
+    /// Held so the verification mode can drive the view itself. MTKView pauses its display
+    /// link whenever the window is occluded, which a window opened behind another app always
+    /// is, and that would otherwise make the render path untestable from a script.
+    func attach(canvas view: MTKView) { canvas = view }
+
+    func drawOnce() { canvas?.draw() }
     @Published private(set) var failure: String?
 
     @Published var brightness: Float = 0.055 { didSet { renderer?.setBrightness(brightness) } }
@@ -179,6 +188,7 @@ final class SimulationModel: ObservableObject {
     }
 
     func draw(in view: MTKView) {
+        drawAttempts += 1
         guard let renderer, let solver, let drawable = view.currentDrawable else { return }
         let start = CACurrentMediaTime()
         if isPlaying {

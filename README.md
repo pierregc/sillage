@@ -196,7 +196,9 @@ same test suite through `swiftc` directly if you hit that:
 ```
 
 `Sillage.app --selftest` renders one frame offscreen and exits. `--verify` opens the real
-window, counts the frames the view actually drew, and reports. `--uishot` renders the panels
+window and drives the view directly for three seconds, then reports how many frames it drew.
+It drives the view rather than waiting on the display link because a window opened behind
+another application counts as occluded, and MTKView parks its display link when it is. `--uishot` renders the panels
 through `ImageRenderer` to `out/`, which is how the interface gets checked on a machine that
 cannot grant screen recording. Sliders and pickers come out as placeholders there; the point
 is that every label is legible against its own background.

@@ -48,14 +48,28 @@ struct SillageApp: App {
     @MainActor
     private func startFrameCheck() {
         guard CommandLine.arguments.contains("--verify") else { return }
+        model.setTotalParticles(1_000_000)
         model.start()
         Task {
-            try? await Task.sleep(for: .seconds(4))
+            // Give SwiftUI a moment to build the canvas, then drive it directly rather than
+            // waiting on a display link the window server has parked.
+            try? await Task.sleep(for: .seconds(1))
+            let clock = Date()
+            while Date().timeIntervalSince(clock) < 3 {
+                model.drawOnce()
+                await Task.yield()
+            }
             let drawn = model.framesDrawn
             let report = """
                 frames drawn   \(drawn)
                 frame time     \(String(format: "%.1f", model.frameMilliseconds)) ms
                 particles      \(model.particleCount)
+                stage          \(model.stage)
+                draw attempts  \(model.drawAttempts)
+                solver         \(model.solver == nil ? "nil" : model.scene.solver.rawValue)
+                renderer       \(model.renderer == nil ? "nil" : "ready")
+                failure        \(model.failure ?? "none")
+                onscreen       \(NSApp.windows.contains { $0.occlusionState.contains(.visible) })
                 gpu            \(model.gpuName)
                 """
             // Launched through `open` the process has no stdout and its working directory
