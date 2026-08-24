@@ -62,9 +62,11 @@ struct SolverTests {
             }
             return maximum
         }
+        // Pericentre falls around step 1 000 for this preset and the tails need roughly as
+        // long again to unwind, so the horizon has to cover the whole passage.
         let before = extent()
-        solver.step(count: 2_000)
-        #expect(extent() > 2 * before)
+        solver.step(count: 4_000)
+        #expect(extent() > 2.5 * before)
     }
 
     @Test func sameSeedGivesSameState() {
