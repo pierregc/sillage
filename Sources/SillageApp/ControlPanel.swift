@@ -73,6 +73,9 @@ struct ControlPanelContent: View {
                 format: "%.0f")
             ParameterSlider(title: "Saturation", value: $model.saturation, range: 0...3)
             ParameterSlider(title: "Halo lumineux", value: $model.bloom, range: 0...2)
+            ParameterSlider(
+                title: "Opacité des poussières", value: $model.dustStrength, range: 0...0.8,
+                format: "%.3f")
             ParameterSlider(title: "Taille des points", value: $model.pointSize, range: 0.8...6)
             ParameterSlider(title: "Exposition", value: $model.exposure, range: 0.1...4)
             Picker("Suréchantillonnage", selection: $model.supersample) {

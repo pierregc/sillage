@@ -14,7 +14,7 @@ public struct Camera {
         up: SIMD3<Float> = SIMD3<Float>(0, 0, 1),
         fieldOfView: Float = 0.6,
         near: Float = 1,
-        far: Float = 4000
+        far: Float = 40_000
     ) {
         self.eye = eye
         self.target = target

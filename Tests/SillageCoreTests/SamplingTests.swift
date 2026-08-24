@@ -47,8 +47,17 @@ struct SamplingTests {
         DiskSampler.sample(config, galaxyIndex: 0, into: &system, using: &generator)
 
         #expect(system.count == 20_000)
-        #expect(system.birthRadius.allSatisfy { $0 <= 16.0001 })
         #expect(system.galaxyIndex.allSatisfy { $0 == 0 })
+
+        // Stars respect the truncation exactly. Dust is deliberately drawn from a wider
+        // profile because gas is far less centrally concentrated than starlight, and HII
+        // knots carry a small scatter around their seed.
+        for index in 0..<system.count where system.component[index] == ParticleComponent.star.rawValue {
+            #expect(system.birthRadius[index] <= 16.0001)
+        }
+        #expect(system.birthRadius.allSatisfy { $0 <= 16 * 1.7 })
+        #expect(system.component.contains(ParticleComponent.dust.rawValue))
+        #expect(system.component.contains(ParticleComponent.hiiRegion.rawValue))
     }
 
     @Test func orientationIsRigid() {

@@ -28,6 +28,12 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public var armStrength: Float
     /// Pitch angle of the arms in radians. Small values give tightly wound spirals.
     public var armPitch: Float
+    /// Share of disk particles that trace absorbing dust instead of emitting starlight.
+    public var dustFraction: Float
+    /// Share of disk particles standing in for HII regions, the bright pink knots of Halpha.
+    public var starFormingFraction: Float
+    /// Radius of the old central population, in scale lengths.
+    public var bulgeExtent: Float
 
     public var position: SIMD3<Float>
     public var velocity: SIMD3<Float>
@@ -47,8 +53,11 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         diskThickness: Float = 0.3,
         velocityDispersion: Float = 0.05,
         armCount: Int = 2,
-        armStrength: Float = 0.65,
-        armPitch: Float = 0.26,
+        armStrength: Float = 0.82,
+        armPitch: Float = 0.36,
+        dustFraction: Float = 0.26,
+        starFormingFraction: Float = 0.005,
+        bulgeExtent: Float = 0.35,
         position: SIMD3<Float> = .zero,
         velocity: SIMD3<Float> = .zero,
         inclination: Float = 0,
@@ -66,6 +75,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.armCount = armCount
         self.armStrength = armStrength
         self.armPitch = armPitch
+        self.dustFraction = dustFraction
+        self.starFormingFraction = starFormingFraction
+        self.bulgeExtent = bulgeExtent
         self.position = position
         self.velocity = velocity
         self.inclination = inclination
