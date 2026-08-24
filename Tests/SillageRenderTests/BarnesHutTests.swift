@@ -37,7 +37,7 @@ struct BarnesHutTests {
 
         #expect(Set(tree.order).count == positions.count)
         var inLeaves = 0
-        for node in tree.nodes where node.links.y == 0 { inLeaves += Int(node.links.w) }
+        for node in tree.nodes where node.isLeaf { inLeaves += node.particleCount }
         #expect(inLeaves == positions.count)
     }
 
@@ -198,7 +198,7 @@ struct BarnesHutTests {
     }
 
     @Test func layoutsMatchTheShader() {
-        #expect(MemoryLayout<BHNode>.stride == 48)
+        #expect(MemoryLayout<BHNode>.stride == 32)
         #expect(MemoryLayout<HaloGPU>.stride == 48)
         #expect(MemoryLayout<BHParams>.stride == 32)
     }

@@ -1,19 +1,29 @@
+import Foundation
 import simd
 
 /// One cell of the tree, laid out for a Metal buffer.
+///
+/// Thirty-two bytes rather than forty-eight: the cell centre is only needed while building,
+/// and the child and particle ranges never both apply, so they share two slots. Counts fit
+/// exactly in a float below sixteen million. The node array is the hottest thing the force
+/// kernel reads, so its size is its speed.
 public struct BHNode: Sendable {
     /// Centre of mass in xyz, total mass in w.
     public var comMass: SIMD4<Float>
-    /// Cell centre in xyz, half width in w.
-    public var bounds: SIMD4<Float>
-    /// First child, child count, first particle, particle count.
-    public var links: SIMD4<Int32>
+    /// Width squared, range start, signed count, unused. A positive count means that many
+    /// children; a negative one means a leaf holding that many particles.
+    public var packed: SIMD4<Float>
 
     public init() {
         comMass = .zero
-        bounds = .zero
-        links = SIMD4<Int32>(-1, 0, 0, 0)
+        packed = .zero
     }
+
+    public var isLeaf: Bool { packed.z <= 0 }
+    public var childOffset: Int { Int(packed.y) }
+    public var childCount: Int { max(Int(packed.z), 0) }
+    public var particleStart: Int { Int(packed.y) }
+    public var particleCount: Int { max(Int(-packed.z), 0) }
 }
 
 /// Barnes-Hut octree, built on the CPU and traversed on the GPU.
@@ -23,6 +33,8 @@ public struct BHNode: Sendable {
 /// so the build happens here in Morton order while the traversal, which is where the time
 /// actually goes, stays on the GPU.
 public final class BarnesHutTree {
+    /// Wall time of each build phase, for profiling.
+    public private(set) var phaseMilliseconds: [String: Double] = [:]
     public private(set) var nodes: [BHNode] = []
     /// Particle indices in Morton order. Leaves address particles through this.
     public private(set) var order: [UInt32] = []
@@ -32,6 +44,10 @@ public final class BarnesHutTree {
 
     private var codes: [UInt32] = []
     private var scratch: [UInt32] = []
+    private var primary: [UInt32] = []
+    private var histogram: [Int] = []
+    private var sortedCodes: [UInt32] = []
+    private var offsets = [Int](repeating: 0, count: 9)
     private var parents: [Int32] = []
 
     public init(leafCapacity: Int = 16, maximumDepth: Int = 10) {
@@ -82,46 +98,99 @@ public final class BarnesHutTree {
         let center = (lower + upper) * 0.5
         let half = max((upper - lower).max() * 0.5, 1e-3) * 1.001
 
-        codes = [UInt32](repeating: 0, count: count)
+        var clock = Date()
+        func mark(_ name: String) {
+            phaseMilliseconds[name] = Date().timeIntervalSince(clock) * 1000
+            clock = Date()
+        }
+        mark("bounds")
+
+        if codes.count != count { codes = [UInt32](repeating: 0, count: count) }
         let resolution: Float = 1023
         let inverse = resolution / (2 * half)
-        for index in 0..<count {
-            let local = (positions[index] - (center - SIMD3<Float>(repeating: half))) * inverse
-            let x = UInt32(min(max(local.x, 0), resolution))
-            let y = UInt32(min(max(local.y, 0), resolution))
-            let z = UInt32(min(max(local.z, 0), resolution))
-            codes[index] = BarnesHutTree.morton(x, y, z)
+        let origin = center - SIMD3<Float>(repeating: half)
+        let codeChunk = max(count / (ProcessInfo.processInfo.activeProcessorCount * 4), 8192)
+        let codeChunks = (count + codeChunk - 1) / codeChunk
+        positions.withUnsafeBufferPointer { source in
+            codes.withUnsafeMutableBufferPointer { target in
+                DispatchQueue.concurrentPerform(iterations: codeChunks) { block in
+                    let start = block * codeChunk
+                    let end = min(start + codeChunk, count)
+                    for index in start..<end {
+                        let local = (source[index] - origin) * inverse
+                        target[index] = BarnesHutTree.morton(
+                            UInt32(min(max(local.x, 0), resolution)),
+                            UInt32(min(max(local.y, 0), resolution)),
+                            UInt32(min(max(local.z, 0), resolution)))
+                    }
+                }
+            }
         }
 
+        mark("morton")
         order = sortedByCode(count: count)
+        // Materialise the codes in sorted order. The node split scans each range looking at
+        // one octant digit, and reading them through the permutation makes every one of those
+        // loads a random access, which is what the split was actually spending its time on.
+        if sortedCodes.count != count { sortedCodes = [UInt32](repeating: 0, count: count) }
+        codes.withUnsafeBufferPointer { source in
+            order.withUnsafeBufferPointer { permutation in
+                sortedCodes.withUnsafeMutableBufferPointer { target in
+                    for index in 0..<count { target[index] = source[Int(permutation[index])] }
+                }
+            }
+        }
+        mark("sort")
         buildNodes(count: count, center: center, half: half)
+        mark("nodes")
         accumulate(positions: positions, mass: mass)
+        mark("accumulate")
     }
 
-    /// Least significant digit radix sort, eight bits per pass.
+    /// Least significant digit radix sort. Morton codes are 30 bits, so two passes of
+    /// fifteen cover them: half the passes of a byte-wise sort, and a 32768 entry histogram
+    /// still fits comfortably in cache.
     private func sortedByCode(count: Int) -> [UInt32] {
-        var current = [UInt32](repeating: 0, count: count)
-        for index in 0..<count { current[index] = UInt32(index) }
+        let radix = 15
+        let buckets = 1 << radix
+        if primary.count != count { primary = [UInt32](repeating: 0, count: count) }
         if scratch.count != count { scratch = [UInt32](repeating: 0, count: count) }
+        if histogram.count != buckets { histogram = [Int](repeating: 0, count: buckets) }
 
-        var histogram = [Int](repeating: 0, count: 256)
-        for shift in stride(from: 0, to: 32, by: 8) {
-            for bucket in 0..<256 { histogram[bucket] = 0 }
-            for index in current { histogram[Int((codes[Int(index)] >> UInt32(shift)) & 255)] += 1 }
-            var total = 0
-            for bucket in 0..<256 {
-                let value = histogram[bucket]
-                histogram[bucket] = total
-                total += value
-            }
-            for index in current {
-                let bucket = Int((codes[Int(index)] >> UInt32(shift)) & 255)
-                scratch[histogram[bucket]] = index
-                histogram[bucket] += 1
-            }
-            swap(&current, &scratch)
+        primary.withUnsafeMutableBufferPointer { buffer in
+            for index in 0..<count { buffer[index] = UInt32(index) }
         }
-        return current
+
+        for pass in 0..<2 {
+            let shift = UInt32(pass * radix)
+            let mask = UInt32(buckets - 1)
+            codes.withUnsafeBufferPointer { key in
+                primary.withUnsafeMutableBufferPointer { source in
+                    scratch.withUnsafeMutableBufferPointer { target in
+                        histogram.withUnsafeMutableBufferPointer { counts in
+                            for bucket in 0..<buckets { counts[bucket] = 0 }
+                            for position in 0..<count {
+                                counts[Int((key[Int(source[position])] >> shift) & mask)] += 1
+                            }
+                            var running = 0
+                            for bucket in 0..<buckets {
+                                let value = counts[bucket]
+                                counts[bucket] = running
+                                running += value
+                            }
+                            for position in 0..<count {
+                                let index = source[position]
+                                let bucket = Int((key[Int(index)] >> shift) & mask)
+                                target[counts[bucket]] = index
+                                counts[bucket] += 1
+                            }
+                        }
+                    }
+                }
+            }
+            swap(&primary, &scratch)
+        }
+        return primary
     }
 
     private struct Work {
@@ -133,12 +202,10 @@ public final class BarnesHutTree {
         var node: Int
     }
 
-    private func makeNode(center: SIMD3<Float>, half: Float, start: Int, count: Int, parent: Int32)
-        -> Int
-    {
+    private func makeNode(half: Float, start: Int, count: Int, parent: Int32) -> Int {
         var node = BHNode()
-        node.bounds = SIMD4<Float>(center.x, center.y, center.z, half)
-        node.links = SIMD4<Int32>(-1, 0, Int32(start), Int32(count))
+        let width = half * 2
+        node.packed = SIMD4<Float>(width * width, Float(start), Float(-count), 0)
         nodes.append(node)
         parents.append(parent)
         return nodes.count - 1
@@ -146,26 +213,32 @@ public final class BarnesHutTree {
 
     private func buildNodes(count: Int, center: SIMD3<Float>, half: Float) {
         nodes.reserveCapacity(count / max(leafCapacity, 1) * 2 + 16)
-        let root = makeNode(center: center, half: half, start: 0, count: count, parent: -1)
+        let root = makeNode(half: half, start: 0, count: count, parent: -1)
         var stack = [Work(start: 0, count: count, depth: 0, center: center, half: half, node: root)]
 
         while let work = stack.popLast() {
             if work.count <= leafCapacity || work.depth >= maximumDepth { continue }
 
-            // Morton order means the eight octants are already contiguous runs.
-            var offsets = [Int](repeating: work.start + work.count, count: 9)
+            // Morton order means the eight octants are already contiguous runs. The offset
+            // table is reused: allocating one per node meant a heap allocation for every cell
+            // in the tree, which dominated the build.
+            let limit = work.start + work.count
+            for slot in 0...8 { offsets[slot] = limit }
             offsets[0] = work.start
             var digit = 0
-            for position in work.start..<(work.start + work.count) {
-                let value = BarnesHutTree.octant(codes[Int(order[position])], depth: work.depth)
-                while digit < value {
-                    digit += 1
-                    offsets[digit] = position
+            let shift = UInt32(27 - 3 * work.depth)
+            sortedCodes.withUnsafeBufferPointer { keys in
+                for position in work.start..<limit {
+                    let value = Int((keys[position] >> shift) & 7)
+                    while digit < value {
+                        digit += 1
+                        offsets[digit] = position
+                    }
                 }
             }
             while digit < 8 {
                 digit += 1
-                offsets[digit] = work.start + work.count
+                offsets[digit] = limit
             }
 
             let childHalf = work.half * 0.5
@@ -181,8 +254,7 @@ public final class BarnesHutTree {
                     (octant & 1) != 0 ? 1 : -1)
                 let childCenter = work.center + sign * childHalf
                 let index = makeNode(
-                    center: childCenter, half: childHalf, start: start, count: size,
-                    parent: Int32(work.node))
+                    half: childHalf, start: start, count: size, parent: Int32(work.node))
                 if firstChild < 0 { firstChild = index }
                 childCount += 1
                 stack.append(
@@ -190,8 +262,8 @@ public final class BarnesHutTree {
                         start: start, count: size, depth: work.depth + 1, center: childCenter,
                         half: childHalf, node: index))
             }
-            nodes[work.node].links.x = Int32(firstChild)
-            nodes[work.node].links.y = childCount
+            nodes[work.node].packed.y = Float(firstChild)
+            nodes[work.node].packed.z = Float(childCount)
         }
     }
 
@@ -200,18 +272,34 @@ public final class BarnesHutTree {
     private func accumulate(positions: [SIMD3<Float>], mass: [Float]) {
         for index in nodes.indices { nodes[index].comMass = .zero }
 
-        for index in nodes.indices where nodes[index].links.y == 0 {
-            let start = Int(nodes[index].links.z)
-            let count = Int(nodes[index].links.w)
-            var weighted = SIMD3<Float>.zero
-            var total: Float = 0
-            for position in start..<(start + count) {
-                let particle = Int(order[position])
-                let m = mass.isEmpty ? 1 : mass[particle]
-                weighted += positions[particle] * m
-                total += m
+        let nodeCount = nodes.count
+        let chunk = max(nodeCount / (ProcessInfo.processInfo.activeProcessorCount * 4), 1024)
+        let chunks = (nodeCount + chunk - 1) / chunk
+        positions.withUnsafeBufferPointer { positionBuffer in
+            mass.withUnsafeBufferPointer { massBuffer in
+                order.withUnsafeBufferPointer { orderBuffer in
+                    nodes.withUnsafeMutableBufferPointer { nodeBuffer in
+                        DispatchQueue.concurrentPerform(iterations: chunks) { block in
+                            let first = block * chunk
+                            let last = min(first + chunk, nodeCount)
+                            for index in first..<last where nodeBuffer[index].isLeaf {
+                                let start = nodeBuffer[index].particleStart
+                                let count = nodeBuffer[index].particleCount
+                                var weighted = SIMD3<Float>.zero
+                                var total: Float = 0
+                                for position in start..<(start + count) {
+                                    let particle = Int(orderBuffer[position])
+                                    let m = massBuffer.isEmpty ? 1 : massBuffer[particle]
+                                    weighted += positionBuffer[particle] * m
+                                    total += m
+                                }
+                                nodeBuffer[index].comMass = SIMD4<Float>(
+                                    weighted.x, weighted.y, weighted.z, total)
+                            }
+                        }
+                    }
+                }
             }
-            nodes[index].comMass = SIMD4<Float>(weighted.x, weighted.y, weighted.z, total)
         }
 
         for index in stride(from: nodes.count - 1, through: 1, by: -1) {
