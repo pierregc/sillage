@@ -30,6 +30,7 @@ struct MetalCanvas: NSViewRepresentable {
         view.isPaused = false
         view.enableSetNeedsDisplay = false
         view.delegate = context.coordinator
+        model.attach(canvas: view)
         view.onDrag = { dx, dy in
             model.camera.orbit(
                 deltaAzimuth: Float(-dx) * 0.008, deltaElevation: Float(dy) * 0.008)
