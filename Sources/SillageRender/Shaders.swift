@@ -45,32 +45,34 @@ enum Shaders {
             half4 dust [[color(1)]];
         };
 
-        // Stellar colour by population age, following the sequence a real galaxy shows: an old
-        // K and G giant bulge, an intermediate disk, and blue O and B associations on the arms.
-        static float3 populationColor(float population) {
-            const float3 oldStars = float3(1.00, 0.74, 0.45);
-            const float3 midStars = float3(1.00, 0.94, 0.83);
-            const float3 youngStars = float3(0.62, 0.75, 1.00);
-            return population < 0.5
-                ? mix(oldStars, midStars, population * 2.0)
-                : mix(midStars, youngStars, (population - 0.5) * 2.0);
-        }
-
-        // HII regions glow in Halpha with a little [OIII], which reads pink shading to magenta.
-        constant float3 hiiColor = float3(1.00, 0.32, 0.50);
-
         struct DiskFrame {
             float4 center;
             float4 axisU;
             float4 axisV;
             float4 pattern;
+            float4 tint;
         };
 
+        static float hash1(float i) {
+            float x = sin(i * 127.1 + 311.7) * 43758.5453;
+            return x - floor(x);
+        }
+
+        static float valueNoise(float x) {
+            float i = floor(x);
+            float f = x - i;
+            float u = f * f * (3.0 - 2.0 * f);
+            return mix(hash1(i), hash1(i + 1.0), u);
+        }
+
+        static float fractalNoise(float x) {
+            return valueNoise(x) * 0.65 + valueNoise(x * 2.3 + 19.1) * 0.35;
+        }
+
         // Where a particle sits relative to the spiral density wave, 0 between the arms and
-        // 1 on a ridge. Evaluated at the current position, so the arms stay sharp instead of
-        // winding up with the differentially rotating disk.
-        // Returns the wave amplitude and how much of the disk the pattern still covers, so
-        // debris thrown far out by the encounter does not light up as star formation.
+        // 1 on a ridge, evaluated at the current position so the arms do not wind up. The
+        // ideal logarithmic spiral is then made to wander and to break into segments: no
+        // real galaxy has two unbroken arms of constant pitch.
         static float2 armWave(float3 position, DiskFrame frame) {
             float strength = frame.axisV.w;
             if (strength <= 0.0) { return float2(0.5, 0.0); }
@@ -82,10 +84,19 @@ enum Shaders {
             float extent = radius / scale;
             float envelope = smoothstep(0.55, 1.5, extent)
                            * (1.0 - smoothstep(4.0, 6.5, extent));
+
+            float irregular = frame.pattern.z;
+            float seed = frame.pattern.w;
+            float wander = (fractalNoise(extent * 1.5 + seed) - 0.5) * 2.6 * irregular;
             float wound = atan2(v, u)
                         - frame.pattern.x * log(max(radius, 1e-3) / scale)
-                        - frame.pattern.y;
+                        - frame.pattern.y
+                        + wander;
+
             float ridge = 0.5 + 0.5 * cos(frame.axisU.w * wound);
+            float breaks = fractalNoise(wound * 0.62 + extent * 0.9 + seed * 3.1);
+            ridge *= mix(1.0, 0.18 + 1.05 * breaks, irregular);
+            ridge = clamp(ridge, 0.0, 1.0);
             return float2(mix(0.5, ridge, strength * envelope), envelope);
         }
 
@@ -99,11 +110,12 @@ enum Shaders {
                                     constant DiskFrame *frames [[buffer(6)]]) {
             SplatOut out;
             float3 position = positions[vid];
+            DiskFrame frame = frames[galaxy[vid]];
             out.position = u.viewProjection * float4(position, 1.0);
             out.spikes = 0.0h;
             uint kind = component[vid];
             float weight = luminosity[vid];
-            float2 pattern = armWave(position, frames[galaxy[vid]]);
+            float2 pattern = armWave(position, frame);
             float wave = pattern.x;
 
             if (kind == 2u) {
@@ -112,18 +124,14 @@ enum Shaders {
                 out.pointSize = u.pointSize * 1.4;
                 out.color = half3(0.0h);
                 out.opticalDepth = half(weight * u.dustStrength * lane);
-            } else if (kind == 1u) {
-                // Star formation happens where the wave is now, not where it once was.
-                out.pointSize = u.pointSize * 1.15;
-                float lit = smoothstep(0.45, 0.95, wave) * pattern.y;
-                out.color = half3(hiiColor * (u.brightness * weight * lit * 4.0));
-                out.opticalDepth = 0.0h;
             } else {
-                // Arms are bluer and a little brighter than the disk between them.
-                float youth = saturate(population[vid] + 0.55 * (wave - 0.5));
-                out.pointSize = u.pointSize;
-                out.color = half3(
-                    populationColor(youth) * (u.brightness * weight * (0.78 + 0.48 * wave)));
+                // One tint per galaxy, so stars pulled into the other galaxy stay legible.
+                // Star-forming knots are brighter where the wave is now, not coloured apart.
+                float gain = kind == 1u
+                    ? (0.25 + 3.4 * smoothstep(0.4, 0.95, wave) * pattern.y)
+                    : (0.80 + 0.44 * wave);
+                out.pointSize = u.pointSize * (kind == 1u ? 1.1 : 1.0);
+                out.color = half3(frame.tint.rgb * (u.brightness * weight * gain));
                 out.opticalDepth = 0.0h;
             }
             return out;

@@ -201,6 +201,26 @@ public enum DiskSampler {
         return (radius, phi, proximity)
     }
 
+    /// A star-forming complex or one of its sub-clumps, in disk-plane polar coordinates.
+    private struct Clump {
+        var radius: Float
+        var phi: Float
+        var spread: Float
+    }
+
+    /// Clouds in a disk are not round: differential rotation shears them into arcs within a
+    /// fraction of an orbit. Generating them already stretched along the direction of
+    /// rotation means a fresh disk looks flocculent rather than like a field of dots.
+    private static let shearRatio: Float = 2.6
+
+    private static func scatter(
+        _ clump: Clump, using generator: inout SeededGenerator
+    ) -> (radius: Float, phi: Float) {
+        let radius = max(clump.radius + generator.normal() * clump.spread, 0.03)
+        let arc = clump.spread * shearRatio / max(clump.radius, 0.4)
+        return (radius, clump.phi + generator.normal() * arc)
+    }
+
     private static func sampleDisk(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
@@ -214,20 +234,39 @@ public enum DiskSampler {
         let windRate = 1 / max(tan(config.armPitch), 1e-3)
         let bulgeRadius = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
         let dustShare = min(max(config.dustFraction, 0), 0.8)
-        let hiiShare = min(max(config.starFormingFraction, 0), 0.2)
+        let hiiShare = min(max(config.starFormingFraction, 0), 0.3)
+        let clumpiness = min(max(config.clumpiness, 0), 1)
+        let scale = config.diskScaleLength
 
-        // Star-forming regions are discrete knots strung along the arms, not a smooth
-        // sprinkle, so their positions come from a small set of seeds.
-        let knotCount = 320
-        var knots: [SIMD2<Float>] = []
-        knots.reserveCapacity(knotCount)
-        for _ in 0..<knotCount {
+        // Star formation is hierarchical: giant complexes, clumps inside them, stars inside
+        // those. Drawing every particle straight from the smooth profile is what makes a
+        // simulated disk look airbrushed next to a real one.
+        // Sizes follow a steep power law rather than one characteristic scale: a few large
+        // complexes, many small knots. That is what reads as fractal structure instead of a
+        // field of identical blobs.
+        var complexes: [Clump] = []
+        for _ in 0..<110 {
             let placed = samplePlanePosition(
-                config, arms: arms, contrast: min(strength * 1.7, 0.95), windRate: windRate,
-                minimumRadius: bulgeRadius, using: &generator)
-            knots.append(SIMD2<Float>(placed.radius, placed.phi))
+                config, arms: arms, contrast: min(strength * 1.3, 0.95), windRate: windRate,
+                minimumRadius: bulgeRadius * 0.6, using: &generator)
+            let u = generator.uniform()
+            complexes.append(
+                Clump(
+                    radius: placed.radius, phi: placed.phi,
+                    spread: scale * (0.10 + 0.42 * u * u)))
         }
-        let knotSpread = config.diskScaleLength * 0.022
+
+        var clumps: [Clump] = []
+        for _ in 0..<5_000 {
+            let parent =
+                complexes[Int(generator.uniform() * Float(complexes.count)) % complexes.count]
+            let placed = scatter(parent, using: &generator)
+            let u = generator.uniform()
+            clumps.append(
+                Clump(
+                    radius: placed.radius, phi: placed.phi,
+                    spread: scale * (0.008 + 0.085 * u * u * u)))
+        }
 
         for _ in 0..<config.particleCount {
             let roll = generator.uniform()
@@ -235,59 +274,58 @@ public enum DiskSampler {
                 roll < dustShare
                 ? .dust : (roll < dustShare + hiiShare ? .hiiRegion : .star)
 
+            // Gas, dust and young stars trace the complexes most strongly; the old smooth
+            // disk underneath keeps the profile from turning into a field of blobs.
+            let attachment = component == .star ? clumpiness : min(clumpiness + 0.3, 0.97)
             var radius: Float
             var phi: Float
             var proximity: Float
 
-            if component == .hiiRegion, !knots.isEmpty {
-                let knot = knots[Int(generator.uniform() * Float(knots.count)) % knots.count]
-                radius = max(knot.x + generator.normal() * knotSpread, 0.05)
-                phi = knot.y + generator.normal() * knotSpread / max(knot.x, 0.5)
+            if generator.uniform() < attachment, !clumps.isEmpty {
+                let clump = clumps[Int(generator.uniform() * Float(clumps.count)) % clumps.count]
+                let placed = scatter(clump, using: &generator)
+                radius = placed.radius
+                phi = placed.phi
                 proximity = 1
             } else {
-                // Dust lanes are narrower than the stellar arms they trace.
-                // Dust lanes are narrower than the stellar arms and sit slightly ahead of
-                // them, on the concave side, which is what makes both readable at once.
                 let contrast = component == .dust ? min(strength * 1.4, 0.95) : strength
                 let placed = samplePlanePosition(
                     config, arms: arms, contrast: contrast, windRate: windRate,
                     minimumRadius: component == .dust ? bulgeRadius * 0.5 : 0,
                     phaseOffset: component == .dust ? 0.85 : 0,
-                    // Gas and dust are far less centrally concentrated than the stars, so
-                    // drawing them from the stellar profile buries the inner disk.
-                    scaleMultiplier: component == .dust ? 1.6 : 1,
+                    scaleMultiplier: component == .dust ? 1.5 : 1,
                     using: &generator)
                 radius = placed.radius
                 phi = placed.phi
                 proximity = placed.armProximity
             }
 
-            // Dust settles into a thinner layer than the stars.
             let thickness = component == .dust ? config.diskThickness * 0.45 : config.diskThickness
             let height = thickness * inverseSech2CDF(generator.uniform())
             let local = SIMD3<Float>(radius * cos(phi), radius * sin(phi), height)
 
             let speed = config.potential.circularSpeed(atRadius: radius)
             let tangential = SIMD3<Float>(-sin(phi), cos(phi), 0) * (speed * spin)
-            let scatter = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
-            let localVelocity = tangential + scatter * (speed * config.velocityDispersion)
+            let jitter = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
+            let localVelocity = tangential + jitter * (speed * config.velocityDispersion)
 
-            // Young blue stars sit on the arms; the centre is an old warm population.
             let diskAge = 0.30 + 0.68 * proximity
             let bulgeWeight = 1 - smoothstep(bulgeRadius * 0.4, bulgeRadius * 1.8, radius)
             var population = diskAge * (1 - bulgeWeight)
-            // Real disks fade out; a hard cut at the truncation radius reads as a drawn edge.
-            let edge = radius / config.diskScaleLength
+            let edge = radius / scale
             let taper = 1 - smoothstep(config.diskTruncation - 2.1, config.diskTruncation, edge)
-            var brightness = (0.75 + 0.5 * generator.uniform()) * max(taper, 0.02)
+            // A wide spread in per-star brightness reads as texture rather than as grain.
+            var brightness =
+                (0.45 + 1.5 * generator.uniform() * generator.uniform())
+                * max(taper, 0.02)
 
             switch component {
             case .hiiRegion:
                 population = 1
-                brightness = (5 + 9 * generator.uniform()) * max(taper, 0.04)
+                brightness = (2.5 + 5 * generator.uniform()) * max(taper, 0.02)
             case .dust:
                 population = 0
-                brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.04)
+                brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.02)
             case .star:
                 break
             }
