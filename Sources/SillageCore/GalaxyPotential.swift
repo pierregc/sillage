@@ -44,6 +44,16 @@ public struct GalaxyPotential: Codable, Sendable, Equatable {
         }
     }
 
+    public func escapeSpeed(atRadius radius: Float) -> Float {
+        let a = scaleRadius
+        switch profile {
+        case .plummer:
+            return sqrt(2 * Physics.gravitationalConstant * mass / sqrt(radius * radius + a * a))
+        case .hernquist:
+            return sqrt(2 * Physics.gravitationalConstant * mass / (radius + a))
+        }
+    }
+
     public func potential(at offset: SIMD3<Float>) -> Float {
         let a = scaleRadius
         switch profile {

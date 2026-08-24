@@ -37,6 +37,33 @@ struct SolverTests {
         #expect(abs(meanRadius(solver) - before) / before < 0.01)
     }
 
+    /// A pressure-supported sphere sampled in equilibrium with its own potential should
+    /// neither expand nor collapse. Cutting the population off at a finite radius leaves the
+    /// outer shells slightly under-pressured, so a couple of percent of adjustment over the
+    /// first orbit is expected; sampling the wrong velocity distribution gives three times
+    /// that, which is what this guards against.
+    @Test(arguments: PotentialProfile.allCases)
+    func globularStaysInEquilibrium(profile: PotentialProfile) {
+        let scene = SceneConfig(
+            name: "globular",
+            galaxies: [
+                GalaxyConfig(
+                    name: "cluster",
+                    particleCount: 30_000,
+                    kind: .globular,
+                    potential: GalaxyPotential(profile: profile, mass: 40, scaleRadius: 4),
+                    diskScaleLength: 4,
+                    diskTruncation: 5
+                )
+            ],
+            timeStep: 0.02
+        )
+        let solver = RestrictedSolver(scene: scene)
+        let before = meanRadius(solver)
+        solver.step(count: 600)
+        #expect(abs(meanRadius(solver) - before) / before < 0.035)
+    }
+
     @Test func centreEnergyIsConserved() {
         let solver = RestrictedSolver(scene: SceneConfig.merger(particleCount: 2_000))
         let before = solver.centerEnergy()
