@@ -6,8 +6,9 @@ enum BarnesHutShaders {
 
         struct BHNode {
             float4 comMass;
-            float4 bounds;
-            int4 links;
+            // width squared, range start, signed count. Positive is a child count,
+            // negative a leaf's particle count.
+            float4 packed;
         };
 
         struct HaloGPU {
@@ -99,18 +100,17 @@ enum BarnesHutShaders {
 
                 float3 offset = node.comMass.xyz - position;
                 float distanceSquared = dot(offset, offset) + p.softeningSquared;
-                float width = node.bounds.w * 2.0;
-                bool leaf = node.links.y == 0;
+                                bool leaf = node.packed.z <= 0.0;
 
-                if (!leaf && width * width > p.openingAngleSquared * distanceSquared) {
-                    int first = node.links.x;
-                    int children = node.links.y;
+                if (!leaf && node.packed.x > p.openingAngleSquared * distanceSquared) {
+                    int first = int(node.packed.y);
+                    int children = int(node.packed.z);
                     for (int c = 0; c < children && top < 63; ++c) {
                         stack[top++] = first + c;
                     }
                 } else if (leaf) {
-                    int start = node.links.z;
-                    int count = node.links.w;
+                    int start = int(node.packed.y);
+                    int count = int(-node.packed.z);
                     for (int k = 0; k < count; ++k) {
                         uint j = order[start + k];
                         if (j == i) { continue; }
