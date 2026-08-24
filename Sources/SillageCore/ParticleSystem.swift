@@ -22,6 +22,8 @@ public struct ParticleSystem: Sendable {
     /// Per-particle brightness multiplier. Star-forming knots are far brighter than the mean.
     public var luminosity: [Float]
     public var component: [UInt32]
+    /// Particle mass. Zero for the restricted solver, where tracers are massless.
+    public var mass: [Float]
 
     public var count: Int { positions.count }
 
@@ -33,6 +35,7 @@ public struct ParticleSystem: Sendable {
         population = []
         luminosity = []
         component = []
+        mass = []
         reserveCapacity(capacity)
     }
 
@@ -44,6 +47,7 @@ public struct ParticleSystem: Sendable {
         population.reserveCapacity(capacity)
         luminosity.reserveCapacity(capacity)
         component.reserveCapacity(capacity)
+        mass.reserveCapacity(capacity)
     }
 
     /// Exposes positions and velocities together for in-place integration. Going through the
@@ -62,7 +66,8 @@ public struct ParticleSystem: Sendable {
         radius: Float,
         population stellarAge: Float = 0.5,
         luminosity brightness: Float = 1,
-        component kind: ParticleComponent = .star
+        component kind: ParticleComponent = .star,
+        mass particleMass: Float = 0
     ) {
         positions.append(position)
         velocities.append(velocity)
@@ -71,5 +76,6 @@ public struct ParticleSystem: Sendable {
         population.append(stellarAge)
         luminosity.append(brightness)
         component.append(kind.rawValue)
+        mass.append(particleMass)
     }
 }

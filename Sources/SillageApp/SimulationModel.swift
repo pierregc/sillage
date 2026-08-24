@@ -35,7 +35,7 @@ final class SimulationModel: ObservableObject {
     @Published var supersample = 1 { didSet { rebuildRenderer() } }
 
     let device: MTLDevice
-    private(set) var solver: MetalSolver?
+    private(set) var solver: (any GPUSolver)?
     private(set) var renderer: Renderer?
     private var seeded = ParticleSystem()
     private var drawableSize = CGSize(width: 1280, height: 720)
@@ -71,7 +71,7 @@ final class SimulationModel: ObservableObject {
         seeded = RestrictedSolver.sampleParticles(for: scene)
         particleCount = seeded.count
         do {
-            solver = try MetalSolver(device: device, scene: scene, particles: seeded)
+            solver = try GPUSolverFactory.make(device: device, scene: scene, particles: seeded)
         } catch {
             failure = "\(error)"
             solver = nil
@@ -103,10 +103,14 @@ final class SimulationModel: ObservableObject {
         draft.galaxies.remove(at: index)
     }
 
-    /// Rough simulation cost per frame, measured at about 0.18 ms per million particles per
-    /// step on this GPU. Shown in the setup screen so the count can be chosen knowingly.
+    /// Rough simulation cost per frame on this GPU, measured at about 0.18 ms per million
+    /// particles per step for the restricted solver and about 110 ms for Barnes-Hut, which
+    /// also scales a little worse than linearly. Shown in the setup screen so the particle
+    /// count can be chosen knowing what it costs.
     var estimatedStepMilliseconds: Double {
-        Double(draft.totalParticleCount) / 1_000_000 * 0.18 * Double(stepsPerFrame)
+        let millions = Double(draft.totalParticleCount) / 1_000_000
+        let perStep = draft.solver == .barnesHut ? 110 * pow(millions, 1.15) : 0.18 * millions
+        return perStep * Double(stepsPerFrame)
     }
 
     /// Scales every galaxy's share of the draft so the preset's own ratio is preserved.

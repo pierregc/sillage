@@ -28,8 +28,11 @@ public final class RestrictedSolver: Solver {
     public static func sampleParticles(for scene: SceneConfig) -> ParticleSystem {
         var system = ParticleSystem(capacity: scene.totalParticleCount)
         var generator = SeededGenerator(seed: scene.seed)
+        let selfGravitating = scene.solver == .barnesHut
         for (index, galaxy) in scene.galaxies.enumerated() {
-            DiskSampler.sample(galaxy, galaxyIndex: UInt32(index), into: &system, using: &generator)
+            DiskSampler.sample(
+                galaxy, galaxyIndex: UInt32(index), selfGravitating: selfGravitating,
+                into: &system, using: &generator)
         }
         return system
     }

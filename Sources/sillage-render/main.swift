@@ -21,7 +21,7 @@ let frames = Int(number("frames", 1))
 let width = Int(number("width", 1920))
 let height = Int(number("height", 1080))
 let outputPath = argument("out", default: "out/sillage.png")!
-let backend = argument("solver", default: "gpu")!
+let backend = argument("solver", default: "restricted")!
 
 var scene: SceneConfig
 switch presetName {
@@ -33,7 +33,14 @@ default:
     exit(2)
 }
 if let seed = argument("seed").flatMap(UInt64.init) { scene.seed = seed }
+if backend == "barnes-hut" {
+    scene.solver = .barnesHut
+    // Self-gravity needs a far smaller step than tracers in a rigid potential.
+    scene.timeStep = 0.006
+}
 if let dt = argument("dt").flatMap(Float.init) { scene.timeStep = dt }
+scene.openingAngle = Float(number("theta", 0.6))
+scene.softening = Float(number("softening", 0.12))
 
 let settings = RenderSettings(
     width: width,
@@ -55,11 +62,12 @@ let settings = RenderSettings(
 print("scene      \(scene.name), \(scene.totalParticleCount) particles")
 
 let seeded = RestrictedSolver.sampleParticles(for: scene)
-let gpuSolver: MetalSolver? = backend == "gpu" ? try MetalSolver(scene: scene, particles: seeded) : nil
+let gpuSolver: (any GPUSolver)? =
+    backend == "cpu" ? nil : try GPUSolverFactory.make(scene: scene, particles: seeded)
 let solver: any Solver = gpuSolver ?? RestrictedSolver(scene: scene, particles: seeded)
 let renderer = try Renderer(
     particles: seeded, settings: settings, externalPositions: gpuSolver?.positions)
-print("solver     \(gpuSolver == nil ? "cpu" : "gpu")")
+print("solver     \(backend) (\(scene.solver.rawValue))")
 print("gpu        \(renderer.gpuName)")
 
 /// Radius holding a given fraction of the particles, so a few escapers do not shrink the frame.

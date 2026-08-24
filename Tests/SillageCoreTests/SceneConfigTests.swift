@@ -15,9 +15,10 @@ struct SceneConfigTests {
         #expect(SceneConfig.flyby(particleCount: 1_000).totalParticleCount == 1_000)
     }
 
-    @Test func onlyRestrictedSolverIsImplemented() {
-        #expect(SolverKind.restricted.isImplemented)
-        #expect(!SolverKind.barnesHut.isImplemented)
+    @Test func bothSolversAreAvailable() {
         #expect(SolverKind.allCases.count == 2)
+        #expect(SolverKind.allCases.allSatisfy { $0.isImplemented })
+        #expect(!SolverKind.restricted.isSelfGravitating)
+        #expect(SolverKind.barnesHut.isSelfGravitating)
     }
 }

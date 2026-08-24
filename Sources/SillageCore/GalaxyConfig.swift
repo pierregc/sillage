@@ -43,6 +43,12 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// How far the arms wander from a perfect logarithmic spiral, and how much they break
     /// into segments.
     public var armIrregularity: Float
+    /// Share of the galaxy's mass carried by the live disk particles under self-gravity. The
+    /// remainder stays in the analytic halo. A real disk is roughly a fifth of the total.
+    public var diskMassFraction: Float
+    /// Toomre stability parameter used to set the velocity dispersion when the disk is
+    /// self-gravitating. Below 1 the disk fragments; 1.2 to 1.6 is the usual working range.
+    public var toomreQ: Float
 
     public var position: SIMD3<Float>
     public var velocity: SIMD3<Float>
@@ -70,6 +76,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         color: SIMD3<Float> = SIMD3<Float>(1.0, 0.90, 0.74),
         clumpiness: Float = 0.48,
         armIrregularity: Float = 0.55,
+        diskMassFraction: Float = 0.22,
+        toomreQ: Float = 1.4,
         position: SIMD3<Float> = .zero,
         velocity: SIMD3<Float> = .zero,
         inclination: Float = 0,
@@ -93,6 +101,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.color = color
         self.clumpiness = clumpiness
         self.armIrregularity = armIrregularity
+        self.diskMassFraction = diskMassFraction
+        self.toomreQ = toomreQ
         self.position = position
         self.velocity = velocity
         self.inclination = inclination
