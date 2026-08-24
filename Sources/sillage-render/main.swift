@@ -35,9 +35,16 @@ default:
 let settings = RenderSettings(
     width: width,
     height: height,
-    pointSize: Float(number("point-size", 2.4)),
+    supersample: Int(number("supersample", 2)),
+    pointSize: Float(number("point-size", 2.0)),
     exposure: Float(number("exposure", 1.0)),
-    brightness: Float(number("brightness", 0.016)))
+    brightness: Float(number("brightness", 0.05)),
+    colorRadius: Float(number("color-radius", 14)),
+    bloomThreshold: Float(number("bloom-threshold", 0.55)),
+    bloomSoftKnee: Float(number("bloom-knee", 0.6)),
+    bloomIntensity: Float(number("bloom", 0.85)),
+    bloomLevels: Int(number("bloom-levels", 6)),
+    stretch: Float(number("stretch", 24)))
 
 print("scene      \(scene.name), \(scene.totalParticleCount) particles, solver \(scene.solver.rawValue)")
 

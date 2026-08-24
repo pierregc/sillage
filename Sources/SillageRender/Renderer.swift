@@ -2,33 +2,71 @@ import Metal
 import SillageCore
 import simd
 
-struct Uniforms {
+struct SplatUniforms {
     var viewProjection: simd_float4x4
     var pointSize: Float
-    var exposure: Float
     var brightness: Float
+    var colorRadius: Float
     var pad: Float = 0
 }
 
-public struct RenderSettings {
+struct BloomParams {
+    var threshold: Float
+    var softKnee: Float
+    var pad0: Float = 0
+    var pad1: Float = 0
+}
+
+struct CompositeParams {
+    var exposure: Float
+    var bloomIntensity: Float
+    var stretch: Float
+    var pad: Float = 0
+}
+
+public struct RenderSettings: Sendable {
     public var width: Int
     public var height: Int
+    /// Renders at this multiple of the output resolution, then box-filters down.
+    public var supersample: Int
     public var pointSize: Float
     public var exposure: Float
     public var brightness: Float
+    /// Radius, in kpc, at which the colour ramp reaches its outermost stop.
+    public var colorRadius: Float
+    public var bloomThreshold: Float
+    public var bloomSoftKnee: Float
+    public var bloomIntensity: Float
+    public var bloomLevels: Int
+    /// Strength of the logarithmic stretch applied before tone mapping. 0 disables it.
+    public var stretch: Float
 
     public init(
         width: Int = 1920,
         height: Int = 1080,
+        supersample: Int = 2,
         pointSize: Float = 2.4,
         exposure: Float = 1.0,
-        brightness: Float = 0.016
+        brightness: Float = 0.05,
+        colorRadius: Float = 14,
+        bloomThreshold: Float = 0.55,
+        bloomSoftKnee: Float = 0.6,
+        bloomIntensity: Float = 0.85,
+        bloomLevels: Int = 6,
+        stretch: Float = 24
     ) {
         self.width = width
         self.height = height
+        self.supersample = max(1, min(supersample, 4))
         self.pointSize = pointSize
         self.exposure = exposure
         self.brightness = brightness
+        self.colorRadius = colorRadius
+        self.bloomThreshold = bloomThreshold
+        self.bloomSoftKnee = bloomSoftKnee
+        self.bloomIntensity = bloomIntensity
+        self.bloomLevels = bloomLevels
+        self.stretch = stretch
     }
 }
 
@@ -36,33 +74,55 @@ public enum RenderError: Error, CustomStringConvertible {
     case noDevice
     case shaderCompilation(String)
     case pipelineCreation(String)
+    case textureAllocation
 
     public var description: String {
         switch self {
         case .noDevice: "No Metal device available"
         case .shaderCompilation(let message): "Shader compilation failed: \(message)"
         case .pipelineCreation(let message): "Pipeline creation failed: \(message)"
+        case .textureAllocation: "Could not allocate a render texture"
         }
     }
 }
 
-/// Additively accumulates particles into an HDR target, then tone maps to 8-bit sRGB.
+/// Accumulates particles additively into a supersampled HDR target, builds a Kawase
+/// dual-filter bloom pyramid from it, then tone maps the sum to 8-bit sRGB.
 public final class Renderer {
     public let device: MTLDevice
+    public private(set) var settings: RenderSettings
+    public private(set) var lastGPUTime: Double = 0
+
     private let queue: MTLCommandQueue
     private let splatPipeline: MTLRenderPipelineState
-    private let tonemapPipeline: MTLComputePipelineState
-    private let accumulation: MTLTexture
-    private let output: MTLTexture
-    private let settings: RenderSettings
+    private let resolvePipeline: MTLComputePipelineState
+    private let brightPassPipeline: MTLComputePipelineState
+    private let downsamplePipeline: MTLComputePipelineState
+    private let upsamplePipeline: MTLComputePipelineState
+    private let compositePipeline: MTLComputePipelineState
 
-    private var positionBuffer: MTLBuffer
-    private var radiusBuffer: MTLBuffer
-    private var galaxyBuffer: MTLBuffer
+    private let accumulation: MTLTexture
+    private let resolved: MTLTexture
+    private let bloomDown: [MTLTexture]
+    private let bloomUp: [MTLTexture]
+    public let output: MTLTexture
+
+    private let positionBuffer: MTLBuffer
+    private let radiusBuffer: MTLBuffer
+    private let galaxyBuffer: MTLBuffer
     private let particleCount: Int
 
-    public init(particles: ParticleSystem, settings: RenderSettings) throws {
-        guard let device = MTLCreateSystemDefaultDevice() else { throw RenderError.noDevice }
+    /// The buffer holding particle positions, so a GPU solver can write into it directly.
+    public var positions: MTLBuffer { positionBuffer }
+
+    public init(
+        device: MTLDevice? = nil,
+        particles: ParticleSystem,
+        settings: RenderSettings
+    ) throws {
+        guard let device = device ?? MTLCreateSystemDefaultDevice() else {
+            throw RenderError.noDevice
+        }
         self.device = device
         self.settings = settings
         self.particleCount = particles.count
@@ -72,6 +132,17 @@ public final class Renderer {
             library = try device.makeLibrary(source: Shaders.source, options: nil)
         } catch {
             throw RenderError.shaderCompilation("\(error)")
+        }
+
+        func compute(_ name: String) throws -> MTLComputePipelineState {
+            guard let function = library.makeFunction(name: name) else {
+                throw RenderError.pipelineCreation("missing kernel \(name)")
+            }
+            do {
+                return try device.makeComputePipelineState(function: function)
+            } catch {
+                throw RenderError.pipelineCreation("\(name): \(error)")
+            }
         }
 
         let descriptor = MTLRenderPipelineDescriptor()
@@ -86,55 +157,104 @@ public final class Renderer {
         attachment.sourceAlphaBlendFactor = .one
         attachment.destinationRGBBlendFactor = .one
         attachment.destinationAlphaBlendFactor = .one
-
         do {
             splatPipeline = try device.makeRenderPipelineState(descriptor: descriptor)
-            tonemapPipeline = try device.makeComputePipelineState(
-                function: library.makeFunction(name: "tonemap")!)
         } catch {
-            throw RenderError.pipelineCreation("\(error)")
+            throw RenderError.pipelineCreation("splat: \(error)")
         }
+
+        resolvePipeline = try compute("resolve")
+        brightPassPipeline = try compute("brightPass")
+        downsamplePipeline = try compute("downsample")
+        upsamplePipeline = try compute("upsampleAdd")
+        compositePipeline = try compute("composite")
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
 
-        let hdr = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba16Float, width: settings.width, height: settings.height, mipmapped: false)
-        hdr.usage = [.renderTarget, .shaderRead]
-        hdr.storageMode = .private
-        accumulation = device.makeTexture(descriptor: hdr)!
+        func texture(
+            _ width: Int, _ height: Int, _ format: MTLPixelFormat, _ usage: MTLTextureUsage,
+            shared: Bool = false
+        ) throws -> MTLTexture {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: format, width: max(width, 1), height: max(height, 1), mipmapped: false)
+            descriptor.usage = usage
+            descriptor.storageMode = shared ? .shared : .private
+            guard let texture = device.makeTexture(descriptor: descriptor) else {
+                throw RenderError.textureAllocation
+            }
+            return texture
+        }
 
-        let ldr = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm, width: settings.width, height: settings.height, mipmapped: false)
-        ldr.usage = [.shaderWrite, .shaderRead]
-        ldr.storageMode = .shared
-        output = device.makeTexture(descriptor: ldr)!
+        let scale = settings.supersample
+        accumulation = try texture(
+            settings.width * scale, settings.height * scale, .rgba16Float,
+            [.renderTarget, .shaderRead])
+        resolved = try texture(
+            settings.width, settings.height, .rgba16Float, [.shaderRead, .shaderWrite])
+
+        var down: [MTLTexture] = []
+        var up: [MTLTexture] = []
+        var levelWidth = settings.width / 2
+        var levelHeight = settings.height / 2
+        while down.count < settings.bloomLevels && levelWidth >= 8 && levelHeight >= 8 {
+            down.append(
+                try texture(levelWidth, levelHeight, .rgba16Float, [.shaderRead, .shaderWrite]))
+            up.append(
+                try texture(levelWidth, levelHeight, .rgba16Float, [.shaderRead, .shaderWrite]))
+            levelWidth /= 2
+            levelHeight /= 2
+        }
+        bloomDown = down
+        bloomUp = up
+
+        output = try texture(
+            settings.width, settings.height, .rgba8Unorm, [.shaderRead, .shaderWrite], shared: true)
 
         let stride = MemoryLayout<SIMD3<Float>>.stride
-        positionBuffer = device.makeBuffer(length: max(particles.count, 1) * stride)!
-        radiusBuffer = device.makeBuffer(
-            bytes: particles.birthRadius, length: max(particles.count, 1) * 4)!
-        galaxyBuffer = device.makeBuffer(
-            bytes: particles.galaxyIndex, length: max(particles.count, 1) * 4)!
+        let count = max(particles.count, 1)
+        guard
+            let positionBuffer = device.makeBuffer(
+                length: count * stride, options: .storageModeShared),
+            let radiusBuffer = device.makeBuffer(
+                bytes: particles.birthRadius.isEmpty ? [Float(0)] : particles.birthRadius,
+                length: count * 4, options: .storageModeShared),
+            let galaxyBuffer = device.makeBuffer(
+                bytes: particles.galaxyIndex.isEmpty ? [UInt32(0)] : particles.galaxyIndex,
+                length: count * 4, options: .storageModeShared)
+        else {
+            throw RenderError.textureAllocation
+        }
+        self.positionBuffer = positionBuffer
+        self.radiusBuffer = radiusBuffer
+        self.galaxyBuffer = galaxyBuffer
         upload(positions: particles.positions)
     }
 
     /// Unified memory means this is a plain memcpy into a buffer the GPU already sees.
     public func upload(positions: [SIMD3<Float>]) {
+        guard !positions.isEmpty else { return }
         positions.withUnsafeBytes { source in
             positionBuffer.contents().copyMemory(from: source.baseAddress!, byteCount: source.count)
         }
     }
 
-    public func render(camera: Camera) -> [UInt8] {
-        let aspect = Float(settings.width) / Float(settings.height)
-        var uniforms = Uniforms(
-            viewProjection: camera.viewProjection(aspectRatio: aspect),
-            pointSize: settings.pointSize,
-            exposure: settings.exposure,
-            brightness: settings.brightness)
+    public func setExposure(_ exposure: Float) { settings.exposure = exposure }
+    public func setBrightness(_ brightness: Float) { settings.brightness = brightness }
+    public func setBloomIntensity(_ intensity: Float) { settings.bloomIntensity = intensity }
+    public func setPointSize(_ size: Float) { settings.pointSize = size }
+    public func setColorRadius(_ radius: Float) { settings.colorRadius = radius }
+    public func setStretch(_ stretch: Float) { settings.stretch = stretch }
 
-        let buffer = queue.makeCommandBuffer()!
+    /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
+    public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
+        let scale = settings.supersample
+        let aspect = Float(settings.width) / Float(settings.height)
+        var splat = SplatUniforms(
+            viewProjection: camera.viewProjection(aspectRatio: aspect),
+            pointSize: settings.pointSize * Float(scale),
+            brightness: settings.brightness,
+            colorRadius: settings.colorRadius)
 
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = accumulation
@@ -142,31 +262,93 @@ public final class Renderer {
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         pass.colorAttachments[0].storeAction = .store
 
-        let encoder = buffer.makeRenderCommandEncoder(descriptor: pass)!
-        encoder.setRenderPipelineState(splatPipeline)
-        encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
-        encoder.setVertexBuffer(radiusBuffer, offset: 0, index: 1)
-        encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 2)
-        encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 3)
-        encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: particleCount)
-        encoder.endEncoding()
+        if let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) {
+            encoder.setRenderPipelineState(splatPipeline)
+            encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+            encoder.setVertexBuffer(radiusBuffer, offset: 0, index: 1)
+            encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 2)
+            encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 3)
+            encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: particleCount)
+            encoder.endEncoding()
+        }
 
-        let compute = buffer.makeComputeCommandEncoder()!
-        compute.setComputePipelineState(tonemapPipeline)
-        compute.setTexture(accumulation, index: 0)
-        compute.setTexture(output, index: 1)
-        compute.setBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
-        let groupWidth = 16
-        compute.dispatchThreadgroups(
-            MTLSize(
-                width: (settings.width + groupWidth - 1) / groupWidth,
-                height: (settings.height + groupWidth - 1) / groupWidth,
-                depth: 1),
-            threadsPerThreadgroup: MTLSize(width: groupWidth, height: groupWidth, depth: 1))
+        guard let compute = buffer.makeComputeCommandEncoder() else { return }
+
+        var factor = UInt32(scale)
+        dispatch(compute, resolvePipeline, into: resolved) { encoder in
+            encoder.setTexture(accumulation, index: 0)
+            encoder.setTexture(resolved, index: 1)
+            encoder.setBytes(&factor, length: 4, index: 0)
+        }
+
+        var bloom = BloomParams(
+            threshold: settings.bloomThreshold, softKnee: settings.bloomSoftKnee)
+        if let first = bloomDown.first {
+            dispatch(compute, brightPassPipeline, into: first) { encoder in
+                encoder.setTexture(resolved, index: 0)
+                encoder.setTexture(first, index: 1)
+                encoder.setBytes(&bloom, length: MemoryLayout<BloomParams>.stride, index: 0)
+            }
+            for level in 1..<bloomDown.count {
+                dispatch(compute, downsamplePipeline, into: bloomDown[level]) { encoder in
+                    encoder.setTexture(bloomDown[level - 1], index: 0)
+                    encoder.setTexture(bloomDown[level], index: 1)
+                }
+            }
+        }
+
+        var bloomResult = bloomDown.last
+        if bloomDown.count > 1 {
+            for level in stride(from: bloomDown.count - 1, to: 0, by: -1) {
+                let destination = bloomUp[level - 1]
+                let source = bloomResult!
+                dispatch(compute, upsamplePipeline, into: destination) { encoder in
+                    encoder.setTexture(source, index: 0)
+                    encoder.setTexture(bloomDown[level - 1], index: 1)
+                    encoder.setTexture(destination, index: 2)
+                }
+                bloomResult = destination
+            }
+        }
+
+        var composite = CompositeParams(
+            exposure: settings.exposure,
+            bloomIntensity: bloomResult == nil ? 0 : settings.bloomIntensity,
+            stretch: settings.stretch)
+        let target = present ?? output
+        dispatch(compute, compositePipeline, into: target) { encoder in
+            encoder.setTexture(resolved, index: 0)
+            encoder.setTexture(bloomResult ?? resolved, index: 1)
+            encoder.setTexture(target, index: 2)
+            encoder.setBytes(&composite, length: MemoryLayout<CompositeParams>.stride, index: 0)
+        }
         compute.endEncoding()
+    }
 
+    private func dispatch(
+        _ encoder: MTLComputeCommandEncoder,
+        _ pipeline: MTLComputePipelineState,
+        into texture: MTLTexture,
+        configure: (MTLComputeCommandEncoder) -> Void
+    ) {
+        encoder.setComputePipelineState(pipeline)
+        configure(encoder)
+        let side = 16
+        encoder.dispatchThreadgroups(
+            MTLSize(
+                width: (texture.width + side - 1) / side,
+                height: (texture.height + side - 1) / side,
+                depth: 1),
+            threadsPerThreadgroup: MTLSize(width: side, height: side, depth: 1))
+    }
+
+    /// Renders offscreen and reads the result back as 8-bit RGBA.
+    public func render(camera: Camera) -> [UInt8] {
+        guard let buffer = queue.makeCommandBuffer() else { return [] }
+        encode(camera: camera, into: buffer)
         buffer.commit()
         buffer.waitUntilCompleted()
+        lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
 
         var pixels = [UInt8](repeating: 0, count: settings.width * settings.height * 4)
         pixels.withUnsafeMutableBytes { destination in
