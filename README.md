@@ -143,6 +143,31 @@ Useful flags: `--preset merger|flyby|disk`, `--solver restricted|barnes-hut|cpu`
 
 ## Rendering
 
+### Adaptive smoothing
+
+A galaxy holds on the order of a hundred billion stars, so every pixel of a real image
+contains millions of them and the surface is continuous. A million particles splatted at a
+fixed size resolves the particles instead, which is why a simulation reads as a point cloud
+however many points it has, and why adding particles does not fix it.
+
+Each particle therefore carries a smoothing length equal to its own local interparticle
+spacing, taken from the Barnes-Hut tree: a leaf holding n particles in a cell of width w
+implies a density, and the radius enclosing the wanted number of neighbours follows. Its light
+is then spread over the kernel's area in kiloparsecs rather than in pixels, which gives
+surface brightness, the quantity a telescope actually measures, and which stays put when the
+camera or the resolution changes.
+
+### The instrument
+
+A telescope's secondary supports and, on a segmented mirror, the segment edges throw light
+into a fixed set of directions: six arms for a hexagonal mirror, four for a Cassegrain spider.
+A gather pass along those directions from the bright pass reproduces them. On top of that the
+frame carries a sky background and detector noise, both added in linear signal before tone
+mapping. Putting the noise back is counterintuitive but it is what stops an image looking
+synthetic.
+
+### Splatting
+
 Particles are splatted into two additive targets: emitted light in `rgba16Float`, and the
 optical depth of intervening dust in `r16Float`. Resolving from the supersampled buffers
 applies extinction on the way down, more strongly in blue than in red, which is what makes a

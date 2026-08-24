@@ -100,6 +100,17 @@ final class SimulationModel: ObservableObject {
     @Published var bloom: Float = 0.45 { didSet { renderer?.setBloomIntensity(bloom) } }
     @Published var pointSize: Float = 1.7 { didSet { renderer?.setPointSize(pointSize) } }
     @Published var dustStrength: Float = 0.16 { didSet { renderer?.setDustStrength(dustStrength) } }
+    @Published var spikeIntensity: Float = 0.38 {
+        didSet { renderer?.setSpikeIntensity(spikeIntensity) }
+    }
+    @Published var skyLevel: Float = 0.0018 { didSet { renderer?.setSkyLevel(skyLevel) } }
+    @Published var noiseLevel: Float = 0.0016 { didSet { renderer?.setNoiseLevel(noiseLevel) } }
+    @Published var smoothingScale: Float = 1.0 {
+        didSet {
+            smoothing?.scale = smoothingScale
+            framesSinceSmoothing = 99
+        }
+    }
     @Published var supersample = 1 { didSet { rebuildRenderer() } }
 
     let device: MTLDevice
@@ -287,7 +298,10 @@ final class SimulationModel: ObservableObject {
             dustStrength: dustStrength,
             bloomIntensity: bloom,
             stretch: stretch,
-            saturation: saturation)
+            saturation: saturation,
+            spikeIntensity: spikeIntensity,
+            skyLevel: skyLevel,
+            noiseLevel: noiseLevel)
         do {
             if smoothing == nil || smoothing?.buffer.length != particleCount * 4 {
                 smoothing = try SmoothingField(device: device, particleCount: particleCount)

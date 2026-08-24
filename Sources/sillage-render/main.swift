@@ -57,7 +57,12 @@ let settings = RenderSettings(
     bloomIntensity: Float(number("bloom", 0.45)),
     bloomLevels: Int(number("bloom-levels", 6)),
     stretch: Float(number("stretch", 18)),
-    saturation: Float(number("saturation", 1.8)))
+    saturation: Float(number("saturation", 1.8)),
+    spikeArms: Int(number("spikes", 6)),
+    spikeLength: Float(number("spike-length", 72)),
+    spikeIntensity: Float(number("spike-intensity", 0.38)),
+    skyLevel: Float(number("sky", 0.0018)),
+    noiseLevel: Float(number("noise", 0.0016)))
 
 print("scene      \(scene.name), \(scene.totalParticleCount) particles")
 

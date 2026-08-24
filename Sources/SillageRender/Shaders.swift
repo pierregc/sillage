@@ -33,6 +33,21 @@ enum Shaders {
             float bloomIntensity;
             float stretch;
             float saturation;
+            float spikeIntensity;
+            float skyLevel;
+            float noiseLevel;
+            float seed;
+        };
+
+        struct SpikeParams {
+            uint arms;
+            float baseAngle;
+            float length;
+            float falloff;
+            uint samples;
+            float _pad0;
+            float _pad1;
+            float _pad2;
         };
 
         struct SplatOut {
@@ -281,6 +296,39 @@ enum Shaders {
             dst.write(float4(sum / 12.0 + base.read(gid).rgb, 1.0), gid);
         }
 
+        // Diffraction spikes. A telescope's secondary supports and, on a segmented mirror, the
+        // segment edges throw light into a fixed set of directions; six arms for a hexagonal
+        // mirror, four for a Cassegrain spider. Gathering bright light back along those
+        // directions is most of what makes a rendered field read as an exposure.
+        kernel void diffractionSpikes(texture2d<float, access::sample> src [[texture(0)]],
+                                      texture2d<float, access::write> dst [[texture(1)]],
+                                      constant SpikeParams &p [[buffer(0)]],
+                                      uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            float2 size = float2(dst.get_width(), dst.get_height());
+            float2 uv = (float2(gid) + 0.5) / size;
+            float3 total = float3(0.0);
+            if (p.arms == 0u || p.samples == 0u) {
+                dst.write(float4(total, 1.0), gid);
+                return;
+            }
+            for (uint arm = 0; arm < p.arms; ++arm) {
+                float angle = p.baseAngle + float(arm) * 6.2831853 / float(p.arms);
+                float2 step = float2(cos(angle), sin(angle)) / size;
+                for (uint sample = 1; sample <= p.samples; ++sample) {
+                    float t = float(sample) / float(p.samples);
+                    total += src.sample(bilinear, uv + step * (t * p.length)).rgb
+                           * exp(-t * p.falloff);
+                }
+            }
+            dst.write(float4(total / float(p.samples), 1.0), gid);
+        }
+
+        static float hash2(float2 v) {
+            float x = sin(dot(v, float2(127.1, 311.7))) * 43758.5453;
+            return x - floor(x);
+        }
+
         static float3 acesFilmic(float3 x) {
             const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
             return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
@@ -289,11 +337,26 @@ enum Shaders {
         kernel void composite(texture2d<float, access::read> hdr [[texture(0)]],
                               texture2d<float, access::sample> bloom [[texture(1)]],
                               texture2d<float, access::write> output [[texture(2)]],
+                              texture2d<float, access::sample> spikes [[texture(3)]],
                               constant CompositeParams &p [[buffer(0)]],
                               uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
             float2 uv = (float2(gid) + 0.5) / float2(output.get_width(), output.get_height());
-            float3 energy = hdr.read(gid).rgb + bloom.sample(bilinear, uv).rgb * p.bloomIntensity;
+            float3 energy = hdr.read(gid).rgb
+                          + bloom.sample(bilinear, uv).rgb * p.bloomIntensity
+                          + spikes.sample(bilinear, uv).rgb * p.spikeIntensity;
+            // A real frame is never on pure black: there is airglow and zodiacal light under
+            // everything, and the detector adds read noise and photon shot noise on top.
+            // Counterintuitively, putting them back is what stops the image looking synthetic.
+            energy += p.skyLevel * float3(0.36, 0.42, 0.60);
+            if (p.noiseLevel > 0.0) {
+                float2 cell = float2(gid) + p.seed;
+                float read = hash2(cell) - 0.5;
+                float shot = hash2(cell + 17.3) - 0.5;
+                float luma = max(dot(energy, float3(0.2126, 0.7152, 0.0722)), 0.0);
+                energy += p.noiseLevel * (read + shot * sqrt(luma) * 4.0);
+                energy = max(energy, 0.0);
+            }
             energy *= p.exposure;
             // Logarithmic stretch, as astronomical imaging does: it keeps faint tidal debris
             // visible without turning the cores into featureless discs.

@@ -33,6 +33,21 @@ struct CompositeParams {
     var bloomIntensity: Float
     var stretch: Float
     var saturation: Float
+    var spikeIntensity: Float
+    var skyLevel: Float
+    var noiseLevel: Float
+    var seed: Float
+}
+
+struct SpikeParams {
+    var arms: UInt32
+    var baseAngle: Float
+    var length: Float
+    var falloff: Float
+    var samples: UInt32
+    var pad0: Float = 0
+    var pad1: Float = 0
+    var pad2: Float = 0
 }
 
 public struct RenderSettings: Sendable {
@@ -63,6 +78,13 @@ public struct RenderSettings: Sendable {
     public var stretch: Float
     /// 1 leaves colour untouched, above 1 pushes the two disks further apart in hue.
     public var saturation: Float
+    /// Diffraction arms: 6 for a segmented mirror, 4 for a Cassegrain spider, 0 for none.
+    public var spikeArms: Int
+    public var spikeLength: Float
+    public var spikeIntensity: Float
+    /// Sky background and detector noise, both in linear signal units before tone mapping.
+    public var skyLevel: Float
+    public var noiseLevel: Float
 
     public init(
         width: Int = 1920,
@@ -81,7 +103,12 @@ public struct RenderSettings: Sendable {
         bloomIntensity: Float = 0.45,
         bloomLevels: Int = 6,
         stretch: Float = 18,
-        saturation: Float = 1.8
+        saturation: Float = 1.8,
+        spikeArms: Int = 6,
+        spikeLength: Float = 72,
+        spikeIntensity: Float = 0.38,
+        skyLevel: Float = 0.0018,
+        noiseLevel: Float = 0.0016
     ) {
         self.width = width
         self.height = height
@@ -100,6 +127,11 @@ public struct RenderSettings: Sendable {
         self.bloomLevels = bloomLevels
         self.stretch = stretch
         self.saturation = saturation
+        self.spikeArms = spikeArms
+        self.spikeLength = spikeLength
+        self.spikeIntensity = spikeIntensity
+        self.skyLevel = skyLevel
+        self.noiseLevel = noiseLevel
     }
 }
 
@@ -125,6 +157,7 @@ public final class Renderer {
     public let device: MTLDevice
     public private(set) var settings: RenderSettings
     public private(set) var lastGPUTime: Double = 0
+    private var frameSeed: Float = 1
 
     private let queue: MTLCommandQueue
     private let splatPipeline: MTLRenderPipelineState
@@ -134,12 +167,14 @@ public final class Renderer {
     private let downsamplePipeline: MTLComputePipelineState
     private let upsamplePipeline: MTLComputePipelineState
     private let compositePipeline: MTLComputePipelineState
+    private let spikePipeline: MTLComputePipelineState
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
     private let resolved: MTLTexture
     private let bloomDown: [MTLTexture]
     private let bloomUp: [MTLTexture]
+    private let spikeTexture: MTLTexture
     public let output: MTLTexture
 
     private let positionBuffer: MTLBuffer
@@ -224,6 +259,7 @@ public final class Renderer {
         downsamplePipeline = try compute("downsample")
         upsamplePipeline = try compute("upsampleAdd")
         compositePipeline = try compute("composite")
+        spikePipeline = try compute("diffractionSpikes")
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -267,6 +303,9 @@ public final class Renderer {
         bloomDown = down
         bloomUp = up
 
+        spikeTexture = try texture(
+            max(settings.width / 2, 1), max(settings.height / 2, 1), .rgba16Float,
+            [.shaderRead, .shaderWrite])
         output = try texture(
             settings.width, settings.height, .rgba8Unorm, [.shaderRead, .shaderWrite], shared: true)
 
@@ -366,6 +405,9 @@ public final class Renderer {
     public func setDustStrength(_ strength: Float) { settings.dustStrength = strength }
     public func setStretch(_ stretch: Float) { settings.stretch = stretch }
     public func setSaturation(_ saturation: Float) { settings.saturation = saturation }
+    public func setSpikeIntensity(_ intensity: Float) { settings.spikeIntensity = intensity }
+    public func setSkyLevel(_ level: Float) { settings.skyLevel = level }
+    public func setNoiseLevel(_ level: Float) { settings.noiseLevel = level }
 
     /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
@@ -462,16 +504,37 @@ public final class Renderer {
             }
         }
 
+        // Spikes are gathered from the bright pass, so they pick up stars and galaxy cores
+        // rather than the whole frame.
+        var spike = SpikeParams(
+            arms: UInt32(max(settings.spikeArms, 0)),
+            baseAngle: 0.32,
+            length: settings.spikeLength,
+            falloff: 4.2,
+            samples: 28)
+        let spikeSource = bloomDown.first ?? resolved
+        dispatch(compute, spikePipeline, into: spikeTexture) { encoder in
+            encoder.setTexture(spikeSource, index: 0)
+            encoder.setTexture(spikeTexture, index: 1)
+            encoder.setBytes(&spike, length: MemoryLayout<SpikeParams>.stride, index: 0)
+        }
+
+        frameSeed = frameSeed.truncatingRemainder(dividingBy: 4096) + 7.13
         var composite = CompositeParams(
             exposure: settings.exposure,
             bloomIntensity: bloomResult == nil ? 0 : settings.bloomIntensity,
             stretch: settings.stretch,
-            saturation: settings.saturation)
+            saturation: settings.saturation,
+            spikeIntensity: settings.spikeArms > 0 ? settings.spikeIntensity : 0,
+            skyLevel: settings.skyLevel,
+            noiseLevel: settings.noiseLevel,
+            seed: frameSeed)
         let target = present ?? output
         dispatch(compute, compositePipeline, into: target) { encoder in
             encoder.setTexture(resolved, index: 0)
             encoder.setTexture(bloomResult ?? resolved, index: 1)
             encoder.setTexture(target, index: 2)
+            encoder.setTexture(spikeTexture, index: 3)
             encoder.setBytes(&composite, length: MemoryLayout<CompositeParams>.stride, index: 0)
         }
         compute.endEncoding()
