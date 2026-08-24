@@ -6,10 +6,14 @@ let package = Package(
     name: "sillage",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "SillageCore", targets: ["SillageCore"])
+        .library(name: "SillageCore", targets: ["SillageCore"]),
+        .library(name: "SillageRender", targets: ["SillageRender"]),
+        .executable(name: "sillage-render", targets: ["sillage-render"]),
     ],
     targets: [
         .target(name: "SillageCore"),
-        .testTarget(name: "SillageCoreTests", dependencies: ["SillageCore"])
+        .target(name: "SillageRender", dependencies: ["SillageCore"]),
+        .executableTarget(name: "sillage-render", dependencies: ["SillageCore", "SillageRender"]),
+        .testTarget(name: "SillageCoreTests", dependencies: ["SillageCore"]),
     ]
 )
