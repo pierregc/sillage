@@ -5,9 +5,17 @@ import SillageCore
 import SillageRender
 import simd
 
+enum Stage {
+    case setup
+    case running
+}
+
 @MainActor
 final class SimulationModel: ObservableObject {
+    @Published var stage: Stage = .setup
     @Published var scene: SceneConfig
+    /// Edited by the setup screen. Applied to `scene` only when the user starts the run.
+    @Published var draft: SceneConfig
     @Published var camera = OrbitCamera()
     @Published var isPlaying = true
     @Published var stepsPerFrame = 4
@@ -34,8 +42,23 @@ final class SimulationModel: ObservableObject {
     init?() {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
         self.device = device
-        self.scene = .merger(particleCount: 3_000_000)
+        let start = SceneConfig.merger(particleCount: 3_000_000)
+        self.scene = start
+        self.draft = start
+    }
+
+    /// Commits the setup screen's draft and moves to the live view. Nothing heavy is built
+    /// until this runs, so the setup screen opens instantly.
+    func start() {
+        scene = draft
         restart()
+        frameCamera()
+        stage = .running
+    }
+
+    func returnToSetup() {
+        stage = .setup
+        isPlaying = false
     }
 
     var gpuName: String { device.name }
@@ -56,17 +79,45 @@ final class SimulationModel: ObservableObject {
         rebuildRenderer()
     }
 
-    /// Scales every galaxy's share so the preset's own ratio between galaxies is preserved.
+    func loadPreset(_ preset: SceneConfig) {
+        draft = preset
+    }
+
+    func addGalaxy() {
+        let share = max(draft.totalParticleCount / max(draft.galaxies.count, 1), 100_000)
+        draft.galaxies.append(
+            GalaxyConfig(
+                name: "Galaxie \(draft.galaxies.count + 1)",
+                particleCount: share,
+                kind: .spiral,
+                potential: GalaxyPotential(profile: .hernquist, mass: 30, scaleRadius: 4),
+                diskScaleLength: 3,
+                diskTruncation: 5,
+                position: SIMD3<Float>(0, 60, 0),
+                velocity: SIMD3<Float>(-0.5, 0, 0)))
+    }
+
+    func removeGalaxy(at index: Int) {
+        guard draft.galaxies.count > 1, draft.galaxies.indices.contains(index) else { return }
+        draft.galaxies.remove(at: index)
+    }
+
+    /// Rough simulation cost per frame, measured at about 0.18 ms per million particles per
+    /// step on this GPU. Shown in the setup screen so the count can be chosen knowingly.
+    var estimatedStepMilliseconds: Double {
+        Double(draft.totalParticleCount) / 1_000_000 * 0.18 * Double(stepsPerFrame)
+    }
+
+    /// Scales every galaxy's share of the draft so the preset's own ratio is preserved.
     func setTotalParticles(_ total: Int) {
-        let current = scene.totalParticleCount
+        let current = draft.totalParticleCount
         guard current > 0, total > 0 else { return }
         let ratio = Double(total) / Double(current)
-        for index in scene.galaxies.indices {
-            scene.galaxies[index].particleCount =
-                max(Int(Double(scene.galaxies[index].particleCount) * ratio), 1)
+        for index in draft.galaxies.indices {
+            draft.galaxies[index].particleCount =
+                max(Int(Double(draft.galaxies[index].particleCount) * ratio), 1)
         }
-        scene.galaxies[0].particleCount += total - scene.totalParticleCount
-        restart()
+        draft.galaxies[0].particleCount += total - draft.totalParticleCount
     }
 
     func frameCamera() {
