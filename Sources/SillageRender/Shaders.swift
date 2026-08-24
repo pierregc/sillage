@@ -59,27 +59,71 @@ enum Shaders {
         // HII regions glow in Halpha with a little [OIII], which reads pink shading to magenta.
         constant float3 hiiColor = float3(1.00, 0.32, 0.50);
 
+        struct DiskFrame {
+            float4 center;
+            float4 axisU;
+            float4 axisV;
+            float4 pattern;
+        };
+
+        // Where a particle sits relative to the spiral density wave, 0 between the arms and
+        // 1 on a ridge. Evaluated at the current position, so the arms stay sharp instead of
+        // winding up with the differentially rotating disk.
+        // Returns the wave amplitude and how much of the disk the pattern still covers, so
+        // debris thrown far out by the encounter does not light up as star formation.
+        static float2 armWave(float3 position, DiskFrame frame) {
+            float strength = frame.axisV.w;
+            if (strength <= 0.0) { return float2(0.5, 0.0); }
+            float3 rel = position - frame.center.xyz;
+            float u = dot(rel, frame.axisU.xyz);
+            float v = dot(rel, frame.axisV.xyz);
+            float radius = sqrt(u * u + v * v);
+            float scale = max(frame.center.w, 1e-3);
+            float extent = radius / scale;
+            float envelope = smoothstep(0.55, 1.5, extent)
+                           * (1.0 - smoothstep(4.0, 6.5, extent));
+            float wound = atan2(v, u)
+                        - frame.pattern.x * log(max(radius, 1e-3) / scale)
+                        - frame.pattern.y;
+            float ridge = 0.5 + 0.5 * cos(frame.axisU.w * wound);
+            return float2(mix(0.5, ridge, strength * envelope), envelope);
+        }
+
         vertex SplatOut splatVertex(uint vid [[vertex_id]],
                                     device const float3 *positions [[buffer(0)]],
                                     device const float *population [[buffer(1)]],
                                     device const float *luminosity [[buffer(2)]],
                                     device const uint *component [[buffer(3)]],
-                                    constant SplatUniforms &u [[buffer(4)]]) {
+                                    constant SplatUniforms &u [[buffer(4)]],
+                                    device const uint *galaxy [[buffer(5)]],
+                                    constant DiskFrame *frames [[buffer(6)]]) {
             SplatOut out;
-            out.position = u.viewProjection * float4(positions[vid], 1.0);
+            float3 position = positions[vid];
+            out.position = u.viewProjection * float4(position, 1.0);
             out.spikes = 0.0h;
             uint kind = component[vid];
             float weight = luminosity[vid];
+            float2 pattern = armWave(position, frames[galaxy[vid]]);
+            float wave = pattern.x;
 
             if (kind == 2u) {
                 // Dust neither emits nor follows exposure; it removes light further down.
+                float lane = 1.0 + 1.9 * pow(wave, 1.6) * pattern.y;
                 out.pointSize = u.pointSize * 1.4;
                 out.color = half3(0.0h);
-                out.opticalDepth = half(weight * u.dustStrength);
+                out.opticalDepth = half(weight * u.dustStrength * lane);
+            } else if (kind == 1u) {
+                // Star formation happens where the wave is now, not where it once was.
+                out.pointSize = u.pointSize * 1.15;
+                float lit = smoothstep(0.45, 0.95, wave) * pattern.y;
+                out.color = half3(hiiColor * (u.brightness * weight * lit * 4.0));
+                out.opticalDepth = 0.0h;
             } else {
-                float3 tint = kind == 1u ? hiiColor : populationColor(population[vid]);
-                out.pointSize = u.pointSize * (kind == 1u ? 1.15 : 1.0);
-                out.color = half3(tint * (u.brightness * weight));
+                // Arms are bluer and a little brighter than the disk between them.
+                float youth = saturate(population[vid] + 0.55 * (wave - 0.5));
+                out.pointSize = u.pointSize;
+                out.color = half3(
+                    populationColor(youth) * (u.brightness * weight * (0.78 + 0.48 * wave)));
                 out.opticalDepth = 0.0h;
             }
             return out;
@@ -101,7 +145,7 @@ enum Shaders {
             SplatOut out;
             out.position = u.viewProjection * float4(star.direction.xyz, 1.0);
             out.pointSize = u.starSize * mix(1.6, 9.0, magnitude * magnitude);
-            out.color = half3(star.color.rgb * (magnitude * magnitude * magnitude * 9.0));
+            out.color = half3(star.color.rgb * (magnitude * magnitude * magnitude * 2.4));
             out.opticalDepth = 0.0h;
             out.spikes = half(star.color.a);
             return out;

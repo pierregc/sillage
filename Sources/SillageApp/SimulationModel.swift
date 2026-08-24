@@ -167,6 +167,10 @@ final class SimulationModel: ObservableObject {
         guard let renderer, let solver else { return nil }
         solver.step(count: steps)
         elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
+        renderer.setDiskFrames(
+            DiskFrame.make(
+                scene: scene, centers: solver.centers, time: solver.time,
+                strength: renderer.armPersistence))
         return renderer.render(camera: camera.camera)
     }
 
@@ -177,6 +181,10 @@ final class SimulationModel: ObservableObject {
             solver.step(count: stepsPerFrame)
             elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
         }
+        renderer.setDiskFrames(
+            DiskFrame.make(
+                scene: scene, centers: solver.centers, time: solver.time,
+                strength: renderer.armPersistence))
         renderer.present(camera: camera.camera, drawable: drawable)
         frameMilliseconds = (CACurrentMediaTime() - start) * 1000
         framesDrawn += 1
