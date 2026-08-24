@@ -14,6 +14,11 @@ enum Shaders {
             float brightness;
             float dustStrength;
             float starSize;
+            float projectionScale;
+            float referenceArea;
+            float minimumSize;
+            float maximumSize;
+            float _pad;
         };
 
         struct BloomParams {
@@ -107,7 +112,8 @@ enum Shaders {
                                     device const uint *component [[buffer(3)]],
                                     constant SplatUniforms &u [[buffer(4)]],
                                     device const uint *galaxy [[buffer(5)]],
-                                    constant DiskFrame *frames [[buffer(6)]]) {
+                                    constant DiskFrame *frames [[buffer(6)]],
+                                    device const float *smoothing [[buffer(7)]]) {
             SplatOut out;
             float3 position = positions[vid];
             DiskFrame frame = frames[galaxy[vid]];
@@ -118,20 +124,32 @@ enum Shaders {
             float2 pattern = armWave(position, frame);
             float wave = pattern.x;
 
+            // Angular size of this particle's kernel, in pixels. position.w is the view
+            // depth for a standard perspective projection, so this is just h over distance.
+            float length = max(smoothing[vid], 1e-4);
+            float span = clamp(length * u.projectionScale / max(out.position.w, 1e-3),
+                               u.minimumSize, u.maximumSize);
+            // Spread the particle's light over the kernel's area in kiloparsecs, not in
+            // pixels. Dividing by the pixel area would conserve flux per particle but make
+            // the exposure depend on the resolution and the zoom; dividing by the physical
+            // area gives surface brightness, which is what a telescope actually measures and
+            // what stays put when the camera moves.
+            float spread = u.referenceArea / (length * length);
+
             if (kind == 2u) {
                 // Dust neither emits nor follows exposure; it removes light further down.
                 float lane = 1.0 + 1.9 * pow(wave, 1.6) * pattern.y;
-                out.pointSize = u.pointSize * 1.4;
+                out.pointSize = span * 1.3;
                 out.color = half3(0.0h);
-                out.opticalDepth = half(weight * u.dustStrength * lane);
+                out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
             } else {
                 // One tint per galaxy, so stars pulled into the other galaxy stay legible.
                 // Star-forming knots are brighter where the wave is now, not coloured apart.
                 float gain = kind == 1u
                     ? (0.25 + 3.4 * smoothstep(0.4, 0.95, wave) * pattern.y)
                     : (0.80 + 0.44 * wave);
-                out.pointSize = u.pointSize * (kind == 1u ? 1.1 : 1.0);
-                out.color = half3(frame.tint.rgb * (u.brightness * weight * gain));
+                out.pointSize = span * (kind == 1u ? 1.3 : 1.0);
+                out.color = half3(frame.tint.rgb * (u.brightness * weight * gain * spread));
                 out.opticalDepth = 0.0h;
             }
             return out;

@@ -74,7 +74,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         starFormingFraction: Float = 0.02,
         bulgeExtent: Float = 0.35,
         color: SIMD3<Float> = SIMD3<Float>(1.0, 0.90, 0.74),
-        clumpiness: Float = 0.48,
+        clumpiness: Float = 0.30,
         armIrregularity: Float = 0.55,
         diskMassFraction: Float = 0.22,
         toomreQ: Float = 1.4,

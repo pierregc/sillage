@@ -75,6 +75,10 @@ final class SimulationModel: ObservableObject {
     @Published var isPlaying = true
     private(set) var recording: Recording?
     private var expander: SnapshotExpander?
+    private var smoothing: SmoothingField?
+    /// Smoothing lengths track density, which changes slowly, so they are refreshed every so
+    /// many frames rather than every one: rebuilding the tree costs tens of milliseconds.
+    private var framesSinceSmoothing = 0
     private var playbackPositions: MTLBuffer?
     private let cancelRecording = CancellationFlag()
     private let simulationQueue = DispatchQueue(label: "dev.pierregc.sillage.simulation")
@@ -89,7 +93,7 @@ final class SimulationModel: ObservableObject {
             / 1_073_741_824
     }
 
-    @Published var brightness: Float = 0.055 { didSet { renderer?.setBrightness(brightness) } }
+    @Published var brightness: Float = 0.15 { didSet { renderer?.setBrightness(brightness) } }
     @Published var exposure: Float = 1.0 { didSet { renderer?.setExposure(exposure) } }
     @Published var stretch: Float = 18 { didSet { renderer?.setStretch(stretch) } }
     @Published var saturation: Float = 1.8 { didSet { renderer?.setSaturation(saturation) } }
@@ -285,8 +289,13 @@ final class SimulationModel: ObservableObject {
             stretch: stretch,
             saturation: saturation)
         do {
+            if smoothing == nil || smoothing?.buffer.length != particleCount * 4 {
+                smoothing = try SmoothingField(device: device, particleCount: particleCount)
+            }
             renderer = try Renderer(
                 device: device, particles: seeded, settings: settings, externalPositions: bound)
+            renderer?.setSmoothing(smoothing?.buffer)
+            if let bound { smoothing?.update(from: bound) }
         } catch {
             failure = "\(error)"
             renderer = nil
@@ -319,6 +328,13 @@ final class SimulationModel: ObservableObject {
         guard let renderer, let solver else { return nil }
         solver.step(count: steps)
         elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
+        framesSinceSmoothing += 1
+        if framesSinceSmoothing >= 20, mode != .recording {
+            framesSinceSmoothing = 0
+            if let bound = mode == .playback ? playbackPositions : solver.positions {
+                smoothing?.update(from: bound)
+            }
+        }
         renderer.setDiskFrames(
             DiskFrame.make(
                 scene: scene, centers: solver.centers, time: solver.time,

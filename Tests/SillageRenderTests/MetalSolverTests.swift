@@ -61,7 +61,7 @@ struct MetalSolverTests {
     @Test func structLayoutsMatchTheShader() {
         #expect(MemoryLayout<GalaxyGPU>.stride == 48)
         #expect(MemoryLayout<IntegrateParams>.stride == 16)
-        #expect(MemoryLayout<SplatUniforms>.stride == 80)
+        #expect(MemoryLayout<SplatUniforms>.stride == 112)
         #expect(MemoryLayout<BloomParams>.stride == 16)
         #expect(MemoryLayout<CompositeParams>.stride == 16)
         #expect(MemoryLayout<SIMD3<Float>>.stride == 16)
