@@ -61,9 +61,8 @@ run starts, so the setup screen opens instantly.
 Spin matters more than it looks. Prograde coplanar passages raise the long symmetric tails;
 retrograde ones stay dull.
 
-Spiral arms are an initial pattern, not a self-sustaining density wave. Without self-gravity
-they wind up under differential rotation within a few hundred million years, which is the
-classic winding problem and is correct for this model. Arms that persist need level 2.
+Dust, star-forming knots and the stellar population gradient are set per galaxy: dust share,
+star-forming share, bulge extent, arm count, arm contrast and pitch.
 
 ## Offline rendering
 
@@ -75,18 +74,42 @@ Add `--frames N` for an image sequence to encode into video. Rendering offline b
 screen recording: any resolution, no capture compression, no dropped frames.
 
 Useful flags: `--preset merger|flyby|disk`, `--solver gpu|cpu`, `--seed`, `--radius`,
-`--elevation`, `--brightness`, `--stretch`, `--saturation`, `--bloom`, `--supersample`.
+`--elevation`, `--brightness`, `--stretch`, `--saturation`, `--bloom`, `--dust`, `--stars`,
+`--star-size`, `--arms`, `--supersample`.
 
 ## Rendering
 
-Particles are splatted additively into a supersampled `rgba16Float` target, a Kawase
-dual-filter bloom pyramid is built from it, and the sum goes through a logarithmic stretch
-before ACES tone mapping. The stretch is what astronomical imaging uses: the core of a
-galaxy is three orders of magnitude brighter than its tidal debris, and a filmic curve alone
-turns the cores into featureless discs.
+Particles are splatted into two additive targets: emitted light in `rgba16Float`, and the
+optical depth of intervening dust in `r16Float`. Resolving from the supersampled buffers
+applies extinction on the way down, more strongly in blue than in red, which is what makes a
+dust lane read brown rather than grey. A Kawase dual-filter bloom pyramid is built from the
+result, and the sum goes through a logarithmic stretch before ACES tone mapping. The stretch
+is what astronomical imaging uses: a galaxy core is three orders of magnitude brighter than
+its tidal debris, and a filmic curve alone flattens the cores into featureless discs.
 
-Brightness is expressed per million particles, so a scene looks the same at 500 000
-particles as at 20 million.
+There is no depth sorting, so the dust column includes grains behind the stars as well as in
+front. Roughly half lies in front, so the depth is halved and clamped; without the clamp an
+encounter that stacks both galaxies along the line of sight goes black.
+
+Every particle carries a stellar population, a luminosity and a component. Old K and G giants
+are warm, young O and B associations are blue, and HII regions glow pink in Halpha. Dust
+absorbs instead of emitting. Foreground field stars are drawn from a steep magnitude law with
+a tight core and diffraction spikes on the brightest.
+
+### Spiral arms as a density wave
+
+Arms baked into the initial conditions wind up within about one orbit, because a disk rotates
+differentially. Real arms are a density wave that turns at its own slower speed while stars
+pass through it, which is why a galaxy keeps two clean arms far longer than any material
+pattern could. The renderer evaluates that pattern at each particle's current position and
+modulates colour, brightness and extinction with it, so the arms stay sharp and star
+formation happens where the wave is now rather than where it once was.
+
+### Calibration
+
+Brightness and dust opacity are expressed per million particles and per unit sky area, so a
+scene looks the same at 500 000 particles as at 20 million, and the exposure does not have to
+be retuned every time the camera zooms.
 
 ## Units
 

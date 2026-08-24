@@ -54,7 +54,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         velocityDispersion: Float = 0.05,
         armCount: Int = 2,
         armStrength: Float = 0.82,
-        armPitch: Float = 0.36,
+        armPitch: Float = 0.46,
         dustFraction: Float = 0.26,
         starFormingFraction: Float = 0.005,
         bulgeExtent: Float = 0.35,

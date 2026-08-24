@@ -94,6 +94,10 @@ for frame in 0..<frames {
         frozenRadius = framingRadius(solver.particles.positions, percentile: percentile) / zoom
     }
 
+    renderer.setDiskFrames(
+        DiskFrame.make(
+            scene: scene, centers: solver.centers, time: solver.time,
+            strength: Float(number("arms", 1))))
     let camera = Camera.framing(radius: frozenRadius, elevation: elevation)
     let renderStart = Date()
     let pixels = renderer.render(camera: camera)

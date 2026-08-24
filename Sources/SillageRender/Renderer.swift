@@ -64,7 +64,7 @@ public struct RenderSettings: Sendable {
         exposure: Float = 1.0,
         brightness: Float = 0.055,
         dustStrength: Float = 0.055,
-        starCount: Int = 11000,
+        starCount: Int = 14000,
         starSize: Float = 1.15,
         bloomThreshold: Float = 0.55,
         bloomSoftKnee: Float = 0.6,
@@ -134,6 +134,9 @@ public final class Renderer {
     private let populationBuffer: MTLBuffer
     private let luminosityBuffer: MTLBuffer
     private let componentBuffer: MTLBuffer
+    private let galaxyBuffer: MTLBuffer
+    private var frameBuffer: MTLBuffer?
+    private var frameCount = 1
     private let starBuffer: MTLBuffer?
     private let particleCount: Int
 
@@ -145,6 +148,9 @@ public final class Renderer {
 
     /// `externalPositions` lets a GPU solver own the position buffer, so particle state
     /// never crosses the bus between the integrator and the rasteriser.
+    /// Strength multiplier on the density wave, 0 to disable it.
+    public var armPersistence: Float = 1
+
     public init(
         device: MTLDevice? = nil,
         particles: ParticleSystem,
@@ -264,10 +270,14 @@ public final class Renderer {
                 length: count * 4, options: .storageModeShared),
             let componentBuffer = device.makeBuffer(
                 bytes: particles.component.isEmpty ? [UInt32(0)] : particles.component,
+                length: count * 4, options: .storageModeShared),
+            let galaxyBuffer = device.makeBuffer(
+                bytes: particles.galaxyIndex.isEmpty ? [UInt32(0)] : particles.galaxyIndex,
                 length: count * 4, options: .storageModeShared)
         else {
             throw RenderError.textureAllocation
         }
+        self.galaxyBuffer = galaxyBuffer
         self.positionBuffer = positionBuffer
         self.populationBuffer = populationBuffer
         self.luminosityBuffer = luminosityBuffer
@@ -290,7 +300,7 @@ public final class Renderer {
 
         for _ in 0..<count {
             let direction = DiskSampler.randomDirection(&generator)
-            let magnitude = pow(generator.uniform(), 3.2)
+            let magnitude = pow(generator.uniform(), 4.6)
             let warmth = generator.uniform()
             let color =
                 warmth < 0.62
@@ -308,6 +318,20 @@ public final class Renderer {
         return device.makeBuffer(
             bytes: stars, length: stars.count * MemoryLayout<BackgroundStar>.stride,
             options: .storageModeShared)
+    }
+
+    /// Updates the spiral pattern for each galaxy. Called once per frame with the current
+    /// galaxy centres and elapsed time, so the arms turn as a density wave.
+    public func setDiskFrames(_ frames: [DiskFrame]) {
+        guard !frames.isEmpty else { return }
+        let length = frames.count * MemoryLayout<DiskFrame>.stride
+        if frameBuffer == nil || frameCount != frames.count {
+            frameBuffer = device.makeBuffer(length: length, options: .storageModeShared)
+            frameCount = frames.count
+        }
+        frames.withUnsafeBytes { source in
+            frameBuffer?.contents().copyMemory(from: source.baseAddress!, byteCount: source.count)
+        }
     }
 
     /// Unified memory means this is a plain memcpy into a buffer the GPU already sees.
@@ -371,6 +395,8 @@ public final class Renderer {
             encoder.setVertexBuffer(populationBuffer, offset: 0, index: 1)
             encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
             encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+            encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
+            encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
             encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: particleCount)
             encoder.endEncoding()
         }
