@@ -57,11 +57,22 @@ Built-in presets: `merger`, `flyby`, `isolatedDisk`.
 
 ## Building
 
-Requires Xcode (the Metal toolchain ships with it; Command Line Tools alone are not enough).
-
 ```
 swift build
 swift test
+```
+
+Shaders are compiled at runtime through `MTLDevice.makeLibrary(source:)`, so Xcode is not
+required to build or run the simulator. Xcode only adds the GPU frame debugger and the
+Metal shader profiler.
+
+Some Command Line Tools installs ship a PackageDescription whose interface and dylib
+disagree, which makes every manifest fail to compile. `scripts/dev.sh` builds and runs the
+same test suite through `swiftc` directly if you hit that:
+
+```
+./scripts/dev.sh test
+./scripts/dev.sh lint
 ```
 
 ## Layout
