@@ -11,6 +11,7 @@ public enum Spin: String, Codable, Sendable, CaseIterable {
 public struct GalaxyConfig: Codable, Sendable, Equatable {
     public var name: String
     public var particleCount: Int
+    public var kind: GalaxyKind
     public var potential: GalaxyPotential
 
     /// Exponential surface density scale length, in kpc.
@@ -21,6 +22,12 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public var diskThickness: Float
     /// Random velocity added to the circular orbit, as a fraction of the local circular speed.
     public var velocityDispersion: Float
+    /// Number of spiral arms, used only by `.spiral`.
+    public var armCount: Int
+    /// Arm contrast, from 0 for none to 1 for arms on a near-empty disk.
+    public var armStrength: Float
+    /// Pitch angle of the arms in radians. Small values give tightly wound spirals.
+    public var armPitch: Float
 
     public var position: SIMD3<Float>
     public var velocity: SIMD3<Float>
@@ -33,11 +40,15 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public init(
         name: String,
         particleCount: Int,
+        kind: GalaxyKind = .spiral,
         potential: GalaxyPotential,
         diskScaleLength: Float,
         diskTruncation: Float = 4,
         diskThickness: Float = 0.3,
         velocityDispersion: Float = 0.05,
+        armCount: Int = 2,
+        armStrength: Float = 0.65,
+        armPitch: Float = 0.26,
         position: SIMD3<Float> = .zero,
         velocity: SIMD3<Float> = .zero,
         inclination: Float = 0,
@@ -46,11 +57,15 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     ) {
         self.name = name
         self.particleCount = particleCount
+        self.kind = kind
         self.potential = potential
         self.diskScaleLength = diskScaleLength
         self.diskTruncation = diskTruncation
         self.diskThickness = diskThickness
         self.velocityDispersion = velocityDispersion
+        self.armCount = armCount
+        self.armStrength = armStrength
+        self.armPitch = armPitch
         self.position = position
         self.velocity = velocity
         self.inclination = inclination

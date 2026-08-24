@@ -66,6 +66,70 @@ struct SamplingTests {
         #expect(abs(simd_determinant(rotation) - 1) < 1e-5)
     }
 
+    /// Amplitude of the m-fold azimuthal Fourier mode, in the disk plane.
+    private func armAmplitude(_ kind: GalaxyKind, arms: Int) -> Float {
+        let config = GalaxyConfig(
+            name: "arms",
+            particleCount: 40_000,
+            kind: kind,
+            potential: GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5),
+            diskScaleLength: 4,
+            armCount: arms
+        )
+        var system = ParticleSystem()
+        var generator = SeededGenerator(seed: 21)
+        DiskSampler.sample(config, galaxyIndex: 0, into: &system, using: &generator)
+
+        let wind = 1 / tan(config.armPitch)
+        var real: Float = 0
+        var imaginary: Float = 0
+        for position in system.positions {
+            let radius = sqrt(position.x * position.x + position.y * position.y)
+            let phase =
+                Float(arms)
+                * (atan2(position.y, position.x)
+                    - wind * log(max(radius, 1e-3) / config.diskScaleLength))
+            real += cos(phase)
+            imaginary += sin(phase)
+        }
+        return sqrt(real * real + imaginary * imaginary) / Float(system.count)
+    }
+
+    @Test func spiralArmsModulateDensityAndDiskDoesNot() {
+        #expect(armAmplitude(.spiral, arms: 2) > 0.2)
+        #expect(armAmplitude(.disk, arms: 2) < 0.02)
+    }
+
+    @Test func globularIsSphericalAndNotRotating() {
+        let config = GalaxyConfig(
+            name: "globular",
+            particleCount: 30_000,
+            kind: .globular,
+            potential: GalaxyPotential(profile: .plummer, mass: 40, scaleRadius: 4),
+            diskScaleLength: 4,
+            diskTruncation: 5
+        )
+        var system = ParticleSystem()
+        var generator = SeededGenerator(seed: 5)
+        DiskSampler.sample(config, galaxyIndex: 0, into: &system, using: &generator)
+
+        var extent = SIMD3<Float>.zero
+        var angularMomentum = SIMD3<Float>.zero
+        var speed: Float = 0
+        for index in 0..<system.count {
+            let p = system.positions[index]
+            extent += SIMD3<Float>(abs(p.x), abs(p.y), abs(p.z))
+            angularMomentum += simd_cross(p, system.velocities[index])
+            speed += simd_length(system.velocities[index])
+        }
+        extent /= Float(system.count)
+        // No axis is preferred, and the net spin is negligible next to the random motion.
+        #expect(abs(extent.x - extent.z) / extent.x < 0.06)
+        #expect(abs(extent.y - extent.z) / extent.y < 0.06)
+        #expect(
+            simd_length(angularMomentum) / Float(system.count) < 0.1 * speed / Float(system.count) * extent.x)
+    }
+
     @Test func spinFlipsAngularMomentum() {
         func angularMomentum(_ spin: Spin) -> Float {
             let config = GalaxyConfig(
