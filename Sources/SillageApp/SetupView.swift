@@ -87,6 +87,16 @@ struct SetupContent: View {
 
     private var total: Int { max(model.draft.totalParticleCount, 100_000) }
 
+    /// Switching model also switches the time step: self-gravity is far stiffer.
+    private var solverBinding: Binding<SolverKind> {
+        Binding(
+            get: { model.draft.solver },
+            set: { kind in
+                model.draft.solver = kind
+                model.draft.timeStep = kind == .barnesHut ? 0.006 : 0.02
+            })
+    }
+
     private var presets: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Partir d'un préréglage").font(.headline)
@@ -102,6 +112,29 @@ struct SetupContent: View {
     private var global: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Simulation").font(.headline)
+
+            Picker("Modèle de gravité", selection: solverBinding) {
+                Text("Particules-tests").tag(SolverKind.restricted)
+                Text("Auto-gravitant").tag(SolverKind.barnesHut)
+            }
+            .pickerStyle(.segmented)
+            Text(
+                model.draft.solver == .barnesHut
+                    ? "Barnes-Hut : les particules s'attirent entre elles. Cent fois plus lent, et le halo reste analytique, donc pas de friction dynamique."
+                    : "Particules-tests dans des potentiels analytiques rigides. Rapide, et suffisant pour les queues de marée."
+            )
+            .font(.caption)
+            .foregroundStyle(Palette.secondary)
+
+            if model.draft.solver == .barnesHut {
+                ParameterSlider(
+                    title: "Angle d'ouverture", value: $model.draft.openingAngle,
+                    range: 0.2...1.0)
+                ParameterSlider(
+                    title: "Adoucissement (kpc)", value: $model.draft.softening,
+                    range: 0.02...0.6, format: "%.3f")
+            }
+
             HStack {
                 Text("Graine aléatoire").font(.caption)
                 Spacer()
@@ -190,6 +223,15 @@ struct GalaxyCard: View {
                         }
                         .pickerStyle(.segmented)
                     }
+                }
+
+                if model.draft.solver == .barnesHut {
+                    ParameterSlider(
+                        title: "Part de masse du disque", value: galaxy.diskMassFraction,
+                        range: 0.05...1.0)
+                    ParameterSlider(
+                        title: "Toomre Q (sous 1 le disque fragmente)", value: galaxy.toomreQ,
+                        range: 0.3...3.0)
                 }
 
                 if model.draft.galaxies[index].kind == .spiral {

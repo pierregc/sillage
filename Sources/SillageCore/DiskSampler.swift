@@ -143,17 +143,24 @@ public enum DiskSampler {
         }
     }
 
+    /// `selfGravitating` switches the velocity structure from near-circular tracer orbits to
+    /// a Toomre-stable disk and gives every particle a mass.
     public static func sample(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
+        selfGravitating: Bool = false,
         into system: inout ParticleSystem,
         using generator: inout SeededGenerator
     ) {
         switch config.kind {
         case .spiral, .disk:
-            sampleDisk(config, galaxyIndex: galaxyIndex, into: &system, using: &generator)
+            sampleDisk(
+                config, galaxyIndex: galaxyIndex, selfGravitating: selfGravitating,
+                into: &system, using: &generator)
         case .globular:
-            sampleSpheroid(config, galaxyIndex: galaxyIndex, into: &system, using: &generator)
+            sampleSpheroid(
+                config, galaxyIndex: galaxyIndex, selfGravitating: selfGravitating,
+                into: &system, using: &generator)
         }
     }
 
@@ -224,9 +231,15 @@ public enum DiskSampler {
     private static func sampleDisk(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
+        selfGravitating: Bool,
         into system: inout ParticleSystem,
         using generator: inout SeededGenerator
     ) {
+        let equilibrium = DiskEquilibrium(config: config)
+        let particleMass =
+            selfGravitating
+            ? config.potential.mass * config.diskMassFraction / Float(max(config.particleCount, 1))
+            : 0
         let rotation = config.orientation
         let spin = config.spin.sign
         let arms = config.kind == .spiral ? max(config.armCount, 0) : 0
@@ -304,10 +317,27 @@ public enum DiskSampler {
             let height = thickness * inverseSech2CDF(generator.uniform())
             let local = SIMD3<Float>(radius * cos(phi), radius * sin(phi), height)
 
-            let speed = config.potential.circularSpeed(atRadius: radius)
-            let tangential = SIMD3<Float>(-sin(phi), cos(phi), 0) * (speed * spin)
-            let jitter = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
-            let localVelocity = tangential + jitter * (speed * config.velocityDispersion)
+            let outward = SIMD3<Float>(cos(phi), sin(phi), 0)
+            let along = SIMD3<Float>(-sin(phi), cos(phi), 0)
+            let localVelocity: SIMD3<Float>
+            if selfGravitating {
+                // Anisotropic by construction: the epicyclic ratio fixes how the radial and
+                // azimuthal dispersions relate, and the streaming speed lags the circular
+                // speed by the asymmetric drift.
+                let streaming = equilibrium.streamingSpeed(atRadius: radius)
+                localVelocity =
+                    outward * (generator.normal() * equilibrium.radialDispersion(atRadius: radius))
+                    + along
+                    * (streaming * spin
+                        + generator.normal() * equilibrium.azimuthalDispersion(atRadius: radius))
+                    + SIMD3<Float>(0, 0, 1)
+                    * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius))
+            } else {
+                let speed = config.potential.circularSpeed(atRadius: radius)
+                let jitter = SIMD3<Float>(
+                    generator.normal(), generator.normal(), generator.normal())
+                localVelocity = along * (speed * spin) + jitter * (speed * config.velocityDispersion)
+            }
 
             let diskAge = 0.30 + 0.68 * proximity
             let bulgeWeight = 1 - smoothstep(bulgeRadius * 0.4, bulgeRadius * 1.8, radius)
@@ -337,7 +367,8 @@ public enum DiskSampler {
                 radius: radius,
                 population: population,
                 luminosity: brightness,
-                component: component
+                component: component,
+                mass: particleMass
             )
         }
     }
@@ -345,9 +376,14 @@ public enum DiskSampler {
     private static func sampleSpheroid(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
+        selfGravitating: Bool,
         into system: inout ParticleSystem,
         using generator: inout SeededGenerator
     ) {
+        let particleMass =
+            selfGravitating
+            ? config.potential.mass * config.diskMassFraction / Float(max(config.particleCount, 1))
+            : 0
         let potential = config.potential
         let edge = config.diskScaleLength * config.diskTruncation
         let limit = min(enclosedFraction(potential, radius: edge), 0.999)
@@ -370,7 +406,8 @@ public enum DiskSampler {
                 radius: radius,
                 population: 0.04,
                 luminosity: 0.8 + 0.5 * generator.uniform(),
-                component: .star
+                component: .star,
+                mass: particleMass
             )
         }
     }

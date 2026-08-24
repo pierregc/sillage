@@ -163,3 +163,25 @@ public final class MetalSolver: Solver {
     public func centerEnergy() -> Double { galaxyCenters.energy() }
     public func centerMomentum() -> SIMD3<Double> { galaxyCenters.momentum() }
 }
+
+/// A solver whose particle state already lives in a Metal buffer, so the renderer can bind it
+/// directly instead of uploading a copy every frame.
+public protocol GPUSolver: Solver {
+    var positions: MTLBuffer { get }
+}
+
+extension MetalSolver: GPUSolver {}
+extension MetalBarnesHutSolver: GPUSolver {}
+
+public enum GPUSolverFactory {
+    public static func make(
+        device: MTLDevice? = nil, scene: SceneConfig, particles: ParticleSystem
+    ) throws -> any GPUSolver {
+        switch scene.solver {
+        case .restricted:
+            return try MetalSolver(device: device, scene: scene, particles: particles)
+        case .barnesHut:
+            return try MetalBarnesHutSolver(device: device, scene: scene, particles: particles)
+        }
+    }
+}

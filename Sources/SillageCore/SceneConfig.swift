@@ -13,7 +13,10 @@ public enum SolverKind: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    public var isImplemented: Bool { self == .restricted }
+    public var isImplemented: Bool { true }
+
+    /// Level 2 needs disks in Toomre equilibrium and a much smaller time step.
+    public var isSelfGravitating: Bool { self == .barnesHut }
 }
 
 public struct SceneConfig: Codable, Sendable, Equatable {
@@ -24,6 +27,12 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     public var timeStep: Float
     /// Softening applied to the galaxy-galaxy pair force, in kpc.
     public var centerSoftening: Float
+    /// Barnes-Hut opening angle. Smaller is more accurate and slower.
+    public var openingAngle: Float
+    /// Force softening between particles, in kpc. It should sit near the mean interparticle
+    /// separation: too small and two-body encounters heat the disk, too large and structure
+    /// is washed out.
+    public var softening: Float
 
     public init(
         name: String,
@@ -31,7 +40,9 @@ public struct SceneConfig: Codable, Sendable, Equatable {
         solver: SolverKind = .restricted,
         seed: UInt64 = 1,
         timeStep: Float = 0.01,
-        centerSoftening: Float = 0.5
+        centerSoftening: Float = 0.5,
+        openingAngle: Float = 0.6,
+        softening: Float = 0.09
     ) {
         self.name = name
         self.galaxies = galaxies
@@ -39,6 +50,8 @@ public struct SceneConfig: Codable, Sendable, Equatable {
         self.seed = seed
         self.timeStep = timeStep
         self.centerSoftening = centerSoftening
+        self.openingAngle = openingAngle
+        self.softening = softening
     }
 
     public var totalParticleCount: Int {
