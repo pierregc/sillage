@@ -5,7 +5,6 @@ import simd
 
 struct SplatUniforms {
     var viewProjection: simd_float4x4
-    var pointSize: Float
     var brightness: Float
     var dustStrength: Float
     var starSize: Float
@@ -29,7 +28,6 @@ struct BloomParams {
 }
 
 struct CompositeParams {
-    var exposure: Float
     var bloomIntensity: Float
     var stretch: Float
     var saturation: Float
@@ -37,6 +35,7 @@ struct CompositeParams {
     var skyLevel: Float
     var noiseLevel: Float
     var seed: Float
+    var pad: Float = 0
 }
 
 struct SpikeParams {
@@ -55,8 +54,6 @@ public struct RenderSettings: Sendable {
     public var height: Int
     /// Renders at this multiple of the output resolution, then box-filters down.
     public var supersample: Int
-    public var pointSize: Float
-    public var exposure: Float
     /// Emission per particle, expressed per million particles. Normalising by count keeps a
     /// scene looking the same whether it runs at 500 000 particles or at 20 million.
     public var brightness: Float
@@ -90,8 +87,6 @@ public struct RenderSettings: Sendable {
         width: Int = 1920,
         height: Int = 1080,
         supersample: Int = 2,
-        pointSize: Float = 1.7,
-        exposure: Float = 1.0,
         brightness: Float = 0.15,
         dustStrength: Float = 0.055,
         starCount: Int = 14000,
@@ -100,7 +95,7 @@ public struct RenderSettings: Sendable {
         maximumKernel: Float = 64,
         bloomThreshold: Float = 0.55,
         bloomSoftKnee: Float = 0.6,
-        bloomIntensity: Float = 0.45,
+        bloomIntensity: Float = 0.22,
         bloomLevels: Int = 6,
         stretch: Float = 18,
         saturation: Float = 1.8,
@@ -113,8 +108,6 @@ public struct RenderSettings: Sendable {
         self.width = width
         self.height = height
         self.supersample = max(1, min(supersample, 4))
-        self.pointSize = pointSize
-        self.exposure = exposure
         self.brightness = brightness
         self.dustStrength = dustStrength
         self.starCount = starCount
@@ -398,10 +391,8 @@ public final class Renderer {
         }
     }
 
-    public func setExposure(_ exposure: Float) { settings.exposure = exposure }
     public func setBrightness(_ brightness: Float) { settings.brightness = brightness }
     public func setBloomIntensity(_ intensity: Float) { settings.bloomIntensity = intensity }
-    public func setPointSize(_ size: Float) { settings.pointSize = size }
     public func setDustStrength(_ strength: Float) { settings.dustStrength = strength }
     public func setStretch(_ stretch: Float) { settings.stretch = stretch }
     public func setSaturation(_ saturation: Float) { settings.saturation = saturation }
@@ -424,7 +415,6 @@ public final class Renderer {
 
         var splat = SplatUniforms(
             viewProjection: camera.viewProjection(aspectRatio: aspect),
-            pointSize: settings.pointSize * Float(scale),
             brightness: settings.brightness * perParticle,
             dustStrength: settings.dustStrength * perParticle,
             starSize: settings.starSize * Float(scale),
@@ -521,7 +511,6 @@ public final class Renderer {
 
         frameSeed = frameSeed.truncatingRemainder(dividingBy: 4096) + 7.13
         var composite = CompositeParams(
-            exposure: settings.exposure,
             bloomIntensity: bloomResult == nil ? 0 : settings.bloomIntensity,
             stretch: settings.stretch,
             saturation: settings.saturation,

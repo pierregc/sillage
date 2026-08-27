@@ -37,7 +37,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     public init(
         name: String,
         galaxies: [GalaxyConfig],
-        solver: SolverKind = .restricted,
+        solver: SolverKind = .barnesHut,
         seed: UInt64 = 1,
         timeStep: Float = 0.01,
         centerSoftening: Float = 0.5,
@@ -64,6 +64,37 @@ public struct SceneConfig: Codable, Sendable, Equatable {
         solver.isSelfGravitating
             ? galaxies.reduce(0) { $0 + $1.particleCount + $1.haloParticleCount }
             : totalParticleCount
+    }
+
+    /// Softening scaled to the mean interparticle spacing of the densest disk. Too small and
+    /// two-body encounters heat the disk artificially; too large and real structure is washed
+    /// out. Derived rather than exposed, because nobody can guess it.
+    public var recommendedSoftening: Float {
+        var best: Float = 0.03
+        for galaxy in galaxies where galaxy.particleCount > 0 {
+            let edge = max(galaxy.diskScaleLength * galaxy.diskTruncation, 0.1)
+            let spacing = (Float.pi * edge * edge / Float(galaxy.particleCount)).squareRoot()
+            best = max(best, spacing * 1.5)
+        }
+        return min(best, 1)
+    }
+
+    /// Short enough that a particle crosses well under one softening length per step.
+    public var recommendedTimeStep: Float {
+        guard solver.isSelfGravitating else { return 0.02 }
+        var speed: Float = 1
+        for galaxy in galaxies {
+            speed = max(
+                speed, galaxy.potential.circularSpeed(atRadius: galaxy.diskScaleLength))
+        }
+        // Bracketed by the range self-gravitating runs have actually been stable over.
+        return min(max(0.15 * recommendedSoftening / speed, 0.001), 0.012)
+    }
+
+    /// Applies both, called whenever the solver or the particle counts change.
+    public mutating func retune() {
+        softening = recommendedSoftening
+        timeStep = recommendedTimeStep
     }
 
     public var hasLiveHalos: Bool {

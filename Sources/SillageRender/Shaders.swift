@@ -10,7 +10,6 @@ enum Shaders {
 
         struct SplatUniforms {
             float4x4 viewProjection;
-            float pointSize;
             float brightness;
             float dustStrength;
             float starSize;
@@ -29,7 +28,6 @@ enum Shaders {
         };
 
         struct CompositeParams {
-            float exposure;
             float bloomIntensity;
             float stretch;
             float saturation;
@@ -37,6 +35,7 @@ enum Shaders {
             float skyLevel;
             float noiseLevel;
             float seed;
+            float _pad;
         };
 
         struct SpikeParams {
@@ -367,7 +366,6 @@ enum Shaders {
                 energy += p.noiseLevel * (read + shot * sqrt(luma) * 4.0);
                 energy = max(energy, 0.0);
             }
-            energy *= p.exposure;
             // Logarithmic stretch, as astronomical imaging does: it keeps faint tidal debris
             // visible without turning the cores into featureless discs.
             float3 lifted = p.stretch > 0.0

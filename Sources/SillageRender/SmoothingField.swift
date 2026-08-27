@@ -26,7 +26,7 @@ public final class SmoothingField {
     private let count: Int
 
     /// Neighbour count the kernel should span. Larger is smoother and blurrier.
-    public var neighbours: Float = 24
+    public var neighbours: Float = 28
     /// Multiplier on the derived length, exposed so the look can be tuned.
     public var scale: Float = 1.0
 
