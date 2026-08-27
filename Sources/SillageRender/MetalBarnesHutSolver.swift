@@ -59,6 +59,8 @@ public final class MetalBarnesHutSolver: Solver {
     private let template: ParticleSystem
     private let count: Int
     private let galaxyOf: [UInt32]
+    private let componentOf: [UInt32]
+    private let liveHalos: Bool
     private var haloCenters: [SIMD3<Float>]
 
     public var positions: MTLBuffer { positionBuffer }
@@ -89,6 +91,8 @@ public final class MetalBarnesHutSolver: Solver {
         self.openingAngle = scene.openingAngle
         self.softening = scene.softening
         self.galaxyOf = particles.galaxyIndex
+        self.componentOf = particles.component
+        self.liveHalos = scene.hasLiveHalos
         self.haloCenters = scene.galaxies.map(\.position)
 
         var stripped = particles
@@ -165,7 +169,10 @@ public final class MetalBarnesHutSolver: Solver {
     private var params: BHParams {
         BHParams(
             particleCount: UInt32(count),
-            haloCount: UInt32(scene.galaxies.count),
+            // With a live halo the dark matter is already in the tree; adding the analytic
+            // potential on top would double its mass, and a rigid potential that follows the
+            // disk does work on the system, which is why the old one leaked energy.
+            haloCount: liveHalos ? 0 : UInt32(scene.galaxies.count),
             timeStep: scene.timeStep,
             openingAngleSquared: openingAngle * openingAngle,
             softeningSquared: softening * softening,
@@ -247,9 +254,16 @@ public final class MetalBarnesHutSolver: Solver {
     private func updateHaloCenters(positions: [SIMD3<Float>], mass: [Float]) {
         var weighted = [SIMD3<Float>](repeating: .zero, count: scene.galaxies.count)
         var totals = [Float](repeating: 0, count: scene.galaxies.count)
+        // Halo particles outnumber the disk, so including them would put the centre at the
+        // halo's centroid rather than at the visible galaxy's.
         for index in 0..<min(count, galaxyOf.count) {
             let galaxy = Int(galaxyOf[index])
             guard galaxy < totals.count else { continue }
+            if index < componentOf.count,
+                componentOf[index] == ParticleComponent.halo.rawValue
+            {
+                continue
+            }
             let m = max(mass[index], 1e-20)
             weighted[galaxy] += positions[index] * m
             totals[galaxy] += m
@@ -286,6 +300,17 @@ public final class MetalBarnesHutSolver: Solver {
             encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
         }
         lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
+    }
+
+    /// Total momentum. With live halos nothing external acts on the system, so this must be
+    /// constant; a rigid halo that follows the disk makes it drift.
+    public func momentum() -> SIMD3<Float> {
+        let velocities = velocityBuffer.contents().bindMemory(
+            to: SIMD3<Float>.self, capacity: count)
+        let masses = massBuffer.contents().bindMemory(to: Float.self, capacity: count)
+        var total = SIMD3<Float>.zero
+        for index in 0..<count { total += velocities[index] * masses[index] }
+        return total
     }
 
     /// Accelerations as computed by the GPU, for validation against direct summation.

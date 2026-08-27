@@ -162,6 +162,48 @@ public enum DiskSampler {
                 config, galaxyIndex: galaxyIndex, selfGravitating: selfGravitating,
                 into: &system, using: &generator)
         }
+        if selfGravitating {
+            sampleHalo(config, galaxyIndex: galaxyIndex, into: &system, using: &generator)
+        }
+    }
+
+    /// Dark matter, drawn from the potential's own density and its isotropic distribution
+    /// function. These particles are never drawn, but without them the halo carries mass and
+    /// no inertia: it raises no wake behind an infalling companion, so there is no dynamical
+    /// friction and nothing ever merges.
+    private static func sampleHalo(
+        _ config: GalaxyConfig,
+        galaxyIndex: UInt32,
+        into system: inout ParticleSystem,
+        using generator: inout SeededGenerator
+    ) {
+        let count = config.haloParticleCount
+        guard count > 0 else { return }
+        let potential = config.potential
+        let edge = max(config.haloExtent, 1) * potential.scaleRadius
+        let limit = min(enclosedFraction(potential, radius: edge), 0.999)
+        let particleMass =
+            potential.mass * (1 - config.diskMassFraction) / Float(count)
+
+        for _ in 0..<count {
+            let u = generator.uniform() * limit
+            let radius =
+                potential.profile == .plummer
+                ? inversePlummerRadius(u, scale: potential.scaleRadius)
+                : inverseHernquistRadius(u, scale: potential.scaleRadius)
+            let speed = speedSample(potential, radius: radius, edge: edge, using: &generator)
+
+            system.append(
+                position: randomDirection(&generator) * radius + config.position,
+                velocity: randomDirection(&generator) * speed + config.velocity,
+                galaxy: galaxyIndex,
+                radius: radius,
+                population: 0,
+                luminosity: 0,
+                component: .halo,
+                mass: particleMass
+            )
+        }
     }
 
     public static func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
@@ -356,7 +398,7 @@ public enum DiskSampler {
             case .dust:
                 population = 0
                 brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.02)
-            case .star:
+            case .star, .halo:
                 break
             }
 

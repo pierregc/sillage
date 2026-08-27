@@ -37,6 +37,8 @@ if backend == "barnes-hut" {
     scene.solver = .barnesHut
     // Self-gravity needs a far smaller step than tracers in a rigid potential.
     scene.timeStep = 0.006
+    let ratio = Float(number("halo", 1.5))
+    for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = ratio }
 }
 if let dt = argument("dt").flatMap(Float.init) { scene.timeStep = dt }
 scene.openingAngle = Float(number("theta", 0.6))
@@ -64,7 +66,10 @@ let settings = RenderSettings(
     skyLevel: Float(number("sky", 0.0018)),
     noiseLevel: Float(number("noise", 0.0016)))
 
-print("scene      \(scene.name), \(scene.totalParticleCount) particles")
+print(
+    "scene      \(scene.name), \(scene.totalParticleCount) visible"
+        + (scene.hasLiveHalos
+            ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
 
 let seeded = RestrictedSolver.sampleParticles(for: scene)
 let gpuSolver: (any GPUSolver)? =

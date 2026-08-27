@@ -120,7 +120,7 @@ struct SetupContent: View {
             .pickerStyle(.segmented)
             Text(
                 model.draft.solver == .barnesHut
-                    ? "Barnes-Hut : les particules s'attirent entre elles. Cent fois plus lent, et le halo reste analytique, donc pas de friction dynamique."
+                    ? "Barnes-Hut : les particules s'attirent entre elles, halo compris. C'est la friction dynamique contre le halo qui fait fusionner les galaxies. Cent fois plus lent, et les particules de halo ne s'affichent pas."
                     : "Particules-tests dans des potentiels analytiques rigides. Rapide, et suffisant pour les queues de marée."
             )
             .font(.caption)
@@ -226,6 +226,9 @@ struct GalaxyCard: View {
                 }
 
                 if model.draft.solver == .barnesHut {
+                    ParameterSlider(
+                        title: "Particules de halo par étoile", value: galaxy.haloParticleRatio,
+                        range: 0...4)
                     ParameterSlider(
                         title: "Part de masse du disque", value: galaxy.diskMassFraction,
                         range: 0.05...1.0)

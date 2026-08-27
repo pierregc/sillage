@@ -41,10 +41,19 @@ chosen, and the mean rotation lags the circular speed by the asymmetric drift. M
 roughly one orbit on an isolated disk carrying 60% of the mass, Q = 0.4 thickens it by a
 factor 1.6 while Q = 1.4 holds it to 1.24.
 
-**A rigid halo.** The dark halo stays an analytic potential riding on its own galaxy's centre
-of mass. It carries most of the mass but none of the inertia, so there is no dynamical
-friction against it and two galaxies keep orbiting instead of settling into a merger. Live
-halos would fix that at the cost of five to ten times more particles, none of them visible.
+**A live halo.** The dark halo is particles too, drawn from the potential's own density and
+its isotropic distribution function. `haloParticleRatio` sets how many per disk particle;
+setting it to zero falls back to the old analytic potential.
+
+That matters twice over. An infalling companion raises a wake in a live halo and the wake
+pulls back on it, which is dynamical friction and is the only reason galaxies merge rather
+than orbit forever. And a rigid potential that follows its galaxy's centre of mass does work
+on the system: it was not merely an approximation, it leaked momentum. Over the same run the
+total momentum drifts by 1.78 with a rigid halo and by 0.043 with a live one.
+
+Halo particles are never drawn. The vertex shader pushes them outside the clip volume so they
+cost no fragment work, but they are integrated like everything else, which is what they cost:
+a ratio of 1.5 means two and a half times the particles for the same visible galaxy.
 
 The disks then grow their own bars and spiral arms, so the render-time density wave is
 switched off in this mode: the structure is real rather than painted.
