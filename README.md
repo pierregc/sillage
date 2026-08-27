@@ -51,6 +51,17 @@ than orbit forever. And a rigid potential that follows its galaxy's centre of ma
 on the system: it was not merely an approximation, it leaked momentum. Over the same run the
 total momentum drifts by 1.78 with a rigid halo and by 0.043 with a live one.
 
+Measured on the same encounter, tracking the separation between the two centres:
+
+| | First pericentre | Following apocentre | After 340 Myr |
+|---|---|---|---|
+| Rigid halo | 13.2 kpc | 52.9 kpc | still orbiting at 50 kpc |
+| Live halo | 13.7 kpc | 25.2 kpc | 10 kpc and staying there |
+
+The rigid case recovers its entire initial apocentre, which is the point: nothing takes energy
+out of the orbit. The live case halves it on the first passage and the pair settles into a
+merger.
+
 Halo particles are never drawn. The vertex shader pushes them outside the clip volume so they
 cost no fragment work, but they are integrated like everything else, which is what they cost:
 a ratio of 1.5 means two and a half times the particles for the same visible galaxy.
