@@ -33,16 +33,23 @@ default:
     exit(2)
 }
 if let seed = argument("seed").flatMap(UInt64.init) { scene.seed = seed }
-if backend == "barnes-hut" {
+// The presets are self-gravitating by default, so the flag has to set the solver both ways.
+switch backend {
+case "barnes-hut":
     scene.solver = .barnesHut
-    // Self-gravity needs a far smaller step than tracers in a rigid potential.
-    scene.timeStep = 0.006
     let ratio = Float(number("halo", 1.5))
     for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = ratio }
+case "restricted", "cpu":
+    scene.solver = .restricted
+default:
+    FileHandle.standardError.write(Data("unknown solver: \(backend)\n".utf8))
+    exit(2)
 }
+// Softening and step follow from the counts and the solver unless overridden below.
+scene.retune()
 if let dt = argument("dt").flatMap(Float.init) { scene.timeStep = dt }
 scene.openingAngle = Float(number("theta", 0.6))
-scene.softening = Float(number("softening", 0.12))
+if let value = argument("softening").flatMap(Float.init) { scene.softening = value }
 
 let settings = RenderSettings(
     width: width,
