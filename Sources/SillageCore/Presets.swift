@@ -39,7 +39,7 @@ extension SceneConfig {
                     spin: .prograde
                 ),
             ],
-            solver: .restricted,
+            solver: .barnesHut,
             seed: seed,
             timeStep: 0.02
         )
@@ -76,7 +76,7 @@ extension SceneConfig {
                     spin: .retrograde
                 ),
             ],
-            solver: .restricted,
+            solver: .barnesHut,
             seed: seed,
             timeStep: 0.02
         )
@@ -95,11 +95,18 @@ extension SceneConfig {
                     velocityDispersion: 0
                 )
             ],
-            solver: .restricted,
+            solver: .barnesHut,
             seed: seed,
             timeStep: 0.02
         )
     }
 
     public static let all: [SceneConfig] = [merger(), flyby(), isolatedDisk()]
+
+    /// Presets return themselves already tuned for their solver.
+    static func tuned(_ scene: SceneConfig) -> SceneConfig {
+        var copy = scene
+        copy.retune()
+        return copy
+    }
 }

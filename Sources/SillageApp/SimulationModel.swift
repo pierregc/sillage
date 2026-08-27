@@ -79,6 +79,20 @@ final class SimulationModel: ObservableObject {
     /// Smoothing lengths track density, which changes slowly, so they are refreshed every so
     /// many frames rather than every one: rebuilding the tree costs tens of milliseconds.
     private var framesSinceSmoothing = 0
+
+    // The setup screen renders the draft scene as it stands, without ever stepping it, so the
+    // effect of a parameter can be seen while it is being set rather than after a run.
+    @Published private(set) var previewParticleCount = 0
+    @Published var previewCamera = OrbitCamera()
+    private var previewRenderer: Renderer?
+    private var previewSmoothing: SmoothingField?
+    private var previewPositions: MTLBuffer?
+    private var previewSize = CGSize(width: 900, height: 900)
+    private weak var previewCanvas: MTKView?
+
+    /// Particles the preview draws. Enough to judge a shape, few enough to resample on the
+    /// release of a slider.
+    static let previewBudget = 350_000
     private var playbackPositions: MTLBuffer?
     private let cancelRecording = CancellationFlag()
     private let simulationQueue = DispatchQueue(label: "dev.pierregc.sillage.simulation")
@@ -94,11 +108,9 @@ final class SimulationModel: ObservableObject {
     }
 
     @Published var brightness: Float = 0.15 { didSet { renderer?.setBrightness(brightness) } }
-    @Published var exposure: Float = 1.0 { didSet { renderer?.setExposure(exposure) } }
     @Published var stretch: Float = 18 { didSet { renderer?.setStretch(stretch) } }
     @Published var saturation: Float = 1.8 { didSet { renderer?.setSaturation(saturation) } }
-    @Published var bloom: Float = 0.45 { didSet { renderer?.setBloomIntensity(bloom) } }
-    @Published var pointSize: Float = 1.7 { didSet { renderer?.setPointSize(pointSize) } }
+    @Published var bloom: Float = 0.22 { didSet { renderer?.setBloomIntensity(bloom) } }
     @Published var dustStrength: Float = 0.16 { didSet { renderer?.setDustStrength(dustStrength) } }
     @Published var spikeIntensity: Float = 0.38 {
         didSet { renderer?.setSpikeIntensity(spikeIntensity) }
@@ -122,7 +134,10 @@ final class SimulationModel: ObservableObject {
     init?() {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
         self.device = device
-        let start = SceneConfig.merger(particleCount: 3_000_000)
+        // Self-gravity is the default now, and a live halo multiplies the simulated count,
+        // so the starting scene is sized for it rather than for the tracer solver.
+        var start = SceneConfig.merger(particleCount: 400_000)
+        start.retune()
         self.scene = start
         self.draft = start
     }
@@ -134,6 +149,76 @@ final class SimulationModel: ObservableObject {
         restart()
         frameCamera()
         stage = .running
+    }
+
+    func attachPreview(canvas view: MTKView) { previewCanvas = view }
+
+    func resizePreview(to size: CGSize) {
+        guard size.width > 1, size.height > 1 else { return }
+        guard
+            Int(size.width) != Int(previewSize.width)
+                || Int(size.height) != Int(previewSize.height)
+        else { return }
+        previewSize = size
+        rebuildPreview()
+    }
+
+    /// Resamples the draft and reframes. Called when a control is released, never mid-drag.
+    func rebuildPreview() {
+        var scene = draft
+        // Sampled as tracers: the preview never integrates, so it needs no masses and no halo
+        // particles, which would only slow the resample down.
+        scene.solver = .restricted
+        let total = max(scene.totalParticleCount, 1)
+        if total > Self.previewBudget {
+            let ratio = Double(Self.previewBudget) / Double(total)
+            for index in scene.galaxies.indices {
+                scene.galaxies[index].particleCount = max(
+                    Int(Double(scene.galaxies[index].particleCount) * ratio), 500)
+            }
+        }
+
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        previewParticleCount = particles.count
+        guard particles.count > 0 else { return }
+
+        do {
+            let settings = RenderSettings(
+                width: Int(previewSize.width), height: Int(previewSize.height),
+                supersample: 1, brightness: brightness, dustStrength: dustStrength,
+                bloomIntensity: bloom, stretch: stretch, saturation: saturation,
+                spikeIntensity: spikeIntensity, skyLevel: skyLevel, noiseLevel: noiseLevel)
+            let buffer = device.makeBuffer(
+                length: particles.count * MemoryLayout<SIMD3<Float>>.stride,
+                options: .storageModeShared)
+            previewPositions = buffer
+            previewSmoothing = try SmoothingField(device: device, particleCount: particles.count)
+            previewSmoothing?.scale = smoothingScale
+            previewRenderer = try Renderer(
+                device: device, particles: particles, settings: settings,
+                externalPositions: buffer)
+            previewRenderer?.upload(positions: particles.positions)
+            previewRenderer?.setSmoothing(previewSmoothing?.buffer)
+            previewSmoothing?.update(positions: particles.positions)
+
+            var radii = particles.positions.map { simd_length($0) }
+            radii.sort()
+            previewCamera.frame(
+                radius: radii[min(Int(Double(radii.count) * 0.98), radii.count - 1)] * 1.3)
+            previewCamera.elevation = 1.2
+        } catch {
+            failure = "\(error)"
+            previewRenderer = nil
+        }
+    }
+
+    func drawPreview(in view: MTKView) {
+        guard let previewRenderer, let drawable = view.currentDrawable else { return }
+        previewRenderer.setDiskFrames(
+            DiskFrame.make(
+                scene: draft, centers: draft.galaxies.map(\.position), time: 0,
+                strength: 1))
+        previewRenderer.present(camera: previewCamera.camera, drawable: drawable)
     }
 
     func returnToSetup() {
@@ -227,6 +312,13 @@ final class SimulationModel: ObservableObject {
         draft = preset
     }
 
+    /// Softening and time step follow from the particle count and the disk size, so anything
+    /// that changes either has to retune them before the preview is rebuilt.
+    func commitDraftChange() {
+        draft.retune()
+        rebuildPreview()
+    }
+
     func addGalaxy() {
         let share = max(draft.totalParticleCount / max(draft.galaxies.count, 1), 100_000)
         draft.galaxies.append(
@@ -292,8 +384,6 @@ final class SimulationModel: ObservableObject {
             width: Int(drawableSize.width),
             height: Int(drawableSize.height),
             supersample: supersample,
-            pointSize: pointSize,
-            exposure: exposure,
             brightness: brightness,
             dustStrength: dustStrength,
             bloomIntensity: bloom,

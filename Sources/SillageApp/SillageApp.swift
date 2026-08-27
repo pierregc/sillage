@@ -48,6 +48,8 @@ struct SillageApp: App {
     @MainActor
     private func startFrameCheck() {
         guard CommandLine.arguments.contains("--verify") else { return }
+        model.draft.solver = .restricted
+        model.draft.retune()
         model.setTotalParticles(1_000_000)
         model.start()
         Task {
@@ -125,10 +127,14 @@ struct SillageApp: App {
             FileHandle.standardError.write(Data("selftest: no Metal device\n".utf8))
             exit(1)
         }
-        model.setTotalParticles(2_000_000)
+        // The render path is what is under test here, so it runs on the cheap solver: a
+        // self-gravitating run of the same length would take the best part of an hour.
+        model.draft.solver = .restricted
+        model.draft.retune()
+        model.setTotalParticles(1_000_000)
         model.start()
         model.resize(to: CGSize(width: 1280, height: 720))
-        guard let pixels = model.snapshot(steps: 3_000) else {
+        guard let pixels = model.snapshot(steps: 1_200) else {
             FileHandle.standardError.write(Data("selftest: renderer unavailable\n".utf8))
             exit(1)
         }
@@ -136,10 +142,15 @@ struct SillageApp: App {
         print("selftest stage       \(model.stage)")
         print("selftest particles   \(model.particleCount)")
         print("selftest lit samples \(lit)")
+
+        // The setup screen's preview has its own pipeline; check it samples too.
+        model.returnToSetup()
+        model.rebuildPreview()
+        print("selftest preview     \(model.previewParticleCount) particules")
         let url = URL(fileURLWithPath: "out/selftest.png")
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? PNGWriter.write(pixels, width: 1280, height: 720, to: url)
-        exit(lit > 10_000 ? 0 : 1)
+        exit(lit > 10_000 && model.previewParticleCount > 1_000 ? 0 : 1)
     }
 }
