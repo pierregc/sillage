@@ -54,8 +54,20 @@ public struct SceneConfig: Codable, Sendable, Equatable {
         self.softening = softening
     }
 
+    /// Visible particles only, which is what the setup screen and the renderer count.
     public var totalParticleCount: Int {
         galaxies.reduce(0) { $0 + $1.particleCount }
+    }
+
+    /// Everything the solver integrates, halo particles included.
+    public var simulatedParticleCount: Int {
+        solver.isSelfGravitating
+            ? galaxies.reduce(0) { $0 + $1.particleCount + $1.haloParticleCount }
+            : totalParticleCount
+    }
+
+    public var hasLiveHalos: Bool {
+        solver.isSelfGravitating && galaxies.contains { $0.haloParticleCount > 0 }
     }
 
     public func encoded() throws -> Data {

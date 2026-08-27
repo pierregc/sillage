@@ -26,7 +26,7 @@ public final class RestrictedSolver: Solver {
     }
 
     public static func sampleParticles(for scene: SceneConfig) -> ParticleSystem {
-        var system = ParticleSystem(capacity: scene.totalParticleCount)
+        var system = ParticleSystem(capacity: scene.simulatedParticleCount)
         var generator = SeededGenerator(seed: scene.seed)
         let selfGravitating = scene.solver == .barnesHut
         for (index, galaxy) in scene.galaxies.enumerated() {

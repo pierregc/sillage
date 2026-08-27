@@ -167,15 +167,18 @@ struct BarnesHutTests {
 
         func radialDispersion(_ system: ParticleSystem) -> Float {
             var total: Float = 0
-            for index in 0..<system.count {
+            var samples = 0
+            for index in 0..<system.count
+            where system.component[index] != ParticleComponent.halo.rawValue {
                 let p = system.positions[index]
                 let radius = max(sqrt(p.x * p.x + p.y * p.y), 1e-3)
                 let outward = SIMD2<Float>(p.x / radius, p.y / radius)
                 let v = system.velocities[index]
                 let radial = v.x * outward.x + v.y * outward.y
                 total += radial * radial
+                samples += 1
             }
-            return sqrt(total / Float(system.count))
+            return sqrt(total / Float(max(samples, 1)))
         }
         #expect(radialDispersion(hot) > 2 * radialDispersion(cold))
     }
@@ -186,15 +189,76 @@ struct BarnesHutTests {
         let particles = RestrictedSolver.sampleParticles(for: scene)
         #expect(particles.mass.allSatisfy { $0 > 0 })
 
-        let expected =
-            scene.galaxies[0].potential.mass * scene.galaxies[0].diskMassFraction
-        let actual = zip(particles.mass, particles.galaxyIndex)
-            .filter { $0.1 == 0 }.map(\.0).reduce(0, +)
-        #expect(abs(actual - expected) / expected < 1e-3)
+        // The disk carries its share and the live halo carries the rest, so a galaxy's
+        // particles must add up to the mass its potential claims.
+        let galaxy = scene.galaxies[0]
+        func mass(of kind: ParticleComponent?) -> Float {
+            var total: Float = 0
+            for index in 0..<particles.count where particles.galaxyIndex[index] == 0 {
+                if let kind, particles.component[index] != kind.rawValue { continue }
+                if kind == nil, particles.component[index] == ParticleComponent.halo.rawValue {
+                    continue
+                }
+                total += particles.mass[index]
+            }
+            return total
+        }
+        let disk = mass(of: nil)
+        let halo = mass(of: .halo)
+        #expect(abs(disk - galaxy.potential.mass * galaxy.diskMassFraction) / disk < 1e-3)
+        #expect(
+            abs(halo - galaxy.potential.mass * (1 - galaxy.diskMassFraction)) / halo < 1e-3)
+        #expect(abs(disk + halo - galaxy.potential.mass) / galaxy.potential.mass < 1e-3)
+        #expect(particles.count > scene.totalParticleCount)
 
         var restricted = scene
         restricted.solver = .restricted
         #expect(RestrictedSolver.sampleParticles(for: restricted).mass.allSatisfy { $0 == 0 })
+    }
+
+    /// A rigid halo carries mass but no inertia, so it cannot take momentum from the system:
+    /// following its galaxy's centre of mass makes it do work. This is the guard against that
+    /// regression. Whether the orbit actually decays takes hundreds of megayears to show and
+    /// is measured separately; the numbers are in the README.
+    @Test func liveHalosConserveMomentumFarBetterThanARigidOne() throws {
+        func drift(ratio: Float) throws -> Float {
+            var scene = SceneConfig.merger(particleCount: 12_000)
+            scene.solver = .barnesHut
+            scene.timeStep = 0.01
+            scene.softening = 0.3
+            for index in scene.galaxies.indices {
+                scene.galaxies[index].haloParticleRatio = ratio
+            }
+            let solver = try MetalBarnesHutSolver(scene: scene)
+            let before = solver.momentum()
+            solver.step(count: 500)
+            return simd_length(solver.momentum() - before)
+        }
+        #expect(try drift(ratio: 2) < drift(ratio: 0) / 4)
+    }
+
+    @Test func haloParticlesAreSampledAndCarryNoLight() {
+        var scene = SceneConfig.merger(particleCount: 5_000)
+        scene.solver = .barnesHut
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        #expect(particles.count == scene.simulatedParticleCount)
+        #expect(particles.count > scene.totalParticleCount)
+
+        var halos = 0
+        for index in 0..<particles.count
+        where particles.component[index] == ParticleComponent.halo.rawValue {
+            halos += 1
+            #expect(particles.luminosity[index] == 0)
+            #expect(particles.mass[index] > 0)
+        }
+        #expect(halos == scene.galaxies.reduce(0) { $0 + $1.haloParticleCount })
+        #expect(!ParticleComponent.halo.isVisible)
+
+        // Level 1 has no live halo: its tracers are massless in a rigid potential.
+        var restricted = scene
+        restricted.solver = .restricted
+        let tracers = RestrictedSolver.sampleParticles(for: restricted)
+        #expect(tracers.count == restricted.totalParticleCount)
     }
 
     @Test func layoutsMatchTheShader() {

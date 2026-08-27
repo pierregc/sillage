@@ -251,7 +251,7 @@ final class SimulationModel: ObservableObject {
     /// also scales a little worse than linearly. Shown in the setup screen so the particle
     /// count can be chosen knowing what it costs.
     var estimatedStepMilliseconds: Double {
-        let millions = Double(draft.totalParticleCount) / 1_000_000
+        let millions = Double(draft.simulatedParticleCount) / 1_000_000
         let perStep = draft.solver == .barnesHut ? 110 * pow(millions, 1.15) : 0.18 * millions
         return perStep * Double(stepsPerFrame)
     }

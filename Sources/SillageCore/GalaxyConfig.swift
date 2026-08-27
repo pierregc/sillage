@@ -49,6 +49,13 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// Toomre stability parameter used to set the velocity dispersion when the disk is
     /// self-gravitating. Below 1 the disk fragments; 1.2 to 1.6 is the usual working range.
     public var toomreQ: Float
+    /// Halo particles per disk particle. A rigid halo carries mass but no inertia, so it
+    /// raises no wake, exerts no dynamical friction, and two galaxies orbit forever instead
+    /// of merging. Making it live costs particles that are never drawn. Zero keeps the old
+    /// analytic halo.
+    public var haloParticleRatio: Float
+    /// Radius the halo is sampled out to, in scale radii.
+    public var haloExtent: Float
 
     public var position: SIMD3<Float>
     public var velocity: SIMD3<Float>
@@ -78,6 +85,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         armIrregularity: Float = 0.55,
         diskMassFraction: Float = 0.22,
         toomreQ: Float = 1.4,
+        haloParticleRatio: Float = 1.5,
+        haloExtent: Float = 12,
         position: SIMD3<Float> = .zero,
         velocity: SIMD3<Float> = .zero,
         inclination: Float = 0,
@@ -103,11 +112,18 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.armIrregularity = armIrregularity
         self.diskMassFraction = diskMassFraction
         self.toomreQ = toomreQ
+        self.haloParticleRatio = haloParticleRatio
+        self.haloExtent = haloExtent
         self.position = position
         self.velocity = velocity
         self.inclination = inclination
         self.positionAngle = positionAngle
         self.spin = spin
+    }
+
+    /// Number of halo particles this galaxy contributes when self-gravitating.
+    public var haloParticleCount: Int {
+        haloParticleRatio > 0 ? Int(Float(particleCount) * haloParticleRatio) : 0
     }
 
     /// Maps the disk plane onto its world orientation.

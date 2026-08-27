@@ -6,6 +6,10 @@ public enum ParticleComponent: UInt32, Codable, Sendable, CaseIterable {
     case star = 0
     case hiiRegion = 1
     case dust = 2
+    /// Dark matter. Carries mass and is never drawn.
+    case halo = 3
+
+    public var isVisible: Bool { self != .halo }
 }
 
 /// Structure-of-arrays particle storage. `positions` is laid out so it can back a

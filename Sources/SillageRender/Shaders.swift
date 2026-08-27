@@ -136,6 +136,16 @@ enum Shaders {
             out.spikes = 0.0h;
             uint kind = component[vid];
             float weight = luminosity[vid];
+
+            // Dark matter carries mass but no light. Pushing it outside the clip volume drops
+            // it before any fragment work rather than drawing a black point over the galaxy.
+            if (kind == 3u) {
+                out.position = float4(2.0, 2.0, 2.0, 1.0);
+                out.pointSize = 0.0;
+                out.color = half3(0.0h);
+                out.opticalDepth = 0.0h;
+                return out;
+            }
             float2 pattern = armWave(position, frame);
             float wave = pattern.x;
 
