@@ -67,10 +67,15 @@ struct SetupView: View {
                             ? Palette.warning : Palette.secondary)
             }
             Spacer()
-            Button("Lancer la simulation") { model.start() }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(model.draft.galaxies.isEmpty)
+            VStack(alignment: .trailing, spacing: 2) {
+                Button("Lancer la simulation") { model.start() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(model.draft.galaxies.isEmpty)
+                Text("la prise s'enregistre dès le lancement")
+                    .font(.caption2)
+                    .foregroundStyle(Palette.secondary)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
