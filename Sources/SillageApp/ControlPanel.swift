@@ -192,8 +192,8 @@ struct ControlPanelContent: View {
                 .font(.caption)
                 .foregroundStyle(Palette.secondary)
             ParameterSlider(
-                title: "Distance (kpc)", value: $model.camera.distance, range: 20...1200,
-                format: "%.0f")
+                title: "Distance (kpc)", value: $model.camera.distance,
+                range: OrbitCamera.nearest...OrbitCamera.furthest, format: "%.0f")
             ParameterSlider(
                 title: "Élévation (rad)", value: $model.camera.elevation,
                 range: -OrbitCamera.elevationLimit...OrbitCamera.elevationLimit)
