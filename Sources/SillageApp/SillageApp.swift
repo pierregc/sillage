@@ -150,7 +150,7 @@ struct SillageApp: App {
 
         // The setup screen's preview has its own pipeline; check it samples too.
         model.returnToSetup()
-        model.rebuildPreview()
+        model.rebuildPreview(waiting: true)
         print("selftest preview     \(model.previewParticleCount) particules")
         let preview = model.previewSnapshot() ?? []
         let previewLit = preview.enumerated().filter { $0.offset % 4 != 3 && $0.element > 8 }.count

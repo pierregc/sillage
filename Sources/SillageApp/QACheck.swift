@@ -62,6 +62,8 @@ enum QACheck {
             model.draft.retune()
             model.setTotalParticles(200_000)
             model.commitDraftChange()
+            // The preview resamples off the main actor now.
+            await settle(1.0)
 
             let previewLit = (model.previewSnapshot() ?? []).filter { $0 > 8 }.count
             report.check("l'aperçu de réglage dessine", previewLit > 10_000, "\(previewLit) échantillons")
@@ -209,6 +211,21 @@ enum QACheck {
             report.check(
                 "relancer depuis la relecture repart en simulation",
                 model.mode == .running && model.capturedFrames > 1)
+
+            // Leaving mid-launch has to retire the sampling job rather than let it land on
+            // an empty setup screen.
+            model.returnToSetup()
+            model.setTotalParticles(2_000_000)
+            model.start()
+            report.check("un gros lancement prépare en fond", model.isPreparing)
+            model.returnToSetup()
+            report.check("quitter pendant la préparation l'annule", !model.isPreparing)
+            await settle(3.0)
+            report.check(
+                "la préparation annulée ne revient pas",
+                model.stage == .setup && !model.isPlaying)
+            model.setTotalParticles(200_000)
+            model.commitDraftChange()
 
             // The default solver is the slow one, so it gets its own pass.
             model.returnToSetup()
