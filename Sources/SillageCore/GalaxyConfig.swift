@@ -32,8 +32,15 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public var dustFraction: Float
     /// Share of disk particles standing in for HII regions, the bright pink knots of Halpha.
     public var starFormingFraction: Float
-    /// Radius of the old central population, in scale lengths.
+    /// Bulge scale radius, in disk scale lengths. This is the Hernquist scale of the bulge,
+    /// so the radius holding half its projected light is about 1.8 times it.
     public var bulgeExtent: Float
+    /// Share of the galaxy's stars that sit in the bulge rather than the disk. Runs from a
+    /// few per cent in a late-type spiral to about half in an early one.
+    public var bulgeFraction: Float
+    /// Short axis over long axis. A classical bulge is round but not spherical, and it is
+    /// flattened along the same axis the disk turns about.
+    public var bulgeFlattening: Float
     /// Emission colour of this galaxy's stars. One tint per galaxy makes it obvious which
     /// stars end up in the other galaxy after the encounter.
     public var color: SIMD3<Float>
@@ -79,7 +86,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         armPitch: Float = 0.46,
         dustFraction: Float = 0.26,
         starFormingFraction: Float = 0.02,
-        bulgeExtent: Float = 0.35,
+        bulgeExtent: Float = 0.18,
+        bulgeFraction: Float = 0.15,
+        bulgeFlattening: Float = 0.7,
         color: SIMD3<Float> = SIMD3<Float>(1.0, 0.90, 0.74),
         clumpiness: Float = 0.30,
         armIrregularity: Float = 0.55,
@@ -107,6 +116,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.dustFraction = dustFraction
         self.starFormingFraction = starFormingFraction
         self.bulgeExtent = bulgeExtent
+        self.bulgeFraction = bulgeFraction
+        self.bulgeFlattening = bulgeFlattening
         self.color = color
         self.clumpiness = clumpiness
         self.armIrregularity = armIrregularity
@@ -129,6 +140,11 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// spin turned the disk without turning the pattern with it.
     public var armWindRate: Float {
         -spin.sign / max(tan(armPitch), 1e-3)
+    }
+
+    /// Stars placed in the bulge. Spheroids have no bulge of their own to speak of.
+    public var bulgeParticleCount: Int {
+        kind == .globular ? 0 : Int(Float(particleCount) * min(max(bulgeFraction, 0), 0.9))
     }
 
     /// Number of halo particles this galaxy contributes when self-gravitating.
