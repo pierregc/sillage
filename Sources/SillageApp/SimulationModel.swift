@@ -37,6 +37,9 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var particleCount = 0
     @Published private(set) var elapsedMyr = 0.0
     @Published private(set) var frameMilliseconds = 0.0
+    /// Simulated time per second of wall clock, measured rather than estimated. This is the
+    /// number that decides whether a scene is worth waiting for.
+    @Published private(set) var megayearsPerSecond = 0.0
     private(set) var framesDrawn = 0
     private(set) var drawAttempts = 0
     private weak var canvas: MTKView?
@@ -293,15 +296,22 @@ final class SimulationModel: ObservableObject {
     private func pumpLive(generation: Int, solver: any GPUSolver, steps: Int, budget: Int) {
         let reel = recording
         simulationQueue.async { [weak self] in
+            let clock = Date()
+            let before = solver.time
             solver.step(count: steps)
             let time = solver.time
+            let rate =
+                Double(time - before) * Physics.megayearsPerTimeUnit
+                / max(Date().timeIntervalSince(clock), 1e-6)
             var frames = 0
             var bytes = 0
             var full = false
             if let reel {
                 // Capturing costs six bytes a particle a frame, so it stops at the budget
-                // rather than at whatever point the machine runs out of memory.
-                if reel.byteCount < budget {
+                // rather than at whatever point the machine runs out of memory. Two frames
+                // always get through: playback interpolates between a pair, so a budget too
+                // small for two would leave a run that can never be replayed at all.
+                if reel.byteCount < budget || reel.count < 2 {
                     let positions = solver.positions.contents().bindMemory(
                         to: SIMD3<Float>.self, capacity: reel.particleCount)
                     reel.append(positions: positions, time: time)
@@ -314,6 +324,11 @@ final class SimulationModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self, self.liveGeneration == generation else { return }
                 self.elapsedMyr = Double(time) * Physics.megayearsPerTimeUnit
+                // Smoothed, or a batch that happened to land behind a render makes the
+                // number jump around too much to read.
+                self.megayearsPerSecond =
+                    self.megayearsPerSecond > 0
+                    ? self.megayearsPerSecond * 0.8 + rate * 0.2 : rate
                 self.capturedFrames = frames
                 self.capturedBytes = bytes
                 self.captureIsFull = full
@@ -442,6 +457,14 @@ final class SimulationModel: ObservableObject {
         let millions = Double(draft.simulatedParticleCount) / 1_000_000
         let perStep = draft.solver == .barnesHut ? 110 * pow(millions, 1.15) : 0.18 * millions
         return perStep * Double(stepsPerFrame)
+    }
+
+    /// What the draft would advance at, before it is run. The measured rate replaces this
+    /// as soon as there is one.
+    var estimatedMegayearsPerSecond: Double {
+        let perStep = estimatedStepMilliseconds / Double(max(stepsPerFrame, 1))
+        guard perStep > 0 else { return 0 }
+        return Double(draft.timeStep) * Physics.megayearsPerTimeUnit * (1000 / perStep)
     }
 
     /// Scales every galaxy's share of the draft so the preset's own ratio is preserved.

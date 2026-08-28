@@ -34,6 +34,8 @@ struct ControlPanelContent: View {
 
     private var transport: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text(model.mode == .playback ? "Relecture" : "Simulation en cours")
+                .font(.headline)
             HStack {
                 Button(model.isPlaying ? "Pause" : "Lecture") { model.isPlaying.toggle() }
                     .keyboardShortcut(.space, modifiers: [])
@@ -44,8 +46,16 @@ struct ControlPanelContent: View {
             Button("Modifier la scène") { model.returnToSetup() }
                 .buttonStyle(.bordered)
 
-            Text(String(format: "t = %.0f Myr", model.elapsedMyr))
-                .font(.callout.monospacedDigit())
+            HStack(alignment: .firstTextBaseline) {
+                Text(String(format: "t = %.0f Myr", model.elapsedMyr))
+                    .font(.callout.monospacedDigit())
+                Spacer()
+                if model.mode == .running {
+                    Text(String(format: "%.1f Myr/s", model.megayearsPerSecond))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Palette.secondary)
+                }
+            }
             Text(
                 String(
                     format: "%@ particules · %.1f ms par image affichée",
@@ -132,9 +142,12 @@ struct ControlPanelContent: View {
         }
     }
 
+    /// Split the way the two halves of the picture are: what light the galaxy sends, and
+    /// what the telescope does with it. Ten sliders in one column say nothing about which
+    /// knob to reach for.
     private var rendering: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Rendu").font(.headline)
+            Text("Lumière").font(.headline)
             ParameterSlider(
                 title: "Luminosité", value: $model.brightness, range: 0.02...2.0, format: "%.2f")
             ParameterSlider(
@@ -142,13 +155,21 @@ struct ControlPanelContent: View {
                 format: "%.0f")
             ParameterSlider(title: "Saturation", value: $model.saturation, range: 0...3)
             ParameterSlider(title: "Teinte par galaxie", value: $model.galaxyTint, range: 0...1)
-            ParameterSlider(title: "Halo lumineux", value: $model.bloom, range: 0...2)
+            Text(
+                "0 : chaque étoile a la couleur de sa population. 1 : chaque galaxie garde la sienne, ce qui rend lisibles les étoiles qu'elle perd."
+            )
+            .font(.caption2)
+            .foregroundStyle(Palette.secondary)
             ParameterSlider(
                 title: "Opacité des poussières", value: $model.dustStrength, range: 0...0.8,
                 format: "%.3f")
+
+            Divider()
+            Text("Instrument").font(.headline)
             ParameterSlider(
                 title: "Lissage des étoiles", value: $model.smoothingScale,
                 range: 0.4...5.0)
+            ParameterSlider(title: "Halo lumineux", value: $model.bloom, range: 0...2)
             ParameterSlider(
                 title: "Aigrettes de diffraction", value: $model.spikeIntensity, range: 0...1.5)
             ParameterSlider(

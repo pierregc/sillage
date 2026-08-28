@@ -63,7 +63,8 @@ struct SetupView: View {
                 Text(costLabel)
                     .font(.caption)
                     .foregroundStyle(
-                        model.estimatedStepMilliseconds > 8 ? Palette.warning : Palette.secondary)
+                        model.estimatedMegayearsPerSecond < 0.3
+                            ? Palette.warning : Palette.secondary)
             }
             Spacer()
             Button("Lancer la simulation") { model.start() }
@@ -75,12 +76,21 @@ struct SetupView: View {
         .padding(.vertical, 14)
     }
 
+    /// Nothing waits for the physics any more, so the honest number is not milliseconds a
+    /// frame but how long the machine takes to reach the moment worth looking at. A close
+    /// encounter plays out over roughly 500 Myr.
     private var costLabel: String {
-        let ms = model.estimatedStepMilliseconds
-        let verdict =
-            ms > 8
-            ? "au-delà du temps réel : enregistre la prise, puis rejoue" : "temps réel"
-        return String(format: "environ %.0f ms de calcul par image · %@", ms, verdict)
+        let rate = model.estimatedMegayearsPerSecond
+        guard rate > 0 else { return "" }
+        let seconds = 500 / rate
+        let reach =
+            seconds < 90
+            ? String(format: "%.0f s", seconds)
+            : (seconds < 5400
+                ? String(format: "%.0f min", seconds / 60)
+                : String(format: "%.1f h", seconds / 3600))
+        return String(
+            format: "environ %.1f Myr par seconde · une rencontre de 500 Myr en %@", rate, reach)
     }
 
     private func formatted(_ value: Int) -> String {
@@ -150,7 +160,7 @@ struct SetupContent: View {
 
             Text(
                 model.draft.solver == .barnesHut
-                    ? "Les particules s'attirent entre elles, halo compris. C'est la friction contre le halo qui fait fusionner les galaxies. Lent : compte sur l'enregistrement."
+                    ? "Les particules s'attirent entre elles, halo compris. C'est la friction contre le halo qui fait fusionner les galaxies. Lent, mais la prise s'enregistre toute seule : laisse tourner, puis rejoue."
                     : "Particules-tests dans des potentiels rigides. Cent fois plus rapide, donne les queues de marée, mais rien ne fusionne."
             )
             .font(.caption)
@@ -186,7 +196,7 @@ struct SetupContent: View {
                     format: "adoucissement %.3f kpc · pas %.4f (%.2f Myr) · %.1f Myr par seconde",
                     model.draft.softening, model.draft.timeStep,
                     Double(model.draft.timeStep) * Physics.megayearsPerTimeUnit,
-                    megayearsPerSecond)
+                    model.estimatedMegayearsPerSecond)
             )
             .font(.caption.monospacedDigit())
             .foregroundStyle(Palette.secondary)
@@ -205,15 +215,6 @@ struct SetupContent: View {
         Binding(
             get: { model.draft.timeStepScale },
             set: { model.draft.timeStepScale = $0 })
-    }
-
-    /// What the setting buys, which is the number the choice is actually about: how long the
-    /// machine takes to reach the moment worth looking at.
-    private var megayearsPerSecond: Double {
-        let stepMilliseconds = model.estimatedStepMilliseconds / Double(max(model.stepsPerFrame, 1))
-        guard stepMilliseconds > 0 else { return 0 }
-        return Double(model.draft.timeStep) * Physics.megayearsPerTimeUnit
-            * (1000 / stepMilliseconds)
     }
 
     /// Switching model retunes the step and the softening, which differ by orders of magnitude
