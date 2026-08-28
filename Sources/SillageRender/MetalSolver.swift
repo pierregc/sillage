@@ -32,11 +32,17 @@ public final class MetalSolver: Solver {
     private let positionBuffer: MTLBuffer
     private let velocityBuffer: MTLBuffer
     private var galaxyCenters: GalaxyCenters
+    private let centersLock = NSLock()
     private let template: ParticleSystem
     private let count: Int
 
     public var positions: MTLBuffer { positionBuffer }
-    public var centers: [SIMD3<Float>] { galaxyCenters.float }
+    /// Advanced by whichever queue is stepping, read by the renderer on the main thread.
+    public var centers: [SIMD3<Float>] {
+        centersLock.lock()
+        defer { centersLock.unlock() }
+        return galaxyCenters.float
+    }
 
     /// Reads particle state back from the GPU. Unified memory makes this a memcpy, but it is
     /// still per-particle work, so callers should not do it every frame.
@@ -142,7 +148,9 @@ public final class MetalSolver: Solver {
         }
 
         for _ in 0..<stepCount {
+            centersLock.lock()
             let (before, after) = galaxyCenters.step(timeStep: Double(scene.timeStep))
+            centersLock.unlock()
             for index in descriptors.indices {
                 descriptors[index].centerBefore = before[index]
                 descriptors[index].centerAfter = after[index]

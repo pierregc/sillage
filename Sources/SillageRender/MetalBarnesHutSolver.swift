@@ -62,9 +62,16 @@ public final class MetalBarnesHutSolver: Solver {
     private let componentOf: [UInt32]
     private let liveHalos: Bool
     private var haloCenters: [SIMD3<Float>]
+    private let centersLock = NSLock()
 
     public var positions: MTLBuffer { positionBuffer }
-    public var centers: [SIMD3<Float>] { haloCenters }
+    /// Written on whichever queue is stepping and read by the renderer on the main thread,
+    /// so the array is handed over under a lock rather than copied out from under the write.
+    public var centers: [SIMD3<Float>] {
+        centersLock.lock()
+        defer { centersLock.unlock() }
+        return haloCenters
+    }
 
     public var particles: ParticleSystem {
         var system = template
@@ -268,9 +275,13 @@ public final class MetalBarnesHutSolver: Solver {
             weighted[galaxy] += positions[index] * m
             totals[galaxy] += m
         }
-        for galaxy in haloCenters.indices where totals[galaxy] > 0 {
-            haloCenters[galaxy] = weighted[galaxy] / totals[galaxy]
+        var updated = centers
+        for galaxy in updated.indices where totals[galaxy] > 0 {
+            updated[galaxy] = weighted[galaxy] / totals[galaxy]
         }
+        centersLock.lock()
+        haloCenters = updated
+        centersLock.unlock()
     }
 
     private func computeAccelerations() {
