@@ -286,6 +286,23 @@ struct GalaxyCard: View {
                 }
 
                 if kind != .globular {
+                    Divider()
+                    Text("Bulbe").font(.caption.bold())
+                    ParameterSlider(
+                        title: "Part des étoiles", value: galaxy.bulgeFraction, range: 0...0.6,
+                        onCommit: commit)
+                    ParameterSlider(
+                        title: "Rayon (longueurs de disque)", value: galaxy.bulgeExtent,
+                        range: 0.05...0.6, onCommit: commit)
+                    ParameterSlider(
+                        title: "Aplatissement", value: galaxy.bulgeFlattening, range: 0.3...1,
+                        onCommit: commit)
+                    Text("Sphéroïde de Hernquist soutenu par la dispersion. À 0 la galaxie est un disque nu.")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.secondary)
+                }
+
+                if kind != .globular {
                     Group {
                         ParameterSlider(
                             title: "Inclinaison (rad)", value: galaxy.inclination,
