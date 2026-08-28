@@ -74,7 +74,17 @@ Standing gaps, in the order they matter:
    in real bands composited like telescope filters. This is the next lever for making the
    interior of a galaxy legible.
 3. **Disk stability over many orbits is unmeasured.** Live halos should have improved it, but
-   nobody has run the ten minutes per configuration needed to say so.
+   nobody has run the ten minutes per configuration needed to say so. What is measured: an
+   isolated self-gravitating disk spreads its mean radius by about 23 % over the first 40 Myr,
+   and the same amount at every time step from a quarter of the tuned one to eight times it,
+   so that is the initial conditions relaxing rather than the integrator.
+
+   The tuned step itself is roughly sixteen times more conservative than it needs to be. Up to
+   16x the radial profile after 40 Myr stays within 0.3 % of a reference run at a quarter of
+   it, 32x is within 1 %, 64x within 3 %, and 128x visibly wrong. A 100 Myr self-gravitating
+   merger at 200 k particles renders indistinguishably at 16x, in 5.8 s against 92 s. Hence
+   `timeStepScale`, which is that multiplier; the default stays 1 because a close encounter
+   reaches speeds an isolated disk does not.
 4. **Force traversal is where the time goes.** Measured on an M4 Max at 400 k visible
    particles with live halos, so a million simulated: 95 ms a step, of which 76 ms is
    `bhAcceleration` and 18 ms the CPU tree build. Sharing one stack across a SIMD group is
