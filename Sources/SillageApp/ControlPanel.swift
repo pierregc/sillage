@@ -131,6 +131,7 @@ struct ControlPanelContent: View {
                 title: "Étirement logarithmique", value: $model.stretch, range: 0...60,
                 format: "%.0f")
             ParameterSlider(title: "Saturation", value: $model.saturation, range: 0...3)
+            ParameterSlider(title: "Teinte par galaxie", value: $model.galaxyTint, range: 0...1)
             ParameterSlider(title: "Halo lumineux", value: $model.bloom, range: 0...2)
             ParameterSlider(
                 title: "Opacité des poussières", value: $model.dustStrength, range: 0...0.8,

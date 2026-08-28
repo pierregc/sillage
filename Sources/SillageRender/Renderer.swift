@@ -13,7 +13,7 @@ struct SplatUniforms {
     var referenceArea: Float
     var minimumSize: Float
     var maximumSize: Float
-    var pad: Float = 0
+    var galaxyTint: Float
 }
 
 struct BackgroundStar {
@@ -87,6 +87,10 @@ public struct RenderSettings: Sendable {
     /// Sky background and detector noise, both in linear signal units before tone mapping.
     public var skyLevel: Float
     public var noiseLevel: Float
+    /// How far the per-galaxy tint pulls the stars away from the colour their population
+    /// implies. Zero is the physical answer; a little of it is what keeps stars torn out of
+    /// one disk recognisable inside the other.
+    public var galaxyTint: Float
 
     public init(
         width: Int = 1920,
@@ -109,7 +113,8 @@ public struct RenderSettings: Sendable {
         spikeLength: Float = 72,
         spikeIntensity: Float = 0.38,
         skyLevel: Float = 0.0018,
-        noiseLevel: Float = 0.0016
+        noiseLevel: Float = 0.0016,
+        galaxyTint: Float = 0.35
     ) {
         self.width = width
         self.height = height
@@ -132,6 +137,7 @@ public struct RenderSettings: Sendable {
         self.spikeIntensity = spikeIntensity
         self.skyLevel = skyLevel
         self.noiseLevel = noiseLevel
+        self.galaxyTint = galaxyTint
     }
 }
 
@@ -413,6 +419,7 @@ public final class Renderer {
     public func setSpikeIntensity(_ intensity: Float) { settings.spikeIntensity = intensity }
     public func setSkyLevel(_ level: Float) { settings.skyLevel = level }
     public func setNoiseLevel(_ level: Float) { settings.noiseLevel = level }
+    public func setGalaxyTint(_ tint: Float) { settings.galaxyTint = tint }
 
     /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
@@ -436,7 +443,8 @@ public final class Renderer {
             smoothingScale: settings.smoothingScale,
             referenceArea: 0.01,
             minimumSize: settings.minimumKernel * Float(scale),
-            maximumSize: settings.maximumKernel * Float(scale))
+            maximumSize: settings.maximumKernel * Float(scale),
+            galaxyTint: settings.galaxyTint)
 
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {

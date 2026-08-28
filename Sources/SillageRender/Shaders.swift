@@ -18,7 +18,7 @@ enum Shaders {
             float referenceArea;
             float minimumSize;
             float maximumSize;
-            float _pad;
+            float galaxyTint;
         };
 
         struct BloomParams {
@@ -87,6 +87,51 @@ enum Shaders {
 
         static float fractalNoise(float x) {
             return valueNoise(x) * 0.65 + valueNoise(x * 2.3 + 19.1) * 0.35;
+        }
+
+        // Strips the luminance out of a colour, leaving only its hue and saturation. Every
+        // emitter in this renderer carries unit luminance, so `brightness` stays the single
+        // control over exposure and changing a colour can never change how bright a frame is.
+        static float3 chromaticity(float3 rgb) {
+            return max(rgb, 0.0) / max(dot(max(rgb, 0.0), float3(0.2126, 0.7152, 0.0722)), 1e-4);
+        }
+
+        // Linear sRGB of a Planckian radiator. Chromaticity from Kang et al. (2002), then
+        // CIE xy to sRGB primaries. Y is fixed at 1, so the conversion lands on unit
+        // luminance before the negative lobe of a saturated hue is clipped away.
+        static float3 blackbody(float kelvin) {
+            float t = clamp(kelvin, 2222.0, 25000.0);
+            float inv = 1.0 / t;
+            float x = t < 4000.0
+                ? ((-0.2661239e9 * inv - 0.2343589e6) * inv + 0.8776956e3) * inv + 0.179910
+                : ((-3.0258469e9 * inv + 2.1070379e6) * inv + 0.2226347e3) * inv + 0.240390;
+            float y = t < 4000.0
+                ? ((-0.9549476 * x - 1.37418593) * x + 2.09137015) * x - 0.16748867
+                : ((3.0817580 * x - 5.87338670) * x + 3.75112997) * x - 0.37001483;
+            float scale = 1.0 / max(y, 1e-4);
+            float3 xyz = float3(x * scale, 1.0, (1.0 - x - y) * scale);
+            return chromaticity(float3(
+                dot(xyz, float3(3.2406, -1.5372, -0.4986)),
+                dot(xyz, float3(-0.9689, 1.8758, 0.0415)),
+                dot(xyz, float3(0.0557, -0.2040, 1.0570))));
+        }
+
+        // Integrated colour of a stellar population, from an old bulge to the stars forming
+        // in an arm. The ends are the colour temperatures the two actually show, near
+        // B-V = 0.95 and B-V = -0.05, and the interpolation runs in log T because that is
+        // roughly what makes it linear in colour index: a disk halfway along lands on the
+        // B-V = 0.6 a real interarm region has, which a linear ramp in T misses by a lot.
+        static float3 stellarColour(float age) {
+            return blackbody(exp(mix(log(4100.0), log(13000.0), saturate(age))));
+        }
+
+        // A star-forming knot is not a blackbody: most of its light leaves in Halpha at
+        // 656 nm, on the continuum of the hot stars ionising it, which is why the knots read
+        // pink rather than blue. This is the colour such a region shows through broadband
+        // filters, stated directly; deriving it from line ratios needs an emission model and
+        // the CIE colour matching functions.
+        static float3 hiiColour() {
+            return chromaticity(float3(1.00, 0.36, 0.42));
         }
 
         // Where a particle sits relative to the spiral density wave, 0 between the arms and
@@ -173,13 +218,35 @@ enum Shaders {
                 out.color = half3(0.0h);
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
             } else {
-                // One tint per galaxy, so stars pulled into the other galaxy stay legible.
-                // Star-forming knots are brighter where the wave is now, not coloured apart.
+                // The knots used to be pushed this bright because brightness was the only
+                // thing that could set them apart. Now that they carry their own colour, the
+                // boost is what a real HII region is worth rather than what it took to see it.
                 float gain = kind == 1u
-                    ? (0.25 + 3.4 * smoothstep(0.4, 0.95, wave) * pattern.y)
+                    ? (0.25 + 1.5 * smoothstep(0.4, 0.95, wave) * pattern.y)
                     : (0.80 + 0.44 * wave);
+                // Colour comes from the population the sampler gave this particle: old and
+                // warm in the bulge, young and blue in the disk. The wave shifts it a little
+                // further, because an arm is bluer than the disk around it for the same
+                // reason it is brighter, and the ridge moves while the stars pass through it.
+                float age = population[vid] + 0.22 * (wave - 0.5) * pattern.y;
+                // A knot only glows in Halpha while the O stars ionising it are alive, a few
+                // million years. Material torn into a tail left its arm long ago and has
+                // none left, so it fades back to the colour of the young cluster it is.
+                // Where the arms are painted the wave says where star formation is now; a
+                // self-gravitating disk grows its own arms and the sampler's placement is
+                // the only thing available.
+                float alive = frame.axisV.w > 0.0
+                    ? smoothstep(0.4, 0.95, wave) * pattern.y
+                    : 1.0;
+                float3 emitted = kind == 1u
+                    ? mix(stellarColour(1.0), hiiColour(), alive)
+                    : stellarColour(age);
+                // A tint per galaxy is what keeps stars pulled into the other one legible.
+                // It is a departure from the physical colour, so it is dialled rather than
+                // applied: at 0 the two galaxies are coloured by their populations alone.
+                emitted *= mix(float3(1.0), chromaticity(frame.tint.rgb), u.galaxyTint);
                 out.pointSize = span * (kind == 1u ? 1.3 : 1.0);
-                out.color = half3(frame.tint.rgb * (u.brightness * weight * gain * spread));
+                out.color = half3(emitted * (u.brightness * weight * gain * spread));
                 out.opticalDepth = 0.0h;
             }
             return out;

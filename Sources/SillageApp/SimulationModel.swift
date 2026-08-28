@@ -110,6 +110,15 @@ final class SimulationModel: ObservableObject {
     @Published var brightness: Float = 0.15 { didSet { renderer?.setBrightness(brightness) } }
     @Published var stretch: Float = 18 { didSet { renderer?.setStretch(stretch) } }
     @Published var saturation: Float = 1.8 { didSet { renderer?.setSaturation(saturation) } }
+    /// 0 colours every star by its population alone, which is the physical answer. A little
+    /// of the galaxy's own tint on top is what keeps stars torn out of one disk recognisable
+    /// once they are inside the other.
+    @Published var galaxyTint: Float = 0.35 {
+        didSet {
+            renderer?.setGalaxyTint(galaxyTint)
+            previewRenderer?.setGalaxyTint(galaxyTint)
+        }
+    }
     @Published var bloom: Float = 0.22 { didSet { renderer?.setBloomIntensity(bloom) } }
     @Published var dustStrength: Float = 0.16 { didSet { renderer?.setDustStrength(dustStrength) } }
     @Published var spikeIntensity: Float = 0.38 {
@@ -189,7 +198,8 @@ final class SimulationModel: ObservableObject {
                 supersample: 1, brightness: brightness, dustStrength: dustStrength,
                 smoothingScale: smoothingScale,
                 bloomIntensity: bloom, stretch: stretch, saturation: saturation,
-                spikeIntensity: spikeIntensity, skyLevel: skyLevel, noiseLevel: noiseLevel)
+                spikeIntensity: spikeIntensity, skyLevel: skyLevel, noiseLevel: noiseLevel,
+                galaxyTint: galaxyTint)
             let buffer = device.makeBuffer(
                 length: particles.count * MemoryLayout<SIMD3<Float>>.stride,
                 options: .storageModeShared)
@@ -393,7 +403,8 @@ final class SimulationModel: ObservableObject {
             saturation: saturation,
             spikeIntensity: spikeIntensity,
             skyLevel: skyLevel,
-            noiseLevel: noiseLevel)
+            noiseLevel: noiseLevel,
+            galaxyTint: galaxyTint)
         do {
             if smoothing == nil || smoothing?.buffer.length != particleCount * 4 {
                 smoothing = try SmoothingField(device: device, particleCount: particleCount)

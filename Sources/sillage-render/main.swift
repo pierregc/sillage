@@ -70,7 +70,8 @@ let settings = RenderSettings(
     spikeLength: Float(number("spike-length", 72)),
     spikeIntensity: Float(number("spike-intensity", 0.38)),
     skyLevel: Float(number("sky", 0.0018)),
-    noiseLevel: Float(number("noise", 0.0016)))
+    noiseLevel: Float(number("noise", 0.0016)),
+    galaxyTint: Float(number("tint", 0.35)))
 
 print(
     "scene      \(scene.name), \(scene.totalParticleCount) visible"
