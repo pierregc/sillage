@@ -24,7 +24,7 @@ fresh session cannot deduce from the code.
 ```
 
 **Screen recording is not granted**, so `screencapture` fails and the app window cannot be
-looked at directly. Five modes replace it, and they are the only way to verify the app:
+looked at directly. Six modes replace it, and they are the only way to verify the app:
 
 ```
 Sillage.app --selftest    # model, solver, renderer and preview offscreen; writes out/selftest.png
@@ -32,7 +32,12 @@ Sillage.app --verify      # opens the window and drives the view, reports frames
 Sillage.app --uishot      # renders the panels through ImageRenderer to out/
 Sillage.app --presets     # cycles the setup presets with the window up
 Sillage.app --responsive  # runs a self-gravitating scene, reports how long the main actor stalls
+Sillage.app --qa          # walks the whole run flow and reports every check
 ```
+
+`--qa` is the one to run after touching anything in the app: it sets up a scene, launches it,
+watches it capture, pauses it, stops it, replays it, scrubs it, picks it back up, starts over,
+fills the memory budget, and does the last of it again on the self-gravitating solver.
 
 `--presets` is the only mode that catches a stale index in the galaxy list: `--uishot` builds
 the view tree once and never updates it, so a card that crashes on the *change* of a preset
@@ -73,11 +78,16 @@ Standing gaps, in the order they matter:
 2. **Colour is not derived.** Stellar populations are a hand-made ramp rather than luminosities
    in real bands composited like telescope filters. This is the next lever for making the
    interior of a galaxy legible.
-3. **Disk stability over many orbits is unmeasured.** Live halos should have improved it, but
-   nobody has run the ten minutes per configuration needed to say so. What is measured: an
-   isolated self-gravitating disk spreads its mean radius by about 23 % over the first 40 Myr,
-   and the same amount at every time step from a quarter of the tuned one to eight times it,
-   so that is the initial conditions relaxing rather than the integrator.
+3. **Disk stability, now measured and mostly fixed.** An isolated self-gravitating disk used
+   to spread its mean radius by 23 % over the first 40 Myr, identically at every time step
+   from a quarter of the tuned one to eight times it: the initial conditions, not the
+   integrator. The sampler took its rotation curve from the analytic potential the galaxy is
+   written as, while laying the mass down as a flattened exponential disk, a bulge and a
+   truncated halo, none of which pull like that sphere. The disk came out turning at 0.81 of
+   what the real field asks. The curve is now built from the components themselves, Freeman's
+   Bessel form included, and the halo's dispersion is solved against the same composite.
+   Drift over 40 Myr: 23 % to 2 % with a live halo, 11 % to 0.3 % without. `aSelfGravitatingDiskHoldsItsRadius`
+   guards it. What is still unmeasured is what happens over many orbits rather than half of one.
 
    The tuned step itself is roughly sixteen times more conservative than it needs to be. Up to
    16x the radial profile after 40 Myr stays within 0.3 % of a reference run at a quarter of
@@ -95,5 +105,9 @@ Standing gaps, in the order they matter:
    the children it cannot push, and `accelerationMatchesDirectSummation` goes from 2 % mean
    error to 34 %. That the timing moves that much for a change in stack size alone is still
    worth knowing: the cost is thread-private storage as much as it is divergence.
+
+   The bulge costs 13 % of a step, all of it in traversal: 98.6 ms against 111.3 ms at 400 k
+   visible particles. Concentrating a seventh of the stars into half a kiloparsec deepens the
+   tree exactly where the lanes of a SIMD group have to walk it.
 5. **Graininess in the outskirts** comes from the clumpiness of the initial conditions, not
    from sampling. It is deliberate, but it reads as noise now that the render is sharp.
