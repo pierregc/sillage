@@ -170,6 +170,8 @@ final class SimulationModel: ObservableObject {
         scene = draft
         restart()
         frameCamera()
+        // returnToSetup pauses, so without this a second launch sits still.
+        isPlaying = true
         stage = .running
     }
 
