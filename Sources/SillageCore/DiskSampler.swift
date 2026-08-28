@@ -198,7 +198,13 @@ public enum DiskSampler {
             ? config.potential.mass * config.diskMassFraction / Float(max(config.particleCount, 1))
             : 0
 
-        let dispersion = bulgeDispersion(config, scale: scale, edge: edge)
+        // In tracer mode the particles move in the rigid analytic potential and nothing else,
+        // so that is what the bulge must be balanced against.
+        let equilibrium = DiskEquilibrium(config: config, selfGravitating: selfGravitating)
+        let dispersion = jeansDispersion(
+            density: { density(shape, radius: $0) },
+            circularSpeed: { equilibrium.circularSpeed(atRadius: $0) },
+            inner: scale * 0.005, edge: edge)
         for _ in 0..<count {
             let radius = inverseHernquistRadius(generator.uniform() * limit, scale: scale)
             // Flattened along the disk's own axis, which is what makes a bulge read as part
@@ -222,31 +228,30 @@ public enum DiskSampler {
         }
     }
 
-    /// Isotropic dispersion of the bulge, from the Jeans equation solved in the galaxy's
-    /// total potential rather than in the bulge's own.
+    /// Isotropic dispersion of a pressure-supported population, from the Jeans equation
+    /// solved against whatever weight actually presses on it.
     ///
-    /// That distinction is the whole of it. A bulge sits deep inside the halo, so the weight
-    /// pressing on it is mostly not its own; giving it only its own mass to balance leaves it
-    /// far too cold and it falls straight in. The integral has no short closed form against
-    /// an arbitrary potential, so it is tabulated once per galaxy over log radius and read
-    /// back by interpolation. Mild flattening is ignored here: the spherical solution is
-    /// within a few per cent of it, and well inside what the bulge's own settling costs.
-    private static func bulgeDispersion(
-        _ config: GalaxyConfig, scale: Float, edge: Float
+    /// That is the whole of it. Both the bulge and the dark halo sit inside a galaxy whose
+    /// mass is mostly not their own, and a population given only its own weight to balance
+    /// comes out far too cold. The integral has no short closed form against a composite
+    /// potential, so it is tabulated once over log radius and read back by interpolation.
+    /// Mild flattening is ignored: the spherical solution is well inside what a population
+    /// loses to its own settling anyway.
+    static func jeansDispersion(
+        density: (Float) -> Float,
+        circularSpeed: (Float) -> Float,
+        inner: Float,
+        edge: Float
     ) -> (Float) -> Float {
         let samples = 128
-        let inner = scale * 0.005
-        let stride = log(edge / inner) / Float(samples - 1)
-        let radii = (0..<samples).map { inner * exp(stride * Float($0)) }
+        let start = max(inner, 1e-5)
+        let step = log(max(edge, start * 2) / start) / Float(samples - 1)
+        let radii = (0..<samples).map { start * exp(step * Float($0)) }
 
-        func density(_ r: Float) -> Float {
-            let s = r + scale
-            return 1 / (max(r, 1e-6) * s * s * s)
-        }
         // rho sigma^2 at r is the weight of everything above it, so the integral runs inward
         // from the truncation radius.
         func integrand(_ r: Float) -> Float {
-            let speed = config.potential.circularSpeed(atRadius: r)
+            let speed = circularSpeed(r)
             return density(r) * speed * speed / max(r, 1e-6)
         }
         var pressure = [Float](repeating: 0, count: samples)
@@ -255,10 +260,10 @@ public enum DiskSampler {
             let b = radii[index + 1]
             pressure[index] = pressure[index + 1] + 0.5 * (integrand(a) + integrand(b)) * (b - a)
         }
-        let sigma = (0..<samples).map { sqrt(max(pressure[$0] / density(radii[$0]), 0)) }
+        let sigma = (0..<samples).map { sqrt(max(pressure[$0] / max(density(radii[$0]), 1e-30), 0)) }
 
         return { radius in
-            let position = log(max(radius, inner) / inner) / stride
+            let position = log(max(radius, start) / start) / step
             let index = min(max(Int(position), 0), samples - 2)
             let blend = min(max(position - Float(index), 0), 1)
             return sigma[index] * (1 - blend) + sigma[index + 1] * blend
@@ -283,13 +288,31 @@ public enum DiskSampler {
         let particleMass =
             potential.mass * (1 - config.diskMassFraction) / Float(count)
 
+        // The halo's own profile no longer describes the potential it sits in: the stars have
+        // been taken out of it and laid down as a disk and a bulge, both further in. Balanced
+        // against its own weight alone the halo runs hot and drifts outward, taking the disk
+        // with it, so its dispersion is solved against the galaxy as it is actually built.
+        let equilibrium = DiskEquilibrium(config: config, selfGravitating: true)
+        let dispersion = jeansDispersion(
+            density: { density(potential, radius: $0) },
+            circularSpeed: { equilibrium.circularSpeed(atRadius: $0) },
+            inner: potential.scaleRadius * 0.005, edge: edge)
+
         for _ in 0..<count {
             let u = generator.uniform() * limit
             let radius =
                 potential.profile == .plummer
                 ? inversePlummerRadius(u, scale: potential.scaleRadius)
                 : inverseHernquistRadius(u, scale: potential.scaleRadius)
-            let speed = speedSample(potential, radius: radius, edge: edge, using: &generator)
+            let sigma = dispersion(radius)
+            let escape = potential.escapeSpeed(atRadius: radius)
+            var speed: Float = 0
+            for _ in 0..<32 {
+                let draw = SIMD3<Float>(
+                    generator.normal(), generator.normal(), generator.normal())
+                speed = simd_length(draw) * sigma
+                if speed < escape { break }
+            }
 
             system.append(
                 position: randomDirection(&generator) * radius + config.position,
@@ -376,7 +399,7 @@ public enum DiskSampler {
         into system: inout ParticleSystem,
         using generator: inout SeededGenerator
     ) {
-        let equilibrium = DiskEquilibrium(config: config)
+        let equilibrium = DiskEquilibrium(config: config, selfGravitating: selfGravitating)
         let particleMass =
             selfGravitating
             ? config.potential.mass * config.diskMassFraction / Float(max(config.particleCount, 1))

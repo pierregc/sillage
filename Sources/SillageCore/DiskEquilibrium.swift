@@ -10,10 +10,14 @@ import simd
 /// different force law.
 public struct DiskEquilibrium {
     public let config: GalaxyConfig
+    /// Tracers move in the rigid analytic potential and feel nothing else, so the two modes
+    /// need different rotation curves and not just different force laws.
+    public let selfGravitating: Bool
     private let centralDensity: Float
 
-    public init(config: GalaxyConfig) {
+    public init(config: GalaxyConfig, selfGravitating: Bool = true) {
         self.config = config
+        self.selfGravitating = selfGravitating
         let diskMass = config.potential.mass * config.diskMassFraction
         let scale = max(config.diskScaleLength, 1e-3)
         self.centralDensity = diskMass / (2 * .pi * scale * scale)
@@ -23,8 +27,75 @@ public struct DiskEquilibrium {
         centralDensity * exp(-radius / max(config.diskScaleLength, 1e-3))
     }
 
+    /// Circular speed of the mass the sampler actually lays down, which is not the analytic
+    /// potential it was taken from before.
+    ///
+    /// That potential stands for the whole galaxy as one sphere. What ends up in the box is a
+    /// halo of that shape carrying part of the mass, a flattened exponential disk carrying
+    /// the rest, and a bulge inside that. Both stellar pieces sit further in than a Hernquist
+    /// of the galaxy's scale radius, and a disk pulls harder in its own plane than a sphere
+    /// of the same mass. Handing the disk the sphere's rotation curve left it turning at
+    /// about four fifths of what the real field asks for, so it fell inward and heated: the
+    /// disks were unstable by construction rather than by any failure of the integrator.
     public func circularSpeed(atRadius radius: Float) -> Float {
-        config.potential.circularSpeed(atRadius: radius)
+        // A spheroidal galaxy's stars follow the potential's own profile at its own scale, and
+        // a tracer run has no mass of its own at all, so in both cases the analytic curve was
+        // right all along.
+        guard selfGravitating, config.kind != .globular else {
+            return config.potential.circularSpeed(atRadius: radius)
+        }
+        let r = max(radius, 1e-4)
+        let mass = config.potential.mass
+        let stellar = mass * config.diskMassFraction
+        let bulgeShare = min(max(config.bulgeFraction, 0), 0.9)
+
+        // Live halo particles are drawn only out to `haloExtent`, and they carry the whole
+        // halo mass between them, so inside that radius the profile is denser than the
+        // analytic one by exactly the share the truncation left out.
+        var haloMass = mass * (1 - config.diskMassFraction)
+        if config.haloParticleCount > 0 {
+            let edge = max(config.haloExtent, 1) * config.potential.scaleRadius
+            let kept = DiskSampler.enclosedFraction(config.potential, radius: edge)
+            haloMass /= min(max(kept, 0.05), 1)
+        }
+        let halo = GalaxyPotential(
+            profile: config.potential.profile,
+            mass: haloMass,
+            scaleRadius: config.potential.scaleRadius)
+        var squared = halo.circularSpeed(atRadius: r) * halo.circularSpeed(atRadius: r)
+
+        if bulgeShare > 0 {
+            // Spherical: the bulge's flattening moves this by less than the sampling noise.
+            let bulge = GalaxyPotential(
+                profile: .hernquist,
+                mass: stellar * bulgeShare,
+                scaleRadius: max(config.bulgeExtent * config.diskScaleLength, 1e-3))
+            squared += bulge.circularSpeed(atRadius: r) * bulge.circularSpeed(atRadius: r)
+        }
+        squared += Self.exponentialDiskSpeedSquared(
+            mass: stellar * (1 - bulgeShare),
+            scaleLength: max(config.diskScaleLength, 1e-3),
+            radius: r)
+        return sqrt(max(squared, 0))
+    }
+
+    /// Freeman's rotation curve for a razor-thin exponential disk, the one place a closed
+    /// form exists for a flattened distribution. Beyond about fifteen scale lengths the
+    /// Bessel product has nothing left to say and the disk pulls like a point mass.
+    static func exponentialDiskSpeedSquared(
+        mass: Float, scaleLength: Float, radius: Float
+    ) -> Float {
+        guard mass > 0, radius > 0 else { return 0 }
+        let g = Double(Physics.gravitationalConstant)
+        let h = Double(scaleLength)
+        let r = Double(radius)
+        let y = r / (2 * h)
+        if y > 30 { return Float(g * Double(mass) / r) }
+        let central = Double(mass) / (2 * .pi * h * h)
+        // The exponential factors of the two scaled functions cancel in each product.
+        let product =
+            Bessel.scaledI0(y) * Bessel.scaledK0(y) - Bessel.scaledI1(y) * Bessel.scaledK1(y)
+        return Float(max(4 * .pi * g * central * h * y * y * product, 0))
     }
 
     /// Epicyclic frequency, from the local shear of the rotation curve.

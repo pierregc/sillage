@@ -160,6 +160,9 @@ struct BarnesHutTests {
         scene.solver = .barnesHut
         scene.galaxies[0].toomreQ = 1.4
         scene.galaxies[0].diskMassFraction = 0.6
+        // The bulge is held up by the Jeans equation rather than by Q, so leaving it in would
+        // only dilute the one thing this measures.
+        scene.galaxies[0].bulgeFraction = 0
         let hot = RestrictedSolver.sampleParticles(for: scene)
 
         scene.galaxies[0].toomreQ = 0.4
@@ -181,6 +184,60 @@ struct BarnesHutTests {
             return sqrt(total / Float(max(samples, 1)))
         }
         #expect(radialDispersion(hot) > 2 * radialDispersion(cold))
+    }
+
+    /// The disk has to hold its own radius once its gravity is switched on. It did not: the
+    /// sampler took its rotation curve from the analytic potential the galaxy was defined by,
+    /// while laying the mass down as a flattened disk, a bulge and a truncated halo, none of
+    /// which pull like that sphere. The disk came out turning at four fifths of what the real
+    /// field asks, fell inward and heated, and spread its mean radius by 23 % in 40 Myr.
+    ///
+    /// Cheap enough to keep in the suite because the step multiplier buys the physical time
+    /// without the steps; the drift is the same at eight times the tuned step.
+    @Test func aSelfGravitatingDiskHoldsItsRadius() throws {
+        var scene = SceneConfig.isolatedDisk(particleCount: 40_000)
+        scene.timeStepScale = 8
+        scene.retune()
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+
+        func meanRadius() -> Double {
+            let system = solver.particles
+            var total = 0.0
+            var counted = 0
+            for index in 0..<system.count
+            where system.component[index] != ParticleComponent.halo.rawValue {
+                total += Double(simd_length(system.positions[index]))
+                counted += 1
+            }
+            return total / Double(max(counted, 1))
+        }
+
+        let before = meanRadius()
+        let megayears: Float = 40
+        solver.step(count: Int(megayears / (scene.timeStep * Float(Physics.megayearsPerTimeUnit))))
+        #expect(abs(meanRadius() - before) / before < 0.04)
+    }
+
+    /// The rotation curve has to describe the mass the sampler lays down, not the sphere the
+    /// galaxy was written as. Freeman's disk is the piece that was missing.
+    @Test func theRotationCurveCountsTheDiskItselfNotJustTheSphere() {
+        var galaxy = SceneConfig.isolatedDisk(particleCount: 10_000).galaxies[0]
+        galaxy.bulgeFraction = 0
+        let live = DiskEquilibrium(config: galaxy, selfGravitating: true)
+        let tracer = DiskEquilibrium(config: galaxy, selfGravitating: false)
+        for radius in [Float(3), 6, 10] {
+            // The disk and the truncated halo both pull harder in the plane than the sphere.
+            #expect(live.circularSpeed(atRadius: radius) > tracer.circularSpeed(atRadius: radius))
+        }
+
+        // Freeman's curve for a disk on its own peaks near 2.15 scale lengths, which is what
+        // separates a real disk term from any monotonic stand-in for one.
+        func diskSpeed(_ radius: Float) -> Float {
+            DiskEquilibrium.exponentialDiskSpeedSquared(mass: 10, scaleLength: 4, radius: radius)
+        }
+        let peak = stride(from: Float(0.4), through: 30, by: 0.05).max { diskSpeed($0) < diskSpeed($1) }
+        #expect(abs((peak ?? 0) / 4 - 2.15) < 0.1)
     }
 
     @Test func selfGravitatingSamplingAssignsMass() {

@@ -31,7 +31,12 @@ struct SolverTests {
     }
 
     @Test func isolatedDiskDoesNotExpand() {
-        let solver = RestrictedSolver(scene: SceneConfig.isolatedDisk(particleCount: 20_000))
+        // Tracer solver, so tracer initial conditions. The preset is self-gravitating, and a
+        // disk balanced against its own mass turns faster than the rigid potential alone can
+        // hold, so sampling it that way and integrating it this way expands it by design.
+        var scene = SceneConfig.isolatedDisk(particleCount: 20_000)
+        scene.solver = .restricted
+        let solver = RestrictedSolver(scene: scene)
         let before = meanRadius(solver)
         solver.step(count: 400)
         #expect(abs(meanRadius(solver) - before) / before < 0.01)
