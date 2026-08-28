@@ -59,6 +59,7 @@ let settings = RenderSettings(
     dustStrength: Float(number("dust", 0.16)),
     starCount: Int(number("stars", 2600)),
     starSize: Float(number("star-size", 2.2)),
+    smoothingScale: Float(number("smoothing", 1.9)),
     bloomThreshold: Float(number("bloom-threshold", 0.55)),
     bloomSoftKnee: Float(number("bloom-knee", 0.6)),
     bloomIntensity: Float(number("bloom", 0.22)),
@@ -85,8 +86,6 @@ let renderer = try Renderer(
 // Each particle's kernel spans its own local interparticle spacing, so the surface stays
 // continuous instead of resolving the sampling.
 let smoothing = try SmoothingField(device: renderer.device, particleCount: seeded.count)
-smoothing.scale = Float(number("smoothing", 1.0))
-smoothing.neighbours = Float(number("neighbours", 64))
 renderer.setSmoothing(smoothing.buffer)
 print("solver     \(backend) (\(scene.solver.rawValue))")
 print("gpu        \(renderer.gpuName)")
