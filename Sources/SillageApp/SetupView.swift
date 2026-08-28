@@ -117,12 +117,19 @@ struct SetupContent: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Partir d'un préréglage").font(.headline)
             HStack {
-                Button("Fusion") { load(.merger(particleCount: total)) }
-                Button("Passage rapproché") { load(.flyby(particleCount: total)) }
-                Button("Disque isolé") { load(.isolatedDisk(particleCount: total)) }
+                presetButton("Fusion", .merger(particleCount: total))
+                presetButton("Passage rapproché", .flyby(particleCount: total))
+                presetButton("Disque isolé", .isolatedDisk(particleCount: total))
             }
-            .buttonStyle(.bordered)
         }
+    }
+
+    /// Loading the preset already showing changes nothing visible, so the current one is
+    /// marked: otherwise the button reads as dead.
+    private func presetButton(_ title: String, _ scene: SceneConfig) -> some View {
+        Button(title) { load(scene) }
+            .buttonStyle(.bordered)
+            .tint(model.draft.name == scene.name ? Palette.label : Palette.secondary)
     }
 
     private func load(_ scene: SceneConfig) {
