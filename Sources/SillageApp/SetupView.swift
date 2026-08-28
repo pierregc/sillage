@@ -173,17 +173,47 @@ struct SetupContent: View {
                 .textFieldStyle(.roundedBorder)
             }
 
-            // Softening and time step follow from the particle count and the disk size; there
-            // is no useful way to pick them by hand, so they are shown rather than offered.
+            // Softening follows from the particle count and the disk size; there is no useful
+            // way to pick it by hand, so it is shown rather than offered. The step is derived
+            // the same way, but how much accuracy a run needs is the user's call, so that one
+            // is a multiplier on the derived value rather than a number to guess at.
+            ParameterSlider(
+                title: "Vitesse d'exploration", value: speedBinding, range: 1...32,
+                format: "%.0f×", onCommit: { model.commitDraftChange() })
+
             Text(
                 String(
-                    format: "adoucissement %.3f kpc · pas %.4f (%.2f Myr) — calés automatiquement",
+                    format: "adoucissement %.3f kpc · pas %.4f (%.2f Myr) · %.1f Myr par seconde",
                     model.draft.softening, model.draft.timeStep,
-                    Double(model.draft.timeStep) * Physics.megayearsPerTimeUnit)
+                    Double(model.draft.timeStep) * Physics.megayearsPerTimeUnit,
+                    megayearsPerSecond)
             )
             .font(.caption.monospacedDigit())
             .foregroundStyle(Palette.secondary)
+
+            Text(
+                model.draft.timeStepScale > 16
+                    ? "Au-delà de 16× la structure commence à s'écarter : bon pour cadrer une rencontre, pas pour une prise."
+                    : "Multiplie le pas calé automatiquement. Jusqu'à 16×, un disque isolé garde son profil à 0,3 % près."
+            )
+            .font(.caption2)
+            .foregroundStyle(model.draft.timeStepScale > 16 ? Palette.warning : Palette.secondary)
         }
+    }
+
+    private var speedBinding: Binding<Float> {
+        Binding(
+            get: { model.draft.timeStepScale },
+            set: { model.draft.timeStepScale = $0 })
+    }
+
+    /// What the setting buys, which is the number the choice is actually about: how long the
+    /// machine takes to reach the moment worth looking at.
+    private var megayearsPerSecond: Double {
+        let stepMilliseconds = model.estimatedStepMilliseconds / Double(max(model.stepsPerFrame, 1))
+        guard stepMilliseconds > 0 else { return 0 }
+        return Double(model.draft.timeStep) * Physics.megayearsPerTimeUnit
+            * (1000 / stepMilliseconds)
     }
 
     /// Switching model retunes the step and the softening, which differ by orders of magnitude

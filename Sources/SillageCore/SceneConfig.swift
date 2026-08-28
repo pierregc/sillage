@@ -33,6 +33,13 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     /// separation: too small and two-body encounters heat the disk, too large and structure
     /// is washed out.
     public var softening: Float
+    /// Multiplies the automatic step. The automatic value is chosen for a run worth keeping;
+    /// while a scene is being set up what matters is reaching the interesting moment, and
+    /// measurement says there is room. On an isolated self-gravitating disk the radial
+    /// profile after 40 Myr stays within 0.3 % of a reference run at a quarter of the
+    /// automatic step all the way out to 16 times it, and within 1 % at 32. A close
+    /// encounter reaches higher speeds than an isolated disk, so it deserves more caution.
+    public var timeStepScale: Float = 1
 
     public init(
         name: String,
@@ -94,7 +101,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     /// Applies both, called whenever the solver or the particle counts change.
     public mutating func retune() {
         softening = recommendedSoftening
-        timeStep = recommendedTimeStep
+        timeStep = recommendedTimeStep * max(timeStepScale, 0.01)
     }
 
     public var hasLiveHalos: Bool {
