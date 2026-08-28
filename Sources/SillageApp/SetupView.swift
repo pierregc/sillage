@@ -197,10 +197,19 @@ struct GalaxyCard: View {
 
     private var commit: () -> Void { { model.commitDraftChange() } }
 
+    /// A preset can shrink the list while this card is still on screen, and SwiftUI evaluates
+    /// the body once more with the stale index before dropping the view. Subscripting the
+    /// draft unguarded there is what used to kill the app on "Disque isolé".
     var body: some View {
+        if model.draft.galaxies.indices.contains(index) {
+            card
+        }
+    }
+
+    private var card: some View {
         let galaxy = $model.draft.galaxies[index]
         let kind = model.draft.galaxies[index].kind
-        Card {
+        return Card {
             Group {
                 HStack {
                     TextField("nom", text: galaxy.name)
@@ -300,18 +309,25 @@ struct GalaxyCard: View {
     /// follows it at the ratio a real galaxy shows rather than being a separate control.
     private var sizeBinding: Binding<Float> {
         Binding(
-            get: { model.draft.galaxies[index].diskScaleLength },
+            get: { exists ? model.draft.galaxies[index].diskScaleLength : 1 },
             set: { value in
+                guard exists else { return }
                 model.draft.galaxies[index].diskScaleLength = value
                 model.draft.galaxies[index].potential.scaleRadius = value * 1.25
             })
     }
 
+    /// A slider can still be mid-drag when a preset drops the galaxy under it.
+    private var exists: Bool { model.draft.galaxies.indices.contains(index) }
+
     @ViewBuilder
     private func particleCountRow(_ galaxy: Binding<GalaxyConfig>) -> some View {
         let count = Binding<Float>(
-            get: { Float(model.draft.galaxies[index].particleCount) },
-            set: { model.draft.galaxies[index].particleCount = Int($0) })
+            get: { exists ? Float(model.draft.galaxies[index].particleCount) : 50_000 },
+            set: {
+                guard exists else { return }
+                model.draft.galaxies[index].particleCount = Int($0)
+            })
         VStack(alignment: .leading, spacing: 1) {
             HStack {
                 Text("Étoiles affichées").font(.caption)
