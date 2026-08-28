@@ -51,7 +51,12 @@ final class SimulationModel: ObservableObject {
     /// Edited by the setup screen. Applied to `scene` only when the user starts the run.
     @Published var draft: SceneConfig
     @Published var camera = OrbitCamera()
-    @Published var stepsPerFrame = 4
+    @Published var stepsPerFrame = 4 {
+        didSet {
+            guard mode == .live, isPlaying, stepsPerFrame != oldValue else { return }
+            startLiveStepping()
+        }
+    }
     @Published private(set) var particleCount = 0
     @Published private(set) var elapsedMyr = 0.0
     @Published private(set) var frameMilliseconds = 0.0
@@ -72,7 +77,12 @@ final class SimulationModel: ObservableObject {
     @Published var targetFrames = 300
     @Published var playbackSpeed: Float = 30
     @Published var playbackPosition: Double = 0
-    @Published var isPlaying = true
+    @Published var isPlaying = true {
+        didSet {
+            guard mode == .live, isPlaying != oldValue else { return }
+            isPlaying ? startLiveStepping() : stopLiveStepping()
+        }
+    }
     private(set) var recording: Recording?
     private var expander: SnapshotExpander?
     private var smoothing: SmoothingField?
@@ -95,6 +105,8 @@ final class SimulationModel: ObservableObject {
     static let previewBudget = 350_000
     private var playbackPositions: MTLBuffer?
     private let cancelRecording = CancellationFlag()
+    /// Identifies the current live stepping chain. Bumping it retires whatever is running.
+    private var liveGeneration = 0
     private let simulationQueue = DispatchQueue(label: "dev.pierregc.sillage.simulation")
 
     var recordedSeconds: Double { Double(recordedFrames) / 60 }
@@ -233,6 +245,7 @@ final class SimulationModel: ObservableObject {
     }
 
     func returnToSetup() {
+        stopLiveStepping()
         cancelRecording.set()
         stage = .setup
         mode = .live
@@ -241,10 +254,44 @@ final class SimulationModel: ObservableObject {
         isPlaying = false
     }
 
+    /// Advances the solver on the simulation queue, one batch at a time, and hops back to
+    /// the main actor to publish the clock and queue the next batch.
+    ///
+    /// Live mode used to step inside the draw call. A self-gravitating step costs about a
+    /// hundred milliseconds, so four of them per frame held the main actor for close to half
+    /// a second at a time and every control on the window went dead between frames. The
+    /// solver already ran off the main actor while recording; this puts live mode on the same
+    /// footing, and the canvas draws whatever the position buffer holds when the frame comes
+    /// round rather than waiting for the physics.
+    ///
+    /// Each start supersedes the last through the generation counter: a batch already in
+    /// flight finishes, finds itself stale on its way back, and stops there.
+    private func startLiveStepping() {
+        guard mode == .live, isPlaying, let solver else { return }
+        liveGeneration &+= 1
+        pumpLive(generation: liveGeneration, solver: solver, steps: max(stepsPerFrame, 1))
+    }
+
+    private func stopLiveStepping() { liveGeneration &+= 1 }
+
+    private func pumpLive(generation: Int, solver: any GPUSolver, steps: Int) {
+        simulationQueue.async { [weak self] in
+            solver.step(count: steps)
+            let time = solver.time
+            DispatchQueue.main.async {
+                guard let self, self.liveGeneration == generation else { return }
+                self.elapsedMyr = Double(time) * Physics.megayearsPerTimeUnit
+                self.pumpLive(generation: generation, solver: solver, steps: steps)
+            }
+        }
+    }
+
     /// Runs the solver on its own queue, capturing one snapshot per requested frame. The
     /// canvas keeps drawing the live buffer, so the encounter can be watched as it is built.
     func startRecording() {
         guard let solver, mode != .recording else { return }
+        // Two chains stepping the same solver would interleave their half-steps.
+        stopLiveStepping()
         cancelRecording.reset()
         mode = .recording
         recordedFrames = 0
@@ -275,6 +322,7 @@ final class SimulationModel: ObservableObject {
     private func finishRecording(_ reel: Recording) {
         guard reel.count >= 2 else {
             mode = .live
+            startLiveStepping()
             return
         }
         recording = reel
@@ -290,6 +338,7 @@ final class SimulationModel: ObservableObject {
         } catch {
             failure = "\(error)"
             mode = .live
+            startLiveStepping()
         }
     }
 
@@ -299,6 +348,7 @@ final class SimulationModel: ObservableObject {
         expander = nil
         mode = .live
         rebuildRenderer()
+        startLiveStepping()
     }
 
     var gpuName: String { device.name }
@@ -306,6 +356,8 @@ final class SimulationModel: ObservableObject {
     /// Rebuilds the whole simulation. Sampling several million particles takes a moment, so
     /// the panel only calls this when a control is released, never mid-drag.
     func restart() {
+        // Whatever is stepping is stepping the solver about to be replaced.
+        stopLiveStepping()
         failure = nil
         seeded = RestrictedSolver.sampleParticles(for: scene)
         particleCount = seeded.count
@@ -317,6 +369,7 @@ final class SimulationModel: ObservableObject {
         }
         elapsedMyr = 0
         rebuildRenderer()
+        startLiveStepping()
     }
 
     func loadPreset(_ preset: SceneConfig) {
@@ -442,6 +495,8 @@ final class SimulationModel: ObservableObject {
     /// Runs the exact model path a frame takes, but offscreen. Used by `--selftest` so the
     /// wiring can be checked without a window.
     func snapshot(steps: Int) -> [UInt8]? {
+        // This path steps the solver itself, so it has to own it outright.
+        stopLiveStepping()
         guard let renderer, let solver else { return nil }
         solver.step(count: steps)
         elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
@@ -466,10 +521,8 @@ final class SimulationModel: ObservableObject {
 
         switch mode {
         case .live:
-            if isPlaying {
-                solver.step(count: stepsPerFrame)
-                elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
-            }
+            // Advanced on the simulation queue; just show where it has got to.
+            break
         case .recording:
             // The solver is being advanced on its own queue; just show where it has got to.
             elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
