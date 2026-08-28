@@ -151,10 +151,14 @@ struct SillageApp: App {
         model.returnToSetup()
         model.rebuildPreview()
         print("selftest preview     \(model.previewParticleCount) particules")
+        let preview = model.previewSnapshot() ?? []
+        let previewLit = preview.enumerated().filter { $0.offset % 4 != 3 && $0.element > 8 }.count
+        print("selftest preview lit \(previewLit)")
+        print("selftest failure     \(model.failure ?? "none")")
         let url = URL(fileURLWithPath: "out/selftest.png")
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? PNGWriter.write(pixels, width: 1280, height: 720, to: url)
-        exit(lit > 10_000 && model.previewParticleCount > 1_000 ? 0 : 1)
+        exit(lit > 10_000 && model.previewParticleCount > 1_000 && previewLit > 10_000 ? 0 : 1)
     }
 }

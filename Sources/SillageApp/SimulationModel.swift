@@ -98,6 +98,8 @@ final class SimulationModel: ObservableObject {
     private var previewSmoothing: SmoothingField?
     private var previewPositions: MTLBuffer?
     private var previewSize = CGSize(width: 900, height: 900)
+    var previewCanvasSize: CGSize { previewSize }
+    var previewViewFrame: CGRect { previewCanvas?.frame ?? .zero }
     private weak var previewCanvas: MTKView?
 
     /// Particles the preview draws. Enough to judge a shape, few enough to resample on the
@@ -237,8 +239,32 @@ final class SimulationModel: ObservableObject {
         }
     }
 
+    /// Renders the setup preview offscreen. The particle count alone says nothing about
+    /// whether the preview draws, which is how a black one went unnoticed.
+    func previewSnapshot() -> [UInt8]? {
+        guard let previewRenderer else { return nil }
+        previewRenderer.setDiskFrames(
+            DiskFrame.make(
+                scene: draft, centers: draft.galaxies.map(\.position), time: 0, strength: 1))
+        return previewRenderer.render(camera: previewCamera.camera)
+    }
+
+    private(set) var previewDrawAttempts = 0
+    private(set) var previewFramesDrawn = 0
+    private(set) var previewNoDrawable = 0
+    private(set) var previewNoRenderer = 0
+
     func drawPreview(in view: MTKView) {
-        guard let previewRenderer, let drawable = view.currentDrawable else { return }
+        previewDrawAttempts += 1
+        guard let previewRenderer else {
+            previewNoRenderer += 1
+            return
+        }
+        guard let drawable = view.currentDrawable else {
+            previewNoDrawable += 1
+            return
+        }
+        previewFramesDrawn += 1
         previewRenderer.setDiskFrames(
             DiskFrame.make(
                 scene: draft, centers: draft.galaxies.map(\.position), time: 0,
