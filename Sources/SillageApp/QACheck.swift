@@ -197,6 +197,44 @@ enum QACheck {
             report.check("un second lancement capture", model.capturedFrames > 1)
             report.check("rien n'a échoué en chemin", model.failure == nil, model.failure ?? "")
 
+            // Restarting out of playback has to land back in a running scene, not leave the
+            // canvas bound to a recording that no longer matches the solver.
+            model.stopAndReplay()
+            report.check("l'arrêt bascule en relecture (2)", model.mode == .playback)
+            model.restart()
+            await settle(0.6)
+            report.check(
+                "relancer depuis la relecture repart en simulation",
+                model.mode == .running && model.capturedFrames > 1)
+
+            // The default solver is the slow one, so it gets its own pass.
+            model.returnToSetup()
+            model.draft.solver = .barnesHut
+            model.draft.retune()
+            model.setTotalParticles(60_000)
+            model.commitDraftChange()
+            model.start()
+            await settle(3.0)
+            report.check(
+                "l'auto-gravité avance", model.elapsedMyr > 0,
+                String(format: "%.2f Myr", model.elapsedMyr))
+            report.check(
+                "l'auto-gravité capture", model.capturedFrames > 1,
+                "\(model.capturedFrames) images")
+            report.check("l'auto-gravité dessine encore", model.framesDrawn > 0)
+            report.check(
+                "l'auto-gravité annonce son débit", model.megayearsPerSecond > 0,
+                String(format: "%.2f Myr/s", model.megayearsPerSecond))
+            if model.canReplay {
+                model.stopAndReplay()
+                await settle(0.6)
+                report.check(
+                    "l'auto-gravité se rejoue",
+                    model.mode == .playback
+                        && model.playbackPosition > 0)
+            }
+            report.check("aucune erreur en auto-gravité", model.failure == nil, model.failure ?? "")
+
             let text = report.rendered()
             try? text.write(
                 to: URL(fileURLWithPath: "/tmp/sillage-qa.log"), atomically: true, encoding: .utf8)
