@@ -75,7 +75,15 @@ Standing gaps, in the order they matter:
    interior of a galaxy legible.
 3. **Disk stability over many orbits is unmeasured.** Live halos should have improved it, but
    nobody has run the ten minutes per configuration needed to say so.
-4. **Force traversal is divergence-bound.** Sharing one stack across a SIMD group is the
-   remaining large win; the tree build has already been parallelised.
+4. **Force traversal is where the time goes.** Measured on an M4 Max at 400 k visible
+   particles with live halos, so a million simulated: 95 ms a step, of which 76 ms is
+   `bhAcceleration` and 18 ms the CPU tree build. Sharing one stack across a SIMD group is
+   still the remaining large win.
+
+   Do not reach for the obvious shortcut: shrinking the per-thread `int stack[64]` looks like
+   a 4x speed-up on the clock and is worthless. At 16 entries the traversal silently drops
+   the children it cannot push, and `accelerationMatchesDirectSummation` goes from 2 % mean
+   error to 34 %. That the timing moves that much for a change in stack size alone is still
+   worth knowing: the cost is thread-private storage as much as it is divergence.
 5. **Graininess in the outskirts** comes from the clumpiness of the initial conditions, not
    from sampling. It is deliberate, but it reads as noise now that the render is sharp.
