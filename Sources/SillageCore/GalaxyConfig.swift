@@ -121,6 +121,16 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.spin = spin
     }
 
+    /// Signed rate at which the spiral pattern winds, in radians per e-folding of radius.
+    ///
+    /// Arms trail: their tips point back against the way the disk turns. That is not a
+    /// convention but what a spiral galaxy shows, so the winding takes its sign from the
+    /// spin. Fixing the sign instead left every disk with leading arms, and reversing the
+    /// spin turned the disk without turning the pattern with it.
+    public var armWindRate: Float {
+        -spin.sign / max(tan(armPitch), 1e-3)
+    }
+
     /// Number of halo particles this galaxy contributes when self-gravitating.
     public var haloParticleCount: Int {
         haloParticleRatio > 0 ? Int(Float(particleCount) * haloParticleRatio) : 0
