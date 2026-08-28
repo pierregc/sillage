@@ -153,9 +153,12 @@ final class SimulationModel: ObservableObject {
     init?() {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
         self.device = device
-        // Self-gravity is the default now, and a live halo multiplies the simulated count,
-        // so the starting scene is sized for it rather than for the tracer solver.
-        var start = SceneConfig.merger(particleCount: 400_000)
+        // Sized so the app opens on something that gets somewhere. Self-gravity with a live
+        // halo simulates two and a half particles for every one drawn, and at 400 000 visible
+        // and the tuned step a 500 Myr encounter took half an hour: measurement says four
+        // times that step is indistinguishable, so the opening scene takes it.
+        var start = SceneConfig.merger(particleCount: 250_000)
+        start.timeStepScale = 4
         start.retune()
         self.scene = start
         self.draft = start
@@ -523,7 +526,11 @@ final class SimulationModel: ObservableObject {
     }
 
     func loadPreset(_ preset: SceneConfig) {
+        // The exploration speed is how the user wants to watch, not part of the scene, so a
+        // preset must not quietly undo it.
+        let speed = draft.timeStepScale
         draft = preset
+        draft.timeStepScale = speed
     }
 
     /// Softening and time step follow from the particle count and the disk size, so anything
