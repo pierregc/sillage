@@ -40,6 +40,8 @@ final class SimulationModel: ObservableObject {
     /// Simulated time per second of wall clock, measured rather than estimated. This is the
     /// number that decides whether a scene is worth waiting for.
     @Published private(set) var megayearsPerSecond = 0.0
+    /// Sampling and solver construction are in flight; there is no scene to draw yet.
+    @Published private(set) var isPreparing = false
     private(set) var framesDrawn = 0
     private(set) var drawAttempts = 0
     private weak var canvas: MTKView?
@@ -97,6 +99,9 @@ final class SimulationModel: ObservableObject {
     private var playbackPositions: MTLBuffer?
     /// Identifies the current live stepping chain. Bumping it retires whatever is running.
     private var liveGeneration = 0
+    /// Same idea for the sampling job, which a second launch can supersede mid-flight.
+    private var preparation = 0
+    private var reframeWhenReady = false
     private let simulationQueue = DispatchQueue(label: "dev.pierregc.sillage.simulation")
 
     var capturedMegabytes: Double { Double(capturedBytes) / 1_048_576 }
@@ -152,15 +157,18 @@ final class SimulationModel: ObservableObject {
         self.draft = start
     }
 
-    /// Commits the setup screen's draft and moves to the live view. Nothing heavy is built
+    /// Commits the setup screen's draft and moves to the running view. Nothing heavy is built
     /// until this runs, so the setup screen opens instantly.
-    func start() {
+    ///
+    /// `waiting` samples on the calling thread instead of the simulation queue. The headless
+    /// checks need the scene to exist the moment they return; a window does not.
+    func start(waiting: Bool = false) {
         scene = draft
-        restart()
-        frameCamera()
         // returnToSetup pauses, so without this a second launch sits still.
         isPlaying = true
         stage = .running
+        reframeWhenReady = true
+        restart(waiting: waiting)
     }
 
     func attachPreview(canvas view: MTKView) { previewCanvas = view }
@@ -395,27 +403,55 @@ final class SimulationModel: ObservableObject {
 
     var gpuName: String { device.name }
 
-    /// Rebuilds the whole simulation. Sampling several million particles takes a moment, so
-    /// the panel only calls this when a control is released, never mid-drag.
-    func restart() {
+    /// Rebuilds the whole simulation.
+    ///
+    /// Sampling four million visible particles takes four seconds and building the solver
+    /// another five, and both used to run on the main actor: launching a large scene froze
+    /// every control on the window for nine seconds with nothing on screen to say why. It
+    /// happens on the simulation queue now, and `isPreparing` says so while it does.
+    func restart(waiting: Bool = false) {
         // Whatever is stepping is stepping the solver about to be replaced.
         stopLiveStepping()
         failure = nil
-        seeded = RestrictedSolver.sampleParticles(for: scene)
-        particleCount = seeded.count
-        do {
-            solver = try GPUSolverFactory.make(device: device, scene: scene, particles: seeded)
-        } catch {
-            failure = "\(error)"
-            solver = nil
+        isPreparing = true
+        preparation &+= 1
+        let generation = preparation
+        let scene = self.scene
+        let device = self.device
+
+        guard !waiting else {
+            let sampled = RestrictedSolver.sampleParticles(for: scene)
+            install(sampled, try? GPUSolverFactory.make(device: device, scene: scene, particles: sampled))
+            return
         }
+        simulationQueue.async { [weak self] in
+            let sampled = RestrictedSolver.sampleParticles(for: scene)
+            let built = try? GPUSolverFactory.make(device: device, scene: scene, particles: sampled)
+            DispatchQueue.main.async {
+                guard let self, self.preparation == generation else { return }
+                self.install(sampled, built)
+            }
+        }
+    }
+
+    private func install(_ sampled: ParticleSystem, _ built: (any GPUSolver)?) {
+        seeded = sampled
+        particleCount = sampled.count
+        solver = built
+        if built == nil { failure = "Le solveur n'a pas pu être construit" }
         elapsedMyr = 0
+        megayearsPerSecond = 0
         // A restart invalidates the capture along with the solver it came from.
         mode = .running
         playbackPositions = nil
         expander = nil
+        isPreparing = false
         beginCapture()
         rebuildRenderer()
+        if reframeWhenReady {
+            reframeWhenReady = false
+            frameCamera()
+        }
         startLiveStepping()
     }
 

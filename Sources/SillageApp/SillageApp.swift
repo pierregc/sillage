@@ -56,7 +56,7 @@ struct SillageApp: App {
         model.draft.solver = .restricted
         model.draft.retune()
         model.setTotalParticles(1_000_000)
-        model.start()
+        model.start(waiting: true)
         Task {
             // Give SwiftUI a moment to build the canvas, then drive it directly rather than
             // waiting on a display link the window server has parked.
@@ -96,7 +96,7 @@ struct SillageApp: App {
     private static func renderInterface() {
         guard let model = SimulationModel() else { exit(1) }
         NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
-        model.start()
+        model.start(waiting: true)
         write(AnyView(SetupContent(model: model).padding(20).frame(width: 720)), to: "out/ui-setup.png")
         write(
             AnyView(ControlPanelContent(model: model).padding(14).frame(width: 276)), to: "out/ui-panel.png")
@@ -137,7 +137,7 @@ struct SillageApp: App {
         model.draft.solver = .restricted
         model.draft.retune()
         model.setTotalParticles(1_000_000)
-        model.start()
+        model.start(waiting: true)
         model.resize(to: CGSize(width: 1280, height: 720))
         guard let pixels = model.snapshot(steps: 1_200) else {
             FileHandle.standardError.write(Data("selftest: renderer unavailable\n".utf8))

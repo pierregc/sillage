@@ -13,7 +13,8 @@ enum ResponsivenessCheck {
             model.draft.retune()
             model.setTotalParticles(400_000)
             model.start()
-            try? await Task.sleep(for: .seconds(1))
+            // Sampling now runs off the main actor, so give it time to land.
+            try? await Task.sleep(for: .seconds(3))
 
             // A wake-up asked for every 16 ms comes back late by exactly as long as the main
             // actor was busy, so the gaps are the stall.

@@ -68,8 +68,11 @@ enum QACheck {
 
             // Launch.
             model.start()
-            report.check(
-                "le lancement passe en simulation", model.stage == .running && model.mode == .running)
+            report.check("le lancement bascule tout de suite", model.stage == .running)
+            report.check("le lancement annonce sa préparation", model.isPreparing)
+            await settle(2.0)
+            report.check("la préparation se termine", !model.isPreparing)
+            report.check("le lancement passe en simulation", model.mode == .running)
             report.check("le lancement démarre en lecture", model.isPlaying)
             let framesAtLaunch = model.framesDrawn
             await settle(1.5)
@@ -190,7 +193,7 @@ enum QACheck {
             model.rebuildPreview()
             report.check("l'aperçu revient", (model.previewSnapshot() ?? []).contains { $0 > 8 })
             model.start()
-            await settle(0.8)
+            await settle(2.0)
             report.check(
                 "un second lancement repart", model.isPlaying && model.elapsedMyr > 0,
                 String(format: "%.1f Myr", model.elapsedMyr))
@@ -214,7 +217,7 @@ enum QACheck {
             model.setTotalParticles(60_000)
             model.commitDraftChange()
             model.start()
-            await settle(3.0)
+            await settle(4.0)
             report.check(
                 "l'auto-gravité avance", model.elapsedMyr > 0,
                 String(format: "%.2f Myr", model.elapsedMyr))
