@@ -92,6 +92,7 @@ final class SimulationModel: ObservableObject {
     private var previewSmoothing: SmoothingField?
     private var previewPositions: MTLBuffer?
     private var previewSize = CGSize(width: 900, height: 900)
+    private var previewGeneration = 0
     var previewCanvasSize: CGSize { previewSize }
     var previewViewFrame: CGRect { previewCanvas?.frame ?? .zero }
     private weak var previewCanvas: MTKView?
@@ -187,7 +188,29 @@ final class SimulationModel: ObservableObject {
     }
 
     /// Resamples the draft and reframes. Called when a control is released, never mid-drag.
-    func rebuildPreview() {
+    ///
+    /// Sampling the preview's three hundred thousand particles takes 140 ms, and every slider
+    /// in the setup screen asks for it on release, so it happens on the simulation queue and
+    /// the old preview stays on screen until the new one is ready.
+    func rebuildPreview(waiting: Bool = false) {
+        previewGeneration &+= 1
+        let generation = previewGeneration
+        let scene = previewScene()
+        guard !waiting else {
+            installPreview(RestrictedSolver.sampleParticles(for: scene))
+            return
+        }
+        simulationQueue.async { [weak self] in
+            let particles = RestrictedSolver.sampleParticles(for: scene)
+            DispatchQueue.main.async {
+                guard let self, self.previewGeneration == generation else { return }
+                self.installPreview(particles)
+            }
+        }
+    }
+
+    /// The draft as the preview draws it: tracers, and no more than the preview's budget.
+    private func previewScene() -> SceneConfig {
         var scene = draft
         // Sampled as tracers: the preview never integrates, so it needs no masses and no halo
         // particles, which would only slow the resample down.
@@ -201,7 +224,10 @@ final class SimulationModel: ObservableObject {
             }
         }
 
-        let particles = RestrictedSolver.sampleParticles(for: scene)
+        return scene
+    }
+
+    private func installPreview(_ particles: ParticleSystem) {
         previewParticleCount = particles.count
         guard particles.count > 0 else { return }
 
@@ -283,6 +309,9 @@ final class SimulationModel: ObservableObject {
 
     func returnToSetup() {
         stopLiveStepping()
+        // A launch may still be sampling. Retire it, or it lands after the user has left.
+        preparation &+= 1
+        isPreparing = false
         stage = .setup
         mode = .running
         recording = nil
