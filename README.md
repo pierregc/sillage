@@ -17,8 +17,10 @@ configuration, the same particle storage and the same renderer.
 
 Level 1 is deliberately first: it reproduces the bridges and tails that make an encounter
 worth looking at, and it is cheap enough that the particle budget goes entirely into what is
-visible. Each galaxy's bulge and dark halo are an analytic potential rather than particles,
-so no part of the budget is spent on mass that never reaches a pixel.
+visible. Each galaxy's dark halo is an analytic potential rather than particles, so no part
+of the budget is spent on mass that never reaches a pixel. The stellar bulge is a component
+of its own: a flattened Hernquist spheroid held up by random motion, with its dispersion
+solved from the Jeans equation against the galaxy's whole weight rather than its own.
 
 ## Level 2: self-gravity
 
@@ -96,10 +98,16 @@ Sharing one stack across a SIMD group is the next thing worth trying there.
 
 ## Watching a slow simulation
 
-At three hundred milliseconds a step, stepping inside the draw loop makes the camera, the
-sliders and the whole interface run at that rate too. Recording separates them: the solver
-advances on its own queue while the viewer plays back from memory at the display rate, with
-scrubbing and without touching the physics.
+At a hundred milliseconds a step, stepping inside the draw loop makes the camera, the
+sliders and the whole interface run at that rate too: measured, the main thread was held for
+385 ms at a time and every control on the window was dead between frames. The solver runs on
+its own queue instead, and the canvas draws whatever the position buffer holds when the frame
+comes round. The same measurement now reads 2.2 ms.
+
+A run captures itself from the moment it starts. There is no separate record step to think
+about: a scene that has already been computed once should never have to be computed again to
+be watched. The capture stops at a memory budget, or when the run is stopped to replay it,
+and it can be picked up again where it left off.
 
 Snapshots are three 16-bit fixed-point values per particle inside each frame's own bounding
 box. Over a 200 kpc box that resolves 0.003 kpc, far below the force softening, for six bytes
@@ -144,8 +152,11 @@ run starts, so the setup screen opens instantly.
 Spin matters more than it looks. Prograde coplanar passages raise the long symmetric tails;
 retrograde ones stay dull.
 
+Arms trail, whichever way the disk turns: the winding takes its sign from the spin, which is
+what every spiral shows.
+
 Set per galaxy: colour, clumpiness, arm irregularity, dust share, star-forming share, bulge
-extent, arm count, arm contrast and pitch.
+share, radius and flattening, arm count, arm contrast and pitch.
 
 ## Offline rendering
 
