@@ -3,6 +3,11 @@ import simd
 /// Spherical camera rig around a target, which is what mouse orbiting maps onto naturally.
 public struct OrbitCamera: Sendable {
     public var target: SIMD3<Float>
+    /// Matched by the panel's slider, so scrolling past its end cannot make the two disagree
+    /// and snap the camera the next time the slider is touched.
+    public static let nearest: Float = 20
+    public static let furthest: Float = 4000
+
     public var distance: Float
     public var azimuth: Float
     public var elevation: Float
@@ -40,11 +45,12 @@ public struct OrbitCamera: Sendable {
     }
 
     public mutating func zoom(factor: Float) {
-        distance = min(max(distance * factor, 5), 20_000)
+        distance = min(max(distance * factor, OrbitCamera.nearest), OrbitCamera.furthest)
     }
 
     /// Distance at which a sphere of the given radius fills the frame.
     public mutating func frame(radius: Float) {
-        distance = radius / tan(fieldOfView / 2) * 1.05
+        distance = min(
+            max(radius / tan(fieldOfView / 2) * 1.05, OrbitCamera.nearest), OrbitCamera.furthest)
     }
 }

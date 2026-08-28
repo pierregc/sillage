@@ -251,7 +251,7 @@ final class SimulationModel: ObservableObject {
             previewRenderer?.setSmoothing(previewSmoothing?.buffer)
             previewSmoothing?.update(positions: particles.positions)
 
-            if let radius = Self.framingRadius(particles.positions) {
+            if let radius = Self.framingRadius(particles) {
                 previewCamera.frame(radius: radius * 1.3)
             }
             previewCamera.elevation = 1.2
@@ -583,27 +583,47 @@ final class SimulationModel: ObservableObject {
     }
 
     func frameCamera() {
-        guard let radius = Self.framingRadius(seeded.positions) else { return }
+        guard let radius = Self.framingRadius(seeded) else { return }
         camera.frame(radius: radius * 1.3)
     }
 
-    /// Radius holding 98 % of the particles, from a subsample.
+    /// Radius holding 96 % of the light, from a subsample.
     ///
-    /// Sorting every radius was costing four hundred milliseconds of frozen window at five
-    /// million particles, to place a camera. Fifty thousand of them put the percentile within
-    /// a fraction of a per cent of the same answer, which is far below what a framing needs.
-    static func framingRadius(_ positions: [SIMD3<Float>], percentile: Double = 0.98) -> Float? {
-        guard !positions.isEmpty else { return nil }
-        let step = max(positions.count / 50_000, 1)
-        var radii: [Float] = []
-        radii.reserveCapacity(positions.count / step + 1)
-        for index in stride(from: 0, to: positions.count, by: step) {
-            let length = simd_length(positions[index])
-            if length.isFinite { radii.append(length) }
+    /// Counting particles instead framed on the wrong thing: a run throws a faint halo of
+    /// tracers well outside the galaxies, and nothing of it reaches a pixel, so the camera
+    /// pulled back to hold material nobody can see and left the galaxies filling a third of
+    /// the frame. Weighting by emission keeps a bright tidal tail and ignores the debris.
+    ///
+    /// Subsampled because sorting every radius cost four hundred milliseconds of frozen
+    /// window at five million particles, to place a camera.
+    static func framingRadius(_ system: ParticleSystem, fraction: Float = 0.96) -> Float? {
+        guard !system.positions.isEmpty else { return nil }
+        let step = max(system.positions.count / 50_000, 1)
+        var samples: [(radius: Float, light: Float)] = []
+        samples.reserveCapacity(system.positions.count / step + 1)
+        for index in stride(from: 0, to: system.positions.count, by: step) {
+            let radius = simd_length(system.positions[index])
+            guard radius.isFinite else { continue }
+            // Dust absorbs and dark matter does neither, so neither one frames anything.
+            let emits =
+                index < system.component.count
+                ? system.component[index] == ParticleComponent.star.rawValue
+                    || system.component[index] == ParticleComponent.hiiRegion.rawValue
+                : true
+            let light = emits && index < system.luminosity.count ? system.luminosity[index] : 0
+            samples.append((radius, light))
         }
-        guard !radii.isEmpty else { return nil }
-        radii.sort()
-        return radii[min(Int(Double(radii.count) * percentile), radii.count - 1)]
+        guard !samples.isEmpty else { return nil }
+        samples.sort { $0.radius < $1.radius }
+
+        let total = samples.reduce(Float(0)) { $0 + $1.light }
+        guard total > 0 else { return samples[Int(Float(samples.count) * 0.9)].radius }
+        var running: Float = 0
+        for sample in samples {
+            running += sample.light
+            if running >= total * fraction { return sample.radius }
+        }
+        return samples[samples.count - 1].radius
     }
 
     func resize(to size: CGSize) {
