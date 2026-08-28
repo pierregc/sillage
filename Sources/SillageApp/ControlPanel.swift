@@ -136,8 +136,8 @@ struct ControlPanelContent: View {
                 title: "Opacité des poussières", value: $model.dustStrength, range: 0...0.8,
                 format: "%.3f")
             ParameterSlider(
-                title: "Lissage (taille du noyau)", value: $model.smoothingScale,
-                range: 0.4...3.0)
+                title: "Lissage des étoiles", value: $model.smoothingScale,
+                range: 0.4...5.0)
             ParameterSlider(
                 title: "Aigrettes de diffraction", value: $model.spikeIntensity, range: 0...1.5)
             ParameterSlider(

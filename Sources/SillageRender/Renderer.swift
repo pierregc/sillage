@@ -9,6 +9,7 @@ struct SplatUniforms {
     var dustStrength: Float
     var starSize: Float
     var projectionScale: Float
+    var smoothingScale: Float
     var referenceArea: Float
     var minimumSize: Float
     var maximumSize: Float
@@ -64,6 +65,10 @@ public struct RenderSettings: Sendable {
     public var starCount: Int
     /// Point size of the field stars before their magnitude scaling.
     public var starSize: Float
+    /// How many local interparticle spacings a particle's kernel spans. This is the whole of
+    /// the softness control: it scales the stored length in the shader, so it costs nothing to
+    /// change and never rebuilds the tree.
+    public var smoothingScale: Float
     /// Smallest and largest kernel a particle may cover, in output pixels.
     public var minimumKernel: Float
     public var maximumKernel: Float
@@ -91,6 +96,7 @@ public struct RenderSettings: Sendable {
         dustStrength: Float = 0.055,
         starCount: Int = 14000,
         starSize: Float = 1.15,
+        smoothingScale: Float = 1.9,
         minimumKernel: Float = 1.1,
         maximumKernel: Float = 64,
         bloomThreshold: Float = 0.55,
@@ -112,6 +118,7 @@ public struct RenderSettings: Sendable {
         self.dustStrength = dustStrength
         self.starCount = starCount
         self.starSize = starSize
+        self.smoothingScale = smoothingScale
         self.minimumKernel = minimumKernel
         self.maximumKernel = maximumKernel
         self.bloomThreshold = bloomThreshold
@@ -394,6 +401,7 @@ public final class Renderer {
     public func setBrightness(_ brightness: Float) { settings.brightness = brightness }
     public func setBloomIntensity(_ intensity: Float) { settings.bloomIntensity = intensity }
     public func setDustStrength(_ strength: Float) { settings.dustStrength = strength }
+    public func setSmoothingScale(_ scale: Float) { settings.smoothingScale = scale }
     public func setStretch(_ stretch: Float) { settings.stretch = stretch }
     public func setSaturation(_ saturation: Float) { settings.saturation = saturation }
     public func setSpikeIntensity(_ intensity: Float) { settings.spikeIntensity = intensity }
@@ -419,6 +427,7 @@ public final class Renderer {
             dustStrength: settings.dustStrength * perParticle,
             starSize: settings.starSize * Float(scale),
             projectionScale: projectionScale,
+            smoothingScale: settings.smoothingScale,
             referenceArea: 0.01,
             minimumSize: settings.minimumKernel * Float(scale),
             maximumSize: settings.maximumKernel * Float(scale))

@@ -25,10 +25,10 @@ public final class SmoothingField {
     private let tree = BarnesHutTree(leafCapacity: 24)
     private let count: Int
 
-    /// Neighbour count the kernel should span. Larger is smoother and blurrier.
-    public var neighbours: Float = 28
-    /// Multiplier on the derived length, exposed so the look can be tuned.
-    public var scale: Float = 1.0
+    // How many neighbours the kernel spans and any hand tuning on top are both nothing but
+    // a multiplier on the length, so neither is applied here. The raw spacing is stored and
+    // the shader scales it, which makes the setting free to change instead of forcing a tree
+    // rebuild every time it moves.
 
     public init(device: MTLDevice, particleCount: Int) throws {
         self.device = device
@@ -43,7 +43,6 @@ public final class SmoothingField {
     /// Fills the lengths from a tree that has already been built this step.
     public func update(from source: BarnesHutTree) {
         let clock = Date()
-        let factor = pow(3 * neighbours / (4 * .pi), 1.0 / 3.0) * scale
         lengths.withUnsafeMutableBufferPointer { target in
             source.order.withUnsafeBufferPointer { order in
                 for node in source.nodes where node.isLeaf {
@@ -51,7 +50,7 @@ public final class SmoothingField {
                     guard particles > 0 else { continue }
                     // packed.x is the cell width squared.
                     let width = sqrt(max(node.packed.x, 1e-12))
-                    let length = width * pow(1 / Float(particles), 1.0 / 3.0) * factor
+                    let length = width * pow(1 / Float(particles), 1.0 / 3.0)
                     let start = node.particleStart
                     for slot in start..<(start + particles) {
                         let particle = Int(order[slot])

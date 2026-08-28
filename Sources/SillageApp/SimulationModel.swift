@@ -117,10 +117,11 @@ final class SimulationModel: ObservableObject {
     }
     @Published var skyLevel: Float = 0.0018 { didSet { renderer?.setSkyLevel(skyLevel) } }
     @Published var noiseLevel: Float = 0.0016 { didSet { renderer?.setNoiseLevel(noiseLevel) } }
-    @Published var smoothingScale: Float = 1.0 {
+    /// Pure uniform now, so it applies on the next frame with no tree rebuild.
+    @Published var smoothingScale: Float = 1.9 {
         didSet {
-            smoothing?.scale = smoothingScale
-            framesSinceSmoothing = 99
+            renderer?.setSmoothingScale(smoothingScale)
+            previewRenderer?.setSmoothingScale(smoothingScale)
         }
     }
     @Published var supersample = 1 { didSet { rebuildRenderer() } }
@@ -186,6 +187,7 @@ final class SimulationModel: ObservableObject {
             let settings = RenderSettings(
                 width: Int(previewSize.width), height: Int(previewSize.height),
                 supersample: 1, brightness: brightness, dustStrength: dustStrength,
+                smoothingScale: smoothingScale,
                 bloomIntensity: bloom, stretch: stretch, saturation: saturation,
                 spikeIntensity: spikeIntensity, skyLevel: skyLevel, noiseLevel: noiseLevel)
             let buffer = device.makeBuffer(
@@ -193,7 +195,6 @@ final class SimulationModel: ObservableObject {
                 options: .storageModeShared)
             previewPositions = buffer
             previewSmoothing = try SmoothingField(device: device, particleCount: particles.count)
-            previewSmoothing?.scale = smoothingScale
             previewRenderer = try Renderer(
                 device: device, particles: particles, settings: settings,
                 externalPositions: buffer)
@@ -387,6 +388,7 @@ final class SimulationModel: ObservableObject {
             brightness: brightness,
             dustStrength: dustStrength,
             bloomIntensity: bloom,
+            smoothingScale: smoothingScale,
             stretch: stretch,
             saturation: saturation,
             spikeIntensity: spikeIntensity,

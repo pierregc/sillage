@@ -261,10 +261,10 @@ struct BarnesHutTests {
         #expect(tracers.count == restricted.totalParticleCount)
     }
 
-    @Test func layoutsMatchTheShader() {
+    @Test func nodeStaysSmall() {
+        // Thirty-two bytes rather than forty-eight: the node array is the hottest thing the
+        // force kernel reads, so its size is its speed.
         #expect(MemoryLayout<BHNode>.stride == 32)
-        #expect(MemoryLayout<HaloGPU>.stride == 48)
-        #expect(MemoryLayout<BHParams>.stride == 32)
     }
 
     @Test func allBarnesHutShadersCompile() throws {

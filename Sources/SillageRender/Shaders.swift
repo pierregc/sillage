@@ -14,6 +14,7 @@ enum Shaders {
             float dustStrength;
             float starSize;
             float projectionScale;
+            float smoothingScale;
             float referenceArea;
             float minimumSize;
             float maximumSize;
@@ -150,9 +151,14 @@ enum Shaders {
 
             // Angular size of this particle's kernel, in pixels. position.w is the view
             // depth for a standard perspective projection, so this is just h over distance.
-            float length = max(smoothing[vid], 1e-4);
-            float span = clamp(length * u.projectionScale / max(out.position.w, 1e-3),
+            float depth = max(out.position.w, 1e-3);
+            float perPixel = u.projectionScale / depth;
+            float span = clamp(max(smoothing[vid] * u.smoothingScale, 1e-4) * perPixel,
                                u.minimumSize, u.maximumSize);
+            // Take the length back from the clamped span. Dividing by the unclamped one would
+            // brighten every particle the floor caught, which made the softness control shift
+            // the exposure as a side effect.
+            float length = span / perPixel;
             // Spread the particle's light over the kernel's area in kiloparsecs, not in
             // pixels. Dividing by the pixel area would conserve flux per particle but make
             // the exposure depend on the resolution and the zoom; dividing by the physical
