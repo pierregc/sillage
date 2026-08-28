@@ -8,6 +8,12 @@ import SillageCore
 /// view tree is built once and never updated.
 enum PresetCheck {
     @MainActor
+    private static func litPreview(_ model: SimulationModel) -> Int {
+        let pixels = model.previewSnapshot() ?? []
+        return pixels.enumerated().filter { $0.offset % 4 != 3 && $0.element > 8 }.count
+    }
+
+    @MainActor
     static func run(_ model: SimulationModel) {
         guard CommandLine.arguments.contains("--presets") else { return }
         Task {
@@ -37,6 +43,18 @@ enum PresetCheck {
             model.commitDraftChange()
             try? await Task.sleep(for: .seconds(1))
             report += "add        \(model.draft.galaxies.count) galaxies\n"
+            report += """
+                preview canvas
+                  attempts   \(model.previewDrawAttempts)
+                  presented  \(model.previewFramesDrawn)
+                  no drawable\(model.previewNoDrawable)
+                  no renderer\(model.previewNoRenderer)
+                  size       \(model.previewCanvasSize)
+                  pane       \(model.previewViewFrame.size)
+                  lit        \(litPreview(model))
+                failure      \(model.failure ?? "none")
+
+                """
 
             // Launched through `open` the process has no stdout, so the result goes to a file.
             try? report.write(
