@@ -170,6 +170,112 @@ struct SamplingTests {
         }
     }
 
+    private static func spiral(bulge: Float) -> GalaxyConfig {
+        var config = GalaxyConfig(
+            name: "bulge",
+            particleCount: 60_000,
+            potential: GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5),
+            diskScaleLength: 4
+        )
+        config.bulgeFraction = bulge
+        config.haloParticleRatio = 0
+        return config
+    }
+
+    private static func sampled(_ config: GalaxyConfig, seed: UInt64 = 7) -> ParticleSystem {
+        var system = ParticleSystem()
+        var generator = SeededGenerator(seed: seed)
+        DiskSampler.sample(config, galaxyIndex: 0, into: &system, using: &generator)
+        return system
+    }
+
+    /// A bulge is a spheroid, not the inner part of the disk. Without one the centre is as
+    /// flat as everything around it, which is what this used to measure.
+    @Test func theBulgeIsRounderThanTheDisk() {
+        // Measured over a couple of bulge scale radii. Any window near the disk's own scale
+        // height makes a plain disk look round too, which says nothing.
+        func shape(bulge: Float) -> (axisRatio: Double, aboveThePlane: Double) {
+            let config = Self.spiral(bulge: bulge)
+            let system = Self.sampled(config)
+            let limit = 2 * config.bulgeExtent * config.diskScaleLength
+            var radial = 0.0
+            var vertical = 0.0
+            var high = 0
+            var n = 0
+            for p in system.positions {
+                let r = (p.x * p.x + p.y * p.y).squareRoot()
+                if r < limit {
+                    radial += Double(r * r)
+                    vertical += Double(p.z * p.z)
+                    if abs(p.z) > 1 { high += 1 }
+                    n += 1
+                }
+            }
+            guard n > 0 else { return (0, 0) }
+            return (
+                (vertical / Double(n)).squareRoot() / (radial / Double(n)).squareRoot(),
+                Double(high) / Double(n)
+            )
+        }
+        let flat = shape(bulge: 0)
+        let round = shape(bulge: 0.4)
+        #expect(flat.axisRatio < 0.35)
+        #expect(round.axisRatio > 0.6)
+        // A sech^2 disk 0.3 kpc thick cannot put stars a kiloparsec off the plane; a bulge can.
+        #expect(flat.aboveThePlane < 0.01)
+        #expect(round.aboveThePlane > 0.04)
+    }
+
+    /// The signature of a bulge on an image: light above what the disk alone would put there.
+    @Test func theBulgeRaisesTheCentreAboveTheExponential() {
+        func centralExcess(bulge: Float) -> Double {
+            let config = Self.spiral(bulge: bulge)
+            let system = Self.sampled(config)
+            let scale = Double(config.diskScaleLength)
+            func surfaceDensity(inner: Double, outer: Double) -> Double {
+                var n = 0
+                for p in system.positions {
+                    let r = Double((p.x * p.x + p.y * p.y).squareRoot())
+                    if r >= inner, r < outer { n += 1 }
+                }
+                return Double(n) / (.pi * (outer * outer - inner * inner))
+            }
+            // Measured against the exponential the outer disk defines, so the ratio is one
+            // for a disk with no bulge whatever its normalisation.
+            let core = surfaceDensity(inner: 0, outer: 0.5) / exp(-0.25 / scale)
+            let disk = surfaceDensity(inner: 3, outer: 5) / exp(-4 / scale)
+            return core / disk
+        }
+        #expect(centralExcess(bulge: 0) < 1.6)
+        #expect(centralExcess(bulge: 0.15) > 4)
+    }
+
+    /// Held up by random motion rather than by rotation, which is what separates a bulge from
+    /// the disk it sits in.
+    @Test func theBulgeIsPressureSupportedNotRotating() {
+        let config = Self.spiral(bulge: 0.4)
+        let system = Self.sampled(config)
+        let limit = 2 * config.bulgeExtent * config.diskScaleLength
+        var rotation = 0.0
+        var dispersion = 0.0
+        var n = 0
+        for i in 0..<system.count {
+            let p = system.positions[i]
+            let v = system.velocities[i]
+            let r = (p.x * p.x + p.y * p.y).squareRoot()
+            guard r < limit, r > 1e-3 else { continue }
+            let along = SIMD3<Float>(-p.y / r, p.x / r, 0)
+            rotation += Double(simd_dot(v, along))
+            dispersion += Double(simd_length_squared(v))
+            n += 1
+        }
+        guard n > 0 else { return }
+        let mean = abs(rotation / Double(n))
+        let sigma = (dispersion / Double(n)).squareRoot()
+        #expect(sigma > 0)
+        #expect(mean / sigma < 0.5)
+    }
+
     @Test func spinFlipsAngularMomentum() {
         func angularMomentum(_ spin: Spin) -> Float {
             let config = GalaxyConfig(

@@ -154,9 +154,15 @@ public enum DiskSampler {
     ) {
         switch config.kind {
         case .spiral, .disk:
+            // The bulge takes its stars out of the disk's share rather than adding to it, so
+            // the galaxy keeps the particle count and the stellar mass it was asked for.
+            let bulge = config.bulgeParticleCount
             sampleDisk(
-                config, galaxyIndex: galaxyIndex, selfGravitating: selfGravitating,
-                into: &system, using: &generator)
+                config, galaxyIndex: galaxyIndex, count: config.particleCount - bulge,
+                selfGravitating: selfGravitating, into: &system, using: &generator)
+            sampleBulge(
+                config, galaxyIndex: galaxyIndex, count: bulge,
+                selfGravitating: selfGravitating, into: &system, using: &generator)
         case .globular:
             sampleSpheroid(
                 config, galaxyIndex: galaxyIndex, selfGravitating: selfGravitating,
@@ -164,6 +170,98 @@ public enum DiskSampler {
         }
         if selfGravitating {
             sampleHalo(config, galaxyIndex: galaxyIndex, into: &system, using: &generator)
+        }
+    }
+
+    /// The stellar bulge: a flattened Hernquist spheroid held up by its own random motions.
+    ///
+    /// This is a component, not a label. Before it existed the centre of a galaxy was the
+    /// inner part of the exponential disk with its stars merely marked as old, so the light
+    /// profile had no central excess and the "bulge" was as flat as the disk it sat in.
+    private static func sampleBulge(
+        _ config: GalaxyConfig,
+        galaxyIndex: UInt32,
+        count: Int,
+        selfGravitating: Bool,
+        into system: inout ParticleSystem,
+        using generator: inout SeededGenerator
+    ) {
+        guard count > 0 else { return }
+        let scale = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
+        let edge = scale * 20
+        let shape = GalaxyPotential(profile: .hernquist, mass: 1, scaleRadius: scale)
+        let limit = min(enclosedFraction(shape, radius: edge), 0.999)
+        let flattening = min(max(config.bulgeFlattening, 0.05), 1)
+        let rotation = config.orientation
+        let particleMass =
+            selfGravitating
+            ? config.potential.mass * config.diskMassFraction / Float(max(config.particleCount, 1))
+            : 0
+
+        let dispersion = bulgeDispersion(config, scale: scale, edge: edge)
+        for _ in 0..<count {
+            let radius = inverseHernquistRadius(generator.uniform() * limit, scale: scale)
+            // Flattened along the disk's own axis, which is what makes a bulge read as part
+            // of the galaxy rather than as a sphere dropped into it.
+            var local = randomDirection(&generator) * radius
+            local.z *= flattening
+
+            let sigma = dispersion(radius)
+            let motion = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
+
+            system.append(
+                position: rotation * local + config.position,
+                velocity: rotation * (motion * sigma) + config.velocity,
+                galaxy: galaxyIndex,
+                radius: radius,
+                population: 0,
+                luminosity: 0.45 + 1.5 * generator.uniform() * generator.uniform(),
+                component: .star,
+                mass: particleMass
+            )
+        }
+    }
+
+    /// Isotropic dispersion of the bulge, from the Jeans equation solved in the galaxy's
+    /// total potential rather than in the bulge's own.
+    ///
+    /// That distinction is the whole of it. A bulge sits deep inside the halo, so the weight
+    /// pressing on it is mostly not its own; giving it only its own mass to balance leaves it
+    /// far too cold and it falls straight in. The integral has no short closed form against
+    /// an arbitrary potential, so it is tabulated once per galaxy over log radius and read
+    /// back by interpolation. Mild flattening is ignored here: the spherical solution is
+    /// within a few per cent of it, and well inside what the bulge's own settling costs.
+    private static func bulgeDispersion(
+        _ config: GalaxyConfig, scale: Float, edge: Float
+    ) -> (Float) -> Float {
+        let samples = 128
+        let inner = scale * 0.005
+        let stride = log(edge / inner) / Float(samples - 1)
+        let radii = (0..<samples).map { inner * exp(stride * Float($0)) }
+
+        func density(_ r: Float) -> Float {
+            let s = r + scale
+            return 1 / (max(r, 1e-6) * s * s * s)
+        }
+        // rho sigma^2 at r is the weight of everything above it, so the integral runs inward
+        // from the truncation radius.
+        func integrand(_ r: Float) -> Float {
+            let speed = config.potential.circularSpeed(atRadius: r)
+            return density(r) * speed * speed / max(r, 1e-6)
+        }
+        var pressure = [Float](repeating: 0, count: samples)
+        for index in Swift.stride(from: samples - 2, through: 0, by: -1) {
+            let a = radii[index]
+            let b = radii[index + 1]
+            pressure[index] = pressure[index + 1] + 0.5 * (integrand(a) + integrand(b)) * (b - a)
+        }
+        let sigma = (0..<samples).map { sqrt(max(pressure[$0] / density(radii[$0]), 0)) }
+
+        return { radius in
+            let position = log(max(radius, inner) / inner) / stride
+            let index = min(max(Int(position), 0), samples - 2)
+            let blend = min(max(position - Float(index), 0), 1)
+            return sigma[index] * (1 - blend) + sigma[index + 1] * blend
         }
     }
 
@@ -273,6 +371,7 @@ public enum DiskSampler {
     private static func sampleDisk(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
+        count: Int,
         selfGravitating: Bool,
         into system: inout ParticleSystem,
         using generator: inout SeededGenerator
@@ -323,7 +422,7 @@ public enum DiskSampler {
                     spread: scale * (0.006 + 0.045 * u * u * u)))
         }
 
-        for _ in 0..<config.particleCount {
+        for _ in 0..<max(count, 0) {
             let roll = generator.uniform()
             let component: ParticleComponent =
                 roll < dustShare
