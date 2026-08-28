@@ -38,7 +38,10 @@ struct SillageApp: App {
             // The panel draws on the system background, so the appearance is pinned rather
             // than letting a light theme put dark text on the black canvas.
             .preferredColorScheme(.dark)
-            .onAppear { startFrameCheck() }
+            .onAppear {
+                startFrameCheck()
+                PresetCheck.run(model)
+            }
         }
         .windowResizability(.contentMinSize)
     }

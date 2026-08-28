@@ -24,13 +24,18 @@ fresh session cannot deduce from the code.
 ```
 
 **Screen recording is not granted**, so `screencapture` fails and the app window cannot be
-looked at directly. Three modes replace it, and they are the only way to verify the app:
+looked at directly. Four modes replace it, and they are the only way to verify the app:
 
 ```
 Sillage.app --selftest    # model, solver, renderer and preview offscreen; writes out/selftest.png
 Sillage.app --verify      # opens the window and drives the view, reports frames drawn
 Sillage.app --uishot      # renders the panels through ImageRenderer to out/
+Sillage.app --presets     # cycles the setup presets with the window up
 ```
+
+`--presets` is the only mode that catches a stale index in the galaxy list: `--uishot` builds
+the view tree once and never updates it, so a card that crashes on the *change* of a preset
+renders perfectly there.
 
 `--verify` drives the canvas itself rather than waiting on the display link, because a window
 opened behind another application counts as occluded and MTKView parks its display link. A
