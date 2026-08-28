@@ -125,7 +125,11 @@ struct MetalSolverTests {
     }
 
     @Test func isolatedDiskStaysStableOnGPU() throws {
-        let scene = SceneConfig.isolatedDisk(particleCount: 20_000)
+        // Tracer solver, so tracer initial conditions: the preset is self-gravitating, and
+        // sampling a disk balanced against its own mass then integrating it in the rigid
+        // potential alone leaves it turning too fast for the field it is actually in.
+        var scene = SceneConfig.isolatedDisk(particleCount: 20_000)
+        scene.solver = .restricted
         let solver = try MetalSolver(scene: scene)
         func meanRadius() -> Double {
             var total = 0.0
