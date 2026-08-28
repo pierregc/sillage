@@ -42,6 +42,7 @@ struct SillageApp: App {
                 startFrameCheck()
                 PresetCheck.run(model)
                 ResponsivenessCheck.run(model)
+                QACheck.run(model)
             }
         }
         .windowResizability(.contentMinSize)
