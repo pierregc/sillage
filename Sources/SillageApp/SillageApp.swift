@@ -41,6 +41,7 @@ struct SillageApp: App {
             .onAppear {
                 startFrameCheck()
                 PresetCheck.run(model)
+                ResponsivenessCheck.run(model)
             }
         }
         .windowResizability(.contentMinSize)
