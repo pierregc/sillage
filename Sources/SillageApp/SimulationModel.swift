@@ -78,8 +78,11 @@ final class SimulationModel: ObservableObject {
     private var expander: SnapshotExpander?
     private var smoothing: SmoothingField?
     /// Smoothing lengths track density, which changes slowly, so they are refreshed every so
-    /// many frames rather than every one: rebuilding the tree costs tens of milliseconds.
+    /// many frames rather than every one. The refresh builds a tree over every particle, which
+    /// is half a second at five million: it belongs on the simulation queue, not in the draw
+    /// call, and the buffer it writes is read by the renderer the same way positions are.
     private var framesSinceSmoothing = 0
+    private var smoothingInFlight = false
 
     // The setup screen renders the draft scene as it stands, without ever stepping it, so the
     // effect of a parameter can be seen while it is being set rather than after a run.
@@ -222,10 +225,9 @@ final class SimulationModel: ObservableObject {
             previewRenderer?.setSmoothing(previewSmoothing?.buffer)
             previewSmoothing?.update(positions: particles.positions)
 
-            var radii = particles.positions.map { simd_length($0) }
-            radii.sort()
-            previewCamera.frame(
-                radius: radii[min(Int(Double(radii.count) * 0.98), radii.count - 1)] * 1.3)
+            if let radius = Self.framingRadius(particles.positions) {
+                previewCamera.frame(radius: radius * 1.3)
+            }
             previewCamera.elevation = 1.2
         } catch {
             failure = "\(error)"
@@ -247,6 +249,19 @@ final class SimulationModel: ObservableObject {
     private(set) var previewFramesDrawn = 0
     private(set) var previewNoDrawable = 0
     private(set) var previewNoRenderer = 0
+
+    /// Rebuilds the smoothing lengths on the simulation queue. One at a time: a second
+    /// request while the first is still walking the particles would only queue up work that
+    /// is about to be thrown away.
+    private func refreshSmoothing() {
+        guard !smoothingInFlight, let field = smoothing else { return }
+        guard let bound = mode == .playback ? playbackPositions : solver?.positions else { return }
+        smoothingInFlight = true
+        simulationQueue.async { [weak self] in
+            field.update(from: bound)
+            DispatchQueue.main.async { self?.smoothingInFlight = false }
+        }
+    }
 
     func drawPreview(in view: MTKView) {
         previewDrawAttempts += 1
@@ -420,21 +435,40 @@ final class SimulationModel: ObservableObject {
         let device = self.device
 
         guard !waiting else {
-            let sampled = RestrictedSolver.sampleParticles(for: scene)
-            install(sampled, try? GPUSolverFactory.make(device: device, scene: scene, particles: sampled))
+            let prepared = Self.prepare(scene: scene, device: device)
+            install(prepared.0, prepared.1, prepared.2)
             return
         }
         simulationQueue.async { [weak self] in
-            let sampled = RestrictedSolver.sampleParticles(for: scene)
-            let built = try? GPUSolverFactory.make(device: device, scene: scene, particles: sampled)
+            let prepared = Self.prepare(scene: scene, device: device)
             DispatchQueue.main.async {
                 guard let self, self.preparation == generation else { return }
-                self.install(sampled, built)
+                self.install(prepared.0, prepared.1, prepared.2)
             }
         }
     }
 
-    private func install(_ sampled: ParticleSystem, _ built: (any GPUSolver)?) {
+    /// Everything a launch needs that does not have to happen on the main actor, which is all
+    /// of it. The first captured frame belongs here too: quantising several million particles
+    /// is a full pass over every one of them, and doing it on the way in cost close to half a
+    /// second of dead window.
+    private static func prepare(
+        scene: SceneConfig, device: MTLDevice
+    ) -> (ParticleSystem, (any GPUSolver)?, Recording?) {
+        let sampled = RestrictedSolver.sampleParticles(for: scene)
+        let built = try? GPUSolverFactory.make(device: device, scene: scene, particles: sampled)
+        guard let built else { return (sampled, nil, nil) }
+        let reel = Recording(particleCount: sampled.count)
+        reel.append(
+            positions: built.positions.contents().bindMemory(
+                to: SIMD3<Float>.self, capacity: sampled.count),
+            time: built.time)
+        return (sampled, built, reel)
+    }
+
+    private func install(
+        _ sampled: ParticleSystem, _ built: (any GPUSolver)?, _ reel: Recording?
+    ) {
         seeded = sampled
         particleCount = sampled.count
         solver = built
@@ -446,7 +480,11 @@ final class SimulationModel: ObservableObject {
         playbackPositions = nil
         expander = nil
         isPreparing = false
-        beginCapture()
+        recording = reel
+        capturedFrames = reel?.count ?? 0
+        capturedBytes = reel?.byteCount ?? 0
+        captureIsFull = false
+        playbackPosition = 0
         rebuildRenderer()
         if reframeWhenReady {
             reframeWhenReady = false
@@ -516,10 +554,27 @@ final class SimulationModel: ObservableObject {
     }
 
     func frameCamera() {
-        var radii = seeded.positions.map { simd_length($0) }
-        guard !radii.isEmpty else { return }
+        guard let radius = Self.framingRadius(seeded.positions) else { return }
+        camera.frame(radius: radius * 1.3)
+    }
+
+    /// Radius holding 98 % of the particles, from a subsample.
+    ///
+    /// Sorting every radius was costing four hundred milliseconds of frozen window at five
+    /// million particles, to place a camera. Fifty thousand of them put the percentile within
+    /// a fraction of a per cent of the same answer, which is far below what a framing needs.
+    static func framingRadius(_ positions: [SIMD3<Float>], percentile: Double = 0.98) -> Float? {
+        guard !positions.isEmpty else { return nil }
+        let step = max(positions.count / 50_000, 1)
+        var radii: [Float] = []
+        radii.reserveCapacity(positions.count / step + 1)
+        for index in stride(from: 0, to: positions.count, by: step) {
+            let length = simd_length(positions[index])
+            if length.isFinite { radii.append(length) }
+        }
+        guard !radii.isEmpty else { return nil }
         radii.sort()
-        camera.frame(radius: radii[Int(Double(radii.count) * 0.98)] * 1.3)
+        return radii[min(Int(Double(radii.count) * percentile), radii.count - 1)]
     }
 
     func resize(to size: CGSize) {
@@ -556,7 +611,7 @@ final class SimulationModel: ObservableObject {
             renderer = try Renderer(
                 device: device, particles: seeded, settings: settings, externalPositions: bound)
             renderer?.setSmoothing(smoothing?.buffer)
-            if let bound { smoothing?.update(from: bound) }
+            refreshSmoothing()
         } catch {
             failure = "\(error)"
             renderer = nil
@@ -594,9 +649,7 @@ final class SimulationModel: ObservableObject {
         framesSinceSmoothing += 1
         if framesSinceSmoothing >= 20 {
             framesSinceSmoothing = 0
-            if let bound = mode == .playback ? playbackPositions : solver.positions {
-                smoothing?.update(from: bound)
-            }
+            refreshSmoothing()
         }
         renderer.setDiskFrames(
             DiskFrame.make(
