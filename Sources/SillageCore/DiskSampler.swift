@@ -286,7 +286,7 @@ public enum DiskSampler {
         let spin = config.spin.sign
         let arms = config.kind == .spiral ? max(config.armCount, 0) : 0
         let strength = arms > 0 ? min(max(config.armStrength, 0), 0.95) : 0
-        let windRate = 1 / max(tan(config.armPitch), 1e-3)
+        let windRate = config.armWindRate
         let bulgeRadius = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
         let dustShare = min(max(config.dustFraction, 0), 0.8)
         let hiiShare = min(max(config.starFormingFraction, 0), 0.3)
@@ -347,7 +347,10 @@ public enum DiskSampler {
                 let placed = samplePlanePosition(
                     config, arms: arms, contrast: contrast, windRate: windRate,
                     minimumRadius: component == .dust ? bulgeRadius * 0.5 : 0,
-                    phaseOffset: component == .dust ? 0.85 : 0,
+                    // Inside corotation the gas overtakes the pattern, so it piles up on the
+                    // edge of the arm it arrives at and the dust lane sits there rather than
+                    // on the ridge. Which edge that is follows the direction of rotation.
+                    phaseOffset: component == .dust ? -0.85 * spin : 0,
                     scaleMultiplier: component == .dust ? 1.5 : 1,
                     using: &generator)
                 radius = placed.radius

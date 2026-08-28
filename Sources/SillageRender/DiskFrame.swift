@@ -43,7 +43,7 @@ public struct DiskFrame {
                     orientation.columns.1.x, orientation.columns.1.y, orientation.columns.1.z,
                     armed),
                 pattern: SIMD4<Float>(
-                    1 / max(tan(galaxy.armPitch), 1e-3), patternSpeed * time,
+                    galaxy.armWindRate, patternSpeed * time,
                     galaxy.armIrregularity, Float(index) * 37.4 + 5.1),
                 tint: SIMD4<Float>(galaxy.color.x, galaxy.color.y, galaxy.color.z, 0))
         }

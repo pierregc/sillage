@@ -93,7 +93,7 @@ struct SamplingTests {
         var generator = SeededGenerator(seed: 21)
         DiskSampler.sample(config, galaxyIndex: 0, into: &system, using: &generator)
 
-        let wind = 1 / tan(config.armPitch)
+        let wind = config.armWindRate
         var real: Float = 0
         var imaginary: Float = 0
         for position in system.positions {
@@ -145,6 +145,29 @@ struct SamplingTests {
         #expect(abs(extent.y - extent.z) / extent.y < 0.06)
         #expect(
             simd_length(angularMomentum) / Float(system.count) < 0.1 * speed / Float(system.count) * extent.x)
+    }
+
+    /// Trailing arms, whichever way the disk turns: follow one ridge outward and it has to
+    /// fall behind the rotation. Leading arms are what a fixed winding sign produces, and
+    /// they are what no spiral galaxy shows.
+    @Test func armsTrailTheRotationForEitherSpin() {
+        for spin in [Spin.prograde, Spin.retrograde] {
+            var config = GalaxyConfig(
+                name: "arms",
+                particleCount: 100,
+                potential: GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5),
+                diskScaleLength: 4,
+                spin: spin
+            )
+            config.armPitch = 0.46
+
+            // A ridge satisfies phi = phase + windRate * log(radius / scale), so this is how
+            // far the arm has swung between two and four scale lengths.
+            let swing = config.armWindRate * (log(4 as Float) - log(2 as Float))
+            // Positive spin turns towards increasing phi, so trailing means the outer end
+            // sits at the angle the disk has already left behind.
+            #expect(swing * config.spin.sign < 0)
+        }
     }
 
     @Test func spinFlipsAngularMomentum() {
