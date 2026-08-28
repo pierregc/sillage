@@ -15,6 +15,20 @@ struct SceneConfigTests {
         #expect(SceneConfig.flyby(particleCount: 1_000).totalParticleCount == 1_000)
     }
 
+    /// Retuning is what every edit in the setup screen runs, so a speed the user picked has
+    /// to come through it rather than being reset to the automatic value.
+    @Test func retuningKeepsTheExplorationSpeed() {
+        var scene = SceneConfig.merger(particleCount: 200_000)
+        scene.retune()
+        let automatic = scene.timeStep
+        scene.timeStepScale = 8
+        scene.retune()
+        #expect(abs(scene.timeStep - automatic * 8) < automatic * 1e-4)
+        scene.galaxies[0].particleCount *= 2
+        scene.retune()
+        #expect(scene.timeStep > automatic)
+    }
+
     @Test func bothSolversAreAvailable() {
         #expect(SolverKind.allCases.count == 2)
         #expect(SolverKind.allCases.allSatisfy { $0.isImplemented })
