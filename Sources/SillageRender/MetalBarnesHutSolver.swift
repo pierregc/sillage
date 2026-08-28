@@ -56,6 +56,9 @@ public final class MetalBarnesHutSolver: Solver {
     private var orderBuffer: MTLBuffer?
 
     private let tree = BarnesHutTree()
+    /// Reused across steps. Masses never change, so they are read once.
+    private var scratchPositions: [SIMD3<Float>]
+    private let particleMass: [Float]
     private let template: ParticleSystem
     private let count: Int
     private let galaxyOf: [UInt32]
@@ -101,6 +104,12 @@ public final class MetalBarnesHutSolver: Solver {
         self.componentOf = particles.component
         self.liveHalos = scene.hasLiveHalos
         self.haloCenters = scene.galaxies.map(\.position)
+        self.scratchPositions = [SIMD3<Float>](repeating: .zero, count: self.count)
+        var masses = particles.mass
+        if masses.count != self.count {
+            masses = [Float](repeating: 0, count: self.count)
+        }
+        self.particleMass = masses
 
         var stripped = particles
         stripped.positions = []
@@ -226,11 +235,13 @@ public final class MetalBarnesHutSolver: Solver {
     private func rebuildTree() {
         let clock = Date()
         let pointer = positionBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
-        let positions = Array(UnsafeBufferPointer(start: pointer, count: count))
-        let mass = Array(
-            UnsafeBufferPointer(
-                start: massBuffer.contents().bindMemory(to: Float.self, capacity: count),
-                count: count))
+        // Copied into storage that lives as long as the solver: a fresh array here allocated
+        // and freed sixteen megabytes every step, at a hundred steps a second.
+        scratchPositions.withUnsafeMutableBufferPointer { destination in
+            destination.baseAddress!.update(from: pointer, count: count)
+        }
+        let positions = scratchPositions
+        let mass = particleMass
 
         tree.build(positions: positions, mass: mass)
         nodeCount = tree.nodes.count
