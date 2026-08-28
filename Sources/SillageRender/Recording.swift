@@ -22,18 +22,33 @@ public final class Recording: @unchecked Sendable {
     }
 
     public let particleCount: Int
-    public private(set) var frames: [Frame] = []
+    private var storedFrames: [Frame] = []
     private var storage: [UInt16] = []
+    /// A run captures on the simulation queue and is read back on the main actor. The two
+    /// overlap by exactly one batch when a capture is stopped, which is enough to be reading
+    /// an array while it grows.
+    private let lock = NSLock()
 
     public init(particleCount: Int) {
         self.particleCount = max(particleCount, 1)
     }
 
-    public var count: Int { frames.count }
-    public var isEmpty: Bool { frames.isEmpty }
-    public var byteCount: Int { storage.count * 2 + frames.count * MemoryLayout<Frame>.stride }
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
 
-    public var duration: Float { frames.last.map { $0.time - frames[0].time } ?? 0 }
+    public var frames: [Frame] { locked { storedFrames } }
+    public var count: Int { locked { storedFrames.count } }
+    public var isEmpty: Bool { count == 0 }
+    public var byteCount: Int {
+        locked { storage.count * 2 + storedFrames.count * MemoryLayout<Frame>.stride }
+    }
+
+    public var duration: Float {
+        locked { storedFrames.last.map { $0.time - storedFrames[0].time } ?? 0 }
+    }
 
     /// Memory a run of the given length would take, so the setup screen can warn before it
     /// rather than after.
@@ -42,6 +57,8 @@ public final class Recording: @unchecked Sendable {
     }
 
     public func append(positions: UnsafePointer<SIMD3<Float>>, time: Float) {
+        lock.lock()
+        defer { lock.unlock() }
         var lower = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
         var upper = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
         for index in 0..<particleCount {
@@ -65,25 +82,33 @@ public final class Recording: @unchecked Sendable {
                 target[base + index * 3 + 2] = UInt16(min(max(local.z, 0), 65535))
             }
         }
-        frames.append(Frame(time: time, origin: lower, extent: extent))
+        storedFrames.append(Frame(time: time, origin: lower, extent: extent))
     }
 
     public func removeAll() {
-        frames.removeAll(keepingCapacity: true)
+        lock.lock()
+        defer { lock.unlock() }
+        storedFrames.removeAll(keepingCapacity: true)
         storage.removeAll(keepingCapacity: true)
     }
 
     /// Copies two consecutive snapshots into a Metal buffer so the GPU can blend them.
     public func upload(pair index: Int, into buffer: MTLBuffer) -> (Frame, Frame) {
-        let first = min(max(index, 0), max(frames.count - 1, 0))
-        let second = min(first + 1, max(frames.count - 1, 0))
+        lock.lock()
+        defer { lock.unlock() }
+        guard !storedFrames.isEmpty else {
+            let empty = Frame(time: 0, origin: .zero, extent: 1)
+            return (empty, empty)
+        }
+        let first = min(max(index, 0), storedFrames.count - 1)
+        let second = min(first + 1, storedFrames.count - 1)
         let stride = particleCount * 3
         let destination = buffer.contents().bindMemory(to: UInt16.self, capacity: stride * 2)
         storage.withUnsafeBufferPointer { source in
             destination.update(from: source.baseAddress! + first * stride, count: stride)
             (destination + stride).update(from: source.baseAddress! + second * stride, count: stride)
         }
-        return (frames[first], frames[second])
+        return (storedFrames[first], storedFrames[second])
     }
 }
 
