@@ -68,6 +68,53 @@ enum QACheck {
             let previewLit = (model.previewSnapshot() ?? []).filter { $0 > 8 }.count
             report.check("l'aperçu de réglage dessine", previewLit > 10_000, "\(previewLit) échantillons")
 
+            // The setup screen's own contract, before anything is launched.
+            let galaxiesBefore = model.draft.galaxies.count
+            model.addGalaxy()
+            model.commitDraftChange()
+            report.check(
+                "ajouter une galaxie", model.draft.galaxies.count == galaxiesBefore + 1,
+                "\(model.draft.galaxies.count) galaxies")
+            await settle(1.0)
+            report.check("l'aperçu suit l'ajout", model.previewParticleCount > 0)
+            model.removeGalaxy(at: model.draft.galaxies.count - 1)
+            model.commitDraftChange()
+            report.check("retirer une galaxie", model.draft.galaxies.count == galaxiesBefore)
+
+            model.setTotalParticles(120_000)
+            model.commitDraftChange()
+            report.check(
+                "le nombre d'étoiles se règle",
+                abs(model.draft.totalParticleCount - 120_000) < 2_000,
+                "\(model.draft.totalParticleCount)")
+
+            // Softening and step are derived, and the two solvers need values orders of
+            // magnitude apart, so switching has to retune rather than carry the old ones.
+            model.draft.solver = .barnesHut
+            model.commitDraftChange()
+            let selfGravitatingStep = model.draft.timeStep
+            model.draft.solver = .restricted
+            model.commitDraftChange()
+            report.check(
+                "changer de gravité recale le pas",
+                model.draft.timeStep > selfGravitatingStep,
+                String(format: "%.4f puis %.4f", selfGravitatingStep, model.draft.timeStep))
+
+            // From the tuned step itself, which the opening scene already multiplies.
+            model.draft.timeStepScale = 1
+            model.commitDraftChange()
+            let tunedStep = model.draft.timeStep
+            model.draft.timeStepScale = 8
+            model.commitDraftChange()
+            report.check(
+                "la vitesse d'exploration multiplie le pas",
+                abs(model.draft.timeStep - tunedStep * 8) < tunedStep * 0.01,
+                String(format: "x%.1f", model.draft.timeStep / tunedStep))
+            model.draft.timeStepScale = 1
+            model.setTotalParticles(200_000)
+            model.commitDraftChange()
+            await settle(1.0)
+
             // Launch.
             model.start()
             report.check("le lancement bascule tout de suite", model.stage == .running)
