@@ -13,34 +13,11 @@ enum Stage {
 /// What the viewer is showing. Live steps the solver inside the draw loop, which is fine when
 /// a step costs a millisecond and unusable when it costs half a second. Recording runs the
 /// solver on its own queue and captures snapshots; playback replays them at display rate.
-/// A cancellation flag the recording queue can read without hopping back to the main actor.
-/// Asking the main queue synchronously from a worker is how a background job deadlocks.
-final class CancellationFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = false
-
-    var isSet: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return value
-    }
-
-    func set() {
-        lock.lock()
-        value = true
-        lock.unlock()
-    }
-
-    func reset() {
-        lock.lock()
-        value = false
-        lock.unlock()
-    }
-}
-
+/// What the canvas is showing. There is no separate recording mode: a run captures itself
+/// from the moment it starts, because a scene that has already been computed once should
+/// never have to be computed again to be watched.
 enum ViewerMode {
-    case live
-    case recording
+    case running
     case playback
 }
 
@@ -53,7 +30,7 @@ final class SimulationModel: ObservableObject {
     @Published var camera = OrbitCamera()
     @Published var stepsPerFrame = 4 {
         didSet {
-            guard mode == .live, isPlaying, stepsPerFrame != oldValue else { return }
+            guard mode == .running, isPlaying, stepsPerFrame != oldValue else { return }
             startLiveStepping()
         }
     }
@@ -72,14 +49,23 @@ final class SimulationModel: ObservableObject {
     func drawOnce() { canvas?.draw() }
     @Published private(set) var failure: String?
 
-    @Published private(set) var mode: ViewerMode = .live
-    @Published private(set) var recordedFrames = 0
-    @Published var targetFrames = 300
+    @Published private(set) var mode: ViewerMode = .running
+    @Published private(set) var capturedFrames = 0
+    @Published private(set) var capturedBytes = 0
+    /// Where the capture stopped, once it has. The run keeps going either way.
+    @Published private(set) var captureIsFull = false
+    /// How much memory the capture may take before it stops adding to itself.
+    @Published var memoryBudgetGigabytes = 4.0 {
+        didSet {
+            guard mode == .running, isPlaying, memoryBudgetGigabytes != oldValue else { return }
+            startLiveStepping()
+        }
+    }
     @Published var playbackSpeed: Float = 30
     @Published var playbackPosition: Double = 0
     @Published var isPlaying = true {
         didSet {
-            guard mode == .live, isPlaying != oldValue else { return }
+            guard mode == .running, isPlaying != oldValue else { return }
             isPlaying ? startLiveStepping() : stopLiveStepping()
         }
     }
@@ -106,20 +92,17 @@ final class SimulationModel: ObservableObject {
     /// release of a slider.
     static let previewBudget = 350_000
     private var playbackPositions: MTLBuffer?
-    private let cancelRecording = CancellationFlag()
     /// Identifies the current live stepping chain. Bumping it retires whatever is running.
     private var liveGeneration = 0
     private let simulationQueue = DispatchQueue(label: "dev.pierregc.sillage.simulation")
 
-    var recordedSeconds: Double { Double(recordedFrames) / 60 }
-    var recordingMegabytes: Double {
-        Double(Recording.estimatedBytes(particleCount: particleCount, frames: recordedFrames))
-            / 1_048_576
+    var capturedMegabytes: Double { Double(capturedBytes) / 1_048_576 }
+    var capturedMyr: Double { Double(recording?.duration ?? 0) * Physics.megayearsPerTimeUnit }
+    var captureFraction: Double {
+        min(Double(capturedBytes) / max(memoryBudgetGigabytes * 1_073_741_824, 1), 1)
     }
-    var projectedGigabytes: Double {
-        Double(Recording.estimatedBytes(particleCount: draft.totalParticleCount, frames: targetFrames))
-            / 1_073_741_824
-    }
+    /// Playback interpolates between snapshots, so it needs two of them.
+    var canReplay: Bool { capturedFrames >= 2 }
 
     @Published var brightness: Float = 0.15 { didSet { renderer?.setBrightness(brightness) } }
     @Published var stretch: Float = 18 { didSet { renderer?.setStretch(stretch) } }
@@ -274,11 +257,14 @@ final class SimulationModel: ObservableObject {
 
     func returnToSetup() {
         stopLiveStepping()
-        cancelRecording.set()
         stage = .setup
-        mode = .live
+        mode = .running
         recording = nil
+        capturedFrames = 0
+        capturedBytes = 0
+        captureIsFull = false
         playbackPositions = nil
+        expander = nil
         isPlaying = false
     }
 
@@ -295,86 +281,99 @@ final class SimulationModel: ObservableObject {
     /// Each start supersedes the last through the generation counter: a batch already in
     /// flight finishes, finds itself stale on its way back, and stops there.
     private func startLiveStepping() {
-        guard mode == .live, isPlaying, let solver else { return }
+        guard mode == .running, isPlaying, let solver else { return }
         liveGeneration &+= 1
-        pumpLive(generation: liveGeneration, solver: solver, steps: max(stepsPerFrame, 1))
+        pumpLive(
+            generation: liveGeneration, solver: solver, steps: max(stepsPerFrame, 1),
+            budget: Int(max(memoryBudgetGigabytes, 0) * 1_073_741_824))
     }
 
     private func stopLiveStepping() { liveGeneration &+= 1 }
 
-    private func pumpLive(generation: Int, solver: any GPUSolver, steps: Int) {
+    private func pumpLive(generation: Int, solver: any GPUSolver, steps: Int, budget: Int) {
+        let reel = recording
         simulationQueue.async { [weak self] in
             solver.step(count: steps)
             let time = solver.time
+            var frames = 0
+            var bytes = 0
+            var full = false
+            if let reel {
+                // Capturing costs six bytes a particle a frame, so it stops at the budget
+                // rather than at whatever point the machine runs out of memory.
+                if reel.byteCount < budget {
+                    let positions = solver.positions.contents().bindMemory(
+                        to: SIMD3<Float>.self, capacity: reel.particleCount)
+                    reel.append(positions: positions, time: time)
+                } else {
+                    full = true
+                }
+                frames = reel.count
+                bytes = reel.byteCount
+            }
             DispatchQueue.main.async {
                 guard let self, self.liveGeneration == generation else { return }
                 self.elapsedMyr = Double(time) * Physics.megayearsPerTimeUnit
-                self.pumpLive(generation: generation, solver: solver, steps: steps)
+                self.capturedFrames = frames
+                self.capturedBytes = bytes
+                self.captureIsFull = full
+                self.pumpLive(
+                    generation: generation, solver: solver, steps: steps, budget: budget)
             }
         }
     }
 
-    /// Runs the solver on its own queue, capturing one snapshot per requested frame. The
-    /// canvas keeps drawing the live buffer, so the encounter can be watched as it is built.
-    func startRecording() {
-        guard let solver, mode != .recording else { return }
-        // Two chains stepping the same solver would interleave their half-steps.
-        stopLiveStepping()
-        cancelRecording.reset()
-        mode = .recording
-        recordedFrames = 0
-        isPlaying = true
-
-        let target = max(targetFrames, 2)
-        let steps = max(stepsPerFrame, 1)
-        let count = particleCount
-        let capture = solver
-        let cancelled = cancelRecording
-        simulationQueue.async { [weak self] in
-            let reel = Recording(particleCount: count)
-            let positions = capture.positions.contents().bindMemory(
-                to: SIMD3<Float>.self, capacity: count)
-            reel.append(positions: positions, time: capture.time)
-            for _ in 1..<target {
-                if cancelled.isSet { break }
-                capture.step(count: steps)
-                reel.append(positions: positions, time: capture.time)
-                DispatchQueue.main.async { self?.recordedFrames = reel.count }
-            }
-            DispatchQueue.main.async { self?.finishRecording(reel) }
-        }
-    }
-
-    func stopRecording() { cancelRecording.set() }
-
-    private func finishRecording(_ reel: Recording) {
-        guard reel.count >= 2 else {
-            mode = .live
-            startLiveStepping()
-            return
-        }
+    /// Starts a capture from wherever the solver has got to. Called on every restart, so a
+    /// run is always its own recording.
+    private func beginCapture() {
+        guard let solver else { return }
+        let reel = Recording(particleCount: particleCount)
+        let positions = solver.positions.contents().bindMemory(
+            to: SIMD3<Float>.self, capacity: particleCount)
+        reel.append(positions: positions, time: solver.time)
         recording = reel
-        recordedFrames = reel.count
+        capturedFrames = reel.count
+        capturedBytes = reel.byteCount
+        captureIsFull = false
         playbackPosition = 0
+    }
+
+    /// Ends the capture and plays it back. The solver keeps its state, so the run can be
+    /// picked up again where it stopped.
+    func stopAndReplay() {
+        guard canReplay, let reel = recording else { return }
+        stopLiveStepping()
         do {
             expander = try SnapshotExpander(device: device, particleCount: reel.particleCount)
             playbackPositions = device.makeBuffer(
                 length: reel.particleCount * MemoryLayout<SIMD3<Float>>.stride,
                 options: .storageModeShared)
+            playbackPosition = 0
+            isPlaying = true
             mode = .playback
             rebuildRenderer()
         } catch {
             failure = "\(error)"
-            mode = .live
-            startLiveStepping()
         }
     }
 
-    func discardRecording() {
-        recording = nil
+    /// Back to advancing the solver, appending to the same capture.
+    func resumeRunning() {
+        guard mode == .playback else { return }
+        mode = .running
+        isPlaying = true
+        rebuildRenderer()
+        startLiveStepping()
+    }
+
+    /// Throws the capture away and starts a new one from where the run stands.
+    func restartCapture() {
+        stopLiveStepping()
         playbackPositions = nil
         expander = nil
-        mode = .live
+        mode = .running
+        beginCapture()
+        isPlaying = true
         rebuildRenderer()
         startLiveStepping()
     }
@@ -396,6 +395,11 @@ final class SimulationModel: ObservableObject {
             solver = nil
         }
         elapsedMyr = 0
+        // A restart invalidates the capture along with the solver it came from.
+        mode = .running
+        playbackPositions = nil
+        expander = nil
+        beginCapture()
         rebuildRenderer()
         startLiveStepping()
     }
@@ -529,7 +533,7 @@ final class SimulationModel: ObservableObject {
         solver.step(count: steps)
         elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
         framesSinceSmoothing += 1
-        if framesSinceSmoothing >= 20, mode != .recording {
+        if framesSinceSmoothing >= 20 {
             framesSinceSmoothing = 0
             if let bound = mode == .playback ? playbackPositions : solver.positions {
                 smoothing?.update(from: bound)
@@ -548,12 +552,9 @@ final class SimulationModel: ObservableObject {
         let start = CACurrentMediaTime()
 
         switch mode {
-        case .live:
+        case .running:
             // Advanced on the simulation queue; just show where it has got to.
             break
-        case .recording:
-            // The solver is being advanced on its own queue; just show where it has got to.
-            elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
         case .playback:
             advancePlayback()
         }

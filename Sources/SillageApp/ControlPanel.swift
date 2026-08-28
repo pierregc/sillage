@@ -38,25 +38,21 @@ struct ControlPanelContent: View {
                 Button(model.isPlaying ? "Pause" : "Lecture") { model.isPlaying.toggle() }
                     .keyboardShortcut(.space, modifiers: [])
                 Button("Relancer") { model.restart() }
-                    .disabled(model.mode == .recording)
             }
             .buttonStyle(.bordered)
 
             Button("Modifier la scène") { model.returnToSetup() }
                 .buttonStyle(.bordered)
 
-            Stepper("Pas par image : \(model.stepsPerFrame)", value: $model.stepsPerFrame, in: 1...64)
-                .font(.caption)
-                .disabled(model.mode == .playback)
-
             Text(String(format: "t = %.0f Myr", model.elapsedMyr))
                 .font(.callout.monospacedDigit())
             Text(
                 String(
-                    format: "%.1f ms/image · %@ particules", model.frameMilliseconds,
+                    format: "%@ particules · %.1f ms par image affichée",
                     model.particleCount >= 1_000_000
                         ? String(format: "%.1f M", Double(model.particleCount) / 1_000_000)
-                        : "\(model.particleCount / 1000) k")
+                        : "\(model.particleCount / 1000) k",
+                    model.frameMilliseconds)
             )
             .font(.caption.monospacedDigit())
             .foregroundStyle(Palette.secondary)
@@ -67,57 +63,71 @@ struct ControlPanelContent: View {
         }
     }
 
-    /// Recording and playback. Self-gravity costs hundreds of milliseconds a step, so the
-    /// only way to watch it without touching the physics is to stop making the display wait
-    /// for it.
+    /// Capture and playback. A run records itself from the moment it starts: self-gravity
+    /// costs hundreds of milliseconds a step, so a scene that has already been computed once
+    /// should never have to be computed again just to be watched.
     @ViewBuilder
     private var capture: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Prise").font(.headline)
 
             switch model.mode {
-            case .live:
-                Text(
-                    "Enregistre la suite du calcul en mémoire, puis rejoue à la fréquence de l'écran."
-                )
-                .font(.caption)
-                .foregroundStyle(Palette.secondary)
-                Stepper("Images : \(model.targetFrames)", value: $model.targetFrames, in: 30...3000, step: 30)
-                    .font(.caption)
-                Text(String(format: "environ %.1f Go en mémoire", model.projectedGigabytes))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(model.projectedGigabytes > 12 ? Palette.warning : Palette.secondary)
-                Button("Enregistrer") { model.startRecording() }
-                    .buttonStyle(.borderedProminent)
-
-            case .recording:
-                ProgressView(
-                    value: Double(model.recordedFrames), total: Double(max(model.targetFrames, 1)))
+            case .running:
                 Text(
                     String(
-                        format: "%d / %d images · %.0f Mo", model.recordedFrames,
-                        model.targetFrames, model.recordingMegabytes)
+                        format: "%d images · %.0f Myr · %.0f Mo", model.capturedFrames,
+                        model.capturedMyr, model.capturedMegabytes)
                 )
                 .font(.caption.monospacedDigit())
-                Button("Arrêter et rejouer") { model.stopRecording() }
-                    .buttonStyle(.bordered)
+                ProgressView(value: model.captureFraction)
+
+                if model.captureIsFull {
+                    Text(
+                        "Budget mémoire atteint : la prise s'arrête ici, le calcul continue."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(Palette.warning)
+                }
+
+                Button("Arrêter et rejouer") { model.stopAndReplay() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!model.canReplay)
+
+                ParameterSlider(
+                    title: "Budget mémoire (Go)",
+                    value: Binding(
+                        get: { Float(model.memoryBudgetGigabytes) },
+                        set: { model.memoryBudgetGigabytes = Double($0) }),
+                    range: 0.5...24, format: "%.1f")
+
+                Stepper(
+                    "Pas simulés par image : \(model.stepsPerFrame)",
+                    value: $model.stepsPerFrame, in: 1...64
+                )
+                .font(.caption)
+                Text("Plus haut, la prise couvre plus de temps pour la même mémoire.")
+                    .font(.caption2)
+                    .foregroundStyle(Palette.secondary)
 
             case .playback:
                 Text(
                     String(
-                        format: "%d images · %.0f Mo", model.recordedFrames,
-                        model.recordingMegabytes)
+                        format: "%d images · %.0f Myr · %.0f Mo", model.capturedFrames,
+                        model.capturedMyr, model.capturedMegabytes)
                 )
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Palette.secondary)
                 Slider(
                     value: $model.playbackPosition,
-                    in: 0...Double(max(model.recordedFrames - 1, 1)))
+                    in: 0...Double(max(model.capturedFrames - 1, 1)))
                 ParameterSlider(
                     title: "Vitesse (images/s)", value: $model.playbackSpeed, range: 1...120,
                     format: "%.0f")
-                Button("Nouvelle prise") { model.discardRecording() }
-                    .buttonStyle(.bordered)
+                HStack {
+                    Button("Reprendre le calcul") { model.resumeRunning() }
+                    Button("Nouvelle prise") { model.restartCapture() }
+                }
+                .buttonStyle(.bordered)
             }
         }
     }
