@@ -311,20 +311,26 @@ public final class Renderer {
 
         let stride = MemoryLayout<SIMD3<Float>>.stride
         let count = max(particles.count, 1)
+        // makeBuffer(bytes:length:) copies `length` bytes from the pointer it is given, so a
+        // one-element stand-in would have it read off the end of the array. Fill the whole
+        // length instead.
+        func attribute<T>(_ values: [T], _ fallback: T) -> [T] {
+            values.count == count ? values : [T](repeating: fallback, count: count)
+        }
         guard
             let positionBuffer = externalPositions
                 ?? device.makeBuffer(length: count * stride, options: .storageModeShared),
             let populationBuffer = device.makeBuffer(
-                bytes: particles.population.isEmpty ? [Float(0.5)] : particles.population,
+                bytes: attribute(particles.population, Float(0.5)),
                 length: count * 4, options: .storageModeShared),
             let luminosityBuffer = device.makeBuffer(
-                bytes: particles.luminosity.isEmpty ? [Float(1)] : particles.luminosity,
+                bytes: attribute(particles.luminosity, Float(1)),
                 length: count * 4, options: .storageModeShared),
             let componentBuffer = device.makeBuffer(
-                bytes: particles.component.isEmpty ? [UInt32(0)] : particles.component,
+                bytes: attribute(particles.component, UInt32(0)),
                 length: count * 4, options: .storageModeShared),
             let galaxyBuffer = device.makeBuffer(
-                bytes: particles.galaxyIndex.isEmpty ? [UInt32(0)] : particles.galaxyIndex,
+                bytes: attribute(particles.galaxyIndex, UInt32(0)),
                 length: count * 4, options: .storageModeShared)
         else {
             throw RenderError.textureAllocation
