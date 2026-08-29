@@ -259,6 +259,59 @@ enum QACheck {
                 "relancer depuis la relecture repart en simulation",
                 model.mode == .running && model.capturedFrames > 1)
 
+            // A take on disk has to come back as the run, not as a video: the same frames,
+            // and every setting that decides the image still live.
+            let takeURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("qa.sillage")
+            try? FileManager.default.removeItem(at: takeURL)
+            model.stopAndReplay()
+            let savedFrames = model.capturedFrames
+            let savedParticles = model.particleCount
+            model.saveTake(to: takeURL)
+            while model.fileActivity != nil { await settle(0.2) }
+            let size = (try? FileManager.default.attributesOfItem(atPath: takeURL.path)[.size])
+            report.check(
+                "la prise s'écrit sur disque", (size as? Int ?? 0) > 1000,
+                String(format: "%.1f Mo", Double(size as? Int ?? 0) / 1_048_576))
+
+            model.returnToSetup()
+            model.openTake(from: takeURL)
+            while model.fileActivity != nil { await settle(0.2) }
+            await settle(1.0)
+            report.check("la prise se rouvre en relecture", model.mode == .playback)
+            report.check(
+                "la prise rouverte a ses images", model.capturedFrames == savedFrames,
+                "\(savedFrames) puis \(model.capturedFrames)")
+            report.check(
+                "la prise rouverte a ses particules", model.particleCount == savedParticles)
+            report.check("la prise rouverte se sait sans solveur", model.isOpenedTake)
+            let opened = model.previewSnapshot()
+            report.check("la prise rouverte dessine", model.framesDrawn > 0 && opened != nil)
+            await settle(1.0)
+            report.check(
+                "la prise rouverte défile", model.playbackPosition > 0,
+                String(format: "position %.1f", model.playbackPosition))
+            // The whole point of a file rather than a video: the look is still live.
+            model.brightness = 0.4
+            model.galaxyTint = 0.9
+            model.drawOnce()
+            report.check("les réglages d'image restent vifs", model.failure == nil)
+            report.check(
+                "reprendre le calcul est refusé sur une prise ouverte",
+                {
+                    model.resumeRunning()
+                    return model.mode == .playback
+                }())
+            try? FileManager.default.removeItem(at: takeURL)
+
+            model.returnToSetup()
+            model.draft.solver = .restricted
+            model.draft.retune()
+            model.setTotalParticles(200_000)
+            model.commitDraftChange()
+            model.start()
+            await settle(2.0)
+
             // Leaving mid-launch has to retire the sampling job rather than let it land on
             // an empty setup screen.
             model.returnToSetup()

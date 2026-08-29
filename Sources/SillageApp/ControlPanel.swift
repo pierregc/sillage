@@ -67,6 +67,13 @@ struct ControlPanelContent: View {
             .font(.caption.monospacedDigit())
             .foregroundStyle(Palette.secondary)
 
+            if let activity = model.fileActivity {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(activity).font(.caption)
+                }
+            }
+
             if let failure = model.failure {
                 Text(failure).font(.caption).foregroundStyle(Palette.warning)
             }
@@ -99,9 +106,13 @@ struct ControlPanelContent: View {
                     .foregroundStyle(Palette.warning)
                 }
 
-                Button("Arrêter et rejouer") { model.stopAndReplay() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!model.canReplay)
+                HStack {
+                    Button("Arrêter et rejouer") { model.stopAndReplay() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!model.canReplay)
+                    Button("Ouvrir…") { TakeFiles.open(model) }
+                        .buttonStyle(.bordered)
+                }
 
                 ParameterSlider(
                     title: "Budget mémoire (Go)",
@@ -134,10 +145,24 @@ struct ControlPanelContent: View {
                     title: "Vitesse (images/s)", value: $model.playbackSpeed, range: 1...120,
                     format: "%.0f")
                 HStack {
-                    Button("Reprendre le calcul") { model.resumeRunning() }
-                    Button("Nouvelle prise") { model.restartCapture() }
+                    Button("Enregistrer…") { TakeFiles.save(model) }
+                    Button("Ouvrir…") { TakeFiles.open(model) }
                 }
                 .buttonStyle(.bordered)
+
+                if model.isOpenedTake {
+                    Text(
+                        "Prise ouverte depuis un fichier. Tous les réglages d'image restent vifs ; relancer la recalculerait depuis sa scène."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(Palette.secondary)
+                } else {
+                    HStack {
+                        Button("Reprendre le calcul") { model.resumeRunning() }
+                        Button("Nouvelle prise") { model.restartCapture() }
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
         }
     }

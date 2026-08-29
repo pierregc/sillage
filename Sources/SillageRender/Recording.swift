@@ -22,15 +22,54 @@ public final class Recording: @unchecked Sendable {
     }
 
     public let particleCount: Int
+    /// Galaxies whose centres are carried alongside each frame.
+    public let galaxyCount: Int
     private var storedFrames: [Frame] = []
     private var storage: [UInt16] = []
+    /// Where each galaxy sat on each frame, flattened. The spiral pattern is painted about
+    /// these, so without them a replay draws the arms wherever the galaxies ended up rather
+    /// than where they were.
+    private var storedCenters: [SIMD3<Float>] = []
     /// A run captures on the simulation queue and is read back on the main actor. The two
     /// overlap by exactly one batch when a capture is stopped, which is enough to be reading
     /// an array while it grows.
     private let lock = NSLock()
+    /// A batch already in flight lands after a capture is stopped, so the frame count the
+    /// interface shows would sit one behind what a file then holds. Closing the take settles
+    /// it: nothing more goes in until it is opened again.
+    private var closed = false
 
-    public init(particleCount: Int) {
+    public init(particleCount: Int, galaxyCount: Int = 1) {
         self.particleCount = max(particleCount, 1)
+        self.galaxyCount = max(galaxyCount, 1)
+    }
+
+    /// Rebuilt from a file rather than captured.
+    public init(
+        particleCount: Int, galaxyCount: Int, frames: [Frame], centers: [SIMD3<Float>],
+        storage: [UInt16]
+    ) {
+        self.particleCount = max(particleCount, 1)
+        self.galaxyCount = max(galaxyCount, 1)
+        self.storedFrames = frames
+        self.storedCenters = centers
+        self.storage = storage
+    }
+
+    /// Where the galaxies were on a given frame.
+    public func centers(at index: Int) -> [SIMD3<Float>] {
+        locked {
+            guard !storedFrames.isEmpty else { return [] }
+            let frame = min(max(index, 0), storedFrames.count - 1)
+            let base = frame * galaxyCount
+            guard base + galaxyCount <= storedCenters.count else { return [] }
+            return Array(storedCenters[base..<(base + galaxyCount)])
+        }
+    }
+
+    /// Everything a file needs, taken under the lock in one go.
+    public func contents() -> (frames: [Frame], centers: [SIMD3<Float>], storage: [UInt16]) {
+        locked { (storedFrames, storedCenters, storage) }
     }
 
     private func locked<T>(_ body: () -> T) -> T {
@@ -56,9 +95,15 @@ public final class Recording: @unchecked Sendable {
         particleCount * 6 * frames
     }
 
-    public func append(positions: UnsafePointer<SIMD3<Float>>, time: Float) {
+    public func close() { locked { closed = true } }
+    public func reopen() { locked { closed = false } }
+
+    public func append(
+        positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>] = []
+    ) {
         lock.lock()
         defer { lock.unlock() }
+        guard !closed else { return }
         var lower = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
         var upper = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
         for index in 0..<particleCount {
@@ -83,13 +128,39 @@ public final class Recording: @unchecked Sendable {
             }
         }
         storedFrames.append(Frame(time: time, origin: lower, extent: extent))
+        for galaxy in 0..<galaxyCount {
+            storedCenters.append(galaxy < centers.count ? centers[galaxy] : .zero)
+        }
     }
 
     public func removeAll() {
         lock.lock()
         defer { lock.unlock() }
         storedFrames.removeAll(keepingCapacity: true)
+        storedCenters.removeAll(keepingCapacity: true)
         storage.removeAll(keepingCapacity: true)
+    }
+
+    /// Decodes one frame back to positions, for framing a camera or reseeding a renderer.
+    public func positions(at index: Int) -> [SIMD3<Float>] {
+        locked {
+            guard !storedFrames.isEmpty else { return [] }
+            let frame = min(max(index, 0), storedFrames.count - 1)
+            let box = storedFrames[frame]
+            let scale = box.extent / 65535
+            let base = frame * particleCount * 3
+            var decoded = [SIMD3<Float>](repeating: .zero, count: particleCount)
+            for particle in 0..<particleCount {
+                let slot = base + particle * 3
+                decoded[particle] =
+                    box.origin
+                    + SIMD3<Float>(
+                        Float(storage[slot]) * scale,
+                        Float(storage[slot + 1]) * scale,
+                        Float(storage[slot + 2]) * scale)
+            }
+            return decoded
+        }
     }
 
     /// Copies two consecutive snapshots into a Metal buffer so the GPU can blend them.

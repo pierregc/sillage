@@ -49,6 +49,10 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var megayearsPerSecond = 0.0
     /// Sampling and solver construction are in flight; there is no scene to draw yet.
     @Published private(set) var isPreparing = false
+    /// What the disk is doing, while it is doing it.
+    @Published private(set) var fileActivity: String?
+    /// A take opened from a file has no solver, so nothing can be advanced from it.
+    var isOpenedTake: Bool { solver == nil && recording != nil }
     private(set) var framesDrawn = 0
     private(set) var drawAttempts = 0
     private weak var canvas: MTKView?
@@ -108,6 +112,7 @@ final class SimulationModel: ObservableObject {
     /// release of a slider.
     static let previewBudget = 350_000
     private var playbackPositions: MTLBuffer?
+    private var playbackCenters: [SIMD3<Float>] = []
     /// Identifies the current live stepping chain. Bumping it retires whatever is running.
     private var liveGeneration = 0
     /// Same idea for the sampling job, which a second launch can supersede mid-flight.
@@ -377,7 +382,7 @@ final class SimulationModel: ObservableObject {
                 if reel.byteCount < budget || reel.count < 2 {
                     let positions = solver.positions.contents().bindMemory(
                         to: SIMD3<Float>.self, capacity: reel.particleCount)
-                    reel.append(positions: positions, time: time)
+                    reel.append(positions: positions, time: time, centers: solver.centers)
                 } else {
                     full = true
                 }
@@ -405,10 +410,10 @@ final class SimulationModel: ObservableObject {
     /// run is always its own recording.
     private func beginCapture() {
         guard let solver else { return }
-        let reel = Recording(particleCount: particleCount)
+        let reel = Recording(particleCount: particleCount, galaxyCount: scene.galaxies.count)
         let positions = solver.positions.contents().bindMemory(
             to: SIMD3<Float>.self, capacity: particleCount)
-        reel.append(positions: positions, time: solver.time)
+        reel.append(positions: positions, time: solver.time, centers: solver.centers)
         recording = reel
         capturedFrames = reel.count
         capturedBytes = reel.byteCount
@@ -421,6 +426,11 @@ final class SimulationModel: ObservableObject {
     func stopAndReplay() {
         guard canReplay, let reel = recording else { return }
         stopLiveStepping()
+        // Settles the count before anything reads it: a batch in flight would otherwise add
+        // one more frame after the stop.
+        reel.close()
+        capturedFrames = reel.count
+        capturedBytes = reel.byteCount
         do {
             expander = try SnapshotExpander(device: device, particleCount: reel.particleCount)
             playbackPositions = device.makeBuffer(
@@ -437,15 +447,100 @@ final class SimulationModel: ObservableObject {
 
     /// Back to advancing the solver, appending to the same capture.
     func resumeRunning() {
-        guard mode == .playback else { return }
+        // A take opened from a file has no solver to pick back up.
+        guard mode == .playback, solver != nil else { return }
+        recording?.reopen()
         mode = .running
         isPlaying = true
         rebuildRenderer()
         startLiveStepping()
     }
 
+    /// Writes the take to disk. Three quarters of a gigabyte is a normal size for one, so
+    /// it goes out on the simulation queue like everything else that would hold the window.
+    func saveTake(to url: URL) {
+        guard let reel = recording, canReplay else { return }
+        fileActivity = "Enregistrement de la prise…"
+        let scene = self.scene
+        let particles = seeded
+        simulationQueue.async { [weak self] in
+            var failure: String?
+            do {
+                try RecordingFile.write(reel, scene: scene, particles: particles, to: url)
+            } catch {
+                failure = "\(error)"
+            }
+            DispatchQueue.main.async {
+                self?.fileActivity = nil
+                if let failure { self?.failure = failure }
+            }
+        }
+    }
+
+    /// Opens a take and plays it, with no solver behind it.
+    ///
+    /// Nothing about how a run looks is baked into the file: exposure, colour, the telescope
+    /// and the camera are all decided at draw time, so reopening one is not watching a video.
+    func openTake(from url: URL) {
+        stopLiveStepping()
+        preparation &+= 1
+        fileActivity = "Ouverture de la prise…"
+        let device = self.device
+        simulationQueue.async { [weak self] in
+            let loaded: RecordingFile.Loaded?
+            var failure: String?
+            do {
+                loaded = try RecordingFile.read(from: url)
+            } catch {
+                loaded = nil
+                failure = "\(error)"
+            }
+            let expander =
+                loaded.flatMap {
+                    try? SnapshotExpander(device: device, particleCount: $0.recording.particleCount)
+                }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.fileActivity = nil
+                guard let loaded, let expander else {
+                    self.failure = failure ?? "La prise n'a pas pu être ouverte"
+                    return
+                }
+                self.installTake(loaded, expander: expander)
+            }
+        }
+    }
+
+    private func installTake(_ loaded: RecordingFile.Loaded, expander: SnapshotExpander) {
+        failure = nil
+        isPreparing = false
+        solver = nil
+        scene = loaded.scene
+        draft = loaded.scene
+        seeded = loaded.particles
+        particleCount = loaded.particles.count
+        recording = loaded.recording
+        capturedFrames = loaded.recording.count
+        capturedBytes = loaded.recording.byteCount
+        captureIsFull = true
+        self.expander = expander
+        playbackPositions = device.makeBuffer(
+            length: loaded.recording.particleCount * MemoryLayout<SIMD3<Float>>.stride,
+            options: .storageModeShared)
+        playbackPosition = 0
+        playbackCenters = loaded.recording.centers(at: 0)
+        elapsedMyr = Double(loaded.recording.frames.first?.time ?? 0) * Physics.megayearsPerTimeUnit
+        mode = .playback
+        isPlaying = true
+        stage = .running
+        smoothing = nil
+        rebuildRenderer()
+        frameCamera()
+    }
+
     /// Throws the capture away and starts a new one from where the run stands.
     func restartCapture() {
+        guard solver != nil else { return }
         stopLiveStepping()
         playbackPositions = nil
         expander = nil
@@ -498,11 +593,11 @@ final class SimulationModel: ObservableObject {
         let sampled = RestrictedSolver.sampleParticles(for: scene)
         let built = try? GPUSolverFactory.make(device: device, scene: scene, particles: sampled)
         guard let built else { return (sampled, nil, nil) }
-        let reel = Recording(particleCount: sampled.count)
+        let reel = Recording(particleCount: sampled.count, galaxyCount: scene.galaxies.count)
         reel.append(
             positions: built.positions.contents().bindMemory(
                 to: SIMD3<Float>.self, capacity: sampled.count),
-            time: built.time)
+            time: built.time, centers: built.centers)
         return (sampled, built, reel)
     }
 
@@ -651,8 +746,8 @@ final class SimulationModel: ObservableObject {
     }
 
     private func rebuildRenderer() {
-        guard let solver else { return }
-        let bound = mode == .playback ? playbackPositions : solver.positions
+        guard solver != nil || playbackPositions != nil else { return }
+        let bound = mode == .playback ? playbackPositions : solver?.positions
         let settings = RenderSettings(
             width: Int(drawableSize.width),
             height: Int(drawableSize.height),
@@ -699,6 +794,7 @@ final class SimulationModel: ObservableObject {
         let pair = recording.upload(pair: index, into: expander.stagingBuffer)
         expander.expand(first: pair.0, second: pair.1, blend: blend, into: positions)
         elapsedMyr = Double(pair.0.time) * Physics.megayearsPerTimeUnit
+        playbackCenters = recording.centers(at: index)
     }
 
     /// Runs the exact model path a frame takes, but offscreen. Used by `--selftest` so the
@@ -723,7 +819,10 @@ final class SimulationModel: ObservableObject {
 
     func draw(in view: MTKView) {
         drawAttempts += 1
-        guard let renderer, let solver, let drawable = view.currentDrawable else { return }
+        // A take opened from a file has no solver behind it, and does not need one.
+        guard let renderer, solver != nil || mode == .playback,
+            let drawable = view.currentDrawable
+        else { return }
         let start = CACurrentMediaTime()
 
         switch mode {
@@ -733,9 +832,15 @@ final class SimulationModel: ObservableObject {
         case .playback:
             advancePlayback()
         }
+        // Where the galaxies were on the frame being shown, so the spiral pattern is painted
+        // about them rather than about wherever the run happened to end.
+        let centers =
+            mode == .playback && !playbackCenters.isEmpty
+            ? playbackCenters : (solver?.centers ?? scene.galaxies.map(\.position))
         renderer.setDiskFrames(
             DiskFrame.make(
-                scene: scene, centers: solver.centers, time: solver.time,
+                scene: scene, centers: centers,
+                time: Float(elapsedMyr / Physics.megayearsPerTimeUnit),
                 strength: renderer.armPersistence))
         renderer.present(camera: camera.camera, drawable: drawable)
         frameMilliseconds = (CACurrentMediaTime() - start) * 1000
