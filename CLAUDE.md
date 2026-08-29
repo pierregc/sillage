@@ -72,6 +72,19 @@ per-particle attributes, the frames and the quantised positions. Reopening it is
 video — nothing about how it looks is in the file. Exposure, colour, the telescope and the
 camera are all decided at draw time and stay live, and the take plays with no solver behind it.
 
+A take that outlasts its budget thins itself rather than stopping: it keeps every other frame
+and captures half as often from then on. A long run therefore comes back whole at a coarser
+cadence, which is the useful thing when it was left running overnight. Halving in place keeps
+the spacing uniform — existing frames double their spacing and new ones arrive at the new
+stride — so playback never meets a seam.
+
+Three measurements shaped how a take is held, none of them obvious from reading the code. At
+1.7 GB captured: growing the buffer a frame at a time peaked at 3.5 GB, because the array
+doubles and both copies are briefly resident, so the room is reserved from the budget up front.
+Writing copied the whole run into a `Data` first, costing another 1.7 GB, so it goes out of the
+take's own memory in bounded pieces. Reading copied twice, peaking at 3.4 GB, so a loaded take
+now stays in the mapping instead. Write and read peaks are 1 MB and 4 MB.
+
 Two things the format leans on. The bulk sits at the end so it reads as one run of bytes, and
 the file is memory-mapped rather than loaded: a take is often larger than is comfortable to
 hold twice. And frames are written field by field rather than as a struct, because a `SIMD3`
