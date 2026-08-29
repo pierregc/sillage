@@ -622,8 +622,7 @@ final class SimulationModel: ObservableObject {
             // Dust absorbs and dark matter does neither, so neither one frames anything.
             let emits =
                 index < system.component.count
-                ? system.component[index] == ParticleComponent.star.rawValue
-                    || system.component[index] == ParticleComponent.hiiRegion.rawValue
+                ? ParticleComponent(rawValue: system.component[index])?.emits ?? true
                 : true
             let light = emits && index < system.luminosity.count ? system.luminosity[index] : 0
             samples.append((radius, light))

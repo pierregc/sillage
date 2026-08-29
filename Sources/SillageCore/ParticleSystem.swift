@@ -8,8 +8,13 @@ public enum ParticleComponent: UInt32, Codable, Sendable, CaseIterable {
     case dust = 2
     /// Dark matter. Carries mass and is never drawn.
     case halo = 3
+    /// Old stars in the spheroid. Drawn exactly like a disk star, but held up by random
+    /// motion rather than by rotation, so anything that acts on the disk has to leave it be.
+    case bulge = 4
 
     public var isVisible: Bool { self != .halo }
+    /// Emits starlight, so it frames a picture and carries the exposure.
+    public var emits: Bool { self == .star || self == .hiiRegion || self == .bulge }
 }
 
 /// Structure-of-arrays particle storage. `positions` is laid out so it can back a
