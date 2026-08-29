@@ -213,15 +213,24 @@ enum QACheck {
             await settle(2.5)
             let framesAtCap = model.capturedFrames
             let timeAtCap = model.elapsedMyr
+            let spanAtCap = model.capturedMyr
             await settle(1.5)
             report.check(
                 "le budget mémoire borne la prise",
-                model.captureIsFull || model.capturedMegabytes < 520,
+                model.capturedMegabytes < 600,
                 String(format: "%.0f Mo pour 512 Mo", model.capturedMegabytes))
             if model.captureIsFull {
                 report.check(
                     "le calcul continue après le budget", model.elapsedMyr > timeAtCap,
-                    "\(framesAtCap) images figées")
+                    "\(framesAtCap) images au moment du plein")
+                // The point of thinning: the take keeps covering the whole run.
+                report.check(
+                    "la prise pleine couvre toujours toute la durée",
+                    model.capturedMyr > spanAtCap,
+                    String(format: "%.0f puis %.0f Myr", spanAtCap, model.capturedMyr))
+                report.check(
+                    "la prise pleine s'éclaircit", model.captureStride > 1,
+                    "une image sur \(model.captureStride)")
             }
             model.memoryBudgetGigabytes = 4
 

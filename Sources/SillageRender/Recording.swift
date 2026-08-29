@@ -26,6 +26,10 @@ public final class Recording: @unchecked Sendable {
     public let galaxyCount: Int
     private var storedFrames: [Frame] = []
     private var storage: [UInt16] = []
+    /// A take read from a file stays mapped rather than being copied in. Reopening a run of
+    /// several gigabytes should cost the pages the viewer actually touches, not a second copy
+    /// of the whole thing.
+    private var mapped: Data?
     /// Where each galaxy sat on each frame, flattened. The spiral pattern is painted about
     /// these, so without them a replay draws the arms wherever the galaxies ended up rather
     /// than where they were.
@@ -38,22 +42,55 @@ public final class Recording: @unchecked Sendable {
     /// interface shows would sit one behind what a file then holds. Closing the take settles
     /// it: nothing more goes in until it is opened again.
     private var closed = false
+    /// Batches skipped between captured frames. A long run should come back whole at a
+    /// coarser cadence rather than stopping halfway, so when the take fills its budget it
+    /// throws away every other frame and captures half as often from then on.
+    public private(set) var stride = 1
+    private var sinceCapture = 0
 
     public init(particleCount: Int, galaxyCount: Int = 1) {
         self.particleCount = max(particleCount, 1)
         self.galaxyCount = max(galaxyCount, 1)
     }
 
-    /// Rebuilt from a file rather than captured.
+    /// Rebuilt from a file rather than captured, over memory the file still owns.
     public init(
         particleCount: Int, galaxyCount: Int, frames: [Frame], centers: [SIMD3<Float>],
-        storage: [UInt16]
+        mapped: Data
     ) {
         self.particleCount = max(particleCount, 1)
         self.galaxyCount = max(galaxyCount, 1)
         self.storedFrames = frames
         self.storedCenters = centers
-        self.storage = storage
+        self.mapped = mapped
+    }
+
+    /// Room for a whole run up front. Growing into it a frame at a time doubles the array
+    /// whenever it fills, and for a moment the old copy and the new one are both resident:
+    /// measured at two gigabytes held, the peak was three and a half.
+    public func reserve(frames: Int) {
+        locked {
+            guard mapped == nil, frames > 0 else { return }
+            storage.reserveCapacity(frames * particleCount * 3)
+            storedFrames.reserveCapacity(frames)
+            storedCenters.reserveCapacity(frames * galaxyCount)
+        }
+    }
+
+    /// The quantised positions, wherever they live. Never escapes the lock.
+    private func withStorage<T>(_ body: (UnsafeBufferPointer<UInt16>) -> T) -> T {
+        if let mapped {
+            return mapped.withUnsafeBytes { body($0.bindMemory(to: UInt16.self)) }
+        }
+        return storage.withUnsafeBufferPointer(body)
+    }
+
+    /// Hands the positions to a writer without copying them anywhere first.
+    public func withPositionBytes<T>(_ body: (UnsafeRawBufferPointer) -> T) -> T {
+        locked {
+            if let mapped { return mapped.withUnsafeBytes(body) }
+            return storage.withUnsafeBytes(body)
+        }
     }
 
     /// Where the galaxies were on a given frame.
@@ -67,9 +104,10 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
-    /// Everything a file needs, taken under the lock in one go.
-    public func contents() -> (frames: [Frame], centers: [SIMD3<Float>], storage: [UInt16]) {
-        locked { (storedFrames, storedCenters, storage) }
+    /// The small parts a file needs, taken under the lock in one go. The positions are far
+    /// too large to hand back as an array and go out through `withPositionBytes`.
+    public func contents() -> (frames: [Frame], centers: [SIMD3<Float>]) {
+        locked { (storedFrames, storedCenters) }
     }
 
     private func locked<T>(_ body: () -> T) -> T {
@@ -81,9 +119,7 @@ public final class Recording: @unchecked Sendable {
     public var frames: [Frame] { locked { storedFrames } }
     public var count: Int { locked { storedFrames.count } }
     public var isEmpty: Bool { count == 0 }
-    public var byteCount: Int {
-        locked { storage.count * 2 + storedFrames.count * MemoryLayout<Frame>.stride }
-    }
+    public var byteCount: Int { locked { heldBytes() } }
 
     public var duration: Float {
         locked { storedFrames.last.map { $0.time - storedFrames[0].time } ?? 0 }
@@ -98,12 +134,79 @@ public final class Recording: @unchecked Sendable {
     public func close() { locked { closed = true } }
     public func reopen() { locked { closed = false } }
 
+    /// Offers a frame to the take, which decides whether to keep it.
+    ///
+    /// Returns whether the take has had to coarsen at least once, which is the only thing the
+    /// interface needs to say about it.
+    @discardableResult
+    public func offer(
+        positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>],
+        budget: Int
+    ) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed, mapped == nil else { return stride > 1 }
+
+        sinceCapture += 1
+        guard sinceCapture >= stride else { return stride > 1 }
+        sinceCapture = 0
+
+        // Two frames always get through: playback interpolates between a pair.
+        if budget > 0, heldBytes() >= budget, storedFrames.count >= 4 {
+            halve()
+            stride *= 2
+        }
+        appendLocked(positions: positions, time: time, centers: centers)
+        return stride > 1
+    }
+
+    /// Keeps every other frame, in place. The positions are gigabytes, so they are moved down
+    /// over themselves rather than copied into a second buffer.
+    private func halve() {
+        let span = particleCount * 3
+        var kept = 0
+        storage.withUnsafeMutableBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            for frame in Swift.stride(from: 0, to: storedFrames.count, by: 2) {
+                if kept != frame {
+                    (base + kept * span).update(from: base + frame * span, count: span)
+                }
+                kept += 1
+            }
+        }
+        storage.removeLast(storage.count - kept * span)
+
+        var frames: [Frame] = []
+        var centers: [SIMD3<Float>] = []
+        frames.reserveCapacity(kept)
+        centers.reserveCapacity(kept * galaxyCount)
+        for frame in Swift.stride(from: 0, to: storedFrames.count, by: 2) {
+            frames.append(storedFrames[frame])
+            let base = frame * galaxyCount
+            for galaxy in 0..<galaxyCount {
+                centers.append(base + galaxy < storedCenters.count ? storedCenters[base + galaxy] : .zero)
+            }
+        }
+        storedFrames = frames
+        storedCenters = centers
+    }
+
+    private func heldBytes() -> Int {
+        (mapped?.count ?? storage.count * 2) + storedFrames.count * MemoryLayout<Frame>.stride
+    }
+
     public func append(
         positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>] = []
     ) {
         lock.lock()
         defer { lock.unlock() }
-        guard !closed else { return }
+        guard !closed, mapped == nil else { return }
+        appendLocked(positions: positions, time: time, centers: centers)
+    }
+
+    private func appendLocked(
+        positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>]
+    ) {
         var lower = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
         var upper = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
         for index in 0..<particleCount {
@@ -139,6 +242,7 @@ public final class Recording: @unchecked Sendable {
         storedFrames.removeAll(keepingCapacity: true)
         storedCenters.removeAll(keepingCapacity: true)
         storage.removeAll(keepingCapacity: true)
+        mapped = nil
     }
 
     /// Decodes one frame back to positions, for framing a camera or reseeding a renderer.
@@ -150,14 +254,16 @@ public final class Recording: @unchecked Sendable {
             let scale = box.extent / 65535
             let base = frame * particleCount * 3
             var decoded = [SIMD3<Float>](repeating: .zero, count: particleCount)
-            for particle in 0..<particleCount {
-                let slot = base + particle * 3
-                decoded[particle] =
-                    box.origin
-                    + SIMD3<Float>(
-                        Float(storage[slot]) * scale,
-                        Float(storage[slot + 1]) * scale,
-                        Float(storage[slot + 2]) * scale)
+            withStorage { source in
+                for particle in 0..<particleCount {
+                    let slot = base + particle * 3
+                    decoded[particle] =
+                        box.origin
+                        + SIMD3<Float>(
+                            Float(source[slot]) * scale,
+                            Float(source[slot + 1]) * scale,
+                            Float(source[slot + 2]) * scale)
+                }
             }
             return decoded
         }
@@ -175,7 +281,7 @@ public final class Recording: @unchecked Sendable {
         let second = min(first + 1, storedFrames.count - 1)
         let stride = particleCount * 3
         let destination = buffer.contents().bindMemory(to: UInt16.self, capacity: stride * 2)
-        storage.withUnsafeBufferPointer { source in
+        withStorage { source in
             destination.update(from: source.baseAddress! + first * stride, count: stride)
             (destination + stride).update(from: source.baseAddress! + second * stride, count: stride)
         }

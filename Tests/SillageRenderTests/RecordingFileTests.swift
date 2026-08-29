@@ -68,6 +68,41 @@ struct RecordingFileTests {
         }
     }
 
+    /// A run that outlasts its budget has to come back whole at a coarser cadence, not stop
+    /// halfway. Stopping is what the first version did, and it makes a long night's run
+    /// useless for exactly the reason it was left running.
+    @Test func aLongTakeThinsItselfInsteadOfStopping() {
+        let particles = 400
+        let recording = Recording(particleCount: particles, galaxyCount: 1)
+        // Room for about twenty frames, offered two hundred.
+        let budget = particles * 6 * 20
+        var positions = [SIMD3<Float>](repeating: .zero, count: particles)
+        for frame in 0..<200 {
+            for index in positions.indices {
+                positions[index] = SIMD3<Float>(Float(index), Float(frame), 0)
+            }
+            positions.withUnsafeBufferPointer {
+                _ = recording.offer(
+                    positions: $0.baseAddress!, time: Float(frame), centers: [.zero],
+                    budget: budget)
+            }
+        }
+
+        #expect(recording.byteCount <= budget * 2)
+        #expect(recording.stride > 1)
+        #expect(recording.count >= 2)
+        // The whole span is there: the last frame offered is close to the last frame kept.
+        let span = recording.frames.last!.time - recording.frames.first!.time
+        #expect(span > 150)
+        // And what is kept is still in order and still decodes.
+        for index in 1..<recording.count {
+            #expect(recording.frames[index].time > recording.frames[index - 1].time)
+        }
+        let decoded = recording.positions(at: recording.count - 1)
+        #expect(decoded.count == particles)
+        #expect(abs(decoded[10].y - recording.frames.last!.time) < 0.1)
+    }
+
     @Test func aFileThatIsNotATakeIsRefused() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("junk.sillage")
         defer { try? FileManager.default.removeItem(at: url) }

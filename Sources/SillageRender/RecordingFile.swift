@@ -114,7 +114,22 @@ public enum RecordingFile {
             }
             try handle.write(contentsOf: bytes(of: rest))
         }
-        try handle.write(contentsOf: bytes(of: contents.storage))
+        // Written straight out of the take's own memory, in bounded pieces. Copying it into
+        // a Data first meant a second copy of the whole run: at two gigabytes held, saving
+        // cost another two.
+        recording.withPositionBytes { source in
+            var offset = 0
+            let chunk = 64 << 20
+            while offset < source.count {
+                let length = min(chunk, source.count - offset)
+                let piece = UnsafeRawBufferPointer(rebasing: source[offset..<(offset + length)])
+                handle.write(
+                    Data(
+                        bytesNoCopy: .init(mutating: piece.baseAddress!),
+                        count: length, deallocator: .none))
+                offset += length
+            }
+        }
     }
 
     public static func read(from url: URL) throws -> Loaded {
@@ -171,11 +186,15 @@ public enum RecordingFile {
                 }
             }
         }
-        let storage = try take(UInt16.self, header.frameCount * count * 3)
+        // The positions stay in the mapping rather than being copied into an array: a take of
+        // several gigabytes should cost the pages that are actually looked at.
+        let length = header.frameCount * count * 3 * MemoryLayout<UInt16>.size
+        guard cursor + length <= data.count else { throw Failure.truncated }
+        let positions = data[cursor..<(cursor + length)]
 
         let recording = Recording(
             particleCount: count, galaxyCount: galaxies, frames: frames, centers: centers,
-            storage: storage)
+            mapped: positions)
         // The renderer wants somewhere to start; the first frame is as good as it gets and
         // costs one decode.
         particles.positions = recording.positions(at: 0)
