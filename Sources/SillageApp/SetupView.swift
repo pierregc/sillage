@@ -342,6 +342,14 @@ struct GalaxyCard: View {
                     Divider()
                     Text("Auto-gravité").font(.caption.bold())
                     ParameterSlider(
+                        title: "Dissipation du disque (Myr)", value: galaxy.dissipationTime,
+                        range: 0...1500, format: "%.0f", onCommit: commit)
+                    Text(
+                        "Un disque d'étoiles seules ne peut que chauffer : ses bras s'éteignent en un milliard d'années. Le gaz d'une vraie galaxie dissipe ce désordre. 0 coupe l'effet."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(Palette.secondary)
+                    ParameterSlider(
                         title: "Halo simulé, particules par étoile",
                         value: galaxy.haloParticleRatio, range: 0...4, onCommit: commit)
                     ParameterSlider(

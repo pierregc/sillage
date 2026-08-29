@@ -10,6 +10,13 @@ struct HaloGPU {
     var shape: SIMD4<Float>
 }
 
+struct DiskCoolingGPU {
+    var center: SIMD4<Float>
+    var motion: SIMD4<Float>
+    var axis: SIMD4<Float>
+    var reach: SIMD4<Float>
+}
+
 struct BHParams {
     var particleCount: UInt32
     var haloCount: UInt32
@@ -47,6 +54,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let kickDrift: MTLComputePipelineState
     private let kick: MTLComputePipelineState
     private let force: MTLComputePipelineState
+    private let dissipate: MTLComputePipelineState?
 
     private let positionBuffer: MTLBuffer
     private let velocityBuffer: MTLBuffer
@@ -54,6 +62,8 @@ public final class MetalBarnesHutSolver: Solver {
     private let massBuffer: MTLBuffer
     private var nodeBuffer: MTLBuffer?
     private var orderBuffer: MTLBuffer?
+    private var componentBuffer: MTLBuffer?
+    private var galaxyBuffer: MTLBuffer?
 
     private let tree = BarnesHutTree()
     /// Reused across steps. Masses never change, so they are read once.
@@ -65,6 +75,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let componentOf: [UInt32]
     private let liveHalos: Bool
     private var haloCenters: [SIMD3<Float>]
+    private var galaxyMotion: [SIMD3<Float>]
     private let centersLock = NSLock()
 
     public var positions: MTLBuffer { positionBuffer }
@@ -104,6 +115,7 @@ public final class MetalBarnesHutSolver: Solver {
         self.componentOf = particles.component
         self.liveHalos = scene.hasLiveHalos
         self.haloCenters = scene.galaxies.map(\.position)
+        self.galaxyMotion = scene.galaxies.map(\.velocity)
         self.scratchPositions = [SIMD3<Float>](repeating: .zero, count: self.count)
         var masses = particles.mass
         if masses.count != self.count {
@@ -133,6 +145,9 @@ public final class MetalBarnesHutSolver: Solver {
         kickDrift = try pipeline("bhKickDrift")
         kick = try pipeline("bhKick")
         force = try pipeline("bhAcceleration")
+        dissipate =
+            scene.galaxies.contains { $0.dissipationTime > 0 }
+            ? try pipeline("bhDissipate") : nil
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -156,6 +171,19 @@ public final class MetalBarnesHutSolver: Solver {
         self.accelerationBuffer = accelerationBuffer
         self.massBuffer = massBuffer
 
+        // Only the dissipation pass needs to know what a particle is and whose it is.
+        if dissipate != nil {
+            func attribute(_ values: [UInt32], _ fallback: UInt32) -> [UInt32] {
+                values.count == count ? values : [UInt32](repeating: fallback, count: count)
+            }
+            componentBuffer = device.makeBuffer(
+                bytes: attribute(particles.component, 0), length: count * 4,
+                options: .storageModeShared)
+            galaxyBuffer = device.makeBuffer(
+                bytes: attribute(particles.galaxyIndex, 0), length: count * 4,
+                options: .storageModeShared)
+        }
+
         if !particles.positions.isEmpty {
             particles.positions.withUnsafeBytes {
                 positionBuffer.contents().copyMemory(from: $0.baseAddress!, byteCount: $0.count)
@@ -178,7 +206,66 @@ public final class MetalBarnesHutSolver: Solver {
             rebuildTree()
             computeAccelerations()
             applyKick()
+            shedRandomMotion()
             time += scene.timeStep
+        }
+    }
+
+    /// Pulls the disk back towards circular orbits, standing in for the gas that a real disk
+    /// cools through. Runs after the kick so the accelerations it reads are this step's.
+    private func shedRandomMotion() {
+        guard let dissipate else { return }
+        let elapsed = scene.timeStep * Float(Physics.megayearsPerTimeUnit)
+        var disks = scene.galaxies.enumerated().map { index, galaxy -> DiskCoolingGPU in
+            let centre = index < haloCenters.count ? haloCenters[index] : galaxy.position
+            let motion = index < galaxyMotion.count ? galaxyMotion[index] : galaxy.velocity
+            let axis = galaxy.orientation * SIMD3<Float>(0, 0, 1)
+            // The share of the gap to circular closed this step, from the time constant.
+            let damping =
+                galaxy.dissipationTime > 0 && galaxy.kind != .globular
+                ? 1 - exp(-elapsed / galaxy.dissipationTime) : 0
+            let edge = max(galaxy.diskScaleLength, 0.1)
+            // The floor the disk cools to, taken from the equilibrium it was sampled in so it
+            // holds the Toomre parameter the galaxy asked for rather than a number picked by
+            // hand. Read at two scale lengths and carried as a fraction of the circular
+            // speed, which is close enough to constant across an exponential disk.
+            let equilibrium = DiskEquilibrium(config: galaxy, selfGravitating: true)
+            let reference = edge * 2
+            let circular = max(equilibrium.circularSpeed(atRadius: reference), 1e-6)
+            // The floor applies to the whole peculiar velocity, so it has to be the whole
+            // equilibrium dispersion. Flooring the three-dimensional motion at the radial
+            // component alone leaves the radial part below what Toomre asks and the disk
+            // fragments anyway, which is what the first attempt did.
+            let radial = equilibrium.radialDispersion(atRadius: reference)
+            let azimuthal = equilibrium.azimuthalDispersion(atRadius: reference)
+            let vertical = equilibrium.verticalDispersion(atRadius: reference)
+            let dispersion =
+                (radial * radial + azimuthal * azimuthal + vertical * vertical).squareRoot()
+            let floorFraction = min(dispersion / circular, 0.5)
+            return DiskCoolingGPU(
+                center: SIMD4<Float>(centre.x, centre.y, centre.z, floorFraction),
+                motion: SIMD4<Float>(motion.x, motion.y, motion.z, damping),
+                axis: SIMD4<Float>(axis.x, axis.y, axis.z, galaxy.spin.sign),
+                // Generous on purpose. Halo and bulge are already excluded by component, so
+                // the only thing these limits keep out is material genuinely thrown clear —
+                // a tidal tail, not a disk star that has been heated. Cutting in at a few
+                // scale heights did the opposite: it stopped cooling the stars that had
+                // picked up the most motion, and the disk heated almost as fast as with no
+                // dissipation at all.
+                reach: SIMD4<Float>(edge * 5, edge * 9, edge, edge * 2))
+        }
+        if disks.isEmpty { return }
+
+        var p = params
+        dispatch(dissipate) { encoder in
+            encoder.setBuffer(positionBuffer, offset: 0, index: 0)
+            encoder.setBuffer(velocityBuffer, offset: 0, index: 1)
+            encoder.setBuffer(accelerationBuffer, offset: 0, index: 2)
+            encoder.setBuffer(componentBuffer, offset: 0, index: 3)
+            encoder.setBuffer(galaxyBuffer, offset: 0, index: 4)
+            encoder.setBytes(
+                &disks, length: disks.count * MemoryLayout<DiskCoolingGPU>.stride, index: 5)
+            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
         }
     }
 
@@ -268,10 +355,17 @@ public final class MetalBarnesHutSolver: Solver {
         lastBuildMilliseconds = Date().timeIntervalSince(clock) * 1000
     }
 
-    /// Each halo rides on the centre of mass of its own galaxy's particles.
+    /// Each halo rides on the centre of mass of its own galaxy's particles, and so does the
+    /// frame the dissipation pass cools towards: cooling in the wrong frame would drag two
+    /// galaxies to a halt instead of letting them orbit.
     private func updateHaloCenters(positions: [SIMD3<Float>], mass: [Float]) {
         var weighted = [SIMD3<Float>](repeating: .zero, count: scene.galaxies.count)
+        var drift = [SIMD3<Float>](repeating: .zero, count: scene.galaxies.count)
         var totals = [Float](repeating: 0, count: scene.galaxies.count)
+        let velocities =
+            dissipate == nil
+            ? nil
+            : velocityBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
         // Halo particles outnumber the disk, so including them would put the centre at the
         // halo's centroid rather than at the visible galaxy's.
         for index in 0..<min(count, galaxyOf.count) {
@@ -284,11 +378,13 @@ public final class MetalBarnesHutSolver: Solver {
             }
             let m = max(mass[index], 1e-20)
             weighted[galaxy] += positions[index] * m
+            if let velocities { drift[galaxy] += velocities[index] * m }
             totals[galaxy] += m
         }
         var updated = centers
         for galaxy in updated.indices where totals[galaxy] > 0 {
             updated[galaxy] = weighted[galaxy] / totals[galaxy]
+            if velocities != nil { galaxyMotion[galaxy] = drift[galaxy] / totals[galaxy] }
         }
         centersLock.lock()
         haloCenters = updated
