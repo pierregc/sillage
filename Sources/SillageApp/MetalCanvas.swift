@@ -26,7 +26,9 @@ struct MetalCanvas: NSViewRepresentable {
         // The composite kernel writes straight into the drawable, which needs write usage.
         view.framebufferOnly = false
         view.colorPixelFormat = .bgra8Unorm
-        view.preferredFramesPerSecond = 120
+        // Sixty rather than a hundred and twenty: the solver is on the same GPU, and nothing
+        // in a galaxy moves fast enough to need more.
+        view.preferredFramesPerSecond = 60
         view.isPaused = false
         view.enableSetNeedsDisplay = false
         view.delegate = context.coordinator
