@@ -66,6 +66,8 @@ struct SetupView: View {
                         model.estimatedMegayearsPerSecond < 0.3
                             ? Palette.warning : Palette.secondary)
             }
+            Button("Ouvrir une prise…") { TakeFiles.open(model) }
+                .buttonStyle(.bordered)
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Button("Lancer la simulation") { model.start() }
