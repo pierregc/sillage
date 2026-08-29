@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Metal
 import MetalKit
@@ -64,12 +65,17 @@ final class SimulationModel: ObservableObject {
         reachedFinish = true
         stopLiveStepping()
         isPlaying = false
-        guard canReplay else { return }
+        guard canReplay else {
+            if quitWhenFinished { NSApplication.shared.terminate(nil) }
+            return
+        }
         let destination = finishDestination
         stopAndReplay()
         if let destination {
             finishDestination = nil
             saveTake(to: destination)
+        } else if quitWhenFinished {
+            NSApplication.shared.terminate(nil)
         }
     }
 
@@ -96,6 +102,16 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var captureIsFull = false
     /// Batches between captured frames. One until the budget is reached, then doubling.
     @Published private(set) var captureStride = 1
+    /// Whether the canvas is on screen while the solver works.
+    ///
+    /// Drawing a few million particles takes a real share of the same GPU the solver is on.
+    /// When a scene is being computed to be watched later rather than now, the picture is
+    /// worth nothing and the panel says everything.
+    @Published var showCanvasWhileRunning = true
+    /// Quit once the run has finished and written itself out. For a scene left overnight
+    /// there is nothing left to do or to show.
+    @Published var quitWhenFinished = false
+
     /// Simulated time to stop at, in Myr. Zero runs until stopped by hand.
     ///
     /// A run has no natural end: it goes until someone presses something, and long after a
@@ -195,6 +211,7 @@ final class SimulationModel: ObservableObject {
         didSet {
             renderer?.setSmoothingScale(smoothingScale)
             previewRenderer?.setSmoothingScale(smoothingScale)
+            redrawPreview()
         }
     }
     @Published var supersample = 1 { didSet { rebuildRenderer() } }
@@ -234,6 +251,9 @@ final class SimulationModel: ObservableObject {
     }
 
     func attachPreview(canvas view: MTKView) { previewCanvas = view }
+
+    /// The preview draws on demand, so anything that changes what it should show has to say so.
+    private func redrawPreview() { previewCanvas?.needsDisplay = true }
 
     func resizePreview(to size: CGSize) {
         guard size.width > 1, size.height > 1 else { return }
@@ -286,6 +306,7 @@ final class SimulationModel: ObservableObject {
     }
 
     private func installPreview(_ particles: ParticleSystem) {
+        defer { redrawPreview() }
         previewParticleCount = particles.count
         guard particles.count > 0 else { return }
 
@@ -558,8 +579,14 @@ final class SimulationModel: ObservableObject {
                 failure = "\(error)"
             }
             DispatchQueue.main.async {
-                self?.fileActivity = nil
-                if let failure { self?.failure = failure }
+                guard let self else { return }
+                self.fileActivity = nil
+                if let failure { self.failure = failure }
+                // Everything asked for has happened: the run reached its finish and is on
+                // disk. Nothing is left to compute or to look at.
+                if failure == nil, self.quitWhenFinished, self.reachedFinish {
+                    NSApplication.shared.terminate(nil)
+                }
             }
         }
     }
@@ -937,6 +964,9 @@ final class SimulationModel: ObservableObject {
 
     func draw(in view: MTKView) {
         drawAttempts += 1
+        // Asked not to draw. The view is taken out of the hierarchy too, but it outlives that
+        // by a frame or two and the whole point is to stop feeding the GPU.
+        guard showCanvasWhileRunning || mode == .playback else { return }
         // A take opened from a file has no solver behind it, and does not need one.
         guard let renderer, solver != nil || mode == .playback,
             let drawable = view.currentDrawable

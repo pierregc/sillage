@@ -121,6 +121,14 @@ struct ControlPanelContent: View {
                         set: { model.memoryBudgetGigabytes = Double($0) }),
                     range: 0.5...24, format: "%.1f")
 
+                Toggle("Afficher pendant le calcul", isOn: $model.showCanvasWhileRunning)
+                    .font(.caption)
+                Text(
+                    "Dessiner quelques millions de particules prend une vraie part du même GPU que le calcul."
+                )
+                .font(.caption2)
+                .foregroundStyle(Palette.secondary)
+
                 Divider()
                 Text("Fin de course").font(.caption.bold())
                 ParameterSlider(
@@ -152,6 +160,10 @@ struct ControlPanelContent: View {
                     Button("Sauvegarder quand fini…") { TakeFiles.saveWhenFinished(model) }
                         .buttonStyle(.bordered)
                 }
+
+                Toggle("Quitter quand c'est fini", isOn: $model.quitWhenFinished)
+                    .font(.caption)
+                    .disabled(model.stopAtMyr <= 0)
 
                 Divider()
                 Stepper(
