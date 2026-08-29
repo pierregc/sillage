@@ -477,6 +477,47 @@ final class SimulationModel: ObservableObject {
         }
     }
 
+    /// Renders the take to a video file, at whatever size is asked for.
+    ///
+    /// The take itself is the better thing to keep, since it comes back as the run. A video is
+    /// what leaves the application, and it is rendered here rather than grabbed from the
+    /// window: the resolution has nothing to do with the display and no frame is dropped.
+    func exportVideo(to url: URL, width: Int, height: Int, framesPerSecond: Int) {
+        guard let reel = recording, canReplay else { return }
+        reel.close()
+        let scene = self.scene
+        let particles = seeded
+        let camera = self.camera.camera
+        let arms = renderer?.armPersistence ?? 1
+        var settings = renderSettings(width: width, height: height)
+        settings.supersample = max(supersample, 1)
+        let total = reel.count
+        fileActivity = "Export de la vidéo…"
+
+        simulationQueue.async { [weak self] in
+            var failure: String?
+            do {
+                try VideoExport.write(
+                    recording: reel, particles: particles, scene: scene, settings: settings,
+                    camera: camera, armStrength: arms,
+                    framesPerSecond: Int32(max(framesPerSecond, 1)), to: url
+                ) { fraction in
+                    DispatchQueue.main.async {
+                        self?.fileActivity = String(
+                            format: "Export de la vidéo… %.0f %% (%d images)", fraction * 100,
+                            total)
+                    }
+                }
+            } catch {
+                failure = "\(error)"
+            }
+            DispatchQueue.main.async {
+                self?.fileActivity = nil
+                if let failure { self?.failure = failure }
+            }
+        }
+    }
+
     /// Opens a take and plays it, with no solver behind it.
     ///
     /// Nothing about how a run looks is baked into the file: exposure, colour, the telescope
@@ -745,12 +786,12 @@ final class SimulationModel: ObservableObject {
         rebuildRenderer()
     }
 
-    private func rebuildRenderer() {
-        guard solver != nil || playbackPositions != nil else { return }
-        let bound = mode == .playback ? playbackPositions : solver?.positions
-        let settings = RenderSettings(
-            width: Int(drawableSize.width),
-            height: Int(drawableSize.height),
+    /// Every setting that decides the image, at whatever size is asked for. One place, so an
+    /// exported video looks like what is on screen rather than like a second guess at it.
+    func renderSettings(width: Int, height: Int) -> RenderSettings {
+        RenderSettings(
+            width: max(width, 16),
+            height: max(height, 16),
             supersample: supersample,
             brightness: brightness,
             dustStrength: dustStrength,
@@ -762,6 +803,13 @@ final class SimulationModel: ObservableObject {
             skyLevel: skyLevel,
             noiseLevel: noiseLevel,
             galaxyTint: galaxyTint)
+    }
+
+    private func rebuildRenderer() {
+        guard solver != nil || playbackPositions != nil else { return }
+        let bound = mode == .playback ? playbackPositions : solver?.positions
+        let settings = renderSettings(
+            width: Int(drawableSize.width), height: Int(drawableSize.height))
         do {
             if smoothing == nil || smoothing?.buffer.length != particleCount * 4 {
                 smoothing = try SmoothingField(device: device, particleCount: particleCount)

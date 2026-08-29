@@ -302,6 +302,18 @@ enum QACheck {
                     model.resumeRunning()
                     return model.mode == .playback
                 }())
+            // And out as a video, which is what leaves the application.
+            let videoURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("qa.mov")
+            try? FileManager.default.removeItem(at: videoURL)
+            model.exportVideo(to: videoURL, width: 320, height: 240, framesPerSecond: 30)
+            while model.fileActivity != nil { await settle(0.3) }
+            let movie = (try? FileManager.default.attributesOfItem(atPath: videoURL.path)[.size])
+            report.check(
+                "la vidéo s'exporte", (movie as? Int ?? 0) > 10_000,
+                String(format: "%.2f Mo", Double(movie as? Int ?? 0) / 1_048_576))
+            report.check("l'export ne casse rien", model.failure == nil, model.failure ?? "")
+            try? FileManager.default.removeItem(at: videoURL)
             try? FileManager.default.removeItem(at: takeURL)
 
             model.returnToSetup()

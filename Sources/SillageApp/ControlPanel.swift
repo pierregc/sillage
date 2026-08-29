@@ -147,8 +147,10 @@ struct ControlPanelContent: View {
                 HStack {
                     Button("Enregistrer…") { TakeFiles.save(model) }
                     Button("Ouvrir…") { TakeFiles.open(model) }
+                    Button("Vidéo…") { TakeFiles.exportVideo(model) }
                 }
                 .buttonStyle(.bordered)
+                .disabled(model.fileActivity != nil)
 
                 if model.isOpenedTake {
                     Text(

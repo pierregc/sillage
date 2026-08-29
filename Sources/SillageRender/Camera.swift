@@ -1,6 +1,6 @@
 import simd
 
-public struct Camera {
+public struct Camera: Sendable {
     public var eye: SIMD3<Float>
     public var target: SIMD3<Float>
     public var up: SIMD3<Float>
