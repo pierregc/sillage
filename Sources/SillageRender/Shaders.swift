@@ -223,16 +223,18 @@ enum Shaders {
                 out.color = half3(0.0h);
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
             } else {
-                // Star formation happens in the wave, so a knot away from one is an old knot
-                // and has to be dim: the sampler's placement holds for an orbit at most, and
-                // a floor any higher leaves pink dots scattered over a disk that has turned.
-                //
+                // Star formation happens where the wave is compressing the gas, so a knot
+                // away from one is an old knot and has to be dim. The floor cannot go much
+                // higher: the sampler's placement holds for an orbit at most, and after that
+                // a generous floor is pink dots scattered over a disk that has turned.
+                float forming = smoothstep(0.4, 0.95, wave) * pattern.y;
+
                 // Arm contrast in starlight was set low back when the sampled density carried
                 // the arms and this only had to nudge them. It carries them alone now, so it
-                // runs at the factor of two a grand-design spiral actually shows between arm
-                // and interarm.
+                // runs at the factor of two a grand-design spiral shows between arm and
+                // interarm.
                 float gain = kind == 1u
-                    ? (0.06 + 2.6 * smoothstep(0.4, 0.95, wave) * pattern.y)
+                    ? (0.06 + 2.6 * forming)
                     : (0.55 + 0.95 * wave);
                 // Colour comes from the population the sampler gave this particle: old and
                 // warm in the bulge, young and blue in the disk. The wave shifts it a little
@@ -245,9 +247,7 @@ enum Shaders {
                 // Where the arms are painted the wave says where star formation is now; a
                 // self-gravitating disk grows its own arms and the sampler's placement is
                 // the only thing available.
-                float alive = frame.axisV.w > 0.0
-                    ? smoothstep(0.4, 0.95, wave) * pattern.y
-                    : 1.0;
+                float alive = forming;
                 float3 emitted = kind == 1u
                     ? mix(stellarColour(1.0), hiiColour(), alive)
                     : stellarColour(age);
