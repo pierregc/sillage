@@ -24,7 +24,8 @@ enum BarnesHutShaders {
             float openingAngleSquared;
             float softeningSquared;
             float gravitationalConstant;
-            float _pad0;
+            /// First particle of the piece being dispatched.
+            uint chunkStart;
             float _pad1;
         };
 
@@ -161,11 +162,15 @@ enum BarnesHutShaders {
                                    constant HaloGPU *haloList [[buffer(5)]],
                                    constant BHParams &p [[buffer(6)]],
                                    uint gid [[thread_position_in_grid]]) {
-            if (gid >= p.particleCount) { return; }
+            // Dispatched in pieces, so the display has somewhere to get in. One kernel over
+            // seven million particles keeps the GPU to itself for the best part of a second
+            // and the whole machine feels it.
+            uint slot = gid + p.chunkStart;
+            if (slot >= p.particleCount) { return; }
             // Threads walk the tree in Morton order, so neighbours in a SIMD group are also
             // neighbours in space and take almost the same path. Traversing in sampling order
             // leaves every lane on a different branch and the divergence dominates the cost.
-            uint i = order[gid];
+            uint i = order[slot];
             float3 position = positions[i];
             float3 total = float3(0.0);
 

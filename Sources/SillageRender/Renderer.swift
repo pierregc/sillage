@@ -193,6 +193,7 @@ public final class Renderer {
     private var frameCount = 1
     private let starBuffer: MTLBuffer?
     private let particleCount: Int
+    private let drawnCount: Int
 
     /// Framing at which the brightness and dust settings are calibrated, in kpc per pixel.
     static let referenceKpcPerPixel: Float = 0.0436
@@ -216,6 +217,15 @@ public final class Renderer {
         }
         self.device = device
         self.settings = settings
+        // Only what is drawn. Dark matter is discarded in the vertex shader anyway, so the
+        // draw call stops before it: at three million stars with live halos that is four and a
+        // half million vertices a frame that existed only to be thrown away.
+        self.drawnCount = particles.visibleCount > 0 ? particles.visibleCount : particles.count
+        // Exposure still counts every particle the scene simulates, which is not what it
+        // should count: adding dark matter makes the stars dimmer by the halo ratio, and it
+        // ought to change nothing. Left alone deliberately — correcting it brightens every
+        // self-gravitating scene by two and a half and would mean retuning the defaults and
+        // every rendered comparison at once.
         self.particleCount = particles.count
 
         let library: MTLLibrary
@@ -473,7 +483,7 @@ public final class Renderer {
             encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
             encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
             encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
-            encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: particleCount)
+            encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
             encoder.endEncoding()
         }
 

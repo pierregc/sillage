@@ -21,6 +21,20 @@ enum TakeFiles {
         model.saveTake(to: url)
     }
 
+    /// Picks where a run will write itself once it reaches its finish, so a big scene can be
+    /// started and left.
+    @MainActor
+    static func saveWhenFinished(_ model: SimulationModel) {
+        let panel = NSSavePanel()
+        panel.title = "Sauvegarder quand fini"
+        panel.allowedContentTypes = [contentType]
+        panel.nameFieldStringValue = "\(model.scene.name).\(RecordingFile.fileExtension)"
+        panel.message =
+            "La course s'arrêtera au temps choisi et écrira la prise ici, sans rien demander."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.saveWhenFinished(to: url)
+    }
+
     @MainActor
     static func exportVideo(_ model: SimulationModel) {
         let panel = NSSavePanel()

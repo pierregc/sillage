@@ -35,6 +35,46 @@ public struct ParticleSystem: Sendable {
     public var mass: [Float]
 
     public var count: Int { positions.count }
+    /// Visible particles, which the sampler places first so they form a contiguous run.
+    ///
+    /// Dark matter is most of what a self-gravitating scene integrates and none of what it
+    /// draws: at a million and a half stars a galaxy it is three particles in five. Keeping it
+    /// out of the front means the renderer, the smoothing field and a recorded take can all
+    /// stop at `visibleCount` and never look at it again.
+    public private(set) var visibleCount: Int = 0
+
+    /// Moves every visible particle to the front, keeping their order. Called once, after
+    /// sampling.
+    public mutating func partitionVisibleFirst() {
+        var order = [Int]()
+        order.reserveCapacity(count)
+        for index in 0..<count
+        where component[index] != ParticleComponent.halo.rawValue { order.append(index) }
+        visibleCount = order.count
+        for index in 0..<count
+        where component[index] == ParticleComponent.halo.rawValue { order.append(index) }
+
+        func reorder<T>(_ values: inout [T]) {
+            guard values.count == order.count else { return }
+            var sorted = [T]()
+            sorted.reserveCapacity(order.count)
+            for index in order { sorted.append(values[index]) }
+            values = sorted
+        }
+        reorder(&positions)
+        reorder(&velocities)
+        reorder(&galaxyIndex)
+        reorder(&birthRadius)
+        reorder(&population)
+        reorder(&luminosity)
+        reorder(&component)
+        reorder(&mass)
+    }
+
+    /// For a system rebuilt from a file, which holds only what was drawn.
+    public mutating func setVisibleCount(_ value: Int) {
+        visibleCount = min(max(value, 0), count)
+    }
 
     public init(capacity: Int = 0) {
         positions = []

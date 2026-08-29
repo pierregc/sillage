@@ -268,6 +268,45 @@ enum QACheck {
                 "relancer depuis la relecture repart en simulation",
                 model.mode == .running && model.capturedFrames > 1)
 
+            // A run left overnight has to stop by itself and write itself out. Nothing here
+            // touches a button after the finish is armed.
+            model.restartCapture()
+            await settle(0.6)
+            let finishURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("fini.sillage")
+            try? FileManager.default.removeItem(at: finishURL)
+            model.stopAtMyr = model.elapsedMyr + 30
+            model.saveWhenFinished(to: finishURL)
+            report.check("la fin est armée", model.finishDestination != nil)
+
+            var waited = 0.0
+            while !model.reachedFinish, waited < 25 {
+                await settle(0.5)
+                waited += 0.5
+            }
+            report.check(
+                "la course s'arrête d'elle-même", model.reachedFinish,
+                String(format: "%.0f Myr pour une fin à %.0f", model.elapsedMyr, model.stopAtMyr))
+            report.check("l'arrêt bascule en relecture", model.mode == .playback)
+            while model.fileActivity != nil { await settle(0.3) }
+            let written = (try? FileManager.default.attributesOfItem(atPath: finishURL.path)[.size])
+            report.check(
+                "elle s'écrit toute seule", (written as? Int ?? 0) > 1000,
+                String(format: "%.1f Mo", Double(written as? Int ?? 0) / 1_048_576))
+            report.check("la destination est consommée", model.finishDestination == nil)
+            // The clock follows the frame on screen once it is replaying, which is right. What
+            // must have stopped is the computing behind it.
+            let framesAfterFinish = model.capturedFrames
+            await settle(1.5)
+            report.check(
+                "plus rien ne calcule après la fin",
+                model.capturedFrames == framesAfterFinish, "\(model.capturedFrames) images")
+            try? FileManager.default.removeItem(at: finishURL)
+
+            model.stopAtMyr = 0
+            model.resumeRunning()
+            await settle(0.8)
+
             // A take on disk has to come back as the run, not as a video: the same frames,
             // and every setting that decides the image still live.
             let takeURL = FileManager.default.temporaryDirectory
