@@ -152,6 +152,10 @@ run starts, so the setup screen opens instantly.
 Spin matters more than it looks. Prograde coplanar passages raise the long symmetric tails;
 retrograde ones stay dull.
 
+A disk of stars alone can only heat, and its arms are gone within a gigayear. `dissipationTime`
+stands in for the gas that keeps a real disk cool, pulling disk material towards circular
+orbits on a time constant in Myr and stopping at the dispersion Toomre asks for.
+
 Arms trail, whichever way the disk turns: the winding takes its sign from the spin, which is
 what every spiral shows.
 
