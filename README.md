@@ -104,6 +104,9 @@ sliders and the whole interface run at that rate too: measured, the main thread 
 its own queue instead, and the canvas draws whatever the position buffer holds when the frame
 comes round. The same measurement now reads 2.2 ms.
 
+A run can be written to a `.sillage` file and opened again later. That is not a video: the
+file holds the run, so every setting that decides the image stays live when it comes back.
+
 A run captures itself from the moment it starts. There is no separate record step to think
 about: a scene that has already been computed once should never have to be computed again to
 be watched. The capture stops at a memory budget, or when the run is stopped to replay it,

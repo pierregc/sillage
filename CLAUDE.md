@@ -64,6 +64,19 @@ report of zero frames means occlusion, not a regression.
   distinctive lines without assuming leading whitespace, and always assert the pattern was
   found; a silent no-op replacement has cost hours here.
 
+## Takes on disk
+
+A run costs minutes and six bytes a particle a frame, so a quarter of a million particles over
+five hundred frames is three quarters of a gigabyte. `RecordingFile` keeps one: the scene, the
+per-particle attributes, the frames and the quantised positions. Reopening it is not watching a
+video — nothing about how it looks is in the file. Exposure, colour, the telescope and the
+camera are all decided at draw time and stay live, and the take plays with no solver behind it.
+
+Two things the format leans on. The bulk sits at the end so it reads as one run of bytes, and
+the file is memory-mapped rather than loaded: a take is often larger than is comfortable to
+hold twice. And frames are written field by field rather than as a struct, because a `SIMD3`
+carries invisible padding and a file that depends on it breaks on the next compiler.
+
 ## What the window costs
 
 Anything on the main actor is the interface's frame budget. Three things were spending it and
