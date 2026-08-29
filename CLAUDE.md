@@ -112,10 +112,27 @@ Nothing in the interface hides this: the running panel's Myr/s is measured, not 
 it falls as the run goes. The setup screen's estimate is taken at t = 0 and is honest over the
 500 Myr it quotes, where the drift is still small.
 
-**Beware of measuring under contention.** A run launched into the background alongside the app
-crawled at a thirtieth of its speed, both fighting for the GPU, and it looked exactly like a
-solver regression. It was not: the same loop in the foreground ran at 25 ms a step. Kill the
-app before timing anything.
+**Beware of measuring under contention, and of your own leftovers.** A run launched alongside
+the app crawled at a thirtieth of its speed and looked exactly like a solver regression. It was
+not. Twice. The second time an orphaned probe from half an hour earlier was still on the GPU,
+and worse, it held its own executable open: `swiftc -o` failed with "Text file busy" and the
+stale binary ran on, so three rounds of "I reduced the particle count" changed nothing at all.
+
+Before timing anything: kill the app, `pgrep -f scratchpad/` for leftovers, and check that the
+compile actually succeeded rather than trusting that it did.
+
+## The picture is not free
+
+The setup screen's preview was taking most of the GPU while nobody touched anything: it never
+steps, and it was redrawing three hundred thousand particles sixty times a second to show the
+same still. It draws on demand now — `--presets` went from 353 draws over its walk to 7.
+Anything that changes what the preview shows has to say so, through `redrawPreview()`.
+
+The running canvas draws at sixty rather than a hundred and twenty, and can be switched off
+entirely while a scene is computed: `showCanvasWhileRunning` takes the `MTKView` out of the
+hierarchy, and `draw(in:)` refuses anyway, because the view outlives its removal by a frame or
+two. With a finish and a destination set, `quitWhenFinished` closes the application once the
+take is on disk.
 
 ## Keeping the machine usable
 
