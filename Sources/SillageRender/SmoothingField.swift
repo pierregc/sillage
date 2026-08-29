@@ -17,6 +17,11 @@ import simd
 /// The length comes from the Barnes-Hut tree, which already adapts to density: a leaf holding
 /// `n` particles in a cell of width `w` implies a number density of n/w^3, and the radius
 /// enclosing `k` neighbours follows from that. Level 2 rebuilds that tree every step anyway.
+/// Safe to hand to the simulation queue: the model runs one refresh at a time and nothing
+/// else touches the field while one is in flight. The buffer it writes is read by the
+/// renderer on another thread, which is the same arrangement the position buffers are under.
+extension SmoothingField: @unchecked Sendable {}
+
 public final class SmoothingField {
     public private(set) var buffer: MTLBuffer
     public private(set) var lastMilliseconds = 0.0

@@ -21,6 +21,13 @@ enum ViewerMode {
     case playback
 }
 
+/// A Metal buffer handed to the simulation queue. `MTLBuffer` carries no Sendable promise,
+/// and the compiler cannot see that the queue reading this one is the only thing writing it.
+private struct SendableBuffer: @unchecked Sendable {
+    let buffer: MTLBuffer
+    init(_ buffer: MTLBuffer) { self.buffer = buffer }
+}
+
 @MainActor
 final class SimulationModel: ObservableObject {
     @Published var stage: Stage = .setup
@@ -286,8 +293,9 @@ final class SimulationModel: ObservableObject {
         guard !smoothingInFlight, let field = smoothing else { return }
         guard let bound = mode == .playback ? playbackPositions : solver?.positions else { return }
         smoothingInFlight = true
+        let positions = SendableBuffer(bound)
         simulationQueue.async { [weak self] in
-            field.update(from: bound)
+            field.update(from: positions.buffer)
             DispatchQueue.main.async { self?.smoothingInFlight = false }
         }
     }
@@ -484,7 +492,7 @@ final class SimulationModel: ObservableObject {
     /// of it. The first captured frame belongs here too: quantising several million particles
     /// is a full pass over every one of them, and doing it on the way in cost close to half a
     /// second of dead window.
-    private static func prepare(
+    private nonisolated static func prepare(
         scene: SceneConfig, device: MTLDevice
     ) -> (ParticleSystem, (any GPUSolver)?, Recording?) {
         let sampled = RestrictedSolver.sampleParticles(for: scene)
