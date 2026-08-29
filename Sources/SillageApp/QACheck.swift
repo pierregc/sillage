@@ -268,6 +268,18 @@ enum QACheck {
                 "relancer depuis la relecture repart en simulation",
                 model.mode == .running && model.capturedFrames > 1)
 
+            // Switching the picture off has to actually stop the drawing, not just hide it.
+            let beforeHiding = model.framesDrawn
+            model.showCanvasWhileRunning = false
+            await settle(1.2)
+            report.check(
+                "couper l'affichage arrête le dessin", model.framesDrawn == beforeHiding,
+                "\(model.framesDrawn - beforeHiding) images")
+            report.check("le calcul continue sans affichage", model.elapsedMyr > 0)
+            model.showCanvasWhileRunning = true
+            await settle(0.8)
+            report.check("réafficher redessine", model.framesDrawn > beforeHiding)
+
             // A run left overnight has to stop by itself and write itself out. Nothing here
             // touches a button after the finish is armed.
             model.restartCapture()
