@@ -47,6 +47,9 @@ default:
 }
 // Softening and step follow from the counts and the solver unless overridden below.
 scene.timeStepScale = Float(number("dt-scale", 1))
+if let dissipation = argument("dissipation").flatMap(Float.init) {
+    for index in scene.galaxies.indices { scene.galaxies[index].dissipationTime = dissipation }
+}
 scene.retune()
 if let dt = argument("dt").flatMap(Float.init) { scene.timeStep = dt }
 scene.openingAngle = Float(number("theta", 0.6))

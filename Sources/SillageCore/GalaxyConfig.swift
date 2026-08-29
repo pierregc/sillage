@@ -64,6 +64,16 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// Radius the halo is sampled out to, in scale radii.
     public var haloExtent: Float
 
+    /// How fast the disk sheds the random motion it picks up, in Myr. Zero leaves it alone.
+    ///
+    /// A disk of stars alone can only heat: every spiral it raises stirs it further, the
+    /// Toomre parameter climbs, and after about a gigayear it is a smooth featureless
+    /// spheroid with no arms left. Measured here exactly that way. Real disks do not do this
+    /// because their gas radiates the motion away and forms new stars on circular orbits,
+    /// which resets the disk faster than the spirals heat it. Nothing in this simulation is
+    /// gas, so the effect is put back directly.
+    public var dissipationTime: Float
+
     public var position: SIMD3<Float>
     public var velocity: SIMD3<Float>
     /// Tilt of the disk plane, in radians.
@@ -96,6 +106,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         toomreQ: Float = 1.4,
         haloParticleRatio: Float = 1.5,
         haloExtent: Float = 12,
+        dissipationTime: Float = 250,
         position: SIMD3<Float> = .zero,
         velocity: SIMD3<Float> = .zero,
         inclination: Float = 0,
@@ -125,6 +136,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.toomreQ = toomreQ
         self.haloParticleRatio = haloParticleRatio
         self.haloExtent = haloExtent
+        self.dissipationTime = dissipationTime
         self.position = position
         self.velocity = velocity
         self.inclination = inclination

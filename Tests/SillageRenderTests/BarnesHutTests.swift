@@ -240,6 +240,51 @@ struct BarnesHutTests {
         #expect(abs((peak ?? 0) / 4 - 2.15) < 0.1)
     }
 
+    /// A disk of stars alone can only heat: every spiral it raises stirs it further until
+    /// nothing can be amplified and the arms stop coming. Dissipation stands in for the gas
+    /// that keeps a real disk cool, and the thing it has to do is hold the dispersion down.
+    @Test func dissipationHoldsTheDiskCool() throws {
+        func dispersion(_ time: Float, dissipation: Float) throws -> Double {
+            var scene = SceneConfig.isolatedDisk(particleCount: 25_000)
+            scene.galaxies[0].kind = .spiral
+            scene.galaxies[0].dissipationTime = dissipation
+            scene.timeStepScale = 8
+            scene.retune()
+            let particles = RestrictedSolver.sampleParticles(for: scene)
+            let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+            solver.step(
+                count: Int(time / (scene.timeStep * Float(Physics.megayearsPerTimeUnit))))
+
+            let scale = scene.galaxies[0].diskScaleLength
+            let system = solver.particles
+            var total = 0.0
+            var counted = 0.0
+            for index in 0..<system.count
+            where system.component[index] == ParticleComponent.star.rawValue {
+                let p = system.positions[index]
+                let radius = (p.x * p.x + p.y * p.y).squareRoot()
+                guard radius > scale, radius < 4 * scale else { continue }
+                let outward = SIMD2<Float>(p.x / radius, p.y / radius)
+                let v = system.velocities[index]
+                let radial = Double(v.x * outward.x + v.y * outward.y)
+                total += radial * radial
+                counted += 1
+            }
+            return counted > 0 ? (total / counted).squareRoot() : 0
+        }
+
+        let hot = try dispersion(180, dissipation: 0)
+        let cool = try dispersion(180, dissipation: 250)
+        // A tenth over this stretch. The disk self-regulates rather than staying cold: the
+        // cooler it is the stronger the spirals it raises, and those heat it again. What
+        // dissipation buys is that the balance keeps making arms instead of settling into a
+        // smooth spheroid, which is visible in a render long before it is in one number.
+        #expect(cool < hot * 0.93)
+        // And not cooled into fragmentation: the floor is the equilibrium dispersion, so it
+        // has to stay well clear of zero.
+        #expect(cool > hot * 0.2)
+    }
+
     @Test func selfGravitatingSamplingAssignsMass() {
         var scene = SceneConfig.merger(particleCount: 2_000)
         scene.solver = .barnesHut
