@@ -68,8 +68,10 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var mode: ViewerMode = .running
     @Published private(set) var capturedFrames = 0
     @Published private(set) var capturedBytes = 0
-    /// Where the capture stopped, once it has. The run keeps going either way.
+    /// Whether the take has had to coarsen to stay inside its budget.
     @Published private(set) var captureIsFull = false
+    /// Batches between captured frames. One until the budget is reached, then doubling.
+    @Published private(set) var captureStride = 1
     /// How much memory the capture may take before it stops adding to itself.
     @Published var memoryBudgetGigabytes = 4.0 {
         didSet {
@@ -374,20 +376,18 @@ final class SimulationModel: ObservableObject {
             var frames = 0
             var bytes = 0
             var full = false
+            var interval = 1
             if let reel {
-                // Capturing costs six bytes a particle a frame, so it stops at the budget
-                // rather than at whatever point the machine runs out of memory. Two frames
-                // always get through: playback interpolates between a pair, so a budget too
-                // small for two would leave a run that can never be replayed at all.
-                if reel.byteCount < budget || reel.count < 2 {
-                    let positions = solver.positions.contents().bindMemory(
-                        to: SIMD3<Float>.self, capacity: reel.particleCount)
-                    reel.append(positions: positions, time: time, centers: solver.centers)
-                } else {
-                    full = true
-                }
+                // The take decides for itself. Past its budget it keeps every other frame and
+                // captures half as often, so a long run comes back whole at a coarser cadence
+                // instead of stopping partway through.
+                let positions = solver.positions.contents().bindMemory(
+                    to: SIMD3<Float>.self, capacity: reel.particleCount)
+                full = reel.offer(
+                    positions: positions, time: time, centers: solver.centers, budget: budget)
                 frames = reel.count
                 bytes = reel.byteCount
+                interval = reel.stride
             }
             DispatchQueue.main.async {
                 guard let self, self.liveGeneration == generation else { return }
@@ -400,6 +400,7 @@ final class SimulationModel: ObservableObject {
                 self.capturedFrames = frames
                 self.capturedBytes = bytes
                 self.captureIsFull = full
+                self.captureStride = interval
                 self.pumpLive(
                     generation: generation, solver: solver, steps: steps, budget: budget)
             }
@@ -411,6 +412,7 @@ final class SimulationModel: ObservableObject {
     private func beginCapture() {
         guard let solver else { return }
         let reel = Recording(particleCount: particleCount, galaxyCount: scene.galaxies.count)
+        reel.reserve(frames: budgetedFrames)
         let positions = solver.positions.contents().bindMemory(
             to: SIMD3<Float>.self, capacity: particleCount)
         reel.append(positions: positions, time: solver.time, centers: solver.centers)
@@ -418,6 +420,7 @@ final class SimulationModel: ObservableObject {
         capturedFrames = reel.count
         capturedBytes = reel.byteCount
         captureIsFull = false
+        captureStride = 1
         playbackPosition = 0
     }
 
@@ -609,14 +612,15 @@ final class SimulationModel: ObservableObject {
         let generation = preparation
         let scene = self.scene
         let device = self.device
+        let budget = memoryBudgetGigabytes
 
         guard !waiting else {
-            let prepared = Self.prepare(scene: scene, device: device)
+            let prepared = Self.prepare(scene: scene, device: device, budget: budget)
             install(prepared.0, prepared.1, prepared.2)
             return
         }
         simulationQueue.async { [weak self] in
-            let prepared = Self.prepare(scene: scene, device: device)
+            let prepared = Self.prepare(scene: scene, device: device, budget: budget)
             DispatchQueue.main.async {
                 guard let self, self.preparation == generation else { return }
                 self.install(prepared.0, prepared.1, prepared.2)
@@ -628,13 +632,26 @@ final class SimulationModel: ObservableObject {
     /// of it. The first captured frame belongs here too: quantising several million particles
     /// is a full pass over every one of them, and doing it on the way in cost close to half a
     /// second of dead window.
+    /// Frames a capture will hold before it fills its budget. Reserved up front: growing a
+    /// gigabyte-scale buffer a frame at a time doubles it whenever it fills, and for a moment
+    /// both copies are resident.
+    nonisolated static func budgetedFrames(particles: Int, gigabytes: Double) -> Int {
+        let perFrame = max(particles * 6, 1)
+        return max(Int(gigabytes * 1_073_741_824) / perFrame, 2)
+    }
+
+    private var budgetedFrames: Int {
+        Self.budgetedFrames(particles: particleCount, gigabytes: memoryBudgetGigabytes)
+    }
+
     private nonisolated static func prepare(
-        scene: SceneConfig, device: MTLDevice
+        scene: SceneConfig, device: MTLDevice, budget: Double
     ) -> (ParticleSystem, (any GPUSolver)?, Recording?) {
         let sampled = RestrictedSolver.sampleParticles(for: scene)
         let built = try? GPUSolverFactory.make(device: device, scene: scene, particles: sampled)
         guard let built else { return (sampled, nil, nil) }
         let reel = Recording(particleCount: sampled.count, galaxyCount: scene.galaxies.count)
+        reel.reserve(frames: Self.budgetedFrames(particles: sampled.count, gigabytes: budget))
         reel.append(
             positions: built.positions.contents().bindMemory(
                 to: SIMD3<Float>.self, capacity: sampled.count),
@@ -660,6 +677,7 @@ final class SimulationModel: ObservableObject {
         capturedFrames = reel?.count ?? 0
         capturedBytes = reel?.byteCount ?? 0
         captureIsFull = false
+        captureStride = 1
         playbackPosition = 0
         rebuildRenderer()
         if reframeWhenReady {

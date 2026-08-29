@@ -100,7 +100,7 @@ struct ControlPanelContent: View {
 
                 if model.captureIsFull {
                     Text(
-                        "Budget mémoire atteint : la prise s'arrête ici, le calcul continue."
+                        "Budget atteint : la prise s'éclaircit et garde une image sur \(model.captureStride). Toute la durée est conservée."
                     )
                     .font(.caption2)
                     .foregroundStyle(Palette.warning)
