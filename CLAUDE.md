@@ -90,6 +90,33 @@ the file is memory-mapped rather than loaded: a take is often larger than is com
 hold twice. And frames are written field by field rather than as a struct, because a `SIMD3`
 carries invisible padding and a file that depends on it breaks on the next compiler.
 
+## Long runs
+
+Verified rather than assumed, because every part of it had a surprise in it.
+
+**Memory holds.** A take is bounded by its budget and nothing doubles around it any more: the
+buffer is reserved up front, written out of its own memory, and read back through the mapping.
+1.7 GB captured now peaks at 1.72 GB, writes at +1 MB and reads at +4 MB.
+
+**Nothing diverges.** A gigayear of a self-gravitating merger at 200 000 simulated particles
+leaves no non-finite position and a sane mean radius throughout.
+
+**The cost per step climbs, and this is the real limit.** Measured at 100 000 simulated
+particles, from 250 Myr to 2 Gyr: an isolated disk goes from 15 to 43 ms a step, a merger from
+15 to 136. The node count *falls* over the same stretch, so it is not the tree growing — it is
+the traversal. As the core densifies and the halo spreads, more cells fail the opening
+criterion and have to be walked. Dissipation adds about 40 % on top of that by keeping the disk
+tight, which is a fair price for it still having arms.
+
+Nothing in the interface hides this: the running panel's Myr/s is measured, not predicted, so
+it falls as the run goes. The setup screen's estimate is taken at t = 0 and is honest over the
+500 Myr it quotes, where the drift is still small.
+
+**Beware of measuring under contention.** A run launched into the background alongside the app
+crawled at a thirtieth of its speed, both fighting for the GPU, and it looked exactly like a
+solver regression. It was not: the same loop in the foreground ran at 25 ms a step. Kill the
+app before timing anything.
+
 ## What the window costs
 
 Anything on the main actor is the interface's frame budget. Three things were spending it and
