@@ -222,7 +222,7 @@ public enum DiskSampler {
                 radius: radius,
                 population: 0,
                 luminosity: 0.45 + 1.5 * generator.uniform() * generator.uniform(),
-                component: .star,
+                component: .bulge,
                 mass: particleMass
             )
         }
@@ -523,7 +523,7 @@ public enum DiskSampler {
             case .dust:
                 population = 0
                 brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.02)
-            case .star, .halo:
+            case .star, .halo, .bulge:
                 break
             }
 
