@@ -78,8 +78,11 @@ public enum RecordingFile {
         try handle.write(contentsOf: preamble)
         try handle.write(contentsOf: encoded)
 
+        // A take holds only what is drawn, and the sampler puts those first, so the leading
+        // run of each attribute is exactly what belongs with it.
         func padded<T>(_ values: [T], _ fallback: T) -> [T] {
-            values.count == count ? values : [T](repeating: fallback, count: count)
+            if values.count >= count { return Array(values[0..<count]) }
+            return [T](repeating: fallback, count: count)
         }
         try handle.write(contentsOf: bytes(of: padded(particles.population, Float(0.5))))
         try handle.write(contentsOf: bytes(of: padded(particles.luminosity, Float(1))))
@@ -201,6 +204,8 @@ public enum RecordingFile {
         particles.velocities = [SIMD3<Float>](repeating: .zero, count: count)
         particles.birthRadius = particles.positions.map { simd_length($0) }
         particles.mass = [Float](repeating: 0, count: count)
+        // Everything in a take is visible; there is no dark matter in the file.
+        particles.setVisibleCount(count)
         return Loaded(scene: header.scene, recording: recording, particles: particles)
     }
 

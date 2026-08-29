@@ -49,6 +49,30 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var megayearsPerSecond = 0.0
     /// Sampling and solver construction are in flight; there is no scene to draw yet.
     @Published private(set) var isPreparing = false
+    /// Arms the automatic save. The run stops at its finish and writes there by itself.
+    func saveWhenFinished(to url: URL) {
+        finishDestination = url
+        if stopAtMyr <= 0 { stopAtMyr = max(elapsedMyr * 2, 500) }
+    }
+
+    func cancelSaveWhenFinished() { finishDestination = nil }
+
+    /// Called on the main actor after each batch. Stops the run at its finish, replays it,
+    /// and writes it out if that was asked for.
+    private func checkFinish() {
+        guard mode == .running, stopAtMyr > 0, elapsedMyr >= stopAtMyr else { return }
+        reachedFinish = true
+        stopLiveStepping()
+        isPlaying = false
+        guard canReplay else { return }
+        let destination = finishDestination
+        stopAndReplay()
+        if let destination {
+            finishDestination = nil
+            saveTake(to: destination)
+        }
+    }
+
     /// What the disk is doing, while it is doing it.
     @Published private(set) var fileActivity: String?
     /// A take opened from a file has no solver, so nothing can be advanced from it.
@@ -72,6 +96,17 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var captureIsFull = false
     /// Batches between captured frames. One until the budget is reached, then doubling.
     @Published private(set) var captureStride = 1
+    /// Simulated time to stop at, in Myr. Zero runs until stopped by hand.
+    ///
+    /// A run has no natural end: it goes until someone presses something, and long after a
+    /// scene has stopped changing it is still taking the machine. Giving it a finish means a
+    /// big scene can be started and left.
+    @Published var stopAtMyr = 0.0
+    /// Where to write the take when the run reaches its finish, if anywhere.
+    @Published private(set) var finishDestination: URL?
+    /// Set once a run has reached its finish, so the panel can say so.
+    @Published private(set) var reachedFinish = false
+
     /// How much memory the capture may take before it stops adding to itself.
     @Published var memoryBudgetGigabytes = 4.0 {
         didSet {
@@ -120,7 +155,13 @@ final class SimulationModel: ObservableObject {
     /// Same idea for the sampling job, which a second launch can supersede mid-flight.
     private var preparation = 0
     private var reframeWhenReady = false
-    private let simulationQueue = DispatchQueue(label: "dev.pierregc.sillage.simulation")
+    /// Utility rather than default. The tree build fans out over every core through
+    /// `concurrentPerform`, which inherits the calling thread's class, and at full priority a
+    /// large scene makes the whole machine unusable rather than just this window. Measured at
+    /// a million particles: 112.7 ms a step against 116.7, so it costs nothing. Background
+    /// would cost 70 %.
+    private let simulationQueue = DispatchQueue(
+        label: "dev.pierregc.sillage.simulation", qos: .utility)
 
     var capturedMegabytes: Double { Double(capturedBytes) / 1_048_576 }
     var capturedMyr: Double { Double(recording?.duration ?? 0) * Physics.megayearsPerTimeUnit }
@@ -401,6 +442,8 @@ final class SimulationModel: ObservableObject {
                 self.capturedBytes = bytes
                 self.captureIsFull = full
                 self.captureStride = interval
+                self.checkFinish()
+                guard self.liveGeneration == generation else { return }
                 self.pumpLive(
                     generation: generation, solver: solver, steps: steps, budget: budget)
             }
@@ -411,7 +454,7 @@ final class SimulationModel: ObservableObject {
     /// run is always its own recording.
     private func beginCapture() {
         guard let solver else { return }
-        let reel = Recording(particleCount: particleCount, galaxyCount: scene.galaxies.count)
+        let reel = Recording(particleCount: drawnCount, galaxyCount: scene.galaxies.count)
         reel.reserve(frames: budgetedFrames)
         let positions = solver.positions.contents().bindMemory(
             to: SIMD3<Float>.self, capacity: particleCount)
@@ -641,8 +684,11 @@ final class SimulationModel: ObservableObject {
     }
 
     private var budgetedFrames: Int {
-        Self.budgetedFrames(particles: particleCount, gigabytes: memoryBudgetGigabytes)
+        Self.budgetedFrames(particles: drawnCount, gigabytes: memoryBudgetGigabytes)
     }
+
+    /// Particles that reach a pixel, which is what a take and the smoothing field work over.
+    var drawnCount: Int { seeded.visibleCount > 0 ? seeded.visibleCount : seeded.count }
 
     private nonisolated static func prepare(
         scene: SceneConfig, device: MTLDevice, budget: Double
@@ -650,8 +696,11 @@ final class SimulationModel: ObservableObject {
         let sampled = RestrictedSolver.sampleParticles(for: scene)
         let built = try? GPUSolverFactory.make(device: device, scene: scene, particles: sampled)
         guard let built else { return (sampled, nil, nil) }
-        let reel = Recording(particleCount: sampled.count, galaxyCount: scene.galaxies.count)
-        reel.reserve(frames: Self.budgetedFrames(particles: sampled.count, gigabytes: budget))
+        // Only what is drawn goes into a take: the dark matter is three particles in five and
+        // reaches no pixel, so recording it costs memory and copying for nothing.
+        let drawn = sampled.visibleCount > 0 ? sampled.visibleCount : sampled.count
+        let reel = Recording(particleCount: drawn, galaxyCount: scene.galaxies.count)
+        reel.reserve(frames: Self.budgetedFrames(particles: drawn, gigabytes: budget))
         reel.append(
             positions: built.positions.contents().bindMemory(
                 to: SIMD3<Float>.self, capacity: sampled.count),
@@ -670,6 +719,7 @@ final class SimulationModel: ObservableObject {
         megayearsPerSecond = 0
         // A restart invalidates the capture along with the solver it came from.
         mode = .running
+        reachedFinish = false
         playbackPositions = nil
         expander = nil
         isPreparing = false
@@ -829,8 +879,10 @@ final class SimulationModel: ObservableObject {
         let settings = renderSettings(
             width: Int(drawableSize.width), height: Int(drawableSize.height))
         do {
-            if smoothing == nil || smoothing?.buffer.length != particleCount * 4 {
-                smoothing = try SmoothingField(device: device, particleCount: particleCount)
+            // Over the drawn particles only: a smoothing length is read by the vertex shader
+            // and nothing reads the dark matter's.
+            if smoothing == nil || smoothing?.buffer.length != drawnCount * 4 {
+                smoothing = try SmoothingField(device: device, particleCount: drawnCount)
             }
             renderer = try Renderer(
                 device: device, particles: seeded, settings: settings, externalPositions: bound)

@@ -34,6 +34,9 @@ public final class RestrictedSolver: Solver {
                 galaxy, galaxyIndex: UInt32(index), selfGravitating: selfGravitating,
                 into: &system, using: &generator)
         }
+        // Visible first, so everything downstream can stop early. A self-gravitating scene
+        // spends most of its particles on dark matter, and none of them reach a pixel.
+        system.partitionVisibleFirst()
         return system
     }
 

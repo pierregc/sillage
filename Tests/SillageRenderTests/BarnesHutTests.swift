@@ -285,6 +285,34 @@ struct BarnesHutTests {
         #expect(cool > hot * 0.2)
     }
 
+    /// The force pass is dispatched in pieces so a very large scene does not hold the GPU
+    /// for the length of one kernel. Every piece has to know where it starts: without that
+    /// the second piece recomputes the first one's particles and leaves the rest of the scene
+    /// carrying whatever was in the acceleration buffer, which no test at one chunk can see.
+    @Test func splittingTheForcePassChangesNothing() throws {
+        let scene = SceneConfig.isolatedDisk(particleCount: 8_000)
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        let whole = MetalBarnesHutSolver.forceChunk
+        defer { MetalBarnesHutSolver.forceChunk = whole }
+
+        MetalBarnesHutSolver.forceChunk = 1_000_000
+        let single = try MetalBarnesHutSolver(scene: scene, particles: particles)
+        single.step(count: 1)
+        let reference = single.accelerations
+
+        MetalBarnesHutSolver.forceChunk = 700
+        let split = try MetalBarnesHutSolver(scene: scene, particles: particles)
+        split.step(count: 1)
+        let pieces = split.accelerations
+
+        #expect(reference.count == pieces.count)
+        var worst: Float = 0
+        for index in reference.indices {
+            worst = max(worst, simd_length(reference[index] - pieces[index]))
+        }
+        #expect(worst == 0)
+    }
+
     @Test func selfGravitatingSamplingAssignsMass() {
         var scene = SceneConfig.merger(particleCount: 2_000)
         scene.solver = .barnesHut

@@ -121,6 +121,39 @@ struct ControlPanelContent: View {
                         set: { model.memoryBudgetGigabytes = Double($0) }),
                     range: 0.5...24, format: "%.1f")
 
+                Divider()
+                Text("Fin de course").font(.caption.bold())
+                ParameterSlider(
+                    title: "Arrêter à (Myr)",
+                    value: Binding(
+                        get: { Float(model.stopAtMyr) },
+                        set: { model.stopAtMyr = Double($0) }),
+                    range: 0...8000, format: "%.0f")
+                Text(
+                    model.stopAtMyr > 0
+                        ? "La course s'arrêtera d'elle-même et passera en relecture."
+                        : "À 0, la course ne s'arrête jamais toute seule."
+                )
+                .font(.caption2)
+                .foregroundStyle(Palette.secondary)
+
+                if let destination = model.finishDestination {
+                    HStack {
+                        Text("Sera écrite dans \(destination.lastPathComponent)")
+                            .font(.caption2)
+                            .foregroundStyle(Palette.secondary)
+                            .lineLimit(1)
+                        Spacer()
+                        Button("Annuler") { model.cancelSaveWhenFinished() }
+                            .buttonStyle(.borderless)
+                            .font(.caption2)
+                    }
+                } else {
+                    Button("Sauvegarder quand fini…") { TakeFiles.saveWhenFinished(model) }
+                        .buttonStyle(.bordered)
+                }
+
+                Divider()
                 Stepper(
                     "Pas simulés par image : \(model.stepsPerFrame)",
                     value: $model.stepsPerFrame, in: 1...64
@@ -131,6 +164,11 @@ struct ControlPanelContent: View {
                     .foregroundStyle(Palette.secondary)
 
             case .playback:
+                if model.reachedFinish {
+                    Text("Course terminée au temps demandé.")
+                        .font(.caption)
+                        .foregroundStyle(Palette.label)
+                }
                 Text(
                     String(
                         format: "%d images · %.0f Myr · %.0f Mo", model.capturedFrames,

@@ -24,7 +24,9 @@ struct BHParams {
     var openingAngleSquared: Float
     var softeningSquared: Float
     var gravitationalConstant: Float
-    var pad0: Float = 0
+    /// First particle of the piece being dispatched. The force pass is split so the display
+    /// is not locked out for the length of one very large kernel.
+    var chunkStart: UInt32 = 0
     var pad1: Float = 0
 }
 
@@ -283,7 +285,8 @@ public final class MetalBarnesHutSolver: Solver {
     }
 
     private func dispatch(
-        _ pipeline: MTLComputePipelineState, _ configure: (MTLComputeCommandEncoder) -> Void
+        _ pipeline: MTLComputePipelineState, threads: Int? = nil,
+        _ configure: (MTLComputeCommandEncoder) -> Void
     ) {
         guard let buffer = queue.makeCommandBuffer(),
             let encoder = buffer.makeComputeCommandEncoder()
@@ -291,13 +294,17 @@ public final class MetalBarnesHutSolver: Solver {
         encoder.setComputePipelineState(pipeline)
         configure(encoder)
         encoder.dispatchThreads(
-            MTLSize(width: count, height: 1, depth: 1),
+            MTLSize(width: threads ?? count, height: 1, depth: 1),
             threadsPerThreadgroup: MTLSize(
                 width: pipeline.maxTotalThreadsPerThreadgroup, height: 1, depth: 1))
         encoder.endEncoding()
         buffer.commit()
         buffer.waitUntilCompleted()
     }
+
+    /// Particles per force dispatch. A whole large scene in one kernel keeps the GPU to
+    /// itself long enough that the pointer stutters; in pieces the display gets in between.
+    static var forceChunk = 1_000_000
 
     private func integrate() {
         var p = params
@@ -408,14 +415,20 @@ public final class MetalBarnesHutSolver: Solver {
         }
         if list.isEmpty { list = [HaloGPU(centerBefore: .zero, centerAfter: .zero, shape: .zero)] }
 
-        dispatch(force) { encoder in
-            encoder.setBuffer(positionBuffer, offset: 0, index: 0)
-            encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
-            encoder.setBuffer(nodeBuffer, offset: 0, index: 2)
-            encoder.setBuffer(orderBuffer, offset: 0, index: 3)
-            encoder.setBuffer(massBuffer, offset: 0, index: 4)
-            encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 5)
-            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
+        var start = 0
+        while start < count {
+            let span = min(max(Self.forceChunk, 1), count - start)
+            p.chunkStart = UInt32(start)
+            dispatch(force, threads: span) { encoder in
+                encoder.setBuffer(positionBuffer, offset: 0, index: 0)
+                encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
+                encoder.setBuffer(nodeBuffer, offset: 0, index: 2)
+                encoder.setBuffer(orderBuffer, offset: 0, index: 3)
+                encoder.setBuffer(massBuffer, offset: 0, index: 4)
+                encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 5)
+                encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
+            }
+            start += span
         }
         lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
     }
