@@ -213,17 +213,27 @@ enum Shaders {
 
             if (kind == 2u) {
                 // Dust neither emits nor follows exposure; it removes light further down.
-                float lane = 1.0 + 1.9 * pow(wave, 1.6) * pattern.y;
+                //
+                // The lane has to come from the wave rather than from where the grains sit.
+                // The sampler puts them on the arms it drew, but a disk turns differentially
+                // and within an orbit they are spread evenly round it: after that, whatever
+                // the wave does not darken is not a lane at all.
+                float lane = 1.0 + 4.2 * pow(wave, 1.6) * pattern.y;
                 out.pointSize = span * 1.3;
                 out.color = half3(0.0h);
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
             } else {
-                // The knots used to be pushed this bright because brightness was the only
-                // thing that could set them apart. Now that they carry their own colour, the
-                // boost is what a real HII region is worth rather than what it took to see it.
+                // Star formation happens in the wave, so a knot away from one is an old knot
+                // and has to be dim: the sampler's placement holds for an orbit at most, and
+                // a floor any higher leaves pink dots scattered over a disk that has turned.
+                //
+                // Arm contrast in starlight was set low back when the sampled density carried
+                // the arms and this only had to nudge them. It carries them alone now, so it
+                // runs at the factor of two a grand-design spiral actually shows between arm
+                // and interarm.
                 float gain = kind == 1u
-                    ? (0.25 + 1.5 * smoothstep(0.4, 0.95, wave) * pattern.y)
-                    : (0.80 + 0.44 * wave);
+                    ? (0.06 + 2.6 * smoothstep(0.4, 0.95, wave) * pattern.y)
+                    : (0.55 + 0.95 * wave);
                 // Colour comes from the population the sampler gave this particle: old and
                 // warm in the bulge, young and blue in the disk. The wave shifts it a little
                 // further, because an arm is bluer than the disk around it for the same
