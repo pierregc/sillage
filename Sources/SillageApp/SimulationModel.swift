@@ -36,6 +36,48 @@ final class SimulationModel: ObservableObject {
     /// Edited by the setup screen. Applied to `scene` only when the user starts the run.
     @Published var draft: SceneConfig
     @Published var camera = OrbitCamera()
+    /// Free flight. Only the flag is published: the rig itself moves on every frame, and
+    /// publishing that would rebuild the panel sixty times a second.
+    @Published var isFlying = false
+    var flight = FlyCamera()
+    private var lastDrawTime: CFTimeInterval?
+
+    /// Whichever rig is driving, for the renderer.
+    var activeCamera: Camera { isFlying ? flight.camera : camera.camera }
+
+    /// Swaps rigs without the view jumping: each takes up where the other left off.
+    func toggleFlight() {
+        if isFlying {
+            flight.handBack(&camera)
+        } else {
+            flight.adopt(camera)
+        }
+        isFlying.toggle()
+        lastDrawTime = nil
+    }
+
+    /// One frame of held-key flight. Reads the keys the canvas is holding rather than acting
+    /// on key events, so the speed follows the frame time instead of the key repeat rate.
+    private func flyOneFrame(_ view: MTKView, seconds: Float) {
+        guard isFlying, let canvas = view as? CanvasView else { return }
+        let held = canvas.held
+        func axis(_ positive: UInt16, _ negative: UInt16) -> Float {
+            (held.contains(positive) ? 1 : 0) - (held.contains(negative) ? 1 : 0)
+        }
+        var demand = FlyCamera.Demand()
+        demand.move = SIMD3<Float>(
+            axis(CanvasView.Key.w, CanvasView.Key.s),
+            axis(CanvasView.Key.d, CanvasView.Key.a),
+            axis(CanvasView.Key.space, CanvasView.Key.c)
+                + axis(CanvasView.Key.e, CanvasView.Key.q))
+        demand.turn = SIMD2<Float>(
+            axis(CanvasView.Key.left, CanvasView.Key.right) * 1.4,
+            axis(CanvasView.Key.up, CanvasView.Key.down) * 1.4)
+        let modifiers = canvas.modifiers
+        if modifiers.contains(.shift) { demand.boost = 5 }
+        if modifiers.contains(.control) { demand.boost = 0.2 }
+        flight.advance(demand, seconds: seconds)
+    }
     @Published var stepsPerFrame = 4 {
         didSet {
             guard mode == .running, isPlaying, stepsPerFrame != oldValue else { return }
@@ -93,6 +135,9 @@ final class SimulationModel: ObservableObject {
     func attach(canvas view: MTKView) { canvas = view }
 
     func drawOnce() { canvas?.draw() }
+
+    /// Presses or releases a key on the canvas, for the headless checks.
+    func hold(key: UInt16, _ down: Bool) { (canvas as? CanvasView)?.hold(key, down) }
     @Published private(set) var failure: String?
 
     @Published private(set) var mode: ViewerMode = .running
@@ -974,7 +1019,7 @@ final class SimulationModel: ObservableObject {
             DiskFrame.make(
                 scene: scene, centers: solver.centers, time: solver.time,
                 strength: renderer.armPersistence))
-        return renderer.render(camera: camera.camera)
+        return renderer.render(camera: activeCamera)
     }
 
     func draw(in view: MTKView) {
@@ -982,11 +1027,18 @@ final class SimulationModel: ObservableObject {
         // Asked not to draw. The view is taken out of the hierarchy too, but it outlives that
         // by a frame or two and the whole point is to stop feeding the GPU.
         guard showCanvasWhileRunning || mode == .playback else { return }
+        let start = CACurrentMediaTime()
+        // The real interval, so flight speed does not depend on how fast this machine draws.
+        let seconds = Float(start - (lastDrawTime ?? start - 1.0 / 60))
+        lastDrawTime = start
+        // Ahead of everything that can decline to draw: a window that is briefly occluded
+        // hands back no drawable, and a camera that stopped dead every time that happened
+        // would be worse than one that keeps flying with nothing to show for a frame.
+        flyOneFrame(view, seconds: seconds)
         // A take opened from a file has no solver behind it, and does not need one.
         guard let renderer, solver != nil || mode == .playback,
             let drawable = view.currentDrawable
         else { return }
-        let start = CACurrentMediaTime()
 
         switch mode {
         case .running:
@@ -1005,7 +1057,7 @@ final class SimulationModel: ObservableObject {
                 scene: scene, centers: centers,
                 time: Float(elapsedMyr / Physics.megayearsPerTimeUnit),
                 strength: renderer.armPersistence))
-        renderer.present(camera: camera.camera, drawable: drawable)
+        renderer.present(camera: activeCamera, drawable: drawable)
         frameMilliseconds = (CACurrentMediaTime() - start) * 1000
         framesDrawn += 1
     }

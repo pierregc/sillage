@@ -137,6 +137,51 @@ hierarchy, and `draw(in:)` refuses anyway, because the view outlives its removal
 two. With a finish and a destination set, `quitWhenFinished` closes the application once the
 take is on disk.
 
+## What a played-back frame costs
+
+Playback stuttered at five million particles with the GPU only half busy, which is the
+signature of a stall rather than of a shortage of throughput. It was a memcpy on the main
+thread: every displayed frame copied *both* surrounding snapshots into a staging buffer —
+sixty megabytes, measured at 33 ms against a 16.7 ms budget — and on a take larger than the
+page cache the copy went to the disk as well. Most of it was wasted twice over, because at the
+default speed the playhead crosses a snapshot only every other frame, so half the copies were
+of data that was already there.
+
+`SnapshotStream` copies each snapshot once, on a background queue, before it is wanted, into a
+direct-mapped cache (`index % slots`) that the expand kernel reads in place — the kernel takes
+the two snapshots as separate bindings so neither has to be moved next to the other. On
+save01.sillage at 5.2 M particles, a whole frame including a 2560x1440 render: 35.2 ms to
+8.7 ms median, 109 frames a second, nothing over budget in 206 frames.
+
+Two things were suspected and measured innocent, so do not go after them again without new
+evidence. The smoothing refresh looks alarming — 130 ms of tree build over five million
+particles every twenty frames — but it already runs on the simulation queue and is entirely
+CPU: frame times with it are 9.2 ms against 9.1 without. And `expand`'s `waitUntilCompleted`
+costs about 2 ms; it is what lets the reader overwrite slots without racing the GPU, and it is
+worth keeping until something needs those two milliseconds.
+
+## Flying rather than orbiting
+
+`FlyCamera` is a position and a direction, alongside the orbit rig rather than replacing it:
+one answers "look at this galaxy from there", the other "go inside it". `F` swaps them, and
+each adopts the other's view so the picture never jumps — `theTwoRigsHandOverWithoutJumping`
+guards that in both directions.
+
+Two things make it watchable rather than merely working.
+
+- **Keys are held, not handled.** `keyDown` only records that a key is down; the frame reads
+  the set and integrates a velocity against the real frame interval. Moving the camera from
+  the events themselves would move it at the key repeat rate, which arrives in irregular
+  bursts and reads as judder however smoothly the scene is drawn.
+- **The rig is not `@Published`.** It changes sixty times a second, and publishing that would
+  rebuild the whole control panel at frame rate — which is the very thing the section above is
+  about. Only `isFlying` is published.
+
+The flight advance sits ahead of every guard in `draw` that can decline to render: an occluded
+window hands back no drawable, and a camera that stopped dead whenever that happened would be
+worse than one that flies with nothing to show for a frame. That is also why the `--qa` checks
+can see it at all, since the window there is always occluded.
+
 ## Keeping the machine usable
 
 Three things, all measured, none of them the renderer.
