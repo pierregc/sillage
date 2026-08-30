@@ -96,12 +96,15 @@ public final class Cinematographer {
     /// The last two kinds of shot, so the next one is neither.
     private var recent: [Move] = []
 
-    /// Eight periods, all prime, from half a minute to four.
+    /// Eight periods, all prime, from a minute to five. Primes rather than round numbers so
+    /// the bank has no common multiple and the combination does not come round again inside a
+    /// sitting; stepped up one prime each from the set below them, which is about a third
+    /// slower without disturbing that.
     private let waves: [SlowWave] = [
-        SlowWave(period: 37, phase: 0.11), SlowWave(period: 53, phase: 0.37),
-        SlowWave(period: 71, phase: 0.61), SlowWave(period: 89, phase: 0.05),
-        SlowWave(period: 113, phase: 0.83), SlowWave(period: 149, phase: 0.29),
-        SlowWave(period: 191, phase: 0.53), SlowWave(period: 233, phase: 0.71),
+        SlowWave(period: 53, phase: 0.11), SlowWave(period: 71, phase: 0.37),
+        SlowWave(period: 89, phase: 0.61), SlowWave(period: 113, phase: 0.05),
+        SlowWave(period: 149, phase: 0.83), SlowWave(period: 191, phase: 0.29),
+        SlowWave(period: 251, phase: 0.53), SlowWave(period: 311, phase: 0.71),
     ]
 
     public private(set) var camera = Camera(eye: SIMD3<Float>(0, -200, 60))
