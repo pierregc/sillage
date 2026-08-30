@@ -51,10 +51,20 @@ final class SimulationModel: ObservableObject {
     var contemplationRadius: Float = 0
     /// Self-gravitating, so the count is what the tree can carry rather than what the
     /// renderer can draw.
-    var contemplationParticles = 450_000
+    var contemplationParticles = 160_000
 
     var contemplationPace: Pace = .slow
     var sceneOrdinal = 0
+    /// Wall time of recent solver steps, in milliseconds.
+    var solverBursts: [Double] = []
+    /// The longest single GPU dispatch the solver has made, in milliseconds.
+    var longestDispatch: Double = 0
+    var stepBuild: Double = 0
+    var stepForce: Double = 0
+    var stepDrift: Double = 0
+    var stepTree: Double = 0
+    /// Milliseconds between consecutive frames actually reaching `draw`.
+    var frameGaps: [Double] = []
 
     /// Which of the named looks is showing, for the picker.
     @Published var lookName: String = "observatory"
@@ -66,9 +76,45 @@ final class SimulationModel: ObservableObject {
     /// close passage inside the first one.
     var contemplationMyrPerSecond: Double = 4.5
     private var lastDrawTime: CFTimeInterval?
+    private var manualCameraUntil: Date?
 
     /// Whichever rig is driving, for the renderer.
-    var activeCamera: Camera { isFlying ? flight.camera : camera.camera }
+    /// Whichever rig is driving. In contemplation that is the director, unless somebody has
+    /// touched the camera recently — then it is theirs, and the director takes it back once
+    /// they have stopped.
+    var activeCamera: Camera {
+        if contemplating, !cameraIsManual { return director.camera }
+        return isFlying ? flight.camera : camera.camera
+    }
+
+    /// True while a hand is on the camera. Contemplation hands control over on any input and
+    /// takes it back after a pause, so touching the view never means losing the film.
+    var cameraIsManual: Bool {
+        guard let until = manualCameraUntil else { return false }
+        return Date() < until
+    }
+
+    /// Called by every camera input. In contemplation it also picks the rig up where the
+    /// director left it, so taking hold never jumps the view.
+    func takeCamera() {
+        if contemplating, !cameraIsManual {
+            let handed = director.camera
+            flight.position = handed.eye
+            let aim = simd_normalize(handed.target - handed.eye)
+            flight.pitch = asin(min(max(aim.z, -1), 1))
+            flight.yaw = atan2(aim.x, aim.y)
+            flight.fieldOfView = handed.fieldOfView
+            camera.target = handed.target
+            camera.distance = simd_length(handed.target - handed.eye)
+            camera.azimuth = atan2(-aim.x, aim.y)
+            camera.elevation = min(
+                max(-flight.pitch, -OrbitCamera.elevationLimit), OrbitCamera.elevationLimit)
+        }
+        manualCameraUntil = Date().addingTimeInterval(Self.manualCameraHold)
+    }
+
+    /// How long the camera stays in a viewer's hands after their last input.
+    static let manualCameraHold: TimeInterval = 25
 
     /// Swaps rigs without the view jumping: each takes up where the other left off.
     func toggleFlight() {
@@ -84,8 +130,19 @@ final class SimulationModel: ObservableObject {
     /// One frame of held-key flight. Reads the keys the canvas is holding rather than acting
     /// on key events, so the speed follows the frame time instead of the key repeat rate.
     private func flyOneFrame(_ view: MTKView, seconds: Float) {
-        guard isFlying, let canvas = view as? CanvasView else { return }
+        guard let canvas = view as? CanvasView else { return }
         let held = canvas.held
+        // In contemplation the movement keys are the way in: pressing one takes the camera
+        // from the director rather than needing a mode to be turned on first.
+        if contemplating, !held.isEmpty, !isFlying,
+            held.contains(where: CanvasView.Key.movement.contains)
+        {
+            takeCamera()
+            flight.adopt(camera)
+            isFlying = true
+        }
+        guard isFlying else { return }
+        if !held.isEmpty { takeCamera() }
         func axis(_ positive: UInt16, _ negative: UInt16) -> Float {
             (held.contains(positive) ? 1 : 0) - (held.contains(negative) ? 1 : 0)
         }
@@ -217,6 +274,11 @@ final class SimulationModel: ObservableObject {
     /// is half a second at five million: it belongs on the simulation queue, not in the draw
     /// call, and the buffer it writes is read by the renderer the same way positions are.
     private var framesSinceSmoothing = 0
+    /// Frames between refreshes of the smoothing field. It builds a whole tree of its own —
+    /// 77 ms across every core at 450 000 particles — and three of those a second on top of
+    /// the solver's own is what saturated the machine and froze the picture for half of every
+    /// second. Densities move slowly; contemplation looks at them every few seconds.
+    var smoothingInterval = 20
     private var smoothingInFlight = false
 
     // The setup screen renders the draft scene as it stands, without ever stepping it, so the
@@ -249,6 +311,15 @@ final class SimulationModel: ObservableObject {
     /// would cost 70 %.
     private let simulationQueue = DispatchQueue(
         label: "dev.pierregc.sillage.simulation", qos: .utility)
+    /// Contemplation steps here instead. The tree build fans out over every core through
+    /// `concurrentPerform`, which inherits the calling thread's class, and at utility it
+    /// competes with the main thread that has a frame to encode. Background costs about 70 %
+    /// of the throughput — and there is ten times more of it than the paced rate asks for, so
+    /// the trade is priority bought with something we were not using.
+    private let idleQueue = DispatchQueue(
+        label: "dev.pierregc.sillage.contemplation", qos: .background)
+
+    private var steppingQueue: DispatchQueue { contemplating ? idleQueue : simulationQueue }
 
     var capturedMegabytes: Double { Double(capturedBytes) / 1_048_576 }
     var capturedMyr: Double { Double(recording?.duration ?? 0) * Physics.megayearsPerTimeUnit }
@@ -434,7 +505,7 @@ final class SimulationModel: ObservableObject {
         guard let bound = mode == .playback ? playbackPositions : solver?.positions else { return }
         smoothingInFlight = true
         let positions = SendableBuffer(bound)
-        simulationQueue.async { [weak self] in
+        steppingQueue.async { [weak self] in
             field.update(from: positions.buffer)
             DispatchQueue.main.async { self?.smoothingInFlight = false }
         }
@@ -508,7 +579,7 @@ final class SimulationModel: ObservableObject {
 
     private func pumpLive(generation: Int, solver: any GPUSolver, steps: Int, budget: Int) {
         let reel = recording
-        simulationQueue.async { [weak self] in
+        steppingQueue.async { [weak self] in
             let clock = Date()
             let before = solver.time
             solver.step(count: steps)
@@ -516,6 +587,12 @@ final class SimulationModel: ObservableObject {
             let advanced = Double(time - before) * Physics.megayearsPerTimeUnit
             let spent = Date().timeIntervalSince(clock)
             let rate = advanced / max(spent, 1e-6)
+            // How long the solver held the GPU in one go. This is the number that decides
+            // whether a frame can get in: a window that is visible waits on a free drawable,
+            // and a burst longer than a frame stalls that wait for its whole length. An
+            // occluded window never waits, which is why a headless check cannot see this and
+            // has to be told the burst instead.
+            let burst = spent
             var frames = 0
             var bytes = 0
             var full = false
@@ -540,6 +617,16 @@ final class SimulationModel: ObservableObject {
                 self.megayearsPerSecond =
                     self.megayearsPerSecond > 0
                     ? self.megayearsPerSecond * 0.8 + rate * 0.2 : rate
+                self.solverBursts.append(burst * 1000)
+                if let tree = solver as? MetalBarnesHutSolver {
+                    self.stepBuild = tree.lastBuildMilliseconds
+                    self.stepDrift = tree.lastDriftMilliseconds
+                    self.stepTree = tree.lastTreeMilliseconds
+                    self.stepForce = tree.lastForceMilliseconds
+                    self.longestDispatch = max(self.longestDispatch, tree.longestDispatchMilliseconds)
+                    tree.longestDispatchMilliseconds = 0
+                }
+                if self.solverBursts.count > 400 { self.solverBursts.removeFirst() }
                 self.capturedFrames = frames
                 self.capturedBytes = bytes
                 self.captureIsFull = full
@@ -1064,7 +1151,7 @@ final class SimulationModel: ObservableObject {
         solver.step(count: steps)
         elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
         framesSinceSmoothing += 1
-        if framesSinceSmoothing >= 20 {
+        if framesSinceSmoothing >= smoothingInterval {
             framesSinceSmoothing = 0
             refreshSmoothing()
         }
@@ -1081,6 +1168,13 @@ final class SimulationModel: ObservableObject {
         // by a frame or two and the whole point is to stop feeding the GPU.
         guard showCanvasWhileRunning || mode == .playback else { return }
         let start = CACurrentMediaTime()
+        // The gap between one frame reaching here and the next. This is what a viewer sees,
+        // and it is the only number that does not depend on who is driving the draw or on
+        // whether the window happens to be occluded.
+        if let previous = lastDrawTime {
+            frameGaps.append((start - previous) * 1000)
+            if frameGaps.count > 2000 { frameGaps.removeFirst() }
+        }
         // The real interval, so flight speed does not depend on how fast this machine draws.
         let seconds = Float(start - (lastDrawTime ?? start - 1.0 / 60))
         lastDrawTime = start

@@ -29,6 +29,10 @@ final class CanvasView: MTKView {
         static let f: UInt16 = 3
         static let space: UInt16 = 49
         static let escape: UInt16 = 53
+        /// Everything that moves the camera, for deciding when a viewer has taken hold.
+        /// Space is left out: in contemplation it means the next scene, and taking the
+        /// camera because somebody asked to move on would be the opposite of what they meant.
+        static let movement: Set<UInt16> = [w, a, s, d, q, e, c, left, right, up, down]
         static let left: UInt16 = 123
         static let right: UInt16 = 124
         static let down: UInt16 = 125
@@ -107,6 +111,7 @@ struct MetalCanvas: NSViewRepresentable {
         view.delegate = context.coordinator
         model.attach(canvas: view)
         view.onDrag = { dx, dy in
+            model.takeCamera()
             if model.isFlying {
                 model.flight.look(deltaYaw: Float(dx) * 0.005, deltaPitch: Float(-dy) * 0.005)
             } else {
@@ -115,6 +120,7 @@ struct MetalCanvas: NSViewRepresentable {
             }
         }
         view.onScroll = { dy in
+            model.takeCamera()
             // In flight the wheel is the throttle: there is no distance to a target to change.
             if model.isFlying {
                 model.flight.changeSpeed(factor: Float(1 - dy * 0.02))

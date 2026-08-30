@@ -45,10 +45,21 @@ extension SimulationModel {
         // Smaller pieces of the force pass. A chunk is an uninterrupted hold on the GPU, and
         // here the picture is the thing that must not wait: measured against a sixty hertz
         // schedule, a million-particle chunk missed one slot in eighteen.
-        MetalBarnesHutSolver.forceChunk = 40_000
+        MetalBarnesHutSolver.forceChunk = 450_000
         // Supersampling costs four times the fill rate and buys least on a display that is
         // already retina. Particles are the better place to spend it.
         if supersample != 1 { supersample = 1 }
+        // The smoothing field builds a tree of its own, and three of those a second on top of
+        // the solver's own is what froze the picture for half of every second.
+        // The smoothing field builds a tree of its own, and three of those a second on top
+        // of the solver's own is what saturated every core and froze the picture for half of
+        // every second. Densities move slowly; this looks at them every few seconds.
+        smoothingInterval = 240
+        MetalBarnesHutSolver.leafCapacity = 32
+        MetalBarnesHutSolver.maximumTreeDepth = 13
+        // One step a pump. Four of them is a burst four times as long, and the length of the
+        // burst is the whole of what a viewer feels.
+        if stepsPerFrame != 1 { stepsPerFrame = 1 }
         beginContemplationScene(seed: UInt64.random(in: 1...1_000_000))
         stage = .running
         setFullScreen(true)
@@ -56,7 +67,11 @@ extension SimulationModel {
 
     func stopContemplation() {
         contemplating = false
-        MetalBarnesHutSolver.forceChunk = 1_000_000
+        smoothingInterval = 20
+        stepsPerFrame = 4
+        MetalBarnesHutSolver.leafCapacity = 16
+        MetalBarnesHutSolver.maximumTreeDepth = 20
+        MetalBarnesHutSolver.forceChunk = 450_000
         renderFade = 1
         renderer?.fade = 1
         setFullScreen(false)

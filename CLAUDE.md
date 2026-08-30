@@ -323,8 +323,38 @@ up close, and four things together are what make it affordable at sixty hertz.
   never changes, and rebuilding the renderer for a new scene did it on the main thread: one
   frame a full second late, every scene. `ShaderCache` holds them for the life of the process.
 
-Together: zero frames of 7 746 missed their slot in the brisk pace, worst lateness 11.5 ms.
-The road there was 5.7 %, and every step of it was a different cause.
+**The number that matters is the length of the solver's uninterrupted burst, not the duty
+cycle and not the cost of a draw.** A viewer reported half a second of picture followed by half
+a second of freeze while `--cinema` reported a healthy median, and the two were consistent: a
+step held every core for 173 ms and the pacing then idled for 370, which is that half-second
+cycle exactly. What brought it to 30 ms, in the order the measurements found them:
+
+- **The smoothing field builds a tree of its own**, and it was doing so three times a second on
+  top of the solver's. That alone was most of a second of saturated cores per second. In
+  contemplation it refreshes every 240 frames instead of every 20. An earlier note here had
+  measured this same refresh innocent — during *playback*, where there is no solver competing
+  with it. It is not innocent next to one.
+- **Four steps a pump** is a burst four times as long for the same work. One.
+- **The tree build is the step**, at 22 ms of the 30: bigger leaves (32 rather than 16, which
+  only became affordable once leaves respected the opening criterion), a depth ceiling of 13
+  rather than 20 — a merged core subdivides to the ceiling and the node split is serial — and
+  fewer particles.
+- **Background rather than utility priority.** The solver has ten times the throughput the
+  paced rate asks for, so priority is bought with something that was not being used.
+
+`--cinema` cannot see the last of this, and that limit is worth stating plainly: it drives an
+*occluded* window, which is never throttled by the compositor, so `currentDrawable` never
+blocks there and the failure mode a visible window has is invisible to it. The burst length is
+the honest proxy, which is why it is reported.
+
+The director's camera reached the renderer only after all of the above: `activeCamera` had
+never consulted it, so every shot ever described here was being computed and thrown away while
+the screen showed a motionless orbit rig. Anything that computes a camera has to be asked for
+it somewhere.
+
+Touching the camera in contemplation hands it over — drag, wheel, or a movement key, which also
+turns flight on and takes the rig from wherever the director had it — and the director takes it
+back twenty-five seconds after the last input.
 
 One scene in three is **immersed** — the eye placed among the stars first and the aim following,
 which is the opposite of the orbit rig and the only way to be inside anything. Out at the rim of
