@@ -117,6 +117,15 @@ final class CanvasView: MTKView {
     }
 }
 
+/// An overlay that never takes a click, hosted inside the canvas rather than stacked over it.
+///
+/// A `ZStack` does not reliably put SwiftUI content above an `NSViewRepresentable` whose view
+/// is layer-backed: the Metal layer draws over it, and the overlay is simply never seen. As a
+/// subview of the canvas the ordering is AppKit's own and holds.
+final class PassThroughHostingView<Content: View>: NSHostingView<Content> {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 struct MetalCanvas: NSViewRepresentable {
     @ObservedObject var model: SimulationModel
 
@@ -163,7 +172,19 @@ struct MetalCanvas: NSViewRepresentable {
         // Space means "up" while flying and "the next one" while contemplating, which never
         // overlap: contemplation has no flying in it.
         view.onSpace = { if model.contemplating { model.skipScene() } }
-        view.onReadout = { if model.contemplating { model.onToggleReadout?() } }
+        view.onReadout = { if model.contemplating { model.showReadout.toggle() } }
+
+        if model.contemplating {
+            let overlay = PassThroughHostingView(rootView: ContemplationOverlay(model: model))
+            overlay.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(overlay)
+            NSLayoutConstraint.activate([
+                overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                overlay.topAnchor.constraint(equalTo: view.topAnchor),
+                overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+        }
         return view
     }
 

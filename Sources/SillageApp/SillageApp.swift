@@ -229,6 +229,7 @@ struct SillageApp: App {
                 separation     \(String(format: "%.0f", closest)) kpc closest, \(String(format: "%.0f", started)) at the start
                 left cleanly   \(!model.contemplating && model.stage == .setup)
                 oscillators    \(swingReport(swings))
+                readout         showing \(model.showReadout)
                 failure        \(model.failure ?? "none")
                 """
             try? report.write(
@@ -291,6 +292,17 @@ struct SillageApp: App {
         write(AnyView(SetupContent(model: model).padding(20).frame(width: 720)), to: "out/ui-setup.png")
         write(
             AnyView(ControlPanelContent(model: model).padding(14).frame(width: 276)), to: "out/ui-panel.png")
+        // The oscillator readout, over black. It is hosted inside the Metal view at runtime,
+        // where it cannot be looked at on this machine; here it can.
+        model.contemplating = true
+        model.director.beginScene(seed: 3)
+        model.director.advance(seconds: 1.0 / 60, of: Subject(centres: [.zero], radius: 40))
+        write(
+            AnyView(
+                ContemplationOverlay(model: model)
+                    .frame(width: 520, height: 340)
+                    .background(Color.black)),
+            to: "out/ui-oscillators.png")
         exit(0)
     }
 
