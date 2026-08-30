@@ -49,15 +49,13 @@ final class SimulationModel: ObservableObject {
     var renderFade: Float = 1
     /// Cached: the framing radius walks every particle, and the camera needs it every frame.
     var contemplationRadius: Float = 0
-    /// Self-gravitating, so the count is what the tree can carry rather than what the
-    /// renderer can draw.
     /// Drawn afresh for every scene, so no two have the same weight of light. The ceiling is
     /// measured over a whole scene rather than a moment, because the cost depends as much on
     /// the shot as on the count — a particle is a sprite and a close shot widens every one of
     /// them. Across a full 62 s scene: 250 000 costs 3.9 ms a frame and misses one slot in
     /// 3 675; 400 000 costs 9.2 and misses sixteen; 700 000 costs 34.7 and misses one frame
     /// in two.
-    var contemplationParticles = 700_000
+    var contemplationParticles = 300_000
     var contemplationParticleRange: ClosedRange<Int> = 200_000...360_000
 
     var contemplationPace: Pace = .slow
@@ -79,15 +77,15 @@ final class SimulationModel: ObservableObject {
     @Published var lookName: String = "observatory"
     /// The parts of a look with no slider of their own.
     var lookExtras = RenderLook.observatory
-    /// Simulated megayears a real second, and the one number that decides both how much
-    /// happens and what share of the GPU the solver takes, since it steps only as often as
-    /// this needs. A disk turns once in about 250 Myr, so this is a rotation a minute, and a
-    /// close passage inside the first one.
-    var contemplationMyrPerSecond: Double = 4.5
+    /// Simulated megayears a real second. Set from the pace, and the one number that decides
+    /// both how much happens and what share of the GPU the solver takes, since it steps only
+    /// as often as this needs.
+    var contemplationMyrPerSecond: Double = 1.2
     private var lastDrawTime: CFTimeInterval?
     private var manualCameraUntil: Date?
+    /// Set by the contemplation view so a key press can reach its own state.
+    var onToggleReadout: (() -> Void)?
 
-    /// Whichever rig is driving, for the renderer.
     /// Whichever rig is driving. In contemplation that is the director, unless somebody has
     /// touched the camera recently — then it is theirs, and the director takes it back once
     /// they have stopped.

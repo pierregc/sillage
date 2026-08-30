@@ -14,6 +14,7 @@ final class CanvasView: MTKView {
     var onToggleFlight: (() -> Void)?
     var onEscape: (() -> Void)?
     var onSpace: (() -> Void)?
+    var onReadout: (() -> Void)?
 
     private(set) var held: Set<UInt16> = []
     private(set) var modifiers: NSEvent.ModifierFlags = []
@@ -27,6 +28,7 @@ final class CanvasView: MTKView {
         static let e: UInt16 = 14
         static let c: UInt16 = 8
         static let f: UInt16 = 3
+        static let i: UInt16 = 34
         static let space: UInt16 = 49
         static let escape: UInt16 = 53
         /// Everything that moves the camera, for deciding when a viewer has taken hold.
@@ -88,6 +90,7 @@ final class CanvasView: MTKView {
         // Not super: an unhandled key press beeps.
         if !event.isARepeat, event.keyCode == Key.f { onToggleFlight?() }
         if event.keyCode == Key.escape { onEscape?() }
+        if !event.isARepeat, event.keyCode == Key.i { onReadout?() }
         if !event.isARepeat, event.keyCode == Key.space { onSpace?() }
         held.insert(event.keyCode)
     }
@@ -150,10 +153,17 @@ struct MetalCanvas: NSViewRepresentable {
             }
         }
         view.onToggleFlight = { model.toggleFlight() }
-        view.onEscape = { if model.contemplating { model.stopContemplation() } }
+        view.onEscape = {
+            guard model.contemplating else { return }
+            // Never from inside the key handler. Leaving contemplation changes `stage`, which
+            // tears down the very view whose `keyDown:` is still on the stack, and takes the
+            // window out of full screen while AppKit is mid-transition. Both are crashes.
+            DispatchQueue.main.async { model.stopContemplation() }
+        }
         // Space means "up" while flying and "the next one" while contemplating, which never
         // overlap: contemplation has no flying in it.
         view.onSpace = { if model.contemplating { model.skipScene() } }
+        view.onReadout = { if model.contemplating { model.onToggleReadout?() } }
         return view
     }
 

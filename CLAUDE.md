@@ -354,6 +354,23 @@ free and 700 000 looked impossible when the difference was the shot. Across a fu
 sixteen, 700 000 costs 34.7 and misses one frame in two. The kernel ceiling is capped at 70
 pixels for the same reason — at 140 the close shots alone took the median from 4.7 ms to 20.
 
+**Leaving contemplation must not happen inside the key handler.** Escape crashed the app:
+`stopContemplation` changes `stage`, which tears down the very view whose `keyDown:` is still
+on the stack, and takes the window out of full screen while AppKit is mid-transition. Both are
+deferred to the next turn of the run loop now. `--cinema` exercises the teardown on every run
+rather than behind a flag, because it only happens when somebody presses a key and no check
+went near it.
+
+A trap worth naming, met while fixing that: `pause()` compiles anywhere Foundation is imported
+and resolves to the **POSIX** call, which suspends the thread until a signal arrives. It is not
+a method on anything here. Check that a symbol you did not write exists before trusting that it
+compiled.
+
+`I` shows what the oscillators are doing, live. The readout runs on a `TimelineView` at ten
+hertz rather than on the model's publishers: the values change sixty times a second, and
+republishing them would rebuild every view observing the model at frame rate, which is the
+whole of what makes a picture stutter.
+
 **Saturation has to be applied on both sides of the tone curve.** The filmic shoulder pulls
 bright values toward white by design — right for a photograph, wrong for a galaxy whose core is
 the most interesting colour in the frame. Doing all of it beforehand, as it was, does not

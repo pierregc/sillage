@@ -311,6 +311,22 @@ public final class Cinematographer {
         look = modulated(at: t, fieldOfView: fieldOfView, closeness: 0.5)
     }
 
+    /// One modulated quantity, with the span its oscillator carries it across, so a readout
+    /// can show where in its swing it currently sits without knowing how any of this works.
+    public struct Reading: Sendable, Identifiable {
+        public let id: String
+        public let name: String
+        public let value: Float
+        public let span: ClosedRange<Float>
+        /// Zero at the bottom of the swing, one at the top.
+        public var fraction: Float {
+            let width = span.upperBound - span.lowerBound
+            return width > 0 ? min(max((value - span.lowerBound) / width, 0), 1) : 0.5
+        }
+    }
+
+    public private(set) var readings: [Reading] = []
+
     /// The base look, moved by the oscillator bank and trimmed for how close the camera is.
     private func modulated(at t: Double, fieldOfView: Float, closeness: Float) -> RenderLook {
         var blended = base
@@ -348,6 +364,26 @@ public final class Cinematographer {
         // painted, and the median frame went from 4.7 ms to 20 on close shots alone. Seventy
         // is a fifth of that, and still four times the spacing at any distance worth being at.
         blended.maximumKernel = min(blended.maximumKernel * (0.65 + 0.35 * near), 70)
+
+        func reading(
+            _ id: String, _ name: String, _ value: Float, _ base: Float, _ depth: Float
+        ) -> Reading {
+            Reading(
+                id: id, name: name, value: value,
+                span: min(base * (1 - depth), value)...max(base * (1 + depth), value))
+        }
+        readings = [
+            reading("brightness", "luminosité", blended.brightness, base.brightness, 0.18),
+            reading("bloom", "floraison", blended.bloomIntensity, base.bloomIntensity, 0.33),
+            reading("saturation", "saturation", blended.saturation, base.saturation, 0.20),
+            reading("stretch", "étirement", blended.stretch, base.stretch, 0.22),
+            reading("dust", "poussière", blended.dustStrength, base.dustStrength, 0.30),
+            reading("smoothing", "lissage", blended.smoothingScale, base.smoothingScale, 0.16),
+            reading("sky", "ciel", blended.skyLevel, base.skyLevel, 0.45),
+            reading("tint", "teinte", blended.galaxyTint, base.galaxyTint, 0.25),
+            reading("fov", "champ", blended.fieldOfView, base.fieldOfView, 0.06),
+            reading("kernel", "noyau max", blended.maximumKernel, base.maximumKernel, 0.35),
+        ]
         return blended
     }
 

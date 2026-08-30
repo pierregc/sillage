@@ -138,6 +138,7 @@ struct SillageApp: App {
             var visible: [Double] = []
             var moves: Set<String> = []
             var scenes: Set<UInt64> = []
+            var swings: [String: [Float]] = [:]
             var closest = Double.greatestFiniteMagnitude
             var started = 0.0
             let clock = Date()
@@ -155,6 +156,10 @@ struct SillageApp: App {
                     if model.renderFade > 0.15 { visible.append(slip) }
                 }
                 moves.insert("\(model.director.move)")
+                // The readout is a picture of these, so it is worth knowing they move.
+                for reading in model.director.readings {
+                    swings[reading.id, default: []].append(reading.value)
+                }
                 scenes.insert(model.scene.seed)
                 // Does the passage actually happen inside a scene? A minute of two specks
                 // drifting apart is the complaint this answers.
@@ -162,6 +167,13 @@ struct SillageApp: App {
                     let apart = simd_length(centres[0] - centres[1])
                     if started == 0 { started = Double(apart) }
                     closest = min(closest, Double(apart))
+                }
+                // Leaving contemplation part way through, which is what escape does. It
+                // crashed for a viewer and no check went near it.
+                if CommandLine.arguments.contains("stop"), model.contemplating,
+                    Date().timeIntervalSince(clock) > seconds / 2
+                {
+                    model.stopContemplation()
                 }
                 due += period
                 // Wait out the rest of the frame, so the solver gets the idle time it would
@@ -175,6 +187,14 @@ struct SillageApp: App {
                 }
                 _ = before
             }
+            // Always, not on a flag: leaving contemplation crashed for a viewer and no check
+            // went near it, because the teardown only happens when somebody presses escape.
+            if model.contemplating { model.stopContemplation() }
+            for _ in 0..<30 {
+                model.drawOnce()
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+
             let sorted = late.sorted()
             func percentile(_ share: Double) -> Double {
                 sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * share))]
@@ -207,6 +227,8 @@ struct SillageApp: App {
                 moves seen     \(moves.sorted().joined(separator: " "))
                 scenes seen    \(scenes.count)
                 separation     \(String(format: "%.0f", closest)) kpc closest, \(String(format: "%.0f", started)) at the start
+                left cleanly   \(!model.contemplating && model.stage == .setup)
+                oscillators    \(swingReport(swings))
                 failure        \(model.failure ?? "none")
                 """
             try? report.write(
@@ -218,6 +240,22 @@ struct SillageApp: App {
             let clean = Double(seen) / Double(max(visible.count, 1)) < 0.002
             exit(visible.count > 100 && clean ? 0 : 1)
         }
+    }
+
+    /// Every modulated parameter should be moving, and none should be still: a reading that
+    /// never changes is an oscillator wired to nothing.
+    private func swingReport(_ swings: [String: [Float]]) -> String {
+        guard !swings.isEmpty else { return "none" }
+        var still: [String] = []
+        for (name, values) in swings.sorted(by: { $0.key < $1.key }) {
+            guard let low = values.min(), let high = values.max(), low != 0 || high != 0 else {
+                still.append(name)
+                continue
+            }
+            if (high - low) / max(abs(high), 1e-9) < 0.01 { still.append(name) }
+        }
+        return still.isEmpty
+            ? "\(swings.count) moving" : "\(swings.count) seen, still: \(still.joined(separator: " "))"
     }
 
     /// What a viewer actually sees: the interval between consecutive frames.
