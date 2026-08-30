@@ -117,8 +117,11 @@ extension SceneConfig {
             armPitch: generator.uniform(in: 0.28...0.62),
             dustFraction: generator.uniform(in: 0.14...0.38),
             starFormingFraction: generator.uniform(in: 0.008...0.045),
-            bulgeExtent: generator.uniform(in: 0.07...0.40),
-            bulgeFraction: generator.uniform(in: 0.02...0.38),
+            // Kept small on purpose. A heavy bulge puts a seventh of the stars on tight
+            // orbits about the centre, and at any distance worth watching from that reads as
+            // a swarm of yellow points rather than as the core of a galaxy.
+            bulgeExtent: generator.uniform(in: 0.06...0.18),
+            bulgeFraction: generator.uniform(in: 0.01...0.09),
             bulgeFlattening: generator.uniform(in: 0.45...0.95),
             color: colour,
             clumpiness: generator.uniform(in: 0.18...0.44),
