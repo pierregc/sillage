@@ -143,6 +143,18 @@ public struct RenderLook: Sendable, Equatable {
         skyLevel: 0.0026, noiseLevel: 0.0014, galaxyTint: 0.55, starSize: 1.25,
         armPersistence: 1.3, fieldOfView: 0.68)
 
+    /// Toned down for an unattended full screen. Long spikes are gathered from the already
+    /// blurred bloom source, so at a hundred and thirty pixels they stop being spikes and
+    /// become soft cones fixed to the screen while the stars slide underneath them — which is
+    /// what they look like: a defect, not an instrument. Field stars come down with them.
+    public func calm() -> RenderLook {
+        var out = self
+        out.spikeLength = min(spikeLength, 34)
+        out.spikeIntensity = min(spikeIntensity, 0.2)
+        out.starSize = min(starSize, 1.0)
+        return out
+    }
+
     public static let all: [RenderLook] = [observatory, dream, gloss, ink, ember]
 
     /// The same five with names, for anything that has to offer them.

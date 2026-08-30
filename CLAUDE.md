@@ -345,6 +345,20 @@ out not to be it.
 
 Together: 26.9 ms of GPU a frame to 4, and the solver's burst from 173 ms to 6.
 
+**Measure a frame's cost over a whole scene, never at a moment.** The GPU time of one frame
+says almost nothing: a particle is a sprite whose area goes as the square of its kernel, so a
+close shot costs several times a wide one at the same particle count, and a single reading
+picks up whichever shot happened to be running. Reading one is how 450 000 particles looked
+free and 700 000 looked impossible when the difference was the shot. Across a full 62 s scene:
+250 000 costs 3.9 ms a frame and misses one slot in 3 675, 400 000 costs 9.2 and misses
+sixteen, 700 000 costs 34.7 and misses one frame in two. The kernel ceiling is capped at 70
+pixels for the same reason — at 140 the close shots alone took the median from 4.7 ms to 20.
+
+Diffraction spikes are gathered from the already blurred bloom source, so past about forty
+pixels they stop being spikes and become soft cones that sit still on the screen while the
+stars slide underneath. `RenderLook.calm()` shortens them and shrinks the field stars for
+contemplation, where nobody is there to be impressed by an instrument.
+
 Two measurement lessons sit underneath all of that. `present` commits and returns, so timing
 around it measures encoding and not drawing — `lastGPUMilliseconds` comes from the command
 buffer's own clock, and until it existed half the frame was invisible. And a viewer's report

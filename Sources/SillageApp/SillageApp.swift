@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import SillageRender
 import SwiftUI
+import simd
 
 /// Pins the AppKit appearance to dark. SwiftUI's `preferredColorScheme` recolours SwiftUI's
 /// own text but leaves NSColor-derived backgrounds following the system theme, which is how
@@ -137,6 +138,8 @@ struct SillageApp: App {
             var visible: [Double] = []
             var moves: Set<String> = []
             var scenes: Set<UInt64> = []
+            var closest = Double.greatestFiniteMagnitude
+            var started = 0.0
             let clock = Date()
             var due = Date().timeIntervalSince(clock)
             while Date().timeIntervalSince(clock) < seconds {
@@ -153,6 +156,13 @@ struct SillageApp: App {
                 }
                 moves.insert("\(model.director.move)")
                 scenes.insert(model.scene.seed)
+                // Does the passage actually happen inside a scene? A minute of two specks
+                // drifting apart is the complaint this answers.
+                if let centres = model.solver?.centers, centres.count > 1 {
+                    let apart = simd_length(centres[0] - centres[1])
+                    if started == 0 { started = Double(apart) }
+                    closest = min(closest, Double(apart))
+                }
                 due += period
                 // Wait out the rest of the frame, so the solver gets the idle time it would
                 // really have between two presentations.
@@ -186,7 +196,7 @@ struct SillageApp: App {
                 drawable       \(Int(model.drawableSize.width)) x \(Int(model.drawableSize.height)) at \(model.supersample)x
                 renderer built \(model.rendererBuilds) times
                 frame cpu      \(String(format: "%.1f", model.frameMilliseconds)) ms encoding
-                frame gpu      \(String(format: "%.1f", model.renderer?.lastGPUMilliseconds ?? 0)) ms drawing
+                frame gpu      \(gapReport(model.gpuTimes))
                 pixels shaded  \(String(format: "%.1f", Double(model.drawableSize.width * model.drawableSize.height) * Double(model.supersample * model.supersample) / 1e6)) M
                 solver steps   \(String(format: "%.0f", Double(model.solverSteps) / max(seconds, 1))) a second
                 solver burst   \(burstReport(model.solverBursts))
@@ -196,6 +206,7 @@ struct SillageApp: App {
                 draw attempts  \(model.drawAttempts)
                 moves seen     \(moves.sorted().joined(separator: " "))
                 scenes seen    \(scenes.count)
+                separation     \(String(format: "%.0f", closest)) kpc closest, \(String(format: "%.0f", started)) at the start
                 failure        \(model.failure ?? "none")
                 """
             try? report.write(

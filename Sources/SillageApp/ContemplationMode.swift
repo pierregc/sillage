@@ -26,7 +26,7 @@ extension SimulationModel {
         var fade: Double { self == .brisk ? 2.5 : 5 }
         /// Divides the oscillator periods and the shot lengths, multiplies the turn rate.
         var tempo: Double { self == .brisk ? 2.0 : 0.8 }
-        var megayearsPerSecond: Double { self == .brisk ? 3.0 : 1.6 }
+        var megayearsPerSecond: Double { self == .brisk ? 4.0 : 1.8 }
         /// How much the encounter is pulled together at the start.
         var haste: Float { self == .brisk ? 1 : 0.25 }
         var name: String { self == .brisk ? "Contemplation rapide" : "Contemplation lente" }
@@ -88,6 +88,7 @@ extension SimulationModel {
     }
 
     func beginContemplationScene(seed: UInt64) {
+        contemplationParticles = Int.random(in: contemplationParticleRange)
         draft = .contemplation(
             particleCount: contemplationParticles, seed: seed,
             haste: contemplationPace.haste)

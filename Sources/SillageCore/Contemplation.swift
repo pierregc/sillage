@@ -104,18 +104,22 @@ extension SceneConfig {
             name: name,
             particleCount: count,
             potential: GalaxyPotential(
-                profile: .hernquist, mass: mass, scaleRadius: scaleLength * 1.25),
+                profile: .hernquist, mass: mass,
+                scaleRadius: scaleLength * generator.uniform(in: 0.9...1.7)),
             diskScaleLength: scaleLength,
-            diskTruncation: generator.uniform(in: 3.6...5.2),
-            diskThickness: generator.uniform(in: 0.16...0.42),
+            // Wide on purpose. Everything about the shape of a galaxy may vary; only where it
+            // starts may not, or the two never meet and there is nothing to watch.
+            diskTruncation: generator.uniform(in: 3.2...6.0),
+            diskThickness: generator.uniform(in: 0.08...0.62),
             armCount: arms,
             // Fewer arms carry more contrast; a five-armed floccculent disk wants less.
             armStrength: generator.uniform(in: 0.6...1.0) * (arms <= 2 ? 1 : 0.75),
             armPitch: generator.uniform(in: 0.28...0.62),
             dustFraction: generator.uniform(in: 0.14...0.38),
             starFormingFraction: generator.uniform(in: 0.008...0.045),
-            bulgeExtent: generator.uniform(in: 0.11...0.26),
-            bulgeFraction: generator.uniform(in: 0.05...0.26),
+            bulgeExtent: generator.uniform(in: 0.07...0.40),
+            bulgeFraction: generator.uniform(in: 0.02...0.38),
+            bulgeFlattening: generator.uniform(in: 0.45...0.95),
             color: colour,
             clumpiness: generator.uniform(in: 0.18...0.44),
             armIrregularity: generator.uniform(in: 0.3...0.78),
@@ -130,14 +134,16 @@ extension SceneConfig {
         particleCount: Int, palette: Palette, generator: inout SeededGenerator, close: Bool,
         haste: Float = 0
     ) -> SceneConfig {
+        // The one thing held tight. A minute is not long enough to cross a hundred
+        // kiloparsecs, and a passage that never happens is the whole scene wasted.
         let separation =
-            generator.uniform(in: close ? 46...72 : 90...150) * (1 - 0.42 * haste)
-        let speed = generator.uniform(in: close ? 0.48...0.62 : 0.34...0.46) * (1 + 0.2 * haste)
+            generator.uniform(in: close ? 34...50 : 52...78) * (1 - 0.45 * haste)
+        let speed = generator.uniform(in: close ? 0.46...0.60 : 0.36...0.48) * (1 + 0.15 * haste)
         let angle = generator.uniform(in: 0.2...0.9)
         let share = generator.uniform(in: 0.38...0.62)
         let first = Int(Float(particleCount) * share)
-        let scaleA = generator.uniform(in: 3.4...5.2)
-        let scaleB = generator.uniform(in: 3.0...5.0)
+        let scaleA = generator.uniform(in: 2.8...6.2)
+        let scaleB = generator.uniform(in: 2.6...5.8)
 
         var a = disk(
             "Première", count: first, colour: palette.primary, generator: &generator,
