@@ -42,11 +42,11 @@ public final class BarnesHutTree {
     public let leafCapacity: Int
     public let maximumDepth: Int
 
-    private var codes: [UInt64] = []
     private var scratch: [UInt32] = []
     private var primary: [UInt32] = []
     private var histogram: [Int] = []
     private var sortedCodes: [UInt64] = []
+    private var scratchCodes: [UInt64] = []
     private var offsets = [Int](repeating: 0, count: 9)
     private var parents: [Int32] = []
 
@@ -111,14 +111,14 @@ public final class BarnesHutTree {
         }
         mark("bounds")
 
-        if codes.count != count { codes = [UInt64](repeating: 0, count: count) }
+        if sortedCodes.count != count { sortedCodes = [UInt64](repeating: 0, count: count) }
         let resolution: Float = 2_097_151
         let inverse = resolution / (2 * half)
         let origin = center - SIMD3<Float>(repeating: half)
         let codeChunk = max(count / (ProcessInfo.processInfo.activeProcessorCount * 4), 8192)
         let codeChunks = (count + codeChunk - 1) / codeChunk
         positions.withUnsafeBufferPointer { source in
-            codes.withUnsafeMutableBufferPointer { target in
+            sortedCodes.withUnsafeMutableBufferPointer { target in
                 DispatchQueue.concurrentPerform(iterations: codeChunks) { block in
                     let start = block * codeChunk
                     let end = min(start + codeChunk, count)
@@ -135,17 +135,6 @@ public final class BarnesHutTree {
 
         mark("morton")
         order = sortedByCode(count: count)
-        // Materialise the codes in sorted order. The node split scans each range looking at
-        // one octant digit, and reading them through the permutation makes every one of those
-        // loads a random access, which is what the split was actually spending its time on.
-        if sortedCodes.count != count { sortedCodes = [UInt64](repeating: 0, count: count) }
-        codes.withUnsafeBufferPointer { source in
-            order.withUnsafeBufferPointer { permutation in
-                sortedCodes.withUnsafeMutableBufferPointer { target in
-                    for index in 0..<count { target[index] = source[Int(permutation[index])] }
-                }
-            }
-        }
         mark("sort")
         buildNodes(count: count, center: center, half: half)
         mark("nodes")
@@ -153,48 +142,59 @@ public final class BarnesHutTree {
         mark("accumulate")
     }
 
-    /// Least significant digit radix sort. Morton codes are 63 bits, so four passes of
-    /// sixteen cover them: half the passes of a byte-wise sort, and a 65536 entry histogram
-    /// is still a cheap thing to sweep next to the particles themselves.
+    /// Least significant digit radix sort, over the codes themselves with the particle index
+    /// carried alongside. Sorting indices alone and reading the key back through them made
+    /// every count and every scatter a random access into a forty megabyte array, which was
+    /// two thirds of the whole build at five million particles: moving twelve bytes in order
+    /// beats moving four at random. The sorted codes fall out of the last pass, so the gather
+    /// that used to materialise them is gone as well.
+    ///
+    /// Morton codes are 63 bits, so four passes of sixteen cover them, and an even number of
+    /// passes leaves the result in the array it started in.
     private func sortedByCode(count: Int) -> [UInt32] {
         let radix = 16
         let buckets = 1 << radix
         if primary.count != count { primary = [UInt32](repeating: 0, count: count) }
         if scratch.count != count { scratch = [UInt32](repeating: 0, count: count) }
+        if scratchCodes.count != count { scratchCodes = [UInt64](repeating: 0, count: count) }
         if histogram.count != buckets { histogram = [Int](repeating: 0, count: buckets) }
 
         primary.withUnsafeMutableBufferPointer { buffer in
             for index in 0..<count { buffer[index] = UInt32(index) }
         }
 
+        let mask = UInt64(buckets - 1)
         for pass in 0..<4 {
             let shift = UInt64(pass * radix)
-            let mask = UInt64(buckets - 1)
-            codes.withUnsafeBufferPointer { key in
-                primary.withUnsafeMutableBufferPointer { source in
-                    scratch.withUnsafeMutableBufferPointer { target in
-                        histogram.withUnsafeMutableBufferPointer { counts in
-                            for bucket in 0..<buckets { counts[bucket] = 0 }
-                            for position in 0..<count {
-                                counts[Int((key[Int(source[position])] >> shift) & mask)] += 1
-                            }
-                            var running = 0
-                            for bucket in 0..<buckets {
-                                let value = counts[bucket]
-                                counts[bucket] = running
-                                running += value
-                            }
-                            for position in 0..<count {
-                                let index = source[position]
-                                let bucket = Int((key[Int(index)] >> shift) & mask)
-                                target[counts[bucket]] = index
-                                counts[bucket] += 1
+            sortedCodes.withUnsafeMutableBufferPointer { sourceKey in
+                scratchCodes.withUnsafeMutableBufferPointer { targetKey in
+                    primary.withUnsafeMutableBufferPointer { source in
+                        scratch.withUnsafeMutableBufferPointer { target in
+                            histogram.withUnsafeMutableBufferPointer { counts in
+                                for bucket in 0..<buckets { counts[bucket] = 0 }
+                                for position in 0..<count {
+                                    counts[Int((sourceKey[position] >> shift) & mask)] += 1
+                                }
+                                var running = 0
+                                for bucket in 0..<buckets {
+                                    let value = counts[bucket]
+                                    counts[bucket] = running
+                                    running += value
+                                }
+                                for position in 0..<count {
+                                    let key = sourceKey[position]
+                                    let slot = counts[Int((key >> shift) & mask)]
+                                    targetKey[slot] = key
+                                    target[slot] = source[position]
+                                    counts[Int((key >> shift) & mask)] = slot + 1
+                                }
                             }
                         }
                     }
                 }
             }
             swap(&primary, &scratch)
+            swap(&sortedCodes, &scratchCodes)
         }
         return primary
     }

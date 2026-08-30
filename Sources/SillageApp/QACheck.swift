@@ -214,24 +214,31 @@ enum QACheck {
             let framesAtCap = model.capturedFrames
             let timeAtCap = model.elapsedMyr
             let spanAtCap = model.capturedMyr
-            await settle(1.5)
+            // Wait for the budget to actually bind rather than trusting a fixed pause to be
+            // long enough. It landed at 480 MB of 512 often enough that the three checks
+            // below quietly vanished and the run still reported everything green — a check
+            // that disappears is worse than one that fails, so the fill is now part of the
+            // first check and the rest are unconditional.
+            var waitedForFull = 0.0
+            while !model.captureIsFull && waitedForFull < 15 {
+                await settle(0.5)
+                waitedForFull += 0.5
+            }
             report.check(
                 "le budget mémoire borne la prise",
-                model.capturedMegabytes < 600,
+                model.captureIsFull && model.capturedMegabytes < 600,
                 String(format: "%.0f Mo pour 512 Mo", model.capturedMegabytes))
-            if model.captureIsFull {
-                report.check(
-                    "le calcul continue après le budget", model.elapsedMyr > timeAtCap,
-                    "\(framesAtCap) images au moment du plein")
-                // The point of thinning: the take keeps covering the whole run.
-                report.check(
-                    "la prise pleine couvre toujours toute la durée",
-                    model.capturedMyr > spanAtCap,
-                    String(format: "%.0f puis %.0f Myr", spanAtCap, model.capturedMyr))
-                report.check(
-                    "la prise pleine s'éclaircit", model.captureStride > 1,
-                    "une image sur \(model.captureStride)")
-            }
+            report.check(
+                "le calcul continue après le budget", model.elapsedMyr > timeAtCap,
+                "\(framesAtCap) images au moment du plein")
+            // The point of thinning: the take keeps covering the whole run.
+            report.check(
+                "la prise pleine couvre toujours toute la durée",
+                model.capturedMyr > spanAtCap,
+                String(format: "%.0f puis %.0f Myr", spanAtCap, model.capturedMyr))
+            report.check(
+                "la prise pleine s'éclaircit", model.captureStride > 1,
+                "une image sur \(model.captureStride)")
             model.memoryBudgetGigabytes = 4
 
             // Rendering settings must survive both states.

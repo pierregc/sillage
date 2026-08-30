@@ -39,6 +39,11 @@ Sillage.app --qa          # walks the whole run flow and reports every check
 watches it capture, pauses it, stops it, replays it, scrubs it, picks it back up, starts over,
 fills the memory budget, and does the last of it again on the self-gravitating solver.
 
+A check that disappears is worse than one that fails. `--qa` used to give the memory budget a
+fixed pause to bind in, and it landed just short often enough that three checks about thinning
+skipped themselves while the run still printed everything green. It waits for the condition now.
+Anything guarded by `if` in `QACheck` deserves the same suspicion.
+
 `--presets` is the only mode that catches a stale index in the galaxy list: `--uishot` builds
 the view tree once and never updates it, so a card that crashes on the *change* of a preset
 renders perfectly there.
@@ -228,6 +233,14 @@ That last one supersedes an old note here warning that shrinking `int stack[64]`
 4x speed-up and is worthless because the error explodes. It was right at the time. The stack is
 small *and* correct now, because what bounds it changed.
 
+Sixty-four bit codes then made the build the next thing to look at — 178 ms against 244 for the
+force pass at five million particles, two thirds of it in the sort. The sort carried indices
+and read the key back through them, so every count and every scatter was a random access into
+forty megabytes. It now sorts the codes themselves with the index alongside: twelve bytes moved
+in order beats four moved at random, the sorted codes fall out of the last pass instead of
+needing a gather, and one array of the three is gone. 113 ms to 46, and the build back to
+109 ms — near where it was before the codes grew.
+
 Together: flat at 31 to 35 ms from 50 to 450 Myr, against 57 rising to 257. The whole run to
 450 Myr takes 449 s against 930, and the instantaneous step at the far end is 7.3x faster —
 an advantage that keeps widening, since the old curve was still accelerating.
@@ -263,6 +276,18 @@ Standing gaps, in the order they matter:
    merger at 200 k particles renders indistinguishably at 16x, in 5.8 s against 92 s. Hence
    `timeStepScale`, which is that multiplier; the default stays 1 because a close encounter
    reaches speeds an isolated disk does not.
+
+   That caution is now measured rather than assumed. A 300 k merger run *through* pericentre
+   to 300 Myr, disk deciles against the tuned step: 0.66 % at 2x, 1.31 % at 4x, 0.93 % at 8x,
+   1.45 % at 16x, 4.01 % at 32x. The figure is not monotonic below 16x, which is the useful
+   part — between 1x and 16x it is measuring the encounter's own chaotic divergence, not
+   integration error, and two neighbouring runs separate by about a percent whatever the step.
+   32x leaves that band. So 8x is comfortable for a long run and 16x is defensible; the default
+   is still 1 because that is the number every rendered comparison here was made at.
+
+   Particle count costs more than it looks. The softening follows the mean interparticle
+   spacing, so it falls as 1/sqrt(N), and the step follows the softening. Going from 300 k
+   visible to 2 M costs about 4x per step *and* 2.4x more steps for the same simulated time.
 4. **Force traversal is still where the time goes**, but it no longer grows with the run.
    The remaining large win is sharing one traversal across a SIMD group.
 
