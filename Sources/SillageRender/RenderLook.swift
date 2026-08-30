@@ -40,14 +40,14 @@ public struct RenderLook: Sendable, Equatable {
         bloomThreshold: Float = 0.55,
         bloomSoftKnee: Float = 0.6,
         bloomIntensity: Float = 0.22,
-        stretch: Float = 18,
-        saturation: Float = 1.8,
+        stretch: Float = 14,
+        saturation: Float = 2.2,
         spikeArms: Int = 6,
         spikeLength: Float = 72,
         spikeIntensity: Float = 0.38,
         skyLevel: Float = 0.0018,
         noiseLevel: Float = 0.0016,
-        galaxyTint: Float = 0.35,
+        galaxyTint: Float = 0.5,
         starSize: Float = 1.15,
         armPersistence: Float = 1,
         fieldOfView: Float = 0.6
@@ -113,8 +113,8 @@ public struct RenderLook: Sendable, Equatable {
     public static let dream = RenderLook(
         brightness: 0.22, dustStrength: 0.03, smoothingScale: 3.0, minimumKernel: 1.9,
         maximumKernel: 96, bloomThreshold: 0.28, bloomSoftKnee: 0.9, bloomIntensity: 0.62,
-        stretch: 34, saturation: 2.5, spikeArms: 0, spikeLength: 40, spikeIntensity: 0,
-        skyLevel: 0.004, noiseLevel: 0.0008, galaxyTint: 0.75, starSize: 1.5,
+        stretch: 26, saturation: 3.0, spikeArms: 0, spikeLength: 40, spikeIntensity: 0,
+        skyLevel: 0.004, noiseLevel: 0.0008, galaxyTint: 0.85, starSize: 1.5,
         armPersistence: 1.6, fieldOfView: 0.75)
 
     /// Hard and bright: small kernels, a long stretch and a wide diffraction pattern, so the
@@ -122,8 +122,8 @@ public struct RenderLook: Sendable, Equatable {
     public static let gloss = RenderLook(
         brightness: 0.13, dustStrength: 0.075, smoothingScale: 0.85, minimumKernel: 0.8,
         maximumKernel: 24, bloomThreshold: 0.72, bloomSoftKnee: 0.25, bloomIntensity: 0.5,
-        stretch: 9, saturation: 1.5, spikeArms: 4, spikeLength: 130, spikeIntensity: 0.72,
-        skyLevel: 0.0009, noiseLevel: 0.0022, galaxyTint: 0.22, starSize: 1.5,
+        stretch: 8, saturation: 2.0, spikeArms: 4, spikeLength: 130, spikeIntensity: 0.72,
+        skyLevel: 0.0009, noiseLevel: 0.0022, galaxyTint: 0.42, starSize: 1.5,
         armPersistence: 0.7, fieldOfView: 0.5)
 
     /// Deep and nearly monochrome, the sky pulled almost to black. For the wide shots, where
@@ -131,16 +131,16 @@ public struct RenderLook: Sendable, Equatable {
     public static let ink = RenderLook(
         brightness: 0.17, dustStrength: 0.11, smoothingScale: 1.9, minimumKernel: 0.95,
         maximumKernel: 58, bloomThreshold: 0.6, bloomSoftKnee: 0.4, bloomIntensity: 0.3,
-        stretch: 26, saturation: 0.75, spikeArms: 6, spikeLength: 90, spikeIntensity: 0.3,
-        skyLevel: 0.0004, noiseLevel: 0.0011, galaxyTint: 0.1, starSize: 1.0,
+        stretch: 20, saturation: 1.15, spikeArms: 6, spikeLength: 90, spikeIntensity: 0.3,
+        skyLevel: 0.0004, noiseLevel: 0.0011, galaxyTint: 0.3, starSize: 1.0,
         armPersistence: 1.0, fieldOfView: 0.62)
 
     /// Warm and heavy, dust doing most of the drawing.
     public static let ember = RenderLook(
         brightness: 0.2, dustStrength: 0.16, smoothingScale: 2.3, minimumKernel: 1.3,
         maximumKernel: 80, bloomThreshold: 0.4, bloomSoftKnee: 0.75, bloomIntensity: 0.46,
-        stretch: 30, saturation: 2.1, spikeArms: 0, spikeLength: 60, spikeIntensity: 0,
-        skyLevel: 0.0026, noiseLevel: 0.0014, galaxyTint: 0.55, starSize: 1.25,
+        stretch: 23, saturation: 2.6, spikeArms: 0, spikeLength: 60, spikeIntensity: 0,
+        skyLevel: 0.0026, noiseLevel: 0.0014, galaxyTint: 0.7, starSize: 1.25,
         armPersistence: 1.3, fieldOfView: 0.68)
 
     /// Toned down for an unattended full screen. Long spikes are gathered from the already
