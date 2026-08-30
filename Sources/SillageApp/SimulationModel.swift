@@ -40,6 +40,17 @@ final class SimulationModel: ObservableObject {
     /// publishing that would rebuild the panel sixty times a second.
     @Published var isFlying = false
     var flight = FlyCamera()
+
+    /// Full-screen, unattended viewing. See `ContemplationMode`.
+    @Published var contemplating = false
+    let director = Cinematographer()
+    var contemplationClock: Double = 0
+    var sceneAge: Double = 0
+    var renderFade: Float = 1
+    /// Cached: the framing radius walks every particle, and the camera needs it every frame.
+    var contemplationRadius: Float = 0
+    /// Level 1 costs one kernel a step, so the count can be generous.
+    var contemplationParticles = 1_600_000
     private var lastDrawTime: CFTimeInterval?
 
     /// Whichever rig is driving, for the renderer.
@@ -216,7 +227,7 @@ final class SimulationModel: ObservableObject {
     private var liveGeneration = 0
     /// Same idea for the sampling job, which a second launch can supersede mid-flight.
     private var preparation = 0
-    private var reframeWhenReady = false
+    var reframeWhenReady = false
     /// Utility rather than default. The tree build fans out over every core through
     /// `concurrentPerform`, which inherits the calling thread's class, and at full priority a
     /// large scene makes the whole machine unusable rather than just this window. Measured at
@@ -265,7 +276,7 @@ final class SimulationModel: ObservableObject {
     let device: MTLDevice
     private(set) var solver: (any GPUSolver)?
     private(set) var renderer: Renderer?
-    private var seeded = ParticleSystem()
+    var seeded = ParticleSystem()
     private var drawableSize = CGSize(width: 1280, height: 720)
 
     init?() {
@@ -801,7 +812,9 @@ final class SimulationModel: ObservableObject {
         expander = nil
         snapshots = nil
         isPreparing = false
-        recording = reel
+        // Nothing is captured while contemplating: hours of take would fill the budget
+        // many times over to record what nobody is going to replay.
+        recording = contemplating ? nil : reel
         capturedFrames = reel?.count ?? 0
         capturedBytes = reel?.byteCount ?? 0
         captureIsFull = false
@@ -894,32 +907,7 @@ final class SimulationModel: ObservableObject {
     /// Subsampled because sorting every radius cost four hundred milliseconds of frozen
     /// window at five million particles, to place a camera.
     static func framingRadius(_ system: ParticleSystem, fraction: Float = 0.96) -> Float? {
-        guard !system.positions.isEmpty else { return nil }
-        let step = max(system.positions.count / 50_000, 1)
-        var samples: [(radius: Float, light: Float)] = []
-        samples.reserveCapacity(system.positions.count / step + 1)
-        for index in stride(from: 0, to: system.positions.count, by: step) {
-            let radius = simd_length(system.positions[index])
-            guard radius.isFinite else { continue }
-            // Dust absorbs and dark matter does neither, so neither one frames anything.
-            let emits =
-                index < system.component.count
-                ? ParticleComponent(rawValue: system.component[index])?.emits ?? true
-                : true
-            let light = emits && index < system.luminosity.count ? system.luminosity[index] : 0
-            samples.append((radius, light))
-        }
-        guard !samples.isEmpty else { return nil }
-        samples.sort { $0.radius < $1.radius }
-
-        let total = samples.reduce(Float(0)) { $0 + $1.light }
-        guard total > 0 else { return samples[Int(Float(samples.count) * 0.9)].radius }
-        var running: Float = 0
-        for sample in samples {
-            running += sample.light
-            if running >= total * fraction { return sample.radius }
-        }
-        return samples[samples.count - 1].radius
+        system.framingRadius(fraction: fraction)
     }
 
     func resize(to size: CGSize) {
@@ -1035,6 +1023,7 @@ final class SimulationModel: ObservableObject {
         // hands back no drawable, and a camera that stopped dead every time that happened
         // would be worse than one that keeps flying with nothing to show for a frame.
         flyOneFrame(view, seconds: seconds)
+        advanceContemplation(seconds: Double(seconds))
         // A take opened from a file has no solver behind it, and does not need one.
         guard let renderer, solver != nil || mode == .playback,
             let drawable = view.currentDrawable

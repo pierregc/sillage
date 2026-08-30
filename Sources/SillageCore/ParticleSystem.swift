@@ -128,3 +128,36 @@ public struct ParticleSystem: Sendable {
         mass.append(particleMass)
     }
 }
+
+extension ParticleSystem {
+    /// The radius holding a given share of the light, which is what a camera should frame on.
+    /// Weighted rather than geometric: dust absorbs and dark matter does neither, so a halo
+    /// three times the size of the disk must not decide how far away the camera sits.
+    /// Subsampled, because sorting every radius of five million particles to take a
+    /// percentile costs 400 ms and answers the same question as fifty thousand of them.
+    public func framingRadius(fraction: Float = 0.96) -> Float? {
+        guard !positions.isEmpty else { return nil }
+        let step = max(positions.count / 50_000, 1)
+        var samples: [(radius: Float, light: Float)] = []
+        samples.reserveCapacity(positions.count / step + 1)
+        for index in stride(from: 0, to: positions.count, by: step) {
+            let radius = simd_length(positions[index])
+            guard radius.isFinite else { continue }
+            let emits =
+                index < component.count
+                ? ParticleComponent(rawValue: component[index])?.emits ?? true : true
+            let light = emits && index < luminosity.count ? luminosity[index] : 0
+            samples.append((radius, light))
+        }
+        guard !samples.isEmpty else { return nil }
+        samples.sort { $0.radius < $1.radius }
+        let total = samples.reduce(Float(0)) { $0 + $1.light }
+        guard total > 0 else { return samples[Int(Float(samples.count) * 0.9)].radius }
+        var running: Float = 0
+        for sample in samples {
+            running += sample.light
+            if running >= total * fraction { return sample.radius }
+        }
+        return samples[samples.count - 1].radius
+    }
+}

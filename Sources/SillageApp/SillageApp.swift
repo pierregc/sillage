@@ -31,7 +31,12 @@ struct SillageApp: App {
             Group {
                 switch model.stage {
                 case .setup: SetupView(model: model)
-                case .running: RunningView(model: model)
+                case .running:
+                    if model.contemplating {
+                        ContemplationView(model: model)
+                    } else {
+                        RunningView(model: model)
+                    }
                 }
             }
             .frame(minWidth: 1100, minHeight: 720)
@@ -40,6 +45,7 @@ struct SillageApp: App {
             .preferredColorScheme(.dark)
             .onAppear {
                 startFrameCheck()
+                startCinemaCheck()
                 PresetCheck.run(model)
                 ResponsivenessCheck.run(model)
                 QACheck.run(model)
@@ -86,6 +92,62 @@ struct SillageApp: App {
                 encoding: .utf8)
             print(report)
             exit(drawn > 30 ? 0 : 1)
+        }
+    }
+
+    /// Runs contemplation for a while through the real draw path and reports what it cost.
+    /// A mode whose whole promise is "no stutter" needs a number rather than an opinion, and
+    /// there is no watching the screen on this machine.
+    @MainActor
+    private func startCinemaCheck() {
+        guard CommandLine.arguments.contains("--cinema") else { return }
+        let seconds =
+            CommandLine.arguments.firstIndex(of: "--cinema").map { index -> Double in
+                index + 1 < CommandLine.arguments.count
+                    ? Double(CommandLine.arguments[index + 1]) ?? 45 : 45
+            } ?? 45
+        model.contemplationParticles = 1_600_000
+        // Short enough that a check of a couple of minutes crosses several swaps.
+        SimulationModel.sceneLifetime = 32
+        SimulationModel.sceneFade = 4
+        model.startContemplation()
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            var samples: [Double] = []
+            var moves: Set<String> = []
+            var scenes: Set<UInt64> = []
+            let clock = Date()
+            while Date().timeIntervalSince(clock) < seconds {
+                model.drawOnce()
+                if model.frameMilliseconds > 0, !model.isPreparing {
+                    samples.append(model.frameMilliseconds)
+                }
+                moves.insert("\(model.director.move)")
+                scenes.insert(model.scene.seed)
+                await Task.yield()
+            }
+            let sorted = samples.sorted()
+            func percentile(_ share: Double) -> Double {
+                sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * share))]
+            }
+            let slow = samples.filter { $0 > 33.3 }.count
+            let report = """
+                scene          \(model.scene.galaxies.count) galaxies, \(model.particleCount) particles
+                frames         \(samples.count) drawn in \(String(format: "%.0f", seconds)) s
+                frame median   \(String(format: "%.1f", percentile(0.5))) ms
+                frame 99th     \(String(format: "%.1f", percentile(0.99))) ms
+                frame worst    \(String(format: "%.1f", sorted.last ?? 0)) ms
+                under 30 fps   \(slow) of \(samples.count)
+                moves seen     \(moves.sorted().joined(separator: " "))
+                scenes seen    \(scenes.count)
+                failure        \(model.failure ?? "none")
+                """
+            try? report.write(
+                to: URL(fileURLWithPath: "/tmp/sillage-cinema.log"), atomically: true,
+                encoding: .utf8)
+            print(report)
+            // A tenth of a percent of late frames is a hitch nobody sees; more is a stutter.
+            exit(samples.count > 100 && Double(slow) / Double(samples.count) < 0.01 ? 0 : 1)
         }
     }
 

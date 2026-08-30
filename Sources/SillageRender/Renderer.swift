@@ -36,7 +36,7 @@ struct CompositeParams {
     var skyLevel: Float
     var noiseLevel: Float
     var seed: Float
-    var pad: Float = 0
+    var fade: Float = 1
 }
 
 struct SpikeParams {
@@ -205,6 +205,9 @@ public final class Renderer {
     /// never crosses the bus between the integrator and the rasteriser.
     /// Strength multiplier on the density wave, 0 to disable it.
     public var armPersistence: Float = 1
+    /// Master fade, 1 for the picture and 0 for black. Contemplation crossfades scenes
+    /// through it; nothing else uses it.
+    public var fade: Float = 1
 
     public init(
         device: MTLDevice? = nil,
@@ -431,6 +434,30 @@ public final class Renderer {
     public func setNoiseLevel(_ level: Float) { settings.noiseLevel = level }
     public func setGalaxyTint(_ tint: Float) { settings.galaxyTint = tint }
 
+    /// Everything a frame may change on its own, in one go. Resolution, supersampling, bloom
+    /// levels and the starfield are deliberately absent: those own textures and buffers, and
+    /// changing them means a new renderer.
+    public func apply(_ look: RenderLook) {
+        settings.brightness = look.brightness
+        settings.dustStrength = look.dustStrength
+        settings.smoothingScale = look.smoothingScale
+        settings.minimumKernel = look.minimumKernel
+        settings.maximumKernel = look.maximumKernel
+        settings.bloomThreshold = look.bloomThreshold
+        settings.bloomSoftKnee = look.bloomSoftKnee
+        settings.bloomIntensity = look.bloomIntensity
+        settings.stretch = look.stretch
+        settings.saturation = look.saturation
+        settings.spikeArms = look.spikeArms
+        settings.spikeLength = look.spikeLength
+        settings.spikeIntensity = look.spikeIntensity
+        settings.skyLevel = look.skyLevel
+        settings.noiseLevel = look.noiseLevel
+        settings.galaxyTint = look.galaxyTint
+        settings.starSize = look.starSize
+        armPersistence = look.armPersistence
+    }
+
     /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
         let scale = settings.supersample
@@ -550,7 +577,8 @@ public final class Renderer {
             spikeIntensity: settings.spikeArms > 0 ? settings.spikeIntensity : 0,
             skyLevel: settings.skyLevel,
             noiseLevel: settings.noiseLevel,
-            seed: frameSeed)
+            seed: frameSeed,
+            fade: min(max(fade, 0), 1))
         let target = present ?? output
         dispatch(compute, compositePipeline, into: target) { encoder in
             encoder.setTexture(resolved, index: 0)
