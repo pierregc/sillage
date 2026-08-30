@@ -85,6 +85,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let galaxyOf: [UInt32]
     private let componentOf: [UInt32]
     private let liveHalos: Bool
+    private var stepsSinceTree = 0
     private var haloCenters: [SIMD3<Float>]
     private var galaxyMotion: [SIMD3<Float>]
     private let centersLock = NSLock()
@@ -226,7 +227,11 @@ public final class MetalBarnesHutSolver: Solver {
             }
             lastDriftMilliseconds = Date().timeIntervalSince(clock) * 1000
             clock = Date()
-            rebuildTree()
+            if stepsSinceTree <= 0 {
+                rebuildTree()
+                stepsSinceTree = max(Self.treeReuse, 1)
+            }
+            stepsSinceTree -= 1
             lastTreeMilliseconds = Date().timeIntervalSince(clock) * 1000
             if let forces = queue.makeCommandBuffer() {
                 encodeAccelerations(into: forces)
@@ -366,6 +371,14 @@ public final class MetalBarnesHutSolver: Solver {
     /// right when accuracy matters; thirteen puts the smallest cell at a few tens of parsecs,
     /// far below any softening length used here, and builds far faster.
     public static var maximumTreeDepth = 20
+
+    /// Steps a tree is reused for. The build is most of what a step costs, and what decides
+    /// whether motion looks continuous is how *often* positions change, not how far they move
+    /// each time: a few large steps a second make the galaxies jump while the starfield, which
+    /// only follows the camera, glides. Reusing the tree buys the step rate that fixes that,
+    /// and costs nothing at these step sizes — a particle crosses a fraction of a leaf cell
+    /// in the interval, which is well inside what the opening angle already approximates.
+    public static var treeReuse = 1
 
     private func encodeIntegrate(into buffer: MTLCommandBuffer) {
         var p = params

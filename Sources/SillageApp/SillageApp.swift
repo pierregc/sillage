@@ -109,9 +109,22 @@ struct SillageApp: App {
         // Deliberately not overriding the particle count: a check that measures a size the
         // mode never runs at measures nothing. This one did, and reported a stutter that was
         // its own doing.
-        let pace: SimulationModel.Pace =
-            CommandLine.arguments.contains("slow") ? .slow : .brisk
-        model.startContemplation(pace: pace)
+        // "classic" runs an ordinary scene through the identical harness. Contemplation
+        // stutters where a classic run of nine times the particles does not, so the only
+        // useful measurement is the difference between the two with everything else equal.
+        if CommandLine.arguments.contains("classic") {
+            model.draft = .merger(particleCount: 700_000)
+            model.draft.solver = .barnesHut
+            for index in model.draft.galaxies.indices {
+                model.draft.galaxies[index].haloParticleRatio = 0
+            }
+            model.draft.retune()
+            model.start()
+        } else {
+            let pace: SimulationModel.Pace =
+                CommandLine.arguments.contains("slow") ? .slow : .brisk
+            model.startContemplation(pace: pace)
+        }
         Task {
             try? await Task.sleep(for: .seconds(2))
             // Paced to sixty hertz and measured on lateness, not on the cost of a draw. The
@@ -170,6 +183,12 @@ struct SillageApp: App {
                 missed a slot  \(missed) of \(late.count)
                 missed on show \(visible.filter { $0 > period }.count) of \(visible.count)
                 really drew    \(model.framesDrawn) of \(late.count) calls
+                drawable       \(Int(model.drawableSize.width)) x \(Int(model.drawableSize.height)) at \(model.supersample)x
+                renderer built \(model.rendererBuilds) times
+                frame cpu      \(String(format: "%.1f", model.frameMilliseconds)) ms encoding
+                frame gpu      \(String(format: "%.1f", model.renderer?.lastGPUMilliseconds ?? 0)) ms drawing
+                pixels shaded  \(String(format: "%.1f", Double(model.drawableSize.width * model.drawableSize.height) * Double(model.supersample * model.supersample) / 1e6)) M
+                solver steps   \(String(format: "%.0f", Double(model.solverSteps) / max(seconds, 1))) a second
                 solver burst   \(burstReport(model.solverBursts))
                 longest hold   \(String(format: "%.1f", model.longestDispatch)) ms in one dispatch
                 frame gap      \(gapReport(model.frameGaps))

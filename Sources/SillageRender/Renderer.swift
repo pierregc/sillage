@@ -608,9 +608,18 @@ public final class Renderer {
     }
 
     /// Renders straight into a view's drawable.
+    /// Wall time the GPU spent on the last presented frame. The CPU side of `present` is
+    /// encoding only — it commits and returns — so timing around the call measures nothing
+    /// that matters. This is the number that decides whether a frame makes its vsync.
+    public private(set) var lastGPUMilliseconds = 0.0
+
     public func present(camera: Camera, drawable: CAMetalDrawable) {
         guard let buffer = queue.makeCommandBuffer() else { return }
         encode(camera: camera, into: buffer, present: drawable.texture)
+        buffer.addCompletedHandler { [weak self] finished in
+            let spent = (finished.gpuEndTime - finished.gpuStartTime) * 1000
+            DispatchQueue.main.async { self?.lastGPUMilliseconds = spent }
+        }
         buffer.present(drawable)
         buffer.commit()
     }

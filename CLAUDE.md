@@ -323,8 +323,39 @@ up close, and four things together are what make it affordable at sixty hertz.
   never changes, and rebuilding the renderer for a new scene did it on the main thread: one
   frame a full second late, every scene. `ShaderCache` holds them for the life of the process.
 
-**The number that matters is the length of the solver's uninterrupted burst, not the duty
-cycle and not the cost of a draw.** A viewer reported half a second of picture followed by half
+**Three separate things were called "the stutter", and only the last two were.** The order
+they were found in is the useful part, because the first two were measured, fixed, and turned
+out not to be it.
+
+- **The galaxies jumped while the starfield glided.** A viewer said exactly that, and it names
+  the cause: the background follows only the camera, so a smooth background with jerky galaxies
+  is not dropped frames at all — it is the simulation advancing in leaps. Large steps are
+  cheaper for the same simulated time and that is precisely the wrong trade here. What the eye
+  reads as motion is how *often* positions change, not how far they move. Two steps a second at
+  four megayears each became sixty at a fifth of one, by taking small steps and reusing the tree
+  across five of them (`treeReuse`) — the build is most of what a step costs, and a particle
+  crosses a fraction of a leaf cell in that interval.
+- **Kernels are sprites, so their size is squared in fill rate.** Raising the ceiling six-fold
+  to hide the graininess of a close shot had particles painting a 384 pixel square each: 27 ms
+  of GPU a frame against 1.8 for an ordinary run of four times the particles. Capped in
+  absolute pixels as well as in multiple.
+- **Full screen on a retina panel is 7.5 million pixels** against 2.3 for a window, and every
+  stage — splatting, six levels of bloom, the composite — is paid per pixel. `pixelBudget` caps
+  the drawable at four million and lets the compositor scale.
+
+Together: 26.9 ms of GPU a frame to 4, and the solver's burst from 173 ms to 6.
+
+Two measurement lessons sit underneath all of that. `present` commits and returns, so timing
+around it measures encoding and not drawing — `lastGPUMilliseconds` comes from the command
+buffer's own clock, and until it existed half the frame was invisible. And a viewer's report
+that a classic run of nine times the particles was smooth is what finally ruled out the solver:
+`--cinema classic` runs an ordinary scene through the identical harness for exactly that
+comparison, and showed classic with a 207 ms burst and contemplation with 24, the wrong way
+round from the complaint.
+
+The rest of this section is what was fixed before that, and still holds.
+
+**The solver's uninterrupted burst matters too, though it was not the stutter.** A viewer reported half a second of picture followed by half
 a second of freeze while `--cinema` reported a healthy median, and the two were consistent: a
 step held every core for 173 ms and the pacing then idled for 370, which is that half-second
 cycle exactly. What brought it to 30 ms, in the order the measurements found them:

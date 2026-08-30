@@ -47,7 +47,9 @@ struct CinematographerTests {
             total += simd_length(cameras[index].eye - cameras[index - 1].eye)
         }
         let perSecond = total / Float(cameras.count) * 60
-        #expect(perSecond < subject.radius * 0.35)
+        // A fifteenth of the scene a second. Everything here was three times quicker once,
+        // and it read as a toy: speed is what destroys the sense of size.
+        #expect(perSecond < subject.radius / 15, "\(perSecond) kpc a second")
     }
 
     @Test func everyKindOfShotIsUsed() {

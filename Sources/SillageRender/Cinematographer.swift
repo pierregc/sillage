@@ -158,14 +158,16 @@ public final class Cinematographer {
             }
             shot = Shot(
                 from: previous.to, to: destination,
-                duration: Double(generator.uniform(in: 40...80)) / max(tempo, 0.2),
+                duration: Double(generator.uniform(in: 70...130)) / max(tempo, 0.2),
                 move: move)
         }
         self.move = shot.move
 
         let u = Cinematographer.smoothstep(Float(sinceShot / shot.duration))
         let framing = Cinematographer.mix(shot.from, shot.to, u)
-        azimuth += framing.spin * Float(step) * Float(min(max(tempo, 0.2), 3))
+        // Deliberately not scaled by tempo. A brisk scene is a shorter one, not a more
+        // hurried one: speed is what destroys the sense of size, which is the whole point.
+        azimuth += framing.spin * Float(step)
         if immersed {
             advanceImmersed(framing: framing, step: step, of: subject)
             return
@@ -198,14 +200,14 @@ public final class Cinematographer {
         // Slow modulation on top of the shot, so nothing is ever quite still. The clock runs
         // at the tempo, so a brisk scene breathes at the same shape in less time.
         let t = elapsed * tempo
-        let elevation = framing.elevation + 0.09 * waves[5].value(at: t)
-        let fieldOfView = framing.fieldOfView * (1 + 0.04 * waves[7].value(at: t))
+        let elevation = framing.elevation + 0.05 * waves[5].value(at: t)
+        let fieldOfView = framing.fieldOfView * (1 + 0.02 * waves[7].value(at: t))
         // Where the subject exactly fills the frame. Everything is expressed against this,
         // so widening the lens pulls the camera back rather than shrinking the galaxy.
         let fill = subject.radius / tan(fieldOfView / 2) * 1.05
         let distance =
             max(framing.distance * fill, subject.radius * 0.22)
-            * (1 + 0.06 * waves[6].value(at: t))
+            * (1 + 0.035 * waves[6].value(at: t))
 
         let right = SIMD3<Float>(cos(azimuth), sin(azimuth), 0)
         let aside =
@@ -247,7 +249,7 @@ public final class Cinematographer {
         // on a wide, slowly turning shot meant a minute in which nothing appeared to move.
         opening.distance = Float(generator.uniform(in: 1.0...1.5))
         opening.elevation = Float(generator.uniform(in: 0.35...0.95))
-        opening.spin = Cinematographer.spin(0.012...0.022, &generator)
+        opening.spin = Cinematographer.spin(0.004...0.008, &generator)
         shot = Shot(
             from: opening,
             to: Cinematographer.destination(for: .approach, from: opening, generator: &generator),
@@ -333,7 +335,11 @@ public final class Cinematographer {
         blended.brightness *= near
         blended.stretch *= max(pow(near, 1.5), 0.12)
         blended.smoothingScale *= 1 + 0.9 * (1 - near)
-        blended.maximumKernel *= 1 + 5 * (1 - near)
+        // Kernels are drawn as sprites, so their size is squared in fill rate: raising the
+        // ceiling six-fold to hide the graininess of a close shot meant particles painting a
+        //384 pixel square each, and 27 ms of GPU a frame against 1.8 for an ordinary run of
+        // four times the particles. Capped in absolute pixels as well as in multiple.
+        blended.maximumKernel = min(blended.maximumKernel * (1 + 1.4 * (1 - near)), 140)
         return blended
     }
 
@@ -377,26 +383,26 @@ public final class Cinematographer {
             next.distance = generator.uniform(in: 1.5...2.7)
             next.elevation = generator.uniform(in: 0.45...1.15)
             next.fieldOfView = generator.uniform(in: 0.55...0.74)
-            next.spin = spin(0.005...0.012, &generator)
+            next.spin = spin(0.002...0.005, &generator)
             next.subject = -1
         case .approach:
             next.distance = generator.uniform(in: 0.6...1.05)
             next.elevation = generator.uniform(in: 0.12...0.65)
             next.fieldOfView = generator.uniform(in: 0.5...0.66)
-            next.spin = spin(0.006...0.014, &generator)
+            next.spin = spin(0.002...0.006, &generator)
             next.subject = Int(generator.next() % 2)
         case .intimate:
             next.distance = generator.uniform(in: 0.16...0.36)
             next.elevation = generator.uniform(in: -0.25...0.5)
             next.fieldOfView = generator.uniform(in: 0.42...0.58)
             // Closer in, the same angular rate covers far less ground, so it may be quicker.
-            next.spin = spin(0.018...0.042, &generator)
+            next.spin = spin(0.006...0.014, &generator)
             next.subject = Int(generator.next() % 2)
         case .travelling:
             next.distance = generator.uniform(in: 0.5...0.95)
             next.elevation = generator.uniform(in: -0.1...0.4)
             next.fieldOfView = generator.uniform(in: 0.52...0.7)
-            next.spin = spin(0.002...0.006, &generator)
+            next.spin = spin(0.001...0.003, &generator)
             next.lateral = generator.uniform(in: 0.7...1.6) * (generator.uniform() < 0.5 ? -1 : 1)
             next.height = generator.uniform(in: -0.25...0.25)
             next.subject = Int(generator.next() % 2)
@@ -404,14 +410,14 @@ public final class Cinematographer {
             next.distance = generator.uniform(in: 0.85...1.5)
             next.elevation = generator.uniform(in: 0.2...0.9)
             next.fieldOfView = generator.uniform(in: 0.54...0.68)
-            next.spin = spin(0.0015...0.005, &generator)
+            next.spin = spin(0.0008...0.002, &generator)
             next.subject = -1
         case .orbit:
             next.distance = generator.uniform(in: 0.35...0.85)
             next.elevation = generator.uniform(in: -0.15...0.75)
             next.fieldOfView = generator.uniform(in: 0.5...0.66)
             // Steady, and quick enough that a whole turn happens inside a long shot.
-            next.spin = spin(0.012...0.026, &generator)
+            next.spin = spin(0.004...0.009, &generator)
             next.subject = Int(generator.next() % 2)
             // The point circled is somewhere near the galaxy rather than its centre, so the
             // parallax between near and far material does the work.
