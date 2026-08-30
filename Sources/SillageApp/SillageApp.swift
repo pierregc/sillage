@@ -169,6 +169,12 @@ struct SillageApp: App {
                 late worst     \(String(format: "%.1f", (sorted.last ?? 0) * 1000)) ms
                 missed a slot  \(missed) of \(late.count)
                 missed on show \(visible.filter { $0 > period }.count) of \(visible.count)
+                really drew    \(model.framesDrawn) of \(late.count) calls
+                solver burst   \(burstReport(model.solverBursts))
+                longest hold   \(String(format: "%.1f", model.longestDispatch)) ms in one dispatch
+                frame gap      \(gapReport(model.frameGaps))
+                step split     drift \(String(format: "%.0f", model.stepDrift)) ms, tree \(String(format: "%.0f", model.stepTree)) ms (build \(String(format: "%.0f", model.stepBuild))), forces \(String(format: "%.0f", model.stepForce)) ms
+                draw attempts  \(model.drawAttempts)
                 moves seen     \(moves.sorted().joined(separator: " "))
                 scenes seen    \(scenes.count)
                 failure        \(model.failure ?? "none")
@@ -182,6 +188,28 @@ struct SillageApp: App {
             let clean = Double(seen) / Double(max(visible.count, 1)) < 0.002
             exit(visible.count > 100 && clean ? 0 : 1)
         }
+    }
+
+    /// What a viewer actually sees: the interval between consecutive frames.
+    private func gapReport(_ gaps: [Double]) -> String {
+        guard !gaps.isEmpty else { return "none" }
+        let sorted = gaps.sorted()
+        let stalled = gaps.filter { $0 > 50 }.count
+        return String(
+            format: "median %.1f ms, 99th %.0f, worst %.0f, %d of %d over 50 ms",
+            sorted[sorted.count / 2], sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.99))],
+            sorted.last ?? 0, stalled, gaps.count)
+    }
+
+    /// The length of the solver's uninterrupted holds on the GPU, which is what a visible
+    /// window waits behind and an occluded one never sees.
+    private func burstReport(_ bursts: [Double]) -> String {
+        guard !bursts.isEmpty else { return "none" }
+        let sorted = bursts.sorted()
+        let over = bursts.filter { $0 > 8 }.count
+        return String(
+            format: "median %.0f ms, worst %.0f ms, %d of %d over 8 ms",
+            sorted[sorted.count / 2], sorted.last ?? 0, over, bursts.count)
     }
 
     /// Renders the panels offscreen with `ImageRenderer` so their legibility can be checked

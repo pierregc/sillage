@@ -14,7 +14,7 @@ struct ContemplationView: View {
             if showHint {
                 VStack {
                     Spacer()
-                    Text("espace : scène suivante   ·   échap : revenir")
+                    Text("ZQSD pour voler  ·  espace : scène suivante  ·  échap : revenir")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.35))
                         .padding(.bottom, 26)

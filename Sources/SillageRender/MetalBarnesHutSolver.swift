@@ -48,6 +48,13 @@ public final class MetalBarnesHutSolver: Solver {
     /// Force softening in kpc, which should sit near the mean interparticle separation.
     public var softening: Float
 
+    /// The longest single hold on the GPU since it was last read. A step is chunked so the
+    /// display can get in between the pieces, which means the piece is what matters and the
+    /// whole step is not: a window that is visible waits on a free drawable, and one dispatch
+    /// longer than a frame stalls that wait for its whole length.
+    public var longestDispatchMilliseconds = 0.0
+    public var lastDriftMilliseconds = 0.0
+    public var lastTreeMilliseconds = 0.0
     public private(set) var lastBuildMilliseconds = 0.0
     public private(set) var lastForceMilliseconds = 0.0
     public private(set) var nodeCount = 0
@@ -67,7 +74,9 @@ public final class MetalBarnesHutSolver: Solver {
     private var componentBuffer: MTLBuffer?
     private var galaxyBuffer: MTLBuffer?
 
-    private let tree = BarnesHutTree()
+    private let tree = BarnesHutTree(
+        leafCapacity: MetalBarnesHutSolver.leafCapacity,
+        maximumDepth: MetalBarnesHutSolver.maximumTreeDepth)
     /// Reused across steps. Masses never change, so they are read once.
     private var scratchPositions: [SIMD3<Float>]
     private let particleMass: [Float]
@@ -197,25 +206,43 @@ public final class MetalBarnesHutSolver: Solver {
 
         // The first half kick needs an acceleration, so seed it before stepping.
         rebuildTree()
-        computeAccelerations()
+        if let buffer = queue.makeCommandBuffer() {
+            encodeAccelerations(into: buffer)
+            submit(buffer)
+        }
     }
 
     public func step() { step(count: 1) }
 
     public func step(count steps: Int) {
         for _ in 0..<max(steps, 0) {
-            integrate()
+            // Two submissions rather than five. The tree is built on the CPU from the drifted
+            // positions, so the drift has to have landed before it runs; everything after it
+            // goes in one buffer, where the encoders are ordered against each other anyway.
+            var clock = Date()
+            if let drift = queue.makeCommandBuffer() {
+                encodeIntegrate(into: drift)
+                submit(drift)
+            }
+            lastDriftMilliseconds = Date().timeIntervalSince(clock) * 1000
+            clock = Date()
             rebuildTree()
-            computeAccelerations()
-            applyKick()
-            shedRandomMotion()
+            lastTreeMilliseconds = Date().timeIntervalSince(clock) * 1000
+            if let forces = queue.makeCommandBuffer() {
+                encodeAccelerations(into: forces)
+                encodeKick(into: forces)
+                encodeShedRandomMotion(into: forces)
+                let clock = Date()
+                submit(forces)
+                lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
+            }
             time += scene.timeStep
         }
     }
 
     /// Pulls the disk back towards circular orbits, standing in for the gas that a real disk
     /// cools through. Runs after the kick so the accelerations it reads are this step's.
-    private func shedRandomMotion() {
+    private func encodeShedRandomMotion(into buffer: MTLCommandBuffer) {
         guard let dissipate else { return }
         let elapsed = scene.timeStep * Float(Physics.megayearsPerTimeUnit)
         var disks = scene.galaxies.enumerated().map { index, galaxy -> DiskCoolingGPU in
@@ -259,7 +286,7 @@ public final class MetalBarnesHutSolver: Solver {
         if disks.isEmpty { return }
 
         var p = params
-        dispatch(dissipate) { encoder in
+        encode(into: buffer, dissipate) { encoder in
             encoder.setBuffer(positionBuffer, offset: 0, index: 0)
             encoder.setBuffer(velocityBuffer, offset: 0, index: 1)
             encoder.setBuffer(accelerationBuffer, offset: 0, index: 2)
@@ -284,13 +311,18 @@ public final class MetalBarnesHutSolver: Solver {
             gravitationalConstant: Physics.gravitationalConstant)
     }
 
-    private func dispatch(
-        _ pipeline: MTLComputePipelineState, threads: Int? = nil,
+    /// Encodes a pass into a command buffer without submitting it.
+    ///
+    /// Submitting each pass on its own and waiting for it cost far more than the passes did:
+    /// `waitUntilCompleted` waits for everything already queued on the device, the renderer's
+    /// frame included, so five round trips a step meant five frames' worth of latency for
+    /// twenty-five milliseconds of actual work. Measured at 450 000 particles: a step of
+    /// 128 ms of which the tree was 16 and the forces 9.
+    private func encode(
+        into buffer: MTLCommandBuffer, _ pipeline: MTLComputePipelineState, threads: Int? = nil,
         _ configure: (MTLComputeCommandEncoder) -> Void
     ) {
-        guard let buffer = queue.makeCommandBuffer(),
-            let encoder = buffer.makeComputeCommandEncoder()
-        else { return }
+        guard let encoder = buffer.makeComputeCommandEncoder() else { return }
         encoder.setComputePipelineState(pipeline)
         configure(encoder)
         encoder.dispatchThreads(
@@ -298,17 +330,46 @@ public final class MetalBarnesHutSolver: Solver {
             threadsPerThreadgroup: MTLSize(
                 width: pipeline.maxTotalThreadsPerThreadgroup, height: 1, depth: 1))
         encoder.endEncoding()
+    }
+
+    /// One pass on its own, for the callers that are not inside a step.
+    private func dispatch(
+        _ pipeline: MTLComputePipelineState, threads: Int? = nil,
+        _ configure: (MTLComputeCommandEncoder) -> Void
+    ) {
+        guard let buffer = queue.makeCommandBuffer() else { return }
+        encode(into: buffer, pipeline, threads: threads, configure)
+        submit(buffer)
+    }
+
+    private func submit(_ buffer: MTLCommandBuffer) {
+        let clock = Date()
         buffer.commit()
         buffer.waitUntilCompleted()
+        longestDispatchMilliseconds = max(
+            longestDispatchMilliseconds, Date().timeIntervalSince(clock) * 1000)
     }
 
     /// Particles per force dispatch. A whole large scene in one kernel keeps the GPU to
     /// itself long enough that the pointer stutters; in pieces the display gets in between.
     public static var forceChunk = 1_000_000
 
-    private func integrate() {
+    /// Particles a leaf may hold before it splits. Bigger leaves mean far fewer nodes and a
+    /// much cheaper build — the node split is serial and it is what a concentrated scene makes
+    /// expensive — at the cost of more direct summation in the force pass. That trade only
+    /// became worth taking once leaves started respecting the opening criterion, since a
+    /// distant leaf now costs one evaluation whatever it holds.
+    public static var leafCapacity = 16
+
+    /// How deep the tree may go. A merged core subdivides to the ceiling and the node split
+    /// is serial, so this is most of what a build costs on a concentrated scene. Twenty is
+    /// right when accuracy matters; thirteen puts the smallest cell at a few tens of parsecs,
+    /// far below any softening length used here, and builds far faster.
+    public static var maximumTreeDepth = 20
+
+    private func encodeIntegrate(into buffer: MTLCommandBuffer) {
         var p = params
-        dispatch(kickDrift) { encoder in
+        encode(into: buffer, kickDrift) { encoder in
             encoder.setBuffer(positionBuffer, offset: 0, index: 0)
             encoder.setBuffer(velocityBuffer, offset: 0, index: 1)
             encoder.setBuffer(accelerationBuffer, offset: 0, index: 2)
@@ -316,9 +377,9 @@ public final class MetalBarnesHutSolver: Solver {
         }
     }
 
-    private func applyKick() {
+    private func encodeKick(into buffer: MTLCommandBuffer) {
         var p = params
-        dispatch(kick) { encoder in
+        encode(into: buffer, kick) { encoder in
             encoder.setBuffer(velocityBuffer, offset: 0, index: 0)
             encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
             encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 2)
@@ -398,8 +459,7 @@ public final class MetalBarnesHutSolver: Solver {
         centersLock.unlock()
     }
 
-    private func computeAccelerations() {
-        let clock = Date()
+    private func encodeAccelerations(into buffer: MTLCommandBuffer) {
         var p = params
         var list = scene.galaxies.enumerated().map { index, galaxy -> HaloGPU in
             let center = index < haloCenters.count ? haloCenters[index] : galaxy.position
@@ -419,7 +479,7 @@ public final class MetalBarnesHutSolver: Solver {
         while start < count {
             let span = min(max(Self.forceChunk, 1), count - start)
             p.chunkStart = UInt32(start)
-            dispatch(force, threads: span) { encoder in
+            encode(into: buffer, force, threads: span) { encoder in
                 encoder.setBuffer(positionBuffer, offset: 0, index: 0)
                 encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
                 encoder.setBuffer(nodeBuffer, offset: 0, index: 2)
@@ -430,7 +490,6 @@ public final class MetalBarnesHutSolver: Solver {
             }
             start += span
         }
-        lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
     }
 
     /// Total momentum. With live halos nothing external acts on the system, so this must be
