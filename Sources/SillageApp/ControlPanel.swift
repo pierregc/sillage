@@ -265,17 +265,76 @@ struct ControlPanelContent: View {
     private var view: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Caméra").font(.headline)
-            Text("Glisser pour tourner, molette pour zoomer")
+            Picker("", selection: flightBinding) {
+                Text("Orbite").tag(false)
+                Text("Vol libre").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if model.isFlying {
+                Text("Glisser pour regarder, molette pour la vitesse")
+                    .font(.caption)
+                    .foregroundStyle(Palette.secondary)
+                Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 3) {
+                    GridRow {
+                        Text("W S").monospaced()
+                        Text("avancer, reculer")
+                    }
+                    GridRow {
+                        Text("A D").monospaced()
+                        Text("gauche, droite")
+                    }
+                    GridRow {
+                        Text("␣ C").monospaced()
+                        Text("monter, descendre")
+                    }
+                    GridRow {
+                        Text("← →").monospaced()
+                        Text("pivoter")
+                    }
+                    GridRow {
+                        Text("↑ ↓").monospaced()
+                        Text("lever, baisser les yeux")
+                    }
+                    GridRow {
+                        Text("⇧ ⌃").monospaced()
+                        Text("plus vite, moins vite")
+                    }
+                    GridRow {
+                        Text("F").monospaced()
+                        Text("revenir en orbite")
+                    }
+                }
                 .font(.caption)
                 .foregroundStyle(Palette.secondary)
-            ParameterSlider(
-                title: "Distance (kpc)", value: $model.camera.distance,
-                range: OrbitCamera.nearest...OrbitCamera.furthest, format: "%.0f")
-            ParameterSlider(
-                title: "Élévation (rad)", value: $model.camera.elevation,
-                range: -OrbitCamera.elevationLimit...OrbitCamera.elevationLimit)
-            Button("Recadrer") { model.frameCamera() }
-                .buttonStyle(.bordered)
+                // Not bound to the rig: it moves on every frame, and a binding would rebuild
+                // this panel sixty times a second.
+                Text(String(format: "vitesse %.0f kpc/s", model.flight.speed))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(Palette.secondary)
+            } else {
+                Text("Glisser pour tourner, molette pour zoomer · F pour voler")
+                    .font(.caption)
+                    .foregroundStyle(Palette.secondary)
+                ParameterSlider(
+                    title: "Distance (kpc)", value: $model.camera.distance,
+                    range: OrbitCamera.nearest...OrbitCamera.furthest, format: "%.0f")
+                ParameterSlider(
+                    title: "Élévation (rad)", value: $model.camera.elevation,
+                    range: -OrbitCamera.elevationLimit...OrbitCamera.elevationLimit)
+            }
+            Button(model.isFlying ? "Revenir sur la scène" : "Recadrer") {
+                if model.isFlying { model.toggleFlight() }
+                model.frameCamera()
+            }
+            .buttonStyle(.bordered)
         }
+    }
+
+    private var flightBinding: Binding<Bool> {
+        Binding(
+            get: { model.isFlying },
+            set: { wanted in if wanted != model.isFlying { model.toggleFlight() } })
     }
 }

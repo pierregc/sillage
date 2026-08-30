@@ -1,6 +1,8 @@
 import AppKit
 import Foundation
 import SillageCore
+import SillageRender
+import simd
 
 /// Drives the whole run flow with the window up and reports what held and what did not.
 ///
@@ -421,6 +423,44 @@ enum QACheck {
                 "l'auto-gravité capture", model.capturedFrames > 1,
                 "\(model.capturedFrames) images")
             report.check("l'auto-gravité dessine encore", model.framesDrawn > 0)
+
+            // Free flight, driven through the canvas the way the keyboard drives it. The
+            // camera maths has its own tests; what is checked here is the wiring from a held
+            // key to a moved eye, which those cannot see.
+            let orbitEye = model.activeCamera.eye
+            model.toggleFlight()
+            report.check("le vol libre s'enclenche", model.isFlying)
+            report.check(
+                "passer en vol libre ne déplace pas l'oeil",
+                simd_length(model.activeCamera.eye - orbitEye) < 0.01)
+
+            let restingEye = model.activeCamera.eye
+            let aim = model.flight.forward
+            model.hold(key: CanvasView.Key.w, true)
+            await settle(0.6)
+            model.hold(key: CanvasView.Key.w, false)
+            let flown = model.activeCamera.eye - restingEye
+            report.check(
+                "une touche tenue fait avancer la caméra", simd_length(flown) > 1,
+                String(format: "%.0f kpc", simd_length(flown)))
+            report.check(
+                "elle avance là où la caméra regarde",
+                simd_length(flown) > 0 && simd_length(simd_normalize(flown) - aim) < 0.01)
+
+            let coasting = model.activeCamera.eye
+            await settle(1.2)
+            let stopped = model.activeCamera.eye
+            report.check(
+                "relâcher laisse la caméra s'arrêter en douceur",
+                simd_length(stopped - coasting) > 0.001)
+            await settle(0.5)
+            report.check(
+                "puis elle s'immobilise",
+                simd_length(model.activeCamera.eye - stopped) < 0.5)
+
+            model.toggleFlight()
+            report.check("revenir en orbite est sans à-coup", !model.isFlying)
+
             report.check(
                 "l'auto-gravité annonce son débit", model.megayearsPerSecond > 0,
                 String(format: "%.2f Myr/s", model.megayearsPerSecond))
