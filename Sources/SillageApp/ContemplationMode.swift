@@ -79,8 +79,14 @@ extension SimulationModel {
         MetalBarnesHutSolver.forceChunk = 450_000
         renderFade = 1
         renderer?.fade = 1
-        setFullScreen(false)
+        // Nothing left to advance, and a solver still stepping behind the setup screen is
+        // work nobody asked for. Not `pause()`: that name resolves to the POSIX call, which
+        // suspends the thread until a signal arrives, and the compiler accepts it happily.
+        isPlaying = false
         stage = .setup
+        // On the next turn of the run loop: the window may only leave full screen once
+        // SwiftUI has finished replacing the view that filled it.
+        DispatchQueue.main.async { [weak self] in self?.setFullScreen(false) }
     }
 
     /// No-op with no window, which is the case in every headless check.
