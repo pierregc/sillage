@@ -366,6 +366,13 @@ and resolves to the **POSIX** call, which suspends the thread until a signal arr
 a method on anything here. Check that a symbol you did not write exists before trusting that it
 compiled.
 
+The bank's depth is the thing to get right, not its wiring. At a fifth either side it was
+working and could not be seen: the frame's mean luminance moved thirty per cent between the
+extremes of a three minute period, which nobody notices while the camera is also moving. At
+roughly half either side the colour in the frame moves by a factor of three and the bloom by
+five. When somebody says a modulation is not reaching the picture, measure the picture — same
+scene, same camera, several moments — before touching the plumbing.
+
 `I` shows what the oscillators are doing, live. Two things about it that were wrong first.
 
 A `ZStack` does not reliably put SwiftUI content above an `NSViewRepresentable` whose view is

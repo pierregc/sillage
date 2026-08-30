@@ -331,14 +331,19 @@ public final class Cinematographer {
     private func modulated(at t: Double, fieldOfView: Float, closeness: Float) -> RenderLook {
         var blended = base
         blended.fieldOfView = fieldOfView
-        blended.brightness *= 1 + 0.18 * waves[0].value(at: t)
-        blended.bloomIntensity *= 1 + 0.33 * waves[1].value(at: t)
-        blended.saturation *= 1 + 0.20 * waves[2].value(at: t)
-        blended.stretch *= 1 + 0.22 * waves[3].value(at: t)
-        blended.dustStrength *= 1 + 0.30 * waves[4].value(at: t)
-        blended.smoothingScale *= 1 + 0.16 * waves[5].value(at: t)
-        blended.skyLevel *= 1 + 0.45 * waves[6].value(at: t)
-        blended.galaxyTint *= 1 + 0.25 * waves[7].value(at: t)
+        // Deeper than they were. At a fifth either side the frame's mean luminance moved by
+        // thirty per cent between the extremes of a three minute period, which is a drift
+        // nobody notices while the camera is also moving — the bank was working and simply
+        // could not be seen. Frequencies are left alone: slowing these further would hide
+        // them again.
+        blended.brightness *= 1 + 0.42 * waves[0].value(at: t)
+        blended.bloomIntensity *= 1 + 0.70 * waves[1].value(at: t)
+        blended.saturation *= 1 + 0.45 * waves[2].value(at: t)
+        blended.stretch *= 1 + 0.55 * waves[3].value(at: t)
+        blended.dustStrength *= 1 + 0.65 * waves[4].value(at: t)
+        blended.smoothingScale *= 1 + 0.40 * waves[5].value(at: t)
+        blended.skyLevel *= 1 + 0.80 * waves[6].value(at: t)
+        blended.galaxyTint *= 1 + 0.50 * waves[7].value(at: t)
 
         // Coming in close fills the frame with disk, and the tone curve that suits a galaxy
         // seen whole turns the inside of one into white paste: measured on a single disk, the
@@ -373,14 +378,14 @@ public final class Cinematographer {
                 span: min(base * (1 - depth), value)...max(base * (1 + depth), value))
         }
         readings = [
-            reading("brightness", "luminosité", blended.brightness, base.brightness, 0.18),
-            reading("bloom", "floraison", blended.bloomIntensity, base.bloomIntensity, 0.33),
-            reading("saturation", "saturation", blended.saturation, base.saturation, 0.20),
-            reading("stretch", "étirement", blended.stretch, base.stretch, 0.22),
-            reading("dust", "poussière", blended.dustStrength, base.dustStrength, 0.30),
-            reading("smoothing", "lissage", blended.smoothingScale, base.smoothingScale, 0.16),
-            reading("sky", "ciel", blended.skyLevel, base.skyLevel, 0.45),
-            reading("tint", "teinte", blended.galaxyTint, base.galaxyTint, 0.25),
+            reading("brightness", "luminosité", blended.brightness, base.brightness, 0.42),
+            reading("bloom", "floraison", blended.bloomIntensity, base.bloomIntensity, 0.70),
+            reading("saturation", "saturation", blended.saturation, base.saturation, 0.45),
+            reading("stretch", "étirement", blended.stretch, base.stretch, 0.55),
+            reading("dust", "poussière", blended.dustStrength, base.dustStrength, 0.65),
+            reading("smoothing", "lissage", blended.smoothingScale, base.smoothingScale, 0.40),
+            reading("sky", "ciel", blended.skyLevel, base.skyLevel, 0.80),
+            reading("tint", "teinte", blended.galaxyTint, base.galaxyTint, 0.50),
             reading("fov", "champ", blended.fieldOfView, base.fieldOfView, 0.06),
         ]
         // Deliberately not listed: the kernel ceiling follows how close the camera is rather
