@@ -51,13 +51,21 @@ final class SimulationModel: ObservableObject {
     var contemplationRadius: Float = 0
     /// Self-gravitating, so the count is what the tree can carry rather than what the
     /// renderer can draw.
-    var contemplationParticles = 160_000
+    /// Drawn afresh for every scene, so no two have the same weight of light. The ceiling is
+    /// measured over a whole scene rather than a moment, because the cost depends as much on
+    /// the shot as on the count — a particle is a sprite and a close shot widens every one of
+    /// them. Across a full 62 s scene: 250 000 costs 3.9 ms a frame and misses one slot in
+    /// 3 675; 400 000 costs 9.2 and misses sixteen; 700 000 costs 34.7 and misses one frame
+    /// in two.
+    var contemplationParticles = 700_000
+    var contemplationParticleRange: ClosedRange<Int> = 200_000...360_000
 
     var contemplationPace: Pace = .slow
     var sceneOrdinal = 0
     /// Wall time of recent solver steps, in milliseconds.
     var solverBursts: [Double] = []
     var solverSteps = 0
+    var gpuTimes: [Double] = []
     /// The longest single GPU dispatch the solver has made, in milliseconds.
     var longestDispatch: Double = 0
     var stepBuild: Double = 0
@@ -1217,6 +1225,10 @@ final class SimulationModel: ObservableObject {
                 time: Float(elapsedMyr / Physics.megayearsPerTimeUnit),
                 strength: renderer.armPersistence))
         renderer.present(camera: activeCamera, drawable: drawable)
+        if renderer.lastGPUMilliseconds > 0 {
+            gpuTimes.append(renderer.lastGPUMilliseconds)
+            if gpuTimes.count > 2000 { gpuTimes.removeFirst() }
+        }
         frameMilliseconds = (CACurrentMediaTime() - start) * 1000
         framesDrawn += 1
     }

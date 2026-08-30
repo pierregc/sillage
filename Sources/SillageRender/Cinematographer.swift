@@ -237,7 +237,7 @@ public final class Cinematographer {
     public func beginScene(seed: UInt64, base: RenderLook? = nil, immersed: Bool = false) {
         var picker = SeededGenerator(seed: seed &* 31 &+ 7)
         self.base =
-            base ?? RenderLook.all[Int(picker.next() % UInt64(RenderLook.all.count))]
+            (base ?? RenderLook.all[Int(picker.next() % UInt64(RenderLook.all.count))]).calm()
         self.immersed = immersed
         beginShots(seed: seed)
     }
@@ -339,7 +339,12 @@ public final class Cinematographer {
         // ceiling six-fold to hide the graininess of a close shot meant particles painting a
         //384 pixel square each, and 27 ms of GPU a frame against 1.8 for an ordinary run of
         // four times the particles. Capped in absolute pixels as well as in multiple.
-        blended.maximumKernel = min(blended.maximumKernel * (1 + 1.4 * (1 - near)), 140)
+        // The ceiling on kernel size is the single largest thing in the frame's cost, because
+        // a kernel is a sprite and its area goes as the square: four hundred thousand
+        // particles at a hundred and forty pixels each is eight thousand million pixels
+        // painted, and the median frame went from 4.7 ms to 20 on close shots alone. Seventy
+        // is a fifth of that, and still four times the spacing at any distance worth being at.
+        blended.maximumKernel = min(blended.maximumKernel * (1 + 0.6 * (1 - near)), 70)
         return blended
     }
 
