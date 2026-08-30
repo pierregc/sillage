@@ -83,8 +83,10 @@ final class SimulationModel: ObservableObject {
     var contemplationMyrPerSecond: Double = 1.2
     private var lastDrawTime: CFTimeInterval?
     private var manualCameraUntil: Date?
-    /// Set by the contemplation view so a key press can reach its own state.
-    var onToggleReadout: (() -> Void)?
+    /// Whether the oscillator readout is on screen. On the model rather than in the view so a
+    /// check can see it: a `@State` flag is invisible from outside the view that owns it, and
+    /// there was then no way to tell a key that never arrived from an overlay that never drew.
+    @Published var showReadout = true
 
     /// Whichever rig is driving. In contemplation that is the director, unless somebody has
     /// touched the camera recently — then it is theirs, and the director takes it back once

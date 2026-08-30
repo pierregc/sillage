@@ -5,15 +5,25 @@ import SwiftUI
 /// that is not the scene is something to read rather than something to look at.
 struct ContemplationView: View {
     @ObservedObject var model: SimulationModel
+
+    var body: some View {
+        // Nothing stacked over the canvas: see `PassThroughHostingView`. Everything the mode
+        // draws on top of the scene lives inside it, in `ContemplationOverlay`.
+        MetalCanvas(model: model)
+            .ignoresSafeArea()
+            .background(Color.black)
+    }
+}
+
+/// Everything drawn over the scene, hosted inside the canvas.
+struct ContemplationOverlay: View {
+    @ObservedObject var model: SimulationModel
     @State private var showHint = true
-    @State private var showReadout = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.black.ignoresSafeArea()
-            MetalCanvas(model: model)
-                .ignoresSafeArea()
-            if showReadout {
+            Color.clear
+            if model.showReadout {
                 LFOReadout(model: model)
                     .padding(22)
                     .transition(.opacity)
@@ -25,20 +35,15 @@ struct ContemplationView: View {
                         "ZQSD pour voler  ·  espace : scène suivante  ·  I : oscillateurs  ·  échap : revenir"
                     )
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(.white.opacity(0.4))
                     .padding(.bottom, 26)
                 }
                 .frame(maxWidth: .infinity)
-                .allowsHitTesting(false)
                 .transition(.opacity)
             }
         }
-        .background(Color.black)
+        .allowsHitTesting(false)
         .onAppear {
-            model.onToggleReadout = {
-                withAnimation(.easeInOut(duration: 0.35)) { showReadout.toggle() }
-            }
-            // Says how to get out, then gets out of the way.
             Task {
                 try? await Task.sleep(for: .seconds(8))
                 withAnimation(.easeInOut(duration: 2.5)) { showHint = false }

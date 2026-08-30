@@ -366,10 +366,19 @@ and resolves to the **POSIX** call, which suspends the thread until a signal arr
 a method on anything here. Check that a symbol you did not write exists before trusting that it
 compiled.
 
-`I` shows what the oscillators are doing, live. The readout runs on a `TimelineView` at ten
-hertz rather than on the model's publishers: the values change sixty times a second, and
-republishing them would rebuild every view observing the model at frame rate, which is the
-whole of what makes a picture stutter.
+`I` shows what the oscillators are doing, live. Two things about it that were wrong first.
+
+A `ZStack` does not reliably put SwiftUI content above an `NSViewRepresentable` whose view is
+layer-backed: the Metal layer draws over it and the overlay is simply never seen, which is what
+happened. Everything drawn over the scene is a subview of the canvas now
+(`PassThroughHostingView`), where the ordering is AppKit's own. `--uishot` renders the overlay
+offscreen so it can be looked at at all on this machine.
+
+And it runs on a `TimelineView` at ten hertz rather than on the model's publishers: the values
+change sixty times a second, and republishing them would rebuild every view observing the model
+at frame rate, which is the whole of what makes a picture stutter. The visibility flag lives on
+the model rather than in the view, because a `@State` flag cannot be seen from outside and
+there was then no way to tell a key that never arrived from an overlay that never drew.
 
 **Saturation has to be applied on both sides of the tone curve.** The filmic shoulder pulls
 bright values toward white by design — right for a photograph, wrong for a galaxy whose core is

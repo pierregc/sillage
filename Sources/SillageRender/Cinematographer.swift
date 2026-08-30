@@ -382,8 +382,10 @@ public final class Cinematographer {
             reading("sky", "ciel", blended.skyLevel, base.skyLevel, 0.45),
             reading("tint", "teinte", blended.galaxyTint, base.galaxyTint, 0.25),
             reading("fov", "champ", blended.fieldOfView, base.fieldOfView, 0.06),
-            reading("kernel", "noyau max", blended.maximumKernel, base.maximumKernel, 0.35),
         ]
+        // Deliberately not listed: the kernel ceiling follows how close the camera is rather
+        // than any oscillator, and it spends most of its time pinned against its cap, so it
+        // reads as a dead needle among nine live ones.
         return blended
     }
 
