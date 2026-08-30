@@ -174,29 +174,45 @@ enum BarnesHutShaders {
             float3 position = positions[i];
             float3 total = float3(0.0);
 
-            int stack[64];
+            // Sibling cells are contiguous, so the stack holds ranges rather than single
+            // nodes: one entry per level of the tree instead of one per pending sibling.
+            // The old form could hold seven entries per level, so sixty-four slots were
+            // already not enough at ten levels — and running out meant silently dropping
+            // whole cells, and their mass, out of the sum. An entry packs the next node of
+            // the range in the high bits and how many siblings follow it in the low three.
+            int stack[32];
             int top = 0;
             stack[top++] = 0;
 
             while (top > 0) {
-                int index = stack[--top];
+                int entry = stack[--top];
+                int index = entry >> 3;
+                int following = entry & 7;
+                if (following > 0) { stack[top++] = ((index + 1) << 3) | (following - 1); }
                 BHNode node = nodes[index];
                 if (node.comMass.w <= 0.0) { continue; }
 
                 float3 offset = node.comMass.xyz - position;
                 float distanceSquared = dot(offset, offset) + p.softeningSquared;
-                                bool leaf = node.packed.z <= 0.0;
+                bool leaf = node.packed.z <= 0.0;
+                int start = int(node.packed.y);
+                int span = int(-node.packed.z);
+                // Whether this leaf is the one holding the particle. Leaves address a
+                // contiguous run of the Morton order and slot is this particle's place in
+                // it, so the test is exact: a node may never stand in for itself.
+                bool holdsMe = leaf && slot >= uint(start) && slot < uint(start + span);
 
-                if (!leaf && node.packed.x > p.openingAngleSquared * distanceSquared) {
-                    int first = int(node.packed.y);
-                    int children = int(node.packed.z);
-                    for (int c = 0; c < children && top < 63; ++c) {
-                        stack[top++] = first + c;
-                    }
+                if (!holdsMe && node.packed.x <= p.openingAngleSquared * distanceSquared) {
+                    // Far enough that the centre of mass stands in — for a leaf as much as
+                    // for a branch. Summing a distant leaf particle by particle was the
+                    // single largest cost in an evolved scene: as the disk concentrates,
+                    // leaves at the depth limit grow to hundreds of particles, and every one
+                    // of them was being summed in full by every particle that reached it.
+                    total += offset
+                           * (p.gravitationalConstant * node.comMass.w
+                              / (distanceSquared * sqrt(distanceSquared)));
                 } else if (leaf) {
-                    int start = int(node.packed.y);
-                    int count = int(-node.packed.z);
-                    for (int k = 0; k < count; ++k) {
+                    for (int k = 0; k < span; ++k) {
                         uint j = order[start + k];
                         if (j == i) { continue; }
                         float3 d = positions[j] - position;
@@ -204,9 +220,9 @@ enum BarnesHutShaders {
                         total += d * (p.gravitationalConstant * mass[j] / (r2 * sqrt(r2)));
                     }
                 } else {
-                    total += offset
-                           * (p.gravitationalConstant * node.comMass.w
-                              / (distanceSquared * sqrt(distanceSquared)));
+                    int first = int(node.packed.y);
+                    int children = int(node.packed.z);
+                    if (children > 0) { stack[top++] = (first << 3) | (children - 1); }
                 }
             }
 

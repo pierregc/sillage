@@ -46,8 +46,11 @@ struct BarnesHutTests {
         #expect(BarnesHutTree.morton(1, 0, 0) == 4)
         #expect(BarnesHutTree.morton(0, 1, 0) == 2)
         #expect(BarnesHutTree.morton(0, 0, 1) == 1)
-        // The digit at depth 0 is the top bit of each axis.
-        #expect(BarnesHutTree.octant(BarnesHutTree.morton(512, 0, 512), depth: 0) == 5)
+        // The digit at depth 0 is the top bit of each axis, which is bit 20 of 21.
+        let top: UInt32 = 1 << 20
+        #expect(BarnesHutTree.octant(BarnesHutTree.morton(top, 0, top), depth: 0) == 5)
+        // And the deepest digit the code can still separate is at the far end.
+        #expect(BarnesHutTree.octant(BarnesHutTree.morton(1, 1, 0), depth: 20) == 6)
     }
 
     /// The whole point of the tree is that it approximates direct summation. This is the test

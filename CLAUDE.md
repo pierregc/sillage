@@ -101,16 +101,14 @@ buffer is reserved up front, written out of its own memory, and read back throug
 **Nothing diverges.** A gigayear of a self-gravitating merger at 200 000 simulated particles
 leaves no non-finite position and a sane mean radius throughout.
 
-**The cost per step climbs, and this is the real limit.** Measured at 100 000 simulated
-particles, from 250 Myr to 2 Gyr: an isolated disk goes from 15 to 43 ms a step, a merger from
-15 to 136. The node count *falls* over the same stretch, so it is not the tree growing — it is
-the traversal. As the core densifies and the halo spreads, more cells fail the opening
-criterion and have to be walked. Dissipation adds about 40 % on top of that by keeping the disk
-tight, which is a fair price for it still having arms.
+**The cost per step used to climb, and that was the real limit. It no longer does.** A merger
+at 750 000 simulated particles went from 57 ms a step at 50 Myr to 257 at 450, and the interval
+of simulated time bought by a minute of wall clock fell with it. Three faults, all in the
+traversal, all now fixed — see "Why a step no longer gets slower". The same run is flat at
+31 to 35 ms across the whole stretch, and 7.3x faster at the far end.
 
-Nothing in the interface hides this: the running panel's Myr/s is measured, not predicted, so
-it falls as the run goes. The setup screen's estimate is taken at t = 0 and is honest over the
-500 Myr it quotes, where the drift is still small.
+The running panel's Myr/s is measured, not predicted, and the setup screen's estimate is taken
+at t = 0. Both were honest before and are simply steadier now.
 
 **Beware of measuring under contention, and of your own leftovers.** A run launched alongside
 the app crawled at a thirtieth of its speed and looked exactly like a solver regression. It was
@@ -201,6 +199,39 @@ than wreck the galaxy.
   no circular orbit at all, and cooling it would quietly erase what an encounter is watched
   for.
 
+## Why a step no longer gets slower
+
+A merger used to cost 57 ms a step at 50 Myr and 257 at 450, on the same number of particles.
+The node count *falls* over that stretch, which is what made it confusing: the tree is not
+growing, it is getting coarser, and the traversal pays for that. Three separate faults, each
+measured on its own.
+
+- **A leaf was always summed particle by particle, however far away it was.** The opening
+  criterion was tested for branches only, so a distant cell holding two thousand particles
+  cost two thousand evaluations instead of one. Testing leaves the same way as branches: 2.6x
+  on a concentrated cluster, and it is worth more the further a run has gone, because that is
+  when leaves grow. Mean force error against direct summation moves from 0.106 % to 0.128 %.
+- **The tree could not go deeper than ten levels**, because a 32-bit Morton code holds ten
+  bits an axis, and a collision hits that ceiling on the first step. Meanwhile the root box
+  grows — 179 to 382 kpc over 450 Myr as debris is thrown out — so the cells at the bottom
+  cover more space every step while the disks concentrate into them. The largest leaf reached
+  3363 particles. Codes are 64-bit now, twenty-one bits an axis, and the build costs 6 ms more
+  and the force pass 70 ms less.
+- **The traversal stack could overflow, and overflowing meant silently dropping cells** and
+  their mass out of the sum. It pushed one entry per pending sibling, so up to seven a level:
+  sixty-four slots were already not enough at ten levels, let alone twenty. It now pushes one
+  entry per *range* of siblings — they are contiguous — which is one entry a level, bounded by
+  the depth of the tree. Thirty-two slots, provably enough, and half the thread-private storage
+  of the old sixty-four.
+
+That last one supersedes an old note here warning that shrinking `int stack[64]` looks like a
+4x speed-up and is worthless because the error explodes. It was right at the time. The stack is
+small *and* correct now, because what bounds it changed.
+
+Together: flat at 31 to 35 ms from 50 to 450 Myr, against 57 rising to 257. The whole run to
+450 Myr takes 449 s against 930, and the instantaneous step at the far end is 7.3x faster —
+an advantage that keeps widening, since the old curve was still accelerating.
+
 ## State and known limitations
 
 Both solvers work. Level 1 is tracers in rigid potentials, level 2 is self-gravitating
@@ -232,16 +263,8 @@ Standing gaps, in the order they matter:
    merger at 200 k particles renders indistinguishably at 16x, in 5.8 s against 92 s. Hence
    `timeStepScale`, which is that multiplier; the default stays 1 because a close encounter
    reaches speeds an isolated disk does not.
-4. **Force traversal is where the time goes.** Measured on an M4 Max at 400 k visible
-   particles with live halos, so a million simulated: 95 ms a step, of which 76 ms is
-   `bhAcceleration` and 18 ms the CPU tree build. Sharing one stack across a SIMD group is
-   still the remaining large win.
-
-   Do not reach for the obvious shortcut: shrinking the per-thread `int stack[64]` looks like
-   a 4x speed-up on the clock and is worthless. At 16 entries the traversal silently drops
-   the children it cannot push, and `accelerationMatchesDirectSummation` goes from 2 % mean
-   error to 34 %. That the timing moves that much for a change in stack size alone is still
-   worth knowing: the cost is thread-private storage as much as it is divergence.
+4. **Force traversal is still where the time goes**, but it no longer grows with the run.
+   The remaining large win is sharing one traversal across a SIMD group.
 
    The bulge costs 13 % of a step, all of it in traversal: 98.6 ms against 111.3 ms at 400 k
    visible particles. Concentrating a seventh of the stars into half a kiloparsec deepens the
