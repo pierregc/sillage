@@ -68,6 +68,9 @@ struct SetupView: View {
             }
             Button("Ouvrir une prise…") { TakeFiles.open(model) }
                 .buttonStyle(.bordered)
+            Button("Contemplation") { model.startContemplation() }
+                .buttonStyle(.bordered)
+                .help("Plein écran, sans réglages: des scènes générées et filmées d'elles-mêmes")
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Button("Lancer la simulation") { model.start() }

@@ -36,7 +36,9 @@ enum Shaders {
             float skyLevel;
             float noiseLevel;
             float seed;
-            float _pad;
+            /// 1 shows the frame, 0 shows black. Applied after the tone curve so a fade goes
+            /// evenly to black instead of sliding down the curve's shoulder first.
+            float fade;
         };
 
         struct SpikeParams {
@@ -459,7 +461,7 @@ enum Shaders {
             float luma = dot(lifted, float3(0.2126, 0.7152, 0.0722));
             lifted = max(mix(float3(luma), lifted, p.saturation), 0.0);
             float3 mapped = acesFilmic(lifted);
-            output.write(float4(pow(mapped, 1.0 / 2.2), 1.0), gid);
+            output.write(float4(pow(mapped, 1.0 / 2.2) * p.fade, 1.0), gid);
         }
         """
 }

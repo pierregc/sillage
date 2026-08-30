@@ -290,6 +290,48 @@ Together: flat at 31 to 35 ms from 50 to 450 Myr, against 57 rising to 257. The 
 450 Myr takes 449 s against 930, and the instantaneous step at the far end is 7.3x faster —
 an advantage that keeps widening, since the old curve was still accelerating.
 
+## Contemplation
+
+Full screen, no panel, nobody at the keyboard: `Cinematographer` frames and lights a generated
+scene, and a new one replaces it every eleven and a half minutes through a fade. `--cinema N`
+runs it through the real draw path for N seconds and reports the frame times, which is the only
+way to check a mode whose whole promise is "no stutter" on a machine with no screen recording.
+Measured at 1.6 M particles: median 5.5 ms, one frame of 12 913 over 33 ms, and that one is the
+renderer being rebuilt for the next scene while the screen is already black.
+
+Level 1 throughout, deliberately. Contemplation has to hold its frame rate for hours and the
+tree solver gets slower as a merger concentrates; tracers in rigid potentials cost one kernel a
+step and leave the GPU to the picture. Tidal bridges and tails are Toomre's 1972 result and
+need no self-gravity. Nothing is captured either: hours of take to record what nobody will
+replay.
+
+`RenderLook` is the subset of the settings a frame may change on its own — everything that is
+already a per-frame uniform. Resolution, supersampling, bloom levels and the starfield are not
+in it because they own textures and buffers, and changing one of those means building a new
+renderer, which recompiles the shader library. Five named looks are crossfaded shot to shot and
+modulated by eight sine waves of prime period, so the combination does not come round again.
+
+Three things about the choreography, each of which was a cut that did not work.
+
+- **Every quantity is continuous.** Shots ease between framings with a smoothstep, and the
+  azimuth drifts at a rate that never reaches zero, so shots join without either a kink or a
+  stop. `theCameraNeverJumps` walks an hour at 60 Hz and caught the one field `mix` forgot to
+  interpolate — the world-space point an orbit circles — which was a jump of a fifth of the
+  scene at every shot boundary.
+- **A shot that ends close may not change subject.** Crossing from one galaxy to the other
+  while the camera closes in puts the aim on the midpoint exactly as the frame narrows: sixteen
+  seconds of empty sky, measured. Nor may a close shot aim at the barycentre, which on a
+  separated pair is the one place with no galaxy in it — that one was forty-five seconds.
+  Easing in from the barycentre is fine, being half the distance and widening as it goes.
+- **Coming in close needs its own exposure.** The mean luminance of the frame runs from 0.10 at
+  a wide shot to 0.89 at a fifth of the framing distance. Trimming the brightness alone barely
+  moves it, because the logarithmic stretch is what saturates, so the stretch comes down with
+  it and the kernels widen — the ceiling on kernel size is what lets particles resolve into
+  grains once the camera is near enough for their spacing to exceed it.
+
+Distances are multiples of the distance at which the subject fills the frame, not of its
+radius, so changing the field of view moves the camera instead of shrinking the galaxy.
+
 ## State and known limitations
 
 Both solvers work. Level 1 is tracers in rigid potentials, level 2 is self-gravitating

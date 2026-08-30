@@ -12,6 +12,7 @@ final class CanvasView: MTKView {
     var onDrag: ((CGFloat, CGFloat) -> Void)?
     var onScroll: ((CGFloat) -> Void)?
     var onToggleFlight: (() -> Void)?
+    var onEscape: (() -> Void)?
 
     private(set) var held: Set<UInt16> = []
     private(set) var modifiers: NSEvent.ModifierFlags = []
@@ -26,6 +27,7 @@ final class CanvasView: MTKView {
         static let c: UInt16 = 8
         static let f: UInt16 = 3
         static let space: UInt16 = 49
+        static let escape: UInt16 = 53
         static let left: UInt16 = 123
         static let right: UInt16 = 124
         static let down: UInt16 = 125
@@ -60,6 +62,7 @@ final class CanvasView: MTKView {
     override func keyDown(with event: NSEvent) {
         // Not super: an unhandled key press beeps.
         if !event.isARepeat, event.keyCode == Key.f { onToggleFlight?() }
+        if event.keyCode == Key.escape { onEscape?() }
         held.insert(event.keyCode)
     }
 
@@ -118,6 +121,7 @@ struct MetalCanvas: NSViewRepresentable {
             }
         }
         view.onToggleFlight = { model.toggleFlight() }
+        view.onEscape = { if model.contemplating { model.stopContemplation() } }
         return view
     }
 
