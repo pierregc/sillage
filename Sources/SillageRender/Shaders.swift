@@ -456,11 +456,18 @@ enum Shaders {
             float3 lifted = p.stretch > 0.0
                 ? log(1.0 + energy * p.stretch) / log(1.0 + p.stretch)
                 : energy;
-            // Tone mapping pulls every bright value toward white, so the warm bulge and the blue
-            // arms are re-separated before the curve is applied.
+            // Tone mapping pulls every bright value toward white, so the warm bulge and the
+            // blue arms are re-separated around the curve rather than only before it. Doing
+            // it all beforehand does not survive: the filmic shoulder desaturates highlights
+            // by design, which is right for a photograph and wrong for a galaxy whose core is
+            // the most interesting colour in the frame. Half the amount either side gives the
+            // same overall push while leaving the bright parts a hue.
+            float half_amount = sqrt(max(p.saturation, 0.0));
             float luma = dot(lifted, float3(0.2126, 0.7152, 0.0722));
-            lifted = max(mix(float3(luma), lifted, p.saturation), 0.0);
+            lifted = max(mix(float3(luma), lifted, half_amount), 0.0);
             float3 mapped = acesFilmic(lifted);
+            float mappedLuma = dot(mapped, float3(0.2126, 0.7152, 0.0722));
+            mapped = max(mix(float3(mappedLuma), mapped, half_amount), 0.0);
             output.write(float4(pow(mapped, 1.0 / 2.2) * p.fade, 1.0), gid);
         }
         """

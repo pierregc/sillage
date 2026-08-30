@@ -354,6 +354,12 @@ free and 700 000 looked impossible when the difference was the shot. Across a fu
 sixteen, 700 000 costs 34.7 and misses one frame in two. The kernel ceiling is capped at 70
 pixels for the same reason — at 140 the close shots alone took the median from 4.7 ms to 20.
 
+**Saturation has to be applied on both sides of the tone curve.** The filmic shoulder pulls
+bright values toward white by design — right for a photograph, wrong for a galaxy whose core is
+the most interesting colour in the frame. Doing all of it beforehand, as it was, does not
+survive the curve: the cores came out white. Half the amount either side gives the same overall
+push and leaves the highlights a hue.
+
 Diffraction spikes are gathered from the already blurred bloom source, so past about forty
 pixels they stop being spikes and become soft cones that sit still on the screen while the
 stars slide underneath. `RenderLook.calm()` shortens them and shrinks the field stars for

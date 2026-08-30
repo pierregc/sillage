@@ -26,9 +26,12 @@ extension SimulationModel {
         var fade: Double { self == .brisk ? 2.5 : 5 }
         /// Divides the oscillator periods and the shot lengths, multiplies the turn rate.
         var tempo: Double { self == .brisk ? 2.0 : 0.8 }
-        var megayearsPerSecond: Double { self == .brisk ? 4.0 : 1.8 }
+        /// A disk turns once in about 250 Myr, so the slow pace is a rotation every three and
+        /// a half minutes. Lower than it was: at four megayears a second the disks visibly
+        /// spun rather than turned, and spinning is what makes a galaxy look small.
+        var megayearsPerSecond: Double { self == .brisk ? 2.6 : 1.2 }
         /// How much the encounter is pulled together at the start.
-        var haste: Float { self == .brisk ? 1 : 0.25 }
+        var haste: Float { self == .brisk ? 1.0 : 0.35 }
         var name: String { self == .brisk ? "Contemplation rapide" : "Contemplation lente" }
     }
 
