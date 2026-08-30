@@ -54,7 +54,11 @@ extension SceneConfig {
         // a smooth minute and a stuttering one. Accuracy is not the currency here — through
         // pericentre, 16x the tuned step sits inside the encounter's own chaotic scatter, and
         // 32x is where it visibly leaves it.
-        scene.timeStepScale = generator.uniform(in: 20...26)
+        // Small steps, taken often. A large step is cheaper for the same simulated time and
+        // that is exactly the wrong trade here: what the eye reads as motion is the rate at
+        // which positions change, and four large steps a second make a galaxy jump while the
+        // starfield, which follows only the camera, glides past it.
+        scene.timeStepScale = generator.uniform(in: 0.7...1.1)
         // Barnes-Hut's accuracy knob, and the cheapest thing to spend here. Measured on a
         // concentrated cluster, 0.85 against the usual 0.6 is most of a factor of two off the
         // force pass for a mean error of half a percent — which is a fifth of what changing

@@ -39,6 +39,26 @@ final class CanvasView: MTKView {
         static let up: UInt16 = 126
     }
 
+    /// Most pixels the drawable may have, or zero for the display's own. Full screen on a
+    /// retina panel is 7.5 million of them against 2.3 for a window, and the whole pipeline —
+    /// splatting, six levels of bloom, the composite — is paid per pixel.
+    var pixelBudget: Double = 0
+
+    override func layout() {
+        super.layout()
+        guard let layer, let scale = window?.backingScaleFactor else { return }
+        guard pixelBudget > 0 else {
+            layer.contentsScale = scale
+            return
+        }
+        let pixels = Double(bounds.width * bounds.height) * Double(scale * scale)
+        guard pixels > pixelBudget, pixels > 0 else {
+            layer.contentsScale = scale
+            return
+        }
+        layer.contentsScale = scale * CGFloat((pixelBudget / pixels).squareRoot())
+    }
+
     override var acceptsFirstResponder: Bool { true }
 
     /// Only the running canvas takes the keyboard on sight. The setup preview is the same
@@ -108,6 +128,7 @@ struct MetalCanvas: NSViewRepresentable {
         view.isPaused = false
         view.enableSetNeedsDisplay = false
         view.grabsKeyboard = true
+        view.pixelBudget = model.contemplating ? SimulationModel.contemplationPixels : 0
         view.delegate = context.coordinator
         model.attach(canvas: view)
         view.onDrag = { dx, dy in

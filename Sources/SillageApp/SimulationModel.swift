@@ -57,6 +57,7 @@ final class SimulationModel: ObservableObject {
     var sceneOrdinal = 0
     /// Wall time of recent solver steps, in milliseconds.
     var solverBursts: [Double] = []
+    var solverSteps = 0
     /// The longest single GPU dispatch the solver has made, in milliseconds.
     var longestDispatch: Double = 0
     var stepBuild: Double = 0
@@ -115,6 +116,10 @@ final class SimulationModel: ObservableObject {
 
     /// How long the camera stays in a viewer's hands after their last input.
     static let manualCameraHold: TimeInterval = 25
+
+    /// Pixels contemplation renders at. Full screen on a retina panel asks for seven and a
+    /// half million, which costs more than the whole rest of the mode put together.
+    static let contemplationPixels: Double = 4_000_000
 
     /// Swaps rigs without the view jumping: each takes up where the other left off.
     func toggleFlight() {
@@ -362,7 +367,7 @@ final class SimulationModel: ObservableObject {
     private(set) var solver: (any GPUSolver)?
     private(set) var renderer: Renderer?
     var seeded = ParticleSystem()
-    private var drawableSize = CGSize(width: 1280, height: 720)
+    private(set) var drawableSize = CGSize(width: 1280, height: 720)
 
     init?() {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
@@ -617,6 +622,7 @@ final class SimulationModel: ObservableObject {
                 self.megayearsPerSecond =
                     self.megayearsPerSecond > 0
                     ? self.megayearsPerSecond * 0.8 + rate * 0.2 : rate
+                self.solverSteps += 1
                 self.solverBursts.append(burst * 1000)
                 if let tree = solver as? MetalBarnesHutSolver {
                     self.stepBuild = tree.lastBuildMilliseconds
@@ -1090,7 +1096,12 @@ final class SimulationModel: ObservableObject {
         redrawPreview()
     }
 
+    /// Counted, because a rebuild that happens once looks exactly like one that happens every
+    /// frame from anywhere except here.
+    private(set) var rendererBuilds = 0
+
     private func rebuildRenderer() {
+        rendererBuilds += 1
         guard solver != nil || playbackPositions != nil else { return }
         let bound = mode == .playback ? playbackPositions : solver?.positions
         let settings = renderSettings(

@@ -25,8 +25,8 @@ extension SimulationModel {
         var sceneLifetime: Double { self == .brisk ? 62 : 300 }
         var fade: Double { self == .brisk ? 2.5 : 5 }
         /// Divides the oscillator periods and the shot lengths, multiplies the turn rate.
-        var tempo: Double { self == .brisk ? 3.2 : 1 }
-        var megayearsPerSecond: Double { self == .brisk ? 5.0 : 3.2 }
+        var tempo: Double { self == .brisk ? 2.0 : 0.8 }
+        var megayearsPerSecond: Double { self == .brisk ? 3.0 : 1.6 }
         /// How much the encounter is pulled together at the start.
         var haste: Float { self == .brisk ? 1 : 0.25 }
         var name: String { self == .brisk ? "Contemplation rapide" : "Contemplation lente" }
@@ -57,6 +57,7 @@ extension SimulationModel {
         smoothingInterval = 240
         MetalBarnesHutSolver.leafCapacity = 32
         MetalBarnesHutSolver.maximumTreeDepth = 13
+        MetalBarnesHutSolver.treeReuse = 5
         // One step a pump. Four of them is a burst four times as long, and the length of the
         // burst is the whole of what a viewer feels.
         if stepsPerFrame != 1 { stepsPerFrame = 1 }
@@ -71,6 +72,7 @@ extension SimulationModel {
         stepsPerFrame = 4
         MetalBarnesHutSolver.leafCapacity = 16
         MetalBarnesHutSolver.maximumTreeDepth = 20
+        MetalBarnesHutSolver.treeReuse = 1
         MetalBarnesHutSolver.forceChunk = 450_000
         renderFade = 1
         renderer?.fade = 1
