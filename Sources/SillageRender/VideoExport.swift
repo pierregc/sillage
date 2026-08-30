@@ -89,9 +89,17 @@ public enum VideoExport {
             device: device, particleCount: recording.particleCount)
         renderer.setSmoothing(smoothing.buffer)
 
+        guard let snapshots = SnapshotStream(device: device, recording: recording) else {
+            throw Failure.pixelBuffer
+        }
         for index in 0..<recording.count {
-            let pair = recording.upload(pair: index, into: expander.stagingBuffer)
-            expander.expand(first: pair.0, second: pair.1, blend: 0, into: positions)
+            snapshots.prepare(from: index)
+            guard let offset = snapshots.fetch(index), let frame = recording.frame(at: index)
+            else { continue }
+            let pair = (frame, frame)
+            expander.expand(
+                first: frame, at: offset, second: frame, at: offset,
+                from: snapshots.buffer, blend: 0, into: positions)
             // Densities move slowly and the tree costs more than the frame does.
             if index % 12 == 0 { smoothing.update(from: positions) }
             renderer.setDiskFrames(
