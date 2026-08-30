@@ -49,8 +49,22 @@ final class SimulationModel: ObservableObject {
     var renderFade: Float = 1
     /// Cached: the framing radius walks every particle, and the camera needs it every frame.
     var contemplationRadius: Float = 0
-    /// Level 1 costs one kernel a step, so the count can be generous.
-    var contemplationParticles = 1_600_000
+    /// Self-gravitating, so the count is what the tree can carry rather than what the
+    /// renderer can draw.
+    var contemplationParticles = 450_000
+
+    var contemplationPace: Pace = .slow
+    var sceneOrdinal = 0
+
+    /// Which of the named looks is showing, for the picker.
+    @Published var lookName: String = "observatory"
+    /// The parts of a look with no slider of their own.
+    var lookExtras = RenderLook.observatory
+    /// Simulated megayears a real second, and the one number that decides both how much
+    /// happens and what share of the GPU the solver takes, since it steps only as often as
+    /// this needs. A disk turns once in about 250 Myr, so this is a rotation a minute, and a
+    /// close passage inside the first one.
+    var contemplationMyrPerSecond: Double = 4.5
     private var lastDrawTime: CFTimeInterval?
 
     /// Whichever rig is driving, for the renderer.
@@ -483,6 +497,15 @@ final class SimulationModel: ObservableObject {
 
     private func stopLiveStepping() { liveGeneration &+= 1 }
 
+    /// How long to leave the GPU alone before stepping again, so the solver advances at the
+    /// rate contemplation asks for rather than as fast as the hardware allows. Zero for every
+    /// other mode, where finishing sooner is the whole point.
+    private func pacedPause(advancing megayears: Double, having spent: TimeInterval) -> Double {
+        guard contemplating, contemplationMyrPerSecond > 0 else { return 0 }
+        let wanted = megayears / contemplationMyrPerSecond
+        return min(max(wanted - spent, 0), 1)
+    }
+
     private func pumpLive(generation: Int, solver: any GPUSolver, steps: Int, budget: Int) {
         let reel = recording
         simulationQueue.async { [weak self] in
@@ -490,9 +513,9 @@ final class SimulationModel: ObservableObject {
             let before = solver.time
             solver.step(count: steps)
             let time = solver.time
-            let rate =
-                Double(time - before) * Physics.megayearsPerTimeUnit
-                / max(Date().timeIntervalSince(clock), 1e-6)
+            let advanced = Double(time - before) * Physics.megayearsPerTimeUnit
+            let spent = Date().timeIntervalSince(clock)
+            let rate = advanced / max(spent, 1e-6)
             var frames = 0
             var bytes = 0
             var full = false
@@ -523,8 +546,21 @@ final class SimulationModel: ObservableObject {
                 self.captureStride = interval
                 self.checkFinish()
                 guard self.liveGeneration == generation else { return }
-                self.pumpLive(
-                    generation: generation, solver: solver, steps: steps, budget: budget)
+                // Contemplation paces the solver to a rate of simulated time instead of
+                // running it flat out. The picture and the tree share one GPU, and a solver
+                // that takes everything it can get is what turns a smooth scene into a
+                // slideshow — while nothing about watching a galaxy turn wants it to be quick.
+                let pause = self.pacedPause(advancing: advanced, having: spent)
+                guard pause > 0 else {
+                    self.pumpLive(
+                        generation: generation, solver: solver, steps: steps, budget: budget)
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + pause) { [weak self] in
+                    guard let self, self.liveGeneration == generation else { return }
+                    self.pumpLive(
+                        generation: generation, solver: solver, steps: steps, budget: budget)
+                }
             }
         }
     }
@@ -929,14 +965,42 @@ final class SimulationModel: ObservableObject {
             supersample: supersample,
             brightness: brightness,
             dustStrength: dustStrength,
+            starSize: lookExtras.starSize,
             smoothingScale: smoothingScale,
+            minimumKernel: lookExtras.minimumKernel,
+            maximumKernel: lookExtras.maximumKernel,
+            bloomThreshold: lookExtras.bloomThreshold,
+            bloomSoftKnee: lookExtras.bloomSoftKnee,
             bloomIntensity: bloom,
             stretch: stretch,
             saturation: saturation,
+            spikeArms: lookExtras.spikeArms,
+            spikeLength: lookExtras.spikeLength,
             spikeIntensity: spikeIntensity,
             skyLevel: skyLevel,
             noiseLevel: noiseLevel,
             galaxyTint: galaxyTint)
+    }
+
+    /// Adopts a whole look. The panel has a slider for ten of its parts; the rest — kernel
+    /// sizes, the bloom knee, the diffraction pattern, the strength of the painted arms — are
+    /// kept here so that rebuilding the renderer does not quietly drop them back to default.
+    func adopt(_ named: RenderLook.Named) {
+        lookName = named.id
+        let look = named.look
+        lookExtras = look
+        brightness = look.brightness
+        dustStrength = look.dustStrength
+        smoothingScale = look.smoothingScale
+        bloom = look.bloomIntensity
+        stretch = look.stretch
+        saturation = look.saturation
+        spikeIntensity = look.spikeIntensity
+        skyLevel = look.skyLevel
+        noiseLevel = look.noiseLevel
+        galaxyTint = look.galaxyTint
+        renderer?.apply(look)
+        redrawPreview()
     }
 
     private func rebuildRenderer() {
@@ -953,6 +1017,7 @@ final class SimulationModel: ObservableObject {
             renderer = try Renderer(
                 device: device, particles: seeded, settings: settings, externalPositions: bound)
             renderer?.setSmoothing(smoothing?.buffer)
+            renderer?.armPersistence = lookExtras.armPersistence
             refreshSmoothing()
         } catch {
             failure = "\(error)"

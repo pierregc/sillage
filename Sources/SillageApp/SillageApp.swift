@@ -106,38 +106,69 @@ struct SillageApp: App {
                 index + 1 < CommandLine.arguments.count
                     ? Double(CommandLine.arguments[index + 1]) ?? 45 : 45
             } ?? 45
-        model.contemplationParticles = 1_600_000
-        // Short enough that a check of a couple of minutes crosses several swaps.
-        SimulationModel.sceneLifetime = 32
-        SimulationModel.sceneFade = 4
-        model.startContemplation()
+        // Deliberately not overriding the particle count: a check that measures a size the
+        // mode never runs at measures nothing. This one did, and reported a stutter that was
+        // its own doing.
+        let pace: SimulationModel.Pace =
+            CommandLine.arguments.contains("slow") ? .slow : .brisk
+        model.startContemplation(pace: pace)
         Task {
             try? await Task.sleep(for: .seconds(2))
-            var samples: [Double] = []
+            // Paced to sixty hertz and measured on lateness, not on the cost of a draw. The
+            // first version of this ran draws back to back and reported a healthy median
+            // while the real thing stuttered: what a viewer sees is whether a frame arrives
+            // on time, and a solver that holds the GPU for eight milliseconds at the wrong
+            // moment blows the deadline without moving the median at all.
+            let period = 1.0 / 60.0
+            var late: [Double] = []
+            var visible: [Double] = []
             var moves: Set<String> = []
             var scenes: Set<UInt64> = []
             let clock = Date()
+            var due = Date().timeIntervalSince(clock)
             while Date().timeIntervalSince(clock) < seconds {
+                let before = Date().timeIntervalSince(clock)
                 model.drawOnce()
-                if model.frameMilliseconds > 0, !model.isPreparing {
-                    samples.append(model.frameMilliseconds)
+                let after = Date().timeIntervalSince(clock)
+                if !model.isPreparing {
+                    let slip = max(after - due, 0)
+                    late.append(slip)
+                    // A frame nobody can see cannot stutter: the swap between scenes happens
+                    // under a fade that is already at black. Counted separately rather than
+                    // excused, so the two are never confused.
+                    if model.renderFade > 0.15 { visible.append(slip) }
                 }
                 moves.insert("\(model.director.move)")
                 scenes.insert(model.scene.seed)
-                await Task.yield()
+                due += period
+                // Wait out the rest of the frame, so the solver gets the idle time it would
+                // really have between two presentations.
+                let slack = due - after
+                if slack > 0 {
+                    try? await Task.sleep(for: .seconds(slack))
+                } else {
+                    due = after
+                    await Task.yield()
+                }
+                _ = before
             }
-            let sorted = samples.sorted()
+            let sorted = late.sorted()
             func percentile(_ share: Double) -> Double {
                 sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * share))]
             }
-            let slow = samples.filter { $0 > 33.3 }.count
+            // A frame is late enough to see when it misses its slot by most of another one.
+            let missed = late.filter { $0 > period }.count
             let report = """
-                scene          \(model.scene.galaxies.count) galaxies, \(model.particleCount) particles
-                frames         \(samples.count) drawn in \(String(format: "%.0f", seconds)) s
-                frame median   \(String(format: "%.1f", percentile(0.5))) ms
-                frame 99th     \(String(format: "%.1f", percentile(0.99))) ms
-                frame worst    \(String(format: "%.1f", sorted.last ?? 0)) ms
-                under 30 fps   \(slow) of \(samples.count)
+                scene          \(model.scene.galaxies.count) galaxies, \(model.particleCount) particles, \(model.scene.solver.rawValue)
+                pace           \(model.contemplationPace.rawValue)
+                rate           \(String(format: "%.2f", model.megayearsPerSecond)) Myr/s stepping, asking \(String(format: "%.1f", model.contemplationMyrPerSecond))
+                immersed       \(model.director.immersed)
+                frames         \(late.count) in \(String(format: "%.0f", seconds)) s
+                late median    \(String(format: "%.1f", percentile(0.5) * 1000)) ms
+                late 99th      \(String(format: "%.1f", percentile(0.99) * 1000)) ms
+                late worst     \(String(format: "%.1f", (sorted.last ?? 0) * 1000)) ms
+                missed a slot  \(missed) of \(late.count)
+                missed on show \(visible.filter { $0 > period }.count) of \(visible.count)
                 moves seen     \(moves.sorted().joined(separator: " "))
                 scenes seen    \(scenes.count)
                 failure        \(model.failure ?? "none")
@@ -146,8 +177,10 @@ struct SillageApp: App {
                 to: URL(fileURLWithPath: "/tmp/sillage-cinema.log"), atomically: true,
                 encoding: .utf8)
             print(report)
-            // A tenth of a percent of late frames is a hitch nobody sees; more is a stutter.
-            exit(samples.count > 100 && Double(slow) / Double(samples.count) < 0.01 ? 0 : 1)
+            // Judged on what a viewer can actually see.
+            let seen = visible.filter { $0 > period }.count
+            let clean = Double(seen) / Double(max(visible.count, 1)) < 0.002
+            exit(visible.count > 100 && clean ? 0 : 1)
         }
     }
 

@@ -13,6 +13,7 @@ final class CanvasView: MTKView {
     var onScroll: ((CGFloat) -> Void)?
     var onToggleFlight: (() -> Void)?
     var onEscape: (() -> Void)?
+    var onSpace: (() -> Void)?
 
     private(set) var held: Set<UInt16> = []
     private(set) var modifiers: NSEvent.ModifierFlags = []
@@ -63,6 +64,7 @@ final class CanvasView: MTKView {
         // Not super: an unhandled key press beeps.
         if !event.isARepeat, event.keyCode == Key.f { onToggleFlight?() }
         if event.keyCode == Key.escape { onEscape?() }
+        if !event.isARepeat, event.keyCode == Key.space { onSpace?() }
         held.insert(event.keyCode)
     }
 
@@ -122,6 +124,9 @@ struct MetalCanvas: NSViewRepresentable {
         }
         view.onToggleFlight = { model.toggleFlight() }
         view.onEscape = { if model.contemplating { model.stopContemplation() } }
+        // Space means "up" while flying and "the next one" while contemplating, which never
+        // overlap: contemplation has no flying in it.
+        view.onSpace = { if model.contemplating { model.skipScene() } }
         return view
     }
 

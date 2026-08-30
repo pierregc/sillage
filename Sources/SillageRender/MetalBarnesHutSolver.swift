@@ -132,7 +132,7 @@ public final class MetalBarnesHutSolver: Solver {
 
         let library: MTLLibrary
         do {
-            library = try device.makeLibrary(source: BarnesHutShaders.source, options: nil)
+            library = try ShaderCache.library(BarnesHutShaders.source, on: device)
         } catch {
             throw RenderError.shaderCompilation("\(error)")
         }
@@ -304,7 +304,7 @@ public final class MetalBarnesHutSolver: Solver {
 
     /// Particles per force dispatch. A whole large scene in one kernel keeps the GPU to
     /// itself long enough that the pointer stutters; in pieces the display gets in between.
-    static var forceChunk = 1_000_000
+    public static var forceChunk = 1_000_000
 
     private func integrate() {
         var p = params

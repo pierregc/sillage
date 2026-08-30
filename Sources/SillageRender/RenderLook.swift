@@ -144,4 +144,19 @@ public struct RenderLook: Sendable, Equatable {
         armPersistence: 1.3, fieldOfView: 0.68)
 
     public static let all: [RenderLook] = [observatory, dream, gloss, ink, ember]
+
+    /// The same five with names, for anything that has to offer them.
+    public struct Named: Sendable, Identifiable {
+        public let id: String
+        public let name: String
+        public let look: RenderLook
+    }
+
+    public static let catalogue: [Named] = [
+        Named(id: "observatory", name: "Observatoire", look: .observatory),
+        Named(id: "dream", name: "Onirique", look: .dream),
+        Named(id: "gloss", name: "Éclat", look: .gloss),
+        Named(id: "ink", name: "Encre", look: .ink),
+        Named(id: "ember", name: "Braise", look: .ember),
+    ]
 }

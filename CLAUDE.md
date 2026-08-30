@@ -24,7 +24,7 @@ fresh session cannot deduce from the code.
 ```
 
 **Screen recording is not granted**, so `screencapture` fails and the app window cannot be
-looked at directly. Six modes replace it, and they are the only way to verify the app:
+looked at directly. Seven modes replace it, and they are the only way to verify the app:
 
 ```
 Sillage.app --selftest    # model, solver, renderer and preview offscreen; writes out/selftest.png
@@ -33,6 +33,7 @@ Sillage.app --uishot      # renders the panels through ImageRenderer to out/
 Sillage.app --presets     # cycles the setup presets with the window up
 Sillage.app --responsive  # runs a self-gravitating scene, reports how long the main actor stalls
 Sillage.app --qa          # walks the whole run flow and reports every check
+Sillage.app --cinema N    # contemplation for N seconds, paced to 60 Hz, reports lateness
 ```
 
 `--qa` is the one to run after touching anything in the app: it sets up a scene, launches it,
@@ -56,8 +57,8 @@ report of zero frames means occlusion, not a regression.
 
 - Conventional commits, small, minimal `-m`. **No `Co-authored-by` trailer.**
 - Comments are sparse and explain why, never what.
-- **Never push and never create the GitHub repository without explicit approval.** Nothing has
-  been pushed. The repo does not exist on GitHub yet, and neither do the milestones.
+- **Never push without explicit approval.** `origin` is `git@github.com:pierregc/sillage.git`
+  and `main` tracks it. The milestones do not exist yet.
 
 ## Habits worth keeping
 
@@ -293,23 +294,50 @@ an advantage that keeps widening, since the old curve was still accelerating.
 ## Contemplation
 
 Full screen, no panel, nobody at the keyboard: `Cinematographer` frames and lights a generated
-scene, and a new one replaces it every eleven and a half minutes through a fade. `--cinema N`
-runs it through the real draw path for N seconds and reports the frame times, which is the only
-way to check a mode whose whole promise is "no stutter" on a machine with no screen recording.
-Measured at 1.6 M particles: median 5.5 ms, one frame of 12 913 over 33 ms, and that one is the
-renderer being rebuilt for the next scene while the screen is already black.
+scene and replaces it with another through a fade. Two paces — brisk, a whole encounter in a
+minute, and slow, five minutes to breathe — and the choice drives everything: the oscillator
+periods, the length of a shot, how fast the camera turns, the rate of simulated time, and how
+close together the galaxies start. Space moves on now; escape leaves.
 
-Level 1 throughout, deliberately. Contemplation has to hold its frame rate for hours and the
-tree solver gets slower as a merger concentrates; tracers in rigid potentials cost one kernel a
-step and leave the GPU to the picture. Tidal bridges and tails are Toomre's 1972 result and
-need no self-gravity. Nothing is captured either: hours of take to record what nobody will
-replay.
+`--cinema N [slow]` is the only way to check this on a machine with no screen recording, and
+**what it measures matters more than that it exists**. The first version ran draws back to back
+and reported a healthy median while the real thing visibly stuttered: the cost of a draw is not
+what a viewer sees. It now paces itself to sixty hertz and measures *lateness* — and reports
+separately how many late frames landed while the screen was actually showing something, since
+the swap between scenes happens under a fade already at black.
 
-`RenderLook` is the subset of the settings a frame may change on its own — everything that is
-already a per-frame uniform. Resolution, supersampling, bloom levels and the starfield are not
-in it because they own textures and buffers, and changing one of those means building a new
-renderer, which recompiles the shader library. Five named looks are crossfaded shot to shot and
-modulated by eight sine waves of prime period, so the combination does not come round again.
+Level 2. Level 1 has nothing inside it to fly through: painted arms look right from far off and
+go flat the moment the camera enters the disk. Self-gravity is what makes structure that holds
+up close, and four things together are what make it affordable at sixty hertz.
+
+- **The solver is paced, not run flat out.** It steps only as often as the asked rate of
+  simulated time needs, so it takes that share of the GPU and no more. Above capacity the
+  pacing stops protecting anything, so the rate has to sit well under it — at 450 k particles
+  the solver can do 13 Myr/s and is asked for 5.
+- **Fewer, larger steps.** A step costs a tree built across every core as much as it costs the
+  GPU, so halving their number is worth twice what tuning the force pass is. 20x to 26x the
+  tuned step, which through pericentre sits inside the encounter's own chaotic scatter.
+- **A wide opening angle.** 0.85 against the usual 0.6 is most of a factor of two off the force
+  pass for half a percent of error. Nothing here is being measured.
+- **Compiled libraries are cached.** `makeLibrary` is a full compile of a source string that
+  never changes, and rebuilding the renderer for a new scene did it on the main thread: one
+  frame a full second late, every scene. `ShaderCache` holds them for the life of the process.
+
+Together: zero frames of 7 746 missed their slot in the brisk pace, worst lateness 11.5 ms.
+The road there was 5.7 %, and every step of it was a different cause.
+
+One scene in three is **immersed** — the eye placed among the stars first and the aim following,
+which is the opposite of the orbit rig and the only way to be inside anything. Out at the rim of
+the disk, not in its middle: a few kiloparsecs from the centre puts the camera inside the bulge,
+where four hundred thousand particles spread across a whole sky is not a galaxy but a brown fog,
+and the wide kernels that hide the sparseness are what make it fog. From the rim the disk lies
+across the frame with the companion beyond it.
+
+A scene is built on one named look and the oscillators move around it, rather than crossfading
+between five — a scene should have a character rather than an average. The same five are in the
+viewing panel, since a look is a good place to start from by hand too. `RenderLook` is exactly
+the subset of the settings a frame may change on its own; resolution, supersampling, bloom
+levels and the starfield own textures and buffers and are not in it.
 
 Three things about the choreography, each of which was a cut that did not work.
 
@@ -330,7 +358,9 @@ Three things about the choreography, each of which was a cut that did not work.
   grains once the camera is near enough for their spacing to exceed it.
 
 Distances are multiples of the distance at which the subject fills the frame, not of its
-radius, so changing the field of view moves the camera instead of shrinking the galaxy.
+radius, so changing the field of view moves the camera instead of shrinking the galaxy. And the
+opening shot starts at about one of those rather than two and a half: opening wide and turning
+slowly meant a minute in which nothing appeared to move.
 
 ## State and known limitations
 

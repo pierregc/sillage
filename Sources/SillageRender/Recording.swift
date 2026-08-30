@@ -320,7 +320,7 @@ public final class SnapshotExpander {
 
         let library: MTLLibrary
         do {
-            library = try device.makeLibrary(source: RecordingShaders.source, options: nil)
+            library = try ShaderCache.library(RecordingShaders.source, on: device)
         } catch {
             throw RenderError.shaderCompilation("\(error)")
         }
