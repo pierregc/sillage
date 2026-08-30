@@ -42,36 +42,42 @@ public final class BarnesHutTree {
     public let leafCapacity: Int
     public let maximumDepth: Int
 
-    private var codes: [UInt32] = []
+    private var codes: [UInt64] = []
     private var scratch: [UInt32] = []
     private var primary: [UInt32] = []
     private var histogram: [Int] = []
-    private var sortedCodes: [UInt32] = []
+    private var sortedCodes: [UInt64] = []
     private var offsets = [Int](repeating: 0, count: 9)
     private var parents: [Int32] = []
 
-    public init(leafCapacity: Int = 16, maximumDepth: Int = 10) {
+    /// Twenty-one bits an axis is what a sixty-four bit code holds, so the tree can go
+    /// twenty-one levels deep. Ten was the old ceiling, and an evolving collision hit it
+    /// immediately: the disks concentrate while tidal debris stretches the root box, so the
+    /// cells at the bottom cover more and more space and fill with hundreds of particles
+    /// each, which the force pass then has to sum one by one.
+    public init(leafCapacity: Int = 16, maximumDepth: Int = 20) {
         self.leafCapacity = max(leafCapacity, 1)
-        self.maximumDepth = min(max(maximumDepth, 1), 10)
+        self.maximumDepth = min(max(maximumDepth, 1), 21)
     }
 
-    /// Spreads the low 10 bits of a value so three of them interleave into a Morton code.
-    static func spread(_ value: UInt32) -> UInt32 {
-        var x = value & 0x3FF
-        x = (x | (x << 16)) & 0x0300_00FF
-        x = (x | (x << 8)) & 0x0300_F00F
-        x = (x | (x << 4)) & 0x030C_30C3
-        x = (x | (x << 2)) & 0x0924_9249
+    /// Spreads the low 21 bits of a value so three of them interleave into a Morton code.
+    static func spread(_ value: UInt32) -> UInt64 {
+        var x = UInt64(value) & 0x1F_FFFF
+        x = (x | (x << 32)) & 0x001F_0000_0000_FFFF
+        x = (x | (x << 16)) & 0x001F_0000_FF00_00FF
+        x = (x | (x << 8)) & 0x100F_00F0_0F00_F00F
+        x = (x | (x << 4)) & 0x10C3_0C30_C30C_30C3
+        x = (x | (x << 2)) & 0x1249_2492_4924_9249
         return x
     }
 
-    static func morton(_ x: UInt32, _ y: UInt32, _ z: UInt32) -> UInt32 {
+    static func morton(_ x: UInt32, _ y: UInt32, _ z: UInt32) -> UInt64 {
         (spread(x) << 2) | (spread(y) << 1) | spread(z)
     }
 
     /// The octant digit a code takes at a given depth, as (x, y, z) bits.
-    static func octant(_ code: UInt32, depth: Int) -> Int {
-        Int((code >> UInt32(27 - 3 * depth)) & 7)
+    static func octant(_ code: UInt64, depth: Int) -> Int {
+        Int((code >> UInt64(60 - 3 * depth)) & 7)
     }
 
     public func build(positions: [SIMD3<Float>], mass: [Float]) {
@@ -105,8 +111,8 @@ public final class BarnesHutTree {
         }
         mark("bounds")
 
-        if codes.count != count { codes = [UInt32](repeating: 0, count: count) }
-        let resolution: Float = 1023
+        if codes.count != count { codes = [UInt64](repeating: 0, count: count) }
+        let resolution: Float = 2_097_151
         let inverse = resolution / (2 * half)
         let origin = center - SIMD3<Float>(repeating: half)
         let codeChunk = max(count / (ProcessInfo.processInfo.activeProcessorCount * 4), 8192)
@@ -132,7 +138,7 @@ public final class BarnesHutTree {
         // Materialise the codes in sorted order. The node split scans each range looking at
         // one octant digit, and reading them through the permutation makes every one of those
         // loads a random access, which is what the split was actually spending its time on.
-        if sortedCodes.count != count { sortedCodes = [UInt32](repeating: 0, count: count) }
+        if sortedCodes.count != count { sortedCodes = [UInt64](repeating: 0, count: count) }
         codes.withUnsafeBufferPointer { source in
             order.withUnsafeBufferPointer { permutation in
                 sortedCodes.withUnsafeMutableBufferPointer { target in
@@ -147,11 +153,11 @@ public final class BarnesHutTree {
         mark("accumulate")
     }
 
-    /// Least significant digit radix sort. Morton codes are 30 bits, so two passes of
-    /// fifteen cover them: half the passes of a byte-wise sort, and a 32768 entry histogram
-    /// still fits comfortably in cache.
+    /// Least significant digit radix sort. Morton codes are 63 bits, so four passes of
+    /// sixteen cover them: half the passes of a byte-wise sort, and a 65536 entry histogram
+    /// is still a cheap thing to sweep next to the particles themselves.
     private func sortedByCode(count: Int) -> [UInt32] {
-        let radix = 15
+        let radix = 16
         let buckets = 1 << radix
         if primary.count != count { primary = [UInt32](repeating: 0, count: count) }
         if scratch.count != count { scratch = [UInt32](repeating: 0, count: count) }
@@ -161,9 +167,9 @@ public final class BarnesHutTree {
             for index in 0..<count { buffer[index] = UInt32(index) }
         }
 
-        for pass in 0..<2 {
-            let shift = UInt32(pass * radix)
-            let mask = UInt32(buckets - 1)
+        for pass in 0..<4 {
+            let shift = UInt64(pass * radix)
+            let mask = UInt64(buckets - 1)
             codes.withUnsafeBufferPointer { key in
                 primary.withUnsafeMutableBufferPointer { source in
                     scratch.withUnsafeMutableBufferPointer { target in
@@ -226,7 +232,7 @@ public final class BarnesHutTree {
             for slot in 0...8 { offsets[slot] = limit }
             offsets[0] = work.start
             var digit = 0
-            let shift = UInt32(27 - 3 * work.depth)
+            let shift = UInt64(60 - 3 * work.depth)
             sortedCodes.withUnsafeBufferPointer { keys in
                 for position in work.start..<limit {
                     let value = Int((keys[position] >> shift) & 7)
