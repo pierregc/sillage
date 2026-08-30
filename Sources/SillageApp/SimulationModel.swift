@@ -140,6 +140,7 @@ final class SimulationModel: ObservableObject {
     }
     private(set) var recording: Recording?
     private var expander: SnapshotExpander?
+    private var snapshots: SnapshotStream?
     private var smoothing: SmoothingField?
     /// Smoothing lengths track density, which changes slowly, so they are refreshed every so
     /// many frames rather than every one. The refresh builds a tree over every particle, which
@@ -400,6 +401,7 @@ final class SimulationModel: ObservableObject {
         captureIsFull = false
         playbackPositions = nil
         expander = nil
+        snapshots = nil
         isPlaying = false
     }
 
@@ -500,6 +502,7 @@ final class SimulationModel: ObservableObject {
         capturedBytes = reel.byteCount
         do {
             expander = try SnapshotExpander(device: device, particleCount: reel.particleCount)
+            snapshots = SnapshotStream(device: device, recording: reel)
             playbackPositions = device.makeBuffer(
                 length: reel.particleCount * MemoryLayout<SIMD3<Float>>.stride,
                 options: .storageModeShared)
@@ -638,6 +641,7 @@ final class SimulationModel: ObservableObject {
         capturedBytes = loaded.recording.byteCount
         captureIsFull = true
         self.expander = expander
+        snapshots = SnapshotStream(device: device, recording: loaded.recording)
         playbackPositions = device.makeBuffer(
             length: loaded.recording.particleCount * MemoryLayout<SIMD3<Float>>.stride,
             options: .storageModeShared)
@@ -658,6 +662,7 @@ final class SimulationModel: ObservableObject {
         stopLiveStepping()
         playbackPositions = nil
         expander = nil
+        snapshots = nil
         mode = .running
         beginCapture()
         isPlaying = true
@@ -749,6 +754,7 @@ final class SimulationModel: ObservableObject {
         reachedFinish = false
         playbackPositions = nil
         expander = nil
+        snapshots = nil
         isPreparing = false
         recording = reel
         capturedFrames = reel?.count ?? 0
@@ -924,7 +930,7 @@ final class SimulationModel: ObservableObject {
     /// Steps the playback cursor and blends the two surrounding snapshots into the buffer the
     /// renderer draws from.
     private func advancePlayback() {
-        guard let recording, let expander, let positions = playbackPositions,
+        guard let recording, let expander, let snapshots, let positions = playbackPositions,
             recording.count >= 2
         else { return }
         let last = Double(recording.count - 1)
@@ -936,9 +942,18 @@ final class SimulationModel: ObservableObject {
 
         let index = Int(playbackPosition)
         let blend = Float(playbackPosition - Double(index))
-        let pair = recording.upload(pair: index, into: expander.stagingBuffer)
-        expander.expand(first: pair.0, second: pair.1, blend: blend, into: positions)
-        elapsedMyr = Double(pair.0.time) * Physics.megayearsPerTimeUnit
+        let next = min(index + 1, recording.count - 1)
+        // Tell the reader where the playhead is before asking for anything, so the snapshots
+        // after this one are on their way while this frame is drawn.
+        snapshots.prepare(from: index)
+        guard let firstOffset = snapshots.fetch(index),
+            let secondOffset = snapshots.fetch(next),
+            let first = recording.frame(at: index), let second = recording.frame(at: next)
+        else { return }
+        expander.expand(
+            first: first, at: firstOffset, second: second, at: secondOffset,
+            from: snapshots.buffer, blend: blend, into: positions)
+        elapsedMyr = Double(first.time) * Physics.megayearsPerTimeUnit
         playbackCenters = recording.centers(at: index)
     }
 

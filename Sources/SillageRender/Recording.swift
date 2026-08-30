@@ -269,23 +269,32 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
-    /// Copies two consecutive snapshots into a Metal buffer so the GPU can blend them.
-    public func upload(pair index: Int, into buffer: MTLBuffer) -> (Frame, Frame) {
+    /// What a snapshot was taken at, without touching its positions.
+    public func frame(at index: Int) -> Frame? {
+        locked {
+            guard index >= 0, index < storedFrames.count else { return nil }
+            return storedFrames[index]
+        }
+    }
+
+    /// Copies one snapshot's quantised positions into a Metal buffer at a byte offset. One
+    /// snapshot rather than a pair: at playback speed the playhead crosses a snapshot only
+    /// every other frame, so copying both surrounding ones every displayed frame was mostly
+    /// recopying what was already there. `SnapshotStream` keeps them and calls this once each.
+    @discardableResult
+    public func copy(frame index: Int, into buffer: MTLBuffer, atByteOffset offset: Int)
+        -> Frame?
+    {
         lock.lock()
         defer { lock.unlock() }
-        guard !storedFrames.isEmpty else {
-            let empty = Frame(time: 0, origin: .zero, extent: 1)
-            return (empty, empty)
-        }
-        let first = min(max(index, 0), storedFrames.count - 1)
-        let second = min(first + 1, storedFrames.count - 1)
+        guard index >= 0, index < storedFrames.count else { return nil }
         let stride = particleCount * 3
-        let destination = buffer.contents().bindMemory(to: UInt16.self, capacity: stride * 2)
+        let destination = buffer.contents().advanced(by: offset).bindMemory(
+            to: UInt16.self, capacity: stride)
         withStorage { source in
-            destination.update(from: source.baseAddress! + first * stride, count: stride)
-            (destination + stride).update(from: source.baseAddress! + second * stride, count: stride)
+            destination.update(from: source.baseAddress! + index * stride, count: stride)
         }
-        return (storedFrames[first], storedFrames[second])
+        return storedFrames[index]
     }
 }
 
@@ -303,7 +312,6 @@ public final class SnapshotExpander {
     private let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLComputePipelineState
-    private let staging: MTLBuffer
     private let particleCount: Int
 
     public init(device: MTLDevice, particleCount: Int) throws {
@@ -324,18 +332,17 @@ public final class SnapshotExpander {
         } catch {
             throw RenderError.pipelineCreation("expandSnapshots: \(error)")
         }
-        guard let queue = device.makeCommandQueue(),
-            let staging = device.makeBuffer(
-                length: self.particleCount * 3 * 2 * 2, options: .storageModeShared)
-        else { throw RenderError.noDevice }
+        guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
-        self.staging = staging
     }
 
-    public var stagingBuffer: MTLBuffer { staging }
-
+    /// Blends two snapshots, each held wherever it happens to sit in `source`, into world
+    /// positions. The wait is what lets the reader overwrite those slots afterwards without
+    /// racing the GPU, and costs about two milliseconds at five million particles.
     public func expand(
-        first: Recording.Frame, second: Recording.Frame, blend: Float, into positions: MTLBuffer
+        first: Recording.Frame, at firstOffset: Int,
+        second: Recording.Frame, at secondOffset: Int,
+        from source: MTLBuffer, blend: Float, into positions: MTLBuffer
     ) {
         guard let buffer = queue.makeCommandBuffer(),
             let encoder = buffer.makeComputeCommandEncoder()
@@ -348,9 +355,10 @@ public final class SnapshotExpander {
             particleCount: UInt32(particleCount),
             blend: min(max(blend, 0), 1))
         encoder.setComputePipelineState(pipeline)
-        encoder.setBuffer(staging, offset: 0, index: 0)
-        encoder.setBuffer(positions, offset: 0, index: 1)
-        encoder.setBytes(&params, length: MemoryLayout<ExpandParams>.stride, index: 2)
+        encoder.setBuffer(source, offset: firstOffset, index: 0)
+        encoder.setBuffer(source, offset: secondOffset, index: 1)
+        encoder.setBuffer(positions, offset: 0, index: 2)
+        encoder.setBytes(&params, length: MemoryLayout<ExpandParams>.stride, index: 3)
         encoder.dispatchThreads(
             MTLSize(width: particleCount, height: 1, depth: 1),
             threadsPerThreadgroup: MTLSize(
