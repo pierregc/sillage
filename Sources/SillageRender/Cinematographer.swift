@@ -108,6 +108,18 @@ public final class Cinematographer {
     public private(set) var look = RenderLook.observatory
     public private(set) var move: Move = .establishing
 
+    /// Everything that happens divided by this: the oscillator periods, the length of a shot,
+    /// and how fast the camera turns. One is the long form; three fits the same shape of film
+    /// into a third of the time.
+    public var tempo: Double = 1
+    /// The look a scene is built on. The oscillators move around it rather than crossfading
+    /// between five different ones, so a scene has a character instead of an average.
+    public private(set) var base = RenderLook.observatory
+    /// Inside a disk looking out, rather than outside looking in. A whole scene at a time:
+    /// the orbit rig places the eye by deducing it from the target, which can put the camera
+    /// anywhere except where the stars are, so immersion needs the eye placed first.
+    public private(set) var immersed = false
+
     public init(seed: UInt64 = 1) {
         generator = SeededGenerator(seed: seed)
         var opening = Framing()
@@ -146,14 +158,18 @@ public final class Cinematographer {
             }
             shot = Shot(
                 from: previous.to, to: destination,
-                duration: Double(generator.uniform(in: 55...115)),
+                duration: Double(generator.uniform(in: 40...80)) / max(tempo, 0.2),
                 move: move)
         }
         self.move = shot.move
 
         let u = Cinematographer.smoothstep(Float(sinceShot / shot.duration))
         let framing = Cinematographer.mix(shot.from, shot.to, u)
-        azimuth += framing.spin * Float(step)
+        azimuth += framing.spin * Float(step) * Float(min(max(tempo, 0.2), 3))
+        if immersed {
+            advanceImmersed(framing: framing, step: step, of: subject)
+            return
+        }
 
         // Where the look-at point wants to be, blended across a change of subject so the
         // camera swings to the new one rather than jumping to it.
@@ -179,8 +195,9 @@ public final class Cinematographer {
         }
         let anchor = heldTarget ?? wanted
 
-        // Slow modulation on top of the shot, so nothing is ever quite still.
-        let t = elapsed
+        // Slow modulation on top of the shot, so nothing is ever quite still. The clock runs
+        // at the tempo, so a brisk scene breathes at the same shape in less time.
+        let t = elapsed * tempo
         let elevation = framing.elevation + 0.09 * waves[5].value(at: t)
         let fieldOfView = framing.fieldOfView * (1 + 0.04 * waves[7].value(at: t))
         // Where the subject exactly fills the frame. Everything is expressed against this,
@@ -210,11 +227,92 @@ public final class Cinematographer {
                 horizontal * sin(azimuth), -horizontal * cos(azimuth), sin(elevation) * distance)
         camera = Camera(eye: eye, target: target, fieldOfView: fieldOfView)
 
-        var blended = RenderLook.mix(
-            RenderLook.all[shot.from.look % RenderLook.all.count],
-            RenderLook.all[shot.to.look % RenderLook.all.count], u)
+        look = modulated(at: t, fieldOfView: fieldOfView, closeness: min(framing.distance, 1))
+    }
+
+    /// Restarts the choreography for a new scene, keeping the oscillators running so the look
+    /// does not snap back to where it began.
+    public func beginScene(seed: UInt64, base: RenderLook? = nil, immersed: Bool = false) {
+        var picker = SeededGenerator(seed: seed &* 31 &+ 7)
+        self.base =
+            base ?? RenderLook.all[Int(picker.next() % UInt64(RenderLook.all.count))]
+        self.immersed = immersed
+        beginShots(seed: seed)
+    }
+
+    private func beginShots(seed: UInt64) {
+        generator = SeededGenerator(seed: seed)
+        var opening = Framing()
+        // Close enough that something is already happening when the lights come up: opening
+        // on a wide, slowly turning shot meant a minute in which nothing appeared to move.
+        opening.distance = Float(generator.uniform(in: 1.0...1.5))
+        opening.elevation = Float(generator.uniform(in: 0.35...0.95))
+        opening.spin = Cinematographer.spin(0.012...0.022, &generator)
+        shot = Shot(
+            from: opening,
+            to: Cinematographer.destination(for: .approach, from: opening, generator: &generator),
+            duration: Double(generator.uniform(in: 40...80)) / max(tempo, 0.2),
+            move: .approach)
+        sinceShot = 0
+        haveTarget = false
+        recent = [.approach]
+    }
+
+    /// Inside one galaxy, with the other one out across the gap.
+    ///
+    /// The eye is put among the stars first and the aim follows, which is the opposite of the
+    /// orbit rig and the only way to be inside anything. It drifts on a slow circle within the
+    /// host's own radius, so the near stars stream past while the companion holds still in the
+    /// distance — the parallax between the two is the whole effect.
+    private func advanceImmersed(framing: Framing, step: Double, of subject: Subject) {
+        let t = elapsed * tempo
+        func centre(_ index: Int) -> SIMD3<Float> {
+            guard index >= 0, index < subject.centres.count else {
+                return subject.centres.reduce(.zero, +) / Float(subject.centres.count)
+            }
+            return subject.centres[index]
+        }
+        let hostIndex = max(framing.subject, 0) % max(subject.centres.count, 1)
+        let host = centre(hostIndex)
+        let companion =
+            subject.centres.count > 1
+            ? centre((hostIndex + 1) % subject.centres.count)
+            // Nothing to look at across the gap, so look out through the disk instead.
+            : host + SIMD3<Float>(cos(azimuth * 0.3), sin(azimuth * 0.3), 0) * subject.radius
+
+        // Out at the rim of the disk rather than in its middle. Sitting a few kiloparsecs
+        // from the centre puts the eye inside the bulge, where four hundred thousand
+        // particles spread over a whole sky is not a galaxy but a brown fog — and the wide
+        // kernels that hide the sparseness are exactly what makes it fog. From the rim the
+        // disk lies across the frame with the companion beyond it, which is the view worth
+        // being inside for.
+        let reach = subject.radius
+        let radius = reach * (0.8 + 0.55 * waves[2].unit(at: t))
+        let height = reach * 0.12 * waves[4].value(at: t)
+        let eye =
+            host + SIMD3<Float>(cos(azimuth), sin(azimuth), 0) * radius
+            + SIMD3<Float>(0, 0, height)
+        // Mostly at the companion, wandering a little so the framing is not locked.
+        let wander = SIMD3<Float>(
+            waves[0].value(at: t), waves[1].value(at: t), waves[3].value(at: t) * 0.3)
+        let aimed = companion + wander * (subject.radius * 0.12)
+        let toward = aimed - eye
+        let target = simd_length(toward) > 1e-3 ? aimed : eye + SIMD3<Float>(0, 1, 0)
+
+        let fieldOfView = min(max(framing.fieldOfView * 1.25, 0.5), 0.95)
+        camera = Camera(eye: eye, target: target, fieldOfView: fieldOfView)
+        // Being inside the disk is the brightest place a camera can be, so it gets the same
+        // treatment a close shot does.
+        // Not as severe a trim as a close orbital shot: from the rim the disk is spread
+        // across the frame rather than filling it, and crushing the stretch here flattens the
+        // one thing being looked at.
+        look = modulated(at: t, fieldOfView: fieldOfView, closeness: 0.5)
+    }
+
+    /// The base look, moved by the oscillator bank and trimmed for how close the camera is.
+    private func modulated(at t: Double, fieldOfView: Float, closeness: Float) -> RenderLook {
+        var blended = base
         blended.fieldOfView = fieldOfView
-        // The oscillator bank. Multiplicative, so a look's own character survives it.
         blended.brightness *= 1 + 0.18 * waves[0].value(at: t)
         blended.bloomIntensity *= 1 + 0.33 * waves[1].value(at: t)
         blended.saturation *= 1 + 0.20 * waves[2].value(at: t)
@@ -231,31 +329,12 @@ public final class Cinematographer {
         // stretch is what saturates — so the stretch comes down with it, and the kernels widen
         // because the ceiling on kernel size is what lets particles resolve into grains once
         // the camera is near enough for their spacing to exceed it.
-        let closeness = min(framing.distance, 1)
-        blended.brightness *= closeness
-        blended.stretch *= max(pow(closeness, 1.5), 0.12)
-        blended.smoothingScale *= 1 + 0.9 * (1 - closeness)
-        blended.maximumKernel *= 1 + 5 * (1 - closeness)
-        look = blended
-    }
-
-    /// Restarts the choreography for a new scene, keeping the oscillators running so the look
-    /// does not snap back to where it began.
-    public func beginScene(seed: UInt64) {
-        generator = SeededGenerator(seed: seed)
-        var opening = Framing()
-        opening.distance = Float(generator.uniform(in: 1.7...2.6))
-        opening.elevation = Float(generator.uniform(in: 0.5...1.1))
-        opening.look = Int(generator.next() % UInt64(RenderLook.all.count))
-        opening.spin = Cinematographer.spin(0.006...0.013, &generator)
-        shot = Shot(
-            from: opening,
-            to: Cinematographer.destination(for: .approach, from: opening, generator: &generator),
-            duration: Double(generator.uniform(in: 60...100)),
-            move: .approach)
-        sinceShot = 0
-        haveTarget = false
-        recent = [.approach]
+        let near = min(closeness, 1)
+        blended.brightness *= near
+        blended.stretch *= max(pow(near, 1.5), 0.12)
+        blended.smoothingScale *= 1 + 0.9 * (1 - near)
+        blended.maximumKernel *= 1 + 5 * (1 - near)
+        return blended
     }
 
     static func smoothstep(_ x: Float) -> Float {

@@ -3,35 +3,63 @@ import simd
 extension SceneConfig {
     /// A scene generated for its looks rather than for a question about dynamics.
     ///
-    /// Level 1 on purpose. Tracers in rigid potentials cost one cheap kernel a step, which
-    /// leaves the whole GPU to the picture: contemplation has to hold its frame rate for
-    /// hours, and a tree that gets slower as a merger concentrates cannot promise that. The
-    /// tidal bridges and tails a close passage raises are Toomre's 1972 result and need no
-    /// self-gravity; the arms are painted by the density wave the renderer already carries.
-    public static func contemplation(particleCount: Int = 1_600_000, seed: UInt64) -> SceneConfig {
+    /// Level 2, because level 1 has nothing inside it to fly through: painted arms look right
+    /// from far off and go flat the moment the camera enters the disk. Self-gravity is what
+    /// makes structure that holds up close.
+    ///
+    /// What makes that affordable is that nothing here is in a hurry. The solver is paced to
+    /// a rate of simulated time rather than run flat out, so it takes the share of the GPU
+    /// that rate needs and no more — see `contemplationMyrPerSecond`. A generous time step
+    /// buys the rest: measured through pericentre, 8x the tuned step sits inside the
+    /// encounter's own chaotic scatter.
+    /// `haste` pulls the two galaxies together at the start so the passage happens early.
+    /// A one minute scene that opens on a wide separation is a minute of two specks drifting.
+    public static func contemplation(
+        particleCount: Int = 700_000, seed: UInt64, haste: Float = 0
+    ) -> SceneConfig {
         var generator = SeededGenerator(seed: seed)
         let palette = Palette.all[Int(generator.next() % UInt64(Palette.all.count))]
 
         // Weighted towards encounters, which are what has something happening in them, but a
         // single disk turning slowly is worth sitting with too.
-        let roll = generator.uniform()
+        let roll = generator.uniform() * (1 - 0.45 * haste)
         var scene: SceneConfig
         if roll < 0.42 {
             scene = encounter(
-                particleCount: particleCount, palette: palette, generator: &generator, close: true)
+                particleCount: particleCount, palette: palette, generator: &generator,
+                close: true, haste: haste)
         } else if roll < 0.70 {
             scene = encounter(
-                particleCount: particleCount, palette: palette, generator: &generator, close: false)
+                particleCount: particleCount, palette: palette, generator: &generator,
+                close: false, haste: haste)
         } else if roll < 0.86 {
             scene = solitary(particleCount: particleCount, palette: palette, generator: &generator)
         } else {
             scene = companion(particleCount: particleCount, palette: palette, generator: &generator)
         }
-        scene.solver = .restricted
+        scene.solver = .barnesHut
         scene.seed = seed
-        scene.timeStep = 0.02
-        // Slow. The whole point is that nothing is in a hurry.
-        scene.timeStepScale = generator.uniform(in: 0.35...0.85)
+        for index in scene.galaxies.indices {
+            // A rigid analytic halo. Live dark matter would triple the particle count for
+            // material that reaches no pixel, and what it buys — dynamical friction, so a
+            // pair actually merges — is not what an eleven minute scene is watching.
+            scene.galaxies[index].haloParticleRatio = 0
+            // Gas standing in for itself: without it a disk heats until its arms stop coming,
+            // which is exactly the stretch of a scene somebody is sitting through.
+            scene.galaxies[index].dissipationTime = generator.uniform(in: 180...320)
+        }
+        // Fewer, larger steps. Each one costs a tree built across every core as much as it
+        // costs the GPU, so halving their number is worth twice what tuning the force pass
+        // is: measured against a sixty hertz schedule, this is most of the difference between
+        // a smooth minute and a stuttering one. Accuracy is not the currency here — through
+        // pericentre, 16x the tuned step sits inside the encounter's own chaotic scatter, and
+        // 32x is where it visibly leaves it.
+        scene.timeStepScale = generator.uniform(in: 20...26)
+        // Barnes-Hut's accuracy knob, and the cheapest thing to spend here. Measured on a
+        // concentrated cluster, 0.85 against the usual 0.6 is most of a factor of two off the
+        // force pass for a mean error of half a percent — which is a fifth of what changing
+        // the time step already costs, and nobody is measuring anything in this mode.
+        scene.openingAngle = 0.85
         scene.retune()
         return scene
     }
@@ -95,10 +123,12 @@ extension SceneConfig {
     /// Two comparable disks meeting. `close` decides whether they pass near enough to raise
     /// bridges and tails or merely sail past each other.
     private static func encounter(
-        particleCount: Int, palette: Palette, generator: inout SeededGenerator, close: Bool
+        particleCount: Int, palette: Palette, generator: inout SeededGenerator, close: Bool,
+        haste: Float = 0
     ) -> SceneConfig {
-        let separation = generator.uniform(in: close ? 46...72 : 90...150)
-        let speed = generator.uniform(in: close ? 0.48...0.62 : 0.34...0.46)
+        let separation =
+            generator.uniform(in: close ? 46...72 : 90...150) * (1 - 0.42 * haste)
+        let speed = generator.uniform(in: close ? 0.48...0.62 : 0.34...0.46) * (1 + 0.2 * haste)
         let angle = generator.uniform(in: 0.2...0.9)
         let share = generator.uniform(in: 0.38...0.62)
         let first = Int(Float(particleCount) * share)

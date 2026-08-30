@@ -14,21 +14,38 @@ import simd
 /// Nothing is captured either — an hour of takes would fill the memory budget many times over
 /// to record something nobody is going to replay.
 extension SimulationModel {
-    /// How long a scene is watched before the next one, and how long the fade between them
-    /// lasts. Long: the shots inside a scene run to two minutes, and cutting away before a
-    /// few of them have played would defeat the point.
-    /// Settable so the headless check can drive several changes of scene in a short run:
-    /// the swap is the riskiest part of this, since it prepares a scene asynchronously while
-    /// the screen is fading.
-    static var sceneLifetime: Double = 690
-    static var sceneFade: Double = 5
+    /// Two speeds, because they are two different things to sit through: one shows a whole
+    /// encounter in a minute, the other lets one breathe for five. Everything follows from
+    /// the choice — the oscillators, the length of a shot, how fast the camera turns, and how
+    /// close together the galaxies start.
+    enum Pace: String, Sendable {
+        case brisk
+        case slow
 
-    func startContemplation() {
+        var sceneLifetime: Double { self == .brisk ? 62 : 300 }
+        var fade: Double { self == .brisk ? 2.5 : 5 }
+        /// Divides the oscillator periods and the shot lengths, multiplies the turn rate.
+        var tempo: Double { self == .brisk ? 3.2 : 1 }
+        var megayearsPerSecond: Double { self == .brisk ? 5.0 : 3.2 }
+        /// How much the encounter is pulled together at the start.
+        var haste: Float { self == .brisk ? 1 : 0.25 }
+        var name: String { self == .brisk ? "Contemplation rapide" : "Contemplation lente" }
+    }
+
+    func startContemplation(pace: Pace = .slow) {
         contemplating = true
+        contemplationPace = pace
+        contemplationMyrPerSecond = pace.megayearsPerSecond
+        director.tempo = pace.tempo
         showCanvasWhileRunning = true
         contemplationClock = 0
         sceneAge = 0
+        sceneOrdinal = 0
         renderFade = 1
+        // Smaller pieces of the force pass. A chunk is an uninterrupted hold on the GPU, and
+        // here the picture is the thing that must not wait: measured against a sixty hertz
+        // schedule, a million-particle chunk missed one slot in eighteen.
+        MetalBarnesHutSolver.forceChunk = 40_000
         // Supersampling costs four times the fill rate and buys least on a display that is
         // already retina. Particles are the better place to spend it.
         if supersample != 1 { supersample = 1 }
@@ -39,6 +56,7 @@ extension SimulationModel {
 
     func stopContemplation() {
         contemplating = false
+        MetalBarnesHutSolver.forceChunk = 1_000_000
         renderFade = 1
         renderer?.fade = 1
         setFullScreen(false)
@@ -53,12 +71,25 @@ extension SimulationModel {
     }
 
     func beginContemplationScene(seed: UInt64) {
-        draft = .contemplation(particleCount: contemplationParticles, seed: seed)
+        draft = .contemplation(
+            particleCount: contemplationParticles, seed: seed,
+            haste: contemplationPace.haste)
         scene = draft
-        director.beginScene(seed: seed)
+        // One scene in three from inside a galaxy rather than outside it. Regular rather than
+        // random, so a sitting always gets one before long.
+        let immersed = sceneOrdinal % 3 == 2
+        director.beginScene(seed: seed, immersed: immersed)
+        sceneOrdinal += 1
         sceneAge = 0
         reframeWhenReady = false
         restart()
+    }
+
+    /// Moves on now. Rather than swapping on the spot it winds the clock to where the fade
+    /// begins, so leaving by hand goes out exactly the way leaving on time does.
+    func skipScene() {
+        guard contemplating else { return }
+        sceneAge = max(sceneAge, contemplationPace.sceneLifetime - contemplationPace.fade)
     }
 
     /// One frame of contemplation: move the camera, relight the scene, and hand over to the
@@ -79,7 +110,7 @@ extension SimulationModel {
         renderer.apply(director.look)
 
         // Fade out over the last seconds of a scene, swap while the screen is black, fade in.
-        let remaining = Self.sceneLifetime - sceneAge
+        let remaining = contemplationPace.sceneLifetime - sceneAge
         if remaining <= 0 {
             // Preparation is asynchronous, so the fade stays down until the new scene is up.
             if !isPreparing {
@@ -87,11 +118,11 @@ extension SimulationModel {
                 beginContemplationScene(seed: UInt64.random(in: 1...1_000_000))
             }
             renderFade = 0
-        } else if remaining < Self.sceneFade {
-            renderFade = Float(remaining / Self.sceneFade)
+        } else if remaining < contemplationPace.fade {
+            renderFade = Float(remaining / contemplationPace.fade)
         } else {
             // Coming back up after a swap, and after the very first scene is ready.
-            renderFade = min(renderFade + Float(step / Self.sceneFade), 1)
+            renderFade = min(renderFade + Float(step / contemplationPace.fade), 1)
         }
         renderer.fade = isPreparing ? 0 : renderFade
     }

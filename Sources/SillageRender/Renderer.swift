@@ -233,7 +233,7 @@ public final class Renderer {
 
         let library: MTLLibrary
         do {
-            library = try device.makeLibrary(source: Shaders.source, options: nil)
+            library = try ShaderCache.library(Shaders.source, on: device)
         } catch {
             throw RenderError.shaderCompilation("\(error)")
         }

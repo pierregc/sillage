@@ -219,11 +219,46 @@ struct ControlPanelContent: View {
         }
     }
 
+    private var lookBinding: Binding<String> {
+        Binding(
+            get: { model.lookName },
+            set: { id in
+                guard let named = RenderLook.catalogue.first(where: { $0.id == id }) else { return }
+                model.adopt(named)
+            })
+    }
+
+    private var lookDescription: String {
+        switch model.lookName {
+        case "dream": "Noyaux larges et floraison généreuse: le disque devient nuage."
+        case "gloss": "Noyaux serrés, longues aigrettes: un champ d'éclats individuels."
+        case "ink": "Ciel presque noir, couleur retenue. Pour les plans larges."
+        case "ember": "Chaud et lourd, la poussière fait l'essentiel du dessin."
+        default: "Ce que l'instrument enregistrerait vraiment."
+        }
+    }
+
     /// Split the way the two halves of the picture are: what light the galaxy sends, and
     /// what the telescope does with it. Ten sliders in one column say nothing about which
     /// knob to reach for.
     private var rendering: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text("Regard").font(.headline)
+            // A whole look in one press, from the honest telescope to the frankly invented.
+            // The sliders below stay live afterwards: a look is a place to start, not a mode.
+            Picker("", selection: lookBinding) {
+                ForEach(RenderLook.catalogue) { named in
+                    Text(named.name).tag(named.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            Text(lookDescription)
+                .font(.caption)
+                .foregroundStyle(Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider().padding(.vertical, 2)
             Text("Lumière").font(.headline)
             ParameterSlider(
                 title: "Luminosité", value: $model.brightness, range: 0.02...2.0, format: "%.2f")

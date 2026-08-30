@@ -79,7 +79,7 @@ public final class MetalSolver: Solver {
 
         let library: MTLLibrary
         do {
-            library = try device.makeLibrary(source: SolverShaders.source, options: nil)
+            library = try ShaderCache.library(SolverShaders.source, on: device)
         } catch {
             throw RenderError.shaderCompilation("\(error)")
         }
