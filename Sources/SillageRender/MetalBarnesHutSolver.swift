@@ -85,6 +85,9 @@ public final class MetalBarnesHutSolver: Solver {
     /// When each particle's stars formed. Written by the solver, read by the renderer, and
     /// the one per-particle attribute that is not fixed for the life of a run.
     public let formationBuffer: MTLBuffer
+    /// Node evaluations each traversal actually performed, indexed by Morton slot. A
+    /// diagnostic, not state: nothing reads it but the divergence measurement.
+    private let costBuffer: MTLBuffer
     private var nodeBuffer: MTLBuffer?
     private var orderBuffer: MTLBuffer?
     private var componentBuffer: MTLBuffer?
@@ -211,6 +214,8 @@ public final class MetalBarnesHutSolver: Solver {
             let massBuffer = device.makeBuffer(
                 bytes: particles.mass.isEmpty ? [Float(0)] : particles.mass,
                 length: count * 4, options: .storageModeShared),
+            let costBuffer = device.makeBuffer(
+                length: count * 4, options: .storageModeShared),
             let formationBuffer = device.makeBuffer(
                 bytes: particles.formation.count == count
                     ? particles.formation
@@ -224,6 +229,7 @@ public final class MetalBarnesHutSolver: Solver {
         self.accelerationBuffer = accelerationBuffer
         self.massBuffer = massBuffer
         self.formationBuffer = formationBuffer
+        self.costBuffer = costBuffer
 
         func attribute(_ values: [UInt32], _ fallback: UInt32) -> [UInt32] {
             values.count == count ? values : [UInt32](repeating: fallback, count: count)
@@ -703,6 +709,7 @@ public final class MetalBarnesHutSolver: Solver {
                 encoder.setBuffer(massBuffer, offset: 0, index: 4)
                 encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 5)
                 encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
+                encoder.setBuffer(costBuffer, offset: 0, index: 7)
             }
             start += span
         }
@@ -717,6 +724,14 @@ public final class MetalBarnesHutSolver: Solver {
         var total = SIMD3<Float>.zero
         for index in 0..<count { total += velocities[index] * masses[index] }
         return total
+    }
+
+    /// What each traversal cost, in node evaluations, by Morton slot.
+    public var traversalCosts: [UInt32] {
+        Array(
+            UnsafeBufferPointer(
+                start: costBuffer.contents().bindMemory(to: UInt32.self, capacity: count),
+                count: count))
     }
 
     /// Accelerations as computed by the GPU, for validation against direct summation.
