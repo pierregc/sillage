@@ -686,8 +686,19 @@ Standing gaps, in the order they matter:
    Particle count costs more than it looks. The softening follows the mean interparticle
    spacing, so it falls as 1/sqrt(N), and the step follows the softening. Going from 300 k
    visible to 2 M costs about 4x per step *and* 2.4x more steps for the same simulated time.
-4. **Force traversal is still where the time goes**, but it no longer grows with the run.
-   The remaining large win is sharing one traversal across a SIMD group.
+4. **Force traversal is still where the time goes**, but it no longer grows with the run, and
+   the two things this file used to name as the wins left are both measured and neither is one.
+
+   **Sharing a traversal across a SIMD group buys 1.05x, not the several-fold this note used
+   to promise.** The promise was written before the Morton ordering, and the ordering is what
+   killed it: neighbours in a group are neighbours in space and walk nearly the same path.
+   The traversal is a flat stack machine, one node an iteration, so a group stays active for
+   as long as its slowest lane and the waste is exactly the lane imbalance — measured across a
+   merger at 400 000 particles, from t = 0 to 480 Myr, the longest lane in a group runs 4 to
+   6 % above the group's mean and never more. A cooperative traversal would recover that and
+   nothing else: both schemes walk the union of the group's paths, so it does not reduce the
+   node-steps executed at all. `traversalCosts` is the instrument, and it stays: one uint a
+   particle against fifteen hundred node evaluations for the same particle.
 
    The split is flat with scale, which is what makes it worth quoting: at one million
    simulated particles a step is 66.7 ms, and at 3.75 million it is 264.2, both of them
@@ -703,9 +714,12 @@ Standing gaps, in the order they matter:
    including through pericentre and coalescence. Against a pass that is 64 % of a step, that
    is 1.6x overall — for the deepest structural change the solver could take, a per-particle
    rung, an active list, and indirection through it in the one kernel everything depends on.
-   The SIMD-group traversal attacks the same 64 % for a change that stays inside one kernel
-   and is guarded by `accelerationMatchesDirectSummation`, and a GPU tree build attacks the
-   other 36 % and hands back every core besides. Both are better bets.
+   A GPU tree build attacks the other 36 % and hands back every CPU core besides, and it is
+   the only untried item left with a measured share of the time behind it. Beyond that, the
+   force pass costs about fifteen hundred node evaluations a particle at theta 0.6, which is
+   ordinary for a monopole tree; carrying quadrupole moments is what buys a wider opening
+   angle at the same error, and that is a change to what a node holds rather than to how it is
+   walked.
 
    The bulge costs 13 % of a step, all of it in traversal: 98.6 ms against 111.3 ms at 400 k
    visible particles. Concentrating a seventh of the stars into half a kiloparsec deepens the

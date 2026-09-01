@@ -293,6 +293,7 @@ enum BarnesHutShaders {
                                    device const float *mass [[buffer(4)]],
                                    constant HaloGPU *haloList [[buffer(5)]],
                                    constant BHParams &p [[buffer(6)]],
+                                   device uint *cost [[buffer(7)]],
                                    uint gid [[thread_position_in_grid]]) {
             // Dispatched in pieces, so the display has somewhere to get in. One kernel over
             // seven million particles keeps the GPU to itself for the best part of a second
@@ -305,6 +306,11 @@ enum BarnesHutShaders {
             uint i = order[slot];
             float3 position = positions[i];
             float3 total = float3(0.0);
+            // What this lane actually does. Divergence inside a SIMD group is the whole
+            // question for a cooperative traversal, and it cannot be reasoned about: the
+            // group already executes the union of its lanes' paths with the idle ones masked
+            // off, so what a shared traversal would buy back is exactly the masking.
+            uint work = 0;
 
             // Sibling cells are contiguous, so the stack holds ranges rather than single
             // nodes: one entry per level of the tree instead of one per pending sibling.
@@ -323,6 +329,7 @@ enum BarnesHutShaders {
                 if (following > 0) { stack[top++] = ((index + 1) << 3) | (following - 1); }
                 BHNode node = nodes[index];
                 if (node.comMass.w <= 0.0) { continue; }
+                work += 1;
 
                 float3 offset = node.comMass.xyz - position;
                 float distanceSquared = dot(offset, offset) + p.softeningSquared;
@@ -344,6 +351,7 @@ enum BarnesHutShaders {
                            * (p.gravitationalConstant * node.comMass.w
                               / (distanceSquared * sqrt(distanceSquared)));
                 } else if (leaf) {
+                    work += uint(span);
                     for (int k = 0; k < span; ++k) {
                         uint j = order[start + k];
                         if (j == i) { continue; }
@@ -359,6 +367,7 @@ enum BarnesHutShaders {
             }
 
             accelerations[i] = total + halos(position, haloList, p.haloCount, true);
+            cost[slot] = work;
         }
         """
 }
