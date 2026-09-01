@@ -222,7 +222,6 @@ public enum DiskSampler {
                 radius: radius,
                 population: 0,
                 luminosity: 0.45 + 1.5 * generator.uniform() * generator.uniform(),
-                formation: StarFormation.oldFormation(roll: generator.uniform()),
                 component: .bulge,
                 mass: particleMass
             )
@@ -509,8 +508,6 @@ public enum DiskSampler {
 
             let diskAge = 0.30 + 0.68 * proximity
             let bulgeWeight = 1 - smoothstep(bulgeRadius * 0.4, bulgeRadius * 1.8, radius)
-            // Kept for the tracer solver and for takes written before ages existed, which is
-            // the only place it is still read.
             var population = diskAge * (1 - bulgeWeight)
             let edge = radius / scale
             let taper = 1 - smoothstep(config.diskTruncation - 2.1, config.diskTruncation, edge)
@@ -519,13 +516,10 @@ public enum DiskSampler {
                 (0.45 + 1.5 * generator.uniform() * generator.uniform())
                 * max(taper, 0.02)
 
-            // When this particle's stars formed. Every star carries a real age now: the disk
-            // is drawn from an inside-out history, so its outskirts are the young part, and
-            // both the colour and the light per unit mass follow from it. Dust is the gas
-            // reservoir and has made nothing yet.
-            var formation = StarFormation.sampledFormation(
-                edge: edge / max(config.diskTruncation, 1e-3),
-                armProximity: proximity, roll: generator.uniform())
+            // When this particle's stars formed. The disk's own stars are a composite
+            // population already in steady state, so they are `ancient` and their colour does
+            // not move; dust is the gas reservoir and has made nothing yet.
+            var formation = ParticleSystem.ancient
             switch component {
             case .hiiRegion:
                 population = 1
@@ -592,7 +586,6 @@ public enum DiskSampler {
                 radius: radius,
                 population: 0.04,
                 luminosity: 0.8 + 0.5 * generator.uniform(),
-                formation: StarFormation.oldFormation(roll: generator.uniform()),
                 component: .star,
                 mass: particleMass
             )

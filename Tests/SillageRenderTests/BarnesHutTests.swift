@@ -524,31 +524,18 @@ struct BarnesHutTests {
         func formed(_ system: ParticleSystem) -> Int {
             (0..<system.count).count { system.formation[$0] > -1e8 && system.formation[$0] < 1e8 }
         }
-        // Every star carries a real age now, and the light per unit mass follows from it.
-        // Dark matter never does, and gas has made nothing yet.
-        let myrPer = Float(Physics.megayearsPerTimeUnit)
-        var oldest: Float = 0
+        // Only gas and the knots the sampler seeded ever carry a time; a disk star stands for
+        // a composite population and has none.
         for index in 0..<sampled.count {
-            let born = sampled.formation[index]
-            let stamped = born > -1e8 && born < 1e8
-            switch sampled.component[index] {
-            case ParticleComponent.star.rawValue, ParticleComponent.bulge.rawValue:
-                #expect(stamped)
-                // Nothing in the initial conditions is younger than the floor: material that
-                // young is the run's own doing, and is meant to stand out against this.
-                #expect(-born * myrPer >= StarFormation.youngestSampledMyr - 1)
-                oldest = max(oldest, -born * myrPer)
-            case ParticleComponent.halo.rawValue:
+            let kind = sampled.component[index]
+            let stamped = sampled.formation[index] > -1e8 && sampled.formation[index] < 1e8
+            if kind == ParticleComponent.star.rawValue
+                || kind == ParticleComponent.bulge.rawValue
+                || kind == ParticleComponent.halo.rawValue
+            {
                 #expect(!stamped)
-            case ParticleComponent.dust.rawValue:
-                #expect(born > 1e8)
-            default:
-                break
             }
         }
-        // And the spread reaches back to a bulge's age, or there is no mass-to-light contrast
-        // to speak of.
-        #expect(oldest > 9_000)
 
         let first = solver.particles
         solver.step(count: 120)
