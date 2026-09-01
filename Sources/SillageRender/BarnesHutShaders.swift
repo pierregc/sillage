@@ -77,7 +77,9 @@ enum BarnesHutShaders {
             float4 center;
             // xyz how fast the whole galaxy is moving, w the share of the gap closed per step.
             float4 motion;
-            // xyz the axis the disk turns about, w the direction it turns in.
+            // xyz the axis the disk turns about, measured from the disk itself every time
+            // the tree is rebuilt. It carries the sense of rotation in its direction, so
+            // there is no separate spin sign; w is unused.
             float4 axis;
             // Radial and vertical reach, beyond which the material is no longer disk.
             float4 reach;
@@ -136,7 +138,7 @@ enum BarnesHutShaders {
             if (inward <= 0.0) { return; }
             float speed = sqrt(inward * radius);
 
-            float3 along = cross(axis, outward) * disk.axis.w;
+            float3 along = cross(axis, outward);
             float3 target = disk.motion.xyz + along * speed;
 
             // Cooling all the way to a circular orbit is not what gas does and not what a
