@@ -24,7 +24,7 @@ public enum StarFormation {
     /// disk. Three gigayears, and the ramp is logarithmic because that is how the light of a
     /// population actually evolves: most of the change happens in the first hundred megayears,
     /// as the stars that dominate it come off the main sequence in order of mass.
-    public static let fadeMyr: Float = 13000
+    public static let fadeMyr: Float = 3000
 
     /// How bright a knot is at birth against an ordinary disk particle of the same mass.
     ///
@@ -34,32 +34,9 @@ public enum StarFormation {
     /// is measured against.
     public static let youngLuminosity: Float = 12
 
-    /// Age at which a population is as bright as the law says an average one is, in megayears.
-    /// Roughly the light-weighted age of a spiral disk, so the exposure lands where it did.
-    public static let referenceAgeMyr: Float = 3000
-
-    /// Youngest age the initial conditions place anything at, in megayears.
-    ///
-    /// A particle stands for tens of thousands of stars, so it is never truly coeval, and a
-    /// power law with no floor is a trap: ages drawn uniformly to zero would put most of a
-    /// galaxy's light into a few hundred particles and the disk reads as a field of glints
-    /// rather than as a disk. Measured that way once already. Anything younger than this comes
-    /// from the star formation rule during the run, where it is meant to stand out.
-    public static let youngestSampledMyr: Float = 1500
-
-    /// Oldest and youngest a disk gets, in megayears, from its centre to its edge. Disks form
-    /// inside out, so the outskirts are the young part.
-    public static let diskOldestMyr: Float = 12000
-    public static let diskEdgeOldestMyr: Float = 5000
-    /// A bulge is old everywhere and was made quickly.
-    public static let bulgeAgeMyr: ClosedRange<Float> = 10000...12500
-
-    /// Exponent of that decay, and the whole of what makes the young dominate a frame. It is
-    /// one law for everything now: a knot three megayears old and a bulge star of eleven
-    /// gigayears are the same formula at different ages. Capped at `youngLuminosity`, which
-    /// the law reaches at about 170 Myr — without that cap the youngest few hundred particles
-    /// carry most of the light and the disk turns to glitter.
-    public static let luminosityDecay: Float = 0.9
+    /// Exponent of that decay. Fixed by the two ends: a factor of twelve between three
+    /// megayears and four hundred.
+    public static let luminosityDecay: Float = 0.57
 
     /// Megayears of star formation history the sampler seeds a disk with.
     ///
@@ -122,30 +99,10 @@ public enum StarFormation {
         return 1 - min(max(log(max(ageMyr, floor) / floor) / span, 0), 1)
     }
 
-    /// Light per unit mass at this age, against a population of `referenceAgeMyr`.
+    /// Brightness of a knot of this age against an ordinary disk particle.
     public static func luminosity(ageMyr: Float) -> Float {
-        let resolved = max(ageMyr, knotFloorMyr)
-        return min(pow(resolved / referenceAgeMyr, -luminosityDecay), youngLuminosity)
-    }
-
-    /// When an old spheroid's stars formed. A bulge is old everywhere and was made quickly,
-    /// so there is no gradient to draw from — only the width of the burst.
-    public static func oldFormation(roll: Float) -> Float {
-        let span = bulgeAgeMyr.upperBound - bulgeAgeMyr.lowerBound
-        return -(bulgeAgeMyr.lowerBound + span * min(max(roll, 0), 1))
-            / Float(Physics.megayearsPerTimeUnit)
-    }
-
-    /// When a particle sampled at this radius and this close to an arm formed, in code units
-    /// before t = 0. Uniform in age is what a steady rate gives; the arm bias pulls the draw
-    /// young, because that is where the recent star formation was.
-    public static func sampledFormation(
-        edge: Float, armProximity: Float, roll: Float
-    ) -> Float {
-        let oldest = diskOldestMyr - (diskOldestMyr - diskEdgeOldestMyr) * min(max(edge, 0), 1)
-        let biased = pow(min(max(roll, 0), 1), 1 + 2 * min(max(armProximity, 0), 1))
-        let age = youngestSampledMyr + (oldest - youngestSampledMyr) * biased
-        return -age / Float(Physics.megayearsPerTimeUnit)
+        let floor = max(knotFloorMyr, 1e-3)
+        return youngLuminosity * pow(max(ageMyr, floor) / floor, -luminosityDecay)
     }
 
     /// The share of a knot's light still coming out in Halpha at this age.

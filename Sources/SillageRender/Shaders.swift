@@ -17,8 +17,6 @@ enum Shaders {
             float knotFloorMyr;
             float youngLuminosity;
             float luminosityDecay;
-            float referenceAgeMyr;
-            float luminosityNormalisation;
             float brightness;
             float dustStrength;
             float starSize;
@@ -270,24 +268,12 @@ enum Shaders {
                                      / log(max(u.fadeMyr / floorMyr, 1.001)))
                     : 0.0;
                 float ambient = 0.55 + 0.95 * wave;
-                // Light per unit mass, and the one law the whole picture now runs on: a knot
-                // three megayears old and a bulge star of eleven gigayears are the same
-                // formula at different ages. It is what makes the young dominate a frame
-                // without being numerous — which is how a real spiral is blue while most of
-                // its mass is not.
-                //
-                // Capped, and the cap is not cosmetic. The law reaches it at about 170 Myr;
-                // without it, ages drawn towards zero put most of a galaxy's light into a few
-                // hundred particles and the disk reads as glitter rather than as a disk.
-                //
-                // Normalised by the mean of the same law over this scene, so putting it in
-                // moves no exposure and none of the five looks needed retuning.
-                float massToLight = knot
-                    ? min(pow(resolved / max(u.referenceAgeMyr, 1e-3), -u.luminosityDecay),
-                          u.youngLuminosity)
-                      * u.luminosityNormalisation
-                    : 1.0;
-                float gain = ambient * massToLight;
+                // Never dimmer than the disk it sits in: past a few hundred megayears a knot
+                // has become an ordinary part of the population and should read as one.
+                float gain = knot
+                    ? max(u.youngLuminosity * pow(resolved / floorMyr, -u.luminosityDecay),
+                          ambient)
+                    : ambient;
                 // Colour comes from the population the sampler gave this particle: old and
                 // warm in the bulge, young and blue in the disk. The wave shifts it a little
                 // further, because an arm is bluer than the disk around it for the same
