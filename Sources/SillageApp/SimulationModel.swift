@@ -949,7 +949,8 @@ final class SimulationModel: ObservableObject {
                 smoothing = try SmoothingField(device: device, particleCount: drawnCount)
             }
             renderer = try Renderer(
-                device: device, particles: seeded, settings: settings, externalPositions: bound)
+                device: device, particles: seeded, settings: settings, externalPositions: bound,
+                externalFormation: mode == .playback ? nil : solver?.formation)
             renderer?.setSmoothing(smoothing?.buffer)
             renderer?.apply(look)
             refreshSmoothing()
@@ -1002,6 +1003,7 @@ final class SimulationModel: ObservableObject {
             framesSinceSmoothing = 0
             refreshSmoothing()
         }
+        renderer.time = solver.time
         renderer.setDiskFrames(
             DiskFrame.make(
                 scene: scene, centers: solver.centers, time: solver.time,
@@ -1047,10 +1049,11 @@ final class SimulationModel: ObservableObject {
         let centers =
             mode == .playback && !playbackCenters.isEmpty
             ? playbackCenters : (solver?.centers ?? scene.galaxies.map(\.position))
+        renderer.time = Float(elapsedMyr / Physics.megayearsPerTimeUnit)
         renderer.setDiskFrames(
             DiskFrame.make(
                 scene: scene, centers: centers,
-                time: Float(elapsedMyr / Physics.megayearsPerTimeUnit),
+                time: renderer.time,
                 strength: renderer.armPersistence))
         renderer.present(camera: activeCamera, drawable: drawable)
         if renderer.lastGPUMilliseconds > 0 {

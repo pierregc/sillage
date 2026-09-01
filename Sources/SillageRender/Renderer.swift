@@ -5,6 +5,15 @@ import simd
 
 struct SplatUniforms {
     var viewProjection: simd_float4x4
+    /// Simulated time of this frame and how to read it in megayears, so a knot's colour and
+    /// brightness can be worked out from its own age rather than painted from a pattern.
+    var time: Float
+    var megayearsPerUnit: Float
+    var ionisedMyr: Float
+    var fadeMyr: Float
+    var knotFloorMyr: Float
+    var youngLuminosity: Float
+    var luminosityDecay: Float
     var brightness: Float
     var dustStrength: Float
     var starSize: Float
@@ -185,6 +194,7 @@ public final class Renderer {
 
     private let positionBuffer: MTLBuffer
     private let populationBuffer: MTLBuffer
+    private let formationBuffer: MTLBuffer
     private let luminosityBuffer: MTLBuffer
     private let componentBuffer: MTLBuffer
     private let galaxyBuffer: MTLBuffer
@@ -208,12 +218,16 @@ public final class Renderer {
     /// Master fade, 1 for the picture and 0 for black. Contemplation crossfades scenes
     /// through it; nothing else uses it.
     public var fade: Float = 1
+    /// Simulated time of the frame being drawn, in code units. A knot's colour and brightness
+    /// are read off its age, so the renderer has to know when now is.
+    public var time: Float = 0
 
     public init(
         device: MTLDevice? = nil,
         particles: ParticleSystem,
         settings: RenderSettings,
-        externalPositions: MTLBuffer? = nil
+        externalPositions: MTLBuffer? = nil,
+        externalFormation: MTLBuffer? = nil
     ) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
@@ -224,11 +238,6 @@ public final class Renderer {
         // draw call stops before it: at three million stars with live halos that is four and a
         // half million vertices a frame that existed only to be thrown away.
         self.drawnCount = particles.visibleCount > 0 ? particles.visibleCount : particles.count
-        // Exposure still counts every particle the scene simulates, which is not what it
-        // should count: adding dark matter makes the stars dimmer by the halo ratio, and it
-        // ought to change nothing. Left alone deliberately — correcting it brightens every
-        // self-gravitating scene by two and a half and would mean retuning the defaults and
-        // every rendered comparison at once.
         self.particleCount = particles.count
 
         let library: MTLLibrary
@@ -342,6 +351,10 @@ public final class Renderer {
             let populationBuffer = device.makeBuffer(
                 bytes: attribute(particles.population, Float(0.5)),
                 length: count * 4, options: .storageModeShared),
+            let formationBuffer = externalFormation
+                ?? device.makeBuffer(
+                    bytes: attribute(particles.formation, ParticleSystem.ancient),
+                    length: count * 4, options: .storageModeShared),
             let luminosityBuffer = device.makeBuffer(
                 bytes: attribute(particles.luminosity, Float(1)),
                 length: count * 4, options: .storageModeShared),
@@ -357,6 +370,7 @@ public final class Renderer {
         self.galaxyBuffer = galaxyBuffer
         self.positionBuffer = positionBuffer
         self.populationBuffer = populationBuffer
+        self.formationBuffer = formationBuffer
         self.luminosityBuffer = luminosityBuffer
         self.componentBuffer = componentBuffer
         self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
@@ -469,6 +483,13 @@ public final class Renderer {
 
         var splat = SplatUniforms(
             viewProjection: camera.viewProjection(aspectRatio: aspect),
+            time: time,
+            megayearsPerUnit: Float(Physics.megayearsPerTimeUnit),
+            ionisedMyr: StarFormation.ionisedMyr,
+            fadeMyr: StarFormation.fadeMyr,
+            knotFloorMyr: StarFormation.knotFloorMyr,
+            youngLuminosity: StarFormation.youngLuminosity,
+            luminosityDecay: StarFormation.luminosityDecay,
             brightness: settings.brightness * perParticle,
             dustStrength: settings.dustStrength * perParticle,
             starSize: settings.starSize * Float(scale),
@@ -501,6 +522,7 @@ public final class Renderer {
             encoder.setRenderPipelineState(splatPipeline)
             encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
             encoder.setVertexBuffer(populationBuffer, offset: 0, index: 1)
+            encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
             encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
             encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
             encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)

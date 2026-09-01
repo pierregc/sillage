@@ -16,6 +16,7 @@ import simd
 ///     header length                    8 bytes
 ///     header, JSON                     the scene, the counts
 ///     population, luminosity           particleCount floats each
+///     formation                        particleCount floats, version 2 and up
 ///     component, galaxy                particleCount 32-bit words each
 ///     frames                           frameCount x 8 floats
 ///     positions                        frameCount x particleCount x 3 x 16 bits
@@ -26,7 +27,11 @@ import simd
 public enum RecordingFile {
     public static let fileExtension = "sillage"
     private static let magic = "SILLAGE\n"
-    private static let version: UInt64 = 1
+    /// 2 adds the per-particle formation times. Version 1 is still read: a run made before
+    /// there was any star formation had none to record, so every particle in one is simply as
+    /// old as the galaxy, which is exactly what the sentinel says.
+    private static let version: UInt64 = 2
+    private static let oldestReadableVersion: UInt64 = 1
 
     public struct Header: Codable {
         public var scene: SceneConfig
@@ -86,6 +91,7 @@ public enum RecordingFile {
         }
         try handle.write(contentsOf: bytes(of: padded(particles.population, Float(0.5))))
         try handle.write(contentsOf: bytes(of: padded(particles.luminosity, Float(1))))
+        try handle.write(contentsOf: bytes(of: padded(particles.formation, ParticleSystem.ancient)))
         try handle.write(contentsOf: bytes(of: padded(particles.component, UInt32(0))))
         try handle.write(contentsOf: bytes(of: padded(particles.galaxyIndex, UInt32(0))))
 
@@ -141,7 +147,9 @@ public enum RecordingFile {
             throw Failure.notARecording
         }
         let version = read(UInt64.self, from: data, at: 8)
-        guard version == Self.version else { throw Failure.unsupportedVersion(version) }
+        guard version >= Self.oldestReadableVersion, version <= Self.version else {
+            throw Failure.unsupportedVersion(version)
+        }
         let headerLength = Int(read(UInt64.self, from: data, at: 16))
         guard data.count >= 24 + headerLength else { throw Failure.truncated }
         let header = try JSONDecoder().decode(
@@ -161,7 +169,26 @@ public enum RecordingFile {
         var particles = ParticleSystem()
         particles.population = try take(Float.self, count)
         particles.luminosity = try take(Float.self, count)
+        // A take carries the whole star formation history in this one static array: every
+        // particle's formation time is written once and never rewritten, so replaying at any
+        // moment shows exactly the knots that had formed by then.
+        particles.formation =
+            version >= 2 ? try take(Float.self, count) : []
         particles.component = try take(UInt32.self, count)
+        if particles.formation.isEmpty {
+            // A version 1 take was made before there was any star formation to record, so it
+            // has no history and nothing can invent one. What it does have is the knots the
+            // sampler placed, and giving those the spread of ages the sampler would give them
+            // now is closer to the run than making the whole galaxy uniformly old — which
+            // would replay it with no ionised knot anywhere in it.
+            var seeded = SeededGenerator(seed: 0x5111_4A6E)
+            particles.formation = particles.component.map { kind in
+                kind == ParticleComponent.hiiRegion.rawValue
+                    ? -seeded.uniform() * StarFormation.seedSpreadMyr
+                        / Float(Physics.megayearsPerTimeUnit)
+                    : ParticleSystem.ancient
+            }
+        }
         particles.galaxyIndex = try take(UInt32.self, count)
 
         let fields = try take(Float.self, header.frameCount * 8)
