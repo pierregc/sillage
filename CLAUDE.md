@@ -689,6 +689,24 @@ Standing gaps, in the order they matter:
 4. **Force traversal is still where the time goes**, but it no longer grows with the run.
    The remaining large win is sharing one traversal across a SIMD group.
 
+   The split is flat with scale, which is what makes it worth quoting: at one million
+   simulated particles a step is 66.7 ms, and at 3.75 million it is 264.2, both of them
+   36 % tree build and 64 % force pass. The drift is 1 ms and never worth a thought.
+
+   **Individual time steps are not the win they look like here, and the measurement is worth
+   keeping so nobody starts it twice.** The prize would be a dense core taking a hundredth of
+   the step while the outskirts take all of it — but the softening floors the accelerations by
+   construction, since it follows the mean interparticle spacing precisely to stop two-body
+   spikes, and `dt = eta sqrt(softening / |a|)` therefore cannot collapse. Measured across a
+   merger at 200 000 particles, the whole population fits in five or six rungs and the bulk
+   sits in the middle of them: the saving on the force pass runs 1.9x to 2.8x, never more,
+   including through pericentre and coalescence. Against a pass that is 64 % of a step, that
+   is 1.6x overall — for the deepest structural change the solver could take, a per-particle
+   rung, an active list, and indirection through it in the one kernel everything depends on.
+   The SIMD-group traversal attacks the same 64 % for a change that stays inside one kernel
+   and is guarded by `accelerationMatchesDirectSummation`, and a GPU tree build attacks the
+   other 36 % and hands back every core besides. Both are better bets.
+
    The bulge costs 13 % of a step, all of it in traversal: 98.6 ms against 111.3 ms at 400 k
    visible particles. Concentrating a seventh of the stars into half a kiloparsec deepens the
    tree exactly where the lanes of a SIMD group have to walk it.
