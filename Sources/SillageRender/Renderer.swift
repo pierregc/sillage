@@ -458,7 +458,14 @@ public final class Renderer {
             Float(settings.height * scale) / (2 * tan(camera.fieldOfView / 2))
         // Conserving flux per particle already makes surface brightness independent of the
         // zoom, so no separate area correction is needed here.
-        let perParticle = 1_000_000 / Float(max(particleCount, 1))
+        //
+        // Over the particles that reach a pixel, not over every particle simulated. Dividing
+        // by the whole count meant that turning live halos on dimmed a scene by the halo
+        // ratio — two and a half at the default — because three particles in five are dark
+        // matter that never lands on a pixel. Exposure per drawn particle is what keeps a
+        // scene looking the same whether it runs at 500 000 stars or at twenty million,
+        // which is the whole point of normalising by count at all.
+        let perParticle = 1_000_000 / Float(max(drawnCount, 1))
 
         var splat = SplatUniforms(
             viewProjection: camera.viewProjection(aspectRatio: aspect),
