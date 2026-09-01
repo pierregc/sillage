@@ -75,8 +75,6 @@ final class SimulationModel: ObservableObject {
 
     /// Which of the named looks is showing, for the picker.
     @Published var lookName: String = "observatory"
-    /// The parts of a look with no slider of their own.
-    var lookExtras = RenderLook.observatory
     /// Simulated megayears a real second. Set from the pace, and the one number that decides
     /// both how much happens and what share of the GPU the solver takes, since it steps only
     /// as often as this needs.
@@ -342,34 +340,38 @@ final class SimulationModel: ObservableObject {
     /// Playback interpolates between snapshots, so it needs two of them.
     var canReplay: Bool { capturedFrames >= 2 }
 
-    @Published var brightness: Float = 0.15 { didSet { renderer?.setBrightness(brightness) } }
-    @Published var stretch: Float = 18 { didSet { renderer?.setStretch(stretch) } }
-    @Published var saturation: Float = 1.8 { didSet { renderer?.setSaturation(saturation) } }
-    /// 0 colours every star by its population alone, which is the physical answer. A little
-    /// of the galaxy's own tint on top is what keeps stars torn out of one disk recognisable
-    /// once they are inside the other.
-    @Published var galaxyTint: Float = 0.35 {
-        didSet {
-            renderer?.setGalaxyTint(galaxyTint)
-            previewRenderer?.setGalaxyTint(galaxyTint)
-        }
-    }
-    @Published var bloom: Float = 0.22 { didSet { renderer?.setBloomIntensity(bloom) } }
-    @Published var dustStrength: Float = 0.16 { didSet { renderer?.setDustStrength(dustStrength) } }
-    @Published var spikeIntensity: Float = 0.38 {
-        didSet { renderer?.setSpikeIntensity(spikeIntensity) }
-    }
-    @Published var skyLevel: Float = 0.0018 { didSet { renderer?.setSkyLevel(skyLevel) } }
-    @Published var noiseLevel: Float = 0.0016 { didSet { renderer?.setNoiseLevel(noiseLevel) } }
-    /// Pure uniform now, so it applies on the next frame with no tree rebuild.
-    @Published var smoothingScale: Float = 1.9 {
-        didSet {
-            renderer?.setSmoothingScale(smoothingScale)
-            previewRenderer?.setSmoothingScale(smoothingScale)
-            redrawPreview()
-        }
-    }
+    /// Everything about the picture that a frame may change on its own, held as the one value
+    /// `RenderLook` already exists to be. It used to be ten published knobs here, each with a
+    /// `didSet` calling a one-line setter on the renderer, alongside a `lookExtras` holding the
+    /// eight fields with no slider — three places to edit to add a setting, and one of them
+    /// easy to forget.
+    @Published var look: RenderLook = SimulationModel.openingLook { didSet { applyLook() } }
+
+    /// What the window opens on, and deliberately not `.observatory`.
+    ///
+    /// The two disagreed before they were one value: the panel's sliders started at their own
+    /// tuned numbers while the picker already read "Observatoire", so choosing that look from
+    /// the picker visibly changed the picture it claimed to be showing. Kept exactly as it was
+    /// rather than reconciled, because every rendered comparison in the notes was made here.
+    static let openingLook: RenderLook = {
+        var look = RenderLook.observatory
+        look.dustStrength = 0.16
+        look.smoothingScale = 1.9
+        look.stretch = 18
+        look.saturation = 1.8
+        look.galaxyTint = 0.35
+        return look
+    }()
+    /// Not part of the look: it owns textures, so changing it means a new renderer.
     @Published var supersample = 1 { didSet { rebuildRenderer() } }
+
+    /// Pushes the whole look at both renderers. The preview is redrawn unconditionally because
+    /// it draws on demand, and every field here changes what it shows.
+    private func applyLook() {
+        renderer?.apply(look)
+        previewRenderer?.apply(look)
+        redrawPreview()
+    }
 
     let device: MTLDevice
     private(set) var solver: (any GPUSolver)?
@@ -466,13 +468,13 @@ final class SimulationModel: ObservableObject {
         guard particles.count > 0 else { return }
 
         do {
-            let settings = RenderSettings(
-                width: Int(previewSize.width), height: Int(previewSize.height),
-                supersample: 1, brightness: brightness, dustStrength: dustStrength,
-                smoothingScale: smoothingScale,
-                bloomIntensity: bloom, stretch: stretch, saturation: saturation,
-                spikeIntensity: spikeIntensity, skyLevel: skyLevel, noiseLevel: noiseLevel,
-                galaxyTint: galaxyTint)
+            // The same settings the run would use, so the preview is a preview. Assembling
+            // them separately here left out the kernel sizes, the bloom knee, the diffraction
+            // pattern and the star size, so the setup screen quietly showed a different
+            // picture from the one it was setting up.
+            var settings = renderSettings(
+                width: Int(previewSize.width), height: Int(previewSize.height))
+            settings.supersample = 1
             let buffer = device.makeBuffer(
                 length: particles.count * MemoryLayout<SIMD3<Float>>.stride,
                 options: .storageModeShared)
@@ -1064,44 +1066,31 @@ final class SimulationModel: ObservableObject {
             width: max(width, 16),
             height: max(height, 16),
             supersample: supersample,
-            brightness: brightness,
-            dustStrength: dustStrength,
-            starSize: lookExtras.starSize,
-            smoothingScale: smoothingScale,
-            minimumKernel: lookExtras.minimumKernel,
-            maximumKernel: lookExtras.maximumKernel,
-            bloomThreshold: lookExtras.bloomThreshold,
-            bloomSoftKnee: lookExtras.bloomSoftKnee,
-            bloomIntensity: bloom,
-            stretch: stretch,
-            saturation: saturation,
-            spikeArms: lookExtras.spikeArms,
-            spikeLength: lookExtras.spikeLength,
-            spikeIntensity: spikeIntensity,
-            skyLevel: skyLevel,
-            noiseLevel: noiseLevel,
-            galaxyTint: galaxyTint)
+            brightness: look.brightness,
+            dustStrength: look.dustStrength,
+            starSize: look.starSize,
+            smoothingScale: look.smoothingScale,
+            minimumKernel: look.minimumKernel,
+            maximumKernel: look.maximumKernel,
+            bloomThreshold: look.bloomThreshold,
+            bloomSoftKnee: look.bloomSoftKnee,
+            bloomIntensity: look.bloomIntensity,
+            stretch: look.stretch,
+            saturation: look.saturation,
+            spikeArms: look.spikeArms,
+            spikeLength: look.spikeLength,
+            spikeIntensity: look.spikeIntensity,
+            skyLevel: look.skyLevel,
+            noiseLevel: look.noiseLevel,
+            galaxyTint: look.galaxyTint)
     }
 
-    /// Adopts a whole look. The panel has a slider for ten of its parts; the rest — kernel
-    /// sizes, the bloom knee, the diffraction pattern, the strength of the painted arms — are
-    /// kept here so that rebuilding the renderer does not quietly drop them back to default.
+    /// Adopts a whole look. The panel has a slider for ten of its parts and the rest — kernel
+    /// sizes, the bloom knee, the diffraction pattern, the strength of the painted arms — have
+    /// none, but they all live in the same value now, so there is nothing to keep in step.
     func adopt(_ named: RenderLook.Named) {
         lookName = named.id
-        let look = named.look
-        lookExtras = look
-        brightness = look.brightness
-        dustStrength = look.dustStrength
-        smoothingScale = look.smoothingScale
-        bloom = look.bloomIntensity
-        stretch = look.stretch
-        saturation = look.saturation
-        spikeIntensity = look.spikeIntensity
-        skyLevel = look.skyLevel
-        noiseLevel = look.noiseLevel
-        galaxyTint = look.galaxyTint
-        renderer?.apply(look)
-        redrawPreview()
+        look = named.look
     }
 
     /// Counted, because a rebuild that happens once looks exactly like one that happens every
@@ -1123,7 +1112,7 @@ final class SimulationModel: ObservableObject {
             renderer = try Renderer(
                 device: device, particles: seeded, settings: settings, externalPositions: bound)
             renderer?.setSmoothing(smoothing?.buffer)
-            renderer?.armPersistence = lookExtras.armPersistence
+            renderer?.apply(look)
             refreshSmoothing()
         } catch {
             failure = "\(error)"

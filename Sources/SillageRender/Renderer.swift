@@ -423,17 +423,6 @@ public final class Renderer {
         }
     }
 
-    public func setBrightness(_ brightness: Float) { settings.brightness = brightness }
-    public func setBloomIntensity(_ intensity: Float) { settings.bloomIntensity = intensity }
-    public func setDustStrength(_ strength: Float) { settings.dustStrength = strength }
-    public func setSmoothingScale(_ scale: Float) { settings.smoothingScale = scale }
-    public func setStretch(_ stretch: Float) { settings.stretch = stretch }
-    public func setSaturation(_ saturation: Float) { settings.saturation = saturation }
-    public func setSpikeIntensity(_ intensity: Float) { settings.spikeIntensity = intensity }
-    public func setSkyLevel(_ level: Float) { settings.skyLevel = level }
-    public func setNoiseLevel(_ level: Float) { settings.noiseLevel = level }
-    public func setGalaxyTint(_ tint: Float) { settings.galaxyTint = tint }
-
     /// Everything a frame may change on its own, in one go. Resolution, supersampling, bloom
     /// levels and the starfield are deliberately absent: those own textures and buffers, and
     /// changing them means a new renderer.
