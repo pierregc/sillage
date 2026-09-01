@@ -88,6 +88,9 @@ public final class MetalBarnesHutSolver: Solver {
     private var stepsSinceTree = 0
     private var haloCenters: [SIMD3<Float>]
     private var galaxyMotion: [SIMD3<Float>]
+    private var diskAxes: [SIMD3<Float>]
+    private var diskCoherence: [Float]
+    private var diskDisruption: [Float]
     private let centersLock = NSLock()
 
     public var positions: MTLBuffer { positionBuffer }
@@ -97,6 +100,16 @@ public final class MetalBarnesHutSolver: Solver {
         centersLock.lock()
         defer { centersLock.unlock() }
         return haloCenters
+    }
+
+    /// The axis each disk is currently turning about, and how much of its material still
+    /// turns that way. Both are measured from the particles rather than taken from the setup,
+    /// and both are what decides whether the disk is still cooled. Exposed because a run that
+    /// wrongly keeps cooling a wrecked disk looks perfectly healthy from anywhere else.
+    public var diskFrames: (axes: [SIMD3<Float>], coherence: [Float], disruption: [Float]) {
+        centersLock.lock()
+        defer { centersLock.unlock() }
+        return (diskAxes, diskCoherence, diskDisruption)
     }
 
     public var particles: ParticleSystem {
@@ -128,6 +141,9 @@ public final class MetalBarnesHutSolver: Solver {
         self.liveHalos = scene.hasLiveHalos
         self.haloCenters = scene.galaxies.map(\.position)
         self.galaxyMotion = scene.galaxies.map(\.velocity)
+        self.diskAxes = scene.galaxies.map { $0.orientation * SIMD3<Float>(0, 0, 1) * $0.spin.sign }
+        self.diskCoherence = [Float](repeating: 1, count: scene.galaxies.count)
+        self.diskDisruption = [Float](repeating: 0, count: scene.galaxies.count)
         self.scratchPositions = [SIMD3<Float>](repeating: .zero, count: self.count)
         var masses = particles.mass
         if masses.count != self.count {
@@ -250,14 +266,26 @@ public final class MetalBarnesHutSolver: Solver {
     private func encodeShedRandomMotion(into buffer: MTLCommandBuffer) {
         guard let dissipate else { return }
         let elapsed = scene.timeStep * Float(Physics.megayearsPerTimeUnit)
+        centersLock.lock()
+        let frames = (haloCenters, galaxyMotion, diskAxes, diskDisruption)
+        centersLock.unlock()
         var disks = scene.galaxies.enumerated().map { index, galaxy -> DiskCoolingGPU in
-            let centre = index < haloCenters.count ? haloCenters[index] : galaxy.position
-            let motion = index < galaxyMotion.count ? galaxyMotion[index] : galaxy.velocity
-            let axis = galaxy.orientation * SIMD3<Float>(0, 0, 1)
-            // The share of the gap to circular closed this step, from the time constant.
+            let centre = index < frames.0.count ? frames.0[index] : galaxy.position
+            let motion = index < frames.1.count ? frames.1[index] : galaxy.velocity
+            let axis =
+                index < frames.2.count
+                ? frames.2[index] : galaxy.orientation * SIMD3<Float>(0, 0, 1) * galaxy.spin.sign
+            // The share of the gap to circular closed this step, from the time constant,
+            // taken away again by whatever is stopping this from being a quiet disk: a
+            // companion close enough to be tearing at it now, and the memory of one that
+            // already has.
+            let disturbed = Self.smoothstep(
+                Self.tidalFloor, Self.tidalCeiling, tidalStress(on: index, centers: frames.0))
+            let wrecked = index < frames.3.count ? frames.3[index] : 0
+            let quiet = max((1 - disturbed) * (1 - wrecked), 0)
             let damping =
                 galaxy.dissipationTime > 0 && galaxy.kind != .globular
-                ? 1 - exp(-elapsed / galaxy.dissipationTime) : 0
+                ? quiet * (1 - exp(-elapsed / galaxy.dissipationTime)) : 0
             let edge = max(galaxy.diskScaleLength, 0.1)
             // The floor the disk cools to, taken from the equilibrium it was sampled in so it
             // holds the Toomre parameter the galaxy asked for rather than a number picked by
@@ -279,7 +307,7 @@ public final class MetalBarnesHutSolver: Solver {
             return DiskCoolingGPU(
                 center: SIMD4<Float>(centre.x, centre.y, centre.z, floorFraction),
                 motion: SIMD4<Float>(motion.x, motion.y, motion.z, damping),
-                axis: SIMD4<Float>(axis.x, axis.y, axis.z, galaxy.spin.sign),
+                axis: SIMD4<Float>(axis.x, axis.y, axis.z, 0),
                 // Generous on purpose. Halo and bulge are already excluded by component, so
                 // the only thing these limits keep out is material genuinely thrown clear —
                 // a tidal tail, not a disk star that has been heated. Cutting in at a few
@@ -289,6 +317,8 @@ public final class MetalBarnesHutSolver: Solver {
                 reach: SIMD4<Float>(edge * 5, edge * 9, edge, edge * 2))
         }
         if disks.isEmpty { return }
+        // Permanent once every disk is wrecked, which is where a merger ends up.
+        if disks.allSatisfy({ $0.motion.w <= 0 }) { return }
 
         var p = params
         encode(into: buffer, dissipate) { encoder in
@@ -380,6 +410,26 @@ public final class MetalBarnesHutSolver: Solver {
     /// in the interval, which is well inside what the opening angle already approximates.
     public static var treeReuse = 1
 
+    /// Particles a galaxy contributes to its own disk frame. The axis and the coherence are
+    /// mass-weighted sums over a hundred thousand-odd stars; fifty thousand of them give the
+    /// same answer, and this runs on every tree rebuild.
+    public static var frameSample = 50_000
+
+    /// Where a rotating disk stops counting as one, in ordered angular momentum over total.
+    /// Measured rather than guessed, and the margin is wide: an isolated spiral sits at 0.997
+    /// and stays within a thousandth of it for nine hundred megayears, while the remnant of
+    /// an equal-mass merger settles at 0.60 to 0.72 — it keeps the pair's orbital spin, so it
+    /// never approaches zero and a threshold picked for a non-rotating spheroid would never
+    /// fire. Below the floor the cooling is off for good; above the ceiling it runs in full.
+    public static var coherenceFloor: Float = 0.75
+    public static var coherenceCeiling: Float = 0.92
+
+    /// Where a companion stops leaving the disk alone, as the disk's radius over its tidal
+    /// radius. Below the floor the disk sits well inside the tidal radius and its gas is
+    /// undisturbed; past the ceiling the companion is cutting into the disk itself.
+    public static var tidalFloor: Float = 0.7
+    public static var tidalCeiling: Float = 1.4
+
     private func encodeIntegrate(into buffer: MTLCommandBuffer) {
         var p = params
         encode(into: buffer, kickDrift) { encoder in
@@ -414,6 +464,7 @@ public final class MetalBarnesHutSolver: Solver {
         tree.build(positions: positions, mass: mass)
         nodeCount = tree.nodes.count
         updateHaloCenters(positions: positions, mass: mass)
+        if dissipate != nil { updateDiskFrames(positions: positions, mass: mass) }
 
         let nodeLength = max(tree.nodes.count, 1) * MemoryLayout<BHNode>.stride
         if nodeBuffer == nil || nodeBuffer!.length < nodeLength {
@@ -470,6 +521,106 @@ public final class MetalBarnesHutSolver: Solver {
         centersLock.lock()
         haloCenters = updated
         centersLock.unlock()
+    }
+
+    /// The plane each disk is actually turning in, and how much of it still turns that way.
+    ///
+    /// Cooling towards the orientation the galaxy was *set up* with is a spring back to the
+    /// natal plane: a disk thrown out of it by an encounter gets pulled back into it, and
+    /// re-thins, which is the one thing a collisionless system cannot do. Measured on a run
+    /// of three galaxies, the inclined one heated from 0.24 kpc thick to 11.7 through
+    /// pericentre and was back to 1.04 four hundred megayears later, still within five degrees
+    /// of the plane it was born in and eighty-three from the remnant it was supposed to have
+    /// joined. The axis is now the mass-weighted angular momentum of the galaxy's own disk
+    /// material about its own moving centre, so it tumbles, precesses and warps with the disk
+    /// instead of holding it.
+    ///
+    /// `coherence` is |sum m l| / sum m |l|: one where every star turns the same way, near
+    /// zero for a spheroid whose angular momenta cancel. It is what says a disk has stopped
+    /// being a disk.
+    ///
+    /// Fifty thousand particles a galaxy answer both questions. Walking millions of them on
+    /// every tree rebuild would cost more than the cooling it feeds.
+    private func updateDiskFrames(positions: [SIMD3<Float>], mass: [Float]) {
+        let galaxies = scene.galaxies.count
+        guard galaxies > 0 else { return }
+        var angular = [SIMD3<Double>](repeating: .zero, count: galaxies)
+        var scalar = [Double](repeating: 0, count: galaxies)
+        var counted = [Int](repeating: 0, count: galaxies)
+        let velocities = velocityBuffer.contents().bindMemory(
+            to: SIMD3<Float>.self, capacity: count)
+        let limit = min(count, min(galaxyOf.count, componentOf.count))
+        let step = max(limit / (Self.frameSample * galaxies), 1)
+        for index in Swift.stride(from: 0, to: limit, by: step) {
+            let kind = componentOf[index]
+            // The same material the cooling touches, so the frame is the frame of the thing
+            // being cooled: no dark matter, and no bulge, which has no plane to speak of.
+            let dark = kind == ParticleComponent.halo.rawValue
+            if dark || kind == ParticleComponent.bulge.rawValue { continue }
+            let galaxy = Int(galaxyOf[index])
+            guard galaxy < galaxies else { continue }
+            let offset = SIMD3<Double>(positions[index] - haloCenters[galaxy])
+            let motion = SIMD3<Double>(velocities[index] - galaxyMotion[galaxy])
+            let moment = simd_cross(offset, motion) * Double(max(mass[index], 1e-20))
+            angular[galaxy] += moment
+            scalar[galaxy] += simd_length(moment)
+            counted[galaxy] += 1
+        }
+
+        centersLock.lock()
+        for galaxy in 0..<galaxies where counted[galaxy] > 0 {
+            let total = simd_length(angular[galaxy])
+            guard total > 1e-12, scalar[galaxy] > 1e-12 else { continue }
+            let axis = angular[galaxy] / total
+            diskAxes[galaxy] = SIMD3<Float>(Float(axis.x), Float(axis.y), Float(axis.z))
+            let coherence = Float(total / scalar[galaxy])
+            diskCoherence[galaxy] = coherence
+            // A ratchet rather than a reading. A disk that has been taken apart does not put
+            // itself back together: the gas that would rebuild one was shocked out of the
+            // remnant in the same encounter. Letting this recover is what makes a merged pair
+            // separate again — the remnant keeps a little net spin, that reads as a disk, and
+            // the cooling starts rebuilding whichever galaxy it belongs to.
+            // A globular has no ordered rotation to lose and is never cooled, so leaving its
+            // ratchet alone keeps the reading worth looking at rather than pinned at one.
+            guard scene.galaxies[galaxy].kind != .globular else { continue }
+            let lost = 1 - Self.smoothstep(Self.coherenceFloor, Self.coherenceCeiling, coherence)
+            diskDisruption[galaxy] = max(diskDisruption[galaxy], lost)
+        }
+        centersLock.unlock()
+    }
+
+    /// How hard the nearest companion is working on a disk, as the disk's own radius over its
+    /// tidal radius in that companion's field: r_t = d (M / 3 M_companion)^(1/3).
+    ///
+    /// Cooling stands in for gas sitting in a quiet cold layer and forming stars on circular
+    /// orbits. During an encounter that gas is being shocked, driven inward and burned, so
+    /// the stand-in has no business running: this is what takes the cooling off *while* the
+    /// galaxies are passing through each other, which is when the disk is meant to be
+    /// destroyed and when holding it together does the most damage. It comes back on if the
+    /// two separate again without wrecking each other, which is what a distant fly-by is.
+    ///
+    /// Scale-free, so a small satellite passing close does not switch off a large disk's
+    /// cooling the way an equal-mass companion does.
+    private func tidalStress(on index: Int, centers: [SIMD3<Float>]) -> Float {
+        let galaxy = scene.galaxies[index]
+        // Three scale lengths holds about four fifths of an exponential disk's mass, so it is
+        // the radius at which "the disk is inside its tidal radius" means the disk.
+        let radius = max(galaxy.diskScaleLength * 3, 0.1)
+        let mass = max(galaxy.potential.mass, 1e-6)
+        var worst: Float = 0
+        for other in scene.galaxies.indices where other != index {
+            let companion = max(scene.galaxies[other].potential.mass, 1e-6)
+            let separation = max(simd_distance(centers[index], centers[other]), 1e-3)
+            let tidalRadius = separation * cbrt(mass / (3 * companion))
+            worst = max(worst, radius / max(tidalRadius, 1e-3))
+        }
+        return worst
+    }
+
+    private static func smoothstep(_ low: Float, _ high: Float, _ x: Float) -> Float {
+        guard high > low else { return x < low ? 0 : 1 }
+        let t = min(max((x - low) / (high - low), 0), 1)
+        return t * t * (3 - 2 * t)
     }
 
     private func encodeAccelerations(into buffer: MTLCommandBuffer) {

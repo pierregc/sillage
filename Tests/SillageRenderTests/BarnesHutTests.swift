@@ -288,6 +288,128 @@ struct BarnesHutTests {
         #expect(cool > hot * 0.2)
     }
 
+    /// The plane the cooling pulls a disk towards has to be the plane the disk is *in*, not
+    /// the one it was configured with. Rotating the particles without touching the config
+    /// separates the two: `orientation` still says the disk is flat in z, and the frame has
+    /// to disagree.
+    @Test func theDiskFrameIsMeasuredRatherThanAssumed() throws {
+        var scene = SceneConfig.isolatedDisk(particleCount: 20_000)
+        scene.galaxies[0].spin = .retrograde
+        scene.timeStepScale = 8
+        scene.retune()
+
+        let tilt: Float = 1.1
+        let turn = simd_float3x3(
+            SIMD3<Float>(1, 0, 0),
+            SIMD3<Float>(0, cos(tilt), sin(tilt)),
+            SIMD3<Float>(0, -sin(tilt), cos(tilt)))
+        var particles = RestrictedSolver.sampleParticles(for: scene)
+        for index in 0..<particles.count {
+            particles.positions[index] = turn * particles.positions[index]
+            particles.velocities[index] = turn * particles.velocities[index]
+        }
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+
+        // Retrograde, so the sign is being checked too: an axis that has lost the sense of
+        // rotation comes back pointing the other way and would cool every star head-on.
+        let natal = scene.galaxies[0].orientation * SIMD3<Float>(0, 0, 1)
+        let expected = turn * natal * scene.galaxies[0].spin.sign
+        #expect(simd_dot(solver.diskFrames.axes[0], expected) > cos(3 * .pi / 180))
+
+        // And a disk left alone is neither disturbed nor written off. Both gates staying shut
+        // is what keeps dissipation working at all.
+        solver.step(count: 200)
+        #expect(solver.diskFrames.coherence[0] > 0.95)
+        #expect(solver.diskFrames.disruption[0] == 0)
+    }
+
+    /// A disk a merger has taken apart must stay taken apart.
+    ///
+    /// It did not. The cooling pulled disk stars towards a circular orbit about the axis the
+    /// galaxy was *configured* with, which is a spring back to the natal plane and the one
+    /// thing a collisionless system cannot do. On a three-galaxy run the steeply inclined disk
+    /// heated from 0.24 kpc thick to 11.7 through the encounter and was back to 1.04 four
+    /// hundred megayears later, still in the plane it was born in and eighty-three degrees
+    /// from the remnant it should have joined: a cold disk inside an elliptical, refusing to
+    /// mix.
+    ///
+    /// The primary is what this watches, because it is the cleanest statement of the fault.
+    /// A galaxy of a third its mass plunges through it, and its disk has to be left thicker
+    /// for it. With the cooling ungated it was not: on this scene, 0.62 kpc thick before the
+    /// encounter, 0.81 at its worst and back to 0.69 at the end — held near its birth
+    /// thickness right through a merger. It now reaches 1.13 and finishes at 1.12.
+    @Test func aMergerLeavesTheDisksHeated() throws {
+        let scene = SceneConfig(
+            name: "Inclined minor merger",
+            galaxies: [
+                GalaxyConfig(
+                    name: "Primary",
+                    particleCount: 18_000,
+                    potential: GalaxyPotential(profile: .hernquist, mass: 175, scaleRadius: 15),
+                    diskScaleLength: 12,
+                    diskTruncation: 5,
+                    diskThickness: 0.68,
+                    position: SIMD3<Float>(-22.4, 0, 0),
+                    velocity: SIMD3<Float>(0.2988, -0.112, 0)),
+                GalaxyConfig(
+                    name: "Secondary",
+                    particleCount: 9_000,
+                    kind: .disk,
+                    potential: GalaxyPotential(profile: .hernquist, mass: 58, scaleRadius: 11),
+                    diskScaleLength: 8.66,
+                    diskTruncation: 5,
+                    diskThickness: 0.29,
+                    position: SIMD3<Float>(67.6, 0, 0),
+                    velocity: SIMD3<Float>(-0.9013, 0.338, 0),
+                    // Steeply inclined, which is the geometry that made the fault obvious:
+                    // the disk came back to a plane at right angles to everything else.
+                    inclination: 1.32,
+                    positionAngle: 1.66),
+            ],
+            solver: .barnesHut,
+            seed: 156_567)
+        var tuned = scene
+        tuned.timeStepScale = 8
+        tuned.retune()
+
+        let particles = RestrictedSolver.sampleParticles(for: tuned)
+        let solver = try MetalBarnesHutSolver(scene: tuned, particles: particles)
+
+        /// RMS height of the primary's disk stars above its own plane, which is z: it starts
+        /// flat and stays where it is, so this needs no axis of its own.
+        func thickness() -> Float {
+            let system = solver.particles
+            let centre = solver.centers[0]
+            var total: Float = 0
+            var counted: Float = 0
+            for index in 0..<system.count
+            where system.galaxyIndex[index] == 0
+                && system.component[index] == ParticleComponent.star.rawValue
+            {
+                let height = system.positions[index].z - centre.z
+                total += height * height
+                counted += 1
+            }
+            return counted > 0 ? (total / counted).squareRoot() : 0
+        }
+
+        let myrPerStep = tuned.timeStep * Float(Physics.megayearsPerTimeUnit)
+        let leg = max(Int(40 / myrPerStep), 1)
+        let cold = thickness()
+        var hottest = cold
+        for _ in 0..<14 {
+            solver.step(count: leg)
+            hottest = max(hottest, thickness())
+        }
+        let final = thickness()
+
+        // Heated, and left heated. The ungated cooling gave 1.18 and 0.86 of these.
+        #expect(final > cold * 1.5)
+        #expect(final > hottest * 0.93)
+        // Because the companion's disk was written off rather than rebuilt.
+        #expect(solver.diskFrames.disruption[1] > 0.9)
+    }
+
     /// The force pass is dispatched in pieces so a very large scene does not hold the GPU
     /// for the length of one kernel. Every piece has to know where it starts: without that
     /// the second piece recomputes the first one's particles and leaves the rest of the scene
