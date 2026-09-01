@@ -27,7 +27,26 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     public var timeStep: Float
     /// Softening applied to the galaxy-galaxy pair force, in kpc.
     public var centerSoftening: Float
-    /// Barnes-Hut opening angle. Smaller is more accurate and slower.
+    /// Barnes-Hut opening angle. Smaller is more accurate and slower, and the trade is far
+    /// steeper than it looks. Measured at 400 000 particles, against direct summation:
+    ///
+    ///     theta   mean force error   force pass   whole step   momentum drift
+    ///     0.6            0.60 %         42.7 ms      67.0 ms       0.1376
+    ///     0.7            0.78 %         29.7 ms      54.4 ms       0.1342
+    ///     0.85           1.27 %         18.0 ms      42.4 ms       0.3128
+    ///     1.0            1.87 %         12.9 ms      37.3 ms          —
+    ///
+    /// 0.7 rather than the 0.6 this used to be, and not 0.85, because there is a knee between
+    /// them: momentum drift is flat to 0.7 and triples past it. That is the honest symptom of
+    /// the approximation, since a monopole force is not symmetric between a particle and the
+    /// cell standing in for its neighbours, and nothing else measured here shows it.
+    ///
+    /// Small-scale structure does not pay for a wider angle, and the reason is worth stating:
+    /// an opening angle only decides how far a cell must be before its monopole stands in for
+    /// it, so it approximates the *far* field. Clumping is set by the near field, summed
+    /// particle by particle inside a leaf whatever this is. The clumping measure holds flat
+    /// across 0.6, 0.85 and 1.0 — unlike a stale tree, which corrupts the near grouping itself
+    /// and takes forty per cent of it.
     public var openingAngle: Float
     /// Force softening between particles, in kpc. It should sit near the mean interparticle
     /// separation: too small and two-body encounters heat the disk, too large and structure
@@ -48,7 +67,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
         seed: UInt64 = 1,
         timeStep: Float = 0.01,
         centerSoftening: Float = 0.5,
-        openingAngle: Float = 0.6,
+        openingAngle: Float = 0.7,
         softening: Float = 0.09
     ) {
         self.name = name
