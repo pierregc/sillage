@@ -261,33 +261,33 @@ struct ControlPanelContent: View {
             Divider().padding(.vertical, 2)
             Text("Lumière").font(.headline)
             ParameterSlider(
-                title: "Luminosité", value: $model.brightness, range: 0.02...2.0, format: "%.2f")
+                title: "Luminosité", value: $model.look.brightness, range: 0.02...2.0, format: "%.2f")
             ParameterSlider(
-                title: "Étirement logarithmique", value: $model.stretch, range: 0...60,
+                title: "Étirement logarithmique", value: $model.look.stretch, range: 0...60,
                 format: "%.0f")
-            ParameterSlider(title: "Saturation", value: $model.saturation, range: 0...3)
-            ParameterSlider(title: "Teinte par galaxie", value: $model.galaxyTint, range: 0...1)
+            ParameterSlider(title: "Saturation", value: $model.look.saturation, range: 0...3)
+            ParameterSlider(title: "Teinte par galaxie", value: $model.look.galaxyTint, range: 0...1)
             Text(
                 "0 : chaque étoile a la couleur de sa population. 1 : chaque galaxie garde la sienne, ce qui rend lisibles les étoiles qu'elle perd."
             )
             .font(.caption2)
             .foregroundStyle(Palette.secondary)
             ParameterSlider(
-                title: "Opacité des poussières", value: $model.dustStrength, range: 0...0.8,
+                title: "Opacité des poussières", value: $model.look.dustStrength, range: 0...0.8,
                 format: "%.3f")
 
             Divider()
             Text("Instrument").font(.headline)
             ParameterSlider(
-                title: "Lissage des étoiles", value: $model.smoothingScale,
+                title: "Lissage des étoiles", value: $model.look.smoothingScale,
                 range: 0.4...5.0)
-            ParameterSlider(title: "Halo lumineux", value: $model.bloom, range: 0...2)
+            ParameterSlider(title: "Halo lumineux", value: $model.look.bloomIntensity, range: 0...2)
             ParameterSlider(
-                title: "Aigrettes de diffraction", value: $model.spikeIntensity, range: 0...1.5)
+                title: "Aigrettes de diffraction", value: $model.look.spikeIntensity, range: 0...1.5)
             ParameterSlider(
-                title: "Fond de ciel", value: $model.skyLevel, range: 0...0.01, format: "%.4f")
+                title: "Fond de ciel", value: $model.look.skyLevel, range: 0...0.01, format: "%.4f")
             ParameterSlider(
-                title: "Bruit de détecteur", value: $model.noiseLevel, range: 0...0.01,
+                title: "Bruit de détecteur", value: $model.look.noiseLevel, range: 0...0.01,
                 format: "%.4f")
             Picker("Suréchantillonnage", selection: $model.supersample) {
                 Text("1×").tag(1)

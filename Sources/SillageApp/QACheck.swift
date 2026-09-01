@@ -361,8 +361,8 @@ enum QACheck {
                 "la prise rouverte défile", model.playbackPosition > 0,
                 String(format: "position %.1f", model.playbackPosition))
             // The whole point of a file rather than a video: the look is still live.
-            model.brightness = 0.4
-            model.galaxyTint = 0.9
+            model.look.brightness = 0.4
+            model.look.galaxyTint = 0.9
             model.drawOnce()
             report.check("les réglages d'image restent vifs", model.failure == nil)
             report.check(
