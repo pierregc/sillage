@@ -34,6 +34,11 @@ public final class Recording: @unchecked Sendable {
     /// these, so without them a replay draws the arms wherever the galaxies ended up rather
     /// than where they were.
     private var storedCenters: [SIMD3<Float>] = []
+    /// And which way each disk was turning, and how much of a disk was left of it. Measured
+    /// by the solver, and there is no solver behind a replay, so a take that did not carry
+    /// this would paint the arms in the plane the scene was written with — the very thing
+    /// the live run stopped doing.
+    private var storedDisks: [DiskState] = []
     /// A run captures on the simulation queue and is read back on the main actor. The two
     /// overlap by exactly one batch when a capture is stopped, which is enough to be reading
     /// an array while it grows.
@@ -56,12 +61,13 @@ public final class Recording: @unchecked Sendable {
     /// Rebuilt from a file rather than captured, over memory the file still owns.
     public init(
         particleCount: Int, galaxyCount: Int, frames: [Frame], centers: [SIMD3<Float>],
-        mapped: Data
+        disks: [DiskState] = [], mapped: Data
     ) {
         self.particleCount = max(particleCount, 1)
         self.galaxyCount = max(galaxyCount, 1)
         self.storedFrames = frames
         self.storedCenters = centers
+        self.storedDisks = disks
         self.mapped = mapped
     }
 
@@ -74,6 +80,7 @@ public final class Recording: @unchecked Sendable {
             storage.reserveCapacity(frames * particleCount * 3)
             storedFrames.reserveCapacity(frames)
             storedCenters.reserveCapacity(frames * galaxyCount)
+            storedDisks.reserveCapacity(frames * galaxyCount)
         }
     }
 
@@ -104,10 +111,22 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
+    /// What each galaxy's disk was doing on a given frame. Empty for a take written before
+    /// the field existed, which the renderer reads as "fall back to the natal plane".
+    public func disks(at index: Int) -> [DiskState] {
+        locked {
+            guard !storedFrames.isEmpty else { return [] }
+            let frame = min(max(index, 0), storedFrames.count - 1)
+            let base = frame * galaxyCount
+            guard base + galaxyCount <= storedDisks.count else { return [] }
+            return Array(storedDisks[base..<(base + galaxyCount)])
+        }
+    }
+
     /// The small parts a file needs, taken under the lock in one go. The positions are far
     /// too large to hand back as an array and go out through `withPositionBytes`.
-    public func contents() -> (frames: [Frame], centers: [SIMD3<Float>]) {
-        locked { (storedFrames, storedCenters) }
+    public func contents() -> (frames: [Frame], centers: [SIMD3<Float>], disks: [DiskState]) {
+        locked { (storedFrames, storedCenters, storedDisks) }
     }
 
     private func locked<T>(_ body: () -> T) -> T {
@@ -141,7 +160,7 @@ public final class Recording: @unchecked Sendable {
     @discardableResult
     public func offer(
         positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>],
-        budget: Int
+        disks: [DiskState] = [], budget: Int
     ) -> Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -156,7 +175,7 @@ public final class Recording: @unchecked Sendable {
             halve()
             stride *= 2
         }
-        appendLocked(positions: positions, time: time, centers: centers)
+        appendLocked(positions: positions, time: time, centers: centers, disks: disks)
         return stride > 1
     }
 
@@ -178,17 +197,22 @@ public final class Recording: @unchecked Sendable {
 
         var frames: [Frame] = []
         var centers: [SIMD3<Float>] = []
+        var disks: [DiskState] = []
         frames.reserveCapacity(kept)
         centers.reserveCapacity(kept * galaxyCount)
+        disks.reserveCapacity(kept * galaxyCount)
         for frame in Swift.stride(from: 0, to: storedFrames.count, by: 2) {
             frames.append(storedFrames[frame])
             let base = frame * galaxyCount
             for galaxy in 0..<galaxyCount {
-                centers.append(base + galaxy < storedCenters.count ? storedCenters[base + galaxy] : .zero)
+                centers.append(
+                    base + galaxy < storedCenters.count ? storedCenters[base + galaxy] : .zero)
+                if base + galaxy < storedDisks.count { disks.append(storedDisks[base + galaxy]) }
             }
         }
         storedFrames = frames
         storedCenters = centers
+        storedDisks = disks
     }
 
     private func heldBytes() -> Int {
@@ -196,16 +220,18 @@ public final class Recording: @unchecked Sendable {
     }
 
     public func append(
-        positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>] = []
+        positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>] = [],
+        disks: [DiskState] = []
     ) {
         lock.lock()
         defer { lock.unlock() }
         guard !closed, mapped == nil else { return }
-        appendLocked(positions: positions, time: time, centers: centers)
+        appendLocked(positions: positions, time: time, centers: centers, disks: disks)
     }
 
     private func appendLocked(
-        positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>]
+        positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>],
+        disks: [DiskState]
     ) {
         var lower = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
         var upper = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
@@ -233,6 +259,9 @@ public final class Recording: @unchecked Sendable {
         storedFrames.append(Frame(time: time, origin: lower, extent: extent))
         for galaxy in 0..<galaxyCount {
             storedCenters.append(galaxy < centers.count ? centers[galaxy] : .zero)
+            storedDisks.append(
+                galaxy < disks.count
+                    ? disks[galaxy] : DiskState(axis: SIMD3<Float>(0, 0, 1)))
         }
     }
 
@@ -241,6 +270,7 @@ public final class Recording: @unchecked Sendable {
         defer { lock.unlock() }
         storedFrames.removeAll(keepingCapacity: true)
         storedCenters.removeAll(keepingCapacity: true)
+        storedDisks.removeAll(keepingCapacity: true)
         storage.removeAll(keepingCapacity: true)
         mapped = nil
     }
