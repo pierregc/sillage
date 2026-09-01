@@ -106,9 +106,7 @@ public final class MetalBarnesHutSolver: Solver {
     private var stepsSinceFormation = 0
     private var haloCenters: [SIMD3<Float>]
     private var galaxyMotion: [SIMD3<Float>]
-    private var diskAxes: [SIMD3<Float>]
-    private var diskCoherence: [Float]
-    private var diskDisruption: [Float]
+    private var diskStates: [DiskState]
     private let centersLock = NSLock()
 
     public var positions: MTLBuffer { positionBuffer }
@@ -125,10 +123,10 @@ public final class MetalBarnesHutSolver: Solver {
     /// turns that way. Both are measured from the particles rather than taken from the setup,
     /// and both are what decides whether the disk is still cooled. Exposed because a run that
     /// wrongly keeps cooling a wrecked disk looks perfectly healthy from anywhere else.
-    public var diskFrames: (axes: [SIMD3<Float>], coherence: [Float], disruption: [Float]) {
+    public var diskFrames: [DiskState] {
         centersLock.lock()
         defer { centersLock.unlock() }
-        return (diskAxes, diskCoherence, diskDisruption)
+        return diskStates
     }
 
     public var particles: ParticleSystem {
@@ -162,9 +160,7 @@ public final class MetalBarnesHutSolver: Solver {
         self.liveHalos = scene.hasLiveHalos
         self.haloCenters = scene.galaxies.map(\.position)
         self.galaxyMotion = scene.galaxies.map(\.velocity)
-        self.diskAxes = scene.galaxies.map { $0.orientation * SIMD3<Float>(0, 0, 1) * $0.spin.sign }
-        self.diskCoherence = [Float](repeating: 1, count: scene.galaxies.count)
-        self.diskDisruption = [Float](repeating: 0, count: scene.galaxies.count)
+        self.diskStates = DiskState.natal(scene)
         self.scratchPositions = [SIMD3<Float>](repeating: .zero, count: self.count)
         var masses = particles.mass
         if masses.count != self.count {
@@ -332,21 +328,20 @@ public final class MetalBarnesHutSolver: Solver {
         guard let dissipate else { return }
         let elapsed = scene.timeStep * Float(Physics.megayearsPerTimeUnit)
         centersLock.lock()
-        let frames = (haloCenters, galaxyMotion, diskAxes, diskDisruption)
+        let frames = (haloCenters, galaxyMotion, diskStates)
         centersLock.unlock()
         var disks = scene.galaxies.enumerated().map { index, galaxy -> DiskCoolingGPU in
             let centre = index < frames.0.count ? frames.0[index] : galaxy.position
             let motion = index < frames.1.count ? frames.1[index] : galaxy.velocity
-            let axis =
-                index < frames.2.count
-                ? frames.2[index] : galaxy.orientation * SIMD3<Float>(0, 0, 1) * galaxy.spin.sign
+            let state = index < frames.2.count ? frames.2[index] : DiskState.natal(galaxy)
+            let axis = state.axis
             // The share of the gap to circular closed this step, from the time constant,
             // taken away again by whatever is stopping this from being a quiet disk: a
             // companion close enough to be tearing at it now, and the memory of one that
             // already has.
             let disturbed = Self.smoothstep(
                 Self.tidalFloor, Self.tidalCeiling, tidalStress(on: index, centers: frames.0))
-            let wrecked = index < frames.3.count ? frames.3[index] : 0
+            let wrecked = state.disruption
             let quiet = max((1 - disturbed) * (1 - wrecked), 0)
             let damping =
                 galaxy.dissipationTime > 0 && galaxy.kind != .globular
@@ -480,15 +475,6 @@ public final class MetalBarnesHutSolver: Solver {
     /// same answer, and this runs on every tree rebuild.
     public static var frameSample = 50_000
 
-    /// Where a rotating disk stops counting as one, in ordered angular momentum over total.
-    /// Measured rather than guessed, and the margin is wide: an isolated spiral sits at 0.997
-    /// and stays within a thousandth of it for nine hundred megayears, while the remnant of
-    /// an equal-mass merger settles at 0.60 to 0.72 — it keeps the pair's orbital spin, so it
-    /// never approaches zero and a threshold picked for a non-rotating spheroid would never
-    /// fire. Below the floor the cooling is off for good; above the ceiling it runs in full.
-    public static var coherenceFloor: Float = 0.75
-    public static var coherenceCeiling: Float = 0.92
-
     /// Where a companion stops leaving the disk alone, as the disk's radius over its tidal
     /// radius. Below the floor the disk sits well inside the tidal radius and its gas is
     /// undisturbed; past the ceiling the companion is cutting into the disk itself.
@@ -611,9 +597,13 @@ public final class MetalBarnesHutSolver: Solver {
         guard galaxies > 0 else { return }
         var angular = [SIMD3<Double>](repeating: .zero, count: galaxies)
         var scalar = [Double](repeating: 0, count: galaxies)
-        var counted = [Int](repeating: 0, count: galaxies)
+        var height = [Double](repeating: 0, count: galaxies)
+        var across = [Double](repeating: 0, count: galaxies)
         let velocities = velocityBuffer.contents().bindMemory(
             to: SIMD3<Float>.self, capacity: count)
+        centersLock.lock()
+        let plane = diskStates.map(\.axis)
+        centersLock.unlock()
         let limit = min(count, min(galaxyOf.count, componentOf.count))
         let step = max(limit / (Self.frameSample * galaxies), 1)
         for index in Swift.stride(from: 0, to: limit, by: step) {
@@ -626,30 +616,27 @@ public final class MetalBarnesHutSolver: Solver {
             guard galaxy < galaxies else { continue }
             let offset = SIMD3<Double>(positions[index] - haloCenters[galaxy])
             let motion = SIMD3<Double>(velocities[index] - galaxyMotion[galaxy])
-            let moment = simd_cross(offset, motion) * Double(max(mass[index], 1e-20))
-            angular[galaxy] += moment
-            scalar[galaxy] += simd_length(moment)
-            counted[galaxy] += 1
+            let weight = Double(max(mass[index], 1e-20))
+            angular[galaxy] += simd_cross(offset, motion) * weight
+            // Against m|r||v| rather than m|r x v|. The cross product is already blind to
+            // radial motion, so normalising by its own magnitude asks only whether the
+            // angular momenta point the same way and answers yes for a swarm of plunging
+            // radial orbits. What is wanted is whether the material is rotationally
+            // supported, and this is the ratio that says so.
+            scalar[galaxy] += simd_length(offset) * simd_length(motion) * weight
+            let z = simd_dot(offset, SIMD3<Double>(plane[galaxy]))
+            height[galaxy] += z * z * weight
+            across[galaxy] += simd_length_squared(offset) * weight
         }
 
         centersLock.lock()
-        for galaxy in 0..<galaxies where counted[galaxy] > 0 {
-            let total = simd_length(angular[galaxy])
-            guard total > 1e-12, scalar[galaxy] > 1e-12 else { continue }
-            let axis = angular[galaxy] / total
-            diskAxes[galaxy] = SIMD3<Float>(Float(axis.x), Float(axis.y), Float(axis.z))
-            let coherence = Float(total / scalar[galaxy])
-            diskCoherence[galaxy] = coherence
-            // A ratchet rather than a reading. A disk that has been taken apart does not put
-            // itself back together: the gas that would rebuild one was shocked out of the
-            // remnant in the same encounter. Letting this recover is what makes a merged pair
-            // separate again — the remnant keeps a little net spin, that reads as a disk, and
-            // the cooling starts rebuilding whichever galaxy it belongs to.
+        for galaxy in 0..<galaxies {
             // A globular has no ordered rotation to lose and is never cooled, so leaving its
-            // ratchet alone keeps the reading worth looking at rather than pinned at one.
+            // state alone keeps the reading worth looking at rather than pinned at one.
             guard scene.galaxies[galaxy].kind != .globular else { continue }
-            let lost = 1 - Self.smoothstep(Self.coherenceFloor, Self.coherenceCeiling, coherence)
-            diskDisruption[galaxy] = max(diskDisruption[galaxy], lost)
+            diskStates[galaxy].fold(
+                momentum: angular[galaxy], scalar: scalar[galaxy],
+                height: height[galaxy], across: across[galaxy])
         }
         centersLock.unlock()
     }

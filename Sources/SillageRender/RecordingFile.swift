@@ -19,6 +19,7 @@ import simd
 ///     formation                        particleCount floats, version 2 and up
 ///     component, galaxy                particleCount 32-bit words each
 ///     frames                           frameCount x 8 floats
+///     disk states                      frameCount x galaxyCount x 4 floats, version 3 and up
 ///     positions                        frameCount x particleCount x 3 x 16 bits
 ///
 /// The bulk sits at the end so it can be written and read as one run of bytes, and the file
@@ -30,7 +31,13 @@ public enum RecordingFile {
     /// 2 adds the per-particle formation times. Version 1 is still read: a run made before
     /// there was any star formation had none to record, so every particle in one is simply as
     /// old as the galaxy, which is exactly what the sentinel says.
-    private static let version: UInt64 = 2
+    /// 3 adds the per-frame disk states: the plane each galaxy's disk actually turns in and
+    /// how much of a disk is left of it. Four floats per galaxy per frame against six bytes
+    /// per particle per frame, so on any take worth keeping it is not measurable. It has to be
+    /// stored rather than derived, because a replay has no solver to measure it and the arms
+    /// are painted into the plane it names: falling back to the scene's natal plane replays a
+    /// merged spiral with its arms still in it.
+    private static let version: UInt64 = 3
     private static let oldestReadableVersion: UInt64 = 1
 
     public struct Header: Codable {
@@ -123,6 +130,26 @@ public enum RecordingFile {
             }
             try handle.write(contentsOf: bytes(of: rest))
         }
+        // The disk states, every galaxy on every frame. Field by field for the same reason the
+        // frames are: a SIMD3 carries padding a file must not depend on. Only the two things
+        // the renderer reads are kept — the coherence and its reference are the solver's
+        // working, and nothing measures anything during a replay.
+        var disks: [Float] = []
+        disks.reserveCapacity(contents.frames.count * recording.galaxyCount * 4)
+        for index in contents.frames.indices {
+            for galaxy in 0..<recording.galaxyCount {
+                let slot = index * recording.galaxyCount + galaxy
+                let fallback =
+                    galaxy < scene.galaxies.count
+                    ? DiskState.natal(scene.galaxies[galaxy])
+                    : DiskState(axis: SIMD3<Float>(0, 0, 1))
+                let state = slot < contents.disks.count ? contents.disks[slot] : fallback
+                disks.append(
+                    contentsOf: [state.axis.x, state.axis.y, state.axis.z, state.disruption])
+            }
+        }
+        try handle.write(contentsOf: bytes(of: disks))
+
         // Written straight out of the take's own memory, in bounded pieces. Copying it into
         // a Data first meant a second copy of the whole run: at two gigabytes held, saving
         // cost another two.
@@ -216,6 +243,19 @@ public enum RecordingFile {
                 }
             }
         }
+        var disks: [DiskState] = []
+        if version >= 3 {
+            let fields = try take(Float.self, header.frameCount * galaxies * 4)
+            disks.reserveCapacity(header.frameCount * galaxies)
+            for slot in 0..<(header.frameCount * galaxies) {
+                let base = slot * 4
+                disks.append(
+                    DiskState(
+                        axis: SIMD3<Float>(fields[base], fields[base + 1], fields[base + 2]),
+                        disruption: fields[base + 3]))
+            }
+        }
+
         // The positions stay in the mapping rather than being copied into an array: a take of
         // several gigabytes should cost the pages that are actually looked at.
         let length = header.frameCount * count * 3 * MemoryLayout<UInt16>.size
@@ -224,7 +264,7 @@ public enum RecordingFile {
 
         let recording = Recording(
             particleCount: count, galaxyCount: galaxies, frames: frames, centers: centers,
-            mapped: positions)
+            disks: disks, mapped: positions)
         // The renderer wants somewhere to start; the first frame is as good as it gets and
         // costs one decode.
         particles.positions = recording.positions(at: 0)

@@ -231,6 +231,11 @@ final class SimulationModel: ObservableObject {
     static let previewBudget = 350_000
     private var playbackPositions: MTLBuffer?
     private var playbackCenters: [SIMD3<Float>] = []
+    var playbackDisks: [DiskState] = []
+    /// Empty for the tracer solver, which measures nothing of the kind.
+    var solverDisks: [DiskState] {
+        (solver as? MetalBarnesHutSolver)?.diskFrames ?? []
+    }
     /// Identifies the current live stepping chain. Bumping it retires whatever is running.
     private var liveGeneration = 0
     /// Same idea for the sampling job, which a second launch can supersede mid-flight.
@@ -540,7 +545,8 @@ final class SimulationModel: ObservableObject {
                 let positions = solver.positions.contents().bindMemory(
                     to: SIMD3<Float>.self, capacity: reel.particleCount)
                 full = reel.offer(
-                    positions: positions, time: time, centers: solver.centers, budget: budget)
+                    positions: positions, time: time, centers: solver.centers,
+                    disks: (solver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: budget)
                 frames = reel.count
                 bytes = reel.byteCount
                 interval = reel.stride
@@ -597,7 +603,8 @@ final class SimulationModel: ObservableObject {
         reel.reserve(frames: budgetedFrames)
         let positions = solver.positions.contents().bindMemory(
             to: SIMD3<Float>.self, capacity: particleCount)
-        reel.append(positions: positions, time: solver.time, centers: solver.centers)
+        reel.append(
+            positions: positions, time: solver.time, centers: solver.centers, disks: solverDisks)
         recording = reel
         capturedFrames = reel.count
         capturedBytes = reel.byteCount
@@ -988,6 +995,7 @@ final class SimulationModel: ObservableObject {
             from: snapshots.buffer, blend: blend, into: positions)
         elapsedMyr = Double(first.time) * Physics.megayearsPerTimeUnit
         playbackCenters = recording.centers(at: index)
+        playbackDisks = recording.disks(at: index)
     }
 
     /// Runs the exact model path a frame takes, but offscreen. Used by `--selftest` so the
@@ -1007,7 +1015,7 @@ final class SimulationModel: ObservableObject {
         renderer.setDiskFrames(
             DiskFrame.make(
                 scene: scene, centers: solver.centers, time: solver.time,
-                strength: renderer.armPersistence))
+                strength: renderer.armPersistence, disks: solverDisks))
         return renderer.render(camera: activeCamera)
     }
 
@@ -1050,11 +1058,16 @@ final class SimulationModel: ObservableObject {
             mode == .playback && !playbackCenters.isEmpty
             ? playbackCenters : (solver?.centers ?? scene.galaxies.map(\.position))
         renderer.time = Float(elapsedMyr / Physics.megayearsPerTimeUnit)
+        // What the solver has measured of each disk while running, and what the take recorded
+        // of it on playback: a merged spiral must not keep painting arms into a plane that
+        // stopped existing.
+        let disks =
+            mode == .playback && !playbackDisks.isEmpty ? playbackDisks : solverDisks
         renderer.setDiskFrames(
             DiskFrame.make(
                 scene: scene, centers: centers,
                 time: renderer.time,
-                strength: renderer.armPersistence))
+                strength: renderer.armPersistence, disks: disks))
         renderer.present(camera: activeCamera, drawable: drawable)
         if renderer.lastGPUMilliseconds > 0 {
             gpuTimes.append(renderer.lastGPUMilliseconds)

@@ -314,13 +314,15 @@ struct BarnesHutTests {
         // rotation comes back pointing the other way and would cool every star head-on.
         let natal = scene.galaxies[0].orientation * SIMD3<Float>(0, 0, 1)
         let expected = turn * natal * scene.galaxies[0].spin.sign
-        #expect(simd_dot(solver.diskFrames.axes[0], expected) > cos(3 * .pi / 180))
+        #expect(simd_dot(solver.diskFrames[0].axis, expected) > cos(3 * .pi / 180))
 
         // And a disk left alone is neither disturbed nor written off. Both gates staying shut
         // is what keeps dissipation working at all.
         solver.step(count: 200)
-        #expect(solver.diskFrames.coherence[0] > 0.95)
-        #expect(solver.diskFrames.disruption[0] == 0)
+        // Against its own starting order, since a disk's absolute figure depends on how thick
+        // it was laid down.
+        #expect(solver.diskFrames[0].coherence > solver.diskFrames[0].reference * 0.9)
+        #expect(solver.diskFrames[0].disruption == 0)
     }
 
     /// A disk a merger has taken apart must stay taken apart.
@@ -407,7 +409,7 @@ struct BarnesHutTests {
         #expect(final > cold * 1.5)
         #expect(final > hottest * 0.93)
         // Because the companion's disk was written off rather than rebuilt.
-        #expect(solver.diskFrames.disruption[1] > 0.9)
+        #expect(solver.diskFrames[1].disruption > 0.9)
     }
 
     /// The force pass is dispatched in pieces so a very large scene does not hold the GPU
