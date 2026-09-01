@@ -30,6 +30,7 @@ public final class MetalSolver: Solver {
     private let queue: MTLCommandQueue
     private let pipeline: MTLComputePipelineState
     private let positionBuffer: MTLBuffer
+    private let formationBuffer: MTLBuffer
     private let velocityBuffer: MTLBuffer
     private var galaxyCenters: GalaxyCenters
     private let centersLock = NSLock()
@@ -37,6 +38,7 @@ public final class MetalSolver: Solver {
     private let count: Int
 
     public var positions: MTLBuffer { positionBuffer }
+    public var formation: MTLBuffer { formationBuffer }
     /// Advanced by whichever queue is stepping, read by the renderer on the main thread.
     public var centers: [SIMD3<Float>] {
         centersLock.lock()
@@ -100,12 +102,18 @@ public final class MetalSolver: Solver {
             let positionBuffer = device.makeBuffer(
                 length: count * stride, options: .storageModeShared),
             let velocityBuffer = device.makeBuffer(
-                length: count * stride, options: .storageModeShared)
+                length: count * stride, options: .storageModeShared),
+            let formationBuffer = device.makeBuffer(
+                bytes: particles.formation.count == count
+                    ? particles.formation
+                    : [Float](repeating: ParticleSystem.ancient, count: count),
+                length: count * 4, options: .storageModeShared)
         else {
             throw RenderError.textureAllocation
         }
         self.positionBuffer = positionBuffer
         self.velocityBuffer = velocityBuffer
+        self.formationBuffer = formationBuffer
 
         if !particles.positions.isEmpty {
             particles.positions.withUnsafeBytes {
@@ -181,6 +189,9 @@ public final class MetalSolver: Solver {
 /// frame a fraction of a step stale, which is invisible in a point cloud.
 public protocol GPUSolver: Solver, Sendable {
     var positions: MTLBuffer { get }
+    /// When each particle's stars formed. Fixed for a tracer run, which has no gas rule and
+    /// no way to compress anything; written as the run goes for a self-gravitating one.
+    var formation: MTLBuffer { get }
 }
 
 extension MetalSolver: GPUSolver, @unchecked Sendable {}

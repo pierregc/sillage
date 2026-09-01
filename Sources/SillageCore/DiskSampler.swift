@@ -516,13 +516,25 @@ public enum DiskSampler {
                 (0.45 + 1.5 * generator.uniform() * generator.uniform())
                 * max(taper, 0.02)
 
+            // When this particle's stars formed. The disk's own stars are a composite
+            // population already in steady state, so they are `ancient` and their colour does
+            // not move; dust is the gas reservoir and has made nothing yet.
+            var formation = ParticleSystem.ancient
             switch component {
             case .hiiRegion:
                 population = 1
                 brightness = (2.5 + 5 * generator.uniform()) * max(taper, 0.02)
+                // A galaxy does not start the run having formed nothing. At a constant rate
+                // the ages of what it has already made are uniform, so they are drawn that
+                // way: a few knots still ionised, most of them well past it and on their way
+                // into the disk's own population.
+                formation =
+                    -generator.uniform() * StarFormation.seedSpreadMyr
+                    / Float(Physics.megayearsPerTimeUnit)
             case .dust:
                 population = 0
                 brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.02)
+                formation = ParticleSystem.unformed
             case .star, .halo, .bulge:
                 break
             }
@@ -534,6 +546,7 @@ public enum DiskSampler {
                 radius: radius,
                 population: population,
                 luminosity: brightness,
+                formation: formation,
                 component: component,
                 mass: particleMass
             )

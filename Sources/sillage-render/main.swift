@@ -87,7 +87,8 @@ let gpuSolver: (any GPUSolver)? =
     backend == "cpu" ? nil : try GPUSolverFactory.make(scene: scene, particles: seeded)
 let solver: any Solver = gpuSolver ?? RestrictedSolver(scene: scene, particles: seeded)
 let renderer = try Renderer(
-    particles: seeded, settings: settings, externalPositions: gpuSolver?.positions)
+    particles: seeded, settings: settings, externalPositions: gpuSolver?.positions,
+    externalFormation: gpuSolver?.formation)
 // Each particle's kernel spans its own local interparticle spacing, so the surface stays
 // continuous instead of resolving the sampling.
 let smoothing = try SmoothingField(device: renderer.device, particleCount: seeded.count)
@@ -128,6 +129,7 @@ for frame in 0..<frames {
     }
 
     smoothing.update(positions: solver.particles.positions)
+    renderer.time = solver.time
     renderer.setDiskFrames(
         DiskFrame.make(
             scene: scene, centers: solver.centers, time: solver.time,

@@ -153,6 +153,136 @@ enum BarnesHutShaders {
             velocities[i] = target + peculiar * (cooled / random);
         }
 
+        struct SFParams {
+            float efficiency;
+            float threshold;
+            float timeStep;
+            float time;
+            float gravitationalConstant;
+            float compressionBoost;
+            float compressionFloor;
+            uint seed;
+            uint nodeCount;
+        };
+
+        // A unit float from two integers. Per particle and per step, so a knot forming is an
+        // independent draw rather than the same particles winning every time.
+        static float hashUnit(uint a, uint b) {
+            uint h = a * 747796405u + b * 2891336453u;
+            h = (h ^ (h >> 16u)) * 2246822519u;
+            h = (h ^ (h >> 13u)) * 3266489917u;
+            h ^= h >> 16u;
+            return float(h) * (1.0 / 4294967296.0);
+        }
+
+        // Turns gas into stars where it has been compressed, one thread per tree node.
+        //
+        // The tree already holds the only thing this needs. A leaf is a cell of known width
+        // holding known mass, which is a density estimate for free — no neighbour search, no
+        // second tree, and it is the same estimator everywhere so a nucleus and a tail are
+        // being compared on the same footing.
+        //
+        // The mass counted is the visible material only. Dark matter is three particles in
+        // five and most of a leaf's weight, and none of it is gas: including it would make the
+        // rate follow the halo rather than the disk, and would light up the middle of every
+        // galaxy from the first step.
+        //
+        // The rule is Schmidt's. A fixed efficiency per free-fall time, with
+        // t_ff = sqrt(3 pi / 32 G rho), so the chance a given gas particle makes its stars in
+        // one step goes as the square root of the density around it. Below a threshold nothing
+        // forms at all, which is what keeps the outskirts dark: without one the whole disk
+        // slowly turns into knots, evenly, which is the opposite of what an encounter shows.
+        kernel void bhFormStars(device float *formation [[buffer(0)]],
+                                device const uint *component [[buffer(1)]],
+                                device const float *mass [[buffer(2)]],
+                                device const BHNode *nodes [[buffer(3)]],
+                                device const uint *order [[buffer(4)]],
+                                constant SFParams &s [[buffer(5)]],
+                                device const float3 *positions [[buffer(6)]],
+                                device const float3 *velocities [[buffer(7)]],
+                                uint n [[thread_position_in_grid]]) {
+            if (n >= s.nodeCount) { return; }
+            BHNode node = nodes[n];
+            // A positive count is a branch; a leaf carries minus the particles it holds.
+            if (node.packed.z > 0.0) { return; }
+            uint count = uint(-node.packed.z);
+            if (count == 0u) { return; }
+            uint start = uint(node.packed.y);
+            float width = sqrt(max(node.packed.x, 1e-12));
+
+            float baryons = 0.0;
+            for (uint k = 0u; k < count; ++k) {
+                uint i = order[start + k];
+                if (component[i] != 3u) { baryons += mass[i]; }
+            }
+            float density = baryons / (width * width * width);
+            if (density < s.threshold) { return; }
+
+            // Density alone gives no burst, and finding that out is the point of the term
+            // below. Star formation eats the densest gas first, so by the time an encounter
+            // arrives the nucleus has none left and the rate only ever falls — measured on a
+            // merger, 40 knots a megayear at the start and 9 at coalescence, with nothing at
+            // pericentre. Real mergers burst because tidal torques drive *fresh* gas inward
+            // and shock it, and none of that inflow exists here.
+            //
+            // What can be seen is the shock itself: the convergence of the flow, which is a
+            // least-squares trace of the velocity gradient over the leaf's own particles and
+            // is what a compression looks like from inside. Made dimensionless against the
+            // free-fall rate, so it says how hard the material is being squeezed compared with
+            // how hard its own gravity is squeezing it.
+            float3 meanPosition = float3(0.0);
+            float3 meanVelocity = float3(0.0);
+            uint baryonCount = 0u;
+            for (uint k = 0u; k < count; ++k) {
+                uint i = order[start + k];
+                if (component[i] == 3u) { continue; }
+                meanPosition += positions[i];
+                meanVelocity += velocities[i];
+                baryonCount += 1u;
+            }
+            float freeFall = sqrt(s.gravitationalConstant * density);
+            float compression = 0.0;
+            if (baryonCount >= 4u && freeFall > 1e-12) {
+                float inv = 1.0 / float(baryonCount);
+                meanPosition *= inv;
+                meanVelocity *= inv;
+                float flux = 0.0;
+                float spread = 0.0;
+                for (uint k = 0u; k < count; ++k) {
+                    uint i = order[start + k];
+                    if (component[i] == 3u) { continue; }
+                    float3 dr = positions[i] - meanPosition;
+                    flux += dot(velocities[i] - meanVelocity, dr);
+                    spread += dot(dr, dr);
+                }
+                if (spread > 1e-12) {
+                    // Trace of the velocity gradient. Negative is converging.
+                    float divergence = 3.0 * flux / spread;
+                    // Above the floor only. Taking the converging half of a noisy estimator
+                    // turns its noise into a rate everywhere, which burned a quiescent disk's
+                    // whole gas reservoir before its encounter arrived.
+                    compression = max(-divergence / freeFall - s.compressionFloor, 0.0);
+                }
+            }
+
+            float rate = s.efficiency
+                * sqrt(32.0 * s.gravitationalConstant * density / (3.0 * M_PI_F))
+                * (1.0 + s.compressionBoost * compression);
+            float chance = 1.0 - exp(-rate * s.timeStep);
+            if (chance <= 0.0) { return; }
+
+            for (uint k = 0u; k < count; ++k) {
+                uint i = order[start + k];
+                // Gas only, and only gas that has not already made its stars. Written once
+                // and never unwritten, which is what lets one static array replay the whole
+                // history of a run.
+                if (component[i] != 2u) { continue; }
+                if (formation[i] < 1e8) { continue; }
+                if (hashUnit(i, s.seed) >= chance) { continue; }
+                formation[i] = s.time;
+            }
+        }
+
         // One traversal per particle. A cell is accepted whole when its width subtends less than
         // the opening angle, and opened otherwise; leaves fall back to direct summation. The
         // stack cannot exceed seven entries per level of the tree.

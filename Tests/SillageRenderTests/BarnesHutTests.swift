@@ -475,9 +475,16 @@ struct BarnesHutTests {
     /// following its galaxy's centre of mass makes it do work. This is the guard against that
     /// regression. Whether the orbit actually decays takes hundreds of megayears to show and
     /// is measured separately; the numbers are in the README.
+    ///
+    /// Over three realisations, because one is not a measurement here. The rigid halo's leak
+    /// depends on the details of the encounter and swings by a factor of four between seeds,
+    /// so the ratio of a single pair runs anywhere from 0.05 to 0.32 — and this test used to
+    /// assert it was under 0.25, which it was, on the one seed it happened to be written for.
+    /// The first unrelated change to touch the sampler's random stream moved that draw and the
+    /// check failed with nothing wrong. Summed over three, the ratio sits near 0.15.
     @Test func liveHalosConserveMomentumFarBetterThanARigidOne() throws {
-        func drift(ratio: Float) throws -> Float {
-            var scene = SceneConfig.merger(particleCount: 12_000)
+        func drift(ratio: Float, seed: UInt64) throws -> Float {
+            var scene = SceneConfig.merger(particleCount: 12_000, seed: seed)
             scene.solver = .barnesHut
             scene.timeStep = 0.01
             scene.softening = 0.3
@@ -489,7 +496,119 @@ struct BarnesHutTests {
             solver.step(count: 500)
             return simd_length(solver.momentum() - before)
         }
-        #expect(try drift(ratio: 2) < drift(ratio: 0) / 4)
+        var live: Float = 0
+        var rigid: Float = 0
+        for seed in UInt64(1)...3 {
+            live += try drift(ratio: 2, seed: seed)
+            rigid += try drift(ratio: 0, seed: seed)
+        }
+        #expect(live < rigid / 4)
+    }
+
+    /// Gas turns into stars, and a particle's formation time is written once and never again.
+    ///
+    /// That invariant is what a take leans on. Positions are recorded every frame but the
+    /// formation times are stored once, so replaying at any moment can only show the right
+    /// knots if the array is a history rather than a state: written the moment a particle
+    /// forms and untouched afterwards.
+    @Test func gasFormsStarsExactlyOnce() throws {
+        var scene = SceneConfig.isolatedDisk(particleCount: 30_000)
+        scene.galaxies[0].kind = .spiral
+        scene.timeStepScale = 8
+        scene.retune()
+        let sampled = RestrictedSolver.sampleParticles(for: scene)
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: sampled)
+
+        func formed(_ system: ParticleSystem) -> Int {
+            (0..<system.count).count { system.formation[$0] > -1e8 && system.formation[$0] < 1e8 }
+        }
+        // Only gas and the knots the sampler seeded ever carry a time; a disk star stands for
+        // a composite population and has none.
+        for index in 0..<sampled.count {
+            let kind = sampled.component[index]
+            let stamped = sampled.formation[index] > -1e8 && sampled.formation[index] < 1e8
+            if kind == ParticleComponent.star.rawValue
+                || kind == ParticleComponent.bulge.rawValue
+                || kind == ParticleComponent.halo.rawValue
+            {
+                #expect(!stamped)
+            }
+        }
+
+        let first = solver.particles
+        solver.step(count: 120)
+        let second = solver.particles
+        solver.step(count: 120)
+        let third = solver.particles
+
+        // Something formed, and it kept forming.
+        #expect(formed(second) > formed(first))
+        #expect(formed(third) > formed(second))
+
+        // And nothing already stamped ever moved. A rewritten time would make a take replay a
+        // knot that lights up, goes out and lights up again somewhere else.
+        for index in 0..<second.count where second.formation[index] < 1e8 {
+            #expect(third.formation[index] == second.formation[index])
+        }
+        // Gas is spent, not recycled: what formed is gone from the reservoir for good.
+        for index in 0..<second.count where second.formation[index] > 1e8 {
+            #expect(third.formation[index] >= second.formation[index] || third.formation[index] < 1e8)
+        }
+    }
+
+    /// The thing an encounter is watched for: a burst, in the places the physics puts it.
+    ///
+    /// Density alone does not give one, and that is why the compression term exists. Star
+    /// formation eats the densest gas first, so a merger driven by density arrives at its
+    /// pericentre with the nucleus already spent and the rate only ever falling — measured,
+    /// forty knots a megayear at the start and nine at coalescence, with nothing in between.
+    @Test func anEncounterBurstsAndAQuietDiskDoesNot() throws {
+        /// Knots formed in each of six equal windows. A rate, not a total: a merger's total is
+        /// dominated by the long quiescent approach either way, and comparing halves of a run
+        /// says nothing — measured, the two halves of a merger came out within one per cent of
+        /// each other while the rate inside them varied threefold.
+        func perWindow(merging: Bool, over megayears: Float) throws -> [Int] {
+            var scene =
+                merging
+                ? SceneConfig.merger(particleCount: 60_000)
+                : SceneConfig.isolatedDisk(particleCount: 60_000)
+            scene.timeStepScale = 8
+            scene.retune()
+            let solver = try MetalBarnesHutSolver(
+                scene: scene, particles: RestrictedSolver.sampleParticles(for: scene))
+            let perStep = scene.timeStep * Float(Physics.megayearsPerTimeUnit)
+            func counted() -> Int {
+                let system = solver.particles
+                return (0..<system.count).count {
+                    system.formation[$0] > -1e8 && system.formation[$0] < 1e8
+                }
+            }
+            let windows = 6
+            let steps = max(Int(megayears / Float(windows) / perStep), 1)
+            var counts: [Int] = []
+            var previous = counted()
+            for _ in 0..<windows {
+                solver.step(count: steps)
+                let now = counted()
+                counts.append(now - previous)
+                previous = now
+            }
+            return counts
+        }
+
+        /// How far the rate ever rises above where it started. Monotonicity is too strong a
+        /// thing to ask of a self-gravitating disk — its arms come and go and the rate breathes
+        /// with them — so what separates the two cases is the size of the excursion, not its
+        /// sign. Measured at sixty thousand particles: 330, 355, 366, 351, 271, 266 for a disk
+        /// left alone, and 213, 261, 544, 210, 437, 739 for an encounter, whose third window
+        /// holds pericentre and whose last holds coalescence. At double the particles, 1.0 and
+        /// 3.0. Anything between one and a half and two and a half separates them.
+        func excursion(_ counts: [Int]) -> Float {
+            Float(counts.max() ?? 0) / Float(max(counts.first ?? 1, 1))
+        }
+
+        #expect(excursion(try perWindow(merging: false, over: 450)) < 1.5)
+        #expect(excursion(try perWindow(merging: true, over: 450)) > 2.5)
     }
 
     @Test func haloParticlesAreSampledAndCarryNoLight() {

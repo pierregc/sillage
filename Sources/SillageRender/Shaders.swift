@@ -10,6 +10,13 @@ enum Shaders {
 
         struct SplatUniforms {
             float4x4 viewProjection;
+            float time;
+            float megayearsPerUnit;
+            float ionisedMyr;
+            float fadeMyr;
+            float knotFloorMyr;
+            float youngLuminosity;
+            float luminosityDecay;
             float brightness;
             float dustStrength;
             float starSize;
@@ -170,6 +177,7 @@ enum Shaders {
         vertex SplatOut splatVertex(uint vid [[vertex_id]],
                                     device const float3 *positions [[buffer(0)]],
                                     device const float *population [[buffer(1)]],
+                                    device const float *formation [[buffer(8)]],
                                     device const float *luminosity [[buffer(2)]],
                                     device const uint *component [[buffer(3)]],
                                     constant SplatUniforms &u [[buffer(4)]],
@@ -213,7 +221,20 @@ enum Shaders {
             // what stays put when the camera moves.
             float spread = u.referenceArea / (length * length);
 
-            if (kind == 2u) {
+            // Age of this particle's stars, in megayears. Two sentinels sit outside any real
+            // time: material sampled as already old reads as infinitely old and keeps the
+            // composite colour it was given, and gas that has formed nothing yet reads as
+            // not yet born and is still drawn as dust.
+            float born = formation[vid];
+            float ageMyr = (u.time - born) * u.megayearsPerUnit;
+            bool ancient = born < -1e8;
+            bool gas = born > 1e8;
+            // Gas that has made its stars is no longer a dust lane. That is not a rendering
+            // convenience: the cloud a cluster forms out of is the cloud it consumes, and a
+            // starburst clearing its own lanes is the visible half of running out of gas.
+            bool knot = !ancient && !gas && ageMyr >= 0.0;
+
+            if (kind == 2u && !knot) {
                 // Dust neither emits nor follows exposure; it removes light further down.
                 //
                 // The lane has to come from the wave rather than from where the grains sit.
@@ -229,35 +250,50 @@ enum Shaders {
                 // away from one is an old knot and has to be dim. The floor cannot go much
                 // higher: the sampler's placement holds for an orbit at most, and after that
                 // a generous floor is pink dots scattered over a disk that has turned.
-                float forming = smoothstep(0.4, 0.95, wave) * pattern.y;
-
                 // Arm contrast in starlight was set low back when the sampled density carried
                 // the arms and this only had to nudge them. It carries them alone now, so it
                 // runs at the factor of two a grand-design spiral shows between arm and
                 // interarm.
-                float gain = kind == 1u
-                    ? (0.06 + 2.6 * forming)
-                    : (0.55 + 0.95 * wave);
+                //
+                // A knot's colour and brightness are its own, and both run in log age: the
+                // light of a coeval population is dominated by its most massive stars for as
+                // long as it has any, so almost all of the change happens in the first hundred
+                // megayears as those come off the main sequence in order of mass. A linear ramp
+                // over the same span holds every knot at full brightness for far too long, and
+                // a disk seeded with them reads as a field of identical glints.
+                float floorMyr = max(u.knotFloorMyr, 1e-3);
+                float resolved = max(ageMyr, floorMyr);
+                float youth = knot
+                    ? 1.0 - saturate(log(resolved / floorMyr)
+                                     / log(max(u.fadeMyr / floorMyr, 1.001)))
+                    : 0.0;
+                float ambient = 0.55 + 0.95 * wave;
+                // Never dimmer than the disk it sits in: past a few hundred megayears a knot
+                // has become an ordinary part of the population and should read as one.
+                float gain = knot
+                    ? max(u.youngLuminosity * pow(resolved / floorMyr, -u.luminosityDecay),
+                          ambient)
+                    : ambient;
                 // Colour comes from the population the sampler gave this particle: old and
                 // warm in the bulge, young and blue in the disk. The wave shifts it a little
                 // further, because an arm is bluer than the disk around it for the same
                 // reason it is brighter, and the ridge moves while the stars pass through it.
-                float age = population[vid] + 0.22 * (wave - 0.5) * pattern.y;
-                // A knot only glows in Halpha while the O stars ionising it are alive, a few
-                // million years. Material torn into a tail left its arm long ago and has
-                // none left, so it fades back to the colour of the young cluster it is.
-                // Where the arms are painted the wave says where star formation is now; a
-                // self-gravitating disk grows its own arms and the sampler's placement is
-                // the only thing available.
-                float alive = forming;
-                float3 emitted = kind == 1u
-                    ? mix(stellarColour(1.0), hiiColour(), alive)
-                    : stellarColour(age);
+                // A knot ignores all of that and reads its colour off its own age.
+                float age = knot
+                    ? youth
+                    : population[vid] + 0.22 * (wave - 0.5) * pattern.y;
+                // Halpha for as long as the O stars ionising the gas are alive, which is a few
+                // million years and no longer. This used to be driven by the *painted* spiral
+                // pattern, so the pink knots followed a texture rather than the physics: they
+                // sat where the sampler had left them an orbit earlier and never appeared
+                // anywhere new, however violently the galaxy was disturbed.
+                float alive = knot ? exp(-ageMyr / max(u.ionisedMyr, 1e-3)) : 0.0;
+                float3 emitted = mix(stellarColour(age), hiiColour(), alive);
                 // A tint per galaxy is what keeps stars pulled into the other one legible.
                 // It is a departure from the physical colour, so it is dialled rather than
                 // applied: at 0 the two galaxies are coloured by their populations alone.
                 emitted *= mix(float3(1.0), chromaticity(frame.tint.rgb), u.galaxyTint);
-                out.pointSize = span * (kind == 1u ? 1.3 : 1.0);
+                out.pointSize = span * (alive > 0.15 ? 1.3 : 1.0);
                 out.color = half3(emitted * (u.brightness * weight * gain * spread));
                 out.opticalDepth = 0.0h;
             }

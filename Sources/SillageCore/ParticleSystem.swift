@@ -30,6 +30,19 @@ public struct ParticleSystem: Sendable {
     public var population: [Float]
     /// Per-particle brightness multiplier. Star-forming knots are far brighter than the mean.
     public var luminosity: [Float]
+    /// Simulated time this particle's stars formed at, in code units.
+    ///
+    /// Three states, and the sentinels are the point. `ParticleSystem.ancient` for the
+    /// composite population a galaxy is sampled with: a disk star stands for a whole mix of
+    /// ages already in steady state, and its colour has no business changing over the few
+    /// hundred megayears a run covers. `ParticleSystem.unformed` for gas that has not made
+    /// anything yet. Anything finite is a knot with a real age, and the renderer reads both
+    /// its colour and its brightness off that age.
+    ///
+    /// It is written at most once per particle, by the solver, and only ever from `unformed`
+    /// to the current time. That is what lets a take carry the whole star formation history in
+    /// one static array: replaying at time t shows exactly the knots that had formed by t.
+    public var formation: [Float]
     public var component: [UInt32]
     /// Particle mass. Zero for the restricted solver, where tracers are massless.
     public var mass: [Float]
@@ -42,6 +55,11 @@ public struct ParticleSystem: Sendable {
     /// out of the front means the renderer, the smoothing field and a recorded take can all
     /// stop at `visibleCount` and never look at it again.
     public private(set) var visibleCount: Int = 0
+
+    /// Already old when the run started; its colour comes from `population` and stays there.
+    public static let ancient: Float = -1e9
+    /// Gas that has formed nothing yet.
+    public static let unformed: Float = 1e9
 
     /// Moves every visible particle to the front, keeping their order. Called once, after
     /// sampling.
@@ -67,6 +85,7 @@ public struct ParticleSystem: Sendable {
         reorder(&birthRadius)
         reorder(&population)
         reorder(&luminosity)
+        reorder(&formation)
         reorder(&component)
         reorder(&mass)
     }
@@ -83,6 +102,7 @@ public struct ParticleSystem: Sendable {
         birthRadius = []
         population = []
         luminosity = []
+        formation = []
         component = []
         mass = []
         reserveCapacity(capacity)
@@ -95,6 +115,7 @@ public struct ParticleSystem: Sendable {
         birthRadius.reserveCapacity(capacity)
         population.reserveCapacity(capacity)
         luminosity.reserveCapacity(capacity)
+        formation.reserveCapacity(capacity)
         component.reserveCapacity(capacity)
         mass.reserveCapacity(capacity)
     }
@@ -115,6 +136,7 @@ public struct ParticleSystem: Sendable {
         radius: Float,
         population stellarAge: Float = 0.5,
         luminosity brightness: Float = 1,
+        formation formedAt: Float = ParticleSystem.ancient,
         component kind: ParticleComponent = .star,
         mass particleMass: Float = 0
     ) {
@@ -124,6 +146,7 @@ public struct ParticleSystem: Sendable {
         birthRadius.append(radius)
         population.append(stellarAge)
         luminosity.append(brightness)
+        formation.append(formedAt)
         component.append(kind.rawValue)
         mass.append(particleMass)
     }

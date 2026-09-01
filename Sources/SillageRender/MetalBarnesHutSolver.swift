@@ -10,6 +10,18 @@ struct HaloGPU {
     var shape: SIMD4<Float>
 }
 
+struct StarFormationGPU {
+    var efficiency: Float
+    var threshold: Float
+    var timeStep: Float
+    var time: Float
+    var gravitationalConstant: Float
+    var compressionBoost: Float
+    var compressionFloor: Float
+    var seed: UInt32
+    var nodeCount: UInt32
+}
+
 struct DiskCoolingGPU {
     var center: SIMD4<Float>
     var motion: SIMD4<Float>
@@ -64,11 +76,15 @@ public final class MetalBarnesHutSolver: Solver {
     private let kick: MTLComputePipelineState
     private let force: MTLComputePipelineState
     private let dissipate: MTLComputePipelineState?
+    private let formStars: MTLComputePipelineState
 
     private let positionBuffer: MTLBuffer
     private let velocityBuffer: MTLBuffer
     private let accelerationBuffer: MTLBuffer
     private let massBuffer: MTLBuffer
+    /// When each particle's stars formed. Written by the solver, read by the renderer, and
+    /// the one per-particle attribute that is not fixed for the life of a run.
+    public let formationBuffer: MTLBuffer
     private var nodeBuffer: MTLBuffer?
     private var orderBuffer: MTLBuffer?
     private var componentBuffer: MTLBuffer?
@@ -86,6 +102,8 @@ public final class MetalBarnesHutSolver: Solver {
     private let componentOf: [UInt32]
     private let liveHalos: Bool
     private var stepsSinceTree = 0
+    /// Only ever used to vary the per-step random draw in the star formation pass.
+    private var stepsSinceFormation = 0
     private var haloCenters: [SIMD3<Float>]
     private var galaxyMotion: [SIMD3<Float>]
     private var diskAxes: [SIMD3<Float>]
@@ -94,6 +112,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let centersLock = NSLock()
 
     public var positions: MTLBuffer { positionBuffer }
+    public var formation: MTLBuffer { formationBuffer }
     /// Written on whichever queue is stepping and read by the renderer on the main thread,
     /// so the array is handed over under a lock rather than copied out from under the write.
     public var centers: [SIMD3<Float>] {
@@ -118,6 +137,8 @@ public final class MetalBarnesHutSolver: Solver {
         let v = velocityBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
         system.positions = Array(UnsafeBufferPointer(start: p, count: count))
         system.velocities = Array(UnsafeBufferPointer(start: v, count: count))
+        let f = formationBuffer.contents().bindMemory(to: Float.self, capacity: count)
+        system.formation = Array(UnsafeBufferPointer(start: f, count: count))
         return system
     }
 
@@ -154,6 +175,8 @@ public final class MetalBarnesHutSolver: Solver {
         var stripped = particles
         stripped.positions = []
         stripped.velocities = []
+        // Read back from the buffer the solver writes, not from the sample it started with.
+        stripped.formation = []
         self.template = stripped
 
         let library: MTLLibrary
@@ -176,6 +199,7 @@ public final class MetalBarnesHutSolver: Solver {
         dissipate =
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
+        formStars = try pipeline("bhFormStars")
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -190,6 +214,11 @@ public final class MetalBarnesHutSolver: Solver {
                 length: count * stride, options: .storageModeShared),
             let massBuffer = device.makeBuffer(
                 bytes: particles.mass.isEmpty ? [Float(0)] : particles.mass,
+                length: count * 4, options: .storageModeShared),
+            let formationBuffer = device.makeBuffer(
+                bytes: particles.formation.count == count
+                    ? particles.formation
+                    : [Float](repeating: ParticleSystem.ancient, count: count),
                 length: count * 4, options: .storageModeShared)
         else {
             throw RenderError.textureAllocation
@@ -198,15 +227,16 @@ public final class MetalBarnesHutSolver: Solver {
         self.velocityBuffer = velocityBuffer
         self.accelerationBuffer = accelerationBuffer
         self.massBuffer = massBuffer
+        self.formationBuffer = formationBuffer
 
-        // Only the dissipation pass needs to know what a particle is and whose it is.
+        func attribute(_ values: [UInt32], _ fallback: UInt32) -> [UInt32] {
+            values.count == count ? values : [UInt32](repeating: fallback, count: count)
+        }
+        // Star formation needs to know what a particle is; dissipation also needs whose it is.
+        componentBuffer = device.makeBuffer(
+            bytes: attribute(particles.component, 0), length: count * 4,
+            options: .storageModeShared)
         if dissipate != nil {
-            func attribute(_ values: [UInt32], _ fallback: UInt32) -> [UInt32] {
-                values.count == count ? values : [UInt32](repeating: fallback, count: count)
-            }
-            componentBuffer = device.makeBuffer(
-                bytes: attribute(particles.component, 0), length: count * 4,
-                options: .storageModeShared)
             galaxyBuffer = device.makeBuffer(
                 bytes: attribute(particles.galaxyIndex, 0), length: count * 4,
                 options: .storageModeShared)
@@ -253,11 +283,46 @@ public final class MetalBarnesHutSolver: Solver {
                 encodeAccelerations(into: forces)
                 encodeKick(into: forces)
                 encodeShedRandomMotion(into: forces)
+                encodeStarFormation(into: forces)
                 let clock = Date()
                 submit(forces)
                 lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
             }
             time += scene.timeStep
+        }
+    }
+
+    /// Turns gas into stars where the tree says it has been compressed.
+    ///
+    /// Dispatched over nodes rather than particles: the density estimate lives on the leaves,
+    /// and a leaf holds at most `leafCapacity` of them, so one thread does the reading and the
+    /// drawing for all of its own. Nothing here is read back — the buffer it writes is the one
+    /// the renderer draws from.
+    private func encodeStarFormation(into buffer: MTLCommandBuffer) {
+        guard nodeCount > 0, let nodeBuffer, let orderBuffer, componentBuffer != nil else {
+            return
+        }
+        stepsSinceFormation &+= 1
+        var params = StarFormationGPU(
+            efficiency: StarFormation.efficiency,
+            threshold: StarFormation.thresholdDensity,
+            timeStep: scene.timeStep,
+            time: time,
+            gravitationalConstant: Physics.gravitationalConstant,
+            compressionBoost: StarFormation.compressionBoost,
+            compressionFloor: StarFormation.compressionFloor,
+            seed: UInt32(truncatingIfNeeded: stepsSinceFormation),
+            nodeCount: UInt32(nodeCount))
+        encode(into: buffer, formStars, threads: nodeCount) { encoder in
+            encoder.setBuffer(formationBuffer, offset: 0, index: 0)
+            encoder.setBuffer(componentBuffer, offset: 0, index: 1)
+            encoder.setBuffer(massBuffer, offset: 0, index: 2)
+            encoder.setBuffer(nodeBuffer, offset: 0, index: 3)
+            encoder.setBuffer(orderBuffer, offset: 0, index: 4)
+            encoder.setBytes(
+                &params, length: MemoryLayout<StarFormationGPU>.stride, index: 5)
+            encoder.setBuffer(positionBuffer, offset: 0, index: 6)
+            encoder.setBuffer(velocityBuffer, offset: 0, index: 7)
         }
     }
 
