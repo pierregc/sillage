@@ -215,16 +215,22 @@ public enum DiskSampler {
             let sigma = dispersion(radius)
             let motion = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
 
+            // A spheroid has its own grain too, and the same rule applies: baked from where
+            // the star was born, never read at where it now stands.
+            let bulgeGrain = 0.62 + 0.76 * grain(local * 0.75)
+
             system.append(
                 position: rotation * local + config.position,
                 velocity: rotation * (motion * sigma) + config.velocity,
                 galaxy: galaxyIndex,
                 radius: radius,
                 population: 0,
-                luminosity: 0.45 + 1.5 * generator.uniform() * generator.uniform(),
+                luminosity: (0.45 + 1.5 * generator.uniform() * generator.uniform())
+                    * bulgeGrain,
                 formation: StarFormation.oldFormation(roll: generator.uniform()),
                 component: .bulge,
-                mass: particleMass
+                mass: particleMass,
+                kernelScale: 1.35
             )
         }
     }
@@ -373,6 +379,33 @@ public enum DiskSampler {
     }
 
     /// A star-forming complex or one of its sub-clumps, in disk-plane polar coordinates.
+    /// Value noise in three dimensions, hashed rather than tabulated.
+    ///
+    /// Sampled at a particle's *birth* position and baked into its brightness, never evaluated
+    /// at where it currently stands. A field read at the current position makes every star
+    /// brighten and dim as it turns through it, which is the same mistake the painted arms
+    /// made with colour and looks exactly as wrong.
+    static func grain(_ at: SIMD3<Float>) -> Float {
+        func hash(_ cell: SIMD3<Float>) -> Float {
+            let dotted = simd_dot(cell, SIMD3<Float>(127.1, 311.7, 74.7))
+            return sin(dotted) * 43758.5453 - (sin(dotted) * 43758.5453).rounded(.down)
+        }
+        func octave(_ v: SIMD3<Float>) -> Float {
+            let base = v.rounded(.down)
+            let f = v - base
+            let u = f * f * (3 - 2 * f)
+            func lerp(_ a: Float, _ b: Float, _ t: Float) -> Float { a + (b - a) * t }
+            let z0 = lerp(
+                lerp(hash(base), hash(base + SIMD3(1, 0, 0)), u.x),
+                lerp(hash(base + SIMD3(0, 1, 0)), hash(base + SIMD3(1, 1, 0)), u.x), u.y)
+            let z1 = lerp(
+                lerp(hash(base + SIMD3(0, 0, 1)), hash(base + SIMD3(1, 0, 1)), u.x),
+                lerp(hash(base + SIMD3(0, 1, 1)), hash(base + SIMD3(1, 1, 1)), u.x), u.y)
+            return lerp(z0, z1, u.z)
+        }
+        return octave(at) * 0.55 + octave(at * 2.9 + 13.1) * 0.30 + octave(at * 7.3 + 41.9) * 0.15
+    }
+
     private struct Clump {
         var radius: Float
         var phi: Float
@@ -414,6 +447,7 @@ public enum DiskSampler {
         let dustShare = min(max(config.dustFraction, 0), 0.8)
         let hiiShare = min(max(config.starFormingFraction, 0), 0.3)
         let clumpiness = min(max(config.clumpiness, 0), 1)
+        let outskirtShare = min(max(config.outskirtFraction, 0), 0.5)
         let scale = config.diskScaleLength
 
         // Star formation is hierarchical: giant complexes, clumps inside them, stars inside
@@ -451,6 +485,12 @@ public enum DiskSampler {
             let component: ParticleComponent =
                 roll < dustShare
                 ? .dust : (roll < dustShare + hiiShare ? .hiiRegion : .star)
+            // A share of the stars belong to no arm and to no thin plane: the thick disk and
+            // the inner halo, old, poor in metals, spread wider and standing well off the
+            // plane. Real disks have them, and without them ours stopped at a radius you
+            // could name and had a hard rim, which is the one thing no galaxy has.
+            let outskirt = component == .star && roll > 1 - outskirtShare
+            let kind: ParticleComponent = outskirt ? .outskirt : component
 
             // Gas, dust and young stars trace the complexes most strongly; the old smooth
             // disk underneath keeps the profile from turning into a field of blobs.
@@ -469,7 +509,16 @@ public enum DiskSampler {
             // A clump inside the bulge is no home for gas or for young stars, for the same
             // reason as below.
             let usable = component == .star || (clump?.radius ?? 0) > bulgeRadius * 0.9
-            if attached, let clump, usable {
+            if outskirt {
+                // Drawn from a longer exponential and allowed past the truncation, so the
+                // light falls away with no radius at which it stops.
+                radius =
+                    config.diskScaleLength * 1.85
+                    * inverseExponentialCDF(
+                        generator.uniform(), truncation: config.diskTruncation * 1.5)
+                phi = generator.uniform() * 2 * .pi
+                proximity = 0
+            } else if attached, let clump, usable {
                 let placed = scatter(clump, using: &generator)
                 radius = placed.radius
                 phi = placed.phi
@@ -497,7 +546,12 @@ public enum DiskSampler {
             }
 
             let thickness = component == .dust ? config.diskThickness * 0.45 : config.diskThickness
-            let height = thickness * inverseSech2CDF(generator.uniform())
+            // A spheroid flattened to a third, which is what a thick disk and inner halo
+            // together look like; the thin components keep their sech-squared layer.
+            let height =
+                outskirt
+                ? radius * 0.34 * (2 * generator.uniform() - 1)
+                : thickness * inverseSech2CDF(generator.uniform())
             let local = SIMD3<Float>(radius * cos(phi), radius * sin(phi), height)
 
             let outward = SIMD3<Float>(cos(phi), sin(phi), 0)
@@ -508,13 +562,46 @@ public enum DiskSampler {
                 // azimuthal dispersions relate, and the streaming speed lags the circular
                 // speed by the asymmetric drift.
                 let streaming = equilibrium.streamingSpeed(atRadius: radius)
-                localVelocity =
-                    outward * (generator.normal() * equilibrium.radialDispersion(atRadius: radius))
-                    + along
-                    * (streaming * spin
-                        + generator.normal() * equilibrium.azimuthalDispersion(atRadius: radius))
-                    + SIMD3<Float>(0, 0, 1)
-                    * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius))
+                // A sheet's scale height goes as the square of its vertical dispersion, so a
+                // component four and a half times as thick needs its dispersion a little over
+                // twice as large or it simply falls into the plane over an orbit. It also
+                // lags: material held up that far off the plane cannot be going round as
+                // fast as the thin disk under it.
+                // Vertically hot and only mildly so in the plane.
+                //
+                // Except that scaling the thin disk's own dispersions does not work for the
+                // outskirts at all, and finding that out took a measurement: at two and a
+                // fifth times the vertical spread the component's median height still fell
+                // from 0.66 kpc to 0.17 over six hundred megayears. The sheet relation that
+                // scaling rests on — height going as the square of the dispersion at fixed
+                // surface density — is a statement about a thin self-gravitating layer, and
+                // out where these stars live the vertical force comes from the halo instead.
+                // The sheet formula underestimates it by more the further out you go.
+                //
+                // So they are not modelled as a hotter disk at all. A stellar halo is a
+                // spheroid held up by random motion, with a dispersion that tracks the
+                // circular speed rather than the local surface density, and a slow net
+                // rotation on top. Sampled that way it is stable by construction, the way the
+                // bulge already is.
+                if outskirt {
+                    let circular = config.potential.circularSpeed(atRadius: radius)
+                    let dispersion = 0.55 * circular
+                    localVelocity =
+                        along * (0.32 * circular * spin)
+                        + SIMD3<Float>(
+                            generator.normal(), generator.normal(), generator.normal())
+                            * dispersion
+                } else {
+                    localVelocity =
+                        outward
+                        * (generator.normal() * equilibrium.radialDispersion(atRadius: radius))
+                        + along
+                        * (streaming * spin
+                            + generator.normal()
+                                * equilibrium.azimuthalDispersion(atRadius: radius))
+                        + SIMD3<Float>(0, 0, 1)
+                        * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius))
+                }
             } else {
                 let speed = config.potential.circularSpeed(atRadius: radius)
                 let jitter = SIMD3<Float>(
@@ -528,7 +615,13 @@ public enum DiskSampler {
             // the only place it is still read.
             var population = diskAge * (1 - bulgeWeight)
             let edge = radius / scale
-            let taper = 1 - smoothstep(config.diskTruncation - 2.1, config.diskTruncation, edge)
+            // Falls to a floor rather than to nothing: what is beyond the thin disk's own
+            // truncation is the outskirts, and they have to keep some light or the edge is a
+            // rim again.
+            let taper =
+                outskirt
+                ? 0.10 + 0.9 * exp(-max(edge - config.diskTruncation * 0.5, 0) * 0.9)
+                : 1 - smoothstep(config.diskTruncation - 2.1, config.diskTruncation, edge)
             // A wide spread in per-star brightness reads as texture rather than as grain.
             var brightness =
                 (0.45 + 1.5 * generator.uniform() * generator.uniform())
@@ -563,8 +656,40 @@ public enum DiskSampler {
                 population = 0
                 brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.02)
                 formation = ParticleSystem.unformed
-            case .star, .halo, .bulge:
-                break
+            case .star, .halo, .bulge, .outskirt:
+                if outskirt {
+                    // Old everywhere, and faint. The metallicity gradient does the rest on its
+                    // own: these sit at large birth radii, so they come out metal-poor.
+                    formation = StarFormation.oldFormation(roll: generator.uniform())
+                    brightness = (0.25 + 0.7 * generator.uniform()) * max(taper, 0.02)
+                    population = 0.05
+                }
+            }
+
+            // Two scales of emission, because one is what makes a disk read as a field of
+            // identical dots. Most particles are drawn wide: flux is conserved when a kernel
+            // widens, so a wide one is the same light spread thinner, and enough of them
+            // overlapping is a smooth continuum rather than a stipple. A small minority are
+            // compact and very much brighter — the massive clusters and the biggest complexes
+            // — and those are what the eye picks out as individual sources.
+            let scaleRoll = generator.uniform()
+            var kernelScale: Float = 1
+            if component == .star || component == .hiiRegion {
+                if scaleRoll < 0.022 {
+                    let u = generator.uniform()
+                    brightness *= 4 + 40 * u * u * u
+                    kernelScale = 0.75
+                } else if scaleRoll < 0.34 {
+                    kernelScale = 0.9
+                } else {
+                    kernelScale = 2.2
+                }
+            }
+            // And the light is not smooth even where nothing structural is happening. Baked in
+            // from the birth position, so it is a property of the star and not of where it has
+            // got to.
+            if component != .dust {
+                brightness *= 0.55 + 0.95 * grain(local * 0.75)
             }
 
             system.append(
@@ -575,8 +700,9 @@ public enum DiskSampler {
                 population: population,
                 luminosity: brightness,
                 formation: formation,
-                component: component,
-                mass: particleMass
+                component: kind,
+                mass: particleMass,
+                kernelScale: kernelScale
             )
         }
     }

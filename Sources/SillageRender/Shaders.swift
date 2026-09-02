@@ -220,10 +220,35 @@ enum Shaders {
                         - frame.pattern.y
                         + wander;
 
-            float ridge = 0.5 + 0.5 * cos(frame.axisU.w * wound);
+            float arms = frame.axisU.w;
+            float phase = arms * wound;
+            float ridge = 0.5 + 0.5 * cos(phase);
+
+            // Breaks along an arm: it thins, stops and picks up again further round, which is
+            // what every real arm does and what an unbroken curve never does.
             float breaks = fractalNoise(wound * 0.62 + extent * 0.9 + seed * 3.1);
             ridge *= mix(1.0, 0.18 + 1.05 * breaks, irregular);
-            ridge = clamp(ridge, 0.0, 1.0);
+
+            // One arm is not the next. The noise turns over about once per arm, so each gets
+            // its own strength, and the pattern stops being something a rotation can repeat.
+            float perArm = fractalNoise(phase * 0.159 + seed * 7.7);
+            ridge *= mix(1.0, 0.35 + 1.25 * perArm, irregular);
+
+            // A spur: a short second arm at a different pitch, which appears where its own
+            // envelope lets it and dies out again. Cubed so it is a feature rather than a
+            // second full pattern laid over the first.
+            float spurPhase = (arms + 3.0) * (atan2(v, u) - 1.7 * frame.pattern.x
+                                              * log(max(radius, 1e-3) / scale)) + 2.1;
+            float spur = max(cos(spurPhase), 0.0);
+            float spurWhere = fractalNoise(extent * 0.9 + seed * 2.3 + 31.0);
+            ridge += irregular * 0.55 * spur * spur * spur
+                   * smoothstep(0.55, 0.85, spurWhere);
+
+            // And the two halves of a disk are never equal. A one-armed term over the whole
+            // pattern is the cheapest true thing to say about that, and it is what stops the
+            // galaxy looking like a machined part.
+            float lopsided = 1.0 + irregular * 0.30 * cos(atan2(v, u) + seed * 2.1);
+            ridge = clamp(ridge * lopsided, 0.0, 1.0);
             return float2(mix(0.5, ridge, strength * envelope), envelope);
         }
 
@@ -238,7 +263,7 @@ enum Shaders {
                                     constant DiskFrame *frames [[buffer(6)]],
                                     device const float *smoothing [[buffer(7)]],
                                     device const float2 *stellar [[buffer(9)]],
-                                    device const float *warming [[buffer(10)]]) {
+                                    device const float2 *traits [[buffer(10)]]) {
             SplatOut out;
             float3 position = positions[vid];
             DiskFrame frame = frames[galaxy[vid]];
@@ -293,8 +318,13 @@ enum Shaders {
             // depth for a standard perspective projection, so this is just h over distance.
             float depth = max(out.position.w, 1e-3);
             float perPixel = u.projectionScale / depth;
-            float span = clamp(max(smoothing[vid] * u.smoothingScale, 1e-4) * perPixel,
-                               u.minimumSize, u.maximumSize);
+            // Two scales of emission. Most particles are drawn wide, and because widening a
+            // kernel conserves its flux that is the same light spread thinner: enough of them
+            // overlapping make a continuum instead of a stipple. A small minority are compact
+            // and much brighter, and those are the sources the eye picks out one at a time.
+            float span = clamp(
+                max(smoothing[vid] * u.smoothingScale * traits[vid].y, 1e-4) * perPixel,
+                u.minimumSize, u.maximumSize);
             // Take the length back from the clamped span. Dividing by the unclamped one would
             // brighten every particle the floor caught, which made the softness control shift
             // the exposure as a side effect.
@@ -352,7 +382,7 @@ enum Shaders {
                 // warm core and a cool disk, and the half that was missing. Age alone gives a
                 // gradient of the right sign and far too weak to see.
                 float3 stellarLight = knot
-                    ? blackbody(synth.x * warming[vid])
+                    ? blackbody(synth.x * traits[vid].x)
                     : legacyColour(population[vid]);
                 // Halpha for as long as the O stars ionising the gas are alive, which is a few
                 // million years and no longer. This used to be driven by the *painted* spiral

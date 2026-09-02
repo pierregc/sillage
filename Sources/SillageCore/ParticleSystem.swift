@@ -11,10 +11,17 @@ public enum ParticleComponent: UInt32, Codable, Sendable, CaseIterable {
     /// Old stars in the spheroid. Drawn exactly like a disk star, but held up by random
     /// motion rather than by rotation, so anything that acts on the disk has to leave it be.
     case bulge = 4
+    /// Thick disk and inner halo: old, metal-poor, standing well off the plane and rotating
+    /// slowly. Drawn like any other star, but no gas cools it, so the dissipation that keeps
+    /// the thin disk thin has to leave it alone — without that exclusion it flattens into the
+    /// plane within a couple of hundred megayears and takes the galaxy's soft edge with it.
+    case outskirt = 5
 
     public var isVisible: Bool { self != .halo }
     /// Emits starlight, so it frames a picture and carries the exposure.
-    public var emits: Bool { self == .star || self == .hiiRegion || self == .bulge }
+    public var emits: Bool {
+        self == .star || self == .hiiRegion || self == .bulge || self == .outskirt
+    }
 }
 
 /// Structure-of-arrays particle storage. `positions` is laid out so it can back a
@@ -44,6 +51,14 @@ public struct ParticleSystem: Sendable {
     /// one static array: replaying at time t shows exactly the knots that had formed by t.
     public var formation: [Float]
     public var component: [UInt32]
+    /// How wide this particle's kernel is drawn against the local interparticle spacing.
+    ///
+    /// One number is what makes a galaxy read as a field of identical dots. Most particles
+    /// carry more than one here — flux is conserved when a kernel widens, so a wide one is the
+    /// same light spread thinner, and enough of them overlapping make a continuum — while a
+    /// small minority are compact and much brighter, and those are the sources the eye picks
+    /// out individually.
+    public var kernelScale: [Float]
     /// Particle mass. Zero for the restricted solver, where tracers are massless.
     public var mass: [Float]
 
@@ -88,6 +103,7 @@ public struct ParticleSystem: Sendable {
         reorder(&formation)
         reorder(&component)
         reorder(&mass)
+        reorder(&kernelScale)
     }
 
     /// For a system rebuilt from a file, which holds only what was drawn.
@@ -105,6 +121,7 @@ public struct ParticleSystem: Sendable {
         formation = []
         component = []
         mass = []
+        kernelScale = []
         reserveCapacity(capacity)
     }
 
@@ -118,6 +135,7 @@ public struct ParticleSystem: Sendable {
         formation.reserveCapacity(capacity)
         component.reserveCapacity(capacity)
         mass.reserveCapacity(capacity)
+        kernelScale.reserveCapacity(capacity)
     }
 
     /// Exposes positions and velocities together for in-place integration. Going through the
@@ -138,7 +156,8 @@ public struct ParticleSystem: Sendable {
         luminosity brightness: Float = 1,
         formation formedAt: Float = ParticleSystem.ancient,
         component kind: ParticleComponent = .star,
-        mass particleMass: Float = 0
+        mass particleMass: Float = 0,
+        kernelScale scale: Float = 1
     ) {
         positions.append(position)
         velocities.append(velocity)
@@ -149,6 +168,7 @@ public struct ParticleSystem: Sendable {
         formation.append(formedAt)
         component.append(kind.rawValue)
         mass.append(particleMass)
+        kernelScale.append(scale)
     }
 }
 

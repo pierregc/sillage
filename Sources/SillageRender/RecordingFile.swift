@@ -17,6 +17,7 @@ import simd
 ///     header, JSON                     the scene, the counts
 ///     population, luminosity           particleCount floats each
 ///     formation                        particleCount floats, version 2 and up
+///     kernelScale                      particleCount floats, version 4 and up
 ///     component, galaxy                particleCount 32-bit words each
 ///     frames                           frameCount x 8 floats
 ///     disk states                      frameCount x galaxyCount x 4 floats, version 3 and up
@@ -37,7 +38,7 @@ public enum RecordingFile {
     /// stored rather than derived, because a replay has no solver to measure it and the arms
     /// are painted into the plane it names: falling back to the scene's natal plane replays a
     /// merged spiral with its arms still in it.
-    private static let version: UInt64 = 3
+    private static let version: UInt64 = 4
     private static let oldestReadableVersion: UInt64 = 1
 
     public struct Header: Codable {
@@ -102,6 +103,7 @@ public enum RecordingFile {
         try handle.write(contentsOf: bytes(of: padded(particles.population, Float(0.5))))
         try handle.write(contentsOf: bytes(of: padded(particles.luminosity, Float(1))))
         try handle.write(contentsOf: bytes(of: padded(particles.formation, ParticleSystem.ancient)))
+        try handle.write(contentsOf: bytes(of: padded(particles.kernelScale, Float(1))))
         try handle.write(contentsOf: bytes(of: padded(particles.component, UInt32(0))))
         try handle.write(contentsOf: bytes(of: padded(particles.galaxyIndex, UInt32(0))))
 
@@ -204,6 +206,11 @@ public enum RecordingFile {
         // moment shows exactly the knots that had formed by then.
         particles.formation =
             version >= 2 ? try take(Float.self, count) : []
+        // Written from version 4. A take made before it has one scale for everything, which is
+        // what it looked like at the time, so one is the honest thing to fill it with.
+        particles.kernelScale =
+            version >= 4
+            ? try take(Float.self, count) : [Float](repeating: 1, count: count)
         particles.component = try take(UInt32.self, count)
         if particles.formation.isEmpty {
             // A version 1 take was made before there was any star formation to record, so it
