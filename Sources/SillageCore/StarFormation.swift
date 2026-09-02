@@ -20,11 +20,15 @@ public enum StarFormation {
     /// it for as long. At eight the pink was there and measurable and could not be seen: the
     /// disk holds only a couple of hundred lit knots at a time out of a quarter of a million
     /// particles.
-    public static let ionisedMyr: Float = 25
+    public static let ionisedMyr: Float = 60
 
     /// Youngest age the colour and brightness curves resolve, in megayears. Below it a knot
     /// is simply at its bluest and brightest: nothing here models the first few million years.
     public static let knotFloorMyr: Float = 3
+
+    /// Megayears a knot takes to reach full brightness. A cloud collapses and lights up over a
+    /// few million years; switching it on between two frames is a light bulb.
+    public static let riseMyr: Float = 8
 
     /// The two ends of the colour ramp, in megayears, calibrated rather than chosen.
     ///
@@ -77,14 +81,16 @@ public enum StarFormation {
 
     /// Megayears the sampler spreads its seeded knots over.
     ///
-    /// The sampler declares these particles HII regions, so they have to arrive lit. Spread
-    /// over six hundred megayears only one in twenty-five still was, and the pink went out of
-    /// the picture entirely. Spread over one ionised lifetime or so, they arrive as what they
-    /// were placed to be, and the run's own star formation takes over from there.
+    /// Matched to the steady state the run itself settles at, which is what stops the picture
+    /// thinning out. The sampler places two per cent of the disk as HII regions; if they all
+    /// arrive lit, the galaxy holds four thousand knots at t = 0 and a thousand by six hundred
+    /// megayears, and a viewer sees the pink drain away. Spread so that the number lit at the
+    /// start is the number the disk's own formation rate sustains, the count is flat from the
+    /// first frame and nothing drains.
     ///
     /// Not zero, though: seeding them all at the same instant gives every knot the same age
     /// and the whole disk goes out together a few tens of megayears in.
-    public static let seedSpreadMyr: Float = 60
+    public static let seedSpreadMyr: Float = 200
 
     /// Star formation efficiency per free-fall time.
     ///

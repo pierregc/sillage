@@ -503,6 +503,36 @@ over a heavier disk needs more dispersion to begin with, so it starts at 0.229 r
 0.136 and is warm from the first frame. Left at 0.22, which is the honest figure for a real
 disk, and exposed on a slider for anyone who wants the stronger response.
 
+## The time scale is right, and that is what makes the knots blink
+
+Asked directly whether the clock holds up, so: derived from the constants, one time unit is
+4.714 Myr against the 4.71 in `Physics`, and one velocity unit 207.4 km/s against 207.4. An
+orbit at 8 kpc and 220 km/s takes 223 Myr. Nothing is wrong with the clock.
+
+**The clock being right is exactly why the picture flickers.** An HII region is lit for a few
+megayears, and a run shows eight hundred of them in half a minute of playback — so every knot
+in the galaxy is a flash lasting about a second. That is not a fault in the colour model, it is
+what compressing a gigayear does, and no amount of work on ages will change it.
+
+What can be changed is whether the eye picks out *individuals*. A real galaxy holds thousands
+of HII regions, so no single one is visible and the pink simply is there. This held four
+hundred, and a viewer watching four hundred lights blink on and off called it a Christmas tree
+and was right. Three things, none of them about colour:
+
+- **The lit population has to be large enough to hide its own turnover.** The lifetime is set
+  against the steady state rather than against a single region: at 25 Myr the disk holds two
+  hundred lit knots, at 60 it holds about twelve hundred. Sixty is the generous end of what a
+  star-forming *complex* keeps lit and not past it.
+- **And it must not drain.** The sampler seeds two per cent of the disk as HII regions. Arrive
+  them all lit and the galaxy starts at four thousand and falls to a thousand — the pink
+  visibly drains over the first two hundred megayears, which is what "the red disappears too
+  fast" was. Spread the seed so the number lit at t = 0 is the number the disk's own formation
+  rate sustains, and the count is flat from the first frame: 1237, 2054, 1339, 963 across
+  600 Myr instead of 4184 down to 377.
+- **A knot must fade in, not switch on.** A dust grain became a twelve-times-brighter emitter
+  between one frame and the next. Over eight megayears now, which is a quarter of a second of
+  playback and reads as lighting up rather than as a bulb.
+
 ## What the window costs
 
 Anything on the main actor is the interface's frame budget. Three things were spending it and

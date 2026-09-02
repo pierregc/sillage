@@ -16,6 +16,7 @@ enum Shaders {
             float colourYoungMyr;
             float colourOldMyr;
             float knotFloorMyr;
+            float riseMyr;
             float youngLuminosity;
             float luminosityDecay;
             float referenceAgeMyr;
@@ -288,7 +289,12 @@ enum Shaders {
                           u.youngLuminosity)
                       * u.luminosityNormalisation
                     : 1.0;
-                float gain = ambient * massToLight;
+                // A knot fades in rather than appearing. Without this a dust grain becomes a
+                // twelve-times-brighter emitter between one frame and the next, which at
+                // playback speed is a light switch — and a few hundred of those a second is
+                // most of what reads as a Christmas tree.
+                float emergence = knot ? smoothstep(0.0, u.riseMyr, ageMyr) : 1.0;
+                float gain = ambient * massToLight * emergence;
                 // Colour comes from the population the sampler gave this particle: old and
                 // warm in the bulge, young and blue in the disk. The wave shifts it a little
                 // further, because an arm is bluer than the disk around it for the same
