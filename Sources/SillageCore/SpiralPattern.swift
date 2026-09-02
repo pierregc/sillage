@@ -29,7 +29,8 @@ public enum SpiralPattern {
         let base = x.rounded(.down)
         let f = x - base
         let u = f * f * (3 - 2 * f)
-        let a = hash(base), b = hash(base + 1)
+        let a = hash(base)
+        let b = hash(base + 1)
         return a + (b - a) * u
     }
 
@@ -86,7 +87,8 @@ public enum SpiralPattern {
         // A spur: a short second arm at a different pitch, appearing where its own envelope
         // lets it and dying out again. Cubed, so it is a feature rather than a second full
         // pattern laid over the first.
-        let spurPhase = (shape.arms + 3) * (phi - 1.7 * shape.windRate * log(max(extent, 1e-3)))
+        let spurPhase =
+            (shape.arms + 3) * (phi - 1.7 * shape.windRate * log(max(extent, 1e-3)))
             + 2.1
         let spur = max(cos(spurPhase), 0)
         let spurWhere = fractalNoise(extent * 0.9 + seed * 2.3 + 31)

@@ -605,7 +605,7 @@ public enum DiskSampler {
                         along * (0.32 * circular * spin)
                         + SIMD3<Float>(
                             generator.normal(), generator.normal(), generator.normal())
-                            * dispersion
+                        * dispersion
                 } else {
                     localVelocity =
                         outward
@@ -613,7 +613,7 @@ public enum DiskSampler {
                         + along
                         * (streaming * spin
                             + generator.normal()
-                                * equilibrium.azimuthalDispersion(atRadius: radius))
+                            * equilibrium.azimuthalDispersion(atRadius: radius))
                         + SIMD3<Float>(0, 0, 1)
                         * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius))
                 }
@@ -658,7 +658,8 @@ public enum DiskSampler {
                 // per unit mass of a gigayear disk on its own, and the two together had the
                 // knots carrying fifty-seven per cent of a disk's light. A spiral's HII
                 // regions do not.
-                brightness = (0.45 + 1.5 * generator.uniform() * generator.uniform())
+                brightness =
+                    (0.45 + 1.5 * generator.uniform() * generator.uniform())
                     * max(taper, 0.02)
                 // A galaxy does not start the run having formed nothing. At a constant rate
                 // the ages of what it has already made are uniform, so they are drawn that
