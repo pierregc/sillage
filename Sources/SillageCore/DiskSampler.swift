@@ -351,6 +351,7 @@ public enum DiskSampler {
         minimumRadius: Float,
         phaseOffset: Float = 0,
         scaleMultiplier: Float = 1,
+        shape: SpiralPattern.Shape,
         using generator: inout SeededGenerator
     ) -> (radius: Float, phi: Float, armProximity: Float) {
         var radius: Float = 0
@@ -366,12 +367,21 @@ public enum DiskSampler {
                 density = 1
                 break
             }
+            // The same pattern the renderer paints, from the same file, so that the matter
+            // sits where the light says the arms are. What was here before was a clean
+            // logarithmic spiral of perfect m-fold symmetry while the renderer drew something
+            // irregular over it, which meant every asymmetry in the picture was paint and the
+            // density underneath was still something a rotation could repeat.
+            //
             // A logarithmic spiral winds without limit toward the centre, so the pattern is
             // faded out inside the bulge where real arms do not reach either.
             let envelope = smoothstep(0.25, 1.1, radius / config.diskScaleLength)
-            let local = contrast * envelope
-            let wound = phi - windRate * log(max(radius, 1e-3) / config.diskScaleLength)
-            density = 1 + local * cos(Float(arms) * wound - phaseOffset)
+            let ridge = SpiralPattern.ridge(
+                extent: radius / config.diskScaleLength, phi: phi - phaseOffset / Float(max(arms, 1)),
+                shape: shape)
+            // Back onto the interval the rejection loop below expects: the ridge runs zero to
+            // one, and this has to be a density around one that can reach 1 + contrast.
+            density = 1 + contrast * envelope * (2 * ridge - 1)
             if generator.uniform() * (1 + contrast) <= density { break }
         }
         let proximity = contrast > 0 ? min(max((density - 1 + contrast) / (2 * contrast), 0), 1) : 0.5
@@ -448,6 +458,10 @@ public enum DiskSampler {
         let hiiShare = min(max(config.starFormingFraction, 0), 0.3)
         let clumpiness = min(max(config.clumpiness, 0), 1)
         let outskirtShare = min(max(config.outskirtFraction, 0), 0.5)
+        // The pattern, described once and shared with the renderer that paints it.
+        let shape = SpiralPattern.Shape(
+            arms: arms, windRate: windRate, irregularity: config.armIrregularity,
+            index: Int(galaxyIndex))
         let scale = config.diskScaleLength
 
         // Star formation is hierarchical: giant complexes, clumps inside them, stars inside
@@ -460,7 +474,7 @@ public enum DiskSampler {
         for _ in 0..<110 {
             let placed = samplePlanePosition(
                 config, arms: arms, contrast: min(strength * 1.3, 0.95), windRate: windRate,
-                minimumRadius: bulgeRadius * 0.6, using: &generator)
+                minimumRadius: bulgeRadius * 0.6, shape: shape, using: &generator)
             let u = generator.uniform()
             complexes.append(
                 Clump(
@@ -539,6 +553,7 @@ public enum DiskSampler {
                     // on the ridge. Which edge that is follows the direction of rotation.
                     phaseOffset: component == .dust ? -0.85 * spin : 0,
                     scaleMultiplier: component == .dust ? 1.5 : 1,
+                    shape: shape,
                     using: &generator)
                 radius = placed.radius
                 phi = placed.phi
