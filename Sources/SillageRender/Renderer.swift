@@ -14,6 +14,8 @@ struct SplatUniforms {
     var knotFloorMyr: Float
     var youngLuminosity: Float
     var luminosityDecay: Float
+    var referenceAgeMyr: Float
+    var luminosityNormalisation: Float
     var brightness: Float
     var dustStrength: Float
     var starSize: Float
@@ -204,6 +206,14 @@ public final class Renderer {
     private let starBuffer: MTLBuffer?
     private let particleCount: Int
     private let drawnCount: Int
+    /// One over the mean light per unit mass across this scene at t = 0.
+    ///
+    /// The exposure divides by the *number* of particles that reach a pixel, so a law that
+    /// makes some of them twenty times brighter than others would move the whole frame unless
+    /// its mean is held at one. Taken once, from the ages the scene was sampled with; the
+    /// drift as a run ages its stars is a part in a thousand over any run worth watching, and
+    /// recomputing it per frame would make the exposure breathe.
+    private let luminosityNormalisation: Float
 
     /// Framing at which the brightness and dust settings are calibrated, in kpc per pixel.
     static let referenceKpcPerPixel: Float = 0.0436
@@ -239,6 +249,17 @@ public final class Renderer {
         // half million vertices a frame that existed only to be thrown away.
         self.drawnCount = particles.visibleCount > 0 ? particles.visibleCount : particles.count
         self.particleCount = particles.count
+        var totalLight: Float = 0
+        var lit = 0
+        let step = max(particles.formation.count / 50_000, 1)
+        for index in stride(from: 0, to: particles.formation.count, by: step) {
+            let born = particles.formation[index]
+            guard born > -1e8, born < 1e8 else { continue }
+            totalLight += StarFormation.luminosity(
+                ageMyr: -born * Float(Physics.megayearsPerTimeUnit))
+            lit += 1
+        }
+        self.luminosityNormalisation = lit > 0 ? Float(lit) / max(totalLight, 1e-6) : 1
 
         let library: MTLLibrary
         do {
@@ -490,6 +511,8 @@ public final class Renderer {
             knotFloorMyr: StarFormation.knotFloorMyr,
             youngLuminosity: StarFormation.youngLuminosity,
             luminosityDecay: StarFormation.luminosityDecay,
+            referenceAgeMyr: StarFormation.referenceAgeMyr,
+            luminosityNormalisation: luminosityNormalisation,
             brightness: settings.brightness * perParticle,
             dustStrength: settings.dustStrength * perParticle,
             starSize: settings.starSize * Float(scale),

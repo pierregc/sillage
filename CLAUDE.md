@@ -358,6 +358,41 @@ thirds of its rate and the whole merger burst with it, 213, 261, 536, 199, 456, 
 it runs on the positions the live tree was built from. That costs nothing and is right whether
 the overlap is on or off.
 
+## One age per particle
+
+Every star carries a real age now — bulge 10 to 12.5 Gyr, disk drawn from an inside-out
+history so its outskirts are the young part — and both its colour and its light per unit mass
+follow from it, the second as `age^-0.9`. The `ancient` sentinel is gone for stars: a knot
+three megayears old and a bulge star of eleven gigayears are the same formula at different
+ages, which is the simplification that made this worth doing at all.
+
+Three things it took two attempts to get right, and the first attempt shipped and had to be
+reverted.
+
+- **The arm term lived on the branch for stars with no age.** `+0.22 * (wave - 0.5)` is what
+  makes an arm bluer than the region beside it, and it sat in the `else` of the age test. The
+  moment every star had an age it reached nothing, and the arms lost their blue in a single
+  edit — with every test still green, because no test looks at colour. It is 0.38 now and
+  applies whatever the age came from: it used to nudge a population the sampler had already
+  made blue, and it now has to separate arm from interarm on its own.
+- **Normalise the law to unit mean or retune everything.** The exposure divides by the *number*
+  of particles that reach a pixel, not by their light, so a law that makes some of them twenty
+  times brighter moves the whole frame. `Renderer` takes the mean of the same law over the
+  ages the scene was sampled with, once, and divides by it. Mean luminance 21.19 before and
+  21.46 after; none of the five looks needed touching.
+- **The young are what make it blue and what make it grainy, and they are the same particles.**
+  A power law with no floor is a trap at these counts: ages drawn towards zero put most of a
+  galaxy's light into a few hundred particles and the disk reads as glitter. Floored at
+  600 Myr, and anything younger is the run's own doing, where a knot is meant to stand out.
+  Raising the floor to 1500 killed the grain and the blue together, which is how the tension
+  was found; between 300 and 600 the grain barely moves, so the floor is not the lever it
+  looks like.
+
+**A warmer base makes the per-galaxy tint louder.** Stellar colour used to come out blue
+whatever the tint did to it. It comes out warm now, so `galaxyTint` at 0.35 turns a galaxy
+whose colour is `(1.0, 0.86, 0.62)` frankly orange. That is the slider to reach for first if a
+scene looks too warm, and it is already in the panel.
+
 ## What the window costs
 
 Anything on the main actor is the interface's frame budget. Three things were spending it and
