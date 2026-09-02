@@ -176,6 +176,32 @@ public enum StellarPopulation {
         return t * t * (3 - 2 * t)
     }
 
+    /// Iron abundance relative to the Sun, in dex, at a birth radius of so many scale lengths.
+    ///
+    /// A disk is metal-rich in the middle and metal-poor at the edge, because the middle has
+    /// been recycling its own gas for longer. Measured gradients in nearby spirals run around
+    /// a twentieth of a dex per kiloparsec, which over a four-kiloparsec scale length is about
+    /// two tenths per scale length; the centre sits a little above solar and three scale
+    /// lengths out a little below.
+    ///
+    /// This is the second half of a galaxy's colour and it was missing entirely. Age alone
+    /// gives a gradient of the right sign but far too weak to see, because the sampler draws
+    /// disk ages from nearly the same range everywhere: a whole galaxy came out one colour.
+    public static func metallicity(atScaleLengths radii: Float) -> Float {
+        0.25 - 0.22 * min(max(radii, 0), 5)
+    }
+
+    /// How much cooler a population reads for being metal-rich, as a multiplier on its colour
+    /// temperature.
+    ///
+    /// Metal lines blanket the blue, so a metal-rich population of a given age is redder than
+    /// a metal-poor one of the same age. The measured slope is about two tenths of a magnitude
+    /// in B - V per dex, and over the range where a disk's colour lives that is a fifth of a
+    /// magnitude per fifteen hundred kelvin, which leaves this.
+    public static func metallicityWarming(_ iron: Float) -> Float {
+        exp(-0.25 * min(max(iron, -1.5), 0.6))
+    }
+
     /// Ends of the tabulated range, in megayears. Below the first nothing is resolved — a
     /// population younger than this is simply at its bluest and brightest — and the last is
     /// past a Hubble time on purpose so that the oldest thing in a galaxy is not pinned to the
