@@ -892,6 +892,26 @@ Sampled instead as a flattened spheroid with an isotropic dispersion tracking th
 speed and a slow net rotation — which is what a stellar halo is — it holds: median height 1.69
 kpc settling to 2.85 by 150 Myr and flat from there to 600, outer radius stable near 33 kpc.
 
+**The light and the matter disagreed about where the arms were.** The sampler laid particles
+on a clean logarithmic spiral of perfect m-fold symmetry while the renderer painted an
+irregular pattern over the top, so every asymmetry in the picture was paint and the density
+underneath was still something a rotation could repeat. `SpiralPattern` is now the one
+description and the shader mirrors it.
+
+What made that possible is the hash. Both sides used `fract(sin(x) * 43758.5453)`, which cannot
+agree across a CPU and a GPU: the last bits of `sin` differ, and multiplying by forty thousand
+and taking the fraction turns a seventh-digit disagreement into unrelated numbers. Integer
+mixing gives the same answer on both, exactly, and only then can the sampler place matter where
+the paint says an arm is.
+
+The first cut of the irregularity made every arm *weaker* rather than unequal — each modulator
+was a noise term with a mean well under one, so the pattern averaged 0.375 against a clean
+one's 0.500 and its ninetieth percentile 0.744 against 0.976, and the picture went soft.
+Dividing each modulator by its own mean redistributes an arm's strength along its length
+instead of taking a third of it away: 0.443 and 0.883, with the rest of the gap being the clip
+at one. Under a quarter turn the pattern now differs from itself by 0.465 at worst, against
+1.3e-6 for the clean one.
+
 **What the volume costs.** 16.1 ms a frame against 19.1 at 1.5 million visible particles, so
 about a fifth more, nearly all of it the second vertex pass over the whole buffer. The
 simulation step at the same size is 275 ms, so it does not decide anything.

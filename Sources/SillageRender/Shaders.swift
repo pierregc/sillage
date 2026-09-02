@@ -114,9 +114,19 @@ enum Shaders {
             float4 tint;
         };
 
+        // Integer mixing rather than the usual fract(sin(x) * 43758.5453), and that is not a
+        // preference. The sampler in SillageCore has to produce the *same* pattern as this one
+        // or the matter sits where the paint says there is nothing, and a sine-based hash
+        // cannot do that: the last bits of sin differ between a CPU and a GPU, and after
+        // multiplying by forty thousand and taking the fraction, two implementations agreeing
+        // to seven digits give unrelated numbers. This gives the same answer on both, exactly.
+        // Mirrored in `SpiralPattern.hash`; edit both.
         static float hash1(float i) {
-            float x = sin(i * 127.1 + 311.7) * 43758.5453;
-            return x - floor(x);
+            int k = int(i);
+            uint n = uint(k * 374761393 + 668265263);
+            n = (n ^ (n >> 13u)) * 1274126177u;
+            n = n ^ (n >> 16u);
+            return float(n) * (1.0 / 4294967296.0);
         }
 
         static float valueNoise(float x) {
@@ -200,6 +210,38 @@ enum Shaders {
         // 1 on a ridge, evaluated at the current position so the arms do not wind up. The
         // ideal logarithmic spiral is then made to wander and to break into segments: no
         // real galaxy has two unbroken arms of constant pitch.
+        // Mirrored from `SpiralPattern.ridge` in SillageCore, which the sampler uses to lay
+        // the particles down. The two have to stay the same expression: this is what makes the
+        // light and the matter agree about where the arms are, and it is what lets a lopsided
+        // galaxy be lopsided in its mass rather than only in its paint.
+        static float spiralRidge(float extent, float phi, float arms, float windRate,
+                                 float irregular, float seed, float phase) {
+            float wander = (fractalNoise(extent * 1.5 + seed) - 0.5) * 2.6 * irregular;
+            float wound = phi - windRate * log(max(extent, 1e-3)) - phase + wander;
+
+            float armPhase = arms * wound;
+            float ridge = 0.5 + 0.5 * cos(armPhase);
+
+            float breaks = (0.18 + 1.05 * fractalNoise(wound * 0.62 + extent * 0.9 + seed * 3.1))
+                         / 0.705;
+            ridge *= 1.0 + irregular * (breaks - 1.0);
+
+            float perArm = (0.35 + 1.25 * fractalNoise(armPhase * 0.159 + seed * 7.7)) / 0.975;
+            ridge *= 1.0 + irregular * (perArm - 1.0);
+
+            float spurPhase = (arms + 3.0) * (phi - 1.7 * windRate * log(max(extent, 1e-3)))
+                            + 2.1;
+            float spur = max(cos(spurPhase), 0.0);
+            float spurWhere = fractalNoise(extent * 0.9 + seed * 2.3 + 31.0);
+            ridge += irregular * 0.55 * spur * spur * spur
+                   * smoothstep(0.55, 0.85, spurWhere);
+
+            float lopsided = 1.0 + irregular * 0.30 * cos(phi + seed * 2.1);
+            return clamp(ridge * lopsided, 0.0, 1.0);
+        }
+
+        // Where a particle sits relative to the spiral pattern, evaluated at its current
+        // position so the arms do not wind up with the disk.
         static float2 armWave(float3 position, DiskFrame frame) {
             float strength = frame.axisV.w;
             if (strength <= 0.0) { return float2(0.5, 0.0); }
@@ -212,43 +254,8 @@ enum Shaders {
             float envelope = smoothstep(0.55, 1.5, extent)
                            * (1.0 - smoothstep(4.0, 6.5, extent));
 
-            float irregular = frame.pattern.z;
-            float seed = frame.pattern.w;
-            float wander = (fractalNoise(extent * 1.5 + seed) - 0.5) * 2.6 * irregular;
-            float wound = atan2(v, u)
-                        - frame.pattern.x * log(max(radius, 1e-3) / scale)
-                        - frame.pattern.y
-                        + wander;
-
-            float arms = frame.axisU.w;
-            float phase = arms * wound;
-            float ridge = 0.5 + 0.5 * cos(phase);
-
-            // Breaks along an arm: it thins, stops and picks up again further round, which is
-            // what every real arm does and what an unbroken curve never does.
-            float breaks = fractalNoise(wound * 0.62 + extent * 0.9 + seed * 3.1);
-            ridge *= mix(1.0, 0.18 + 1.05 * breaks, irregular);
-
-            // One arm is not the next. The noise turns over about once per arm, so each gets
-            // its own strength, and the pattern stops being something a rotation can repeat.
-            float perArm = fractalNoise(phase * 0.159 + seed * 7.7);
-            ridge *= mix(1.0, 0.35 + 1.25 * perArm, irregular);
-
-            // A spur: a short second arm at a different pitch, which appears where its own
-            // envelope lets it and dies out again. Cubed so it is a feature rather than a
-            // second full pattern laid over the first.
-            float spurPhase = (arms + 3.0) * (atan2(v, u) - 1.7 * frame.pattern.x
-                                              * log(max(radius, 1e-3) / scale)) + 2.1;
-            float spur = max(cos(spurPhase), 0.0);
-            float spurWhere = fractalNoise(extent * 0.9 + seed * 2.3 + 31.0);
-            ridge += irregular * 0.55 * spur * spur * spur
-                   * smoothstep(0.55, 0.85, spurWhere);
-
-            // And the two halves of a disk are never equal. A one-armed term over the whole
-            // pattern is the cheapest true thing to say about that, and it is what stops the
-            // galaxy looking like a machined part.
-            float lopsided = 1.0 + irregular * 0.30 * cos(atan2(v, u) + seed * 2.1);
-            ridge = clamp(ridge * lopsided, 0.0, 1.0);
+            float ridge = spiralRidge(extent, atan2(v, u), frame.axisU.w, frame.pattern.x,
+                                      frame.pattern.z, frame.pattern.w, frame.pattern.y);
             return float2(mix(0.5, ridge, strength * envelope), envelope);
         }
 
