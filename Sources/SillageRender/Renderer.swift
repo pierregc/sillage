@@ -1,3 +1,4 @@
+import Foundation
 import Metal
 import QuartzCore
 import SillageCore
@@ -654,14 +655,40 @@ public final class Renderer {
     /// Wall time the GPU spent on the last presented frame. The CPU side of `present` is
     /// encoding only — it commits and returns — so timing around the call measures nothing
     /// that matters. This is the number that decides whether a frame makes its vsync.
-    public private(set) var lastGPUMilliseconds = 0.0
+    /// How long the GPU spent on the last frame, from the command buffer's own clock.
+    ///
+    /// Held in a box rather than in the renderer, so the completion handler can write it
+    /// without capturing `self`. It runs on whatever thread Metal finishes on, and it used to
+    /// hop to the main actor to do the write — which captures a non-Sendable renderer into a
+    /// main-actor closure from a task-isolated one, and is a data race the newer compiler on
+    /// CI rejects outright while the one on this machine says nothing.
+    public var lastGPUMilliseconds: Double { gpuClock.milliseconds }
+
+    private let gpuClock = FrameClock()
+
+    final class FrameClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0.0
+        var milliseconds: Double {
+            get {
+                lock.lock()
+                defer { lock.unlock() }
+                return value
+            }
+            set {
+                lock.lock()
+                value = newValue
+                lock.unlock()
+            }
+        }
+    }
 
     public func present(camera: Camera, drawable: CAMetalDrawable) {
         guard let buffer = queue.makeCommandBuffer() else { return }
         encode(camera: camera, into: buffer, present: drawable.texture)
-        buffer.addCompletedHandler { [weak self] finished in
-            let spent = (finished.gpuEndTime - finished.gpuStartTime) * 1000
-            DispatchQueue.main.async { self?.lastGPUMilliseconds = spent }
+        let clock = gpuClock
+        buffer.addCompletedHandler { finished in
+            clock.milliseconds = (finished.gpuEndTime - finished.gpuStartTime) * 1000
         }
         buffer.present(drawable)
         buffer.commit()
