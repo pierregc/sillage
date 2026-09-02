@@ -533,6 +533,22 @@ enum Shaders {
             return x - floor(x);
         }
 
+        /// Smoothed value noise over the frame, for the things that must not be uniform.
+        static float smoothNoise(float2 v) {
+            float2 i = floor(v);
+            float2 f = v - i;
+            float2 u = f * f * (3.0 - 2.0 * f);
+            return mix(mix(hash2(i), hash2(i + float2(1.0, 0.0)), u.x),
+                       mix(hash2(i + float2(0.0, 1.0)), hash2(i + float2(1.0, 1.0)), u.x), u.y);
+        }
+
+        /// A few octaves of it, which is what makes a glow read as cirrus rather than as a
+        /// gradient someone painted.
+        static float cirrus(float2 v) {
+            return smoothNoise(v) * 0.55 + smoothNoise(v * 2.7 + 11.3) * 0.28
+                 + smoothNoise(v * 6.1 + 41.7) * 0.17;
+        }
+
         static float3 acesFilmic(float3 x) {
             const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
             return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
@@ -552,7 +568,15 @@ enum Shaders {
             // A real frame is never on pure black: there is airglow and zodiacal light under
             // everything, and the detector adds read noise and photon shot noise on top.
             // Counterintuitively, putting them back is what stops the image looking synthetic.
-            energy += p.skyLevel * float3(0.36, 0.42, 0.60);
+            //
+            // And none of it is flat. A uniform lift is a grey card behind the galaxy and
+            // reads as one; the sky has structure in it at every scale, so this runs a few
+            // octaves of noise across the frame and lets the level wander by a factor of
+            // three. Warm where it is faint and cool where it is not, as scattered starlight
+            // and zodiacal light divide up.
+            float cloud = cirrus(uv * 3.1 + p.seed * 0.013);
+            float3 nearGround = mix(float3(0.42, 0.36, 0.34), float3(0.30, 0.38, 0.62), cloud);
+            energy += p.skyLevel * (0.45 + 1.75 * cloud) * nearGround;
             if (p.noiseLevel > 0.0) {
                 float2 cell = float2(gid) + p.seed;
                 float read = hash2(cell) - 0.5;

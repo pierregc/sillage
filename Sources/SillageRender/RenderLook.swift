@@ -50,7 +50,7 @@ public struct RenderLook: Sendable, Equatable {
         spikeArms: Int = 6,
         spikeLength: Float = 72,
         spikeIntensity: Float = 0.38,
-        skyLevel: Float = 0.0018,
+        skyLevel: Float = 0.0032,
         noiseLevel: Float = 0.0016,
         galaxyTint: Float = 0.5,
         starSize: Float = 1.15,
@@ -130,7 +130,7 @@ public struct RenderLook: Sendable, Equatable {
         brightness: 0.13, dustStrength: 0.16, smoothingScale: 0.85, minimumKernel: 0.8,
         maximumKernel: 24, bloomThreshold: 0.72, bloomSoftKnee: 0.25, bloomIntensity: 0.5,
         stretch: 8, saturation: 2.0, spikeArms: 4, spikeLength: 130, spikeIntensity: 0.72,
-        skyLevel: 0.0009, noiseLevel: 0.0022, galaxyTint: 0.42, starSize: 1.5,
+        skyLevel: 0.0016, noiseLevel: 0.0022, galaxyTint: 0.42, starSize: 1.5,
         armPersistence: 0.7, fieldOfView: 0.5)
 
     /// Deep and nearly monochrome, the sky pulled almost to black. For the wide shots, where
@@ -139,7 +139,7 @@ public struct RenderLook: Sendable, Equatable {
         brightness: 0.17, dustStrength: 0.24, smoothingScale: 1.9, minimumKernel: 0.95,
         maximumKernel: 58, bloomThreshold: 0.6, bloomSoftKnee: 0.4, bloomIntensity: 0.3,
         stretch: 20, saturation: 1.15, spikeArms: 6, spikeLength: 90, spikeIntensity: 0.3,
-        skyLevel: 0.0004, noiseLevel: 0.0011, galaxyTint: 0.3, starSize: 1.0,
+        skyLevel: 0.0009, noiseLevel: 0.0011, galaxyTint: 0.3, starSize: 1.0,
         armPersistence: 1.0, fieldOfView: 0.62)
 
     /// Warm and heavy, dust doing most of the drawing.

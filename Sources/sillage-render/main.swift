@@ -61,7 +61,7 @@ let settings = RenderSettings(
     supersample: Int(number("supersample", 2)),
     brightness: Float(number("brightness", 0.15)),
     dustStrength: Float(number("dust", 0.35)),
-    starCount: Int(number("stars", 2600)),
+    starCount: Int(number("stars", 9000)),
     starSize: Float(number("star-size", 2.2)),
     smoothingScale: Float(number("smoothing", 1.9)),
     bloomThreshold: Float(number("bloom-threshold", 0.55)),
