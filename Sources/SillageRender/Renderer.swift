@@ -274,8 +274,10 @@ public final class Renderer {
         for index in stride(from: 0, to: particles.formation.count, by: step) {
             let born = particles.formation[index]
             guard born > -1e8, born < 1e8 else { continue }
-            totalLight += StellarPopulation.sampled(
-                ageMyr: -born * Float(Physics.megayearsPerTimeUnit)).lightPerMass
+            totalLight +=
+                StellarPopulation.sampled(
+                    ageMyr: -born * Float(Physics.megayearsPerTimeUnit)
+                ).lightPerMass
             lit += 1
         }
         self.luminosityNormalisation = lit > 0 ? Float(lit) / max(totalLight, 1e-6) : 1

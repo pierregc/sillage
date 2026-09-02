@@ -32,7 +32,8 @@ public enum StellarPopulation {
             return (sequence[0].kelvin, pow(10, sequence[0].logLuminosity))
         }
         for index in 1..<sequence.count where mass <= sequence[index].mass {
-            let low = sequence[index - 1], high = sequence[index]
+            let low = sequence[index - 1]
+            let high = sequence[index]
             let f = (log(mass) - log(low.mass)) / (log(high.mass) - log(low.mass))
             return (
                 exp(log(low.kelvin) + f * (log(high.kelvin) - log(low.kelvin))),
@@ -87,7 +88,8 @@ public enum StellarPopulation {
     /// stars as Planckian radiators, so this is the temperature to hand it.
     private static func colourTemperature(blue: Double, green: Double) -> Double {
         guard green > 0, blue > 0 else { return 4000 }
-        var low = 2000.0, high = 40000.0
+        var low = 2000.0
+        var high = 40000.0
         for _ in 0..<50 {
             let mid = (low + high) / 2
             if planck(440, mid) / planck(550, mid) < blue / green { low = mid } else { high = mid }
@@ -103,7 +105,9 @@ public enum StellarPopulation {
     /// a population by total luminosity makes it far bluer and far brighter in visible light
     /// than it is. Planck over Stefan-Boltzmann is that correction.
     public static func evaluate(ageMyr: Double) -> (kelvin: Double, lightPerMass: Double) {
-        var blue = 0.0, green = 0.0, mass = 0.0
+        var blue = 0.0
+        var green = 0.0
+        var mass = 0.0
         func add(_ weight: Double, _ luminosity: Double, _ kelvin: Double) {
             let visible = luminosity / pow(kelvin, 4)
             blue += weight * visible * planck(440, kelvin)
@@ -123,7 +127,8 @@ public enum StellarPopulation {
         let leaving = min(mainSequenceMass(ageMyr: qualifying), 60.0)
 
         // Everything still on the main sequence, and the whole of the mass ever formed.
-        let low = 0.08, high = 60.0
+        let low = 0.08
+        let high = 60.0
         let bins = 2000
         for index in 0..<bins {
             let a = low * pow(high / low, Double(index) / Double(bins))

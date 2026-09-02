@@ -84,7 +84,8 @@ struct SpiralPatternTests {
         }
         // Neighbouring cells are unrelated, or the noise has structure it should not have.
         var same = 0
-        for index in 0..<200 where
+        for index in 0..<200
+        where
             abs(SpiralPattern.hash(Float(index)) - SpiralPattern.hash(Float(index + 1))) < 0.02
         {
             same += 1
