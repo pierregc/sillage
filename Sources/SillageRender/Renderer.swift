@@ -11,12 +11,9 @@ struct SplatUniforms {
     var time: Float
     var megayearsPerUnit: Float
     var ionisedMyr: Float
-    var colourYoungMyr: Float
-    var colourOldMyr: Float
-    var knotFloorMyr: Float
-    var youngLuminosity: Float
-    var luminosityDecay: Float
-    var referenceAgeMyr: Float
+    var populationYoungMyr: Float
+    var populationSpan: Float
+    var populationLast: Float
     var luminosityNormalisation: Float
     var brightness: Float
     var dustStrength: Float
@@ -199,6 +196,9 @@ public final class Renderer {
     private let positionBuffer: MTLBuffer
     private let populationBuffer: MTLBuffer
     private let formationBuffer: MTLBuffer
+    /// Colour temperature and light per unit mass against age, computed once by
+    /// `StellarPopulation` and read by every star in every frame.
+    private let stellarBuffer: MTLBuffer
     private let luminosityBuffer: MTLBuffer
     private let componentBuffer: MTLBuffer
     private let galaxyBuffer: MTLBuffer
@@ -257,8 +257,8 @@ public final class Renderer {
         for index in stride(from: 0, to: particles.formation.count, by: step) {
             let born = particles.formation[index]
             guard born > -1e8, born < 1e8 else { continue }
-            totalLight += StarFormation.luminosity(
-                ageMyr: -born * Float(Physics.megayearsPerTimeUnit))
+            totalLight += StellarPopulation.sampled(
+                ageMyr: -born * Float(Physics.megayearsPerTimeUnit)).lightPerMass
             lit += 1
         }
         self.luminosityNormalisation = lit > 0 ? Float(lit) / max(totalLight, 1e-6) : 1
@@ -384,6 +384,10 @@ public final class Renderer {
             let componentBuffer = device.makeBuffer(
                 bytes: attribute(particles.component, UInt32(0)),
                 length: count * 4, options: .storageModeShared),
+            let stellarBuffer = device.makeBuffer(
+                bytes: StellarPopulation.table,
+                length: StellarPopulation.samples * MemoryLayout<SIMD2<Float>>.stride,
+                options: .storageModeShared),
             let galaxyBuffer = device.makeBuffer(
                 bytes: attribute(particles.galaxyIndex, UInt32(0)),
                 length: count * 4, options: .storageModeShared)
@@ -396,6 +400,7 @@ public final class Renderer {
         self.formationBuffer = formationBuffer
         self.luminosityBuffer = luminosityBuffer
         self.componentBuffer = componentBuffer
+        self.stellarBuffer = stellarBuffer
         self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
         if externalPositions == nil {
             upload(positions: particles.positions)
@@ -509,12 +514,9 @@ public final class Renderer {
             time: time,
             megayearsPerUnit: Float(Physics.megayearsPerTimeUnit),
             ionisedMyr: StarFormation.ionisedMyr,
-            colourYoungMyr: StarFormation.colourYoungMyr,
-            colourOldMyr: StarFormation.colourOldMyr,
-            knotFloorMyr: StarFormation.knotFloorMyr,
-            youngLuminosity: StarFormation.youngLuminosity,
-            luminosityDecay: StarFormation.luminosityDecay,
-            referenceAgeMyr: StarFormation.referenceAgeMyr,
+            populationYoungMyr: Float(StellarPopulation.youngestMyr),
+            populationSpan: log(Float(StellarPopulation.oldestMyr / StellarPopulation.youngestMyr)),
+            populationLast: Float(StellarPopulation.samples - 1),
             luminosityNormalisation: luminosityNormalisation,
             brightness: settings.brightness * perParticle,
             dustStrength: settings.dustStrength * perParticle,
@@ -554,6 +556,7 @@ public final class Renderer {
             encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
             encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
             encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
+            encoder.setVertexBuffer(stellarBuffer, offset: 0, index: 9)
             encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
             encoder.endEncoding()
         }

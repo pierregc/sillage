@@ -22,36 +22,6 @@ public enum StarFormation {
     /// particles.
     public static let ionisedMyr: Float = 25
 
-    /// Youngest age the colour and brightness curves resolve, in megayears. Below it a knot
-    /// is simply at its bluest and brightest: nothing here models the first few million years.
-    public static let knotFloorMyr: Float = 3
-
-    /// The two ends of the colour ramp, in megayears, calibrated rather than chosen.
-    ///
-    /// A ramp running from three megayears to a Hubble time put every real disk age into its
-    /// bottom fifth, so a whole galaxy came out orange and the only blue left in a picture was
-    /// the per-galaxy tint. These two numbers instead fit what population synthesis actually
-    /// gives — 13000 K at ten megayears, 5800 at three gigayears, 4750 at twelve — which is a
-    /// power law in age with a much gentler slope than the old ramp had.
-    ///
-    /// The old end sits past a Hubble time on purpose: nothing in a galaxy is thirty gigayears
-    /// old, and that is the point, because it leaves a twelve-gigayear bulge above the bottom
-    /// of the ramp instead of pinned to it.
-    public static let colourYoungMyr: Float = 10
-    public static let colourOldMyr: Float = 30000
-
-    /// How bright a knot is at birth against an ordinary disk particle of the same mass.
-    ///
-    /// A coeval population is dominated by its most massive stars for as long as it has any,
-    /// so it starts an order of magnitude brighter and then falls off as a power law. A disk
-    /// star here stands for a composite population already in steady state, which is what this
-    /// is measured against.
-    public static let youngLuminosity: Float = 12
-
-    /// Age at which a population is as bright as the law says an average one is, in megayears.
-    /// Roughly the light-weighted age of a spiral disk, so the exposure lands where it did.
-    public static let referenceAgeMyr: Float = 3000
-
     /// Youngest age the initial conditions place anything at, in megayears.
     ///
     /// A particle stands for tens of thousands of stars, so it is never truly coeval, and a
@@ -67,13 +37,6 @@ public enum StarFormation {
     public static let diskEdgeOldestMyr: Float = 5000
     /// A bulge is old everywhere and was made quickly.
     public static let bulgeAgeMyr: ClosedRange<Float> = 10000...12500
-
-    /// Exponent of that decay, and the whole of what makes the young dominate a frame. It is
-    /// one law for everything now: a knot three megayears old and a bulge star of eleven
-    /// gigayears are the same formula at different ages. Capped at `youngLuminosity`, which
-    /// the law reaches at about 170 Myr — without that cap the youngest few hundred particles
-    /// carry most of the light and the disk turns to glitter.
-    public static let luminosityDecay: Float = 0.9
 
     /// Megayears the sampler spreads its seeded knots over.
     ///
@@ -130,19 +93,6 @@ public enum StarFormation {
     /// its dispersion over its scale height comparable to its own free-fall rate — so the
     /// floor has to sit above that, and only material converging faster than it falls counts.
     public static let compressionFloor: Float = 15
-
-    /// The colour age a population of this age reads as, on the sampler's own 0 old to 1
-    /// young scale. Kept here rather than only in the shader so a test can check the curve.
-    public static func population(ageMyr: Float) -> Float {
-        let span = log(colourOldMyr / colourYoungMyr)
-        return 1 - min(max(log(max(ageMyr, colourYoungMyr) / colourYoungMyr) / span, 0), 1)
-    }
-
-    /// Light per unit mass at this age, against a population of `referenceAgeMyr`.
-    public static func luminosity(ageMyr: Float) -> Float {
-        let resolved = max(ageMyr, knotFloorMyr)
-        return min(pow(resolved / referenceAgeMyr, -luminosityDecay), youngLuminosity)
-    }
 
     /// When an old spheroid's stars formed. A bulge is old everywhere and was made quickly,
     /// so there is no gradient to draw from — only the width of the burst.
