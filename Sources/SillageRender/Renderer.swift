@@ -120,7 +120,7 @@ public struct RenderSettings: Sendable {
         bloomIntensity: Float = 0.22,
         bloomLevels: Int = 6,
         stretch: Float = 18,
-        saturation: Float = 1.8,
+        saturation: Float = 2.8,
         spikeArms: Int = 6,
         spikeLength: Float = 72,
         spikeIntensity: Float = 0.38,

@@ -301,12 +301,15 @@ enum Shaders {
                 // Wider than the 0.22 it was, because it is now doing the work alone: it used
                 // to nudge a population the sampler had already made blue, and it now has to
                 // separate an arm from an interarm region on its own.
-                // An arm is not merely brighter, it is younger: its light is dominated by
-                // stars formed as it passed. The shift is wide because that is the truth of it
-                // — on a ridge the light of a three-gigayear disk reads like a few hundred
-                // megayears, which is the difference between orange and blue-white.
-                float base = knot ? youth : population[vid];
-                float age = base + 0.55 * (wave - 0.5) * pattern.y;
+                // Colour belongs to the star, not to where it happens to be.
+                //
+                // This used to add the painted wave to the age, and at the width it needed to
+                // make an arm blue it made every star flash: `wave` is read at the particle's
+                // current position, so a star crossing the pattern swung between five and ten
+                // thousand kelvin twice an orbit. A population does not redden and blue again
+                // as it turns. An arm is bluer because of what it *contains*, and what it
+                // contains is set once, by the sampler, from the age each star was given.
+                float age = knot ? youth : population[vid];
                 // Halpha for as long as the O stars ionising the gas are alive, which is a few
                 // million years and no longer. This used to be driven by the *painted* spiral
                 // pattern, so the pink knots followed a texture rather than the physics: they

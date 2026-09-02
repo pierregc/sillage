@@ -279,12 +279,19 @@ final class SimulationModel: ObservableObject {
     /// tuned numbers while the picker already read "Observatoire", so choosing that look from
     /// the picker visibly changed the picture it claimed to be showing. Kept exactly as it was
     /// rather than reconciled, because every rendered comparison in the notes was made here.
+    ///
+    /// The saturation is the one number here that was raised rather than preserved. Colour now
+    /// comes from real stellar ages, and the tone curve's shoulder washes those to white long
+    /// before the eye reads them as colour: at 1.8 a rendered disk held 29 % blue pixels
+    /// against the 41 % of the hand-tuned look it replaced, with the hue present in the
+    /// numbers — R 122 G 115 B 122 — and invisible in the picture. At 2.8 it reads 41 %, and
+    /// nothing about the physics moved to get there.
     static let openingLook: RenderLook = {
         var look = RenderLook.observatory
         look.dustStrength = 0.16
         look.smoothingScale = 1.9
         look.stretch = 18
-        look.saturation = 1.8
+        look.saturation = 2.8
         look.galaxyTint = 0.35
         return look
     }()

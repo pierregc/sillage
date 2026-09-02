@@ -12,9 +12,15 @@ import simd
 /// sat wherever the sampler had left them an orbit earlier, and never appeared anywhere new
 /// however violently the galaxy was disturbed.
 public enum StarFormation {
-    /// Megayears a knot stays ionised, which is the life of the O stars doing the ionising.
-    /// Past this the Halpha goes out and what is left is a young blue cluster.
-    public static let ionisedMyr: Float = 8
+    /// Megayears a knot stays ionised.
+    ///
+    /// A single HII region is lit for the eight megayears its O stars live, and that is what
+    /// this used to be. But a particle here stands for a whole star-forming complex, and a
+    /// complex keeps making stars for two or three times as long, so it keeps a lit region in
+    /// it for as long. At eight the pink was there and measurable and could not be seen: the
+    /// disk holds only a couple of hundred lit knots at a time out of a quarter of a million
+    /// particles.
+    public static let ionisedMyr: Float = 25
 
     /// Youngest age the colour and brightness curves resolve, in megayears. Below it a knot
     /// is simply at its bluest and brightest: nothing here models the first few million years.
@@ -53,7 +59,7 @@ public enum StarFormation {
     /// galaxy's light into a few hundred particles and the disk reads as a field of glints
     /// rather than as a disk. Measured that way once already. Anything younger than this comes
     /// from the star formation rule during the run, where it is meant to stand out.
-    public static let youngestSampledMyr: Float = 600
+    public static let youngestSampledMyr: Float = 60
 
     /// Oldest and youngest a disk gets, in megayears, from its centre to its edge. Disks form
     /// inside out, so the outskirts are the young part.
@@ -69,13 +75,16 @@ public enum StarFormation {
     /// carry most of the light and the disk turns to glitter.
     public static let luminosityDecay: Float = 0.9
 
-    /// Megayears of star formation history the sampler seeds a disk with.
+    /// Megayears the sampler spreads its seeded knots over.
     ///
-    /// A galaxy does not begin the run having formed nothing. Seeding the knots all at t = 0
-    /// gave every one of them the same age, so the whole disk lit up at once and stayed at
-    /// full brightness together — a field of identical blue glints rather than a population.
-    /// At a constant rate the ages are uniform, so that is how they are drawn.
-    public static let seedSpreadMyr: Float = 600
+    /// The sampler declares these particles HII regions, so they have to arrive lit. Spread
+    /// over six hundred megayears only one in twenty-five still was, and the pink went out of
+    /// the picture entirely. Spread over one ionised lifetime or so, they arrive as what they
+    /// were placed to be, and the run's own star formation takes over from there.
+    ///
+    /// Not zero, though: seeding them all at the same instant gives every knot the same age
+    /// and the whole disk goes out together a few tens of megayears in.
+    public static let seedSpreadMyr: Float = 60
 
     /// Star formation efficiency per free-fall time.
     ///
@@ -150,7 +159,12 @@ public enum StarFormation {
         edge: Float, armProximity: Float, roll: Float
     ) -> Float {
         let oldest = diskOldestMyr - (diskOldestMyr - diskEdgeOldestMyr) * min(max(edge, 0), 1)
-        let biased = pow(min(max(roll, 0), 1), 1 + 2 * min(max(armProximity, 0), 1))
+        // Hard against the young end on an arm, and that steepness is now carrying the whole
+        // of an arm's colour: the painted wave used to add its own bluing at draw time, which
+        // is what made stars flash as they crossed it. Baked in here it cannot flash, because
+        // a star's age never changes. On a ridge the median lands near four hundred megayears
+        // and between the arms near six gigayears — white-blue against orange.
+        let biased = pow(min(max(roll, 0), 1), 1 + 6 * min(max(armProximity, 0), 1))
         let age = youngestSampledMyr + (oldest - youngestSampledMyr) * biased
         return -age / Float(Physics.megayearsPerTimeUnit)
     }
