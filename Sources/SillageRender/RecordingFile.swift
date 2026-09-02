@@ -49,7 +49,10 @@ public enum RecordingFile {
 
     /// A take as it comes back off disk: the run, and the per-particle attributes the
     /// renderer needs to draw it.
-    public struct Loaded {
+    /// `Recording` guards itself with a lock and everything else here is a value, so this
+    /// crosses from the queue that read the file to the main actor safely. Saying so is not
+    /// decoration: the newer compiler on CI rejects the hand-off outright.
+    public struct Loaded: Sendable {
         public var scene: SceneConfig
         public var recording: Recording
         public var particles: ParticleSystem
