@@ -13,12 +13,9 @@ enum Shaders {
             float time;
             float megayearsPerUnit;
             float ionisedMyr;
-            float colourYoungMyr;
-            float colourOldMyr;
-            float knotFloorMyr;
-            float youngLuminosity;
-            float luminosityDecay;
-            float referenceAgeMyr;
+            float populationYoungMyr;
+            float populationSpan;
+            float populationLast;
             float luminosityNormalisation;
             float brightness;
             float dustStrength;
@@ -128,12 +125,27 @@ enum Shaders {
                 dot(xyz, float3(0.0557, -0.2040, 1.0570))));
         }
 
-        // Integrated colour of a stellar population, from an old bulge to the stars forming
-        // in an arm. The ends are the colour temperatures the two actually show, near
-        // B-V = 0.95 and B-V = -0.05, and the interpolation runs in log T because that is
-        // roughly what makes it linear in colour index: a disk halfway along lands on the
-        // B-V = 0.6 a real interarm region has, which a linear ramp in T misses by a lot.
-        static float3 stellarColour(float age) {
+        // Colour temperature and visible light per unit mass of a population of this age,
+        // read off the table `StellarPopulation` computes: a real initial mass function over
+        // a real stellar sequence, with a giant branch, integrated at each age.
+        //
+        // What was here before interpolated between 4100 K and 13000 K on a ramp fitted by
+        // eye, alongside a power law for the brightness capped at twelve. Both were wrong the
+        // same way: the young end of the real curve is 18000 K and the real contrast between
+        // a ten-megayear population and a ten-gigayear one is a factor of fifty. Young stars
+        // came out too red and too faint at once, which is why a galaxy had no blue in it.
+        static float2 synthesised(device const float2 *table, constant SplatUniforms &u,
+                                  float ageMyr) {
+            float f = log(max(ageMyr, u.populationYoungMyr) / u.populationYoungMyr)
+                / u.populationSpan;
+            float at = saturate(f) * u.populationLast;
+            uint index = uint(min(at, u.populationLast - 1.0));
+            return mix(table[index], table[index + 1u], at - float(index));
+        }
+
+        // The legacy path: a take written before every particle carried an age has only the
+        // sampler's old zero-to-one population value, so it keeps the ramp that value meant.
+        static float3 legacyColour(float age) {
             return blackbody(exp(mix(log(4100.0), log(13000.0), saturate(age))));
         }
 
@@ -186,7 +198,8 @@ enum Shaders {
                                     constant SplatUniforms &u [[buffer(4)]],
                                     device const uint *galaxy [[buffer(5)]],
                                     constant DiskFrame *frames [[buffer(6)]],
-                                    device const float *smoothing [[buffer(7)]]) {
+                                    device const float *smoothing [[buffer(7)]],
+                                    device const float2 *stellar [[buffer(9)]]) {
             SplatOut out;
             float3 position = positions[vid];
             DiskFrame frame = frames[galaxy[vid]];
@@ -249,74 +262,33 @@ enum Shaders {
                 out.color = half3(0.0h);
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
             } else {
-                // Star formation happens where the wave is compressing the gas, so a knot
-                // away from one is an old knot and has to be dim. The floor cannot go much
-                // higher: the sampler's placement holds for an orbit at most, and after that
-                // a generous floor is pink dots scattered over a disk that has turned.
-                // Arm contrast in starlight was set low back when the sampled density carried
-                // the arms and this only had to nudge them. It carries them alone now, so it
-                // runs at the factor of two a grand-design spiral shows between arm and
-                // interarm.
-                //
-                // A knot's colour and brightness are its own, and both run in log age: the
-                // light of a coeval population is dominated by its most massive stars for as
-                // long as it has any, so almost all of the change happens in the first hundred
-                // megayears as those come off the main sequence in order of mass. A linear ramp
-                // over the same span holds every knot at full brightness for far too long, and
-                // a disk seeded with them reads as a field of identical glints.
-                float floorMyr = max(u.knotFloorMyr, 1e-3);
-                float resolved = max(ageMyr, floorMyr);
-                float youth = knot
-                    ? 1.0 - saturate(log(max(ageMyr, u.colourYoungMyr) / u.colourYoungMyr)
-                                     / log(max(u.colourOldMyr / u.colourYoungMyr, 1.001)))
-                    : 0.0;
+                // An arm is brighter than the disk around it, by about the factor of two a
+                // grand-design spiral shows between arm and interarm. This is the only thing
+                // the painted wave still does to starlight: it used to set colour as well,
+                // and because `wave` is read at the particle's *current* position that made
+                // every star swing between five and ten thousand kelvin twice an orbit. A
+                // population does not redden and blue again as it turns. An arm is bluer
+                // because of what it contains, and what it contains is fixed when the star
+                // forms.
                 float ambient = 0.55 + 0.95 * wave;
-                // Light per unit mass, and the one law the whole picture now runs on: a knot
-                // three megayears old and a bulge star of eleven gigayears are the same
-                // formula at different ages. It is what makes the young dominate a frame
-                // without being numerous — which is how a real spiral is blue while most of
-                // its mass is not.
+                // Colour and light per unit mass, both from the same synthesised population
+                // at this particle's age. One table, one law: a knot three megayears old and
+                // a bulge star of eleven gigayears are the same lookup at different ages.
                 //
-                // Capped, and the cap is not cosmetic. The law reaches it at about 170 Myr;
-                // without it, ages drawn towards zero put most of a galaxy's light into a few
-                // hundred particles and the disk reads as glitter rather than as a disk.
-                //
-                // Normalised by the mean of the same law over this scene, so putting it in
-                // moves no exposure and none of the five looks needed retuning.
-                float massToLight = knot
-                    ? min(pow(resolved / max(u.referenceAgeMyr, 1e-3), -u.luminosityDecay),
-                          u.youngLuminosity)
-                      * u.luminosityNormalisation
-                    : 1.0;
+                // Normalised by the mean of the same curve over this scene's own ages, so
+                // that changing the population model moves no exposure and none of the five
+                // looks needs retuning.
+                float2 synth = synthesised(stellar, u, ageMyr);
+                float massToLight = knot ? synth.y * u.luminosityNormalisation : 1.0;
                 float gain = ambient * massToLight;
-                // Colour comes from the population the sampler gave this particle: old and
-                // warm in the bulge, young and blue in the disk. The wave shifts it a little
-                // further, because an arm is bluer than the disk around it for the same
-                // reason it is brighter, and the ridge moves while the stars pass through it.
-                // A knot ignores all of that and reads its colour off its own age.
-                // The arm term applies whatever the age came from. It used to sit on the
-                // branch for stars carrying no age at all, so the moment every star carried
-                // one it reached nothing and the arms lost their blue in a single edit.
-                //
-                // Wider than the 0.22 it was, because it is now doing the work alone: it used
-                // to nudge a population the sampler had already made blue, and it now has to
-                // separate an arm from an interarm region on its own.
-                // Colour belongs to the star, not to where it happens to be.
-                //
-                // This used to add the painted wave to the age, and at the width it needed to
-                // make an arm blue it made every star flash: `wave` is read at the particle's
-                // current position, so a star crossing the pattern swung between five and ten
-                // thousand kelvin twice an orbit. A population does not redden and blue again
-                // as it turns. An arm is bluer because of what it *contains*, and what it
-                // contains is set once, by the sampler, from the age each star was given.
-                float age = knot ? youth : population[vid];
+                float3 stellarLight = knot ? blackbody(synth.x) : legacyColour(population[vid]);
                 // Halpha for as long as the O stars ionising the gas are alive, which is a few
                 // million years and no longer. This used to be driven by the *painted* spiral
                 // pattern, so the pink knots followed a texture rather than the physics: they
                 // sat where the sampler had left them an orbit earlier and never appeared
                 // anywhere new, however violently the galaxy was disturbed.
                 float alive = knot ? exp(-ageMyr / max(u.ionisedMyr, 1e-3)) : 0.0;
-                float3 emitted = mix(stellarColour(age), hiiColour(), alive);
+                float3 emitted = mix(stellarLight, hiiColour(), alive);
                 // A tint per galaxy is what keeps stars pulled into the other one legible.
                 // It is a departure from the physical colour, so it is dialled rather than
                 // applied: at 0 the two galaxies are coloured by their populations alone.
