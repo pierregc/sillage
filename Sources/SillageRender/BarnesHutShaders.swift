@@ -161,6 +161,8 @@ enum BarnesHutShaders {
             float gravitationalConstant;
             float compressionBoost;
             float compressionFloor;
+            float zoneSize;
+            float burstShare;
             uint seed;
             uint nodeCount;
         };
@@ -271,6 +273,25 @@ enum BarnesHutShaders {
             float chance = 1.0 - exp(-rate * s.timeStep);
             if (chance <= 0.0) { return; }
 
+            // Where that rate is spent, rather than how much of it there is. Drawing every
+            // leaf independently scatters the new stars one at a time across the whole
+            // star-forming disk, and a few thousand isolated bright points read as a haze
+            // over the galaxy instead of as knots in it. Real star formation is clustered:
+            // a complex lights up as a unit, and it takes its neighbours with it.
+            //
+            // So the draw is made once for a zone the size of a complex, keyed on where the
+            // node is and not on which node it is, and every leaf inside the zone answers to
+            // the same draw. A zone ignites one over `burstShare` times less often and
+            // converts that share of its gas when it does, so the mean rate is exactly the
+            // one the Schmidt law asked for and only its clumpiness has changed.
+            int3 cell = int3(floor(node.comMass.xyz / max(s.zoneSize, 1e-3)));
+            uint key = uint(cell.x * 73856093) ^ uint(cell.y * 19349663) ^ uint(cell.z * 83492791);
+            float share = min(chance / max(s.burstShare, 1e-6), 1.0);
+            if (hashUnit(key, s.seed) >= share) { return; }
+            // Saturated, the zone can no longer be made rarer, so the leaf takes the whole
+            // per-particle chance and the law still holds.
+            float take = share < 1.0 ? s.burstShare : chance;
+
             for (uint k = 0u; k < count; ++k) {
                 uint i = order[start + k];
                 // Gas only, and only gas that has not already made its stars. Written once
@@ -278,7 +299,7 @@ enum BarnesHutShaders {
                 // history of a run.
                 if (component[i] != 2u) { continue; }
                 if (formation[i] < 1e8) { continue; }
-                if (hashUnit(i, s.seed) >= chance) { continue; }
+                if (hashUnit(i, s.seed) >= take) { continue; }
                 formation[i] = s.time;
             }
         }
