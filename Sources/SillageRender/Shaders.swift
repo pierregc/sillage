@@ -16,7 +16,6 @@ enum Shaders {
             float colourYoungMyr;
             float colourOldMyr;
             float knotFloorMyr;
-            float riseMyr;
             float youngLuminosity;
             float luminosityDecay;
             float referenceAgeMyr;
@@ -144,13 +143,7 @@ enum Shaders {
         // filters, stated directly; deriving it from line ratios needs an emission model and
         // the CIE colour matching functions.
         static float3 hiiColour() {
-            // Halpha at 656 nm carries the region, and the rest of what a broadband camera
-            // sees of one is Hbeta and [OIII] at 486 and 500 — comparable to each other and
-            // both well under the red. Which is why the blue sits *below* the green here and
-            // used to sit above it: with the saturation this render carries, a blue above the
-            // green makes every knot magenta, and a magenta knot is not what an HII region
-            // looks like through a telescope or what one is being asked for here.
-            return chromaticity(float3(1.00, 0.34, 0.30));
+            return chromaticity(float3(1.00, 0.36, 0.42));
         }
 
         // Where a particle sits relative to the spiral density wave, 0 between the arms and
@@ -295,12 +288,7 @@ enum Shaders {
                           u.youngLuminosity)
                       * u.luminosityNormalisation
                     : 1.0;
-                // A knot fades in rather than appearing. Without this a dust grain becomes a
-                // twelve-times-brighter emitter between one frame and the next, which at
-                // playback speed is a light switch — and a few hundred of those a second is
-                // most of what reads as a Christmas tree.
-                float emergence = knot ? smoothstep(0.0, u.riseMyr, ageMyr) : 1.0;
-                float gain = ambient * massToLight * emergence;
+                float gain = ambient * massToLight;
                 // Colour comes from the population the sampler gave this particle: old and
                 // warm in the bulge, young and blue in the disk. The wave shifts it a little
                 // further, because an arm is bluer than the disk around it for the same

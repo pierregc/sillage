@@ -12,31 +12,19 @@ import simd
 /// sat wherever the sampler had left them an orbit earlier, and never appeared anywhere new
 /// however violently the galaxy was disturbed.
 public enum StarFormation {
-    /// Megayears a star-forming region keeps a lit nebula in it.
+    /// Megayears a knot stays ionised.
     ///
-    /// Not the life of one HII region, which is the eight megayears its O stars live, and not
-    /// the life of one complex either, which is a few tens. What is drawn red here is a place
-    /// several hundred parsecs across that is forming stars, and such a place keeps forming
-    /// them — and so keeps a nebula lit somewhere inside itself — for as long as the gas
-    /// concentration feeding it survives, which is one to a few hundred megayears.
-    ///
-    /// The number matters more than that argument does, because of the rate the thing is
-    /// watched at. Four steps a frame at sixty frames a second is thirty-seven megayears of
-    /// simulation every second of wall clock. At sixty megayears a knot came and went inside
-    /// one and a half seconds, so every red patch in the picture was flickering — which is
-    /// what a galaxy full of them looks like, and it is not what a galaxy looks like. At two
-    /// hundred a region takes five or six seconds to swell and fade, which is slow enough to
-    /// watch happen and still short enough that the disk turns over while you look at it.
-    public static let ionisedMyr: Float = 200
+    /// A single HII region is lit for the eight megayears its O stars live, and that is what
+    /// this used to be. But a particle here stands for a whole star-forming complex, and a
+    /// complex keeps making stars for two or three times as long, so it keeps a lit region in
+    /// it for as long. At eight the pink was there and measurable and could not be seen: the
+    /// disk holds only a couple of hundred lit knots at a time out of a quarter of a million
+    /// particles.
+    public static let ionisedMyr: Float = 25
 
     /// Youngest age the colour and brightness curves resolve, in megayears. Below it a knot
     /// is simply at its bluest and brightest: nothing here models the first few million years.
     public static let knotFloorMyr: Float = 3
-
-    /// Megayears a region takes to reach full brightness. A cloud collapses and lights up
-    /// over a few million years; switching it on between two frames is a light bulb. Set
-    /// against the same wall clock as the window above — this is about half a second.
-    public static let riseMyr: Float = 20
 
     /// The two ends of the colour ramp, in megayears, calibrated rather than chosen.
     ///
@@ -64,20 +52,14 @@ public enum StarFormation {
     /// Roughly the light-weighted age of a spiral disk, so the exposure lands where it did.
     public static let referenceAgeMyr: Float = 3000
 
-    /// Youngest age the initial conditions place an ordinary disk star at, in megayears.
+    /// Youngest age the initial conditions place anything at, in megayears.
     ///
-    /// Has to stay above `ionisedMyr`, and that is the whole of why it is this number rather
-    /// than a smaller one. Anything younger than the window reads as ionised, so if the disk
-    /// is sampled down into it then the disk itself is what glows: measured at a two hundred
-    /// megayear window against a sixty megayear floor, sixty-six thousand particles came out
-    /// lit and carried seven tenths of the light, and the galaxy was uniformly pink. Only
-    /// what a nursery or the run itself made should be able to be young enough to glow.
-    ///
-    /// It could not go much lower anyway. A particle stands for tens of thousands of stars,
-    /// so it is never truly coeval, and a power law with no floor is a trap: ages drawn
-    /// uniformly to zero would put most of a galaxy's light into a few hundred particles and
-    /// the disk reads as a field of glints rather than as a disk. Measured that way once too.
-    public static let youngestSampledMyr: Float = 250
+    /// A particle stands for tens of thousands of stars, so it is never truly coeval, and a
+    /// power law with no floor is a trap: ages drawn uniformly to zero would put most of a
+    /// galaxy's light into a few hundred particles and the disk reads as a field of glints
+    /// rather than as a disk. Measured that way once already. Anything younger than this comes
+    /// from the star formation rule during the run, where it is meant to stand out.
+    public static let youngestSampledMyr: Float = 60
 
     /// Oldest and youngest a disk gets, in megayears, from its centre to its edge. Disks form
     /// inside out, so the outskirts are the young part.
@@ -95,21 +77,14 @@ public enum StarFormation {
 
     /// Megayears the sampler spreads its seeded knots over.
     ///
-    /// Matched to the steady state the run itself settles at, which is what stops the picture
-    /// thinning out. The sampler places two per cent of the disk as HII regions; if they all
-    /// arrive lit, the galaxy holds four thousand knots at t = 0 and a thousand by six hundred
-    /// megayears, and a viewer sees the pink drain away. Spread so that the number lit at the
-    /// start is the number the disk's own formation rate sustains, the count is flat from the
-    /// first frame and nothing drains.
+    /// The sampler declares these particles HII regions, so they have to arrive lit. Spread
+    /// over six hundred megayears only one in twenty-five still was, and the pink went out of
+    /// the picture entirely. Spread over one ionised lifetime or so, they arrive as what they
+    /// were placed to be, and the run's own star formation takes over from there.
     ///
     /// Not zero, though: seeding them all at the same instant gives every knot the same age
     /// and the whole disk goes out together a few tens of megayears in.
-    ///
-    /// Held at about half again `ionisedMyr`. Longer and the galaxy opens nearly white and
-    /// reddens over its first two hundred megayears as the run catches up with itself, which
-    /// is a transient nothing physical asks for: measured at three times the window, the
-    /// ionised share of the light went 7 per cent, 16, and back to 10.
-    public static let seedSpreadMyr: Float = 300
+    public static let seedSpreadMyr: Float = 60
 
     /// Star formation efficiency per free-fall time.
     ///
@@ -155,23 +130,6 @@ public enum StarFormation {
     /// its dispersion over its scale height comparable to its own free-fall rate — so the
     /// floor has to sit above that, and only material converging faster than it falls counts.
     public static let compressionFloor: Float = 15
-
-    /// Size of a star-forming zone, in kiloparsecs.
-    ///
-    /// A leaf is far smaller than a star-forming complex, and drawing each leaf independently
-    /// scattered the new stars one at a time over the whole star-forming part of the disk: the
-    /// count was right, the light was right, and what it read as was a pink haze rather than
-    /// anything you could point at. Real star formation is clustered — a complex lights up as
-    /// a unit and its neighbours with it — so the draw is made once per zone of this size and
-    /// every leaf inside one answers to it. Set at the size of a large complex.
-    public static let zoneSize: Float = 0.35
-
-    /// Fraction of a zone's available gas that goes at once when it does go.
-    ///
-    /// Only the shape of the distribution, not its mean: a zone ignites at one over this times
-    /// less often, so the rate the Schmidt law asks for is exactly preserved. What changes is
-    /// that the stars arrive together, in one place, and are therefore visible as a place.
-    public static let burstShare: Float = 0.45
 
     /// The colour age a population of this age reads as, on the sampler's own 0 old to 1
     /// young scale. Kept here rather than only in the shader so a test can check the curve.

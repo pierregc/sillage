@@ -18,8 +18,6 @@ struct StarFormationGPU {
     var gravitationalConstant: Float
     var compressionBoost: Float
     var compressionFloor: Float
-    var zoneSize: Float
-    var burstShare: Float
     var seed: UInt32
     var nodeCount: UInt32
 }
@@ -361,8 +359,6 @@ public final class MetalBarnesHutSolver: Solver {
             gravitationalConstant: Physics.gravitationalConstant,
             compressionBoost: StarFormation.compressionBoost,
             compressionFloor: StarFormation.compressionFloor,
-            zoneSize: StarFormation.zoneSize,
-            burstShare: StarFormation.burstShare,
             seed: UInt32(truncatingIfNeeded: stepsSinceFormation),
             nodeCount: UInt32(nodeCount))
         encode(into: buffer, formStars, threads: nodeCount) { encoder in
