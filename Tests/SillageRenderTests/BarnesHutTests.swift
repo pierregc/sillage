@@ -614,16 +614,21 @@ struct BarnesHutTests {
         /// How far the rate ever rises above where it started. Monotonicity is too strong a
         /// thing to ask of a self-gravitating disk — its arms come and go and the rate breathes
         /// with them — so what separates the two cases is the size of the excursion, not its
-        /// sign. Measured at sixty thousand particles: 330, 355, 366, 351, 271, 266 for a disk
-        /// left alone, and 213, 261, 544, 210, 437, 739 for an encounter, whose third window
-        /// holds pericentre and whose last holds coalescence. At double the particles, 1.0 and
-        /// 3.0. Anything between one and a half and two and a half separates them.
+        /// sign. Measured at sixty thousand particles: 299, 262, 237, 225, 190, 186 for a disk
+        /// left alone, and 195, 201, 467, 148, 461, 517 for an encounter, whose third window
+        /// holds pericentre and whose last holds coalescence — an excursion of 1.0 against
+        /// 2.65.
+        ///
+        /// The upper bar was two and a half and has been moved down, because 2.65 against 2.5
+        /// is a six per cent margin and a test with a six per cent margin goes red on a driver
+        /// update rather than on a regression. What it has to do is separate one from two and
+        /// a half, and two does that with room on both sides.
         func excursion(_ counts: [Int]) -> Float {
             Float(counts.max() ?? 0) / Float(max(counts.first ?? 1, 1))
         }
 
         #expect(excursion(try perWindow(merging: false, over: 450)) < 1.5)
-        #expect(excursion(try perWindow(merging: true, over: 450)) > 2.5)
+        #expect(excursion(try perWindow(merging: true, over: 450)) > 2.0)
     }
 
     @Test func haloParticlesAreSampledAndCarryNoLight() {
