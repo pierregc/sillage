@@ -14,6 +14,7 @@ struct SplatUniforms {
     var colourYoungMyr: Float
     var colourOldMyr: Float
     var knotFloorMyr: Float
+    var riseMyr: Float
     var youngLuminosity: Float
     var luminosityDecay: Float
     var referenceAgeMyr: Float
@@ -512,6 +513,7 @@ public final class Renderer {
             colourYoungMyr: StarFormation.colourYoungMyr,
             colourOldMyr: StarFormation.colourOldMyr,
             knotFloorMyr: StarFormation.knotFloorMyr,
+            riseMyr: StarFormation.riseMyr,
             youngLuminosity: StarFormation.youngLuminosity,
             luminosityDecay: StarFormation.luminosityDecay,
             referenceAgeMyr: StarFormation.referenceAgeMyr,
