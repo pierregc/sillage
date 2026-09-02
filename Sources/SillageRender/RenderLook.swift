@@ -19,6 +19,10 @@ public struct RenderLook: Sendable, Equatable {
     public var bloomIntensity: Float
     public var stretch: Float
     public var saturation: Float
+    /// How far above the disk a core has to be before it reads as white. The tone curve maps
+    /// this value to one and everything under it keeps a hue, so raising it is what stops a
+    /// bulge flattening into a featureless white disc.
+    public var whitePoint: Float
     public var spikeArms: Int
     public var spikeLength: Float
     public var spikeIntensity: Float
@@ -42,6 +46,7 @@ public struct RenderLook: Sendable, Equatable {
         bloomIntensity: Float = 0.22,
         stretch: Float = 14,
         saturation: Float = 2.2,
+        whitePoint: Float = 4.5,
         spikeArms: Int = 6,
         spikeLength: Float = 72,
         spikeIntensity: Float = 0.38,
@@ -62,6 +67,7 @@ public struct RenderLook: Sendable, Equatable {
         self.bloomIntensity = bloomIntensity
         self.stretch = stretch
         self.saturation = saturation
+        self.whitePoint = whitePoint
         self.spikeArms = spikeArms
         self.spikeLength = spikeLength
         self.spikeIntensity = spikeIntensity
@@ -87,6 +93,7 @@ public struct RenderLook: Sendable, Equatable {
         out.bloomIntensity = f(a.bloomIntensity, b.bloomIntensity)
         out.stretch = f(a.stretch, b.stretch)
         out.saturation = f(a.saturation, b.saturation)
+        out.whitePoint = f(a.whitePoint, b.whitePoint)
         // Arms are a count, and crossfading their intensity through zero is what keeps the
         // change of one from showing as a flicker.
         out.spikeArms = u < 0.5 ? a.spikeArms : b.spikeArms

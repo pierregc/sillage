@@ -49,6 +49,7 @@ struct CompositeParams {
     var skyLevel: Float
     var noiseLevel: Float
     var seed: Float
+    var whitePoint: Float
     var fade: Float = 1
 }
 
@@ -93,6 +94,9 @@ public struct RenderSettings: Sendable {
     public var stretch: Float
     /// 1 leaves colour untouched, above 1 pushes the two disks further apart in hue.
     public var saturation: Float
+    /// How far above the disk's own level a core has to be before it reads as white. Raise it
+    /// and a bright nucleus keeps falling off instead of flattening into a disc.
+    public var whitePoint: Float
     /// Diffraction arms: 6 for a segmented mirror, 4 for a Cassegrain spider, 0 for none.
     public var spikeArms: Int
     public var spikeLength: Float
@@ -122,6 +126,7 @@ public struct RenderSettings: Sendable {
         bloomLevels: Int = 6,
         stretch: Float = 18,
         saturation: Float = 2.8,
+        whitePoint: Float = 4.5,
         spikeArms: Int = 6,
         spikeLength: Float = 72,
         spikeIntensity: Float = 0.38,
@@ -145,6 +150,7 @@ public struct RenderSettings: Sendable {
         self.bloomLevels = bloomLevels
         self.stretch = stretch
         self.saturation = saturation
+        self.whitePoint = whitePoint
         self.spikeArms = spikeArms
         self.spikeLength = spikeLength
         self.spikeIntensity = spikeIntensity
@@ -494,6 +500,7 @@ public final class Renderer {
         settings.bloomIntensity = look.bloomIntensity
         settings.stretch = look.stretch
         settings.saturation = look.saturation
+        settings.whitePoint = look.whitePoint
         settings.spikeArms = look.spikeArms
         settings.spikeLength = look.spikeLength
         settings.spikeIntensity = look.spikeIntensity
@@ -695,6 +702,7 @@ public final class Renderer {
             skyLevel: settings.skyLevel,
             noiseLevel: settings.noiseLevel,
             seed: frameSeed,
+            whitePoint: settings.whitePoint,
             fade: min(max(fade, 0), 1))
         let target = present ?? output
         dispatch(compute, compositePipeline, into: target) { encoder in
