@@ -69,7 +69,7 @@ let settings = RenderSettings(
     bloomIntensity: Float(number("bloom", 0.22)),
     bloomLevels: Int(number("bloom-levels", 6)),
     stretch: Float(number("stretch", 18)),
-    saturation: Float(number("saturation", 1.8)),
+    saturation: Float(number("saturation", 2.8)),
     spikeArms: Int(number("spikes", 6)),
     spikeLength: Float(number("spike-length", 72)),
     spikeIntensity: Float(number("spike-intensity", 0.38)),

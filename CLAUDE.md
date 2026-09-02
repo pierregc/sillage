@@ -404,6 +404,35 @@ the light of a three-gigayear disk reads like a few hundred megayears, which is 
 distance between orange and blue-white. 0.55 now, from 0.22 when it only had to nudge an
 already-blue population.
 
+**A star's colour must not depend on where it is standing.** The arm term was added to the
+age at draw time, and `wave` is read at the particle's *current* position, so once it was wide
+enough to make an arm blue it made every star swing between five and ten thousand kelvin twice
+an orbit — a viewer called it a Christmas tree and that is exactly what it was. A population
+does not redden and blue again as it turns. The arm's colour comes from what it contains now,
+set once by the sampler: ages are drawn hard against the young end near an arm, `roll^(1+6p)`,
+so a ridge lands near a hundred megayears and the space between arms near six gigayears. Baked
+in, it cannot flash.
+
+**Physical ages cannot make a blue disk, and saturation can.** This is the one place where the
+honest answer and the wanted picture pull apart, and it is worth being clear which lever does
+what. A population older than about a hundred megayears is white to orange — that is what
+population synthesis says, and no amount of arranging ages changes it. The hand-tuned
+`population` it replaced was blue everywhere because it was never an age at all. So the disk
+came out at 2 % blue pixels against the 41 % of the old look, and chasing that with younger
+ages went the wrong way: below about sixty megayears the mass-to-light cap pushes those stars
+through the tone curve's shoulder and they come out *white*, not blue — 15 Myr gave 1.4 % blue
+and 60 Myr gave 17.9 %.
+
+The hue was in the frame the whole time and could not be seen: mean R 122 G 115 B 122, blue by
+the numbers, white to the eye. Saturation is what separates it, and it touches nothing
+physical — 1.8 gives 29 %, 2.8 gives 41.3 %, 3.6 gives 46 %. The default is 2.8 now. Reach for
+it, not for the ages, when a scene wants more colour.
+
+**Judge a colour zoomed in, on one galaxy.** Two mistakes in a row came from not doing that: a
+merger hides a colourless disk behind two opposing tints, and a wide framing is mostly sky, so
+the numbers move for reasons that have nothing to do with the galaxy. `--zoom` and
+`--saturation` are both flags on the headless renderer already.
+
 **A warmer base makes the per-galaxy tint louder.** Stellar colour used to come out blue
 whatever the tint did to it. It comes out warm now, so `galaxyTint` at 0.35 turns a galaxy
 whose colour is `(1.0, 0.86, 0.62)` frankly orange. That is the slider to reach for first if a
