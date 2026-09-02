@@ -497,22 +497,26 @@ public final class MetalBarnesHutSolver: Solver {
             longestDispatchMilliseconds, Date().timeIntervalSince(clock) * 1000)
     }
 
+    // Deliberately mutable: the tests and the measurement probes set these to sweep them, and
+    // nothing else ever writes one. Strict concurrency has no way to know that, so it is said
+    // here rather than by making them lets that the tests could not move.
+    //
     /// Particles per force dispatch. A whole large scene in one kernel keeps the GPU to
     /// itself long enough that the pointer stutters; in pieces the display gets in between.
-    public static var forceChunk = 1_000_000
+    nonisolated(unsafe) public static var forceChunk = 1_000_000
 
     /// Particles a leaf may hold before it splits. Bigger leaves mean far fewer nodes and a
     /// much cheaper build — the node split is serial and it is what a concentrated scene makes
     /// expensive — at the cost of more direct summation in the force pass. That trade only
     /// became worth taking once leaves started respecting the opening criterion, since a
     /// distant leaf now costs one evaluation whatever it holds.
-    public static var leafCapacity = 16
+    nonisolated(unsafe) public static var leafCapacity = 16
 
     /// How deep the tree may go. A merged core subdivides to the ceiling and the node split
     /// is serial, so this is most of what a build costs on a concentrated scene. Twenty is
     /// right when accuracy matters; thirteen puts the smallest cell at a few tens of parsecs,
     /// far below any softening length used here, and builds far faster.
-    public static var maximumTreeDepth = 20
+    nonisolated(unsafe) public static var maximumTreeDepth = 20
 
     /// Steps a tree is reused for. The build is most of what a step costs, and what decides
     /// whether motion looks continuous is how *often* positions change, not how far they move
@@ -520,24 +524,24 @@ public final class MetalBarnesHutSolver: Solver {
     /// only follows the camera, glides. Reusing the tree buys the step rate that fixes that,
     /// and costs nothing at these step sizes — a particle crosses a fraction of a leaf cell
     /// in the interval, which is well inside what the opening angle already approximates.
-    public static var treeReuse = 1
+    nonisolated(unsafe) public static var treeReuse = 1
 
     /// Whether the tree build runs alongside the force pass, on the CPU cores the GPU leaves
     /// idle. Worth 1.45x at a million simulated particles and 1.34x at 3.75 million, and it is
     /// off by default because it is not free — see "A step was serial, and the overlap is not
     /// free" in the working notes. Turn it on for throughput, leave it off for structure.
-    public static var overlapTree = false
+    nonisolated(unsafe) public static var overlapTree = false
 
     /// Particles a galaxy contributes to its own disk frame. The axis and the coherence are
     /// mass-weighted sums over a hundred thousand-odd stars; fifty thousand of them give the
     /// same answer, and this runs on every tree rebuild.
-    public static var frameSample = 50_000
+    nonisolated(unsafe) public static var frameSample = 50_000
 
     /// Where a companion stops leaving the disk alone, as the disk's radius over its tidal
     /// radius. Below the floor the disk sits well inside the tidal radius and its gas is
     /// undisturbed; past the ceiling the companion is cutting into the disk itself.
-    public static var tidalFloor: Float = 0.7
-    public static var tidalCeiling: Float = 1.4
+    nonisolated(unsafe) public static var tidalFloor: Float = 0.7
+    nonisolated(unsafe) public static var tidalCeiling: Float = 1.4
 
     private func encodeIntegrate(into buffer: MTLCommandBuffer) {
         var p = params
