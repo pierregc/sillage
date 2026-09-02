@@ -208,10 +208,14 @@ public final class Renderer {
     /// Colour temperature and light per unit mass against age, computed once by
     /// `StellarPopulation` and read by every star in every frame.
     private let stellarBuffer: MTLBuffer
-    /// Iron abundance per particle, from the radius it was born at. Fixed at birth, which is
-    /// why it is taken from `birthRadius` and not from where the particle stands now: a star
-    /// flung out of a nucleus by an encounter keeps the composition of the nucleus.
-    private let metallicityBuffer: MTLBuffer
+    /// Two things a particle carries that never change: how much cooler its composition makes
+    /// it read, and how wide its kernel is drawn. Packed together because both are one float
+    /// per particle written once, and a second buffer of twenty megabytes for one of them is
+    /// not worth the tidiness.
+    ///
+    /// The composition is taken from `birthRadius` and not from where the particle stands now:
+    /// a star flung out of a nucleus by an encounter keeps the composition of the nucleus.
+    private let traitBuffer: MTLBuffer
     private let luminosityBuffer: MTLBuffer
     private let componentBuffer: MTLBuffer
     private let galaxyBuffer: MTLBuffer
@@ -401,9 +405,10 @@ public final class Renderer {
             let componentBuffer = device.makeBuffer(
                 bytes: attribute(particles.component, UInt32(0)),
                 length: count * 4, options: .storageModeShared),
-            let metallicityBuffer = device.makeBuffer(
-                bytes: Renderer.warming(of: particles),
-                length: count * 4, options: .storageModeShared),
+            let traitBuffer = device.makeBuffer(
+                bytes: Renderer.traits(of: particles),
+                length: count * MemoryLayout<SIMD2<Float>>.stride,
+                options: .storageModeShared),
             let stellarBuffer = device.makeBuffer(
                 bytes: StellarPopulation.table,
                 length: StellarPopulation.samples * MemoryLayout<SIMD2<Float>>.stride,
@@ -421,7 +426,7 @@ public final class Renderer {
         self.luminosityBuffer = luminosityBuffer
         self.componentBuffer = componentBuffer
         self.stellarBuffer = stellarBuffer
-        self.metallicityBuffer = metallicityBuffer
+        self.traitBuffer = traitBuffer
         self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
         if externalPositions == nil {
             upload(positions: particles.positions)
@@ -532,10 +537,13 @@ public final class Renderer {
     /// given the scene, and for an exponential disk the median radius is 1.678 scale lengths,
     /// which is a sturdier way to ask the question than trusting a configuration field to
     /// still describe the particles by the time they arrive here.
-    private static func warming(of particles: ParticleSystem) -> [Float] {
+    private static func traits(of particles: ParticleSystem) -> [SIMD2<Float>] {
         let count = particles.count
+        let scales =
+            particles.kernelScale.count == count
+            ? particles.kernelScale : [Float](repeating: 1, count: count)
         guard particles.birthRadius.count == count else {
-            return [Float](repeating: 1, count: max(count, 1))
+            return (0..<max(count, 1)).map { SIMD2<Float>(1, $0 < scales.count ? scales[$0] : 1) }
         }
         var byGalaxy: [UInt32: [Float]] = [:]
         for index in 0..<count
@@ -548,10 +556,13 @@ public final class Renderer {
             scaleLength[galaxy] = max(sorted[sorted.count / 2] / 1.678, 1e-3)
         }
         return (0..<count).map { index in
-            guard let scale = scaleLength[particles.galaxyIndex[index]] else { return 1 }
-            return StellarPopulation.metallicityWarming(
+            guard let scale = scaleLength[particles.galaxyIndex[index]] else {
+                return SIMD2<Float>(1, scales[index])
+            }
+            let warming = StellarPopulation.metallicityWarming(
                 StellarPopulation.metallicity(
                     atScaleLengths: particles.birthRadius[index] / scale))
+            return SIMD2<Float>(warming, scales[index])
         }
     }
 
@@ -633,7 +644,7 @@ public final class Renderer {
             encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
             encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
             encoder.setVertexBuffer(stellarBuffer, offset: 0, index: 9)
-            encoder.setVertexBuffer(metallicityBuffer, offset: 0, index: 10)
+            encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
             // Twice over the same buffer: the dust first, so that its opacity is standing in
             // the attachment when the stars are drawn and read it back. Each draw throws away
             // the particles belonging to the other one in the vertex stage, before any

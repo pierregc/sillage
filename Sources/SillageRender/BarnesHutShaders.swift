@@ -111,9 +111,13 @@ enum BarnesHutShaders {
                                 uint i [[thread_position_in_grid]]) {
             if (i >= p.particleCount) { return; }
             uint kind = component[i];
-            // Dark matter has no gas in it, and a bulge is held up by the very motion this
-            // takes away.
-            if (kind == 3u || kind == 4u) { return; }
+            // Dark matter has no gas in it; a bulge is held up by the very motion this takes
+            // away; and the thick disk is old enough that there is no gas left in it to cool
+            // through. Measured on the last of those: cooled along with the thin disk, its
+            // median height fell from 0.91 kpc to 0.32 and its outer radius from 25 kpc to 17
+            // over three hundred megayears, so the galaxy's soft edge lasted about as long as
+            // it took to look away.
+            if (kind >= 3u) { return; }
 
             DiskCooling disk = disks[galaxy[i]];
             float damping = disk.motion.w;

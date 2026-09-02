@@ -58,6 +58,14 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// The trade is real in both directions: clumps are also what seeds the spiral response,
     /// and at zero the m = 2 amplitude collapses to nothing. 0.12 keeps a flocculent disk.
     public var clumpiness: Float
+
+    /// Share of a disk's stars belonging to the thick disk and inner halo rather than to the
+    /// thin disk: old, metal-poor, spread wider and standing well off the plane.
+    ///
+    /// Without it a disk stops at a radius you can name, with a rim, which is the one thing no
+    /// galaxy has. Real thick disks hold something like a tenth of a spiral's stellar mass and
+    /// rather less of its light, since they are old.
+    public var outskirtFraction: Float
     /// How far the arms wander from a perfect logarithmic spiral, and how much they break
     /// into segments.
     public var armIrregularity: Float
@@ -112,6 +120,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         bulgeFlattening: Float = 0.7,
         color: SIMD3<Float> = SIMD3<Float>(1.0, 0.90, 0.74),
         clumpiness: Float = 0.12,
+        outskirtFraction: Float = 0.12,
         armIrregularity: Float = 0.55,
         diskMassFraction: Float = 0.22,
         toomreQ: Float = 1.4,
@@ -142,6 +151,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.bulgeFlattening = bulgeFlattening
         self.color = color
         self.clumpiness = clumpiness
+        self.outskirtFraction = outskirtFraction
         self.armIrregularity = armIrregularity
         self.diskMassFraction = diskMassFraction
         self.toomreQ = toomreQ
