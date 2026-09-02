@@ -46,6 +46,17 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public var color: SIMD3<Float>
     /// Share of stars placed in a hierarchy of clumps rather than smoothly. Real disks are
     /// patchy at every scale; a smooth draw looks airbrushed.
+    ///
+    /// It is also, by a long way, what heats the disk, and that is worth knowing before
+    /// raising it. Clumps are self-gravitating overdensities that dissolve over the first few
+    /// hundred megayears and scatter everything they pass. Measured on an isolated disk, the
+    /// radial dispersion against the circular speed after 300 Myr: 0.156 at zero clumpiness,
+    /// 0.185 at 0.12, and 0.309 at the 0.30 this used to be — against the 0.10 to 0.15 a real
+    /// spiral lives at. Over 800 Myr the old value reached 0.55 and the disk stopped
+    /// amplifying anything, which is what "the arms never form and it falls apart" was.
+    ///
+    /// The trade is real in both directions: clumps are also what seeds the spiral response,
+    /// and at zero the m = 2 amplitude collapses to nothing. 0.12 keeps a flocculent disk.
     public var clumpiness: Float
     /// How far the arms wander from a perfect logarithmic spiral, and how much they break
     /// into segments.
@@ -100,7 +111,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         bulgeFraction: Float = 0.15,
         bulgeFlattening: Float = 0.7,
         color: SIMD3<Float> = SIMD3<Float>(1.0, 0.90, 0.74),
-        clumpiness: Float = 0.30,
+        clumpiness: Float = 0.12,
         armIrregularity: Float = 0.55,
         diskMassFraction: Float = 0.22,
         toomreQ: Float = 1.4,
