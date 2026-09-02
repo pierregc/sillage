@@ -10,7 +10,8 @@ struct SplatUniforms {
     var time: Float
     var megayearsPerUnit: Float
     var ionisedMyr: Float
-    var fadeMyr: Float
+    var colourYoungMyr: Float
+    var colourOldMyr: Float
     var knotFloorMyr: Float
     var youngLuminosity: Float
     var luminosityDecay: Float
@@ -507,7 +508,8 @@ public final class Renderer {
             time: time,
             megayearsPerUnit: Float(Physics.megayearsPerTimeUnit),
             ionisedMyr: StarFormation.ionisedMyr,
-            fadeMyr: StarFormation.fadeMyr,
+            colourYoungMyr: StarFormation.colourYoungMyr,
+            colourOldMyr: StarFormation.colourOldMyr,
             knotFloorMyr: StarFormation.knotFloorMyr,
             youngLuminosity: StarFormation.youngLuminosity,
             luminosityDecay: StarFormation.luminosityDecay,

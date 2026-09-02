@@ -388,6 +388,22 @@ reverted.
   was found; between 300 and 600 the grain barely moves, so the floor is not the lever it
   looks like.
 
+**The colour ramp has to be calibrated, not chosen, and a merger hides that a single galaxy
+does not.** A ramp running from three megayears to a Hubble time puts every real disk age into
+its bottom fifth: 600 Myr came out at 6270 K against the 7250 population synthesis gives,
+3 Gyr at 5040 against 5800. A whole galaxy therefore rendered orange — and it was invisible on
+the merger preset, because there the two galaxies carry opposite tints and the blue one still
+looked blue. It took an isolated disk, which carries a cream tint and nothing to compensate,
+to show that no blue was coming from the stars at all. **Judge colour on one galaxy.**
+
+The ramp now fits the two ends that matter and the old end sits past a Hubble time on purpose,
+so a twelve-gigayear bulge lands above the bottom of it rather than pinned to it.
+
+**An arm is younger, not just brighter**, and the shift has to be wide to say so: on a ridge
+the light of a three-gigayear disk reads like a few hundred megayears, which is the whole
+distance between orange and blue-white. 0.55 now, from 0.22 when it only had to nudge an
+already-blue population.
+
 **A warmer base makes the per-galaxy tint louder.** Stellar colour used to come out blue
 whatever the tint did to it. It comes out warm now, so `galaxyTint` at 0.35 turns a galaxy
 whose colour is `(1.0, 0.86, 0.62)` frankly orange. That is the slider to reach for first if a

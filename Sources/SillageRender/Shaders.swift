@@ -13,7 +13,8 @@ enum Shaders {
             float time;
             float megayearsPerUnit;
             float ionisedMyr;
-            float fadeMyr;
+            float colourYoungMyr;
+            float colourOldMyr;
             float knotFloorMyr;
             float youngLuminosity;
             float luminosityDecay;
@@ -266,8 +267,8 @@ enum Shaders {
                 float floorMyr = max(u.knotFloorMyr, 1e-3);
                 float resolved = max(ageMyr, floorMyr);
                 float youth = knot
-                    ? 1.0 - saturate(log(resolved / floorMyr)
-                                     / log(max(u.fadeMyr / floorMyr, 1.001)))
+                    ? 1.0 - saturate(log(max(ageMyr, u.colourYoungMyr) / u.colourYoungMyr)
+                                     / log(max(u.colourOldMyr / u.colourYoungMyr, 1.001)))
                     : 0.0;
                 float ambient = 0.55 + 0.95 * wave;
                 // Light per unit mass, and the one law the whole picture now runs on: a knot
@@ -300,8 +301,12 @@ enum Shaders {
                 // Wider than the 0.22 it was, because it is now doing the work alone: it used
                 // to nudge a population the sampler had already made blue, and it now has to
                 // separate an arm from an interarm region on its own.
+                // An arm is not merely brighter, it is younger: its light is dominated by
+                // stars formed as it passed. The shift is wide because that is the truth of it
+                // — on a ridge the light of a three-gigayear disk reads like a few hundred
+                // megayears, which is the difference between orange and blue-white.
                 float base = knot ? youth : population[vid];
-                float age = base + 0.38 * (wave - 0.5) * pattern.y;
+                float age = base + 0.55 * (wave - 0.5) * pattern.y;
                 // Halpha for as long as the O stars ionising the gas are alive, which is a few
                 // million years and no longer. This used to be driven by the *painted* spiral
                 // pattern, so the pink knots followed a texture rather than the physics: they

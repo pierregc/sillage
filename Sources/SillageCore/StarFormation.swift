@@ -20,11 +20,19 @@ public enum StarFormation {
     /// is simply at its bluest and brightest: nothing here models the first few million years.
     public static let knotFloorMyr: Float = 3
 
-    /// Megayears over which a coeval population's colour runs from bluest to as red as the old
-    /// disk. Three gigayears, and the ramp is logarithmic because that is how the light of a
-    /// population actually evolves: most of the change happens in the first hundred megayears,
-    /// as the stars that dominate it come off the main sequence in order of mass.
-    public static let fadeMyr: Float = 13000
+    /// The two ends of the colour ramp, in megayears, calibrated rather than chosen.
+    ///
+    /// A ramp running from three megayears to a Hubble time put every real disk age into its
+    /// bottom fifth, so a whole galaxy came out orange and the only blue left in a picture was
+    /// the per-galaxy tint. These two numbers instead fit what population synthesis actually
+    /// gives — 13000 K at ten megayears, 5800 at three gigayears, 4750 at twelve — which is a
+    /// power law in age with a much gentler slope than the old ramp had.
+    ///
+    /// The old end sits past a Hubble time on purpose: nothing in a galaxy is thirty gigayears
+    /// old, and that is the point, because it leaves a twelve-gigayear bulge above the bottom
+    /// of the ramp instead of pinned to it.
+    public static let colourYoungMyr: Float = 10
+    public static let colourOldMyr: Float = 30000
 
     /// How bright a knot is at birth against an ordinary disk particle of the same mass.
     ///
@@ -114,12 +122,11 @@ public enum StarFormation {
     /// floor has to sit above that, and only material converging faster than it falls counts.
     public static var compressionFloor: Float = 15
 
-    /// The colour age a knot of this age reads as, on the sampler's own 0 old to 1 young
-    /// scale. Kept here rather than only in the shader so a test can check the curve.
+    /// The colour age a population of this age reads as, on the sampler's own 0 old to 1
+    /// young scale. Kept here rather than only in the shader so a test can check the curve.
     public static func population(ageMyr: Float) -> Float {
-        let floor = max(knotFloorMyr, 1e-3)
-        let span = log(max(fadeMyr / floor, 1.001))
-        return 1 - min(max(log(max(ageMyr, floor) / floor) / span, 0), 1)
+        let span = log(colourOldMyr / colourYoungMyr)
+        return 1 - min(max(log(max(ageMyr, colourYoungMyr) / colourYoungMyr) / span, 0), 1)
     }
 
     /// Light per unit mass at this age, against a population of `referenceAgeMyr`.
