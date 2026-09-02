@@ -503,64 +503,6 @@ over a heavier disk needs more dispersion to begin with, so it starts at 0.229 r
 0.136 and is warm from the first frame. Left at 0.22, which is the honest figure for a real
 disk, and exposed on a slider for anyone who wants the stronger response.
 
-## The time scale is right, and that is what makes the knots blink
-
-Asked directly whether the clock holds up, so: derived from the constants, one time unit is
-4.714 Myr against the 4.71 in `Physics`, and one velocity unit 207.4 km/s against 207.4. An
-orbit at 8 kpc and 220 km/s takes 223 Myr. Nothing is wrong with the clock.
-
-**The clock being right is exactly why the picture flickers.** An HII region is lit for a few
-megayears, and a run shows eight hundred of them in half a minute of playback — so every knot
-in the galaxy is a flash lasting about a second. That is not a fault in the colour model, it is
-what compressing a gigayear does. Written here first as "no amount of work on ages will change
-it", which was wrong: the *ages* cannot, but the length of the window can, and that turned out
-to be the whole fix. See the third bullet below.
-
-What can be changed is whether the eye picks out *individuals*. The first attempt at that was
-to make the lit population large enough to hide its own turnover — 400 knots became 1200 by
-stretching the lifetime from 25 Myr to 60, and the seed was spread so the count stayed flat
-instead of draining. Every number improved and the picture got worse: "les deux galaxies
-commencent rose". A thousand isolated bright points spread evenly over a disk is not a
-thousand knots, it is a pink filter over the galaxy.
-
-**The measurement that settled it.** Take the lit knots and ask what share of them have three
-or more lit neighbours within 200 pc. On the disk as seeded: **two per thousand**. During the
-run: 22–42%, because the formation kernel at least follows a density field. So the seeded
-population — the one that decides what the first frame looks like — was pure noise, and the
-run's own was only half-clustered. Meanwhile the lit knots carried 2.4% of the light, which
-also refuted the theory that they were dominating the frame by brightness. They were
-dominating it by being *everywhere*.
-
-Three changes, and the order matters because the third depends on the second:
-
-- **Star formation happens in places.** The rate is drawn once per zone of 350 pc, keyed on
-  where a node is rather than on which node it is, and every leaf inside the zone answers to
-  that one draw; a zone ignites `1/burstShare` times less often and converts that share of its
-  gas when it does. The mean rate is algebraically unchanged — the Schmidt law, the efficiency
-  and the 2.1 Gyr depletion time are all exactly what they were — and only the clumpiness of
-  the draw has moved. Grouping during the run: 22–42% → 52–68%.
-- **A galaxy is born with regions in it, not with knots sprinkled over it.** The seeded ages
-  were drawn per particle, which is why the first frame was noise. Drawing them per *complex*
-  does not help either: a complex is 1.5 kpc across and a knot that size is not a knot. What
-  works is a nursery — 150 of them, clump-sized, each with one age for everything inside it.
-  Grouping at t = 0: 0.2% → 41.5%.
-- **And the window has to be set against the wall clock, not against the physics.** Four steps
-  a frame at 60 fps is **37 Myr of simulation per second**. A 60 Myr ionised window is 1.6
-  seconds on screen — every red patch in the picture flickering, which is the Christmas tree
-  and always was. It is not the colour model and it is not the ages. Two hundred megayears is
-  five and a half seconds, slow enough to watch a region swell and fade. That is defensible on
-  its own terms too: what is drawn red is not one nebula but a place several hundred parsecs
-  across that keeps forming stars for as long as its gas lasts.
-
-**The trap in that last one, which cost a full rebuild to find.** `ionisedMyr` and
-`youngestSampledMyr` are independent constants that have to stay in that order, and nothing in
-either one says the other exists. Raise the window past the floor and the *disk* is inside the
-window: 66,561 particles lit, 70% of the light, a uniformly pink galaxy. Every other check in
-the suite — counts, rate, depletion, the burst excursion — was unmoved. `onlyWhatAGalaxyMade
-RecentlyIsLit` now asserts the ordering, and `newStarsArriveInPlacesRatherThanEverywhere`
-asserts the grouping, because that is the second time a colour regression has passed a green
-suite.
-
 ## What the window costs
 
 Anything on the main actor is the interface's frame budget. Three things were spending it and
