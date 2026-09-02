@@ -49,6 +49,8 @@ enum Shaders {
             float skyLevel;
             float noiseLevel;
             float seed;
+            /// The lifted value that maps to white. Everything below it keeps a hue.
+            float whitePoint;
             /// 1 shows the frame, 0 shows black. Applied after the tone curve so a fade goes
             /// evenly to black instead of sliding down the curve's shoulder first.
             float fade;
@@ -185,7 +187,13 @@ enum Shaders {
         // filters, stated directly; deriving it from line ratios needs an emission model and
         // the CIE colour matching functions.
         static float3 hiiColour() {
-            return chromaticity(float3(1.00, 0.36, 0.42));
+            // Halpha at 656 nm carries the region, and the rest of what a broadband camera
+            // sees of one is Hbeta and [OIII] at 486 and 500 — comparable to each other and
+            // both well under the red. So the blue sits *below* the green, where it used to
+            // sit above: a blue above the green is magenta, and magenta is neither what an
+            // HII region looks like through a telescope nor a colour a blackbody can make, so
+            // it read as the one thing in the frame that was not a star.
+            return chromaticity(float3(1.00, 0.34, 0.30));
         }
 
         // Where a particle sits relative to the spiral density wave, 0 between the arms and
@@ -560,16 +568,39 @@ enum Shaders {
                 : energy;
             // Tone mapping pulls every bright value toward white, so the warm bulge and the
             // blue arms are re-separated around the curve rather than only before it. Doing
-            // it all beforehand does not survive: the filmic shoulder desaturates highlights
-            // by design, which is right for a photograph and wrong for a galaxy whose core is
-            // the most interesting colour in the frame. Half the amount either side gives the
-            // same overall push while leaving the bright parts a hue.
+            // it all beforehand does not survive: a filmic shoulder desaturates highlights by
+            // design, which is right for a photograph and wrong for a galaxy whose core is the
+            // most interesting colour in the frame. Half the amount either side gives the same
+            // overall push while leaving the bright parts a hue.
             float half_amount = sqrt(max(p.saturation, 0.0));
-            float luma = dot(lifted, float3(0.2126, 0.7152, 0.0722));
+            float luma = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 0.0);
             lifted = max(mix(float3(luma), lifted, half_amount), 0.0);
-            float3 mapped = acesFilmic(lifted);
+            luma = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 1e-5);
+
+            // Where the flat white core came from, and it was not the exposure. The stretch
+            // above is normalised so that an energy of one lands on one, and a bulge is two
+            // orders of magnitude above the disk around it — so it came out of the stretch at
+            // three or more, and every value over one was flattened onto white by the curve
+            // that followed. A plateau with a hard edge, exactly where the most interesting
+            // colour in the picture is.
+            //
+            // This maps the *luminance* through a curve with a white point instead, so a core
+            // three times over the disk lands below white and keeps falling rather than
+            // clipping, and the colour is carried through unchanged by scaling the pixel by
+            // the ratio. Hue survives the shoulder, which is the whole point.
+            float white = max(p.whitePoint, 1.0);
+            float toned = luma * (1.0 + luma / (white * white)) / (1.0 + luma);
+            float3 preserved = lifted * (toned / luma);
+
+            // Preserving hue can still push a channel past one where the colour is saturated
+            // and bright at once. There the filmic curve takes over, because something has to
+            // give and losing a little saturation is better than clipping a channel flat.
+            float3 filmic = acesFilmic(lifted);
+            float over = max(preserved.r, max(preserved.g, preserved.b));
+            float3 mapped = mix(preserved, filmic, smoothstep(0.85, 1.15, over));
             float mappedLuma = dot(mapped, float3(0.2126, 0.7152, 0.0722));
             mapped = max(mix(float3(mappedLuma), mapped, half_amount), 0.0);
+            mapped = saturate(mapped);
             output.write(float4(pow(mapped, 1.0 / 2.2) * p.fade, 1.0), gid);
         }
         """

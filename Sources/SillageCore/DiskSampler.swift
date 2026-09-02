@@ -459,8 +459,17 @@ public enum DiskSampler {
             var phi: Float
             var proximity: Float
 
-            if generator.uniform() < attachment, !clumps.isEmpty {
-                let clump = clumps[Int(generator.uniform() * Float(clumps.count)) % clumps.count]
+            // Drawn whether or not it is used, so that turning a clump down does not shift
+            // every later draw in the galaxy and make two samplings incomparable.
+            let attached = generator.uniform() < attachment
+            let whichClump = generator.uniform()
+            let clump =
+                clumps.isEmpty
+                ? nil : clumps[Int(whichClump * Float(clumps.count)) % clumps.count]
+            // A clump inside the bulge is no home for gas or for young stars, for the same
+            // reason as below.
+            let usable = component == .star || (clump?.radius ?? 0) > bulgeRadius * 0.9
+            if attached, let clump, usable {
                 let placed = scatter(clump, using: &generator)
                 radius = placed.radius
                 phi = placed.phi
@@ -469,7 +478,13 @@ public enum DiskSampler {
                 let contrast = component == .dust ? min(strength * 1.4, 0.95) : strength
                 let placed = samplePlanePosition(
                     config, arms: arms, contrast: contrast, windRate: windRate,
-                    minimumRadius: component == .dust ? bulgeRadius * 0.5 : 0,
+                    // Neither the gas nor the young stars belong inside the bulge. A spheroid
+                    // shears the gas around it hard enough to hold it stable against its own
+                    // gravity, so the middle of an ordinary spiral forms almost nothing —
+                    // which is why a real one has a warm old core and this had a magenta one,
+                    // a mixture of red knots and blue young stars sitting on top of the bulge
+                    // and outshining it.
+                    minimumRadius: component == .star ? 0 : bulgeRadius * 0.9,
                     // Inside corotation the gas overtakes the pattern, so it piles up on the
                     // edge of the arm it arrives at and the dust lane sits there rather than
                     // on the ridge. Which edge that is follows the direction of rotation.
@@ -529,7 +544,14 @@ public enum DiskSampler {
             switch component {
             case .hiiRegion:
                 population = 1
-                brightness = (2.5 + 5 * generator.uniform()) * max(taper, 0.02)
+                // The same spread as any other star, and no more. This used to carry a factor
+                // of five on top, from a time when nothing else made a knot bright; the
+                // synthesised population now gives a twenty-megayear knot ten times the light
+                // per unit mass of a gigayear disk on its own, and the two together had the
+                // knots carrying fifty-seven per cent of a disk's light. A spiral's HII
+                // regions do not.
+                brightness = (0.45 + 1.5 * generator.uniform() * generator.uniform())
+                    * max(taper, 0.02)
                 // A galaxy does not start the run having formed nothing. At a constant rate
                 // the ages of what it has already made are uniform, so they are drawn that
                 // way: a few knots still ionised, most of them well past it and on their way

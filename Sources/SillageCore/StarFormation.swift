@@ -102,20 +102,53 @@ public enum StarFormation {
             / Float(Physics.megayearsPerTimeUnit)
     }
 
+    /// Timescale over which a disk's star formation dies away, at its centre and at its edge,
+    /// in megayears.
+    ///
+    /// A disk builds from the inside out, so the middle ran through its gas early and the
+    /// outskirts are still going. Written as a declining exponential, which is the standard
+    /// way to say that and the thing the ages are actually drawn from now.
+    ///
+    /// What was here before drew ages uniformly between a floor and an oldest, which is a
+    /// *constant* rate of star formation at every radius. With a light per unit mass that
+    /// falls steeply with age the young tail then dominates the light everywhere, and it did:
+    /// measured, the disk was light-weighted at 396 Myr in the middle and 297 Myr three scale
+    /// lengths out. No gradient, and a blue young disk laid over a red bulge — high red and
+    /// high blue with nothing in the green, which is the one colour no star can be, and is
+    /// exactly the magenta the picture had.
+    public static let decayInnerMyr: Float = 1_800
+    public static let decayOuterMyr: Float = 9_000
+
+    /// Share of an arm's stars drawn from the recent past instead, and how far back that
+    /// reaches. An arm is where the last few hundred megayears of star formation happened, and
+    /// this is the whole of why an arm is bluer than the disk it sits in.
+    public static let armYoungShare: Float = 0.40
+    public static let armYoungMyr: Float = 900
+
     /// When a particle sampled at this radius and this close to an arm formed, in code units
-    /// before t = 0. Uniform in age is what a steady rate gives; the arm bias pulls the draw
-    /// young, because that is where the recent star formation was.
+    /// before t = 0.
     public static func sampledFormation(
         edge: Float, armProximity: Float, roll: Float
     ) -> Float {
-        let oldest = diskOldestMyr - (diskOldestMyr - diskEdgeOldestMyr) * min(max(edge, 0), 1)
-        // Hard against the young end on an arm, and that steepness is now carrying the whole
-        // of an arm's colour: the painted wave used to add its own bluing at draw time, which
-        // is what made stars flash as they crossed it. Baked in here it cannot flash, because
-        // a star's age never changes. On a ridge the median lands near four hundred megayears
-        // and between the arms near six gigayears — white-blue against orange.
-        let biased = pow(min(max(roll, 0), 1), 1 + 6 * min(max(armProximity, 0), 1))
-        let age = youngestSampledMyr + (oldest - youngestSampledMyr) * biased
+        let reach = min(max(edge, 0), 1)
+        let arm = min(max(armProximity, 0), 1)
+        let span = diskOldestMyr - (diskOldestMyr - diskEdgeOldestMyr) * reach
+        var age: Float
+        if roll < armYoungShare * arm {
+            // On an arm, and drawn from what the arm has just made. Rescaled so the draw is
+            // still one uniform number: the sampler hands over exactly one per particle and
+            // taking a second would shift every later draw in the galaxy.
+            let inner = roll / max(armYoungShare * arm, 1e-6)
+            age = youngestSampledMyr + (armYoungMyr - youngestSampledMyr) * inner
+        } else {
+            let inner = (roll - armYoungShare * arm) / max(1 - armYoungShare * arm, 1e-6)
+            // Time since this disk started forming stars, drawn from a declining exponential
+            // truncated at the disk's own age; the lookback age is what is left of the span.
+            let decay = decayInnerMyr + (decayOuterMyr - decayInnerMyr) * reach
+            let cut = exp(-span / decay)
+            let since = -decay * log(max(1 - min(max(inner, 0), 1) * (1 - cut), 1e-9))
+            age = max(span - since, youngestSampledMyr)
+        }
         return -age / Float(Physics.megayearsPerTimeUnit)
     }
 
