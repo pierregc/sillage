@@ -26,6 +26,12 @@ enum Shaders {
             float minimumSize;
             float maximumSize;
             float galaxyTint;
+            /// View depth of the near face of the slab stack, and one over its thickness.
+            float slabNear;
+            float slabScale;
+            /// 0 draws the dust, 1 draws everything that emits. Two draws over one buffer,
+            /// because the extinction has to be in the attachment before a star reads it.
+            uint pass;
         };
 
         struct BloomParams {
@@ -65,14 +71,38 @@ enum Shaders {
             half3 color;
             half opticalDepth;
             half spikes;
+            /// Which of the four depth slabs this point belongs to, and for a star, which of
+            /// them lie in front of it. One varying serves both: a grain of dust writes its
+            /// opacity into its own slab, and a star reads the slabs ahead of its own.
+            half4 slab;
         };
 
         // Two attachments: emitted light, and the optical depth of intervening dust. Both blend
         // additively, so a fragment contributing to one writes zero to the other.
+        //
+        // The dust attachment carries four channels, and they are four slabs of view depth
+        // rather than four colours. Dust is drawn first and writes into the slab it sits in;
+        // stars are drawn second and read the attachment back out of tile memory, so a star
+        // can be dimmed by exactly the dust that stands between it and the camera. Before
+        // this the whole column was collected without any ordering and halved on the grounds
+        // that on average half of it is in front — which is true of the picture as a whole
+        // and false of every individual lane in it, so no lane ever passed in front of
+        // anything. It only ever greyed the galaxy down uniformly.
         struct SplatTargets {
             half4 light [[color(0)]];
             half4 dust [[color(1)]];
         };
+
+        /// The dust attachment as it stands, read back in the fragment shader. Apple GPUs keep
+        /// the attachments in tile memory for the length of a render pass, so the second draw
+        /// sees what the first one wrote without a resolve or a second pass.
+        struct SplatFetch {
+            half4 dust [[color(1)]];
+        };
+
+        /// Extinction is steeper in the blue than in the red, which is why a lane crossing a
+        /// bright disk reads brown rather than grey.
+        constant float3 reddening = float3(1.0, 1.22, 1.52);
 
         struct DiskFrame {
             float4 center;
@@ -205,17 +235,47 @@ enum Shaders {
             DiskFrame frame = frames[galaxy[vid]];
             out.position = u.viewProjection * float4(position, 1.0);
             out.spikes = 0.0h;
+            out.slab = half4(0.0h);
             uint kind = component[vid];
             float weight = luminosity[vid];
 
-            // Dark matter carries mass but no light. Pushing it outside the clip volume drops
-            // it before any fragment work rather than drawing a black point over the galaxy.
-            if (kind == 3u) {
+            // Age of this particle's stars, in megayears. Two sentinels sit outside any real
+            // time: material sampled as already old reads as infinitely old, and gas that has
+            // formed nothing yet reads as not yet born and is still drawn as dust.
+            float born = formation[vid];
+            float ageMyr = (u.time - born) * u.megayearsPerUnit;
+            bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
+            bool absorbing = kind == 2u && !knot;
+
+            // Dark matter carries mass but no light, and every particle is skipped by one of
+            // the two draws. Pushing them outside the clip volume drops them before any
+            // fragment work rather than drawing a black point over the galaxy.
+            if (kind == 3u || absorbing != (u.pass == 0u)) {
                 out.position = float4(2.0, 2.0, 2.0, 1.0);
                 out.pointSize = 0.0;
                 out.color = half3(0.0h);
                 out.opticalDepth = 0.0h;
                 return out;
+            }
+
+            // Which slab of view depth this point falls in. `position.w` is the view depth for
+            // a standard perspective projection, and the stack is centred on the camera's
+            // target and as deep as the frame is wide, so a disk seen at an angle spans it.
+            float slabAt = clamp((out.position.w - u.slabNear) * u.slabScale, 0.0, 0.999) * 4.0;
+            uint slabIndex = uint(slabAt);
+            if (u.pass == 0u) {
+                // Dust writes into its own slab and nowhere else.
+                out.slab = half4(slabIndex == 0u, slabIndex == 1u, slabIndex == 2u, slabIndex == 3u);
+            } else {
+                // A star is dimmed by everything in front of it, and by half of its own slab:
+                // it sits somewhere inside that one, so on average half of the slab's dust is
+                // between it and the camera. Without that half term a lane and the stars
+                // embedded in it would be exactly as bright as a lane with nothing in it.
+                out.slab = half4(
+                    slabIndex > 0u ? 1.0h : 0.5h,
+                    slabIndex > 1u ? 1.0h : (slabIndex == 1u ? 0.5h : 0.0h),
+                    slabIndex > 2u ? 1.0h : (slabIndex == 2u ? 0.5h : 0.0h),
+                    slabIndex == 3u ? 0.5h : 0.0h);
             }
             float2 pattern = armWave(position, frame);
             float wave = pattern.x;
@@ -237,27 +297,23 @@ enum Shaders {
             // what stays put when the camera moves.
             float spread = u.referenceArea / (length * length);
 
-            // Age of this particle's stars, in megayears. Two sentinels sit outside any real
-            // time: material sampled as already old reads as infinitely old and keeps the
-            // composite colour it was given, and gas that has formed nothing yet reads as
-            // not yet born and is still drawn as dust.
-            float born = formation[vid];
-            float ageMyr = (u.time - born) * u.megayearsPerUnit;
-            bool ancient = born < -1e8;
-            bool gas = born > 1e8;
             // Gas that has made its stars is no longer a dust lane. That is not a rendering
             // convenience: the cloud a cluster forms out of is the cloud it consumes, and a
             // starburst clearing its own lanes is the visible half of running out of gas.
-            bool knot = !ancient && !gas && ageMyr >= 0.0;
-
-            if (kind == 2u && !knot) {
+            // Decided up in the culling, because it is also what separates the two draws.
+            if (absorbing) {
                 // Dust neither emits nor follows exposure; it removes light further down.
                 //
                 // The lane has to come from the wave rather than from where the grains sit.
                 // The sampler puts them on the arms it drew, but a disk turns differentially
                 // and within an orbit they are spread evenly round it: after that, whatever
                 // the wave does not darken is not a lane at all.
-                float lane = 1.0 + 4.2 * pow(wave, 1.6) * pattern.y;
+                // Concentrated hard into the lanes rather than spread over the disk. Spread
+                // out it is optically thin everywhere — measured at the old strength, an
+                // optical depth of about a tenth, where exp(-tau) is 1 - tau and it makes no
+                // difference at all where the dust stands. That is why depth ordering looked
+                // like it did nothing: there was nothing to order.
+                float lane = 1.0 + 9.0 * pow(wave, 2.0) * pattern.y;
                 out.pointSize = span * 1.3;
                 out.color = half3(0.0h);
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
@@ -323,7 +379,8 @@ enum Shaders {
         }
 
         fragment SplatTargets splatFragment(SplatOut in [[stage_in]],
-                                            float2 coord [[point_coord]]) {
+                                            float2 coord [[point_coord]],
+                                            SplatFetch prior) {
             float2 d = coord - 0.5;
             float r2 = dot(d, d) * 4.0;
             if (r2 > 1.0) { discard_fragment(); }
@@ -342,8 +399,14 @@ enum Shaders {
             }
 
             SplatTargets out;
-            out.light = half4(in.color * half(falloff), half(falloff));
-            out.dust = half4(in.opticalDepth * half(falloff), 0.0h, 0.0h, 0.0h);
+            // Everything standing between this point and the camera: the slabs in front of
+            // its own, plus half of its own. `in.slab` holds the weights the vertex worked
+            // out, so dust picks out the one slab it writes into and a star picks out the
+            // ones it is behind.
+            float column = dot(float4(prior.dust), float4(in.slab));
+            float3 extinction = exp(-column * reddening);
+            out.light = half4(in.color * half3(extinction) * half(falloff), half(falloff));
+            out.dust = half4(in.opticalDepth * half(falloff) * in.slab);
             return out;
         }
 
@@ -351,29 +414,24 @@ enum Shaders {
         // extinction applied on the way. Interstellar dust removes blue far more than red, so a
         // lane crossing a bright disk reads brown rather than grey.
         kernel void resolve(texture2d<float, access::read> light [[texture(0)]],
-                            texture2d<float, access::read> dust [[texture(1)]],
                             texture2d<float, access::write> dst [[texture(2)]],
                             constant uint &factor [[buffer(0)]],
                             uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
             float3 emitted = float3(0.0);
-            float depth = 0.0;
             for (uint y = 0; y < factor; ++y) {
                 for (uint x = 0; x < factor; ++x) {
-                    uint2 at = gid * factor + uint2(x, y);
-                    emitted += light.read(at).rgb;
-                    depth += dust.read(at).r;
+                    emitted += light.read(gid * factor + uint2(x, y)).rgb;
                 }
             }
             float inverse = 1.0 / float(factor * factor);
-            emitted *= inverse;
-            depth *= inverse;
-            // There is no depth ordering here, so the column includes dust behind the stars as
-            // well as in front. Statistically about half of it lies in front, and the clamp keeps
-            // a compressed geometry, where the columns of both galaxies overlap, from going black.
-            depth = min(depth * 0.5, 2.6);
-            const float3 reddening = float3(1.0, 1.22, 1.52);
-            dst.write(float4(emitted * exp(-depth * reddening), 1.0), gid);
+            // Nothing is extinguished here any more. Each star was dimmed by the dust actually
+            // in front of it while it was drawn, in the slab pass, so all that is left to do
+            // is the box average. What used to happen instead was that the whole dust column
+            // of a pixel — in front of the stars and behind them alike — was halved and
+            // applied to the total, which cannot make a lane pass in front of anything and
+            // only ever pulled the whole galaxy down towards brown.
+            dst.write(float4(emitted * inverse, 1.0), gid);
         }
 
         kernel void brightPass(texture2d<float, access::sample> src [[texture(0)]],
