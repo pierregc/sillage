@@ -229,7 +229,8 @@ enum Shaders {
                                     device const uint *galaxy [[buffer(5)]],
                                     constant DiskFrame *frames [[buffer(6)]],
                                     device const float *smoothing [[buffer(7)]],
-                                    device const float2 *stellar [[buffer(9)]]) {
+                                    device const float2 *stellar [[buffer(9)]],
+                                    device const float *warming [[buffer(10)]]) {
             SplatOut out;
             float3 position = positions[vid];
             DiskFrame frame = frames[galaxy[vid]];
@@ -337,7 +338,14 @@ enum Shaders {
                 float2 synth = synthesised(stellar, u, ageMyr);
                 float massToLight = knot ? synth.y * u.luminosityNormalisation : 1.0;
                 float gain = ambient * massToLight;
-                float3 stellarLight = knot ? blackbody(synth.x) : legacyColour(population[vid]);
+                // Composition as well as age. A metal-rich population is redder at the same age
+                // because metal lines blanket its blue, and a disk is metal-rich in the middle
+                // and metal-poor at the edge — which is the other half of why a galaxy has a
+                // warm core and a cool disk, and the half that was missing. Age alone gives a
+                // gradient of the right sign and far too weak to see.
+                float3 stellarLight = knot
+                    ? blackbody(synth.x * warming[vid])
+                    : legacyColour(population[vid]);
                 // Halpha for as long as the O stars ionising the gas are alive, which is a few
                 // million years and no longer. This used to be driven by the *painted* spiral
                 // pattern, so the pink knots followed a texture rather than the physics: they

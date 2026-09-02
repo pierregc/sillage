@@ -202,6 +202,10 @@ public final class Renderer {
     /// Colour temperature and light per unit mass against age, computed once by
     /// `StellarPopulation` and read by every star in every frame.
     private let stellarBuffer: MTLBuffer
+    /// Iron abundance per particle, from the radius it was born at. Fixed at birth, which is
+    /// why it is taken from `birthRadius` and not from where the particle stands now: a star
+    /// flung out of a nucleus by an encounter keeps the composition of the nucleus.
+    private let metallicityBuffer: MTLBuffer
     private let luminosityBuffer: MTLBuffer
     private let componentBuffer: MTLBuffer
     private let galaxyBuffer: MTLBuffer
@@ -391,6 +395,9 @@ public final class Renderer {
             let componentBuffer = device.makeBuffer(
                 bytes: attribute(particles.component, UInt32(0)),
                 length: count * 4, options: .storageModeShared),
+            let metallicityBuffer = device.makeBuffer(
+                bytes: Renderer.warming(of: particles),
+                length: count * 4, options: .storageModeShared),
             let stellarBuffer = device.makeBuffer(
                 bytes: StellarPopulation.table,
                 length: StellarPopulation.samples * MemoryLayout<SIMD2<Float>>.stride,
@@ -408,6 +415,7 @@ public final class Renderer {
         self.luminosityBuffer = luminosityBuffer
         self.componentBuffer = componentBuffer
         self.stellarBuffer = stellarBuffer
+        self.metallicityBuffer = metallicityBuffer
         self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
         if externalPositions == nil {
             upload(positions: particles.positions)
@@ -497,6 +505,40 @@ public final class Renderer {
     }
 
     /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
+    /// The colour-temperature multiplier each particle carries for its composition, one per
+    /// particle, in the order the buffers are uploaded.
+    ///
+    /// Stored as the multiplier rather than as the abundance so that the slope relating the
+    /// two lives in exactly one place, in `StellarPopulation`, instead of being written once
+    /// here and once in the shader where it could drift.
+    ///
+    /// The scale length is measured off the sample rather than passed in: the renderer is not
+    /// given the scene, and for an exponential disk the median radius is 1.678 scale lengths,
+    /// which is a sturdier way to ask the question than trusting a configuration field to
+    /// still describe the particles by the time they arrive here.
+    private static func warming(of particles: ParticleSystem) -> [Float] {
+        let count = particles.count
+        guard particles.birthRadius.count == count else {
+            return [Float](repeating: 1, count: max(count, 1))
+        }
+        var byGalaxy: [UInt32: [Float]] = [:]
+        for index in 0..<count
+        where particles.component[index] == ParticleComponent.star.rawValue {
+            byGalaxy[particles.galaxyIndex[index], default: []].append(particles.birthRadius[index])
+        }
+        var scaleLength: [UInt32: Float] = [:]
+        for (galaxy, radii) in byGalaxy where !radii.isEmpty {
+            let sorted = radii.sorted()
+            scaleLength[galaxy] = max(sorted[sorted.count / 2] / 1.678, 1e-3)
+        }
+        return (0..<count).map { index in
+            guard let scale = scaleLength[particles.galaxyIndex[index]] else { return 1 }
+            return StellarPopulation.metallicityWarming(
+                StellarPopulation.metallicity(
+                    atScaleLengths: particles.birthRadius[index] / scale))
+        }
+    }
+
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
         let scale = settings.supersample
         let aspect = Float(settings.width) / Float(settings.height)
@@ -575,6 +617,7 @@ public final class Renderer {
             encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
             encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
             encoder.setVertexBuffer(stellarBuffer, offset: 0, index: 9)
+            encoder.setVertexBuffer(metallicityBuffer, offset: 0, index: 10)
             // Twice over the same buffer: the dust first, so that its opacity is standing in
             // the attachment when the stars are drawn and read it back. Each draw throws away
             // the particles belonging to the other one in the vertex stage, before any

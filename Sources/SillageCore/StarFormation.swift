@@ -34,7 +34,7 @@ public enum StarFormation {
     /// Oldest and youngest a disk gets, in megayears, from its centre to its edge. Disks form
     /// inside out, so the outskirts are the young part.
     public static let diskOldestMyr: Float = 12000
-    public static let diskEdgeOldestMyr: Float = 5000
+    public static let diskEdgeOldestMyr: Float = 3000
     /// A bulge is old everywhere and was made quickly.
     public static let bulgeAgeMyr: ClosedRange<Float> = 10000...12500
 
