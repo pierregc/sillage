@@ -273,7 +273,7 @@ struct ControlPanelContent: View {
             .font(.caption2)
             .foregroundStyle(Palette.secondary)
             ParameterSlider(
-                title: "Opacité des poussières", value: $model.look.dustStrength, range: 0...0.8,
+                title: "Opacité des poussières", value: $model.look.dustStrength, range: 0...1.2,
                 format: "%.3f")
 
             Divider()

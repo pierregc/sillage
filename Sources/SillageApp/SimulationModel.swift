@@ -288,7 +288,7 @@ final class SimulationModel: ObservableObject {
     /// nothing about the physics moved to get there.
     static let openingLook: RenderLook = {
         var look = RenderLook.observatory
-        look.dustStrength = 0.16
+        look.dustStrength = 0.35
         look.smoothingScale = 1.9
         look.stretch = 18
         look.saturation = 2.8

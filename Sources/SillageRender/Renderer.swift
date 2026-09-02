@@ -24,6 +24,9 @@ struct SplatUniforms {
     var minimumSize: Float
     var maximumSize: Float
     var galaxyTint: Float
+    var slabNear: Float
+    var slabScale: Float
+    var pass: UInt32
 }
 
 struct BackgroundStar {
@@ -285,7 +288,7 @@ public final class Renderer {
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
             descriptor.fragmentFunction = library.makeFunction(name: "splatFragment")
-            for (index, format) in [MTLPixelFormat.rgba16Float, .r16Float].enumerated() {
+            for (index, format) in [MTLPixelFormat.rgba16Float, .rgba16Float].enumerated() {
                 guard let attachment = descriptor.colorAttachments[index] else { continue }
                 attachment.pixelFormat = format
                 attachment.isBlendingEnabled = true
@@ -333,8 +336,12 @@ public final class Renderer {
         accumulation = try texture(
             settings.width * scale, settings.height * scale, .rgba16Float,
             [.renderTarget, .shaderRead])
+        // Four channels, and they are four slabs of view depth rather than four colours: a
+        // grain of dust writes into the slab it stands in, and a star reads back the ones in
+        // front of it. That is the whole of what makes a lane pass in front of a bright
+        // region rather than grey the picture down evenly.
         dustAccumulation = try texture(
-            settings.width * scale, settings.height * scale, .r16Float,
+            settings.width * scale, settings.height * scale, .rgba16Float,
             [.renderTarget, .shaderRead])
         resolved = try texture(
             settings.width, settings.height, .rgba16Float, [.shaderRead, .shaderWrite])
@@ -509,6 +516,14 @@ public final class Renderer {
         // which is the whole point of normalising by count at all.
         let perParticle = 1_000_000 / Float(max(drawnCount, 1))
 
+        // The stack of depth slabs, centred on what the camera is pointed at and as deep as
+        // the frame is wide. A disk seen at any angle at all spans several of them, which is
+        // what lets its near side shadow its far side; seen exactly face-on it does not, and
+        // it should not — a thin disk seen flat has no lane in front of anything.
+        let distance = simd_length(camera.eye - camera.target)
+        let halfExtent = distance * tan(camera.fieldOfView / 2)
+        let slabNear = distance - halfExtent
+
         var splat = SplatUniforms(
             viewProjection: camera.viewProjection(aspectRatio: aspect),
             time: time,
@@ -526,7 +541,10 @@ public final class Renderer {
             referenceArea: 0.01,
             minimumSize: settings.minimumKernel * Float(scale),
             maximumSize: settings.maximumKernel * Float(scale),
-            galaxyTint: settings.galaxyTint)
+            galaxyTint: settings.galaxyTint,
+            slabNear: slabNear,
+            slabScale: 1 / max(2 * halfExtent, 1e-3),
+            pass: 0)
 
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {
@@ -557,7 +575,17 @@ public final class Renderer {
             encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
             encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
             encoder.setVertexBuffer(stellarBuffer, offset: 0, index: 9)
-            encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+            // Twice over the same buffer: the dust first, so that its opacity is standing in
+            // the attachment when the stars are drawn and read it back. Each draw throws away
+            // the particles belonging to the other one in the vertex stage, before any
+            // fragment work, so the cost of the second pass is a vertex shader over the whole
+            // buffer and nothing else.
+            for stage in UInt32(0)...1 {
+                splat.pass = stage
+                encoder.setVertexBytes(
+                    &splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
+                encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+            }
             encoder.endEncoding()
         }
 
@@ -566,7 +594,6 @@ public final class Renderer {
         var factor = UInt32(scale)
         dispatch(compute, resolvePipeline, into: resolved) { encoder in
             encoder.setTexture(accumulation, index: 0)
-            encoder.setTexture(dustAccumulation, index: 1)
             encoder.setTexture(resolved, index: 2)
             encoder.setBytes(&factor, length: 4, index: 0)
         }
