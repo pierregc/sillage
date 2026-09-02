@@ -100,7 +100,7 @@ public enum StarFormation {
     /// against the two to three gigayears a real disk shows, and an isolated disk that burned
     /// four fifths of its gas in six hundred megayears. Calibrated instead against what a
     /// quiescent disk actually does: 1.2 Gyr, measured on the control run.
-    public static var efficiency: Float = 0.002
+    public static let efficiency: Float = 0.002
 
     /// Density below which nothing forms, in code units of mass per cubic kiloparsec.
     ///
@@ -108,7 +108,7 @@ public enum StarFormation {
     /// a square parsec a disk forms almost nothing — and without one every particle in the
     /// outskirts slowly turns into a knot and the whole disk lights up evenly, which is the
     /// opposite of what an encounter should show.
-    public static var thresholdDensity: Float = 0.03
+    public static let thresholdDensity: Float = 0.03
 
     /// How much harder gas forms stars when it is being compressed, per unit of convergence
     /// measured against its own free-fall rate.
@@ -118,7 +118,7 @@ public enum StarFormation {
     /// pericentre with the nucleus already spent and the rate only ever falling. A real merger
     /// bursts because tidal torques drive fresh gas inward and shock it; the inflow is not
     /// modelled here, but the shock is visible in the flow itself.
-    public static var compressionBoost: Float = 3
+    public static let compressionBoost: Float = 3
 
     /// Convergence a leaf has to exceed, in units of its own free-fall rate, before any of it
     /// counts as a shock.
@@ -129,7 +129,7 @@ public enum StarFormation {
     /// the encounter even arrived. The noise sits at order unity — a disk in equilibrium has
     /// its dispersion over its scale height comparable to its own free-fall rate — so the
     /// floor has to sit above that, and only material converging faster than it falls counts.
-    public static var compressionFloor: Float = 15
+    public static let compressionFloor: Float = 15
 
     /// The colour age a population of this age reads as, on the sampler's own 0 old to 1
     /// young scale. Kept here rather than only in the shader so a test can check the curve.

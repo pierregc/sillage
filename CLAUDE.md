@@ -3,6 +3,24 @@
 Read `README.md` for what the project is and how it works. This file is only the things a
 fresh session cannot deduce from the code.
 
+## The local build is looser than CI
+
+`scripts/dev.sh` drives plain `swiftc`; CI builds the package, and the package turns on strict
+concurrency. So a `static var` on an enum compiles perfectly here and fails there with
+"not concurrency-safe because it is nonisolated global shared mutable state". Four calibration
+constants in `StarFormation` were left mutable so a probe could sweep them and broke three
+builds in a row without a hint locally.
+
+To check before pushing anything with new global state:
+
+```
+swiftc -typecheck -strict-concurrency=complete -swift-version 6 Sources/SillageCore/*.swift
+```
+
+`SillageRender`'s statics escape it because they hang off classes marked `@unchecked Sendable`.
+A tuning constant belongs as `static let`; if a sweep needs one mutable, make it mutable for
+the sweep and put it back.
+
 ## This machine
 
 **Xcode is not installed**, only the Command Line Tools. Two consequences:
