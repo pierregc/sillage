@@ -446,6 +446,33 @@ public enum DiskSampler {
                     spread: scale * (0.006 + 0.045 * u * u * u)))
         }
 
+        // Where the galaxy is forming stars at the moment the run starts, and how long ago
+        // each of those places last did.
+        //
+        // Scattering the seeded knots over all five thousand clumps put four tenths of a knot
+        // in each, so a lit one never had a lit neighbour: measured, two per thousand of them
+        // had three others within two hundred parsecs. A few thousand isolated bright points
+        // spread evenly over a disk is a wash of pink over the whole galaxy, which is exactly
+        // what it looked like. Spreading them over a complex instead is no better — a complex
+        // is more than a kiloparsec across, and a knot that size is not a knot.
+        //
+        // A galaxy this size has of order a hundred giant star-forming regions going at once,
+        // so that is the number, they are the size of a clump, and each carries one age for
+        // everything in it. Lit or dark as a whole, a place you can point at.
+        var nurseries: [Clump] = []
+        var nurseryEpoch: [Float] = []
+        for _ in 0..<150 {
+            let parent =
+                complexes[Int(generator.uniform() * Float(complexes.count)) % complexes.count]
+            let placed = scatter(parent, using: &generator)
+            let u = generator.uniform()
+            nurseries.append(
+                Clump(
+                    radius: placed.radius, phi: placed.phi,
+                    spread: scale * (0.010 + 0.035 * u * u)))
+            nurseryEpoch.append(generator.uniform())
+        }
+
         for _ in 0..<max(count, 0) {
             let roll = generator.uniform()
             let component: ParticleComponent =
@@ -458,8 +485,16 @@ public enum DiskSampler {
             var radius: Float
             var phi: Float
             var proximity: Float
+            var nursery = -1
 
-            if generator.uniform() < attachment, !clumps.isEmpty {
+            if component == .hiiRegion, generator.uniform() < 0.92, !nurseries.isEmpty {
+                nursery =
+                    Int(generator.uniform() * Float(nurseries.count)) % nurseries.count
+                let placed = scatter(nurseries[nursery], using: &generator)
+                radius = placed.radius
+                phi = placed.phi
+                proximity = 1
+            } else if generator.uniform() < attachment, !clumps.isEmpty {
                 let clump = clumps[Int(generator.uniform() * Float(clumps.count)) % clumps.count]
                 let placed = scatter(clump, using: &generator)
                 radius = placed.radius
@@ -534,9 +569,24 @@ public enum DiskSampler {
                 // the ages of what it has already made are uniform, so they are drawn that
                 // way: a few knots still ionised, most of them well past it and on their way
                 // into the disk's own population.
-                formation =
-                    -generator.uniform() * StarFormation.seedSpreadMyr
-                    / Float(Physics.megayearsPerTimeUnit)
+                //
+                // One age for the whole nursery, so it is lit or dark as a place rather than
+                // as five hundred independent points. A knot that landed in no nursery is not
+                // a region at all, only a young star, and is aged as one — otherwise the
+                // scattered remainder puts a lit knot everywhere again and undoes the rest.
+                if nursery >= 0 {
+                    // A real region is not coeval either — there are a few megayears of
+                    // spread inside one — so a little of the draw stays per particle. Only a
+                    // little: past this the region stops going out as a region.
+                    let epoch = 0.88 * nurseryEpoch[nursery] + 0.12 * generator.uniform()
+                    formation =
+                        -epoch * StarFormation.seedSpreadMyr
+                        / Float(Physics.megayearsPerTimeUnit)
+                } else {
+                    brightness = (0.45 + 1.5 * generator.uniform() * generator.uniform())
+                        * max(taper, 0.02)
+                    population = diskAge * (1 - bulgeWeight)
+                }
             case .dust:
                 population = 0
                 brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.02)

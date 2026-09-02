@@ -144,7 +144,13 @@ enum Shaders {
         // filters, stated directly; deriving it from line ratios needs an emission model and
         // the CIE colour matching functions.
         static float3 hiiColour() {
-            return chromaticity(float3(1.00, 0.36, 0.42));
+            // Halpha at 656 nm carries the region, and the rest of what a broadband camera
+            // sees of one is Hbeta and [OIII] at 486 and 500 — comparable to each other and
+            // both well under the red. Which is why the blue sits *below* the green here and
+            // used to sit above it: with the saturation this render carries, a blue above the
+            // green makes every knot magenta, and a magenta knot is not what an HII region
+            // looks like through a telescope or what one is being asked for here.
+            return chromaticity(float3(1.00, 0.34, 0.30));
         }
 
         // Where a particle sits relative to the spiral density wave, 0 between the arms and
