@@ -115,7 +115,7 @@ public struct RenderSettings: Sendable {
         supersample: Int = 2,
         brightness: Float = 0.15,
         dustStrength: Float = 0.055,
-        starCount: Int = 14000,
+        starCount: Int = 46000,
         starSize: Float = 1.15,
         smoothingScale: Float = 1.9,
         minimumKernel: Float = 1.1,
@@ -429,8 +429,13 @@ public final class Renderer {
     }
 
     /// Field stars, placed far enough out that orbiting the galaxy does not parallax them.
-    /// Magnitudes follow a steep power law so a handful are bright and the rest are faint,
-    /// and colours run from common cool dwarfs to rare hot blue stars.
+    ///
+    /// Colours are drawn as temperatures and converted by the same Planckian law the galaxy's
+    /// own stars use, rather than picked out of three buckets by hand. The temperature
+    /// distribution is the sky's: the overwhelming majority of stars are cool dwarfs, and the
+    /// hot blue ones are rare and — because they are enormously more luminous — the ones that
+    /// end up bright. Drawing brightness and colour together instead of independently is what
+    /// makes a field read as a sky rather than as confetti.
     private static func makeStarfield(device: MTLDevice, count: Int) -> MTLBuffer? {
         guard count > 0 else { return nil }
         var generator = SeededGenerator(seed: 0x5111_1A6E)
@@ -440,20 +445,24 @@ public final class Renderer {
 
         for _ in 0..<count {
             let direction = DiskSampler.randomDirection(&generator)
-            let magnitude = pow(generator.uniform(), 4.6)
-            let warmth = generator.uniform()
-            let color =
-                warmth < 0.62
-                ? SIMD3<Float>(1.0, 0.72 + 0.18 * warmth, 0.50 + 0.22 * warmth)
-                : (warmth < 0.9
-                    ? SIMD3<Float>(1.0, 0.96, 0.90)
-                    : SIMD3<Float>(0.72, 0.82, 1.0))
-            let spike = DiskSampler.smoothstep(0.45, 0.9, magnitude)
+            // Steeply weighted to the cool end, which is what a magnitude-limited field is.
+            let heat = pow(generator.uniform(), 2.6)
+            let kelvin = 3_000 * pow(28_000 / 3_000, heat)
+            let colour = Blackbody.linearSRGB(kelvin: kelvin)
+            // Hot stars are the bright ones, because they are enormously more luminous; the
+            // exponent bends with temperature rather than a term being added, so that raising
+            // the count adds faint stars and not bright ones. Added instead of bent, at ten
+            // thousand stars, and the frame came out a wall of diffraction spikes with the
+            // galaxy lost behind it.
+            let magnitude = pow(generator.uniform(), 6.5 - 2.2 * heat)
+            // And a spike belongs to the few that earn one. Every star having one is what
+            // makes a field read as a graphic rather than as a sky.
+            let spike = DiskSampler.smoothstep(0.80, 0.97, magnitude)
             stars.append(
                 BackgroundStar(
                     direction: SIMD4<Float>(
                         direction.x * shell, direction.y * shell, direction.z * shell, magnitude),
-                    color: SIMD4<Float>(color.x, color.y, color.z, spike)))
+                    color: SIMD4<Float>(colour.x, colour.y, colour.z, spike)))
         }
         return device.makeBuffer(
             bytes: stars, length: stars.count * MemoryLayout<BackgroundStar>.stride,
