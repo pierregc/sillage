@@ -391,12 +391,22 @@ enum Shaders {
                 float3 stellarLight = knot
                     ? blackbody(synth.x * traits[vid].x)
                     : legacyColour(population[vid]);
-                // Halpha for as long as the O stars ionising the gas are alive, which is a few
-                // million years and no longer. This used to be driven by the *painted* spiral
-                // pattern, so the pink knots followed a texture rather than the physics: they
-                // sat where the sampler had left them an orbit earlier and never appeared
-                // anywhere new, however violently the galaxy was disturbed.
-                float alive = knot ? exp(-ageMyr / max(u.ionisedMyr, 1e-3)) : 0.0;
+                // Halpha, for as long as the region keeps a nebula lit inside it.
+                //
+                // Only gas can be ionised, and that is the whole of what this test says: a
+                // particle sampled as an HII region, or gas the run itself turned into stars.
+                // An ordinary disk star stands for a mixed population with no cloud around it
+                // and cannot glow however young it is.
+                //
+                // It used to be every young particle, and that tied the length of the window
+                // to the youngest age the sampler hands out — raise one past the other and the
+                // *disk* is inside the window, which put sixty-six thousand particles alight
+                // carrying seven tenths of the light. Tested on the component instead, the two
+                // numbers have nothing to do with each other and the window can be as long as
+                // the thing it represents actually lasts.
+                bool nursery = kind == 1u || kind == 2u;
+                float alive = (knot && nursery)
+                    ? exp(-ageMyr / max(u.ionisedMyr, 1e-3)) : 0.0;
                 float3 emitted = mix(stellarLight, hiiColour(), alive);
                 // A tint per galaxy is what keeps stars pulled into the other one legible.
                 // It is a departure from the physical colour, so it is dialled rather than

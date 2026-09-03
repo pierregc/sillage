@@ -273,6 +273,15 @@ final class SimulationModel: ObservableObject {
     /// easy to forget.
     @Published var look: RenderLook = SimulationModel.openingLook { didSet { applyLook() } }
 
+    /// The number of diffraction arms, as a slider can hold it. `RenderLook` counts them as an
+    /// integer because the shader draws a whole number of them, and `ParameterSlider` speaks
+    /// only in floats; rounding here rather than storing a float keeps the count exact
+    /// everywhere else.
+    var spikeArms: Float {
+        get { Float(look.spikeArms) }
+        set { look.spikeArms = Int(newValue.rounded()) }
+    }
+
     /// What the window opens on, and deliberately not `.observatory`.
     ///
     /// The two disagreed before they were one value: the panel's sliders started at their own

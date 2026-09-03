@@ -12,15 +12,25 @@ import simd
 /// sat wherever the sampler had left them an orbit earlier, and never appeared anywhere new
 /// however violently the galaxy was disturbed.
 public enum StarFormation {
-    /// Megayears a knot stays ionised.
+    /// Megayears a star-forming region keeps a nebula lit inside it.
     ///
-    /// A single HII region is lit for the eight megayears its O stars live, and that is what
-    /// this used to be. But a particle here stands for a whole star-forming complex, and a
-    /// complex keeps making stars for two or three times as long, so it keeps a lit region in
-    /// it for as long. At eight the pink was there and measurable and could not be seen: the
-    /// disk holds only a couple of hundred lit knots at a time out of a quarter of a million
-    /// particles.
-    public static let ionisedMyr: Float = 25
+    /// Not the life of one HII region, which is the eight megayears its O stars live. What is
+    /// drawn red is a place a few hundred parsecs across that is forming stars, and such a
+    /// place keeps a nebula somewhere inside it for as long as the gas concentration feeding
+    /// it survives — one to a few hundred megayears.
+    ///
+    /// The number is set against the rate the thing is watched at, which makes it a rendering
+    /// decision as much as a physical one. Four steps a frame at sixty frames a second is
+    /// thirty-seven megayears of simulation every second of wall clock, so at twenty-five a
+    /// knot came and went inside two thirds of a second, and the red a fresh galaxy opens with
+    /// drained by a factor of ten over its first sixty megayears — under two seconds. That is
+    /// exactly the "tons of pink and then suddenly nothing" a viewer reported. At a hundred
+    /// and fifty a region takes four seconds to swell and fade.
+    ///
+    /// This used to be bounded by `youngestSampledMyr`, because anything young enough counted
+    /// as ionised and that included the disk. It is not any more: only gas can glow, and the
+    /// shader tests the component for it.
+    public static let ionisedMyr: Float = 150
 
     /// Youngest age the initial conditions place anything at, in megayears.
     ///
@@ -40,14 +50,17 @@ public enum StarFormation {
 
     /// Megayears the sampler spreads its seeded knots over.
     ///
-    /// The sampler declares these particles HII regions, so they have to arrive lit. Spread
-    /// over six hundred megayears only one in twenty-five still was, and the pink went out of
-    /// the picture entirely. Spread over one ionised lifetime or so, they arrive as what they
-    /// were placed to be, and the run's own star formation takes over from there.
+    /// This and `GalaxyConfig.starFormingFraction` are one setting in two halves, and what they
+    /// have to satisfy is arithmetic rather than taste: a galaxy has to *open* on the population
+    /// its own star formation will go on to sustain, or the first thing anyone sees is that
+    /// population collapsing to the real one.
     ///
-    /// Not zero, though: seeding them all at the same instant gives every knot the same age
-    /// and the whole disk goes out together a few tens of megayears in.
-    public static let seedSpreadMyr: Float = 60
+    /// It was collapsing by a factor of nineteen. The knots were spread over sixty megayears
+    /// against a window of twenty-five, so seventeen hundred of them arrived lit, while the
+    /// rate the disk sustains keeps about ninety alight. The spread is four ionised lifetimes
+    /// now, so the seeded ages look like what a constant rate leaves behind, and their number
+    /// is that rate times that window.
+    public static let seedSpreadMyr: Float = 600
 
     /// Star formation efficiency per free-fall time.
     ///
@@ -92,7 +105,27 @@ public enum StarFormation {
     /// the encounter even arrived. The noise sits at order unity — a disk in equilibrium has
     /// its dispersion over its scale height comparable to its own free-fall rate — so the
     /// floor has to sit above that, and only material converging faster than it falls counts.
-    public static let compressionFloor: Float = 15
+    ///
+    /// Fifteen let something else through, and it took a control run with the whole term
+    /// switched off to see it. A sampled disk is not born in equilibrium: its clumps collapse
+    /// and it settles over its first few hundred megayears, and that settling converges hard
+    /// enough to clear a floor of fifteen. So the rate opened seven times above what the disk
+    /// sustains and fell all the way back — measured over two gigayears, 7108 knots in the
+    /// first window against 930 in the last, while the gas fell by only a factor of 1.7. The
+    /// decline was never gas running out. With the term off entirely the rate is flat, 1514
+    /// through 1624 to 1363, and that is what said the transient was the whole of it.
+    ///
+    /// Swept against the two things that matter at once — how much of its rate a quiet disk
+    /// still has after nine hundred megayears, and how far a merger's rises above where it
+    /// started:
+    ///
+    ///     floor  15   holds 0.48   bursts 2.65
+    ///     floor  45   holds 0.80   bursts 2.53
+    ///     floor 100   holds 0.96   bursts 1.56
+    ///
+    /// A hundred buys the last of the constancy by giving up the encounter, which is the one
+    /// thing the term exists for.
+    public static let compressionFloor: Float = 45
 
     /// When an old spheroid's stars formed. A bulge is old everywhere and was made quickly,
     /// so there is no gradient to draw from — only the width of the burst.

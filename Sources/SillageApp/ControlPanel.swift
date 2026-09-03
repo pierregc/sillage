@@ -284,6 +284,21 @@ struct ControlPanelContent: View {
             ParameterSlider(title: "Halo lumineux", value: $model.look.bloomIntensity, range: 0...2)
             ParameterSlider(
                 title: "Aigrettes de diffraction", value: $model.look.spikeIntensity, range: 0...1.5)
+            // What makes a bright star sparkle is these three together, and only the first of
+            // them had a control: the number of arms and how far they reach were reachable
+            // only from a preset.
+            ParameterSlider(
+                title: "Branches des aigrettes", value: $model.spikeArms, range: 0...8,
+                format: "%.0f")
+            ParameterSlider(
+                title: "Longueur des aigrettes", value: $model.look.spikeLength, range: 0...200,
+                format: "%.0f")
+            ParameterSlider(
+                title: "Taille des étoiles de champ", value: $model.look.starSize, range: 0.2...4)
+            ParameterSlider(
+                title: "Seuil du halo", value: $model.look.bloomThreshold, range: 0.05...1.5)
+            ParameterSlider(
+                title: "Point blanc", value: $model.look.whitePoint, range: 1...20, format: "%.1f")
             ParameterSlider(
                 title: "Fond de ciel", value: $model.look.skyLevel, range: 0...0.01, format: "%.4f")
             ParameterSlider(
