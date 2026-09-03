@@ -59,7 +59,17 @@ struct SamplingTests {
         let beyond = starRadii.filter { $0 > 16 }.count
         #expect(Double(beyond) / Double(starRadii.count) < 0.05)
         #expect(starRadii.allSatisfy { $0 <= 16 * 1.6 })
-        #expect(system.birthRadius.allSatisfy { $0 <= 16 * 2.0 })
+        // The thin disk stops; the galaxy does not. The thick disk and inner halo are sampled
+        // from a longer exponential and past the truncation on purpose — a disk that ends at a
+        // radius you can name has a rim, and no galaxy has one. They still have to be a small
+        // part of it and they still have to end somewhere.
+        let outskirts = (0..<system.count)
+            .filter { system.component[$0] == ParticleComponent.outskirt.rawValue }
+            .map { system.birthRadius[$0] }
+        #expect(!outskirts.isEmpty)
+        #expect(Double(outskirts.count) / Double(starRadii.count) < 0.3)
+        #expect(outskirts.allSatisfy { $0 <= 16 * 5 })
+        #expect(system.birthRadius.allSatisfy { $0 <= 16 * 5 })
         #expect(system.component.contains(ParticleComponent.dust.rawValue))
         #expect(system.component.contains(ParticleComponent.hiiRegion.rawValue))
     }
