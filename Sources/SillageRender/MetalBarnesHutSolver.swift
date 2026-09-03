@@ -702,9 +702,13 @@ public final class MetalBarnesHutSolver: Solver {
         for index in Swift.stride(from: 0, to: limit, by: step) {
             let kind = componentOf[index]
             // The same material the cooling touches, so the frame is the frame of the thing
-            // being cooled: no dark matter, and no bulge, which has no plane to speak of.
-            let dark = kind == ParticleComponent.halo.rawValue
-            if dark || kind == ParticleComponent.bulge.rawValue { continue }
+            // being cooled: no dark matter, no bulge, which has no plane to speak of, and no
+            // thick halo either. The cooling excludes everything from `halo` upward and this
+            // has to say the same thing — when the thick component was added to one and not
+            // the other, a spheroid reaching past thirty kiloparsecs and turning at a third of
+            // the circular speed was being counted as disk, and the ordered-rotation fraction
+            // it is measured by came out of a mixture of two populations.
+            if kind >= ParticleComponent.halo.rawValue { continue }
             let galaxy = Int(galaxyOf[index])
             guard galaxy < galaxies else { continue }
             let offset = SIMD3<Double>(positions[index] - haloCenters[galaxy])

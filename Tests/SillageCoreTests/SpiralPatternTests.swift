@@ -77,8 +77,15 @@ struct SpiralPatternTests {
     /// the paint says there is nothing. This checks the property that makes agreement possible
     /// — the hash depends only on the integer part, and only through integer arithmetic.
     @Test func theHashIsExactAndDependsOnlyOnTheIntegerPart() {
+        // Metal's `int()` truncates towards zero and so does this, so what the hash depends
+        // on is the truncated part and not the floor. Stated the other way round first, and it
+        // fails on every negative index: -3.6 truncates to -3 while -3 plus four tenths
+        // truncates to -2. `valueNoise` only ever hands it whole numbers, so nothing was
+        // broken but the claim.
         for index in stride(from: Float(-40), through: 40, by: 1) {
-            #expect(SpiralPattern.hash(index) == SpiralPattern.hash(index + 0.4))
+            #expect(SpiralPattern.hash(index) == SpiralPattern.hash(Float(Int(index))))
+            let towardsZero = index < 0 ? index - 0.4 : index + 0.4
+            #expect(SpiralPattern.hash(index) == SpiralPattern.hash(towardsZero))
             let value = SpiralPattern.hash(index)
             #expect(value >= 0 && value < 1)
         }

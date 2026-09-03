@@ -174,8 +174,12 @@ struct BarnesHutTests {
         func radialDispersion(_ system: ParticleSystem) -> Float {
             var total: Float = 0
             var samples = 0
+            // The thin disk alone. The thick component carries an isotropic dispersion that
+            // tracks the circular speed and has nothing to do with Toomre's Q, so counting it
+            // in mixes a population that does not answer the question into the answer: it
+            // pulled a hot disk and a cold one to within a per cent of each other.
             for index in 0..<system.count
-            where system.component[index] != ParticleComponent.halo.rawValue {
+            where system.component[index] == ParticleComponent.star.rawValue {
                 let p = system.positions[index]
                 let radius = max(sqrt(p.x * p.x + p.y * p.y), 1e-3)
                 let outward = SIMD2<Float>(p.x / radius, p.y / radius)
