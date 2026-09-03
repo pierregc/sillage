@@ -240,6 +240,32 @@ enum Shaders {
             return clamp(ridge * lopsided, 0.0, 1.0);
         }
 
+        // Fine strands inside a dust lane, at rest in the pattern's own frame.
+        //
+        // Paint, and deliberately so — unlike the arm pattern this has no counterpart in the
+        // sampler. A lane is a *pattern* feature: gas piles up where the pattern is and flows
+        // through it, so a lane sits still while the material crosses it, and painting the
+        // strands is not a shortcut but the right frame to put them in. The filaments the
+        // sampler lays down are carried by the grains and are therefore sheared away within
+        // an orbit — measured, the lane structure was gone by two hundred megayears — so this
+        // is what makes a galaxy still have dust in it after a turn.
+        static float laneDetail(float3 position, DiskFrame frame) {
+            float3 rel = position - frame.center.xyz;
+            float u = dot(rel, frame.axisU.xyz);
+            float v = dot(rel, frame.axisV.xyz);
+            float radius = sqrt(u * u + v * v);
+            float scale = max(frame.center.w, 1e-3);
+            float extent = radius / scale;
+            float wound = atan2(v, u)
+                        - frame.pattern.x * log(max(radius, 1e-3) / scale)
+                        - frame.pattern.y;
+            // High along the arm and higher still across it, which is what makes a strand a
+            // strand rather than a patch.
+            float fine = fractalNoise(wound * 7.3 + extent * 2.1 + frame.pattern.w * 5.3);
+            float finer = fractalNoise(wound * 19.0 - extent * 5.7 + frame.pattern.w * 2.9);
+            return 0.18 + 1.5 * fine * (0.45 + 0.9 * finer);
+        }
+
         // Where a particle sits relative to the spiral pattern, evaluated at its current
         // position so the arms do not wind up with the disk.
         static float2 armWave(float3 position, DiskFrame frame) {
@@ -359,7 +385,11 @@ enum Shaders {
                 // optical depth of about a tenth, where exp(-tau) is 1 - tau and it makes no
                 // difference at all where the dust stands. That is why depth ordering looked
                 // like it did nothing: there was nothing to order.
-                float lane = 1.0 + 9.0 * pow(wave, 2.0) * pattern.y;
+                // At nine, with no detail in it, this painted band *was* the dust: a pair of
+                // wide smooth arcs, which is what read as sausages. It is the same band times
+                // a filament field now — the strands are what carry the shape, and they sit
+                // in the pattern's frame, where a lane belongs.
+                float lane = 1.0 + 7.0 * pow(wave, 2.0) * pattern.y * laneDetail(position, frame);
                 out.pointSize = span * 1.3;
                 out.color = half3(0.0h);
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
@@ -580,22 +610,6 @@ enum Shaders {
             return x - floor(x);
         }
 
-        /// Smoothed value noise over the frame, for the things that must not be uniform.
-        static float smoothNoise(float2 v) {
-            float2 i = floor(v);
-            float2 f = v - i;
-            float2 u = f * f * (3.0 - 2.0 * f);
-            return mix(mix(hash2(i), hash2(i + float2(1.0, 0.0)), u.x),
-                       mix(hash2(i + float2(0.0, 1.0)), hash2(i + float2(1.0, 1.0)), u.x), u.y);
-        }
-
-        /// A few octaves of it, which is what makes a glow read as cirrus rather than as a
-        /// gradient someone painted.
-        static float cirrus(float2 v) {
-            return smoothNoise(v) * 0.55 + smoothNoise(v * 2.7 + 11.3) * 0.28
-                 + smoothNoise(v * 6.1 + 41.7) * 0.17;
-        }
-
         static float3 acesFilmic(float3 x) {
             const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
             return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
@@ -616,14 +630,13 @@ enum Shaders {
             // everything, and the detector adds read noise and photon shot noise on top.
             // Counterintuitively, putting them back is what stops the image looking synthetic.
             //
-            // And none of it is flat. A uniform lift is a grey card behind the galaxy and
-            // reads as one; the sky has structure in it at every scale, so this runs a few
-            // octaves of noise across the frame and lets the level wander by a factor of
-            // three. Warm where it is faint and cool where it is not, as scattered starlight
-            // and zodiacal light divide up.
-            float cloud = cirrus(uv * 3.1 + p.seed * 0.013);
-            float3 nearGround = mix(float3(0.42, 0.36, 0.34), float3(0.30, 0.38, 0.62), cloud);
-            energy += p.skyLevel * (0.45 + 1.75 * cloud) * nearGround;
+            // Flat, and it has to be. A few octaves of noise across the frame were tried here
+            // to give the sky some structure, and they were offset by the *frame* seed — so
+            // the whole field translated once a frame and the picture had clouds drifting
+            // across it. That is not a sky, it is a screensaver, and even standing still the
+            // patches read as cloud rather than as depth. What makes a background convincing
+            // is the field stars and the shot noise, both of which are still there.
+            energy += p.skyLevel * float3(0.36, 0.42, 0.60);
             if (p.noiseLevel > 0.0) {
                 float2 cell = float2(gid) + p.seed;
                 float read = hash2(cell) - 0.5;
