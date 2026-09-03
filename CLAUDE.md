@@ -1007,6 +1007,16 @@ painted strands are what it still has after a turn.
 So the split is now: the arm *pattern* is shared between sampler and shader and has to agree
 exactly, while the lane detail inside it is paint alone and says so.
 
+**And a strand has to be bent, on both sides.** Following the pitch exactly gives a perfect
+logarithmic segment, and a disk of those is clean, parallel and obviously drawn — combed hair
+rather than torn membrane. The sampled strands are warped by a noise keyed on the strand's own
+seed and read along its length, so the whole thread meanders together instead of every grain
+wandering on its own, and they are lifted out of the plane by another, or a filament is a
+ribbon lying flat. The painted ones are *domain-warped*: the wound angle is displaced before
+the strands are read off it, which bends each one differently at every radius. Sampling the
+noise straight and adding more octaves does not do this — it gives finer parallel threads, not
+crooked ones.
+
 ## State and known limitations
 
 Both solvers work. Level 1 is tracers in rigid potentials, level 2 is self-gravitating
