@@ -114,7 +114,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         armStrength: Float = 0.82,
         armPitch: Float = 0.46,
         dustFraction: Float = 0.26,
-        starFormingFraction: Float = 0.02,
+        starFormingFraction: Float = 0.026,
         bulgeExtent: Float = 0.18,
         bulgeFraction: Float = 0.15,
         bulgeFlattening: Float = 0.7,
