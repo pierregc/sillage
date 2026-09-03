@@ -494,6 +494,39 @@ public enum DiskSampler {
                     spread: scale * (0.006 + 0.045 * u * u * u)))
         }
 
+        // Gas does not sit in the arms as a band, it sits in filaments: narrow across and
+        // drawn out along the flow, because differential rotation stretches anything that is
+        // not held together. Painted from the arm pattern instead, the absorption came out as
+        // a pair of wide smooth sausages that followed the *pattern* rather than the material
+        // — so they neither looked like dust nor turned with the disk.
+        //
+        // Many of them, small, and sheared hard. The spread is the width across a strand, and
+        // the arc `scatter` builds from that width is what makes it a thread and not a bead.
+        //
+        // Placed straight from the arm pattern rather than inside a complex, and at a higher
+        // contrast than the stars: gas is what the pattern actually gathers, so it traces an
+        // arm more tightly than the stars that came out of it do. Drawn from the complexes
+        // instead, twenty-six hundred of them covered the whole inner disk in a fine mat of
+        // short strands and the arms went out of the dust altogether.
+        // Length of a strand along the radial direction; the pitch turns that into a run
+        // along the arm several times longer.
+        let strandLength = scale * 0.11
+        var filaments: [Clump] = []
+        for _ in 0..<700 {
+            // Over a scale length and a bit more than the stars': a gas disk is the more
+            // extended of the two, and drawn on the stellar scale the filaments crowded into
+            // the middle third of the picture.
+            let placed = samplePlanePosition(
+                config, arms: arms, contrast: min(strength * 1.45, 0.95), windRate: windRate,
+                minimumRadius: bulgeRadius * 0.9, scaleMultiplier: 1.4, shape: shape,
+                using: &generator)
+            let u = generator.uniform()
+            filaments.append(
+                Clump(
+                    radius: placed.radius, phi: placed.phi,
+                    spread: scale * (0.005 + 0.028 * u * u)))
+        }
+
         for _ in 0..<max(count, 0) {
             let roll = generator.uniform()
             let component: ParticleComponent =
@@ -523,7 +556,22 @@ public enum DiskSampler {
             // A clump inside the bulge is no home for gas or for young stars, for the same
             // reason as below.
             let usable = component == .star || (clump?.radius ?? 0) > bulgeRadius * 0.9
-            if outskirt {
+            if component == .dust, generator.uniform() < 0.93, !filaments.isEmpty {
+                let strand =
+                    filaments[Int(generator.uniform() * Float(filaments.count)) % filaments.count]
+                // A strand runs *along the arm*, which means its radius and its angle have to
+                // change together, at the pattern's own pitch. Stretched azimuthally alone —
+                // which is what shearing a round clump gives — a strand is a segment of a
+                // circle, and a disk full of those reads as a set of concentric rings however
+                // thin they are. That was two attempts.
+                let travel = generator.normal() * strandLength
+                radius = max(strand.radius + travel, 0.03)
+                let pitch = windRate * log(radius / max(strand.radius, 1e-3))
+                phi =
+                    strand.phi + pitch
+                    + generator.normal() * (strand.spread / max(radius, 0.4))
+                proximity = 1
+            } else if outskirt {
                 // Drawn from a longer exponential and allowed past the truncation, so the
                 // light falls away with no radius at which it stops.
                 radius =
@@ -670,7 +718,16 @@ public enum DiskSampler {
                     / Float(Physics.megayearsPerTimeUnit)
             case .dust:
                 population = 0
-                brightness = (0.8 + 0.5 * generator.uniform()) * max(taper, 0.02)
+                // `luminosity` is a grain's opacity, since dust emits nothing, and this is
+                // where a strand gets its texture: a fine noise baked from the birth position
+                // and squashed along the flow, so the column varies fast across a filament and
+                // slowly along it. Baked rather than read at draw time, for the same reason
+                // everything else here is — a field sampled at the current position makes the
+                // lanes crawl as the disk turns through it.
+                let along = SIMD3<Float>(local.x * 0.4, local.y * 0.4, local.z * 4)
+                brightness =
+                    (0.25 + 1.9 * grain(along * 2.6)) * (0.8 + 0.5 * generator.uniform())
+                    * max(taper, 0.02)
                 formation = ParticleSystem.unformed
             case .star, .halo, .bulge, .outskirt:
                 if outskirt {
