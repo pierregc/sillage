@@ -420,6 +420,9 @@ public enum DiskSampler {
         var radius: Float
         var phi: Float
         var spread: Float
+        /// Identifies this one to the noise that warps it, so a strand meanders the same way
+        /// along its whole length instead of every grain wandering on its own.
+        var seed: Float = 0
     }
 
     /// Clouds in a disk are not round: differential rotation shears them into arcs within a
@@ -511,6 +514,10 @@ public enum DiskSampler {
         // Length of a strand along the radial direction; the pitch turns that into a run
         // along the arm several times longer.
         let strandLength = scale * 0.11
+        // How far across the arm a strand wanders over its own length, in kiloparsecs. Enough
+        // to be a bend rather than a wobble; past about a third of a scale length the strands
+        // stop belonging to an arm at all.
+        let strandWarp = scale * 0.115
         var filaments: [Clump] = []
         for _ in 0..<700 {
             // Over a scale length and a bit more than the stars': a gas disk is the more
@@ -524,7 +531,8 @@ public enum DiskSampler {
             filaments.append(
                 Clump(
                     radius: placed.radius, phi: placed.phi,
-                    spread: scale * (0.005 + 0.028 * u * u)))
+                    spread: scale * (0.005 + 0.028 * u * u),
+                    seed: generator.uniform() * 900))
         }
 
         for _ in 0..<max(count, 0) {
@@ -545,6 +553,8 @@ public enum DiskSampler {
             var radius: Float
             var phi: Float
             var proximity: Float
+            /// How far this grain's strand is warped out of the plane where it sits.
+            var strandLift: Float = 0
 
             // Drawn whether or not it is used, so that turning a clump down does not shift
             // every later draw in the galaxy and make two samplings incomparable.
@@ -567,9 +577,26 @@ public enum DiskSampler {
                 let travel = generator.normal() * strandLength
                 radius = max(strand.radius + travel, 0.03)
                 let pitch = windRate * log(radius / max(strand.radius, 1e-3))
+                // And a strand is not a clean arc either. The pitch alone gives a perfect
+                // logarithmic segment, which reads as drawn rather than as gas; warped by a
+                // noise keyed on the strand's own seed and read along its length, the whole
+                // thread meanders together — a twisted membrane rather than a wire. Two
+                // frequencies, because one gives a smooth bend and real filaments kink.
+                let alongStrand = travel / max(strandLength, 1e-3)
+                let meander =
+                    (SpiralPattern.fractalNoise(strand.seed + alongStrand * 1.7) - 0.5)
+                    + 0.45
+                    * (SpiralPattern.fractalNoise(strand.seed * 3.1 + alongStrand * 5.3)
+                        - 0.5)
                 phi =
                     strand.phi + pitch
+                    + meander * strandWarp / max(radius, 0.4)
                     + generator.normal() * (strand.spread / max(radius, 0.4))
+                // The membrane is warped out of the plane as well, or it is a ribbon lying
+                // flat and reads as one from any angle but face on.
+                strandLift =
+                    (SpiralPattern.fractalNoise(strand.seed * 5.7 + alongStrand * 2.3) - 0.5)
+                    * config.diskThickness * 1.6
                 proximity = 1
             } else if outskirt {
                 // Drawn from a longer exponential and allowed past the truncation, so the
@@ -612,9 +639,9 @@ public enum DiskSampler {
             // A spheroid flattened to a third, which is what a thick disk and inner halo
             // together look like; the thin components keep their sech-squared layer.
             let height =
-                outskirt
-                ? radius * 0.34 * (2 * generator.uniform() - 1)
-                : thickness * inverseSech2CDF(generator.uniform())
+                (outskirt
+                    ? radius * 0.34 * (2 * generator.uniform() - 1)
+                    : thickness * inverseSech2CDF(generator.uniform())) + strandLift
             let local = SIMD3<Float>(radius * cos(phi), radius * sin(phi), height)
 
             let outward = SIMD3<Float>(cos(phi), sin(phi), 0)

@@ -259,10 +259,19 @@ enum Shaders {
             float wound = atan2(v, u)
                         - frame.pattern.x * log(max(radius, 1e-3) / scale)
                         - frame.pattern.y;
+            // The angle is warped before the strands are read off it, which is what makes
+            // them snake. Sampled straight, the noise lays down threads that all run along the
+            // arm at the same pitch — clean, parallel, and obviously drawn. Displacing the
+            // coordinate first bends every strand by a different amount at every radius, and
+            // the result reads as torn membrane rather than as combed hair.
+            float warp = fractalNoise(wound * 2.1 + extent * 3.7 + frame.pattern.w * 1.9) - 0.5;
+            float twist = fractalNoise(wound * 5.9 - extent * 1.3 + frame.pattern.w * 4.1) - 0.5;
+            float bent = wound + 0.88 * warp + 0.30 * twist;
+
             // High along the arm and higher still across it, which is what makes a strand a
             // strand rather than a patch.
-            float fine = fractalNoise(wound * 7.3 + extent * 2.1 + frame.pattern.w * 5.3);
-            float finer = fractalNoise(wound * 19.0 - extent * 5.7 + frame.pattern.w * 2.9);
+            float fine = fractalNoise(bent * 7.3 + extent * 2.1 + frame.pattern.w * 5.3);
+            float finer = fractalNoise(bent * 19.0 - extent * 5.7 + frame.pattern.w * 2.9);
             return 0.18 + 1.5 * fine * (0.45 + 0.9 * finer);
         }
 
