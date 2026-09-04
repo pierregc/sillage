@@ -238,6 +238,23 @@ final class SimulationModel: ObservableObject {
     }
     /// Identifies the current live stepping chain. Bumping it retires whatever is running.
     private var liveGeneration = 0
+    /// Held for as long as the solver is stepping, and the whole of what keeps a run going
+    /// once nobody is watching it.
+    ///
+    /// A window on a sleeping display — or behind a lock screen, which is the same thing to
+    /// the window server — counts as occluded, and macOS then treats the process as one with
+    /// nothing important to do: App Nap narrows the work queue that `concurrentPerform` fans
+    /// the tree build out over, and the stepping thread spends its time in
+    /// `_dispatch_group_wait_slow` waiting for workers that are never scheduled. Measured on
+    /// a 400 000 particle merger, three minutes either side of `pmset displaysleepnow`:
+    /// 0.87 Myr/s with the screen on, 0.21 with it off, at *more* processor time per second
+    /// than before. It does not recover when the display wakes, because the lock screen is
+    /// still in front — which is why it takes a click to bring a run back.
+    ///
+    /// `beginActivity` is the documented way to say the work is user-initiated and must not
+    /// be napped. `.userInitiated` also holds off idle system sleep, so a run no longer needs
+    /// a `caffeinate` beside it.
+    private var activity: (any NSObjectProtocol)?
     /// Same idea for the sampling job, which a second launch can supersede mid-flight.
     private var preparation = 0
     var reframeWhenReady = false
@@ -517,13 +534,23 @@ final class SimulationModel: ObservableObject {
     /// flight finishes, finds itself stale on its way back, and stops there.
     private func startLiveStepping() {
         guard mode == .running, isPlaying, let solver else { return }
+        if activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiated, reason: "sillage fait avancer une simulation")
+        }
         liveGeneration &+= 1
         pumpLive(
             generation: liveGeneration, solver: solver, steps: max(stepsPerFrame, 1),
             budget: Int(max(memoryBudgetGigabytes, 0) * 1_073_741_824))
     }
 
-    private func stopLiveStepping() { liveGeneration &+= 1 }
+    private func stopLiveStepping() {
+        liveGeneration &+= 1
+        if let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+            self.activity = nil
+        }
+    }
 
     /// How long to leave the GPU alone before stepping again, so the solver advances at the
     /// rate contemplation asks for rather than as fast as the hardware allows. Zero for every
