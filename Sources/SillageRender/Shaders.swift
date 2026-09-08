@@ -13,6 +13,8 @@ enum Shaders {
             float time;
             float megayearsPerUnit;
             float ionisedMyr;
+            float ionisingRiseMyr;
+            float ionisedStrength;
             float populationYoungMyr;
             float populationSpan;
             float populationLast;
@@ -319,7 +321,15 @@ enum Shaders {
             // time: material sampled as already old reads as infinitely old, and gas that has
             // formed nothing yet reads as not yet born and is still drawn as dust.
             float born = formation[vid];
-            float ageMyr = (u.time - born) * u.megayearsPerUnit;
+            // Only gas carries an age that has to advance. A sampled star stands for tens of
+            // thousands of stars already in steady state, not for a coeval group, so its
+            // colour has no business drifting over a run — and it was drifting hard: a whole
+            // disk ageing in lockstep turned gold inside a gigayear while the four per cent
+            // of particles the run forms could not repaint it. Frozen at the age it was drawn
+            // with; gas, and anything the run itself formed, still ages.
+            bool nursery = kind == 1u || kind == 2u;
+            float ageMyr = (nursery || born >= 0.0)
+                ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
             bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
             bool absorbing = kind == 2u && !knot;
 
@@ -443,9 +453,13 @@ enum Shaders {
                 // carrying seven tenths of the light. Tested on the component instead, the two
                 // numbers have nothing to do with each other and the window can be as long as
                 // the thing it represents actually lasts.
-                bool nursery = kind == 1u || kind == 2u;
+                // A region swells rather than arriving lit, and never reaches pure line
+                // emission: the rise is what stops a knot popping into the frame at full
+                // brightness, and the strength is what keeps it a star with a nebula around
+                // it rather than a red dot.
+                float rise = 1.0 - exp(-ageMyr / max(u.ionisingRiseMyr, 1e-3));
                 float alive = (knot && nursery)
-                    ? exp(-ageMyr / max(u.ionisedMyr, 1e-3)) : 0.0;
+                    ? u.ionisedStrength * rise * exp(-ageMyr / max(u.ionisedMyr, 1e-3)) : 0.0;
                 float3 emitted = mix(stellarLight, hiiColour(), alive);
                 // A tint per galaxy is what keeps stars pulled into the other one legible.
                 // It is a departure from the physical colour, so it is dialled rather than

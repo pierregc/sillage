@@ -11,6 +11,8 @@ struct SplatUniforms {
     var time: Float
     var megayearsPerUnit: Float
     var ionisedMyr: Float
+    var ionisingRiseMyr: Float
+    var ionisedStrength: Float
     var populationYoungMyr: Float
     var populationSpan: Float
     var populationLast: Float
@@ -600,6 +602,8 @@ public final class Renderer {
             time: time,
             megayearsPerUnit: Float(Physics.megayearsPerTimeUnit),
             ionisedMyr: StarFormation.ionisedMyr,
+            ionisingRiseMyr: StarFormation.ionisingRiseMyr,
+            ionisedStrength: StarFormation.ionisedStrength,
             populationYoungMyr: Float(StellarPopulation.youngestMyr),
             populationSpan: log(Float(StellarPopulation.oldestMyr / StellarPopulation.youngestMyr)),
             populationLast: Float(StellarPopulation.samples - 1),

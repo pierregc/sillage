@@ -32,6 +32,25 @@ public enum StarFormation {
     /// shader tests the component for it.
     public static let ionisedMyr: Float = 150
 
+    /// Megayears a region takes to reach full brightness.
+    ///
+    /// A knot used to arrive at once, at its brightest, in the frame its gas crossed the
+    /// threshold. Nothing lights up like that, and at thirty-seven megayears of simulation a
+    /// second it reads as a hard pop rather than as something switching on. Rising over this
+    /// constant gives it about fifty megayears to swell, which is a second and a half.
+    ///
+    /// It also takes the peak down: the product of a rise and a decay never reaches one, and
+    /// at twenty-five against a hundred and fifty it tops out at 0.62 of what a bare decay
+    /// gave. That is part of asking for less red, not an accident to be normalised away.
+    public static let ionisingRiseMyr: Float = 25
+
+    /// How much of a knot's colour is Halpha at its brightest.
+    ///
+    /// Below one the knots read as stars with a nebula around them rather than as pure line
+    /// emission. Purely a rendering decision — it moves no rate and no age, so the physics
+    /// above is untouched and only the picture is dialled.
+    public static let ionisedStrength: Float = 0.8
+
     /// Youngest age the initial conditions place anything at, in megayears.
     ///
     /// A particle stands for tens of thousands of stars, so it is never truly coeval, and a
