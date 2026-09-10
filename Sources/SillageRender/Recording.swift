@@ -315,13 +315,36 @@ public final class Recording: @unchecked Sendable {
     public func copy(frame index: Int, into buffer: MTLBuffer, atByteOffset offset: Int)
         -> Frame?
     {
-        lock.lock()
-        defer { lock.unlock() }
-        guard index >= 0, index < storedFrames.count else { return nil }
         let stride = particleCount * 3
+        lock.lock()
+        guard index >= 0, index < storedFrames.count else {
+            lock.unlock()
+            return nil
+        }
+        let frame = storedFrames[index]
+        let mapping = mapped
+        lock.unlock()
+
         let destination = buffer.contents().advanced(by: offset).bindMemory(
             to: UInt16.self, capacity: stride)
-        withStorage { source in
+        // A take read from a file is finished: every frame is already in it and the mapping
+        // never moves, so the bulk copy has no business holding the lock. It used to, and the
+        // main actor waited behind twenty-eight megabytes of memcpy on every played-back
+        // frame — not in `fetch`, which the reader keeps ahead of the playhead, but in
+        // `frame(at:)`, which only ever wanted a struct.
+        if let mapping {
+            mapping.withUnsafeBytes { raw in
+                let source = raw.bindMemory(to: UInt16.self)
+                destination.update(from: source.baseAddress! + index * stride, count: stride)
+            }
+            return frame
+        }
+        // A capture still growing is the other case, and there the array behind the positions
+        // can be reallocated by the next batch mid-copy. That one does have to hold the lock.
+        lock.lock()
+        defer { lock.unlock() }
+        guard index < storedFrames.count else { return nil }
+        storage.withUnsafeBufferPointer { source in
             destination.update(from: source.baseAddress! + index * stride, count: stride)
         }
         return storedFrames[index]
