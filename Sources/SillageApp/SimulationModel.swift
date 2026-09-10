@@ -72,6 +72,13 @@ final class SimulationModel: ObservableObject {
     var stepTree: Double = 0
     /// Milliseconds between consecutive frames actually reaching `draw`.
     var frameGaps: [Double] = []
+    /// Where a played-back frame's time goes, in milliseconds, and how often the snapshot it
+    /// wanted was not here yet. Measured rather than reasoned about: the three costs sit on
+    /// the main thread one after another and each of them has looked like the culprit.
+    var playbackFetch: [Double] = []
+    var playbackExpand: [Double] = []
+    var playbackMeta: [Double] = []
+    var playbackWaits = 0
 
     /// Which of the named looks is showing, for the picker.
     @Published var lookName: String = "observatory"
@@ -673,8 +680,14 @@ final class SimulationModel: ObservableObject {
                 length: reel.particleCount * MemoryLayout<SIMD3<Float>>.stride,
                 options: .storageModeShared)
             playbackPosition = 0
-            isPlaying = true
+            // The mode first, and that ordering is the whole of it. `isPlaying`'s observer
+            // starts a stepping chain whenever the mode still says `.running`, so setting it
+            // here while the mode had not moved yet restarted the solver that the line above
+            // had just retired — and it then held the GPU behind the picture for the whole
+            // replay. Every run that reaches its finish goes through here: `checkFinish`
+            // pauses and calls this, so the pause is exactly what made the observer fire.
             mode = .playback
+            isPlaying = true
             rebuildRenderer()
         } catch {
             failure = "\(error)"
@@ -1029,17 +1042,57 @@ final class SimulationModel: ObservableObject {
         // Tell the reader where the playhead is before asking for anything, so the snapshots
         // after this one are on their way while this frame is drawn.
         snapshots.prepare(from: index)
+        let beforeFetch = CACurrentMediaTime()
+        if snapshots.offset(of: index) == nil || snapshots.offset(of: next) == nil {
+            playbackWaits += 1
+        }
         guard let firstOffset = snapshots.fetch(index),
-            let secondOffset = snapshots.fetch(next),
-            let first = recording.frame(at: index), let second = recording.frame(at: next)
+            let secondOffset = snapshots.fetch(next)
         else { return }
+        let beforeMeta = CACurrentMediaTime()
+        guard let first = recording.frame(at: index), let second = recording.frame(at: next)
+        else { return }
+        let beforeExpand = CACurrentMediaTime()
         expander.expand(
             first: first, at: firstOffset, second: second, at: secondOffset,
             from: snapshots.buffer, blend: blend, into: positions)
+        let afterExpand = CACurrentMediaTime()
         elapsedMyr = Double(first.time) * Physics.megayearsPerTimeUnit
         playbackCenters = recording.centers(at: index)
         playbackDisks = recording.disks(at: index)
+        let done = CACurrentMediaTime()
+        playbackFetch.append((beforeMeta - beforeFetch) * 1000)
+        playbackExpand.append((afterExpand - beforeExpand) * 1000)
+        playbackMeta.append((beforeExpand - beforeMeta + done - afterExpand) * 1000)
+        if playbackFetch.count > 2000 {
+            playbackFetch.removeFirst()
+            playbackExpand.removeFirst()
+            playbackMeta.removeFirst()
+        }
     }
+
+    /// One played-back frame, rendered offscreen: the same cursor step, the same blend and
+    /// the same encode a displayed frame does, without a drawable.
+    ///
+    /// The windowed path needs a display that is awake — a machine with its screen asleep
+    /// never even shows the window — and the cost of a frame does not depend on who asked for
+    /// it. `--replay` measures here.
+    func playbackSnapshot() -> [UInt8]? {
+        guard mode == .playback, let renderer else { return nil }
+        advancePlayback()
+        let centers =
+            playbackCenters.isEmpty ? scene.galaxies.map(\.position) : playbackCenters
+        renderer.time = Float(elapsedMyr / Physics.megayearsPerTimeUnit)
+        let disks = playbackDisks.isEmpty ? solverDisks : playbackDisks
+        renderer.setDiskFrames(
+            DiskFrame.make(
+                scene: scene, centers: centers, time: renderer.time,
+                strength: renderer.armPersistence, disks: disks))
+        return renderer.render(camera: activeCamera)
+    }
+
+    /// What the last offscreen render cost the GPU, in milliseconds.
+    var lastOffscreenGPUMilliseconds: Double { (renderer?.lastGPUTime ?? 0) * 1000 }
 
     /// Runs the exact model path a frame takes, but offscreen. Used by `--selftest` so the
     /// wiring can be checked without a window.
