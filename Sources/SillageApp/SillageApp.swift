@@ -25,6 +25,12 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--uishot") {
             MainActor.assumeIsolated { SillageApp.renderInterface() }
         }
+        if CommandLine.arguments.contains("--replay") {
+            MainActor.assumeIsolated { ReplayCheck.run() }
+        }
+        if CommandLine.arguments.contains("--replayswitch") {
+            MainActor.assumeIsolated { ReplaySwitchCheck.run() }
+        }
     }
 
     var body: some Scene {
