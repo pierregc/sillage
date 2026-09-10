@@ -89,12 +89,46 @@ PLIST
     echo "$app"
 }
 
-case "${1:-test}" in
+# The package turns strict concurrency on and plain `swiftc` does not, which is how a
+# `static var` on an enum compiles here and fails to build a package. SwiftPM cannot run on
+# this machine at all — the Command Line Tools ship a PackageDescription whose interface and
+# dylib disagree, and there is no Xcode.app to point `xcode-select` at — so the setting is
+# applied by hand, one module at a time. This is the check that used to belong to CI, and the
+# one that broke three pushes in a row when nothing was watching for it.
+strict_concurrency() {
+    build_render
+    swiftc -typecheck -strict-concurrency=complete -swift-version 6 \
+        "$ROOT"/Sources/SillageCore/*.swift
+    swiftc -typecheck -strict-concurrency=complete -swift-version 6 \
+        -I "$BUILD" -L "$BUILD" -lSillageCore \
+        "$ROOT"/Sources/SillageRender/*.swift
+    swiftc -typecheck -strict-concurrency=complete -swift-version 6 \
+        -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender -parse-as-library \
+        "$ROOT"/Sources/SillageApp/*.swift
+}
+
+# Everything CI used to run, in one command, and now the only gate there is. Run it before
+# every commit.
+check() {
+    echo "== formatage"
+    swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests"
+    echo "== concurrence stricte"
+    strict_concurrency
+    echo "== application"
+    build_app >/dev/null
+    echo "== tests"
+    run_tests
+}
+
+case "${1:-check}" in
     build)  build_render ;;
     lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
+    strict) strict_concurrency ;;
+    check)  check ;;
     test)   shift || true; build_render; run_tests "$@" ;;
     app)    build_app ;;
     render) shift || true; build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
-    *)      echo "usage: ${BASH_SOURCE[0]} [build|test|lint|render|app]" >&2; exit 2 ;;
+    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|render|app]" >&2
+            exit 2 ;;
 esac
