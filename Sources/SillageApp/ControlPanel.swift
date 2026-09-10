@@ -275,12 +275,30 @@ struct ControlPanelContent: View {
             ParameterSlider(
                 title: "Opacité des poussières", value: $model.look.dustStrength, range: 0...1.2,
                 format: "%.3f")
+            ParameterSlider(
+                title: "Force des bras peints", value: $model.look.armPersistence, range: 0...2)
+            Text(
+                "Au-dessus de 1 les bras sont une invention franche, ce que les looks les plus doux assument."
+            )
+            .font(.caption2)
+            .foregroundStyle(Palette.secondary)
 
             Divider()
             Text("Instrument").font(.headline)
             ParameterSlider(
                 title: "Lissage des étoiles", value: $model.look.smoothingScale,
                 range: 0.4...5.0)
+            // How wide a splat is allowed to be. The floor is the one that matters and it was
+            // reachable only from a preset: a star drawn thinner than a pixel crosses pixel
+            // boundaries as it moves and twinkles on its own, whatever the detector noise is
+            // set to. Measured on a take played slowly with the noise off, the worst
+            // frame-to-frame jump on a single pixel falls from 81 levels at 1.1 px to 16 at
+            // 3.5.
+            ParameterSlider(
+                title: "Noyau minimal (px)", value: $model.look.minimumKernel, range: 0.5...6)
+            ParameterSlider(
+                title: "Noyau maximal (px)", value: $model.look.maximumKernel, range: 4...160,
+                format: "%.0f")
             ParameterSlider(title: "Halo lumineux", value: $model.look.bloomIntensity, range: 0...2)
             ParameterSlider(
                 title: "Aigrettes de diffraction", value: $model.look.spikeIntensity, range: 0...1.5)
@@ -298,12 +316,24 @@ struct ControlPanelContent: View {
             ParameterSlider(
                 title: "Seuil du halo", value: $model.look.bloomThreshold, range: 0.05...1.5)
             ParameterSlider(
+                title: "Douceur du seuil", value: $model.look.bloomSoftKnee, range: 0...1)
+            ParameterSlider(
                 title: "Point blanc", value: $model.look.whitePoint, range: 1...20, format: "%.1f")
             ParameterSlider(
-                title: "Fond de ciel", value: $model.look.skyLevel, range: 0...0.01, format: "%.4f")
-            ParameterSlider(
-                title: "Bruit de détecteur", value: $model.look.noiseLevel, range: 0...0.01,
+                title: "Fond de ciel", value: $model.look.skyLevel, range: 0...0.006,
                 format: "%.4f")
+            // Named for what it does rather than for what it is. Every look sits between
+            // 0.0008 and 0.0022, so a range up to 0.01 put the whole useful part of it in the
+            // first sixth of the track: it read as a control that did nothing until it
+            // suddenly did everything, and zero was three pixels wide.
+            ParameterSlider(
+                title: "Scintillement (bruit du capteur)", value: $model.look.noiseLevel,
+                range: 0...0.004, format: "%.4f")
+            Text(
+                "À zéro, deux images d'une scène arrêtée sont identiques au bit près : c'est ce bruit-là qui fait clignoter tout le fond. Pour les étoiles qui scintillent en bougeant, c'est le noyau minimal."
+            )
+            .font(.caption2)
+            .foregroundStyle(Palette.secondary)
             Picker("Suréchantillonnage", selection: $model.supersample) {
                 Text("1×").tag(1)
                 Text("2×").tag(2)
@@ -374,6 +404,8 @@ struct ControlPanelContent: View {
                     title: "Élévation (rad)", value: $model.camera.elevation,
                     range: -OrbitCamera.elevationLimit...OrbitCamera.elevationLimit)
             }
+            ParameterSlider(
+                title: "Ouverture de l'objectif", value: $model.look.fieldOfView, range: 0.2...1.4)
             Button(model.isFlying ? "Revenir sur la scène" : "Recadrer") {
                 if model.isFlying { model.toggleFlight() }
                 model.frameCamera()
