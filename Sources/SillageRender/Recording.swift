@@ -47,11 +47,24 @@ public final class Recording: @unchecked Sendable {
     /// interface shows would sit one behind what a file then holds. Closing the take settles
     /// it: nothing more goes in until it is opened again.
     private var closed = false
-    /// Batches skipped between captured frames. A long run should come back whole at a
-    /// coarser cadence rather than stopping halfway, so when the take fills its budget it
-    /// throws away every other frame and captures half as often from then on.
-    public private(set) var stride = 1
-    private var sinceCapture = 0
+    /// Where the frames go once the memory budget is spent.
+    ///
+    /// The budget bounds what a take holds in *memory*; it does not bound the take. Nothing
+    /// captured is ever dropped or resampled, so a ten-thousand-megayear run comes back at
+    /// the cadence it was taken at, however long it ran. What that costs is disk, and the
+    /// take says how much.
+    private var spill: SpillFile?
+    /// The first frame that lives in the scratch file. Everything before it stays in memory,
+    /// where the budget already paid for it: the take fills its allowance once and then runs
+    /// on disk, rather than handing the whole allowance back and copying gigabytes out of it
+    /// in one go at exactly the moment a long run is going well.
+    private var spilledFrom = Int.max
+    /// Set if the scratch file could not be opened at all. The capture then keeps going in
+    /// memory, because losing frames is the one outcome that is not on offer — but somebody
+    /// should be told, so it is asked for.
+    public private(set) var spillFailure: String?
+    /// One frame's quantised positions, reused, so a capture allocates nothing per frame.
+    private var staging: [UInt16] = []
 
     public init(particleCount: Int, galaxyCount: Int = 1) {
         self.particleCount = max(particleCount, 1)
@@ -84,19 +97,79 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
-    /// The quantised positions, wherever they live. Never escapes the lock.
-    private func withStorage<T>(_ body: (UnsafeBufferPointer<UInt16>) -> T) -> T {
+    /// One frame's quantised positions, wherever they live. Never escapes the lock.
+    private func withFrameStorage<T>(_ index: Int, _ body: (UnsafeBufferPointer<UInt16>) -> T)
+        -> T?
+    {
+        let span = particleCount * 3
         if let mapped {
-            return mapped.withUnsafeBytes { body($0.bindMemory(to: UInt16.self)) }
+            return mapped.withUnsafeBytes {
+                let all = $0.bindMemory(to: UInt16.self)
+                return body(UnsafeBufferPointer(rebasing: all[(index * span)..<((index + 1) * span)]))
+            }
         }
-        return storage.withUnsafeBufferPointer(body)
+        if let spill, index >= spilledFrom {
+            var block = [UInt16](repeating: 0, count: span)
+            do {
+                try block.withUnsafeMutableBytes {
+                    try spill.read(
+                        into: $0.baseAddress!, count: span * 2,
+                        at: (index - spilledFrom) * span * 2)
+                }
+            } catch { return nil }
+            return block.withUnsafeBufferPointer(body)
+        }
+        return storage.withUnsafeBufferPointer {
+            body(UnsafeBufferPointer(rebasing: $0[(index * span)..<((index + 1) * span)]))
+        }
     }
 
-    /// Hands the positions to a writer without copying them anywhere first.
-    public func withPositionBytes<T>(_ body: (UnsafeRawBufferPointer) -> T) -> T {
-        locked {
-            if let mapped { return mapped.withUnsafeBytes(body) }
-            return storage.withUnsafeBytes(body)
+    /// Hands the positions to a writer in bounded pieces, from wherever they live.
+    ///
+    /// Pieces rather than one block, because the whole of a take is the one thing here that
+    /// does not fit anywhere twice: copying it into a `Data` first cost a second copy of the
+    /// run, and a take that spilled has most of itself on disk and nothing to hand over at
+    /// all. Sixty-four megabytes at a time reads and writes at the same speed as one block
+    /// would and needs a millionth of the room.
+    public func streamPositionBytes(_ body: (UnsafeRawBufferPointer) throws -> Void) rethrows {
+        lock.lock()
+        defer { lock.unlock() }
+        let chunk = 64 << 20
+        if let mapped {
+            try mapped.withUnsafeBytes { source in
+                var offset = 0
+                while offset < source.count {
+                    let length = Swift.min(chunk, source.count - offset)
+                    try body(UnsafeRawBufferPointer(rebasing: source[offset..<(offset + length)]))
+                    offset += length
+                }
+            }
+            return
+        }
+        // Memory first and then the file, which is the order the frames are in.
+        try storage.withUnsafeBytes { source in
+            var offset = 0
+            while offset < source.count {
+                let length = Swift.min(chunk, source.count - offset)
+                try body(UnsafeRawBufferPointer(rebasing: source[offset..<(offset + length)]))
+                offset += length
+            }
+        }
+        if let spill {
+            var block = [UInt8](repeating: 0, count: Swift.min(chunk, max(spill.byteCount, 1)))
+            var offset = 0
+            while offset < spill.byteCount {
+                let length = Swift.min(block.count, spill.byteCount - offset)
+                do {
+                    try block.withUnsafeMutableBytes {
+                        try spill.read(into: $0.baseAddress!, count: length, at: offset)
+                    }
+                } catch { return }
+                try block.withUnsafeBytes {
+                    try body(UnsafeRawBufferPointer(rebasing: $0[0..<length]))
+                }
+                offset += length
+            }
         }
     }
 
@@ -136,6 +209,12 @@ public final class Recording: @unchecked Sendable {
     }
 
     public var frames: [Frame] { locked { storedFrames } }
+    /// Whether the take has run past its memory budget and is continuing on disk.
+    public var isSpilling: Bool { locked { spill != nil } }
+    /// What the take holds in memory, which is what the budget bounds.
+    public var memoryByteCount: Int { locked { memoryBytes() } }
+    /// And what it holds on disk, which is bounded by the volume and nothing else.
+    public var diskByteCount: Int { locked { spill?.byteCount ?? 0 } }
     public var count: Int { locked { storedFrames.count } }
     public var isEmpty: Bool { count == 0 }
     public var byteCount: Int { locked { heldBytes() } }
@@ -153,10 +232,10 @@ public final class Recording: @unchecked Sendable {
     public func close() { locked { closed = true } }
     public func reopen() { locked { closed = false } }
 
-    /// Offers a frame to the take, which decides whether to keep it.
+    /// Offers a frame to the take, which keeps it. Every one of them.
     ///
-    /// Returns whether the take has had to coarsen at least once, which is the only thing the
-    /// interface needs to say about it.
+    /// Returns whether the take has moved to disk, which is the only thing the interface
+    /// needs to say about it.
     @discardableResult
     public func offer(
         positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>],
@@ -164,60 +243,39 @@ public final class Recording: @unchecked Sendable {
     ) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        guard !closed, mapped == nil else { return stride > 1 }
+        guard !closed, mapped == nil else { return spill != nil }
 
-        sinceCapture += 1
-        guard sinceCapture >= stride else { return stride > 1 }
-        sinceCapture = 0
-
-        // Two frames always get through: playback interpolates between a pair.
-        if budget > 0, heldBytes() >= budget, storedFrames.count >= 4 {
-            halve()
-            stride *= 2
+        // Two frames always stay in memory: playback interpolates between a pair, and a take
+        // that spilled from the very first frame would have nothing to show while it fills.
+        if budget > 0, spill == nil, memoryBytes() >= budget, storedFrames.count >= 2 {
+            beginSpilling()
         }
         appendLocked(positions: positions, time: time, centers: centers, disks: disks)
-        return stride > 1
+        return spill != nil
     }
 
-    /// Keeps every other frame, in place. The positions are gigabytes, so they are moved down
-    /// over themselves rather than copied into a second buffer.
-    private func halve() {
-        let span = particleCount * 3
-        var kept = 0
-        storage.withUnsafeMutableBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return }
-            for frame in Swift.stride(from: 0, to: storedFrames.count, by: 2) {
-                if kept != frame {
-                    (base + kept * span).update(from: base + frame * span, count: span)
-                }
-                kept += 1
-            }
+    /// Moves what is already held into a scratch file and keeps going there.
+    ///
+    /// A failure here is not allowed to cost a frame: the capture simply stays in memory and
+    /// says why. Running out of address space is a worse outcome than running out of disk,
+    /// but resampling a run somebody waited hours for is worse than either.
+    private func beginSpilling() {
+        do {
+            spill = try SpillFile()
+            spilledFrom = storedFrames.count
+            spillFailure = nil
+        } catch {
+            spillFailure = "\(error)"
         }
-        storage.removeLast(storage.count - kept * span)
-
-        var frames: [Frame] = []
-        var centers: [SIMD3<Float>] = []
-        var disks: [DiskState] = []
-        frames.reserveCapacity(kept)
-        centers.reserveCapacity(kept * galaxyCount)
-        disks.reserveCapacity(kept * galaxyCount)
-        for frame in Swift.stride(from: 0, to: storedFrames.count, by: 2) {
-            frames.append(storedFrames[frame])
-            let base = frame * galaxyCount
-            for galaxy in 0..<galaxyCount {
-                centers.append(
-                    base + galaxy < storedCenters.count ? storedCenters[base + galaxy] : .zero)
-                if base + galaxy < storedDisks.count { disks.append(storedDisks[base + galaxy]) }
-            }
-        }
-        storedFrames = frames
-        storedCenters = centers
-        storedDisks = disks
     }
 
-    private func heldBytes() -> Int {
+    /// What the take occupies in memory, which is what the budget bounds.
+    private func memoryBytes() -> Int {
         (mapped?.count ?? storage.count * 2) + storedFrames.count * MemoryLayout<Frame>.stride
     }
+
+    /// What the take occupies altogether, memory and scratch file, which is what it costs.
+    private func heldBytes() -> Int { memoryBytes() + (spill?.byteCount ?? 0) }
 
     public func append(
         positions: UnsafePointer<SIMD3<Float>>, time: Float, centers: [SIMD3<Float>] = [],
@@ -245,16 +303,27 @@ public final class Recording: @unchecked Sendable {
 
         let extent = max((upper - lower).max(), 1e-3) * 1.0005
         let scale = 65535 / extent
-        let base = storage.count
-        storage.append(contentsOf: repeatElement(0, count: particleCount * 3))
-
-        storage.withUnsafeMutableBufferPointer { target in
+        let span = particleCount * 3
+        if staging.count != span { staging = [UInt16](repeating: 0, count: span) }
+        staging.withUnsafeMutableBufferPointer { target in
             for index in 0..<particleCount {
                 let local = (positions[index] - lower) * scale
-                target[base + index * 3] = UInt16(min(max(local.x, 0), 65535))
-                target[base + index * 3 + 1] = UInt16(min(max(local.y, 0), 65535))
-                target[base + index * 3 + 2] = UInt16(min(max(local.z, 0), 65535))
+                target[index * 3] = UInt16(min(max(local.x, 0), 65535))
+                target[index * 3 + 1] = UInt16(min(max(local.y, 0), 65535))
+                target[index * 3 + 2] = UInt16(min(max(local.z, 0), 65535))
             }
+        }
+        // The bytes land before the frame that describes them does, so a reader on another
+        // queue never sees a frame whose positions are not yet there to be read.
+        if let spill, storedFrames.count >= spilledFrom {
+            do {
+                try staging.withUnsafeBytes { try spill.append($0) }
+            } catch {
+                spillFailure = "\(error)"
+                return
+            }
+        } else {
+            storage.append(contentsOf: staging)
         }
         storedFrames.append(Frame(time: time, origin: lower, extent: extent))
         for galaxy in 0..<galaxyCount {
@@ -273,6 +342,11 @@ public final class Recording: @unchecked Sendable {
         storedDisks.removeAll(keepingCapacity: true)
         storage.removeAll(keepingCapacity: true)
         mapped = nil
+        // Closing the descriptor is what gives the volume its space back, so a take that is
+        // cleared does not sit on eighty gigabytes until the application quits.
+        spill = nil
+        spilledFrom = .max
+        spillFailure = nil
     }
 
     /// Decodes one frame back to positions, for framing a camera or reseeding a renderer.
@@ -282,11 +356,10 @@ public final class Recording: @unchecked Sendable {
             let frame = min(max(index, 0), storedFrames.count - 1)
             let box = storedFrames[frame]
             let scale = box.extent / 65535
-            let base = frame * particleCount * 3
             var decoded = [SIMD3<Float>](repeating: .zero, count: particleCount)
-            withStorage { source in
+            let filled: Void? = withFrameStorage(frame) { source in
                 for particle in 0..<particleCount {
-                    let slot = base + particle * 3
+                    let slot = particle * 3
                     decoded[particle] =
                         box.origin
                         + SIMD3<Float>(
@@ -295,7 +368,7 @@ public final class Recording: @unchecked Sendable {
                             Float(source[slot + 2]) * scale)
                 }
             }
-            return decoded
+            return filled == nil ? [] : decoded
         }
     }
 
@@ -323,6 +396,8 @@ public final class Recording: @unchecked Sendable {
         }
         let frame = storedFrames[index]
         let mapping = mapped
+        let spilling = spill
+        let from = spilledFrom
         lock.unlock()
 
         let destination = buffer.contents().advanced(by: offset).bindMemory(
@@ -337,6 +412,17 @@ public final class Recording: @unchecked Sendable {
                 let source = raw.bindMemory(to: UInt16.self)
                 destination.update(from: source.baseAddress! + index * stride, count: stride)
             }
+            return frame
+        }
+        // A spilled frame is finished the moment its own frame record exists — the bytes go
+        // in first — and the file only ever grows, so this needs no lock either. The read
+        // lands straight in the Metal buffer, which is what keeps playback off the heap.
+        if let file = spilling, index >= from {
+            do {
+                try file.read(
+                    into: .init(destination), count: stride * 2,
+                    at: (index - from) * stride * 2)
+            } catch { return nil }
             return frame
         }
         // A capture still growing is the other case, and there the array behind the positions

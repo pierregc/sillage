@@ -221,26 +221,41 @@ enum QACheck {
             // below quietly vanished and the run still reported everything green — a check
             // that disappears is worse than one that fails, so the fill is now part of the
             // first check and the rest are unconditional.
+            // The cadence before the budget binds, which is the thing that must not change.
+            let cadenceAtCap =
+                framesAtCap > 1 ? spanAtCap / Double(framesAtCap - 1) : 0
             var waitedForFull = 0.0
-            while !model.captureIsFull && waitedForFull < 15 {
+            while !model.captureSpilling && waitedForFull < 15 {
                 await settle(0.5)
                 waitedForFull += 0.5
             }
             report.check(
-                "le budget mémoire borne la prise",
-                model.captureIsFull && model.capturedMegabytes < 600,
-                String(format: "%.0f Mo pour 512 Mo", model.capturedMegabytes))
+                "le budget borne la mémoire de la prise",
+                model.captureSpilling && model.captureMemoryMegabytes < 600,
+                String(
+                    format: "%.0f Mo en mémoire, %.0f Mo sur disque",
+                    model.captureMemoryMegabytes, Double(model.captureDiskBytes) / 1_048_576))
             report.check(
                 "le calcul continue après le budget", model.elapsedMyr > timeAtCap,
                 "\(framesAtCap) images au moment du plein")
-            // The point of thinning: the take keeps covering the whole run.
             report.check(
                 "la prise pleine couvre toujours toute la durée",
                 model.capturedMyr > spanAtCap,
                 String(format: "%.0f puis %.0f Myr", spanAtCap, model.capturedMyr))
+            // The whole point of the scratch file: past the budget the take keeps every frame
+            // at the cadence it was taking them. Thinning doubled this and it must not move.
+            let cadenceNow =
+                model.capturedFrames > 1
+                ? model.capturedMyr / Double(model.capturedFrames - 1) : 0
             report.check(
-                "la prise pleine s'éclaircit", model.captureStride > 1,
-                "une image sur \(model.captureStride)")
+                "la prise ne s'éclaircit pas",
+                cadenceAtCap > 0 && cadenceNow < cadenceAtCap * 1.3,
+                String(format: "%.3f puis %.3f Myr entre images", cadenceAtCap, cadenceNow))
+            report.check(
+                "les images passées au disque sont relisibles",
+                model.recordedPositionsAreReadable(at: model.capturedFrames - 1),
+                "dernière image relue depuis le fichier de débord")
+            await settle(0.2)
             model.memoryBudgetGigabytes = 4
 
             // Rendering settings must survive both states.

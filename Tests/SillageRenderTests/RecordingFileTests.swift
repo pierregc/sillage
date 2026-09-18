@@ -68,10 +68,11 @@ struct RecordingFileTests {
         }
     }
 
-    /// A run that outlasts its budget has to come back whole at a coarser cadence, not stop
-    /// halfway. Stopping is what the first version did, and it makes a long night's run
-    /// useless for exactly the reason it was left running.
-    @Test func aLongTakeThinsItselfInsteadOfStopping() {
+    /// A run that outlasts its budget has to come back *whole*, at the cadence it was taken
+    /// at. It used to come back at half of it, then a quarter, then an eighth — which keeps
+    /// the duration and loses the run, since nothing between two snapshots ever happened.
+    /// The budget bounds memory; the scratch file takes the rest.
+    @Test func aLongTakeGoesToDiskInsteadOfThinning() {
         let particles = 400
         let recording = Recording(particleCount: particles, galaxyCount: 1)
         // Room for about twenty frames, offered two hundred.
@@ -88,19 +89,27 @@ struct RecordingFileTests {
             }
         }
 
-        #expect(recording.byteCount <= budget * 2)
-        #expect(recording.stride > 1)
-        #expect(recording.count >= 2)
-        // The whole span is there: the last frame offered is close to the last frame kept.
+        #expect(recording.spillFailure == nil)
+        #expect(recording.isSpilling)
+        // Memory stayed inside the budget — to within the frame that trips it and the frame
+        // records, which are twenty bytes each — and every single frame is still there.
+        #expect(
+            recording.memoryByteCount
+                <= budget + particles * 6 + 200 * MemoryLayout<Recording.Frame>.stride)
+        #expect(recording.diskByteCount > 0)
+        #expect(recording.count == 200)
         let span = recording.frames.last!.time - recording.frames.first!.time
-        #expect(span > 150)
-        // And what is kept is still in order and still decodes.
+        #expect(abs(span - 199) < 0.01)
+        // In order, one megayear apart throughout — the cadence never coarsened.
         for index in 1..<recording.count {
-            #expect(recording.frames[index].time > recording.frames[index - 1].time)
+            #expect(abs(recording.frames[index].time - recording.frames[index - 1].time - 1) < 0.01)
         }
-        let decoded = recording.positions(at: recording.count - 1)
-        #expect(decoded.count == particles)
-        #expect(abs(decoded[10].y - recording.frames.last!.time) < 0.1)
+        // And every one of them decodes, from memory and from the file alike.
+        for frame in [0, 1, 19, 20, 100, 199] {
+            let decoded = recording.positions(at: frame)
+            #expect(decoded.count == particles)
+            #expect(abs(decoded[10].y - Float(frame)) < 0.1, "image \(frame) relue de travers")
+        }
     }
 
     @Test func aFileThatIsNotATakeIsRefused() throws {

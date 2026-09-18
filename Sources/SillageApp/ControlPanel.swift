@@ -92,18 +92,25 @@ struct ControlPanelContent: View {
             case .running:
                 Text(
                     String(
-                        format: "%d images · %.0f Myr · %.0f Mo", model.capturedFrames,
-                        model.capturedMyr, model.capturedMegabytes)
+                        format: "%d images · %.0f Myr · %.1f Go", model.capturedFrames,
+                        model.capturedMyr, Double(model.capturedBytes) / 1_073_741_824)
                 )
                 .font(.caption.monospacedDigit())
                 ProgressView(value: model.captureFraction)
 
-                if model.captureIsFull {
+                if let why = model.captureSpillFailure {
+                    Text("Débord sur disque impossible, la prise continue en mémoire. \(why)")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.warning)
+                } else if model.captureSpilling {
                     Text(
-                        "Budget atteint : la prise s'éclaircit et garde une image sur \(model.captureStride). Toute la durée est conservée."
+                        String(
+                            format:
+                                "Budget mémoire atteint : la prise continue sur disque (%.1f Go). Aucune image n'est perdue.",
+                            Double(model.captureDiskBytes) / 1_073_741_824)
                     )
                     .font(.caption2)
-                    .foregroundStyle(Palette.warning)
+                    .foregroundStyle(.secondary)
                 }
 
                 HStack {
@@ -120,6 +127,11 @@ struct ControlPanelContent: View {
                         get: { Float(model.memoryBudgetGigabytes) },
                         set: { model.memoryBudgetGigabytes = Double($0) }),
                     range: 0.5...24, format: "%.1f")
+                Text(
+                    "Ce que la prise garde en mémoire. Au-delà elle continue sur disque, sans jamais perdre d'image."
+                )
+                .font(.caption2)
+                .foregroundStyle(Palette.secondary)
 
                 Toggle("Afficher pendant le calcul", isOn: $model.showCanvasWhileRunning)
                     .font(.caption)

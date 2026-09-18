@@ -164,10 +164,17 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var mode: ViewerMode = .running
     @Published private(set) var capturedFrames = 0
     @Published private(set) var capturedBytes = 0
-    /// Whether the take has had to coarsen to stay inside its budget.
-    @Published private(set) var captureIsFull = false
-    /// Batches between captured frames. One until the budget is reached, then doubling.
-    @Published private(set) var captureStride = 1
+    /// Whether the take has run past its memory budget and is continuing on disk.
+    ///
+    /// It used to mean the take had started throwing away every other frame. It does not any
+    /// more: a run that cost hours is not something to resample, so the budget bounds what
+    /// the capture keeps in *memory* and everything past it goes to a scratch file. Nothing
+    /// captured is ever dropped.
+    @Published private(set) var captureSpilling = false
+    /// What the take holds on disk, in bytes. Zero until the budget is reached.
+    @Published private(set) var captureDiskBytes = 0
+    /// Set if the scratch file could not be opened and the capture is growing in memory.
+    @Published private(set) var captureSpillFailure: String?
     /// Whether the canvas is on screen while the solver works.
     ///
     /// Drawing a few million particles takes a real share of the same GPU the solver is on.
@@ -283,9 +290,27 @@ final class SimulationModel: ObservableObject {
     private var steppingQueue: DispatchQueue { contemplating ? idleQueue : simulationQueue }
 
     var capturedMegabytes: Double { Double(capturedBytes) / 1_048_576 }
+    /// What the take holds in memory alone, which is the part the budget bounds.
+    var captureMemoryMegabytes: Double {
+        Double(capturedBytes - captureDiskBytes) / 1_048_576
+    }
+
+    /// Decodes one captured frame back to positions, which for a spilled take means reading
+    /// it off the scratch file. `--qa` uses it: a frame that went to disk and cannot be read
+    /// back is the one failure mode the spill adds, and nothing else would notice it.
+    func recordedPositionsAreReadable(at index: Int) -> Bool {
+        guard let recording, index >= 0, index < recording.count else { return false }
+        let decoded = recording.positions(at: index)
+        return decoded.count == recording.particleCount
+            && decoded.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }
+    }
     var capturedMyr: Double { Double(recording?.duration ?? 0) * Physics.megayearsPerTimeUnit }
+    /// How much of the *memory* budget the take has spent. It pins at one once the take
+    /// moves to disk, which is what the line under the bar is for: nothing is ending there.
     var captureFraction: Double {
-        min(Double(capturedBytes) / max(memoryBudgetGigabytes * 1_073_741_824, 1), 1)
+        min(
+            Double(capturedBytes - captureDiskBytes)
+                / max(memoryBudgetGigabytes * 1_073_741_824, 1), 1)
     }
     /// Playback interpolates between snapshots, so it needs two of them.
     var canReplay: Bool { capturedFrames >= 2 }
@@ -520,7 +545,7 @@ final class SimulationModel: ObservableObject {
         recording = nil
         capturedFrames = 0
         capturedBytes = 0
-        captureIsFull = false
+        captureSpilling = false
         playbackPositions = nil
         expander = nil
         snapshots = nil
@@ -587,11 +612,12 @@ final class SimulationModel: ObservableObject {
             var frames = 0
             var bytes = 0
             var full = false
-            var interval = 1
+            var onDisk = 0
+            var spillFailure: String?
             if let reel {
-                // The take decides for itself. Past its budget it keeps every other frame and
-                // captures half as often, so a long run comes back whole at a coarser cadence
-                // instead of stopping partway through.
+                // Every frame is kept. Past its memory budget the take carries on into a
+                // scratch file rather than coarsening, so ten thousand megayears comes back
+                // at the cadence it was taken at and not at whatever survived the budget.
                 let positions = solver.positions.contents().bindMemory(
                     to: SIMD3<Float>.self, capacity: reel.particleCount)
                 full = reel.offer(
@@ -599,7 +625,8 @@ final class SimulationModel: ObservableObject {
                     disks: (solver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: budget)
                 frames = reel.count
                 bytes = reel.byteCount
-                interval = reel.stride
+                onDisk = reel.diskByteCount
+                spillFailure = reel.spillFailure
             }
             DispatchQueue.main.async {
                 guard let self, self.liveGeneration == generation else { return }
@@ -622,8 +649,9 @@ final class SimulationModel: ObservableObject {
                 if self.solverBursts.count > 400 { self.solverBursts.removeFirst() }
                 self.capturedFrames = frames
                 self.capturedBytes = bytes
-                self.captureIsFull = full
-                self.captureStride = interval
+                self.captureSpilling = full
+                self.captureDiskBytes = onDisk
+                self.captureSpillFailure = spillFailure
                 self.checkFinish()
                 guard self.liveGeneration == generation else { return }
                 // Contemplation paces the solver to a rate of simulated time instead of
@@ -658,8 +686,9 @@ final class SimulationModel: ObservableObject {
         recording = reel
         capturedFrames = reel.count
         capturedBytes = reel.byteCount
-        captureIsFull = false
-        captureStride = 1
+        captureSpilling = false
+        captureDiskBytes = 0
+        captureSpillFailure = nil
         playbackPosition = 0
     }
 
@@ -818,7 +847,9 @@ final class SimulationModel: ObservableObject {
         recording = loaded.recording
         capturedFrames = loaded.recording.count
         capturedBytes = loaded.recording.byteCount
-        captureIsFull = true
+        captureSpilling = false
+        captureDiskBytes = 0
+        captureSpillFailure = nil
         self.expander = expander
         snapshots = SnapshotStream(device: device, recording: loaded.recording)
         playbackPositions = device.makeBuffer(
@@ -940,8 +971,9 @@ final class SimulationModel: ObservableObject {
         recording = contemplating ? nil : reel
         capturedFrames = reel?.count ?? 0
         capturedBytes = reel?.byteCount ?? 0
-        captureIsFull = false
-        captureStride = 1
+        captureSpilling = false
+        captureDiskBytes = 0
+        captureSpillFailure = nil
         playbackPosition = 0
         rebuildRenderer()
         if reframeWhenReady {
