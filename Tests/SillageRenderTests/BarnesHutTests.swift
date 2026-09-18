@@ -695,6 +695,39 @@ struct BarnesHutTests {
         #expect(MemoryLayout<BHNode>.stride == 32)
     }
 
+    /// A node has to be able to say where its particles are, at any size of run.
+    ///
+    /// The ranges used to go through `Float(start)`, and a float counts exactly only up to
+    /// 16 777 216. Past that a leaf start rounds to an even index, the last leaf in the tree
+    /// reads one slot beyond `order`, and whatever the allocator left there becomes a
+    /// particle number — an unchecked subscript in a release build, so a wild address rather
+    /// than a message. Eighteen million simulated particles is an ordinary large run here:
+    /// seven million visible with live halos is already past it.
+    @Test func aNodeAddressesMoreParticlesThanAFloatCanCount() {
+        let past = 18_000_003
+        #expect(Int(Float(past)) != past, "sinon ce test ne teste rien")
+
+        var node = BHNode()
+        node.range = Int32(past)
+        node.signedCount = Int32(-31)
+        #expect(node.particleStart == past)
+        #expect(node.particleCount == 31)
+        #expect(node.isLeaf)
+
+        node.range = Int32(past + 1)
+        node.signedCount = 5
+        #expect(node.childOffset == past + 1)
+        #expect(node.childCount == 5)
+        #expect(!node.isLeaf)
+
+        // And the whole 32-bit range round-trips, since the count of a leaf sitting on the
+        // depth ceiling is bounded by the run and not by the leaf capacity.
+        for value in [Int32.min + 1, -1, 0, 1, Int32.max] {
+            node.range = value
+            #expect(node.range == value)
+        }
+    }
+
     @Test func allBarnesHutShadersCompile() throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let library = try device.makeLibrary(source: BarnesHutShaders.source, options: nil)

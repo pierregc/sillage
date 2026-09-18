@@ -57,6 +57,7 @@ public final class SmoothingField {
                     let width = sqrt(max(node.packed.x, 1e-12))
                     let length = width * pow(1 / Float(particles), 1.0 / 3.0)
                     let start = node.particleStart
+                    guard start >= 0, start + particles <= order.count else { continue }
                     for slot in start..<(start + particles) {
                         let particle = Int(order[slot])
                         if particle < target.count { target[particle] = length }

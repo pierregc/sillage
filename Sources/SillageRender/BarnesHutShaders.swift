@@ -6,10 +6,15 @@ enum BarnesHutShaders {
 
         struct BHNode {
             float4 comMass;
-            // width squared, range start, signed count. Positive is a child count,
-            // negative a leaf's particle count.
+            // Width squared, then the range start and the signed count carried as bit
+            // patterns rather than as values: a float cannot count past 16 777 216, and a
+            // tree over more particles than that rounded its leaf starts and read past the
+            // end of `order`. Positive is a child count, negative a leaf's particle count.
             float4 packed;
         };
+
+        inline int bhRange(BHNode node) { return as_type<int>(node.packed.y); }
+        inline int bhSignedCount(BHNode node) { return as_type<int>(node.packed.z); }
 
         struct HaloGPU {
             float4 centerBefore;
@@ -208,10 +213,10 @@ enum BarnesHutShaders {
             if (n >= s.nodeCount) { return; }
             BHNode node = nodes[n];
             // A positive count is a branch; a leaf carries minus the particles it holds.
-            if (node.packed.z > 0.0) { return; }
-            uint count = uint(-node.packed.z);
+            if (bhSignedCount(node) > 0) { return; }
+            uint count = uint(-bhSignedCount(node));
             if (count == 0u) { return; }
-            uint start = uint(node.packed.y);
+            uint start = uint(bhRange(node));
             float width = sqrt(max(node.packed.x, 1e-12));
 
             float baryons = 0.0;
@@ -337,9 +342,9 @@ enum BarnesHutShaders {
 
                 float3 offset = node.comMass.xyz - position;
                 float distanceSquared = dot(offset, offset) + p.softeningSquared;
-                bool leaf = node.packed.z <= 0.0;
-                int start = int(node.packed.y);
-                int span = int(-node.packed.z);
+                bool leaf = bhSignedCount(node) <= 0;
+                int start = bhRange(node);
+                int span = -bhSignedCount(node);
                 // Whether this leaf is the one holding the particle. Leaves address a
                 // contiguous run of the Morton order and slot is this particle's place in
                 // it, so the test is exact: a node may never stand in for itself.
@@ -364,8 +369,8 @@ enum BarnesHutShaders {
                         total += d * (p.gravitationalConstant * mass[j] / (r2 * sqrt(r2)));
                     }
                 } else {
-                    int first = int(node.packed.y);
-                    int children = int(node.packed.z);
+                    int first = bhRange(node);
+                    int children = bhSignedCount(node);
                     if (children > 0) { stack[top++] = (first << 3) | (children - 1); }
                 }
             }

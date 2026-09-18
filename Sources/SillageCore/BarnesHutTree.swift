@@ -4,14 +4,23 @@ import simd
 /// One cell of the tree, laid out for a Metal buffer.
 ///
 /// Thirty-two bytes rather than forty-eight: the cell centre is only needed while building,
-/// and the child and particle ranges never both apply, so they share two slots. Counts fit
-/// exactly in a float below sixteen million. The node array is the hottest thing the force
-/// kernel reads, so its size is its speed.
+/// and the child and particle ranges never both apply, so they share two slots. The node
+/// array is the hottest thing the force kernel reads, so its size is its speed.
+///
+/// The two range slots carry *integers* through a float-shaped buffer, bit for bit, and that
+/// is the whole reason this type has accessors at all. They used to hold `Float(start)`, and
+/// a float stops being able to count past 16 777 216: a run of eighteen million simulated
+/// particles rounded its leaf starts to the nearest even index, so the last leaf in the tree
+/// read one slot beyond `order`, picked up whatever the allocator had put there, and used it
+/// as a particle number. Which is a segmentation fault about fifty gigabytes into nothing,
+/// after three quarters of an hour of a run, with the take still in memory and nothing
+/// written. Nothing about the layout changes; only the reading of it is now exact.
 public struct BHNode: Sendable {
     /// Centre of mass in xyz, total mass in w.
     public var comMass: SIMD4<Float>
-    /// Width squared, range start, signed count, unused. A positive count means that many
-    /// children; a negative one means a leaf holding that many particles.
+    /// Width squared, then the range start and the signed count as bit patterns, then unused.
+    /// A positive count means that many children; a negative one means a leaf holding that
+    /// many particles.
     public var packed: SIMD4<Float>
 
     public init() {
@@ -19,11 +28,23 @@ public struct BHNode: Sendable {
         packed = .zero
     }
 
-    public var isLeaf: Bool { packed.z <= 0 }
-    public var childOffset: Int { Int(packed.y) }
-    public var childCount: Int { max(Int(packed.z), 0) }
-    public var particleStart: Int { Int(packed.y) }
-    public var particleCount: Int { max(Int(-packed.z), 0) }
+    /// The range start, as an index rather than as a magnitude.
+    public var range: Int32 {
+        get { Int32(bitPattern: packed.y.bitPattern) }
+        set { packed.y = Float(bitPattern: UInt32(bitPattern: newValue)) }
+    }
+
+    /// Children when positive, minus the particles held when a leaf.
+    public var signedCount: Int32 {
+        get { Int32(bitPattern: packed.z.bitPattern) }
+        set { packed.z = Float(bitPattern: UInt32(bitPattern: newValue)) }
+    }
+
+    public var isLeaf: Bool { signedCount <= 0 }
+    public var childOffset: Int { Int(range) }
+    public var childCount: Int { max(Int(signedCount), 0) }
+    public var particleStart: Int { Int(range) }
+    public var particleCount: Int { max(Int(-Int64(signedCount)), 0) }
 }
 
 /// Barnes-Hut octree, built on the CPU and traversed on the GPU.
@@ -211,7 +232,9 @@ public final class BarnesHutTree {
     private func makeNode(half: Float, start: Int, count: Int, parent: Int32) -> Int {
         var node = BHNode()
         let width = half * 2
-        node.packed = SIMD4<Float>(width * width, Float(start), Float(-count), 0)
+        node.packed.x = width * width
+        node.range = Int32(start)
+        node.signedCount = Int32(clamping: -count)
         nodes.append(node)
         parents.append(parent)
         return nodes.count - 1
@@ -268,15 +291,29 @@ public final class BarnesHutTree {
                         start: start, count: size, depth: work.depth + 1, center: childCenter,
                         half: childHalf, node: index))
             }
-            nodes[work.node].packed.y = Float(firstChild)
-            nodes[work.node].packed.z = Float(childCount)
+            nodes[work.node].range = Int32(firstChild)
+            nodes[work.node].signedCount = childCount
         }
     }
 
     /// Leaves sum their own particles, then every node folds into its parent. Children are
     /// always created after their parent, so one reverse pass is enough.
     private func accumulate(positions: [SIMD3<Float>], mass: [Float]) {
-        for index in nodes.indices { nodes[index].comMass = .zero }
+        // The zeroing pass walks every node anyway, so the ranges are checked here rather
+        // than in the parallel loop below, where the subscripts are unchecked in a release
+        // build and a bad one is a wild address instead of a message. This is what the
+        // segmentation fault of 18 September looked like from the inside, and a run that has
+        // been going for an hour deserves to be told what went wrong with it.
+        let limit = order.count
+        for index in nodes.indices {
+            nodes[index].comMass = .zero
+            guard nodes[index].isLeaf else { continue }
+            let start = nodes[index].particleStart
+            let count = nodes[index].particleCount
+            precondition(
+                start >= 0 && count >= 0 && start + count <= limit,
+                "noeud \(index) couvre \(start)..<\(start + count) sur \(limit) particules")
+        }
 
         let nodeCount = nodes.count
         let chunk = max(nodeCount / (ProcessInfo.processInfo.activeProcessorCount * 4), 1024)
