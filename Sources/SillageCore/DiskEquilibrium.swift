@@ -66,17 +66,52 @@ public struct DiskEquilibrium {
 
         if bulgeShare > 0 {
             // Spherical: the bulge's flattening moves this by less than the sampling noise.
-            let bulge = GalaxyPotential(
-                profile: .hernquist,
-                mass: stellar * bulgeShare,
-                scaleRadius: max(config.bulgeExtent * config.diskScaleLength, 1e-3))
-            squared += bulge.circularSpeed(atRadius: r) * bulge.circularSpeed(atRadius: r)
+            // Truncated, though, and that part does show — a sphere cut at six scale radii
+            // carries the whole of its mass inside them and pulls a third harder there than
+            // the profile it was cut from.
+            let a = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
+            let bulge = GalaxyPotential(profile: .hernquist, mass: stellar * bulgeShare, scaleRadius: a)
+            let held = DiskSampler.enclosedFraction(
+                bulge, radius: a * DiskSampler.bulgeTruncation)
+            let inside = min(DiskSampler.enclosedFraction(bulge, radius: r) / max(held, 1e-3), 1)
+            squared += Physics.gravitationalConstant * bulge.mass * inside / r
         }
-        squared += Self.exponentialDiskSpeedSquared(
-            mass: stellar * (1 - bulgeShare),
-            scaleLength: max(config.diskScaleLength, 1e-3),
-            radius: r)
+        squared += Self.diskSpeedSquared(config, mass: stellar * (1 - bulgeShare), radius: r)
         return sqrt(max(squared, 0))
+    }
+
+    /// The disk's own contribution, summed over the pieces it is actually laid down as.
+    ///
+    /// One exponential is not what the sampler builds. The gas disk is drawn half again as
+    /// wide as the stars and the thick disk wider still, and every piece is cut at five of
+    /// its own scale lengths with the mass the tail would have carried laid down inside
+    /// instead. Modelled as a single exponential of the stellar scale length, the curve came
+    /// out three per cent fast everywhere between half a scale length and three — measured
+    /// against a direct sum over the particles the sampler had just placed — so every star
+    /// was launched at the pericentre of the same epicycle. They ran outward together,
+    /// fell back together, and the whole disk breathed by eight per cent with a period of
+    /// about a hundred and forty megayears before phase mixing damped it. That breathing is
+    /// what this exists to remove; the same sum now sits within one per cent.
+    static func diskSpeedSquared(_ config: GalaxyConfig, mass: Float, radius: Float) -> Float {
+        let scale = max(config.diskScaleLength, 1e-3)
+        let dust = min(max(config.dustFraction, 0), 0.8)
+        let ionised = min(max(config.starFormingFraction, 0), 0.3)
+        let outskirt = min(max(config.outskirtFraction, 0), 0.5)
+        let thin = max(1 - dust - ionised - outskirt, 0)
+        let truncation = max(config.diskTruncation, 0.5)
+        let held = mass / max(1 - (1 + truncation) * exp(-truncation), 1e-3)
+        // The thick component stands well off the plane — the sampler spreads it over a third
+        // of its own radius — so it pulls in the plane like the mass it has inside r and not
+        // like a sheet, which is worth half a per cent of the curve on its own.
+        let wide = scale * DiskSampler.outskirtScaleMultiplier
+        let x = radius / wide
+        let inside = min((1 - (1 + x) * exp(-x)) / max(1 - (1 + truncation) * exp(-truncation), 1e-3), 1)
+        return exponentialDiskSpeedSquared(
+            mass: held * (thin + ionised), scaleLength: scale, radius: radius)
+            + exponentialDiskSpeedSquared(
+                mass: held * dust, scaleLength: scale * DiskSampler.dustScaleMultiplier,
+                radius: radius)
+            + Physics.gravitationalConstant * mass * outskirt * inside / max(radius, 1e-4)
     }
 
     /// Freeman's rotation curve for a razor-thin exponential disk, the one place a closed

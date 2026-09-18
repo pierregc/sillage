@@ -226,6 +226,36 @@ struct BarnesHutTests {
         #expect(abs(meanRadius() - before) / before < 0.04)
     }
 
+    /// A bulge is flattened because it rotates, and it has to still be flattened later.
+    ///
+    /// Sampled flattened with nothing but random motion holding it up, it rounded off: the
+    /// vertical spread more than doubled over five hundred megayears, which on screen is a
+    /// core slowly inflating. Forty is enough to catch it, because the failure is fastest at
+    /// the start — the old sampling put on twenty-five per cent inside the first thirty.
+    @Test func theBulgeKeepsItsShape() throws {
+        var scene = SceneConfig.isolatedDisk(particleCount: 60_000)
+        scene.timeStepScale = 8
+        scene.retune()
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+        let bulge = (0..<particles.count).filter {
+            particles.component[$0] == ParticleComponent.bulge.rawValue
+        }
+        try #require(!bulge.isEmpty)
+
+        func spread() -> Double {
+            let positions = solver.particles.positions
+            var total = 0.0
+            for index in bulge { total += Double(positions[index].z * positions[index].z) }
+            return (total / Double(bulge.count)).squareRoot()
+        }
+
+        let before = spread()
+        let megayears: Float = 40
+        solver.step(count: Int(megayears / (scene.timeStep * Float(Physics.megayearsPerTimeUnit))))
+        #expect(spread() / before < 1.12)
+    }
+
     /// The rotation curve has to describe the mass the sampler lays down, not the sphere the
     /// galaxy was written as. Freeman's disk is the piece that was missing.
     @Test func theRotationCurveCountsTheDiskItselfNotJustTheSphere() {

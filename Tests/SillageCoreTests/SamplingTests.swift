@@ -262,6 +262,28 @@ struct SamplingTests {
 
     /// Held up by random motion rather than by rotation, which is what separates a bulge from
     /// the disk it sits in.
+    /// A bulge has to stay a bulge. Drawn from an untruncated Hernquist it did not: a tenth
+    /// of it stood beyond eight scale radii, which at the extents a galaxy is given is more
+    /// than a disk scale length, and the picture had old red stars scattered out among the
+    /// arms with nothing around them to belong to.
+    @Test func theBulgeStaysNearTheCentre() {
+        let config = Self.spiral(bulge: 0.4)
+        let system = Self.sampled(config)
+        let scale = config.bulgeExtent * config.diskScaleLength
+        var radii = [Float]()
+        for i in 0..<system.count
+        where system.component[i] == ParticleComponent.bulge.rawValue {
+            radii.append(simd_length(system.positions[i]))
+        }
+        try? #require(!radii.isEmpty)
+        radii.sort()
+        #expect(radii[radii.count - 1] <= scale * DiskSampler.bulgeTruncation * 1.001)
+        #expect(radii[Int(0.9 * Float(radii.count - 1))] < scale * 5)
+        // And it is not merely small: the profile inside is the one it was cut from.
+        #expect(radii[radii.count / 2] > scale)
+        #expect(radii[radii.count / 2] < scale * 2.5)
+    }
+
     @Test func theBulgeIsPressureSupportedNotRotating() {
         let config = Self.spiral(bulge: 0.4)
         let system = Self.sampled(config)

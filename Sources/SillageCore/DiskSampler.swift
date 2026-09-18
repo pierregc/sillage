@@ -3,6 +3,16 @@ import simd
 /// Places a galaxy's visible particles. The potential is analytic and spherical in every
 /// case, so this only decides where the tracers sit and how fast they move.
 public enum DiskSampler {
+    /// Scale lengths the wider populations are drawn at, as multiples of the disk's own.
+    /// `DiskEquilibrium` reads them: a rotation curve built from one exponential for mass
+    /// that was laid down as three is three per cent fast, and the disk rings for it.
+    public static let dustScaleMultiplier: Float = 1.5
+    public static let outskirtScaleMultiplier: Float = 1.4
+
+    /// Scale radii the bulge is drawn out to, and `DiskEquilibrium` reads this one for the
+    /// same reason: past it the sphere holds all of its mass rather than none of it.
+    public static let bulgeTruncation: Float = 6
+
     /// Inverts the cumulative mass of an exponential disk, M(<x) proportional to
     /// 1 - (1 + x) exp(-x), by Newton iteration. `x` is radius in scale lengths.
     static func inverseExponentialCDF(_ u: Float, truncation: Float) -> Float {
@@ -188,10 +198,32 @@ public enum DiskSampler {
     ) {
         guard count > 0 else { return }
         let scale = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
-        let edge = scale * 20
+        // A Hernquist tail is long: cut at twenty scale radii it held nine tenths of the
+        // mass, and a tenth of the bulge stood beyond eight — which at the scale radii this
+        // is given is more than a disk scale length, so a run had old red stars scattered
+        // out to the ends of the arms with nothing around them to belong to. Six keeps three
+        // quarters of the profile and reaches four and a third at the ninetieth percentile,
+        // which is about where a real bulge stops being a bulge: the radius holding half the
+        // projected light is 1.8 scale radii, so this is the usual two to three of those.
+        // The mass the tail carried is laid down inside rather than lost, and the dispersion
+        // below is solved over the same range, so the sphere is in equilibrium as it stands
+        // and not as an untruncated one would have been.
+        let edge = scale * bulgeTruncation
         let shape = GalaxyPotential(profile: .hernquist, mass: 1, scaleRadius: scale)
         let limit = min(enclosedFraction(shape, radius: edge), 0.999)
         let flattening = min(max(config.bulgeFlattening, 0.05), 1)
+        // A flattened body whose stars move at random in every direction is not in
+        // equilibrium in a round potential: nothing holds the flattening and it rounds off.
+        // Measured, the bulge's vertical spread more than doubled over seven hundred
+        // megayears. Real flattened bulges are flattened because they rotate, and the tensor
+        // virial theorem says how fast: an oblate isotropic rotator of ellipticity e streams
+        // at sqrt(e / (1 - e)) times its dispersion. So the support the Jeans equation asked
+        // for is split rather than added to — the random part cools by exactly what the
+        // streaming now carries, or the bulge would simply be hotter and expand instead.
+        let ellipticity = 1 - flattening
+        let streamingRatio = min(sqrt(ellipticity / max(flattening, 0.05)), 1.5)
+        let cooling = 1 / sqrt(1 + streamingRatio * streamingRatio / 3)
+        let spin = config.spin.sign
         let rotation = config.orientation
         let particleMass =
             selfGravitating
@@ -212,8 +244,16 @@ public enum DiskSampler {
             var local = randomDirection(&generator) * radius
             local.z *= flattening
 
-            let sigma = dispersion(radius)
+            let sigma = dispersion(radius) * cooling
             let motion = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
+            // Streaming about the disk's own axis, falling to nothing on it, where there is
+            // no sense of going round.
+            let plane = sqrt(local.x * local.x + local.y * local.y)
+            let along =
+                plane > 1e-5
+                ? SIMD3<Float>(-local.y / plane, local.x / plane, 0) : SIMD3<Float>.zero
+            let streaming =
+                along * (streamingRatio * sigma * spin * plane / max(radius, 1e-5))
 
             // A spheroid has its own grain too, and the same rule applies: baked from where
             // the star was born, never read at where it now stands.
@@ -221,7 +261,7 @@ public enum DiskSampler {
 
             system.append(
                 position: rotation * local + config.position,
-                velocity: rotation * (motion * sigma) + config.velocity,
+                velocity: rotation * (motion * sigma + streaming) + config.velocity,
                 galaxy: galaxyIndex,
                 radius: radius,
                 population: 0,
@@ -525,7 +565,8 @@ public enum DiskSampler {
             // the middle third of the picture.
             let placed = samplePlanePosition(
                 config, arms: arms, contrast: min(strength * 1.45, 0.95), windRate: windRate,
-                minimumRadius: bulgeRadius * 0.9, scaleMultiplier: 1.4, shape: shape,
+                minimumRadius: bulgeRadius * 0.9,
+                scaleMultiplier: outskirtScaleMultiplier, shape: shape,
                 using: &generator)
             let u = generator.uniform()
             filaments.append(
@@ -627,7 +668,7 @@ public enum DiskSampler {
                     // edge of the arm it arrives at and the dust lane sits there rather than
                     // on the ridge. Which edge that is follows the direction of rotation.
                     phaseOffset: component == .dust ? -0.85 * spin : 0,
-                    scaleMultiplier: component == .dust ? 1.5 : 1,
+                    scaleMultiplier: component == .dust ? dustScaleMultiplier : 1,
                     shape: shape,
                     using: &generator)
                 radius = placed.radius
