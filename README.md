@@ -8,7 +8,7 @@ An unequal prograde encounter: a spiral and a companion a quarter its mass, self
 4.4 million visible particles over another 5.3 million of live dark halo, from 150 to 900 Myr.
 The camera starts above the orbital plane and descends under it while the remnant settles.
 
-![An unequal prograde encounter, 150 to 900 Myr](docs/merger.gif)
+![An unequal prograde encounter, 150 to 900 Myr](docs/merger.webp)
 
 The same run at 406 Myr, a little after the passage. The two nuclei are still separate, the
 near arm has been drawn off into a tail, and the pink knots are star formation the run itself
