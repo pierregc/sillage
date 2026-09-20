@@ -6,15 +6,11 @@ research result. It was written with heavy use of AI.
 
 An unequal prograde encounter: a spiral and a companion a quarter its mass, self-gravitating,
 4.4 million visible particles over another 5.3 million of live dark halo, from 150 to 900 Myr.
-The camera starts above the orbital plane and descends under it while the remnant settles.
+The camera starts above the orbital plane and descends under it while the remnant settles. The
+near arm is drawn off into a tail while the far one survives, and the pink knots are star
+formation the run itself sets off as the disks are compressed.
 
 ![An unequal prograde encounter, 150 to 900 Myr](docs/merger.webp)
-
-The same run at 406 Myr, a little after the passage. The two nuclei are still separate, the
-near arm has been drawn off into a tail, and the pink knots are star formation the run itself
-set off when the disks were compressed.
-
-![The pair at 406 Myr, mid merger](docs/hero.jpg)
 
 ## Running it
 
@@ -42,9 +38,8 @@ capture, and this is the command it came from:
   --stars 700 --star-size 0.8 --spike-length 18 --noise 0 --out out/f.png
 ```
 
-It takes about two hours on an Apple Silicon and writes 150 frames. The animation above keeps every
-other one through the approach and all the rest, so nothing speeds up once the disks meet; the
-still is frame 50.
+It writes 150 frames and takes a couple of hours. The animation above keeps every other one
+through the approach and all the rest, so nothing speeds up once the disks meet.
 
 `--settle` runs the simulation before the first frame is written, so the disks relax out of
 their initial conditions off camera. `--elevation` and `--orbit` aim the camera and sweep it
