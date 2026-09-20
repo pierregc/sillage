@@ -26,6 +26,7 @@ let backend = argument("solver", default: "restricted")!
 var scene: SceneConfig
 switch presetName {
 case "merger": scene = .merger(particleCount: particles)
+case "encounter": scene = .encounter(particleCount: particles)
 case "flyby": scene = .flyby(particleCount: particles)
 case "disk": scene = .isolatedDisk(particleCount: particles)
 default:
@@ -111,10 +112,29 @@ let stepsPerFrame = max(steps / max(frames, 1), 1)
 let zoom = Float(number("zoom", 1))
 let percentile = Float(number("percentile", 0.98))
 let elevation = Float(number("elevation", 1.15))
+// The camera sweeps from its start angle to its end angle over the sequence, which is how a
+// still frame and a moving shot come out of the same command.
+let elevationEnd = Float(number("elevation-end", Double(elevation)))
+let azimuth = Float(number("azimuth", 0))
+let azimuthEnd = Float(number("azimuth-end", Double(azimuth) + number("orbit", 0)))
 let clock = Date()
 
 // Framing is fixed once so the camera does not drift as the tails grow.
 var frozenRadius = Float(number("radius", 0))
+
+// Steps run before the first frame is written. A sampled disk is not born in equilibrium and
+// settles over its first few hundred megayears, which is worth simulating and not worth
+// watching.
+let settle = Int(number("settle", 0))
+if settle > 0 {
+    let settleStart = Date()
+    solver.step(count: settle)
+    print(
+        String(
+            format: "settle     %d steps, t=%.1f Myr, %.1f s", settle,
+            Double(solver.time) * Physics.megayearsPerTimeUnit,
+            Date().timeIntervalSince(settleStart)))
+}
 
 for frame in 0..<frames {
     let simulationStart = Date()
@@ -134,7 +154,15 @@ for frame in 0..<frames {
         DiskFrame.make(
             scene: scene, centers: solver.centers, time: solver.time,
             strength: Float(number("arms", 1))))
-    let camera = Camera.framing(radius: frozenRadius, elevation: elevation)
+    // Smoothstep rather than linear, so the move eases in and out instead of starting and
+    // stopping dead.
+    let span = Float(max(frames - 1, 1))
+    let t = Float(frame) / span
+    let eased = t * t * (3 - 2 * t)
+    let camera = Camera.framing(
+        radius: frozenRadius,
+        elevation: elevation + (elevationEnd - elevation) * eased,
+        azimuth: azimuth + (azimuthEnd - azimuth) * eased)
     let renderStart = Date()
     let pixels = renderer.render(camera: camera)
     let renderMs = Date().timeIntervalSince(renderStart) * 1000

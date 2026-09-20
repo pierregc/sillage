@@ -25,15 +25,18 @@ public struct Camera: Sendable {
     }
 
     /// Places the camera so a sphere of the given radius fills the frame, viewed from
-    /// slightly above the orbital plane.
+    /// slightly above the orbital plane. Azimuth turns it around the vertical axis.
     public static func framing(
         radius: Float,
         center: SIMD3<Float> = .zero,
         fieldOfView: Float = 0.6,
-        elevation: Float = 0.45
+        elevation: Float = 0.45,
+        azimuth: Float = 0
     ) -> Camera {
         let distance = radius / tan(fieldOfView / 2) * 1.05
-        let offset = SIMD3<Float>(0, -cos(elevation), sin(elevation)) * distance
+        let ground = cos(elevation)
+        let offset =
+            SIMD3<Float>(sin(azimuth) * ground, -cos(azimuth) * ground, sin(elevation)) * distance
         return Camera(eye: center + offset, target: center, fieldOfView: fieldOfView)
     }
 
