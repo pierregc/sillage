@@ -23,10 +23,11 @@ height=900
 out=""
 base_seed=""
 takes=0
+max_galaxies=4
 
 usage() {
     echo "usage: ${BASH_SOURCE[0]} [--hours H] [--scenes N] [--particles N] [--vertical]"
-    echo "       [--takes] [--base-seed N] [--out DIR]"
+    echo "       [--takes] [--max-galaxies N] [--base-seed N] [--out DIR]"
 }
 
 while [ $# -gt 0 ]; do
@@ -38,6 +39,7 @@ while [ $# -gt 0 ]; do
         --out)       out="$2"; shift 2 ;;
         --vertical)  width=1080; height=1920; shift ;;
         --takes)     takes=1; shift ;;
+        --max-galaxies) max_galaxies="$2"; shift 2 ;;
         --help|-h)   usage; exit 0 ;;
         *)           usage >&2; exit 2 ;;
     esac
@@ -135,6 +137,9 @@ while :; do
         6) tempo=quatuor;  galaxies=4; haste=0.8; dt_scale=8;  steps_per_frame=6; immersed=0 ;;
         *) tempo=ballet;   galaxies=4; haste=1.0; dt_scale=10; steps_per_frame=7; immersed=0 ;;
     esac
+    # A ceiling on the count, so a night can be held to pairs without touching the ladder.
+    # The tempo keeps its own pace, which turns a four galaxy profile into a brisk pair.
+    [ "$galaxies" -gt "$max_galaxies" ] && galaxies=$max_galaxies
     immersed_flag=""
     [ "$immersed" -eq 1 ] && immersed_flag="--immersed"
 
