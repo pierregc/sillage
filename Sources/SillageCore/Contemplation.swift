@@ -34,7 +34,8 @@ extension SceneConfig {
             scene = solitary(
                 particleCount: particleCount, palette: palette, generator: &generator)
         } else if galaxies == 2 {
-            scene = roll < 0.5
+            scene =
+                roll < 0.5
                 ? encounter(
                     particleCount: particleCount, palette: palette, generator: &generator,
                     close: true, haste: haste)
@@ -209,7 +210,8 @@ extension SceneConfig {
             let mass = generator.uniform(in: 30...58) * share
             masses.append(mass)
             var one = disk(
-                names[index], count: Int(Float(count) * share), colour: index % 2 == 0
+                names[index], count: Int(Float(count) * share),
+                colour: index % 2 == 0
                     ? palette.primary : palette.secondary,
                 generator: &generator,
                 scaleLength: generator.uniform(in: 2.6...5.0) * share.squareRoot(),
