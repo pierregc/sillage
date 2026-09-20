@@ -74,7 +74,7 @@ if [ "$free" -lt "$needed" ]; then
 fi
 
 if [ ! -f "$index" ]; then
-    echo "id,seed,tempo,particles,width,height,frames,fps,wall_seconds,video_bytes,take_bytes,status" >"$index"
+    echo "id,seed,tempo,galaxies,particles,width,height,frames,fps,wall_seconds,video_bytes,take_bytes,status" >"$index"
 fi
 cat >"$out/README.txt" <<'TXT'
 Scenes generated overnight by scripts/library.sh.
@@ -115,13 +115,30 @@ while :; do
     # a couple of hundred megayears shows two specks drifting; one covering a gigayear and a
     # half shows a whole merger and what it settles into. Both are worth having, and a library
     # of one tempo is a library that looks the same all the way down.
-    case $(( seed % 3 )) in
-        0) tempo=fast;  haste=0.9;  dt_scale=10; steps_per_frame=6 ;;
-        1) tempo=even;  haste=0.6;  dt_scale=8;  steps_per_frame=4 ;;
-        *) tempo=slow;  haste=0.35; dt_scale=5;  steps_per_frame=3 ;;
+    # Eight profiles, cycled by scene number rather than drawn from the seed: seeds advance by
+    # a constant, so a modulo of them comes out in long runs of the same thing. Every window of
+    # eight scenes holds the whole range.
+    #
+    # The two ends are the point. A frame covers `dt_scale * steps_per_frame` of simulated
+    # time, so profile 0 crosses about fifty megayears in thirty seconds, which is a galaxy
+    # turning almost imperceptibly with the camera inside it, and profile 7 crosses some four
+    # gigayears, which is four disks falling together and settling, seen from outside.
+    # 16 is the top of the step scale worth using: past it the integration visibly leaves the
+    # encounter's own chaotic scatter.
+    case $(( n % 8 )) in
+        0) tempo=derive;   galaxies=1; haste=0.0; dt_scale=2;  steps_per_frame=1;  immersed=1 ;;
+        1) tempo=lent;     galaxies=2; haste=0.2; dt_scale=4;  steps_per_frame=2;  immersed=1 ;;
+        2) tempo=proche;   galaxies=2; haste=0.7; dt_scale=6;  steps_per_frame=3;  immersed=1 ;;
+        3) tempo=pose;     galaxies=2; haste=0.5; dt_scale=8;  steps_per_frame=4;  immersed=0 ;;
+        4) tempo=trio;     galaxies=3; haste=0.6; dt_scale=9;  steps_per_frame=5;  immersed=0 ;;
+        5) tempo=large;    galaxies=2; haste=0.9; dt_scale=12; steps_per_frame=7;  immersed=0 ;;
+        6) tempo=quatuor;  galaxies=4; haste=0.8; dt_scale=12; steps_per_frame=8;  immersed=0 ;;
+        *) tempo=ballet;   galaxies=4; haste=1.0; dt_scale=16; steps_per_frame=11; immersed=0 ;;
     esac
+    immersed_flag=""
+    [ "$immersed" -eq 1 ] && immersed_flag="--immersed"
 
-    note "$id seed $seed tempo $tempo"
+    note "$id seed $seed tempo $tempo, $galaxies galaxies"
     start=$SECONDS
     rc=0
     take_flag=""
@@ -129,6 +146,7 @@ while :; do
     "$ROOT/scripts/dev.sh" render \
         --preset contemplation --seed "$seed" --director --solver barnes-hut \
         --particles "$particles" --settle "$SETTLE" --haste "$haste" --dt-scale "$dt_scale" \
+        --galaxies "$galaxies" $immersed_flag \
         --steps "$(( FRAMES * steps_per_frame ))" --frames "$FRAMES" \
         --width "$width" --height "$height" --fps "$FPS" \
         --video "$out/$id.mov.partial" --curves "$out/$id.csv" $take_flag \
@@ -155,7 +173,7 @@ while :; do
     fi
     if [ "$status" = ok ]; then done_count=$(( done_count + 1 )); else failed_count=$(( failed_count + 1 )); fi
 
-    echo "$id,$seed,$tempo,$particles,$width,$height,$FRAMES,$FPS,$wall,$video_bytes,$take_bytes,$status" >>"$index"
+    echo "$id,$seed,$tempo,$galaxies,$particles,$width,$height,$FRAMES,$FPS,$wall,$video_bytes,$take_bytes,$status" >>"$index"
     note "$id $status in ${wall}s, video $video_bytes B"
     echo "$id $tempo $status ${wall}s"
 done

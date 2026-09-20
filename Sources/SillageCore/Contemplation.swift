@@ -15,7 +15,7 @@ extension SceneConfig {
     /// `haste` pulls the two galaxies together at the start so the passage happens early.
     /// A one minute scene that opens on a wide separation is a minute of two specks drifting.
     public static func contemplation(
-        particleCount: Int = 700_000, seed: UInt64, haste: Float = 0
+        particleCount: Int = 700_000, seed: UInt64, haste: Float = 0, galaxies: Int? = nil
     ) -> SceneConfig {
         var generator = SeededGenerator(seed: seed)
         let palette = Palette.all[Int(generator.next() % UInt64(Palette.all.count))]
@@ -24,7 +24,23 @@ extension SceneConfig {
         // single disk turning slowly is worth sitting with too.
         let roll = generator.uniform() * (1 - 0.45 * haste)
         var scene: SceneConfig
-        if roll < 0.42 {
+        // An asked-for count overrides the roll, which is how a library covers the whole range
+        // instead of drawing the same two shapes all night.
+        if let galaxies, galaxies >= 3 {
+            scene = group(
+                count: particleCount, galaxies: min(galaxies, 4), palette: palette,
+                generator: &generator)
+        } else if galaxies == 1 {
+            scene = solitary(
+                particleCount: particleCount, palette: palette, generator: &generator)
+        } else if galaxies == 2 {
+            scene = roll < 0.5
+                ? encounter(
+                    particleCount: particleCount, palette: palette, generator: &generator,
+                    close: true, haste: haste)
+                : companion(
+                    particleCount: particleCount, palette: palette, generator: &generator)
+        } else if roll < 0.42 {
             scene = encounter(
                 particleCount: particleCount, palette: palette, generator: &generator,
                 close: true, haste: haste)
@@ -173,6 +189,79 @@ extension SceneConfig {
         only.diskTruncation = generator.uniform(in: 4.4...5.6)
         only.inclination = generator.uniform(in: -0.9...0.9)
         return SceneConfig(name: "Contemplation", galaxies: [only], centerSoftening: 1.2)
+    }
+
+    /// Three or four disks falling in on each other. Placed on a shell and given a fraction of
+    /// the speed that would hold them there, so the group closes rather than orbiting for ever,
+    /// then recentred and its momentum zeroed: a group that drifts leaves the frame, and the
+    /// camera has no way to know it should follow.
+    private static func group(
+        count: Int, galaxies: Int, palette: Palette, generator: inout SeededGenerator
+    ) -> SceneConfig {
+        let names = ["Première", "Deuxième", "Troisième", "Quatrième"]
+        // Close enough that each disk is still a disk on screen rather than a speck.
+        let radius = generator.uniform(in: 26...46)
+        var masses: [Float] = []
+        var built: [GalaxyConfig] = []
+
+        for index in 0..<galaxies {
+            let share = generator.uniform(in: 0.5...1.0)
+            let mass = generator.uniform(in: 30...58) * share
+            masses.append(mass)
+            var one = disk(
+                names[index], count: Int(Float(count) * share), colour: index % 2 == 0
+                    ? palette.primary : palette.secondary,
+                generator: &generator,
+                scaleLength: generator.uniform(in: 2.6...5.0) * share.squareRoot(),
+                mass: mass)
+            // Spread around the shell rather than dropped at random, or two of four land on
+            // top of each other and the group reads as a pair.
+            let angle =
+                (Float(index) / Float(galaxies)) * 2 * .pi + generator.uniform(in: -0.4...0.4)
+            let tilt = generator.uniform(in: -0.45...0.45)
+            one.position = SIMD3(
+                cos(angle) * radius, sin(angle) * radius, tilt * radius * 0.5)
+            one.inclination = generator.uniform(in: -1.1...1.1)
+            one.positionAngle = generator.uniform(in: 0...2 * .pi)
+            built.append(one)
+        }
+
+        let total = masses.reduce(0, +)
+        // The speed has to come from how tightly the group is actually bound, not from
+        // `sqrt(M / r)`: these sit on a shell, so almost none of the mass is interior to any
+        // of them and treating it as central overestimates the pull badly enough that they
+        // orbit wide and never meet. Summing the pair potential is exact and costs nothing at
+        // four bodies.
+        var binding: Float = 0
+        for i in built.indices {
+            for j in (i + 1)..<built.count {
+                let apart = max(simd_distance(built[i].position, built[j].position), 1)
+                binding += masses[i] * masses[j] / apart
+            }
+        }
+        let virial = (binding / total).squareRoot()
+        // Deliberately far below virial equilibrium, so the group falls together within a
+        // scene instead of circling for a Hubble time.
+        let closing = generator.uniform(in: 0.18...0.42)
+        for index in built.indices {
+            let here = built[index].position
+            let tangent = simd_normalize(SIMD3<Float>(-here.y, here.x, 0.001))
+            built[index].velocity = tangent * virial * closing
+        }
+
+        var meanPosition = SIMD3<Float>.zero
+        var meanVelocity = SIMD3<Float>.zero
+        for (index, one) in built.enumerated() {
+            meanPosition += one.position * masses[index]
+            meanVelocity += one.velocity * masses[index]
+        }
+        meanPosition /= total
+        meanVelocity /= total
+        for index in built.indices {
+            built[index].position -= meanPosition
+            built[index].velocity -= meanVelocity
+        }
+        return SceneConfig(name: "Contemplation", galaxies: built, centerSoftening: 1.2)
     }
 
     /// A big disk with a small dense thing falling through it.

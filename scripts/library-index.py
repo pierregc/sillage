@@ -70,17 +70,25 @@ def rows_of(path):
 
 
 # The tempo is not stored as its parameters, only as its name, so the mapping lives here too.
-TEMPOS = {"fast": (0.9, 10, 6), "even": (0.6, 8, 4), "slow": (0.35, 5, 3)}
+TEMPOS = {
+    "derive": (0.0, 2, 1, 1), "lent": (0.2, 4, 2, 2), "proche": (0.7, 6, 3, 2),
+    "pose": (0.5, 8, 4, 2), "trio": (0.6, 9, 5, 3), "large": (0.9, 12, 7, 2),
+    "quatuor": (0.8, 12, 8, 4), "ballet": (1.0, 16, 11, 4),
+}
+IMMERSED = {"derive", "lent", "proche"}
 
 
 def rerender(row):
-    haste, scale, per_frame = TEMPOS.get(row.get("tempo", ""), TEMPOS["even"])
+    tempo = row.get("tempo", "")
+    haste, scale, per_frame, galaxies = TEMPOS.get(tempo, TEMPOS["pose"])
     frames = max(whole(row, "frames", 900), 1)
     return (
         "./scripts/dev.sh render --preset contemplation --director --solver barnes-hut"
-        " --seed %s --particles %d --haste %s --dt-scale %d --settle 400"
+        " --seed %s --particles %d --galaxies %d%s --haste %s --dt-scale %d --settle 400"
         " --steps %d --frames %d --width 3840 --height 2160 --video %s-4k.mov"
         % (row.get("seed", "?"), max(whole(row, "particles", 700000), 1) * 2,
+           whole(row, "galaxies", galaxies) or galaxies,
+           " --immersed" if tempo in IMMERSED else "",
            haste, scale, frames * per_frame, frames, row["id"])
     )
 
@@ -103,7 +111,8 @@ def card(row, directory):
         "" if status == "ok" else '<span class="status">%s</span>' % html.escape(status)))
     fields = [
         ("seed", html.escape(str(row.get("seed", "?")))),
-        ("tempo", html.escape(str(row.get("tempo", "?")))),
+        ("tempo", "%s, %s galaxies" % (html.escape(str(row.get("tempo", "?"))),
+                                       html.escape(str(row.get("galaxies", "?"))))),
         ("durée", duration(row)),
         ("taille", "%s vidéo, %s prise" % (size(whole(row, "video_bytes")),
                                            size(whole(row, "take_bytes")))),

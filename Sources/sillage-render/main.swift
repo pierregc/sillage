@@ -37,7 +37,8 @@ case "disk": scene = .isolatedDisk(particleCount: particles)
 // the whole description, so a scene worth keeping can be rendered again from one integer.
 case "contemplation":
     scene = .contemplation(
-        particleCount: particles, seed: seed ?? 1, haste: Float(number("haste", 0)))
+        particleCount: particles, seed: seed ?? 1, haste: Float(number("haste", 0)),
+        galaxies: argument("galaxies").flatMap(Int.init))
 default:
     FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
     exit(2)
@@ -144,7 +145,8 @@ let framesPerSecond = Int32(number("fps", 30))
 let director: Cinematographer? =
     CommandLine.arguments.contains("--director") ? Cinematographer(seed: seed ?? 1) : nil
 // One scene in three is seen from inside the disk rather than from outside it.
-director?.beginScene(seed: seed ?? 1, immersed: (seed ?? 1) % 3 == 0)
+director?.beginScene(
+    seed: seed ?? 1, immersed: CommandLine.arguments.contains("--immersed"))
 
 let videoWriter = try videoPath.map {
     try FrameVideoWriter(
