@@ -55,8 +55,9 @@ default:
     FileHandle.standardError.write(Data("unknown solver: \(backend)\n".utf8))
     exit(2)
 }
-// Softening and step follow from the counts and the solver unless overridden below.
-scene.timeStepScale = Float(number("dt-scale", 1))
+// Softening and step follow from the counts and the solver unless overridden below. Only an
+// explicit flag overrides the scale, because a generated scene picks its own.
+if let scale = argument("dt-scale").flatMap(Float.init) { scene.timeStepScale = scale }
 if let dissipation = argument("dissipation").flatMap(Float.init) {
     for index in scene.galaxies.indices { scene.galaxies[index].dissipationTime = dissipation }
 }

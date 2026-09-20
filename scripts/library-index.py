@@ -69,11 +69,19 @@ def rows_of(path):
     return list({row["id"]: row for row in rows}.values())
 
 
+# The tempo is not stored as its parameters, only as its name, so the mapping lives here too.
+TEMPOS = {"fast": (0.9, 10, 6), "even": (0.6, 8, 4), "slow": (0.35, 5, 3)}
+
+
 def rerender(row):
+    haste, scale, per_frame = TEMPOS.get(row.get("tempo", ""), TEMPOS["even"])
+    frames = max(whole(row, "frames", 900), 1)
     return (
         "./scripts/dev.sh render --preset contemplation --director --solver barnes-hut"
-        " --seed %s --particles %d --width 3840 --height 2160 --video %s-4k.mov"
-        % (row.get("seed", "?"), max(whole(row, "particles", 700000), 1) * 2, row["id"])
+        " --seed %s --particles %d --haste %s --dt-scale %d --settle 400"
+        " --steps %d --frames %d --width 3840 --height 2160 --video %s-4k.mov"
+        % (row.get("seed", "?"), max(whole(row, "particles", 700000), 1) * 2,
+           haste, scale, frames * per_frame, frames, row["id"])
     )
 
 
@@ -95,6 +103,7 @@ def card(row, directory):
         "" if status == "ok" else '<span class="status">%s</span>' % html.escape(status)))
     fields = [
         ("seed", html.escape(str(row.get("seed", "?")))),
+        ("tempo", html.escape(str(row.get("tempo", "?")))),
         ("durée", duration(row)),
         ("taille", "%s vidéo, %s prise" % (size(whole(row, "video_bytes")),
                                            size(whole(row, "take_bytes")))),

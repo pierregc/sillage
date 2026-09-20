@@ -13,7 +13,6 @@ MB_PER_TAKE=2000
 MINUTES_PER_SCENE=10    # rough, and only used for the plan
 SETTLE=400              # steps before the first frame, so a scene opens settled
 FRAMES=900              # 30 s at 30 fps
-STEPS_PER_FRAME=4
 FPS=30
 
 hours=12
@@ -75,7 +74,7 @@ if [ "$free" -lt "$needed" ]; then
 fi
 
 if [ ! -f "$index" ]; then
-    echo "id,seed,particles,width,height,frames,fps,wall_seconds,video_bytes,take_bytes,status" >"$index"
+    echo "id,seed,tempo,particles,width,height,frames,fps,wall_seconds,video_bytes,take_bytes,status" >"$index"
 fi
 cat >"$out/README.txt" <<'TXT'
 Scenes generated overnight by scripts/library.sh.
@@ -112,15 +111,25 @@ while :; do
     seed="$(seed_for "$n")"
     if [ -f "$out/$id.mov" ]; then note "$id exists, skipped"; continue; fi
 
-    note "$id seed $seed"
+    # Three tempos, chosen by the seed so the night stays reproducible. A clip covering only
+    # a couple of hundred megayears shows two specks drifting; one covering a gigayear and a
+    # half shows a whole merger and what it settles into. Both are worth having, and a library
+    # of one tempo is a library that looks the same all the way down.
+    case $(( seed % 3 )) in
+        0) tempo=fast;  haste=0.9;  dt_scale=10; steps_per_frame=6 ;;
+        1) tempo=even;  haste=0.6;  dt_scale=8;  steps_per_frame=4 ;;
+        *) tempo=slow;  haste=0.35; dt_scale=5;  steps_per_frame=3 ;;
+    esac
+
+    note "$id seed $seed tempo $tempo"
     start=$SECONDS
     rc=0
     take_flag=""
     [ "$takes" -eq 1 ] && take_flag="--take $out/$id.sillage"
     "$ROOT/scripts/dev.sh" render \
         --preset contemplation --seed "$seed" --director --solver barnes-hut \
-        --particles "$particles" --settle "$SETTLE" \
-        --steps "$(( FRAMES * STEPS_PER_FRAME ))" --frames "$FRAMES" \
+        --particles "$particles" --settle "$SETTLE" --haste "$haste" --dt-scale "$dt_scale" \
+        --steps "$(( FRAMES * steps_per_frame ))" --frames "$FRAMES" \
         --width "$width" --height "$height" --fps "$FPS" \
         --video "$out/$id.mov.partial" --curves "$out/$id.csv" $take_flag \
         >>"$log" 2>&1 || rc=$?
@@ -146,9 +155,9 @@ while :; do
     fi
     if [ "$status" = ok ]; then done_count=$(( done_count + 1 )); else failed_count=$(( failed_count + 1 )); fi
 
-    echo "$id,$seed,$particles,$width,$height,$FRAMES,$FPS,$wall,$video_bytes,$take_bytes,$status" >>"$index"
+    echo "$id,$seed,$tempo,$particles,$width,$height,$FRAMES,$FPS,$wall,$video_bytes,$take_bytes,$status" >>"$index"
     note "$id $status in ${wall}s, video $video_bytes B"
-    echo "$id $status ${wall}s"
+    echo "$id $tempo $status ${wall}s"
 done
 
 note "end: $done_count done, $failed_count failed, ${SECONDS}s"
