@@ -76,4 +76,5 @@ AI did a good share of the typing here. Seemed worth saying out loud.
 
 ## License
 
-MIT.
+Code: MIT. Renders and videos: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
+so reuse them freely as long as the credit comes along.
