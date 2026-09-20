@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # one: takes are opt in, for the scenes already known to be worth re-rendering.
 MB_PER_SCENE=80         # video and curves only; --takes raises it
 MB_PER_TAKE=2000
-MINUTES_PER_SCENE=10    # rough, and only used for the plan
+MINUTES_PER_SCENE=9    # rough, and only used for the plan
 SETTLE=400              # steps before the first frame, so a scene opens settled
 FRAMES=900              # 30 s at 30 fps
 FPS=30
@@ -119,21 +119,21 @@ while :; do
     # a constant, so a modulo of them comes out in long runs of the same thing. Every window of
     # eight scenes holds the whole range.
     #
-    # The two ends are the point. A frame covers `dt_scale * steps_per_frame` of simulated
-    # time, so profile 0 crosses about fifty megayears in thirty seconds, which is a galaxy
-    # turning almost imperceptibly with the camera inside it, and profile 7 crosses some four
-    # gigayears, which is four disks falling together and settling, seen from outside.
-    # 16 is the top of the step scale worth using: past it the integration visibly leaves the
-    # encounter's own chaotic scatter.
+    # The two ends are the point. Measured at 700k particles, a step covers 0.0325 Myr per
+    # unit of dt_scale, so a thirty second clip crosses `29 * dt_scale * steps_per_frame`
+    # megayears: 59 for profile 0, a disk turning almost imperceptibly with the camera inside
+    # it, and 2048 for profile 7, four galaxies falling together and settling, seen from
+    # outside. Nothing here goes past a step scale of 10, which is inside the range these runs
+    # have been compared over.
     case $(( n % 8 )) in
-        0) tempo=derive;   galaxies=1; haste=0.0; dt_scale=2;  steps_per_frame=1;  immersed=1 ;;
-        1) tempo=lent;     galaxies=2; haste=0.2; dt_scale=4;  steps_per_frame=2;  immersed=1 ;;
-        2) tempo=proche;   galaxies=2; haste=0.7; dt_scale=6;  steps_per_frame=3;  immersed=1 ;;
-        3) tempo=pose;     galaxies=2; haste=0.5; dt_scale=8;  steps_per_frame=4;  immersed=0 ;;
-        4) tempo=trio;     galaxies=3; haste=0.6; dt_scale=9;  steps_per_frame=5;  immersed=0 ;;
-        5) tempo=large;    galaxies=2; haste=0.9; dt_scale=12; steps_per_frame=7;  immersed=0 ;;
-        6) tempo=quatuor;  galaxies=4; haste=0.8; dt_scale=12; steps_per_frame=8;  immersed=0 ;;
-        *) tempo=ballet;   galaxies=4; haste=1.0; dt_scale=16; steps_per_frame=11; immersed=0 ;;
+        0) tempo=derive;   galaxies=1; haste=0.0; dt_scale=2;  steps_per_frame=1; immersed=1 ;;
+        1) tempo=lent;     galaxies=2; haste=0.2; dt_scale=3;  steps_per_frame=2; immersed=1 ;;
+        2) tempo=proche;   galaxies=2; haste=0.7; dt_scale=4;  steps_per_frame=3; immersed=1 ;;
+        3) tempo=pose;     galaxies=2; haste=0.5; dt_scale=6;  steps_per_frame=4; immersed=0 ;;
+        4) tempo=trio;     galaxies=3; haste=0.6; dt_scale=6;  steps_per_frame=5; immersed=0 ;;
+        5) tempo=large;    galaxies=2; haste=0.9; dt_scale=8;  steps_per_frame=5; immersed=0 ;;
+        6) tempo=quatuor;  galaxies=4; haste=0.8; dt_scale=8;  steps_per_frame=6; immersed=0 ;;
+        *) tempo=ballet;   galaxies=4; haste=1.0; dt_scale=10; steps_per_frame=7; immersed=0 ;;
     esac
     immersed_flag=""
     [ "$immersed" -eq 1 ] && immersed_flag="--immersed"
