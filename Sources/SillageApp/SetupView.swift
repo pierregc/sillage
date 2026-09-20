@@ -141,6 +141,7 @@ struct SetupContent: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Partir d'un préréglage").font(.headline)
             HStack {
+                presetButton("Rencontre", .encounter(particleCount: total))
                 presetButton("Fusion", .merger(particleCount: total))
                 presetButton("Passage rapproché", .flyby(particleCount: total))
                 presetButton("Disque isolé", .isolatedDisk(particleCount: total))

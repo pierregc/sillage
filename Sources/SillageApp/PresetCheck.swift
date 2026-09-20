@@ -33,6 +33,7 @@ enum PresetCheck {
             await step("flyby", .flyby(particleCount: total))
             await step("isolated", .isolatedDisk(particleCount: total))
             await step("merger", .merger(particleCount: total))
+            await step("encounter", .encounter(particleCount: total))
 
             // Removal walks the same stale-index path as a shrinking preset.
             model.removeGalaxy(at: 1)

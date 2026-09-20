@@ -45,6 +45,65 @@ extension SceneConfig {
         )
     }
 
+    /// An unequal pair: a large spiral and a companion a quarter its mass, on a prograde
+    /// passage whose pericentre falls at 8.3 kpc, well inside the primary's disk. Equal
+    /// masses answer each other symmetrically and the two halves of the picture repeat; a
+    /// four to one ratio does not, so the primary keeps its far arm while the near one is
+    /// drawn off into a tail and the companion takes the debris.
+    public static func encounter(particleCount: Int = 500_000, seed: UInt64 = 1) -> SceneConfig {
+        let primaryMass: Float = 70
+        let companionMass: Float = 18
+        // Split in proportion to mass, so a particle weighs the same in either galaxy. Unequal
+        // particle masses heat the lighter disk numerically, which is the one that can least
+        // afford it.
+        let companion = Int(
+            (Double(particleCount) * Double(companionMass / (primaryMass + companionMass)))
+                .rounded())
+
+        return SceneConfig(
+            name: "Encounter",
+            galaxies: [
+                GalaxyConfig(
+                    name: "Primary",
+                    particleCount: particleCount - companion,
+                    potential: GalaxyPotential(
+                        profile: .hernquist, mass: primaryMass, scaleRadius: 5.5),
+                    diskScaleLength: 4.6,
+                    diskTruncation: 5,
+                    armStrength: 0.88,
+                    color: SIMD3<Float>(1.00, 0.93, 0.82),
+                    armIrregularity: 0.7,
+                    position: SIMD3<Float>(-12.682, 0, 0),
+                    velocity: SIMD3<Float>(0.0205, -0.1186, 0),
+                    inclination: 0.34,
+                    positionAngle: 0.25,
+                    spin: .prograde
+                ),
+                GalaxyConfig(
+                    name: "Companion",
+                    particleCount: companion,
+                    potential: GalaxyPotential(
+                        profile: .hernquist, mass: companionMass, scaleRadius: 2.4),
+                    diskScaleLength: 2.0,
+                    diskTruncation: 4.5,
+                    armCount: 3,
+                    armStrength: 0.6,
+                    bulgeFraction: 0.22,
+                    color: SIMD3<Float>(0.86, 0.92, 1.00),
+                    armIrregularity: 0.8,
+                    position: SIMD3<Float>(49.318, 0, 0),
+                    velocity: SIMD3<Float>(-0.0795, 0.4614, 0),
+                    inclination: 0.95,
+                    positionAngle: 0.7,
+                    spin: .prograde
+                ),
+            ],
+            solver: .barnesHut,
+            seed: seed,
+            timeStep: 0.02
+        )
+    }
+
     /// A small companion on a fast retrograde pass. Shorter, sharper features.
     public static func flyby(particleCount: Int = 500_000, seed: UInt64 = 1) -> SceneConfig {
         let companion = particleCount * 3 / 25
@@ -101,7 +160,7 @@ extension SceneConfig {
         )
     }
 
-    public static let all: [SceneConfig] = [merger(), flyby(), isolatedDisk()]
+    public static let all: [SceneConfig] = [merger(), encounter(), flyby(), isolatedDisk()]
 
     /// Presets return themselves already tuned for their solver.
     static func tuned(_ scene: SceneConfig) -> SceneConfig {
