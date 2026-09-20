@@ -42,8 +42,9 @@ capture, and this is the command it came from:
   --stars 700 --star-size 0.8 --spike-length 18 --noise 0 --out out/f.png
 ```
 
-It takes about two hours on an Apple Silicon and writes 150 frames; the animation above is 123 of
-them, thinned where the picture changes slowly, and the still is frame 50.
+It takes about two hours on an Apple Silicon and writes 150 frames. The animation above keeps every
+other one through the approach and all the rest, so nothing speeds up once the disks meet; the
+still is frame 50.
 
 `--settle` runs the simulation before the first frame is written, so the disks relax out of
 their initial conditions off camera. `--elevation` and `--orbit` aim the camera and sweep it
