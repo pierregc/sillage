@@ -2,15 +2,9 @@
 
 A hobby N-body simulator for galaxy collisions on Apple Silicon. The models are taken from the
 standard literature, and what they are pointed at is a picture worth looking at rather than a
-research result. It was written with heavy use of AI.
+research result.
 
-An unequal prograde encounter: a spiral and a companion a quarter its mass, self-gravitating,
-4.4 million visible particles over another 5.3 million of live dark halo, from 150 to 900 Myr.
-The camera starts above the orbital plane and descends under it while the remnant settles. The
-near arm is drawn off into a tail while the far one survives, and the pink knots are star
-formation the run itself sets off as the disks are compressed.
-
-![An unequal prograde encounter, 150 to 900 Myr](docs/merger.webp)
+![Two galaxies through a prograde encounter](docs/merger.webp)
 
 ## Running it
 
@@ -26,28 +20,10 @@ The app opens on a setup screen: add galaxies, set their masses, radii, inclinat
 then start the run. Drag to orbit, scroll to zoom, `F` to fly, space to pause. Presets are
 `encounter`, `merger`, `flyby` and `disk`.
 
-`./scripts/dev.sh test` runs the suite. The animation above is an offline render, not a screen
-capture, and this is the command it came from:
-
-```bash
-./scripts/dev.sh render --preset encounter --solver barnes-hut --dt-scale 8 \
-  --particles 4400000 --settle 1452 --steps 7260 --frames 150 \
-  --width 1600 --height 900 --radius 42 \
-  --elevation 1.32 --elevation-end -0.55 --orbit 0.45 \
-  --tint 0.12 --brightness 0.13 --dust 0.22 --bloom 0.16 \
-  --stars 700 --star-size 0.8 --spike-length 18 --noise 0 --out out/f.png
-```
-
-It writes 150 frames and takes a couple of hours. The animation above keeps every other one
-through the approach and all the rest, so nothing speeds up once the disks meet.
-
-`--settle` runs the simulation before the first frame is written, so the disks relax out of
-their initial conditions off camera. `--elevation` and `--orbit` aim the camera and sweep it
-across the sequence; a negative elevation puts it below the orbital plane.
-
-Everything goes through `scripts/dev.sh`, which drives `swiftc` directly: on a machine with
-only the Command Line Tools, SwiftPM cannot compile any manifest at all. Shaders are compiled
-at runtime, so Xcode is not needed either way.
+`./scripts/dev.sh test` runs the suite, and `./scripts/dev.sh render` writes an image sequence
+without opening a window, which is how the animation above was made. Everything goes through
+that script rather than SwiftPM: with only the Command Line Tools installed, no manifest will
+compile. Shaders are built at runtime, so Xcode is not needed either way.
 
 ## The physics
 
@@ -93,6 +69,10 @@ Sources/SillageRender/   Metal solver, splat renderer, camera
 Sources/SillageApp/      SwiftUI setup screen and live view
 Sources/sillage-render/  headless PNG renderer
 ```
+
+## Small print
+
+AI did a good share of the typing here. Seemed worth saying out loud.
 
 ## License
 
