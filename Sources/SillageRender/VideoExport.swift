@@ -131,7 +131,7 @@ public enum VideoExport {
 
     /// The renderer hands back RGBA and the encoder wants BGRA, and a pixel buffer's rows are
     /// padded to its own stride rather than to the image width.
-    private static func copy(
+    static func copy(
         _ pixels: [UInt8], into buffer: CVPixelBuffer, width: Int, height: Int
     ) {
         CVPixelBufferLockBaseAddress(buffer, [])
