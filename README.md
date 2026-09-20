@@ -1,290 +1,93 @@
 # Sillage
 
-A galaxy collision simulator for Apple Silicon, built for the picture rather than the
-particle count.
+A hobby N-body simulator for galaxy collisions on Apple Silicon. The models are taken from the
+standard literature, and what they are pointed at is a picture worth looking at rather than a
+research result. It was written with heavy use of AI.
 
-![A pair of disks midway through a prograde encounter](docs/hero.png)
+An unequal prograde encounter: a spiral and a companion a quarter its mass, self-gravitating,
+4.4 million visible particles over another 5.3 million of live dark halo, from 150 to 900 Myr.
+The camera starts above the orbital plane and descends under it while the remnant settles.
 
-## Two levels of physics
+![An unequal prograde encounter, 150 to 900 Myr](docs/merger.gif)
 
-The solver is chosen per scene, so the cheap model and the accurate one share the same
-configuration, the same particle storage and the same renderer.
+The same run at 406 Myr, a little after the passage. The two nuclei are still separate, the
+near arm has been drawn off into a tail, and the pink knots are star formation the run itself
+set off when the disks were compressed.
 
-| Level | Model | Cost | State |
-|---|---|---|---|
-| 1 | Massless test particles in rigid analytic potentials (Toomre & Toomre, 1972) | O(N) | implemented, CPU and GPU |
-| 2 | Self-gravitating particles on a Barnes-Hut tree | O(N log N) | implemented, GPU |
+![The pair at 406 Myr, mid merger](docs/hero.jpg)
 
-Level 1 is deliberately first: it reproduces the bridges and tails that make an encounter
-worth looking at, and it is cheap enough that the particle budget goes entirely into what is
-visible. Each galaxy's dark halo is an analytic potential rather than particles, so no part
-of the budget is spent on mass that never reaches a pixel. The stellar bulge is a component
-of its own: a flattened Hernquist spheroid held up by random motion, with its dispersion
-solved from the Jeans equation against the galaxy's whole weight rather than its own.
+## Running it
 
-## Level 2: self-gravity
+macOS 14 or later on an Apple Silicon Mac.
 
-Particles carry mass and attract each other through a Barnes-Hut tree. The tree is built on
-the CPU in Morton order and traversed on the GPU: the build wants a radix sort and a
-pointerless hierarchy, which is the awkward half of a GPU N-body solver, while the traversal
-is where the time actually goes. Unified memory means the CPU reads the same buffer the GPU
-writes, so the build costs no transfer.
-
-Threads traverse in Morton order rather than in sampling order. Neighbouring lanes then take
-almost the same path through the tree, which cut the force kernel from 154 ms to 69 ms at one
-million particles.
-
-Two things this mode needs that level 1 does not:
-
-**Initial conditions.** A cold disk fragments within an orbit once self-gravity is on. The
-velocity structure comes from Toomre's criterion instead: the radial dispersion is set by the
-requested Q, the azimuthal dispersion follows from the epicyclic ratio rather than being
-chosen, and the mean rotation lags the circular speed by the asymmetric drift. Measured over
-roughly one orbit on an isolated disk carrying 60% of the mass, Q = 0.4 thickens it by a
-factor 1.6 while Q = 1.4 holds it to 1.24.
-
-**A live halo.** The dark halo is particles too, drawn from the potential's own density and
-its isotropic distribution function. `haloParticleRatio` sets how many per disk particle;
-setting it to zero falls back to the old analytic potential.
-
-That matters twice over. An infalling companion raises a wake in a live halo and the wake
-pulls back on it, which is dynamical friction and is the only reason galaxies merge rather
-than orbit forever. And a rigid potential that follows its galaxy's centre of mass does work
-on the system: it was not merely an approximation, it leaked momentum. Over the same run the
-total momentum drifts by 1.78 with a rigid halo and by 0.043 with a live one.
-
-Measured on the same encounter, tracking the separation between the two centres:
-
-| | First pericentre | Following apocentre | After 340 Myr |
-|---|---|---|---|
-| Rigid halo | 13.2 kpc | 52.9 kpc | still orbiting at 50 kpc |
-| Live halo | 13.7 kpc | 25.2 kpc | 10 kpc and staying there |
-
-The rigid case recovers its entire initial apocentre, which is the point: nothing takes energy
-out of the orbit. The live case halves it on the first passage and the pair settles into a
-merger.
-
-Halo particles are never drawn. The vertex shader pushes them outside the clip volume so they
-cost no fragment work, but they are integrated like everything else, which is what they cost:
-a ratio of 1.5 means two and a half times the particles for the same visible galaxy.
-
-The disks then grow their own bars and spiral arms, so the render-time density wave is
-switched off in this mode: the structure is real rather than painted.
-
-## Measured on an Apple Silicon
-
-Level 1:
-
-| | Per step | Notes |
-|---|---|---|
-| CPU reference, 1 M | 17.4 ms | single threaded, used as the correctness reference |
-| GPU, 1 M | 0.102 ms | 170x the CPU path |
-| GPU, 5 M | 0.893 ms | over 1000 steps per second |
-| GPU, 16 M | 2.85 ms | |
-
-Level 2, at an opening angle of 0.6:
-
-| | Per step | Tree build | Force traversal |
-|---|---|---|---|
-| 1 M | 84 ms | 19 ms | 64 ms |
-| 3 M | 352 ms | 56 ms | 294 ms |
-
-The tree build went from 133 ms to 56 ms at three million particles by parallelising the
-Morton codes and the leaf accumulation, halving the number of radix passes, materialising the
-codes in sorted order so the node split scans linearly instead of chasing a permutation, and
-shrinking the node from 48 bytes to 32. Total step time only improved by about a third,
-because the force traversal dominates and is bound by divergence rather than by node size.
-Sharing one stack across a SIMD group is the next thing worth trying there.
-
-## Watching a slow simulation
-
-At a hundred milliseconds a step, stepping inside the draw loop makes the camera, the
-sliders and the whole interface run at that rate too: measured, the main thread was held for
-385 ms at a time and every control on the window was dead between frames. The solver runs on
-its own queue instead, and the canvas draws whatever the position buffer holds when the frame
-comes round. The same measurement now reads 2.2 ms.
-
-A run can be written to a `.sillage` file and opened again later. That is not a video: the
-file holds the run, so every setting that decides the image stays live when it comes back.
-
-A run captures itself from the moment it starts. There is no separate record step to think
-about: a scene that has already been computed once should never have to be computed again to
-be watched. The capture stops at a memory budget, or when the run is stopped to replay it,
-and it can be picked up again where it left off.
-
-Snapshots are three 16-bit fixed-point values per particle inside each frame's own bounding
-box. Over a 200 kpc box that resolves 0.003 kpc, far below the force softening, for six bytes
-a particle instead of twelve. Playback blends the two surrounding snapshots on the GPU, so a
-run captured at three steps per second still moves continuously.
-
-| Particles | Per snapshot | 300 snapshots |
-|---|---|---|
-| 1 M | 6 MB | 1.8 GB |
-| 3 M | 18 MB | 5.4 GB |
-| 5 M | 30 MB | 9 GB |
-
-The interactive app holds 3 million particles at 2.4 ms per frame, which is the display
-refresh rate rather than a GPU limit. Past roughly 20 million particles the extra points
-land in pixels that are already smooth, so the picture stops improving.
-
-## The app
-
-```
+```bash
+git clone https://github.com/pierregc/sillage.git
+cd sillage
 ./scripts/dev.sh app && open .build/dev/Sillage.app
 ```
 
-It opens on a setup screen. Add or remove galaxies, and for each one choose its kind, mass
-profile, particle count, mass, scale radius, size, extent, thickness, velocity dispersion,
-inclination, position angle, spin, position and velocity. The footer shows the total particle
-count and an estimate of the cost per frame, so the count can be chosen knowing whether the
-run will stay real time.
+The app opens on a setup screen: add galaxies, set their masses, radii, inclinations and spins,
+then start the run. Drag to orbit, scroll to zoom, `F` to fly, space to pause. Presets are
+`encounter`, `merger`, `flyby` and `disk`.
 
-Starting the run switches to the live view: drag to orbit, scroll to zoom, space to pause.
-The side panel there only holds things that apply immediately, brightness and stretch and
-bloom and camera, plus a button back to the setup screen. Nothing heavy is built until the
-run starts, so the setup screen opens instantly.
+`./scripts/dev.sh test` runs the suite. The animation above is an offline render, not a screen
+capture, and this is the command it came from:
 
-### Galaxy kinds
-
-| Kind | Distribution |
-|---|---|
-| Spirale | Thin rotating disk with a logarithmic spiral density modulation, sampled by rejection so the radial profile is untouched |
-| Disque | Thin rotating disk, featureless |
-| Globulaire | Pressure-supported sphere, no ordered rotation. Plummer spheres are drawn from their exact distribution function; Hernquist uses the Jeans dispersion |
-
-Spin matters more than it looks. Prograde coplanar passages raise the long symmetric tails;
-retrograde ones stay dull.
-
-A disk of stars alone can only heat, and its arms are gone within a gigayear. `dissipationTime`
-stands in for the gas that keeps a real disk cool, pulling disk material towards circular
-orbits on a time constant in Myr and stopping at the dispersion Toomre asks for.
-
-Arms trail, whichever way the disk turns: the winding takes its sign from the spin, which is
-what every spiral shows.
-
-Set per galaxy: colour, clumpiness, arm irregularity, dust share, star-forming share, bulge
-share, radius and flattening, arm count, arm contrast and pitch.
-
-## Offline rendering
-
-```
-./scripts/dev.sh render --particles 16000000 --steps 4000 --width 2400 --height 1350 --out out/frame.png
+```bash
+./scripts/dev.sh render --preset encounter --solver barnes-hut --dt-scale 8 \
+  --particles 4400000 --settle 1452 --steps 7260 --frames 150 \
+  --width 1600 --height 900 --radius 42 \
+  --elevation 1.32 --elevation-end -0.55 --orbit 0.45 \
+  --tint 0.12 --brightness 0.13 --dust 0.22 --bloom 0.16 \
+  --stars 700 --star-size 0.8 --spike-length 18 --noise 0 --out out/f.png
 ```
 
-Add `--frames N` for an image sequence to encode into video. Rendering offline beats a
-screen recording: any resolution, no capture compression, no dropped frames.
+It takes about two hours on an Apple Silicon and writes 150 frames; the animation above is 123 of
+them, thinned where the picture changes slowly, and the still is frame 50.
 
-Useful flags: `--preset merger|flyby|disk`, `--solver restricted|barnes-hut|cpu`,
-`--theta`, `--softening`, `--seed`, `--radius`,
-`--elevation`, `--brightness`, `--stretch`, `--saturation`, `--bloom`, `--dust`, `--stars`,
-`--star-size`, `--arms`, `--supersample`.
+`--settle` runs the simulation before the first frame is written, so the disks relax out of
+their initial conditions off camera. `--elevation` and `--orbit` aim the camera and sweep it
+across the sequence; a negative elevation puts it below the orbital plane.
 
-## Rendering
+Everything goes through `scripts/dev.sh`, which drives `swiftc` directly: on a machine with
+only the Command Line Tools, SwiftPM cannot compile any manifest at all. Shaders are compiled
+at runtime, so Xcode is not needed either way.
 
-### Adaptive smoothing
+## The physics
 
-A galaxy holds on the order of a hundred billion stars, so every pixel of a real image
-contains millions of them and the surface is continuous. A million particles splatted at a
-fixed size resolves the particles instead, which is why a simulation reads as a point cloud
-however many points it has, and why adding particles does not fix it.
+Two solvers share one scene description, one particle buffer and one renderer. **Restricted**
+moves massless test particles through rigid analytic potentials, following Toomre and Toomre
+(1972), at O(N); it raises the bridges and tails cheaply, which is useful while framing a shot.
+**Barnes-Hut** gives the particles mass and a tree built in Morton order on the CPU and
+traversed on the GPU, at O(N log N). Dark halos become particles too, so an infalling companion
+raises a wake that drags on it, and the disks grow their own bars and arms. The images above
+use Barnes-Hut.
 
-Each particle therefore carries a smoothing length equal to its own local interparticle
-spacing, taken from the Barnes-Hut tree: a leaf holding n particles in a cell of width w
-implies a density, and the radius enclosing the wanted number of neighbours follows. Its light
-is then spread over the kernel's area in kiloparsecs rather than in pixels, which gives
-surface brightness, the quantity a telescope actually measures, and which stays put when the
-camera or the resolution changes.
+**Integrator.** Kick drift kick leapfrog in both solvers, at a fixed step. The step and the
+force softening are derived from the scene rather than exposed: softening is 1.5 times the mean
+interparticle spacing of the densest disk, capped at 1 kpc, and the step is short enough that a
+particle crosses well under one softening length per step.
 
-### The instrument
-
-A telescope's secondary supports and, on a segmented mirror, the segment edges throw light
-into a fixed set of directions: six arms for a hexagonal mirror, four for a Cassegrain spider.
-A gather pass along those directions from the bright pass reproduces them. On top of that the
-frame carries a sky background and detector noise, both added in linear signal before tone
-mapping. Putting the noise back is counterintuitive but it is what stops an image looking
-synthetic.
-
-### Splatting
-
-Particles are splatted into two additive targets: emitted light in `rgba16Float`, and the
-optical depth of intervening dust in `r16Float`. Resolving from the supersampled buffers
-applies extinction on the way down, more strongly in blue than in red, which is what makes a
-dust lane read brown rather than grey. A Kawase dual-filter bloom pyramid is built from the
-result, and the sum goes through a logarithmic stretch before ACES tone mapping. The stretch
-is what astronomical imaging uses: a galaxy core is three orders of magnitude brighter than
-its tidal debris, and a filmic curve alone flattens the cores into featureless discs.
-
-There is no depth sorting, so the dust column includes grains behind the stars as well as in
-front. Roughly half lies in front, so the depth is halved and clamped; without the clamp an
-encounter that stacks both galaxies along the line of sight goes black.
-
-Each galaxy emits in a single colour of its own, so material pulled out of one and wrapped
-around the other stays legible after the encounter has mixed them. Star-forming knots are
-brighter rather than differently coloured. Dust absorbs instead of emitting. Foreground field
-stars are drawn from a steep magnitude law with a tight core and diffraction spikes on the
-brightest.
-
-### Clumping
-
-Stars are placed in a hierarchy: about a hundred giant complexes, five thousand clumps within
-them, and stars within those, with sizes following a steep power law so a few are large and
-most are small. Roughly half the disk stays smooth underneath. Clumps are generated already
-stretched along the direction of rotation, because differential rotation shears a cloud into
-an arc within a fraction of an orbit, and a disk of round blobs does not look like a galaxy.
-
-The result is flocculent structure at every scale rather than the airbrushed look of drawing
-every particle straight from a smooth profile.
-
-### Spiral arms as a density wave
-
-Arms baked into the initial conditions wind up within about one orbit, because a disk rotates
-differentially. Real arms are a density wave that turns at its own slower speed while stars
-pass through it, which is why a galaxy keeps two clean arms far longer than any material
-pattern could. The renderer evaluates that pattern at each particle's current position and
-modulates brightness and extinction with it, so the arms stay sharp and star formation
-happens where the wave is now rather than where it once was.
-
-The ideal logarithmic spiral is then made to wander and to break into segments with value
-noise. No real galaxy has two unbroken arms of constant pitch, and `armIrregularity` controls
-how far from the textbook shape a given galaxy sits.
-
-### Calibration
-
-Brightness and dust opacity are expressed per million particles and per unit sky area, so a
-scene looks the same at 500 000 particles as at 20 million, and the exposure does not have to
-be retuned every time the camera zooms.
-
-## Units
-
-Lengths in kpc, masses in 10^10 solar masses, G = 1. The derived velocity unit is
+**Units.** Lengths in kpc, masses in 10^10 solar masses, G = 1. The derived velocity unit is
 207.4 km/s and the time unit is 4.71 Myr.
 
-## Building
+**Parameters.** Per scene: particle count, opening angle, halo particle ratio. Per galaxy:
+mass, scale radius, truncation, thickness, Toomre Q, inclination, position angle and spin.
 
-```
-swift build
-swift test
-```
+### Known limits
 
-Shaders are compiled at runtime through `MTLDevice.makeLibrary(source:)`, so Xcode is not
-required. Xcode only adds the GPU frame debugger and the Metal shader profiler.
-
-Some Command Line Tools installs ship a PackageDescription whose interface and dylib
-disagree, which makes every manifest fail to compile. `scripts/dev.sh` builds and runs the
-same test suite through `swiftc` directly if you hit that:
-
-```
-./scripts/dev.sh test
-./scripts/dev.sh lint
-```
-
-`Sillage.app --selftest` renders one frame offscreen and exits. `--verify` opens the real
-window and drives the view directly for three seconds, then reports how many frames it drew.
-It drives the view rather than waiting on the display link because a window opened behind
-another application counts as occluded, and MTKView parks its display link when it is. `--uishot` renders the panels
-through `ImageRenderer` to `out/`, which is how the interface gets checked on a machine that
-cannot grant screen recording. Sliders and pickers come out as placeholders there; the point
-is that every label is legible against its own background.
+- Single precision throughout: positions, velocities and forces are all 32 bit floats.
+- No hydrodynamics. No gas, no pressure, no shocks. The dissipation time is a relaxation term
+  standing in for the gas that keeps a real disk cool, not a fluid solver.
+- Star formation decides how a region is drawn and nothing else. It never feeds back into the
+  forces.
+- The step is fixed for the whole run rather than adaptive, so a deep pericentre is integrated
+  no more finely than the approach.
+- In restricted mode the halos are rigid and follow their galaxy, which does work on the
+  system, so the pair never actually merges. The suite checks that live halos conserve momentum
+  considerably better.
+- None of this has been compared against a published simulation. The tests check internal
+  consistency, equilibrium and conservation, not agreement with anyone else's results.
 
 ## Layout
 
@@ -293,23 +96,8 @@ Sources/SillageCore/     physics, no rendering dependency
 Sources/SillageRender/   Metal solver, splat renderer, camera
 Sources/SillageApp/      SwiftUI setup screen and live view
 Sources/sillage-render/  headless PNG renderer
-Tests/
 ```
-
-`SillageCore` knows nothing about Metal. The GPU solver lives beside the renderer because
-they share the position buffer: on unified memory the integrator writes exactly the buffer
-the vertex shader reads, with no copy in between.
-
-The Metal Shading Language sources are isolated in `Shaders.swift` and `SolverShaders.swift`
-as plain strings. They are the part of the project that would survive a port to a C++ or
-Rust host unchanged.
-
-## Roadmap
-
-- Barnes-Hut solver, with self-gravitating disks and live halos
-- EDR output, so the XDR display shows the real dynamic range
-- Scene files on disk, replacing the built-in presets
 
 ## License
 
-MIT
+MIT.
