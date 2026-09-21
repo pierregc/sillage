@@ -14,6 +14,11 @@ MINUTES_PER_SCENE=9    # rough, and only used for the plan
 SETTLE=400              # steps before the first frame, so a scene opens settled
 FRAMES=900              # 30 s at 30 fps
 FPS=30
+# The look, handed to the director as its base. It re-applies a look every frame and would
+# otherwise pick one of its own, detector noise and a lifted sky included. The kernel ceiling
+# is what matters most: at 64 pixels a close shot is a field of soft blobs, at 18 it is a
+# galaxy. Few field stars, short spikes, no noise, a sky just off black.
+LOOK="--stars 250 --star-size 0.8 --spike-length 16 --spike-intensity 0.03 --noise 0 --sky 0.0006 --bloom 0.14 --max-kernel 18 --zoom 1.3"
 
 hours=12
 scenes=0                # 0 means only --hours stops the run
@@ -153,7 +158,7 @@ while :; do
         --particles "$particles" --settle "$SETTLE" --haste "$haste" --dt-scale "$dt_scale" \
         --galaxies "$galaxies" $immersed_flag \
         --steps "$(( FRAMES * steps_per_frame ))" --frames "$FRAMES" \
-        --width "$width" --height "$height" --fps "$FPS" \
+        --width "$width" --height "$height" --fps "$FPS" $LOOK \
         --video "$out/$id.mov.partial" --curves "$out/$id.csv" $take_flag \
         >>"$log" 2>&1 || rc=$?
     wall=$(( SECONDS - start ))

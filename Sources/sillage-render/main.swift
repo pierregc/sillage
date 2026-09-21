@@ -140,13 +140,38 @@ var frozenRadius = Float(number("radius", 0))
 
 let framesPerSecond = Int32(number("fps", 30))
 
+// The look the flags describe, as a whole. The director re-applies a look every frame, so
+// without this it would pick one of its own named looks, sky and detector noise included,
+// and every look flag on the command line would be silently ignored. It is also the only way
+// to reach the kernel bounds: `maximumKernel` caps how large a particle may be drawn, which is
+// what turns a close shot into a field of soft blobs once the camera is among the particles.
+let baseLook = RenderLook(
+    brightness: settings.brightness,
+    dustStrength: settings.dustStrength,
+    smoothingScale: settings.smoothingScale,
+    minimumKernel: Float(number("min-kernel", 1.1)),
+    maximumKernel: Float(number("max-kernel", 64)),
+    bloomThreshold: settings.bloomThreshold,
+    bloomSoftKnee: settings.bloomSoftKnee,
+    bloomIntensity: settings.bloomIntensity,
+    stretch: settings.stretch,
+    saturation: settings.saturation,
+    spikeArms: settings.spikeArms,
+    spikeLength: settings.spikeLength,
+    spikeIntensity: settings.spikeIntensity,
+    skyLevel: settings.skyLevel,
+    noiseLevel: settings.noiseLevel,
+    galaxyTint: settings.galaxyTint,
+    starSize: settings.starSize)
+renderer.apply(baseLook)
+
 // The director places the camera and lights the scene on its own. Without it a hundred
 // generated scenes come out framed identically, which is the thing that makes a library dull.
 let director: Cinematographer? =
     CommandLine.arguments.contains("--director") ? Cinematographer(seed: seed ?? 1) : nil
 // One scene in three is seen from inside the disk rather than from outside it.
 director?.beginScene(
-    seed: seed ?? 1, immersed: CommandLine.arguments.contains("--immersed"))
+    seed: seed ?? 1, base: baseLook, immersed: CommandLine.arguments.contains("--immersed"))
 
 let videoWriter = try videoPath.map {
     try FrameVideoWriter(
