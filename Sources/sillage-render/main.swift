@@ -200,7 +200,12 @@ for frame in 0..<frames {
         frozenRadius = framingRadius(solver.particles.positions, percentile: percentile) / zoom
     }
 
-    smoothing.update(positions: solver.particles.positions)
+    // Straight from the buffer on the GPU path, for the same reason as the extent below.
+    if let gpuSolver {
+        smoothing.update(from: gpuSolver.positions)
+    } else {
+        smoothing.update(positions: solver.particles.positions)
+    }
     renderer.time = solver.time
     renderer.setDiskFrames(
         DiskFrame.make(
@@ -259,12 +264,24 @@ for frame in 0..<frames {
         let separation =
             centres.count >= 2 ? simd_length(centres[1] - centres[0]) : Float(0)
         // Root mean square radius over a subsample: a smooth measure of how far the thing has
-        // spread, for a fraction of the cost of sorting every radius.
+        // spread, for a fraction of the cost of sorting every radius. Read straight out of the
+        // position buffer: `particles` on a GPU solver rebuilds the whole system on every
+        // access, and calling it once per sample made each frame nine seconds slower.
         var sum: Float = 0
         var counted = 0
-        for index in stride(from: 0, to: drawnCount, by: 64) {
-            sum += simd_length_squared(solver.particles.positions[index])
-            counted += 1
+        if let gpuSolver {
+            let positions = gpuSolver.positions.contents().bindMemory(
+                to: SIMD3<Float>.self, capacity: seeded.count)
+            for index in stride(from: 0, to: drawnCount, by: 64) {
+                sum += simd_length_squared(positions[index])
+                counted += 1
+            }
+        } else {
+            let positions = solver.particles.positions
+            for index in stride(from: 0, to: drawnCount, by: 64) {
+                sum += simd_length_squared(positions[index])
+                counted += 1
+            }
         }
         let extent = counted > 0 ? (sum / Float(counted)).squareRoot() : 0
         var formed = 0
