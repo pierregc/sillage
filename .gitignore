@@ -10,7 +10,6 @@ DerivedData/
 *.metallib
 /captures/
 /out/
-/docs/candidature-cern.md
 CLAUDE.md
 
 # nightly output

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Builds and tests without SwiftPM. The Command Line Tools ship a PackageDescription
 # whose interface and dylib disagree, which makes any manifest fail to compile.
-# GitHub CI uses swift build / swift test normally.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
