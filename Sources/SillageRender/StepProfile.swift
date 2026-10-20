@@ -8,7 +8,7 @@ import Foundation
 public struct StepProfile: Sendable {
     /// In the order a step runs them. The tree phases are the ones `BarnesHutTree` times.
     public static let phases = [
-        "tree wait", "star formation", "drift", "snapshot", "halo centres", "disk frames",
+        "tree wait", "star formation", "drift", "halo centres", "disk frames",
         "bounds", "morton", "sort", "nodes", "accumulate", "upload",
         "force", "kick", "dissipation", "step",
     ]

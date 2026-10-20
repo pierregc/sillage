@@ -108,6 +108,12 @@ public final class BarnesHutTree {
     }
 
     public func build(positions: [SIMD3<Float>], mass: [Float]) {
+        positions.withUnsafeBufferPointer { build(positions: $0, mass: mass) }
+    }
+
+    /// Reads the positions where they are, so a solver can hand over its own GPU buffer rather
+    /// than a copy of it. Nothing may write them until the build returns.
+    public func build(positions: UnsafeBufferPointer<SIMD3<Float>>, mass: [Float]) {
         // Started before the bounds pass, which used to go untimed and always read zero.
         var clock = Date()
         func mark(_ name: String) {
@@ -121,12 +127,33 @@ public final class BarnesHutTree {
             return
         }
 
-        var lower = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
-        var upper = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
-        for position in positions where position.x.isFinite && position.y.isFinite && position.z.isFinite {
-            lower = simd_min(lower, position)
-            upper = simd_max(upper, position)
+        // Minimum and maximum do not depend on the order they are taken in, so the blocks
+        // give the serial bounds exactly.
+        let boundsBlock = 65_536
+        let boundsBlocks = (count + boundsBlock - 1) / boundsBlock
+        var lowers = [SIMD3<Float>](
+            repeating: SIMD3<Float>(repeating: .greatestFiniteMagnitude), count: boundsBlocks)
+        var uppers = [SIMD3<Float>](
+            repeating: SIMD3<Float>(repeating: -.greatestFiniteMagnitude), count: boundsBlocks)
+        lowers.withUnsafeMutableBufferPointer { lowers in
+            uppers.withUnsafeMutableBufferPointer { uppers in
+                DispatchQueue.concurrentPerform(iterations: boundsBlocks) { block in
+                    var lower = lowers[block]
+                    var upper = uppers[block]
+                    for index in block * boundsBlock..<min((block + 1) * boundsBlock, count) {
+                        let position = positions[index]
+                        guard position.x.isFinite && position.y.isFinite && position.z.isFinite
+                        else { continue }
+                        lower = simd_min(lower, position)
+                        upper = simd_max(upper, position)
+                    }
+                    lowers[block] = lower
+                    uppers[block] = upper
+                }
+            }
         }
+        let lower = lowers.reduce(lowers[0], simd_min)
+        let upper = uppers.reduce(uppers[0], simd_max)
         guard lower.x <= upper.x else {
             nodes.removeAll(keepingCapacity: true)
             order = []
@@ -145,18 +172,16 @@ public final class BarnesHutTree {
         let origin = center - SIMD3<Float>(repeating: half)
         let codeChunk = max(count / (ProcessInfo.processInfo.activeProcessorCount * 4), 8192)
         let codeChunks = (count + codeChunk - 1) / codeChunk
-        positions.withUnsafeBufferPointer { source in
-            sortedCodes.withUnsafeMutableBufferPointer { target in
-                DispatchQueue.concurrentPerform(iterations: codeChunks) { block in
-                    let start = block * codeChunk
-                    let end = min(start + codeChunk, count)
-                    for index in start..<end {
-                        let local = (source[index] - origin) * inverse
-                        target[index] = BarnesHutTree.morton(
-                            UInt32(min(max(local.x, 0), resolution)),
-                            UInt32(min(max(local.y, 0), resolution)),
-                            UInt32(min(max(local.z, 0), resolution)))
-                    }
+        sortedCodes.withUnsafeMutableBufferPointer { target in
+            DispatchQueue.concurrentPerform(iterations: codeChunks) { block in
+                let start = block * codeChunk
+                let end = min(start + codeChunk, count)
+                for index in start..<end {
+                    let local = (positions[index] - origin) * inverse
+                    target[index] = BarnesHutTree.morton(
+                        UInt32(min(max(local.x, 0), resolution)),
+                        UInt32(min(max(local.y, 0), resolution)),
+                        UInt32(min(max(local.z, 0), resolution)))
                 }
             }
         }
@@ -505,41 +530,39 @@ public final class BarnesHutTree {
 
     /// Leaves sum their own particles, each subtree folds itself on its own core, children
     /// before parents since they always come after them, and the top levels fold last.
-    private func accumulate(positions: [SIMD3<Float>], mass: [Float]) {
+    private func accumulate(positions positionBuffer: UnsafeBufferPointer<SIMD3<Float>>, mass: [Float]) {
         let limit = order.count
         let nodeCount = nodes.count
         let chunk = max(nodeCount / (ProcessInfo.processInfo.activeProcessorCount * 4), 1024)
         let chunks = (nodeCount + chunk - 1) / chunk
-        positions.withUnsafeBufferPointer { positionBuffer in
-            mass.withUnsafeBufferPointer { massBuffer in
-                order.withUnsafeBufferPointer { orderBuffer in
-                    nodes.withUnsafeMutableBufferPointer { nodeBuffer in
-                        DispatchQueue.concurrentPerform(iterations: chunks) { block in
-                            let first = block * chunk
-                            let last = min(first + chunk, nodeCount)
-                            for index in first..<last where nodeBuffer[index].isLeaf {
-                                let start = nodeBuffer[index].particleStart
-                                let count = nodeBuffer[index].particleCount
-                                // Checked before the unchecked reads below, where a bad range
-                                // is a wild address rather than a message. This is what the
-                                // segmentation fault of 18 September looked like from the
-                                // inside, and a run that has been going for an hour deserves
-                                // to be told what went wrong with it.
-                                precondition(
-                                    start >= 0 && count >= 0 && start + count <= limit,
-                                    "noeud \(index) couvre \(start)..<\(start + count) sur \(limit) particules"
-                                )
-                                var weighted = SIMD3<Float>.zero
-                                var total: Float = 0
-                                for position in start..<(start + count) {
-                                    let particle = Int(orderBuffer[position])
-                                    let m = massBuffer.isEmpty ? 1 : massBuffer[particle]
-                                    weighted += positionBuffer[particle] * m
-                                    total += m
-                                }
-                                nodeBuffer[index].comMass = SIMD4<Float>(
-                                    weighted.x, weighted.y, weighted.z, total)
+        mass.withUnsafeBufferPointer { massBuffer in
+            order.withUnsafeBufferPointer { orderBuffer in
+                nodes.withUnsafeMutableBufferPointer { nodeBuffer in
+                    DispatchQueue.concurrentPerform(iterations: chunks) { block in
+                        let first = block * chunk
+                        let last = min(first + chunk, nodeCount)
+                        for index in first..<last where nodeBuffer[index].isLeaf {
+                            let start = nodeBuffer[index].particleStart
+                            let count = nodeBuffer[index].particleCount
+                            // Checked before the unchecked reads below, where a bad range
+                            // is a wild address rather than a message. This is what the
+                            // segmentation fault of 18 September looked like from the
+                            // inside, and a run that has been going for an hour deserves
+                            // to be told what went wrong with it.
+                            precondition(
+                                start >= 0 && count >= 0 && start + count <= limit,
+                                "noeud \(index) couvre \(start)..<\(start + count) sur \(limit) particules"
+                            )
+                            var weighted = SIMD3<Float>.zero
+                            var total: Float = 0
+                            for position in start..<(start + count) {
+                                let particle = Int(orderBuffer[position])
+                                let m = massBuffer.isEmpty ? 1 : massBuffer[particle]
+                                weighted += positionBuffer[particle] * m
+                                total += m
                             }
+                            nodeBuffer[index].comMass = SIMD4<Float>(
+                                weighted.x, weighted.y, weighted.z, total)
                         }
                     }
                 }
