@@ -728,6 +728,50 @@ struct BarnesHutTests {
         }
     }
 
+    /// A stable sort has exactly one answer, so the parallel one is checked against what defines
+    /// it: codes in order, each the code of the particle it names, every particle named once, and
+    /// equal codes in particle order. That is the serial sort's output, bit for bit.
+    @Test(arguments: ["random", "clustered", "beyond a float"])
+    func theParallelSortIsTheStableOne(set: String) {
+        var generator = SeededGenerator(seed: 11)
+        var codes: [UInt64]
+        switch set {
+        case "random":
+            codes = (0..<300_000).map { _ in generator.next() >> 1 }
+        case "clustered":
+            // Two dense clumps quantised onto the grid, so many particles share a code.
+            codes = (0..<300_000).map { index in
+                let centre: Float = index % 3 == 0 ? 600_000 : 1_400_000
+                func axis() -> UInt32 { UInt32(max(centre + generator.normal() * 2_000, 0)) }
+                return BarnesHutTree.morton(axis(), axis(), axis())
+            }
+        default:
+            codes = (0..<17_500_000).map { _ in generator.next() >> 38 }
+        }
+
+        let tree = BarnesHutTree()
+        tree.sort(codes: codes)
+        let order = tree.order
+        let sorted = tree.sortedCodes
+        #expect(order.count == codes.count && sorted.count == codes.count)
+
+        var named = [Bool](repeating: false, count: codes.count)
+        var wrong = 0
+        for position in order.indices {
+            let particle = Int(order[position])
+            if named[particle] || codes[particle] != sorted[position] { wrong += 1 }
+            named[particle] = true
+            guard position > 0 else { continue }
+            let previous = sorted[position - 1]
+            if previous > sorted[position]
+                || (previous == sorted[position] && order[position - 1] > order[position])
+            {
+                wrong += 1
+            }
+        }
+        #expect(wrong == 0)
+    }
+
     @Test func allBarnesHutShadersCompile() throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let library = try device.makeLibrary(source: BarnesHutShaders.source, options: nil)
