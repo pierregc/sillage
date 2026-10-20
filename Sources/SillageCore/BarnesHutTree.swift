@@ -66,7 +66,7 @@ public final class BarnesHutTree {
     private var scratch: [UInt32] = []
     private var primary: [UInt32] = []
     private var histogram: [Int] = []
-    private var sortedCodes: [UInt64] = []
+    private(set) var sortedCodes: [UInt64] = []
     private var scratchCodes: [UInt64] = []
     private var offsets = [Int](repeating: 0, count: 9)
     private var parents: [Int32] = []
@@ -156,7 +156,7 @@ public final class BarnesHutTree {
         }
 
         mark("morton")
-        order = sortedByCode(count: count)
+        sortByCode(count: count)
         mark("sort")
         buildNodes(count: count, center: center, half: half)
         mark("nodes")
@@ -171,54 +171,108 @@ public final class BarnesHutTree {
     /// beats moving four at random. The sorted codes fall out of the last pass, so the gather
     /// that used to materialise them is gone as well.
     ///
-    /// Morton codes are 63 bits, so four passes of sixteen cover them, and an even number of
-    /// passes leaves the result in the array it started in.
-    private func sortedByCode(count: Int) -> [UInt32] {
-        let radix = 16
+    /// Every pass runs on every core. Each contiguous block counts its own digits, the counts
+    /// are laid out bucket by bucket and block by block, and each block then scatters into
+    /// the slots that leaves it. A block keeps its order and blocks keep theirs, so the sort
+    /// stays stable and the result is the serial one to the bit.
+    ///
+    /// Six passes of eleven bits measured fastest, against eight of eight, four of sixteen and
+    /// three of twenty-one: 26 ms at 12.5 million codes where sixteen took 49 and twenty-one 161,
+    /// because a wide digit means a histogram per block too large to stay in cache.
+    func sort(codes: [UInt64]) {
+        sortedCodes = codes
+        sortByCode(count: codes.count)
+    }
+
+    private func sortByCode(count: Int) {
+        let radix = 11
         let buckets = 1 << radix
+        let mask = UInt64(buckets - 1)
+        let passes = (63 + radix - 1) / radix
+        // More blocks than cores, so a block left on an efficiency core does not hold up the rest.
+        let blocks = max(min(ProcessInfo.processInfo.activeProcessorCount * 4, count / 16_384), 1)
+        let blockSize = (count + blocks - 1) / blocks
         if primary.count != count { primary = [UInt32](repeating: 0, count: count) }
         if scratch.count != count { scratch = [UInt32](repeating: 0, count: count) }
         if scratchCodes.count != count { scratchCodes = [UInt64](repeating: 0, count: count) }
-        if histogram.count != buckets { histogram = [Int](repeating: 0, count: buckets) }
-
-        primary.withUnsafeMutableBufferPointer { buffer in
-            for index in 0..<count { buffer[index] = UInt32(index) }
+        if histogram.count != blocks * buckets {
+            histogram = [Int](repeating: 0, count: blocks * buckets)
         }
 
-        let mask = UInt64(buckets - 1)
-        for pass in 0..<4 {
+        primary.withUnsafeMutableBufferPointer { buffer in
+            DispatchQueue.concurrentPerform(iterations: blocks) { block in
+                for index in block * blockSize..<min((block + 1) * blockSize, count) {
+                    buffer[index] = UInt32(index)
+                }
+            }
+        }
+
+        for pass in 0..<passes {
             let shift = UInt64(pass * radix)
+            var moves = true
             sortedCodes.withUnsafeMutableBufferPointer { sourceKey in
                 scratchCodes.withUnsafeMutableBufferPointer { targetKey in
                     primary.withUnsafeMutableBufferPointer { source in
                         scratch.withUnsafeMutableBufferPointer { target in
                             histogram.withUnsafeMutableBufferPointer { counts in
-                                for bucket in 0..<buckets { counts[bucket] = 0 }
-                                for position in 0..<count {
-                                    counts[Int((sourceKey[position] >> shift) & mask)] += 1
+                                DispatchQueue.concurrentPerform(iterations: blocks) { block in
+                                    let base = block * buckets
+                                    for bucket in 0..<buckets { counts[base + bucket] = 0 }
+                                    for position in block * blockSize..<min((block + 1) * blockSize, count) {
+                                        counts[base + Int((sourceKey[position] >> shift) & mask)] += 1
+                                    }
                                 }
-                                var running = 0
-                                for bucket in 0..<buckets {
-                                    let value = counts[bucket]
-                                    counts[bucket] = running
-                                    running += value
+                                // Walked row by row: down the columns it misses the cache on every read.
+                                var starts = [Int](repeating: 0, count: buckets)
+                                starts.withUnsafeMutableBufferPointer { starts in
+                                    for block in 0..<blocks {
+                                        for bucket in 0..<buckets {
+                                            starts[bucket] += counts[block * buckets + bucket]
+                                        }
+                                    }
+                                    // Every code shares this digit, so the pass would move nothing.
+                                    if starts.contains(count) {
+                                        moves = false
+                                        return
+                                    }
+                                    var running = 0
+                                    for bucket in 0..<buckets {
+                                        let total = starts[bucket]
+                                        starts[bucket] = running
+                                        running += total
+                                    }
+                                    for block in 0..<blocks {
+                                        for bucket in 0..<buckets {
+                                            let value = counts[block * buckets + bucket]
+                                            counts[block * buckets + bucket] = starts[bucket]
+                                            starts[bucket] += value
+                                        }
+                                    }
                                 }
-                                for position in 0..<count {
-                                    let key = sourceKey[position]
-                                    let slot = counts[Int((key >> shift) & mask)]
-                                    targetKey[slot] = key
-                                    target[slot] = source[position]
-                                    counts[Int((key >> shift) & mask)] = slot + 1
+                                guard moves else { return }
+                                DispatchQueue.concurrentPerform(iterations: blocks) { block in
+                                    let base = block * buckets
+                                    for position in block * blockSize..<min((block + 1) * blockSize, count) {
+                                        let key = sourceKey[position]
+                                        let bucket = base + Int((key >> shift) & mask)
+                                        let slot = counts[bucket]
+                                        targetKey[slot] = key
+                                        target[slot] = source[position]
+                                        counts[bucket] = slot + 1
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-            swap(&primary, &scratch)
-            swap(&sortedCodes, &scratchCodes)
+            if moves {
+                swap(&primary, &scratch)
+                swap(&sortedCodes, &scratchCodes)
+            }
         }
-        return primary
+        // Swapped rather than assigned: sharing the buffer made the next build copy it.
+        swap(&order, &primary)
     }
 
     private struct Work {
