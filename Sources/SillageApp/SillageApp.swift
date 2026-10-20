@@ -31,6 +31,9 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--replayswitch") {
             MainActor.assumeIsolated { ReplaySwitchCheck.run() }
         }
+        if CommandLine.arguments.contains("--baseline") {
+            MainActor.assumeIsolated { BaselineCheck.run() }
+        }
         if CommandLine.arguments.contains("--flicker") {
             MainActor.assumeIsolated { FlickerCheck.run() }
         }

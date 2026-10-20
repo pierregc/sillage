@@ -71,6 +71,13 @@ public final class MetalBarnesHutSolver: Solver {
     /// The tree alone, without the centre and disk-state passes that follow it.
     public private(set) var lastTreeOnlyMilliseconds = 0.0
     public private(set) var lastForceMilliseconds = 0.0
+    /// Times every phase of a step into `takeProfile()`, and submits each GPU pass on its own
+    /// so the GPU clock can say what each one cost.
+    public var profiling = false
+    private let profiler = StepProfiler()
+
+    /// What the steps since the last call cost, phase by phase.
+    public func takeProfile() -> StepProfile { profiler.take() }
     public var nodeCount: Int { nodeCounts[live] }
 
     private let queue: MTLCommandQueue
@@ -293,11 +300,12 @@ public final class MetalBarnesHutSolver: Solver {
             // Two submissions rather than five. The tree is built on the CPU from the drifted
             // positions, so the drift has to have landed before it runs; everything after it
             // goes in one buffer, where the encoders are ordered against each other anyway.
+            let stepClock = Date()
             var clock = Date()
             // Adopt the tree built alongside the last force pass. It was built from exactly
             // the positions the particles are standing on right now, before this step's drift
             // moves them, and that is what star formation below needs.
-            joinTree()
+            timed("tree wait") { joinTree() }
             // Star formation goes first, before the drift, and that is not a detail.
             //
             // It reads a velocity *gradient* across a single leaf — sixteen particles — and
@@ -307,7 +315,10 @@ public final class MetalBarnesHutSolver: Solver {
             // 213, 261, 536, 199, 456, 727 to 107, 84, 110, 68, 46, 42. Here the tree was
             // built from exactly these positions, so it costs nothing and matches exactly.
             // The force pass is not sensitive that way, which is why it can have the stale one.
-            if let opening = queue.makeCommandBuffer() {
+            if profiling {
+                profiledPass("star formation") { encodeStarFormation(into: $0) }
+                profiledPass("drift") { encodeIntegrate(into: $0) }
+            } else if let opening = queue.makeCommandBuffer() {
                 encodeStarFormation(into: opening)
                 encodeIntegrate(into: opening)
                 submit(opening)
@@ -317,10 +328,14 @@ public final class MetalBarnesHutSolver: Solver {
             // Everything between here and the submit below is what cannot overlap: the centre
             // and disk-state passes read velocities, and the kick is about to write them.
             if stepsSinceTree <= 0 {
-                snapshotPositions()
-                updateHaloCenters(positions: scratchPositions, mass: particleMass)
+                timed("snapshot") { snapshotPositions() }
+                timed("halo centres") {
+                    updateHaloCenters(positions: scratchPositions, mass: particleMass)
+                }
                 if dissipate != nil {
-                    updateDiskFrames(positions: scratchPositions, mass: particleMass)
+                    timed("disk frames") {
+                        updateDiskFrames(positions: scratchPositions, mass: particleMass)
+                    }
                 }
                 startTree()
                 if !Self.overlapTree { joinTree() }
@@ -328,7 +343,13 @@ public final class MetalBarnesHutSolver: Solver {
             }
             stepsSinceTree -= 1
             lastTreeMilliseconds = Date().timeIntervalSince(clock) * 1000
-            if let forces = queue.makeCommandBuffer() {
+            if profiling {
+                let clock = Date()
+                profiledPass("force") { encodeAccelerations(into: $0) }
+                profiledPass("kick") { encodeKick(into: $0) }
+                profiledPass("dissipation") { encodeShedRandomMotion(into: $0) }
+                lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
+            } else if let forces = queue.makeCommandBuffer() {
                 encodeAccelerations(into: forces)
                 encodeKick(into: forces)
                 encodeShedRandomMotion(into: forces)
@@ -337,6 +358,13 @@ public final class MetalBarnesHutSolver: Solver {
                 lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
             }
             time += scene.timeStep
+            if profiling {
+                let spent = Date().timeIntervalSince(stepClock) * 1000
+                profiler.update {
+                    $0.steps += 1
+                    $0.add("step", spent)
+                }
+            }
         }
     }
 
@@ -489,6 +517,22 @@ public final class MetalBarnesHutSolver: Solver {
         submit(buffer)
     }
 
+    private func timed(_ phase: String, _ work: () -> Void) {
+        guard profiling else { return work() }
+        let clock = Date()
+        work()
+        let spent = Date().timeIntervalSince(clock) * 1000
+        profiler.update { $0.add(phase, spent) }
+    }
+
+    private func profiledPass(_ phase: String, _ encodePass: (MTLCommandBuffer) -> Void) {
+        guard let buffer = queue.makeCommandBuffer() else { return }
+        encodePass(buffer)
+        submit(buffer)
+        let spent = max(buffer.gpuEndTime - buffer.gpuStartTime, 0) * 1000
+        profiler.update { $0.add(phase, spent) }
+    }
+
     private func submit(_ buffer: MTLCommandBuffer) {
         let clock = Date()
         buffer.commit()
@@ -619,6 +663,14 @@ public final class MetalBarnesHutSolver: Solver {
         treeGroup.wait()
         buildInFlight = false
         live = 1 - live
+        guard profiling else { return }
+        let phases = tree.phaseMilliseconds
+        let upload = lastBuildMilliseconds - lastTreeOnlyMilliseconds
+        profiler.update {
+            $0.treeBuilds += 1
+            for (phase, spent) in phases { $0.add(phase, spent) }
+            $0.add("upload", upload)
+        }
     }
 
     /// The synchronous form, for the one build that has nothing to overlap with: the seed in

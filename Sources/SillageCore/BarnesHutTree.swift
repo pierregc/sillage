@@ -102,6 +102,12 @@ public final class BarnesHutTree {
     }
 
     public func build(positions: [SIMD3<Float>], mass: [Float]) {
+        // Started before the bounds pass, which used to go untimed and always read zero.
+        var clock = Date()
+        func mark(_ name: String) {
+            phaseMilliseconds[name] = Date().timeIntervalSince(clock) * 1000
+            clock = Date()
+        }
         let count = positions.count
         nodes.removeAll(keepingCapacity: true)
         parents.removeAll(keepingCapacity: true)
@@ -125,11 +131,6 @@ public final class BarnesHutTree {
         let center = (lower + upper) * 0.5
         let half = max((upper - lower).max() * 0.5, 1e-3) * 1.001
 
-        var clock = Date()
-        func mark(_ name: String) {
-            phaseMilliseconds[name] = Date().timeIntervalSince(clock) * 1000
-            clock = Date()
-        }
         mark("bounds")
 
         if sortedCodes.count != count { sortedCodes = [UInt64](repeating: 0, count: count) }
