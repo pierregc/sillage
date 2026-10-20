@@ -68,8 +68,14 @@ public final class BarnesHutTree {
     private var histogram: [Int] = []
     private(set) var sortedCodes: [UInt64] = []
     private var scratchCodes: [UInt64] = []
-    private var offsets = [Int](repeating: 0, count: 9)
-    private var parents: [Int32] = []
+    private var spareNodes: [BHNode] = []
+    private var top: [BHNode] = []
+    private var topIndices: [Int] = []
+    private var subtrees: [Subtree] = []
+    private var schedule: [Int] = []
+    private var blocks: [[BHNode]] = []
+    /// How small a cell has to be to go to a core of its own. Tests lower it.
+    var subtreeParticles: Int?
 
     /// Twenty-one bits an axis is what a sixty-four bit code holds, so the tree can go
     /// twenty-one levels deep. Ten was the old ceiling, and an evolving collision hit it
@@ -109,9 +115,8 @@ public final class BarnesHutTree {
             clock = Date()
         }
         let count = positions.count
-        nodes.removeAll(keepingCapacity: true)
-        parents.removeAll(keepingCapacity: true)
         guard count > 0 else {
+            nodes.removeAll(keepingCapacity: true)
             order = []
             return
         }
@@ -123,6 +128,7 @@ public final class BarnesHutTree {
             upper = simd_max(upper, position)
         }
         guard lower.x <= upper.x else {
+            nodes.removeAll(keepingCapacity: true)
             order = []
             return
         }
@@ -158,7 +164,7 @@ public final class BarnesHutTree {
         mark("morton")
         sortByCode(count: count)
         mark("sort")
-        buildNodes(count: count, center: center, half: half)
+        buildNodes(count: count, half: half)
         mark("nodes")
         accumulate(positions: positions, mass: mass)
         mark("accumulate")
@@ -279,97 +285,228 @@ public final class BarnesHutTree {
         var start: Int
         var count: Int
         var depth: Int
-        var center: SIMD3<Float>
         var half: Float
         var node: Int
     }
 
-    private func makeNode(half: Float, start: Int, count: Int, parent: Int32) -> Int {
+    /// A cell below the top levels, split on its own core.
+    private struct Subtree {
+        var work: Work
+        /// How many top nodes existed when the serial split would have reached it.
+        var insertion: Int
+        var base = 0
+        var size = 0
+        var rootChildren: Int32 = 0
+    }
+
+    private static func makeNode(half: Float, start: Int, count: Int) -> BHNode {
         var node = BHNode()
         let width = half * 2
         node.packed.x = width * width
         node.range = Int32(start)
         node.signedCount = Int32(clamping: -count)
-        nodes.append(node)
-        parents.append(parent)
-        return nodes.count - 1
+        return node
     }
 
-    private func buildNodes(count: Int, center: SIMD3<Float>, half: Float) {
-        nodes.reserveCapacity(count / max(leafCapacity, 1) * 2 + 16)
-        let root = makeNode(half: half, start: 0, count: count, parent: -1)
-        var stack = [Work(start: 0, count: count, depth: 0, center: center, half: half, node: root)]
-
-        while let work = stack.popLast() {
-            if work.count <= leafCapacity || work.depth >= maximumDepth { continue }
-
-            // Morton order means the eight octants are already contiguous runs. The offset
-            // table is reused: allocating one per node meant a heap allocation for every cell
-            // in the tree, which dominated the build.
-            let limit = work.start + work.count
-            for slot in 0...8 { offsets[slot] = limit }
-            offsets[0] = work.start
+    /// Where each octant of a cell starts. Morton order makes them contiguous runs, so a large
+    /// cell is bisected rather than read code by code: the top levels would otherwise read the
+    /// whole array once per level, on one core.
+    private static func octants(
+        _ keys: UnsafeBufferPointer<UInt64>, _ work: Work, _ offsets: UnsafeMutablePointer<Int>
+    ) {
+        let limit = work.start + work.count
+        let shift = UInt64(60 - 3 * work.depth)
+        offsets[0] = work.start
+        offsets[8] = limit
+        if work.count <= 64 {
             var digit = 0
-            let shift = UInt64(60 - 3 * work.depth)
-            sortedCodes.withUnsafeBufferPointer { keys in
-                for position in work.start..<limit {
-                    let value = Int((keys[position] >> shift) & 7)
-                    while digit < value {
-                        digit += 1
-                        offsets[digit] = position
-                    }
+            for position in work.start..<limit {
+                let value = Int((keys[position] >> shift) & 7)
+                while digit < value {
+                    digit += 1
+                    offsets[digit] = position
                 }
             }
-            while digit < 8 {
+            while digit < 7 {
                 digit += 1
                 offsets[digit] = limit
             }
-
-            let childHalf = work.half * 0.5
-            var firstChild = -1
-            var childCount: Int32 = 0
-            for octant in 0..<8 {
-                let start = offsets[octant]
-                let size = offsets[octant + 1] - start
-                if size <= 0 { continue }
-                let sign = SIMD3<Float>(
-                    (octant & 4) != 0 ? 1 : -1,
-                    (octant & 2) != 0 ? 1 : -1,
-                    (octant & 1) != 0 ? 1 : -1)
-                let childCenter = work.center + sign * childHalf
-                let index = makeNode(
-                    half: childHalf, start: start, count: size, parent: Int32(work.node))
-                if firstChild < 0 { firstChild = index }
-                childCount += 1
-                stack.append(
-                    Work(
-                        start: start, count: size, depth: work.depth + 1, center: childCenter,
-                        half: childHalf, node: index))
+            return
+        }
+        var low = work.start
+        for digit in 1..<8 {
+            var high = limit
+            while low < high {
+                let middle = (low + high) / 2
+                if Int((keys[middle] >> shift) & 7) < digit { low = middle + 1 } else { high = middle }
             }
-            nodes[work.node].range = Int32(firstChild)
-            nodes[work.node].signedCount = childCount
+            offsets[digit] = low
         }
     }
 
-    /// Leaves sum their own particles, then every node folds into its parent. Children are
-    /// always created after their parent, so one reverse pass is enough.
-    private func accumulate(positions: [SIMD3<Float>], mass: [Float]) {
-        // The zeroing pass walks every node anyway, so the ranges are checked here rather
-        // than in the parallel loop below, where the subscripts are unchecked in a release
-        // build and a bad one is a wild address instead of a message. This is what the
-        // segmentation fault of 18 September looked like from the inside, and a run that has
-        // been going for an hour deserves to be told what went wrong with it.
-        let limit = order.count
-        for index in nodes.indices {
-            nodes[index].comMass = .zero
-            guard nodes[index].isLeaf else { continue }
-            let start = nodes[index].particleStart
-            let count = nodes[index].particleCount
-            precondition(
-                start >= 0 && count >= 0 && start + count <= limit,
-                "noeud \(index) couvre \(start)..<\(start + count) sur \(limit) particules")
+    /// The serial split. Children are appended in octant order and the last one is split first,
+    /// which is the order the whole layout follows from. A cell of at most `divert` particles is
+    /// handed on instead, with the number of nodes there were when it was reached. A root with a
+    /// negative index is not in `out`, and its child count is returned instead.
+    private static func split(
+        _ root: Work, keys: UnsafeBufferPointer<UInt64>, leafCapacity: Int, maximumDepth: Int,
+        divert: Int, into out: inout [BHNode], diverted: (Work, Int) -> Void
+    ) -> Int32 {
+        var rootChildren: Int32 = 0
+        var stack = [root]
+        withUnsafeTemporaryAllocation(of: Int.self, capacity: 9) { offsets in
+            let offsets = offsets.baseAddress!
+            while let work = stack.popLast() {
+                if work.count <= leafCapacity || work.depth >= maximumDepth { continue }
+                if work.count <= divert {
+                    diverted(work, out.count)
+                    continue
+                }
+                octants(keys, work, offsets)
+                let childHalf = work.half * 0.5
+                let first = out.count
+                for octant in 0..<8 {
+                    let start = offsets[octant]
+                    let size = offsets[octant + 1] - start
+                    if size <= 0 { continue }
+                    out.append(makeNode(half: childHalf, start: start, count: size))
+                    stack.append(
+                        Work(
+                            start: start, count: size, depth: work.depth + 1, half: childHalf,
+                            node: out.count - 1))
+                }
+                let children = Int32(out.count - first)
+                if work.node < 0 {
+                    rootChildren = children
+                } else {
+                    out[work.node].range = Int32(first)
+                    out[work.node].signedCount = children
+                }
+            }
+        }
+        return rootChildren
+    }
+
+    /// The top levels are split serially until every cell left is small, each of those is split
+    /// on its own core, and the pieces are then laid out exactly where the serial split would
+    /// have put them. That one's order is a depth first walk that appends a cell's children when
+    /// it reaches the cell, so everything below a cell lands in one contiguous run, right after
+    /// the nodes that existed when it was reached. Only the run's position depends on the rest
+    /// of the tree, so the node array is the serial one to the bit.
+    private func buildNodes(count: Int, half: Float) {
+        let leafCapacity = self.leafCapacity
+        let maximumDepth = self.maximumDepth
+        // Several cells a core, so one left on an efficiency core does not hold up the rest.
+        let divert =
+            subtreeParticles ?? max(count / (ProcessInfo.processInfo.activeProcessorCount * 8), 4096)
+        top.removeAll(keepingCapacity: true)
+        subtrees.removeAll(keepingCapacity: true)
+        top.append(Self.makeNode(half: half, start: 0, count: count))
+        sortedCodes.withUnsafeBufferPointer { keys in
+            _ = Self.split(
+                Work(start: 0, count: count, depth: 0, half: half, node: 0), keys: keys,
+                leafCapacity: leafCapacity, maximumDepth: maximumDepth, divert: divert, into: &top
+            ) { work, insertion in
+                subtrees.append(Subtree(work: work, insertion: insertion))
+            }
         }
 
+        // Largest first, so the long ones start early and the short ones fill in behind.
+        schedule = subtrees.indices.sorted { subtrees[$0].work.count > subtrees[$1].work.count }
+        while blocks.count < subtrees.count { blocks.append([]) }
+        sortedCodes.withUnsafeBufferPointer { keys in
+            subtrees.withUnsafeMutableBufferPointer { subtrees in
+                blocks.withUnsafeMutableBufferPointer { blocks in
+                    schedule.withUnsafeBufferPointer { schedule in
+                        DispatchQueue.concurrentPerform(iterations: schedule.count) { turn in
+                            let index = schedule[turn]
+                            var work = subtrees[index].work
+                            work.node = -1
+                            blocks[index].removeAll(keepingCapacity: true)
+                            subtrees[index].rootChildren = Self.split(
+                                work, keys: keys, leafCapacity: leafCapacity,
+                                maximumDepth: maximumDepth, divert: 0, into: &blocks[index]
+                            ) { _, _ in }
+                            subtrees[index].size = blocks[index].count
+                        }
+                    }
+                }
+            }
+        }
+
+        topIndices.removeAll(keepingCapacity: true)
+        var inserted = 0
+        var next = 0
+        for index in top.indices {
+            while next < subtrees.count && subtrees[next].insertion <= index {
+                subtrees[next].base = subtrees[next].insertion + inserted
+                inserted += subtrees[next].size
+                next += 1
+            }
+            topIndices.append(index + inserted)
+        }
+        while next < subtrees.count {
+            subtrees[next].base = subtrees[next].insertion + inserted
+            inserted += subtrees[next].size
+            next += 1
+        }
+
+        let total = top.count + inserted
+        if spareNodes.count > total {
+            spareNodes.removeLast(spareNodes.count - total)
+        } else if spareNodes.count < total {
+            spareNodes.append(contentsOf: repeatElement(BHNode(), count: total - spareNodes.count))
+        }
+        spareNodes.withUnsafeMutableBufferPointer { target in
+            for index in top.indices {
+                var node = top[index]
+                if !node.isLeaf { node.range = Int32(topIndices[node.childOffset]) }
+                target[topIndices[index]] = node
+            }
+            for subtree in subtrees {
+                let root = topIndices[subtree.work.node]
+                target[root].range = Int32(subtree.base)
+                target[root].signedCount = subtree.rootChildren
+            }
+            let target = target
+            subtrees.withUnsafeBufferPointer { subtrees in
+                blocks.withUnsafeBufferPointer { blocks in
+                    DispatchQueue.concurrentPerform(iterations: subtrees.count) { index in
+                        let base = subtrees[index].base
+                        let offset = Int32(base)
+                        blocks[index].withUnsafeBufferPointer { block in
+                            for position in block.indices {
+                                var node = block[position]
+                                if !node.isLeaf { node.range += offset }
+                                target[base + position] = node
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Swapped rather than assigned, for the reason `order` is.
+        swap(&nodes, &spareNodes)
+    }
+
+    /// A node holds the sum of its children taken last to first, which is the order the serial
+    /// fold added them in, so the sums do not depend on how the work was shared out.
+    private static func fold(_ nodes: UnsafeMutableBufferPointer<BHNode>, _ index: Int) {
+        let node = nodes[index]
+        guard !node.isLeaf else { return }
+        var sum = SIMD4<Float>.zero
+        for child in stride(
+            from: node.childOffset + node.childCount - 1, through: node.childOffset, by: -1)
+        {
+            sum += nodes[child].comMass
+        }
+        nodes[index].comMass = sum
+    }
+
+    /// Leaves sum their own particles, each subtree folds itself on its own core, children
+    /// before parents since they always come after them, and the top levels fold last.
+    private func accumulate(positions: [SIMD3<Float>], mass: [Float]) {
+        let limit = order.count
         let nodeCount = nodes.count
         let chunk = max(nodeCount / (ProcessInfo.processInfo.activeProcessorCount * 4), 1024)
         let chunks = (nodeCount + chunk - 1) / chunk
@@ -383,6 +520,15 @@ public final class BarnesHutTree {
                             for index in first..<last where nodeBuffer[index].isLeaf {
                                 let start = nodeBuffer[index].particleStart
                                 let count = nodeBuffer[index].particleCount
+                                // Checked before the unchecked reads below, where a bad range
+                                // is a wild address rather than a message. This is what the
+                                // segmentation fault of 18 September looked like from the
+                                // inside, and a run that has been going for an hour deserves
+                                // to be told what went wrong with it.
+                                precondition(
+                                    start >= 0 && count >= 0 && start + count <= limit,
+                                    "noeud \(index) couvre \(start)..<\(start + count) sur \(limit) particules"
+                                )
                                 var weighted = SIMD3<Float>.zero
                                 var total: Float = 0
                                 for position in start..<(start + count) {
@@ -400,19 +546,31 @@ public final class BarnesHutTree {
             }
         }
 
-        for index in stride(from: nodes.count - 1, through: 1, by: -1) {
-            let parent = Int(parents[index])
-            guard parent >= 0 else { continue }
-            nodes[parent].comMass += nodes[index].comMass
-        }
+        nodes.withUnsafeMutableBufferPointer { nodeBuffer in
+            subtrees.withUnsafeBufferPointer { subtrees in
+                schedule.withUnsafeBufferPointer { schedule in
+                    DispatchQueue.concurrentPerform(iterations: schedule.count) { turn in
+                        let subtree = subtrees[schedule[turn]]
+                        for index in stride(
+                            from: subtree.base + subtree.size - 1, through: subtree.base, by: -1)
+                        {
+                            Self.fold(nodeBuffer, index)
+                        }
+                    }
+                }
+            }
+            for index in topIndices.reversed() { Self.fold(nodeBuffer, index) }
 
-        for index in nodes.indices {
-            let total = nodes[index].comMass.w
-            if total > 0 {
-                let inverse = 1 / total
-                nodes[index].comMass.x *= inverse
-                nodes[index].comMass.y *= inverse
-                nodes[index].comMass.z *= inverse
+            DispatchQueue.concurrentPerform(iterations: chunks) { block in
+                for index in block * chunk..<min((block + 1) * chunk, nodeCount) {
+                    let total = nodeBuffer[index].comMass.w
+                    if total > 0 {
+                        let inverse = 1 / total
+                        nodeBuffer[index].comMass.x *= inverse
+                        nodeBuffer[index].comMass.y *= inverse
+                        nodeBuffer[index].comMass.z *= inverse
+                    }
+                }
             }
         }
     }

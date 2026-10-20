@@ -772,6 +772,121 @@ struct BarnesHutTests {
         #expect(wrong == 0)
     }
 
+    /// The serial split and fold the parallel ones replaced, kept as the definition of the tree.
+    private func serialNodes(
+        _ tree: BarnesHutTree, positions: [SIMD3<Float>], mass: [Float]
+    ) -> [BHNode] {
+        var lower = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
+        var upper = -lower
+        for position in positions {
+            lower = simd_min(lower, position)
+            upper = simd_max(upper, position)
+        }
+        let half = max((upper - lower).max() * 0.5, 1e-3) * 1.001
+        let codes = tree.sortedCodes
+        var nodes: [BHNode] = []
+        var parents: [Int] = []
+        func make(_ half: Float, _ start: Int, _ count: Int, _ parent: Int) -> Int {
+            var node = BHNode()
+            node.packed.x = (half * 2) * (half * 2)
+            node.range = Int32(start)
+            node.signedCount = Int32(-count)
+            nodes.append(node)
+            parents.append(parent)
+            return nodes.count - 1
+        }
+        var stack = [
+            (start: 0, count: codes.count, depth: 0, half: half, node: make(half, 0, codes.count, -1))
+        ]
+        while let work = stack.popLast() {
+            if work.count <= tree.leafCapacity || work.depth >= tree.maximumDepth { continue }
+            let limit = work.start + work.count
+            var offsets = [Int](repeating: limit, count: 9)
+            offsets[0] = work.start
+            var digit = 0
+            for position in work.start..<limit {
+                let value = BarnesHutTree.octant(codes[position], depth: work.depth)
+                while digit < value {
+                    digit += 1
+                    offsets[digit] = position
+                }
+            }
+            var first = -1
+            var children: Int32 = 0
+            for octant in 0..<8 where offsets[octant + 1] > offsets[octant] {
+                let size = offsets[octant + 1] - offsets[octant]
+                let index = make(work.half * 0.5, offsets[octant], size, work.node)
+                if first < 0 { first = index }
+                children += 1
+                stack.append((offsets[octant], size, work.depth + 1, work.half * 0.5, index))
+            }
+            nodes[work.node].range = Int32(first)
+            nodes[work.node].signedCount = children
+        }
+        for index in nodes.indices where nodes[index].isLeaf {
+            var sum = SIMD4<Float>.zero
+            var weighted = SIMD3<Float>.zero
+            for position in nodes[index]
+                .particleStart..<(nodes[index].particleStart + nodes[index].particleCount)
+            {
+                let particle = Int(tree.order[position])
+                weighted += positions[particle] * mass[particle]
+                sum.w += mass[particle]
+            }
+            nodes[index].comMass = SIMD4<Float>(weighted.x, weighted.y, weighted.z, sum.w)
+        }
+        for index in stride(from: nodes.count - 1, through: 1, by: -1) {
+            nodes[parents[index]].comMass += nodes[index].comMass
+        }
+        for index in nodes.indices where nodes[index].comMass.w > 0 {
+            let inverse = 1 / nodes[index].comMass.w
+            nodes[index].comMass.x *= inverse
+            nodes[index].comMass.y *= inverse
+            nodes[index].comMass.z *= inverse
+        }
+        return nodes
+    }
+
+    /// However the top levels are cut into subtrees, the node array has to come out the serial
+    /// one to the bit: the force shader reads its layout, and the sums depend on their order.
+    @Test(arguments: ["disk", "merged core"])
+    func theParallelSplitIsTheSerialOne(set: String) {
+        var generator = SeededGenerator(seed: 5)
+        let sample = cluster(count: 200_000, seed: 5)
+        var positions = sample.positions
+        let mass = sample.mass
+        if set == "merged core" {
+            // A tight core under a wide envelope, so cells reach the depth ceiling still full.
+            positions = positions.indices.map { index in
+                let direction = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
+                return direction * (index % 10 == 0 ? 400 : 0.002)
+            }
+        }
+        for subtreeParticles in [nil, 1, 64, 5_000, Int.max] {
+            let tree = BarnesHutTree()
+            tree.subtreeParticles = subtreeParticles
+            tree.build(positions: positions, mass: mass)
+            let reference = serialNodes(tree, positions: positions, mass: mass)
+            #expect(tree.nodes.count == reference.count)
+            var different = 0
+            for (node, expected) in zip(tree.nodes, reference) {
+                let bits = { (value: SIMD4<Float>) in (0..<4).map { value[$0].bitPattern } }
+                if bits(node.comMass) != bits(expected.comMass) || bits(node.packed) != bits(expected.packed)
+                {
+                    different += 1
+                }
+            }
+            #expect(different == 0, "\(set), subtrees of \(subtreeParticles ?? -1)")
+        }
+        if set == "merged core" {
+            let tree = BarnesHutTree()
+            tree.build(positions: positions, mass: mass)
+            #expect(
+                tree.nodes.contains { $0.particleCount > tree.leafCapacity },
+                "sinon le plafond n'est pas atteint")
+        }
+    }
+
     @Test func allBarnesHutShadersCompile() throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let library = try device.makeLibrary(source: BarnesHutShaders.source, options: nil)
