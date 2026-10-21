@@ -99,6 +99,91 @@ struct BarnesHutTests {
         #expect(worst < 0.15)
     }
 
+    /// The root folds every level, so it checks the shift as much as the leaves check the sums.
+    @Test func quadrupolesAreTheSecondMomentAboutEachCentre() {
+        let (positions, mass) = cluster(count: 5_000)
+        let tree = BarnesHutTree()
+        tree.computesQuadrupoles = true
+        tree.build(positions: positions, mass: mass)
+        #expect(tree.quadrupoles.count == tree.nodes.count * 2)
+
+        func moments(_ members: [Int], about centre: SIMD4<Float>) -> [Double] {
+            var sums = [Double](repeating: 0, count: 6)
+            let c = SIMD3<Double>(Double(centre.x), Double(centre.y), Double(centre.z))
+            for particle in members {
+                let d = SIMD3<Double>(positions[particle]) - c
+                let m = Double(mass[particle])
+                sums[0] += m * d.x * d.x
+                sums[1] += m * d.y * d.y
+                sums[2] += m * d.z * d.z
+                sums[3] += m * d.x * d.y
+                sums[4] += m * d.x * d.z
+                sums[5] += m * d.y * d.z
+            }
+            return sums
+        }
+        func stored(_ index: Int) -> [Double] {
+            let a = tree.quadrupoles[2 * index]
+            let b = tree.quadrupoles[2 * index + 1]
+            return [a.x, a.y, a.z, a.w, b.x, b.y].map(Double.init)
+        }
+        func worst(_ index: Int, _ members: [Int]) -> Double {
+            let reference = moments(members, about: tree.nodes[index].comMass)
+            let scale = max(reference[0] + reference[1] + reference[2], 1e-30)
+            return zip(stored(index), reference).map { abs($0 - $1) / scale }.max() ?? 0
+        }
+
+        #expect(worst(0, Array(positions.indices)) < 1e-4)
+        var leaves = 0
+        for index in tree.nodes.indices where tree.nodes[index].isLeaf {
+            let node = tree.nodes[index]
+            guard node.particleCount > 1 else { continue }
+            let members = (node.particleStart..<(node.particleStart + node.particleCount)).map {
+                Int(tree.order[$0])
+            }
+            #expect(worst(index, members) < 1e-3)
+            leaves += 1
+        }
+        #expect(leaves > 100)
+    }
+
+    /// What the quadrupole is for: at the same opening angle, a fraction of the monopole's error.
+    @Test func theQuadrupoleCutsTheErrorAtTheSameAngle() throws {
+        let count = 3_000
+        let (positions, mass) = cluster(count: count, seed: 5)
+        var particles = ParticleSystem(capacity: count)
+        for index in 0..<count {
+            particles.append(
+                position: positions[index], velocity: .zero, galaxy: 0, radius: 1,
+                mass: mass[index])
+        }
+        let scene = SceneConfig(
+            name: "cluster",
+            galaxies: [
+                GalaxyConfig(
+                    name: "cluster", particleCount: count,
+                    potential: GalaxyPotential(profile: .plummer, mass: 10, scaleRadius: 3),
+                    diskScaleLength: 3, diskMassFraction: 1)
+            ],
+            solver: .barnesHut, openingAngle: 0.7, softening: 0.25)
+        func meanError(quadrupole: Bool) throws -> Float {
+            let solver = try MetalBarnesHutSolver(
+                scene: scene, particles: particles, quadrupole: quadrupole)
+            let computed = solver.accelerations
+            var total: Float = 0
+            var samples = 0
+            for index in stride(from: 0, to: count, by: 29) {
+                let reference = BarnesHutTree.directAcceleration(
+                    at: positions[index], positions: positions, mass: mass, softening: 0.25,
+                    skipping: index)
+                total += simd_length(computed[index] - reference) / max(simd_length(reference), 1e-6)
+                samples += 1
+            }
+            return total / Float(samples)
+        }
+        #expect(try meanError(quadrupole: true) < meanError(quadrupole: false) / 2)
+    }
+
     @Test func tighterOpeningAngleReducesError() throws {
         let count = 2_000
         let (positions, mass) = cluster(count: count, seed: 9)

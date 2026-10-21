@@ -27,22 +27,24 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     public var timeStep: Float
     /// Softening applied to the galaxy-galaxy pair force, in kpc.
     public var centerSoftening: Float
-    /// Barnes-Hut opening angle. Smaller is more accurate and slower, and the trade is far
-    /// steeper than it looks. Measured at 400 000 particles, against direct summation:
+    /// Barnes-Hut opening angle. Smaller is more accurate and slower. An accepted cell adds its
+    /// quadrupole to its monopole, which makes 0.9 as accurate as the monopole alone was at
+    /// 0.7 (#37). Mean force error against direct summation at a million simulated particles,
+    /// and the force pass of `--baseline` at five million visible:
     ///
-    ///     theta   mean force error   force pass   whole step   momentum drift
-    ///     0.6            0.60 %         42.7 ms      67.0 ms       0.1376
-    ///     0.7            0.78 %         29.7 ms      54.4 ms       0.1342
-    ///     0.85           1.27 %         18.0 ms      42.4 ms       0.3128
-    ///     1.0            1.87 %         12.9 ms      37.3 ms          —
+    ///     theta              merger t=0   disk 400 Myr   merger 360 Myr   force pass
+    ///     0.7 monopole         0.43 %        0.58 %          0.63 %         362 ms
+    ///     0.9 quadrupole       0.48 %        0.42 %          0.37 %         231 ms
     ///
-    /// 0.7 rather than the 0.6 this used to be, and not 0.85, because there is a knee between
-    /// them: momentum drift is flat to 0.7 and triples past it. That is the honest symptom of
-    /// the approximation, since a monopole force is not symmetric between a particle and the
-    /// cell standing in for its neighbours, and nothing else measured here shows it.
+    /// Momentum is the one thing it does not buy back. The monopole's error is symmetric to
+    /// leading order between a particle and the cell standing in for its neighbours, and the
+    /// quadrupole's is not, so at 0.9 total momentum drifts two to three times as fast as it
+    /// did at 0.7, about as fast as the monopole at 0.85. Over 600 Myr of a merger that is the
+    /// barycentre moving at 4 km/s, while the orbit stays closer to a run at 0.4 than the
+    /// monopole's did: 0.8 kpc off at the second passage against 1.2.
     ///
     /// Small-scale structure does not pay for a wider angle, and the reason is worth stating:
-    /// an opening angle only decides how far a cell must be before its monopole stands in for
+    /// an opening angle only decides how far a cell must be before its moments stand in for
     /// it, so it approximates the *far* field. Clumping is set by the near field, summed
     /// particle by particle inside a leaf whatever this is. The clumping measure holds flat
     /// across 0.6, 0.85 and 1.0 — unlike a stale tree, which corrupts the near grouping itself
@@ -67,7 +69,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
         seed: UInt64 = 1,
         timeStep: Float = 0.01,
         centerSoftening: Float = 0.5,
-        openingAngle: Float = 0.7,
+        openingAngle: Float = 0.9,
         softening: Float = 0.09
     ) {
         self.name = name

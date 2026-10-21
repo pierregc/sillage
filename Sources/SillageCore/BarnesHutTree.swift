@@ -59,6 +59,10 @@ public final class BarnesHutTree {
     public private(set) var nodes: [BHNode] = []
     /// Particle indices in Morton order. Leaves address particles through this.
     public private(set) var order: [UInt32] = []
+    /// Two per node when `computesQuadrupoles`: the second moment of the mass about the
+    /// node's centre of mass, as (xx, yy, zz, xy) then (xz, yz, 0, 0).
+    public private(set) var quadrupoles: [SIMD4<Float>] = []
+    public var computesQuadrupoles = false
 
     public let leafCapacity: Int
     public let maximumDepth: Int
@@ -193,6 +197,10 @@ public final class BarnesHutTree {
         mark("nodes")
         accumulate(positions: positions, mass: mass)
         mark("accumulate")
+        if computesQuadrupoles {
+            foldQuadrupoles()
+            mark("quadrupoles")
+        }
     }
 
     /// Least significant digit radix sort, over the codes themselves with the particle index
@@ -535,34 +543,61 @@ public final class BarnesHutTree {
         let nodeCount = nodes.count
         let chunk = max(nodeCount / (ProcessInfo.processInfo.activeProcessorCount * 4), 1024)
         let chunks = (nodeCount + chunk - 1) / chunk
+        let moments = computesQuadrupoles
+        if moments && quadrupoles.count != nodeCount * 2 {
+            quadrupoles = [SIMD4<Float>](repeating: .zero, count: nodeCount * 2)
+        }
         mass.withUnsafeBufferPointer { massBuffer in
             order.withUnsafeBufferPointer { orderBuffer in
                 nodes.withUnsafeMutableBufferPointer { nodeBuffer in
-                    DispatchQueue.concurrentPerform(iterations: chunks) { block in
-                        let first = block * chunk
-                        let last = min(first + chunk, nodeCount)
-                        for index in first..<last where nodeBuffer[index].isLeaf {
-                            let start = nodeBuffer[index].particleStart
-                            let count = nodeBuffer[index].particleCount
-                            // Checked before the unchecked reads below, where a bad range
-                            // is a wild address rather than a message. This is what the
-                            // segmentation fault of 18 September looked like from the
-                            // inside, and a run that has been going for an hour deserves
-                            // to be told what went wrong with it.
-                            precondition(
-                                start >= 0 && count >= 0 && start + count <= limit,
-                                "noeud \(index) couvre \(start)..<\(start + count) sur \(limit) particules"
-                            )
-                            var weighted = SIMD3<Float>.zero
-                            var total: Float = 0
-                            for position in start..<(start + count) {
-                                let particle = Int(orderBuffer[position])
-                                let m = massBuffer.isEmpty ? 1 : massBuffer[particle]
-                                weighted += positionBuffer[particle] * m
-                                total += m
+                    quadrupoles.withUnsafeMutableBufferPointer { quadrupoleBuffer in
+                        DispatchQueue.concurrentPerform(iterations: chunks) { block in
+                            let first = block * chunk
+                            let last = min(first + chunk, nodeCount)
+                            for index in first..<last where nodeBuffer[index].isLeaf {
+                                let start = nodeBuffer[index].particleStart
+                                let count = nodeBuffer[index].particleCount
+                                // Checked before the unchecked reads below, where a bad range
+                                // is a wild address rather than a message. This is what the
+                                // segmentation fault of 18 September looked like from the
+                                // inside, and a run that has been going for an hour deserves
+                                // to be told what went wrong with it.
+                                precondition(
+                                    start >= 0 && count >= 0 && start + count <= limit,
+                                    "noeud \(index) couvre \(start)..<\(start + count) sur \(limit) particules"
+                                )
+                                var weighted = SIMD3<Float>.zero
+                                var total: Float = 0
+                                // About the leaf's first particle, so the shift to the centre of mass
+                                // stays small enough for single precision.
+                                let origin = count > 0 ? positionBuffer[Int(orderBuffer[start])] : .zero
+                                var shifted = SIMD3<Float>.zero
+                                var diagonal = SIMD4<Float>.zero
+                                var cross = SIMD4<Float>.zero
+                                for position in start..<(start + count) {
+                                    let particle = Int(orderBuffer[position])
+                                    let m = massBuffer.isEmpty ? 1 : massBuffer[particle]
+                                    weighted += positionBuffer[particle] * m
+                                    total += m
+                                    if moments {
+                                        let d = positionBuffer[particle] - origin
+                                        shifted += d * m
+                                        diagonal +=
+                                            m * SIMD4<Float>(d.x * d.x, d.y * d.y, d.z * d.z, d.x * d.y)
+                                        cross += m * SIMD4<Float>(d.x * d.z, d.y * d.z, 0, 0)
+                                    }
+                                }
+                                nodeBuffer[index].comMass = SIMD4<Float>(
+                                    weighted.x, weighted.y, weighted.z, total)
+                                if moments {
+                                    let c = total > 0 ? shifted / total : .zero
+                                    quadrupoleBuffer[2 * index] =
+                                        diagonal - total
+                                        * SIMD4<Float>(c.x * c.x, c.y * c.y, c.z * c.z, c.x * c.y)
+                                    quadrupoleBuffer[2 * index + 1] =
+                                        cross - total * SIMD4<Float>(c.x * c.z, c.y * c.z, 0, 0)
+                                }
                             }
-                            nodeBuffer[index].comMass = SIMD4<Float>(
-                                weighted.x, weighted.y, weighted.z, total)
                         }
                     }
                 }
@@ -594,6 +629,50 @@ public final class BarnesHutTree {
                         nodeBuffer[index].comMass.z *= inverse
                     }
                 }
+            }
+        }
+    }
+
+    private static func foldQuadrupole(
+        _ nodes: UnsafeMutableBufferPointer<BHNode>,
+        _ moments: UnsafeMutableBufferPointer<SIMD4<Float>>, _ index: Int
+    ) {
+        let node = nodes[index]
+        guard !node.isLeaf else { return }
+        let centre = SIMD3<Float>(node.comMass.x, node.comMass.y, node.comMass.z)
+        var diagonal = SIMD4<Float>.zero
+        var cross = SIMD4<Float>.zero
+        for child in stride(
+            from: node.childOffset + node.childCount - 1, through: node.childOffset, by: -1)
+        {
+            let m = nodes[child].comMass.w
+            let d =
+                SIMD3<Float>(nodes[child].comMass.x, nodes[child].comMass.y, nodes[child].comMass.z) - centre
+            diagonal += moments[2 * child] + m * SIMD4<Float>(d.x * d.x, d.y * d.y, d.z * d.z, d.x * d.y)
+            cross += moments[2 * child + 1] + m * SIMD4<Float>(d.x * d.z, d.y * d.z, 0, 0)
+        }
+        moments[2 * index] = diagonal
+        moments[2 * index + 1] = cross
+    }
+
+    /// A branch shifts each child's moment to its own centre rather than subtracting M c c from
+    /// a raw sum, which cancels away in single precision. Needs the centres normalised.
+    private func foldQuadrupoles() {
+        nodes.withUnsafeMutableBufferPointer { nodeBuffer in
+            quadrupoles.withUnsafeMutableBufferPointer { moments in
+                subtrees.withUnsafeBufferPointer { subtrees in
+                    schedule.withUnsafeBufferPointer { schedule in
+                        DispatchQueue.concurrentPerform(iterations: schedule.count) { turn in
+                            let subtree = subtrees[schedule[turn]]
+                            for index in stride(
+                                from: subtree.base + subtree.size - 1, through: subtree.base, by: -1)
+                            {
+                                Self.foldQuadrupole(nodeBuffer, moments, index)
+                            }
+                        }
+                    }
+                }
+                for index in topIndices.reversed() { Self.foldQuadrupole(nodeBuffer, moments, index) }
             }
         }
     }

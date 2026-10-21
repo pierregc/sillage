@@ -9,7 +9,8 @@ import SillageRender
 /// `--baseline <visible particles> [steps]` runs a merger with live halos at a fixed seed and
 /// writes the report to `/tmp/sillage-baseline-<visible>.log`. `quiet` draws nothing while it
 /// steps, which is the only way to read the solver's GPU passes on their own. `overlap` builds
-/// each tree alongside the force pass that precedes it.
+/// each tree alongside the force pass that precedes it. `monopole` drops each accepted cell's
+/// quadrupole, and `theta <angle>` replaces the scene's opening angle.
 ///
 /// Headless, before the window opens, so it runs on a machine nobody is looking at; frames are
 /// drawn offscreen instead.
@@ -25,6 +26,11 @@ enum BaselineCheck {
         let quiet = arguments.contains("quiet")
         let overlap = arguments.contains("overlap")
         MetalBarnesHutSolver.overlapTree = overlap
+        let monopole = arguments.contains("monopole")
+        MetalBarnesHutSolver.quadrupole = !monopole
+        let theta = arguments.firstIndex(of: "theta").flatMap {
+            $0 + 1 < arguments.count ? Float(arguments[$0 + 1]) : nil
+        }
         guard let model = SimulationModel() else {
             FileHandle.standardError.write(Data("baseline: no Metal device\n".utf8))
             exit(1)
@@ -33,6 +39,7 @@ enum BaselineCheck {
         var draft = SceneConfig.merger(particleCount: visible, seed: 1)
         draft.solver = .barnesHut
         for index in draft.galaxies.indices { draft.galaxies[index].haloParticleRatio = 1.5 }
+        if let theta { draft.openingAngle = theta }
         model.draft = draft
         model.draft.retune()
         model.setTotalParticles(visible)
@@ -122,7 +129,7 @@ enum BaselineCheck {
         let gpuPerStep = solverGPU / Double(max(profile.steps, 1))
         let cpuPerStep = [
             "halo centres", "disk frames", "bounds", "morton", "sort", "nodes", "accumulate",
-            "upload",
+            "quadrupoles", "upload",
         ].reduce(0) { $0 + profile.perStep($1) }
         // Whatever the stepping queue does between batches: the take, the smoothing refresh
         // and the hop through the main actor.
@@ -132,7 +139,8 @@ enum BaselineCheck {
 
         var lines = [
             "baseline   merger, seed 1, theta \(solver.openingAngle), live halos 1.5"
-                + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : ""),
+                + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : "")
+                + (monopole ? ", monopole" : ""),
             "particles  \(visible) visible, \(model.particleCount) simulated",
             "prepared   \(format(preparation)) s",
             "measured   \(profile.steps) steps, \(profile.treeBuilds) tree builds,"
@@ -184,7 +192,8 @@ enum BaselineCheck {
         try? report.write(
             to: URL(
                 fileURLWithPath:
-                    "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "")\(overlap ? "-overlap" : "").log"
+                    "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "")\(overlap ? "-overlap" : "")"
+                    + "\(monopole ? "-monopole" : "")\(theta.map { "-theta\($0)" } ?? "").log"
             ),
             atomically: true, encoding: .utf8)
         print(report)
