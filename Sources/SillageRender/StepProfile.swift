@@ -10,6 +10,7 @@ public struct StepProfile: Sendable {
     public static let phases = [
         "tree wait", "star formation", "drift", "halo centres", "disk frames",
         "bounds", "morton", "sort", "nodes", "accumulate", "upload",
+        "gpu bounds", "gpu morton", "gpu sort", "gpu nodes", "gpu masses",
         "force", "kick", "dissipation", "step",
     ]
 

@@ -26,6 +26,12 @@ enum BaselineCheck {
         let quiet = arguments.contains("quiet")
         let overlap = arguments.contains("overlap")
         MetalBarnesHutSolver.overlapTree = overlap
+        let gpuTree = arguments.contains("gputree")
+        // Profiling submits every pass on its own, which hands frames gaps the app never has.
+        let plain = arguments.contains("plain")
+        MetalBarnesHutSolver.yieldForceChunks = arguments.contains("yield") || arguments.contains("nowait")
+        MetalBarnesHutSolver.yieldWithoutWaiting = arguments.contains("nowait")
+        MetalBarnesHutSolver.gpuTree = gpuTree
         let theta = arguments.firstIndex(of: "theta").flatMap {
             $0 + 1 < arguments.count ? Float(arguments[$0 + 1]) : nil
         }
@@ -62,7 +68,7 @@ enum BaselineCheck {
         let preparation = Date().timeIntervalSince(preparing)
 
         // The first batches carry pipeline warm-up and the first tree allocations.
-        solver.profiling = true
+        solver.profiling = !plain
         let warm = model.solverSteps + 2
         pump(until: { model.solverSteps >= warm }, limit: 600)
         _ = solver.takeProfile()
@@ -121,8 +127,10 @@ enum BaselineCheck {
         var idleTimes = (0..<10).map { _ in drawFrame() }
         idleTimes.sort()
 
-        let solverGPU = ["star formation", "drift", "force", "kick", "dissipation"]
-            .reduce(0) { $0 + (profile.milliseconds[$1] ?? 0) }
+        let solverGPU = [
+            "star formation", "drift", "gpu bounds", "gpu morton", "gpu sort", "gpu nodes",
+            "gpu masses", "force", "kick", "dissipation",
+        ].reduce(0) { $0 + (profile.milliseconds[$1] ?? 0) }
         let stepMs = profile.perStep("step")
         let gpuPerStep = solverGPU / Double(max(profile.steps, 1))
         let cpuPerStep = [
@@ -135,9 +143,13 @@ enum BaselineCheck {
         let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
         let size = "\(renderer.settings.width)x\(renderer.settings.height)"
 
+        let plainSteps = (model.solverSteps - firstBatch) * model.stepsPerFrame
         var lines = [
+            "plain      \(plainSteps) steps in \(format(wall)) s, \(format(wall * 1000 / Double(max(plainSteps, 1)))) ms a step,"
+                + " \(renderTimes.count) frames, \(format(Double(renderTimes.count) / wall)) a second",
             "baseline   merger, seed 1, theta \(solver.openingAngle), live halos 1.5"
-                + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : ""),
+                + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : "")
+                + (gpuTree ? ", tree built on the GPU" : ""),
             "particles  \(visible) visible, \(model.particleCount) simulated",
             "prepared   \(format(preparation)) s",
             "measured   \(profile.steps) steps, \(profile.treeBuilds) tree builds,"
@@ -190,6 +202,7 @@ enum BaselineCheck {
             to: URL(
                 fileURLWithPath:
                     "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "")\(overlap ? "-overlap" : "")"
+                    + "\(gpuTree ? "-gputree" : "")"
                     + "\(theta.map { "-theta\($0)" } ?? "").log"
             ),
             atomically: true, encoding: .utf8)

@@ -132,6 +132,10 @@ public final class MetalBarnesHutSolver: Solver {
     private let tree = BarnesHutTree(
         leafCapacity: MetalBarnesHutSolver.leafCapacity,
         maximumDepth: MetalBarnesHutSolver.maximumTreeDepth)
+    private var gpuBuilder: GPUTreeBuilder?
+    private var gpuBuildPending = false
+    /// The GPU build gathered the particles for the force pass already.
+    private var gathered = false
     /// Masses never change, so they are read once.
     private let particleMass: [Float]
     private let template: ParticleSystem
@@ -292,11 +296,28 @@ public final class MetalBarnesHutSolver: Solver {
             }
         }
 
+        if Self.gpuTree {
+            let builder = try GPUTreeBuilder(
+                device: device, count: count, leafCapacity: Self.leafCapacity,
+                maximumDepth: Self.maximumTreeDepth)
+            gpuBuilder = builder
+            nodeBuffers = [builder.nodes, builder.nodes]
+            orderBuffers = [builder.order, builder.order]
+        }
+
         // The first half kick needs an acceleration, so seed it before stepping.
-        rebuildTree()
+        if gpuBuilder != nil {
+            updateHaloCenters()
+            if dissipate != nil { updateDiskFrames() }
+            gpuBuildPending = true
+        } else {
+            rebuildTree()
+        }
         if let buffer = queue.makeCommandBuffer() {
+            encodeGPUTree(into: buffer)
             encodeAccelerations(into: buffer)
             submit(buffer)
+            adoptGPUTree()
         }
     }
 
@@ -337,25 +358,42 @@ public final class MetalBarnesHutSolver: Solver {
             if stepsSinceTree <= 0 {
                 timed("halo centres") { updateHaloCenters() }
                 if dissipate != nil { timed("disk frames") { updateDiskFrames() } }
-                startTree()
-                if !Self.overlapTree { joinTree() }
+                if gpuBuilder != nil {
+                    gpuBuildPending = true
+                } else {
+                    startTree()
+                    if !Self.overlapTree { joinTree() }
+                }
                 stepsSinceTree = max(Self.treeReuse, 1)
             }
             stepsSinceTree -= 1
             lastTreeMilliseconds = Date().timeIntervalSince(clock) * 1000
             if profiling {
+                if gpuBuildPending, let gpuBuilder {
+                    for phase in GPUTreeBuilder.Phase.allCases {
+                        profiledPass(phase.rawValue) {
+                            gpuBuilder.encode(
+                                phase, into: $0, positions: positionBuffer, mass: massBuffer,
+                                sorted: sortedBuffer)
+                        }
+                    }
+                    gathered = true
+                    adoptGPUTree()
+                }
                 let clock = Date()
                 profiledPass("force") { encodeAccelerations(into: $0) }
                 profiledPass("kick") { encodeKick(into: $0) }
                 profiledPass("dissipation") { encodeShedRandomMotion(into: $0) }
                 lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
             } else if let forces = queue.makeCommandBuffer() {
-                encodeAccelerations(into: forces)
-                encodeKick(into: forces)
-                encodeShedRandomMotion(into: forces)
+                encodeGPUTree(into: forces)
+                let last = encodeAccelerations(into: forces, yielding: Self.yieldForceChunks)
+                encodeKick(into: last)
+                encodeShedRandomMotion(into: last)
                 let clock = Date()
-                submit(forces)
+                submit(last)
                 lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
+                adoptGPUTree()
             }
             time += scene.timeStep
             if profiling {
@@ -602,6 +640,16 @@ public final class MetalBarnesHutSolver: Solver {
     /// notes. Leave it off.
     nonisolated(unsafe) public static var overlapTree = false
 
+    /// Builds the tree on the GPU, ahead of the force pass and in the same command buffer.
+    /// Spike for #38: the same tree to the bit, laid out by level.
+    nonisolated(unsafe) public static var gpuTree = false
+
+    /// Submits each piece of the force pass on its own and waits for it, so a frame can get
+    /// onto the GPU between two pieces. Spike for #38.
+    nonisolated(unsafe) public static var yieldForceChunks = false
+    /// Commits each piece without waiting for it.
+    nonisolated(unsafe) public static var yieldWithoutWaiting = false
+
     /// Particles a galaxy contributes to its own disk frame. The axis and the coherence are
     /// mass-weighted sums over a hundred thousand-odd stars; fifty thousand of them give the
     /// same answer, and this runs on every tree rebuild.
@@ -694,6 +742,22 @@ public final class MetalBarnesHutSolver: Solver {
             for (phase, spent) in phases { $0.add(phase, spent) }
             $0.add("upload", upload)
         }
+    }
+
+    /// The GPU build goes ahead of the force pass in the same command buffer.
+    private func encodeGPUTree(into buffer: MTLCommandBuffer) {
+        guard gpuBuildPending, let gpuBuilder else { return }
+        gpuBuilder.encode(into: buffer, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
+        gathered = true
+    }
+
+    /// Reads back the node count once the build has run.
+    private func adoptGPUTree() {
+        guard gpuBuildPending, let gpuBuilder else { return }
+        gpuBuildPending = false
+        precondition(!gpuBuilder.overflowed, "GPU tree: more than \(gpuBuilder.nodeCapacity) nodes")
+        nodeCounts[live] = gpuBuilder.nodeCount
+        if profiling { profiler.update { $0.treeBuilds += 1 } }
     }
 
     /// The synchronous form, for the one build that has nothing to overlap with: the seed in
@@ -893,7 +957,12 @@ public final class MetalBarnesHutSolver: Solver {
         return t * t * (3 - 2 * t)
     }
 
-    private func encodeAccelerations(into buffer: MTLCommandBuffer) {
+    /// Returns the buffer the last piece went into. When yielding, every piece but the last is
+    /// submitted on its own, so a frame queued meanwhile runs before the next one.
+    @discardableResult
+    private func encodeAccelerations(into buffer: MTLCommandBuffer, yielding: Bool = false)
+        -> MTLCommandBuffer
+    {
         var p = params
         var list = scene.galaxies.enumerated().map { index, galaxy -> HaloGPU in
             let center = index < haloCenters.count ? haloCenters[index] : galaxy.position
@@ -909,18 +978,27 @@ public final class MetalBarnesHutSolver: Solver {
         }
         if list.isEmpty { list = [HaloGPU(centerBefore: .zero, centerAfter: .zero, shape: .zero)] }
 
-        encode(into: buffer, gather) { encoder in
-            encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
-            encoder.setBuffer(positionBuffer, offset: 0, index: 1)
-            encoder.setBuffer(massBuffer, offset: 0, index: 2)
-            encoder.setBuffer(orderBuffer, offset: 0, index: 3)
-            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 4)
+        if gathered {
+            gathered = false
+        } else {
+            encode(into: buffer, gather) { encoder in
+                encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
+                encoder.setBuffer(positionBuffer, offset: 0, index: 1)
+                encoder.setBuffer(massBuffer, offset: 0, index: 2)
+                encoder.setBuffer(orderBuffer, offset: 0, index: 3)
+                encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 4)
+            }
         }
+        var current = buffer
         var start = 0
         while start < count {
+            if yielding && start > 0, let next = queue.makeCommandBuffer() {
+                if Self.yieldWithoutWaiting { current.commit() } else { submit(current) }
+                current = next
+            }
             let span = min(max(Self.forceChunk, 1), count - start)
             p.chunkStart = UInt32(start)
-            encode(into: buffer, force, threads: span, width: Self.forceThreadgroupWidth) { encoder in
+            encode(into: current, force, threads: span, width: Self.forceThreadgroupWidth) { encoder in
                 encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
                 encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
                 encoder.setBuffer(nodeBuffer, offset: 0, index: 2)
@@ -931,6 +1009,7 @@ public final class MetalBarnesHutSolver: Solver {
             }
             start += span
         }
+        return current
     }
 
     /// Total momentum. With live halos nothing external acts on the system, so this must be
