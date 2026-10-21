@@ -203,6 +203,7 @@ public final class Renderer {
     private let bloomDown: [MTLTexture]
     private let bloomUp: [MTLTexture]
     private let spikeTexture: MTLTexture
+    static let spikeVisible: Float = 0.0001
     public let output: MTLTexture
 
     private let positionBuffer: MTLBuffer
@@ -687,15 +688,17 @@ public final class Renderer {
             encoder.setBytes(&factor, length: 4, index: 0)
         }
 
+        let bloomOn = settings.bloomIntensity > 0
+        let spikesOn = settings.spikeArms > 0 && settings.spikeIntensity >= Self.spikeVisible
         var bloom = BloomParams(
             threshold: settings.bloomThreshold, softKnee: settings.bloomSoftKnee)
-        if let first = bloomDown.first {
+        if let first = bloomDown.first, bloomOn || spikesOn {
             dispatch(compute, brightPassPipeline, into: first) { encoder in
                 encoder.setTexture(resolved, index: 0)
                 encoder.setTexture(first, index: 1)
                 encoder.setBytes(&bloom, length: MemoryLayout<BloomParams>.stride, index: 0)
             }
-            for level in 1..<bloomDown.count {
+            for level in 1..<bloomDown.count where bloomOn {
                 dispatch(compute, downsamplePipeline, into: bloomDown[level]) { encoder in
                     encoder.setTexture(bloomDown[level - 1], index: 0)
                     encoder.setTexture(bloomDown[level], index: 1)
@@ -703,8 +706,8 @@ public final class Renderer {
             }
         }
 
-        var bloomResult = bloomDown.last
-        if bloomDown.count > 1 {
+        var bloomResult = bloomOn ? bloomDown.last : nil
+        if bloomOn, bloomDown.count > 1 {
             for level in stride(from: bloomDown.count - 1, to: 0, by: -1) {
                 let destination = bloomUp[level - 1]
                 let source = bloomResult!
@@ -726,10 +729,12 @@ public final class Renderer {
             falloff: 4.2,
             samples: 28)
         let spikeSource = bloomDown.first ?? resolved
-        dispatch(compute, spikePipeline, into: spikeTexture) { encoder in
-            encoder.setTexture(spikeSource, index: 0)
-            encoder.setTexture(spikeTexture, index: 1)
-            encoder.setBytes(&spike, length: MemoryLayout<SpikeParams>.stride, index: 0)
+        if spikesOn {
+            dispatch(compute, spikePipeline, into: spikeTexture) { encoder in
+                encoder.setTexture(spikeSource, index: 0)
+                encoder.setTexture(spikeTexture, index: 1)
+                encoder.setBytes(&spike, length: MemoryLayout<SpikeParams>.stride, index: 0)
+            }
         }
 
         frameSeed = frameSeed.truncatingRemainder(dividingBy: 4096) + 7.13
@@ -737,7 +742,7 @@ public final class Renderer {
             bloomIntensity: bloomResult == nil ? 0 : settings.bloomIntensity,
             stretch: settings.stretch,
             saturation: settings.saturation,
-            spikeIntensity: settings.spikeArms > 0 ? settings.spikeIntensity : 0,
+            spikeIntensity: spikesOn ? settings.spikeIntensity : 0,
             skyLevel: settings.skyLevel,
             noiseLevel: settings.noiseLevel,
             seed: frameSeed,
@@ -748,7 +753,7 @@ public final class Renderer {
             encoder.setTexture(resolved, index: 0)
             encoder.setTexture(bloomResult ?? resolved, index: 1)
             encoder.setTexture(target, index: 2)
-            encoder.setTexture(spikeTexture, index: 3)
+            encoder.setTexture(spikesOn ? spikeTexture : resolved, index: 3)
             encoder.setBytes(&composite, length: MemoryLayout<CompositeParams>.stride, index: 0)
         }
         compute.endEncoding()

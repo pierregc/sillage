@@ -154,4 +154,23 @@ struct MetalSolverTests {
         #expect(pixels.count == 320 * 180 * 4)
         #expect(pixels.contains { $0 > 8 })
     }
+
+    @Test func skippedPostPassesLeaveTheImageAlone() throws {
+        let scene = SceneConfig.merger(particleCount: 50_000)
+        let solver = try MetalSolver(scene: scene)
+        solver.step(count: 500)
+        func image(bloom: Float, spikes: Float, arms: Int = 6) throws -> [UInt8] {
+            let renderer = try Renderer(
+                particles: RestrictedSolver.sampleParticles(for: scene),
+                settings: RenderSettings(
+                    width: 320, height: 180, supersample: 2, bloomIntensity: bloom,
+                    spikeArms: arms, spikeIntensity: spikes),
+                externalPositions: solver.positions)
+            return renderer.render(camera: Camera.framing(radius: 70))
+        }
+        let reference = try image(bloom: 0.22, spikes: 0, arms: 0)
+        #expect(try image(bloom: 0.22, spikes: 0.00005) == reference)
+        #expect(try image(bloom: 0.22, spikes: 0.38) != reference)
+        #expect(try image(bloom: 0, spikes: 0.38) != image(bloom: 0.22, spikes: 0.38))
+    }
 }
