@@ -17,8 +17,9 @@ import simd
 /// The length comes from the Barnes-Hut tree, which already adapts to density: a leaf holding
 /// `n` particles in a cell of width `w` implies a number density of n/w^3, and the radius
 /// enclosing `k` neighbours follows from that. Level 2 rebuilds that tree every step anyway,
-/// so its lengths are read off the solver's own tree on the GPU; only a solver that keeps no
-/// tree, and playback, pay for one here.
+/// so its lengths are read off the solver's own tree on the GPU. A solver that keeps no tree,
+/// and playback, build one here, on the GPU too: half a second of every core at five million
+/// particles on the CPU, against a few milliseconds.
 /// Safe to hand to the simulation queue: the model runs one refresh at a time and nothing
 /// else touches the field while one is in flight. The buffer it writes is read by the
 /// renderer on another thread, which is the same arrangement the position buffers are under.
@@ -29,8 +30,12 @@ public final class SmoothingField {
     public private(set) var lastMilliseconds = 0.0
     private let device: MTLDevice
     private var lengths: [Float]
-    private let tree = BarnesHutTree(leafCapacity: 24)
+    private let tree = BarnesHutTree(leafCapacity: SmoothingField.leafCapacity)
     private let count: Int
+    /// Made on first use: a field fed by a solver's tree never needs one.
+    private var builder: GPUTreeBuilder?
+    private var queue: MTLCommandQueue?
+    static let leafCapacity = 24
 
     // How many neighbours the kernel spans and any hand tuning on top are both nothing but
     // a multiplier on the length, so neither is applied here. The raw spacing is stored and
@@ -83,11 +88,40 @@ public final class SmoothingField {
         update(from: solver.positions)
     }
 
-    /// Builds a tree of its own from a Metal buffer, for the restricted solver and for
-    /// playback, neither of which keeps one.
-    public func update(from buffer: MTLBuffer) {
-        let pointer = buffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
-        update(positions: Array(UnsafeBufferPointer(start: pointer, count: count)))
+    /// Builds a tree of its own on the GPU from a Metal buffer, for the restricted solver and
+    /// for playback, neither of which keeps one. The same tree the CPU would build, so the same
+    /// lengths.
+    public func update(from positions: MTLBuffer) {
+        let clock = Date()
+        guard positions.length >= count * MemoryLayout<SIMD3<Float>>.stride,
+            let (builder, queue) = gpuTree()
+        else {
+            let pointer = positions.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
+            update(positions: Array(UnsafeBufferPointer(start: pointer, count: count)))
+            return
+        }
+        repeat {
+            if builder.overflowed {
+                do { try builder.grow() } catch { return }
+            }
+            guard let commands = queue.makeCommandBuffer() else { return }
+            builder.encodeCells(into: commands, positions: positions)
+            builder.encodeSmoothing(into: commands, lengths: buffer, drawn: count)
+            commands.commit()
+            commands.waitUntilCompleted()
+        } while builder.overflowed
+        lastMilliseconds = Date().timeIntervalSince(clock) * 1000
+    }
+
+    private func gpuTree() -> (GPUTreeBuilder, MTLCommandQueue)? {
+        if builder == nil {
+            builder = try? GPUTreeBuilder(
+                device: device, count: count, leafCapacity: Self.leafCapacity,
+                nodeCapacity: count / 4 + 1024)
+            queue = device.makeCommandQueue()
+        }
+        guard let builder, let queue else { return nil }
+        return (builder, queue)
     }
 
     /// Builds a tree of its own, for the restricted solver which does not keep one.

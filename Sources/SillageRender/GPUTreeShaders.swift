@@ -582,5 +582,37 @@ enum GPUTreeShaders {
                 moments[2u * n + 1u] = cross;
             }
         }
+        // A drawn particle's smoothing length, read off the leaf that holds it. Only the drawn
+        // particles are counted: they come first, and the dark matter sharing their leaf would
+        // make the spacing follow the halo. Needs no masses, so the cells are enough.
+        kernel void gtSmoothing(device float *lengths [[buffer(0)]],
+                                device const BHNode *nodes [[buffer(1)]],
+                                device const uint *order [[buffer(2)]],
+                                device const uint *levels [[buffer(3)]],
+                                device const uint *counters [[buffer(4)]],
+                                constant TreeParams &p [[buffer(5)]],
+                                constant uint &drawnCount [[buffer(6)]],
+                                uint gid [[thread_position_in_grid]],
+                                uint threads [[threads_per_grid]]) {
+            if (counters[counterOverflow] != 0u) { return; }
+            uint total = levels[p.maximumDepth + 1u];
+            for (uint n = gid; n < total; n += threads) {
+                BHNode node = nodes[n];
+                if (bhSignedCount(node) > 0) { continue; }
+                uint count = uint(-bhSignedCount(node));
+                uint start = uint(bhRange(node));
+                uint drawn = 0u;
+                for (uint k = 0u; k < count; ++k) {
+                    if (order[start + k] < drawnCount) { drawn += 1u; }
+                }
+                if (drawn == 0u) { continue; }
+                float width = sqrt(max(node.packed.x, 1e-12));
+                float length = width * pow(1.0 / float(drawn), 1.0 / 3.0);
+                for (uint k = 0u; k < count; ++k) {
+                    uint i = order[start + k];
+                    if (i < drawnCount) { lengths[i] = length; }
+                }
+            }
+        }
         """
 }

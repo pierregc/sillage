@@ -100,4 +100,26 @@ struct GPUTreeTests {
         #expect(grown > 0)
         expectSameTree(builder, tree)
     }
+    /// Playback's lengths come from a tree built on the GPU, and are the ones a CPU tree gives.
+    @Test(arguments: ["disk", "merged core"])
+    func playbackSmoothingMatchesTheCPUField(set: String) throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let count = 100_000
+        let points = positions(set, count: count)
+        let cpu = try SmoothingField(device: device, particleCount: count)
+        cpu.update(positions: points)
+        let gpu = try SmoothingField(device: device, particleCount: count)
+        let buffer = try #require(
+            device.makeBuffer(
+                bytes: points, length: count * MemoryLayout<SIMD3<Float>>.stride,
+                options: .storageModeShared))
+        gpu.update(from: buffer)
+        let expected = cpu.buffer.contents().bindMemory(to: Float.self, capacity: count)
+        let lengths = gpu.buffer.contents().bindMemory(to: Float.self, capacity: count)
+        var worst: Float = 0
+        for index in 0..<count {
+            worst = max(worst, abs(lengths[index] - expected[index]) / expected[index])
+        }
+        #expect(worst < 1e-5)
+    }
 }

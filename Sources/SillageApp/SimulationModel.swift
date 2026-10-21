@@ -216,14 +216,16 @@ final class SimulationModel: ObservableObject {
     private var snapshots: SnapshotStream?
     private var smoothing: SmoothingField?
     /// Smoothing lengths track density, which changes slowly, so they are refreshed every so
-    /// many frames rather than every one. A live run reads them off the solver's tree; playback
-    /// has none and builds one over every drawn particle, which belongs on the simulation
-    /// queue, not in the draw call. The buffer is read by the renderer the same way positions
-    /// are.
+    /// many drawn frames rather than every one. A live run reads them off the solver's tree;
+    /// playback has none and builds one on the GPU over every drawn particle, on the simulation
+    /// queue rather than in the draw call. The buffer is read by the renderer the same way
+    /// positions are.
     private var framesSinceSmoothing = 0
     /// Frames between refreshes of the smoothing field.
     let smoothingInterval = 20
     private var smoothingInFlight = false
+    /// What each refresh cost, for `--replay`.
+    private(set) var smoothingRefreshes: [Double] = []
 
     // The setup screen renders the draft scene as it stands, without ever stepping it, so the
     // effect of a parameter can be seen while it is being set rather than after a run.
@@ -501,6 +503,14 @@ final class SimulationModel: ObservableObject {
     private(set) var previewNoDrawable = 0
     private(set) var previewNoRenderer = 0
 
+    /// Counts a drawn frame, and refreshes the lengths once enough of them have gone by.
+    private func tickSmoothing() {
+        framesSinceSmoothing += 1
+        guard framesSinceSmoothing >= smoothingInterval else { return }
+        framesSinceSmoothing = 0
+        refreshSmoothing()
+    }
+
     /// Rebuilds the smoothing lengths on the simulation queue. One at a time: a second
     /// request while the first is still walking the particles would only queue up work that
     /// is about to be thrown away.
@@ -512,16 +522,24 @@ final class SimulationModel: ObservableObject {
             let positions = SendableBuffer(bound)
             steppingQueue.async { [weak self] in
                 field.update(from: positions.buffer)
-                DispatchQueue.main.async { self?.smoothingInFlight = false }
+                let spent = field.lastMilliseconds
+                DispatchQueue.main.async { self?.finishSmoothing(spent) }
             }
         } else {
             guard let solver else { return }
             smoothingInFlight = true
             steppingQueue.async { [weak self] in
                 field.update(from: solver)
-                DispatchQueue.main.async { self?.smoothingInFlight = false }
+                let spent = field.lastMilliseconds
+                DispatchQueue.main.async { self?.finishSmoothing(spent) }
             }
         }
+    }
+
+    private func finishSmoothing(_ milliseconds: Double) {
+        smoothingInFlight = false
+        smoothingRefreshes.append(milliseconds)
+        if smoothingRefreshes.count > 400 { smoothingRefreshes.removeFirst() }
     }
 
     func drawPreview(in view: MTKView) {
@@ -1055,7 +1073,9 @@ final class SimulationModel: ObservableObject {
                 externalFormation: mode == .playback ? nil : solver?.formation)
             renderer?.setSmoothing(smoothing?.buffer)
             renderer?.apply(look)
-            refreshSmoothing()
+            // Due on the next frame rather than now: a replay's positions buffer is still empty
+            // here, and lengths taken from it would hold until the next refresh.
+            framesSinceSmoothing = smoothingInterval
         } catch {
             failure = "\(error)"
             renderer = nil
@@ -1119,6 +1139,7 @@ final class SimulationModel: ObservableObject {
     func playbackSnapshot() -> [UInt8]? {
         guard mode == .playback, let renderer else { return nil }
         advancePlayback()
+        tickSmoothing()
         let centers =
             playbackCenters.isEmpty ? scene.galaxies.map(\.position) : playbackCenters
         renderer.time = Float(elapsedMyr / Physics.megayearsPerTimeUnit)
@@ -1141,11 +1162,7 @@ final class SimulationModel: ObservableObject {
         guard let renderer, let solver else { return nil }
         solver.step(count: steps)
         elapsedMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
-        framesSinceSmoothing += 1
-        if framesSinceSmoothing >= smoothingInterval {
-            framesSinceSmoothing = 0
-            refreshSmoothing()
-        }
+        tickSmoothing()
         renderer.time = solver.time
         renderer.setDiskFrames(
             DiskFrame.make(
@@ -1187,6 +1204,7 @@ final class SimulationModel: ObservableObject {
         case .playback:
             advancePlayback()
         }
+        tickSmoothing()
         // Where the galaxies were on the frame being shown, so the spiral pattern is painted
         // about them rather than about wherever the run happened to end.
         let centers =

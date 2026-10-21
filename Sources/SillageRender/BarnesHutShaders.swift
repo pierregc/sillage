@@ -292,32 +292,6 @@ enum BarnesHutShaders {
             }
         }
 
-        // A drawn particle's smoothing length, one thread per node, from the tree the step
-        // already built. Only the drawn particles are counted: they come first, and the dark
-        // matter sharing their leaf would make the spacing follow the halo.
-        kernel void bhSmoothing(device float *lengths [[buffer(0)]],
-                                device const BHNode *nodes [[buffer(1)]],
-                                device const uint *order [[buffer(2)]],
-                                constant uint2 &counts [[buffer(3)]],
-                                uint n [[thread_position_in_grid]]) {
-            if (n >= counts.x) { return; }
-            BHNode node = nodes[n];
-            if (bhSignedCount(node) > 0) { return; }
-            uint count = uint(-bhSignedCount(node));
-            uint start = uint(bhRange(node));
-            uint drawn = 0u;
-            for (uint k = 0u; k < count; ++k) {
-                if (order[start + k] < counts.y) { drawn += 1u; }
-            }
-            if (drawn == 0u) { return; }
-            float width = sqrt(max(node.packed.x, 1e-12));
-            float length = width * pow(1.0 / float(drawn), 1.0 / 3.0);
-            for (uint k = 0u; k < count; ++k) {
-                uint i = order[start + k];
-                if (i < counts.y) { lengths[i] = length; }
-            }
-        }
-
         // The particles in Morton order with their mass beside them, so a leaf's direct sum
         // reads one contiguous run rather than two scattered reads per neighbour. Gathered
         // before every force pass rather than once per build: a tree may be reused or built

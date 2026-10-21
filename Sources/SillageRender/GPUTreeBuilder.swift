@@ -82,7 +82,7 @@ public final class GPUTreeBuilder {
         for name in [
             "gtReset", "gtBounds", "gtRoot", "gtMorton", "gtRadixCount", "gtScanReduce",
             "gtScanTop", "gtScanDown", "gtRadixScatter", "gtCloseLevel", "gtSplit", "gtGather",
-            "gtLeafSums", "gtFold", "gtNormalize", "gtFoldMoments",
+            "gtLeafSums", "gtFold", "gtNormalize", "gtFoldMoments", "gtSmoothing",
         ] {
             guard let function = library.makeFunction(name: name) else {
                 throw RenderError.pipelineCreation("missing kernel \(name)")
@@ -148,10 +148,33 @@ public final class GPUTreeBuilder {
         }
     }
 
+    /// The cells alone, without the masses: all a smoothing length needs.
+    public func encodeCells(into buffer: MTLCommandBuffer, positions: MTLBuffer) {
+        for phase in [Phase.bounds, .morton, .sort, .nodes] {
+            encode(phase, into: buffer, positions: positions, mass: nil, sorted: nil)
+        }
+    }
+
+    /// The smoothing lengths of the first `drawn` particles, from the leaves of the last build.
+    public func encodeSmoothing(into buffer: MTLCommandBuffer, lengths: MTLBuffer, drawn: Int) {
+        guard let encoder = buffer.makeComputeCommandEncoder() else { return }
+        var drawnCount = UInt32(min(drawn, count, lengths.length / 4))
+        dispatch(encoder, "gtSmoothing", groups: Self.strideGroups, width: 256, params: 5) {
+            $0.setBuffer(lengths, offset: 0, index: 0)
+            $0.setBuffer(nodes, offset: 0, index: 1)
+            $0.setBuffer(order, offset: 0, index: 2)
+            $0.setBuffer(levels, offset: 0, index: 3)
+            $0.setBuffer(counters, offset: 0, index: 4)
+            $0.setBytes(&drawnCount, length: 4, index: 6)
+        }
+        encoder.endEncoding()
+    }
+
     public func encode(
-        _ phase: Phase, into buffer: MTLCommandBuffer, positions: MTLBuffer, mass: MTLBuffer,
-        sorted: MTLBuffer
+        _ phase: Phase, into buffer: MTLCommandBuffer, positions: MTLBuffer, mass: MTLBuffer?,
+        sorted: MTLBuffer?
     ) {
+        if phase == .masses, mass == nil || sorted == nil { return }
         guard let encoder = buffer.makeComputeCommandEncoder() else { return }
         switch phase {
         case .bounds:
