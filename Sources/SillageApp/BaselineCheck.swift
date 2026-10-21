@@ -8,7 +8,8 @@ import SillageRender
 ///
 /// `--baseline <visible particles> [steps]` runs a merger with live halos at a fixed seed and
 /// writes the report to `/tmp/sillage-baseline-<visible>.log`. `quiet` draws nothing while it
-/// steps, which is the only way to read the solver's GPU passes on their own.
+/// steps, which is the only way to read the solver's GPU passes on their own. `overlap` builds
+/// each tree alongside the force pass that precedes it.
 ///
 /// Headless, before the window opens, so it runs on a machine nobody is looking at; frames are
 /// drawn offscreen instead.
@@ -22,6 +23,8 @@ enum BaselineCheck {
         // A command buffer's span counts the frames it waited behind, so the solver's own
         // passes are only clean with nothing drawn.
         let quiet = arguments.contains("quiet")
+        let overlap = arguments.contains("overlap")
+        MetalBarnesHutSolver.overlapTree = overlap
         guard let model = SimulationModel() else {
             FileHandle.standardError.write(Data("baseline: no Metal device\n".utf8))
             exit(1)
@@ -115,12 +118,21 @@ enum BaselineCheck {
 
         let solverGPU = ["star formation", "drift", "force", "kick", "dissipation"]
             .reduce(0) { $0 + (profile.milliseconds[$1] ?? 0) }
+        let stepMs = profile.perStep("step")
+        let gpuPerStep = solverGPU / Double(max(profile.steps, 1))
+        let cpuPerStep = [
+            "halo centres", "disk frames", "bounds", "morton", "sort", "nodes", "accumulate",
+            "upload",
+        ].reduce(0) { $0 + profile.perStep($1) }
+        // Whatever the stepping queue does between batches: the take, the smoothing refresh
+        // and the hop through the main actor.
+        let between = wall * 1000 / Double(max(profile.steps, 1)) - stepMs
         let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
         let size = "\(renderer.settings.width)x\(renderer.settings.height)"
 
         var lines = [
             "baseline   merger, seed 1, theta \(solver.openingAngle), live halos 1.5"
-                + (quiet ? ", no frames drawn" : ""),
+                + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : ""),
             "particles  \(visible) visible, \(model.particleCount) simulated",
             "prepared   \(format(preparation)) s",
             "measured   \(profile.steps) steps, \(profile.treeBuilds) tree builds,"
@@ -138,6 +150,14 @@ enum BaselineCheck {
             "  " + "unaccounted".padding(toLength: 16, withPad: " ", startingAt: 0)
                 + String(format: "%9.2f", profile.perStep("step") - accounted))
         lines += [
+            "  " + "between batches".padding(toLength: 16, withPad: " ", startingAt: 0)
+                + String(format: "%9.2f", between),
+            "",
+            "idle share of a step",
+            "  GPU                \(format(max(1 - gpuPerStep / stepMs, 0) * 100)) %"
+                + "  (\(format(gpuPerStep)) ms of solver passes)",
+            "  CPU                \(format(max(1 - cpuPerStep / stepMs, 0) * 100)) %"
+                + "  (\(format(cpuPerStep)) ms of centres, frames and build)",
             "",
             "per frame, ms (offscreen \(size), paced to 60 Hz on the main thread)",
             "  smoothing refresh  median \(format(median(smoothingTimes.sorted())))"
@@ -162,7 +182,10 @@ enum BaselineCheck {
         ]
         let report = lines.joined(separator: "\n")
         try? report.write(
-            to: URL(fileURLWithPath: "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "").log"),
+            to: URL(
+                fileURLWithPath:
+                    "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "")\(overlap ? "-overlap" : "").log"
+            ),
             atomically: true, encoding: .utf8)
         print(report)
         exit(0)

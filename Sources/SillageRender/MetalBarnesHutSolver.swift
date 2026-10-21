@@ -596,9 +596,10 @@ public final class MetalBarnesHutSolver: Solver {
     nonisolated(unsafe) public static var treeReuse = 1
 
     /// Whether the tree build runs alongside the force pass, on the CPU cores the GPU leaves
-    /// idle. Worth 1.45x at a million simulated particles and 1.34x at 3.75 million, and it is
-    /// off by default because it is not free — see "A step was serial, and the overlap is not
-    /// free" in the working notes. Turn it on for throughput, leave it off for structure.
+    /// idle. Since the build went parallel it is worth only 1.15x at five million simulated
+    /// particles, and it is off because the stale tree moves a merger's history and halves the
+    /// live frame rate — see "A step was serial, and the overlap is not free" in the working
+    /// notes. Leave it off.
     nonisolated(unsafe) public static var overlapTree = false
 
     /// Particles a galaxy contributes to its own disk frame. The axis and the coherence are
