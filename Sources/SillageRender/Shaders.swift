@@ -300,6 +300,122 @@ enum Shaders {
             return float2(mix(0.5, ridge, strength * envelope), envelope);
         }
 
+        // Gas that has not formed stars yet. It is drawn as dust and dims what is behind it.
+        static bool absorbs(uint kind, float born, constant SplatUniforms &u) {
+            float ageMyr = (u.time - born) * u.megayearsPerUnit;
+            return kind == 2u && !(born > -1e8 && born < 1e8 && ageMyr >= 0.0);
+        }
+
+        // 0 is not drawn, 1 is dust, 2 emits.
+        static uint splitClass(uint vid, uint count, device const uint *component,
+                               device const float *formation, constant SplatUniforms &u) {
+            if (vid >= count) { return 0u; }
+            uint kind = component[vid];
+            if (kind == 3u) { return 0u; }
+            return absorbs(kind, formation[vid], u) ? 1u : 2u;
+        }
+
+        // Exclusive prefix of `value` over the threadgroup, and its total.
+        static uint groupPrefix(uint value, uint lane, uint simd, uint simds,
+                                threadgroup uint *sums, thread uint &total) {
+            uint prefix = simd_prefix_exclusive_sum(value);
+            uint sum = simd_sum(value);
+            if (lane == 0u) { sums[simd] = sum; }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            uint base = 0u;
+            total = 0u;
+            for (uint index = 0u; index < simds; index++) {
+                if (index < simd) { base += sums[index]; }
+                total += sums[index];
+            }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            return base + prefix;
+        }
+
+        // A stable partition of the drawn particles into the dust list followed by the light
+        // list, in three passes so the order inside each list is the buffer's own and the
+        // blending adds in the same order as one draw over the whole buffer did.
+        kernel void splitCount(uint vid [[thread_position_in_grid]],
+                               uint tid [[thread_index_in_threadgroup]],
+                               uint group [[threadgroup_position_in_grid]],
+                               uint lane [[thread_index_in_simdgroup]],
+                               uint simd [[simdgroup_index_in_threadgroup]],
+                               uint simds [[simdgroups_per_threadgroup]],
+                               device const uint *component [[buffer(0)]],
+                               device const float *formation [[buffer(1)]],
+                               constant SplatUniforms &u [[buffer(2)]],
+                               constant uint &count [[buffer(3)]],
+                               device uint2 *counts [[buffer(4)]]) {
+            threadgroup uint sums[32];
+            uint kind = splitClass(vid, count, component, formation, u);
+            uint dust = 0u;
+            uint light = 0u;
+            groupPrefix(kind == 1u ? 1u : 0u, lane, simd, simds, sums, dust);
+            groupPrefix(kind == 2u ? 1u : 0u, lane, simd, simds, sums, light);
+            if (tid == 0u) { counts[group] = uint2(dust, light); }
+        }
+
+        // One threadgroup turns the per-group counts into offsets and writes both draws'
+        // indirect arguments: index count, instance count, first index, base vertex and
+        // base instance, the dust first.
+        kernel void splitScan(uint tid [[thread_position_in_threadgroup]],
+                              uint threads [[threads_per_threadgroup]],
+                              uint lane [[thread_index_in_simdgroup]],
+                              uint simd [[simdgroup_index_in_threadgroup]],
+                              uint simds [[simdgroups_per_threadgroup]],
+                              device uint2 *counts [[buffer(0)]],
+                              constant uint &groups [[buffer(1)]],
+                              device uint *arguments [[buffer(2)]]) {
+            threadgroup uint sums[32];
+            uint per = (groups + threads - 1u) / threads;
+            uint first = min(tid * per, groups);
+            uint last = min(first + per, groups);
+            uint2 local = uint2(0u);
+            for (uint index = first; index < last; index++) { local += counts[index]; }
+            uint dustTotal = 0u;
+            uint lightTotal = 0u;
+            uint dust = groupPrefix(local.x, lane, simd, simds, sums, dustTotal);
+            uint light = groupPrefix(local.y, lane, simd, simds, sums, lightTotal);
+            for (uint index = first; index < last; index++) {
+                uint2 own = counts[index];
+                counts[index] = uint2(dust, dustTotal + light);
+                dust += own.x;
+                light += own.y;
+            }
+            if (tid == 0u) {
+                arguments[0] = dustTotal;
+                arguments[1] = 1u;
+                arguments[2] = 0u;
+                arguments[3] = 0u;
+                arguments[4] = 0u;
+                arguments[5] = lightTotal;
+                arguments[6] = 1u;
+                arguments[7] = dustTotal;
+                arguments[8] = 0u;
+                arguments[9] = 0u;
+            }
+        }
+
+        kernel void splitScatter(uint vid [[thread_position_in_grid]],
+                                 uint group [[threadgroup_position_in_grid]],
+                                 uint lane [[thread_index_in_simdgroup]],
+                                 uint simd [[simdgroup_index_in_threadgroup]],
+                                 uint simds [[simdgroups_per_threadgroup]],
+                                 device const uint *component [[buffer(0)]],
+                                 device const float *formation [[buffer(1)]],
+                                 constant SplatUniforms &u [[buffer(2)]],
+                                 constant uint &count [[buffer(3)]],
+                                 device const uint2 *offsets [[buffer(4)]],
+                                 device uint *list [[buffer(5)]]) {
+            threadgroup uint sums[32];
+            uint kind = splitClass(vid, count, component, formation, u);
+            uint total = 0u;
+            uint dust = groupPrefix(kind == 1u ? 1u : 0u, lane, simd, simds, sums, total);
+            uint light = groupPrefix(kind == 2u ? 1u : 0u, lane, simd, simds, sums, total);
+            uint2 base = offsets[group];
+            if (kind == 1u) { list[base.x + dust] = vid; }
+            if (kind == 2u) { list[base.y + light] = vid; }
+        }
         vertex SplatOut splatVertex(uint vid [[vertex_id]],
                                     device const float3 *positions [[buffer(0)]],
                                     device const float *population [[buffer(1)]],
@@ -335,18 +451,8 @@ enum Shaders {
             float ageMyr = (nursery || born >= 0.0)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
             bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
-            bool absorbing = kind == 2u && !knot;
-
-            // Dark matter carries mass but no light, and every particle is skipped by one of
-            // the two draws. Pushing them outside the clip volume drops them before any
-            // fragment work rather than drawing a black point over the galaxy.
-            if (kind == 3u || absorbing != (u.pass == 0u)) {
-                out.position = float4(2.0, 2.0, 2.0, 1.0);
-                out.pointSize = 0.0;
-                out.color = half3(0.0h);
-                out.opticalDepth = 0.0h;
-                return out;
-            }
+            // `splitParticles` hands each draw only its own particles, dark matter to neither.
+            bool absorbing = u.pass == 0u;
 
             // Which slab of view depth this point falls in. `position.w` is the view depth for
             // a standard perspective projection, and the stack is centred on the camera's
@@ -395,7 +501,7 @@ enum Shaders {
             // Gas that has made its stars is no longer a dust lane. That is not a rendering
             // convenience: the cloud a cluster forms out of is the cloud it consumes, and a
             // starburst clearing its own lanes is the visible half of running out of gas.
-            // Decided up in the culling, because it is also what separates the two draws.
+            // Decided in `absorbs`, because it is also what separates the two draws.
             if (absorbing) {
                 // Dust neither emits nor follows exposure; it removes light further down.
                 //

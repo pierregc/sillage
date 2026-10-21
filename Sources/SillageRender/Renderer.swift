@@ -196,6 +196,9 @@ public final class Renderer {
     private let upsamplePipeline: MTLComputePipelineState
     private let compositePipeline: MTLComputePipelineState
     private let spikePipeline: MTLComputePipelineState
+    private let splitCountPipeline: MTLComputePipelineState
+    private let splitScanPipeline: MTLComputePipelineState
+    private let splitScatterPipeline: MTLComputePipelineState
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
@@ -228,6 +231,13 @@ public final class Renderer {
     private let starBuffer: MTLBuffer?
     private let particleCount: Int
     private let drawnCount: Int
+    /// The dust's indices followed by the emitters', rebuilt every frame because gas that
+    /// forms stars changes sides. Each draw reads only its own half, where a single list
+    /// drawn twice had each vertex shader throw away the other half.
+    private let splitList: MTLBuffer
+    private let splitCounts: MTLBuffer
+    private let splitArguments: MTLBuffer
+    private static let splitGroup = 256
     /// One over the mean light per unit mass across this scene at t = 0.
     ///
     /// The exposure divides by the *number* of particles that reach a pixel, so a law that
@@ -337,6 +347,9 @@ public final class Renderer {
         upsamplePipeline = try compute("upsampleAdd")
         compositePipeline = try compute("composite")
         spikePipeline = try compute("diffractionSpikes")
+        splitCountPipeline = try compute("splitCount")
+        splitScanPipeline = try compute("splitScan")
+        splitScatterPipeline = try compute("splitScatter")
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -424,11 +437,22 @@ public final class Renderer {
                 options: .storageModeShared),
             let galaxyBuffer = device.makeBuffer(
                 bytes: attribute(particles.galaxyIndex, UInt32(0)),
-                length: count * 4, options: .storageModeShared)
+                length: count * 4, options: .storageModeShared),
+            let splitList = device.makeBuffer(
+                length: max(drawnCount, 1) * 4, options: .storageModePrivate),
+            let splitCounts = device.makeBuffer(
+                length: Renderer.splitGroups(drawnCount) * MemoryLayout<SIMD2<UInt32>>.stride,
+                options: .storageModePrivate),
+            let splitArguments = device.makeBuffer(
+                length: 2 * MemoryLayout<MTLDrawIndexedPrimitivesIndirectArguments>.stride,
+                options: .storageModePrivate)
         else {
             throw RenderError.textureAllocation
         }
         self.galaxyBuffer = galaxyBuffer
+        self.splitList = splitList
+        self.splitCounts = splitCounts
+        self.splitArguments = splitArguments
         self.positionBuffer = positionBuffer
         self.populationBuffer = populationBuffer
         self.formationBuffer = formationBuffer
@@ -631,6 +655,8 @@ public final class Renderer {
             slabScale: 1 / max(2 * halfExtent, 1e-3),
             pass: 0)
 
+        encodeSplit(splat: &splat, into: buffer)
+
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {
             pass.colorAttachments[index].texture = target
@@ -660,20 +686,59 @@ public final class Renderer {
             encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
             encoder.setVertexBuffer(stellarBuffer, offset: 0, index: 9)
             encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
-            // Twice over the same buffer: the dust first, so that its opacity is standing in
-            // the attachment when the stars are drawn and read it back. Each draw throws away
-            // the particles belonging to the other one in the vertex stage, before any
-            // fragment work, so the cost of the second pass is a vertex shader over the whole
-            // buffer and nothing else.
+            // The dust first, so that its opacity is standing in the attachment when the
+            // stars are drawn and read it back.
             for stage in UInt32(0)...1 {
                 splat.pass = stage
                 encoder.setRenderPipelineState(stage == 0 ? dustPipeline : splatPipeline)
                 encoder.setVertexBytes(
                     &splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-                encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+                encoder.drawIndexedPrimitives(
+                    type: .point, indexType: .uint32, indexBuffer: splitList,
+                    indexBufferOffset: 0, indirectBuffer: splitArguments,
+                    indirectBufferOffset: Int(stage)
+                        * MemoryLayout<MTLDrawIndexedPrimitivesIndirectArguments>.stride)
             }
             encoder.endEncoding()
         }
+    }
+
+    private static func splitGroups(_ count: Int) -> Int {
+        max((count + splitGroup - 1) / splitGroup, 1)
+    }
+
+    private func encodeSplit(splat: inout SplatUniforms, into buffer: MTLCommandBuffer) {
+        guard let encoder = buffer.makeComputeCommandEncoder() else { return }
+        var count = UInt32(drawnCount)
+        var groups = UInt32(Renderer.splitGroups(drawnCount))
+        let grid = MTLSize(width: Int(groups), height: 1, depth: 1)
+        let group = MTLSize(width: Renderer.splitGroup, height: 1, depth: 1)
+
+        encoder.setBuffer(componentBuffer, offset: 0, index: 0)
+        encoder.setBuffer(formationBuffer, offset: 0, index: 1)
+        encoder.setBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 2)
+        encoder.setBytes(&count, length: 4, index: 3)
+        encoder.setBuffer(splitCounts, offset: 0, index: 4)
+        encoder.setComputePipelineState(splitCountPipeline)
+        encoder.dispatchThreadgroups(grid, threadsPerThreadgroup: group)
+
+        encoder.setComputePipelineState(splitScanPipeline)
+        encoder.setBuffer(splitCounts, offset: 0, index: 0)
+        encoder.setBytes(&groups, length: 4, index: 1)
+        encoder.setBuffer(splitArguments, offset: 0, index: 2)
+        let threads = min(splitScanPipeline.maxTotalThreadsPerThreadgroup, 1024)
+        encoder.dispatchThreadgroups(
+            MTLSize(width: 1, height: 1, depth: 1),
+            threadsPerThreadgroup: MTLSize(width: threads, height: 1, depth: 1))
+
+        encoder.setComputePipelineState(splitScatterPipeline)
+        encoder.setBuffer(componentBuffer, offset: 0, index: 0)
+        encoder.setBuffer(formationBuffer, offset: 0, index: 1)
+        encoder.setBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 2)
+        encoder.setBuffer(splitCounts, offset: 0, index: 4)
+        encoder.setBuffer(splitList, offset: 0, index: 5)
+        encoder.dispatchThreadgroups(grid, threadsPerThreadgroup: group)
+        encoder.endEncoding()
     }
 
     private func encodePost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
