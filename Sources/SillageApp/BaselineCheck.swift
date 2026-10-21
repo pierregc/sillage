@@ -10,8 +10,9 @@ import SillageRender
 /// writes the report to `/tmp/sillage-baseline-<visible>.log`. `quiet` draws nothing while it
 /// steps, which is the only way to read the solver's GPU passes on their own. `overlap` builds
 /// each tree alongside the force pass that precedes it. `theta <angle>` replaces the scene's
-/// opening angle. `plain` leaves profiling off, so the solver submits its passes as the app
-/// does; only the wall clock lines then mean anything.
+/// opening angle, and `monopole` drops each accepted cell's quadrupole. `plain` leaves profiling
+/// off, so the solver submits its passes as the app does; only the wall clock lines then mean
+/// anything.
 ///
 /// Headless, before the window opens, so it runs on a machine nobody is looking at; frames are
 /// drawn offscreen instead.
@@ -29,6 +30,8 @@ enum BaselineCheck {
         MetalBarnesHutSolver.overlapTree = overlap
         // Profiling submits every pass on its own, which hands frames gaps the app never has.
         let plain = arguments.contains("plain")
+        let monopole = arguments.contains("monopole")
+        MetalBarnesHutSolver.quadrupole = !monopole
         let theta = arguments.firstIndex(of: "theta").flatMap {
             $0 + 1 < arguments.count ? Float(arguments[$0 + 1]) : nil
         }
@@ -130,7 +133,7 @@ enum BaselineCheck {
         let gpuPerStep = solverGPU / Double(max(profile.steps, 1))
         let cpuPerStep = [
             "halo centres", "disk frames", "bounds", "morton", "sort", "nodes", "accumulate",
-            "upload",
+            "quadrupoles", "upload",
         ].reduce(0) { $0 + profile.perStep($1) }
         // Whatever the stepping queue does between batches: the take, the smoothing refresh
         // and the hop through the main actor.
@@ -142,7 +145,7 @@ enum BaselineCheck {
         var lines = [
             "baseline   merger, seed 1, theta \(solver.openingAngle), live halos 1.5"
                 + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : "")
-                + (plain ? ", not profiled" : ""),
+                + (plain ? ", not profiled" : "") + (monopole ? ", monopole" : ""),
             "particles  \(visible) visible, \(model.particleCount) simulated",
             "prepared   \(format(preparation)) s",
             "measured   \(profile.steps) steps, \(profile.treeBuilds) tree builds,"
@@ -198,7 +201,7 @@ enum BaselineCheck {
             to: URL(
                 fileURLWithPath:
                     "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "")\(overlap ? "-overlap" : "")"
-                    + "\(plain ? "-plain" : "")"
+                    + "\(plain ? "-plain" : "")\(monopole ? "-monopole" : "")"
                     + "\(theta.map { "-theta\($0)" } ?? "").log"
             ),
             atomically: true, encoding: .utf8)

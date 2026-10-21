@@ -105,6 +105,7 @@ public final class MetalBarnesHutSolver: Solver {
     /// still traversing this one. `live` is the set the GPU reads; the build writes the other.
     private var nodeBuffers: [MTLBuffer?] = [nil, nil]
     private var orderBuffers: [MTLBuffer?] = [nil, nil]
+    private var momentBuffers: [MTLBuffer?] = [nil, nil]
     private var nodeCounts = [0, 0]
     private var live = 0
     private var nodeBuffer: MTLBuffer? { nodeBuffers[live] }
@@ -139,6 +140,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let galaxyOf: [UInt32]
     private let componentOf: [UInt32]
     private let liveHalos: Bool
+    public let quadrupole: Bool
     private var stepsSinceTree = 0
     /// Only ever used to vary the per-step random draw in the star formation pass.
     private var stepsSinceFormation = 0
@@ -184,7 +186,10 @@ public final class MetalBarnesHutSolver: Solver {
             particles: RestrictedSolver.sampleParticles(for: scene))
     }
 
-    public init(device: MTLDevice? = nil, scene: SceneConfig, particles: ParticleSystem) throws {
+    public init(
+        device: MTLDevice? = nil, scene: SceneConfig, particles: ParticleSystem,
+        quadrupole: Bool = MetalBarnesHutSolver.quadrupole
+    ) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
         }
@@ -196,6 +201,7 @@ public final class MetalBarnesHutSolver: Solver {
         self.galaxyOf = particles.galaxyIndex
         self.componentOf = particles.component
         self.liveHalos = scene.hasLiveHalos
+        self.quadrupole = quadrupole
         self.haloCenters = scene.galaxies.map(\.position)
         self.galaxyMotion = scene.galaxies.map(\.velocity)
         self.diskStates = DiskState.natal(scene)
@@ -228,7 +234,15 @@ public final class MetalBarnesHutSolver: Solver {
         }
         kickDrift = try pipeline("bhKickDrift")
         kick = try pipeline("bhKick")
-        force = try pipeline("bhAcceleration")
+        let constants = MTLFunctionConstantValues()
+        var specialised = quadrupole
+        constants.setConstantValue(&specialised, type: .bool, index: 0)
+        do {
+            force = try device.makeComputePipelineState(
+                function: library.makeFunction(name: "bhAcceleration", constantValues: constants))
+        } catch {
+            throw RenderError.pipelineCreation("bhAcceleration: \(error)")
+        }
         gather = try pipeline("bhGather")
         dissipate =
             scene.galaxies.contains { $0.dissipationTime > 0 }
@@ -292,6 +306,7 @@ public final class MetalBarnesHutSolver: Solver {
             }
         }
 
+        tree.computesQuadrupoles = quadrupole
         // The first half kick needs an acceleration, so seed it before stepping.
         rebuildTree()
         if let buffer = queue.makeCommandBuffer() {
@@ -602,6 +617,11 @@ public final class MetalBarnesHutSolver: Solver {
     /// notes. Leave it off.
     nonisolated(unsafe) public static var overlapTree = false
 
+    /// Whether an accepted cell adds its quadrupole to its monopole, which is what lets the
+    /// opening angle be 0.9 rather than 0.7 for the same force error. The default for new
+    /// solvers; the monopole stays for measuring against.
+    nonisolated(unsafe) public static var quadrupole = true
+
     /// Particles a galaxy contributes to its own disk frame. The axis and the coherence are
     /// mass-weighted sums over a hundred thousand-odd stars; fifty thousand of them give the
     /// same answer, and this runs on every tree rebuild.
@@ -672,6 +692,19 @@ public final class MetalBarnesHutSolver: Solver {
                 tree.order.withUnsafeBytes {
                     orderBuffers[target]?.contents().copyMemory(
                         from: $0.baseAddress!, byteCount: $0.count)
+                }
+            }
+            if quadrupole {
+                let momentLength = max(tree.quadrupoles.count, 1) * MemoryLayout<SIMD4<Float>>.stride
+                if momentBuffers[target] == nil || momentBuffers[target]!.length < momentLength {
+                    momentBuffers[target] = device.makeBuffer(
+                        length: momentLength * 2, options: .storageModeShared)
+                }
+                if !tree.quadrupoles.isEmpty {
+                    tree.quadrupoles.withUnsafeBytes {
+                        momentBuffers[target]?.contents().copyMemory(
+                            from: $0.baseAddress!, byteCount: $0.count)
+                    }
                 }
             }
             nodeCounts[target] = tree.nodes.count
@@ -928,6 +961,8 @@ public final class MetalBarnesHutSolver: Solver {
                 encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 4)
                 encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 5)
                 encoder.setBuffer(costBuffer, offset: 0, index: 6)
+                // Never read by the monopole pipeline, which still wants something bound.
+                encoder.setBuffer(momentBuffers[live] ?? nodeBuffer, offset: 0, index: 7)
             }
             start += span
         }
