@@ -87,7 +87,6 @@ public final class MetalBarnesHutSolver: Solver {
     private let gather: MTLComputePipelineState
     private let dissipate: MTLComputePipelineState?
     private let formStars: MTLComputePipelineState
-    private let smooth: MTLComputePipelineState
 
     private let positionBuffer: MTLBuffer
     private let velocityBuffer: MTLBuffer
@@ -224,7 +223,6 @@ public final class MetalBarnesHutSolver: Solver {
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
         formStars = try pipeline("bhFormStars")
-        smooth = try pipeline("bhSmoothing")
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -401,14 +399,7 @@ public final class MetalBarnesHutSolver: Solver {
     /// renderer needs no tree of its own. False before there is one.
     public func writeSmoothing(into lengths: MTLBuffer, drawn: Int) -> Bool {
         guard nodeCount > 0, let buffer = queue.makeCommandBuffer() else { return false }
-        var counts = SIMD2<UInt32>(
-            UInt32(nodeCount), UInt32(min(drawn, count, lengths.length / 4)))
-        encode(into: buffer, smooth, threads: nodeCount) { encoder in
-            encoder.setBuffer(lengths, offset: 0, index: 0)
-            encoder.setBuffer(builder.nodes, offset: 0, index: 1)
-            encoder.setBuffer(builder.order, offset: 0, index: 2)
-            encoder.setBytes(&counts, length: MemoryLayout<SIMD2<UInt32>>.stride, index: 3)
-        }
+        builder.encodeSmoothing(into: buffer, lengths: lengths, drawn: drawn)
         buffer.commit()
         buffer.waitUntilCompleted()
         return true

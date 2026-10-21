@@ -67,6 +67,8 @@ enum ReplayCheck {
             }
             whole.append((CACurrentMediaTime() - start) * 1000)
             gpu.append(model.lastOffscreenGPUMilliseconds)
+            // Lets a finished smoothing refresh land, or only the first one would ever run.
+            RunLoop.current.run(until: Date())
         }
 
         func split(_ name: String, _ samples: [Double]) -> String {
@@ -87,6 +89,7 @@ enum ReplayCheck {
             \(split("entêtes + centres", model.playbackMeta))
             \(split("mélange GPU     ", model.playbackExpand))
             \(split("rendu GPU       ", gpu))
+            \(split("lissage         ", model.smoothingRefreshes))
             snapshot en retard \(model.playbackWaits) images sur \(model.playbackFetch.count)
             """
         try? report.write(
