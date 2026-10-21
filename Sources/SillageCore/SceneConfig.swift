@@ -41,6 +41,15 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     /// the approximation, since a monopole force is not symmetric between a particle and the
     /// cell standing in for its neighbours, and nothing else measured here shows it.
     ///
+    /// Quadrupole moments do not move that knee (#37, branch `spike/37-quadrupole`). They cut
+    /// the force error at a given angle three to fourfold, so 0.9 matches the error of 0.7 and
+    /// the force pass runs 1.57x faster, 362 ms to 231 at five million visible particles, and
+    /// a merger's orbit even stays closer to an accurate run. But the drift follows the angle,
+    /// not the error: on the live halo test it is seven times today's at 0.9, the monopole
+    /// alone at 0.9 already nearly six. At the angles that pass that test the quadrupole buys
+    /// accuracy only, for 13 % more force pass. Not worth retrying without a scheme that
+    /// conserves momentum.
+    ///
     /// Small-scale structure does not pay for a wider angle, and the reason is worth stating:
     /// an opening angle only decides how far a cell must be before its monopole stands in for
     /// it, so it approximates the *far* field. Clumping is set by the near field, summed
