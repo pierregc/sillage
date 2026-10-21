@@ -10,7 +10,8 @@ import SillageRender
 /// writes the report to `/tmp/sillage-baseline-<visible>.log`. `quiet` draws nothing while it
 /// steps, which is the only way to read the solver's GPU passes on their own. `overlap` builds
 /// each tree alongside the force pass that precedes it. `theta <angle>` replaces the scene's
-/// opening angle.
+/// opening angle. `plain` leaves profiling off, so the solver submits its passes as the app
+/// does; only the wall clock lines then mean anything.
 ///
 /// Headless, before the window opens, so it runs on a machine nobody is looking at; frames are
 /// drawn offscreen instead.
@@ -26,6 +27,8 @@ enum BaselineCheck {
         let quiet = arguments.contains("quiet")
         let overlap = arguments.contains("overlap")
         MetalBarnesHutSolver.overlapTree = overlap
+        // Profiling submits every pass on its own, which hands frames gaps the app never has.
+        let plain = arguments.contains("plain")
         let theta = arguments.firstIndex(of: "theta").flatMap {
             $0 + 1 < arguments.count ? Float(arguments[$0 + 1]) : nil
         }
@@ -62,7 +65,7 @@ enum BaselineCheck {
         let preparation = Date().timeIntervalSince(preparing)
 
         // The first batches carry pipeline warm-up and the first tree allocations.
-        solver.profiling = true
+        solver.profiling = !plain
         let warm = model.solverSteps + 2
         pump(until: { model.solverSteps >= warm }, limit: 600)
         _ = solver.takeProfile()
@@ -135,13 +138,18 @@ enum BaselineCheck {
         let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
         let size = "\(renderer.settings.width)x\(renderer.settings.height)"
 
+        let steps = (model.solverSteps - firstBatch) * model.stepsPerFrame
         var lines = [
             "baseline   merger, seed 1, theta \(solver.openingAngle), live halos 1.5"
-                + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : ""),
+                + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : "")
+                + (plain ? ", not profiled" : ""),
             "particles  \(visible) visible, \(model.particleCount) simulated",
             "prepared   \(format(preparation)) s",
             "measured   \(profile.steps) steps, \(profile.treeBuilds) tree builds,"
                 + " \(format(wall)) s, \(model.stepsPerFrame) steps a batch",
+            "wall       \(steps) steps, \(format(wall * 1000 / Double(max(steps, 1)))) ms a step"
+                + " with everything between batches, \(renderTimes.count) frames,"
+                + " \(format(Double(renderTimes.count) / wall)) a second",
             "",
             "per step, ms (mean over \(profile.steps); GPU passes timed by the GPU clock)",
         ]
@@ -190,6 +198,7 @@ enum BaselineCheck {
             to: URL(
                 fileURLWithPath:
                     "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "")\(overlap ? "-overlap" : "")"
+                    + "\(plain ? "-plain" : "")"
                     + "\(theta.map { "-theta\($0)" } ?? "").log"
             ),
             atomically: true, encoding: .utf8)
