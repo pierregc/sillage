@@ -84,6 +84,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let kickDrift: MTLComputePipelineState
     private let kick: MTLComputePipelineState
     private let force: MTLComputePipelineState
+    private let gather: MTLComputePipelineState
     private let dissipate: MTLComputePipelineState?
     private let formStars: MTLComputePipelineState
     private let smooth: MTLComputePipelineState
@@ -92,6 +93,8 @@ public final class MetalBarnesHutSolver: Solver {
     private let velocityBuffer: MTLBuffer
     private let accelerationBuffer: MTLBuffer
     private let massBuffer: MTLBuffer
+    /// Position and mass by Morton slot, gathered before each force pass.
+    private let sortedBuffer: MTLBuffer
     /// When each particle's stars formed. Written by the solver, read by the renderer, and
     /// the one per-particle attribute that is not fixed for the life of a run.
     public let formationBuffer: MTLBuffer
@@ -226,6 +229,7 @@ public final class MetalBarnesHutSolver: Solver {
         kickDrift = try pipeline("bhKickDrift")
         kick = try pipeline("bhKick")
         force = try pipeline("bhAcceleration")
+        gather = try pipeline("bhGather")
         dissipate =
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
@@ -246,6 +250,8 @@ public final class MetalBarnesHutSolver: Solver {
             let massBuffer = device.makeBuffer(
                 bytes: particles.mass.isEmpty ? [Float(0)] : particles.mass,
                 length: count * 4, options: .storageModeShared),
+            let sortedBuffer = device.makeBuffer(
+                length: count * MemoryLayout<SIMD4<Float>>.stride, options: .storageModePrivate),
             let costBuffer = device.makeBuffer(
                 length: count * 4, options: .storageModeShared),
             let formationBuffer = device.makeBuffer(
@@ -260,6 +266,7 @@ public final class MetalBarnesHutSolver: Solver {
         self.velocityBuffer = velocityBuffer
         self.accelerationBuffer = accelerationBuffer
         self.massBuffer = massBuffer
+        self.sortedBuffer = sortedBuffer
         self.formationBuffer = formationBuffer
         self.costBuffer = costBuffer
 
@@ -895,19 +902,25 @@ public final class MetalBarnesHutSolver: Solver {
         }
         if list.isEmpty { list = [HaloGPU(centerBefore: .zero, centerAfter: .zero, shape: .zero)] }
 
+        encode(into: buffer, gather) { encoder in
+            encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
+            encoder.setBuffer(positionBuffer, offset: 0, index: 1)
+            encoder.setBuffer(massBuffer, offset: 0, index: 2)
+            encoder.setBuffer(orderBuffer, offset: 0, index: 3)
+            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 4)
+        }
         var start = 0
         while start < count {
             let span = min(max(Self.forceChunk, 1), count - start)
             p.chunkStart = UInt32(start)
             encode(into: buffer, force, threads: span) { encoder in
-                encoder.setBuffer(positionBuffer, offset: 0, index: 0)
+                encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
                 encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
                 encoder.setBuffer(nodeBuffer, offset: 0, index: 2)
                 encoder.setBuffer(orderBuffer, offset: 0, index: 3)
-                encoder.setBuffer(massBuffer, offset: 0, index: 4)
-                encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 5)
-                encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
-                encoder.setBuffer(costBuffer, offset: 0, index: 7)
+                encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 4)
+                encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 5)
+                encoder.setBuffer(costBuffer, offset: 0, index: 6)
             }
             start += span
         }
