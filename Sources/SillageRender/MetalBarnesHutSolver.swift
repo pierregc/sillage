@@ -128,8 +128,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let tree = BarnesHutTree(
         leafCapacity: MetalBarnesHutSolver.leafCapacity,
         maximumDepth: MetalBarnesHutSolver.maximumTreeDepth)
-    /// Reused across steps. Masses never change, so they are read once.
-    private var scratchPositions: [SIMD3<Float>]
+    /// Masses never change, so they are read once.
     private let particleMass: [Float]
     private let template: ParticleSystem
     private let count: Int
@@ -196,7 +195,6 @@ public final class MetalBarnesHutSolver: Solver {
         self.haloCenters = scene.galaxies.map(\.position)
         self.galaxyMotion = scene.galaxies.map(\.velocity)
         self.diskStates = DiskState.natal(scene)
-        self.scratchPositions = [SIMD3<Float>](repeating: .zero, count: self.count)
         var masses = particles.mass
         if masses.count != self.count {
             masses = [Float](repeating: 0, count: self.count)
@@ -328,15 +326,8 @@ public final class MetalBarnesHutSolver: Solver {
             // Everything between here and the submit below is what cannot overlap: the centre
             // and disk-state passes read velocities, and the kick is about to write them.
             if stepsSinceTree <= 0 {
-                timed("snapshot") { snapshotPositions() }
-                timed("halo centres") {
-                    updateHaloCenters(positions: scratchPositions, mass: particleMass)
-                }
-                if dissipate != nil {
-                    timed("disk frames") {
-                        updateDiskFrames(positions: scratchPositions, mass: particleMass)
-                    }
-                }
+                timed("halo centres") { updateHaloCenters() }
+                if dissipate != nil { timed("disk frames") { updateDiskFrames() } }
                 startTree()
                 if !Self.overlapTree { joinTree() }
                 stepsSinceTree = max(Self.treeReuse, 1)
@@ -606,17 +597,14 @@ public final class MetalBarnesHutSolver: Solver {
         }
     }
 
-    /// Reads positions straight out of the shared buffer, so the build costs no transfer.
-    ///
-    /// Copied into storage that lives as long as the solver: a fresh array here allocated and
-    /// freed sixteen megabytes every step, at a hundred steps a second. It is filled on the
-    /// stepping thread and read by the build afterwards, and the next fill cannot happen
-    /// before that build has been joined.
-    private func snapshotPositions() {
-        let pointer = positionBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
-        scratchPositions.withUnsafeMutableBufferPointer { destination in
-            destination.baseAddress!.update(from: pointer, count: count)
-        }
+    /// The positions as the GPU left them. The CPU passes and the tree read them in place
+    /// rather than from a copy: only the drift writes them, and every step joins the build
+    /// before it encodes the drift, so a build alongside the force pass still sees the
+    /// positions it started from.
+    private var currentPositions: UnsafeBufferPointer<SIMD3<Float>> {
+        UnsafeBufferPointer(
+            start: positionBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count),
+            count: count)
     }
 
     /// Builds the tree into whichever set the GPU is not reading, and hands it over on `join`.
@@ -626,7 +614,7 @@ public final class MetalBarnesHutSolver: Solver {
         let target = 1 - live
         treeQueue.async(group: treeGroup) { [self] in
             let clock = Date()
-            tree.build(positions: scratchPositions, mass: particleMass)
+            tree.build(positions: currentPositions, mass: particleMass)
             lastTreeOnlyMilliseconds = Date().timeIntervalSince(clock) * 1000
 
             let nodeLength = max(tree.nodes.count, 1) * MemoryLayout<BHNode>.stride
@@ -676,9 +664,8 @@ public final class MetalBarnesHutSolver: Solver {
     /// The synchronous form, for the one build that has nothing to overlap with: the seed in
     /// `init`, before there is a force pass to run alongside it.
     private func rebuildTree() {
-        snapshotPositions()
-        updateHaloCenters(positions: scratchPositions, mass: particleMass)
-        if dissipate != nil { updateDiskFrames(positions: scratchPositions, mass: particleMass) }
+        updateHaloCenters()
+        if dissipate != nil { updateDiskFrames() }
         startTree()
         joinTree()
     }
@@ -686,33 +673,78 @@ public final class MetalBarnesHutSolver: Solver {
     /// Each halo rides on the centre of mass of its own galaxy's particles, and so does the
     /// frame the dissipation pass cools towards: cooling in the wrong frame would drag two
     /// galaxies to a halt instead of letting them orbit.
-    private func updateHaloCenters(positions: [SIMD3<Float>], mass: [Float]) {
-        var weighted = [SIMD3<Float>](repeating: .zero, count: scene.galaxies.count)
-        var drift = [SIMD3<Float>](repeating: .zero, count: scene.galaxies.count)
-        var totals = [Float](repeating: 0, count: scene.galaxies.count)
+    ///
+    /// Summed in fixed blocks on every core, in double precision. The single running float sum
+    /// this replaced was not exact enough to be worth matching: by the time a galaxy's total
+    /// mass is tens of thousands of times one particle's, every addition rounds the same way,
+    /// and at sixty thousand particles a galaxy the centre came out scaled by 1.0008, 23 pc off
+    /// at 30 kpc. Fixed blocks added in order also make the answer the same on any machine.
+    private func updateHaloCenters() {
+        let galaxies = scene.galaxies.count
+        guard galaxies > 0 else { return }
+        let positions = currentPositions
         let velocities =
             dissipate == nil
             ? nil
             : velocityBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
-        // Halo particles outnumber the disk, so including them would put the centre at the
-        // halo's centroid rather than at the visible galaxy's.
-        for index in 0..<min(count, galaxyOf.count) {
-            let galaxy = Int(galaxyOf[index])
-            guard galaxy < totals.count else { continue }
-            if index < componentOf.count,
-                componentOf[index] == ParticleComponent.halo.rawValue
-            {
-                continue
+        let limit = min(count, galaxyOf.count)
+        let block = 65_536
+        let blocks = (limit + block - 1) / block
+        // Three sums a galaxy a block: position and velocity weighted by mass, then the mass.
+        var partial = [SIMD3<Double>](repeating: .zero, count: blocks * galaxies * 3)
+        let halo = ParticleComponent.halo.rawValue
+        galaxyOf.withUnsafeBufferPointer { galaxyOf in
+            componentOf.withUnsafeBufferPointer { componentOf in
+                particleMass.withUnsafeBufferPointer { mass in
+                    partial.withUnsafeMutableBufferPointer { partial in
+                        DispatchQueue.concurrentPerform(iterations: blocks) { index in
+                            var weighted = [SIMD3<Double>](repeating: .zero, count: galaxies)
+                            var drift = weighted
+                            var totals = [Double](repeating: 0, count: galaxies)
+                            for particle in index * block..<min((index + 1) * block, limit) {
+                                let galaxy = Int(galaxyOf[particle])
+                                guard galaxy < galaxies else { continue }
+                                // Halo particles outnumber the disk, so including them would
+                                // put the centre at the halo's centroid rather than at the
+                                // visible galaxy's.
+                                if particle < componentOf.count, componentOf[particle] == halo {
+                                    continue
+                                }
+                                let m = Double(max(mass[particle], 1e-20))
+                                weighted[galaxy] += SIMD3<Double>(positions[particle]) * m
+                                if let velocities {
+                                    drift[galaxy] += SIMD3<Double>(velocities[particle]) * m
+                                }
+                                totals[galaxy] += m
+                            }
+                            for galaxy in 0..<galaxies {
+                                let base = (index * galaxies + galaxy) * 3
+                                partial[base] = weighted[galaxy]
+                                partial[base + 1] = drift[galaxy]
+                                partial[base + 2] = SIMD3<Double>(repeating: totals[galaxy])
+                            }
+                        }
+                    }
+                }
             }
-            let m = max(mass[index], 1e-20)
-            weighted[galaxy] += positions[index] * m
-            if let velocities { drift[galaxy] += velocities[index] * m }
-            totals[galaxy] += m
+        }
+        var weighted = [SIMD3<Double>](repeating: .zero, count: galaxies)
+        var drift = weighted
+        var totals = [Double](repeating: 0, count: galaxies)
+        for index in 0..<blocks {
+            for galaxy in 0..<galaxies {
+                let base = (index * galaxies + galaxy) * 3
+                weighted[galaxy] += partial[base]
+                drift[galaxy] += partial[base + 1]
+                totals[galaxy] += partial[base + 2].x
+            }
         }
         var updated = centers
         for galaxy in updated.indices where totals[galaxy] > 0 {
-            updated[galaxy] = weighted[galaxy] / totals[galaxy]
-            if velocities != nil { galaxyMotion[galaxy] = drift[galaxy] / totals[galaxy] }
+            updated[galaxy] = SIMD3<Float>(weighted[galaxy] / totals[galaxy])
+            if velocities != nil {
+                galaxyMotion[galaxy] = SIMD3<Float>(drift[galaxy] / totals[galaxy])
+            }
         }
         centersLock.lock()
         haloCenters = updated
@@ -737,9 +769,11 @@ public final class MetalBarnesHutSolver: Solver {
     ///
     /// Fifty thousand particles a galaxy answer both questions. Walking millions of them on
     /// every tree rebuild would cost more than the cooling it feeds.
-    private func updateDiskFrames(positions: [SIMD3<Float>], mass: [Float]) {
+    private func updateDiskFrames() {
         let galaxies = scene.galaxies.count
         guard galaxies > 0 else { return }
+        let positions = currentPositions
+        let mass = particleMass
         var angular = [SIMD3<Double>](repeating: .zero, count: galaxies)
         var scalar = [Double](repeating: 0, count: galaxies)
         var height = [Double](repeating: 0, count: galaxies)

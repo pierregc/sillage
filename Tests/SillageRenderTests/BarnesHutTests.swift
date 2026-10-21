@@ -474,6 +474,34 @@ struct BarnesHutTests {
         #expect(worst == 0)
     }
 
+    /// Summed in blocks on every core, and in double precision because the float running sum
+    /// it replaced was 23 pc off here. Enough particles for several blocks, and two galaxies
+    /// so a block writing into the other one's slot would show.
+    @Test func haloCentresSummedInBlocksAreTheCentresOfMass() throws {
+        var scene = SceneConfig.merger(particleCount: 120_000)
+        scene.solver = .barnesHut
+        for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = 1.5 }
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        #expect(particles.count > 3 * 65_536, "sinon il n'y a qu'un bloc")
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+        let positions = solver.particles.positions
+
+        var weighted = [SIMD3<Double>](repeating: .zero, count: scene.galaxies.count)
+        var totals = [Double](repeating: 0, count: scene.galaxies.count)
+        for index in particles.positions.indices
+        where particles.component[index] != ParticleComponent.halo.rawValue {
+            let galaxy = Int(particles.galaxyIndex[index])
+            let m = Double(max(particles.mass[index], 1e-20))
+            weighted[galaxy] += SIMD3<Double>(positions[index]) * m
+            totals[galaxy] += m
+        }
+        let centers = solver.centers
+        for galaxy in scene.galaxies.indices {
+            let expected = weighted[galaxy] / totals[galaxy]
+            #expect(simd_distance(SIMD3<Double>(centers[galaxy]), expected) < 1e-4)
+        }
+    }
+
     @Test func selfGravitatingSamplingAssignsMass() {
         var scene = SceneConfig.merger(particleCount: 2_000)
         scene.solver = .barnesHut
