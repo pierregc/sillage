@@ -50,7 +50,8 @@ struct MetalSolverTests {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let render = try device.makeLibrary(source: Shaders.source, options: nil)
         for name in [
-            "splatVertex", "splatFragment", "starfieldVertex", "resolve", "brightPass",
+            "splatVertex", "dustFragment", "splatFragment", "starfieldVertex",
+            "starfieldFragment", "resolve", "brightPass",
             "downsample", "upsampleAdd", "diffractionSpikes", "composite",
         ] {
             #expect(render.makeFunction(name: name) != nil, "missing \(name)")

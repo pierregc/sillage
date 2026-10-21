@@ -187,6 +187,7 @@ public final class Renderer {
     private var frameSeed: Float = 1
 
     private let queue: MTLCommandQueue
+    private let dustPipeline: MTLRenderPipelineState
     private let splatPipeline: MTLRenderPipelineState
     private let starfieldPipeline: MTLRenderPipelineState
     private let resolvePipeline: MTLComputePipelineState
@@ -302,14 +303,17 @@ public final class Renderer {
             }
         }
 
-        func additive(_ vertexFunction: String) throws -> MTLRenderPipelineState {
+        func additive(
+            _ vertexFunction: String, _ fragmentFunction: String, writing target: Int
+        ) throws -> MTLRenderPipelineState {
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
-            descriptor.fragmentFunction = library.makeFunction(name: "splatFragment")
+            descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
             for (index, format) in [MTLPixelFormat.rgba16Float, .rgba16Float].enumerated() {
                 guard let attachment = descriptor.colorAttachments[index] else { continue }
                 attachment.pixelFormat = format
-                attachment.isBlendingEnabled = true
+                attachment.writeMask = index == target ? .all : []
+                attachment.isBlendingEnabled = index == target
                 attachment.rgbBlendOperation = .add
                 attachment.alphaBlendOperation = .add
                 attachment.sourceRGBBlendFactor = .one
@@ -320,11 +324,12 @@ public final class Renderer {
             do {
                 return try device.makeRenderPipelineState(descriptor: descriptor)
             } catch {
-                throw RenderError.pipelineCreation("\(vertexFunction): \(error)")
+                throw RenderError.pipelineCreation("\(fragmentFunction): \(error)")
             }
         }
-        splatPipeline = try additive("splatVertex")
-        starfieldPipeline = try additive("starfieldVertex")
+        dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
+        splatPipeline = try additive("splatVertex", "splatFragment", writing: 0)
+        starfieldPipeline = try additive("starfieldVertex", "starfieldFragment", writing: 0)
 
         resolvePipeline = try compute("resolve")
         brightPassPipeline = try compute("brightPass")
@@ -571,6 +576,11 @@ public final class Renderer {
     }
 
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
+        encodeSplat(camera: camera, into: buffer)
+        encodePost(into: buffer, present: present)
+    }
+
+    private func encodeSplat(camera: Camera, into buffer: MTLCommandBuffer) {
         let scale = settings.supersample
         let aspect = Float(settings.width) / Float(settings.height)
 
@@ -640,7 +650,6 @@ public final class Renderer {
                     type: .point, vertexStart: 0, vertexCount: settings.starCount)
             }
 
-            encoder.setRenderPipelineState(splatPipeline)
             encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
             encoder.setVertexBuffer(populationBuffer, offset: 0, index: 1)
             encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
@@ -658,16 +667,19 @@ public final class Renderer {
             // buffer and nothing else.
             for stage in UInt32(0)...1 {
                 splat.pass = stage
+                encoder.setRenderPipelineState(stage == 0 ? dustPipeline : splatPipeline)
                 encoder.setVertexBytes(
                     &splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
                 encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
             }
             encoder.endEncoding()
         }
+    }
 
+    private func encodePost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
         guard let compute = buffer.makeComputeCommandEncoder() else { return }
 
-        var factor = UInt32(scale)
+        var factor = UInt32(settings.supersample)
         dispatch(compute, resolvePipeline, into: resolved) { encoder in
             encoder.setTexture(accumulation, index: 0)
             encoder.setTexture(resolved, index: 2)
@@ -801,10 +813,23 @@ public final class Renderer {
         buffer.commit()
     }
 
+    /// Submits the splat pass alone while set, so `lastSplatTime` is its own span on the GPU
+    /// clock and not a share of the frame's.
+    public var timesSplatPass = false
+    public private(set) var lastSplatTime: Double = 0
+
     /// Renders offscreen and reads the result back as 8-bit RGBA.
     public func render(camera: Camera) -> [UInt8] {
         guard let buffer = queue.makeCommandBuffer() else { return [] }
-        encode(camera: camera, into: buffer)
+        if timesSplatPass, let splat = queue.makeCommandBuffer() {
+            encodeSplat(camera: camera, into: splat)
+            splat.commit()
+            splat.waitUntilCompleted()
+            lastSplatTime = splat.gpuEndTime - splat.gpuStartTime
+            encodePost(into: buffer, present: nil)
+        } else {
+            encode(camera: camera, into: buffer)
+        }
         buffer.commit()
         buffer.waitUntilCompleted()
         lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
