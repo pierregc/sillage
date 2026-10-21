@@ -82,7 +82,8 @@ enum Shaders {
         };
 
         // Two attachments: emitted light, and the optical depth of intervening dust. Both blend
-        // additively, so a fragment contributing to one writes zero to the other.
+        // additively, and each draw writes only the one it contributes to; the other is masked
+        // off in the pipeline.
         //
         // The dust attachment carries four channels, and they are four slabs of view depth
         // rather than four colours. Dust is drawn first and writes into the slab it sits in;
@@ -92,8 +93,11 @@ enum Shaders {
         // that on average half of it is in front — which is true of the picture as a whole
         // and false of every individual lane in it, so no lane ever passed in front of
         // anything. It only ever greyed the galaxy down uniformly.
-        struct SplatTargets {
+        struct LightTarget {
             half4 light [[color(0)]];
+        };
+
+        struct DustTarget {
             half4 dust [[color(1)]];
         };
 
@@ -494,9 +498,40 @@ enum Shaders {
             return out;
         }
 
-        fragment SplatTargets splatFragment(SplatOut in [[stage_in]],
-                                            float2 coord [[point_coord]],
-                                            SplatFetch prior) {
+        // Reading the dust attachment makes overlapping fragments on a pixel run in order, so
+        // only the draw that needs it reads it: the dust writes its own slab without looking,
+        // and the field stars sit behind the whole stack and are not dimmed by it.
+        fragment DustTarget dustFragment(SplatOut in [[stage_in]],
+                                         float2 coord [[point_coord]]) {
+            float2 d = coord - 0.5;
+            float r2 = dot(d, d) * 4.0;
+            if (r2 > 1.0) { discard_fragment(); }
+
+            DustTarget out;
+            out.dust = half4(in.opticalDepth * half(exp(-4.5 * r2)) * in.slab);
+            return out;
+        }
+
+        // Everything standing between this point and the camera: the slabs in front of its
+        // own, plus half of its own. `in.slab` holds the weights the vertex worked out, so a
+        // star picks out the ones it is behind.
+        fragment LightTarget splatFragment(SplatOut in [[stage_in]],
+                                           float2 coord [[point_coord]],
+                                           SplatFetch prior) {
+            float2 d = coord - 0.5;
+            float r2 = dot(d, d) * 4.0;
+            if (r2 > 1.0) { discard_fragment(); }
+
+            float falloff = exp(-4.5 * r2);
+            float column = dot(float4(prior.dust), float4(in.slab));
+            float3 extinction = exp(-column * reddening);
+            LightTarget out;
+            out.light = half4(in.color * half3(extinction) * half(falloff), half(falloff));
+            return out;
+        }
+
+        fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
+                                               float2 coord [[point_coord]]) {
             float2 d = coord - 0.5;
             float r2 = dot(d, d) * 4.0;
             if (r2 > 1.0) { discard_fragment(); }
@@ -514,15 +549,8 @@ enum Shaders {
                 falloff = exp(-4.5 * r2);
             }
 
-            SplatTargets out;
-            // Everything standing between this point and the camera: the slabs in front of
-            // its own, plus half of its own. `in.slab` holds the weights the vertex worked
-            // out, so dust picks out the one slab it writes into and a star picks out the
-            // ones it is behind.
-            float column = dot(float4(prior.dust), float4(in.slab));
-            float3 extinction = exp(-column * reddening);
-            out.light = half4(in.color * half3(extinction) * half(falloff), half(falloff));
-            out.dust = half4(in.opticalDepth * half(falloff) * in.slab);
+            LightTarget out;
+            out.light = half4(in.color * half(falloff), half(falloff));
             return out;
         }
 
