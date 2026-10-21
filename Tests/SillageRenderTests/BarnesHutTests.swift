@@ -99,6 +99,128 @@ struct BarnesHutTests {
         #expect(worst < 0.15)
     }
 
+    /// The root folds every level, so it checks the shift as much as the leaves check the sums.
+    @Test func quadrupolesAreTheSecondMomentAboutEachCentre() {
+        let (positions, mass) = cluster(count: 5_000)
+        let tree = BarnesHutTree()
+        tree.computesQuadrupoles = true
+        tree.build(positions: positions, mass: mass)
+        #expect(tree.quadrupoles.count == tree.nodes.count * 2)
+
+        func moments(_ members: [Int], about centre: SIMD4<Float>) -> [Double] {
+            var sums = [Double](repeating: 0, count: 6)
+            let c = SIMD3<Double>(Double(centre.x), Double(centre.y), Double(centre.z))
+            for particle in members {
+                let d = SIMD3<Double>(positions[particle]) - c
+                let m = Double(mass[particle])
+                sums[0] += m * d.x * d.x
+                sums[1] += m * d.y * d.y
+                sums[2] += m * d.z * d.z
+                sums[3] += m * d.x * d.y
+                sums[4] += m * d.x * d.z
+                sums[5] += m * d.y * d.z
+            }
+            return sums
+        }
+        func stored(_ index: Int) -> [Double] {
+            let a = tree.quadrupoles[2 * index]
+            let b = tree.quadrupoles[2 * index + 1]
+            return [a.x, a.y, a.z, a.w, b.x, b.y].map(Double.init)
+        }
+        func worst(_ index: Int, _ members: [Int]) -> Double {
+            let reference = moments(members, about: tree.nodes[index].comMass)
+            let scale = max(reference[0] + reference[1] + reference[2], 1e-30)
+            return zip(stored(index), reference).map { abs($0 - $1) / scale }.max() ?? 0
+        }
+
+        #expect(worst(0, Array(positions.indices)) < 1e-4)
+        var leaves = 0
+        for index in tree.nodes.indices where tree.nodes[index].isLeaf {
+            let node = tree.nodes[index]
+            guard node.particleCount > 1 else { continue }
+            let members = (node.particleStart..<(node.particleStart + node.particleCount)).map {
+                Int(tree.order[$0])
+            }
+            #expect(worst(index, members) < 1e-3)
+            leaves += 1
+        }
+        #expect(leaves > 100)
+    }
+
+    /// What the quadrupole is for: at the same opening angle, a fraction of the monopole's error.
+    @Test func theQuadrupoleCutsTheErrorAtTheSameAngle() throws {
+        let count = 3_000
+        let (positions, mass) = cluster(count: count, seed: 5)
+        var particles = ParticleSystem(capacity: count)
+        for index in 0..<count {
+            particles.append(
+                position: positions[index], velocity: .zero, galaxy: 0, radius: 1,
+                mass: mass[index])
+        }
+        let scene = SceneConfig(
+            name: "cluster",
+            galaxies: [
+                GalaxyConfig(
+                    name: "cluster", particleCount: count,
+                    potential: GalaxyPotential(profile: .plummer, mass: 10, scaleRadius: 3),
+                    diskScaleLength: 3, diskMassFraction: 1)
+            ],
+            solver: .barnesHut, openingAngle: 0.7, softening: 0.25)
+        func meanError(quadrupole: Bool) throws -> Float {
+            let solver = try MetalBarnesHutSolver(
+                scene: scene, particles: particles, quadrupole: quadrupole)
+            let computed = solver.accelerations
+            var total: Float = 0
+            var samples = 0
+            for index in stride(from: 0, to: count, by: 29) {
+                let reference = BarnesHutTree.directAcceleration(
+                    at: positions[index], positions: positions, mass: mass, softening: 0.25,
+                    skipping: index)
+                total += simd_length(computed[index] - reference) / max(simd_length(reference), 1e-6)
+                samples += 1
+            }
+            return total / Float(samples)
+        }
+        #expect(try meanError(quadrupole: true) < meanError(quadrupole: false) / 2)
+    }
+
+    /// What the default angle is chosen on. With the quadrupole, momentum no longer tracks the
+    /// force error, and the orbit does: a merger's separation through its second approach stays
+    /// closer to a run at 0.5 than the monopole's at 0.7. Measured from 12 000 to 200 000
+    /// visible particles, the default sits at 0.2 to 0.7 of the monopole's deviation; summed
+    /// here over three seeds, near 0.45.
+    @Test func theQuadrupoleKeepsAMergersOrbit() throws {
+        func separations(seed: UInt64, angle: Float?, quadrupole: Bool) throws -> [Float] {
+            var scene = SceneConfig.merger(particleCount: 12_000, seed: seed)
+            scene.solver = .barnesHut
+            scene.timeStepScale = 8
+            scene.retune()
+            if let angle { scene.openingAngle = angle }
+            let solver = try MetalBarnesHutSolver(
+                scene: scene, particles: RestrictedSolver.sampleParticles(for: scene),
+                quadrupole: quadrupole)
+            let every = max(Int(25 / (scene.timeStep * Float(Physics.megayearsPerTimeUnit))), 1)
+            return try (0..<14).map { _ in
+                solver.step(count: every)
+                let centres = solver.centers
+                return simd_distance(try #require(centres.first), try #require(centres.last))
+            }
+        }
+        func deviation(_ run: [Float], from reference: [Float]) -> Float {
+            zip(run, reference).reduce(0) { $0 + ($1.0 - $1.1) * ($1.0 - $1.1) }
+        }
+        var current: Float = 0
+        var monopole: Float = 0
+        for seed in UInt64(1)...3 {
+            let reference = try separations(seed: seed, angle: 0.5, quadrupole: true)
+            current += deviation(
+                try separations(seed: seed, angle: nil, quadrupole: true), from: reference)
+            monopole += deviation(
+                try separations(seed: seed, angle: 0.7, quadrupole: false), from: reference)
+        }
+        #expect(current.squareRoot() < 0.8 * monopole.squareRoot())
+    }
+
     @Test func tighterOpeningAngleReducesError() throws {
         let count = 2_000
         let (positions, mass) = cluster(count: count, seed: 9)
@@ -546,16 +668,23 @@ struct BarnesHutTests {
     /// assert it was under 0.25, which it was, on the one seed it happened to be written for.
     /// The first unrelated change to touch the sampler's random stream moved that draw and the
     /// check failed with nothing wrong. Summed over three, the ratio sits near 0.15.
+    ///
+    /// Measured with the monopole at 0.7, where the tree's own drift is a tenth of the leak.
+    /// At the default 0.9 with the quadrupole it is two thirds of it (#37), which would hide
+    /// the halo this is about; `theQuadrupoleKeepsAMergersOrbit` guards the default instead.
     @Test func liveHalosConserveMomentumFarBetterThanARigidOne() throws {
         func drift(ratio: Float, seed: UInt64) throws -> Float {
             var scene = SceneConfig.merger(particleCount: 12_000, seed: seed)
             scene.solver = .barnesHut
             scene.timeStep = 0.01
             scene.softening = 0.3
+            scene.openingAngle = 0.7
             for index in scene.galaxies.indices {
                 scene.galaxies[index].haloParticleRatio = ratio
             }
-            let solver = try MetalBarnesHutSolver(scene: scene)
+            let solver = try MetalBarnesHutSolver(
+                scene: scene, particles: RestrictedSolver.sampleParticles(for: scene),
+                quadrupole: false)
             let before = solver.momentum()
             solver.step(count: 500)
             return simd_length(solver.momentum() - before)
@@ -644,11 +773,11 @@ struct BarnesHutTests {
         /// dominated by the long quiescent approach either way, and comparing halves of a run
         /// says nothing — measured, the two halves of a merger came out within one per cent of
         /// each other while the rate inside them varied threefold.
-        func perWindow(merging: Bool, over megayears: Float) throws -> [Int] {
+        func perWindow(merging: Bool, over megayears: Float, seed: UInt64) throws -> [Int] {
             var scene =
                 merging
-                ? SceneConfig.merger(particleCount: 60_000)
-                : SceneConfig.isolatedDisk(particleCount: 60_000)
+                ? SceneConfig.merger(particleCount: 60_000, seed: seed)
+                : SceneConfig.isolatedDisk(particleCount: 60_000, seed: seed)
             scene.timeStepScale = 8
             scene.retune()
             let solver = try MetalBarnesHutSolver(
@@ -685,12 +814,23 @@ struct BarnesHutTests {
         /// is a six per cent margin and a test with a six per cent margin goes red on a driver
         /// update rather than on a regression. What it has to do is separate one from two and
         /// a half, and two does that with room on both sides.
+        ///
+        /// Summed over two seeds. A window holds about a hundred knots, and one of them moved the
+        /// quiet excursion from 1.26 to 1.59 when the opening angle changed (#37), while three
+        /// other seeds stayed between 1.10 and 1.38. Summed, 1.27 against 3.2.
+        func excursion(merging: Bool) throws -> Float {
+            let counts = try zip(
+                perWindow(merging: merging, over: 450, seed: 1),
+                perWindow(merging: merging, over: 450, seed: 2)
+            ).map { $0 + $1 }
+            return excursion(counts)
+        }
         func excursion(_ counts: [Int]) -> Float {
             Float(counts.max() ?? 0) / Float(max(counts.first ?? 1, 1))
         }
 
-        #expect(excursion(try perWindow(merging: false, over: 450)) < 1.5)
-        #expect(excursion(try perWindow(merging: true, over: 450)) > 2.0)
+        #expect(try excursion(merging: false) < 1.5)
+        #expect(try excursion(merging: true) > 2.0)
     }
 
     @Test func haloParticlesAreSampledAndCarryNoLight() {

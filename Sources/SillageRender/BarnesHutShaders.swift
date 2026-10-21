@@ -333,6 +333,8 @@ enum BarnesHutShaders {
             sorted[slot] = float4(positions[i], mass[i]);
         }
 
+        constant bool bhQuadrupole [[function_constant(0)]];
+
         // One traversal per particle. A cell is accepted whole when its width subtends less than
         // the opening angle, and opened otherwise; leaves fall back to direct summation. The
         // stack cannot exceed seven entries per level of the tree.
@@ -343,6 +345,7 @@ enum BarnesHutShaders {
                                    constant HaloGPU *haloList [[buffer(4)]],
                                    constant BHParams &p [[buffer(5)]],
                                    device uint *cost [[buffer(6)]],
+                                   device const float4 *moments [[buffer(7)]],
                                    uint gid [[thread_position_in_grid]]) {
             // Dispatched in pieces, so the display has somewhere to get in. One kernel over
             // seven million particles keeps the GPU to itself for the best part of a second
@@ -399,6 +402,19 @@ enum BarnesHutShaders {
                     total += offset
                            * (p.gravitationalConstant * node.comMass.w
                               / (distanceSquared * sqrt(distanceSquared)));
+                    if (bhQuadrupole) {
+                        // The next term of the softened potential about the centre of mass.
+                        // With softening the trace no longer drops out, so all six are kept.
+                        float4 qa = moments[2 * index];
+                        float4 qb = moments[2 * index + 1];
+                        float3 qr = float3(qa.x * offset.x + qa.w * offset.y + qb.x * offset.z,
+                                           qa.w * offset.x + qa.y * offset.y + qb.y * offset.z,
+                                           qb.x * offset.x + qb.y * offset.y + qa.z * offset.z);
+                        float inverse = 1.0 / distanceSquared;
+                        float fifth = inverse * inverse / sqrt(distanceSquared);
+                        float radial = 7.5 * dot(offset, qr) * inverse - 1.5 * (qa.x + qa.y + qa.z);
+                        total += (offset * radial - 3.0 * qr) * (p.gravitationalConstant * fifth);
+                    }
                 } else if (leaf) {
                     work += uint(span);
                     for (int k = start; k < start + span; ++k) {

@@ -76,11 +76,11 @@ extension SceneConfig {
         // which positions change, and four large steps a second make a galaxy jump while the
         // starfield, which follows only the camera, glides past it.
         scene.timeStepScale = generator.uniform(in: 0.7...1.1)
-        // Barnes-Hut's accuracy knob, and the cheapest thing to spend here. Measured on a
-        // concentrated cluster, 0.85 against the usual 0.6 is most of a factor of two off the
-        // force pass for a mean error of half a percent — which is a fifth of what changing
-        // the time step already costs, and nobody is measuring anything in this mode.
-        scene.openingAngle = 0.85
+        // Barnes-Hut's accuracy knob, and the cheapest thing to spend here. With the
+        // quadrupole, 1.0 costs less force pass than the monopole's 0.85 did (15.5 against
+        // 18.7 ms at 450 000 particles) and is more accurate, and nobody is measuring
+        // anything in this mode.
+        scene.openingAngle = 1.0
         scene.retune()
         return scene
     }
