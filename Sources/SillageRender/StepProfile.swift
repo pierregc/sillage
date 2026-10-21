@@ -6,10 +6,10 @@ import Foundation
 /// clock, which only means something when each pass is submitted alone, so profiling a
 /// solver also splits its submissions.
 public struct StepProfile: Sendable {
-    /// In the order a step runs them. The tree phases are the ones `BarnesHutTree` times.
+    /// In the order a step runs them. The tree phases are those of `GPUTreeBuilder`.
     public static let phases = [
-        "tree wait", "star formation", "drift", "halo centres", "disk frames",
-        "bounds", "morton", "sort", "nodes", "accumulate", "quadrupoles", "upload",
+        "star formation", "drift", "halo centres", "disk frames",
+        "bounds", "morton", "sort", "nodes", "masses",
         "force", "kick", "dissipation", "step",
     ]
 
@@ -29,7 +29,7 @@ public struct StepProfile: Sendable {
     }
 }
 
-/// Shared between the stepping thread, the tree queue and whoever reads it.
+/// Shared between the stepping thread and whoever reads it.
 final class StepProfiler: @unchecked Sendable {
     private let lock = NSLock()
     private var profile = StepProfile()
