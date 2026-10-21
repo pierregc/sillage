@@ -86,6 +86,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let force: MTLComputePipelineState
     private let dissipate: MTLComputePipelineState?
     private let formStars: MTLComputePipelineState
+    private let smooth: MTLComputePipelineState
 
     private let positionBuffer: MTLBuffer
     private let velocityBuffer: MTLBuffer
@@ -229,6 +230,7 @@ public final class MetalBarnesHutSolver: Solver {
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
         formStars = try pipeline("bhFormStars")
+        smooth = try pipeline("bhSmoothing")
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -391,6 +393,25 @@ public final class MetalBarnesHutSolver: Solver {
             encoder.setBuffer(positionBuffer, offset: 0, index: 6)
             encoder.setBuffer(velocityBuffer, offset: 0, index: 7)
         }
+    }
+
+    /// Writes the smoothing lengths of the first `drawn` particles from the live tree, so the
+    /// renderer needs no tree of its own. False before there is one.
+    public func writeSmoothing(into lengths: MTLBuffer, drawn: Int) -> Bool {
+        guard nodeCount > 0, let nodeBuffer, let orderBuffer,
+            let buffer = queue.makeCommandBuffer()
+        else { return false }
+        var counts = SIMD2<UInt32>(
+            UInt32(nodeCount), UInt32(min(drawn, count, lengths.length / 4)))
+        encode(into: buffer, smooth, threads: nodeCount) { encoder in
+            encoder.setBuffer(lengths, offset: 0, index: 0)
+            encoder.setBuffer(nodeBuffer, offset: 0, index: 1)
+            encoder.setBuffer(orderBuffer, offset: 0, index: 2)
+            encoder.setBytes(&counts, length: MemoryLayout<SIMD2<UInt32>>.stride, index: 3)
+        }
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        return true
     }
 
     /// Pulls the disk back towards circular orbits, standing in for the gas that a real disk

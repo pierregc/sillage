@@ -915,10 +915,51 @@ struct BarnesHutTests {
         }
     }
 
+    /// The lengths read off the solver's tree are the ones the field would compute from that
+    /// same tree, counting only the drawn particles and writing nothing past them.
+    @Test func smoothingComesFromTheSolversOwnTree() throws {
+        var scene = SceneConfig.merger(particleCount: 20_000)
+        scene.solver = .barnesHut
+        for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = 1.5 }
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        let drawn = particles.visibleCount
+        #expect(drawn > 0 && drawn < particles.count)
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+
+        let tree = BarnesHutTree(
+            leafCapacity: MetalBarnesHutSolver.leafCapacity,
+            maximumDepth: MetalBarnesHutSolver.maximumTreeDepth)
+        tree.build(positions: particles.positions, mass: particles.mass)
+        var expected = [Float](repeating: 0, count: drawn)
+        for node in tree.nodes where node.isLeaf {
+            let slots = node.particleStart..<(node.particleStart + node.particleCount)
+            let mine = slots.filter { Int(tree.order[$0]) < drawn }
+            guard !mine.isEmpty else { continue }
+            let length = sqrt(node.packed.x) * pow(1 / Float(mine.count), 1.0 / 3.0)
+            for slot in mine { expected[Int(tree.order[slot])] = length }
+        }
+
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let sentinel: Float = -1
+        let buffer = try #require(
+            device.makeBuffer(
+                bytes: [Float](repeating: sentinel, count: drawn + 1), length: (drawn + 1) * 4,
+                options: .storageModeShared))
+        #expect(solver.writeSmoothing(into: buffer, drawn: drawn))
+        let lengths = buffer.contents().bindMemory(to: Float.self, capacity: drawn + 1)
+        var worst: Float = 0
+        for index in 0..<drawn {
+            worst = max(worst, abs(lengths[index] - expected[index]) / expected[index])
+        }
+        #expect(expected.allSatisfy { $0 > 0 })
+        #expect(worst < 1e-5)
+        #expect(lengths[drawn] == sentinel)
+    }
+
     @Test func allBarnesHutShadersCompile() throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let library = try device.makeLibrary(source: BarnesHutShaders.source, options: nil)
-        for name in ["bhKickDrift", "bhKick", "bhAcceleration"] {
+        for name in ["bhKickDrift", "bhKick", "bhAcceleration", "bhSmoothing"] {
             #expect(library.makeFunction(name: name) != nil, "missing \(name)")
         }
     }

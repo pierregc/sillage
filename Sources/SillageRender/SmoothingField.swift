@@ -16,7 +16,9 @@ import simd
 ///
 /// The length comes from the Barnes-Hut tree, which already adapts to density: a leaf holding
 /// `n` particles in a cell of width `w` implies a number density of n/w^3, and the radius
-/// enclosing `k` neighbours follows from that. Level 2 rebuilds that tree every step anyway.
+/// enclosing `k` neighbours follows from that. Level 2 rebuilds that tree every step anyway,
+/// so its lengths are read off the solver's own tree on the GPU; only a solver that keeps no
+/// tree, and playback, pay for one here.
 /// Safe to hand to the simulation queue: the model runs one refresh at a time and nothing
 /// else touches the field while one is in flight. The buffer it writes is read by the
 /// renderer on another thread, which is the same arrangement the position buffers are under.
@@ -67,6 +69,18 @@ public final class SmoothingField {
         }
         upload()
         lastMilliseconds = Date().timeIntervalSince(clock) * 1000
+    }
+
+    /// Reads the lengths off the solver's tree when it keeps one, and builds one otherwise.
+    public func update(from solver: any GPUSolver) {
+        let clock = Date()
+        if let solver = solver as? MetalBarnesHutSolver,
+            solver.writeSmoothing(into: buffer, drawn: count)
+        {
+            lastMilliseconds = Date().timeIntervalSince(clock) * 1000
+            return
+        }
+        update(from: solver.positions)
     }
 
     /// Builds a tree of its own from a Metal buffer, for the restricted solver and for

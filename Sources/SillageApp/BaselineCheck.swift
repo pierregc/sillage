@@ -106,7 +106,7 @@ enum BaselineCheck {
         var smoothingTimes: [Double] = []
         if let field = try? SmoothingField(device: model.device, particleCount: visible) {
             for _ in 0..<5 {
-                field.update(from: solver.positions)
+                field.update(from: solver)
                 smoothingTimes.append(field.lastMilliseconds)
             }
         }
@@ -141,7 +141,7 @@ enum BaselineCheck {
             "",
             "per frame, ms (offscreen \(size), paced to 60 Hz on the main thread)",
             "  smoothing refresh  median \(format(median(smoothingTimes.sorted())))"
-                + "  (own tree over \(visible), 5 runs)",
+                + "  (solver's tree, \(visible) drawn, 5 runs)",
             "  render GPU         median \(format(median(renderTimes)))"
                 + "  p95 \(format(percentile(renderTimes, 0.95)))"
                 + "  (\(renderTimes.count) frames, solver stepping)",
