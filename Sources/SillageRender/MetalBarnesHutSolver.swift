@@ -514,15 +514,16 @@ public final class MetalBarnesHutSolver: Solver {
     /// 128 ms of which the tree was 16 and the forces 9.
     private func encode(
         into buffer: MTLCommandBuffer, _ pipeline: MTLComputePipelineState, threads: Int? = nil,
-        _ configure: (MTLComputeCommandEncoder) -> Void
+        width: Int? = nil, _ configure: (MTLComputeCommandEncoder) -> Void
     ) {
         guard let encoder = buffer.makeComputeCommandEncoder() else { return }
         encoder.setComputePipelineState(pipeline)
         configure(encoder)
+        let widest = pipeline.maxTotalThreadsPerThreadgroup
+        let group = (width ?? 0) > 0 ? min(width ?? widest, widest) : widest
         encoder.dispatchThreads(
             MTLSize(width: threads ?? count, height: 1, depth: 1),
-            threadsPerThreadgroup: MTLSize(
-                width: pipeline.maxTotalThreadsPerThreadgroup, height: 1, depth: 1))
+            threadsPerThreadgroup: MTLSize(width: group, height: 1, depth: 1))
         encoder.endEncoding()
     }
 
@@ -574,6 +575,11 @@ public final class MetalBarnesHutSolver: Solver {
     /// became worth taking once leaves started respecting the opening criterion, since a
     /// distant leaf now costs one evaluation whatever it holds.
     nonisolated(unsafe) public static var leafCapacity = 16
+
+    /// Threads per group in the force pass; zero takes the pipeline's maximum. The kernel keeps
+    /// a 32 entry stack per thread, and 64 beat the maximum by 2% at 5M visible particles
+    /// (363 against 370 ms) while the widths in between were level with it.
+    nonisolated(unsafe) public static var forceThreadgroupWidth = 64
 
     /// How deep the tree may go. A merged core subdivides to the ceiling and the node split
     /// is serial, so this is most of what a build costs on a concentrated scene. Twenty is
@@ -913,7 +919,7 @@ public final class MetalBarnesHutSolver: Solver {
         while start < count {
             let span = min(max(Self.forceChunk, 1), count - start)
             p.chunkStart = UInt32(start)
-            encode(into: buffer, force, threads: span) { encoder in
+            encode(into: buffer, force, threads: span, width: Self.forceThreadgroupWidth) { encoder in
                 encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
                 encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
                 encoder.setBuffer(nodeBuffer, offset: 0, index: 2)
