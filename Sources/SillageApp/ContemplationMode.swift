@@ -54,6 +54,8 @@ extension SimulationModel {
         if supersample != 1 { supersample = 1 }
         MetalBarnesHutSolver.leafCapacity = 32
         MetalBarnesHutSolver.maximumTreeDepth = 13
+        // Still 5 with the GPU build (#58): both hold sixty hertz, but rebuilding every step
+        // doubles the burst and lowers the step rate.
         MetalBarnesHutSolver.treeReuse = 5
         // One step a pump. Four of them is a burst four times as long, and the length of the
         // burst is the whole of what a viewer feels.
