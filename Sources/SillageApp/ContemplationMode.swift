@@ -52,12 +52,6 @@ extension SimulationModel {
         // Supersampling costs four times the fill rate and buys least on a display that is
         // already retina. Particles are the better place to spend it.
         if supersample != 1 { supersample = 1 }
-        // The smoothing field builds a tree of its own, and three of those a second on top of
-        // the solver's own is what froze the picture for half of every second.
-        // The smoothing field builds a tree of its own, and three of those a second on top
-        // of the solver's own is what saturated every core and froze the picture for half of
-        // every second. Densities move slowly; this looks at them every few seconds.
-        smoothingInterval = 240
         MetalBarnesHutSolver.leafCapacity = 32
         MetalBarnesHutSolver.maximumTreeDepth = 13
         MetalBarnesHutSolver.treeReuse = 5
@@ -71,7 +65,6 @@ extension SimulationModel {
 
     func stopContemplation() {
         contemplating = false
-        smoothingInterval = 20
         stepsPerFrame = 4
         MetalBarnesHutSolver.leafCapacity = 16
         MetalBarnesHutSolver.maximumTreeDepth = 20

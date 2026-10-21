@@ -103,7 +103,8 @@ let renderer = try Renderer(
     externalFormation: gpuSolver?.formation)
 // Each particle's kernel spans its own local interparticle spacing, so the surface stays
 // continuous instead of resolving the sampling.
-let smoothing = try SmoothingField(device: renderer.device, particleCount: seeded.count)
+let drawnCount = seeded.visibleCount > 0 ? seeded.visibleCount : seeded.count
+let smoothing = try SmoothingField(device: renderer.device, particleCount: drawnCount)
 renderer.setSmoothing(smoothing.buffer)
 print("solver     \(backend) (\(scene.solver.rawValue))")
 print("gpu        \(renderer.gpuName)")
@@ -180,7 +181,6 @@ let videoWriter = try videoPath.map {
 
 // A take holds the run rather than the picture, so a scene can be rendered again at another
 // size, another exposure or another camera without simulating it a second time.
-let drawnCount = seeded.visibleCount > 0 ? seeded.visibleCount : seeded.count
 let take: Recording? = argument("take").map { _ in
     let reel = Recording(particleCount: drawnCount, galaxyCount: scene.galaxies.count)
     reel.reserve(frames: frames)
@@ -225,12 +225,13 @@ for frame in 0..<frames {
         frozenRadius = framingRadius(solver.particles.positions, percentile: percentile) / zoom
     }
 
-    // Straight from the buffer on the GPU path, for the same reason as the extent below.
+    let smoothingStart = Date()
     if let gpuSolver {
-        smoothing.update(from: gpuSolver.positions)
+        smoothing.update(from: gpuSolver)
     } else {
         smoothing.update(positions: solver.particles.positions)
     }
+    let smoothingMs = Date().timeIntervalSince(smoothingStart) * 1000
     renderer.time = solver.time
     renderer.setDiskFrames(
         DiskFrame.make(
@@ -329,9 +330,11 @@ for frame in 0..<frames {
 
     print(
         String(
-            format: "frame %04d  t=%.1f Myr  sim %7.1f ms (%.3f ms/step)  render %5.1f ms",
+            format:
+                "frame %04d  t=%.1f Myr  sim %7.1f ms (%.3f ms/step)  smoothing %6.1f ms"
+                + "  render %5.1f ms",
             frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
-            simulationMs / Double(stepsPerFrame), renderMs))
+            simulationMs / Double(stepsPerFrame), smoothingMs, renderMs))
 }
 
 try videoWriter?.finish()

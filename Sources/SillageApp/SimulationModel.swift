@@ -216,15 +216,13 @@ final class SimulationModel: ObservableObject {
     private var snapshots: SnapshotStream?
     private var smoothing: SmoothingField?
     /// Smoothing lengths track density, which changes slowly, so they are refreshed every so
-    /// many frames rather than every one. The refresh builds a tree over every particle, which
-    /// is half a second at five million: it belongs on the simulation queue, not in the draw
-    /// call, and the buffer it writes is read by the renderer the same way positions are.
+    /// many frames rather than every one. A live run reads them off the solver's tree; playback
+    /// has none and builds one over every drawn particle, which belongs on the simulation
+    /// queue, not in the draw call. The buffer is read by the renderer the same way positions
+    /// are.
     private var framesSinceSmoothing = 0
-    /// Frames between refreshes of the smoothing field. It builds a whole tree of its own —
-    /// 77 ms across every core at 450 000 particles — and three of those a second on top of
-    /// the solver's own is what saturated the machine and froze the picture for half of every
-    /// second. Densities move slowly; contemplation looks at them every few seconds.
-    var smoothingInterval = 20
+    /// Frames between refreshes of the smoothing field.
+    let smoothingInterval = 20
     private var smoothingInFlight = false
 
     // The setup screen renders the draft scene as it stands, without ever stepping it, so the
@@ -508,12 +506,21 @@ final class SimulationModel: ObservableObject {
     /// is about to be thrown away.
     private func refreshSmoothing() {
         guard !smoothingInFlight, let field = smoothing else { return }
-        guard let bound = mode == .playback ? playbackPositions : solver?.positions else { return }
-        smoothingInFlight = true
-        let positions = SendableBuffer(bound)
-        steppingQueue.async { [weak self] in
-            field.update(from: positions.buffer)
-            DispatchQueue.main.async { self?.smoothingInFlight = false }
+        if mode == .playback {
+            guard let bound = playbackPositions else { return }
+            smoothingInFlight = true
+            let positions = SendableBuffer(bound)
+            steppingQueue.async { [weak self] in
+                field.update(from: positions.buffer)
+                DispatchQueue.main.async { self?.smoothingInFlight = false }
+            }
+        } else {
+            guard let solver else { return }
+            smoothingInFlight = true
+            steppingQueue.async { [weak self] in
+                field.update(from: solver)
+                DispatchQueue.main.async { self?.smoothingInFlight = false }
+            }
         }
     }
 
