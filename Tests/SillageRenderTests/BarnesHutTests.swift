@@ -959,7 +959,7 @@ struct BarnesHutTests {
     @Test func allBarnesHutShadersCompile() throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let library = try device.makeLibrary(source: BarnesHutShaders.source, options: nil)
-        for name in ["bhKickDrift", "bhKick", "bhAcceleration", "bhSmoothing"] {
+        for name in ["bhKickDrift", "bhKick", "bhGather", "bhAcceleration", "bhSmoothing"] {
             #expect(library.makeFunction(name: name) != nil, "missing \(name)")
         }
     }

@@ -318,17 +318,31 @@ enum BarnesHutShaders {
             }
         }
 
+        // The particles in Morton order with their mass beside them, so a leaf's direct sum
+        // reads one contiguous run rather than two scattered reads per neighbour. Gathered
+        // before every force pass rather than once per build: a tree may be reused or built
+        // a step behind, and the sum has to see where the particles are now.
+        kernel void bhGather(device float4 *sorted [[buffer(0)]],
+                             device const float3 *positions [[buffer(1)]],
+                             device const float *mass [[buffer(2)]],
+                             device const uint *order [[buffer(3)]],
+                             constant BHParams &p [[buffer(4)]],
+                             uint slot [[thread_position_in_grid]]) {
+            if (slot >= p.particleCount) { return; }
+            uint i = order[slot];
+            sorted[slot] = float4(positions[i], mass[i]);
+        }
+
         // One traversal per particle. A cell is accepted whole when its width subtends less than
         // the opening angle, and opened otherwise; leaves fall back to direct summation. The
         // stack cannot exceed seven entries per level of the tree.
-        kernel void bhAcceleration(device const float3 *positions [[buffer(0)]],
+        kernel void bhAcceleration(device const float4 *sorted [[buffer(0)]],
                                    device float3 *accelerations [[buffer(1)]],
                                    device const BHNode *nodes [[buffer(2)]],
                                    device const uint *order [[buffer(3)]],
-                                   device const float *mass [[buffer(4)]],
-                                   constant HaloGPU *haloList [[buffer(5)]],
-                                   constant BHParams &p [[buffer(6)]],
-                                   device uint *cost [[buffer(7)]],
+                                   constant HaloGPU *haloList [[buffer(4)]],
+                                   constant BHParams &p [[buffer(5)]],
+                                   device uint *cost [[buffer(6)]],
                                    uint gid [[thread_position_in_grid]]) {
             // Dispatched in pieces, so the display has somewhere to get in. One kernel over
             // seven million particles keeps the GPU to itself for the best part of a second
@@ -339,7 +353,7 @@ enum BarnesHutShaders {
             // neighbours in space and take almost the same path. Traversing in sampling order
             // leaves every lane on a different branch and the divergence dominates the cost.
             uint i = order[slot];
-            float3 position = positions[i];
+            float3 position = sorted[slot].xyz;
             float3 total = float3(0.0);
             // What this lane actually does. Divergence inside a SIMD group is the whole
             // question for a cooperative traversal, and it cannot be reasoned about: the
@@ -387,12 +401,12 @@ enum BarnesHutShaders {
                               / (distanceSquared * sqrt(distanceSquared)));
                 } else if (leaf) {
                     work += uint(span);
-                    for (int k = 0; k < span; ++k) {
-                        uint j = order[start + k];
-                        if (j == i) { continue; }
-                        float3 d = positions[j] - position;
+                    for (int k = start; k < start + span; ++k) {
+                        if (uint(k) == slot) { continue; }
+                        float4 other = sorted[k];
+                        float3 d = other.xyz - position;
                         float r2 = dot(d, d) + p.softeningSquared;
-                        total += d * (p.gravitationalConstant * mass[j] / (r2 * sqrt(r2)));
+                        total += d * (p.gravitationalConstant * other.w / (r2 * sqrt(r2)));
                     }
                 } else {
                     int first = bhRange(node);
