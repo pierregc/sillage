@@ -664,7 +664,8 @@ public final class Renderer {
             // the attachment when the stars are drawn and read it back. Each draw throws away
             // the particles belonging to the other one in the vertex stage, before any
             // fragment work, so the cost of the second pass is a vertex shader over the whole
-            // buffer and nothing else.
+            // buffer and nothing else. Compacting each draw's particles into its own index
+            // list was measured in #35: the vertex stage did not shrink and the frame got slower.
             for stage in UInt32(0)...1 {
                 splat.pass = stage
                 encoder.setRenderPipelineState(stage == 0 ? dustPipeline : splatPipeline)
