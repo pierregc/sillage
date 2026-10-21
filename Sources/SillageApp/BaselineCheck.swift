@@ -8,11 +8,10 @@ import SillageRender
 ///
 /// `--baseline <visible particles> [steps]` runs a merger with live halos at a fixed seed and
 /// writes the report to `/tmp/sillage-baseline-<visible>.log`. `quiet` draws nothing while it
-/// steps, which is the only way to read the solver's GPU passes on their own. `overlap` builds
-/// each tree alongside the force pass that precedes it. `theta <angle>` replaces the scene's
-/// opening angle, and `monopole` drops each accepted cell's quadrupole. `plain` leaves profiling
-/// off, so the solver submits its passes as the app does; only the wall clock lines then mean
-/// anything.
+/// steps, which is the only way to read the solver's GPU passes on their own. `theta <angle>`
+/// replaces the scene's opening angle, and `monopole` drops each accepted cell's quadrupole.
+/// `plain` leaves profiling off, so the solver submits its passes as the app does; only the
+/// wall clock lines then mean anything.
 ///
 /// Headless, before the window opens, so it runs on a machine nobody is looking at; frames are
 /// drawn offscreen instead.
@@ -26,8 +25,6 @@ enum BaselineCheck {
         // A command buffer's span counts the frames it waited behind, so the solver's own
         // passes are only clean with nothing drawn.
         let quiet = arguments.contains("quiet")
-        let overlap = arguments.contains("overlap")
-        MetalBarnesHutSolver.overlapTree = overlap
         // Profiling submits every pass on its own, which hands frames gaps the app never has.
         let plain = arguments.contains("plain")
         let monopole = arguments.contains("monopole")
@@ -127,14 +124,13 @@ enum BaselineCheck {
         var idleTimes = (0..<10).map { _ in drawFrame() }
         idleTimes.sort()
 
-        let solverGPU = ["star formation", "drift", "force", "kick", "dissipation"]
-            .reduce(0) { $0 + (profile.milliseconds[$1] ?? 0) }
+        let solverGPU = [
+            "star formation", "drift", "bounds", "morton", "sort", "nodes", "masses", "force",
+            "kick", "dissipation",
+        ].reduce(0) { $0 + (profile.milliseconds[$1] ?? 0) }
         let stepMs = profile.perStep("step")
         let gpuPerStep = solverGPU / Double(max(profile.steps, 1))
-        let cpuPerStep = [
-            "halo centres", "disk frames", "bounds", "morton", "sort", "nodes", "accumulate",
-            "quadrupoles", "upload",
-        ].reduce(0) { $0 + profile.perStep($1) }
+        let cpuPerStep = ["halo centres", "disk frames"].reduce(0) { $0 + profile.perStep($1) }
         // Whatever the stepping queue does between batches: the take, the smoothing refresh
         // and the hop through the main actor.
         let between = wall * 1000 / Double(max(profile.steps, 1)) - stepMs
@@ -144,7 +140,7 @@ enum BaselineCheck {
         let steps = (model.solverSteps - firstBatch) * model.stepsPerFrame
         var lines = [
             "baseline   merger, seed 1, theta \(solver.openingAngle), live halos 1.5"
-                + (quiet ? ", no frames drawn" : "") + (overlap ? ", tree overlapped" : "")
+                + (quiet ? ", no frames drawn" : "")
                 + (plain ? ", not profiled" : "") + (monopole ? ", monopole" : ""),
             "particles  \(visible) visible, \(model.particleCount) simulated",
             "prepared   \(format(preparation)) s",
@@ -173,7 +169,7 @@ enum BaselineCheck {
             "  GPU                \(format(max(1 - gpuPerStep / stepMs, 0) * 100)) %"
                 + "  (\(format(gpuPerStep)) ms of solver passes)",
             "  CPU                \(format(max(1 - cpuPerStep / stepMs, 0) * 100)) %"
-                + "  (\(format(cpuPerStep)) ms of centres, frames and build)",
+                + "  (\(format(cpuPerStep)) ms of centres and frames)",
             "",
             "per frame, ms (offscreen \(size), paced to 60 Hz on the main thread)",
             "  smoothing refresh  median \(format(median(smoothingTimes.sorted())))"
@@ -200,7 +196,7 @@ enum BaselineCheck {
         try? report.write(
             to: URL(
                 fileURLWithPath:
-                    "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "")\(overlap ? "-overlap" : "")"
+                    "/tmp/sillage-baseline-\(visible)\(quiet ? "-quiet" : "")"
                     + "\(plain ? "-plain" : "")\(monopole ? "-monopole" : "")"
                     + "\(theta.map { "-theta\($0)" } ?? "").log"
             ),

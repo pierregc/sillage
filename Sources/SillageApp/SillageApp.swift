@@ -34,6 +34,9 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--baseline") {
             MainActor.assumeIsolated { BaselineCheck.run() }
         }
+        if CommandLine.arguments.contains("--gputree") {
+            MainActor.assumeIsolated { GPUTreeCheck.run() }
+        }
         if CommandLine.arguments.contains("--flicker") {
             MainActor.assumeIsolated { FlickerCheck.run() }
         }

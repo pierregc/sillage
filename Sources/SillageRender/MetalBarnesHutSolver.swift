@@ -67,9 +67,8 @@ public final class MetalBarnesHutSolver: Solver {
     public var longestDispatchMilliseconds = 0.0
     public var lastDriftMilliseconds = 0.0
     public var lastTreeMilliseconds = 0.0
+    /// The tree build by the GPU clock.
     public private(set) var lastBuildMilliseconds = 0.0
-    /// The tree alone, without the centre and disk-state passes that follow it.
-    public private(set) var lastTreeOnlyMilliseconds = 0.0
     public private(set) var lastForceMilliseconds = 0.0
     /// Times every phase of a step into `takeProfile()`, and submits each GPU pass on its own
     /// so the GPU clock can say what each one cost.
@@ -78,7 +77,8 @@ public final class MetalBarnesHutSolver: Solver {
 
     /// What the steps since the last call cost, phase by phase.
     public func takeProfile() -> StepProfile { profiler.take() }
-    public var nodeCount: Int { nodeCounts[live] }
+    /// Read back once each build has run, so that nothing reads the counter while one runs.
+    public private(set) var nodeCount = 0
 
     private let queue: MTLCommandQueue
     private let kickDrift: MTLComputePipelineState
@@ -101,38 +101,14 @@ public final class MetalBarnesHutSolver: Solver {
     /// Node evaluations each traversal actually performed, indexed by Morton slot. A
     /// diagnostic, not state: nothing reads it but the divergence measurement.
     private let costBuffer: MTLBuffer
-    /// Two sets, because the tree for the next step is built on the CPU while the GPU is
-    /// still traversing this one. `live` is the set the GPU reads; the build writes the other.
-    private var nodeBuffers: [MTLBuffer?] = [nil, nil]
-    private var orderBuffers: [MTLBuffer?] = [nil, nil]
-    private var momentBuffers: [MTLBuffer?] = [nil, nil]
-    private var nodeCounts = [0, 0]
-    private var live = 0
-    private var nodeBuffer: MTLBuffer? { nodeBuffers[live] }
-    private var orderBuffer: MTLBuffer? { orderBuffers[live] }
-
-    /// The tree build runs here rather than on whichever thread is stepping.
-    ///
-    /// A step was strictly serial: the GPU drifted while the CPU waited, the CPU built the
-    /// tree while the GPU sat idle, then the GPU ran the force pass while every core waited.
-    /// Measured, the three added up to the whole step to within a tenth of a millisecond —
-    /// 23.5 + 42.9 = 66.8 at a million simulated particles, and 91.0 + 170.8 = 262.9 at
-    /// 3.75 million. A third of every step had fourteen cores working and the GPU asleep.
-    ///
-    /// The force pass at step N needs the tree at step N, so nothing can overlap inside a
-    /// step. What can is across one: the tree built from this step's positions is used by the
-    /// next, which makes it one step stale — exactly the staleness `treeReuse` already treats
-    /// as free, and for the same reason.
-    private let treeQueue = DispatchQueue(
-        label: "dev.pierregc.sillage.tree", qos: .userInitiated)
-    private let treeGroup = DispatchGroup()
-    private var buildInFlight = false
+    /// The tree, built on the GPU from the positions in place. It used to be built on every
+    /// core while the GPU sat idle, 13.7 % of a step at five million visible particles (#38).
+    private let builder: GPUTreeBuilder
+    /// The last build gathered the particles into Morton order, so the force pass need not.
+    private var gathered = false
     private var componentBuffer: MTLBuffer?
     private var galaxyBuffer: MTLBuffer?
 
-    private let tree = BarnesHutTree(
-        leafCapacity: MetalBarnesHutSolver.leafCapacity,
-        maximumDepth: MetalBarnesHutSolver.maximumTreeDepth)
     /// Masses never change, so they are read once.
     private let particleMass: [Float]
     private let template: ParticleSystem
@@ -283,6 +259,10 @@ public final class MetalBarnesHutSolver: Solver {
         self.sortedBuffer = sortedBuffer
         self.formationBuffer = formationBuffer
         self.costBuffer = costBuffer
+        builder = try GPUTreeBuilder(
+            device: device, count: count, leafCapacity: Self.leafCapacity,
+            maximumDepth: Self.maximumTreeDepth, quadrupole: quadrupole,
+            nodeCapacity: count / 2 + 1024)
 
         func attribute(_ values: [UInt32], _ fallback: UInt32) -> [UInt32] {
             values.count == count ? values : [UInt32](repeating: fallback, count: count)
@@ -306,7 +286,6 @@ public final class MetalBarnesHutSolver: Solver {
             }
         }
 
-        tree.computesQuadrupoles = quadrupole
         // The first half kick needs an acceleration, so seed it before stepping.
         rebuildTree()
         if let buffer = queue.makeCommandBuffer() {
@@ -319,24 +298,15 @@ public final class MetalBarnesHutSolver: Solver {
 
     public func step(count steps: Int) {
         for _ in 0..<max(steps, 0) {
-            // Two submissions rather than five. The tree is built on the CPU from the drifted
-            // positions, so the drift has to have landed before it runs; everything after it
-            // goes in one buffer, where the encoders are ordered against each other anyway.
             let stepClock = Date()
             var clock = Date()
-            // Adopt the tree built alongside the last force pass. It was built from exactly
-            // the positions the particles are standing on right now, before this step's drift
-            // moves them, and that is what star formation below needs.
-            timed("tree wait") { joinTree() }
             // Star formation goes first, before the drift, and that is not a detail.
             //
             // It reads a velocity *gradient* across a single leaf — sixteen particles — and
             // one step of drift is enough to blur that below the threshold a shock has to
-            // clear. Run on the same stale tree the force pass tolerates, it lost two thirds
-            // of the rate and the whole merger burst with it: the windows went from
-            // 213, 261, 536, 199, 456, 727 to 107, 84, 110, 68, 46, 42. Here the tree was
-            // built from exactly these positions, so it costs nothing and matches exactly.
-            // The force pass is not sensitive that way, which is why it can have the stale one.
+            // clear. Run on a stale tree, it lost two thirds of the rate and the whole merger
+            // burst with it: the windows went from 213, 261, 536, 199, 456, 727 to 107, 84,
+            // 110, 68, 46, 42. Here the tree was built from exactly these positions.
             if profiling {
                 profiledPass("star formation") { encodeStarFormation(into: $0) }
                 profiledPass("drift") { encodeIntegrate(into: $0) }
@@ -347,31 +317,21 @@ public final class MetalBarnesHutSolver: Solver {
             }
             lastDriftMilliseconds = Date().timeIntervalSince(clock) * 1000
             clock = Date()
-            // Everything between here and the submit below is what cannot overlap: the centre
-            // and disk-state passes read velocities, and the kick is about to write them.
             if stepsSinceTree <= 0 {
-                timed("halo centres") { updateHaloCenters() }
-                if dissipate != nil { timed("disk frames") { updateDiskFrames() } }
-                startTree()
-                if !Self.overlapTree { joinTree() }
+                rebuildTree()
                 stepsSinceTree = max(Self.treeReuse, 1)
             }
             stepsSinceTree -= 1
             lastTreeMilliseconds = Date().timeIntervalSince(clock) * 1000
+            clock = Date()
             if profiling {
-                let clock = Date()
                 profiledPass("force") { encodeAccelerations(into: $0) }
                 profiledPass("kick") { encodeKick(into: $0) }
                 profiledPass("dissipation") { encodeShedRandomMotion(into: $0) }
-                lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
-            } else if let forces = queue.makeCommandBuffer() {
-                encodeAccelerations(into: forces)
-                encodeKick(into: forces)
-                encodeShedRandomMotion(into: forces)
-                let clock = Date()
-                submit(forces)
-                lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
+            } else {
+                submitForces()
             }
+            lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
             time += scene.timeStep
             if profiling {
                 let spent = Date().timeIntervalSince(stepClock) * 1000
@@ -383,6 +343,28 @@ public final class MetalBarnesHutSolver: Solver {
         }
     }
 
+    /// The force pass, one command buffer a piece, with the kick and the cooling in the last.
+    ///
+    /// A frame queued behind the solver waits for the whole command buffer, not for the next
+    /// piece encoded in it. The CPU build used to be the gap frames got in through; without it
+    /// one buffer for the whole pass halved the live frame rate, 13 to 15 a second down to 8
+    /// at two million visible particles. In pieces it was 17.5, and with nothing drawn the
+    /// pieces cost nothing (#38).
+    private func submitForces() {
+        var start = 0
+        repeat {
+            guard let buffer = queue.makeCommandBuffer() else { return }
+            let span = min(max(Self.forceChunk, 1), count - start)
+            encodeAccelerations(into: buffer, pieces: start..<(start + span))
+            start += span
+            if start >= count {
+                encodeKick(into: buffer)
+                encodeShedRandomMotion(into: buffer)
+            }
+            submit(buffer)
+        } while start < count
+    }
+
     /// Turns gas into stars where the tree says it has been compressed.
     ///
     /// Dispatched over nodes rather than particles: the density estimate lives on the leaves,
@@ -390,9 +372,7 @@ public final class MetalBarnesHutSolver: Solver {
     /// drawing for all of its own. Nothing here is read back — the buffer it writes is the one
     /// the renderer draws from.
     private func encodeStarFormation(into buffer: MTLCommandBuffer) {
-        guard nodeCount > 0, let nodeBuffer, let orderBuffer, componentBuffer != nil else {
-            return
-        }
+        guard nodeCount > 0, componentBuffer != nil else { return }
         stepsSinceFormation &+= 1
         var params = StarFormationGPU(
             efficiency: StarFormation.efficiency,
@@ -408,8 +388,8 @@ public final class MetalBarnesHutSolver: Solver {
             encoder.setBuffer(formationBuffer, offset: 0, index: 0)
             encoder.setBuffer(componentBuffer, offset: 0, index: 1)
             encoder.setBuffer(massBuffer, offset: 0, index: 2)
-            encoder.setBuffer(nodeBuffer, offset: 0, index: 3)
-            encoder.setBuffer(orderBuffer, offset: 0, index: 4)
+            encoder.setBuffer(builder.nodes, offset: 0, index: 3)
+            encoder.setBuffer(builder.order, offset: 0, index: 4)
             encoder.setBytes(
                 &params, length: MemoryLayout<StarFormationGPU>.stride, index: 5)
             encoder.setBuffer(positionBuffer, offset: 0, index: 6)
@@ -420,15 +400,13 @@ public final class MetalBarnesHutSolver: Solver {
     /// Writes the smoothing lengths of the first `drawn` particles from the live tree, so the
     /// renderer needs no tree of its own. False before there is one.
     public func writeSmoothing(into lengths: MTLBuffer, drawn: Int) -> Bool {
-        guard nodeCount > 0, let nodeBuffer, let orderBuffer,
-            let buffer = queue.makeCommandBuffer()
-        else { return false }
+        guard nodeCount > 0, let buffer = queue.makeCommandBuffer() else { return false }
         var counts = SIMD2<UInt32>(
             UInt32(nodeCount), UInt32(min(drawn, count, lengths.length / 4)))
         encode(into: buffer, smooth, threads: nodeCount) { encoder in
             encoder.setBuffer(lengths, offset: 0, index: 0)
-            encoder.setBuffer(nodeBuffer, offset: 0, index: 1)
-            encoder.setBuffer(orderBuffer, offset: 0, index: 2)
+            encoder.setBuffer(builder.nodes, offset: 0, index: 1)
+            encoder.setBuffer(builder.order, offset: 0, index: 2)
             encoder.setBytes(&counts, length: MemoryLayout<SIMD2<UInt32>>.stride, index: 3)
         }
         buffer.commit()
@@ -580,13 +558,13 @@ public final class MetalBarnesHutSolver: Solver {
     // nothing else ever writes one. Strict concurrency has no way to know that, so it is said
     // here rather than by making them lets that the tests could not move.
     //
-    /// Particles per force dispatch. A whole large scene in one kernel keeps the GPU to
-    /// itself long enough that the pointer stutters; in pieces the display gets in between.
+    /// Particles per piece of the force pass, each committed on its own. A whole large scene
+    /// in one kernel keeps the GPU to itself long enough that the pointer stutters, and frames
+    /// only get in between command buffers.
     nonisolated(unsafe) public static var forceChunk = 1_000_000
 
     /// Particles a leaf may hold before it splits. Bigger leaves mean far fewer nodes and a
-    /// much cheaper build — the node split is serial and it is what a concentrated scene makes
-    /// expensive — at the cost of more direct summation in the force pass. That trade only
+    /// cheaper build at the cost of more direct summation in the force pass. That trade only
     /// became worth taking once leaves started respecting the opening criterion, since a
     /// distant leaf now costs one evaluation whatever it holds.
     nonisolated(unsafe) public static var leafCapacity = 16
@@ -596,10 +574,9 @@ public final class MetalBarnesHutSolver: Solver {
     /// (363 against 370 ms) while the widths in between were level with it.
     nonisolated(unsafe) public static var forceThreadgroupWidth = 64
 
-    /// How deep the tree may go. A merged core subdivides to the ceiling and the node split
-    /// is serial, so this is most of what a build costs on a concentrated scene. Twenty is
-    /// right when accuracy matters; thirteen puts the smallest cell at a few tens of parsecs,
-    /// far below any softening length used here, and builds far faster.
+    /// How deep the tree may go. A merged core subdivides to the ceiling, one dispatch a level.
+    /// Twenty is right when accuracy matters; thirteen puts the smallest cell at a few tens of
+    /// parsecs, far below any softening length used here.
     nonisolated(unsafe) public static var maximumTreeDepth = 20
 
     /// Steps a tree is reused for. The build is most of what a step costs, and what decides
@@ -609,13 +586,6 @@ public final class MetalBarnesHutSolver: Solver {
     /// and costs nothing at these step sizes — a particle crosses a fraction of a leaf cell
     /// in the interval, which is well inside what the opening angle already approximates.
     nonisolated(unsafe) public static var treeReuse = 1
-
-    /// Whether the tree build runs alongside the force pass, on the CPU cores the GPU leaves
-    /// idle. Since the build went parallel it is worth only 1.15x at five million simulated
-    /// particles, and it is off because the stale tree moves a merger's history and halves the
-    /// live frame rate — see "A step was serial, and the overlap is not free" in the working
-    /// notes. Leave it off.
-    nonisolated(unsafe) public static var overlapTree = false
 
     /// Whether an accepted cell adds its quadrupole to its monopole, which is what lets the
     /// opening angle be 0.9 rather than 0.7 for the same force error. The default for new
@@ -652,90 +622,59 @@ public final class MetalBarnesHutSolver: Solver {
         }
     }
 
-    /// The positions as the GPU left them. The CPU passes and the tree read them in place
-    /// rather than from a copy: only the drift writes them, and every step joins the build
-    /// before it encodes the drift, so a build alongside the force pass still sees the
-    /// positions it started from.
+    /// The positions as the GPU left them. The CPU passes read them in place rather than from
+    /// a copy: only the drift writes them, and it has landed before anything reads them.
     private var currentPositions: UnsafeBufferPointer<SIMD3<Float>> {
         UnsafeBufferPointer(
             start: positionBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count),
             count: count)
     }
 
-    /// Builds the tree into whichever set the GPU is not reading, and hands it over on `join`.
-    private func startTree() {
-        guard !buildInFlight else { return }
-        buildInFlight = true
-        let target = 1 - live
-        treeQueue.async(group: treeGroup) { [self] in
-            let clock = Date()
-            tree.build(positions: currentPositions, mass: particleMass)
-            lastTreeOnlyMilliseconds = Date().timeIntervalSince(clock) * 1000
-
-            let nodeLength = max(tree.nodes.count, 1) * MemoryLayout<BHNode>.stride
-            if nodeBuffers[target] == nil || nodeBuffers[target]!.length < nodeLength {
-                nodeBuffers[target] = device.makeBuffer(
-                    length: nodeLength * 2, options: .storageModeShared)
-            }
-            if !tree.nodes.isEmpty {
-                tree.nodes.withUnsafeBytes {
-                    nodeBuffers[target]?.contents().copyMemory(
-                        from: $0.baseAddress!, byteCount: $0.count)
-                }
-            }
-            let orderLength = max(tree.order.count, 1) * 4
-            if orderBuffers[target] == nil || orderBuffers[target]!.length < orderLength {
-                orderBuffers[target] = device.makeBuffer(
-                    length: orderLength * 2, options: .storageModeShared)
-            }
-            if !tree.order.isEmpty {
-                tree.order.withUnsafeBytes {
-                    orderBuffers[target]?.contents().copyMemory(
-                        from: $0.baseAddress!, byteCount: $0.count)
-                }
-            }
-            if quadrupole {
-                let momentLength = max(tree.quadrupoles.count, 1) * MemoryLayout<SIMD4<Float>>.stride
-                if momentBuffers[target] == nil || momentBuffers[target]!.length < momentLength {
-                    momentBuffers[target] = device.makeBuffer(
-                        length: momentLength * 2, options: .storageModeShared)
-                }
-                if !tree.quadrupoles.isEmpty {
-                    tree.quadrupoles.withUnsafeBytes {
-                        momentBuffers[target]?.contents().copyMemory(
-                            from: $0.baseAddress!, byteCount: $0.count)
+    /// Builds the tree from the drifted positions, with the halo centres and the disk frames
+    /// that go with it, and gathers the particles for the force pass on the way.
+    private func rebuildTree() {
+        if profiling {
+            timed("halo centres") { updateHaloCenters() }
+            if dissipate != nil { timed("disk frames") { updateDiskFrames() } }
+            repeat {
+                for phase in GPUTreeBuilder.Phase.allCases {
+                    profiledPass(phase.rawValue) {
+                        builder.encode(
+                            phase, into: $0, positions: positionBuffer, mass: massBuffer,
+                            sorted: sortedBuffer)
                     }
                 }
+            } while grewAfterOverflow()
+            profiler.update { $0.treeBuilds += 1 }
+        } else if let buffer = queue.makeCommandBuffer() {
+            builder.encode(
+                into: buffer, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
+            buffer.commit()
+            // The centres read the positions the build is reading, so they are taken meanwhile.
+            updateHaloCenters()
+            if dissipate != nil { updateDiskFrames() }
+            buffer.waitUntilCompleted()
+            var spent = max(buffer.gpuEndTime - buffer.gpuStartTime, 0) * 1000
+            longestDispatchMilliseconds = max(longestDispatchMilliseconds, spent)
+            while grewAfterOverflow(), let again = queue.makeCommandBuffer() {
+                builder.encode(
+                    into: again, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
+                submit(again)
+                spent += max(again.gpuEndTime - again.gpuStartTime, 0) * 1000
             }
-            nodeCounts[target] = tree.nodes.count
-            lastBuildMilliseconds = Date().timeIntervalSince(clock) * 1000
+            lastBuildMilliseconds = spent
         }
+        gathered = true
+        nodeCount = builder.nodeCount
     }
 
-    /// Waits for the build started alongside the last force pass and swaps it in. Usually
-    /// returns at once: the build is the shorter of the two.
-    private func joinTree() {
-        guard buildInFlight else { return }
-        treeGroup.wait()
-        buildInFlight = false
-        live = 1 - live
-        guard profiling else { return }
-        let phases = tree.phaseMilliseconds
-        let upload = lastBuildMilliseconds - lastTreeOnlyMilliseconds
-        profiler.update {
-            $0.treeBuilds += 1
-            for (phase, spent) in phases { $0.add(phase, spent) }
-            $0.add("upload", upload)
+    /// True when the build ran out of nodes, once there is room for it to run again.
+    private func grewAfterOverflow() -> Bool {
+        guard builder.overflowed else { return false }
+        do { try builder.grow() } catch {
+            preconditionFailure("no room for a tree of \(builder.nodeCapacity * 2) nodes: \(error)")
         }
-    }
-
-    /// The synchronous form, for the one build that has nothing to overlap with: the seed in
-    /// `init`, before there is a force pass to run alongside it.
-    private func rebuildTree() {
-        updateHaloCenters()
-        if dissipate != nil { updateDiskFrames() }
-        startTree()
-        joinTree()
+        return true
     }
 
     /// Each halo rides on the centre of mass of its own galaxy's particles, and so does the
@@ -926,7 +865,8 @@ public final class MetalBarnesHutSolver: Solver {
         return t * t * (3 - 2 * t)
     }
 
-    private func encodeAccelerations(into buffer: MTLCommandBuffer) {
+    /// Particles are taken by Morton slot, so `pieces` is a range of slots.
+    private func encodeAccelerations(into buffer: MTLCommandBuffer, pieces: Range<Int>? = nil) {
         var p = params
         var list = scene.galaxies.enumerated().map { index, galaxy -> HaloGPU in
             let center = index < haloCenters.count ? haloCenters[index] : galaxy.position
@@ -942,27 +882,33 @@ public final class MetalBarnesHutSolver: Solver {
         }
         if list.isEmpty { list = [HaloGPU(centerBefore: .zero, centerAfter: .zero, shape: .zero)] }
 
-        encode(into: buffer, gather) { encoder in
-            encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
-            encoder.setBuffer(positionBuffer, offset: 0, index: 1)
-            encoder.setBuffer(massBuffer, offset: 0, index: 2)
-            encoder.setBuffer(orderBuffer, offset: 0, index: 3)
-            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 4)
+        // A reused tree still needs this step's positions in its order.
+        if !gathered {
+            encode(into: buffer, gather) { encoder in
+                encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
+                encoder.setBuffer(positionBuffer, offset: 0, index: 1)
+                encoder.setBuffer(massBuffer, offset: 0, index: 2)
+                encoder.setBuffer(builder.order, offset: 0, index: 3)
+                encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 4)
+            }
+            gathered = true
         }
-        var start = 0
-        while start < count {
-            let span = min(max(Self.forceChunk, 1), count - start)
+        let slots = pieces ?? 0..<count
+        if slots.upperBound >= count { gathered = false }
+        var start = slots.lowerBound
+        while start < slots.upperBound {
+            let span = min(max(Self.forceChunk, 1), slots.upperBound - start)
             p.chunkStart = UInt32(start)
             encode(into: buffer, force, threads: span, width: Self.forceThreadgroupWidth) { encoder in
                 encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
                 encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
-                encoder.setBuffer(nodeBuffer, offset: 0, index: 2)
-                encoder.setBuffer(orderBuffer, offset: 0, index: 3)
+                encoder.setBuffer(builder.nodes, offset: 0, index: 2)
+                encoder.setBuffer(builder.order, offset: 0, index: 3)
                 encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 4)
                 encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 5)
                 encoder.setBuffer(costBuffer, offset: 0, index: 6)
-                // Never read by the monopole pipeline, which still wants something bound.
-                encoder.setBuffer(momentBuffers[live] ?? nodeBuffer, offset: 0, index: 7)
+                // A placeholder when the pipeline is the monopole's, which never reads it.
+                encoder.setBuffer(builder.moments, offset: 0, index: 7)
             }
             start += span
         }

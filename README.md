@@ -30,8 +30,8 @@ compile. Shaders are built at runtime, so Xcode is not needed either way.
 Two solvers share one scene description, one particle buffer and one renderer. **Restricted**
 moves massless test particles through rigid analytic potentials, following Toomre and Toomre
 (1972), at O(N); it raises the bridges and tails cheaply, which is useful while framing a shot.
-**Barnes-Hut** gives the particles mass and a tree built in Morton order on the CPU and
-traversed on the GPU, at O(N log N). Dark halos become particles too, so an infalling companion
+**Barnes-Hut** gives the particles mass and a tree built in Morton order and traversed on the
+GPU, at O(N log N). Dark halos become particles too, so an infalling companion
 raises a wake that drags on it, and the disks grow their own bars and arms. The images above
 use Barnes-Hut.
 
