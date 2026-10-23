@@ -43,6 +43,41 @@ A generated scene draws its physics and its colours from two separate streams of
 every physical parameter where it was. Scenes drawn before the split keep their physics;
 `--look-seed S`, the seed itself, gives them back their old colours too.
 
+## Scene folders
+
+A scene goes through four stages, each one command that reads and writes the scene's own
+folder, so moving it on or doing a stage again needs the folder and nothing else:
+
+```
+library/<batch>/
+    index.csv              the batch: one row per scene
+    ratings.json           yes, no and a rating per scene
+    <scene>/
+        scene.json         the physics
+        look.json          the image
+        clip.json          how long the clip runs and how large it is drawn
+        preview.mov        the exploration clip
+        thumbnail.png      one still from the middle of it, 480 px wide
+        curves.csv         per frame separation, extent and stars formed
+        take.sillage       the run at full size, for the later stages
+        exports/           the finished videos
+```
+
+```bash
+./scripts/dev.sh explore library/2026-10-23/scene-0001 --seed 42 --director
+./scripts/dev.sh hires   library/2026-10-23/scene-0001 --particles 5000000
+./scripts/dev.sh look    library/2026-10-23/scene-0001
+./scripts/dev.sh export  library/2026-10-23/scene-0001
+```
+
+`explore` renders the preview, the thumbnail and the curves. In an empty folder it generates a
+self-gravitating contemplation scene from the options given, `--seed` first among them; once
+`scene.json`, `look.json` and `clip.json` are there it reads them back, so running it again
+with no options gives the same clip, and any option given overrides the file it belongs to.
+The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`, `--steps` and
+`--settle`. To start a scene over, empty its folder. `hires` (#19), `look` (#22) and `export`
+(#24) are not written yet and say so. The same stages are `sillage-render <stage> <folder>`.
+
 ## The physics
 
 Two solvers share one scene description, one particle buffer and one renderer. **Restricted**

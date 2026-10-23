@@ -3,11 +3,37 @@ import SillageCore
 import SillageRender
 import simd
 
+func fail(_ message: String, code: Int32 = 2) -> Never {
+    FileHandle.standardError.write(Data((message + "\n").utf8))
+    exit(code)
+}
+
+// `sillage-render <stage> <scene folder> [options]` runs one stage of the pipeline, every path
+// derived from the folder. Anything else is a plain render driven by its flags.
+let arguments: [String]
+if CommandLine.arguments.count > 1,
+    let stage = SceneFolder.Stage(rawValue: CommandLine.arguments[1])
+{
+    guard CommandLine.arguments.count > 2, !CommandLine.arguments[2].hasPrefix("--") else {
+        fail("usage: sillage-render \(stage.rawValue) <scene folder> [options]")
+    }
+    if let issue = stage.pendingIssue {
+        fail("\(stage.rawValue): not yet, it arrives with #\(issue)", code: 1)
+    }
+    let folder = SceneFolder(path: CommandLine.arguments[2])
+    let (clip, options) = try folder.storedClip().updated(
+        with: Array(CommandLine.arguments.dropFirst(3)))
+    try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+    try clip.encoded().write(to: folder.clip)
+    arguments = folder.exploreArguments(options, clip: clip)
+} else {
+    arguments = Array(CommandLine.arguments.dropFirst())
+}
+
 func argument(_ name: String, default fallback: String? = nil) -> String? {
-    guard let index = CommandLine.arguments.firstIndex(of: "--\(name)"),
-        index + 1 < CommandLine.arguments.count
+    guard let index = arguments.firstIndex(of: "--\(name)"), index + 1 < arguments.count
     else { return fallback }
-    return CommandLine.arguments[index + 1]
+    return arguments[index + 1]
 }
 
 func number(_ name: String, _ fallback: Double) -> Double {
@@ -75,8 +101,8 @@ if let orbit = argument("orbit").flatMap(Double.init) {
     look.camera.azimuthEnd = look.camera.azimuth + Float(orbit)
 }
 flag("azimuth-end", \.camera.azimuthEnd)
-if CommandLine.arguments.contains("--director") {
-    look.camera.mode = CommandLine.arguments.contains("--immersed") ? .immersed : .director
+if arguments.contains("--director") {
+    look.camera.mode = arguments.contains("--immersed") ? .immersed : .director
 }
 if let mode = argument("camera") {
     guard let parsed = LookFile.CameraPlan.Mode(rawValue: mode) else {
@@ -206,6 +232,10 @@ func prepared(_ path: String) throws -> URL {
 }
 
 let outputURL = try outputPath.map(prepared)
+// One still, small enough for a grid of a few hundred scenes, from the middle of the clip
+// unless a frame is named.
+let thumbnailURL = try argument("thumbnail").map(prepared)
+let thumbnailFrame = min(Int(number("thumbnail-frame", Double(frames / 2))), frames - 1)
 
 // Named after the main output, so `x.mov` and `x.sillage` both get `x.scene.json` and
 // `x.look.json`.
@@ -348,6 +378,10 @@ for frame in 0..<frames {
         try PNGWriter.write(pixels, width: width, height: height, to: url)
     }
     try videoWriter?.append(pixels)
+    if let thumbnailURL, frame == thumbnailFrame {
+        try PNGWriter.write(pixels, width: width, height: height, maximumWidth: 480, to: thumbnailURL)
+        print("thumbnail  \(thumbnailURL.path)")
+    }
 
     if let take {
         if let gpuSolver {
