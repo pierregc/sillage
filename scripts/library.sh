@@ -80,8 +80,13 @@ if [ "$free" -lt "$needed" ]; then
     exit 1
 fi
 
+HEADER="id,seed,tempo,galaxies,particles,width,height,frames,fps,wall_seconds,video_bytes,take_bytes,status,haste,dt_scale,steps_per_frame,immersed"
 if [ ! -f "$index" ]; then
-    echo "id,seed,tempo,galaxies,particles,width,height,frames,fps,wall_seconds,video_bytes,take_bytes,status" >"$index"
+    echo "$HEADER" >"$index"
+elif [ "$(head -n 1 "$index")" != "$HEADER" ]; then
+    # An index from before the tempo parameters were recorded: widen it, leaving them empty.
+    awk -F, -v OFS=, -v h="$HEADER" 'NR == 1 { print h; next } { print $0 ",,,," }' "$index" >"$index.new" \
+        && mv "$index.new" "$index"
 fi
 cat >"$out/README.txt" <<'TXT'
 Scenes generated overnight by scripts/library.sh.
@@ -183,7 +188,7 @@ while :; do
     fi
     if [ "$status" = ok ]; then done_count=$(( done_count + 1 )); else failed_count=$(( failed_count + 1 )); fi
 
-    echo "$id,$seed,$tempo,$galaxies,$particles,$width,$height,$FRAMES,$FPS,$wall,$video_bytes,$take_bytes,$status" >>"$index"
+    echo "$id,$seed,$tempo,$galaxies,$particles,$width,$height,$FRAMES,$FPS,$wall,$video_bytes,$take_bytes,$status,$haste,$dt_scale,$steps_per_frame,$immersed" >>"$index"
     note "$id $status in ${wall}s, video $video_bytes B"
     echo "$id $tempo $status ${wall}s"
 done

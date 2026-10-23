@@ -69,26 +69,36 @@ def rows_of(path):
     return list({row["id"]: row for row in rows}.values())
 
 
-# The tempo is not stored as its parameters, only as its name, so the mapping lives here too.
-TEMPOS = {
-    "derive": (0.0, 2, 1, 1), "lent": (0.2, 4, 2, 2), "proche": (0.7, 6, 3, 2),
-    "pose": (0.5, 8, 4, 2), "trio": (0.6, 9, 5, 3), "large": (0.9, 12, 7, 2),
-    "quatuor": (0.8, 12, 8, 4), "ballet": (1.0, 16, 11, 4),
+# Indexes written before library.sh recorded the parameters only name the tempo.
+LEGACY_TEMPOS = {
+    "derive": (0.0, 2, 1, 1), "lent": (0.2, 3, 2, 1), "proche": (0.7, 4, 3, 1),
+    "pose": (0.5, 6, 4, 0), "trio": (0.6, 6, 5, 0), "large": (0.9, 8, 5, 0),
+    "quatuor": (0.8, 8, 6, 0), "ballet": (1.0, 10, 7, 0),
 }
-IMMERSED = {"derive", "lent", "proche"}
+
+
+def parameters(row):
+    """haste, dt_scale, steps_per_frame, immersed: from the row, else from the tempo name."""
+    haste, scale, per_frame, immersed = LEGACY_TEMPOS.get(row.get("tempo", ""), LEGACY_TEMPOS["pose"])
+    try:
+        haste = float(row["haste"])
+    except (KeyError, TypeError, ValueError):
+        pass
+    return (haste, whole(row, "dt_scale", scale) or scale,
+            whole(row, "steps_per_frame", per_frame) or per_frame,
+            bool(whole(row, "immersed", immersed)))
 
 
 def rerender(row):
-    tempo = row.get("tempo", "")
-    haste, scale, per_frame, galaxies = TEMPOS.get(tempo, TEMPOS["pose"])
+    haste, scale, per_frame, immersed = parameters(row)
     frames = max(whole(row, "frames", 900), 1)
     return (
         "./scripts/dev.sh render --preset contemplation --director --solver barnes-hut"
         " --seed %s --particles %d --galaxies %d%s --haste %s --dt-scale %d --settle 400"
         " --steps %d --frames %d --width 3840 --height 2160 --video %s-4k.mov"
         % (row.get("seed", "?"), max(whole(row, "particles", 700000), 1) * 2,
-           whole(row, "galaxies", galaxies) or galaxies,
-           " --immersed" if tempo in IMMERSED else "",
+           max(whole(row, "galaxies", 1), 1),
+           " --immersed" if immersed else "",
            haste, scale, frames * per_frame, frames, row["id"])
     )
 
