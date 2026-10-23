@@ -179,3 +179,34 @@ public struct RenderLook: Sendable, Equatable {
         Named(id: "ember", name: "Braise", look: .ember),
     ]
 }
+
+extension RenderLook: Codable {
+    /// Missing fields take the standard look's values, so that a look file can name only
+    /// what it changes.
+    public init(from decoder: any Decoder) throws {
+        try rejectUnknownFields(decoder, CodingKeys.self)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = LookFile.standardLook
+        self.init(
+            brightness: try c.value(.brightness, or: d.brightness),
+            dustStrength: try c.value(.dustStrength, or: d.dustStrength),
+            smoothingScale: try c.value(.smoothingScale, or: d.smoothingScale),
+            minimumKernel: try c.value(.minimumKernel, or: d.minimumKernel),
+            maximumKernel: try c.value(.maximumKernel, or: d.maximumKernel),
+            bloomThreshold: try c.value(.bloomThreshold, or: d.bloomThreshold),
+            bloomSoftKnee: try c.value(.bloomSoftKnee, or: d.bloomSoftKnee),
+            bloomIntensity: try c.value(.bloomIntensity, or: d.bloomIntensity),
+            stretch: try c.value(.stretch, or: d.stretch),
+            saturation: try c.value(.saturation, or: d.saturation),
+            whitePoint: try c.value(.whitePoint, or: d.whitePoint),
+            spikeArms: try c.value(.spikeArms, or: d.spikeArms),
+            spikeLength: try c.value(.spikeLength, or: d.spikeLength),
+            spikeIntensity: try c.value(.spikeIntensity, or: d.spikeIntensity),
+            skyLevel: try c.value(.skyLevel, or: d.skyLevel),
+            noiseLevel: try c.value(.noiseLevel, or: d.noiseLevel),
+            galaxyTint: try c.value(.galaxyTint, or: d.galaxyTint),
+            starSize: try c.value(.starSize, or: d.starSize),
+            armPersistence: try c.value(.armPersistence, or: d.armPersistence),
+            fieldOfView: try c.value(.fieldOfView, or: d.fieldOfView))
+    }
+}

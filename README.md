@@ -31,6 +31,13 @@ encounter, each galaxy's parameters and its share of the particles, but no colou
 particle count. `./scripts/dev.sh render --scene x.scene.json --particles 5000000` replays the
 same scene at any size; flags given alongside it override the file.
 
+A look file sits beside it, `x.look.json` (`--look-out` for another path), holding everything
+that decides the image and nothing that decides the physics: the render settings, the colour
+of each galaxy, and the camera, fixed or left to the director. `--look x.look.json` draws with
+it, and every look flag given alongside overrides its field. A field left out takes the value
+`sillage-render` uses with no flags, so a file names only what it changes. The two files
+together replay a render exactly. `looks/raw.look.json` is plain points with no effects.
+
 ## The physics
 
 Two solvers share one scene description, one particle buffer and one renderer. **Restricted**

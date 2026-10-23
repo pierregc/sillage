@@ -118,6 +118,7 @@ public final class Cinematographer {
     /// The look a scene is built on. The oscillators move around it rather than crossfading
     /// between five different ones, so a scene has a character instead of an average.
     public private(set) var base = RenderLook.observatory
+    private var chosen = RenderLook.observatory
     /// Inside a disk looking out, rather than outside looking in. A whole scene at a time:
     /// the orbit rig places the eye by deducing it from the target, which can put the camera
     /// anywhere except where the stars are, so immersion needs the eye placed first.
@@ -239,10 +240,19 @@ public final class Cinematographer {
     /// does not snap back to where it began.
     public func beginScene(seed: UInt64, base: RenderLook? = nil, immersed: Bool = false) {
         var picker = SeededGenerator(seed: seed &* 31 &+ 7)
-        self.base =
-            (base ?? RenderLook.all[Int(picker.next() % UInt64(RenderLook.all.count))]).calm()
+        chosen = base ?? RenderLook.all[Int(picker.next() % UInt64(RenderLook.all.count))]
+        self.base = chosen.calm()
         self.immersed = immersed
         beginShots(seed: seed)
+    }
+
+    /// What this scene was begun with, written over `template`: replayed on the same scene,
+    /// the file gives back every frame.
+    public func lookFile(_ template: LookFile = .standard) -> LookFile {
+        var file = template
+        file.look = chosen
+        file.camera.mode = immersed ? .immersed : .director
+        return file
     }
 
     private func beginShots(seed: UInt64) {
