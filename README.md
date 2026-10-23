@@ -25,6 +25,12 @@ without opening a window, which is how the animation above was made. Everything 
 that script rather than SwiftPM: with only the Command Line Tools installed, no manifest will
 compile. Shaders are built at runtime, so Xcode is not needed either way.
 
+Every render writes a scene file beside its output, `x.png` or `x.mov` giving `x.scene.json`
+(`--scene-out` picks another path). It holds the physics and nothing else: the seed, the
+encounter, each galaxy's parameters and its share of the particles, but no colour and no
+particle count. `./scripts/dev.sh render --scene x.scene.json --particles 5000000` replays the
+same scene at any size; flags given alongside it override the file.
+
 ## The physics
 
 Two solvers share one scene description, one particle buffer and one renderer. **Restricted**
