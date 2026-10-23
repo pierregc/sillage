@@ -12,8 +12,10 @@ extension SceneConfig {
     /// that rate needs and no more — see `contemplationMyrPerSecond`. A generous time step
     /// buys the rest: measured through pericentre, 8x the tuned step sits inside the
     /// encounter's own chaotic scatter.
-    /// `haste` pulls the two galaxies together at the start so the passage happens early.
-    /// A one minute scene that opens on a wide separation is a minute of two specks drifting.
+    /// Encounters are drawn as geometry and placed backwards from their pericentres, which
+    /// fall inside `contemplationWindow(haste:)`; `retimeEncounters` moves them into the clip a
+    /// scene is actually shown in. `haste` brings the window earlier: a one minute scene that
+    /// opens on a wide separation is a minute of two specks drifting.
     /// The physics and the colours come from two streams of the seed, so a different
     /// `lookSeed` repaints the same scene and a change to what the look draws moves nothing.
     public static func contemplation(
@@ -29,13 +31,14 @@ extension SceneConfig {
         // Weighted towards encounters, which are what has something happening in them, but a
         // single disk turning slowly is worth sitting with too.
         let roll = generator.uniform() * (1 - 0.45 * haste)
+        let window = contemplationWindow(haste: haste)
         var scene: SceneConfig
         // An asked-for count overrides the roll, which is how a library covers the whole range
         // instead of drawing the same two shapes all night.
         if let galaxies, galaxies >= 3 {
             scene = group(
                 count: particleCount, galaxies: min(galaxies, 4), palette: palette,
-                generator: &generator)
+                generator: &generator, window: window)
         } else if galaxies == 1 {
             scene = solitary(
                 particleCount: particleCount, palette: palette, generator: &generator)
@@ -44,21 +47,24 @@ extension SceneConfig {
                 roll < 0.5
                 ? encounter(
                     particleCount: particleCount, palette: palette, generator: &generator,
-                    close: true, haste: haste)
+                    close: true, window: window)
                 : companion(
-                    particleCount: particleCount, palette: palette, generator: &generator)
+                    particleCount: particleCount, palette: palette, generator: &generator,
+                    window: window)
         } else if roll < 0.42 {
             scene = encounter(
                 particleCount: particleCount, palette: palette, generator: &generator,
-                close: true, haste: haste)
+                close: true, window: window)
         } else if roll < 0.70 {
             scene = encounter(
                 particleCount: particleCount, palette: palette, generator: &generator,
-                close: false, haste: haste)
+                close: false, window: window)
         } else if roll < 0.86 {
             scene = solitary(particleCount: particleCount, palette: palette, generator: &generator)
         } else {
-            scene = companion(particleCount: particleCount, palette: palette, generator: &generator)
+            scene = companion(
+                particleCount: particleCount, palette: palette, generator: &generator,
+                window: window)
         }
         scene.solver = .barnesHut
         scene.seed = seed
@@ -88,7 +94,32 @@ extension SceneConfig {
         // anything in this mode.
         scene.openingAngle = 1.0
         scene.retune()
+        scene.placeEncountersGivingWay()
         return scene
+    }
+
+    /// Where a generated scene's pericentres fall when nothing says which clip it is for, in Myr.
+    public static func contemplationWindow(haste: Float) -> ClosedRange<Float> {
+        let pull = 1 - 0.6 * min(max(haste, 0), 1)
+        return 60 * pull...420 * pull
+    }
+
+    /// A disk's attitude against its orbit. Prograde more often than not: it is the passage
+    /// that raises the long tails.
+    private static func attitude(_ generator: inout SeededGenerator) -> Encounter.Disk {
+        Encounter.Disk(
+            inclination: generator.uniform(in: 0...1.45),
+            argument: generator.uniform(in: 0...(2 * .pi)),
+            spin: generator.uniform() < 0.65 ? .prograde : .retrograde)
+    }
+
+    /// An orbital plane anywhere, so the camera does not always find the orbit face on.
+    private static func plane(
+        _ encounter: inout Encounter, _ generator: inout SeededGenerator
+    ) {
+        encounter.planeTilt = generator.uniform(in: -0.7...0.7)
+        encounter.planeTurn = generator.uniform(in: 0...(2 * .pi))
+        encounter.pericentreAngle = generator.uniform(in: 0...(2 * .pi))
     }
 
     /// The seed of the look stream when none is given.
@@ -128,6 +159,8 @@ extension SceneConfig {
         _ name: String, count: Int, colour: SIMD3<Float>, generator: inout SeededGenerator,
         scaleLength: Float, mass: Float
     ) -> GalaxyConfig {
+        // Orientation and spin are drawn to keep the stream as it was, and are replaced by the
+        // encounter's when there is one.
         let arms = [2, 2, 2, 3, 4, 5][Int(generator.next() % 6)]
         return GalaxyConfig(
             name: name,
@@ -164,31 +197,27 @@ extension SceneConfig {
     /// bridges and tails or merely sail past each other.
     private static func encounter(
         particleCount: Int, palette: Palette, generator: inout SeededGenerator, close: Bool,
-        haste: Float = 0
+        window: ClosedRange<Float>
     ) -> SceneConfig {
-        // The one thing held tight. A minute is not long enough to cross a hundred
-        // kiloparsecs, and a passage that never happens is the whole scene wasted.
-        let separation =
-            generator.uniform(in: close ? 34...50 : 52...78) * (1 - 0.45 * haste)
-        let speed = generator.uniform(in: close ? 0.46...0.60 : 0.36...0.48) * (1 + 0.15 * haste)
-        let angle = generator.uniform(in: 0.2...0.9)
-        let share = generator.uniform(in: 0.38...0.62)
-        let first = Int(Float(particleCount) * share)
         let scaleA = generator.uniform(in: 2.8...6.2)
         let scaleB = generator.uniform(in: 2.6...5.8)
-
-        var a = disk(
-            "Première", count: first, colour: palette.primary, generator: &generator,
+        let a = disk(
+            "Première", count: particleCount / 2, colour: palette.primary, generator: &generator,
             scaleLength: scaleA, mass: generator.uniform(in: 42...60))
-        var b = disk(
-            "Seconde", count: particleCount - first, colour: palette.secondary,
+        let b = disk(
+            "Seconde", count: particleCount - particleCount / 2, colour: palette.secondary,
             generator: &generator, scaleLength: scaleB, mass: generator.uniform(in: 38...56))
-        a.position = SIMD3(-separation / 2, 0, 0)
-        b.position = SIMD3(separation / 2, generator.uniform(in: -8...8), generator.uniform(in: -12...12))
-        a.velocity = SIMD3(speed * cos(angle), speed * sin(angle), 0)
-        b.velocity = -a.velocity
-
-        return SceneConfig(name: "Contemplation", galaxies: [a, b], centerSoftening: 1.2)
+        var meeting = Encounter(
+            pericentre: generator.uniform(in: close ? 4...12 : 14...30),
+            eccentricity: generator.uniform(in: close ? 0.75...1.15 : 0.9...1.4),
+            massRatio: generator.uniform(in: 0.55...1.0),
+            pericentreTime: window.lowerBound
+                + generator.uniform(in: 0.2...0.55) * (window.upperBound - window.lowerBound),
+            primaryDisk: attitude(&generator), secondaryDisk: attitude(&generator))
+        plane(&meeting, &generator)
+        var scene = SceneConfig(name: "Contemplation", galaxies: [a, b], centerSoftening: 1.2)
+        scene.encounters = [meeting]
+        return scene
     }
 
     /// One disk, turning. Larger and more finely drawn, since there is only the one.
@@ -204,89 +233,67 @@ extension SceneConfig {
         return SceneConfig(name: "Contemplation", galaxies: [only], centerSoftening: 1.2)
     }
 
-    /// Three or four disks falling in on each other. Placed on a shell and given a fraction of
-    /// the speed that would hold them there, so the group closes rather than orbiting for ever,
-    /// then recentred and its momentum zeroed: a group that drifts leaves the frame, and the
-    /// camera has no way to know it should follow.
+    /// Three or four disks, each passing the first in turn, its passages spread over the
+    /// window so the scene keeps happening. The centre of mass stays at rest: a group that
+    /// drifts leaves the frame, and the camera has no way to know it should follow.
     private static func group(
-        count: Int, galaxies: Int, palette: Palette, generator: inout SeededGenerator
+        count: Int, galaxies: Int, palette: Palette, generator: inout SeededGenerator,
+        window: ClosedRange<Float>
     ) -> SceneConfig {
         let names = ["Première", "Deuxième", "Troisième", "Quatrième"]
-        // Close enough that each disk is still a disk on screen rather than a speck.
-        let radius = generator.uniform(in: 26...46)
-        var masses: [Float] = []
         var built: [GalaxyConfig] = []
-
+        var masses: [Float] = []
         for index in 0..<galaxies {
-            let share = generator.uniform(in: 0.5...1.0)
+            let share = index == 0 ? 1 : generator.uniform(in: 0.5...1.0)
             let mass = generator.uniform(in: 30...58) * share
             masses.append(mass)
-            var one = disk(
-                names[index], count: Int(Float(count) * share),
-                colour: index % 2 == 0
-                    ? palette.primary : palette.secondary,
-                generator: &generator,
-                scaleLength: generator.uniform(in: 2.6...5.0) * share.squareRoot(),
-                mass: mass)
-            // Spread around the shell rather than dropped at random, or two of four land on
-            // top of each other and the group reads as a pair.
-            let angle =
-                (Float(index) / Float(galaxies)) * 2 * .pi + generator.uniform(in: -0.4...0.4)
-            let tilt = generator.uniform(in: -0.45...0.45)
-            one.position = SIMD3(
-                cos(angle) * radius, sin(angle) * radius, tilt * radius * 0.5)
-            one.inclination = generator.uniform(in: -1.1...1.1)
-            one.positionAngle = generator.uniform(in: 0...2 * .pi)
-            built.append(one)
+            built.append(
+                disk(
+                    names[index],
+                    count: index == 0 ? count - count / galaxies * (galaxies - 1) : count / galaxies,
+                    colour: index % 2 == 0 ? palette.primary : palette.secondary,
+                    generator: &generator,
+                    scaleLength: generator.uniform(in: 2.6...5.0) * share.squareRoot(),
+                    mass: mass))
         }
-
-        let total = masses.reduce(0, +)
-        // The speed has to come from how tightly the group is actually bound, not from
-        // `sqrt(M / r)`: these sit on a shell, so almost none of the mass is interior to any
-        // of them and treating it as central overestimates the pull badly enough that they
-        // orbit wide and never meet. Summing the pair potential is exact and costs nothing at
-        // four bodies.
-        var binding: Float = 0
-        for i in built.indices {
-            for j in (i + 1)..<built.count {
-                let apart = max(simd_distance(built[i].position, built[j].position), 1)
-                binding += masses[i] * masses[j] / apart
-            }
+        // The heaviest goes first, so the galaxy the others pass is the one least thrown about
+        // by them.
+        let order = masses.indices.sorted { masses[$0] > masses[$1] }
+        built = order.enumerated().map { rank, index in
+            var galaxy = built[index]
+            galaxy.name = names[rank]
+            galaxy.color = rank % 2 == 0 ? palette.primary : palette.secondary
+            return galaxy
         }
-        let virial = (binding / total).squareRoot()
-        // Deliberately far below virial equilibrium, so the group falls together within a
-        // scene instead of circling for a Hubble time.
-        let closing = generator.uniform(in: 0.18...0.42)
-        for index in built.indices {
-            let here = built[index].position
-            let tangent = simd_normalize(SIMD3<Float>(-here.y, here.x, 0.001))
-            built[index].velocity = tangent * virial * closing
+        masses = order.map { masses[$0] }
+        let span = window.upperBound - window.lowerBound
+        var encounters: [Encounter] = []
+        for index in 1..<galaxies {
+            let along = 0.15 + 0.6 * (Float(index) - generator.uniform(in: 0.2...0.8)) / Float(galaxies - 1)
+            var meeting = Encounter(
+                primary: 0, secondary: index,
+                pericentre: generator.uniform(in: 5...18),
+                eccentricity: generator.uniform(in: 0.9...1.3),
+                massRatio: masses[index] / masses[0],
+                pericentreTime: window.lowerBound + along * span,
+                primaryDisk: attitude(&generator), secondaryDisk: attitude(&generator))
+            plane(&meeting, &generator)
+            encounters.append(meeting)
         }
-
-        var meanPosition = SIMD3<Float>.zero
-        var meanVelocity = SIMD3<Float>.zero
-        for (index, one) in built.enumerated() {
-            meanPosition += one.position * masses[index]
-            meanVelocity += one.velocity * masses[index]
-        }
-        meanPosition /= total
-        meanVelocity /= total
-        for index in built.indices {
-            built[index].position -= meanPosition
-            built[index].velocity -= meanVelocity
-        }
-        return SceneConfig(name: "Contemplation", galaxies: built, centerSoftening: 1.2)
+        var scene = SceneConfig(name: "Contemplation", galaxies: built, centerSoftening: 1.2)
+        scene.encounters = encounters
+        return scene
     }
 
     /// A big disk with a small dense thing falling through it.
     private static func companion(
-        particleCount: Int, palette: Palette, generator: inout SeededGenerator
+        particleCount: Int, palette: Palette, generator: inout SeededGenerator,
+        window: ClosedRange<Float>
     ) -> SceneConfig {
         let small = particleCount / 9
-        var host = disk(
+        let host = disk(
             "Hôte", count: particleCount - small, colour: palette.primary, generator: &generator,
             scaleLength: generator.uniform(in: 4.4...6.0), mass: generator.uniform(in: 55...70))
-        host.inclination = generator.uniform(in: -0.7...0.7)
         var intruder = GalaxyConfig(
             name: "Intrus",
             particleCount: small,
@@ -295,16 +302,21 @@ extension SceneConfig {
                 profile: .plummer, mass: generator.uniform(in: 9...16),
                 scaleRadius: generator.uniform(in: 1.2...2.2)),
             diskScaleLength: generator.uniform(in: 1.4...2.4),
-            color: palette.secondary,
-            position: SIMD3(
-                generator.uniform(in: -70 ... -40), generator.uniform(in: 18...40),
-                generator.uniform(in: 6...26)),
-            velocity: SIMD3(
-                generator.uniform(in: 0.75...1.05), generator.uniform(in: -0.55 ... -0.25),
-                generator.uniform(in: -0.2...0.0)),
-            inclination: generator.uniform(in: 0.6...1.4),
-            spin: .retrograde)
+            color: palette.secondary)
         intruder.dustFraction = 0.04
-        return SceneConfig(name: "Contemplation", galaxies: [host, intruder], centerSoftening: 1.2)
+        // Fast and close: it punches through the disk rather than orbiting it.
+        var meeting = Encounter(
+            pericentre: generator.uniform(in: 2...9),
+            eccentricity: generator.uniform(in: 1.1...2.2),
+            massRatio: intruder.potential.mass / host.potential.mass,
+            pericentreTime: window.lowerBound
+                + generator.uniform(in: 0.2...0.5) * (window.upperBound - window.lowerBound),
+            primaryDisk: attitude(&generator),
+            secondaryDisk: Encounter.Disk(spin: .retrograde))
+        plane(&meeting, &generator)
+        var scene = SceneConfig(
+            name: "Contemplation", galaxies: [host, intruder], centerSoftening: 1.2)
+        scene.encounters = [meeting]
+        return scene
     }
 }

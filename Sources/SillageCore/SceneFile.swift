@@ -19,6 +19,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
     public var softening: Float?
     public var timeStep: Float?
     public var galaxies: [Galaxy]
+    /// How the galaxies were placed, when they were placed from encounters. The positions and
+    /// velocities below are what that gave and what a replay runs from.
+    public var encounters: [Encounter]?
 
     public struct Galaxy: Codable, Sendable, Equatable {
         public var name: String
@@ -147,6 +150,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
         openingAngle = scene.openingAngle
         centerSoftening = scene.centerSoftening
         galaxies = scene.galaxies.map { Galaxy($0, share: Double($0.particleCount) / total) }
+        encounters = scene.encounters.isEmpty ? nil : scene.encounters
     }
 
     /// The scene at a given number of visible particles. Read back at the count it was written
@@ -169,6 +173,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             centerSoftening: centerSoftening,
             openingAngle: openingAngle)
         scene.timeStepScale = timeStepScale
+        scene.encounters = encounters ?? []
         scene.retune()
         if let timeStep { scene.timeStep = timeStep }
         if let softening { scene.softening = softening }
