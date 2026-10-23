@@ -109,6 +109,19 @@ struct SceneFileTests {
         #expect(!String(decoding: try file.encoded(), as: UTF8.self).contains("color"))
     }
 
+    @Test(arguments: [1, 7, 42, 2_026] as [UInt64])
+    func redrawingTheLookChangesNoPhysics(seed: UInt64) throws {
+        let scene = SceneConfig.contemplation(particleCount: 100_000, seed: seed)
+        var colours: Set<[Float]> = []
+        for lookSeed in 0..<UInt64(12) {
+            let repainted = SceneConfig.contemplation(
+                particleCount: 100_000, seed: seed, lookSeed: lookSeed)
+            #expect(try SceneFile(repainted).encoded() == SceneFile(scene).encoded())
+            colours.insert(repainted.galaxies.flatMap { [$0.color.x, $0.color.y, $0.color.z] })
+        }
+        #expect(colours.count > 1)
+    }
+
     @Test func anUnknownVersionOrBadSharesAreRefused() throws {
         var file = SceneFile(.merger(particleCount: 1_000))
         file.version = 2

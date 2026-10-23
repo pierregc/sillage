@@ -104,7 +104,8 @@ if let scenePath {
     case "contemplation":
         preset = .contemplation(
             particleCount: particles, seed: seed ?? 1, haste: Float(number("haste", 0)),
-            galaxies: argument("galaxies").flatMap(Int.init))
+            galaxies: argument("galaxies").flatMap(Int.init),
+            lookSeed: argument("look-seed").flatMap(UInt64.init))
     default:
         FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
         exit(2)

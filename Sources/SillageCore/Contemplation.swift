@@ -14,11 +14,17 @@ extension SceneConfig {
     /// encounter's own chaotic scatter.
     /// `haste` pulls the two galaxies together at the start so the passage happens early.
     /// A one minute scene that opens on a wide separation is a minute of two specks drifting.
+    /// The physics and the colours come from two streams of the seed, so a different
+    /// `lookSeed` repaints the same scene and a change to what the look draws moves nothing.
     public static func contemplation(
-        particleCount: Int = 700_000, seed: UInt64, haste: Float = 0, galaxies: Int? = nil
+        particleCount: Int = 700_000, seed: UInt64, haste: Float = 0, galaxies: Int? = nil,
+        lookSeed: UInt64? = nil
     ) -> SceneConfig {
         var generator = SeededGenerator(seed: seed)
-        let palette = Palette.all[Int(generator.next() % UInt64(Palette.all.count))]
+        // The palette used to be this draw; skipping it keeps the physics of every earlier seed.
+        _ = generator.next()
+        var looks = SeededGenerator(seed: lookSeed ?? Self.lookSeed(for: seed))
+        let palette = Palette.all[Int(looks.next() % UInt64(Palette.all.count))]
 
         // Weighted towards encounters, which are what has something happening in them, but a
         // single disk turning slowly is worth sitting with too.
@@ -83,6 +89,12 @@ extension SceneConfig {
         scene.openingAngle = 1.0
         scene.retune()
         return scene
+    }
+
+    /// The seed of the look stream when none is given.
+    public static func lookSeed(for seed: UInt64) -> UInt64 {
+        var mixer = SeededGenerator(seed: seed ^ 0x4C4F_4F4B_5354_524D)
+        return mixer.next()
     }
 
     /// Colour pairs that hold together. A galaxy's colour is a tint over the population

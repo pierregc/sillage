@@ -38,6 +38,11 @@ it, and every look flag given alongside overrides its field. A field left out ta
 `sillage-render` uses with no flags, so a file names only what it changes. The two files
 together replay a render exactly. `looks/raw.look.json` is plain points with no effects.
 
+A generated scene draws its physics and its colours from two separate streams of the seed.
+`--look-seed N` repaints `--preset contemplation --seed S` with another palette and leaves
+every physical parameter where it was. Scenes drawn before the split keep their physics;
+`--look-seed S`, the seed itself, gives them back their old colours too.
+
 ## The physics
 
 Two solvers share one scene description, one particle buffer and one renderer. **Restricted**
