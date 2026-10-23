@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "raw",
+  "look": {
+    "brightness": 0.6,
+    "dustStrength": 0,
+    "smoothingScale": 0,
+    "minimumKernel": 1.5,
+    "maximumKernel": 1.5,
+    "bloomThreshold": 1,
+    "bloomSoftKnee": 0,
+    "bloomIntensity": 0,
+    "stretch": 0,
+    "saturation": 1,
+    "spikeArms": 0,
+    "spikeLength": 0,
+    "spikeIntensity": 0,
+    "skyLevel": 0,
+    "noiseLevel": 0,
+    "galaxyTint": 1,
+    "starSize": 0,
+    "armPersistence": 0
+  },
+  "starCount": 0,
+  "supersample": 1,
+  "bloomLevels": 1,
+  "armStrength": 0,
+  "palette": [
+    [1.0, 0.62, 0.25],
+    [0.3, 0.7, 1.0],
+    [0.45, 1.0, 0.45],
+    [1.0, 0.4, 0.8],
+    [1.0, 0.95, 0.35],
+    [0.7, 0.5, 1.0]
+  ]
+}

@@ -26,6 +26,65 @@ let outputPath = argument("out", default: videoPath == nil ? "out/sillage.png" :
 
 let seed = argument("seed").flatMap(UInt64.init)
 let scenePath = argument("scene")
+let lookPath = argument("look")
+
+// Everything that decides the image, from the look file if one is given; each flag below
+// overrides its field.
+var look =
+    try lookPath.map { try LookFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: $0))) }
+    ?? .standard
+func flag(_ name: String, _ field: WritableKeyPath<LookFile, Float>) {
+    if let value = argument(name).flatMap(Double.init) { look[keyPath: field] = Float(value) }
+}
+func flag(_ name: String, _ field: WritableKeyPath<LookFile, Float?>) {
+    if let value = argument(name).flatMap(Double.init) { look[keyPath: field] = Float(value) }
+}
+func flag(_ name: String, _ field: WritableKeyPath<LookFile, Int>) {
+    if let value = argument(name).flatMap(Double.init) { look[keyPath: field] = Int(value) }
+}
+flag("brightness", \.look.brightness)
+flag("dust", \.look.dustStrength)
+flag("star-size", \.look.starSize)
+flag("smoothing", \.look.smoothingScale)
+flag("min-kernel", \.look.minimumKernel)
+flag("max-kernel", \.look.maximumKernel)
+flag("bloom-threshold", \.look.bloomThreshold)
+flag("bloom-knee", \.look.bloomSoftKnee)
+flag("bloom", \.look.bloomIntensity)
+flag("stretch", \.look.stretch)
+flag("saturation", \.look.saturation)
+flag("white-point", \.look.whitePoint)
+flag("spikes", \.look.spikeArms)
+flag("spike-length", \.look.spikeLength)
+flag("spike-intensity", \.look.spikeIntensity)
+flag("sky", \.look.skyLevel)
+flag("noise", \.look.noiseLevel)
+flag("tint", \.look.galaxyTint)
+flag("fov", \.look.fieldOfView)
+flag("stars", \.starCount)
+flag("supersample", \.supersample)
+flag("bloom-levels", \.bloomLevels)
+flag("arms", \.armStrength)
+flag("zoom", \.camera.zoom)
+flag("percentile", \.camera.percentile)
+flag("radius", \.camera.radius)
+flag("elevation", \.camera.elevation)
+flag("elevation-end", \.camera.elevationEnd)
+flag("azimuth", \.camera.azimuth)
+if let orbit = argument("orbit").flatMap(Double.init) {
+    look.camera.azimuthEnd = look.camera.azimuth + Float(orbit)
+}
+flag("azimuth-end", \.camera.azimuthEnd)
+if CommandLine.arguments.contains("--director") {
+    look.camera.mode = CommandLine.arguments.contains("--immersed") ? .immersed : .director
+}
+if let mode = argument("camera") {
+    guard let parsed = LookFile.CameraPlan.Mode(rawValue: mode) else {
+        FileHandle.standardError.write(Data("unknown camera: \(mode)\n".utf8))
+        exit(2)
+    }
+    look.camera.mode = parsed
+}
 
 // Every scene runs from its scene file, so the file written beside the output replays exactly
 // what ran. Read from disk, a scene keeps its own values unless a flag is given.
@@ -79,29 +138,37 @@ if let dissipation = argument("dissipation").flatMap(Float.init) {
 if let dt = argument("dt").flatMap(Float.init) { file.timeStep = dt }
 if let theta = argument("theta").flatMap(Float.init) { file.openingAngle = theta }
 if let value = argument("softening").flatMap(Float.init) { file.softening = value }
+for (index, colour) in look.palette.enumerated() {
+    if index < palette.count { palette[index] = colour } else { palette.append(colour) }
+}
 let scene = file.scene(particleCount: particles, palette: palette)
+// The colours the scene was drawn with, so the look file written beside it replays it exactly.
+look.palette = scene.galaxies.map(\.color)
 
 let settings = RenderSettings(
     width: width,
     height: height,
-    supersample: Int(number("supersample", 2)),
-    brightness: Float(number("brightness", 0.15)),
-    dustStrength: Float(number("dust", 0.35)),
-    starCount: Int(number("stars", 9000)),
-    starSize: Float(number("star-size", 2.2)),
-    smoothingScale: Float(number("smoothing", 1.9)),
-    bloomThreshold: Float(number("bloom-threshold", 0.55)),
-    bloomSoftKnee: Float(number("bloom-knee", 0.6)),
-    bloomIntensity: Float(number("bloom", 0.22)),
-    bloomLevels: Int(number("bloom-levels", 6)),
-    stretch: Float(number("stretch", 18)),
-    saturation: Float(number("saturation", 2.8)),
-    spikeArms: Int(number("spikes", 6)),
-    spikeLength: Float(number("spike-length", 72)),
-    spikeIntensity: Float(number("spike-intensity", 0.38)),
-    skyLevel: Float(number("sky", 0.0018)),
-    noiseLevel: Float(number("noise", 0.0016)),
-    galaxyTint: Float(number("tint", 0.35)))
+    supersample: look.supersample,
+    brightness: look.look.brightness,
+    dustStrength: look.look.dustStrength,
+    starCount: look.starCount,
+    starSize: look.look.starSize,
+    smoothingScale: look.look.smoothingScale,
+    minimumKernel: look.look.minimumKernel,
+    maximumKernel: look.look.maximumKernel,
+    bloomThreshold: look.look.bloomThreshold,
+    bloomSoftKnee: look.look.bloomSoftKnee,
+    bloomIntensity: look.look.bloomIntensity,
+    bloomLevels: look.bloomLevels,
+    stretch: look.look.stretch,
+    saturation: look.look.saturation,
+    whitePoint: look.look.whitePoint,
+    spikeArms: look.look.spikeArms,
+    spikeLength: look.look.spikeLength,
+    spikeIntensity: look.look.spikeIntensity,
+    skyLevel: look.look.skyLevel,
+    noiseLevel: look.look.noiseLevel,
+    galaxyTint: look.look.galaxyTint)
 
 print(
     "scene      \(scene.name), \(scene.totalParticleCount) visible"
@@ -139,67 +206,50 @@ func prepared(_ path: String) throws -> URL {
 
 let outputURL = try outputPath.map(prepared)
 
-// Named after the main output, so `x.mov` and `x.sillage` both get `x.scene.json`.
-let sceneOutPath =
-    argument("scene-out")
-    ?? [argument("take"), videoPath, outputPath].compactMap { $0 }.first.map { path in
+// Named after the main output, so `x.mov` and `x.sillage` both get `x.scene.json` and
+// `x.look.json`.
+func beside(_ suffix: String) -> String? {
+    [argument("take"), videoPath, outputPath].compactMap { $0 }.first.map { path in
         let url = URL(fileURLWithPath: path)
         let stem = url.lastPathComponent.split(separator: ".").first.map(String.init) ?? "scene"
-        return url.deletingLastPathComponent().appendingPathComponent(stem + ".scene.json").path
+        return url.deletingLastPathComponent().appendingPathComponent(stem + suffix).path
     }
-if let sceneOutPath {
+}
+if let sceneOutPath = argument("scene-out") ?? beside(".scene.json") {
     try file.encoded().write(to: prepared(sceneOutPath))
     print("scene file \(sceneOutPath)")
 }
 
 let stepsPerFrame = max(steps / max(frames, 1), 1)
-let zoom = Float(number("zoom", 1))
-let percentile = Float(number("percentile", 0.98))
-let elevation = Float(number("elevation", 1.15))
+let zoom = look.camera.zoom
+let percentile = look.camera.percentile
+let elevation = look.camera.elevation
 // The camera sweeps from its start angle to its end angle over the sequence, which is how a
 // still frame and a moving shot come out of the same command.
-let elevationEnd = Float(number("elevation-end", Double(elevation)))
-let azimuth = Float(number("azimuth", 0))
-let azimuthEnd = Float(number("azimuth-end", Double(azimuth) + number("orbit", 0)))
+let elevationEnd = look.camera.elevationEnd ?? elevation
+let azimuth = look.camera.azimuth
+let azimuthEnd = look.camera.azimuthEnd ?? azimuth
 let clock = Date()
 
 // Framing is fixed once so the camera does not drift as the tails grow.
-var frozenRadius = Float(number("radius", 0))
+var frozenRadius = look.camera.radius
 
 let framesPerSecond = Int32(number("fps", 30))
 
-// The look the flags describe, as a whole. The director re-applies a look every frame, so
-// without this it would pick one of its own named looks, sky and detector noise included,
-// and every look flag on the command line would be silently ignored. It is also the only way
-// to reach the kernel bounds: `maximumKernel` caps how large a particle may be drawn, which is
-// what turns a close shot into a field of soft blobs once the camera is among the particles.
-let baseLook = RenderLook(
-    brightness: settings.brightness,
-    dustStrength: settings.dustStrength,
-    smoothingScale: settings.smoothingScale,
-    minimumKernel: Float(number("min-kernel", 1.1)),
-    maximumKernel: Float(number("max-kernel", 64)),
-    bloomThreshold: settings.bloomThreshold,
-    bloomSoftKnee: settings.bloomSoftKnee,
-    bloomIntensity: settings.bloomIntensity,
-    stretch: settings.stretch,
-    saturation: settings.saturation,
-    spikeArms: settings.spikeArms,
-    spikeLength: settings.spikeLength,
-    spikeIntensity: settings.spikeIntensity,
-    skyLevel: settings.skyLevel,
-    noiseLevel: settings.noiseLevel,
-    galaxyTint: settings.galaxyTint,
-    starSize: settings.starSize)
-renderer.apply(baseLook)
+// The director re-applies a look every frame, so it is handed this one to build on; without
+// it, it would pick one of its own named looks and every look flag would be silently ignored.
+renderer.apply(look.look)
 
 // The director places the camera and lights the scene on its own. Without it a hundred
 // generated scenes come out framed identically, which is the thing that makes a library dull.
 let director: Cinematographer? =
-    CommandLine.arguments.contains("--director") ? Cinematographer(seed: scene.seed) : nil
-// One scene in three is seen from inside the disk rather than from outside it.
-director?.beginScene(
-    seed: scene.seed, base: baseLook, immersed: CommandLine.arguments.contains("--immersed"))
+    look.camera.mode == .fixed ? nil : Cinematographer(seed: scene.seed)
+director?.beginScene(seed: scene.seed, base: look.look, immersed: look.camera.mode == .immersed)
+
+if let lookOutPath = argument("look-out") ?? beside(".look.json") {
+    try (director?.lookFile(look) ?? look).encoded().write(to: prepared(lookOutPath))
+    print("look file  \(lookOutPath)")
+}
 
 let videoWriter = try videoPath.map {
     try FrameVideoWriter(
@@ -263,7 +313,7 @@ for frame in 0..<frames {
     renderer.setDiskFrames(
         DiskFrame.make(
             scene: scene, centers: solver.centers, time: solver.time,
-            strength: Float(number("arms", 1))))
+            strength: look.armStrength))
     let camera: Camera
     if let director {
         // Advanced by one frame of playback rather than by wall clock, so the move reads the
@@ -280,7 +330,7 @@ for frame in 0..<frames {
         let t = Float(frame) / span
         let eased = t * t * (3 - 2 * t)
         camera = Camera.framing(
-            radius: frozenRadius,
+            radius: frozenRadius, fieldOfView: look.look.fieldOfView,
             elevation: elevation + (elevationEnd - elevation) * eased,
             azimuth: azimuth + (azimuthEnd - azimuth) * eased)
     }
