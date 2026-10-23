@@ -158,31 +158,17 @@ public struct EncounterCentres {
             }
             return phi
         }
-
-        func haloDensity(_ r: Double) -> Double {
-            guard haloMass > 0 else { return 0 }
-            if let edge = haloEdge, r > edge { return 0 }
-            let mass = haloEdge.map { haloMass / haloFraction($0) } ?? haloMass
-            let a = haloScale
-            if haloPlummer {
-                return 3 * mass / (4 * .pi * a * a * a) * pow(1 + r * r / (a * a), -2.5)
-            }
-            let x = max(r, 1e-4)
-            return mass * a / (2 * .pi * x * pow(x + a, 3))
-        }
     }
 
     enum Coupling {
         /// Each centre is accelerated by the others' whole field and carries no reaction,
         /// which is what a rigid halo riding on its disk does.
         case rigid
-        /// Equal and opposite, with Chandrasekhar's drag through each other's halo.
-        case live(friction: Double)
+        /// Equal and opposite. No dynamical friction: against self-gravitating runs the first
+        /// passage already lands within a few per cent without it, and late rather than early,
+        /// which a drag would only make worse.
+        case live
     }
-
-    /// Coulomb logarithm of the drag between live halos. Calibrated against self-gravitating
-    /// runs: see `Encounter` in the notes.
-    public static let liveFriction = 0.0
 
     let profiles: [Profile]
     let coupling: Coupling
@@ -222,7 +208,7 @@ public struct EncounterCentres {
                 haloEdge: live && galaxy.haloParticleCount > 0
                     ? Double(max(galaxy.haloExtent, 1) * galaxy.potential.scaleRadius) : nil)
         }
-        coupling = live ? .live(friction: Self.liveFriction) : .rigid
+        coupling = live ? .live : .rigid
         positions = scene.galaxies.map { SIMD3<Double>($0.position) }
         velocities = scene.galaxies.map { SIMD3<Double>($0.velocity) }
     }
@@ -236,9 +222,7 @@ public struct EncounterCentres {
         var result = [SIMD3<Double>](repeating: .zero, count: positions.count)
         for i in positions.indices {
             for j in positions.indices where j > i {
-                let (a, b) = Self.pair(
-                    profiles[i], profiles[j], coupling, positions[i], positions[j], velocities[i],
-                    velocities[j])
+                let (a, b) = Self.pair(profiles[i], profiles[j], coupling, positions[i], positions[j])
                 result[i] += a
                 result[j] += b
             }
@@ -250,7 +234,7 @@ public struct EncounterCentres {
     /// while a scene is being placed.
     static func pair(
         _ first: Profile, _ second: Profile, _ coupling: Coupling, _ x1: SIMD3<Double>,
-        _ x2: SIMD3<Double>, _ v1: SIMD3<Double>, _ v2: SIMD3<Double>
+        _ x2: SIMD3<Double>
     ) -> (SIMD3<Double>, SIMD3<Double>) {
         let offset = x1 - x2
         let r = max(simd_length(offset), 1e-6)
@@ -260,31 +244,13 @@ public struct EncounterCentres {
         switch coupling {
         case .rigid:
             return (-direction * pullOfSecond, direction * pullOfFirst)
-        case .live(let friction):
+        case .live:
             let m1 = first.stellarMass + first.haloMass
             let m2 = second.stellarMass + second.haloMass
             let relative = pullOfFirst + pullOfSecond
-            var a1 = -direction * relative * (m2 / (m1 + m2))
-            var a2 = direction * relative * (m1 / (m1 + m2))
-            let velocity = v1 - v2
-            let speed = simd_length(velocity)
-            guard friction > 0, speed > 1e-6 else { return (a1, a2) }
-            // Each galaxy wades through the other's halo; the wake's pull is felt by the mover
-            // and handed back to the halo it was raised in.
-            func drag(mover: Double, host: Profile) -> Double {
-                let sigma = max((host.enclosed(r) / r / 2).squareRoot(), 1e-6)
-                let x = speed / (sigma * 2.0.squareRoot())
-                let shape = erf(x) - 2 * x / Double.pi.squareRoot() * exp(-x * x)
-                return 4 * .pi * mover * host.haloDensity(r) * friction * shape
-                    / (speed * speed * speed)
-            }
-            let firstDrag = drag(mover: m1, host: second)
-            let secondDrag = drag(mover: m2, host: first)
-            a1 -= velocity * firstDrag
-            a2 += velocity * (firstDrag * m1 / m2)
-            a2 += velocity * secondDrag
-            a1 -= velocity * (secondDrag * m2 / m1)
-            return (a1, a2)
+            return (
+                -direction * relative * (m2 / (m1 + m2)), direction * relative * (m1 / (m1 + m2))
+            )
         }
     }
 
@@ -398,7 +364,7 @@ extension SceneConfig {
             trial(x)
             ?? (Array(repeating: Double.infinity, count: x.count), first.0, first.1)
         // The backward construction is exact for an isolated pair and only approximate once
-        // drag or a third galaxy acts. Levenberg-Marquardt on a finite-difference Jacobian
+        // a third galaxy acts. Levenberg-Marquardt on a finite-difference Jacobian
         // closes the gap; a step that makes things worse is retaken shorter.
         var damping = 1e-3
         for _ in 0..<60 where size(best.residual) > 1e-8 && size(best.residual).isFinite {
@@ -590,11 +556,11 @@ extension SceneConfig {
 
             // The primary is held to its path, so the pull the secondary would have given it is
             // put on the secondary instead: that keeps the pair's relative orbit exact.
-            func pull(_ step: Int, _ x: SIMD3<Double>, _ v: SIMD3<Double>) -> SIMD3<Double> {
+            func pull(_ step: Int, _ x: SIMD3<Double>) -> SIMD3<Double> {
                 var total = SIMD3<Double>.zero
                 for (k, j) in placed.enumerated() {
                     let (onJ, onS) = EncounterCentres.pair(
-                        profiles[j], profiles[s], coupling, track[step].0[k], x, track[step].1[k], v)
+                        profiles[j], profiles[s], coupling, track[step].0[k], x)
                     total += j == p ? onS - onJ : onS
                 }
                 return total
@@ -604,9 +570,9 @@ extension SceneConfig {
             var v = track[steps].1[primary] + rotation * SIMD3(0, speed, 0)
             var farthest = (distance: q, step: steps)
             for step in stride(from: steps, to: 0, by: -1) {
-                v -= pull(step, x, v) * (interval / 2)
+                v -= pull(step, x) * (interval / 2)
                 x -= v * interval
-                v -= pull(step - 1, x, v) * (interval / 2)
+                v -= pull(step - 1, x) * (interval / 2)
                 let apart = simd_distance(x, track[step - 1].0[primary])
                 // Stepping back, the pair can only separate until it passes apocentre. The same
                 // margin as a passage needs, so a wobble from a third galaxy does not count.

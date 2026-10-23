@@ -159,8 +159,8 @@ extension SceneConfig {
         _ name: String, count: Int, colour: SIMD3<Float>, generator: inout SeededGenerator,
         scaleLength: Float, mass: Float
     ) -> GalaxyConfig {
-        // Orientation and spin are drawn to keep the stream as it was, and are replaced by the
-        // encounter's when there is one.
+        // The orientation and spin drawn here hold for a disk alone; an encounter replaces them
+        // with its own.
         let arms = [2, 2, 2, 3, 4, 5][Int(generator.next() % 6)]
         return GalaxyConfig(
             name: name,
