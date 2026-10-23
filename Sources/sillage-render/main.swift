@@ -23,49 +23,63 @@ let height = Int(number("height", 1080))
 // A PNG sequence is still the default, but a run asked for a video does not need one too.
 let videoPath = argument("video")
 let outputPath = argument("out", default: videoPath == nil ? "out/sillage.png" : nil)
-let backend = argument("solver", default: "restricted")!
 
 let seed = argument("seed").flatMap(UInt64.init)
+let scenePath = argument("scene")
 
-var scene: SceneConfig
-switch presetName {
-case "merger": scene = .merger(particleCount: particles)
-case "encounter": scene = .encounter(particleCount: particles)
-case "flyby": scene = .flyby(particleCount: particles)
-case "disk": scene = .isolatedDisk(particleCount: particles)
-// Drawn from the seed and nothing else, which is what a library of scenes wants: the seed is
-// the whole description, so a scene worth keeping can be rendered again from one integer.
-case "contemplation":
-    scene = .contemplation(
-        particleCount: particles, seed: seed ?? 1, haste: Float(number("haste", 0)),
-        galaxies: argument("galaxies").flatMap(Int.init))
-default:
-    FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
-    exit(2)
+// Every scene runs from its scene file, so the file written beside the output replays exactly
+// what ran. Read from disk, a scene keeps its own values unless a flag is given.
+var file: SceneFile
+var palette: [SIMD3<Float>] = []
+if let scenePath {
+    file = try SceneFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: scenePath)))
+} else {
+    let preset: SceneConfig
+    switch presetName {
+    case "merger": preset = .merger(particleCount: particles)
+    case "encounter": preset = .encounter(particleCount: particles)
+    case "flyby": preset = .flyby(particleCount: particles)
+    case "disk": preset = .isolatedDisk(particleCount: particles)
+    // Drawn from the seed and nothing else, which is what a library of scenes wants: the seed
+    // is the whole description, so a scene worth keeping can be rendered again from one integer.
+    case "contemplation":
+        preset = .contemplation(
+            particleCount: particles, seed: seed ?? 1, haste: Float(number("haste", 0)),
+            galaxies: argument("galaxies").flatMap(Int.init))
+    default:
+        FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
+        exit(2)
+    }
+    file = SceneFile(preset)
+    palette = preset.galaxies.map(\.color)
+    file.openingAngle = 0.6
 }
-if let seed { scene.seed = seed }
+if let seed { file.seed = seed }
+let backend = argument(
+    "solver", default: scenePath == nil || file.solver == .restricted ? "restricted" : "barnes-hut")!
 // The presets are self-gravitating by default, so the flag has to set the solver both ways.
 switch backend {
 case "barnes-hut":
-    scene.solver = .barnesHut
-    let ratio = Float(number("halo", 1.5))
-    for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = ratio }
+    file.solver = .barnesHut
+    if let ratio = argument("halo").flatMap(Float.init) ?? (scenePath == nil ? 1.5 : nil) {
+        for index in file.galaxies.indices { file.galaxies[index].haloParticleRatio = ratio }
+    }
 case "restricted", "cpu":
-    scene.solver = .restricted
+    file.solver = .restricted
 default:
     FileHandle.standardError.write(Data("unknown solver: \(backend)\n".utf8))
     exit(2)
 }
 // Softening and step follow from the counts and the solver unless overridden below. Only an
 // explicit flag overrides the scale, because a generated scene picks its own.
-if let scale = argument("dt-scale").flatMap(Float.init) { scene.timeStepScale = scale }
+if let scale = argument("dt-scale").flatMap(Float.init) { file.timeStepScale = scale }
 if let dissipation = argument("dissipation").flatMap(Float.init) {
-    for index in scene.galaxies.indices { scene.galaxies[index].dissipationTime = dissipation }
+    for index in file.galaxies.indices { file.galaxies[index].dissipationTime = dissipation }
 }
-scene.retune()
-if let dt = argument("dt").flatMap(Float.init) { scene.timeStep = dt }
-scene.openingAngle = Float(number("theta", 0.6))
-if let value = argument("softening").flatMap(Float.init) { scene.softening = value }
+if let dt = argument("dt").flatMap(Float.init) { file.timeStep = dt }
+if let theta = argument("theta").flatMap(Float.init) { file.openingAngle = theta }
+if let value = argument("softening").flatMap(Float.init) { file.softening = value }
+let scene = file.scene(particleCount: particles, palette: palette)
 
 let settings = RenderSettings(
     width: width,
@@ -125,6 +139,19 @@ func prepared(_ path: String) throws -> URL {
 
 let outputURL = try outputPath.map(prepared)
 
+// Named after the main output, so `x.mov` and `x.sillage` both get `x.scene.json`.
+let sceneOutPath =
+    argument("scene-out")
+    ?? [argument("take"), videoPath, outputPath].compactMap { $0 }.first.map { path in
+        let url = URL(fileURLWithPath: path)
+        let stem = url.lastPathComponent.split(separator: ".").first.map(String.init) ?? "scene"
+        return url.deletingLastPathComponent().appendingPathComponent(stem + ".scene.json").path
+    }
+if let sceneOutPath {
+    try file.encoded().write(to: prepared(sceneOutPath))
+    print("scene file \(sceneOutPath)")
+}
+
 let stepsPerFrame = max(steps / max(frames, 1), 1)
 let zoom = Float(number("zoom", 1))
 let percentile = Float(number("percentile", 0.98))
@@ -169,10 +196,10 @@ renderer.apply(baseLook)
 // The director places the camera and lights the scene on its own. Without it a hundred
 // generated scenes come out framed identically, which is the thing that makes a library dull.
 let director: Cinematographer? =
-    CommandLine.arguments.contains("--director") ? Cinematographer(seed: seed ?? 1) : nil
+    CommandLine.arguments.contains("--director") ? Cinematographer(seed: scene.seed) : nil
 // One scene in three is seen from inside the disk rather than from outside it.
 director?.beginScene(
-    seed: seed ?? 1, base: baseLook, immersed: CommandLine.arguments.contains("--immersed"))
+    seed: scene.seed, base: baseLook, immersed: CommandLine.arguments.contains("--immersed"))
 
 let videoWriter = try videoPath.map {
     try FrameVideoWriter(
