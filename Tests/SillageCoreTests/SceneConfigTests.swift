@@ -96,7 +96,8 @@ struct SceneFileTests {
         func keys(_ data: Data) throws -> Set<String> {
             Set((try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]).keys)
         }
-        let scene = SceneConfig.flyby(particleCount: 10_000)
+        // One with encounters, which the file only writes when there are some.
+        let scene = SceneConfig.contemplation(particleCount: 10_000, seed: 7, galaxies: 2)
         let file = SceneFile(scene)
         let encoder = JSONEncoder()
 

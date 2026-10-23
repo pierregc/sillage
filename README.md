@@ -43,6 +43,18 @@ A generated scene draws its physics and its colours from two separate streams of
 every physical parameter where it was. Scenes drawn before the split keep their physics;
 `--look-seed S`, the seed itself, gives them back their old colours too.
 
+An encounter is described by its geometry rather than by where the galaxies start: the
+pericentre distance, the eccentricity (below one bound, one parabolic, above one hyperbolic,
+judged against the potential the two galaxies really exert there), the mass ratio, when the
+pericentre falls, each disk's inclination and line of nodes against the orbital plane with its
+spin, and where that plane lies. The scene file keeps them under `encounters`, next to the
+positions and velocities they gave, which are what a replay runs from. Those are worked out
+backwards: each secondary is set at its pericentre beside where its primary actually is at that
+moment, then stepped back to the start through the galaxies already placed, every galaxy
+pulling with the mass it holds inside the separation. The centres are then run forward together
+and the passages asked for are corrected until they land. A generated scene puts its
+pericentres inside the clip it is rendered for, between `--settle` and `--steps`.
+
 ## Scene folders
 
 A scene goes through four stages, each one command that reads and writes the scene's own

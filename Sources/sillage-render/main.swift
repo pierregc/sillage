@@ -116,6 +116,9 @@ if let mode = argument("camera") {
 // what ran. Read from disk, a scene keeps its own values unless a flag is given.
 var file: SceneFile
 var palette: [SIMD3<Float>] = []
+// A generated scene's pericentres are drawn for a default stretch of time and moved into the
+// clip once its step is known.
+var generatedHaste: Float?
 if let scenePath {
     file = try SceneFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: scenePath)))
 } else {
@@ -132,6 +135,7 @@ if let scenePath {
             particleCount: particles, seed: seed ?? 1, haste: Float(number("haste", 0)),
             galaxies: argument("galaxies").flatMap(Int.init),
             lookSeed: argument("look-seed").flatMap(UInt64.init))
+        generatedHaste = Float(number("haste", 0))
     default:
         FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
         exit(2)
@@ -141,6 +145,7 @@ if let scenePath {
     file.openingAngle = 0.6
 }
 if let seed { file.seed = seed }
+let placedFor = (file.solver, file.galaxies.map(\.haloParticleRatio))
 let backend = argument(
     "solver", default: scenePath == nil || file.solver == .restricted ? "restricted" : "barnes-hut")!
 // The presets are self-gravitating by default, so the flag has to set the solver both ways.
@@ -168,7 +173,32 @@ if let value = argument("softening").flatMap(Float.init) { file.softening = valu
 for (index, colour) in look.palette.enumerated() {
     if index < palette.count { palette[index] = colour } else { palette.append(colour) }
 }
-let scene = file.scene(particleCount: particles, palette: palette)
+var scene = file.scene(particleCount: particles, palette: palette)
+// Encounters are placed for a solver and a halo; a flag that changes either places them again.
+if !scene.encounters.isEmpty,
+    generatedHaste != nil || placedFor.0 != file.solver
+        || placedFor.1 != file.galaxies.map(\.haloParticleRatio)
+{
+    if let generatedHaste {
+        scene.retimeEncounters(
+            from: SceneConfig.contemplationWindow(haste: generatedHaste),
+            to: scene.clipWindow(
+                settleSteps: Int(number("settle", 0)), steps: Int(number("steps", 3_000))))
+    }
+    scene.placeEncountersGivingWay()
+    let kept = file
+    file = SceneFile(scene)
+    file.softening = kept.softening
+    file.timeStep = kept.timeStep
+}
+for encounter in scene.encounters {
+    print(
+        String(
+            format: "encounter  %d-%d, pericentre %.1f kpc at %.0f Myr, e %.2f (%@), mass ratio %.2f",
+            encounter.primary, encounter.secondary, encounter.pericentre,
+            encounter.pericentreTime, encounter.eccentricity, encounter.orbit.rawValue,
+            encounter.massRatio))
+}
 // The colours the scene was drawn with, so the look file written beside it replays it exactly.
 look.palette = scene.galaxies.map(\.color)
 

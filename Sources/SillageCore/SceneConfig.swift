@@ -61,6 +61,9 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     /// automatic step all the way out to 16 times it, and within 1 % at 32. A close
     /// encounter reaches higher speeds than an isolated disk, so it deserves more caution.
     public var timeStepScale: Float = 1
+    /// The encounters the galaxies were placed from, if they were. `placeEncounters` turns
+    /// them into positions and velocities; the solver reads only those.
+    public var encounters: [Encounter] = []
 
     public init(
         name: String,
@@ -127,6 +130,26 @@ public struct SceneConfig: Codable, Sendable, Equatable {
 
     public var hasLiveHalos: Bool {
         solver.isSelfGravitating && galaxies.contains { $0.haloParticleCount > 0 }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, galaxies, solver, seed, timeStep, centerSoftening, openingAngle, softening
+        case timeStepScale, encounters
+    }
+
+    /// Takes written before a scene could carry encounters still read.
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        galaxies = try values.decode([GalaxyConfig].self, forKey: .galaxies)
+        solver = try values.decode(SolverKind.self, forKey: .solver)
+        seed = try values.decode(UInt64.self, forKey: .seed)
+        timeStep = try values.decode(Float.self, forKey: .timeStep)
+        centerSoftening = try values.decode(Float.self, forKey: .centerSoftening)
+        openingAngle = try values.decode(Float.self, forKey: .openingAngle)
+        softening = try values.decode(Float.self, forKey: .softening)
+        timeStepScale = try values.decodeIfPresent(Float.self, forKey: .timeStepScale) ?? 1
+        encounters = try values.decodeIfPresent([Encounter].self, forKey: .encounters) ?? []
     }
 
     public func encoded() throws -> Data {
