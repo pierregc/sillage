@@ -111,7 +111,8 @@ library/<batch>/
         clip.json          how long the clip runs and how large it is drawn
         preview.mov        the exploration clip
         thumbnail.png      one still from the middle of it, 480 px wide
-        curves.csv         per frame separation, extent and stars formed
+        curves.csv         per frame separation, extent, stars formed, tails and disruption
+        interest.json      the interest score and the features it comes from
         take.sillage       the run at full size, for the later stages
         exports/           the finished videos
 ```
@@ -189,6 +190,27 @@ batch ends by printing the mean wall clock per scene finished and per scene run.
 
 `scripts/library.sh` is the older batch, flat and with the full look; it stays for now.
 
+### Interest score
+
+Where to start looking in a batch, from the curves alone: no extra simulation, no image
+analysis, and never a filter. Each frame of `curves.csv` adds the closest pair of centres, the
+tidal fraction (the share of every 64th drawn star farther than 1.5 disk radii from every
+centre: tails and bridges) and each disk's disruption from the solver's `DiskState`.
+`scripts/interest.py` turns them into the scene's features, the closest approach and when it
+happens, the peak tidal fraction, the burst ratio (peak over median star formation, smoothed
+over 15 frames), the final disruption and whether the passage falls inside the clip, and into a
+score from 0 to 1, a hand weighted sum with the weights in `WEIGHTS` at the top of the script.
+
+The batch scores each scene as it lands, into `interest.json` and the `score` column of
+`index.csv`, and ranks the batch once it is done (`rank`, 1 first). The library sorts by it.
+`scripts/interest.py library/2026-10-24` scores and ranks a batch again, after the weights
+change for instance.
+
+Once enough scenes carry a rating, `scripts/interest.py --fit library` fits the weights to the
+ratings by least squares and compares how well each set ranks the scenes (Spearman, each scene
+predicted by weights fitted without it). It prints the fitted weights, and they replace the
+hand ones only if they rank better.
+
 ### The library
 
 The application's library window (⌘L, or **Bibliothèque** on the setup screen) shows every
@@ -197,7 +219,7 @@ scenes as they are written. The grid shows stills; only the scene under the poin
 selected one or the enlarged one plays its clip. Under each scene, yes, no and a rating from
 0 to 10, each saved in one click to the batch's `ratings.json`; clicking a lit button takes it
 back. Keys: arrows to move, `Y` and `N`, digits for the rating (`1` then `0` for ten), delete
-to clear, space to enlarge, escape to close. Sort by batch, rating or date, filter by choice,
+to clear, space to enlarge, escape to close. Sort by batch, rating, score or date, filter by choice,
 rating, batch and archetype.
 
 ```json

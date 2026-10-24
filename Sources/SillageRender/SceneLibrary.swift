@@ -13,6 +13,8 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
     public var tempo: String?
     public var galaxies: Int?
     public var seed: String?
+    /// How promising the scene looks from its curves alone (#45), higher first.
+    public var score: Double?
     /// Size and date of the video, which change for as long as a render is writing it.
     public var videoBytes: Int
     public var modified: Date
@@ -22,7 +24,7 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
     public init(
         batch: String, batchURL: URL, name: String, video: URL? = nil, thumbnail: URL? = nil,
         archetype: String? = nil, tempo: String? = nil, galaxies: Int? = nil, seed: String? = nil,
-        videoBytes: Int = 0, modified: Date = .distantPast
+        score: Double? = nil, videoBytes: Int = 0, modified: Date = .distantPast
     ) {
         self.batch = batch
         self.batchURL = batchURL
@@ -33,6 +35,7 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
         self.tempo = tempo
         self.galaxies = galaxies
         self.seed = seed
+        self.score = score
         self.videoBytes = videoBytes
         self.modified = modified
     }
@@ -144,7 +147,7 @@ public enum SceneLibrary {
                     LibraryScene(
                         batch: name, batchURL: batch, name: url.lastPathComponent, video: video,
                         thumbnail: exists(folder.thumbnail) ? folder.thumbnail : nil,
-                        archetype: archetype(in: folder.scene)),
+                        archetype: archetype(in: folder.scene), score: score(in: folder.interest)),
                     index: index))
         }
         let files =
@@ -172,6 +175,7 @@ public enum SceneLibrary {
             if scene.archetype == nil, let archetype = row["archetype"], !archetype.isEmpty {
                 scene.archetype = archetype
             }
+            if scene.score == nil { scene.score = row["score"].flatMap { Double($0) } }
         }
         if let video = scene.video,
             let attributes = try? FileManager.default.attributesOfItem(atPath: video.path)
@@ -190,6 +194,14 @@ public enum SceneLibrary {
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         return (object["draw"] as? [String: Any])?["generator"] as? String
+    }
+
+    /// Written by `scripts/interest.py` beside the curves the moment the scene is explored.
+    private static func score(in url: URL) -> Double? {
+        guard let data = try? Data(contentsOf: url),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return (object["score"] as? NSNumber)?.doubleValue
     }
 
     /// The last row for an id stands, as in the contact sheet: a retried scene appends one.
@@ -234,7 +246,7 @@ public struct LibraryQuery: Sendable, Equatable {
         case atLeast(Int)
     }
 
-    public enum Order: String, CaseIterable, Sendable { case batch, rating, newest }
+    public enum Order: String, CaseIterable, Sendable { case batch, rating, newest, score }
 
     public var choice = Choice.all
     public var rating = Rating.any
@@ -273,6 +285,12 @@ public struct LibraryQuery: Sendable, Equatable {
             return kept.sorted(by: byBatch)
         case .newest:
             return kept.sorted { $0.modified != $1.modified ? $0.modified > $1.modified : byBatch($0, $1) }
+        // Unscored scenes last but still there: the score orders, it never hides.
+        case .score:
+            return kept.sorted {
+                let (left, right) = ($0.score ?? -.infinity, $1.score ?? -.infinity)
+                return left != right ? left > right : byBatch($0, $1)
+            }
         case .rating:
             func key(_ scene: LibraryScene) -> (Int, Int) {
                 let entry = entries[scene.id]

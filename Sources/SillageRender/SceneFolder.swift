@@ -109,6 +109,7 @@ public struct SceneFolder: Sendable, Equatable {
     public var preview: URL { file("preview.mov") }
     public var thumbnail: URL { file("thumbnail.png") }
     public var curves: URL { file("curves.csv") }
+    public var interest: URL { file("interest.json") }
     public var take: URL { file("take.sillage") }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
 

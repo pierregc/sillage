@@ -144,6 +144,7 @@ struct LibraryHeader: View {
             Picker("Ordre", selection: $model.query.order) {
                 Text("Lot").tag(LibraryQuery.Order.batch)
                 Text("Note").tag(LibraryQuery.Order.rating)
+                Text("Score").tag(LibraryQuery.Order.score)
                 Text("Récentes").tag(LibraryQuery.Order.newest)
             }
             .fixedSize()
@@ -270,6 +271,7 @@ struct LibraryCard: View {
         if let archetype = scene.archetype { parts.append(archetype) }
         if let tempo = scene.tempo { parts.append(tempo) }
         if let galaxies = scene.galaxies { parts.append("\(galaxies) gal.") }
+        if let score = scene.score { parts.append(String(format: "score %.2f", score)) }
         if parts.isEmpty { parts.append(scene.batch) }
         return parts.joined(separator: " · ")
     }

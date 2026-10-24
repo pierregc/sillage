@@ -27,10 +27,11 @@ struct SceneLibraryTests {
             batch.appendingPathComponent("scene-0001/scene.json"), #"{"draw": {"generator": "antennae"}}"#)
         try touch(batch.appendingPathComponent("scene-0001/exports/final.mov"))
         try touch(batch.appendingPathComponent("scene-0002/thumbnail.png"))
+        try touch(batch.appendingPathComponent("scene-0002/interest.json"), #"{"score": 0.42}"#)
         try touch(batch.appendingPathComponent("notes/readme.txt"))
         try touch(
             batch.appendingPathComponent("index.csv"),
-            "id,seed,tempo,galaxies\nscene-0001,7,lent,2\nscene-0001,8,pose,3\n")
+            "id,seed,tempo,galaxies,score\nscene-0001,7,lent,2,\nscene-0001,8,pose,3,0.6\n")
         let legacy = root.appendingPathComponent("2026-09-21")
         try touch(legacy.appendingPathComponent("scene-0003.mov"))
         try touch(legacy.appendingPathComponent("scene-0004.mov.partial"))
@@ -47,6 +48,7 @@ struct SceneLibraryTests {
         let second = try #require(scenes.first { $0.name == "scene-0002" })
         #expect(second.video == nil && second.thumbnail?.lastPathComponent == "thumbnail.png")
         #expect(scenes.first { $0.name == "scene-0003" }?.archetype == "mice")
+        #expect(first.score == 0.6 && second.score == 0.42)
 
         // Pointed at one batch rather than the library, it is the same batch.
         #expect(
@@ -129,6 +131,13 @@ struct SceneLibraryTests {
         #expect(query.apply(scenes, entries: entries).map(\.id) == ["a/s2", "a/s1", "b/s2", "b/s1"])
         query.order = .rating
         #expect(query.apply(scenes, entries: entries).map(\.id) == ["a/s1", "a/s2", "b/s1", "b/s2"])
+
+        // Scored scenes first, highest first, and the unscored ones still shown after them.
+        var scored = scenes
+        scored[0].score = 0.2
+        scored[3].score = 0.7
+        query.order = .score
+        #expect(query.apply(scored, entries: entries).map(\.id) == ["b/s2", "a/s1", "b/s1", "a/s2"])
 
         query = LibraryQuery()
         query.choice = .undecided
