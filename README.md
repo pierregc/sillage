@@ -111,7 +111,7 @@ library/<batch>/
         clip.json          how long the clip runs and how large it is drawn
         preview.mov        the exploration clip
         thumbnail.png      one still from the middle of it, 480 px wide
-        curves.csv         per frame separation, extent, stars formed, tails and disruption
+        curves.csv         per frame separation, extent, stars formed, tails, disruption and centres
         interest.json      the interest score and the features it comes from
         hires.mov          the same clip at high resolution, raw, at the preview's size
         curves-hires.csv   its curves, in the format of curves.csv
