@@ -123,8 +123,8 @@ public struct SceneFolder: Sendable, Equatable {
 
     /// The `sillage-render` command line `explore` runs. The first occurrence of a flag wins,
     /// so the outputs come first and the folder cannot be written around, then the options
-    /// given, then the files already here. A folder with no scene file yet starts a generated
-    /// scene, self-gravitating, from whatever seed the options give.
+    /// given, then the files already here. A folder with no scene file yet starts a free draw,
+    /// self-gravitating, at whatever `--batch-seed` and `--index` the options give.
     public func exploreArguments(_ options: [String], clip: Clip) -> [String] {
         var arguments = [
             "--video", preview.path, "--curves", curves.path, "--thumbnail", thumbnail.path,
@@ -133,7 +133,7 @@ public struct SceneFolder: Sendable, Equatable {
         arguments += options + clip.arguments
         arguments +=
             exists(scene)
-            ? ["--scene", scene.path] : ["--preset", "contemplation", "--solver", "barnes-hut"]
+            ? ["--scene", scene.path] : ["--preset", "free", "--solver", "barnes-hut"]
         if exists(look) { arguments += ["--look", look.path] }
         return arguments
     }

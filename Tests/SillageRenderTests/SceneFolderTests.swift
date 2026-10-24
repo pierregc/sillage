@@ -54,7 +54,7 @@ struct SceneFolderTests {
         defer { try? FileManager.default.removeItem(at: folder.batch) }
 
         let first = folder.exploreArguments(["--seed", "42"], clip: .init())
-        #expect(value("--preset", in: first) == "contemplation")
+        #expect(value("--preset", in: first) == "free")
         #expect(value("--solver", in: first) == "barnes-hut")
         #expect(value("--seed", in: first) == "42")
         #expect(value("--scene", in: first) == nil && value("--look", in: first) == nil)

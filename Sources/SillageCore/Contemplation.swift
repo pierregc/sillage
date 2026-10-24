@@ -66,16 +66,22 @@ extension SceneConfig {
                 particleCount: particleCount, palette: palette, generator: &generator,
                 window: window)
         }
-        scene.solver = .barnesHut
         scene.seed = seed
-        for index in scene.galaxies.indices {
+        scene.finishGenerated(using: &generator)
+        return scene
+    }
+
+    /// What every generated scene shares once its galaxies and encounters are drawn.
+    mutating func finishGenerated(using generator: inout SeededGenerator) {
+        solver = .barnesHut
+        for index in galaxies.indices {
             // A rigid analytic halo. Live dark matter would triple the particle count for
             // material that reaches no pixel, and what it buys — dynamical friction, so a
             // pair actually merges — is not what an eleven minute scene is watching.
-            scene.galaxies[index].haloParticleRatio = 0
+            galaxies[index].haloParticleRatio = 0
             // Gas standing in for itself: without it a disk heats until its arms stop coming,
             // which is exactly the stretch of a scene somebody is sitting through.
-            scene.galaxies[index].dissipationTime = generator.uniform(in: 180...320)
+            galaxies[index].dissipationTime = generator.uniform(in: 180...320)
         }
         // Fewer, larger steps. Each one costs a tree built across every core as much as it
         // costs the GPU, so halving their number is worth twice what tuning the force pass
@@ -87,15 +93,14 @@ extension SceneConfig {
         // that is exactly the wrong trade here: what the eye reads as motion is the rate at
         // which positions change, and four large steps a second make a galaxy jump while the
         // starfield, which follows only the camera, glides past it.
-        scene.timeStepScale = generator.uniform(in: 0.7...1.1)
+        timeStepScale = generator.uniform(in: 0.7...1.1)
         // Barnes-Hut's accuracy knob, and the cheapest thing to spend here. With the
         // quadrupole, 1.0 costs less force pass than the monopole's 0.85 did (15.5 against
         // 18.7 ms at 450 000 particles) and is more accurate, and nobody is measuring
         // anything in this mode.
-        scene.openingAngle = 1.0
-        scene.retune()
-        scene.placeEncountersGivingWay()
-        return scene
+        openingAngle = 1.0
+        retune()
+        placeEncountersGivingWay()
     }
 
     /// Where a generated scene's pericentres fall when nothing says which clip it is for, in Myr.
