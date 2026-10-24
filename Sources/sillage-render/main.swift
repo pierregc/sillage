@@ -200,6 +200,32 @@ for encounter in scene.encounters {
             encounter.pericentreTime, encounter.eccentricity, encounter.orbit.rawValue,
             encounter.massRatio))
 }
+// A generated scene is judged from its centres before any particle is drawn, so one that would
+// show nothing costs a moment rather than a night's slot. A scene read from a file was judged
+// when it was drawn; `--check` judges it again and `--no-check` spares a generated one.
+// `--check-only` stops here with the numbers.
+if generatedHaste != nil && !arguments.contains("--no-check")
+    || arguments.contains("--check") || arguments.contains("--check-only")
+{
+    let checkStart = Date()
+    let verdict = scene.sanityCheck(
+        settleSteps: Int(number("settle", 0)), steps: Int(number("steps", 3_000)))
+    if arguments.contains("--check-only") {
+        print(
+            String(
+                format: "check      closest %@, Toomre %@, start clearance %@, frame %.1f, %.0f ms",
+                verdict.closestApproach.map { String(format: "%.1f kpc at %.0f Myr", $0.distance, $0.time) }
+                    ?? "none",
+                verdict.toomre.map { String(format: "%.2f-%.2f", $0.lowerBound, $0.upperBound) } ?? "none",
+                verdict.startClearance.map { String(format: "%.2f", $0) } ?? "none",
+                verdict.fieldRatio, Date().timeIntervalSince(checkStart) * 1000))
+    }
+    if !verdict.accepted {
+        print("rejected   " + verdict.reasons.map(\.description).joined(separator: "; "))
+        exit(3)
+    }
+    if arguments.contains("--check-only") { exit(0) }
+}
 // The colours the scene was drawn with, so the look file written beside it replays it exactly.
 look.palette = scene.galaxies.map(\.color)
 
