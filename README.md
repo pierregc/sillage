@@ -57,6 +57,17 @@ pulling with the mass it holds inside the separation. The centres are then run f
 and the passages asked for are corrected until they land. A generated scene puts its
 pericentres inside the clip it is rendered for, between `--settle` and `--steps`.
 
+A generated scene is judged before any particle is drawn. The galaxy centres are run alone
+through the clip, in a millisecond, and the scene is refused when none of its pairs comes
+closer than their disks' combined radii inside the clip, when a disk's Toomre Q leaves 1 to 3,
+when two galaxies start closer than half the sum of the radii holding nine tenths of their
+light, or when the frame the clip needs grows past four times the one it opens on, which is
+the widest shot the director takes. A lone disk has no encounter to find and passes. `sillage-render`
+prints `rejected` with the reasons and exits with status 3; `--check-only` prints the numbers
+and stops, `--no-check` renders anyway, and `--check` judges a scene read from a file.
+`scripts/library.sh` drops a rejected seed, logs the reason in `library.log` and draws the
+slot's next seed, and ends by printing how many draws were rejected.
+
 ## Scene folders
 
 A scene goes through four stages, each one command that reads and writes the scene's own

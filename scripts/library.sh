@@ -29,6 +29,9 @@ out=""
 base_seed=""
 takes=0
 max_galaxies=4
+# A seed whose scene fails the sanity check is dropped and the slot tries the next seed, up to
+# this many times. The check is deterministic, so a slot lands on the same seed on every run.
+MAX_DRAWS=40
 
 usage() {
     echo "usage: ${BASH_SOURCE[0]} [--hours H] [--scenes N] [--particles N] [--vertical]"
@@ -109,18 +112,23 @@ trap 'note "interrupted"; echo interrupted; exit 130' INT TERM
 
 if [ "$takes" -eq 1 ]; then MB_PER_SCENE=$(( MB_PER_SCENE + MB_PER_TAKE )); fi
 
+# Built once. `dev.sh render` rebuilds on every call, twenty seconds that a draw rejected in
+# a second should not pay, and a night should run one binary from the first scene to the last.
+"$ROOT/scripts/dev.sh" build >>"$log" 2>&1
 note "start: plan $planned scenes, ${width}x${height}, $particles particles, base seed $base_seed"
 SECONDS=0
 n=0
 done_count=0
 failed_count=0
+drawn_count=0
+rejected_count=0
+run_out="$out/.render.out"
 while :; do
     n=$(( n + 1 ))
     if [ "$scenes" -gt 0 ] && [ "$n" -gt "$scenes" ]; then break; fi
     if [ "$SECONDS" -ge "$deadline" ]; then note "out of time after ${SECONDS}s"; break; fi
 
     id="$(printf 'scene-%04d' "$n")"
-    seed="$(seed_for "$n")"
     if [ -f "$out/$id.mov" ]; then note "$id exists, skipped"; continue; fi
 
     # Three tempos, chosen by the seed so the night stays reproducible. A clip covering only
@@ -153,19 +161,38 @@ while :; do
     immersed_flag=""
     [ "$immersed" -eq 1 ] && immersed_flag="--immersed"
 
-    note "$id seed $seed tempo $tempo, $galaxies galaxies"
-    start=$SECONDS
-    rc=0
-    take_flag=""
-    [ "$takes" -eq 1 ] && take_flag="--take $out/$id.sillage"
-    "$ROOT/scripts/dev.sh" render \
-        --preset contemplation --seed "$seed" --director --solver barnes-hut \
-        --particles "$particles" --settle "$SETTLE" --haste "$haste" --dt-scale "$dt_scale" \
-        --galaxies "$galaxies" $immersed_flag \
-        --steps "$(( FRAMES * steps_per_frame ))" --frames "$FRAMES" \
-        --width "$width" --height "$height" --fps "$FPS" $LOOK \
-        --video "$out/$id.mov.partial" --curves "$out/$id.csv" $take_flag \
-        >>"$log" 2>&1 || rc=$?
+    # Draw seeds until one passes the render's own sanity check, which looks at the galaxy
+    # centres alone and answers in a second: a scene where nothing happens, or whose disks
+    # start unstable, overlapping or off the frame, never reaches the nine minutes of
+    # simulating. Seed `n` is the first draw, so a batch with nothing rejected is unchanged.
+    draw=0
+    while :; do
+        seed="$(seed_for $(( n + draw * 100000 )))"
+        note "$id seed $seed tempo $tempo, $galaxies galaxies"
+        start=$SECONDS
+        rc=0
+        take_flag=""
+        [ "$takes" -eq 1 ] && take_flag="--take $out/$id.sillage"
+        DYLD_LIBRARY_PATH="$ROOT/.build/dev" "$ROOT/.build/dev/sillage-render" \
+            --preset contemplation --seed "$seed" --director --solver barnes-hut \
+            --particles "$particles" --settle "$SETTLE" --haste "$haste" --dt-scale "$dt_scale" \
+            --galaxies "$galaxies" $immersed_flag \
+            --steps "$(( FRAMES * steps_per_frame ))" --frames "$FRAMES" \
+            --width "$width" --height "$height" --fps "$FPS" $LOOK \
+            --video "$out/$id.mov.partial" --curves "$out/$id.csv" $take_flag \
+            >"$run_out" 2>&1 || rc=$?
+        cat "$run_out" >>"$log"
+        drawn_count=$(( drawn_count + 1 ))
+        [ "$rc" -eq 3 ] || break
+        rejected_count=$(( rejected_count + 1 ))
+        note "$id seed $seed rejected: $(grep -m1 '^rejected' "$run_out" | sed 's/^rejected *//')"
+        draw=$(( draw + 1 ))
+        if [ "$draw" -ge "$MAX_DRAWS" ]; then break; fi
+    done
+    if [ "$rc" -eq 3 ]; then
+        note "$id gave up after $draw rejected draws"
+        continue
+    fi
     wall=$(( SECONDS - start ))
 
     # Renamed only on success: a half written file must not look like a finished scene to the
@@ -193,5 +220,10 @@ while :; do
     echo "$id $tempo $status ${wall}s"
 done
 
-note "end: $done_count done, $failed_count failed, ${SECONDS}s"
-echo "$done_count done, $failed_count failed, ${SECONDS}s"
+rm -f "$run_out"
+rate="none drawn"
+if [ "$drawn_count" -gt 0 ]; then
+    rate="$(awk -v r="$rejected_count" -v d="$drawn_count" 'BEGIN { printf "%d of %d drawn, %.0f%%", r, d, 100 * r / d }')"
+fi
+note "end: $done_count done, $failed_count failed, rejected $rate, ${SECONDS}s"
+echo "$done_count done, $failed_count failed, rejected $rate, ${SECONDS}s"
