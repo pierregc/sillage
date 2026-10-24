@@ -161,13 +161,13 @@ over 900 frames at `--dt-scale 3.5`). Live halos add one and a half times the vi
 what is simulated. 5 M and 10 M ran the first 60 and 30 frames and are extrapolated, with the
 10 % the cost of a step climbs over the clip at 1 M and 2 M.
 
-| particles | step | steps | clip | peak memory | take |
-| --- | --- | --- | --- | --- | --- |
-| 400 000 (preview) | 0.111 Myr | 400 + 7 200 | 7 min | | |
-| 1 M | 0.068 Myr | 650 + 11 700 | 30 min | 6.5 GB | 5.4 GB |
-| 2 M | 0.049 Myr | 900 + 16 200 | 85 min | 11.4 GB | 10.8 GB |
-| 5 M | 0.044 Myr | 1 000 + 18 000 | about 4 h | about 13 GB | about 27 GB |
-| 10 M | 0.044 Myr | 1 000 + 18 000 | about 8 h | about 16 GB | about 54 GB |
+| particles | step | steps | clip | peak memory | every frame | take, 1 in 4 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 400 000 (preview) | 0.111 Myr | 400 + 7 200 | 7 min | | | |
+| 1 M | 0.068 Myr | 650 + 11 700 | 30 min | 6.5 GB | 5.4 GB | 1.4 GB |
+| 2 M | 0.049 Myr | 900 + 16 200 | 85 min | 11.4 GB | 10.8 GB | 2.8 GB |
+| 5 M | 0.044 Myr | 1 000 + 18 000 | about 4 h | about 13 GB | about 27 GB | about 6.8 GB |
+| 10 M | 0.044 Myr | 1 000 + 18 000 | about 8 h | about 16 GB | about 54 GB | about 13.5 GB |
 
 The step stops shrinking past about three million, where it reaches the solver's floor. Memory
 stays bounded because the take holds a quarter of the machine's memory (`--take-memory`, in MB)
@@ -175,6 +175,32 @@ and carries on in a scratch file past that; it needs twice the take's size on di
 being written. The pericentre lands within a frame of the preview's at every size (223.2 Myr in
 the preview, 224.0 at 1 M, 223.2 at 2 M), and the last frame within 0.1 Myr, the drift of the
 solver's single precision clock.
+
+The take keeps one frame in four (`--take-interval`, 1 to keep them all), and whatever draws it
+again, the export or the application, draws the other three through a cubic between the kept
+frames, its tangents taken from the frames on either side. A take written before the interval
+existed reads as before. Measured on the 2 M take above, a frame every 0.89 Myr, against the
+frames the interval dropped:
+
+| interval | take | half the stars within | 99 % within | inside 1 kpc of a centre, half within |
+| --- | --- | --- | --- | --- |
+| 1 | 10.8 GB | | | |
+| 2 | 5.5 GB | 0.008 kpc | 0.14 kpc | 0.03 to 0.08 kpc |
+| 4 | 2.8 GB | 0.012 kpc | 0.44 kpc | 0.17 to 0.28 kpc |
+| 8 | 1.4 GB | 0.043 kpc | 1.1 kpc | 0.4 to 0.7 kpc |
+
+What does not follow is the nuclei, where an orbit takes a few megayears and is already only
+sampled a few times per turn at every frame. Past two kiloparsecs from a centre, at 1 in 4, half
+the stars are within 0.01 kpc of where they were. Rendered at 1920 x 1080 with the whole
+encounter in frame, stills at 1 in 4 and 1 in 8 cannot be told apart from every frame, even
+zoomed twice on a nucleus. The export draws the 900 frames in the same 14 s whatever the
+interval. Played back at 2560 x 1440, the blend takes 0.4 ms at 2 M and 2 ms at 10 M either way,
+and a whole frame takes 15.3 ms at 1 in 4 against 14.2 ms with every frame.
+
+Compressing the positions as well was measured and left out. On top of 1 in 4, zstd on each
+frame alone saves another 29 %, and predicting each frame from the two before it 47 %, but the
+second decodes only in order, and both would give up the memory-mapped random access playback
+and export rely on, for a smaller saving than the interval already makes.
 
 ### Exploration batches
 

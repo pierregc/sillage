@@ -218,6 +218,11 @@ extension SceneFolder {
     /// Wall clock per visible particle per step on the same machine, flat from one to ten
     /// million.
     public static let nanosecondsPerParticleStep = 150.0
+    /// The take keeps one frame in this many, and drawing it again interpolates the rest. At
+    /// the cadence `hires` captures, under a megayear a frame, four cannot be told apart from
+    /// one on screen, and ten million particles over nine hundred frames come to 13.5 GB
+    /// instead of 54. `--take-interval` overrides it.
+    public static let hiresTakeInterval = 4
 
     /// The most particles `hires` runs, and what it runs when not told: a setting of the
     /// machine rather than of the scene.
@@ -291,6 +296,9 @@ extension SceneFolder {
             "--dt", String(format: "%.9g", span.timeStep),
         ]
         arguments += rest + ["--scene", scene.path]
+        if !rest.contains("--take-interval") {
+            arguments += ["--take-interval", String(Self.hiresTakeInterval)]
+        }
         if exists(look) { arguments += ["--look", look.path] }
         return (arguments, record)
     }
