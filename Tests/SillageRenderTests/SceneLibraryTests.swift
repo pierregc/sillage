@@ -53,6 +53,21 @@ struct SceneLibraryTests {
             SceneLibrary.scan(batch).map(\.id).sorted() == ["2026-10-24/scene-0001", "2026-10-24/scene-0002"])
     }
 
+    /// `scripts/explore-batch.sh` explores into `.scene-0001` and renames it when the clip is
+    /// done, which is all that keeps a scene halfway written out of the grid.
+    @Test func aSceneStillBeingExploredStaysHiddenUntilItIsRenamed() throws {
+        let batch = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: batch) }
+        let staging = batch.appendingPathComponent(".scene-0001")
+        try touch(staging.appendingPathComponent("scene.json"), "{}")
+        try touch(staging.appendingPathComponent("preview.mov"))
+        try touch(batch.appendingPathComponent(".logs/scene-0001.log"))
+        #expect(SceneLibrary.scan(batch).isEmpty)
+
+        try FileManager.default.moveItem(at: staging, to: batch.appendingPathComponent("scene-0001"))
+        #expect(SceneLibrary.scan(batch).map(\.name) == ["scene-0001"])
+    }
+
     @Test func aChangeKeepsWhatAnotherToolWroteMeanwhile() throws {
         let batch = try temporaryLibrary()
         defer { try? FileManager.default.removeItem(at: batch) }

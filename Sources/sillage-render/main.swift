@@ -237,12 +237,14 @@ if generatedHaste != nil && !arguments.contains("--no-check")
     if arguments.contains("--check-only") {
         print(
             String(
-                format: "check      closest %@, Toomre %@, start clearance %@, frame %.1f, %.0f ms",
+                format: "check      closest %@, Toomre %@, start clearance %@, frame %.1f, "
+                    + "step %.5f Myr, %.0f ms",
                 verdict.closestApproach.map { String(format: "%.1f kpc at %.0f Myr", $0.distance, $0.time) }
                     ?? "none",
                 verdict.toomre.map { String(format: "%.2f-%.2f", $0.lowerBound, $0.upperBound) } ?? "none",
                 verdict.startClearance.map { String(format: "%.2f", $0) } ?? "none",
-                verdict.fieldRatio, Date().timeIntervalSince(checkStart) * 1000))
+                verdict.fieldRatio, Double(scene.timeStep) * Physics.megayearsPerTimeUnit,
+                Date().timeIntervalSince(checkStart) * 1000))
     }
     if !verdict.accepted {
         print("rejected   " + verdict.reasons.map(\.description).joined(separator: "; "))
