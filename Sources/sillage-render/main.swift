@@ -8,9 +8,64 @@ func fail(_ message: String, code: Int32 = 2) -> Never {
     exit(code)
 }
 
+/// Every scene of a batch marked yes, one after another, each in a process of its own: at these
+/// sizes one scene fills the GPU. A scene already done at the same size is skipped, so an
+/// interrupted batch picks up where it stopped.
+func hiresBatch(_ batch: URL, options: [String]) -> Int32 {
+    let scenes = SceneFolder.chosen(inBatch: batch)
+    guard !scenes.isEmpty else {
+        fail("hires: \(batch.path) is neither a scene folder nor a batch with scenes marked yes")
+    }
+    let (asked, _) = SceneFolder.Clip().updated(with: options)
+    let particles =
+        options.contains("--particles") ? asked.particles : SceneFolder.maximumParticles()
+    var failed = 0
+    for (index, scene) in scenes.enumerated() {
+        let name = scene.url.lastPathComponent
+        if let done = scene.storedHires(), done.particles == particles,
+            !options.contains("--frames") || done.frames == asked.frames
+        {
+            print("hires      \(index + 1)/\(scenes.count) \(name): done already")
+            continue
+        }
+        print("hires      \(index + 1)/\(scenes.count) \(name)")
+        let process = Process()
+        process.executableURL = Bundle.main.executableURL
+        process.arguments = ["hires", scene.url.path] + options
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            print("hires      \(name) did not start: \(error)")
+        }
+        if process.terminationStatus != 0 {
+            failed += 1
+            print("hires      \(name) failed with status \(process.terminationStatus)")
+        }
+    }
+    print("hires      \(scenes.count - failed) of \(scenes.count) scenes")
+    return failed == 0 ? 0 : 1
+}
+
+/// The most the process has had resident at once, GPU buffers included: on unified memory
+/// they count against the same footprint.
+func peakFootprint() -> Int? {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(
+        MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+    let result = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+            task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+        }
+    }
+    return result == KERN_SUCCESS ? Int(info.ledger_phys_footprint_peak) : nil
+}
+
 // `sillage-render <stage> <scene folder> [options]` runs one stage of the pipeline, every path
 // derived from the folder. Anything else is a plain render driven by its flags.
+let started = Date()
 let arguments: [String]
+var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
 if CommandLine.arguments.count > 1,
     let stage = SceneFolder.Stage(rawValue: CommandLine.arguments[1])
 {
@@ -21,11 +76,34 @@ if CommandLine.arguments.count > 1,
         fail("\(stage.rawValue): not yet, it arrives with #\(issue)", code: 1)
     }
     let folder = SceneFolder(path: CommandLine.arguments[2])
-    let (clip, options) = try folder.storedClip().updated(
-        with: Array(CommandLine.arguments.dropFirst(3)))
-    try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
-    try clip.encoded().write(to: folder.clip)
-    arguments = folder.exploreArguments(options, clip: clip)
+    let options = Array(CommandLine.arguments.dropFirst(3))
+    switch stage {
+    case .hires:
+        if !folder.isExplored && FileManager.default.fileExists(atPath: folder.url.path) {
+            exit(hiresBatch(folder.url, options: options))
+        }
+        do {
+            let plan = try folder.hiresArguments(
+                options, maximumParticles: SceneFolder.maximumParticles())
+            arguments = plan.arguments
+            hiresRun = (folder, plan.record)
+            let record = plan.record
+            print(
+                String(
+                    format: "hires      %d particles (preview %d), step %.5f Myr (preview %.5f),"
+                        + " settle %d, %d steps, clip %.1f to %.1f Myr, about %.1f h",
+                    record.particles, record.previewParticles, record.timeStepMyr,
+                    record.previewTimeStepMyr, record.settle, record.steps, record.clipStartMyr,
+                    record.clipEndMyr, record.estimatedSeconds / 3600))
+        } catch {
+            fail("hires: \(error)")
+        }
+    default:
+        let (clip, rest) = try folder.storedClip().updated(with: options)
+        try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+        try clip.encoded().write(to: folder.clip)
+        arguments = folder.exploreArguments(rest, clip: clip)
+    }
 } else {
     arguments = Array(CommandLine.arguments.dropFirst())
 }
@@ -323,7 +401,8 @@ let thumbnailFrame = min(Int(number("thumbnail-frame", Double(frames / 2))), fra
 // Named after the main output, so `x.mov` and `x.sillage` both get `x.scene.json` and
 // `x.look.json`.
 func beside(_ suffix: String) -> String? {
-    [argument("take"), videoPath, outputPath].compactMap { $0 }.first.map { path in
+    guard !arguments.contains("--no-sidecars") else { return nil }
+    return [argument("take"), videoPath, outputPath].compactMap { $0 }.first.map { path in
         let url = URL(fileURLWithPath: path)
         let stem = url.lastPathComponent.split(separator: ".").first.map(String.init) ?? "scene"
         return url.deletingLastPathComponent().appendingPathComponent(stem + suffix).path
@@ -374,9 +453,13 @@ let videoWriter = try videoPath.map {
 
 // A take holds the run rather than the picture, so a scene can be rendered again at another
 // size, another exposure or another camera without simulating it a second time.
+// Past its budget it carries on in a scratch file, which is what lets a take of tens of
+// gigabytes be captured on a machine with less memory than that.
+let takeBudget = Int(
+    number("take-memory", Double(ProcessInfo.processInfo.physicalMemory / 4) / 1e6) * 1e6)
 let take: Recording? = argument("take").map { _ in
     let reel = Recording(particleCount: drawnCount, galaxyCount: scene.galaxies.count)
-    reel.reserve(frames: frames)
+    reel.reserve(frames: min(frames, takeBudget / max(drawnCount * 6, 1) + 1))
     return reel
 }
 
@@ -486,14 +569,16 @@ for frame in 0..<frames {
 
     if let take {
         if let gpuSolver {
-            take.append(
+            take.offer(
                 positions: gpuSolver.positions.contents().bindMemory(
                     to: SIMD3<Float>.self, capacity: seeded.count),
-                time: solver.time, centers: solver.centers)
+                time: solver.time, centers: solver.centers, budget: takeBudget)
         } else {
             solver.particles.positions.withUnsafeBufferPointer { buffer in
                 guard let base = buffer.baseAddress else { return }
-                take.append(positions: base, time: solver.time, centers: solver.centers)
+                take.offer(
+                    positions: base, time: solver.time, centers: solver.centers,
+                    budget: takeBudget)
             }
         }
     }
@@ -578,7 +663,21 @@ if curves != nil {
             curvesSeconds * 1000 / Double(max(frames, 1))))
 }
 if let take, let path = argument("take") {
+    if let failure = take.spillFailure { print("take       held in memory: \(failure)") }
     try RecordingFile.write(take, scene: scene, particles: seeded, to: prepared(path))
+}
+if let (folder, done) = hiresRun {
+    var record = done
+    record.seconds = Date().timeIntervalSince(started)
+    record.peakMemoryBytes = peakFootprint()
+    record.takeBytes =
+        (try? FileManager.default.attributesOfItem(atPath: folder.take.path)[.size] as? Int)
+        ?? nil
+    try record.encoded().write(to: folder.hires)
+    print(
+        String(
+            format: "hires      %.0f s, peak %.2f GB, take %.2f GB", record.seconds ?? 0,
+            Double(record.peakMemoryBytes ?? 0) / 1e9, Double(record.takeBytes ?? 0) / 1e9))
 }
 
 print(String(format: "done in %.1f s", Date().timeIntervalSince(clock)))

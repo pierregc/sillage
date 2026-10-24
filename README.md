@@ -113,13 +113,16 @@ library/<batch>/
         thumbnail.png      one still from the middle of it, 480 px wide
         curves.csv         per frame separation, extent, stars formed, tails and disruption
         interest.json      the interest score and the features it comes from
+        hires.mov          the same clip at high resolution, raw, at the preview's size
+        curves-hires.csv   its curves, in the format of curves.csv
+        hires.json         the particle count, steps and settings it ran with, and its cost
         take.sillage       the run at full size, for the later stages
         exports/           the finished videos
 ```
 
 ```bash
 ./scripts/dev.sh explore library/2026-10-23/scene-0001 --seed 42 --index 1 --director
-./scripts/dev.sh hires   library/2026-10-23/scene-0001 --particles 5000000
+./scripts/dev.sh hires   library/2026-10-23/scene-0001 --particles 2000000
 ./scripts/dev.sh look    library/2026-10-23/scene-0001
 ./scripts/dev.sh export  library/2026-10-23/scene-0001
 ```
@@ -130,8 +133,48 @@ self-gravitating scene of a generated batch from the options given, `--seed` the
 `scene.json`, `look.json` and `clip.json` are there it reads them back, so running it again
 with no options gives the same clip, and any option given overrides the file it belongs to.
 The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`, `--steps` and
-`--settle`. To start a scene over, empty its folder. `hires` (#19), `look` (#22) and `export`
-(#24) are not written yet and say so. The same stages are `sillage-render <stage> <folder>`.
+`--settle`. To start a scene over, empty its folder. `look` (#22) and `export` (#24) are not
+written yet and say so. The same stages are `sillage-render <stage> <folder>`.
+
+### High resolution
+
+`hires` runs the scene again from its `scene.json` at `--particles`, by default this Mac's
+maximum, and writes `take.sillage`, `hires.mov`, `curves-hires.csv` and `hires.json` beside the
+preview without touching it. Given a batch folder instead of a scene, it runs every scene marked
+yes in `ratings.json`, one after another, skipping those already done at that size.
+
+Only the particle count and what follows from it change. The geometry is the scene file's, and
+so is `timeStepScale` (3.5 for a night batch) unless `--dt-scale` overrides it. Softening follows
+the interparticle spacing, so the step shrinks as the count grows, and `clip.json`'s `steps` and
+`settle` are step counts at the preview's size: run as they are, they would show a shorter stretch
+of the encounter. They are turned into megayears and back, with a whole number of steps per
+frame, so every frame lands at the time the preview showed it and only the settle is rounded to
+the nearest step. `--frames N` runs the first N frames at the same cadence, for a quick look.
+
+The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
+more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
+`hires` prints how long a run should take before it starts, at 150 ns per visible particle per
+step.
+
+Measured on a two-disk flyby explored at 400 000 particles (batch 20261024, scene 1, 700 Myr
+over 900 frames at `--dt-scale 3.5`). Live halos add one and a half times the visible count to
+what is simulated. 5 M and 10 M ran the first 60 and 30 frames and are extrapolated, with the
+10 % the cost of a step climbs over the clip at 1 M and 2 M.
+
+| particles | step | steps | clip | peak memory | take |
+| --- | --- | --- | --- | --- | --- |
+| 400 000 (preview) | 0.111 Myr | 400 + 7 200 | 7 min | | |
+| 1 M | 0.068 Myr | 650 + 11 700 | 30 min | 6.5 GB | 5.4 GB |
+| 2 M | 0.049 Myr | 900 + 16 200 | 85 min | 11.4 GB | 10.8 GB |
+| 5 M | 0.044 Myr | 1 000 + 18 000 | about 4 h | about 13 GB | about 27 GB |
+| 10 M | 0.044 Myr | 1 000 + 18 000 | about 8 h | about 16 GB | about 54 GB |
+
+The step stops shrinking past about three million, where it reaches the solver's floor. Memory
+stays bounded because the take holds a quarter of the machine's memory (`--take-memory`, in MB)
+and carries on in a scratch file past that; it needs twice the take's size on disk while it is
+being written. The pericentre lands within a frame of the preview's at every size (223.2 Myr in
+the preview, 224.0 at 1 M, 223.2 at 2 M), and the last frame within 0.1 Myr, the drift of the
+solver's single precision clock.
 
 ### Exploration batches
 
