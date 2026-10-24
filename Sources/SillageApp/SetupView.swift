@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SetupView: View {
     @ObservedObject var model: SimulationModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -68,6 +69,9 @@ struct SetupView: View {
             }
             Button("Ouvrir une prise…") { TakeFiles.open(model) }
                 .buttonStyle(.bordered)
+            Button("Bibliothèque") { openWindow(id: LibraryView.windowID) }
+                .buttonStyle(.bordered)
+                .help("Les scènes générées, à trier en un clic (⌘L)")
             Menu("Contemplation") {
                 Button("Lente — 5 min par scène") { model.startContemplation(pace: .slow) }
                 Button("Rapide — 1 min par scène") { model.startContemplation(pace: .brisk) }

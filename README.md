@@ -90,6 +90,25 @@ The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`
 `--settle`. To start a scene over, empty its folder. `hires` (#19), `look` (#22) and `export`
 (#24) are not written yet and say so. The same stages are `sillage-render <stage> <folder>`.
 
+### The library
+
+The application's library window (⌘L, or **Bibliothèque** on the setup screen) shows every
+scene under `library/`, both scene folders and the older flat batches, and picks up new
+scenes as they are written. The grid shows stills; only the scene under the pointer, the
+selected one or the enlarged one plays its clip. Under each scene, yes, no and a rating from
+0 to 10, each saved in one click to the batch's `ratings.json`; clicking a lit button takes it
+back. Keys: arrows to move, `Y` and `N`, digits for the rating (`1` then `0` for ten), delete
+to clear, space to enlarge, escape to close. Sort by batch, rating or date, filter by choice,
+rating, batch and archetype.
+
+```json
+{ "version": 1, "scenes": { "scene-0001": { "choice": "yes", "rating": 8, "updated": "2026-10-24T06:00:00Z" } } }
+```
+
+The scenes kept for the next stage are
+`jq -r '.scenes | to_entries[] | select(.value.choice == "yes") | .key' ratings.json`.
+`Sillage.app --librarycheck` drives the whole window model through a library it builds on disk.
+
 ## The physics
 
 Two solvers share one scene description, one particle buffer and one renderer. **Restricted**
