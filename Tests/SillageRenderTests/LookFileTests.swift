@@ -69,7 +69,7 @@ struct LookFileTests {
         #expect(raw == .raw)
         #expect(raw.look.bloomIntensity == 0 && raw.look.spikeIntensity == 0)
         #expect(raw.look.dustStrength == 0 && raw.look.skyLevel == 0 && raw.look.noiseLevel == 0)
-        #expect(raw.starCount == 0 && raw.armStrength == 0 && raw.camera.mode == .fixed)
+        #expect(raw.starCount == 0 && raw.armStrength == 0 && raw.camera.mode == .auto && raw.plain)
         #expect(raw.look.minimumKernel == raw.look.maximumKernel)
     }
 

@@ -530,6 +530,32 @@ enum Shaders {
             return out;
         }
 
+        // The raw look: one fixed-size point per particle in its galaxy's tint, none of the
+        // per-particle state the full splat reads. Dark matter is pushed out of the clip volume.
+        struct PlainOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            half3 color;
+        };
+
+        vertex PlainOut plainVertex(uint vid [[vertex_id]],
+                                    device const float3 *positions [[buffer(0)]],
+                                    device const uint *component [[buffer(3)]],
+                                    constant SplatUniforms &u [[buffer(4)]],
+                                    device const uint *galaxy [[buffer(5)]],
+                                    constant DiskFrame *frames [[buffer(6)]]) {
+            PlainOut out;
+            out.position = u.viewProjection * float4(positions[vid], 1.0);
+            out.pointSize = u.minimumSize;
+            out.color = half3(frames[galaxy[vid]].tint.xyz * u.brightness);
+            if (component[vid] == 3u) { out.position = float4(2.0, 2.0, 2.0, 1.0); }
+            return out;
+        }
+
+        fragment half4 plainFragment(PlainOut in [[stage_in]]) {
+            return half4(in.color, 1.0h);
+        }
+
         fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
                                                float2 coord [[point_coord]]) {
             float2 d = coord - 0.5;
@@ -576,6 +602,24 @@ enum Shaders {
             // applied to the total, which cannot make a lane pass in front of anything and
             // only ever pulled the whole galaxy down towards brown.
             dst.write(float4(emitted * inverse, 1.0), gid);
+        }
+
+        // Box average of the accumulation and an exponential exposure curve, which keeps a
+        // dense core in its galaxy's hue instead of clipping it to white.
+        kernel void plainComposite(texture2d<float, access::read> light [[texture(0)]],
+                                   texture2d<float, access::write> output [[texture(2)]],
+                                   constant uint &factor [[buffer(0)]],
+                                   constant float &fade [[buffer(1)]],
+                                   uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
+            float3 sum = float3(0.0);
+            for (uint y = 0; y < factor; ++y) {
+                for (uint x = 0; x < factor; ++x) {
+                    sum += light.read(gid * factor + uint2(x, y)).rgb;
+                }
+            }
+            float3 energy = sum / float(factor * factor);
+            output.write(float4(pow(1.0 - exp(-energy), 1.0 / 2.2) * fade, 1.0), gid);
         }
 
         kernel void brightPass(texture2d<float, access::sample> src [[texture(0)]],

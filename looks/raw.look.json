@@ -2,7 +2,7 @@
   "version": 1,
   "name": "raw",
   "look": {
-    "brightness": 0.6,
+    "brightness": 0.12,
     "dustStrength": 0,
     "smoothingScale": 0,
     "minimumKernel": 1.5,
@@ -24,7 +24,9 @@
   "starCount": 0,
   "supersample": 1,
   "bloomLevels": 1,
+  "plain": true,
   "armStrength": 0,
+  "camera": { "mode": "auto" },
   "palette": [
     [1.0, 0.62, 0.25],
     [0.3, 0.7, 1.0],

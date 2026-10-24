@@ -110,6 +110,9 @@ public struct RenderSettings: Sendable {
     /// implies. Zero is the physical answer; a little of it is what keeps stars torn out of
     /// one disk recognisable inside the other.
     public var galaxyTint: Float
+    /// Draws the raw look: plain points and one pass, instead of the splat, dust and post
+    /// stages. Fixed for the renderer's life, since it decides which pipelines get built.
+    public var plain: Bool
 
     public init(
         width: Int = 1920,
@@ -134,7 +137,8 @@ public struct RenderSettings: Sendable {
         spikeIntensity: Float = 0.38,
         skyLevel: Float = 0.0018,
         noiseLevel: Float = 0.0016,
-        galaxyTint: Float = 0.35
+        galaxyTint: Float = 0.35,
+        plain: Bool = false
     ) {
         self.width = width
         self.height = height
@@ -159,6 +163,7 @@ public struct RenderSettings: Sendable {
         self.skyLevel = skyLevel
         self.noiseLevel = noiseLevel
         self.galaxyTint = galaxyTint
+        self.plain = plain
     }
 }
 
@@ -190,6 +195,8 @@ public final class Renderer {
     private let dustPipeline: MTLRenderPipelineState
     private let splatPipeline: MTLRenderPipelineState
     private let starfieldPipeline: MTLRenderPipelineState
+    private let plainPipeline: MTLRenderPipelineState
+    private let plainCompositePipeline: MTLComputePipelineState
     private let resolvePipeline: MTLComputePipelineState
     private let brightPassPipeline: MTLComputePipelineState
     private let downsamplePipeline: MTLComputePipelineState
@@ -305,12 +312,15 @@ public final class Renderer {
         }
 
         func additive(
-            _ vertexFunction: String, _ fragmentFunction: String, writing target: Int
+            _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
+            attachments: Int = 2
         ) throws -> MTLRenderPipelineState {
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
             descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
-            for (index, format) in [MTLPixelFormat.rgba16Float, .rgba16Float].enumerated() {
+            for (index, format) in [MTLPixelFormat.rgba16Float, .rgba16Float].prefix(attachments)
+                .enumerated()
+            {
                 guard let attachment = descriptor.colorAttachments[index] else { continue }
                 attachment.pixelFormat = format
                 attachment.writeMask = index == target ? .all : []
@@ -331,6 +341,9 @@ public final class Renderer {
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
         splatPipeline = try additive("splatVertex", "splatFragment", writing: 0)
         starfieldPipeline = try additive("starfieldVertex", "starfieldFragment", writing: 0)
+        plainPipeline = try additive(
+            "plainVertex", "plainFragment", writing: 0, attachments: 1)
+        plainCompositePipeline = try compute("plainComposite")
 
         resolvePipeline = try compute("resolve")
         brightPassPipeline = try compute("brightPass")
@@ -365,8 +378,8 @@ public final class Renderer {
         // front of it. That is the whole of what makes a lane pass in front of a bright
         // region rather than grey the picture down evenly.
         dustAccumulation = try texture(
-            settings.width * scale, settings.height * scale, .rgba16Float,
-            [.renderTarget, .shaderRead])
+            settings.plain ? 1 : settings.width * scale, settings.plain ? 1 : settings.height * scale,
+            .rgba16Float, [.renderTarget, .shaderRead])
         resolved = try texture(
             settings.width, settings.height, .rgba16Float, [.shaderRead, .shaderWrite])
 
@@ -581,7 +594,51 @@ public final class Renderer {
         encodePost(into: buffer, present: present)
     }
 
+    private func encodePlain(camera: Camera, into buffer: MTLCommandBuffer) {
+        let scale = settings.supersample
+        let aspect = Float(settings.width) / Float(settings.height)
+        var uniforms = SplatUniforms(
+            viewProjection: camera.viewProjection(aspectRatio: aspect),
+            time: time, megayearsPerUnit: 0, ionisedMyr: 0, ionisingRiseMyr: 0,
+            ionisedStrength: 0, populationYoungMyr: 0, populationSpan: 0, populationLast: 0,
+            luminosityNormalisation: 1,
+            brightness: settings.brightness * 1_000_000 / Float(max(drawnCount, 1)),
+            dustStrength: 0, starSize: 0, projectionScale: 0, smoothingScale: 0,
+            referenceArea: 0, minimumSize: settings.minimumKernel * Float(scale),
+            maximumSize: 0, galaxyTint: 1, slabNear: 0, slabScale: 0, pass: 0)
+
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = accumulation
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        pass.colorAttachments[0].storeAction = .store
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        encoder.setRenderPipelineState(plainPipeline)
+        encoder.setVertexBytes(&uniforms, length: MemoryLayout<SplatUniforms>.stride, index: 4)
+        encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+        encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+        encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
+        encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
+        encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+        encoder.endEncoding()
+    }
+
+    private func encodePlainPost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
+        guard let compute = buffer.makeComputeCommandEncoder() else { return }
+        var factor = UInt32(settings.supersample)
+        var visible = min(max(fade, 0), 1)
+        let target = present ?? output
+        dispatch(compute, plainCompositePipeline, into: target) { encoder in
+            encoder.setTexture(accumulation, index: 0)
+            encoder.setTexture(target, index: 2)
+            encoder.setBytes(&factor, length: 4, index: 0)
+            encoder.setBytes(&visible, length: 4, index: 1)
+        }
+        compute.endEncoding()
+    }
+
     private func encodeSplat(camera: Camera, into buffer: MTLCommandBuffer) {
+        if settings.plain { return encodePlain(camera: camera, into: buffer) }
         let scale = settings.supersample
         let aspect = Float(settings.width) / Float(settings.height)
 
@@ -679,6 +736,7 @@ public final class Renderer {
     }
 
     private func encodePost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
+        if settings.plain { return encodePlainPost(into: buffer, present: present) }
         guard let compute = buffer.makeComputeCommandEncoder() else { return }
 
         var factor = UInt32(settings.supersample)

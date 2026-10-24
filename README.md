@@ -36,7 +36,9 @@ that decides the image and nothing that decides the physics: the render settings
 of each galaxy, and the camera, fixed or left to the director. `--look x.look.json` draws with
 it, and every look flag given alongside overrides its field. A field left out takes the value
 `sillage-render` uses with no flags, so a file names only what it changes. The two files
-together replay a render exactly. `looks/raw.look.json` is plain points with no effects.
+together replay a render exactly. `looks/raw.look.json` is plain points with no effects: one fixed-size point per particle in its
+galaxy's tint, drawn in a single pass (about a third of the GPU time of the full render), with
+the `auto` camera, which keeps every galaxy in frame.
 
 A generated scene draws its physics and its colours from two separate streams of the seed.
 `--look-seed N` repaints `--preset contemplation --seed S` with another palette and leaves

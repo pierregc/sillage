@@ -88,6 +88,7 @@ flag("noise", \.look.noiseLevel)
 flag("tint", \.look.galaxyTint)
 flag("fov", \.look.fieldOfView)
 flag("stars", \.starCount)
+if arguments.contains("--plain") { look.plain = true }
 flag("supersample", \.supersample)
 flag("bloom-levels", \.bloomLevels)
 flag("arms", \.armStrength)
@@ -225,7 +226,7 @@ let settings = RenderSettings(
     spikeIntensity: look.look.spikeIntensity,
     skyLevel: look.look.skyLevel,
     noiseLevel: look.look.noiseLevel,
-    galaxyTint: look.look.galaxyTint)
+    galaxyTint: look.look.galaxyTint, plain: look.plain)
 
 print(
     "scene      \(scene.name), \(scene.totalParticleCount) visible"
@@ -303,8 +304,10 @@ renderer.apply(look.look)
 
 // The director places the camera and lights the scene on its own. Without it a hundred
 // generated scenes come out framed identically, which is the thing that makes a library dull.
-let director: Cinematographer? =
-    look.camera.mode == .fixed ? nil : Cinematographer(seed: scene.seed)
+let directed = look.camera.mode == .director || look.camera.mode == .immersed
+let director: Cinematographer? = directed ? Cinematographer(seed: scene.seed) : nil
+var autoCamera = AutoCamera()
+let reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
 director?.beginScene(seed: scene.seed, base: look.look, immersed: look.camera.mode == .immersed)
 
 if let lookOutPath = argument("look-out") ?? beside(".look.json") {
@@ -359,15 +362,18 @@ for frame in 0..<frames {
     if gpuSolver == nil {
         renderer.upload(positions: solver.particles.positions)
     }
-    if frozenRadius <= 0 {
+    if frozenRadius <= 0 && look.camera.mode != .auto {
         frozenRadius = framingRadius(solver.particles.positions, percentile: percentile) / zoom
     }
 
     let smoothingStart = Date()
-    if let gpuSolver {
-        smoothing.update(from: gpuSolver)
-    } else {
-        smoothing.update(positions: solver.particles.positions)
+    // Plain points have no kernel to size.
+    if !look.plain {
+        if let gpuSolver {
+            smoothing.update(from: gpuSolver)
+        } else {
+            smoothing.update(positions: solver.particles.positions)
+        }
     }
     let smoothingMs = Date().timeIntervalSince(smoothingStart) * 1000
     renderer.time = solver.time
@@ -390,8 +396,13 @@ for frame in 0..<frames {
         let span = Float(max(frames - 1, 1))
         let t = Float(frame) / span
         let eased = t * t * (3 - 2 * t)
+        var framed = (center: SIMD3<Float>.zero, radius: frozenRadius)
+        if look.camera.mode == .auto {
+            framed = autoCamera.frame(centres: solver.centers, margins: reach)
+            framed.radius /= zoom
+        }
         camera = Camera.framing(
-            radius: frozenRadius, fieldOfView: look.look.fieldOfView,
+            radius: framed.radius, center: framed.center, fieldOfView: look.look.fieldOfView,
             elevation: elevation + (elevationEnd - elevation) * eased,
             azimuth: azimuth + (azimuthEnd - azimuth) * eased)
     }
@@ -474,9 +485,10 @@ for frame in 0..<frames {
         String(
             format:
                 "frame %04d  t=%.1f Myr  sim %7.1f ms (%.3f ms/step)  smoothing %6.1f ms"
-                + "  render %5.1f ms",
+                + "  render %5.1f ms (gpu %5.2f)",
             frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
-            simulationMs / Double(stepsPerFrame), smoothingMs, renderMs))
+            simulationMs / Double(stepsPerFrame), smoothingMs, renderMs,
+            renderer.lastGPUTime * 1000))
 }
 
 try videoWriter?.finish()
