@@ -57,6 +57,18 @@ pulling with the mass it holds inside the separation. The centres are then run f
 and the passages asked for are corrected until they land. A generated scene puts its
 pericentres inside the clip it is rendered for, between `--settle` and `--steps`.
 
+`--preset free --seed S --index N` is scene `N` of batch `S` from the free generator, which
+spreads a batch evenly over everything a scene can physically be: one to five galaxies, each a
+spiral, a lenticular disk, an elliptical, a dwarf or a compact globular, with their arm count,
+arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. What changes
+a scene most is drawn from a Sobol sequence shifted by the batch seed, so a batch covers the
+space instead of clumping; the rest comes from a stream seeded by the scene. A candidate whose
+signature (galaxy count, the first two galaxies, the first encounter) sits closer than
+`--spacing`, 0.3 by default, to a scene already in the batch is passed over, and the scene file
+records how it was drawn under `draw`: the generator, the batch seed, the index, the point of
+the sequence and each galaxy's family. The batch is replayed up to the index, without a
+particle, so a scene is found again from those two numbers alone.
+
 A generated scene is judged before any particle is drawn. The galaxy centres are run alone
 through the clip, in a millisecond, and the scene is refused when none of its pairs comes
 closer than their disks' combined radii inside the clip, when a disk's Toomre Q leaves 1 to 3,
@@ -89,14 +101,15 @@ library/<batch>/
 ```
 
 ```bash
-./scripts/dev.sh explore library/2026-10-23/scene-0001 --seed 42 --director
+./scripts/dev.sh explore library/2026-10-23/scene-0001 --seed 42 --index 1 --director
 ./scripts/dev.sh hires   library/2026-10-23/scene-0001 --particles 5000000
 ./scripts/dev.sh look    library/2026-10-23/scene-0001
 ./scripts/dev.sh export  library/2026-10-23/scene-0001
 ```
 
-`explore` renders the preview, the thumbnail and the curves. In an empty folder it generates a
-self-gravitating contemplation scene from the options given, `--seed` first among them; once
+`explore` renders the preview, the thumbnail and the curves. In an empty folder it draws a
+self-gravitating free scene from the options given, `--seed` the batch and `--index` the scene
+in it (`--preset contemplation` still draws the old way); once
 `scene.json`, `look.json` and `clip.json` are there it reads them back, so running it again
 with no options gives the same clip, and any option given overrides the file it belongs to.
 The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`, `--steps` and

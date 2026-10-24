@@ -64,6 +64,8 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     /// The encounters the galaxies were placed from, if they were. `placeEncounters` turns
     /// them into positions and velocities; the solver reads only those.
     public var encounters: [Encounter] = []
+    /// How a generator drew the scene, when one did.
+    public var draw: SceneDraw?
 
     public init(
         name: String,
@@ -134,7 +136,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case name, galaxies, solver, seed, timeStep, centerSoftening, openingAngle, softening
-        case timeStepScale, encounters
+        case timeStepScale, encounters, draw
     }
 
     /// Takes written before a scene could carry encounters still read.
@@ -150,6 +152,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
         softening = try values.decode(Float.self, forKey: .softening)
         timeStepScale = try values.decodeIfPresent(Float.self, forKey: .timeStepScale) ?? 1
         encounters = try values.decodeIfPresent([Encounter].self, forKey: .encounters) ?? []
+        draw = try values.decodeIfPresent(SceneDraw.self, forKey: .draw)
     }
 
     public func encoded() throws -> Data {

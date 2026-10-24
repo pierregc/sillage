@@ -137,6 +137,15 @@ if let scenePath {
             galaxies: argument("galaxies").flatMap(Int.init),
             lookSeed: argument("look-seed").flatMap(UInt64.init))
         generatedHaste = Float(number("haste", 0))
+    // The scene at `--index` in the batch `--seed` draws. The seed is the batch's here, and the
+    // scene's own follows from it and the index.
+    case "free":
+        preset = FreeDraw(
+            batchSeed: seed ?? 1,
+            spacing: Float(number("spacing", Double(FreeDraw.defaultSpacing))),
+            haste: Float(number("haste", 0))
+        ).scene(at: Int(number("index", 0)), particleCount: particles)
+        generatedHaste = Float(number("haste", 0))
     default:
         FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
         exit(2)
@@ -145,7 +154,7 @@ if let scenePath {
     palette = preset.galaxies.map(\.color)
     file.openingAngle = 0.6
 }
-if let seed { file.seed = seed }
+if let seed, scenePath != nil || presetName != "free" { file.seed = seed }
 let placedFor = (file.solver, file.galaxies.map(\.haloParticleRatio))
 let backend = argument(
     "solver", default: scenePath == nil || file.solver == .restricted ? "restricted" : "barnes-hut")!
@@ -191,6 +200,11 @@ if !scene.encounters.isEmpty,
     file = SceneFile(scene)
     file.softening = kept.softening
     file.timeStep = kept.timeStep
+}
+if let draw = scene.draw {
+    print(
+        "draw       \(draw.generator), batch \(draw.batchSeed) scene \(draw.index) (point \(draw.point)): "
+            + draw.families.map(\.rawValue).joined(separator: ", "))
 }
 for encounter in scene.encounters {
     print(
