@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct SillageApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = SimulationModel()!
+    @StateObject private var library = LibraryModel()
 
     init() {
         if CommandLine.arguments.contains("--selftest") {
@@ -39,6 +40,9 @@ struct SillageApp: App {
         }
         if CommandLine.arguments.contains("--flicker") {
             MainActor.assumeIsolated { FlickerCheck.run() }
+        }
+        if CommandLine.arguments.contains("--librarycheck") {
+            MainActor.assumeIsolated { LibraryCheck.run() }
         }
     }
 
@@ -69,6 +73,15 @@ struct SillageApp: App {
             }
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(before: .windowList) { LibraryCommand() }
+        }
+
+        Window("Bibliothèque", id: LibraryView.windowID) {
+            LibraryView(model: library)
+                .frame(minWidth: 960, minHeight: 640)
+                .preferredColorScheme(.dark)
+        }
     }
 
     /// Opens the real window, lets the display link run, then reports how many frames the
