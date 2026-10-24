@@ -146,6 +146,12 @@ struct SceneFolderTests {
         #expect(value("--look", in: arguments) == folder.look.path)
         #expect(value("--brightness", in: arguments) == "0.2")
         #expect(arguments.contains("--no-sidecars"))
+        #expect(value("--take-interval", in: arguments) == String(SceneFolder.hiresTakeInterval))
+        let every = try folder.hiresArguments(
+            ["--take-interval", "1"], maximumParticles: 10_000_000
+        ).arguments
+        #expect(value("--take-interval", in: every) == "1")
+        #expect(every.filter { $0 == "--take-interval" }.count == 1)
         #expect(value("--scene-out", in: arguments) == nil && value("--thumbnail", in: arguments) == nil)
         #expect(!arguments.contains(folder.preview.path) && !arguments.contains(folder.curves.path))
     }

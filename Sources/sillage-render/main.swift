@@ -457,9 +457,13 @@ let videoWriter = try videoPath.map {
 // gigabytes be captured on a machine with less memory than that.
 let takeBudget = Int(
     number("take-memory", Double(ProcessInfo.processInfo.physicalMemory / 4) / 1e6) * 1e6)
+// `--take-interval n` keeps one frame in n, and whatever draws the take again interpolates
+// the rest.
+let takeInterval = max(Int(number("take-interval", 1)), 1)
 let take: Recording? = argument("take").map { _ in
-    let reel = Recording(particleCount: drawnCount, galaxyCount: scene.galaxies.count)
-    reel.reserve(frames: min(frames, takeBudget / max(drawnCount * 6, 1) + 1))
+    let reel = Recording(
+        particleCount: drawnCount, galaxyCount: scene.galaxies.count, interval: takeInterval)
+    reel.reserve(frames: min(frames / takeInterval + 1, takeBudget / max(drawnCount * 6, 1) + 1))
     return reel
 }
 

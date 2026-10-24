@@ -794,7 +794,7 @@ final class SimulationModel: ObservableObject {
         let arms = renderer?.armPersistence ?? 1
         var settings = renderSettings(width: width, height: height)
         settings.supersample = max(supersample, 1)
-        let total = reel.count
+        let total = reel.capturedCount
         fileActivity = "Export de la vidéo…"
 
         simulationQueue.async { [weak self] in
@@ -1090,35 +1090,34 @@ final class SimulationModel: ObservableObject {
         else { return }
         let last = Double(recording.count - 1)
         if isPlaying {
-            playbackPosition += Double(playbackSpeed) / 60
+            // In captured frames, so a take that keeps one in several plays at the same pace
+            // as one that kept them all.
+            playbackPosition += Double(playbackSpeed) / 60 / Double(recording.interval)
             if playbackPosition >= last { playbackPosition -= last }
         }
         playbackPosition = min(max(playbackPosition, 0), last)
 
-        let index = Int(playbackPosition)
-        let blend = Float(playbackPosition - Double(index))
-        let next = min(index + 1, recording.count - 1)
+        guard let blend = recording.blend(at: playbackPosition) else { return }
+        let keys = (0..<4).map { Int(blend.keys[$0]) }
         // Tell the reader where the playhead is before asking for anything, so the snapshots
         // after this one are on their way while this frame is drawn.
-        snapshots.prepare(from: index)
+        snapshots.prepare(from: keys[1])
         let beforeFetch = CACurrentMediaTime()
-        if snapshots.offset(of: index) == nil || snapshots.offset(of: next) == nil {
+        if keys.contains(where: { snapshots.offset(of: $0) == nil }) {
             playbackWaits += 1
         }
-        guard let firstOffset = snapshots.fetch(index),
-            let secondOffset = snapshots.fetch(next)
-        else { return }
+        let offsets = keys.compactMap { snapshots.fetch($0) }
+        guard offsets.count == 4 else { return }
         let beforeMeta = CACurrentMediaTime()
-        guard let first = recording.frame(at: index), let second = recording.frame(at: next)
-        else { return }
+        let frames = keys.compactMap { recording.frame(at: $0) }
+        guard frames.count == 4 else { return }
         let beforeExpand = CACurrentMediaTime()
         expander.expand(
-            first: first, at: firstOffset, second: second, at: secondOffset,
-            from: snapshots.buffer, blend: blend, into: positions)
+            frames: frames, at: offsets, blend: blend, from: snapshots.buffer, into: positions)
         let afterExpand = CACurrentMediaTime()
-        elapsedMyr = Double(first.time) * Physics.megayearsPerTimeUnit
-        playbackCenters = recording.centers(at: index)
-        playbackDisks = recording.disks(at: index)
+        elapsedMyr = Double(blend.time) * Physics.megayearsPerTimeUnit
+        playbackCenters = recording.centers(at: blend)
+        playbackDisks = recording.disks(at: blend)
         let done = CACurrentMediaTime()
         playbackFetch.append((beforeMeta - beforeFetch) * 1000)
         playbackExpand.append((afterExpand - beforeExpand) * 1000)
