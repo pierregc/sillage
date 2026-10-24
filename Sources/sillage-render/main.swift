@@ -91,10 +91,10 @@ if CommandLine.arguments.count > 1,
             print(
                 String(
                     format: "hires      %d particles (preview %d), step %.5f Myr (preview %.5f),"
-                        + " settle %d, %d steps, clip %.1f to %.1f Myr",
+                        + " settle %d, %d steps, clip %.1f to %.1f Myr, about %.1f h",
                     record.particles, record.previewParticles, record.timeStepMyr,
                     record.previewTimeStepMyr, record.settle, record.steps, record.clipStartMyr,
-                    record.clipEndMyr))
+                    record.clipEndMyr, record.estimatedSeconds / 3600))
         } catch {
             fail("hires: \(error)")
         }

@@ -182,6 +182,11 @@ extension SceneFolder {
         public var peakMemoryBytes: Int?
         public var takeBytes: Int?
 
+        public var estimatedSeconds: Double {
+            Double(particles) * Double(settle + steps) * SceneFolder.nanosecondsPerParticleStep
+                / 1e9
+        }
+
         public func encoded() throws -> Data {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -207,8 +212,12 @@ extension SceneFolder {
     }
 
     public static let maximumParticlesVariable = "SILLAGE_MAX_PARTICLES"
-    /// Measured on the M4 Max with 36 GB, see "High resolution" in the README.
-    public static let defaultMaximumParticles = 2_000_000
+    /// Measured on the M4 Max with 36 GB, see "High resolution" in the README: ten million
+    /// peaks at 16 GB, and a full clip takes a night.
+    public static let defaultMaximumParticles = 10_000_000
+    /// Wall clock per visible particle per step on the same machine, flat from one to ten
+    /// million.
+    public static let nanosecondsPerParticleStep = 150.0
 
     /// The most particles `hires` runs, and what it runs when not told: a setting of the
     /// machine rather than of the scene.
