@@ -17,6 +17,9 @@ public struct LookFile: Codable, Sendable, Equatable {
     public var starCount: Int
     public var supersample: Int
     public var bloomLevels: Int
+    /// One fixed-size point per particle in its galaxy's tint through a single pass, and none
+    /// of the stages the other fields tune.
+    public var plain: Bool
     /// Strength of the density wave painted over each disk; zero leaves the particles as the
     /// solver put them.
     public var armStrength: Float
@@ -29,6 +32,8 @@ public struct LookFile: Codable, Sendable, Equatable {
         public enum Mode: String, Codable, Sendable {
             /// Framed on the whole scene, easing from the start angles to the end ones.
             case fixed
+            /// Framed on every galaxy, following them as they move apart and together.
+            case auto
             /// The `Cinematographer` places the camera and modulates the look.
             case director
             /// The director, from inside a disk.
@@ -81,7 +86,7 @@ public struct LookFile: Codable, Sendable, Equatable {
 
     public init(
         name: String = "standard", look: RenderLook = LookFile.standardLook,
-        starCount: Int = 9000, supersample: Int = 2, bloomLevels: Int = 6,
+        starCount: Int = 9000, supersample: Int = 2, bloomLevels: Int = 6, plain: Bool = false,
         armStrength: Float = 1, palette: [SIMD3<Float>] = [], camera: CameraPlan = CameraPlan()
     ) {
         version = Self.currentVersion
@@ -90,6 +95,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         self.starCount = starCount
         self.supersample = supersample
         self.bloomLevels = bloomLevels
+        self.plain = plain
         self.armStrength = armStrength
         self.palette = palette
         self.camera = camera
@@ -105,6 +111,7 @@ public struct LookFile: Codable, Sendable, Equatable {
             starCount: try c.value(.starCount, or: d.starCount),
             supersample: try c.value(.supersample, or: d.supersample),
             bloomLevels: try c.value(.bloomLevels, or: d.bloomLevels),
+            plain: try c.value(.plain, or: d.plain),
             armStrength: try c.value(.armStrength, or: d.armStrength),
             palette: try c.value(.palette, or: d.palette),
             camera: try c.value(.camera, or: d.camera))
@@ -128,16 +135,17 @@ public struct LookFile: Codable, Sendable, Equatable {
     public static let raw = LookFile(
         name: "raw",
         look: RenderLook(
-            brightness: 0.6, dustStrength: 0, smoothingScale: 0, minimumKernel: 1.5,
+            brightness: 0.12, dustStrength: 0, smoothingScale: 0, minimumKernel: 1.5,
             maximumKernel: 1.5, bloomThreshold: 1, bloomSoftKnee: 0, bloomIntensity: 0,
             stretch: 0, saturation: 1, whitePoint: 4.5, spikeArms: 0, spikeLength: 0,
             spikeIntensity: 0, skyLevel: 0, noiseLevel: 0, galaxyTint: 1, starSize: 0,
             armPersistence: 0, fieldOfView: 0.6),
-        starCount: 0, supersample: 1, bloomLevels: 1, armStrength: 0,
+        starCount: 0, supersample: 1, bloomLevels: 1, plain: true, armStrength: 0,
         palette: [
             SIMD3(1.00, 0.62, 0.25), SIMD3(0.30, 0.70, 1.00), SIMD3(0.45, 1.00, 0.45),
             SIMD3(1.00, 0.40, 0.80), SIMD3(1.00, 0.95, 0.35), SIMD3(0.70, 0.50, 1.00),
-        ])
+        ],
+        camera: CameraPlan(mode: .auto))
 
     public enum ReadError: Error, CustomStringConvertible {
         case unsupportedVersion(Int)
