@@ -386,11 +386,17 @@ let curves: FileHandle? = try argument("curves").map { path in
     let url = try prepared(path)
     FileManager.default.createFile(atPath: url.path, contents: nil)
     let handle = try FileHandle(forWritingTo: url)
+    let disks = scene.galaxies.indices.map { ",disruption_\($0)" }.joined()
     try handle.write(
-        contentsOf: Data("frame,time_myr,separation_kpc,extent_kpc,formed\n".utf8))
+        contentsOf: Data(
+            ("frame,time_myr,separation_kpc,extent_kpc,formed,closest_kpc,tidal_fraction"
+                + disks + "\n").utf8))
     return handle
 }
 var previousTime = solver.time
+var curvesSeconds: Double = 0
+// A sampled star farther than this from every centre is in a tail or a bridge, not a disk.
+let tidalReach = reach.map { $0 * 1.5 }
 
 // Steps run before the first frame is written. A sampled disk is not born in equilibrium and
 // settles over its first few hundred megayears, which is worth simulating and not worth
@@ -404,6 +410,8 @@ if settle > 0 {
             format: "settle     %d steps, t=%.1f Myr, %.1f s", settle,
             Double(solver.time) * Physics.megayearsPerTimeUnit,
             Date().timeIntervalSince(settleStart)))
+    // Stars formed while settling are not the clip's, and would read as a burst on frame 0.
+    previousTime = solver.time
 }
 
 for frame in 0..<frames {
@@ -491,30 +499,47 @@ for frame in 0..<frames {
     }
 
     if let curves {
+        let curvesStart = Date()
         let centres = solver.centers
         let separation =
             centres.count >= 2 ? simd_length(centres[1] - centres[0]) : Float(0)
+        var closest = Float.infinity
+        for i in centres.indices {
+            for j in centres.indices where j > i {
+                closest = min(closest, simd_length(centres[j] - centres[i]))
+            }
+        }
+        if !closest.isFinite { closest = 0 }
+        var sum: Float = 0
+        var counted = 0
+        var tidal = 0
+        func tally(_ position: SIMD3<Float>) {
+            sum += simd_length_squared(position)
+            counted += 1
+            for (centre, limit) in zip(centres, tidalReach)
+            where simd_length_squared(position - centre) < limit * limit {
+                return
+            }
+            tidal += 1
+        }
         // Root mean square radius over a subsample: a smooth measure of how far the thing has
         // spread, for a fraction of the cost of sorting every radius. Read straight out of the
         // position buffer: `particles` on a GPU solver rebuilds the whole system on every
         // access, and calling it once per sample made each frame nine seconds slower.
-        var sum: Float = 0
-        var counted = 0
         if let gpuSolver {
             let positions = gpuSolver.positions.contents().bindMemory(
                 to: SIMD3<Float>.self, capacity: seeded.count)
-            for index in stride(from: 0, to: drawnCount, by: 64) {
-                sum += simd_length_squared(positions[index])
-                counted += 1
-            }
+            for index in stride(from: 0, to: drawnCount, by: 64) { tally(positions[index]) }
         } else {
             let positions = solver.particles.positions
-            for index in stride(from: 0, to: drawnCount, by: 64) {
-                sum += simd_length_squared(positions[index])
-                counted += 1
-            }
+            for index in stride(from: 0, to: drawnCount, by: 64) { tally(positions[index]) }
         }
         let extent = counted > 0 ? (sum / Float(counted)).squareRoot() : 0
+        let tidalFraction = counted > 0 ? Float(tidal) / Float(counted) : 0
+        let disruption = (gpuSolver as? MetalBarnesHutSolver)?.diskFrames.map(\.disruption) ?? []
+        let disks = scene.galaxies.indices.map {
+            String(format: ",%.3f", $0 < disruption.count ? disruption[$0] : 0)
+        }.joined()
         var formed = 0
         if let gpuSolver {
             let times = gpuSolver.formation.contents().bindMemory(
@@ -525,11 +550,12 @@ for frame in 0..<frames {
             }
         }
         let myr = Double(solver.time) * Physics.megayearsPerTimeUnit
-        try curves.write(
-            contentsOf: Data(
-                String(
-                    format: "%d,%.3f,%.4f,%.4f,%d\n", frame, myr, separation, extent, formed
-                ).utf8))
+        let line =
+            String(
+                format: "%d,%.3f,%.4f,%.4f,%d,%.4f,%.4f", frame, myr, separation, extent, formed,
+                closest, tidalFraction) + disks + "\n"
+        try curves.write(contentsOf: Data(line.utf8))
+        curvesSeconds += Date().timeIntervalSince(curvesStart)
     }
     previousTime = solver.time
 
@@ -545,6 +571,12 @@ for frame in 0..<frames {
 
 try videoWriter?.finish()
 try curves?.close()
+if curves != nil {
+    print(
+        String(
+            format: "curves     %.1f ms in all, %.3f ms a frame", curvesSeconds * 1000,
+            curvesSeconds * 1000 / Double(max(frames, 1))))
+}
 if let take, let path = argument("take") {
     try RecordingFile.write(take, scene: scene, particles: seeded, to: prepared(path))
 }

@@ -163,7 +163,7 @@ if [ "$benchmark" -eq 1 ]; then
             --fps "$fps" --settle "$settle"
         wall=$(( $(date +%s) - start ))
         awk -F, -v j="$count" -v w="$wall" -v n="$scenes" -v o="$SECONDS_PER_SCENE" '
-            $NF == "ok" { mean += $(NF - 2); work += $5 * ($10 + $11) }
+            $NF == "ok" { mean += $12; work += $5 * ($10 + $11) }
             END { printf "%4d  %6d  %11.1f  %12.1f  %20.1f\n", j, w, w / n, mean / n, (w - n * o) / work * 1e9 }' \
             "$scratch/jobs-$count/index.csv"
         rm -rf "${scratch:?}/jobs-$count"
@@ -203,8 +203,11 @@ fi
 
 index="$out/index.csv"
 log="$out/batch.log"
-HEADER="id,batch_seed,index,galaxies,particles,width,height,frames,fps,settle,steps,wall_seconds,video_bytes,status"
+HEADER="id,batch_seed,index,galaxies,particles,width,height,frames,fps,settle,steps,wall_seconds,video_bytes,score,rank,status"
 [ -f "$index" ] || echo "$HEADER" >"$index"
+# A batch started before #45 keeps the columns it started with.
+scored=0
+head -n 1 "$index" | grep -q ',score,rank,' && scored=1
 first_new_row=$(( $(wc -l <"$index") + 1 ))
 # A rejection is decided by the seed and the index alone, so a resumed batch need not ask again.
 rejected=" $(awk -F, '$NF == "rejected" { print $1 }' "$index" | tr '\n' ' ') "
@@ -223,6 +226,7 @@ fi
 # never shows a scene halfway, and on the next run a folder that exists is a scene that is done.
 explore_scene() {
     local n=$1 id stage scene_log galaxies particles=0 clip="" probed rc=0 start status video_bytes=0
+    local score=""
     id="$(printf 'scene-%04d' "$n")"
     stage="$out/.$id"
     scene_log="$out/.logs/$id.log"
@@ -247,6 +251,7 @@ explore_scene() {
             --steps "$clip" --settle "$settle" --dt-scale "$dt_scale" --look "$LOOK" $extra \
             >"$scene_log" 2>&1 || rc=$?
         if [ "$rc" -eq 0 ] && [ -s "$stage/preview.mov" ] && [ -s "$stage/thumbnail.png" ]; then
+            score="$(python3 "$ROOT/scripts/interest.py" "$stage" 2>>"$scene_log" | awk 'NR == 1 { print $1 }')" || true
             mv "$stage" "$out/$id"
             status=ok
             video_bytes=$(stat -f%z "$out/$id/preview.mov")
@@ -261,7 +266,9 @@ explore_scene() {
     rm -rf "$stage"
     local wall=$(( $(date +%s) - start ))
     # One short line in a single write, so rows from scenes finishing together do not mix.
-    echo "$id,$seed,$n,$galaxies,$particles,$width,$height,$frames,$fps,$settle,$clip,$wall,$video_bytes,$status" >>"$index"
+    local columns="$video_bytes"
+    [ "$scored" -eq 0 ] || columns="$video_bytes,$score,"
+    echo "$id,$seed,$n,$galaxies,$particles,$width,$height,$frames,$fps,$settle,$clip,$wall,$columns,$status" >>"$index"
     note "$id $status in ${wall}s, $galaxies galaxies, $particles particles, $clip steps"
     say "$id $status ${wall}s, $galaxies galaxies, $particles particles, $clip steps"
 }
@@ -304,10 +311,12 @@ while :; do
     explore_scene "$n" &
 done
 wait
+# Ranked once every scene is in, the only moment nothing else writes the index.
+python3 "$ROOT/scripts/interest.py" "$out" >/dev/null 2>>"$log" || note "scoring failed"
 
 elapsed=$(( $(date +%s) - started ))
 tail -n "+$first_new_row" "$index" | awk -F, -v e="$elapsed" -v j="$jobs" '
-    $NF == "ok" { ok++; wall += $(NF - 2) }
+    $NF == "ok" { ok++; wall += $12 }
     $NF == "rejected" { rejected++ }
     $NF ~ /^failed/ { failed++ }
     END {
