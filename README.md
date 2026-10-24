@@ -132,6 +132,63 @@ The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`
 `--settle`. To start a scene over, empty its folder. `hires` (#19), `look` (#22) and `export`
 (#24) are not written yet and say so. The same stages are `sillage-render <stage> <folder>`.
 
+### Exploration batches
+
+```bash
+scripts/explore-batch.sh --scenes 50 --hours 8          # a night: the particle count is worked out
+scripts/explore-batch.sh --scenes 20 --per-galaxy 50000  # quick: about twenty seconds a scene
+scripts/explore-batch.sh --out library/2026-10-24        # picks a stopped batch up where it was
+```
+
+`explore` over the free scenes of one batch, several at once, raw look, self-gravitating,
+30 s at 960x540. Each scene is explored in a hidden folder, `.scene-0001`, and renamed into
+place once its clip, thumbnail and curves are written, so the library shows it the moment it
+is done and never halfway; a folder that exists is a scene that is finished. A rejected draw
+leaves no folder, a row in `index.csv` and its reason in `batch.log`; the batch moves on to the
+next index. The scene log is in `.logs/`.
+
+**Reproducible and resumable.** Scene `n` is `--seed S --index n` of the free generator, and
+nothing else goes into it: the order scenes finish in does not matter. The batch's settings go
+to `batch.conf` on its first run and are read back on the next, so `--out` alone resumes it;
+a different seed or size given to a batch already started is refused. Scenes in flight when it
+stops are started again.
+
+**The clip shows the encounter.** A step three and a half times the recommended one
+(`--dt-scale 3.5`, measured in #13), 400 steps to settle, which is the first 80 Myr, and then
+as many steps as cover `--span`, 700 Myr by default: a step is shorter the more particles a disk
+holds, so the step count is worked out per scene. The clip of #41, 900 steps at the generator's
+own scale, covers 40 Myr, which is one passage and no tails.
+
+**The particle count.** `--per-galaxy`, 50 000 by default, times the scene's galaxy count. With
+`--scenes` and `--hours` together and no `--per-galaxy`, the batch picks the largest count for
+which its first sixteen scenes, costed at the measured rate, fill 85% of the hours; the rest is
+for rejected draws and the scenes in flight at the deadline. `--hours` stops it either way.
+
+**Several at once.** A scene is mostly waiting on the GPU, and another one fills the gaps.
+`--benchmark` runs the same scenes one to four at a time and prints the wall clock per scene
+finished. On the M4 Max, twelve scenes at 50 000 a galaxy over 175 Myr:
+
+| at once | s per scene | each scene | ns per particle step |
+| --- | --- | --- | --- |
+| 1 | 29.7 | 27.8 | 143.6 |
+| 2 | 25.2 | 42.6 | 118.4 |
+| 3 | 23.8 | 59.1 | 111.0 |
+| 4 | 22.1 | 78.3 | 101.2 |
+
+At 400 000 a galaxy, eight scenes over 50 Myr, the GPU is already full with one scene and a
+second only fills the pauses between steps: 186.5 s per scene alone, 176.5 with two, 176.6 with
+three, and four took the same 1 413 s of wall clock as three. Four costs nothing there and wins
+a quarter at the small sizes, so four is the default. The budget costs a scene at the night's
+rate, 126 ns per particle step, which overestimates the small sizes a little. For 50 scenes in 8
+hours it comes out at 200 000 a galaxy, about 390 s a scene, which is 550 000 visible particles
+for the average scene of 2.8 galaxies.
+
+On another Mac, run `--benchmark` and set `DEFAULT_JOBS` and
+`NS_PER_PARTICLE_STEP` at the top of the script, or `SILLAGE_JOBS` in the environment. The
+batch ends by printing the mean wall clock per scene finished and per scene run.
+
+`scripts/library.sh` is the older batch, flat and with the full look; it stays for now.
+
 ### The library
 
 The application's library window (⌘L, or **Bibliothèque** on the setup screen) shows every
