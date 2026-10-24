@@ -69,6 +69,22 @@ records how it was drawn under `draw`: the generator, the batch seed, the index,
 the sequence and each galaxy's family. The batch is replayed up to the index, without a
 particle, so a scene is found again from those two numbers alone.
 
+A batch also holds archetypes, known interacting systems as starting points: `antennae`
+(NGC 4038/9), `mice` (NGC 4676), `ring` (a head-on collision, as in the Cartwheel), `tadpole`
+(UGC 10214), `polar-ring` (NGC 4650A), `minor-merger` and `compact-group` (in the style of
+Stephan's Quintet). Each is a set of galaxies and encounter geometry with ranges of its own,
+narrow enough that it reads as what it is named after: the Antennae are two comparable spirals,
+both prograde and steeply inclined, on a bound orbit; the ring is a compact companion dropped
+through a disk along its axis. One scene in four is an archetype, `--archetypes 0.4` for
+another share and `0` for free draws only. Which places are archetypes follows from the share,
+so every stretch of a batch holds it, each archetype comes once in every seven archetype places
+in an order shuffled each time, and the free places take the free draws in order.
+`--preset antennae --seed S --index K` draws the Antennae alone: their scene `K` of batch `S`,
+the same one the batch draws when they come round for the `K`-th time. `draw.generator` in the
+scene file names the archetype, or `free`, and the library's archetype filter reads it there. One
+reference per archetype at exploration settings, five moments of each clip:
+[`docs/archetypes.jpg`](docs/archetypes.jpg).
+
 A generated scene is judged before any particle is drawn. The galaxy centres are run alone
 through the clip, in a millisecond, and the scene is refused when none of its pairs comes
 closer than their disks' combined radii inside the clip, when a disk's Toomre Q leaves 1 to 3,
@@ -108,8 +124,8 @@ library/<batch>/
 ```
 
 `explore` renders the preview, the thumbnail and the curves. In an empty folder it draws a
-self-gravitating free scene from the options given, `--seed` the batch and `--index` the scene
-in it (`--preset contemplation` still draws the old way); once
+self-gravitating scene of a generated batch from the options given, `--seed` the batch and
+`--index` the scene in it (`--preset contemplation` still draws the old way); once
 `scene.json`, `look.json` and `clip.json` are there it reads them back, so running it again
 with no options gives the same clip, and any option given overrides the file it belongs to.
 The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`, `--steps` and

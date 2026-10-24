@@ -23,7 +23,8 @@ struct SceneLibraryTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let batch = root.appendingPathComponent("2026-10-24")
         try touch(batch.appendingPathComponent("scene-0001/preview.mov"))
-        try touch(batch.appendingPathComponent("scene-0001/scene.json"), #"{"archetype": "antennae"}"#)
+        try touch(
+            batch.appendingPathComponent("scene-0001/scene.json"), #"{"draw": {"generator": "antennae"}}"#)
         try touch(batch.appendingPathComponent("scene-0001/exports/final.mov"))
         try touch(batch.appendingPathComponent("scene-0002/thumbnail.png"))
         try touch(batch.appendingPathComponent("notes/readme.txt"))

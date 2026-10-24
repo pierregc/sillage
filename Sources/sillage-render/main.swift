@@ -137,24 +137,34 @@ if let scenePath {
             galaxies: argument("galaxies").flatMap(Int.init),
             lookSeed: argument("look-seed").flatMap(UInt64.init))
         generatedHaste = Float(number("haste", 0))
-    // The scene at `--index` in the batch `--seed` draws. The seed is the batch's here, and the
-    // scene's own follows from it and the index.
+    // The scene at `--index` in the batch `--seed` draws, archetypes mixed in at `--archetypes`.
+    // The seed is the batch's here, and the scene's own follows from it and the index.
     case "free":
-        preset = FreeDraw(
+        preset = BatchDraw(
             batchSeed: seed ?? 1,
+            archetypeShare: Float(number("archetypes", Double(BatchDraw.defaultArchetypeShare))),
             spacing: Float(number("spacing", Double(FreeDraw.defaultSpacing))),
             haste: Float(number("haste", 0))
         ).scene(at: Int(number("index", 0)), particleCount: particles)
         generatedHaste = Float(number("haste", 0))
+    // An archetype alone: its scene number `--index` in batch `--seed`, the same one the batch
+    // draws when that archetype comes round for that time.
     default:
-        FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
-        exit(2)
+        guard let archetype = Archetype(rawValue: presetName) else {
+            FileHandle.standardError.write(Data("unknown preset: \(presetName)\n".utf8))
+            exit(2)
+        }
+        preset = archetype.scene(
+            batchSeed: seed ?? 1, occurrence: Int(number("index", 0)), particleCount: particles,
+            haste: Float(number("haste", 0)))
+        generatedHaste = Float(number("haste", 0))
     }
     file = SceneFile(preset)
     palette = preset.galaxies.map(\.color)
     file.openingAngle = 0.6
 }
-if let seed, scenePath != nil || presetName != "free" { file.seed = seed }
+let batchSeeded = presetName == "free" || Archetype(rawValue: presetName) != nil
+if let seed, scenePath != nil || !batchSeeded { file.seed = seed }
 let placedFor = (file.solver, file.galaxies.map(\.haloParticleRatio))
 let backend = argument(
     "solver", default: scenePath == nil || file.solver == .restricted ? "restricted" : "barnes-hut")!
