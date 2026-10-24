@@ -10,23 +10,24 @@ LOOK="$ROOT/looks/raw.look.json"
 
 # Both measured by --benchmark on an M4 Max, see "Exploration batches" in the README; run it
 # again on another machine. SILLAGE_JOBS overrides the first for every batch, --jobs for one.
-DEFAULT_JOBS=3
-# Wall clock per particle per step, per scene finished, with DEFAULT_JOBS running at once.
-NS_PER_PARTICLE_STEP=60
+DEFAULT_JOBS=4
+# Wall clock per particle per step, per scene finished, with DEFAULT_JOBS running at once, at
+# the sizes a budget lands on: 101 at 50 000 a galaxy, 126 at 400 000, where the GPU is full.
+NS_PER_PARTICLE_STEP=126
 SECONDS_PER_SCENE=4     # starting up, and the steps before the first frame are counted apart
 MB_PER_SCENE=30         # a raw preview at 960x540 is 5 to 25 MB
 MAX_FAILURES=5
 # What --hours and --scenes choose the particle count from, and how much of the time it plans
 # to fill: rejected draws, the scenes in flight at the deadline and the estimate's own error
 # take the rest.
-PER_GALAXY_CANDIDATES="50000 75000 100000 150000 200000 300000 400000 500000 750000 1000000 1500000 2000000"
+PER_GALAXY_CANDIDATES="50000 75000 100000 150000 200000 250000 300000 350000 400000 500000 750000 1000000"
 BUDGET_FILL=0.85
 BUDGET_SAMPLE=16
 
 usage() {
     echo "usage: ${BASH_SOURCE[0]} [--scenes N] [--hours H] [--jobs N] [--seed S] [--out DIR]"
-    echo "       [--per-galaxy N] [--span MYR | --steps N] [--width W] [--height H]"
-    echo "       [--frames N] [--fps N] [--settle N] [-- explore options...]"
+    echo "       [--per-galaxy N] [--span MYR | --steps N] [--dt-scale X] [--width W] [--height H]"
+    echo "       [--frames N] [--fps N] [--settle N] [--plan] [-- explore options...]"
     echo "       ${BASH_SOURCE[0]} --benchmark [--scenes N] [--seed S] [--per-galaxy N] [--span MYR]"
 }
 
@@ -35,12 +36,13 @@ hours=""
 jobs="${SILLAGE_JOBS:-$DEFAULT_JOBS}"
 out=""
 benchmark=0
+plan=0
 build=1
 quiet=0
 # The batch's own settings, recorded in batch.conf on the first run and read back on the next,
 # so a resumed batch draws and renders exactly as it started.
-keys="seed per_galaxy span steps width height frames fps settle extra"
-seed="" per_galaxy="" span="" steps="" width="" height="" frames="" fps="" settle="" extra=""
+keys="seed per_galaxy span steps dt_scale width height frames fps settle extra"
+seed="" per_galaxy="" span="" steps="" dt_scale="" width="" height="" frames="" fps="" settle="" extra=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -52,6 +54,7 @@ while [ $# -gt 0 ]; do
         --per-galaxy) per_galaxy="$2"; shift 2 ;;
         --span)       span="$2"; shift 2 ;;
         --steps)      steps="$2"; shift 2 ;;
+        --dt-scale)   dt_scale="$2"; shift 2 ;;
         --width)      width="$2"; shift 2 ;;
         --height)     height="$2"; shift 2 ;;
         --frames)     frames="$2"; shift 2 ;;
@@ -60,6 +63,7 @@ while [ $# -gt 0 ]; do
         --benchmark)  benchmark=1; shift ;;
         --no-build)   build=0; shift ;;
         --quiet)      quiet=1; shift ;;
+        --plan)       plan=1; shift ;;
         --help|-h)    usage; exit 0 ;;
         --)           shift; extra="$*"; break ;;
         *)            usage >&2; exit 2 ;;
@@ -74,7 +78,7 @@ render() { DYLD_LIBRARY_PATH="$BIN" "$BIN/sillage-render" "$@"; }
 probe() {
     # shellcheck disable=SC2086
     render --preset free --seed "$seed" --index "$1" --solver barnes-hut --particles "$2" \
-        --check-only $extra 2>&1 | awk '
+        --dt-scale "$dt_scale" --check-only $extra 2>&1 | awk '
             /^draw / { sub(/^[^:]*: /, ""); galaxies = split($0, f, ", ") }
             /^check / { for (i = 2; i < NF; i++) if ($(i + 1) == "Myr," && $(i - 1) == "step") step = $i }
             END { if (galaxies && step) print galaxies, step }' || true
@@ -122,9 +126,12 @@ defaults() {
     [ -n "$frames" ] || frames=900
     [ -n "$fps" ] || fps=30
     [ -n "$settle" ] || settle=400
-    # Four hundred megayears is the window the generator draws its pericentres in, and about
-    # the time a passage takes to raise its tails. The clip of #41, 900 steps, covers thirty.
-    [ -n "$steps" ] || [ -n "$span" ] || span=400
+    # The exploration clip #13 measured: a step three and a half times the recommended one,
+    # which settles over the first eighty megayears, and seven hundred more for the passages,
+    # the tails and what they fall back into. The clip of #41, 900 steps at the generator's own
+    # scale, covers forty.
+    [ -n "$dt_scale" ] || dt_scale=3.5
+    [ -n "$steps" ] || [ -n "$span" ] || span=700
     if [ -z "$per_galaxy" ] && [ -n "$scenes" ] && [ -n "$hours" ]; then
         per_galaxy="$(budget)"
     fi
@@ -150,7 +157,8 @@ if [ "$benchmark" -eq 1 ]; then
     for count in 1 2 3 4; do
         start=$(date +%s)
         "${BASH_SOURCE[0]}" --no-build --quiet --out "$scratch/jobs-$count" --scenes "$scenes" \
-            --jobs "$count" --seed "$seed" --per-galaxy "$per_galaxy" ${span:+--span "$span"} \
+            --jobs "$count" --seed "$seed" --per-galaxy "$per_galaxy" --dt-scale "$dt_scale" \
+            ${span:+--span "$span"} \
             ${steps:+--steps "$steps"} --width "$width" --height "$height" --frames "$frames" \
             --fps "$fps" --settle "$settle"
         wall=$(( $(date +%s) - start ))
@@ -164,6 +172,11 @@ if [ "$benchmark" -eq 1 ]; then
 fi
 
 [ -n "$out" ] || out="$ROOT/library/$(date +%Y-%m-%d)"
+if [ "$plan" -eq 1 ]; then
+    [ -f "$out/batch.conf" ] || defaults
+    for key in $keys; do [ -z "${!key}" ] || echo "$key=${!key}"; done
+    exit 0
+fi
 mkdir -p "$out/.logs"
 conf="$out/batch.conf"
 if [ -f "$conf" ]; then
@@ -231,7 +244,8 @@ explore_scene() {
         # shellcheck disable=SC2086
         render explore "$stage" --seed "$seed" --index "$n" --particles "$particles" \
             --width "$width" --height "$height" --frames "$frames" --fps "$fps" \
-            --steps "$clip" --settle "$settle" --look "$LOOK" $extra >"$scene_log" 2>&1 || rc=$?
+            --steps "$clip" --settle "$settle" --dt-scale "$dt_scale" --look "$LOOK" $extra \
+            >"$scene_log" 2>&1 || rc=$?
         if [ "$rc" -eq 0 ] && [ -s "$stage/preview.mov" ] && [ -s "$stage/thumbnail.png" ]; then
             mv "$stage" "$out/$id"
             status=ok
