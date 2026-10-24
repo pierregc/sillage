@@ -794,7 +794,7 @@ final class SimulationModel: ObservableObject {
         let arms = renderer?.armPersistence ?? 1
         var settings = renderSettings(width: width, height: height)
         settings.supersample = max(supersample, 1)
-        let total = reel.count
+        let total = reel.capturedCount
         fileActivity = "Export de la vidéo…"
 
         simulationQueue.async { [weak self] in
