@@ -229,6 +229,45 @@ struct RecordingTests {
         #expect(worstAgainst(originals[0], blend: 0.5) > tolerance)
     }
 
+    /// The GPU draws the frames a take skipped exactly as the CPU reference does, across a
+    /// kept frame, mid-pair and in the last pair where the take ends off the interval.
+    @Test func theExpanderDrawsTheSkippedFramesLikeTheReference() throws {
+        let scene = SceneConfig.merger(particleCount: 20_000)
+        let seeded = RestrictedSolver.sampleParticles(for: scene)
+        let solver = try MetalSolver(scene: scene, particles: seeded)
+        let count = seeded.count
+        let recording = Recording(particleCount: count, interval: 3)
+        let pointer = solver.positions.contents().bindMemory(
+            to: SIMD3<Float>.self, capacity: count)
+        for _ in 0..<11 {
+            recording.append(positions: pointer, time: solver.time)
+            solver.step(count: 20)
+        }
+        recording.finish()
+        #expect(recording.count == 5 && recording.capturedCount == 11)
+
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let expander = try SnapshotExpander(device: device, particleCount: count)
+        let output = try #require(
+            device.makeBuffer(length: count * MemoryLayout<SIMD3<Float>>.stride))
+        let stream = try #require(SnapshotStream(device: device, recording: recording))
+        for captured in [0, 1, 3, 5, 8, 10] {
+            let blend = try #require(recording.blend(atCaptured: captured))
+            let keys = (0..<4).map { Int(blend.keys[$0]) }
+            let offsets = try keys.map { try #require(stream.fetch($0)) }
+            let frames = try keys.map { try #require(recording.frame(at: $0)) }
+            expander.expand(
+                frames: frames, at: offsets, blend: blend, from: stream.buffer, into: output)
+            let reference = recording.positions(at: blend)
+            let drawn = output.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
+            var worst: Float = 0
+            for particle in 0..<count {
+                worst = max(worst, simd_length(drawn[particle] - reference[particle]))
+            }
+            #expect(worst < frames[1].extent / 65535, "image \(captured)")
+        }
+    }
+
     @Test func memoryEstimateMatchesWhatIsStored() throws {
         let (recording, _, count) = try captured(frames: 4)
         let expected = Recording.estimatedBytes(particleCount: count, frames: 4)

@@ -38,7 +38,9 @@ public enum RecordingFile {
     /// stored rather than derived, because a replay has no solver to measure it and the arms
     /// are painted into the plane it names: falling back to the scene's natal plane replays a
     /// merged spiral with its arms still in it.
-    private static let version: UInt64 = 4
+    /// 5 may keep one captured frame in several, which the header says, and a reader that
+    /// does not know to interpolate across the gaps would play it that many times too fast.
+    private static let version: UInt64 = 5
     private static let oldestReadableVersion: UInt64 = 1
 
     public struct Header: Codable {
@@ -46,6 +48,10 @@ public enum RecordingFile {
         public var particleCount: Int
         public var galaxyCount: Int
         public var frameCount: Int
+        /// Captured frames per stored one, and how many were captured. Absent before
+        /// version 5, where every frame captured was stored.
+        public var interval: Int?
+        public var capturedFrames: Int?
     }
 
     /// A take as it comes back off disk: the run, and the per-particle attributes the
@@ -76,11 +82,13 @@ public enum RecordingFile {
     public static func write(
         _ recording: Recording, scene: SceneConfig, particles: ParticleSystem, to url: URL
     ) throws {
+        recording.finish()
         let contents = recording.contents()
         let count = recording.particleCount
         let header = Header(
             scene: scene, particleCount: count, galaxyCount: recording.galaxyCount,
-            frameCount: contents.frames.count)
+            frameCount: contents.frames.count, interval: recording.interval,
+            capturedFrames: recording.capturedCount)
         let encoded = try JSONEncoder().encode(header)
 
         FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -267,7 +275,8 @@ public enum RecordingFile {
 
         let recording = Recording(
             particleCount: count, galaxyCount: galaxies, frames: frames, centers: centers,
-            disks: disks, mapped: positions)
+            disks: disks, interval: header.interval ?? 1, capturedCount: header.capturedFrames,
+            mapped: positions)
         // The renderer wants somewhere to start; the first frame is as good as it gets and
         // costs one decode.
         particles.positions = recording.positions(at: 0)

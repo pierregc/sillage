@@ -24,6 +24,20 @@ public final class Recording: @unchecked Sendable {
     public let particleCount: Int
     /// Galaxies whose centres are carried alongside each frame.
     public let galaxyCount: Int
+    /// How many captured frames each stored one stands for.
+    ///
+    /// A take of ten million particles over nine hundred frames is fifty-four gigabytes, and
+    /// at the cadence a clip is rendered at, neighbouring frames differ by a fraction of an
+    /// orbit. Keeping one in `interval` and drawing the rest through a cubic between the
+    /// stored ones divides the file by `interval` and leaves nothing to see.
+    public let interval: Int
+    /// Every frame the take was offered, kept or not, which is how many a render of it
+    /// draws again.
+    private var offered = 0
+    /// The latest frame offered that was not a keeper, its positions still in `staging`. A
+    /// run rarely ends on a multiple of the interval, and without it the take would stop up
+    /// to `interval - 1` frames short of where the run did.
+    private var tail: (frame: Frame, centers: [SIMD3<Float>], disks: [DiskState])?
     private var storedFrames: [Frame] = []
     private var storage: [UInt16] = []
     /// A take read from a file stays mapped rather than being copied in. Reopening a run of
@@ -66,18 +80,21 @@ public final class Recording: @unchecked Sendable {
     /// One frame's quantised positions, reused, so a capture allocates nothing per frame.
     private var staging: [UInt16] = []
 
-    public init(particleCount: Int, galaxyCount: Int = 1) {
+    public init(particleCount: Int, galaxyCount: Int = 1, interval: Int = 1) {
         self.particleCount = max(particleCount, 1)
         self.galaxyCount = max(galaxyCount, 1)
+        self.interval = max(interval, 1)
     }
 
     /// Rebuilt from a file rather than captured, over memory the file still owns.
     public init(
         particleCount: Int, galaxyCount: Int, frames: [Frame], centers: [SIMD3<Float>],
-        disks: [DiskState] = [], mapped: Data
+        disks: [DiskState] = [], interval: Int = 1, capturedCount: Int? = nil, mapped: Data
     ) {
         self.particleCount = max(particleCount, 1)
         self.galaxyCount = max(galaxyCount, 1)
+        self.interval = max(interval, 1)
+        self.offered = capturedCount ?? frames.count
         self.storedFrames = frames
         self.storedCenters = centers
         self.storedDisks = disks
@@ -216,6 +233,8 @@ public final class Recording: @unchecked Sendable {
     /// And what it holds on disk, which is bounded by the volume and nothing else.
     public var diskByteCount: Int { locked { spill?.byteCount ?? 0 } }
     public var count: Int { locked { storedFrames.count } }
+    /// How many frames the take stands for, which is `count` unless it keeps one in several.
+    public var capturedCount: Int { locked { offered } }
     public var isEmpty: Bool { count == 0 }
     public var byteCount: Int { locked { heldBytes() } }
 
@@ -230,6 +249,17 @@ public final class Recording: @unchecked Sendable {
     }
 
     public func close() { locked { closed = true } }
+
+    /// Keeps the last frame offered if the interval had passed over it, so the take ends
+    /// where the run did. Called before the take is written; offering more afterwards would
+    /// space that one frame off the interval.
+    public func finish() {
+        locked {
+            guard let tail else { return }
+            store(tail.frame, centers: tail.centers, disks: tail.disks)
+            self.tail = nil
+        }
+    }
     public func reopen() { locked { closed = false } }
 
     /// Offers a frame to the take, which keeps it. Every one of them.
@@ -313,6 +343,19 @@ public final class Recording: @unchecked Sendable {
                 target[index * 3 + 2] = UInt16(min(max(local.z, 0), 65535))
             }
         }
+        let frame = Frame(time: time, origin: lower, extent: extent)
+        let keep = offered % interval == 0
+        offered += 1
+        if keep {
+            tail = nil
+            store(frame, centers: centers, disks: disks)
+        } else {
+            tail = (frame, centers, disks)
+        }
+    }
+
+    /// Keeps what `staging` holds as the next stored frame.
+    private func store(_ frame: Frame, centers: [SIMD3<Float>], disks: [DiskState]) {
         // The bytes land before the frame that describes them does, so a reader on another
         // queue never sees a frame whose positions are not yet there to be read.
         if let spill, storedFrames.count >= spilledFrom {
@@ -325,7 +368,7 @@ public final class Recording: @unchecked Sendable {
         } else {
             storage.append(contentsOf: staging)
         }
-        storedFrames.append(Frame(time: time, origin: lower, extent: extent))
+        storedFrames.append(frame)
         for galaxy in 0..<galaxyCount {
             storedCenters.append(galaxy < centers.count ? centers[galaxy] : .zero)
             storedDisks.append(
@@ -347,6 +390,8 @@ public final class Recording: @unchecked Sendable {
         spill = nil
         spilledFrom = .max
         spillFailure = nil
+        offered = 0
+        tail = nil
     }
 
     /// Decodes one frame back to positions, for framing a camera or reseeding a renderer.
@@ -370,6 +415,137 @@ public final class Recording: @unchecked Sendable {
             }
             return filled == nil ? [] : decoded
         }
+    }
+
+    /// A moment between stored frames, and how the four around it are weighed into it.
+    ///
+    /// A cubic Hermite through the two either side, its tangents taken from the frames
+    /// beyond them. A straight line between snapshots turns every orbit into a polygon,
+    /// with a kink at each stored frame that reads as a jump once the frames are a few
+    /// apart; the cubic follows the curve through, and costs two more reads of memory that
+    /// is already resident.
+    public struct Blend: Sendable, Equatable {
+        /// The frame before, the two the moment sits between, and the one after. At either
+        /// end of the take the outer ones repeat the inner ones.
+        public var keys: SIMD4<Int32>
+        /// What each of those four counts for. The Hermite basis and both tangents folded
+        /// together, so whatever draws it only ever takes a weighted sum.
+        public var weights: SIMD4<Float>
+        /// How far from the first of the pair to the second, from zero to one.
+        public var fraction: Float
+        public var time: Float
+
+        init(keys: SIMD4<Int32>, fraction: Float, times t: SIMD4<Float>) {
+            let s = min(max(fraction, 0), 1)
+            let s2 = s * s
+            let s3 = s2 * s
+            let h = t[2] - t[1]
+            self.keys = keys
+            self.fraction = s
+            self.time = t[1] + h * s
+            guard h > 0 else {
+                weights = SIMD4(0, 1 - s, s, 0)
+                return
+            }
+            // Each tangent is a weighted sum of the four as well, already scaled to the pair.
+            // Inside the take it is the difference across its neighbours; at either end, where
+            // there is no neighbour, it is the slope of the parabola through the three frames
+            // there are, which keeps the first and last pairs as close to the orbit as the
+            // rest rather than falling back on the chord.
+            let chord = SIMD4<Float>(0, -1, 1, 0)
+            var start = chord
+            if keys[0] != keys[1] {
+                start = SIMD4(-1, 0, 1, 0) * (h / (t[2] - t[0]))
+            } else if keys[3] != keys[2] {
+                let after = t[3] - t[2]
+                start =
+                    SIMD4(
+                        0, -(2 * h + after) / (h * (h + after)), (h + after) / (h * after),
+                        -h / (after * (h + after))) * h
+            }
+            var end = chord
+            if keys[3] != keys[2] {
+                end = SIMD4(0, -1, 0, 1) * (h / (t[3] - t[1]))
+            } else if keys[0] != keys[1] {
+                let before = t[1] - t[0]
+                end =
+                    SIMD4(
+                        h / (before * (before + h)), -(before + h) / (before * h),
+                        (2 * h + before) / (h * (before + h)), 0) * h
+            }
+            weights =
+                SIMD4(0, 2 * s3 - 3 * s2 + 1, 3 * s2 - 2 * s3, 0) + (s3 - 2 * s2 + s) * start
+                + (s3 - s2) * end
+        }
+
+        /// The same weighing for anything stored per frame.
+        func mix(_ values: [SIMD3<Float>]) -> SIMD3<Float> {
+            weights[0] * values[0] + weights[1] * values[1] + weights[2] * values[2]
+                + weights[3] * values[3]
+        }
+    }
+
+    /// Where a position along the stored frames falls, counted in stored frames.
+    public func blend(at position: Double) -> Blend? {
+        locked {
+            guard !storedFrames.isEmpty else { return nil }
+            let last = storedFrames.count - 1
+            let clamped = min(max(position, 0), Double(last))
+            let index = min(Int(clamped), max(last - 1, 0))
+            return blendLocked(index, fraction: Float(clamped - Double(index)))
+        }
+    }
+
+    /// Where one of the captured frames falls. Every stored frame but the last stands
+    /// `interval` captured ones after the one before it; the last is wherever the run ended.
+    public func blend(atCaptured frame: Int) -> Blend? {
+        locked {
+            guard !storedFrames.isEmpty else { return nil }
+            let last = storedFrames.count - 1
+            let index = min(max(frame, 0) / interval, max(last - 1, 0))
+            let start = index * interval
+            let end = index + 1 == last ? max(offered - 1, start + 1) : start + interval
+            return blendLocked(index, fraction: Float(frame - start) / Float(end - start))
+        }
+    }
+
+    private func blendLocked(_ index: Int, fraction: Float) -> Blend {
+        let last = storedFrames.count - 1
+        let indices = [index - 1, index, index + 1, index + 2].map { min(max($0, 0), last) }
+        let keys = SIMD4<Int32>(indices.map(Int32.init))
+        let times = SIMD4<Float>(indices.map { storedFrames[$0].time })
+        return Blend(keys: keys, fraction: fraction, times: times)
+    }
+
+    /// Where the galaxies were at a moment between stored frames. Interpolated rather than
+    /// held, since the spiral pattern is painted about them and a centre that moved only on
+    /// stored frames would move the arms in steps.
+    public func centers(at blend: Blend) -> [SIMD3<Float>] {
+        let around = (0..<4).map { centers(at: Int(blend.keys[$0])) }
+        guard around.allSatisfy({ $0.count == galaxyCount }) else { return around[1] }
+        return (0..<galaxyCount).map { galaxy in blend.mix(around.map { $0[galaxy] }) }
+    }
+
+    /// And what the disks were doing. They turn and come apart slowly, so a straight line
+    /// between the pair is as good as anything.
+    public func disks(at blend: Blend) -> [DiskState] {
+        let first = disks(at: Int(blend.keys[1]))
+        let second = disks(at: Int(blend.keys[2]))
+        guard first.count == second.count else { return first }
+        return zip(first, second).map { a, b in
+            let axis = simd_mix(a.axis, b.axis, SIMD3(repeating: blend.fraction))
+            return DiskState(
+                axis: simd_length(axis) > 0 ? simd_normalize(axis) : a.axis,
+                disruption: a.disruption + (b.disruption - a.disruption) * blend.fraction)
+        }
+    }
+
+    /// Positions at a moment between stored frames, decoded on the CPU exactly as the
+    /// expander does it on the GPU. For tools and tests; playback goes through the expander.
+    public func positions(at blend: Blend) -> [SIMD3<Float>] {
+        let around = (0..<4).map { positions(at: Int(blend.keys[$0])) }
+        guard around.allSatisfy({ $0.count == particleCount }) else { return [] }
+        return (0..<particleCount).map { index in blend.mix(around.map { $0[index] }) }
     }
 
     /// What a snapshot was taken at, without touching its positions.
@@ -438,12 +614,15 @@ public final class Recording: @unchecked Sendable {
 }
 
 struct ExpandParams {
-    var originA: SIMD4<Float>
-    var originB: SIMD4<Float>
+    var origin0: SIMD4<Float>
+    var origin1: SIMD4<Float>
+    var origin2: SIMD4<Float>
+    var origin3: SIMD4<Float>
+    var weights: SIMD4<Float>
     var particleCount: UInt32
-    var blend: Float
-    var pad0: Float = 0
-    var pad1: Float = 0
+    var pad0: UInt32 = 0
+    var pad1: UInt32 = 0
+    var pad2: UInt32 = 0
 }
 
 /// Blends two quantised snapshots into the renderer's position buffer.
@@ -475,29 +654,50 @@ public final class SnapshotExpander {
         self.queue = queue
     }
 
-    /// Blends two snapshots, each held wherever it happens to sit in `source`, into world
-    /// positions. The wait is what lets the reader overwrite those slots afterwards without
-    /// racing the GPU, and costs about two milliseconds at five million particles.
+    /// Blends two snapshots, each held wherever it happens to sit in `source`, along a
+    /// straight line. What a pair with nothing either side of it can do.
     public func expand(
         first: Recording.Frame, at firstOffset: Int,
         second: Recording.Frame, at secondOffset: Int,
         from source: MTLBuffer, blend: Float, into positions: MTLBuffer
     ) {
-        guard let buffer = queue.makeCommandBuffer(),
+        let s = min(max(blend, 0), 1)
+        expand(
+            frames: [first, first, second, second],
+            at: [firstOffset, firstOffset, secondOffset, secondOffset], from: source,
+            weights: SIMD4(0, 1 - s, s, 0), into: positions)
+    }
+
+    /// Blends the four snapshots around a moment, in the order `blend.keys` names them.
+    public func expand(
+        frames: [Recording.Frame], at offsets: [Int], blend: Recording.Blend,
+        from source: MTLBuffer, into positions: MTLBuffer
+    ) {
+        expand(frames: frames, at: offsets, from: source, weights: blend.weights, into: positions)
+    }
+
+    /// The wait is what lets the reader overwrite those slots afterwards without racing the
+    /// GPU, and costs about two milliseconds at five million particles.
+    private func expand(
+        frames: [Recording.Frame], at offsets: [Int], from source: MTLBuffer,
+        weights: SIMD4<Float>, into positions: MTLBuffer
+    ) {
+        guard frames.count == 4, offsets.count == 4,
+            let buffer = queue.makeCommandBuffer(),
             let encoder = buffer.makeComputeCommandEncoder()
         else { return }
+        let origins = frames.map {
+            SIMD4<Float>($0.origin.x, $0.origin.y, $0.origin.z, $0.extent / 65535)
+        }
         var params = ExpandParams(
-            originA: SIMD4<Float>(
-                first.origin.x, first.origin.y, first.origin.z, first.extent / 65535),
-            originB: SIMD4<Float>(
-                second.origin.x, second.origin.y, second.origin.z, second.extent / 65535),
-            particleCount: UInt32(particleCount),
-            blend: min(max(blend, 0), 1))
+            origin0: origins[0], origin1: origins[1], origin2: origins[2], origin3: origins[3],
+            weights: weights, particleCount: UInt32(particleCount))
         encoder.setComputePipelineState(pipeline)
-        encoder.setBuffer(source, offset: firstOffset, index: 0)
-        encoder.setBuffer(source, offset: secondOffset, index: 1)
-        encoder.setBuffer(positions, offset: 0, index: 2)
-        encoder.setBytes(&params, length: MemoryLayout<ExpandParams>.stride, index: 3)
+        for (slot, offset) in offsets.enumerated() {
+            encoder.setBuffer(source, offset: offset, index: slot)
+        }
+        encoder.setBuffer(positions, offset: 0, index: 4)
+        encoder.setBytes(&params, length: MemoryLayout<ExpandParams>.stride, index: 5)
         encoder.dispatchThreads(
             MTLSize(width: particleCount, height: 1, depth: 1),
             threadsPerThreadgroup: MTLSize(

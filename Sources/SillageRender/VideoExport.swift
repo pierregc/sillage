@@ -92,19 +92,24 @@ public enum VideoExport {
         guard let snapshots = SnapshotStream(device: device, recording: recording) else {
             throw Failure.pixelBuffer
         }
-        for index in 0..<recording.count {
-            snapshots.prepare(from: index)
-            guard let offset = snapshots.fetch(index), let frame = recording.frame(at: index)
-            else { continue }
-            let pair = (frame, frame)
+        // One picture per frame the run was captured at, whether the take kept it or keeps
+        // one in several and the rest are drawn through the ones around them.
+        let pictures = recording.capturedCount
+        for picture in 0..<pictures {
+            guard let blend = recording.blend(atCaptured: picture) else { continue }
+            let keys = (0..<4).map { Int(blend.keys[$0]) }
+            snapshots.prepare(from: keys[1])
+            let offsets = keys.compactMap { snapshots.fetch($0) }
+            let frames = keys.compactMap { recording.frame(at: $0) }
+            guard offsets.count == 4, frames.count == 4 else { continue }
             expander.expand(
-                first: frame, at: offset, second: frame, at: offset,
-                from: snapshots.buffer, blend: 0, into: positions)
+                frames: frames, at: offsets, blend: blend, from: snapshots.buffer,
+                into: positions)
             // Densities move slowly and the tree costs more than the frame does.
-            if index % 12 == 0 { smoothing.update(from: positions) }
+            if picture % 12 == 0 { smoothing.update(from: positions) }
             renderer.setDiskFrames(
                 DiskFrame.make(
-                    scene: scene, centers: recording.centers(at: index), time: pair.0.time,
+                    scene: scene, centers: recording.centers(at: blend), time: blend.time,
                     strength: armStrength))
             let pixels = renderer.render(camera: camera)
 
@@ -116,8 +121,8 @@ public enum VideoExport {
             copy(pixels, into: buffer, width: settings.width, height: settings.height)
             adaptor.append(
                 buffer,
-                withPresentationTime: CMTime(value: CMTimeValue(index), timescale: framesPerSecond))
-            progress(Double(index + 1) / Double(recording.count))
+                withPresentationTime: CMTime(value: CMTimeValue(picture), timescale: framesPerSecond))
+            progress(Double(picture + 1) / Double(pictures))
         }
 
         input.markAsFinished()
