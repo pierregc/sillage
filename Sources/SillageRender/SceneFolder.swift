@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 
 /// One scene's folder, `library/<batch>/<scene>/`, which every stage reads and writes. Each
 /// path is derived from the folder, so a stage needs the folder and its own options and
@@ -11,7 +12,7 @@ public struct SceneFolder: Sendable, Equatable {
         public var pendingIssue: Int? {
             switch self {
             case .explore: nil
-            case .hires: 19
+            case .hires: nil
             case .look: 22
             case .export: 24
             }
@@ -111,6 +112,9 @@ public struct SceneFolder: Sendable, Equatable {
     public var curves: URL { file("curves.csv") }
     public var interest: URL { file("interest.json") }
     public var take: URL { file("take.sillage") }
+    public var hiresVideo: URL { file("hires.mov") }
+    public var hiresCurves: URL { file("curves-hires.csv") }
+    public var hires: URL { file("hires.json") }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
 
     private func file(_ name: String) -> URL { url.appendingPathComponent(name) }
@@ -137,5 +141,148 @@ public struct SceneFolder: Sendable, Equatable {
             ? ["--scene", scene.path] : ["--preset", "free", "--solver", "barnes-hut"]
         if exists(look) { arguments += ["--look", look.path] }
         return arguments
+    }
+}
+
+extension SceneFolder.Clip {
+    /// The preview's stretch of simulated time at a step no longer than `maximumStep`. A whole
+    /// number of steps per frame keeps every frame at the time the preview showed it; only the
+    /// settle is rounded, to the nearest step.
+    public func spanning(previewStep: Double, maximumStep: Double, frames: Int? = nil)
+        -> (settle: Int, steps: Int, timeStep: Double)
+    {
+        let interval = Double(max(steps / max(self.frames, 1), 1)) * previewStep
+        let perFrame = max(Int((interval / maximumStep * (1 - 1e-9)).rounded(.up)), 1)
+        let timeStep = interval / Double(perFrame)
+        let settle = Int((Double(self.settle) * previewStep / timeStep).rounded())
+        return (settle, perFrame * (frames ?? self.frames), timeStep)
+    }
+}
+
+extension SceneFolder {
+    /// What a `hires` run used, and what it cost, kept beside the preview.
+    public struct Hires: Codable, Sendable, Equatable {
+        public var particles: Int
+        public var previewParticles: Int
+        public var width: Int
+        public var height: Int
+        public var frames: Int
+        public var fps: Int
+        public var settle: Int
+        public var steps: Int
+        public var timeStepScale: Float
+        /// In simulation units, pinned for the run; the Myr figures are for reading.
+        public var timeStep: Double
+        public var timeStepMyr: Double
+        public var previewTimeStepMyr: Double
+        public var softening: Float
+        public var clipStartMyr: Double
+        public var clipEndMyr: Double
+        public var seconds: Double?
+        public var peakMemoryBytes: Int?
+        public var takeBytes: Int?
+
+        public func encoded() throws -> Data {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return try encoder.encode(self)
+        }
+    }
+
+    public enum HiresError: Error, CustomStringConvertible {
+        case notExplored(URL)
+        case derived(String)
+        case aboveMaximum(Int, Int)
+
+        public var description: String {
+            switch self {
+            case .notExplored(let url): "\(url.path): no scene.json and clip.json, explore it first"
+            case .derived(let option):
+                "--\(option) is worked out from the preview's, so the clip covers the same time"
+            case .aboveMaximum(let asked, let maximum):
+                "\(asked) particles is above this Mac's maximum of \(maximum);"
+                    + " raise it with \(SceneFolder.maximumParticlesVariable)"
+            }
+        }
+    }
+
+    public static let maximumParticlesVariable = "SILLAGE_MAX_PARTICLES"
+    /// Measured on the M4 Max with 36 GB, see "High resolution" in the README.
+    public static let defaultMaximumParticles = 2_000_000
+
+    /// The most particles `hires` runs, and what it runs when not told: a setting of the
+    /// machine rather than of the scene.
+    public static func maximumParticles(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Int {
+        environment[maximumParticlesVariable].flatMap { Double($0) }.map { Int($0) }
+            ?? defaultMaximumParticles
+    }
+
+    /// The scenes of a batch folder marked yes in its ratings.
+    public static func chosen(inBatch batch: URL) -> [SceneFolder] {
+        SceneRatings.read(batch: batch).chosen.map {
+            SceneFolder(batch.appendingPathComponent($0, isDirectory: true))
+        }
+    }
+
+    public var isExplored: Bool { exists(scene) && exists(clip) }
+
+    /// The record of the last `hires` run here, if it finished.
+    public func storedHires() -> Hires? {
+        (try? Data(contentsOf: hires)).flatMap { try? JSONDecoder().decode(Hires.self, from: $0) }
+    }
+
+    /// The `sillage-render` command line `hires` runs, and what it will record. The scene and
+    /// the look are the preview's, the particle count is the one asked for, and the steps are
+    /// worked out again so the clip spans the same megayears. `--frames` takes the first frames
+    /// of the clip at the same cadence, for a shorter run. Nothing the preview wrote is touched.
+    public func hiresArguments(_ options: [String], maximumParticles: Int) throws -> (
+        arguments: [String], record: Hires
+    ) {
+        guard isExplored else { throw HiresError.notExplored(url) }
+        for option in ["steps", "settle", "dt"] where options.contains("--\(option)") {
+            throw HiresError.derived(option)
+        }
+        let preview = try storedClip()
+        var (asked, rest) = preview.updated(with: options)
+        if !options.contains("--particles") { asked.particles = maximumParticles }
+        guard asked.particles <= maximumParticles else {
+            throw HiresError.aboveMaximum(asked.particles, maximumParticles)
+        }
+
+        let file = try SceneFile.decoded(from: Data(contentsOf: scene))
+        var hiresFile = file
+        if let index = rest.firstIndex(of: "--dt-scale"), index + 1 < rest.count,
+            let scale = Float(rest[index + 1])
+        {
+            hiresFile.timeStepScale = scale
+        }
+        let previewStep = Double(file.scene(particleCount: preview.particles).timeStep)
+        let target = hiresFile.scene(particleCount: asked.particles)
+        let span = preview.spanning(
+            previewStep: previewStep, maximumStep: Double(target.timeStep), frames: asked.frames)
+        let myr = Physics.megayearsPerTimeUnit
+        let record = Hires(
+            particles: asked.particles, previewParticles: preview.particles, width: asked.width,
+            height: asked.height, frames: asked.frames, fps: asked.fps, settle: span.settle,
+            steps: span.steps, timeStepScale: hiresFile.timeStepScale, timeStep: span.timeStep,
+            timeStepMyr: span.timeStep * myr, previewTimeStepMyr: previewStep * myr,
+            softening: target.softening, clipStartMyr: Double(span.settle) * span.timeStep * myr,
+            clipEndMyr: Double(span.settle + span.steps) * span.timeStep * myr)
+
+        var arguments = [
+            "--video", hiresVideo.path, "--curves", hiresCurves.path, "--take", take.path,
+            "--no-sidecars",
+        ]
+        arguments += [
+            "--particles", String(asked.particles), "--width", String(asked.width), "--height",
+            String(asked.height), "--frames", String(asked.frames), "--fps", String(asked.fps),
+            "--steps", String(span.steps), "--settle", String(span.settle),
+            "--dt", String(format: "%.9g", span.timeStep),
+        ]
+        arguments += rest + ["--scene", scene.path]
+        if exists(look) { arguments += ["--look", look.path] }
+        return (arguments, record)
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 import Testing
 
 @testable import SillageRender
@@ -44,7 +45,8 @@ struct SceneFolderTests {
 
     @Test func onlyTheStagesStillToComeAreRefused() {
         #expect(SceneFolder.Stage.explore.pendingIssue == nil)
-        #expect(SceneFolder.Stage.allCases.filter { $0.pendingIssue != nil }.count == 3)
+        #expect(SceneFolder.Stage.allCases.filter { $0.pendingIssue != nil }.count == 2)
+        #expect(SceneFolder.Stage.hires.pendingIssue == nil)
     }
 
     /// A first run generates the scene; a second reads back what the first wrote, so it can
@@ -82,5 +84,101 @@ struct SceneFolderTests {
         clip.frames = 120
         try clip.encoded().write(to: folder.clip)
         #expect(try folder.storedClip() == clip)
+    }
+
+    /// A preview at 400 000 particles explored the way a night batch does.
+    private func explored() throws -> SceneFolder {
+        let folder = try temporaryFolder()
+        var scene = SceneConfig.merger(particleCount: 400_000)
+        scene.solver = .barnesHut
+        scene.timeStepScale = 3.5
+        try SceneFile(scene).encoded().write(to: folder.scene)
+        var clip = SceneFolder.Clip()
+        clip.particles = 400_000
+        clip.frames = 900
+        clip.steps = 7_200
+        clip.settle = 400
+        try clip.encoded().write(to: folder.clip)
+        try Data("{}".utf8).write(to: folder.look)
+        return folder
+    }
+
+    @Test func aShorterStepStillLandsEveryFrameWhereThePreviewDid() {
+        var clip = SceneFolder.Clip()
+        clip.frames = 900
+        clip.steps = 7_200
+        clip.settle = 400
+        let span = clip.spanning(previewStep: 0.1, maximumStep: 0.063)
+        // Two frames' worth of preview time, 1.6, now needs 13 steps of 0.0615.
+        #expect(span.steps == 13 * 900)
+        #expect(abs(span.timeStep - 0.8 / 13) < 1e-12)
+        #expect(span.timeStep <= 0.063)
+        #expect(abs(Double(span.steps) * span.timeStep - 720) < 1e-9)
+        #expect(abs(Double(span.settle) * span.timeStep - 40) <= span.timeStep / 2)
+
+        let same = clip.spanning(previewStep: 0.1, maximumStep: 0.1)
+        #expect(same.steps == 7_200 && same.settle == 400 && same.timeStep == 0.1)
+        #expect(clip.spanning(previewStep: 0.1, maximumStep: 0.063, frames: 30).steps == 13 * 30)
+    }
+
+    @Test func hiresRerunsTheSameTimeAtMoreParticlesBesideThePreview() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        let (arguments, record) = try folder.hiresArguments(
+            ["--particles", "2e6", "--brightness", "0.2"], maximumParticles: 10_000_000)
+
+        #expect(record.particles == 2_000_000 && record.previewParticles == 400_000)
+        #expect(record.timeStepMyr < record.previewTimeStepMyr)
+        #expect(record.timeStepScale == 3.5)
+        let preview = record.previewTimeStepMyr
+        #expect(abs(record.clipEndMyr - record.clipStartMyr - 7_200 * preview) < 1e-6)
+        #expect(abs(record.clipStartMyr - 400 * preview) <= record.timeStepMyr / 2)
+        #expect(record.steps % 900 == 0)
+
+        #expect(value("--particles", in: arguments) == "2000000")
+        #expect(value("--steps", in: arguments) == String(record.steps))
+        #expect(value("--settle", in: arguments) == String(record.settle))
+        #expect(value("--width", in: arguments) == "1600" && value("--frames", in: arguments) == "900")
+        #expect(value("--video", in: arguments) == folder.hiresVideo.path)
+        #expect(value("--curves", in: arguments) == folder.hiresCurves.path)
+        #expect(value("--take", in: arguments) == folder.take.path)
+        #expect(value("--scene", in: arguments) == folder.scene.path)
+        #expect(value("--look", in: arguments) == folder.look.path)
+        #expect(value("--brightness", in: arguments) == "0.2")
+        #expect(arguments.contains("--no-sidecars"))
+        #expect(value("--scene-out", in: arguments) == nil && value("--thumbnail", in: arguments) == nil)
+        #expect(!arguments.contains(folder.preview.path) && !arguments.contains(folder.curves.path))
+    }
+
+    @Test func hiresRunsAtTheMaximumUnlessToldAndNeverAboveIt() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        #expect(try folder.hiresArguments([], maximumParticles: 1_500_000).record.particles == 1_500_000)
+        #expect(throws: SceneFolder.HiresError.self) {
+            try folder.hiresArguments(["--particles", "3e6"], maximumParticles: 2_000_000)
+        }
+        #expect(throws: SceneFolder.HiresError.self) {
+            try folder.hiresArguments(["--steps", "100"], maximumParticles: 2_000_000)
+        }
+        let scaled = try folder.hiresArguments(
+            ["--particles", "1e6", "--dt-scale", "1"], maximumParticles: 2_000_000)
+        let kept = try folder.hiresArguments(["--particles", "1e6"], maximumParticles: 2_000_000)
+        #expect(scaled.record.timeStep < kept.record.timeStep && scaled.record.timeStepScale == 1)
+        #expect(SceneFolder.maximumParticles(environment: [:]) == SceneFolder.defaultMaximumParticles)
+        #expect(SceneFolder.maximumParticles(environment: ["SILLAGE_MAX_PARTICLES": "5e6"]) == 5_000_000)
+    }
+
+    @Test func aBatchRunsTheScenesMarkedYes() throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        try SceneRatings(scenes: [
+            "scene-0001": .init(choice: .yes), "scene-0002": .init(choice: .no),
+            "scene-0003": .init(choice: .yes, rating: 7),
+        ]).write(batch: folder.batch)
+        #expect(
+            SceneFolder.chosen(inBatch: folder.batch).map { $0.url.lastPathComponent } == [
+                "scene-0001", "scene-0003",
+            ])
+        #expect(!SceneFolder(folder.batch).isExplored)
     }
 }
