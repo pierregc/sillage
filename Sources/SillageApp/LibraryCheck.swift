@@ -252,7 +252,7 @@ enum LibraryCheck {
         try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
         try PNGWriter.write(pixels(tint: tint), width: width, height: height, to: folder.thumbnail)
         try writeVideo(to: folder.preview, tint: tint)
-        let scene = archetype.map { #"{"archetype": "\#($0)"}"# } ?? "{}"
+        let scene = archetype.map { #"{"draw": {"generator": "\#($0)"}}"# } ?? "{}"
         try Data(scene.utf8).write(to: folder.scene)
     }
 

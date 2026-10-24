@@ -8,13 +8,14 @@ public enum GalaxyFamily: String, Codable, Sendable, CaseIterable {
 
 /// How a scene was drawn, kept in its scene file.
 public struct SceneDraw: Codable, Sendable, Equatable {
-    /// `free` for `FreeDraw`.
+    /// `free` for a free draw, otherwise the archetype it was drawn from.
     public var generator: String
     public var batchSeed: UInt64
-    /// Place in the batch, from zero.
+    /// Place in the batch, from zero. An archetype drawn on its own counts its own scenes.
     public var index: Int
-    /// The point of the batch's sequence the scene came from. The points skipped between two
-    /// scenes were too close to one already drawn.
+    /// The point of the sequence the scene came from: the batch's for a free draw, where the
+    /// points skipped between two scenes were too close to one already drawn, and the
+    /// archetype's own for an archetype.
     public var point: Int
     /// Each galaxy's family, in the scene's order.
     public var families: [GalaxyFamily]

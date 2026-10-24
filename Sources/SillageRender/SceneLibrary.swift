@@ -184,11 +184,12 @@ public enum SceneLibrary {
 
     /// The scene file records its archetype from #42 on. Read without decoding the whole
     /// file, so a scene file from before or after does not hide the scene.
+    /// What drew the scene: an archetype, or `free`.
     private static func archetype(in url: URL) -> String? {
         guard let data = try? Data(contentsOf: url),
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
-        return object["archetype"] as? String
+        return (object["draw"] as? [String: Any])?["generator"] as? String
     }
 
     /// The last row for an id stands, as in the contact sheet: a retried scene appends one.
