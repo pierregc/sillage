@@ -333,30 +333,7 @@ if generatedHaste != nil && !arguments.contains("--no-check")
 // The colours the scene was drawn with, so the look file written beside it replays it exactly.
 look.palette = scene.galaxies.map(\.color)
 
-let settings = RenderSettings(
-    width: width,
-    height: height,
-    supersample: look.supersample,
-    brightness: look.look.brightness,
-    dustStrength: look.look.dustStrength,
-    starCount: look.starCount,
-    starSize: look.look.starSize,
-    smoothingScale: look.look.smoothingScale,
-    minimumKernel: look.look.minimumKernel,
-    maximumKernel: look.look.maximumKernel,
-    bloomThreshold: look.look.bloomThreshold,
-    bloomSoftKnee: look.look.bloomSoftKnee,
-    bloomIntensity: look.look.bloomIntensity,
-    bloomLevels: look.bloomLevels,
-    stretch: look.look.stretch,
-    saturation: look.look.saturation,
-    whitePoint: look.look.whitePoint,
-    spikeArms: look.look.spikeArms,
-    spikeLength: look.look.spikeLength,
-    spikeIntensity: look.look.spikeIntensity,
-    skyLevel: look.look.skyLevel,
-    noiseLevel: look.look.noiseLevel,
-    galaxyTint: look.look.galaxyTint, plain: look.plain)
+let settings = look.renderSettings(width: width, height: height)
 
 print(
     "scene      \(scene.name), \(scene.totalParticleCount) visible"
@@ -377,13 +354,6 @@ let smoothing = try SmoothingField(device: renderer.device, particleCount: drawn
 renderer.setSmoothing(smoothing.buffer)
 print("solver     \(backend) (\(scene.solver.rawValue))")
 print("gpu        \(renderer.gpuName)")
-
-/// Radius holding a given fraction of the particles, so a few escapers do not shrink the frame.
-func framingRadius(_ positions: [SIMD3<Float>], percentile: Float) -> Float {
-    var radii = positions.map { simd_length($0) }
-    radii.sort()
-    return radii[min(Int(Float(radii.count) * percentile), radii.count - 1)]
-}
 
 func prepared(_ path: String) throws -> URL {
     let url = URL(fileURLWithPath: path)
@@ -415,13 +385,6 @@ if let sceneOutPath = argument("scene-out") ?? beside(".scene.json") {
 
 let stepsPerFrame = max(steps / max(frames, 1), 1)
 let zoom = look.camera.zoom
-let percentile = look.camera.percentile
-let elevation = look.camera.elevation
-// The camera sweeps from its start angle to its end angle over the sequence, which is how a
-// still frame and a moving shot come out of the same command.
-let elevationEnd = look.camera.elevationEnd ?? elevation
-let azimuth = look.camera.azimuth
-let azimuthEnd = look.camera.azimuthEnd ?? azimuth
 let clock = Date()
 
 // Framing is fixed once so the camera does not drift as the tails grow.
@@ -510,7 +473,7 @@ for frame in 0..<frames {
         renderer.upload(positions: solver.particles.positions)
     }
     if frozenRadius <= 0 && look.camera.mode != .auto {
-        frozenRadius = framingRadius(solver.particles.positions, percentile: percentile) / zoom
+        frozenRadius = look.camera.framedRadius(positions: solver.particles.positions)
     }
 
     let smoothingStart = Date()
@@ -527,7 +490,7 @@ for frame in 0..<frames {
     renderer.setDiskFrames(
         DiskFrame.make(
             scene: scene, centers: solver.centers, time: solver.time,
-            strength: look.armStrength))
+            strength: LookFile.diskStrength(look.armStrength, director?.look ?? look.look)))
     let camera: Camera
     if let director {
         // Advanced by one frame of playback rather than by wall clock, so the move reads the
@@ -538,20 +501,14 @@ for frame in 0..<frames {
         renderer.apply(director.look)
         camera = director.camera
     } else {
-        // Smoothstep rather than linear, so the move eases in and out instead of starting and
-        // stopping dead.
-        let span = Float(max(frames - 1, 1))
-        let t = Float(frame) / span
-        let eased = t * t * (3 - 2 * t)
         var framed = (center: SIMD3<Float>.zero, radius: frozenRadius)
         if look.camera.mode == .auto {
             framed = autoCamera.frame(centres: solver.centers, margins: reach)
             framed.radius /= zoom
         }
-        camera = Camera.framing(
-            radius: framed.radius, center: framed.center, fieldOfView: look.look.fieldOfView,
-            elevation: elevation + (elevationEnd - elevation) * eased,
-            azimuth: azimuth + (azimuthEnd - azimuth) * eased)
+        camera = look.camera.camera(
+            progress: Float(frame) / Float(max(frames - 1, 1)), radius: framed.radius,
+            center: framed.center, fieldOfView: look.look.fieldOfView)
     }
     let renderStart = Date()
     let pixels = renderer.render(camera: camera)

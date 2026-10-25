@@ -187,4 +187,17 @@ struct SceneFolderTests {
             ])
         #expect(!SceneFolder(folder.batch).isExplored)
     }
+
+    @Test func promotingALookKeepsTheFirstOneAside() throws {
+        let folder = try temporaryFolder()
+        try LookFile.raw.encoded().write(to: folder.look)
+        var first = LookFile.standard
+        first.name = "first"
+        try folder.promote(first)
+        var second = first
+        second.name = "second"
+        try folder.promote(second)
+        #expect(try LookFile.decoded(from: Data(contentsOf: folder.look)) == second)
+        #expect(try LookFile.decoded(from: Data(contentsOf: folder.rawLook)) == .raw)
+    }
 }
