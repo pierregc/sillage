@@ -255,15 +255,35 @@ it as `--promote` does. A file opened and saved untouched is the same file.
 ```
 
 `export` draws `take.sillage` with the scene's `look.json` into `exports/<preset>.mp4`, H.264
-in an MP4, frame by frame and as fast as the GPU goes. The presets are `1080p` (1920 x 1080, the
+in an MP4 by default, frame by frame and as fast as the GPU goes. The presets are `1080p` (1920 x 1080, the
 default), `4k` (3840 x 2160), `vertical` (1080 x 1920), `square` (1080 x 1080) and `whatsapp`
-(1280 x 720 at 4 Mbit/s, 15 MB for thirty seconds); the others get twelve bits a pixel a second,
-since a galaxy is mostly faint gradient that a lean bit rate bands. `--width`, `--height` and
-`--bitrate` (Mbit/s) override the preset, `--start` and `--duration` (seconds) cut the clip, and
-`--fps` defaults to the rate the take was captured at; any other rate draws the moments between
-captured frames through the same cubic the take's skipped frames use, and the camera between
-the two captured frames around them. `--look` takes a file, a row of the look grid by name or a
-catalogue look, `--take` another take and `--out` another path.
+(1280 x 720 at 4 Mbit/s, 15 MB for thirty seconds, H.264 only); the others get twelve bits a pixel
+a second, since a galaxy is mostly faint gradient that a lean bit rate bands. `--width`,
+`--height` and `--bitrate` (Mbit/s) override the preset, `--start` and `--duration` (seconds) cut
+the clip, and `--fps` defaults to the rate the take was captured at; any other rate draws the
+moments between captured frames through the same cubic the take's skipped frames use, and the
+camera between the two captured frames around them. `--look` takes a file, a row of the look
+grid by name or a catalogue look, `--take` another take and `--out` another path.
+
+`--codec h264|hevc|prores` picks what the frames are compressed with, all on the media engine:
+
+| codec | file | for | rate |
+| --- | --- | --- | --- |
+| `h264` | `<preset>.mp4` | plays everywhere | twelve bits a pixel a second |
+| `hevc` | `<preset>-hevc.mp4` | about half the bytes of H.264, tagged `hvc1` for QuickTime and iOS | six bits a pixel a second |
+| `prores` | `<preset>-prores.mov` | editing: ProRes 422 HQ, 10 bit | fixed by the size |
+
+`--bitrate` steers H.264 and HEVC, `--quality` (0 to 1) replaces it with what the picture needs;
+ProRes takes neither. The quality scale is steep, not linear: on a 10 s 1080p clip HEVC goes from
+1 MB at 0.5 to 9 MB at 0.6, 27 at 0.65, 91 at 0.7 and 126 at 0.75, and the grain of the look
+decides where a given picture lands, so try it on the take.
+
+Every video leaves with the licence in its metadata: `Copyright <year> Pierre Gunet-Caplain, CC BY
+4.0 (https://creativecommons.org/licenses/by/4.0/)`, the author, a title and description naming
+the scene as `<batch>/<scene>`, and the creation date. The application's video export writes the
+same. A movie (ProRes, and the application's `.mov`) keeps them as QuickTime keys, which Finder,
+`mdls` and `ffprobe` show; an MP4 keeps them as user data atoms, which `AVAsset` reads back
+(`ffprobe` and Spotlight skip those in an MP4, whatever wrote them).
 
 The camera is replayed from the take's first frame exactly as the look grid replays it, through
 the same code, so a cell of the grid and the same frame of the export are the same picture.
@@ -285,6 +305,16 @@ running, the same over two runs:
 At 1080p 24 of the 27 ms a frame are the renderer's own GPU time, at supersample 2; expanding
 the take and the smoothing field take the other 3, and handing the frame to the encoder costs
 nothing that shows. A 400 k take exports at 110 frames a second at 1080p and 43 at 4k.
+
+The codec changes the file, not the time: the encoders keep up with the renderer. On a 150 k take
+of 300 frames (10 s), one export at a time:
+
+| codec | 1080p | | 4k | |
+| --- | --- | --- | --- | --- |
+| | frames a second | file | frames a second | file |
+| h264 | 202 | 31.9 MB | 77 | 127.6 MB |
+| hevc | 205 | 15.9 MB | 77 | 63.9 MB |
+| prores | 201 | 282 MB | 78 | 1126 MB |
 
 ### Fidelity
 

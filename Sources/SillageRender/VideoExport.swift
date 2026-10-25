@@ -35,13 +35,14 @@ public enum VideoExport {
         camera: Camera,
         armStrength: Float = 1,
         framesPerSecond: Int32 = 30,
+        metadata: VideoMetadata? = nil,
         to url: URL,
         progress: (Double) -> Void = { _ in }
     ) throws {
         guard recording.count >= 2 else { throw Failure.tooShort }
         let writer = try VideoWriter(
             width: settings.width, height: settings.height, framesPerSecond: framesPerSecond,
-            to: url)
+            metadata: metadata, to: url)
         guard let device = MTLCreateSystemDefaultDevice() else { throw RenderError.noDevice }
         guard
             let positions = device.makeBuffer(

@@ -3,11 +3,12 @@ import CoreVideo
 import Foundation
 import Metal
 
-/// Encodes frames to H.264 as they are produced, each one drawn by the GPU straight into a
+/// Encodes frames as they are produced, each one drawn by the GPU straight into a
 /// pixel buffer of the encoder's own pool: no read back, no swizzle. The encoder works on a
 /// queue of its own, so the next frame renders while this one compresses.
 ///
-/// `.mp4` gets an MP4 container, anything else a QuickTime movie. Not laid out for streaming:
+/// H.264 and HEVC go in an MP4 when the path ends in `.mp4`, ProRes and anything else in a
+/// QuickTime movie. Not laid out for streaming:
 /// that rewrite leaves a stray copy of the file beside it when the process exits right after.
 public final class VideoWriter: @unchecked Sendable {
     public enum Failure: Error, CustomStringConvertible {
@@ -42,12 +43,11 @@ public final class VideoWriter: @unchecked Sendable {
     private var queue: MTLCommandQueue?
     private var textures: CVMetalTextureCache?
 
-    /// A galaxy is mostly faint gradient on black, which a mean bit rate smears into banding,
-    /// hence a generous default of twelve bits a pixel a second.
-    public static func defaultBitRate(width: Int, height: Int) -> Int { width * height * 12 }
-
+    /// `quality`, from 0 to 1, steers the encoder by what the picture needs instead of a rate;
+    /// given, it replaces `bitsPerSecond`. ProRes takes neither.
     public init(
-        width: Int, height: Int, framesPerSecond: Int32 = 30, bitsPerSecond: Int? = nil,
+        width: Int, height: Int, framesPerSecond: Int32 = 30, codec: VideoCodec = .h264,
+        bitsPerSecond: Int? = nil, quality: Double? = nil, metadata: VideoMetadata? = nil,
         to url: URL
     ) throws {
         self.width = width
@@ -55,20 +55,18 @@ public final class VideoWriter: @unchecked Sendable {
         self.framesPerSecond = framesPerSecond
 
         try? FileManager.default.removeItem(at: url)
-        let mp4 = url.pathExtension.lowercased() == "mp4"
+        let mp4 = codec != .prores && url.pathExtension.lowercased() == "mp4"
         writer = try AVAssetWriter(outputURL: url, fileType: mp4 ? .mp4 : .mov)
+        if let metadata { writer.metadata = metadata.items(quickTime: !mp4) }
         input = AVAssetWriterInput(
             mediaType: .video,
             outputSettings: [
-                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoCodecKey: codec.avCodec,
                 AVVideoWidthKey: width,
                 AVVideoHeightKey: height,
-                AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: bitsPerSecond
-                        ?? Self.defaultBitRate(width: width, height: height),
-                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                    AVVideoExpectedSourceFrameRateKey: framesPerSecond,
-                ],
+                AVVideoCompressionPropertiesKey: codec.compressionProperties(
+                    width: width, height: height, framesPerSecond: framesPerSecond,
+                    bitsPerSecond: bitsPerSecond, quality: quality),
             ])
         input.expectsMediaDataInRealTime = false
         adaptor = AVAssetWriterInputPixelBufferAdaptor(

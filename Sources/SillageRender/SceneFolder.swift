@@ -343,6 +343,9 @@ extension SceneFolder {
         case noSuchPreset(String)
         case noSuchLook(String)
         case badValue(String, String)
+        case noSuchCodec(String)
+        case codecNotAllowed(preset: String, codec: VideoCodec)
+        case noRateControl(VideoCodec)
 
         public var description: String {
             switch self {
@@ -352,12 +355,27 @@ extension SceneFolder {
             case .noSuchLook(let name):
                 "no look \"\(name)\": neither a file, a row of the look grid nor a catalogue look"
             case .badValue(let option, let value): "--\(option) \(value) is not usable"
+            case .noSuchCodec(let name):
+                "no codec \"\(name)\", pick one of "
+                    + VideoCodec.allCases.map(\.rawValue).joined(separator: ", ")
+            case .codecNotAllowed(let preset, let codec):
+                "the \(preset) preset is \(codec.rawValue) only"
+            case .noRateControl(let codec):
+                "\(codec.rawValue) has a fixed rate: neither --bitrate nor --quality applies"
             }
         }
     }
 
-    public func export(preset name: String) -> URL {
-        exports.appendingPathComponent("\(name).mp4")
+    /// H.264 keeps the preset's name; the other codecs add theirs, so one preset can be
+    /// exported in all three side by side.
+    public func export(preset name: String, codec: VideoCodec = .h264) -> URL {
+        let suffix = codec == .h264 ? "" : "-\(codec.rawValue)"
+        return exports.appendingPathComponent("\(name)\(suffix).\(codec.fileExtension)")
+    }
+
+    /// `<batch>/<scene>`, which names the scene wherever its video ends up.
+    public var sceneID: String {
+        "\(batch.lastPathComponent)/\(url.lastPathComponent)"
     }
 
     /// The look an export draws with: the scene's own by default, or `name`, which is a look

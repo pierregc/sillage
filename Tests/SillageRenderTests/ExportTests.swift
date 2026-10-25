@@ -145,4 +145,91 @@ struct ExportTests {
         let duration = try await asset.load(.duration)
         #expect(abs(duration.seconds - 0.5) < 0.01)
     }
+
+    private func exported(
+        _ codec: VideoCodec, metadata: VideoMetadata? = nil, quality: Double? = nil
+    ) async throws -> (AVURLAsset, URL) {
+        let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-\(UUID().uuidString).\(codec.fileExtension)")
+        _ = try export.write(
+            to: url, width: 128, height: 72, framesPerSecond: 10, codec: codec, quality: quality,
+            metadata: metadata)
+        return (AVURLAsset(url: url), url)
+    }
+
+    private func subtype(_ asset: AVURLAsset) async throws -> (FourCharCode, CGSize) {
+        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        let format = try #require(try await track.load(.formatDescriptions).first)
+        return (
+            CMFormatDescriptionGetMediaSubType(format), try await track.load(.naturalSize)
+        )
+    }
+
+    @Test func hevcIsTaggedHvc1InAnMP4() async throws {
+        let (asset, url) = try await exported(.hevc)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (codec, size) = try await subtype(asset)
+        #expect(codec == kCMVideoCodecType_HEVC && size == CGSize(width: 128, height: 72))
+        // `hvc1` is what QuickTime and iOS play; `hev1` is what they refuse.
+        let bytes = try Data(contentsOf: url)
+        #expect(bytes.range(of: Data("hvc1".utf8)) != nil)
+        #expect(bytes.range(of: Data("hev1".utf8)) == nil)
+        #expect(url.pathExtension == "mp4")
+    }
+
+    @Test func proResIs422HQInAMovie() async throws {
+        let (asset, url) = try await exported(.prores)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (codec, _) = try await subtype(asset)
+        #expect(codec == kCMVideoCodecType_AppleProRes422HQ)
+        #expect(url.pathExtension == "mov")
+        #expect(try Data(contentsOf: url).prefix(12).suffix(4) == Data("qt  ".utf8))
+        #expect(abs(try await asset.load(.duration).seconds - 1.2) < 0.01)
+    }
+
+    @Test func aQualityStandsInForTheBitRate() async throws {
+        for codec in [VideoCodec.h264, .hevc] {
+            let (asset, url) = try await exported(codec, quality: 0.5)
+            defer { try? FileManager.default.removeItem(at: url) }
+            #expect(try await asset.loadTracks(withMediaType: .video).count == 1)
+        }
+    }
+
+    @Test func everyExportCarriesItsLicenceAuthorAndScene() async throws {
+        let metadata = VideoMetadata(
+            sceneID: "2026-10-23/scene-0001", author: "Ada Lovelace",
+            date: Date(timeIntervalSince1970: 1_792_000_000))
+        for codec in VideoCodec.allCases {
+            let (asset, url) = try await exported(codec, metadata: metadata)
+            defer { try? FileManager.default.removeItem(at: url) }
+            let items = try await asset.load(.metadata)
+            var found: [String: String] = [:]
+            for item in items {
+                if let key = item.identifier?.rawValue, let value = try await item.load(.stringValue) {
+                    found[key] = value
+                }
+            }
+            let all = found.values.joined(separator: "\n")
+            #expect(all.contains("CC BY 4.0"), "\(codec)")
+            #expect(all.contains("https://creativecommons.org/licenses/by/4.0/"), "\(codec)")
+            #expect(all.contains("Ada Lovelace"), "\(codec)")
+            #expect(all.contains("2026-10-23/scene-0001"), "\(codec)")
+            #expect(all.contains("2026"), "\(codec)")
+        }
+    }
+
+    @Test func codecsAndPresetsAreNamedConsistently() throws {
+        let folder = SceneFolder(path: "/library/2026-10-23/scene-0001")
+        #expect(folder.sceneID == "2026-10-23/scene-0001")
+        #expect(folder.export(preset: "4k").lastPathComponent == "4k.mp4")
+        #expect(folder.export(preset: "4k", codec: .hevc).lastPathComponent == "4k-hevc.mp4")
+        #expect(folder.export(preset: "4k", codec: .prores).lastPathComponent == "4k-prores.mov")
+        #expect(VideoPreset.named("whatsapp")?.codec == .h264)
+        #expect(VideoPreset.all.filter { $0.codec != nil }.map(\.name) == ["whatsapp"])
+        #expect(VideoCodec.prores.defaultBitRate(width: 1920, height: 1080) == nil)
+        #expect(
+            VideoCodec.hevc.defaultBitRate(width: 1920, height: 1080)!
+                < VideoCodec.h264.defaultBitRate(width: 1920, height: 1080)!)
+    }
 }
