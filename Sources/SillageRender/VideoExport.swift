@@ -35,6 +35,7 @@ public enum VideoExport {
         camera: Camera,
         armStrength: Float = 1,
         framesPerSecond: Int32 = 30,
+        codec: VideoCodec = .hevc,
         metadata: VideoMetadata? = nil,
         to url: URL,
         progress: (Double) -> Void = { _ in }
@@ -42,7 +43,7 @@ public enum VideoExport {
         guard recording.count >= 2 else { throw Failure.tooShort }
         let writer = try VideoWriter(
             width: settings.width, height: settings.height, framesPerSecond: framesPerSecond,
-            metadata: metadata, to: url)
+            codec: codec, metadata: metadata, to: url)
         guard let device = MTLCreateSystemDefaultDevice() else { throw RenderError.noDevice }
         guard
             let positions = device.makeBuffer(

@@ -13,6 +13,10 @@ public struct VideoPreset: Sendable, Equatable {
     /// Set when the place only takes one codec, which then cannot be changed.
     public var codec: VideoCodec?
 
+    /// HEVC holds the picture in half the bytes of H.264, so it is what a preset exports
+    /// with unless it names another.
+    public var defaultCodec: VideoCodec { codec ?? .hevc }
+
     public static let all = [
         VideoPreset(name: "1080p", width: 1920, height: 1080),
         VideoPreset(name: "4k", width: 3840, height: 2160),
@@ -92,7 +96,7 @@ public final class TakeExport {
 
     public func write(
         to url: URL, width: Int, height: Int, framesPerSecond: Int, start: Double = 0,
-        duration: Double? = nil, codec: VideoCodec = .h264, bitsPerSecond: Int? = nil,
+        duration: Double? = nil, codec: VideoCodec = .hevc, bitsPerSecond: Int? = nil,
         quality: Double? = nil, metadata: VideoMetadata? = nil,
         progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
     ) throws -> Report {

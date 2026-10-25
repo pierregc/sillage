@@ -366,11 +366,12 @@ extension SceneFolder {
         }
     }
 
-    /// H.264 keeps the preset's name; the other codecs add theirs, so one preset can be
-    /// exported in all three side by side.
-    public func export(preset name: String, codec: VideoCodec = .h264) -> URL {
-        let suffix = codec == .h264 ? "" : "-\(codec.rawValue)"
-        return exports.appendingPathComponent("\(name)\(suffix).\(codec.fileExtension)")
+    /// The preset's own codec keeps its name (`codec` left out); another adds its own, so one
+    /// preset can be exported in all three side by side.
+    public func export(preset name: String, codec: VideoCodec? = nil) -> URL {
+        let suffix = codec.map { "-\($0.rawValue)" } ?? ""
+        return exports.appendingPathComponent(
+            "\(name)\(suffix).\((codec ?? .hevc).fileExtension)")
     }
 
     /// `<batch>/<scene>`, which names the scene wherever its video ends up.
