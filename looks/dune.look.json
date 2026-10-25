@@ -1,0 +1,56 @@
+{
+  "camera": {
+    "azimuth": 0.8,
+    "elevation": 1.1,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.3,
+    "brightness": 0.18,
+    "dustStrength": 0,
+    "galaxyTint": 0.6,
+    "maximumKernel": 60,
+    "minimumKernel": 1.3,
+    "noiseLevel": 0.0012,
+    "saturation": 1.6,
+    "skyLevel": 0.0003,
+    "smoothingScale": 2,
+    "spikeIntensity": 0,
+    "starSize": 0.8
+  },
+  "name": "dune",
+  "palette": [
+    [
+      1,
+      0.85,
+      0.6
+    ],
+    [
+      0.95,
+      0.75,
+      0.55
+    ],
+    [
+      1,
+      0.9,
+      0.7
+    ],
+    [
+      0.9,
+      0.7,
+      0.5
+    ],
+    [
+      1,
+      0.8,
+      0.55
+    ],
+    [
+      0.95,
+      0.85,
+      0.65
+    ]
+  ],
+  "starCount": 300,
+  "version": 1
+}

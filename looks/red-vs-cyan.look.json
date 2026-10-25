@@ -1,0 +1,54 @@
+{
+  "camera": {
+    "elevation": 1.2,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.28,
+    "brightness": 0.16,
+    "dustStrength": 0,
+    "galaxyTint": 1,
+    "maximumKernel": 48,
+    "minimumKernel": 1.1,
+    "noiseLevel": 0,
+    "saturation": 3,
+    "skyLevel": 0,
+    "smoothingScale": 1.5,
+    "spikeIntensity": 0
+  },
+  "name": "red-vs-cyan",
+  "palette": [
+    [
+      0.2,
+      0.85,
+      1
+    ],
+    [
+      1,
+      0.25,
+      0.25
+    ],
+    [
+      0.3,
+      0.9,
+      1
+    ],
+    [
+      1,
+      0.35,
+      0.3
+    ],
+    [
+      0.15,
+      0.75,
+      0.95
+    ],
+    [
+      0.95,
+      0.2,
+      0.3
+    ]
+  ],
+  "starCount": 0,
+  "version": 1
+}

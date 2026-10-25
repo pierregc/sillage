@@ -1,0 +1,55 @@
+{
+  "camera": {
+    "elevation": 1.15,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.5,
+    "brightness": 0.19,
+    "dustStrength": 0.2,
+    "galaxyTint": 0.9,
+    "maximumKernel": 76,
+    "minimumKernel": 1.5,
+    "noiseLevel": 0.001,
+    "saturation": 2.8,
+    "skyLevel": 0.0006,
+    "smoothingScale": 2.4,
+    "spikeIntensity": 0,
+    "starSize": 0.8
+  },
+  "name": "indigo-veil",
+  "palette": [
+    [
+      0.65,
+      0.45,
+      1
+    ],
+    [
+      1,
+      0.7,
+      0.55
+    ],
+    [
+      0.75,
+      0.5,
+      0.95
+    ],
+    [
+      1,
+      0.62,
+      0.5
+    ],
+    [
+      0.55,
+      0.4,
+      0.95
+    ],
+    [
+      1,
+      0.8,
+      0.65
+    ]
+  ],
+  "starCount": 800,
+  "version": 1
+}

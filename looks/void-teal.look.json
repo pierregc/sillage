@@ -1,0 +1,53 @@
+{
+  "camera": {
+    "elevation": 1.0,
+    "mode": "fixed",
+    "zoom": 1.1
+  },
+  "look": {
+    "bloomIntensity": 0.3,
+    "brightness": 0.18,
+    "dustStrength": 0,
+    "galaxyTint": 0.95,
+    "noiseLevel": 0,
+    "saturation": 2.6,
+    "skyLevel": 0,
+    "spikeIntensity": 0,
+    "stretch": 20
+  },
+  "name": "void-teal",
+  "palette": [
+    [
+      0.15,
+      0.85,
+      0.8
+    ],
+    [
+      0.95,
+      0.3,
+      0.7
+    ],
+    [
+      0.3,
+      0.9,
+      0.6
+    ],
+    [
+      0.8,
+      0.35,
+      1
+    ],
+    [
+      0.2,
+      0.7,
+      1
+    ],
+    [
+      1,
+      0.5,
+      0.6
+    ]
+  ],
+  "starCount": 0,
+  "version": 1
+}

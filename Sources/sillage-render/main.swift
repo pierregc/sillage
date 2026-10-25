@@ -116,10 +116,12 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         if file.palette.isEmpty { file.palette = scenePalette }
         return file
     }
-    var looks =
+    base = withScenePalette(base)
+    // A look that names its own colours keeps them; one that does not takes the scene's.
+    let looks0 =
         (options.contains("--no-variants") ? [base] : LookVariants.around(base))
         + (options.contains("--no-catalogue") ? [] : catalogue.filter { $0.name != base.name })
-    for index in looks.indices { looks[index].palette = scenePalette }
+    var looks = looks0.map(withScenePalette)
     looks += hand.map(withScenePalette)
     var seen: [String: Int] = [:]
     for index in looks.indices {
@@ -182,22 +184,34 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 
     let manager = FileManager.default
     try manager.createDirectory(at: folder.looks, withIntermediateDirectories: true)
+    let gridName = folder.lookGrid.deletingPathExtension().lastPathComponent
     for stale in (try? manager.contentsOfDirectory(atPath: folder.looks.path)) ?? []
-    where stale.hasSuffix(".look.json") || stale == folder.lookGrid.lastPathComponent {
+    where stale.hasSuffix(".look.json") || (stale.hasPrefix(gridName) && stale.hasSuffix(".png")) {
         try manager.removeItem(at: folder.looks.appendingPathComponent(stale))
     }
     for file in looks { try file.encoded().write(to: folder.lookFile(named: file.name)) }
-    guard
-        let grid = LookGrid.image(
-            cells: cells, rowLabels: looks.map(\.name), columnLabels: columnLabels,
-            cellWidth: cellWidth, cellHeight: cellHeight)
-    else { fail("look: could not compose the grid") }
-    try PNGWriter.write(grid, to: folder.lookGrid)
+    // Fifteen rows to an image: more would be too tall to look at. grid.png holds the first.
+    let rowsPerImage = 15
+    var written: [URL] = []
+    for (page, start) in stride(from: 0, to: looks.count, by: rowsPerImage).enumerated() {
+        let rows = start..<min(start + rowsPerImage, looks.count)
+        guard
+            let grid = LookGrid.image(
+                cells: Array(cells[rows]), rowLabels: rows.map { looks[$0].name },
+                columnLabels: columnLabels, cellWidth: cellWidth, cellHeight: cellHeight)
+        else { fail("look: could not compose the grid") }
+        let url =
+            page == 0
+            ? folder.lookGrid
+            : folder.looks.appendingPathComponent("\(gridName)-\(page + 1).png")
+        try PNGWriter.write(grid, to: url)
+        written.append(url)
+    }
     print(
         String(
             format: "look       %d looks x %d frames from %@, %.1f s", looks.count, keys.count,
             takeURL.lastPathComponent, Date().timeIntervalSince(started)))
-    print("grid       \(folder.lookGrid.path)")
+    for url in written { print("grid       \(url.path)") }
     print("promote    sillage-render look \(folder.url.path) --promote <name>")
     return 0
 }

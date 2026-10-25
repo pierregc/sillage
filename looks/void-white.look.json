@@ -1,0 +1,54 @@
+{
+  "camera": {
+    "elevation": 1.2,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.14,
+    "brightness": 0.16,
+    "dustStrength": 0,
+    "galaxyTint": 0.2,
+    "noiseLevel": 0,
+    "saturation": 1.2,
+    "skyLevel": 0,
+    "smoothingScale": 1.6,
+    "spikeArms": 0,
+    "spikeIntensity": 0,
+    "starSize": 1
+  },
+  "name": "void-white",
+  "palette": [
+    [
+      1,
+      0.97,
+      0.9
+    ],
+    [
+      0.9,
+      0.95,
+      1
+    ],
+    [
+      1,
+      0.92,
+      0.8
+    ],
+    [
+      0.95,
+      0.95,
+      1
+    ],
+    [
+      1,
+      1,
+      0.95
+    ],
+    [
+      0.9,
+      0.9,
+      0.95
+    ]
+  ],
+  "starCount": 0,
+  "version": 1
+}

@@ -1,0 +1,55 @@
+{
+  "camera": {
+    "elevation": 1.1,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.25,
+    "brightness": 0.17,
+    "dustStrength": 0.12,
+    "galaxyTint": 0.8,
+    "noiseLevel": 0.001,
+    "saturation": 2.4,
+    "skyLevel": 0.0004,
+    "smoothingScale": 1.9,
+    "spikeArms": 4,
+    "spikeIntensity": 0.05,
+    "spikeLength": 24,
+    "starSize": 0.8
+  },
+  "name": "gas-whisper",
+  "palette": [
+    [
+      0.15,
+      0.85,
+      0.8
+    ],
+    [
+      0.95,
+      0.3,
+      0.7
+    ],
+    [
+      0.3,
+      0.9,
+      0.6
+    ],
+    [
+      0.8,
+      0.35,
+      1
+    ],
+    [
+      0.2,
+      0.7,
+      1
+    ],
+    [
+      1,
+      0.5,
+      0.6
+    ]
+  ],
+  "starCount": 500,
+  "version": 1
+}

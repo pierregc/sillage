@@ -1,0 +1,56 @@
+{
+  "camera": {
+    "azimuth": 0.3,
+    "elevation": 1.0,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.38,
+    "brightness": 0.17,
+    "dustStrength": 0.18,
+    "galaxyTint": 0.8,
+    "maximumKernel": 64,
+    "minimumKernel": 1.3,
+    "noiseLevel": 0.001,
+    "saturation": 2.6,
+    "skyLevel": 0.0004,
+    "smoothingScale": 2,
+    "spikeIntensity": 0,
+    "starSize": 0.9
+  },
+  "name": "dusk",
+  "palette": [
+    [
+      1,
+      0.45,
+      0.15
+    ],
+    [
+      0.85,
+      0.2,
+      0.4
+    ],
+    [
+      1,
+      0.7,
+      0.2
+    ],
+    [
+      0.6,
+      0.2,
+      0.6
+    ],
+    [
+      1,
+      0.35,
+      0.3
+    ],
+    [
+      0.9,
+      0.5,
+      0.7
+    ]
+  ],
+  "starCount": 450,
+  "version": 1
+}

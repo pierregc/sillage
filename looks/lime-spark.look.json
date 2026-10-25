@@ -1,0 +1,58 @@
+{
+  "camera": {
+    "elevation": 1.25,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.35,
+    "bloomThreshold": 0.6,
+    "brightness": 0.14,
+    "dustStrength": 0,
+    "galaxyTint": 1,
+    "maximumKernel": 22,
+    "minimumKernel": 0.9,
+    "noiseLevel": 0,
+    "saturation": 3.4,
+    "skyLevel": 0,
+    "smoothingScale": 0.9,
+    "spikeArms": 4,
+    "spikeIntensity": 0.08,
+    "spikeLength": 26,
+    "stretch": 8
+  },
+  "name": "lime-spark",
+  "palette": [
+    [
+      0.6,
+      1,
+      0.2
+    ],
+    [
+      1,
+      0.2,
+      0.8
+    ],
+    [
+      0.1,
+      0.95,
+      1
+    ],
+    [
+      1,
+      0.9,
+      0.1
+    ],
+    [
+      0.6,
+      0.3,
+      1
+    ],
+    [
+      1,
+      0.4,
+      0.2
+    ]
+  ],
+  "starCount": 0,
+  "version": 1
+}
