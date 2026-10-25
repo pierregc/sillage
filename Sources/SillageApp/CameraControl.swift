@@ -13,6 +13,7 @@ extension SimulationModel {
     /// they have stopped.
     var activeCamera: Camera {
         if contemplating, !cameraIsManual { return director.camera }
+        if followsPlan, !isFlying, let planned = planCamera { return planned }
         return isFlying ? flight.camera : camera.camera
     }
 

@@ -29,6 +29,8 @@ struct ControlPanelContent: View {
             rendering
             Divider()
             view
+            Divider()
+            LookFilePanel(model: model)
         }
     }
 
@@ -346,11 +348,6 @@ struct ControlPanelContent: View {
             )
             .font(.caption2)
             .foregroundStyle(Palette.secondary)
-            Picker("Suréchantillonnage", selection: $model.supersample) {
-                Text("1×").tag(1)
-                Text("2×").tag(2)
-            }
-            .pickerStyle(.segmented)
         }
     }
 

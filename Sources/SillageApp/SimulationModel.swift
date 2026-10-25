@@ -320,7 +320,28 @@ final class SimulationModel: ObservableObject {
     /// `didSet` calling a one-line setter on the renderer, alongside a `lookExtras` holding the
     /// eight fields with no slider — three places to edit to add a setting, and one of them
     /// easy to forget.
-    @Published var look: RenderLook = SimulationModel.openingLook { didSet { applyLook() } }
+    var look: RenderLook {
+        get { lookFile.look }
+        set { lookFile.look = newValue }
+    }
+
+    /// Everything that decides the image, as a look file holds it: the look above plus what
+    /// owns buffers, the palette and the camera plan. One value, so what is saved is exactly
+    /// what is on screen.
+    @Published var lookFile = SimulationModel.openingFile { didSet { lookFileChanged(from: oldValue) } }
+    /// Where the look was read from or last written.
+    @Published var lookURL: URL?
+    /// The scene folder the take was opened from, which a look can be promoted into.
+    @Published private(set) var sceneFolder: SceneFolder?
+    /// On playback, draw through the file's camera plan rather than the orbit rig, so the
+    /// picture is the one the render will make.
+    @Published var followsPlan = false
+    /// The scene before the look's palette, so taking a colour out of the palette gives the
+    /// galaxy its own back.
+    private var unpaintedScene: SceneConfig?
+    /// A subsample of the take's first frame, which a fixed plan is framed on.
+    private var planSample: [SIMD3<Float>] = []
+    private var installingLook = false
 
     /// The number of diffraction arms, as a slider can hold it. `RenderLook` counts them as an
     /// integer because the shader draws a whole number of them, and `ParameterSlider` speaks
@@ -353,8 +374,124 @@ final class SimulationModel: ObservableObject {
         look.galaxyTint = 0.35
         return look
     }()
-    /// Not part of the look: it owns textures, so changing it means a new renderer.
-    @Published var supersample = 1 { didSet { rebuildRenderer() } }
+    /// The app's opening file. The starfield and supersampling are the ones the window has
+    /// always drawn with, which are not `LookFile.standard`'s.
+    static let openingFile = LookFile(
+        name: "sans-titre", look: openingLook, starCount: 46_000, supersample: 1)
+
+    /// Owns textures, so changing it means a new renderer.
+    var supersample: Int {
+        get { lookFile.supersample }
+        set { lookFile.supersample = newValue }
+    }
+
+    private func lookFileChanged(from old: LookFile) {
+        guard !installingLook else { return }
+        if lookFile.palette != old.palette { repaint() }
+        if lookFile.look.fieldOfView != old.look.fieldOfView {
+            camera.fieldOfView = lookFile.look.fieldOfView
+        }
+        if lookFile.rebuildsRenderer(from: old) {
+            rebuildRenderer()
+            previewRenderer?.apply(look)
+            redrawPreview()
+        } else if lookFile.look != old.look {
+            applyLook()
+        }
+    }
+
+    /// The scene drawn in the file's palette.
+    private func repaint() {
+        guard let unpaintedScene else { return }
+        scene = lookFile.painted(unpaintedScene)
+    }
+
+    /// The galaxy colours as the panel edits them: through the file's palette, over the
+    /// colours the scene came with.
+    func colour(ofGalaxy index: Int) -> SIMD3<Float> {
+        lookFile.colour(ofGalaxy: index, in: unpaintedScene ?? scene)
+    }
+
+    func setColour(_ colour: SIMD3<Float>, ofGalaxy index: Int) {
+        lookFile.setColour(colour, ofGalaxy: index, in: unpaintedScene ?? scene)
+    }
+
+    /// Adopts a whole file. One rebuild at most, however many of its fields changed.
+    func adopt(_ file: LookFile, from url: URL?) {
+        let old = lookFile
+        take(file, from: url)
+        followsPlan = mode == .playback && [.fixed, .auto].contains(file.camera.mode)
+        lookFileChanged(from: old)
+    }
+
+    /// Takes the file with none of the rebuilding, for a caller about to rebuild anyway.
+    private func take(_ file: LookFile, from url: URL?) {
+        installingLook = true
+        lookFile = file
+        installingLook = false
+        lookURL = url
+        camera.fieldOfView = file.look.fieldOfView
+        lookName = RenderLook.catalogue.first { $0.look == file.look }?.id ?? lookName
+    }
+
+    func openLook(from url: URL) {
+        do {
+            adopt(try LookFile.decoded(from: Data(contentsOf: url)), from: url)
+        } catch {
+            failure = "Look illisible : \(error)"
+        }
+    }
+
+    func saveLook(to url: URL) {
+        do {
+            try lookFile.encoded().write(to: url, options: .atomic)
+            lookURL = url
+        } catch {
+            failure = "Look non enregistré : \(error)"
+        }
+    }
+
+    /// Makes the look the scene's own, for the full render.
+    func promoteLook() {
+        guard let sceneFolder else { return }
+        do {
+            try sceneFolder.promote(lookFile)
+            lookURL = sceneFolder.look
+        } catch {
+            failure = "Look non enregistré : \(error)"
+        }
+    }
+
+    /// Arm strength for the painted pattern: the file's own times the look's, which
+    /// contemplation's director moves on the renderer.
+    private var diskStrength: Float { lookFile.armStrength * (renderer?.armPersistence ?? 1) }
+
+    /// The file's camera plan at the playhead, or nil where the plan has no picture to give
+    /// here: the director decides its shots as a clip plays, and cannot be scrubbed.
+    var planCamera: Camera? {
+        guard mode == .playback, let recording, recording.count >= 2 else { return nil }
+        let plan = lookFile.camera
+        let progress = Float(playbackPosition / Double(recording.count - 1))
+        switch plan.mode {
+        case .fixed:
+            return plan.camera(
+                progress: progress, radius: plan.framedRadius(positions: planSample),
+                fieldOfView: look.fieldOfView)
+        case .auto:
+            // Framed afresh on this frame rather than eased from the first one, which is what
+            // lets the playhead jump anywhere.
+            var auto = AutoCamera()
+            let reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
+            let centres =
+                playbackCenters.isEmpty ? scene.galaxies.map(\.position) : playbackCenters
+            let framed = auto.frame(centres: centres, margins: reach)
+            return plan.camera(
+                progress: progress, radius: framed.radius / plan.zoom, center: framed.center,
+                fieldOfView: look.fieldOfView)
+        case .director, .immersed:
+            return nil
+        }
+    }
 
     /// Pushes the whole look at both renderers. The preview is redrawn unconditionally because
     /// it draws on demand, and every field here changes what it shows.
@@ -390,7 +527,8 @@ final class SimulationModel: ObservableObject {
     /// `waiting` samples on the calling thread instead of the simulation queue. The headless
     /// checks need the scene to exist the moment they return; a window does not.
     func start(waiting: Bool = false) {
-        scene = draft
+        unpaintedScene = draft
+        scene = lookFile.painted(draft)
         // returnToSetup pauses, so without this a second launch sits still.
         isPlaying = true
         stage = .running
@@ -791,7 +929,7 @@ final class SimulationModel: ObservableObject {
         let scene = self.scene
         let particles = seeded
         let camera = self.camera.camera
-        let arms = renderer?.armPersistence ?? 1
+        let arms = diskStrength
         var settings = renderSettings(width: width, height: height)
         settings.supersample = max(supersample, 1)
         let total = reel.capturedCount
@@ -831,7 +969,16 @@ final class SimulationModel: ObservableObject {
     ///
     /// Nothing about how a run looks is baked into the file: exposure, colour, the telescope
     /// and the camera are all decided at draw time, so reopening one is not watching a video.
-    func openTake(from url: URL) {
+    func openTake(from url: URL, look lookURL: URL? = nil, folder: SceneFolder? = nil) {
+        var file: LookFile?
+        if let lookURL {
+            do {
+                file = try LookFile.decoded(from: Data(contentsOf: lookURL))
+            } catch {
+                failure = "Look illisible : \(error)"
+                return
+            }
+        }
         stopLiveStepping()
         preparation &+= 1
         fileActivity = "Ouverture de la prise…"
@@ -856,7 +1003,10 @@ final class SimulationModel: ObservableObject {
                     self.failure = failure ?? "La prise n'a pas pu être ouverte"
                     return
                 }
+                if let file { self.take(file, from: lookURL) }
                 self.installTake(loaded, expander: expander)
+                self.sceneFolder = folder
+                if let file { self.followsPlan = [.fixed, .auto].contains(file.camera.mode) }
             }
         }
     }
@@ -865,8 +1015,10 @@ final class SimulationModel: ObservableObject {
         failure = nil
         isPreparing = false
         solver = nil
-        scene = loaded.scene
+        unpaintedScene = loaded.scene
+        scene = lookFile.painted(loaded.scene)
         draft = loaded.scene
+        sceneFolder = nil
         seeded = loaded.particles
         particleCount = loaded.particles.count
         recording = loaded.recording
@@ -882,6 +1034,9 @@ final class SimulationModel: ObservableObject {
             options: .storageModeShared)
         playbackPosition = 0
         playbackCenters = loaded.recording.centers(at: 0)
+        let first = loaded.recording.positions(at: 0)
+        planSample = Swift.stride(from: 0, to: first.count, by: max(first.count / 200_000, 1))
+            .map { first[$0] }
         elapsedMyr = Double(loaded.recording.frames.first?.time ?? 0) * Physics.megayearsPerTimeUnit
         mode = .playback
         isPlaying = true
@@ -1021,27 +1176,7 @@ final class SimulationModel: ObservableObject {
     /// Every setting that decides the image, at whatever size is asked for. One place, so an
     /// exported video looks like what is on screen rather than like a second guess at it.
     func renderSettings(width: Int, height: Int) -> RenderSettings {
-        RenderSettings(
-            width: max(width, 16),
-            height: max(height, 16),
-            supersample: supersample,
-            brightness: look.brightness,
-            dustStrength: look.dustStrength,
-            starSize: look.starSize,
-            smoothingScale: look.smoothingScale,
-            minimumKernel: look.minimumKernel,
-            maximumKernel: look.maximumKernel,
-            bloomThreshold: look.bloomThreshold,
-            bloomSoftKnee: look.bloomSoftKnee,
-            bloomIntensity: look.bloomIntensity,
-            stretch: look.stretch,
-            saturation: look.saturation,
-            spikeArms: look.spikeArms,
-            spikeLength: look.spikeLength,
-            spikeIntensity: look.spikeIntensity,
-            skyLevel: look.skyLevel,
-            noiseLevel: look.noiseLevel,
-            galaxyTint: look.galaxyTint)
+        lookFile.renderSettings(width: max(width, 16), height: max(height, 16))
     }
 
     /// Adopts a whole look. The panel has a slider for ten of its parts and the rest — kernel
@@ -1049,7 +1184,28 @@ final class SimulationModel: ObservableObject {
     /// none, but they all live in the same value now, so there is nothing to keep in step.
     func adopt(_ named: RenderLook.Named) {
         lookName = named.id
-        look = named.look
+        var file = lookFile
+        file.look = named.look
+        // A named look over the raw one would still draw flat points: everything the raw look
+        // switched off comes back with it.
+        if file.plain {
+            let standard = LookFile.standard
+            file.plain = false
+            file.starCount = standard.starCount
+            file.bloomLevels = standard.bloomLevels
+            file.armStrength = standard.armStrength
+        }
+        lookFile = file
+    }
+
+    /// Opens a library scene's take with the scene's own look, for tuning.
+    func tune(_ scene: LibraryScene) {
+        guard let take = scene.take else { return }
+        let look = scene.folder.map(\.look).flatMap {
+            FileManager.default.fileExists(atPath: $0.path) ? $0 : nil
+        }
+        openTake(from: take, look: look, folder: scene.folder)
+        NSApp.windows.first { $0.title == "Sillage" }?.makeKeyAndOrderFront(nil)
     }
 
     /// Counted, because a rebuild that happens once looks exactly like one that happens every
@@ -1146,7 +1302,7 @@ final class SimulationModel: ObservableObject {
         renderer.setDiskFrames(
             DiskFrame.make(
                 scene: scene, centers: centers, time: renderer.time,
-                strength: renderer.armPersistence, disks: disks))
+                strength: diskStrength, disks: disks))
         return renderer.render(camera: activeCamera)
     }
 
@@ -1166,7 +1322,7 @@ final class SimulationModel: ObservableObject {
         renderer.setDiskFrames(
             DiskFrame.make(
                 scene: scene, centers: solver.centers, time: solver.time,
-                strength: renderer.armPersistence, disks: solverDisks))
+                strength: diskStrength, disks: solverDisks))
         return renderer.render(camera: activeCamera)
     }
 
@@ -1219,7 +1375,7 @@ final class SimulationModel: ObservableObject {
             DiskFrame.make(
                 scene: scene, centers: centers,
                 time: renderer.time,
-                strength: renderer.armPersistence, disks: disks))
+                strength: diskStrength, disks: disks))
         renderer.present(camera: activeCamera, drawable: drawable)
         if renderer.lastGPUMilliseconds > 0 {
             gpuTimes.append(renderer.lastGPUMilliseconds)
