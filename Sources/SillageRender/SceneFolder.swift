@@ -346,6 +346,7 @@ extension SceneFolder {
         case noSuchCodec(String)
         case codecNotAllowed(preset: String, codec: VideoCodec)
         case noRateControl(VideoCodec)
+        case tooLong(preset: String, seconds: Double)
 
         public var description: String {
             switch self {
@@ -362,6 +363,10 @@ extension SceneFolder {
                 "the \(preset) preset is \(codec.rawValue) only"
             case .noRateControl(let codec):
                 "\(codec.rawValue) has a fixed rate: neither --bitrate nor --quality applies"
+            case .tooLong(let preset, let seconds):
+                String(
+                    format: "%.0f s is too long for the %@ preset's size limit: cut it with --duration",
+                    seconds, preset)
             }
         }
     }

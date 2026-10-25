@@ -257,7 +257,7 @@ it as `--promote` does. A file opened and saved untouched is the same file.
 `export` draws `take.sillage` with the scene's `look.json` into `exports/<preset>.mp4`, HEVC
 in an MP4 by default, frame by frame and as fast as the GPU goes. The presets are `1080p` (1920 x 1080, the
 default), `4k` (3840 x 2160), `vertical` (1080 x 1920), `square` (1080 x 1080) and `whatsapp`
-(1280 x 720 at 4 Mbit/s, 15 MB for thirty seconds, H.264 only); the others get six bits a pixel
+(see below); the others get six bits a pixel
 a second of HEVC, twelve of H.264, since a galaxy is mostly faint gradient that a lean bit rate bands. `--width`,
 `--height` and `--bitrate` (Mbit/s) override the preset, `--start` and `--duration` (seconds) cut
 the clip, and `--fps` defaults to the rate the take was captured at; any other rate draws the
