@@ -137,3 +137,21 @@ public final class SnapshotStream {
         copying.unlock()
     }
 }
+
+extension SnapshotExpander {
+    /// The positions at `blend`, the snapshots it needs read through `stream` so the ones
+    /// after are already resident when playback reaches them.
+    @discardableResult
+    public func expand(
+        _ blend: Recording.Blend, of recording: Recording, through stream: SnapshotStream,
+        into positions: MTLBuffer
+    ) -> Bool {
+        let keys = (0..<4).map { Int(blend.keys[$0]) }
+        stream.prepare(from: keys[1])
+        let offsets = keys.compactMap { stream.fetch($0) }
+        let frames = keys.compactMap { recording.frame(at: $0) }
+        guard offsets.count == 4, frames.count == 4 else { return false }
+        expand(frames: frames, at: offsets, blend: blend, from: stream.buffer, into: positions)
+        return true
+    }
+}

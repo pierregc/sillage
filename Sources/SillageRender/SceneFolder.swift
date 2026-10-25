@@ -7,16 +7,6 @@ import SillageCore
 public struct SceneFolder: Sendable, Equatable {
     public enum Stage: String, CaseIterable, Sendable {
         case explore, hires, look, export
-
-        /// The issue a stage still waiting for its implementation arrives with.
-        public var pendingIssue: Int? {
-            switch self {
-            case .explore: nil
-            case .hires: nil
-            case .look: nil
-            case .export: 24
-            }
-        }
     }
 
     /// What neither the scene file nor the look file holds: how long the clip runs and how
@@ -345,5 +335,44 @@ extension SceneFolder {
         let file = try LookFile.decoded(from: Data(contentsOf: source))
         try promote(file)
         return file
+    }
+}
+
+extension SceneFolder {
+    public enum ExportError: Error, CustomStringConvertible {
+        case noSuchPreset(String)
+        case noSuchLook(String)
+        case badValue(String, String)
+
+        public var description: String {
+            switch self {
+            case .noSuchPreset(let name):
+                "no preset \"\(name)\", pick one of "
+                    + VideoPreset.all.map(\.name).joined(separator: ", ")
+            case .noSuchLook(let name):
+                "no look \"\(name)\": neither a file, a row of the look grid nor a catalogue look"
+            case .badValue(let option, let value): "--\(option) \(value) is not usable"
+            }
+        }
+    }
+
+    public func export(preset name: String) -> URL {
+        exports.appendingPathComponent("\(name).mp4")
+    }
+
+    /// The look an export draws with: the scene's own by default, or `name`, which is a look
+    /// file, a row of the look grid or a look of the catalogue, in that order.
+    public func exportLook(_ name: String?, catalogue: [LookFile]) throws -> LookFile {
+        guard let name else {
+            return exists(look) ? try LookFile.decoded(from: Data(contentsOf: look)) : .standard
+        }
+        let file = name.hasSuffix(".json") ? URL(fileURLWithPath: name) : nil
+        for url in [file, lookFile(named: name)].compactMap({ $0 }) where exists(url) {
+            return try LookFile.decoded(from: Data(contentsOf: url))
+        }
+        guard let found = catalogue.first(where: { $0.name == name }) else {
+            throw ExportError.noSuchLook(name)
+        }
+        return found
     }
 }

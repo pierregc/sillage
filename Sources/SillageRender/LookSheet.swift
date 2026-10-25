@@ -35,10 +35,7 @@ public final class LookSheet {
     }
 
     /// Frames the run captured, of which the take keeps one in `interval`.
-    public var capturedFrames: Int {
-        let recording = take.recording
-        return max(recording.capturedCount, (recording.count - 1) * recording.interval + 1)
-    }
+    public var capturedFrames: Int { take.recording.capturedFrames }
 
     /// Whether a captured frame is one the take kept, or is drawn through the cubic between
     /// the kept ones around it.
@@ -61,30 +58,17 @@ public final class LookSheet {
         cellHeight: Int, framesPerSecond: Int
     ) throws -> [[[UInt8]]] {
         let recording = take.recording
-        let last = frames.max() ?? 0
-        let centres = (0...last).map { frame in
-            recording.blend(atCaptured: frame).map { recording.centers(at: $0) } ?? []
-        }
-        let shots = looks.map { self.shots(of: $0, at: frames, centres: centres, fps: framesPerSecond) }
+        let shots = looks.map { self.shots(of: $0, at: frames, fps: framesPerSecond) }
 
         var cells = [[[UInt8]]](repeating: [], count: looks.count)
         for (column, frame) in frames.enumerated() {
             guard let blend = recording.blend(atCaptured: frame) else { continue }
             try expand(blend)
             smoothing.update(from: positions)
-            let disks = recording.disks(at: blend)
             for (row, file) in looks.enumerated() {
                 let renderer = try renderer(for: file, width: width, height: height)
                 let shot = shots[row][column]
-                renderer.apply(shot.look)
-                renderer.time = blend.time
-                var scene = take.scene
-                file.paint(&scene)
-                renderer.setDiskFrames(
-                    DiskFrame.make(
-                        scene: scene, centers: centres[frame], time: blend.time,
-                        strength: LookFile.diskStrength(file.armStrength, shot.look),
-                        disks: disks))
+                renderer.prepare(file, shot: shot, take: take, at: blend)
                 cells[row].append(
                     LookGrid.scaled(
                         renderer.render(camera: shot.camera), from: (width, height),
@@ -120,45 +104,11 @@ public final class LookSheet {
         return renderer
     }
 
-    /// The camera and the look on each key frame, the camera moved through every frame
-    /// before it: the auto camera eases and the director cuts, so neither can be placed on a
-    /// frame without the ones that led there.
-    private func shots(
-        of file: LookFile, at frames: [Int], centres: [[SIMD3<Float>]], fps: Int
-    ) -> [(camera: Camera, look: RenderLook)] {
-        let plan = file.camera
-        let scene = take.scene
-        let span = Float(max(capturedFrames - 1, 1))
-        let radius = plan.framedRadius(positions: take.particles.positions)
-        let reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
-        let directed = plan.mode == .director || plan.mode == .immersed
-        let director = directed ? Cinematographer(seed: scene.seed) : nil
-        director?.beginScene(seed: scene.seed, base: file.look, immersed: plan.mode == .immersed)
-        var auto = AutoCamera()
-
-        var shots: [Int: (camera: Camera, look: RenderLook)] = [:]
-        let wanted = Set(frames)
-        for frame in 0...(frames.max() ?? 0) {
-            let around = centres[frame]
-            var shot: (camera: Camera, look: RenderLook)
-            if let director {
-                director.advance(seconds: 1 / Double(fps), of: Subject(centres: around, radius: radius))
-                shot = (director.camera, director.look)
-            } else {
-                var framed = (center: SIMD3<Float>.zero, radius: radius)
-                if plan.mode == .auto {
-                    framed = auto.frame(centres: around, margins: reach)
-                    framed.radius /= plan.zoom
-                }
-                shot = (
-                    plan.camera(
-                        progress: Float(frame) / span, radius: framed.radius,
-                        center: framed.center, fieldOfView: file.look.fieldOfView),
-                    file.look
-                )
-            }
-            if wanted.contains(frame) { shots[frame] = shot }
-        }
+    private func shots(of file: LookFile, at frames: [Int], fps: Int) -> [ShotReplay.Shot] {
+        let replay = ShotReplay(
+            file: file, take: take, capturedFrames: capturedFrames, framesPerSecond: fps)
+        var shots: [Int: ShotReplay.Shot] = [:]
+        for frame in Set(frames).sorted() { shots[frame] = replay.shot(atCaptured: frame) }
         return frames.map { shots[$0]! }
     }
 }
