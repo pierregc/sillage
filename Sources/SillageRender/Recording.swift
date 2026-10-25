@@ -498,15 +498,28 @@ public final class Recording: @unchecked Sendable {
 
     /// Where one of the captured frames falls. Every stored frame but the last stands
     /// `interval` captured ones after the one before it; the last is wherever the run ended.
-    public func blend(atCaptured frame: Int) -> Blend? {
+    public func blend(atCaptured frame: Int) -> Blend? { blend(atCaptured: Double(frame)) }
+
+    /// Anywhere between two captured frames, for drawing at another frame rate than the take's.
+    public func blend(atCaptured position: Double) -> Blend? {
         locked {
             guard !storedFrames.isEmpty else { return nil }
             let last = storedFrames.count - 1
-            let index = min(max(frame, 0) / interval, max(last - 1, 0))
+            let frame = max(position, 0)
+            let index = min(Int(frame) / interval, max(last - 1, 0))
             let start = index * interval
             let end = index + 1 == last ? max(offered - 1, start + 1) : start + interval
-            return blendLocked(index, fraction: Float(frame - start) / Float(end - start))
+            return blendLocked(
+                index, fraction: Float((frame - Double(start)) / Double(end - start)))
         }
+    }
+
+    /// Frames the run captured, of which the take keeps one in `interval`. A file too old to
+    /// say is taken to end on the interval.
+    public var capturedFrames: Int {
+        let counted = capturedCount
+        let stored = count
+        return counted > stored ? counted : (stored - 1) * interval + 1
     }
 
     private func blendLocked(_ index: Int, fraction: Float) -> Blend {

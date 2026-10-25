@@ -135,8 +135,8 @@ self-gravitating scene of a generated batch from the options given, `--seed` the
 `scene.json`, `look.json` and `clip.json` are there it reads them back, so running it again
 with no options gives the same clip, and any option given overrides the file it belongs to.
 The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`, `--steps` and
-`--settle`. To start a scene over, empty its folder. `export` (#24) is not written yet and says
-so. The same stages are `sillage-render <stage> <folder>`.
+`--settle`. To start a scene over, empty its folder. The same stages are
+`sillage-render <stage> <folder>`.
 
 ### High resolution
 
@@ -245,6 +245,46 @@ picture to give and leave the camera in hand. ⌘S writes the file back where it
 somewhere new (the scene's `looks/` by default), and **En faire le look de la scène** promotes
 it as `--promote` does. A file opened and saved untouched is the same file.
 `Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing.
+
+### Export
+
+```bash
+./scripts/dev.sh export library/2026-10-23/scene-0001                     # exports/1080p.mp4
+./scripts/dev.sh export library/2026-10-23/scene-0001 --preset 4k --fps 60
+./scripts/dev.sh export library/2026-10-23/scene-0001 --preset vertical --look dream --start 4 --duration 15
+```
+
+`export` draws `take.sillage` with the scene's `look.json` into `exports/<preset>.mp4`, H.264
+in an MP4, frame by frame and as fast as the GPU goes. The presets are `1080p` (1920 x 1080, the
+default), `4k` (3840 x 2160), `vertical` (1080 x 1920), `square` (1080 x 1080) and `whatsapp`
+(1280 x 720 at 4 Mbit/s, 15 MB for thirty seconds); the others get twelve bits a pixel a second,
+since a galaxy is mostly faint gradient that a lean bit rate bands. `--width`, `--height` and
+`--bitrate` (Mbit/s) override the preset, `--start` and `--duration` (seconds) cut the clip, and
+`--fps` defaults to the rate the take was captured at; any other rate draws the moments between
+captured frames through the same cubic the take's skipped frames use, and the camera between
+the two captured frames around them. `--look` takes a file, a row of the look grid by name or a
+catalogue look, `--take` another take and `--out` another path.
+
+The camera is replayed from the take's first frame exactly as the look grid replays it, through
+the same code, so a cell of the grid and the same frame of the export are the same picture.
+Every frame is drawn straight into a pixel buffer of the encoder's pool, a BGRA Metal texture
+over it, and compressed on a queue of its own while the next one renders; the application's
+video export and `explore`'s preview go through the same writer. Stars, spikes and kernels are
+sized in pixels, so a 4k export shows them finer than a grid drawn at the clip's size.
+
+Measured on the M4 Max with a 2 M take of 300 frames and the standard look, nothing else
+running, the same over two runs:
+
+| preset | frames a second | real time | file |
+| --- | --- | --- | --- |
+| 1080p | 36.9 | 1.23x | 31.8 MB |
+| 1080p at 60 fps | 36.9 | 0.62x | 31.5 MB |
+| 4k | 19.2 | 0.64x | 127.3 MB |
+| whatsapp | 51.6 | 1.72x | 5.1 MB |
+
+At 1080p 24 of the 27 ms a frame are the renderer's own GPU time, at supersample 2; expanding
+the take and the smoothing field take the other 3, and handing the frame to the encoder costs
+nothing that shows. A 400 k take exports at 110 frames a second at 1080p and 43 at 4k.
 
 ### Fidelity
 

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import SillageCore
 import SillageRender
@@ -201,6 +202,84 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     return 0
 }
 
+/// `export <scene folder>`: the take drawn with the scene's look into `exports/<preset>.mp4`.
+func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
+    func option(_ name: String) -> String? {
+        options.firstIndex(of: "--\(name)").flatMap {
+            $0 + 1 < options.count ? options[$0 + 1] : nil
+        }
+    }
+    func value(_ name: String) throws -> Double? {
+        guard let text = option(name) else { return nil }
+        guard let number = Double(text), number >= 0 else {
+            throw SceneFolder.ExportError.badValue(name, text)
+        }
+        return number
+    }
+
+    let presetName = option("preset") ?? "1080p"
+    guard let preset = VideoPreset.named(presetName) else {
+        throw SceneFolder.ExportError.noSuchPreset(presetName)
+    }
+    let takeURL = option("take").map { URL(fileURLWithPath: $0) } ?? folder.take
+    guard FileManager.default.fileExists(atPath: takeURL.path) else {
+        throw SceneFolder.LookError.noTake(folder.url)
+    }
+    let loaded = try RecordingFile.read(from: takeURL)
+    let scenePalette =
+        (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }?.palette
+        .nonEmpty ?? loaded.scene.galaxies.map(\.color)
+    var look = try folder.exportLook(option("look"), catalogue: catalogueLooks())
+    if look.palette.isEmpty { look.palette = scenePalette }
+
+    let clip = try folder.storedClip()
+    let capturedRate = folder.storedHires()?.fps ?? clip.fps
+    // H.264 wants even sides.
+    let width = Int(try value("width") ?? Double(preset.width)) / 2 * 2
+    let height = Int(try value("height") ?? Double(preset.height)) / 2 * 2
+    let fps = Int(try value("fps") ?? Double(capturedRate))
+    guard width >= 16, height >= 16, fps >= 1 else {
+        throw SceneFolder.ExportError.badValue("width, height or fps", "\(width)x\(height) at \(fps)")
+    }
+    let bitRate = try value("bitrate").map { Int($0 * 1e6) } ?? preset.bitsPerSecond
+    let out = option("out").map { URL(fileURLWithPath: $0) } ?? folder.export(preset: preset.name)
+    try FileManager.default.createDirectory(
+        at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+    let export = try TakeExport(take: loaded, look: look, capturedRate: capturedRate)
+    let start = try value("start") ?? 0
+    let duration = try value("duration")
+    let frames = export.positions(framesPerSecond: fps, start: start, duration: duration).count
+    let rate = bitRate ?? VideoWriter.defaultBitRate(width: width, height: height)
+    print(
+        String(
+            format: "export     %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s take),"
+                + " look %@, %.1f Mbit/s, about %.0f MB",
+            preset.name, width, height, fps, frames, Double(frames) / Double(fps), start,
+            export.takeSeconds, look.name, Double(rate) / 1e6,
+            Double(rate) * Double(frames) / Double(fps) / 8e6))
+    var reported = 0
+    let report = try export.write(
+        to: out, width: width, height: height, framesPerSecond: fps, start: start,
+        duration: duration, bitsPerSecond: bitRate
+    ) { done, total in
+        let tenth = done * 10 / max(total, 1)
+        if tenth > reported {
+            reported = tenth
+            print("export     \(done)/\(total)")
+        }
+    }
+    let bytes =
+        (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
+    print(
+        String(
+            format: "export     %d frames in %.1f s, %.1f frames a second, %.2fx real time, %.1f MB",
+            report.frames, report.seconds, report.renderedPerSecond, report.speed,
+            Double(bytes) / 1e6))
+    print("video      \(out.path)")
+    return 0
+}
+
 extension Array {
     var nonEmpty: Self? { isEmpty ? nil : self }
 }
@@ -230,9 +309,6 @@ if CommandLine.arguments.count > 1,
     guard CommandLine.arguments.count > 2, !CommandLine.arguments[2].hasPrefix("--") else {
         fail("usage: sillage-render \(stage.rawValue) <scene folder> [options]")
     }
-    if let issue = stage.pendingIssue {
-        fail("\(stage.rawValue): not yet, it arrives with #\(issue)", code: 1)
-    }
     let folder = SceneFolder(path: CommandLine.arguments[2])
     let options = Array(CommandLine.arguments.dropFirst(3))
     switch stage {
@@ -241,6 +317,12 @@ if CommandLine.arguments.count > 1,
             exit(try lookStage(folder, options: options))
         } catch {
             fail("look: \(error)")
+        }
+    case .export:
+        do {
+            exit(try exportStage(folder, options: options))
+        } catch {
+            fail("export: \(error)")
         }
     case .hires:
         if !folder.isExplored && FileManager.default.fileExists(atPath: folder.url.path) {
@@ -574,7 +656,7 @@ if let lookOutPath = argument("look-out") ?? beside(".look.json") {
 }
 
 let videoWriter = try videoPath.map {
-    try FrameVideoWriter(
+    try VideoWriter(
         width: width, height: height, framesPerSecond: framesPerSecond, to: prepared($0))
 }
 
@@ -684,7 +766,20 @@ for frame in 0..<frames {
             center: framed.center, fieldOfView: look.look.fieldOfView)
     }
     let renderStart = Date()
-    let pixels = renderer.render(camera: camera)
+    // The video is drawn straight into the encoder's buffers; a still is read off the same
+    // frame rather than drawn twice.
+    let wantsStill = outputURL != nil || (thumbnailURL != nil && frame == thumbnailFrame)
+    var still: CGImage?
+    if let videoWriter {
+        try videoWriter.append(
+            on: renderer.device,
+            drawing: { target, buffer in
+                renderer.encode(camera: camera, into: buffer, present: target)
+            },
+            read: wantsStill ? { still = PNGWriter.image(bgra: $0) } : nil)
+    } else {
+        still = PNGWriter.image(renderer.render(camera: camera), width: width, height: height)
+    }
     let renderMs = Date().timeIntervalSince(renderStart) * 1000
 
     if let outputURL {
@@ -693,11 +788,10 @@ for frame in 0..<frames {
             ? outputURL
             : outputURL.deletingPathExtension().appendingPathExtension(
                 String(format: "%04d.png", frame))
-        try PNGWriter.write(pixels, width: width, height: height, to: url)
+        if let still { try PNGWriter.write(still, maximumWidth: nil, to: url) }
     }
-    try videoWriter?.append(pixels)
     if let thumbnailURL, frame == thumbnailFrame {
-        try PNGWriter.write(pixels, width: width, height: height, maximumWidth: 480, to: thumbnailURL)
+        if let still { try PNGWriter.write(still, maximumWidth: 480, to: thumbnailURL) }
         print("thumbnail  \(thumbnailURL.path)")
     }
 
@@ -798,7 +892,7 @@ for frame in 0..<frames {
                 + "  render %5.1f ms (gpu %5.2f)",
             frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
             simulationMs / Double(stepsPerFrame), smoothingMs, renderMs,
-            renderer.lastGPUTime * 1000))
+            (videoWriter?.lastGPUTime ?? renderer.lastGPUTime) * 1000))
 }
 
 try videoWriter?.finish()

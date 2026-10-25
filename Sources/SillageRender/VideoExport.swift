@@ -1,5 +1,3 @@
-import AVFoundation
-import CoreVideo
 import Foundation
 import Metal
 import SillageCore
@@ -15,13 +13,11 @@ import simd
 /// nothing to do with the display and nothing is dropped or recompressed twice.
 public enum VideoExport {
     public enum Failure: Error, CustomStringConvertible {
-        case writerUnavailable(String)
         case pixelBuffer
         case tooShort
 
         public var description: String {
             switch self {
-            case .writerUnavailable(let message): "L'encodeur n'a pas démarré : \(message)"
             case .pixelBuffer: "Impossible d'allouer une image"
             case .tooShort: "Une prise d'au moins deux images est nécessaire"
             }
@@ -43,37 +39,9 @@ public enum VideoExport {
         progress: (Double) -> Void = { _ in }
     ) throws {
         guard recording.count >= 2 else { throw Failure.tooShort }
-        try? FileManager.default.removeItem(at: url)
-
-        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
-        let input = AVAssetWriterInput(
-            mediaType: .video,
-            outputSettings: [
-                AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: settings.width,
-                AVVideoHeightKey: settings.height,
-                AVVideoCompressionPropertiesKey: [
-                    // Generous: a galaxy is mostly faint gradient on black, which is exactly
-                    // what a mean bitrate smears into banding.
-                    AVVideoAverageBitRateKey: settings.width * settings.height * 12,
-                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                ],
-            ])
-        input.expectsMediaDataInRealTime = false
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: input,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: settings.width,
-                kCVPixelBufferHeightKey as String: settings.height,
-            ])
-        guard writer.canAdd(input) else { throw Failure.writerUnavailable("entrée refusée") }
-        writer.add(input)
-        guard writer.startWriting() else {
-            throw Failure.writerUnavailable(writer.error?.localizedDescription ?? "inconnu")
-        }
-        writer.startSession(atSourceTime: .zero)
-
+        let writer = try VideoWriter(
+            width: settings.width, height: settings.height, framesPerSecond: framesPerSecond,
+            to: url)
         guard let device = MTLCreateSystemDefaultDevice() else { throw RenderError.noDevice }
         guard
             let positions = device.makeBuffer(
@@ -97,64 +65,21 @@ public enum VideoExport {
         let pictures = recording.capturedCount
         for picture in 0..<pictures {
             guard let blend = recording.blend(atCaptured: picture) else { continue }
-            let keys = (0..<4).map { Int(blend.keys[$0]) }
-            snapshots.prepare(from: keys[1])
-            let offsets = keys.compactMap { snapshots.fetch($0) }
-            let frames = keys.compactMap { recording.frame(at: $0) }
-            guard offsets.count == 4, frames.count == 4 else { continue }
-            expander.expand(
-                frames: frames, at: offsets, blend: blend, from: snapshots.buffer,
-                into: positions)
+            guard
+                expander.expand(blend, of: recording, through: snapshots, into: positions)
+            else { continue }
             // Densities move slowly and the tree costs more than the frame does.
             if picture % 12 == 0 { smoothing.update(from: positions) }
             renderer.setDiskFrames(
                 DiskFrame.make(
                     scene: scene, centers: recording.centers(at: blend), time: blend.time,
                     strength: armStrength))
-            let pixels = renderer.render(camera: camera)
-
-            while !input.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.005) }
-            guard let pool = adaptor.pixelBufferPool else { throw Failure.pixelBuffer }
-            var buffer: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
-            guard let buffer else { throw Failure.pixelBuffer }
-            copy(pixels, into: buffer, width: settings.width, height: settings.height)
-            adaptor.append(
-                buffer,
-                withPresentationTime: CMTime(value: CMTimeValue(picture), timescale: framesPerSecond))
+            try writer.append(on: device) { target, buffer in
+                renderer.encode(camera: camera, into: buffer, present: target)
+            }
             progress(Double(picture + 1) / Double(pictures))
         }
 
-        input.markAsFinished()
-        let done = DispatchSemaphore(value: 0)
-        writer.finishWriting { done.signal() }
-        done.wait()
-        if writer.status == .failed {
-            throw Failure.writerUnavailable(writer.error?.localizedDescription ?? "inconnu")
-        }
-    }
-
-    /// The renderer hands back RGBA and the encoder wants BGRA, and a pixel buffer's rows are
-    /// padded to its own stride rather than to the image width.
-    static func copy(
-        _ pixels: [UInt8], into buffer: CVPixelBuffer, width: Int, height: Int
-    ) {
-        CVPixelBufferLockBaseAddress(buffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
-        let stride = CVPixelBufferGetBytesPerRow(buffer)
-        let destination = base.bindMemory(to: UInt8.self, capacity: stride * height)
-        for row in 0..<height {
-            let source = row * width * 4
-            let target = row * stride
-            for column in 0..<width {
-                let from = source + column * 4
-                let to = target + column * 4
-                destination[to] = pixels[from + 2]
-                destination[to + 1] = pixels[from + 1]
-                destination[to + 2] = pixels[from]
-                destination[to + 3] = 255
-            }
-        }
+        try writer.finish()
     }
 }

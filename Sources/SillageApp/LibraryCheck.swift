@@ -243,8 +243,25 @@ enum LibraryCheck {
     }
 
     private static func writeVideo(to url: URL, tint: Int) throws {
-        let writer = try FrameVideoWriter(width: width, height: height, framesPerSecond: 30, to: url)
-        for frame in 0..<20 { try writer.append(pixels(tint: tint + frame)) }
+        let writer = try VideoWriter(width: width, height: height, framesPerSecond: 30, to: url)
+        for frame in 0..<20 {
+            let rgba = pixels(tint: tint + frame)
+            try writer.append { buffer in
+                CVPixelBufferLockBaseAddress(buffer, [])
+                defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+                guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
+                let stride = CVPixelBufferGetBytesPerRow(buffer)
+                let bgra = base.bindMemory(to: UInt8.self, capacity: stride * height)
+                for y in 0..<height {
+                    for x in 0..<width {
+                        let from = (y * width + x) * 4
+                        let to = y * stride + x * 4
+                        (bgra[to], bgra[to + 1], bgra[to + 2]) = (rgba[from + 2], rgba[from + 1], rgba[from])
+                        bgra[to + 3] = 255
+                    }
+                }
+            }
+        }
         try writer.finish()
     }
 

@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreVideo
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -8,9 +9,12 @@ public enum PNGWriter {
     public static func write(
         _ pixels: [UInt8], width: Int, height: Int, maximumWidth: Int? = nil, to url: URL
     ) throws {
+        try write(image(pixels, width: width, height: height), maximumWidth: maximumWidth, to: url)
+    }
+
+    public static func image(_ pixels: [UInt8], width: Int, height: Int) -> CGImage {
         let data = CFDataCreate(nil, pixels, pixels.count)!
-        let provider = CGDataProvider(data: data)!
-        let image = CGImage(
+        return CGImage(
             width: width,
             height: height,
             bitsPerComponent: 8,
@@ -18,10 +22,35 @@ public enum PNGWriter {
             bytesPerRow: width * 4,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
-            provider: provider,
+            provider: CGDataProvider(data: data)!,
             decode: nil,
             shouldInterpolate: false,
             intent: .defaultIntent)!
+    }
+
+    /// A video frame as it sits in the encoder's buffer, BGRA with padded rows, which
+    /// CoreGraphics reads as it is. Copied, since the encoder recycles the buffer.
+    public static func image(bgra buffer: CVPixelBuffer) -> CGImage? {
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+        let stride = CVPixelBufferGetBytesPerRow(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        guard
+            let data = CFDataCreate(
+                nil, base.assumingMemoryBound(to: UInt8.self), stride * height),
+            let provider = CGDataProvider(data: data)
+        else { return nil }
+        return CGImage(
+            width: CVPixelBufferGetWidth(buffer), height: height, bitsPerComponent: 8,
+            bitsPerPixel: 32, bytesPerRow: stride, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(
+                rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue
+                    | CGBitmapInfo.byteOrder32Little.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+
+    public static func write(_ image: CGImage, maximumWidth: Int?, to url: URL) throws {
         try write(maximumWidth.map { try scaled(image, toWidth: $0) } ?? image, to: url)
     }
 

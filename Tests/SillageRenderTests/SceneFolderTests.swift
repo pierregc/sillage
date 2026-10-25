@@ -44,11 +44,27 @@ struct SceneFolderTests {
         #expect(value("--frames", in: clip.arguments) == "300")
     }
 
-    @Test func onlyTheStagesStillToComeAreRefused() {
-        #expect(SceneFolder.Stage.explore.pendingIssue == nil)
-        #expect(SceneFolder.Stage.allCases.filter { $0.pendingIssue != nil }.count == 1)
-        #expect(SceneFolder.Stage.hires.pendingIssue == nil)
-        #expect(SceneFolder.Stage.look.pendingIssue == nil)
+    /// The scene's look by default, then a file, a row of the grid, a catalogue look.
+    @Test func exportPicksItsLook() throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        let catalogue = [LookFile(name: "nebula")]
+        #expect(try folder.exportLook(nil, catalogue: catalogue) == .standard)
+
+        try folder.promote(LookFile(name: "scene"))
+        try FileManager.default.createDirectory(at: folder.looks, withIntermediateDirectories: true)
+        try LookFile(name: "row").encoded().write(to: folder.lookFile(named: "row"))
+        let file = folder.url.appendingPathComponent("hand.look.json")
+        try LookFile(name: "hand").encoded().write(to: file)
+
+        #expect(try folder.exportLook(nil, catalogue: catalogue).name == "scene")
+        #expect(try folder.exportLook("row", catalogue: catalogue).name == "row")
+        #expect(try folder.exportLook(file.path, catalogue: catalogue).name == "hand")
+        #expect(try folder.exportLook("nebula", catalogue: catalogue).name == "nebula")
+        #expect(throws: SceneFolder.ExportError.self) {
+            try folder.exportLook("missing", catalogue: catalogue)
+        }
+        #expect(folder.export(preset: "4k").path.hasSuffix("/exports/4k.mp4"))
     }
 
     /// A first run generates the scene; a second reads back what the first wrote, so it can
