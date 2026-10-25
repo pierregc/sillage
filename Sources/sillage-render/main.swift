@@ -160,9 +160,11 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 
     let clip = try folder.storedClip()
     let hires = folder.storedHires()
+    let renderWidth = hires?.width ?? clip.width
+    let renderHeight = hires?.height ?? clip.height
     let cellWidth = Int(option("width").flatMap(Double.init) ?? 480)
-    let aspect = Double(hires?.height ?? clip.height) / Double(hires?.width ?? clip.width)
-    let cellHeight = max(Int((Double(cellWidth) * aspect).rounded()), 1)
+    let cellHeight = max(
+        Int((Double(cellWidth) * Double(renderHeight) / Double(renderWidth)).rounded()), 1)
     let columnLabels = keys.map { key in
         let drawn = sheet.isStored(frame: key.frame) ? "stored" : "blend"
         let label = String(
@@ -174,8 +176,8 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 
     let started = Date()
     let cells = try sheet.render(
-        looks: looks, frames: keys.map(\.frame), width: cellWidth, height: cellHeight,
-        framesPerSecond: hires?.fps ?? clip.fps)
+        looks: looks, frames: keys.map(\.frame), width: renderWidth, height: renderHeight,
+        cellWidth: cellWidth, cellHeight: cellHeight, framesPerSecond: hires?.fps ?? clip.fps)
 
     let manager = FileManager.default
     try manager.createDirectory(at: folder.looks, withIntermediateDirectories: true)

@@ -53,6 +53,30 @@ public enum LookGrid {
         return context.makeImage()
     }
 
+    /// RGBA pixels resampled to another size.
+    public static func scaled(
+        _ pixels: [UInt8], from source: (width: Int, height: Int),
+        to target: (width: Int, height: Int)
+    ) -> [UInt8] {
+        guard source != target,
+            let image = cgImage(pixels, width: source.width, height: source.height)
+        else { return pixels }
+        var out = [UInt8](repeating: 0, count: target.width * target.height * 4)
+        let drawn: Bool? = out.withUnsafeMutableBytes { buffer in
+            guard
+                let context = CGContext(
+                    data: buffer.baseAddress, width: target.width, height: target.height,
+                    bitsPerComponent: 8, bytesPerRow: target.width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+            else { return nil }
+            context.interpolationQuality = .high
+            context.draw(image, in: CGRect(x: 0, y: 0, width: target.width, height: target.height))
+            return true
+        }
+        return drawn == nil ? pixels : out
+    }
+
     private static func draw(
         _ text: String, in context: CGContext, at point: CGPoint, maximumWidth: CGFloat? = nil
     ) {

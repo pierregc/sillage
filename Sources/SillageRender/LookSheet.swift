@@ -51,10 +51,14 @@ public final class LookSheet {
         Double(take.recording.blend(atCaptured: frame)?.time ?? 0) * Physics.megayearsPerTimeUnit
     }
 
-    /// `cells[look][frame]`, each `width` by `height` RGBA. Every camera is replayed from the
-    /// first frame up to each key frame, so a still is framed as the full render frames it.
+    /// `cells[look][frame]`, each `cellWidth` by `cellHeight` RGBA. Drawn at the clip's own
+    /// `width` and `height` and scaled down, since stars, spikes and kernels are sized in
+    /// pixels and a small render would show them three times too large. Every camera is
+    /// replayed from the first frame up to each key frame, so a still is framed as the full
+    /// render frames it.
     public func render(
-        looks: [LookFile], frames: [Int], width: Int, height: Int, framesPerSecond: Int
+        looks: [LookFile], frames: [Int], width: Int, height: Int, cellWidth: Int,
+        cellHeight: Int, framesPerSecond: Int
     ) throws -> [[[UInt8]]] {
         let recording = take.recording
         let last = frames.max() ?? 0
@@ -79,8 +83,12 @@ public final class LookSheet {
                 renderer.setDiskFrames(
                     DiskFrame.make(
                         scene: scene, centers: centres[frame], time: blend.time,
-                        strength: file.armStrength * shot.look.armPersistence, disks: disks))
-                cells[row].append(renderer.render(camera: shot.camera))
+                        strength: LookFile.diskStrength(file.armStrength, shot.look),
+                        disks: disks))
+                cells[row].append(
+                    LookGrid.scaled(
+                        renderer.render(camera: shot.camera), from: (width, height),
+                        to: (cellWidth, cellHeight)))
             }
         }
         return cells
@@ -121,8 +129,7 @@ public final class LookSheet {
         let plan = file.camera
         let scene = take.scene
         let span = Float(max(capturedFrames - 1, 1))
-        let radius =
-            plan.radius > 0 ? plan.radius : plan.framedRadius(positions: take.particles.positions)
+        let radius = plan.framedRadius(positions: take.particles.positions)
         let reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
         let directed = plan.mode == .director || plan.mode == .immersed
         let director = directed ? Cinematographer(seed: scene.seed) : nil
