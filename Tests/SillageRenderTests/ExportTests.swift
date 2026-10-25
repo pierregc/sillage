@@ -239,4 +239,21 @@ struct ExportTests {
             VideoCodec.hevc.defaultBitRate(width: 1920, height: 1080)!
                 < VideoCodec.h264.defaultBitRate(width: 1920, height: 1080)!)
     }
+
+    /// A preview over its size budget is drawn again narrower, from the same take.
+    @Test func aPreviewOverItsBudgetIsDrawnAgainNarrower() throws {
+        let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("preview-\(UUID().uuidString).gif")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let free = try export.writePreview(
+            to: url, format: .gif, width: 640, height: 360, framesPerSecond: 10)
+        #expect(free.attempts.count == 1 && free.frames == 12 && free.width == 640)
+        let fitted = try export.writePreview(
+            to: url, format: .gif, width: 640, height: 360, framesPerSecond: 10,
+            maximumBytes: free.bytes / 2)
+        #expect(fitted.attempts.count >= 2 && fitted.width < 640)
+        #expect(fitted.height == Int((Double(fitted.width) * 9 / 16).rounded()))
+        #expect(fitted.bytes <= free.bytes / 2 || fitted.width == TakeExport.previewFloor.width)
+    }
 }

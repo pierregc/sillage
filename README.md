@@ -316,6 +316,51 @@ of 300 frames (10 s), one export at a time:
 | hevc | 205 | 15.9 MB | 77 | 63.9 MB |
 | prores | 201 | 282 MB | 78 | 1126 MB |
 
+#### Previews
+
+```bash
+./scripts/dev.sh export library/2026-10-23/scene-0001 --format webp                  # exports/preview.webp
+./scripts/dev.sh export library/2026-10-23/scene-0001 --format gif --max-size 5MB
+./scripts/dev.sh export library/2026-10-23/scene-0001 --format webp --preset square --width 480 --start 3
+```
+
+`--format webp` or `gif` writes a looping animation instead of a video, from the same take, look
+and camera, each frame drawn by the same renderer and read back rather than decoded from a video:
+960 wide at 16 fps for 8 seconds by default, the size of the README's own animation, with
+`--width`, `--height`, `--fps`, `--start` and `--duration` as for a video and `--preset` giving
+only the proportions. `--max-size` (`5MB`, `800KB`, megabytes without a unit) draws it again
+narrower until it fits, down to 320 wide, then at a lower frame rate, down to 10 fps.
+
+ImageIO reads WebP but does not write it, so WebP goes through `img2webp` from libwebp
+(`brew install webp`), lossy at `--quality` 0.8. GIF needs nothing: ImageIO spends its palette
+on the bright cores and leaves the faint tails in a few flat steps, and given one palette for
+every frame it merges them into one of its own, sixteen colours deep. Here the palette is cut
+from the whole animation by median cut at full precision, weighted by how many pixels a colour
+covers so the dark levels a galaxy is mostly made of keep a colour each, every frame is mapped
+onto it with Floyd Steinberg dithering, and the file is written by hand, one global table and
+LZW, so nothing quantises it again.
+
+Measured on the M4 Max with a 150 k take and the standard look, 8 seconds at 16 fps, 128 frames
+drawn in 0.5 s; the error is the mean gap, in levels out of 255, between 4 x 4 blocks of the
+source frame and of the file read back, over the faint blocks (brightest pixel under 40) and the
+others:
+
+| file | size | written in | faint error | bright error |
+| --- | --- | --- | --- | --- |
+| WebP, quality 0.8 | 11.4 MB | 5.9 s | 1.06 | 1.55 |
+| WebP, quality 0.6 | 5.8 MB | 5.3 s | 1.40 | 2.17 |
+| WebP, `--max-size 5MB` | 4.6 MB, 604 wide | 8.7 s | | |
+| WebP without grain | 0.9 MB | 2.1 s | | |
+| GIF | 62.7 MB | 1.6 s | 0.14 | 0.57 |
+| GIF through ImageIO's own palette | 40.0 MB | 1.3 s | 0.47 | 0.75 |
+| GIF, `--max-size 5MB` | 4.1 MB, 320 wide at 10 fps | 3.1 s | | |
+| GIF without grain | 26.6 MB | 1.6 s | | |
+
+The grain is most of every file: noise compresses badly in both, and in a GIF not at all. WebP
+halves the chroma, which blurs the grain and tints the faint halo, where the dithered GIF keeps
+both; but the GIF weighs five times as much, so WebP stays the default and a GIF wants a narrow
+`--max-size`. img2webp's slowest method saves 8 % for fifteen times the time and is not used.
+
 ### Fidelity
 
 Whether a scene picked at the exploration size is the same scene at millions, measured on ten

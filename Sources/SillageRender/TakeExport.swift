@@ -122,6 +122,89 @@ public final class TakeExport {
             framesPerSecond: framesPerSecond)
     }
 
+    /// Every frame a video at `framesPerSecond` would show, drawn as the video draws them and
+    /// read back as RGBA, for the animations that are not written through the encoder.
+    public func frames(
+        width: Int, height: Int, framesPerSecond: Int, start: Double = 0,
+        duration: Double? = nil, progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
+    ) throws -> [[UInt8]] {
+        let wanted = positions(framesPerSecond: framesPerSecond, start: start, duration: duration)
+        let renderer = try makeRenderer(width: width, height: height)
+        let replay = ShotReplay(
+            file: look, take: take, capturedFrames: capturedFrames,
+            framesPerSecond: capturedRate)
+        return try wanted.enumerated().map { index, position in
+            let shot = try prepare(renderer, at: position, replay: replay)
+            defer { progress(index + 1, wanted.count) }
+            return renderer.render(camera: shot.camera)
+        }
+    }
+
+    public struct PreviewReport: Sendable {
+        public var width: Int
+        public var height: Int
+        public var framesPerSecond: Int
+        public var frames: Int
+        public var bytes: Int
+        public var seconds: Double
+        /// Every size tried, the last one kept.
+        public var attempts: [(width: Int, framesPerSecond: Int, bytes: Int)]
+    }
+
+    /// The smallest a preview gets while looking for a size under `maximumBytes`: below
+    /// these the tails turn to a few pixels and the motion to steps.
+    public static let previewFloor = (width: 320, framesPerSecond: 10)
+
+    /// A looping animation of the take. Over `maximumBytes`, the width comes down first, to
+    /// `previewFloor`, then the frame rate, each frame rendered again at the new size.
+    public func writePreview(
+        to url: URL, format: AnimatedImage.Format, width: Int, height: Int,
+        framesPerSecond: Int, start: Double = 0, duration: Double? = nil,
+        maximumBytes: Int? = nil, quality: Int = 80,
+        progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
+    ) throws -> PreviewReport {
+        let started = Date()
+        let aspect = Double(height) / Double(width)
+        var (currentWidth, rate) = (width, framesPerSecond)
+        var attempts: [(width: Int, framesPerSecond: Int, bytes: Int)] = []
+        while true {
+            let currentHeight = max(Int((Double(currentWidth) * aspect).rounded()), 1)
+            let frames = try self.frames(
+                width: currentWidth, height: currentHeight, framesPerSecond: rate, start: start,
+                duration: duration, progress: progress)
+            try AnimatedImage.write(
+                frames, width: currentWidth, height: currentHeight, framesPerSecond: rate,
+                format: format, quality: quality, to: url)
+            // Not through the URL's resource values, which keep the first size read.
+            let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            attempts.append((currentWidth, rate, bytes))
+            guard let maximumBytes, bytes > maximumBytes,
+                let next = Self.smaller(
+                    width: currentWidth, framesPerSecond: rate,
+                    ratio: Double(maximumBytes) / Double(bytes))
+            else {
+                return PreviewReport(
+                    width: currentWidth, height: currentHeight, framesPerSecond: rate,
+                    frames: frames.count, bytes: bytes,
+                    seconds: Date().timeIntervalSince(started), attempts: attempts)
+            }
+            (currentWidth, rate) = next
+        }
+    }
+
+    /// The next size to try when a preview is `1 / ratio` times too big. The bytes go about
+    /// as the pixels times the frames, aimed a little under, so most land in one more try.
+    static func smaller(width: Int, framesPerSecond: Int, ratio: Double) -> (Int, Int)? {
+        let floor = previewFloor
+        if width > floor.width {
+            return (max(Int(Double(width) * (ratio * 0.9).squareRoot()), floor.width), framesPerSecond)
+        }
+        if framesPerSecond > floor.framesPerSecond {
+            return (width, max(Int(Double(framesPerSecond) * ratio * 0.9), floor.framesPerSecond))
+        }
+        return nil
+    }
+
     /// One frame as the export draws it, read back as RGBA.
     func still(atCaptured frame: Int, width: Int, height: Int) throws -> [UInt8] {
         let renderer = try makeRenderer(width: width, height: height)
