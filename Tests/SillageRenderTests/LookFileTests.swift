@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 import Testing
 import simd
 
@@ -93,5 +94,73 @@ struct LookFileTests {
             #expect(first.camera.eye == second.camera.eye)
             #expect(first.camera.target == second.camera.target)
         }
+    }
+
+    /// Every field of the settings comes from the file, so a renderer built from it draws what
+    /// the file says rather than `RenderSettings`'s own defaults.
+    @Test func theSettingsCarryEveryFieldOfTheFile() {
+        var file = LookFile.raw
+        file.look = .dream
+        file.starCount = 1234
+        file.look.whitePoint = 7
+        let s = file.renderSettings(width: 320, height: 200)
+        let look = file.look
+        #expect(s.width == 320 && s.height == 200)
+        #expect(s.supersample == file.supersample && s.starCount == 1234)
+        #expect(s.bloomLevels == file.bloomLevels && s.plain == file.plain)
+        #expect(
+            RenderLook(
+                brightness: s.brightness, dustStrength: s.dustStrength,
+                smoothingScale: s.smoothingScale, minimumKernel: s.minimumKernel,
+                maximumKernel: s.maximumKernel, bloomThreshold: s.bloomThreshold,
+                bloomSoftKnee: s.bloomSoftKnee, bloomIntensity: s.bloomIntensity,
+                stretch: s.stretch, saturation: s.saturation, whitePoint: s.whitePoint,
+                spikeArms: s.spikeArms, spikeLength: s.spikeLength,
+                spikeIntensity: s.spikeIntensity, skyLevel: s.skyLevel, noiseLevel: s.noiseLevel,
+                galaxyTint: s.galaxyTint, starSize: s.starSize,
+                armPersistence: look.armPersistence, fieldOfView: look.fieldOfView) == look)
+    }
+
+    @Test func onlyTheFieldsThatOwnBuffersRebuildTheRenderer() {
+        let base = LookFile.standard
+        var live = base
+        live.look = .ember
+        live.armStrength = 0.4
+        live.palette = [SIMD3(1, 0, 0)]
+        live.camera.zoom = 2
+        #expect(!live.rebuildsRenderer(from: base))
+        for change in [
+            { (f: inout LookFile) in f.supersample = 3 }, { $0.starCount = 10 },
+            { $0.bloomLevels = 3 }, { $0.plain = true },
+        ] {
+            var other = base
+            change(&other)
+            #expect(other.rebuildsRenderer(from: base))
+        }
+    }
+
+    @Test func thePaletteRecoloursOnlyTheGalaxiesItReaches() {
+        var scene = SceneConfig.merger(particleCount: 2000)
+        let kept = scene.galaxies[1].color
+        var file = LookFile.standard
+        file.palette = [SIMD3(0.1, 0.2, 0.3)]
+        file.paint(&scene)
+        #expect(scene.galaxies[0].color == SIMD3(0.1, 0.2, 0.3))
+        #expect(scene.galaxies[1].color == kept)
+    }
+
+    @Test func aFixedPlanEasesFromItsStartToItsEnd() {
+        let plan = LookFile.CameraPlan(elevation: 0.2, elevationEnd: 1.0, azimuth: 0, azimuthEnd: 2)
+        let start = plan.camera(progress: 0, radius: 10, fieldOfView: 0.6)
+        let end = plan.camera(progress: 1, radius: 10, fieldOfView: 0.6)
+        #expect(start.eye == Camera.framing(radius: 10, elevation: 0.2, azimuth: 0).eye)
+        #expect(end.eye == Camera.framing(radius: 10, elevation: 1.0, azimuth: 2).eye)
+        let held = LookFile.CameraPlan(elevation: 0.7, azimuth: 1)
+        #expect(
+            held.camera(progress: 0.5, radius: 10, fieldOfView: 0.6).eye
+                == held.camera(progress: 0, radius: 10, fieldOfView: 0.6).eye)
+        let points = (1...100).map { SIMD3<Float>(Float($0), 0, 0) }
+        #expect(LookFile.CameraPlan(zoom: 2, percentile: 0.5).framedRadius(positions: points) == 25.5)
+        #expect(LookFile.CameraPlan(zoom: 2, radius: 40).framedRadius(positions: points) == 40)
     }
 }

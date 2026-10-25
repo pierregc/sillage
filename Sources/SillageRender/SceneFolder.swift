@@ -106,6 +106,10 @@ public struct SceneFolder: Sendable, Equatable {
     public var batch: URL { url.deletingLastPathComponent() }
     public var scene: URL { file("scene.json") }
     public var look: URL { file("look.json") }
+    /// The look `explore` wrote, kept aside once another look is promoted over it.
+    public var rawLook: URL { file("look-raw.json") }
+    /// Candidate looks for the scene, one `<name>.look.json` each.
+    public var looks: URL { url.appendingPathComponent("looks", isDirectory: true) }
     public var clip: URL { file("clip.json") }
     public var preview: URL { file("preview.mov") }
     public var thumbnail: URL { file("thumbnail.png") }
@@ -120,6 +124,16 @@ public struct SceneFolder: Sendable, Equatable {
     private func file(_ name: String) -> URL { url.appendingPathComponent(name) }
 
     private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    /// Makes `look` the one the scene renders with. The first look it replaces is kept as
+    /// `look-raw.json`, so the plain look `explore` judged the dynamics with is never lost.
+    public func promote(_ look: LookFile) throws {
+        let manager = FileManager.default
+        if exists(self.look), !exists(rawLook) {
+            try manager.moveItem(at: self.look, to: rawLook)
+        }
+        try look.encoded().write(to: self.look, options: .atomic)
+    }
 
     /// The clip last explored here, or the default one.
     public func storedClip() throws -> Clip {
