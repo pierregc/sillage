@@ -274,7 +274,6 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     if !codec.hasRateControl && (asked != nil || quality != nil) {
         throw SceneFolder.ExportError.noRateControl(codec)
     }
-    let bitRate = asked ?? preset.bitsPerSecond
     let out =
         option("out").map { URL(fileURLWithPath: $0) }
         ?? folder.export(
@@ -284,6 +283,8 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 
     let duration = try value("duration")
     let frames = export.positions(framesPerSecond: fps, start: start, duration: duration).count
+    var bitRate = asked
+    if bitRate == nil { bitRate = try preset.bitRate(forSeconds: Double(frames) / Double(fps)) }
     let rate = bitRate ?? codec.defaultBitRate(width: width, height: height)
     let steering =
         quality.map { String(format: "quality %.2f", $0) }
@@ -318,6 +319,15 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
             report.frames, report.seconds, report.renderedPerSecond, report.speed,
             Double(bytes) / 1e6))
     print("video      \(out.path)")
+    if let limit = preset.maxBytes, bytes > limit {
+        print("warning    \(bytes / 1_000_000) MB, over the \(limit / 1_000_000) MB aimed for")
+    }
+    if preset.caption {
+        let captionURL = out.deletingPathExtension().appendingPathExtension("txt")
+        try VideoMetadata(sceneID: folder.sceneID).caption.write(
+            to: captionURL, atomically: true, encoding: .utf8)
+        print("caption    \(captionURL.path)")
+    }
     return 0
 }
 

@@ -102,6 +102,9 @@ public struct VideoMetadata: Sendable, Equatable {
         ]
     }
 
+    /// Two lines to paste beside the video in a chat: what it shows and under which licence.
+    public var caption: String { "\(title)\n\(author), \(Self.licence) \(Self.licenceURL)\n" }
+
     private func item(_ identifier: AVMetadataIdentifier, _ value: String) -> AVMetadataItem {
         let made = AVMutableMetadataItem()
         made.identifier = identifier

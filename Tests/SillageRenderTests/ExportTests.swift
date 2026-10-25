@@ -63,6 +63,24 @@ struct ExportTests {
         #expect(VideoPreset.named("cinema") == nil)
     }
 
+    @Test func whatsAppRateFollowsTheClipDownToTheSizeLimit() throws {
+        let whatsapp = try #require(VideoPreset.named("whatsapp"))
+        #expect(try whatsapp.bitRate(forSeconds: 10) == 4_000_000)
+        #expect(try whatsapp.bitRate(forSeconds: 20) == 4_000_000)
+        let long = try #require(try whatsapp.bitRate(forSeconds: 60))
+        #expect(long < 4_000_000)
+        #expect(Double(long) * 60 / 8 <= 15_000_000)
+        #expect(throws: SceneFolder.ExportError.self) { try whatsapp.bitRate(forSeconds: 600) }
+        #expect(try VideoPreset.named("1080p")?.bitRate(forSeconds: 600) == nil)
+        #expect(whatsapp.caption && VideoPreset.named("4k")?.caption == false)
+    }
+
+    @Test func theCaptionNamesTheSceneAndTheLicence() {
+        let caption = VideoMetadata(sceneID: "2026-10-23/scene-0001").caption
+        #expect(caption.contains("Sillage 2026-10-23/scene-0001"))
+        #expect(caption.contains("CC BY 4.0 https://creativecommons.org/licenses/by/4.0/"))
+    }
+
     @Test func aFractionalCapturedFrameBlendsBetweenItsNeighbours() throws {
         let loaded = try take(frames: 9, interval: 4)
         let recording = loaded.recording
