@@ -930,6 +930,7 @@ final class SimulationModel: ObservableObject {
         let particles = seeded
         let camera = self.camera.camera
         let arms = diskStrength
+        let metadata = VideoMetadata(sceneID: sceneFolder?.sceneID ?? scene.name)
         var settings = renderSettings(width: width, height: height)
         settings.supersample = max(supersample, 1)
         let total = reel.capturedCount
@@ -941,7 +942,7 @@ final class SimulationModel: ObservableObject {
                 try VideoExport.write(
                     recording: reel, particles: particles, scene: scene, settings: settings,
                     camera: camera, armStrength: arms,
-                    framesPerSecond: Int32(max(framesPerSecond, 1)), to: url
+                    framesPerSecond: Int32(max(framesPerSecond, 1)), metadata: metadata, to: url
                 ) { fraction in
                     DispatchQueue.main.async {
                         self?.fileActivity = String(

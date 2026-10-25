@@ -10,14 +10,18 @@ public struct VideoPreset: Sendable, Equatable {
     public var height: Int
     /// Absent, the encoder's generous default for the size.
     public var bitsPerSecond: Int?
+    /// Set when the place only takes one codec, which then cannot be changed.
+    public var codec: VideoCodec?
 
     public static let all = [
         VideoPreset(name: "1080p", width: 1920, height: 1080),
         VideoPreset(name: "4k", width: 3840, height: 2160),
         VideoPreset(name: "vertical", width: 1080, height: 1920),
         VideoPreset(name: "square", width: 1080, height: 1080),
-        // WhatsApp keeps a video whole under 16 MB: thirty seconds at 4 Mbit/s is 15.
-        VideoPreset(name: "whatsapp", width: 1280, height: 720, bitsPerSecond: 4_000_000),
+        // WhatsApp keeps a video whole under 16 MB: thirty seconds at 4 Mbit/s is 15, and it
+        // plays H.264 whatever the phone.
+        VideoPreset(
+            name: "whatsapp", width: 1280, height: 720, bitsPerSecond: 4_000_000, codec: .h264),
     ]
 
     public static func named(_ name: String) -> VideoPreset? {
@@ -88,7 +92,8 @@ public final class TakeExport {
 
     public func write(
         to url: URL, width: Int, height: Int, framesPerSecond: Int, start: Double = 0,
-        duration: Double? = nil, bitsPerSecond: Int? = nil,
+        duration: Double? = nil, codec: VideoCodec = .h264, bitsPerSecond: Int? = nil,
+        quality: Double? = nil, metadata: VideoMetadata? = nil,
         progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
     ) throws -> Report {
         let wanted = positions(framesPerSecond: framesPerSecond, start: start, duration: duration)
@@ -97,8 +102,8 @@ public final class TakeExport {
             file: look, take: take, capturedFrames: capturedFrames,
             framesPerSecond: capturedRate)
         let writer = try VideoWriter(
-            width: width, height: height, framesPerSecond: Int32(framesPerSecond),
-            bitsPerSecond: bitsPerSecond, to: url)
+            width: width, height: height, framesPerSecond: Int32(framesPerSecond), codec: codec,
+            bitsPerSecond: bitsPerSecond, quality: quality, metadata: metadata, to: url)
         let started = Date()
         for (index, position) in wanted.enumerated() {
             let shot = try prepare(renderer, at: position, replay: replay)

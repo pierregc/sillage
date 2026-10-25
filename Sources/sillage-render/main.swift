@@ -202,7 +202,8 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     return 0
 }
 
-/// `export <scene folder>`: the take drawn with the scene's look into `exports/<preset>.mp4`.
+/// `export <scene folder>`: the take drawn with the scene's look into `exports/<preset>.mp4`,
+/// or `<preset>-hevc.mp4` and `<preset>-prores.mov` for the other codecs.
 func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     func option(_ name: String) -> String? {
         options.firstIndex(of: "--\(name)").flatMap {
@@ -220,6 +221,18 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     let presetName = option("preset") ?? "1080p"
     guard let preset = VideoPreset.named(presetName) else {
         throw SceneFolder.ExportError.noSuchPreset(presetName)
+    }
+    let codec: VideoCodec
+    if let name = option("codec") {
+        guard let named = VideoCodec(rawValue: name.lowercased()) else {
+            throw SceneFolder.ExportError.noSuchCodec(name)
+        }
+        codec = named
+    } else {
+        codec = preset.codec ?? .h264
+    }
+    if let pinned = preset.codec, pinned != codec {
+        throw SceneFolder.ExportError.codecNotAllowed(preset: preset.name, codec: pinned)
     }
     let takeURL = option("take").map { URL(fileURLWithPath: $0) } ?? folder.take
     guard FileManager.default.fileExists(atPath: takeURL.path) else {
@@ -241,8 +254,18 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     guard width >= 16, height >= 16, fps >= 1 else {
         throw SceneFolder.ExportError.badValue("width, height or fps", "\(width)x\(height) at \(fps)")
     }
-    let bitRate = try value("bitrate").map { Int($0 * 1e6) } ?? preset.bitsPerSecond
-    let out = option("out").map { URL(fileURLWithPath: $0) } ?? folder.export(preset: preset.name)
+    let quality = try value("quality")
+    if let quality, quality > 1 {
+        throw SceneFolder.ExportError.badValue("quality", option("quality") ?? "")
+    }
+    let asked = try value("bitrate").map { Int($0 * 1e6) }
+    if !codec.hasRateControl && (asked != nil || quality != nil) {
+        throw SceneFolder.ExportError.noRateControl(codec)
+    }
+    let bitRate = asked ?? preset.bitsPerSecond
+    let out =
+        option("out").map { URL(fileURLWithPath: $0) }
+        ?? folder.export(preset: preset.name, codec: codec)
     try FileManager.default.createDirectory(
         at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
 
@@ -250,18 +273,25 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     let start = try value("start") ?? 0
     let duration = try value("duration")
     let frames = export.positions(framesPerSecond: fps, start: start, duration: duration).count
-    let rate = bitRate ?? VideoWriter.defaultBitRate(width: width, height: height)
+    let rate = bitRate ?? codec.defaultBitRate(width: width, height: height)
+    let steering =
+        quality.map { String(format: "quality %.2f", $0) }
+        ?? rate.map {
+            String(
+                format: "%.1f Mbit/s, about %.0f MB", Double($0) / 1e6,
+                Double($0) * Double(frames) / Double(fps) / 8e6)
+        } ?? "ProRes 422 HQ"
     print(
         String(
-            format: "export     %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s take),"
-                + " look %@, %.1f Mbit/s, about %.0f MB",
-            preset.name, width, height, fps, frames, Double(frames) / Double(fps), start,
-            export.takeSeconds, look.name, Double(rate) / 1e6,
-            Double(rate) * Double(frames) / Double(fps) / 8e6))
+            format: "export     %@ %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s take),"
+                + " look %@, %@",
+            preset.name, codec.rawValue, width, height, fps, frames, Double(frames) / Double(fps),
+            start, export.takeSeconds, look.name, steering))
     var reported = 0
     let report = try export.write(
         to: out, width: width, height: height, framesPerSecond: fps, start: start,
-        duration: duration, bitsPerSecond: bitRate
+        duration: duration, codec: codec, bitsPerSecond: bitRate, quality: quality,
+        metadata: VideoMetadata(sceneID: folder.sceneID)
     ) { done, total in
         let tenth = done * 10 / max(total, 1)
         if tenth > reported {
