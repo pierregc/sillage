@@ -125,7 +125,7 @@ struct ExportTests {
         }
     }
 
-    @Test func anExportIsAnH264MP4OfTheFramesAsked() async throws {
+    @Test func anExportIsAnHEVCMP4OfTheFramesAsked() async throws {
         let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("export-\(UUID().uuidString).mp4")
@@ -141,7 +141,7 @@ struct ExportTests {
         let size = try await track.load(.naturalSize)
         #expect(size == CGSize(width: 64, height: 36))
         let format = try #require(try await track.load(.formatDescriptions).first)
-        #expect(CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_H264)
+        #expect(CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_HEVC)
         let duration = try await asset.load(.duration)
         #expect(abs(duration.seconds - 0.5) < 0.01)
     }
@@ -188,6 +188,12 @@ struct ExportTests {
         #expect(abs(try await asset.load(.duration).seconds - 1.2) < 0.01)
     }
 
+    @Test func h264IsStillThereWhenAskedFor() async throws {
+        let (asset, url) = try await exported(.h264)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(try await subtype(asset).0 == kCMVideoCodecType_H264)
+    }
+
     @Test func aQualityStandsInForTheBitRate() async throws {
         for codec in [VideoCodec.h264, .hevc] {
             let (asset, url) = try await exported(codec, quality: 0.5)
@@ -223,9 +229,10 @@ struct ExportTests {
         let folder = SceneFolder(path: "/library/2026-10-23/scene-0001")
         #expect(folder.sceneID == "2026-10-23/scene-0001")
         #expect(folder.export(preset: "4k").lastPathComponent == "4k.mp4")
-        #expect(folder.export(preset: "4k", codec: .hevc).lastPathComponent == "4k-hevc.mp4")
+        #expect(folder.export(preset: "4k", codec: .h264).lastPathComponent == "4k-h264.mp4")
         #expect(folder.export(preset: "4k", codec: .prores).lastPathComponent == "4k-prores.mov")
-        #expect(VideoPreset.named("whatsapp")?.codec == .h264)
+        #expect(VideoPreset.named("1080p")?.defaultCodec == .hevc)
+        #expect(VideoPreset.named("whatsapp")?.defaultCodec == .h264)
         #expect(VideoPreset.all.filter { $0.codec != nil }.map(\.name) == ["whatsapp"])
         #expect(VideoCodec.prores.defaultBitRate(width: 1920, height: 1080) == nil)
         #expect(

@@ -203,7 +203,8 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 }
 
 /// `export <scene folder>`: the take drawn with the scene's look into `exports/<preset>.mp4`,
-/// or `<preset>-hevc.mp4` and `<preset>-prores.mov` for the other codecs.
+/// HEVC unless the preset or `--codec` says otherwise; another codec adds its name, as
+/// `<preset>-h264.mp4` and `<preset>-prores.mov`.
 func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     func option(_ name: String) -> String? {
         options.firstIndex(of: "--\(name)").flatMap {
@@ -229,7 +230,7 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         }
         codec = named
     } else {
-        codec = preset.codec ?? .h264
+        codec = preset.defaultCodec
     }
     if let pinned = preset.codec, pinned != codec {
         throw SceneFolder.ExportError.codecNotAllowed(preset: preset.name, codec: pinned)
@@ -265,7 +266,8 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     let bitRate = asked ?? preset.bitsPerSecond
     let out =
         option("out").map { URL(fileURLWithPath: $0) }
-        ?? folder.export(preset: preset.name, codec: codec)
+        ?? folder.export(
+            preset: preset.name, codec: codec == preset.defaultCodec ? nil : codec)
     try FileManager.default.createDirectory(
         at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
 

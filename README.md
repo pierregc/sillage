@@ -254,23 +254,23 @@ it as `--promote` does. A file opened and saved untouched is the same file.
 ./scripts/dev.sh export library/2026-10-23/scene-0001 --preset vertical --look dream --start 4 --duration 15
 ```
 
-`export` draws `take.sillage` with the scene's `look.json` into `exports/<preset>.mp4`, H.264
+`export` draws `take.sillage` with the scene's `look.json` into `exports/<preset>.mp4`, HEVC
 in an MP4 by default, frame by frame and as fast as the GPU goes. The presets are `1080p` (1920 x 1080, the
 default), `4k` (3840 x 2160), `vertical` (1080 x 1920), `square` (1080 x 1080) and `whatsapp`
-(1280 x 720 at 4 Mbit/s, 15 MB for thirty seconds, H.264 only); the others get twelve bits a pixel
-a second, since a galaxy is mostly faint gradient that a lean bit rate bands. `--width`,
+(1280 x 720 at 4 Mbit/s, 15 MB for thirty seconds, H.264 only); the others get six bits a pixel
+a second of HEVC, twelve of H.264, since a galaxy is mostly faint gradient that a lean bit rate bands. `--width`,
 `--height` and `--bitrate` (Mbit/s) override the preset, `--start` and `--duration` (seconds) cut
 the clip, and `--fps` defaults to the rate the take was captured at; any other rate draws the
 moments between captured frames through the same cubic the take's skipped frames use, and the
 camera between the two captured frames around them. `--look` takes a file, a row of the look
 grid by name or a catalogue look, `--take` another take and `--out` another path.
 
-`--codec h264|hevc|prores` picks what the frames are compressed with, all on the media engine:
+`--codec hevc|h264|prores` picks what the frames are compressed with, all on the media engine:
 
 | codec | file | for | rate |
 | --- | --- | --- | --- |
-| `h264` | `<preset>.mp4` | plays everywhere | twelve bits a pixel a second |
-| `hevc` | `<preset>-hevc.mp4` | about half the bytes of H.264, tagged `hvc1` for QuickTime and iOS | six bits a pixel a second |
+| `h264` | `<preset>-h264.mp4` | plays everywhere, older devices included | twelve bits a pixel a second |
+| `hevc` (default) | `<preset>.mp4` | about half the bytes of H.264, tagged `hvc1` for QuickTime and iOS; compared by eye on a 4k clip, no visible difference | six bits a pixel a second |
 | `prores` | `<preset>-prores.mov` | editing: ProRes 422 HQ, 10 bit | fixed by the size |
 
 `--bitrate` steers H.264 and HEVC, `--quality` (0 to 1) replaces it with what the picture needs;
