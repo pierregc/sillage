@@ -1,0 +1,42 @@
+{
+  "armStrength" : 1,
+  "bloomLevels" : 6,
+  "camera" : {
+    "azimuth" : 0,
+    "elevation" : 1.15,
+    "mode" : "fixed",
+    "percentile" : 0.98,
+    "radius" : 0,
+    "zoom" : 1
+  },
+  "look" : {
+    "armPersistence" : 1.6,
+    "bloomIntensity" : 0.62,
+    "bloomSoftKnee" : 0.9,
+    "bloomThreshold" : 0.28,
+    "brightness" : 0.22,
+    "dustStrength" : 0.06,
+    "fieldOfView" : 0.75,
+    "galaxyTint" : 0.85,
+    "maximumKernel" : 96,
+    "minimumKernel" : 1.9,
+    "noiseLevel" : 0.0008,
+    "saturation" : 3,
+    "skyLevel" : 0.004,
+    "smoothingScale" : 3,
+    "spikeArms" : 0,
+    "spikeIntensity" : 0,
+    "spikeLength" : 40,
+    "starSize" : 1.5,
+    "stretch" : 26,
+    "whitePoint" : 4.5
+  },
+  "name" : "dream",
+  "palette" : [
+
+  ],
+  "plain" : false,
+  "starCount" : 9000,
+  "supersample" : 2,
+  "version" : 1
+}

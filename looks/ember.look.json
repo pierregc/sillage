@@ -1,0 +1,42 @@
+{
+  "armStrength" : 1,
+  "bloomLevels" : 6,
+  "camera" : {
+    "azimuth" : 0,
+    "elevation" : 1.15,
+    "mode" : "fixed",
+    "percentile" : 0.98,
+    "radius" : 0,
+    "zoom" : 1
+  },
+  "look" : {
+    "armPersistence" : 1.3,
+    "bloomIntensity" : 0.46,
+    "bloomSoftKnee" : 0.75,
+    "bloomThreshold" : 0.4,
+    "brightness" : 0.2,
+    "dustStrength" : 0.35,
+    "fieldOfView" : 0.68,
+    "galaxyTint" : 0.7,
+    "maximumKernel" : 80,
+    "minimumKernel" : 1.3,
+    "noiseLevel" : 0.0014,
+    "saturation" : 2.6,
+    "skyLevel" : 0.0026,
+    "smoothingScale" : 2.3,
+    "spikeArms" : 0,
+    "spikeIntensity" : 0,
+    "spikeLength" : 60,
+    "starSize" : 1.25,
+    "stretch" : 23,
+    "whitePoint" : 4.5
+  },
+  "name" : "ember",
+  "palette" : [
+
+  ],
+  "plain" : false,
+  "starCount" : 9000,
+  "supersample" : 2,
+  "version" : 1
+}

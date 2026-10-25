@@ -117,6 +117,8 @@ library/<batch>/
         curves-hires.csv   its curves, in the format of curves.csv
         hires.json         the particle count, steps and settings it ran with, and its cost
         take.sillage       the run at full size, for the later stages
+        looks/             the look stage's grid.png and one .look.json per row
+        look-raw.json      the look explore wrote, once another is promoted over it
         exports/           the finished videos
 ```
 
@@ -133,8 +135,8 @@ self-gravitating scene of a generated batch from the options given, `--seed` the
 `scene.json`, `look.json` and `clip.json` are there it reads them back, so running it again
 with no options gives the same clip, and any option given overrides the file it belongs to.
 The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`, `--steps` and
-`--settle`. To start a scene over, empty its folder. `look` (#22) and `export` (#24) are not
-written yet and say so. The same stages are `sillage-render <stage> <folder>`.
+`--settle`. To start a scene over, empty its folder. `export` (#24) is not written yet and says
+so. The same stages are `sillage-render <stage> <folder>`.
 
 ### High resolution
 
@@ -201,6 +203,35 @@ Compressing the positions as well was measured and left out. On top of 1 in 4, z
 frame alone saves another 29 %, and predicting each frame from the two before it 47 %, but the
 second decodes only in order, and both would give up the memory-mapped random access playback
 and export rely on, for a smaller saving than the interval already makes.
+
+### Looks
+
+```bash
+./scripts/dev.sh look library/2026-10-23/scene-0001                    # the grid
+./scripts/dev.sh look library/2026-10-23/scene-0001 --base dream my.look.json
+./scripts/dev.sh look library/2026-10-23/scene-0001 --promote standard-vivid
+```
+
+`look` draws the take, `take.sillage` from `hires`, with no solver: a few frames, several looks,
+one grid in `looks/grid.png`, a row per look and a column per key frame. The rows are a base
+look, `LookFile.standard` unless `--base` names a look of `looks/` or a file, then the base one
+change at a time (brighter, dimmer, more and less colour, spikes, bloom, camera higher, lower,
+closer, wider), then the catalogue in the repository's `looks/` (observatory, dream, gloss, ink,
+ember), then any `.look.json` given. All of them keep the scene's palette, the one in its
+`look.json`, unless a file given has its own. `--no-variants` and `--no-catalogue` leave rows
+out, `--width` sets a cell's width (480), and `--take` draws a smaller take instead.
+
+The key frames come from `curves-hires.csv`: the start, the approach (halfway in distance to the
+pericentre), the pericentre (the smallest separation), the tails (the largest tidal fraction
+after it) and the end, less any that fall within a twentieth of the clip of another. `--frames
+0,150,299` picks captured frames by hand, `--times 120,300` the frames nearest those megayears.
+Each column says whether its frame is one the take kept or one drawn through the cubic between
+them. Every camera is played from the first frame to the key frame, so the auto camera's easing
+and the director's cuts land where the full render puts them.
+
+Every row's look is kept as `looks/<name>.look.json`. `--promote <name>` makes one the scene's
+`look.json` for the export, moving the raw one explore wrote to `look-raw.json` the first time;
+a later promotion replaces the earlier one, which stays in `looks/`.
 
 ### Exploration batches
 

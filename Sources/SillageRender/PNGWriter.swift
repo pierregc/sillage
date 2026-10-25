@@ -22,8 +22,10 @@ public enum PNGWriter {
             decode: nil,
             shouldInterpolate: false,
             intent: .defaultIntent)!
-        let written = try maximumWidth.map { try scaled(image, toWidth: $0) } ?? image
+        try write(maximumWidth.map { try scaled(image, toWidth: $0) } ?? image, to: url)
+    }
 
+    public static func write(_ written: CGImage, to url: URL) throws {
         guard
             let destination = CGImageDestinationCreateWithURL(
                 url as CFURL, UTType.png.identifier as CFString, 1, nil)

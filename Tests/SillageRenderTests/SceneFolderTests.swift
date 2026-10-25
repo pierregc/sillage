@@ -30,6 +30,7 @@ struct SceneFolderTests {
         #expect(folder.curves.lastPathComponent == "curves.csv")
         #expect(folder.take.lastPathComponent == "take.sillage")
         #expect(folder.exports.lastPathComponent == "exports")
+        #expect(folder.lookGrid.path == "/library/2026-10-23/scene-0007/looks/grid.png")
         #expect(SceneFolder(path: "/library/b/s/") == SceneFolder(path: "/library/b/s"))
     }
 
@@ -45,8 +46,9 @@ struct SceneFolderTests {
 
     @Test func onlyTheStagesStillToComeAreRefused() {
         #expect(SceneFolder.Stage.explore.pendingIssue == nil)
-        #expect(SceneFolder.Stage.allCases.filter { $0.pendingIssue != nil }.count == 2)
+        #expect(SceneFolder.Stage.allCases.filter { $0.pendingIssue != nil }.count == 1)
         #expect(SceneFolder.Stage.hires.pendingIssue == nil)
+        #expect(SceneFolder.Stage.look.pendingIssue == nil)
     }
 
     /// A first run generates the scene; a second reads back what the first wrote, so it can
