@@ -601,14 +601,23 @@ let curves: FileHandle? = try argument("curves").map { path in
     FileManager.default.createFile(atPath: url.path, contents: nil)
     let handle = try FileHandle(forWritingTo: url)
     let disks = scene.galaxies.indices.map { ",disruption_\($0)" }.joined()
+    let centres = scene.galaxies.indices.map { ",x_\($0),y_\($0),z_\($0)" }.joined()
     try handle.write(
         contentsOf: Data(
             ("frame,time_myr,separation_kpc,extent_kpc,formed,closest_kpc,tidal_fraction"
-                + disks + "\n").utf8))
+                + disks + centres + "\n").utf8))
     return handle
 }
 var previousTime = solver.time
 var curvesSeconds: Double = 0
+// `--density path` counts the stars on a fixed grid at `--density-frames` instants, the same
+// grid at every particle count, so runs of one scene compare without a camera in between.
+let densityURL = try argument("density").map(prepared)
+var density = densityURL.map { _ in
+    DensityMap(
+        frames: frames, count: Int(number("density-frames", 8)),
+        extent: Float(number("density-extent", 60)))
+}
 // A sampled star farther than this from every centre is in a tail or a bridge, not a disk.
 let tidalReach = reach.map { $0 * 1.5 }
 
@@ -708,6 +717,18 @@ for frame in 0..<frames {
         }
     }
 
+    if density?.wants(frame: frame) == true {
+        if let gpuSolver {
+            density?.add(
+                gpuSolver.positions.contents().bindMemory(
+                    to: SIMD3<Float>.self, capacity: seeded.count), count: drawnCount)
+        } else {
+            solver.particles.positions.withUnsafeBufferPointer { buffer in
+                if let base = buffer.baseAddress { density?.add(base, count: drawnCount) }
+            }
+        }
+    }
+
     if let curves {
         let curvesStart = Date()
         let centres = solver.centers
@@ -760,10 +781,11 @@ for frame in 0..<frames {
             }
         }
         let myr = Double(solver.time) * Physics.megayearsPerTimeUnit
+        let track = centres.map { String(format: ",%.4f,%.4f,%.4f", $0.x, $0.y, $0.z) }.joined()
         let line =
             String(
                 format: "%d,%.3f,%.4f,%.4f,%d,%.4f,%.4f", frame, myr, separation, extent, formed,
-                closest, tidalFraction) + disks + "\n"
+                closest, tidalFraction) + disks + track + "\n"
         try curves.write(contentsOf: Data(line.utf8))
         curvesSeconds += Date().timeIntervalSince(curvesStart)
     }
@@ -781,6 +803,10 @@ for frame in 0..<frames {
 
 try videoWriter?.finish()
 try curves?.close()
+if let density, let densityURL {
+    try density.npy().write(to: densityURL)
+    print("density    \(density.instants.count) maps, \(densityURL.path)")
+}
 if curves != nil {
     print(
         String(

@@ -111,7 +111,7 @@ library/<batch>/
         clip.json          how long the clip runs and how large it is drawn
         preview.mov        the exploration clip
         thumbnail.png      one still from the middle of it, 480 px wide
-        curves.csv         per frame separation, extent, stars formed, tails and disruption
+        curves.csv         per frame separation, extent, stars formed, tails, disruption and centres
         interest.json      the interest score and the features it comes from
         hires.mov          the same clip at high resolution, raw, at the preview's size
         curves-hires.csv   its curves, in the format of curves.csv
@@ -245,6 +245,41 @@ picture to give and leave the camera in hand. ⌘S writes the file back where it
 somewhere new (the scene's `looks/` by default), and **En faire le look de la scène** promotes
 it as `--promote` does. A file opened and saved untouched is the same file.
 `Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing.
+
+### Fidelity
+
+Whether a scene picked at the exploration size is the same scene at millions, measured on ten
+scenes of batch 2110 (two to five galaxies, the Antennae, a polar ring and a compact group among
+them), each replayed at 50 000, 200 000 and 500 000 particles a galaxy and two at a million:
+
+```bash
+scripts/fidelity.py run    library/2026-10-24-fidelity/scene-0007 --per-galaxy 50000,200000,500000
+scripts/fidelity.py report library/2026-10-24-fidelity
+```
+
+`run` replays the scene through `hires` into `<scene>/.fidelity/<size>/`, and keeps only the
+curves and the density maps: `--density` counts the stars on a fixed grid around the centre of
+mass at eight instants, the same grid at every size. `report` compares every replay with the
+largest, into `.fidelity/fidelity.json`: the centres' tracks, which `curves.csv` now carries,
+the closest passage, the tidal fraction, and the share of stars that two maps put in the same
+cells. Against the largest replay:
+
+| per galaxy | centres apart | pericentre | tidal fraction, end | stars in the same place, end |
+| --- | --- | --- | --- | --- |
+| 50 000 | 0.5 to 3.6 kpc | within 1 Myr on 8 of 10, 11 Myr at worst | within 0.03 | 0.24 to 0.88 |
+| 200 000 | 0.6 to 2.9 kpc | within 1 Myr on 7 of 10, 5 Myr at worst | within 0.04 | 0.54 to 0.94 |
+| 500 000, against 1 M | 0.4 and 0.6 kpc | the same frame | within 0.01 | 0.77 and 0.81 |
+
+The large scale holds at 200 000: the same passages at the same time and distance, the same
+amount in the tails. The detail of the tails does not hold at any size, since even 500 000 and a
+million part ways on a fifth of the stars by the end of the clip, and 200 000 comes within a
+tenth of that floor on eight scenes of ten. At 50 000 the centres still go the same way, but the tails of one scene
+of ten come out unrecognisable (a quarter of the stars in the same place), so a quick batch finds
+encounters and a night batch judges them. Run again at its own size, a scene comes back within
+0.15 kpc, so the differences are the particle count and not the run.
+
+`--dt-scale 3.5` holds at high resolution: halving the step at 500 000 a galaxy moves the centres
+by less than 0.01 kpc and leaves 98 % of the stars in the same place, for twice the time.
 
 ### Exploration batches
 
