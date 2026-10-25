@@ -373,6 +373,10 @@ extension SceneFolder {
         return exports.appendingPathComponent("\(name)\(suffix).\(codec.fileExtension)")
     }
 
+    public func preview(_ name: String, extension: String) -> URL {
+        exports.appendingPathComponent("\(name).\(`extension`)")
+    }
+
     /// `<batch>/<scene>`, which names the scene wherever its video ends up.
     public var sceneID: String {
         "\(batch.lastPathComponent)/\(url.lastPathComponent)"

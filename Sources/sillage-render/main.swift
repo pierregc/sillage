@@ -247,6 +247,17 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 
     let clip = try folder.storedClip()
     let capturedRate = folder.storedHires()?.fps ?? clip.fps
+    let export = try TakeExport(take: loaded, look: look, capturedRate: capturedRate)
+    let start = try value("start") ?? 0
+    if let name = option("format") {
+        guard let format = AnimatedImage.Format(rawValue: name.lowercased()) else {
+            throw SceneFolder.ExportError.badValue("format", name)
+        }
+        return try previewStage(
+            folder, export: export, format: format, preset: options.contains("--preset") ? preset : nil,
+            start: start, option: option, value: value)
+    }
+
     // H.264 wants even sides.
     let width = Int(try value("width") ?? Double(preset.width)) / 2 * 2
     let height = Int(try value("height") ?? Double(preset.height)) / 2 * 2
@@ -269,8 +280,6 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     try FileManager.default.createDirectory(
         at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-    let export = try TakeExport(take: loaded, look: look, capturedRate: capturedRate)
-    let start = try value("start") ?? 0
     let duration = try value("duration")
     let frames = export.positions(framesPerSecond: fps, start: start, duration: duration).count
     let rate = bitRate ?? codec.defaultBitRate(width: width, height: height)
@@ -307,6 +316,64 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
             report.frames, report.seconds, report.renderedPerSecond, report.speed,
             Double(bytes) / 1e6))
     print("video      \(out.path)")
+    return 0
+}
+
+/// `export <scene folder> --format webp|gif`: a looping preview, 960 wide at 16 fps for eight
+/// seconds unless told otherwise, the README's own animation.
+func previewStage(
+    _ folder: SceneFolder, export: TakeExport, format: AnimatedImage.Format, preset: VideoPreset?,
+    start: Double, option: (String) -> String?, value: (String) throws -> Double?
+) throws -> Int32 {
+    let width = Int(try value("width") ?? 960)
+    let aspect = preset.map { Double($0.height) / Double($0.width) } ?? 9.0 / 16
+    let height = Int(try value("height") ?? (Double(width) * aspect).rounded())
+    let fps = Int(try value("fps") ?? 16)
+    let duration = try value("duration") ?? 8
+    // From 0 to 1 as for a video.
+    let quality = try value("quality") ?? 0.8
+    guard width >= 16, height >= 16, fps >= 1, quality <= 1 else {
+        throw SceneFolder.ExportError.badValue(
+            "width, height, fps or quality", "\(width)x\(height) at \(fps)")
+    }
+    let maximum = try option("max-size").map {
+        guard let bytes = AnimatedImage.bytes($0) else {
+            throw SceneFolder.ExportError.badValue("max-size", $0)
+        }
+        return bytes
+    }
+    let out =
+        option("out").map { URL(fileURLWithPath: $0) }
+        ?? folder.preview(preset?.name ?? "preview", extension: format.rawValue)
+    try FileManager.default.createDirectory(
+        at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+    print(
+        String(
+            format: "export     %@ %dx%d at %d fps, %.1f s from %.1f s of a %.1f s take, look %@%@",
+            format.rawValue, width, height, fps, duration, start, export.takeSeconds,
+            export.look.name, maximum.map { String(format: ", at most %.1f MB", Double($0) / 1e6) } ?? ""))
+    let report = try export.writePreview(
+        to: out, format: format, width: width, height: height, framesPerSecond: fps,
+        start: start, duration: duration, maximumBytes: maximum,
+        quality: Int((quality * 100).rounded()))
+    for attempt in report.attempts.dropLast() {
+        print(
+            String(
+                format: "export     %d wide at %d fps: %.1f MB, too big", attempt.width,
+                attempt.framesPerSecond, Double(attempt.bytes) / 1e6))
+    }
+    print(
+        String(
+            format: "export     %dx%d, %d frames at %.1f fps, %.1f MB in %.1f s",
+            report.width, report.height, report.frames,
+            AnimatedImage.playedRate(report.framesPerSecond, format: format),
+            Double(report.bytes) / 1e6, report.seconds))
+    if let maximum, report.bytes > maximum {
+        print(
+            "export     still over \(maximum / 1_000_000) MB at the smallest size tried: shorten it with --duration"
+        )
+    }
+    print("preview    \(out.path)")
     return 0
 }
 
