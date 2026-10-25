@@ -96,6 +96,9 @@ and stops, `--no-check` renders anyway, and `--check` judges a scene read from a
 `scripts/library.sh` drops a rejected seed, logs the reason in `library.log` and draws the
 slot's next seed, and ends by printing how many draws were rejected.
 
+New here? [docs/night-manager.md](docs/night-manager.md) is the short user guide to the whole
+night batch, rating, hires, look and export workflow.
+
 ## Scene folders
 
 A scene goes through four stages, each one command that reads and writes the scene's own
