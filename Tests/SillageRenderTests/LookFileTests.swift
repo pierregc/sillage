@@ -163,4 +163,61 @@ struct LookFileTests {
         #expect(LookFile.CameraPlan(zoom: 2, percentile: 0.5).framedRadius(positions: points) == 25.5)
         #expect(LookFile.CameraPlan(zoom: 2, radius: 40).framedRadius(positions: points) == 40)
     }
+
+    private func threeGalaxies() -> SceneConfig {
+        var scene = SceneConfig.merger(particleCount: 2000)
+        scene.galaxies.append(scene.galaxies[0])
+        for index in scene.galaxies.indices {
+            scene.galaxies[index].color = SIMD3(Float(index) / 4, 0.5, 1)
+        }
+        return scene
+    }
+
+    @Test func aGalaxyColourIsWrittenWithTheOnesBeforeItAndNoneAfter() {
+        let scene = threeGalaxies()
+        var file = LookFile.standard
+        #expect(file.colour(ofGalaxy: 2, in: scene) == scene.galaxies[2].color)
+        file.setColour(SIMD3(1, 0, 0), ofGalaxy: 1, in: scene)
+        #expect(file.palette == [scene.galaxies[0].color, SIMD3(1, 0, 0)])
+        let painted = file.painted(scene)
+        #expect(
+            painted.galaxies.map(\.color) == [
+                scene.galaxies[0].color, SIMD3(1, 0, 0), scene.galaxies[2].color,
+            ])
+        #expect(file.colour(ofGalaxy: 1, in: scene) == SIMD3(1, 0, 0))
+        // Painting never feeds back: the colours are read from the scene as it came.
+        #expect(file.painted(painted) == painted)
+    }
+
+    /// The app holds a look file and the take's own scene, and nothing else about the
+    /// picture: opening one and saving it untouched writes the same bytes, and every edit the
+    /// panel makes survives a save and a reopen.
+    @Test func whatTheAppHoldsIsWhatItSaves() throws {
+        let scene = threeGalaxies()
+        var original = LookFile.standard
+        original.name = "tuned"
+        original.palette = [SIMD3(0.9, 0.8, 0.7)]
+        original.camera = .init(mode: .fixed, elevation: 0.3, azimuthEnd: 1.2, zoom: 1.4)
+        let written = try original.encoded()
+
+        var held = try LookFile.decoded(from: written)
+        #expect(try held.encoded() == written)
+
+        held.look = .gloss
+        held.look.spikeArms = 4
+        held.starCount = 12_000
+        held.supersample = 3
+        held.bloomLevels = 4
+        held.plain = true
+        held.armStrength = 0.6
+        held.setColour(SIMD3(0.2, 0.4, 1), ofGalaxy: 2, in: scene)
+        held.camera.mode = .auto
+        held.camera.elevationEnd = 0.9
+        held.camera.percentile = 0.9
+        held.camera.radius = 55
+        let reopened = try LookFile.decoded(from: held.encoded())
+        #expect(reopened == held)
+        #expect(reopened.painted(scene).galaxies.map(\.color) == held.painted(scene).galaxies.map(\.color))
+        #expect(try reopened.encoded() == held.encoded())
+    }
 }

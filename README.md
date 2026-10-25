@@ -233,6 +233,19 @@ Every row's look is kept as `looks/<name>.look.json`. `--promote <name>` makes o
 `look.json` for the export, moving the raw one explore wrote to `look-raw.json` the first time;
 a later promotion replaces the earlier one, which stays in `looks/`.
 
+The grid compares; the application tunes. In the library window, **Régler le look** on a scene
+that has a take opens `take.sillage` with the scene's `look.json`, and File > Open takes any take
+(⌘O) and any look file (⇧⌘O) over it. The panel edits every field of the file with the picture
+live: the look's sliders, each galaxy's colour, the file's own arm strength, the starfield, the
+bloom levels, supersampling and plain points (these four rebuild the renderer, the slider on
+release), and the camera plan. **Voir à travers le plan** draws through the plan at the
+playhead, so scrubbing shows the render's own framing; a fixed plan is framed on the take's
+first frame, an auto one on each frame afresh, and the director's plans have no frame by frame
+picture to give and leave the camera in hand. ⌘S writes the file back where it came from, ⇧⌘S
+somewhere new (the scene's `looks/` by default), and **En faire le look de la scène** promotes
+it as `--promote` does. A file opened and saved untouched is the same file.
+`Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing.
+
 ### Exploration batches
 
 ```bash

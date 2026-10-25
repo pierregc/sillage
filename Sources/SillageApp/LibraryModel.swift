@@ -55,6 +55,14 @@ final class LibraryModel: ObservableObject {
         Array(Set(scenes.map { $0.archetype ?? LibraryQuery.free })).sorted()
     }
 
+    /// Set by the application: opens a take for look tuning in the main window.
+    var onTune: ((LibraryScene) -> Void)?
+
+    func tune(_ scene: LibraryScene) {
+        enlarged = nil
+        onTune?(scene)
+    }
+
     func scene(_ id: String?) -> LibraryScene? {
         id.flatMap { id in scenes.first { $0.id == id } }
     }

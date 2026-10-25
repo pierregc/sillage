@@ -18,13 +18,18 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
     /// Size and date of the video, which change for as long as a render is writing it.
     public var videoBytes: Int
     public var modified: Date
+    /// The scene's folder, absent for a flat batch of videos.
+    public var folder: SceneFolder?
+    /// The high resolution take, once `hires` has written one; what look tuning opens.
+    public var take: URL?
 
     public var id: String { "\(batch)/\(name)" }
 
     public init(
         batch: String, batchURL: URL, name: String, video: URL? = nil, thumbnail: URL? = nil,
         archetype: String? = nil, tempo: String? = nil, galaxies: Int? = nil, seed: String? = nil,
-        score: Double? = nil, videoBytes: Int = 0, modified: Date = .distantPast
+        score: Double? = nil, videoBytes: Int = 0, modified: Date = .distantPast,
+        folder: SceneFolder? = nil, take: URL? = nil
     ) {
         self.batch = batch
         self.batchURL = batchURL
@@ -38,6 +43,8 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
         self.score = score
         self.videoBytes = videoBytes
         self.modified = modified
+        self.folder = folder
+        self.take = take
     }
 }
 
@@ -147,7 +154,8 @@ public enum SceneLibrary {
                     LibraryScene(
                         batch: name, batchURL: batch, name: url.lastPathComponent, video: video,
                         thumbnail: exists(folder.thumbnail) ? folder.thumbnail : nil,
-                        archetype: archetype(in: folder.scene), score: score(in: folder.interest)),
+                        archetype: archetype(in: folder.scene), score: score(in: folder.interest),
+                        folder: folder, take: exists(folder.take) ? folder.take : nil),
                     index: index))
         }
         let files =

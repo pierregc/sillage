@@ -41,6 +41,9 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--flicker") {
             MainActor.assumeIsolated { FlickerCheck.run() }
         }
+        if CommandLine.arguments.contains("--lookcheck") {
+            MainActor.assumeIsolated { LookCheck.run() }
+        }
         if CommandLine.arguments.contains("--librarycheck") {
             MainActor.assumeIsolated { LibraryCheck.run() }
         }
@@ -64,6 +67,7 @@ struct SillageApp: App {
             // than letting a light theme put dark text on the black canvas.
             .preferredColorScheme(.dark)
             .onAppear {
+                library.onTune = { [weak model] scene in model?.tune(scene) }
                 startFrameCheck()
                 startCinemaCheck()
                 PresetCheck.run(model)
@@ -75,6 +79,7 @@ struct SillageApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(before: .windowList) { LibraryCommand() }
+            CommandGroup(after: .newItem) { LookCommands(model: model) }
         }
 
         Window("Bibliothèque", id: LibraryView.windowID) {

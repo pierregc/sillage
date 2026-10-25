@@ -222,6 +222,7 @@ struct LibraryCard: View {
                 Text(scene.name).font(.callout.monospacedDigit())
                 Spacer(minLength: 4)
                 Text(details).font(.caption).foregroundStyle(Palette.secondary).lineLimit(1)
+                TuneButton(model: model, scene: scene)
             }
             ChoiceButtons(entry: entry) { model.choose($0, for: scene.id) }
             RatingButtons(entry: entry) { model.rate($0, for: scene.id) }
@@ -306,6 +307,7 @@ struct LibraryEnlarged: View {
                         .foregroundStyle(Palette.secondary)
                     }
                     Spacer()
+                    TuneButton(model: model, scene: scene)
                     ChoiceButtons(entry: model.entries[scene.id]) { model.choose($0, for: scene.id) }
                         .frame(width: 180)
                     RatingButtons(entry: model.entries[scene.id]) { model.rate($0, for: scene.id) }
@@ -314,6 +316,22 @@ struct LibraryEnlarged: View {
                 .frame(maxWidth: 1280)
             }
             .padding(24)
+        }
+    }
+}
+
+/// Opens the scene's high resolution take with its look, in the main window, for tuning.
+/// Only there once `hires` has written a take.
+struct TuneButton: View {
+    let model: LibraryModel
+    let scene: LibraryScene
+
+    var body: some View {
+        if scene.take != nil {
+            Button("Régler le look") { model.tune(scene) }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Ouvre la prise haute résolution avec le look de la scène")
         }
     }
 }
