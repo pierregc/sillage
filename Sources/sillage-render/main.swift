@@ -47,6 +47,164 @@ func hiresBatch(_ batch: URL, options: [String]) -> Int32 {
     return failed == 0 ? 0 : 1
 }
 
+/// The repository's own looks, `looks/*.look.json`, with the built in catalogue first.
+func catalogueLooks() -> [LookFile] {
+    let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("looks")
+    let order = RenderLook.catalogue.map(\.id)
+    let files =
+        ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
+        .filter { $0.hasSuffix(".look.json") && $0 != "raw.look.json" }
+        .sorted { a, b in
+            let ia = order.firstIndex(of: String(a.dropLast(10))) ?? order.count
+            let ib = order.firstIndex(of: String(b.dropLast(10))) ?? order.count
+            return ia == ib ? a < b : ia < ib
+        }
+        .compactMap { name in
+            (try? Data(contentsOf: directory.appendingPathComponent(name)))
+                .flatMap { try? LookFile.decoded(from: $0) }
+        }
+    return files.isEmpty
+        ? RenderLook.catalogue.map { LookFile(name: $0.id, look: $0.look) } : files
+}
+
+/// `look <scene folder>`: a grid of looks against key frames of the take, and `--promote
+/// <name>` to make one of its rows the scene's look.
+func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
+    func option(_ name: String) -> String? {
+        options.firstIndex(of: "--\(name)").flatMap {
+            $0 + 1 < options.count ? options[$0 + 1] : nil
+        }
+    }
+    func readLook(_ path: String) throws -> LookFile {
+        try LookFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: path)))
+    }
+    if let name = option("promote") {
+        let file = try folder.promote(look: name)
+        print("look       \(file.name) is now \(folder.look.path)")
+        return 0
+    }
+
+    let takeURL = option("take").map { URL(fileURLWithPath: $0) } ?? folder.take
+    guard FileManager.default.fileExists(atPath: takeURL.path) else {
+        throw SceneFolder.LookError.noTake(folder.url)
+    }
+    let catalogue = catalogueLooks()
+    var base = LookFile.standard
+    if let named = option("base") {
+        if let found = catalogue.first(where: { $0.name == named }) {
+            base = found
+        } else {
+            base = try readLook(named)
+        }
+    }
+    var hand: [LookFile] = []
+    for (index, value) in options.enumerated() where value.hasSuffix(".look.json") {
+        if index > 0, options[index - 1] == "--base" || options[index - 1] == "--take" {
+            continue
+        }
+        hand.append(try readLook(value))
+    }
+
+    let loaded = try RecordingFile.read(from: takeURL)
+    let scenePalette =
+        (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }?.palette
+        .nonEmpty ?? loaded.scene.galaxies.map(\.color)
+    func withScenePalette(_ file: LookFile) -> LookFile {
+        var file = file
+        if file.palette.isEmpty { file.palette = scenePalette }
+        return file
+    }
+    var looks =
+        (options.contains("--no-variants") ? [base] : LookVariants.around(base))
+        + (options.contains("--no-catalogue") ? [] : catalogue.filter { $0.name != base.name })
+    for index in looks.indices { looks[index].palette = scenePalette }
+    looks += hand.map(withScenePalette)
+    var seen: [String: Int] = [:]
+    for index in looks.indices {
+        let name = looks[index].name
+        seen[name, default: 0] += 1
+        if let count = seen[name], count > 1 { looks[index].name = "\(name)-\(count)" }
+    }
+
+    let sheet = try LookSheet(take: loaded)
+    let samples =
+        (try? String(contentsOf: folder.hiresCurves, encoding: .utf8))
+        .map(KeyFrames.samples) ?? []
+    let lastFrame = sheet.capturedFrames - 1
+    var keys: [KeyFrame]
+    if let list = option("frames") {
+        keys = list.split(separator: ",").compactMap { Int($0) }.map {
+            KeyFrame(frame: min(max($0, 0), lastFrame), role: .chosen, timeMyr: 0)
+        }
+    } else if let list = option("times") {
+        keys = list.split(separator: ",").compactMap { Double($0) }.map { myr in
+            let frame =
+                KeyFrames.nearest(timeMyr: myr, in: samples)?.frame
+                ?? (0...lastFrame).min {
+                    abs(sheet.timeMyr(atCaptured: $0) - myr) < abs(sheet.timeMyr(atCaptured: $1) - myr)
+                } ?? 0
+            return KeyFrame(frame: min(frame, lastFrame), role: .chosen, timeMyr: 0)
+        }
+    } else {
+        keys = KeyFrames.pick(samples.filter { $0.frame <= lastFrame })
+        if keys.isEmpty {
+            keys = [0, lastFrame / 2, lastFrame].map {
+                KeyFrame(frame: $0, role: .middle, timeMyr: 0)
+            }
+            keys[0].role = .start
+            keys[2].role = .end
+        }
+    }
+    guard !keys.isEmpty else { fail("look: no key frame to draw") }
+
+    let clip = try folder.storedClip()
+    let hires = folder.storedHires()
+    let renderWidth = hires?.width ?? clip.width
+    let renderHeight = hires?.height ?? clip.height
+    let cellWidth = Int(option("width").flatMap(Double.init) ?? 480)
+    let cellHeight = max(
+        Int((Double(cellWidth) * Double(renderHeight) / Double(renderWidth)).rounded()), 1)
+    let columnLabels = keys.map { key in
+        let drawn = sheet.isStored(frame: key.frame) ? "stored" : "blend"
+        let label = String(
+            format: "%@ · %d · %.0f Myr · %@", key.role.rawValue, key.frame,
+            sheet.timeMyr(atCaptured: key.frame), drawn)
+        print("key frame  \(label)")
+        return label
+    }
+
+    let started = Date()
+    let cells = try sheet.render(
+        looks: looks, frames: keys.map(\.frame), width: renderWidth, height: renderHeight,
+        cellWidth: cellWidth, cellHeight: cellHeight, framesPerSecond: hires?.fps ?? clip.fps)
+
+    let manager = FileManager.default
+    try manager.createDirectory(at: folder.looks, withIntermediateDirectories: true)
+    for stale in (try? manager.contentsOfDirectory(atPath: folder.looks.path)) ?? []
+    where stale.hasSuffix(".look.json") || stale == folder.lookGrid.lastPathComponent {
+        try manager.removeItem(at: folder.looks.appendingPathComponent(stale))
+    }
+    for file in looks { try file.encoded().write(to: folder.lookFile(named: file.name)) }
+    guard
+        let grid = LookGrid.image(
+            cells: cells, rowLabels: looks.map(\.name), columnLabels: columnLabels,
+            cellWidth: cellWidth, cellHeight: cellHeight)
+    else { fail("look: could not compose the grid") }
+    try PNGWriter.write(grid, to: folder.lookGrid)
+    print(
+        String(
+            format: "look       %d looks x %d frames from %@, %.1f s", looks.count, keys.count,
+            takeURL.lastPathComponent, Date().timeIntervalSince(started)))
+    print("grid       \(folder.lookGrid.path)")
+    print("promote    sillage-render look \(folder.url.path) --promote <name>")
+    return 0
+}
+
+extension Array {
+    var nonEmpty: Self? { isEmpty ? nil : self }
+}
+
 /// The most the process has had resident at once, GPU buffers included: on unified memory
 /// they count against the same footprint.
 func peakFootprint() -> Int? {
@@ -78,6 +236,12 @@ if CommandLine.arguments.count > 1,
     let folder = SceneFolder(path: CommandLine.arguments[2])
     let options = Array(CommandLine.arguments.dropFirst(3))
     switch stage {
+    case .look:
+        do {
+            exit(try lookStage(folder, options: options))
+        } catch {
+            fail("look: \(error)")
+        }
     case .hires:
         if !folder.isExplored && FileManager.default.fileExists(atPath: folder.url.path) {
             exit(hiresBatch(folder.url, options: options))

@@ -13,7 +13,7 @@ public struct SceneFolder: Sendable, Equatable {
             switch self {
             case .explore: nil
             case .hires: nil
-            case .look: 22
+            case .look: nil
             case .export: 24
             }
         }
@@ -120,6 +120,7 @@ public struct SceneFolder: Sendable, Equatable {
     public var hiresCurves: URL { file("curves-hires.csv") }
     public var hires: URL { file("hires.json") }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
+    public var lookGrid: URL { looks.appendingPathComponent("grid.png") }
 
     private func file(_ name: String) -> URL { url.appendingPathComponent(name) }
 
@@ -315,5 +316,34 @@ extension SceneFolder {
         }
         if exists(look) { arguments += ["--look", look.path] }
         return (arguments, record)
+    }
+}
+
+extension SceneFolder {
+    public enum LookError: Error, CustomStringConvertible {
+        case noTake(URL)
+        case noSuchLook(String, URL)
+
+        public var description: String {
+            switch self {
+            case .noTake(let url): "\(url.path): no take.sillage yet, run hires first"
+            case .noSuchLook(let name, let looks):
+                "no look \"\(name)\" in \(looks.path), run look first or pick a row of its grid"
+            }
+        }
+    }
+
+    public func lookFile(named name: String) -> URL {
+        looks.appendingPathComponent("\(name).look.json")
+    }
+
+    /// Makes one row of the grid the scene's look, for the full render.
+    @discardableResult
+    public func promote(look name: String) throws -> LookFile {
+        let source = lookFile(named: name)
+        guard exists(source) else { throw LookError.noSuchLook(name, looks) }
+        let file = try LookFile.decoded(from: Data(contentsOf: source))
+        try promote(file)
+        return file
     }
 }

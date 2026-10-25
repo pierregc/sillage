@@ -1,0 +1,42 @@
+{
+  "armStrength" : 1,
+  "bloomLevels" : 6,
+  "camera" : {
+    "azimuth" : 0,
+    "elevation" : 1.15,
+    "mode" : "fixed",
+    "percentile" : 0.98,
+    "radius" : 0,
+    "zoom" : 1
+  },
+  "look" : {
+    "armPersistence" : 1,
+    "bloomIntensity" : 0.22,
+    "bloomSoftKnee" : 0.6,
+    "bloomThreshold" : 0.55,
+    "brightness" : 0.15,
+    "dustStrength" : 0.12,
+    "fieldOfView" : 0.6,
+    "galaxyTint" : 0.5,
+    "maximumKernel" : 64,
+    "minimumKernel" : 1.1,
+    "noiseLevel" : 0.0016,
+    "saturation" : 2.2,
+    "skyLevel" : 0.0032,
+    "smoothingScale" : 1.5,
+    "spikeArms" : 6,
+    "spikeIntensity" : 0.38,
+    "spikeLength" : 72,
+    "starSize" : 1.15,
+    "stretch" : 14,
+    "whitePoint" : 4.5
+  },
+  "name" : "observatory",
+  "palette" : [
+
+  ],
+  "plain" : false,
+  "starCount" : 9000,
+  "supersample" : 2,
+  "version" : 1
+}
