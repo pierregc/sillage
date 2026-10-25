@@ -1,0 +1,55 @@
+{
+  "camera": {
+    "elevation": 1.2,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.15,
+    "brightness": 0.15,
+    "dustStrength": 0,
+    "galaxyTint": 0.1,
+    "maximumKernel": 40,
+    "minimumKernel": 1,
+    "noiseLevel": 0.002,
+    "saturation": 0.5,
+    "skyLevel": 0,
+    "smoothingScale": 1.3,
+    "spikeIntensity": 0,
+    "whitePoint": 5
+  },
+  "name": "chalk",
+  "palette": [
+    [
+      1,
+      0.97,
+      0.9
+    ],
+    [
+      0.9,
+      0.95,
+      1
+    ],
+    [
+      1,
+      0.92,
+      0.8
+    ],
+    [
+      0.95,
+      0.95,
+      1
+    ],
+    [
+      1,
+      1,
+      0.95
+    ],
+    [
+      0.9,
+      0.9,
+      0.95
+    ]
+  ],
+  "starCount": 0,
+  "version": 1
+}

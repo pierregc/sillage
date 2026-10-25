@@ -1,0 +1,54 @@
+{
+  "camera": {
+    "elevation": 1.2,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.32,
+    "brightness": 0.17,
+    "dustStrength": 0,
+    "galaxyTint": 0.85,
+    "maximumKernel": 54,
+    "minimumKernel": 1.2,
+    "noiseLevel": 0.0008,
+    "saturation": 2.7,
+    "skyLevel": 0.0003,
+    "smoothingScale": 1.7,
+    "spikeIntensity": 0
+  },
+  "name": "jade",
+  "palette": [
+    [
+      0.2,
+      0.9,
+      0.5
+    ],
+    [
+      1,
+      0.7,
+      0.15
+    ],
+    [
+      0.4,
+      1,
+      0.6
+    ],
+    [
+      1,
+      0.55,
+      0.1
+    ],
+    [
+      0.1,
+      0.8,
+      0.4
+    ],
+    [
+      1,
+      0.8,
+      0.3
+    ]
+  ],
+  "starCount": 300,
+  "version": 1
+}

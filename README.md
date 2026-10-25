@@ -220,8 +220,12 @@ one grid in `looks/grid.png`, a row per look and a column per key frame. The row
 look, `LookFile.standard` unless `--base` names a look of `looks/` or a file, then the base one
 change at a time (brighter, dimmer, more and less colour, spikes, bloom, camera higher, lower,
 closer, wider), then the catalogue in the repository's `looks/` (observatory, dream, gloss, ink,
-ember), then any `.look.json` given. All of them keep the scene's palette, the one in its
-`look.json`, unless a file given has its own. `--no-variants` and `--no-catalogue` leave rows
+ember and some thirty more: most with no gas, a discreet or absent starfield, few or no
+spikes, each with colours of its own), then any `.look.json` given. A row keeps the scene's
+palette, the one in its `look.json`, unless its file has a palette of its own. The base's
+variants also include the base with its palette turned around the hue wheel (`hue-60` to
+`hue-240`), `no-gas`, `no-stars` and `no-sky`. The rows are written 15 to an image, `grid.png`,
+`grid-2.png` and so on. `--no-variants` and `--no-catalogue` leave rows
 out, `--width` sets a cell's width (480), and `--take` draws a smaller take instead.
 
 The key frames come from `curves-hires.csv`: the start, the approach (halfway in distance to the
@@ -238,7 +242,8 @@ a later promotion replaces the earlier one, which stays in `looks/`.
 
 The grid compares; the application tunes. In the library window, **Régler le look** on a scene
 that has a take opens `take.sillage` with the scene's `look.json`, and File > Open takes any take
-(⌘O) and any look file (⇧⌘O) over it. The panel edits every field of the file with the picture
+(⌘O) and any look file (⇧⌘O) over it. Once the grid has been drawn, the panel's **Catalogue** menu
+lists the scene's `looks/` to try one over the picture in a click. The panel edits every field of the file with the picture
 live: the look's sliders, each galaxy's colour, the file's own arm strength, the starfield, the
 bloom levels, supersampling and plain points (these four rebuild the renderer, the slider on
 release), and the camera plan. **Voir à travers le plan** draws through the plan at the

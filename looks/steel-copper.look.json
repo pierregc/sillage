@@ -1,0 +1,59 @@
+{
+  "camera": {
+    "elevation": 1.15,
+    "mode": "fixed",
+    "zoom": 1.05
+  },
+  "look": {
+    "bloomIntensity": 0.25,
+    "brightness": 0.15,
+    "dustStrength": 0,
+    "galaxyTint": 0.7,
+    "maximumKernel": 34,
+    "minimumKernel": 1,
+    "noiseLevel": 0.0015,
+    "saturation": 2,
+    "skyLevel": 0.0005,
+    "smoothingScale": 1.2,
+    "spikeArms": 4,
+    "spikeIntensity": 0.1,
+    "spikeLength": 30,
+    "starSize": 0.8,
+    "stretch": 12
+  },
+  "name": "steel-copper",
+  "palette": [
+    [
+      0.95,
+      0.55,
+      0.3
+    ],
+    [
+      0.6,
+      0.7,
+      0.85
+    ],
+    [
+      0.85,
+      0.5,
+      0.3
+    ],
+    [
+      0.5,
+      0.65,
+      0.8
+    ],
+    [
+      1,
+      0.65,
+      0.4
+    ],
+    [
+      0.7,
+      0.75,
+      0.9
+    ]
+  ],
+  "starCount": 500,
+  "version": 1
+}

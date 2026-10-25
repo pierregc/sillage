@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import simd
 
 @testable import SillageRender
 
@@ -52,20 +53,51 @@ struct LookStageTests {
         #expect(KeyFrames.nearest(timeMyr: 80.5, in: samples)?.frame == 1)
     }
 
-    @Test func variantsChangeOneThingEachAndKeepThePalette() {
+    @Test func variantsChangeOneThingEach() {
         var base = LookFile.standard
         base.palette = [SIMD3(1, 0.5, 0.2)]
         let variants = LookVariants.around(base)
         #expect(variants.first == base)
         #expect(Set(variants.map(\.name)).count == variants.count)
         #expect(variants.dropFirst().allSatisfy { $0.name.hasPrefix("standard-") })
-        #expect(variants.allSatisfy { $0.palette == base.palette })
+        #expect(variants.filter { !$0.name.contains("-hue-") }.allSatisfy { $0.palette == base.palette })
         #expect(variants.dropFirst().allSatisfy { !$0.differsOnlyInName(from: base) })
         let named = Dictionary(uniqueKeysWithValues: variants.map { ($0.name, $0) })
         #expect(named["standard-bright"]!.look.brightness > base.look.brightness)
         #expect(named["standard-no-spikes"]!.look.spikeIntensity == 0)
         #expect(named["standard-high"]!.camera.elevation > base.camera.elevation)
         #expect(named["standard-close"]!.camera.zoom > base.camera.zoom)
+        #expect(named["standard-no-gas"]!.look.dustStrength == 0)
+        #expect(named["standard-hue-180"]!.palette != base.palette)
+    }
+
+    @Test func rotatingTheHueKeepsTheBrightnessAndComesBack() {
+        let colour = SIMD3<Float>(1, 0.5, 0.2)
+        let turned = LookVariants.rotateHue(colour, by: 120)
+        #expect(abs(turned.max() - 1) < 1e-5 && abs(turned.min() - 0.2) < 1e-5)
+        let back = LookVariants.rotateHue(turned, by: 240)
+        #expect(simd_length(back - colour) < 1e-4)
+        #expect(LookVariants.rotateHue(SIMD3(0.4, 0.4, 0.4), by: 90) == SIMD3(0.4, 0.4, 0.4))
+    }
+
+    /// Every look of the repository's catalogue reads, is named after its file, brings colours
+    /// of its own and keeps the background and the spikes quiet.
+    @Test func theCatalogueFilesAreVariedAndQuiet() throws {
+        let looks = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("looks")
+        let names = try FileManager.default.contentsOfDirectory(atPath: looks.path)
+            .filter { $0.hasSuffix(".look.json") && $0 != "raw.look.json" }
+        let files = try names.map {
+            try LookFile.decoded(from: Data(contentsOf: looks.appendingPathComponent($0)))
+        }
+        for (name, file) in zip(names, files) { #expect(name == "\(file.name).look.json") }
+        let added = zip(names, files).filter { !RenderLook.catalogue.map(\.id).contains($0.1.name) }
+            .map(\.1)
+        #expect(added.count >= 30)
+        #expect(Set(added.map(\.palette.first!.x)).count > 8)
+        #expect(added.filter { $0.look.dustStrength == 0 }.count * 2 > added.count)
+        #expect(added.allSatisfy { $0.starCount <= 1000 && $0.look.skyLevel <= 0.0008 })
+        #expect(added.allSatisfy { $0.look.spikeIntensity <= 0.2 })
     }
 
     @Test func aVariantThatChangesNothingIsLeftOut() {

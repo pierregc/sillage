@@ -34,6 +34,7 @@ struct LookFilePanel: View {
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
                 .lineLimit(2)
+            catalogue
             HStack {
                 Button("Ouvrir…") { LookFiles.open(model) }
                 Button("Enregistrer") { LookFiles.save(model) }
@@ -49,6 +50,20 @@ struct LookFilePanel: View {
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
             }
+        }
+    }
+
+    /// The looks of the scene's `looks/` folder, which the look grid fills with the whole
+    /// catalogue: one click to try one over the picture.
+    @ViewBuilder private var catalogue: some View {
+        let files = LookFiles.catalogue(of: model.sceneFolder)
+        if !files.isEmpty {
+            Menu("Catalogue (\(files.count))") {
+                ForEach(files, id: \.self) { url in
+                    Button(String(url.lastPathComponent.dropLast(10))) { model.openLook(from: url) }
+                }
+            }
+            .font(.caption)
         }
     }
 
@@ -191,7 +206,9 @@ enum LookFiles {
         let panel = NSOpenPanel()
         panel.title = "Ouvrir un look"
         panel.allowedContentTypes = [contentType]
-        panel.directoryURL = model.lookURL?.deletingLastPathComponent() ?? model.sceneFolder?.url
+        panel.directoryURL =
+            model.lookURL?.deletingLastPathComponent() ?? model.sceneFolder?.looks
+            ?? model.sceneFolder?.url
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.openLook(from: url)
     }
@@ -216,6 +233,15 @@ enum LookFiles {
         }
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.saveLook(to: url)
+    }
+
+    /// `looks/*.look.json` of a scene, by name.
+    static func catalogue(of folder: SceneFolder?) -> [URL] {
+        guard let looks = folder?.looks,
+            let names = try? FileManager.default.contentsOfDirectory(atPath: looks.path)
+        else { return [] }
+        return names.filter { $0.hasSuffix(".look.json") }.sorted()
+            .map { looks.appendingPathComponent($0) }
     }
 
     static func shortPath(_ url: URL) -> String {

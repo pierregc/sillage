@@ -86,7 +86,7 @@ public struct LookFile: Codable, Sendable, Equatable {
 
     public init(
         name: String = "standard", look: RenderLook = LookFile.standardLook,
-        starCount: Int = 9000, supersample: Int = 2, bloomLevels: Int = 6, plain: Bool = false,
+        starCount: Int = 2500, supersample: Int = 2, bloomLevels: Int = 6, plain: Bool = false,
         armStrength: Float = 1, palette: [SIMD3<Float>] = [], camera: CameraPlan = CameraPlan()
     ) {
         version = Self.currentVersion
@@ -124,9 +124,9 @@ public struct LookFile: Codable, Sendable, Equatable {
     public static let standardLook = RenderLook(
         brightness: 0.15, dustStrength: 0.35, smoothingScale: 1.9, minimumKernel: 1.1,
         maximumKernel: 64, bloomThreshold: 0.55, bloomSoftKnee: 0.6, bloomIntensity: 0.22,
-        stretch: 18, saturation: 2.8, whitePoint: 4.5, spikeArms: 6, spikeLength: 72,
-        spikeIntensity: 0.38, skyLevel: 0.0018, noiseLevel: 0.0016, galaxyTint: 0.35,
-        starSize: 2.2, armPersistence: 1, fieldOfView: 0.6)
+        stretch: 18, saturation: 2.8, whitePoint: 4.5, spikeArms: 6, spikeLength: 40,
+        spikeIntensity: 0.14, skyLevel: 0.0008, noiseLevel: 0.0016, galaxyTint: 0.35,
+        starSize: 1.6, armPersistence: 1, fieldOfView: 0.6)
 
     public static let standard = LookFile()
 

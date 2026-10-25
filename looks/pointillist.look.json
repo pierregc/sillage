@@ -1,0 +1,57 @@
+{
+  "camera": {
+    "elevation": 1.4,
+    "mode": "fixed",
+    "zoom": 1.15
+  },
+  "look": {
+    "bloomIntensity": 0.12,
+    "bloomThreshold": 0.8,
+    "brightness": 0.11,
+    "dustStrength": 0,
+    "galaxyTint": 1,
+    "maximumKernel": 12,
+    "minimumKernel": 0.8,
+    "noiseLevel": 0,
+    "saturation": 3.2,
+    "skyLevel": 0,
+    "smoothingScale": 0.5,
+    "spikeIntensity": 0,
+    "stretch": 4
+  },
+  "name": "pointillist",
+  "palette": [
+    [
+      0.6,
+      1,
+      0.2
+    ],
+    [
+      1,
+      0.2,
+      0.8
+    ],
+    [
+      0.1,
+      0.95,
+      1
+    ],
+    [
+      1,
+      0.9,
+      0.1
+    ],
+    [
+      0.6,
+      0.3,
+      1
+    ],
+    [
+      1,
+      0.4,
+      0.2
+    ]
+  ],
+  "starCount": 0,
+  "version": 1
+}

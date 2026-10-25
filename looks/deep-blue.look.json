@@ -1,0 +1,55 @@
+{
+  "camera": {
+    "elevation": 1.0,
+    "mode": "fixed"
+  },
+  "look": {
+    "bloomIntensity": 0.45,
+    "brightness": 0.18,
+    "dustStrength": 0,
+    "galaxyTint": 1,
+    "maximumKernel": 70,
+    "minimumKernel": 1.4,
+    "noiseLevel": 0.0007,
+    "saturation": 3.2,
+    "skyLevel": 0.0005,
+    "smoothingScale": 2.2,
+    "spikeIntensity": 0,
+    "starSize": 0.8
+  },
+  "name": "deep-blue",
+  "palette": [
+    [
+      0.1,
+      0.55,
+      0.95
+    ],
+    [
+      0.1,
+      0.85,
+      0.85
+    ],
+    [
+      0.3,
+      0.4,
+      1
+    ],
+    [
+      0.15,
+      0.7,
+      0.7
+    ],
+    [
+      0.2,
+      0.6,
+      1
+    ],
+    [
+      0.4,
+      0.9,
+      0.9
+    ]
+  ],
+  "starCount": 250,
+  "version": 1
+}

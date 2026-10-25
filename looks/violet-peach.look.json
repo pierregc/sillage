@@ -1,0 +1,56 @@
+{
+  "camera": {
+    "azimuth": -0.4,
+    "elevation": 1.0,
+    "mode": "fixed"
+  },
+  "look": {
+    "armPersistence": 1.4,
+    "bloomIntensity": 0.5,
+    "brightness": 0.2,
+    "dustStrength": 0,
+    "galaxyTint": 0.85,
+    "maximumKernel": 76,
+    "minimumKernel": 1.6,
+    "noiseLevel": 0.0008,
+    "saturation": 2.4,
+    "skyLevel": 0.0003,
+    "smoothingScale": 2.5,
+    "spikeIntensity": 0
+  },
+  "name": "violet-peach",
+  "palette": [
+    [
+      0.65,
+      0.45,
+      1
+    ],
+    [
+      1,
+      0.7,
+      0.55
+    ],
+    [
+      0.75,
+      0.5,
+      0.95
+    ],
+    [
+      1,
+      0.62,
+      0.5
+    ],
+    [
+      0.55,
+      0.4,
+      0.95
+    ],
+    [
+      1,
+      0.8,
+      0.65
+    ]
+  ],
+  "starCount": 250,
+  "version": 1
+}
