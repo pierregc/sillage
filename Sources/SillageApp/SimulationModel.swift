@@ -154,6 +154,7 @@ final class SimulationModel: ObservableObject {
     /// link whenever the window is occluded, which a window opened behind another app always
     /// is, and that would otherwise make the render path untestable from a script.
     func attach(canvas view: MTKView) { canvas = view }
+    var hasCanvas: Bool { canvas != nil }
 
     func drawOnce() { canvas?.draw() }
 
@@ -239,6 +240,7 @@ final class SimulationModel: ObservableObject {
     var previewCanvasSize: CGSize { previewSize }
     var previewViewFrame: CGRect { previewCanvas?.frame ?? .zero }
     private weak var previewCanvas: MTKView?
+    var hasPreviewCanvas: Bool { previewCanvas != nil }
 
     /// Particles the preview draws. Enough to judge a shape, few enough to resample on the
     /// release of a slider.
@@ -1206,7 +1208,6 @@ final class SimulationModel: ObservableObject {
             FileManager.default.fileExists(atPath: $0.path) ? $0 : nil
         }
         openTake(from: take, look: look, folder: scene.folder)
-        NSApp.windows.first { $0.title == "Sillage" }?.makeKeyAndOrderFront(nil)
     }
 
     /// Counted, because a rebuild that happens once looks exactly like one that happens every

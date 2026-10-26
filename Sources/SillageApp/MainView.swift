@@ -1,0 +1,178 @@
+import SillageRender
+import SwiftUI
+
+enum SidebarItem: Hashable {
+    case library
+    case nights
+    case workshop
+}
+
+/// Which part of the window is showing. Shared with the menu commands, which have no view of
+/// their own to hold it.
+@MainActor
+final class AppNavigation: ObservableObject {
+    static let windowID = "main"
+
+    @Published var selection: SidebarItem = AppNavigation.initial
+
+    /// The window checks drive the workshop, so they open on it.
+    static var initial: SidebarItem {
+        let workshopChecks: Set = [
+            "--verify", "--cinema", "--presets", "--responsive", "--qa", "--soak",
+        ]
+        return CommandLine.arguments.contains(where: workshopChecks.contains) ? .workshop : .library
+    }
+
+    func openTake(_ model: SimulationModel) {
+        if TakeFiles.open(model) { selection = .workshop }
+    }
+
+    func tune(_ model: SimulationModel, _ scene: LibraryScene) {
+        guard scene.take != nil else { return }
+        model.tune(scene)
+        selection = .workshop
+    }
+}
+
+/// The one window: library, nights and workshop in a sidebar, the chosen one beside it.
+struct MainView: View {
+    @ObservedObject var model: SimulationModel
+    @ObservedObject var library: LibraryModel
+    @ObservedObject var navigation: AppNavigation
+
+    var body: some View {
+        Group {
+            if model.contemplating {
+                ContemplationView(model: model)
+            } else {
+                NavigationSplitView {
+                    Sidebar(model: model, navigation: navigation)
+                        .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
+                } detail: {
+                    detail
+                }
+            }
+        }
+        // A run started anywhere, from a menu included, is watched in the workshop.
+        .onChange(of: model.stage) { _, stage in
+            if stage == .running, !model.contemplating { navigation.selection = .workshop }
+        }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch navigation.selection {
+        case .library: LibraryView(model: library)
+        case .nights: NightsView()
+        case .workshop:
+            // Leaving the workshop drops the canvas and nothing else: the run keeps stepping
+            // on its own queue, as with "Afficher pendant le calcul" off.
+            switch model.stage {
+            case .setup: SetupView(model: model)
+            case .running: RunningView(model: model)
+            }
+        }
+    }
+}
+
+struct Sidebar: View {
+    @ObservedObject var model: SimulationModel
+    @ObservedObject var navigation: AppNavigation
+
+    var body: some View {
+        List(selection: selection) {
+            Section("Bibliothèque") {
+                Label("Toutes les scènes", systemImage: "square.grid.2x2")
+                    .tag(SidebarItem.library)
+            }
+            Section("Nuits") {
+                Label("Nuits", systemImage: "moon.stars")
+                    .tag(SidebarItem.nights)
+            }
+            Section("Atelier") {
+                Label("Nouvelle collision", systemImage: "circle.circle")
+                    .tag(SidebarItem.workshop)
+                Button {
+                    navigation.openTake(model)
+                } label: {
+                    Label("Ouvrir une prise…", systemImage: "film")
+                }
+                contemplation("Contemplation lente", .slow, "Plein écran, cinq minutes par scène")
+                contemplation("Contemplation rapide", .brisk, "Plein écran, une minute par scène")
+            }
+        }
+        .listStyle(.sidebar)
+        .buttonStyle(.plain)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            SidebarStatus(model: model) { navigation.selection = .workshop }
+        }
+    }
+
+    /// The list clears its selection on some clicks; the window always shows something.
+    private var selection: Binding<SidebarItem?> {
+        Binding(
+            get: { navigation.selection },
+            set: { if let item = $0 { navigation.selection = item } })
+    }
+
+    /// Contemplation replaces the scene, so it waits until the run in the workshop is closed.
+    /// It leaves the selection alone: escape lands back on whatever was showing.
+    private func contemplation(
+        _ title: String, _ pace: SimulationModel.Pace, _ help: String
+    ) -> some View {
+        Button {
+            model.startContemplation(pace: pace)
+        } label: {
+            Label(title, systemImage: pace == .slow ? "sparkles" : "hare")
+        }
+        .disabled(model.stage == .running)
+        .help(model.stage == .running ? "Revenir d'abord à « Modifier la scène »" : help)
+    }
+}
+
+/// The top of the sidebar. Says what the workshop is doing while another part is showing; the
+/// queue (#121) takes this place over.
+struct SidebarStatus: View {
+    @ObservedObject var model: SimulationModel
+    let open: () -> Void
+
+    var body: some View {
+        if model.stage == .running, !model.contemplating {
+            Button(action: open) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.callout)
+                    Text(String(format: "%.0f Myr", model.elapsedMyr))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Palette.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .help("Afficher dans l'Atelier")
+        }
+    }
+
+    private var title: String {
+        if model.mode == .playback { return "Prise ouverte dans l'Atelier" }
+        return model.isPlaying ? "Simulation en cours" : "Simulation en pause"
+    }
+}
+
+/// Filled by the night pages (#108).
+struct NightsView: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "moon.stars")
+                .font(.system(size: 34))
+                .foregroundStyle(Palette.secondary)
+            Text("Les nuits apparaîtront ici").font(.title3)
+            Text("Chaque nuit de calcul, ses scènes et ses vidéos.")
+                .foregroundStyle(Palette.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .panelSurface()
+    }
+}
