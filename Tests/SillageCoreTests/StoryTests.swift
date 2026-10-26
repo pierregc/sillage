@@ -141,6 +141,14 @@ struct StoryTests {
         #expect(span.complete && span.startFrame == 0 && span.endFrame == 899)
     }
 
+    @Test func generatedPericentresLeaveRoomForTheApproach() {
+        var scene = SceneConfig.merger(particleCount: 100_000)
+        scene.timeStepScale = 3.5
+        let clip = scene.clipWindow(settleSteps: 400, steps: 3_600)
+        let window = scene.encounterWindow(settleSteps: 400, steps: 3_600)
+        #expect(window.lowerBound == clip.lowerBound + 150 && window.upperBound == clip.upperBound)
+    }
+
     @Test func curvesAreReadByColumnName() throws {
         let csv = [
             "frame,time_myr,separation_kpc,extent_kpc,formed,closest_kpc,tidal_fraction,disruption_0,"

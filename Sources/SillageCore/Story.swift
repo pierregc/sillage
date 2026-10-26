@@ -395,3 +395,14 @@ public struct Story: Sendable {
         return 2 * determinant(replaced) / whole
     }
 }
+
+extension SceneConfig {
+    /// Where a generated scene's pericentres go: the clip less the approach its story opens on,
+    /// so the first collision never lands on the clip's first frames.
+    public func encounterWindow(settleSteps: Int, steps: Int, leadMyr: Double = Story.Settings().lead)
+        -> ClosedRange<Float>
+    {
+        let clip = clipWindow(settleSteps: settleSteps, steps: steps)
+        return min(clip.lowerBound + Float(leadMyr), clip.upperBound)...clip.upperBound
+    }
+}
