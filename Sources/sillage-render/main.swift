@@ -421,11 +421,56 @@ func peakFootprint() -> Int? {
     return result == KERN_SUCCESS ? Int(info.ledger_phys_footprint_peak) : nil
 }
 
+/// `costs [library]`: fits the library's history again, writes `.sillage/costs.json` and
+/// prints it; `--json` prints the file itself, `--check <batch>` how well it predicts a batch.
+func costsCommand(_ options: [String]) -> Int32 {
+    let path = options.first.flatMap { $0.hasPrefix("--") ? nil : $0 } ?? "library"
+    let library = URL(fileURLWithPath: path, isDirectory: true)
+    do {
+        let model = try CostModel.refresh(library: library)
+        if let index = options.firstIndex(of: "--check"), index + 1 < options.count {
+            print("| run | at once | took | predicted | error | before the batch | error |")
+            print("| --- | --- | --- | --- | --- | --- | --- |")
+            let history = CostHistory.read(library: library)
+            for row in CostModel.check(history, batch: options[index + 1]) {
+                let run = row.kind == "explore" ? history.explore.first { $0.id == row.id } : nil
+                let alongside = run.map { String(format: "%.1f", $0.alongside) } ?? ""
+                print(
+                    String(
+                        format: "| %@ %@ | %@ | %.0f s | %.0f s | %+.1f %% | %.0f s | %+.1f %% |",
+                        row.kind, row.id, alongside, row.took, row.predicted, row.error * 100,
+                        row.before, row.errorBefore * 100))
+            }
+        } else if options.contains("--json") {
+            print(String(decoding: try model.encoded(), as: UTF8.self))
+        } else {
+            print("costs      \(CostModel.url(library: library).path)")
+            for line in model.lines { print(line) }
+        }
+        return 0
+    } catch {
+        fail("costs: \(error)")
+    }
+}
+
+/// After every finished job, so the next estimate already knows what this one took.
+func refreshCosts(_ folder: SceneFolder) {
+    do {
+        try CostModel.refresh(library: folder.library)
+    } catch {
+        print("costs      not refreshed: \(error)")
+    }
+}
+
 // `sillage-render <stage> <scene folder> [options]` runs one stage of the pipeline, every path
 // derived from the folder. Anything else is a plain render driven by its flags.
 let started = Date()
 let arguments: [String]
 var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
+var exploreRun: SceneFolder?
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "costs" {
+    exit(costsCommand(Array(CommandLine.arguments.dropFirst(2))))
+}
 if CommandLine.arguments.count > 1,
     let stage = SceneFolder.Stage(rawValue: CommandLine.arguments[1])
 {
@@ -443,7 +488,9 @@ if CommandLine.arguments.count > 1,
         }
     case .export:
         do {
-            exit(try exportStage(folder, options: options))
+            let status = try exportStage(folder, options: options)
+            if status == 0 { refreshCosts(folder) }
+            exit(status)
         } catch {
             fail("export: \(error)")
         }
@@ -463,7 +510,9 @@ if CommandLine.arguments.count > 1,
                         + " settle %d, %d steps, clip %.1f to %.1f Myr, about %.1f h",
                     record.particles, record.previewParticles, record.timeStepMyr,
                     record.previewTimeStepMyr, record.settle, record.steps, record.clipStartMyr,
-                    record.clipEndMyr, record.estimatedSeconds / 3600))
+                    record.clipEndMyr,
+                    CostModel.current(library: folder.library).hiresSeconds(
+                        particles: record.particles, steps: record.settle + record.steps) / 3600))
         } catch {
             fail("hires: \(error)")
         }
@@ -472,6 +521,7 @@ if CommandLine.arguments.count > 1,
         try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
         try clip.encoded().write(to: folder.clip)
         arguments = folder.exploreArguments(rest, clip: clip)
+        exploreRun = folder
     }
 } else {
     arguments = Array(CommandLine.arguments.dropFirst())
@@ -1046,6 +1096,8 @@ if let (folder, done) = hiresRun {
         String(
             format: "hires      %.0f s, peak %.2f GB, take %.2f GB", record.seconds ?? 0,
             Double(record.peakMemoryBytes ?? 0) / 1e9, Double(record.takeBytes ?? 0) / 1e9))
+    refreshCosts(folder)
 }
+if let exploreRun { refreshCosts(exploreRun) }
 
 print(String(format: "done in %.1f s", Date().timeIntervalSince(clock)))

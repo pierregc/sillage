@@ -94,6 +94,8 @@ public struct SceneFolder: Sendable, Equatable {
 
     /// Where the batch's own files sit: `index.csv` and the ratings.
     public var batch: URL { url.deletingLastPathComponent() }
+    /// The library the batch sits in, where `.sillage/costs.json` is kept.
+    public var library: URL { batch.deletingLastPathComponent() }
     public var scene: URL { file("scene.json") }
     public var look: URL { file("look.json") }
     /// The look `explore` wrote, kept aside once another look is promoted over it.
@@ -186,11 +188,6 @@ extension SceneFolder {
         public var seconds: Double?
         public var peakMemoryBytes: Int?
         public var takeBytes: Int?
-
-        public var estimatedSeconds: Double {
-            Double(particles) * Double(settle + steps) * SceneFolder.nanosecondsPerParticleStep
-                / 1e9
-        }
 
         public func encoded() throws -> Data {
             let encoder = JSONEncoder()
