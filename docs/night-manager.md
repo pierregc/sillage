@@ -66,4 +66,38 @@ Presets: `1080p` (default), `4k`, `vertical`, `square`, `whatsapp`.
   (about 30 min at 1 M, 8 h at 10 M).
 - `look` and `export` only draw the take; no simulation. The chosen look is `look.json`.
 
+## Status files
+
+What is running is written, not guessed. Three small JSON files, all with ISO 8601 dates and the
+local offset, read alike by the app, a status command or a language model from afar.
+
+**`library/activity.json`**, always at that path: `version`, `state` (`idle`, `running`,
+`paused`), `job` (`kind` explore/hires/export, `batch`, `scene`, `startedAt`, `progress` 0 to 1,
+`detail` such as "frame 412/900", `eta`), `night` (`id`, `phase`, `eta`) when a night runs,
+`waiting` (jobs queued) and `updated`. `explore`, `hires` and `export` rewrite it every 10 s, so
+`state: running` with an `updated` older than 15 minutes is a stuck run. Scenes explored side by
+side share it: it shows whichever wrote last.
+
+**`<batch>/night.json`**: `version`, `id`, `recipe` (the settings), `phases` (each `name`,
+`planned`, `done`, `failed`), `state` (`running`, `paused`, `done`, `failed`, `stopped`),
+`startedAt`, `estimatedEnd`, `endedAt`.
+
+**`<batch>/events.jsonl`**, one JSON object a line, appended: `t`, `kind`, `scene` when it
+applies, and these by kind.
+
+| kind | fields |
+|---|---|
+| `night.start`, `night.done` | `night`, `seconds` |
+| `explore.scene` | `status` (ok, rejected, failed), `score`, `seconds` |
+| `pick` | `chosen`, `rating` |
+| `hires.start` | `particles`, `steps` |
+| `hires.done` | `particles`, `steps`, `minutes`, `takeGB` |
+| `export.done` | `preset`, `style`, `codec`, `frames`, `megabytes`, `seconds`, `path` |
+| `error` | `stage`, `message`, `log` |
+| `phase.done` | `phase`, `count` |
+
+Scripts add an event with `sillage-render event <batch> <kind> --scene scene-0007 --status ok`
+(`--take-gb` for `takeGB`) rather than writing JSON by hand. The ETA of `hires` follows the pace
+of its frames once they start, and reaches the last frame, not the writing of the take after it.
+
 Details and measurements: [README](../README.md).
