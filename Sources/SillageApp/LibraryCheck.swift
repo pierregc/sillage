@@ -275,6 +275,113 @@ enum LibraryCheck {
         check(
             "un scan qui ne trouve rien de neuf ne change rien", model.scenes.count == rescans,
             "dernier scan \(ms(model.lastScan))")
+
+        try exerciseTriage()
+    }
+
+    /// Four scored scenes in one night, sorted through the triage view the way a night is: yes,
+    /// no, ratings, back and forth, a scene arriving, the end.
+    private static func exerciseTriage() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sillage-triagecheck-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let night = root.appendingPathComponent("2026-10-26", isDirectory: true)
+        func addScene(_ index: Int) throws {
+            let folder = SceneFolder(night.appendingPathComponent(String(format: "scene-%04d", index)))
+            try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+            try Data().write(to: folder.thumbnail)
+            try Data("{}".utf8).write(to: folder.scene)
+            try Data(#"{"score":\#(1 - Double(index) / 10)}"#.utf8).write(to: folder.interest)
+        }
+        for index in 1...4 { try addScene(index) }
+        let other = root.appendingPathComponent("2026-10-25/scene-0001", isDirectory: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: SceneFolder(other).scene)
+
+        let model = LibraryModel(root: root)
+        model.watch()
+        defer { model.stop() }
+        model.query.collection = .toSort
+        check("cinq scènes à trier", wait(10) { model.visible.count == 5 }, "\(model.visible.count)")
+        let id = { (index: Int) in "2026-10-26/" + String(format: "scene-%04d", index) }
+        func saved(_ index: Int) -> SceneRatings.Entry? {
+            SceneRatings.read(batch: night).scenes[String(format: "scene-%04d", index)]
+        }
+
+        model.startTriage(batch: "2026-10-26")
+        check(
+            "trier ouvre la première scène de la nuit, dans l'ordre du tri",
+            model.triage?.current == id(1) && model.triage?.order.count == 4,
+            model.triage?.current ?? "fermé")
+        check("0 / 4 triées", model.triageProgress?.decided == 0 && model.triageProgress?.total == 4)
+        model.handle(.digit(7))
+        check(
+            "un chiffre note sans changer de scène",
+            model.triage?.current == id(1) && saved(1)?.rating == 7)
+        model.handle(.yes)
+        check(
+            "oui s'écrit tout de suite et passe à la suivante",
+            saved(1)?.choice == .yes && model.triage?.current == id(2))
+        check("1 / 4 triées", model.triageProgress?.decided == 1)
+        let now = Date()
+        model.handle(.digit(1), at: now)
+        model.handle(.digit(0), at: now.addingTimeInterval(0.3))
+        check("1 puis 0 vaut 10", saved(2)?.rating == 10 && model.triage?.current == id(2))
+        model.handle(.no)
+        check(
+            "non écarte et passe à la suivante",
+            saved(2)?.choice == .no && model.triage?.current == id(3))
+        check(
+            "la scène décidée a quitté À trier mais reste dans la séance",
+            !model.visible.contains { $0.id == id(1) } && model.triage?.order.contains(id(1)) == true)
+        model.handle(.left)
+        check("← revient sur la scène décidée", model.triage?.current == id(2))
+        model.handle(.right)
+        model.handle(.right)
+        model.handle(.right)
+        check("→ s'arrête à la dernière", model.triage?.current == id(4))
+        model.handle(.left)
+        model.handle(.left)
+        model.handle(.left)
+        model.handle(.clear)
+        check(
+            "effacer vide la scène et la rend à trier",
+            saved(1) == nil && model.triageProgress?.decided == 1 && model.triage?.current == id(1))
+        model.handle(.right)
+        model.handle(.right)
+        model.handle(.yes)
+        check(
+            "oui sur la 3 va à la prochaine à trier, la 4",
+            saved(3)?.choice == .yes && model.triage?.current == id(4))
+
+        renderTriage(model, to: "out/ui-triage.png")
+        try addScene(5)
+        check(
+            "une scène qui arrive en cours de séance la rejoint",
+            wait(6) { model.triageProgress?.total == 5 }, "\(model.triageProgress?.total ?? 0)")
+        model.handle(.yes)
+        check("la prochaine à trier fait le tour du début", model.triage?.current == id(5))
+        model.handle(.no)
+        check(
+            "il reste la première, que l'on a effacée",
+            model.triage?.current == id(1) && model.triage?.finished == false)
+        model.handle(.yes)
+        check(
+            "tout est trié : 5 / 5 et la séance le dit",
+            model.triage?.finished == true && model.triageProgress?.decided == 5
+                && model.triageProgress?.total == 5)
+        check("rien ne se décide quand tout est trié", !model.handle(.yes) && saved(1)?.choice == .yes)
+        renderTriage(model, to: "out/ui-triage-finished.png")
+        model.handle(.left)
+        check("← sort de la fin", model.triage?.finished == false)
+        check("échap quitte la séance", model.handle(.close) && model.triage == nil)
+        check(
+            "à trier ne garde que la scène de l'autre nuit",
+            model.visible.map(\.id) == ["2026-10-25/scene-0001"])
+        model.startTriage()
+        check("une séance sur À trier tout entier", model.triageProgress?.total == 1)
+        model.stop()
+        check("quitter la bibliothèque ferme la séance", model.triage == nil)
     }
 
     private static func ms(_ seconds: TimeInterval) -> String { String(format: "%.1f ms", seconds * 1000) }
@@ -324,6 +431,27 @@ enum LibraryCheck {
         try writeVideo(to: folder.preview, tint: tint)
         let scene = archetype.map { #"{"draw": {"generator": "\#($0)"}}"# } ?? "{}"
         try Data(scene.utf8).write(to: folder.scene)
+    }
+
+    private static func renderTriage(_ model: LibraryModel, to path: String) {
+        guard let triage = model.triage else { return }
+        write(TriageView(model: model, triage: triage) {}.frame(width: 1180, height: 640), to: path)
+    }
+
+    private static func write(_ view: some View, to path: String) {
+        let renderer = ImageRenderer(content: view.panelSurface().environment(\.colorScheme, .dark))
+        renderer.scale = 2
+        guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+            let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+        else {
+            check("\(path) se rend", false)
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? png.write(to: url)
+        check("\(path) se rend", true)
     }
 
     private static func renderShot(_ model: LibraryModel) throws {
