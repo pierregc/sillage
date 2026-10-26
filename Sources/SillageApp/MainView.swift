@@ -72,7 +72,8 @@ struct MainView: View {
     @ViewBuilder
     private var detail: some View {
         switch navigation.selection {
-        case .library(let collection): LibraryView(model: library, collection: collection)
+        case .library(let collection):
+            LibraryView(model: library, collection: collection) { navigation.selection = .library($0) }
         case .nights: NightsView()
         case .workshop:
             // Leaving the workshop drops the canvas and nothing else: the run keeps stepping
