@@ -18,6 +18,7 @@ struct SillageApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = SimulationModel()!
     @StateObject private var library = LibraryModel()
+    @StateObject private var navigation = AppNavigation()
 
     init() {
         if CommandLine.arguments.contains("--selftest") {
@@ -50,42 +51,30 @@ struct SillageApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Sillage") {
-            Group {
-                switch model.stage {
-                case .setup: SetupView(model: model)
-                case .running:
-                    if model.contemplating {
-                        ContemplationView(model: model)
-                    } else {
-                        RunningView(model: model)
+        Window("Sillage", id: AppNavigation.windowID) {
+            MainView(model: model, library: library, navigation: navigation)
+                .frame(minWidth: 1180, minHeight: 720)
+                // The panel draws on the system background, so the appearance is pinned rather
+                // than letting a light theme put dark text on the black canvas.
+                .preferredColorScheme(.dark)
+                .onAppear {
+                    library.onTune = { [weak model, weak navigation] scene in
+                        guard let model else { return }
+                        navigation?.tune(model, scene)
                     }
+                    startFrameCheck()
+                    startCinemaCheck()
+                    PresetCheck.run(model)
+                    ResponsivenessCheck.run(model)
+                    QACheck.run(model)
+                    SoakCheck.run(model)
+                    NavigationCheck.run(model, library, navigation)
                 }
-            }
-            .frame(minWidth: 1100, minHeight: 720)
-            // The panel draws on the system background, so the appearance is pinned rather
-            // than letting a light theme put dark text on the black canvas.
-            .preferredColorScheme(.dark)
-            .onAppear {
-                library.onTune = { [weak model] scene in model?.tune(scene) }
-                startFrameCheck()
-                startCinemaCheck()
-                PresetCheck.run(model)
-                ResponsivenessCheck.run(model)
-                QACheck.run(model)
-                SoakCheck.run(model)
-            }
         }
         .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(before: .windowList) { LibraryCommand() }
-            CommandGroup(after: .newItem) { LookCommands(model: model) }
-        }
-
-        Window("Bibliothèque", id: LibraryView.windowID) {
-            LibraryView(model: library)
-                .frame(minWidth: 960, minHeight: 640)
-                .preferredColorScheme(.dark)
+            CommandGroup(before: .windowList) { LibraryCommand(navigation: navigation) }
+            CommandGroup(after: .newItem) { LookCommands(model: model, navigation: navigation) }
         }
     }
 

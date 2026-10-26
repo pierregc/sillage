@@ -3,10 +3,8 @@ import AppKit
 import SillageRender
 import SwiftUI
 
-/// The library window: every scene of every batch, chosen and rated in one click or one key.
+/// The library: every scene of every batch, chosen and rated in one click or one key.
 struct LibraryView: View {
-    static let windowID = "library"
-
     @ObservedObject var model: LibraryModel
     @FocusState private var focused: Bool
 
@@ -453,12 +451,16 @@ final class PlayerLayerView: NSView {
     }
 }
 
-/// The menu item and its shortcut. Commands have no environment of their own.
+/// The menu item and its shortcut: selects the library, reopening the window if it was closed.
 struct LibraryCommand: View {
+    @ObservedObject var navigation: AppNavigation
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("Bibliothèque") { openWindow(id: LibraryView.windowID) }
-            .keyboardShortcut("l", modifiers: .command)
+        Button("Bibliothèque") {
+            navigation.selection = .library
+            openWindow(id: AppNavigation.windowID)
+        }
+        .keyboardShortcut("l", modifiers: .command)
     }
 }
