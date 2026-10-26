@@ -183,7 +183,7 @@ struct LibraryHeader: View {
     private var summary: String {
         let shown = model.visible.count
         let total = model.scenes.count
-        let yes = model.entries.values.filter { $0.choice == .yes }.count
+        let yes = model.entries.values.filter(\.isChosen).count
         let rated = model.entries.values.filter { $0.rating != nil }.count
         let place = model.root?.lastPathComponent ?? "aucun dossier"
         return (shown == total ? "\(total) scènes" : "\(shown) sur \(total) scènes")
@@ -403,6 +403,9 @@ struct ChoiceBadge: View {
                         choice == .yes
                             ? Color(red: 0.45, green: 0.85, blue: 0.55)
                             : Color(red: 0.95, green: 0.5, blue: 0.45))
+            }
+            if entry?.choice == nil, entry?.picked != nil {
+                Text("choisie par le score").foregroundStyle(Color(red: 0.55, green: 0.75, blue: 0.95))
             }
             if let rating = entry?.rating { Text("\(rating)") }
         }

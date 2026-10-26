@@ -70,6 +70,36 @@ struct SceneLibraryTests {
         #expect(SceneLibrary.scan(batch).map(\.name) == ["scene-0001"])
     }
 
+    @Test func aPickIsKeptApartFromChoiceAndRating() throws {
+        let batch = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: batch) }
+        try touch(
+            SceneRatings.url(batch: batch),
+            """
+            {"version":1,"scenes":{"old":{"choice":"yes","rating":3},
+            "new":{"picked":{"by":"score","score":0.8,"date":"2026-10-25T19:57:45Z"}}}}
+            """)
+        let ratings = SceneRatings.read(batch: batch)
+        #expect(ratings.scenes["old"]?.picked == nil && ratings.scenes["old"]?.rating == 3)
+        let pick = try #require(ratings.scenes["new"]?.picked)
+        #expect(pick.by == "score" && pick.score == 0.8)
+        #expect(ratings.scenes["new"]?.choice == nil && ratings.scenes["new"]?.rating == nil)
+        #expect(ratings.chosen == ["new", "old"])
+
+        // A manual no wins and keeps the pick as history; a rating does not need a choice.
+        let no = try SceneRatings.update(batch: batch, scene: "new") { $0.choice = .no }
+        #expect(no.scenes["new"]?.picked == pick && !no.chosen.contains("new"))
+        let yes = try SceneRatings.update(batch: batch, scene: "new") { $0.choice = .yes }
+        #expect(yes.chosen.contains("new"))
+        let rated = try SceneRatings.update(batch: batch, scene: "new") {
+            $0.choice = nil
+            $0.rating = 6
+        }
+        #expect(rated.scenes["new"]?.rating == 6 && rated.chosen.contains("new"))
+        let cleared = try SceneRatings.update(batch: batch, scene: "new") { $0.rating = nil }
+        #expect(cleared.scenes["new"]?.picked == pick)
+    }
+
     @Test func aChangeKeepsWhatAnotherToolWroteMeanwhile() throws {
         let batch = try temporaryLibrary()
         defer { try? FileManager.default.removeItem(at: batch) }
