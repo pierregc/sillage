@@ -3,14 +3,16 @@ import AppKit
 import SillageRender
 import SwiftUI
 
-/// The library: every scene of every batch, chosen and rated in one click or one key.
+/// One collection of the library, picked in the sidebar: its scenes chosen and rated in one
+/// click or one key.
 struct LibraryView: View {
     @ObservedObject var model: LibraryModel
+    let collection: LibraryCollection
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            LibraryHeader(model: model)
+            LibraryHeader(model: model, collection: collection)
             Divider()
             ZStack {
                 if model.visible.isEmpty {
@@ -35,10 +37,13 @@ struct LibraryView: View {
         }
         .onAppear {
             focused = true
-            model.watch()
+            model.query.collection = collection
+            model.show(true)
         }
-        .onDisappear { model.stop() }
-        .onChange(of: model.selection) { focused = true }
+        .onDisappear { model.show(false) }
+        .onChange(of: collection) { _, collection in model.query.collection = collection }
+        .onChange(of: model.selection) { if !model.isSearching { focused = true } }
+        .onChange(of: model.gridFocusRequests) { focused = true }
     }
 
     private static func key(_ press: KeyPress) -> LibraryModel.Key? {
@@ -94,18 +99,24 @@ struct LibraryView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Text(model.scenes.isEmpty ? "Aucune scène ici" : "Aucune scène ne passe ces filtres")
-                .font(.title3)
+        let nothingHere = model.scenes.isEmpty
+        let nothingInCollection = (model.counts[collection] ?? 0) == 0
+        return VStack(spacing: 10) {
+            Text(
+                nothingHere || nothingInCollection
+                    ? collection.emptyTitle : "Aucune scène ne passe ces filtres"
+            )
+            .font(.title3)
             Text(
                 model.root.map {
-                    model.scenes.isEmpty
+                    nothingHere
                         ? "Les scènes apparaissent dès qu'elles arrivent dans \($0.path)."
-                        : "Changer les filtres en haut de la fenêtre."
+                        : nothingInCollection
+                            ? collection.emptyDetail : "Changer les filtres en haut de la fenêtre."
                 } ?? "Choisir le dossier library."
             )
             .foregroundStyle(Palette.secondary)
-            if model.root == nil || model.scenes.isEmpty {
+            if model.root == nil || nothingHere {
                 Button("Choisir un dossier…") { model.pickRoot() }
             }
         }
@@ -129,48 +140,28 @@ struct LibraryView: View {
     }
 }
 
+/// The collection's name, the one button that moves it on, and the sort, filters and search
+/// that narrow it.
 struct LibraryHeader: View {
     @ObservedObject var model: LibraryModel
+    let collection: LibraryCollection
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Bibliothèque").font(.title2.bold())
+                Text(collection.title).font(.title2.bold())
                 Text(summary).font(.caption.monospacedDigit()).foregroundStyle(Palette.secondary)
             }
-            Spacer()
-            Picker("Ordre", selection: $model.query.order) {
-                Text("Lot").tag(LibraryQuery.Order.batch)
-                Text("Note").tag(LibraryQuery.Order.rating)
+            Spacer(minLength: 12)
+            LibraryPrimaryButton(model: model, collection: collection)
+            Picker("Trier par", selection: $model.query.order) {
                 Text("Score").tag(LibraryQuery.Order.score)
+                Text("Note").tag(LibraryQuery.Order.rating)
                 Text("Récentes").tag(LibraryQuery.Order.newest)
             }
             .fixedSize()
-            Picker("Choix", selection: $model.query.choice) {
-                Text("Tous").tag(LibraryQuery.Choice.all)
-                Text("Oui").tag(LibraryQuery.Choice.yes)
-                Text("Non").tag(LibraryQuery.Choice.no)
-                Text("À trier").tag(LibraryQuery.Choice.undecided)
-            }
-            .fixedSize()
-            Picker("Note", selection: $model.query.rating) {
-                Text("Toutes").tag(LibraryQuery.Rating.any)
-                Text("Non notées").tag(LibraryQuery.Rating.unrated)
-                ForEach(1...10, id: \.self) { floor in
-                    Text("≥ \(floor)").tag(LibraryQuery.Rating.atLeast(floor))
-                }
-            }
-            .fixedSize()
-            Picker("Lot", selection: $model.query.batch) {
-                Text("Tous").tag(String?.none)
-                ForEach(model.batches, id: \.self) { Text($0).tag(String?.some($0)) }
-            }
-            .fixedSize()
-            Picker("Archétype", selection: $model.query.archetype) {
-                Text("Tous").tag(String?.none)
-                ForEach(model.archetypes, id: \.self) { Text($0).tag(String?.some($0)) }
-            }
-            .fixedSize()
+            LibraryFilters(model: model)
+            LibrarySearchField(model: model)
             Button("Dossier…") { model.pickRoot() }
                 .help(model.root?.path ?? "Aucun dossier choisi")
         }
@@ -180,12 +171,131 @@ struct LibraryHeader: View {
 
     private var summary: String {
         let shown = model.visible.count
-        let total = model.scenes.count
-        let yes = model.entries.values.filter(\.isChosen).count
-        let rated = model.entries.values.filter { $0.rating != nil }.count
+        let total = model.counts[collection] ?? 0
         let place = model.root?.lastPathComponent ?? "aucun dossier"
-        return (shown == total ? "\(total) scènes" : "\(shown) sur \(total) scènes")
-            + " · \(yes) oui · \(rated) notées · \(place)"
+        return (shown == total ? "\(total) scènes" : "\(shown) sur \(total) scènes") + " · \(place)"
+    }
+}
+
+/// The one thing to do next with the collection, which is the stage's own step. The calculations
+/// wait for the queue (#102) and the sheets of #106.
+struct LibraryPrimaryButton: View {
+    @ObservedObject var model: LibraryModel
+    let collection: LibraryCollection
+
+    var body: some View {
+        switch collection {
+        case .toSort:
+            button("Trier", "Ouvre la première scène à trier") { model.startSorting() }
+        case .chosen:
+            waiting("Calculer en haute résolution")
+        case .toStyle:
+            button("Choisir le style de la suivante", "Ouvre la prise dans l'Atelier") {
+                model.chooseStyleOfNext()
+            }
+        case .ready:
+            waiting("Exporter")
+        case .exported:
+            button("Montrer les vidéos", "Les montre dans le Finder") { model.revealExports() }
+        case .highResolution, .all:
+            EmptyView()
+        }
+    }
+
+    private func button(_ title: String, _ help: String, _ action: @escaping () -> Void)
+        -> some View
+    {
+        Button(title, action: action)
+            .buttonStyle(.borderedProminent)
+            .disabled(model.visible.isEmpty)
+            .help(help)
+    }
+
+    private func waiting(_ title: String) -> some View {
+        Button(title) {}
+            .buttonStyle(.borderedProminent)
+            .disabled(true)
+            .help("Disponible avec la file d'attente")
+    }
+}
+
+/// Archetype, number of galaxies and rating, which narrow whatever the collection lists.
+struct LibraryFilters: View {
+    @ObservedObject var model: LibraryModel
+
+    var body: some View {
+        Menu {
+            Picker("Archétype", selection: $model.query.archetype) {
+                Text("Tous").tag(String?.none)
+                ForEach(model.archetypes, id: \.self) { Text($0).tag(String?.some($0)) }
+            }
+            Picker("Galaxies", selection: $model.query.galaxies) {
+                Text("Toutes").tag(Int?.none)
+                ForEach(model.galaxyCounts, id: \.self) { Text("\($0)").tag(Int?.some($0)) }
+            }
+            Picker("Note", selection: $model.query.rating) {
+                Text("Toutes").tag(LibraryQuery.Rating.any)
+                Text("Non notées").tag(LibraryQuery.Rating.unrated)
+                ForEach(1...10, id: \.self) { floor in
+                    Text("≥ \(floor)").tag(LibraryQuery.Rating.atLeast(floor))
+                }
+            }
+            Divider()
+            Button("Tout afficher") {
+                model.query.archetype = nil
+                model.query.galaxies = nil
+                model.query.rating = .any
+            }
+            .disabled(active == 0)
+        } label: {
+            Label(
+                active == 0 ? "Filtres" : "Filtres (\(active))",
+                systemImage: "line.3.horizontal.decrease.circle")
+        }
+        .fixedSize()
+    }
+
+    private var active: Int {
+        [
+            model.query.archetype != nil, model.query.galaxies != nil, model.query.rating != .any,
+        ].filter { $0 }.count
+    }
+}
+
+/// Filters the scenes on a part of their name. The grid keeps the keys unless this holds the
+/// focus, and gets them back on return or escape.
+struct LibrarySearchField: View {
+    @ObservedObject var model: LibraryModel
+    @FocusState private var focus: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Palette.secondary)
+            TextField("Nom de la scène", text: $model.query.search)
+                .textFieldStyle(.plain)
+                .focused($focus)
+                .onSubmit { leave() }
+                .onExitCommand { leave() }
+            if !model.query.search.isEmpty {
+                Button {
+                    model.query.search = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(width: 170)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color(white: 0.2)))
+        .onChange(of: focus) { _, focus in model.isSearching = focus }
+    }
+
+    private func leave() {
+        focus = false
+        model.isSearching = false
+        model.gridFocusRequests += 1
     }
 }
 
@@ -458,7 +568,7 @@ struct LibraryCommand: View {
 
     var body: some View {
         Button("Bibliothèque") {
-            navigation.selection = .library
+            navigation.showLibrary()
             openWindow(id: AppNavigation.windowID)
         }
         .keyboardShortcut("l", modifiers: .command)

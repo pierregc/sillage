@@ -125,6 +125,27 @@ enum LibraryCheck {
             "un clic enregistre, un second l'annule",
             clicked == .yes && rated?.choice == nil && rated?.rating == 6)
 
+        // The collections follow the clicks at once, without waiting for a scan.
+        let counts = model.counts
+        check(
+            "les compteurs suivent les choix",
+            counts[.toSort] == 2 && counts[.chosen] == 1 && counts[.all] == 4
+                && counts[.toStyle] == nil,
+            "\(counts)")
+        model.query.collection = .chosen
+        check("Choisies ne montre que les oui", model.visible.map(\.id) == ["2026-10-24/scene-0001"])
+        model.query.collection = .toSort
+        check(
+            "À trier ne montre ni les oui ni les non",
+            model.visible.map(\.id) == ["2026-10-24/scene-0003", "2026-09-21/scene-0001"],
+            model.visible.map(\.id).joined(separator: " "))
+        model.query.search = "0003"
+        check("la recherche porte sur le nom", model.visible.map(\.id) == ["2026-10-24/scene-0003"])
+        model.query = LibraryQuery()
+        check(
+            "Toutes garde les écartées",
+            model.visible.count == 4 && model.visible.contains { $0.stage == .discarded })
+
         // Filters.
         model.query.choice = .yes
         check("filtre oui", model.visible.map(\.id) == ["2026-10-24/scene-0001"])
@@ -185,7 +206,39 @@ enum LibraryCheck {
             "un seul lecteur", model.player.items().count <= 3,
             "\(model.player.items().count) éléments en file")
 
+        var clock = Date()
         try renderShot(model)
+
+        // A library of about a hundred scenes with every kind of file, read in one scan.
+        let stages = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sillage-stagescan-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: stages) }
+        var picks: [String: SceneRatings.Entry] = [:]
+        for index in 0..<100 {
+            let name = String(format: "scene-%04d", index)
+            let folder = SceneFolder(stages.appendingPathComponent("2026-10-26/\(name)"))
+            try FileManager.default.createDirectory(
+                at: folder.exports, withIntermediateDirectories: true)
+            try Data().write(to: folder.thumbnail)
+            try Data(#"{"draw":{"generator":"mice"}}"#.utf8).write(to: folder.scene)
+            try Data(#"{"score":0.5}"#.utf8).write(to: folder.interest)
+            if index % 2 == 0 { picks[name] = .init(choice: index % 6 == 0 ? .no : .yes) }
+            if index % 4 == 0 {
+                try Data().write(to: folder.take)
+                try Data(#"{"particles":5000000,"seconds":900}"#.utf8).write(to: folder.hires)
+            }
+            if index % 8 == 0 { try Data().write(to: folder.rawLook) }
+            if index % 16 == 0 { try Data().write(to: folder.export(preset: "1080p")) }
+        }
+        try SceneRatings(scenes: picks).write(batch: stages.appendingPathComponent("2026-10-26"))
+        _ = SceneLibrary.scan(stages)
+        clock = Date()
+        let hundred = SceneLibrary.scan(stages)
+        let hundredScan = Date().timeIntervalSince(clock)
+        check(
+            "100 scènes à toutes les étapes lues en moins de 50 ms",
+            hundred.count == 100 && hundredScan < 0.05 && Set(hundred.map(\.stage)).count >= 5,
+            "\(ms(hundredScan)), \(Set(hundred.map(\.stage)).count) étapes")
 
         // A batch of four hundred, the size a night produces.
         let crowd = root.appendingPathComponent("2026-10-25", isDirectory: true)
@@ -195,7 +248,7 @@ enum LibraryCheck {
             try FileManager.default.copyItem(at: first.thumbnail, to: folder.thumbnail)
             try FileManager.default.copyItem(at: first.preview, to: folder.preview)
         }
-        var clock = Date()
+        clock = Date()
         let scanned = SceneLibrary.scan(root)
         let scan = Date().timeIntervalSince(clock)
         check("405 scènes lues en moins d'une demi-seconde", scanned.count == 405 && scan < 0.5, ms(scan))
@@ -282,7 +335,7 @@ enum LibraryCheck {
                 ready: model.playable.contains(scene.id))
         }
         let view = VStack(spacing: 0) {
-            LibraryHeader(model: model)
+            LibraryHeader(model: model, collection: model.query.collection)
             Divider()
             Grid(horizontalSpacing: 12, verticalSpacing: 12) {
                 GridRow { ForEach(0..<2, id: \.self) { cards[$0] } }
