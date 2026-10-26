@@ -4,8 +4,18 @@ import SillageCore
 import SillageRender
 import simd
 
+/// Set by the stages that tell the status files what they are doing.
+var reporter: StageReporter?
+
 func fail(_ message: String, code: Int32 = 2) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
+    if let reporter {
+        var event = RunEvent(RunEvent.Kind.error)
+        event.stage = reporter.stage
+        event.message = message
+        reporter.record(event)
+        reporter.finish()
+    }
     exit(code)
 }
 
@@ -42,6 +52,10 @@ func hiresBatch(_ batch: URL, options: [String]) -> Int32 {
         if process.terminationStatus != 0 {
             failed += 1
             print("hires      \(name) failed with status \(process.terminationStatus)")
+            var event = RunEvent(RunEvent.Kind.error, scene: name)
+            event.stage = "hires"
+            event.message = "failed with status \(process.terminationStatus)"
+            try? RunStatusFiles.append(event, to: RunStatusFiles.events(batch: batch))
         }
     }
     print("hires      \(scenes.count - failed) of \(scenes.count) scenes")
@@ -216,10 +230,139 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     return 0
 }
 
+/// `palettes <scene folder>`: palettes drawn from seeds for the scene's galaxies, each on a
+/// frame of the take, beside a sheet of their swatches.
+func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
+    func option(_ name: String) -> String? {
+        options.firstIndex(of: "--\(name)").flatMap {
+            $0 + 1 < options.count ? options[$0 + 1] : nil
+        }
+    }
+    guard let world = Palette.World(rawValue: option("world") ?? "free") else {
+        fail("palettes: --world is telescope or free")
+    }
+    let harmony = option("harmony").map {
+        guard let harmony = Palette.Harmony(rawValue: $0) else {
+            fail(
+                "palettes: --harmony is one of "
+                    + Palette.Harmony.allCases.map(\.rawValue).joined(separator: ", "))
+        }
+        return harmony
+    }
+    let count = Int(option("count") ?? "24") ?? 24
+    let firstSeed = UInt64(option("seed") ?? "1") ?? 1
+    guard FileManager.default.fileExists(atPath: folder.take.path) else {
+        throw SceneFolder.LookError.noTake(folder.url)
+    }
+
+    let references = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("references/telescope")
+    let telescope =
+        ((try? FileManager.default.contentsOfDirectory(atPath: references.path)) ?? [])
+        .filter { $0.hasSuffix(".json") }.sorted()
+        .compactMap { name in
+            (try? Data(contentsOf: references.appendingPathComponent(name))).flatMap {
+                try? PaletteFamily(reference: $0, name: String(name.dropLast(5)))
+            }
+        }
+    for family in PaletteGenerator.families(world, telescope: telescope) {
+        if let note = family.note { print("palettes   \(note)") }
+    }
+
+    let loaded = try RecordingFile.read(from: folder.take)
+    let galaxies = min(max(loaded.scene.galaxies.count, 1), 5)
+    var palettes: [Palette] = []
+    for seed in firstSeed..<(firstSeed + UInt64(max(count, 1))) {
+        palettes.append(
+            try PaletteGenerator.palette(
+                galaxies: galaxies, world: world, family: option("family"), harmony: harmony,
+                seed: seed, telescope: telescope))
+    }
+    // Palettes are judged on a full look: a plain one shows no glow, bloom or saturation.
+    let catalogue = catalogueLooks()
+    let sceneLook = (try? Data(contentsOf: folder.look)).flatMap {
+        try? LookFile.decoded(from: $0)
+    }
+    var base = sceneLook.flatMap { $0.plain ? nil : $0 } ?? LookFile.standard
+    if let fallback = catalogue.first(where: { $0.name == "nebula-soft" }), sceneLook?.plain ?? true {
+        base = fallback
+    }
+    if let named = option("base") {
+        guard
+            let found = catalogue.first(where: { $0.name == named })
+                ?? (try? LookFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: named))))
+        else { fail("palettes: no look \(named)") }
+        base = found
+    }
+    print("palettes   on the look \(base.name)")
+    let looks = palettes.map { palette in
+        var file = base
+        file.name = palette.name
+        file.palette = palette.colours
+        file.paletteRecipe = palette
+        return file
+    }
+
+    let sheet = try LookSheet(take: loaded)
+    let lastFrame = sheet.capturedFrames - 1
+    let samples =
+        (try? String(contentsOf: folder.hiresCurves, encoding: .utf8))
+        .map(KeyFrames.samples) ?? []
+    let keys = KeyFrames.pick(samples.filter { $0.frame <= lastFrame })
+    let frame = min(
+        max(
+            option("frame").flatMap(Int.init)
+                ?? (keys.first { $0.role == .tails } ?? keys.first { $0.role == .pericentre })?
+                .frame ?? lastFrame / 2, 0), lastFrame)
+    let clip = try folder.storedClip()
+    let hires = folder.storedHires()
+    let renderWidth = hires?.width ?? clip.width
+    let renderHeight = hires?.height ?? clip.height
+    let cellWidth = Int(option("width").flatMap(Double.init) ?? 400)
+    let cellHeight = max(
+        Int((Double(cellWidth) * Double(renderHeight) / Double(renderWidth)).rounded()), 1)
+    print(
+        String(
+            format: "palettes   %d %@ palettes for %d galaxies on frame %d (%.0f Myr)",
+            palettes.count, world.rawValue, galaxies, frame, sheet.timeMyr(atCaptured: frame)))
+
+    let started = Date()
+    let cells = try sheet.render(
+        looks: looks, frames: [frame], width: renderWidth, height: renderHeight,
+        cellWidth: cellWidth, cellHeight: cellHeight, framesPerSecond: hires?.fps ?? clip.fps
+    ).map { $0[0] }
+
+    let manager = FileManager.default
+    try manager.createDirectory(at: folder.palettes, withIntermediateDirectories: true)
+    for stale in (try? manager.contentsOfDirectory(atPath: folder.palettes.path)) ?? []
+    where stale.hasSuffix(".look.json") {
+        try manager.removeItem(at: folder.palettes.appendingPathComponent(stale))
+    }
+    for file in looks {
+        try file.encoded().write(
+            to: folder.palettes.appendingPathComponent("\(file.name).look.json"))
+    }
+    guard
+        let tiles = PaletteSheet.sheet(
+            cells: cells, palettes: palettes, cellWidth: cellWidth, cellHeight: cellHeight,
+            columns: min(palettes.count, 4)),
+        let swatches = PaletteSheet.swatches(palettes)
+    else { fail("palettes: could not compose the sheet") }
+    let sheetURL = folder.palettes.appendingPathComponent("sheet.png")
+    let swatchURL = folder.palettes.appendingPathComponent("swatches.png")
+    try PNGWriter.write(tiles, to: sheetURL)
+    try PNGWriter.write(swatches, to: swatchURL)
+    print(String(format: "palettes   drawn in %.1f s", Date().timeIntervalSince(started)))
+    print("sheet      \(sheetURL.path)")
+    print("swatches   \(swatchURL.path)")
+    return 0
+}
+
 /// `export <scene folder>`: the take drawn with the scene's look into `exports/<preset>.mp4`,
 /// HEVC unless the preset or `--codec` says otherwise; another codec adds its name, as
 /// `<preset>-h264.mp4` and `<preset>-prores.mov`.
-func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
+func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReporter) throws -> Int32 {
     func option(_ name: String) -> String? {
         options.firstIndex(of: "--\(name)").flatMap {
             $0 + 1 < options.count ? options[$0 + 1] : nil
@@ -270,7 +413,7 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         }
         return try previewStage(
             folder, export: export, format: format, preset: options.contains("--preset") ? preset : nil,
-            start: start, option: option, value: value)
+            start: start, reporter: reporter, option: option, value: value)
     }
 
     // H.264 wants even sides.
@@ -314,11 +457,14 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
             preset.name, codec.rawValue, width, height, fps, frames, Double(frames) / Double(fps),
             start, export.takeSeconds, look.name, steering))
     var reported = 0
+    reporter.start(detail: "frame 0/\(frames)")
     let report = try export.write(
         to: out, width: width, height: height, framesPerSecond: fps, start: start,
         duration: duration, codec: codec, bitsPerSecond: bitRate, quality: quality,
         metadata: VideoMetadata(sceneID: folder.sceneID)
     ) { done, total in
+        reporter.update(
+            progress: Double(done) / Double(max(total, 1)), detail: "frame \(done)/\(total)")
         let tenth = done * 10 / max(total, 1)
         if tenth > reported {
             reported = tenth
@@ -333,6 +479,15 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
             report.frames, report.seconds, report.renderedPerSecond, report.speed,
             Double(bytes) / 1e6))
     print("video      \(out.path)")
+    var done = RunEvent(RunEvent.Kind.exportDone)
+    done.preset = preset.name
+    done.style = look.name
+    done.codec = codec.rawValue
+    done.frames = report.frames
+    done.megabytes = Double(bytes) / 1e6
+    done.seconds = report.seconds
+    done.path = out.path
+    reporter.record(done)
     if let limit = preset.maxBytes, bytes > limit {
         print("warning    \(bytes / 1_000_000) MB, over the \(limit / 1_000_000) MB aimed for")
     }
@@ -349,7 +504,8 @@ func exportStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 /// seconds unless told otherwise, the README's own animation.
 func previewStage(
     _ folder: SceneFolder, export: TakeExport, format: AnimatedImage.Format, preset: VideoPreset?,
-    start: Double, option: (String) -> String?, value: (String) throws -> Double?
+    start: Double, reporter: StageReporter, option: (String) -> String?,
+    value: (String) throws -> Double?
 ) throws -> Int32 {
     let width = Int(try value("width") ?? 960)
     let aspect = preset.map { Double($0.height) / Double($0.width) } ?? 9.0 / 16
@@ -378,6 +534,7 @@ func previewStage(
             format: "export     %@ %dx%d at %d fps, %.1f s from %.1f s of a %.1f s take, look %@%@",
             format.rawValue, width, height, fps, duration, start, export.takeSeconds,
             export.look.name, maximum.map { String(format: ", at most %.1f MB", Double($0) / 1e6) } ?? ""))
+    reporter.start(detail: "\(format.rawValue) preview")
     let report = try export.writePreview(
         to: out, format: format, width: width, height: height, framesPerSecond: fps,
         start: start, duration: duration, maximumBytes: maximum,
@@ -400,7 +557,32 @@ func previewStage(
         )
     }
     print("preview    \(out.path)")
+    var done = RunEvent(RunEvent.Kind.exportDone)
+    done.preset = preset?.name
+    done.style = export.look.name
+    done.codec = format.rawValue
+    done.frames = report.frames
+    done.megabytes = Double(report.bytes) / 1e6
+    done.seconds = report.seconds
+    done.path = out.path
+    reporter.record(done)
     return 0
+}
+
+/// `event <batch folder> <kind> [--field value]...`: one line appended to the batch's
+/// `events.jsonl`, for the scripts that run the stages and have no JSON of their own to write.
+func eventCommand(_ arguments: [String]) -> Int32 {
+    guard arguments.count >= 2, !arguments[0].hasPrefix("--"), !arguments[1].hasPrefix("--") else {
+        fail("usage: sillage-render event <batch folder> <kind> [--scene id] [--field value]...")
+    }
+    let batch = URL(fileURLWithPath: arguments[0], isDirectory: true)
+    do {
+        let event = try RunEvent(arguments[1], options: Array(arguments.dropFirst(2)))
+        try RunStatusFiles.append(event, to: RunStatusFiles.events(batch: batch))
+        return 0
+    } catch {
+        fail("event: \(error)")
+    }
 }
 
 extension Array {
@@ -466,6 +648,9 @@ func refreshCosts(_ folder: SceneFolder) {
 // derived from the folder. Anything else is a plain render driven by its flags.
 let started = Date()
 let arguments: [String]
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "event" {
+    exit(eventCommand(Array(CommandLine.arguments.dropFirst(2))))
+}
 var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
 var exploreRun: SceneFolder?
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "costs" {
@@ -486,11 +671,20 @@ if CommandLine.arguments.count > 1,
         } catch {
             fail("look: \(error)")
         }
-    case .export:
+    case .palettes:
         do {
-            let status = try exportStage(folder, options: options)
-            if status == 0 { refreshCosts(folder) }
-            exit(status)
+            exit(try paletteStage(folder, options: options))
+        } catch {
+            fail("palettes: \(error)")
+        }
+    case .export:
+        let run = StageReporter(stage: stage.rawValue, folder: folder)
+        reporter = run
+        do {
+            let code = try exportStage(folder, options: options, reporter: run)
+            run.finish()
+            if code == 0 { refreshCosts(folder) }
+            exit(code)
         } catch {
             fail("export: \(error)")
         }
@@ -504,6 +698,13 @@ if CommandLine.arguments.count > 1,
             arguments = plan.arguments
             hiresRun = (folder, plan.record)
             let record = plan.record
+            let run = StageReporter(stage: stage.rawValue, folder: folder)
+            reporter = run
+            run.start(detail: "starting")
+            var begun = RunEvent(RunEvent.Kind.hiresStart)
+            begun.particles = record.particles
+            begun.steps = record.steps
+            run.record(begun)
             print(
                 String(
                     format: "hires      %d particles (preview %d), step %.5f Myr (preview %.5f),"
@@ -521,6 +722,9 @@ if CommandLine.arguments.count > 1,
         try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
         try clip.encoded().write(to: folder.clip)
         arguments = folder.exploreArguments(rest, clip: clip)
+        let run = StageReporter(stage: stage.rawValue, folder: folder)
+        reporter = run
+        run.start(detail: "starting")
         exploreRun = folder
     }
 } else {
@@ -745,6 +949,7 @@ if generatedHaste != nil && !arguments.contains("--no-check")
     }
     if !verdict.accepted {
         print("rejected   " + verdict.reasons.map(\.description).joined(separator: "; "))
+        reporter?.finish()
         exit(3)
     }
     if arguments.contains("--check-only") { exit(0) }
@@ -880,9 +1085,26 @@ let tidalReach = reach.map { $0 * 1.5 }
 // settles over its first few hundred megayears, which is worth simulating and not worth
 // watching.
 let settle = Int(number("settle", 0))
+// The cost of a step is flat (#19), so what has been done so far says what is left: while
+// settling, from the pace of the steps; once frames come, from the pace of the frames, which
+// the drawing of each one is part of.
+let totalSteps = settle + stepsPerFrame * frames
 if settle > 0 {
     let settleStart = Date()
-    solver.step(count: settle)
+    // In chunks, so a settle of minutes still reports.
+    let chunk = max(settle / 50, 1)
+    var settled = 0
+    while settled < settle {
+        let count = min(chunk, settle - settled)
+        solver.step(count: count)
+        settled += count
+        let elapsed = Date().timeIntervalSince(settleStart)
+        reporter?.update(
+            progress: Double(settled) / Double(max(totalSteps, 1)), detail: "settle \(settled)/\(settle)",
+            eta: RunStatus.eta(
+                elapsed: elapsed, progress: Double(settled) / Double(max(totalSteps, 1)),
+                now: Date()))
+    }
     print(
         String(
             format: "settle     %d steps, t=%.1f Myr, %.1f s", settle,
@@ -892,6 +1114,7 @@ if settle > 0 {
     previousTime = solver.time
 }
 
+let framesStart = Date()
 for frame in 0..<frames {
     let simulationStart = Date()
     solver.step(count: stepsPerFrame)
@@ -1058,6 +1281,13 @@ for frame in 0..<frames {
     }
     previousTime = solver.time
 
+    let framesDone = Double(frame + 1) / Double(max(frames, 1))
+    reporter?.update(
+        progress: Double(settle + (frame + 1) * stepsPerFrame) / Double(max(totalSteps, 1)),
+        detail: "frame \(frame + 1)/\(frames)",
+        eta: RunStatus.eta(
+            elapsed: Date().timeIntervalSince(framesStart), progress: framesDone, now: Date()))
+
     print(
         String(
             format:
@@ -1068,6 +1298,7 @@ for frame in 0..<frames {
             (videoWriter?.lastGPUTime ?? renderer.lastGPUTime) * 1000))
 }
 
+reporter?.update(progress: 1, detail: "finishing", eta: Date())
 try videoWriter?.finish()
 try curves?.close()
 if let density, let densityURL {
@@ -1096,8 +1327,15 @@ if let (folder, done) = hiresRun {
         String(
             format: "hires      %.0f s, peak %.2f GB, take %.2f GB", record.seconds ?? 0,
             Double(record.peakMemoryBytes ?? 0) / 1e9, Double(record.takeBytes ?? 0) / 1e9))
-    refreshCosts(folder)
+    var finished = RunEvent(RunEvent.Kind.hiresDone)
+    finished.particles = record.particles
+    finished.steps = record.steps
+    finished.minutes = (record.seconds ?? 0) / 60
+    finished.takeGB = Double(record.takeBytes ?? 0) / 1e9
+    reporter?.record(finished)
 }
+reporter?.finish()
+if let (folder, _) = hiresRun { refreshCosts(folder) }
 if let exploreRun { refreshCosts(exploreRun) }
 
 print(String(format: "done in %.1f s", Date().timeIntervalSince(clock)))

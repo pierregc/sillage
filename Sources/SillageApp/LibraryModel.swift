@@ -79,6 +79,8 @@ final class LibraryModel: ObservableObject {
         }
     }
 
+    var isWatching: Bool { watcher != nil }
+
     func stop() {
         watcher?.cancel()
         watcher = nil

@@ -269,6 +269,14 @@ explore_scene() {
     local columns="$video_bytes"
     [ "$scored" -eq 0 ] || columns="$video_bytes,$score,"
     echo "$id,$seed,$n,$galaxies,$particles,$width,$height,$frames,$fps,$settle,$clip,$wall,$columns,$status" >>"$index"
+    # Through the binary, which writes one whole line however many scenes finish together.
+    local event=(--scene "$id" --status "${status%%:*}" --seconds "$wall")
+    case "$score" in "" | *[!0-9.]*) ;; *) event+=(--score "$score") ;; esac
+    render event "$out" explore.scene "${event[@]}" 2>>"$log" || true
+    case "$status" in
+        failed*) render event "$out" error --scene "$id" --stage explore --message "$status" \
+            --log ".logs/$id.log" 2>>"$log" || true ;;
+    esac
     note "$id $status in ${wall}s, $galaxies galaxies, $particles particles, $clip steps"
     say "$id $status ${wall}s, $galaxies galaxies, $particles particles, $clip steps"
 }

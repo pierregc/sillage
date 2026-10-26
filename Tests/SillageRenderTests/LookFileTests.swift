@@ -57,7 +57,9 @@ struct LookFileTests {
         func fields(_ value: Any) -> Set<String> {
             Set(Mirror(reflecting: value).children.compactMap(\.label))
         }
-        let file = LookFile.raw
+        var file = LookFile.raw
+        file.paletteRecipe = Palette(
+            world: .free, family: "ember", harmony: .triadic, seed: 1, colours: file.palette)
         #expect(try keys(JSONEncoder().encode(file.look)) == fields(file.look))
         #expect(try keys(file.encoded()) == fields(file))
     }

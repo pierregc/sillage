@@ -262,10 +262,11 @@ enum LookFiles {
 /// File menu entries for takes and look files, so either can be opened over the other.
 struct LookCommands: View {
     @ObservedObject var model: SimulationModel
+    let navigation: AppNavigation
 
     var body: some View {
         Divider()
-        Button("Ouvrir une prise…") { TakeFiles.open(model) }
+        Button("Ouvrir une prise…") { navigation.openTake(model) }
             .keyboardShortcut("o", modifiers: .command)
         Button("Ouvrir un look…") { LookFiles.open(model) }
             .keyboardShortcut("o", modifiers: [.command, .shift])

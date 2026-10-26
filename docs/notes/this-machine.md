@@ -22,7 +22,7 @@
 ```
 
 **Screen recording is not granted**, so `screencapture` fails and the app window cannot be
-looked at directly. Eight modes replace it, and they are the only way to verify the app:
+looked at directly. Nine modes replace it, and they are the only way to verify the app:
 
 ```
 Sillage.app --selftest    # model, solver, renderer and preview offscreen; writes out/selftest.png
@@ -31,6 +31,7 @@ Sillage.app --uishot      # renders the panels through ImageRenderer to out/
 Sillage.app --presets     # cycles the setup presets with the window up
 Sillage.app --responsive  # runs a self-gravitating scene, reports how long the main actor stalls
 Sillage.app --qa          # walks the whole run flow and reports every check
+Sillage.app --navcheck    # walks the sidebar: library, nights, workshop, a run left behind, contemplation
 Sillage.app --cinema N    # contemplation for N seconds, paced to 60 Hz, reports lateness
 Sillage.app --baseline N  # headless; every phase of a step and a frame at N visible particles
 ```

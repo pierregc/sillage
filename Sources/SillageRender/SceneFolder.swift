@@ -6,7 +6,7 @@ import SillageCore
 /// nothing else.
 public struct SceneFolder: Sendable, Equatable {
     public enum Stage: String, CaseIterable, Sendable {
-        case explore, hires, look, export
+        case explore, hires, look, export, palettes
     }
 
     /// What neither the scene file nor the look file holds: how long the clip runs and how
@@ -94,8 +94,6 @@ public struct SceneFolder: Sendable, Equatable {
 
     /// Where the batch's own files sit: `index.csv` and the ratings.
     public var batch: URL { url.deletingLastPathComponent() }
-    /// The library the batch sits in, where `.sillage/costs.json` is kept.
-    public var library: URL { batch.deletingLastPathComponent() }
     public var scene: URL { file("scene.json") }
     public var look: URL { file("look.json") }
     /// The look `explore` wrote, kept aside once another look is promoted over it.
@@ -113,6 +111,8 @@ public struct SceneFolder: Sendable, Equatable {
     public var hires: URL { file("hires.json") }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
     public var lookGrid: URL { looks.appendingPathComponent("grid.png") }
+    /// What `palettes` draws: `sheet.png`, `swatches.png` and one look file per palette.
+    public var palettes: URL { url.appendingPathComponent("palettes", isDirectory: true) }
 
     private func file(_ name: String) -> URL { url.appendingPathComponent(name) }
 

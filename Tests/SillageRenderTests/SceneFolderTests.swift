@@ -206,6 +206,20 @@ struct SceneFolderTests {
         #expect(!SceneFolder(folder.batch).isExplored)
     }
 
+    @Test func aBatchAlsoRunsTheScenesPickedByTheScore() throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        let pick = SceneRatings.Pick(score: 0.8, date: Date(timeIntervalSince1970: 0))
+        try SceneRatings(scenes: [
+            "scene-0001": .init(picked: pick), "scene-0002": .init(choice: .no, picked: pick),
+            "scene-0003": .init(choice: .yes, picked: pick), "scene-0004": .init(rating: 5),
+        ]).write(batch: folder.batch)
+        #expect(
+            SceneFolder.chosen(inBatch: folder.batch).map { $0.url.lastPathComponent } == [
+                "scene-0001", "scene-0003",
+            ])
+    }
+
     @Test func promotingALookKeepsTheFirstOneAside() throws {
         let folder = try temporaryFolder()
         try LookFile.raw.encoded().write(to: folder.look)

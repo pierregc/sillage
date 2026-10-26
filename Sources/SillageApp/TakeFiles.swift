@@ -64,12 +64,15 @@ enum TakeFiles {
     }
 
     @MainActor
-    static func open(_ model: SimulationModel) {
+    /// False when the panel was cancelled.
+    @discardableResult
+    static func open(_ model: SimulationModel) -> Bool {
         let panel = NSOpenPanel()
         panel.title = "Ouvrir une prise"
         panel.allowedContentTypes = [contentType]
         panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
         model.openTake(from: url)
+        return true
     }
 }
