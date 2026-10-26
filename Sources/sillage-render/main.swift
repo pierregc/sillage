@@ -589,6 +589,185 @@ extension Array {
     var nonEmpty: Self? { isEmpty ? nil : self }
 }
 
+/// Spike #118: `colours-radius <scene folder>`, how far the take's frame 0 recovers the birth
+/// radius the sampler drew, per galaxy.
+func colourRadiusCommand(_ path: String) throws -> Int32 {
+    let folder = SceneFolder(path: path)
+    let loaded = try RecordingFile.read(from: folder.take)
+    let count = loaded.recording.particleCount
+    let file = try SceneFile.decoded(from: Data(contentsOf: folder.scene))
+    let scene = file.scene(particleCount: count)
+    let started = Date()
+    let sampled = RestrictedSolver.sampleParticles(for: scene)
+    print(
+        String(
+            format: "radius     sampled %d particles in %.1f s", sampled.count,
+            Date().timeIntervalSince(started)))
+    var same = sampled.count >= count
+    for index in 0..<count where same {
+        let a: Bool = sampled.component[index] == loaded.particles.component[index]
+        let b: Bool = sampled.galaxyIndex[index] == loaded.particles.galaxyIndex[index]
+        let c: Bool = sampled.population[index] == loaded.particles.population[index]
+        same = a && b && c
+    }
+    guard same else { fail("colours-radius: the sampler does not give back the take's particles") }
+    let rebuilt = RecordingFile.galacticRadii(loaded)
+    let fromOrigin = loaded.particles.positions.map { simd_length($0) }
+    for galaxy in 0..<loaded.recording.galaxyCount {
+        let members = (0..<count).filter {
+            Int(sampled.galaxyIndex[$0]) == galaxy
+                && ParticleComponent(rawValue: sampled.component[$0])?.emits == true
+        }
+        let disk = members.filter { sampled.component[$0] == 0 }.map { sampled.birthRadius[$0] }
+            .sorted()
+        let scale = max((disk.isEmpty ? 1 : disk[disk.count / 2]) / 1.678, 1e-3)
+        func ranks(_ values: [Float]) -> [Float] {
+            var out = [Float](repeating: 0, count: values.count)
+            for (rank, index) in values.indices.sorted(by: { values[$0] < values[$1] }).enumerated() {
+                out[index] = Float(rank)
+            }
+            return out
+        }
+        func spearman(_ a: [Float], _ b: [Float]) -> Float {
+            let ra = ranks(a)
+            let rb = ranks(b)
+            let n = Float(a.count)
+            let mean = (n - 1) / 2
+            var num: Float = 0
+            var da: Float = 0
+            var db: Float = 0
+            for i in a.indices {
+                num += (ra[i] - mean) * (rb[i] - mean)
+                da += (ra[i] - mean) * (ra[i] - mean)
+                db += (rb[i] - mean) * (rb[i] - mean)
+            }
+            return num / max((da * db).squareRoot(), 1e-9)
+        }
+        let truth = members.map { sampled.birthRadius[$0] }
+        for (label, guess) in [
+            ("frame-0 centre", members.map { rebuilt[$0] }), ("origin", members.map { fromOrigin[$0] }),
+        ] {
+            var errors = zip(truth, guess).map { abs($0 - $1) / scale }
+            errors.sort()
+            let outer: Float = 2.4
+            let agree = zip(truth, guess).filter { ($0 / scale > outer) == ($1 / scale > outer) }.count
+            print(
+                String(
+                    format:
+                        "radius     galaxy %d (%@, %d emitting, h %.2f kpc) from %@: Spearman %.3f, |error| median %.2f h, 90th %.2f h, outer zone agrees %.1f %%",
+                    galaxy, scene.galaxies[galaxy].kind.rawValue, members.count, scale, label,
+                    spearman(truth, guess), errors[errors.count / 2], errors[errors.count * 9 / 10],
+                    100 * Float(agree) / Float(max(members.count, 1))))
+        }
+    }
+    return 0
+}
+
+/// Spike #118: `colours <scene folder> --out <dir> --name <label>`, key frames and an 8 s WebP
+/// of the take with the mapping `SILLAGE_COLOURS` names (none: today's shader).
+func colourSpikeCommand(_ arguments: [String]) throws -> Int32 {
+    guard let path = arguments.first, !path.hasPrefix("--") else {
+        fail("usage: sillage-render colours <scene folder> --out <dir> --name <label>")
+    }
+    func option(_ name: String) -> String? {
+        arguments.firstIndex(of: "--\(name)").flatMap {
+            $0 + 1 < arguments.count ? arguments[$0 + 1] : nil
+        }
+    }
+    let folder = SceneFolder(path: path)
+    let out = URL(fileURLWithPath: option("out") ?? "out/colours", isDirectory: true)
+    let name = option("name") ?? "baseline"
+    try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    let world = option("world").flatMap(Palette.World.init) ?? .free
+
+    let started = Date()
+    let loaded = try RecordingFile.read(from: folder.take)
+    let read = Date().timeIntervalSince(started)
+    let references = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("references/telescope")
+    // #125 writes p16 and p84 where `PaletteFamily(reference:)` reads a spread.
+    func withSpread(_ data: Data) -> Data? {
+        guard var file = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            var regions = file["regions"] as? [String: [String: Any]]
+        else { return nil }
+        for (key, var region) in regions {
+            if let low = region["p16"] as? [Double], let high = region["p84"] as? [Double] {
+                region["spread"] = zip(low, high).map { ($1 - $0) / 2 }
+            }
+            regions[key] = region
+        }
+        file["regions"] = regions
+        return try? JSONSerialization.data(withJSONObject: file)
+    }
+    let telescope = ["hubble-visible", "webb-nircam", "webb-miri", "webb-nircam-miri"]
+        .compactMap { set in
+            (try? Data(contentsOf: references.appendingPathComponent(set + ".json")))
+                .flatMap(withSpread).flatMap { try? PaletteFamily(reference: $0, name: set) }
+        }
+    let palette = try PaletteGenerator.palette(
+        galaxies: min(max(loaded.scene.galaxies.count, 1), 5), world: world,
+        family: option("family"), seed: UInt64(option("seed") ?? "1") ?? 1,
+        telescope: telescope)
+    var look =
+        catalogueLooks().first { $0.name == (option("base") ?? "nebula-soft") }
+        ?? LookFile.standard
+    if let sceneLook = (try? Data(contentsOf: folder.look)).flatMap({
+        try? LookFile.decoded(from: $0)
+    }) {
+        look.camera = sceneLook.camera
+    }
+    look.name = name
+    look.palette = palette.colours
+    look.paletteRecipe = palette
+    try look.encoded().write(to: out.appendingPathComponent("\(name).look.json"))
+    if let spike = GalaxyColourSpike.fromEnvironment() {
+        for line in spike.describe(tints: palette.colours) { print("colours    \(line)") }
+    }
+    if arguments.contains("--describe") { return 0 }
+
+    let hires = folder.storedHires()
+    let width = hires?.width ?? 960
+    let height = hires?.height ?? 540
+    let fps = hires?.fps ?? 30
+    let sheet = try LookSheet(take: loaded)
+    let samples =
+        (try? String(contentsOf: folder.hiresCurves, encoding: .utf8)).map(KeyFrames.samples)
+        ?? []
+    let frames =
+        option("frames")?.split(separator: ",").compactMap { Int($0) }
+        ?? KeyFrames.pick(samples.filter { $0.frame < sheet.capturedFrames }).map(\.frame)
+    let stillsStart = Date()
+    let cells = try sheet.render(
+        looks: [look], frames: frames, width: width, height: height, cellWidth: width,
+        cellHeight: height, framesPerSecond: fps)
+    for (index, frame) in frames.enumerated() {
+        try PNGWriter.write(
+            cells[0][index], width: width, height: height,
+            to: out.appendingPathComponent(String(format: "%@-f%03d.png", name, frame)))
+    }
+    print(
+        String(
+            format: "colours    %@ %@ %@, palette %@, read %.1f s, %d stills in %.1f s", name,
+            world.rawValue, ProcessInfo.processInfo.environment["SILLAGE_COLOURS"] ?? "baseline",
+            palette.name, read, frames.count, Date().timeIntervalSince(stillsStart)))
+    guard arguments.contains("--clip") else { return 0 }
+
+    // The whole take in eight seconds.
+    let seconds = Double(option("seconds") ?? "8") ?? 8
+    let rate = Int((Double(sheet.capturedFrames - 1) / seconds).rounded(.up))
+    let export = try TakeExport(take: loaded, look: look, capturedRate: rate)
+    let clipStart = Date()
+    let report = try export.writePreview(
+        to: out.appendingPathComponent("\(name).webp"), format: .webp, width: 960,
+        height: 540, framesPerSecond: 16, duration: seconds, quality: 80)
+    print(
+        String(
+            format: "colours    %@.webp %d frames, %.1f MB in %.1f s", name, report.frames,
+            Double(report.bytes) / 1e6, Date().timeIntervalSince(clipStart)))
+    return 0
+}
+
 /// The most the process has had resident at once, GPU buffers included: on unified memory
 /// they count against the same footprint.
 func peakFootprint() -> Int? {
@@ -609,6 +788,20 @@ let started = Date()
 let arguments: [String]
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "event" {
     exit(eventCommand(Array(CommandLine.arguments.dropFirst(2))))
+}
+if CommandLine.arguments.count > 2, CommandLine.arguments[1] == "colours-radius" {
+    do {
+        exit(try colourRadiusCommand(CommandLine.arguments[2]))
+    } catch {
+        fail("colours-radius: \(error)")
+    }
+}
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "colours" {
+    do {
+        exit(try colourSpikeCommand(Array(CommandLine.arguments.dropFirst(2))))
+    } catch {
+        fail("colours: \(error)")
+    }
 }
 var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
 if CommandLine.arguments.count > 1,

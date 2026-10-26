@@ -29,6 +29,7 @@ struct SplatUniforms {
     var slabNear: Float
     var slabScale: Float
     var pass: UInt32
+    var mapped: UInt32 = 0
 }
 
 struct BackgroundStar {
@@ -233,6 +234,9 @@ public final class Renderer {
     private var frameBuffer: MTLBuffer?
     private var smoothingBuffer: MTLBuffer?
     private var frameCount = 1
+    private let colourSpike: GalaxyColourSpike?
+    private let colourKeyBuffer: MTLBuffer
+    private var rampBuffer: MTLBuffer?
     private let starBuffer: MTLBuffer?
     private let particleCount: Int
     private let drawnCount: Int
@@ -450,6 +454,15 @@ public final class Renderer {
         self.componentBuffer = componentBuffer
         self.stellarBuffer = stellarBuffer
         self.traitBuffer = traitBuffer
+        let spike = GalaxyColourSpike.fromEnvironment()
+        colourSpike = spike
+        let keys = spike.map { $0.paints ? $0.keys(of: particles) : [] } ?? []
+        guard
+            let colourKeyBuffer = keys.count == count
+                ? device.makeBuffer(bytes: keys, length: count * 4, options: .storageModeShared)
+                : device.makeBuffer(length: 16, options: .storageModeShared)
+        else { throw RenderError.textureAllocation }
+        self.colourKeyBuffer = colourKeyBuffer
         self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
         if externalPositions == nil {
             upload(positions: particles.positions)
@@ -512,6 +525,17 @@ public final class Renderer {
         }
         frames.withUnsafeBytes { source in
             frameBuffer?.contents().copyMemory(from: source.baseAddress!, byteCount: source.count)
+        }
+        if let colourSpike, colourSpike.paints {
+            let ramps = colourSpike.ramps(
+                tints: frames.map { SIMD3($0.tint.x, $0.tint.y, $0.tint.z) })
+            let length = ramps.count * MemoryLayout<GalaxyRamp>.stride
+            if rampBuffer == nil || rampBuffer!.length != length {
+                rampBuffer = device.makeBuffer(length: length, options: .storageModeShared)
+            }
+            ramps.withUnsafeBytes { source in
+                rampBuffer?.contents().copyMemory(from: source.baseAddress!, byteCount: source.count)
+            }
         }
     }
 
@@ -687,7 +711,7 @@ public final class Renderer {
             galaxyTint: settings.galaxyTint,
             slabNear: slabNear,
             slabScale: 1 / max(2 * halfExtent, 1e-3),
-            pass: 0)
+            pass: 0, mapped: rampBuffer == nil ? 0 : 1)
 
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {
@@ -718,6 +742,8 @@ public final class Renderer {
             encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
             encoder.setVertexBuffer(stellarBuffer, offset: 0, index: 9)
             encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
+            encoder.setVertexBuffer(colourKeyBuffer, offset: 0, index: 11)
+            encoder.setVertexBuffer(rampBuffer ?? colourKeyBuffer, offset: 0, index: 12)
             // Twice over the same buffer: the dust first, so that its opacity is standing in
             // the attachment when the stars are drawn and read it back. Each draw throws away
             // the particles belonging to the other one in the vertex stage, before any

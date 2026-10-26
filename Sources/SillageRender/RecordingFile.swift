@@ -282,6 +282,14 @@ public enum RecordingFile {
         particles.positions = recording.positions(at: 0)
         particles.velocities = [SIMD3<Float>](repeating: .zero, count: count)
         particles.birthRadius = particles.positions.map { simd_length($0) }
+        if GalaxyColourSpike.fromEnvironment() != nil {
+            let centres = recording.centers(at: 0)
+            particles.birthRadius = particles.positions.indices.map { index in
+                let galaxy = Int(particles.galaxyIndex[index])
+                return simd_distance(
+                    particles.positions[index], galaxy < centres.count ? centres[galaxy] : .zero)
+            }
+        }
         particles.mass = [Float](repeating: 0, count: count)
         // Everything in a take is visible; there is no dark matter in the file.
         particles.setVisibleCount(count)

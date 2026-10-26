@@ -34,7 +34,36 @@ enum Shaders {
             /// 0 draws the dust, 1 draws everything that emits. Two draws over one buffer,
             /// because the extinction has to be in the attachment before a star reads it.
             uint pass;
+            uint mapped;
         };
+
+        struct GalaxyRamp {
+            float4 stops[4];
+            float4 young;
+            float4 knot;
+            float4 params;
+        };
+
+        // Spike #118: the galaxy's colour at this key, below zero its young colour.
+        static float3 rampColour(constant GalaxyRamp &ramp, float key) {
+            if (key < 0.0) { return ramp.young.rgb; }
+            if (ramp.params.y > 0.5) {
+                uint best = 0u;
+                float nearest = 1e9;
+                for (uint i = 0u; i < 4u; i++) {
+                    float d = fabs(key - ramp.stops[i].w);
+                    if (d < nearest) { nearest = d; best = i; }
+                }
+                return ramp.stops[best].rgb;
+            }
+            float3 colour = ramp.stops[0].rgb;
+            for (uint i = 1u; i < 4u; i++) {
+                float a = ramp.stops[i - 1u].w;
+                float t = saturate((key - a) / max(ramp.stops[i].w - a, 1e-4));
+                colour = key > a ? mix(ramp.stops[i - 1u].rgb, ramp.stops[i].rgb, t) : colour;
+            }
+            return colour;
+        }
 
         struct BloomParams {
             float threshold;
@@ -311,7 +340,9 @@ enum Shaders {
                                     constant DiskFrame *frames [[buffer(6)]],
                                     device const float *smoothing [[buffer(7)]],
                                     device const float2 *stellar [[buffer(9)]],
-                                    device const float2 *traits [[buffer(10)]]) {
+                                    device const float2 *traits [[buffer(10)]],
+                                    device const float *colourKeys [[buffer(11)]],
+                                    constant GalaxyRamp *ramps [[buffer(12)]]) {
             SplatOut out;
             float3 position = positions[vid];
             DiskFrame frame = frames[galaxy[vid]];
@@ -464,11 +495,18 @@ enum Shaders {
                 float rise = 1.0 - exp(-ageMyr / max(u.ionisingRiseMyr, 1e-3));
                 float alive = (knot && nursery)
                     ? u.ionisedStrength * rise * exp(-ageMyr / max(u.ionisedMyr, 1e-3)) : 0.0;
-                float3 emitted = mix(stellarLight, hiiColour(), alive);
+                float3 emitted;
+                if (u.mapped != 0u) {
+                    constant GalaxyRamp &ramp = ramps[galaxy[vid]];
+                    float3 painted = rampColour(ramp, colourKeys[vid]);
+                    emitted = mix(mix(stellarLight, painted, ramp.params.x), ramp.knot.rgb, alive);
+                } else {
+                emitted = mix(stellarLight, hiiColour(), alive);
                 // A tint per galaxy is what keeps stars pulled into the other one legible.
                 // It is a departure from the physical colour, so it is dialled rather than
                 // applied: at 0 the two galaxies are coloured by their populations alone.
                 emitted *= mix(float3(1.0), chromaticity(frame.tint.rgb), u.galaxyTint);
+                }
                 out.pointSize = span * (alive > 0.15 ? 1.3 : 1.0);
                 out.color = half3(emitted * (u.brightness * weight * gain * spread));
                 out.opticalDepth = 0.0h;
