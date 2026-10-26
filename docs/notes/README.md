@@ -32,6 +32,7 @@ session. Read the note for an area before changing it.
 - [A breathing core, and a bulge with no edge](breathing-core.md)
 - [Why the red went out](red-population.md): and what a constant population costs
 - [Gas in filaments](gas-filaments.md): and which frame a dust lane lives in
+- [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Télescope world
 
 ## Capture and playback
 

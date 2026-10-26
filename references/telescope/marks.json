@@ -1,0 +1,178 @@
+{
+  "units": "Positions and sizes are fractions of the image width, x to the right and y down, so a circle stays round. Angles are degrees from the x axis, clockwise on screen.",
+  "sets": {
+    "hubble-visible": "Hubble ACS and WFPC2, visible light (B, V, I, H-alpha)",
+    "webb-nircam": "Webb NIRCam alone, 0.9 to 4.4 microns",
+    "webb-miri": "Webb MIRI alone, 7.7 to 21 microns",
+    "webb-nircam-miri": "Webb NIRCam and MIRI combined, the look of most Webb releases"
+  },
+  "images": [
+    {
+      "id": "heic0615a",
+      "set": "hubble-visible",
+      "subject": "Antennae Galaxies, NGC 4038 and NGC 4039",
+      "page": "https://esahubble.org/images/heic0615a/",
+      "url": "https://cdn.esahubble.org/archives/images/large/heic0615a.jpg",
+      "credit": "NASA, ESA, and the Hubble Heritage Team (STScI/AURA)-ESA/Hubble Collaboration. Acknowledgement: B. Whitmore (Space Telescope Science Institute) and James Long (ESA/Hubble)",
+      "licence": "CC BY 4.0",
+      "dust": "absorbs",
+      "galaxies": [
+        {"name": "NGC 4038", "nucleus": [0.59, 0.29], "core": 0.03, "body": [{"centre": [0.55, 0.31], "axes": [0.3, 0.22], "angle": 0}]},
+        {"name": "NGC 4039", "nucleus": [0.41, 0.57], "core": 0.03, "body": [{"centre": [0.38, 0.55], "axes": [0.17, 0.09], "angle": 72}]}
+      ]
+    },
+    {
+      "id": "heic0506a",
+      "set": "hubble-visible",
+      "subject": "Whirlpool Galaxy M51 and NGC 5195",
+      "page": "https://esahubble.org/images/heic0506a/",
+      "url": "https://cdn.esahubble.org/archives/images/large/heic0506a.jpg",
+      "credit": "NASA, ESA, S. Beckwith (STScI), and The Hubble Heritage Team (STScI/AURA)",
+      "licence": "CC BY 4.0",
+      "dust": "absorbs",
+      "galaxies": [
+        {"name": "M51a", "nucleus": [0.38, 0.33], "core": 0.035, "body": [{"centre": [0.38, 0.33], "axes": [0.32, 0.3], "angle": 0}]},
+        {"name": "NGC 5195", "nucleus": [0.83, 0.23], "core": 0.04, "body": [{"centre": [0.81, 0.22], "axes": [0.12, 0.1], "angle": 0}]}
+      ]
+    },
+    {
+      "id": "heic1107a",
+      "set": "hubble-visible",
+      "subject": "Arp 273, UGC 1810 and UGC 1813",
+      "page": "https://esahubble.org/images/heic1107a/",
+      "url": "https://cdn.esahubble.org/archives/images/large/heic1107a.jpg",
+      "credit": "NASA, ESA and the Hubble Heritage Team (STScI/AURA)",
+      "licence": "CC BY 4.0",
+      "dust": "absorbs",
+      "galaxies": [
+        {"name": "UGC 1810", "nucleus": [0.45, 0.22], "core": 0.03, "body": [{"centre": [0.52, 0.27], "axes": [0.34, 0.22], "angle": 0}]},
+        {"name": "UGC 1813", "nucleus": [0.46, 0.735], "core": 0.02, "body": [{"centre": [0.45, 0.74], "axes": [0.17, 0.05], "angle": -30}]}
+      ]
+    },
+    {
+      "id": "heic0206h",
+      "set": "hubble-visible",
+      "subject": "The Mice, NGC 4676",
+      "page": "https://esahubble.org/images/heic0206h/",
+      "url": "https://cdn.esahubble.org/archives/images/large/heic0206h.jpg",
+      "credit": "NASA, H. Ford (JHU), G. Illingworth (UCSC/LO), M. Clampin (STScI), G. Hartig (STScI), the ACS Science Team, and ESA",
+      "licence": "CC BY 4.0",
+      "dust": "absorbs",
+      "galaxies": [
+        {"name": "NGC 4676A", "nucleus": [0.395, 0.505], "core": 0.015, "body": [{"centre": [0.38, 0.51], "axes": [0.08, 0.05], "angle": 80}]},
+        {"name": "NGC 4676B", "nucleus": [0.575, 0.49], "core": 0.015, "body": [{"centre": [0.56, 0.495], "axes": [0.09, 0.04], "angle": -15}]}
+      ]
+    },
+    {
+      "id": "potm2212a",
+      "set": "webb-nircam",
+      "subject": "NGC 7469",
+      "page": "https://esawebb.org/images/potm2212a/",
+      "url": "https://cdn.esawebb.org/archives/images/large/potm2212a.jpg",
+      "credit": "ESA/Webb, NASA & CSA, L. Armus, A. S. Evans",
+      "licence": "CC BY 4.0",
+      "dust": "emits",
+      "galaxies": [
+        {"name": "NGC 7469", "nucleus": [0.54, 0.535], "core": 0.03, "body": [{"centre": [0.53, 0.53], "axes": [0.28, 0.26], "angle": 0}]}
+      ]
+    },
+    {
+      "id": "potm2405a",
+      "set": "webb-nircam",
+      "subject": "NGC 4449, close-up of the starburst",
+      "page": "https://esawebb.org/images/potm2405a/",
+      "url": "https://cdn.esawebb.org/archives/images/large/potm2405a.jpg",
+      "credit": "ESA/Webb, NASA & CSA, A. Adamo (Stockholm University) and the FEAST JWST team",
+      "licence": "CC BY 4.0",
+      "dust": "emits",
+      "galaxies": [
+        {"name": "NGC 4449", "body": [{"centre": [0.5, 0.3], "axes": [0.75, 0.5], "angle": 0}]}
+      ]
+    },
+    {
+      "id": "weic2608a",
+      "set": "webb-nircam",
+      "subject": "M51, close-up of a spiral arm",
+      "page": "https://esawebb.org/images/weic2608a/",
+      "url": "https://cdn.esawebb.org/archives/images/large/weic2608a.jpg",
+      "credit": "ESA/Webb, NASA & CSA, A. Pedrini, A. Adamo (Stockholm University) and the FEAST JWST team",
+      "licence": "CC BY 4.0",
+      "dust": "emits",
+      "galaxies": [
+        {"name": "M51a", "body": [{"centre": [0.5, 0.24], "axes": [0.75, 0.5], "angle": 0}]}
+      ]
+    },
+    {
+      "id": "weic2306a",
+      "set": "webb-miri",
+      "subject": "NGC 1433",
+      "page": "https://esawebb.org/images/weic2306a/",
+      "url": "https://cdn.esawebb.org/archives/images/large/weic2306a.jpg",
+      "credit": "NASA, ESA, CSA, and J. Lee (NOIRLab), A. Pagan (STScI)",
+      "licence": "CC BY 4.0",
+      "dust": "emits",
+      "galaxies": [
+        {"name": "NGC 1433", "nucleus": [0.5, 0.32], "core": 0.045, "body": [{"centre": [0.5, 0.34], "axes": [0.75, 0.5], "angle": 0}]}
+      ]
+    },
+    {
+      "id": "weic2208b",
+      "set": "webb-miri",
+      "subject": "Stephan's Quintet",
+      "page": "https://esawebb.org/images/weic2208b/",
+      "url": "https://cdn.esawebb.org/archives/images/large/weic2208b.jpg",
+      "credit": "NASA, ESA, CSA, and STScI",
+      "licence": "CC BY 4.0",
+      "dust": "emits",
+      "galaxies": [
+        {"name": "NGC 7319", "nucleus": [0.645, 0.235], "core": 0.03, "body": [{"centre": [0.64, 0.22], "axes": [0.12, 0.1], "angle": 0}]},
+        {"name": "NGC 7318a", "nucleus": [0.635, 0.51], "core": 0.02, "body": [{"centre": [0.65, 0.55], "axes": [0.12, 0.09], "angle": 0}]},
+        {"name": "NGC 7318b", "nucleus": [0.665, 0.575], "core": 0.02, "body": []},
+        {"name": "NGC 7320", "body": [{"centre": [0.3, 0.4], "axes": [0.22, 0.1], "angle": 15}]}
+      ]
+    },
+    {
+      "id": "weic2211a",
+      "set": "webb-nircam-miri",
+      "subject": "Cartwheel Galaxy and two companions",
+      "page": "https://esawebb.org/images/weic2211a/",
+      "url": "https://cdn.esawebb.org/archives/images/large/weic2211a.jpg",
+      "credit": "NASA, ESA, CSA, STScI",
+      "licence": "CC BY 4.0",
+      "dust": "emits",
+      "galaxies": [
+        {"name": "Cartwheel", "nucleus": [0.575, 0.49], "core": 0.035, "body": [{"centre": [0.62, 0.46], "axes": [0.23, 0.27], "angle": 0}]},
+        {"name": "G1", "nucleus": [0.13, 0.43], "core": 0.025, "body": [{"centre": [0.135, 0.425], "axes": [0.08, 0.065], "angle": 0}]},
+        {"name": "G2", "nucleus": [0.215, 0.28], "core": 0.02, "body": [{"centre": [0.22, 0.29], "axes": [0.08, 0.065], "angle": 0}]}
+      ]
+    },
+    {
+      "id": "weic2420a",
+      "set": "webb-nircam-miri",
+      "subject": "Arp 142, NGC 2936 and NGC 2937",
+      "page": "https://esawebb.org/images/weic2420a/",
+      "url": "https://cdn.esawebb.org/archives/images/large/weic2420a.jpg",
+      "credit": "NASA, ESA, CSA, STScI",
+      "licence": "CC BY 4.0",
+      "dust": "emits",
+      "galaxies": [
+        {"name": "NGC 2936", "nucleus": [0.38, 0.54], "core": 0.02, "body": [{"centre": [0.37, 0.55], "axes": [0.15, 0.06], "angle": 5}, {"centre": [0.46, 0.76], "axes": [0.22, 0.11], "angle": 75}]},
+        {"name": "NGC 2937", "nucleus": [0.21, 0.865], "core": 0.03, "body": [{"centre": [0.21, 0.865], "axes": [0.1, 0.07], "angle": 80}]},
+        {"name": "PGC 1237172", "body": [{"centre": [0.85, 0.18], "axes": [0.17, 0.04], "angle": -35}]}
+      ]
+    },
+    {
+      "id": "potm2602a",
+      "set": "webb-nircam-miri",
+      "subject": "NGC 5134",
+      "page": "https://esawebb.org/images/potm2602a/",
+      "url": "https://cdn.esawebb.org/archives/images/large/potm2602a.jpg",
+      "credit": "ESA/Webb, NASA & CSA, A. Leroy",
+      "licence": "CC BY 4.0",
+      "dust": "emits",
+      "galaxies": [
+        {"name": "NGC 5134", "nucleus": [0.485, 0.51], "core": 0.04, "body": [{"centre": [0.49, 0.52], "axes": [0.45, 0.22], "angle": 36}]}
+      ]
+    }
+  ]
+}
