@@ -49,23 +49,47 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
 }
 
 /// The choices made about a batch, `ratings.json` in the batch folder. Keyed by scene folder
-/// name; the scenes whose choice is `yes` are what the next milestone starts from:
-/// `jq -r '.scenes | to_entries[] | select(.value.choice == "yes") | .key' ratings.json`.
+/// name; the scenes whose choice is `yes`, or picked by the score with no choice, are what the
+/// next milestone starts from:
+/// `jq -r '.scenes | to_entries[] | select(.value.choice == "yes") | .key' ratings.json`
+/// lists the manual ones.
 public struct SceneRatings: Codable, Sendable, Equatable {
     public enum Choice: String, Codable, Sendable { case yes, no }
+
+    /// A scene taken by the score at night, kept apart from what Pierre decided: it is never
+    /// a `choice` or a `rating`.
+    public struct Pick: Codable, Sendable, Equatable {
+        public var by: String
+        public var score: Double
+        public var date: Date
+
+        public init(by: String = "score", score: Double, date: Date) {
+            self.by = by
+            self.score = score
+            self.date = date
+        }
+    }
 
     public struct Entry: Codable, Sendable, Equatable {
         public var choice: Choice?
         public var rating: Int?
         public var updated: Date?
+        public var picked: Pick?
 
-        public init(choice: Choice? = nil, rating: Int? = nil, updated: Date? = nil) {
+        public init(
+            choice: Choice? = nil, rating: Int? = nil, updated: Date? = nil, picked: Pick? = nil
+        ) {
             self.choice = choice
             self.rating = rating
             self.updated = updated
+            self.picked = picked
         }
 
-        public var isEmpty: Bool { choice == nil && rating == nil }
+        public var isEmpty: Bool { choice == nil && rating == nil && picked == nil }
+
+        /// A manual yes or no wins; a pick only counts while there is none, and stays as
+        /// history once there is.
+        public var isChosen: Bool { choice == .yes || (choice == nil && picked != nil) }
     }
 
     public static let fileName = "ratings.json"
@@ -76,7 +100,7 @@ public struct SceneRatings: Codable, Sendable, Equatable {
 
     public init(scenes: [String: Entry] = [:]) { self.scenes = scenes }
 
-    public var chosen: [String] { scenes.filter { $0.value.choice == .yes }.keys.sorted() }
+    public var chosen: [String] { scenes.filter { $0.value.isChosen }.keys.sorted() }
 
     public static func url(batch: URL) -> URL { batch.appendingPathComponent(fileName) }
 
@@ -271,9 +295,9 @@ public struct LibraryQuery: Sendable, Equatable {
             let entry = entries[scene.id]
             switch choice {
             case .all: break
-            case .yes: guard entry?.choice == .yes else { return false }
+            case .yes: guard entry?.isChosen == true else { return false }
             case .no: guard entry?.choice == .no else { return false }
-            case .undecided: guard entry?.choice == nil else { return false }
+            case .undecided: guard entry?.choice == nil, entry?.picked == nil else { return false }
             }
             switch rating {
             case .any: break
