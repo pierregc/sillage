@@ -154,7 +154,7 @@ final class SimulationModel: ObservableObject {
     /// link whenever the window is occluded, which a window opened behind another app always
     /// is, and that would otherwise make the render path untestable from a script.
     func attach(canvas view: MTKView) { canvas = view }
-    var hasCanvas: Bool { canvas != nil }
+    var hasCanvas: Bool { canvas?.window != nil }
 
     func drawOnce() { canvas?.draw() }
 

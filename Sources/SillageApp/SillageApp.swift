@@ -51,7 +51,7 @@ struct SillageApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Sillage", id: AppNavigation.windowID) {
+        Window("Sillage", id: AppNavigation.windowID) {
             MainView(model: model, library: library, navigation: navigation)
                 .frame(minWidth: 1180, minHeight: 720)
                 // The panel draws on the system background, so the appearance is pinned rather

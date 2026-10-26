@@ -240,8 +240,8 @@ Every row's look is kept as `looks/<name>.look.json`. `--promote <name>` makes o
 `look.json` for the export, moving the raw one explore wrote to `look-raw.json` the first time;
 a later promotion replaces the earlier one, which stays in `looks/`.
 
-The grid compares; the application tunes. In the library window, **Régler le look** on a scene
-that has a take opens `take.sillage` with the scene's `look.json`, and File > Open takes any take
+The grid compares; the application tunes. In the library, **Régler le look** on a scene
+that has a take opens `take.sillage` with the scene's `look.json` in the Atelier, and File > Open takes any take
 (⌘O) and any look file (⇧⌘O) over it. Once the grid has been drawn, the panel's **Catalogue** menu
 lists the scene's `looks/` to try one over the picture in a click. The panel edits every field of the file with the picture
 live: the look's sliders, each galaxy's colour, the file's own arm strength, the starfield, the
@@ -484,7 +484,8 @@ hand ones only if they rank better.
 
 ### The library
 
-The application's library window (⌘L, or **Bibliothèque** on the setup screen) shows every
+The application opens on its library (⌘L from anywhere; the sidebar also holds Nuits and the
+Atelier, where scenes are set up by hand) and shows every
 scene under `library/`, both scene folders and the older flat batches, and picks up new
 scenes as they are written. The grid shows stills; only the scene under the pointer, the
 selected one or the enlarged one plays its clip. Under each scene, yes, no and a rating from
