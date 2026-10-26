@@ -6,7 +6,7 @@ import SillageCore
 /// nothing else.
 public struct SceneFolder: Sendable, Equatable {
     public enum Stage: String, CaseIterable, Sendable {
-        case explore, hires, look, export
+        case explore, hires, look, export, palettes
     }
 
     /// What neither the scene file nor the look file holds: how long the clip runs and how
@@ -111,6 +111,8 @@ public struct SceneFolder: Sendable, Equatable {
     public var hires: URL { file("hires.json") }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
     public var lookGrid: URL { looks.appendingPathComponent("grid.png") }
+    /// What `palettes` draws: `sheet.png`, `swatches.png` and one look file per palette.
+    public var palettes: URL { url.appendingPathComponent("palettes", isDirectory: true) }
 
     private func file(_ name: String) -> URL { url.appendingPathComponent(name) }
 

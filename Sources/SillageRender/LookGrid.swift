@@ -77,7 +77,7 @@ public enum LookGrid {
         return drawn == nil ? pixels : out
     }
 
-    private static func draw(
+    static func draw(
         _ text: String, in context: CGContext, at point: CGPoint, maximumWidth: CGFloat? = nil
     ) {
         let font = CTFontCreateWithName("Menlo" as CFString, 13, nil)
@@ -100,7 +100,7 @@ public enum LookGrid {
         CTLineDraw(line, context)
     }
 
-    private static func cgImage(_ pixels: [UInt8], width: Int, height: Int) -> CGImage? {
+    static func cgImage(_ pixels: [UInt8], width: Int, height: Int) -> CGImage? {
         guard pixels.count == width * height * 4,
             let provider = CGDataProvider(data: Data(pixels) as CFData)
         else { return nil }

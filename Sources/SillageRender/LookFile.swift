@@ -26,6 +26,9 @@ public struct LookFile: Codable, Sendable, Equatable {
     /// One emission colour per galaxy, in scene order. A galaxy past its end keeps the colour
     /// its scene gives it.
     public var palette: [SIMD3<Float>]
+    /// Where `palette` came from when a generator drew it. Left out by files written before,
+    /// and never read to draw: the colours above are what the frame uses.
+    public var paletteRecipe: Palette?
     public var camera: CameraPlan
 
     public struct CameraPlan: Codable, Sendable, Equatable {
@@ -87,7 +90,8 @@ public struct LookFile: Codable, Sendable, Equatable {
     public init(
         name: String = "standard", look: RenderLook = LookFile.standardLook,
         starCount: Int = 2500, supersample: Int = 2, bloomLevels: Int = 6, plain: Bool = false,
-        armStrength: Float = 1, palette: [SIMD3<Float>] = [], camera: CameraPlan = CameraPlan()
+        armStrength: Float = 1, palette: [SIMD3<Float>] = [], paletteRecipe: Palette? = nil,
+        camera: CameraPlan = CameraPlan()
     ) {
         version = Self.currentVersion
         self.name = name
@@ -98,6 +102,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         self.plain = plain
         self.armStrength = armStrength
         self.palette = palette
+        self.paletteRecipe = paletteRecipe
         self.camera = camera
     }
 
@@ -114,6 +119,7 @@ public struct LookFile: Codable, Sendable, Equatable {
             plain: try c.value(.plain, or: d.plain),
             armStrength: try c.value(.armStrength, or: d.armStrength),
             palette: try c.value(.palette, or: d.palette),
+            paletteRecipe: try c.decodeIfPresent(Palette.self, forKey: .paletteRecipe),
             camera: try c.value(.camera, or: d.camera))
         version = try c.decode(Int.self, forKey: .version)
     }
