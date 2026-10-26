@@ -54,6 +54,36 @@ Presets: `1080p` (default), `4k`, `vertical`, `square`, `whatsapp`.
 `--codec hevc|h264|prores` (default `hevc`). `--start` / `--duration` cut the clip,
 `--look` picks a look. WebP needs `brew install webp`.
 
+## Queue
+
+Heavy work can go through one queue per library instead, one job at a time, in a runner of its
+own that outlives the terminal or the app that started it and keeps the Mac awake:
+
+```bash
+R=".build/dev/sillage-render"   # with DYLD_LIBRARY_PATH=.build/dev, as dev.sh does
+$R queue add hires library/2026-10-24/scene-0001 --particles 2000000
+$R queue add hires library/2026-10-24                 # every chosen scene not done at that size
+$R queue add export library/2026-10-24/scene-0001 --preset 4k
+$R queue add explore --scenes 50 --hours 8            # explore-batch.sh options
+$R queue list                                         # --json for the file itself
+$R queue first 7 | cancel 7 | pause | resume
+```
+
+`add` starts a runner (`queue run`, log in `library/.queue/runner.log`) unless one is at work;
+it exits once nothing is left. `pause` suspends the running job where it is and starts nothing
+new until `resume`; `cancel` stops a running job. An export can be queued behind the hires that
+makes its take. Each job's output is in `library/.queue/logs/job-<id>.log`.
+
+**`library/.queue/queue.json`**: `version`, `paused`, `nextID`, `jobs` in the order they run,
+each with `id`, `kind` (explore, hires, export, night), `state` (waiting, running, done, failed,
+cancelled), `by` (hand or night), `path` (the scene, or the batch of an exploration), `options`,
+`added`, `started`, `ended`, `pid`, `status`, `message` and `log`. The last 50 finished jobs are
+kept. Written under a lock by whoever changes it; read it freely.
+
+`hires` and `export` write hidden (`.take.sillage`, `exports/.4k.mp4`) and rename once whole.
+A runner that finds a job still marked running whose process is gone marks it failed and removes
+what it left half written.
+
 ## How it works
 
 - A scene is `--seed S --index N` of a generator: same two numbers, same scene.

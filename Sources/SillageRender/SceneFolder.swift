@@ -253,6 +253,7 @@ extension SceneFolder {
     /// the look are the preview's, the particle count is the one asked for, and the steps are
     /// worked out again so the clip spans the same megayears. `--frames` takes the first frames
     /// of the clip at the same cadence, for a shorter run. Nothing the preview wrote is touched.
+    /// The take, the video and the curves go to their partial paths, for `commitHires`.
     public func hiresArguments(_ options: [String], maximumParticles: Int) throws -> (
         arguments: [String], record: Hires
     ) {
@@ -288,8 +289,8 @@ extension SceneFolder {
             clipEndMyr: Double(span.settle + span.steps) * span.timeStep * myr)
 
         var arguments = [
-            "--video", hiresVideo.path, "--curves", hiresCurves.path, "--take", take.path,
-            "--no-sidecars",
+            "--video", Self.partial(hiresVideo).path, "--curves", Self.partial(hiresCurves).path,
+            "--take", Self.partial(take).path, "--no-sidecars",
         ]
         arguments += [
             "--particles", String(asked.particles), "--width", String(asked.width), "--height",
@@ -399,5 +400,52 @@ extension SceneFolder {
             throw ExportError.noSuchLook(name)
         }
         return found
+    }
+}
+
+extension SceneFolder {
+    /// Where an output is written until it is whole: hidden beside it, so the library never
+    /// shows half a take or half a video, and what an interrupted stage leaves is easy to find.
+    public static func partial(_ url: URL) -> URL {
+        url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent)
+    }
+
+    /// Renames a finished output into place, over the one it replaces.
+    public static func commit(_ url: URL) throws {
+        guard rename(partial(url).path, url.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    /// Puts a finished `hires` run's take, video and curves in place of the last run's.
+    public func commitHires() throws {
+        for url in [take, hiresVideo, hiresCurves] { try Self.commit(url) }
+    }
+
+    /// Removes what an interrupted `hires` or `export` left half written here.
+    @discardableResult
+    public func removePartialOutputs() -> [URL] {
+        let hidden =
+            ((try? FileManager.default.contentsOfDirectory(atPath: exports.path)) ?? [])
+            .filter { $0.hasPrefix(".") && $0 != ".DS_Store" }
+            .map { exports.appendingPathComponent($0) }
+        return Self.remove([take, hiresVideo, hiresCurves].map(Self.partial) + hidden)
+    }
+
+    /// The same for a whole batch, with the scenes still being explored in their hidden folders.
+    @discardableResult
+    public static func removePartialOutputs(inBatch batch: URL) -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: batch.path)) ?? []
+        let exploring = names.filter { $0.hasPrefix(".scene-") }.map {
+            batch.appendingPathComponent($0)
+        }
+        let scenes = names.filter { $0.hasPrefix("scene-") }.flatMap {
+            SceneFolder(batch.appendingPathComponent($0, isDirectory: true)).removePartialOutputs()
+        }
+        return remove(exploring) + scenes
+    }
+
+    private static func remove(_ urls: [URL]) -> [URL] {
+        urls.filter { (try? FileManager.default.removeItem(at: $0)) != nil }
     }
 }

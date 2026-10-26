@@ -56,13 +56,15 @@ build_app() {
     rm -rf "$app"
     mkdir -p "$app/Contents/MacOS"
     cp "$BUILD/Sillage" "$app/Contents/MacOS/Sillage"
+    # The queue's runner, which the app starts in a session of its own.
+    cp "$BUILD/sillage-render" "$app/Contents/MacOS/sillage-render"
     cp "$BUILD"/libSillage*.dylib "$app/Contents/MacOS/"
     # Every reference has to be rewritten, including the ones between the copied dylibs,
     # or dyld loads both the bundled copy and the one left in the build directory.
     for lib in SillageCore SillageRender; do
         install_name_tool -id "@rpath/lib$lib.dylib" "$app/Contents/MacOS/lib$lib.dylib" 2>/dev/null
     done
-    for binary in Sillage libSillageCore.dylib libSillageRender.dylib; do
+    for binary in Sillage sillage-render libSillageCore.dylib libSillageRender.dylib; do
         for lib in SillageCore SillageRender; do
             install_name_tool -change "$BUILD/lib$lib.dylib" "@rpath/lib$lib.dylib" \
                 "$app/Contents/MacOS/$binary" 2>/dev/null

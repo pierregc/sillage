@@ -48,6 +48,9 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--librarycheck") {
             MainActor.assumeIsolated { LibraryCheck.run() }
         }
+        if CommandLine.arguments.contains("--queuecheck") {
+            MainActor.assumeIsolated { QueueCheck.run() }
+        }
     }
 
     var body: some Scene {
