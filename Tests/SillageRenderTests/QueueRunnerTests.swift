@@ -19,7 +19,7 @@ struct QueueRunnerTests {
         QueueRunner(
             store: store,
             command: { job in ["/bin/sh", "-c", "cd \"\(job.path)\" && \(script(job))", "job", "\(job.id)"] },
-            poll: 0.02, grace: 2, say: { _ in })
+            poll: 0.02, grace: 2, busy: { [] }, say: { _ in })
     }
 
     private func scene(_ store: QueueStore, _ name: String = "scene-0001") throws -> SceneFolder {
@@ -227,6 +227,35 @@ struct QueueRunnerTests {
         let events = RunEvent.decodeLines(
             try String(contentsOf: RunStatusFiles.events(batch: dead.batch), encoding: .utf8))
         #expect(events.compactMap(\.scene) == ["scene-0001", "scene-0002"])
+    }
+
+    @Test func aRunnerWaitsWhileAnotherRenderHoldsTheGPU() throws {
+        let store = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: store.library) }
+        try store.change { $0.add(.explore, path: store.library.path, at: Date()) }
+        let checks = Result()
+        let started = Date()
+        let runner = QueueRunner(
+            store: store, command: { _ in ["/usr/bin/true"] }, poll: 0.02,
+            busy: {
+                checks.set((checks.value ?? 0) + 1)
+                return (checks.value ?? 0) <= 3 ? [4242] : []
+            }, say: { _ in })
+        #expect(runner.run() == 0)
+        #expect(checks.value == 4 && Date().timeIntervalSince(started) >= 0.5)
+        #expect(store.read().job(1)?.state == .done)
+    }
+
+    /// The runner itself and the queue's commands are `sillage-render` too, and must not count.
+    @Test func theOtherRenderersAreFoundByNameAndArguments() throws {
+        let log = FileManager.default.temporaryDirectory.appendingPathComponent("others-\(UUID()).log")
+        defer { try? FileManager.default.removeItem(at: log) }
+        let pid = try Spawn.child("/bin/sleep", ["5", "queue"], log: log)
+        defer { kill(pid, SIGKILL) }
+        let found = ProcessProbe.others(named: "sleep").first { $0.pid == pid }
+        #expect(found?.arguments == ["/bin/sleep", "5", "queue"])
+        #expect(ProcessProbe.arguments(of: getpid()) == CommandLine.arguments)
+        #expect(!ProcessProbe.others(named: "sleep").contains { $0.pid == getpid() })
     }
 
     @Test func submittingStartsARunnerOnlyWhenNoneIsAtWork() throws {

@@ -736,6 +736,11 @@ if CommandLine.arguments.count > 1,
         exploreRun = folder
     }
 } else {
+    // A plain render takes flags only: a word here is a command this binary does not have,
+    // and must not start a render of a million particles.
+    if let word = CommandLine.arguments.dropFirst().first, !word.hasPrefix("--") {
+        fail("sillage-render: no command \"\(word)\"")
+    }
     arguments = Array(CommandLine.arguments.dropFirst())
 }
 

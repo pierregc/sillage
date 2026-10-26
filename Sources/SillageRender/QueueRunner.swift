@@ -14,17 +14,30 @@ public final class QueueRunner: @unchecked Sendable {
     private let say: (String) -> Void
     /// After SIGTERM, how long a job has to end before SIGKILL.
     private let grace: TimeInterval
+    /// What else holds the GPU, by pid.
+    private let busy: () -> [Int32]
     private var activity: NSObjectProtocol?
 
     public init(
         store: QueueStore, command: @escaping Command, poll: TimeInterval = 0.5,
-        grace: TimeInterval = 10, say: @escaping (String) -> Void = { print($0) }
+        grace: TimeInterval = 10, busy: @escaping () -> [Int32] = QueueRunner.otherRenderers,
+        say: @escaping (String) -> Void = { print($0) }
     ) {
         self.store = store
         self.command = command
         self.poll = poll
         self.grace = grace
+        self.busy = busy
         self.say = say
+    }
+
+    /// A `sillage-render` started by hand, or by another queue, renders on the same GPU. Runners
+    /// and the queue's other commands do not count: two runners waiting on each other would
+    /// wait forever.
+    public static func otherRenderers() -> [Int32] {
+        ProcessProbe.others(named: "sillage-render")
+            .filter { $0.arguments.dropFirst().first != "queue" }
+            .map(\.pid)
     }
 
     /// The command lines of the stages, run by `executable`, the `sillage-render` running this.
@@ -75,7 +88,19 @@ public final class QueueRunner: @unchecked Sendable {
             }
             for job in lost { wrapUp(job) }
 
+            var waited: [Int32] = []
             while true {
+                let others = store.read().next == nil ? [] : busy()
+                if !others.isEmpty {
+                    if others != waited {
+                        let pids = others.map(String.init).joined(separator: ", ")
+                        say("runner     waiting for the GPU, held by sillage-render \(pids)")
+                    }
+                    waited = others
+                    Thread.sleep(forTimeInterval: poll * 10)
+                    continue
+                }
+                waited = []
                 let step: Step = try store.change { queue in
                     if let running = queue.running { return .watch(running, child: false) }
                     guard let job = queue.next else {

@@ -209,12 +209,55 @@ public enum ProcessProbe {
         return Date(timeIntervalSince1970: Double(start.tv_sec) + Double(start.tv_usec) / 1e6)
     }
 
-    /// Whether `pid` is still the process that started at `started`. The dates go through
-    /// JSON with millisecond precision.
+    /// Whether `pid` is still the process that started at `started`; with no start to compare,
+    /// a reused pid cannot be told apart, so it is not. The dates go through JSON with
+    /// millisecond precision.
     public static func isAlive(pid: Int32?, started expected: Date?) -> Bool {
-        guard let pid, let started = started(pid) else { return false }
-        guard let expected else { return true }
+        guard let pid, let expected, let started = started(pid) else { return false }
         return abs(started.timeIntervalSince(expected)) < 0.01
+    }
+}
+
+extension ProcessProbe {
+    /// This user's processes called `name`, this one left out, each with its arguments.
+    public static func others(named name: String) -> [(pid: Int32, arguments: [String])] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_UID, Int32(bitPattern: getuid())]
+        var size = 0
+        guard sysctl(&mib, 4, nil, &size, nil, 0) == 0 else { return [] }
+        let stride = MemoryLayout<kinfo_proc>.stride
+        var table = [kinfo_proc](repeating: kinfo_proc(), count: size / stride + 32)
+        size = table.count * stride
+        guard sysctl(&mib, 4, &table, &size, nil, 0) == 0 else { return [] }
+        let me = getpid()
+        return table.prefix(size / stride).compactMap { info in
+            let pid = info.kp_proc.p_pid
+            let command = withUnsafeBytes(of: info.kp_proc.p_comm) { raw in
+                String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+            }
+            guard pid != me, info.kp_proc.p_stat != SZOMB, command == name else { return nil }
+            return (pid, arguments(of: pid))
+        }
+    }
+
+    /// A process's command line, empty when it cannot be read.
+    public static func arguments(of pid: Int32) -> [String] {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 else { return [] }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > 4 else { return [] }
+        // argc, the executable's path, padding, then argc strings, each ended by a zero.
+        let count = buffer.withUnsafeBytes { Int($0.load(as: Int32.self)) }
+        var index = 4
+        while index < size, buffer[index] != 0 { index += 1 }
+        while index < size, buffer[index] == 0 { index += 1 }
+        var arguments: [String] = []
+        while arguments.count < count, index < size {
+            let end = buffer[index..<size].firstIndex(of: 0) ?? size
+            arguments.append(String(decoding: buffer[index..<end], as: UTF8.self))
+            index = end + 1
+        }
+        return arguments
     }
 }
 

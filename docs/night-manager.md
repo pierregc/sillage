@@ -70,7 +70,8 @@ $R queue first 7 | cancel 7 | pause | resume
 ```
 
 `add` starts a runner (`queue run`, log in `library/.queue/runner.log`) unless one is at work;
-it exits once nothing is left. `pause` suspends the running job where it is and starts nothing
+it exits once nothing is left, and waits before each job while a `sillage-render` started by
+hand holds the GPU. `pause` suspends the running job where it is and starts nothing
 new until `resume`; `cancel` stops a running job. An export can be queued behind the hires that
 makes its take. Each job's output is in `library/.queue/logs/job-<id>.log`.
 
