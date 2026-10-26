@@ -71,6 +71,7 @@ struct SillageApp: App {
                     ResponsivenessCheck.run(model)
                     QACheck.run(model)
                     SoakCheck.run(model)
+                    QueueSoak.run()
                     NavigationCheck.run(model, library, navigation)
                 }
         }

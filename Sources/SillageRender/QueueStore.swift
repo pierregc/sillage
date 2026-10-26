@@ -273,7 +273,8 @@ public enum Spawn {
         guard _NSGetExecutablePath(&path, &size) == 0 else {
             return URL(fileURLWithPath: CommandLine.arguments[0])
         }
-        return URL(fileURLWithPath: String(cString: path)).standardizedFileURL
+        let bytes = path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return URL(fileURLWithPath: String(decoding: bytes, as: UTF8.self)).standardizedFileURL
     }
 
     static let standardPath = [

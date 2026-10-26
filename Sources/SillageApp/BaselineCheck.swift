@@ -251,7 +251,7 @@ enum BaselineCheck {
 
 /// Samples the GPU's own utilisation counter from the IOAccelerator registry twice a second.
 /// It needs no privileges, unlike powermetrics, and counts every process on the GPU.
-private final class GPUUtilisation: @unchecked Sendable {
+final class GPUUtilisation: @unchecked Sendable {
     private let lock = NSLock()
     private var samples: [Double] = []
     private var running = true
@@ -282,7 +282,7 @@ private final class GPUUtilisation: @unchecked Sendable {
         return running
     }
 
-    private static func read() -> Double? {
+    static func read() -> Double? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/ioreg")
         process.arguments = ["-r", "-d", "1", "-c", "IOAccelerator"]
