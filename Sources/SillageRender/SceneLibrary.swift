@@ -22,14 +22,44 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
     public var folder: SceneFolder?
     /// The high resolution take, once `hires` has written one; what look tuning opens.
     public var take: URL?
+    /// The high resolution clip and what its run recorded, once `hires` has finished.
+    public var hiresVideo: URL?
+    public var hires: HiresSummary?
+    /// A look was promoted over the explored one, which `look-raw.json` is the trace of.
+    public var promoted = false
+    /// The files in `exports/`, by name.
+    public var exports: [URL] = []
+    /// A high resolution job for the scene is queued or running; set by the queue (#102).
+    public var hiresActive = false
+    public var stage = SceneStage.toSort
 
     public var id: String { "\(batch)/\(name)" }
+
+    /// What the scene page shows of a `hires.json`.
+    public struct HiresSummary: Sendable, Equatable {
+        public var particles: Int
+        public var seconds: Double?
+
+        public init(particles: Int, seconds: Double? = nil) {
+            self.particles = particles
+            self.seconds = seconds
+        }
+    }
+
+    /// The same scene at the stage its files and `entry` give it.
+    public func staged(entry: SceneRatings.Entry?) -> LibraryScene {
+        var scene = self
+        scene.stage = SceneStage.of(self, entry: entry)
+        return scene
+    }
 
     public init(
         batch: String, batchURL: URL, name: String, video: URL? = nil, thumbnail: URL? = nil,
         archetype: String? = nil, tempo: String? = nil, galaxies: Int? = nil, seed: String? = nil,
         score: Double? = nil, videoBytes: Int = 0, modified: Date = .distantPast,
-        folder: SceneFolder? = nil, take: URL? = nil
+        folder: SceneFolder? = nil, take: URL? = nil, hiresVideo: URL? = nil,
+        hires: HiresSummary? = nil, promoted: Bool = false, exports: [URL] = [],
+        hiresActive: Bool = false
     ) {
         self.batch = batch
         self.batchURL = batchURL
@@ -45,6 +75,11 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
         self.modified = modified
         self.folder = folder
         self.take = take
+        self.hiresVideo = hiresVideo
+        self.hires = hires
+        self.promoted = promoted
+        self.exports = exports
+        self.hiresActive = hiresActive
     }
 }
 
@@ -169,6 +204,7 @@ public enum SceneLibrary {
     static func scenes(inBatch batch: URL) -> [LibraryScene] {
         let name = batch.lastPathComponent
         let index = indexRows(batch.appendingPathComponent("index.csv"))
+        let ratings = SceneRatings.read(batch: batch).scenes
         var scenes: [LibraryScene] = []
         for url in directories(in: batch) where isSceneFolder(url) {
             let folder = SceneFolder(url)
@@ -179,7 +215,10 @@ public enum SceneLibrary {
                         batch: name, batchURL: batch, name: url.lastPathComponent, video: video,
                         thumbnail: exists(folder.thumbnail) ? folder.thumbnail : nil,
                         archetype: archetype(in: folder.scene), score: score(in: folder.interest),
-                        folder: folder, take: exists(folder.take) ? folder.take : nil),
+                        folder: folder, take: exists(folder.take) ? folder.take : nil,
+                        hiresVideo: exists(folder.hiresVideo) ? folder.hiresVideo : nil,
+                        hires: hires(in: folder.hires), promoted: exists(folder.rawLook),
+                        exports: files(in: folder.exports)),
                     index: index))
         }
         let files =
@@ -193,7 +232,7 @@ public enum SceneLibrary {
                         name: file.deletingPathExtension().lastPathComponent, video: file),
                     index: index))
         }
-        return scenes
+        return scenes.map { $0.staged(entry: ratings[$0.name]) }
     }
 
     private static func described(_ scene: LibraryScene, index: [String: [String: String]])
@@ -234,6 +273,27 @@ public enum SceneLibrary {
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
         return (object["score"] as? NSNumber)?.doubleValue
+    }
+
+    /// What `hires` recorded, read without decoding the whole record.
+    private static func hires(in url: URL) -> LibraryScene.HiresSummary? {
+        guard let data = try? Data(contentsOf: url),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let particles = (object["particles"] as? NSNumber)?.intValue
+        else { return nil }
+        return LibraryScene.HiresSummary(
+            particles: particles, seconds: (object["seconds"] as? NSNumber)?.doubleValue)
+    }
+
+    private static func files(in url: URL) -> [URL] {
+        let entries =
+            (try? FileManager.default.contentsOfDirectory(
+                at: url, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles))
+            ?? []
+        return entries.filter {
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true
+        }
+        .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     /// The last row for an id stands, as in the contact sheet: a retried scene appends one.
@@ -280,18 +340,24 @@ public struct LibraryQuery: Sendable, Equatable {
 
     public enum Order: String, CaseIterable, Sendable { case batch, rating, newest, score }
 
+    public var collection = LibraryCollection.all
     public var choice = Choice.all
     public var rating = Rating.any
     public var batch: String?
     public var archetype: String?
-    public var order = Order.batch
+    public var galaxies: Int?
+    /// Part of a scene's name, whatever the case.
+    public var search = ""
+    public var order = Order.score
 
     public init() {}
 
     public func apply(_ scenes: [LibraryScene], entries: [String: SceneRatings.Entry])
         -> [LibraryScene]
     {
+        let words = search.trimmingCharacters(in: .whitespaces)
         let kept = scenes.filter { scene in
+            guard collection.contains(scene.stage) else { return false }
             let entry = entries[scene.id]
             switch choice {
             case .all: break
@@ -306,6 +372,10 @@ public struct LibraryQuery: Sendable, Equatable {
             }
             if let batch, scene.batch != batch { return false }
             if let archetype, (scene.archetype ?? Self.free) != archetype { return false }
+            if let galaxies, scene.galaxies != galaxies { return false }
+            if !words.isEmpty, scene.name.range(of: words, options: .caseInsensitive) == nil {
+                return false
+            }
             return true
         }
         // Newest batch first, since the batch that just ran is the one waiting to be sorted.

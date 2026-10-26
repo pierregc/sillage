@@ -46,13 +46,34 @@ enum NavigationCheck {
         _ model: SimulationModel, _ library: LibraryModel, _ navigation: AppNavigation
     ) async {
         _ = await settle(model, 1)
-        check("la bibliothèque est l'accueil", navigation.selection == .library)
-        check("la grille est montée", await settle(model, 2) { library.isWatching })
+        check("la bibliothèque est l'accueil", navigation.selection == .library(.all))
+        check("la grille est montée", await settle(model, 2) { library.isShown })
         check("l'atelier n'est pas monté", !model.hasPreviewCanvas && !model.hasCanvas)
         snapshot("library")
 
+        // Each collection of the sidebar is the grid on its own scenes, and the sidebar counts
+        // them whichever part shows.
+        for collection in LibraryCollection.allCases {
+            navigation.selection = .library(collection)
+            let shown = await settle(model, 2) { library.query.collection == collection }
+            let expected = library.scenes.filter { collection.contains($0.stage) }.count
+            let listed = await settle(model, 2) { library.visible.count == expected }
+            check(
+                "\(collection.title) montre ses scènes", shown && listed,
+                "\(library.visible.count) sur \(expected)")
+        }
+        let staged = LibraryCollection.allCases.dropLast().map { library.counts[$0] ?? 0 }.reduce(0, +)
+        let discarded = library.scenes.filter { $0.stage == .discarded }.count
+        check(
+            "chaque scène est dans une collection, les écartées dans Toutes seulement",
+            staged + discarded == library.scenes.count && library.counts[.all] ?? 0 == library.scenes.count,
+            "\(staged) + \(discarded) écartées sur \(library.scenes.count)")
+        navigation.selection = .library(.all)
+        _ = await settle(model, 1)
+
         navigation.selection = .nights
-        check("les nuits remplacent la grille", await settle(model, 2) { !library.isWatching })
+        check("les nuits remplacent la grille", await settle(model, 2) { !library.isShown })
+        check("le dossier reste lu pour les compteurs", library.isWatching)
         snapshot("nights")
 
         navigation.selection = .workshop
@@ -62,7 +83,7 @@ enum NavigationCheck {
         model.draft.solver = .restricted
         model.draft.retune()
         model.setTotalParticles(200_000)
-        navigation.selection = .library
+        navigation.selection = .library(.all)
         model.start()
         check(
             "lancer montre la simulation dans l'atelier",
@@ -71,9 +92,9 @@ enum NavigationCheck {
             })
         _ = await settle(model, 2)
 
-        navigation.selection = .library
+        navigation.selection = .library(.all)
         check(
-            "le canevas quitte la fenêtre", await settle(model, 2) { !model.hasCanvas && library.isWatching })
+            "le canevas quitte la fenêtre", await settle(model, 2) { !model.hasCanvas && library.isShown })
         let before = model.elapsedMyr
         _ = await settle(model, 3)
         check(
@@ -96,7 +117,7 @@ enum NavigationCheck {
         model.saveTake(to: take)
         _ = await settle(model, 20) { model.fileActivity == nil }
         model.returnToSetup()
-        navigation.selection = .library
+        navigation.selection = .library(.all)
         _ = await settle(model, 1)
         let scene = LibraryScene(
             batch: "navcheck", batchURL: take.deletingLastPathComponent(), name: "navcheck",
@@ -110,19 +131,19 @@ enum NavigationCheck {
             model.failure ?? "")
 
         model.returnToSetup()
-        navigation.selection = .library
-        _ = await settle(model, 1) { library.isWatching }
+        navigation.selection = .library(.all)
+        _ = await settle(model, 1) { library.isShown }
         model.startContemplation(pace: .brisk)
         check(
             "la contemplation prend toute la fenêtre",
-            await settle(model, 5) { model.hasCanvas && !library.isWatching })
+            await settle(model, 5) { model.hasCanvas && !library.isShown })
         _ = await settle(model, 3)
         // What escape does.
         DispatchQueue.main.async { model.stopContemplation() }
         check(
             "échap revient là où elle a été lancée",
             await settle(model, 5) {
-                model.stage == .setup && navigation.selection == .library && library.isWatching
+                model.stage == .setup && navigation.selection == .library(.all) && library.isShown
             })
         let window = NSApp.windows.first { $0.isVisible }
         check(

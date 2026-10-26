@@ -28,6 +28,12 @@ final class LibraryModel: ObservableObject {
     var columns = 4
     let player = AVQueuePlayer()
     private(set) var lastScan: TimeInterval = 0
+    /// The grid is on screen; the folder is read either way, for the sidebar's counts.
+    private(set) var isShown = false
+    /// The search field has the keyboard, so the grid must not take it back.
+    var isSearching = false
+    /// Bumped to give the grid the keys again.
+    @Published var gridFocusRequests = 0
 
     private var looper: AVPlayerLooper?
     private var hovered: String?
@@ -49,11 +55,13 @@ final class LibraryModel: ObservableObject {
         player.isMuted = true
     }
 
-    var batches: [String] { Array(Set(scenes.map(\.batch))).sorted(by: >) }
-
     var archetypes: [String] {
         Array(Set(scenes.map { $0.archetype ?? LibraryQuery.free })).sorted()
     }
+
+    var galaxyCounts: [Int] { Array(Set(scenes.compactMap(\.galaxies))).sorted() }
+
+    var counts: [LibraryCollection: Int] { LibraryCollection.counts(scenes) }
 
     /// Set by the application: opens a take for look tuning in the main window.
     var onTune: ((LibraryScene) -> Void)?
@@ -84,6 +92,16 @@ final class LibraryModel: ObservableObject {
     func stop() {
         watcher?.cancel()
         watcher = nil
+        quiet()
+    }
+
+    func show(_ shown: Bool) {
+        isShown = shown
+        if shown { watch() } else { quiet() }
+    }
+
+    /// Nothing plays and nothing is enlarged while another part of the window shows.
+    private func quiet() {
         enlarged = nil
         hovered = nil
         play(nil)
@@ -98,7 +116,9 @@ final class LibraryModel: ObservableObject {
         probed = [:]
         selection = nil
         enlarged = nil
-        query = LibraryQuery()
+        var fresh = LibraryQuery()
+        fresh.collection = query.collection
+        query = fresh
         Task { await refresh() }
     }
 
@@ -132,13 +152,14 @@ final class LibraryModel: ObservableObject {
         guard root == self.root else { return }
         lastScan = Date().timeIntervalSince(started)
         var changed = false
-        if found != scenes {
-            scenes = found
-            changed = true
-        }
         // A click while the scan was reading would be undone by what it read.
         if writes == writesBefore, read != entries {
             entries = read
+            changed = true
+        }
+        let staged = found.map { $0.staged(entry: entries[$0.id]) }
+        if staged != scenes {
+            scenes = staged
             changed = true
         }
         if changed { refreshVisible() }
@@ -185,6 +206,38 @@ final class LibraryModel: ObservableObject {
         }
     }
 
+    // MARK: Toolbar
+
+    /// The scene the toolbar button acts on: the selected one while the collection lists it,
+    /// else the first.
+    private var target: LibraryScene? {
+        selection.flatMap { id in visible.first { $0.id == id } } ?? visible.first
+    }
+
+    /// Opens the first scene to sort, enlarged. Yes and no then move on to the next one, since
+    /// a decided scene leaves the collection.
+    func startSorting() {
+        guard let scene = visible.first else { return }
+        selection = scene.id
+        enlarged = scene.id
+    }
+
+    /// Opens the take of the next scene in the workshop, with its style.
+    func chooseStyleOfNext() {
+        guard let scene = target, scene.take != nil else { return }
+        tune(scene)
+    }
+
+    /// Shows the scene's videos in the Finder: the first one selected, else the folder.
+    func revealExports() {
+        guard let scene = target, let folder = scene.folder else { return }
+        if scene.exports.isEmpty {
+            NSWorkspace.shared.open(folder.exports)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting(scene.exports)
+        }
+    }
+
     // MARK: Choosing
 
     func choose(_ choice: SceneRatings.Choice, for id: String, toggle: Bool = true) {
@@ -215,6 +268,7 @@ final class LibraryModel: ObservableObject {
             var updated = entries.filter { !$0.key.hasPrefix(scene.batch + "/") }
             for (name, entry) in ratings.scenes { updated["\(scene.batch)/\(name)"] = entry }
             entries = updated
+            scenes = scenes.map { $0.staged(entry: entries[$0.id]) }
             failure = nil
             refreshVisible()
         } catch {
