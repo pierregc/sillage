@@ -65,6 +65,8 @@ Presets: `1080p` (default), `4k`, `vertical`, `square`, `whatsapp`.
   Its default is the machine's maximum (`SILLAGE_MAX_PARTICLES`); cost grows with the count
   (about 30 min at 1 M, 8 h at 10 M).
 - `look` and `export` only draw the take; no simulation. The chosen look is `look.json`.
+- Estimates come from `library/.sillage/costs.json`, fitted on past runs and refreshed after
+  each one. `sillage-render costs` prints it; `--check <batch>` compares it with a batch.
 
 ## Status files
 
