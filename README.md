@@ -262,6 +262,16 @@ picks the colour world (free by default). `--base` starts from another look inst
 scene's. `palettes <scene> --best 3` draws the three best-scored palettes of the scene on a
 frame of its take, the score under each; see [the note](docs/notes/palette-score.md).
 
+`look <scene> --style auto` chooses the rendering and the palette together, on the picture:
+every rendering of the world (`--world`, else the world of the scene's look) is drawn with the
+scene's best palette on three key frames at the clip's size, then the four best renderings with
+the next three palettes, and each frame is scored on its pixels (clipped highlights, exposure,
+colourfulness, how far apart the galaxies are drawn, sky noise and, in the telescope world, the
+reference colours). The best pair is promoted, keeping the scene's camera; `--keep` only writes
+`looks/auto-<world>.png` (the best three) and `looks/auto-<world>.json` (every pair's score). It
+takes about 2 s in the telescope world and 8 s in the free one at 2 M particles; see
+[the note](docs/notes/frame-score.md).
+
 The grid compares; the application tunes. In the library, **Régler le look** on a scene
 that has a take opens `take.sillage` with the scene's `look.json` in the Atelier, and File > Open takes any take
 (⌘O) and any look file (⇧⌘O) over it. Once the grid has been drawn, the panel's **Catalogue** menu
