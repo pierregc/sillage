@@ -16,14 +16,21 @@ public final class QueueRunner: @unchecked Sendable {
     private let grace: TimeInterval
     /// What else holds the GPU, by pid.
     private let busy: () -> [Int32]
+    private let notify: (Notice) -> Void
     private var activity: NSObjectProtocol?
+    private let startedAt = Date()
+    /// How far each batch's events.jsonl has been read, for the phases and ends of nights.
+    private var eventOffsets: [URL: UInt64] = [:]
+    /// Jobs asked for by hand that ended well in this run.
+    private var handJobsDone = 0
 
     public init(
         store: QueueStore, command: @escaping Command, poll: TimeInterval = 0.5,
         grace: TimeInterval = 10, busy: @escaping () -> [Int32] = QueueRunner.otherRenderers,
-        say: @escaping (String) -> Void = { print($0) }
+        notify: ((Notice) -> Void)? = nil, say: @escaping (String) -> Void = { print($0) }
     ) {
         self.store = store
+        self.notify = notify ?? { Notifier.post($0, store: store) }
         self.command = command
         self.poll = poll
         self.grace = grace
@@ -125,6 +132,9 @@ public final class QueueRunner: @unchecked Sendable {
                 case .stop:
                     let queue = store.read()
                     store.publish(queue)
+                    if !queue.paused, handJobsDone > 0 {
+                        notify(Notices.queueEmpty(finished: handJobsDone))
+                    }
                     say("runner     \(queue.paused ? "the queue is paused" : "the queue is empty")")
                     return 0
                 case .notStarted(let id):
@@ -165,6 +175,7 @@ public final class QueueRunner: @unchecked Sendable {
                 if suspended { hold(true) }
                 return (nil, "ended while no runner watched it")
             }
+            drainEvents(of: job.batchURL)
             let queue = store.read()
             if stopAsked == nil, queue.job(job.id)?.stopping == true {
                 say("job \(job.id)      stopping")
@@ -188,6 +199,9 @@ public final class QueueRunner: @unchecked Sendable {
     /// After a job has ended: the partial output of an unfinished job removed, its failure put
     /// in the batch's events, `activity.json` caught up.
     private func wrapUp(_ job: QueueJob) {
+        drainEvents(of: job.batchURL)
+        if job.state == .failed { notify(Notices.failed(job)) }
+        if job.state == .done, job.by == .hand { handJobsDone += 1 }
         if job.state != .done {
             let removed =
                 job.isScene
@@ -208,6 +222,33 @@ public final class QueueRunner: @unchecked Sendable {
         }
         store.publish(store.read(), ended: job)
         say("job \(job.id)      \(job.state.rawValue)\(job.message.map { ": \($0)" } ?? "")")
+    }
+
+    /// Tells of the phases and the end of a night, as its stages write them in the batch's
+    /// events, when they are new: events older than this runner were told by an earlier one.
+    private func drainEvents(of batch: URL) {
+        let url = RunStatusFiles.events(batch: batch)
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return }
+        defer { try? handle.close() }
+        let offset = eventOffsets[url] ?? 0
+        guard (try? handle.seek(toOffset: offset)) != nil, let data = try? handle.readToEnd(),
+            let end = data.lastIndex(of: 0x0A)
+        else { return }
+        eventOffsets[url] = offset + UInt64(end + 1)
+        let events = RunEvent.decodeLines(String(decoding: data[...end], as: UTF8.self))
+        let all = offset == 0 ? events : nil
+        for event in events where event.t >= startedAt.addingTimeInterval(-1) {
+            switch event.kind {
+            case RunEvent.Kind.phaseDone: notify(Notices.phaseDone(event))
+            case RunEvent.Kind.nightDone:
+                let history =
+                    all
+                    ?? RunEvent.decodeLines(
+                        (try? String(contentsOf: url, encoding: .utf8)) ?? "")
+                notify(Notices.nightDone(event, events: history))
+            default: break
+            }
+        }
     }
 
     /// The last line the job wrote, which is usually why it failed.
