@@ -7,7 +7,7 @@ extension LookFile {
     /// The colour galaxy `index` is drawn in: the palette's if it reaches that far, the
     /// scene's own otherwise.
     public func colour(ofGalaxy index: Int, in scene: SceneConfig) -> SIMD3<Float> {
-        if index < palette.count { return palette[index] }
+        if index < palette.count { return palette[index].colour }
         return index < scene.galaxies.count ? scene.galaxies[index].color : SIMD3(1, 1, 1)
     }
 
@@ -17,9 +17,17 @@ extension LookFile {
         _ colour: SIMD3<Float>, ofGalaxy index: Int, in scene: SceneConfig
     ) {
         while palette.count <= index {
-            palette.append(self.colour(ofGalaxy: palette.count, in: scene))
+            palette.append(GalaxyColours(self.colour(ofGalaxy: palette.count, in: scene)))
         }
-        palette[index] = colour
+        // A galaxy with a ramp keeps one, drawn again around its new colour.
+        guard let ramp = palette[index].ramp else {
+            palette[index] = GalaxyColours(colour)
+            return
+        }
+        let world: Palette.World = ramp.mapping == .mix ? .telescope : .free
+        let family = paletteRecipe?.family
+        let regions = TelescopeReference.repository.first { $0.name == family }?.ramp
+        palette[index] = .ramped(colour, world: world, family: family, regions: regions)
     }
 
     /// `scene` drawn with this file's palette.
