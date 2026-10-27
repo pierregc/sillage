@@ -111,6 +111,11 @@ public struct Story: Sendable {
     /// How long a run is allowed to go on for a story that does not end, in Myr of simulated
     /// time.
     public static let capMyr = 2_000.0
+    /// How much longer than its planned span an explore run goes on average, as a share of that
+    /// span: 0.20 measured on the 2026-10-25 night, 0.25 with pericentres placed after the
+    /// approach. What to plan a batch with before its stories are known; `explore-batch.sh`
+    /// keeps the same figure.
+    public static let extraShare = 0.25
 
     public let settings: Settings
     let profiles: [EncounterCentres.Profile]

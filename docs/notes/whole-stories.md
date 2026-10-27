@@ -10,7 +10,14 @@ runs it again on curves already written.
 
 The 35 scenes of `library/2026-10-25-night`, judged on their `curves.csv` as explored:
 
-__CUT__
+**16 of 35 were still going when their clip ended**, judged with the detector below on the
+curves as explored, 700 Myr after 80 of settling:
+
+- tails still forming: 0004, 0008, 0014, 0016, 0023, 0026, 0027, 0029, 0031, 0032, 0034;
+- a pair bound and coming back: 0018, 0019, 0021;
+- a disk still being disrupted: 0012; the remnant's extent still changing: 0033.
+
+The other 19 end inside their clip, two of them lone galaxies with no collision at all.
 
 ## The detector
 
@@ -67,9 +74,9 @@ reach and still moving as two bodies, whatever still changes: tails form within 
 pericentre on the night's curves (0004, 0011, 0014, 0022, 0030, 0033), and the window closes
 the clip.
 
-**Checked on the long runs.** Of the sixteen runs that went past their end, none has a pass of
-any pair below its reach after the end the detector found, and the frames after it show a
-remnant settling or galaxies drifting apart.
+**Checked on the long runs.** Nineteen runs went on 76 to 1 367 Myr past the end the detector
+found. None has a pass of any pair below its reach after it, and the preview frames after it
+(0009, 0012, 0020, 0027) show a remnant settling or galaxies drifting apart.
 
 ## Where the story starts
 
@@ -89,7 +96,46 @@ its later scenes with the new placement.
 
 ## How much longer
 
-__LONGER__
+The 20 scenes not over at the end of their clip, or not judged over by the first detector, were
+explored again from their `scene.json` at the batch's own size, past the clip until the story
+ended and then 300 Myr more (`--story-after`, for the check above), four at once. What each needs
+past its planned end:
+
+| scene | galaxies | ends at | more than planned |
+| --- | --- | --- | --- |
+| 0004 | 2 | 965 Myr | 174 Myr |
+| 0008 | 3 | 992 | 201 |
+| 0012 | 2 | 935 | 144 |
+| 0014 | 2 | 870 | 97 |
+| 0016 | 4 | 1 033 | 242 |
+| 0018 | 3 | 1 062 | 271 |
+| 0019 | 4 | still going at 2 000 | 1 209 or more |
+| 0021 | 5 | 1 924 | 1 133 |
+| 0023 | 2 | 1 113 | 180 |
+| 0026 | 4 | 907 | 116 |
+| 0027 | 2 | 1 156 | 365 |
+| 0029 | 3 | 833 | 75 |
+| 0031 | 2 | 1 071 | 286 |
+| 0032 | 5 | 969 | 59 |
+| 0033 | 2 | 808 | 17 |
+| 0034 | 3 | 1 116 | 325 |
+
+0003, 0007, 0009 and 0020 end inside their clip: the first detector kept them going on a pair
+bound more than 100 kpc apart or on tails that never stop rising, which is what the horizon
+and the aftermath answer.
+
+Over all 35 scenes, a story runs 140 Myr past the planned span on average, a fifth of it; the
+median of the 16 is 190 Myr. Only groups of four or five need more than 400. The placement above
+moves each scene's last pericentre 78 Myr later on average, which brings the average to about
+177 Myr, a quarter of the span: `explore-batch.sh` budgets a scene at its planned span times
+1.25 (`STORY_EXTRA`, and `Story.extraShare` for whoever plans in Swift). The nineteen that end
+inside their clip still cost their planned span: explore never stops early, and `hires` is where
+a short story saves time.
+
+**The cap stays at 2 Gyr.** One scene of 35, a group of four still trading passes at 1 800 Myr
+(0019), reaches it; the next longest, 0021, ends at 1 924. A longer cap would buy one scene in
+35 a clip of over a minute at the preview's cadence. `interest.py` halves the score of a story
+still going at the cap, so the night picks prefer the ones they can show whole.
 
 ## Downstream
 
@@ -103,3 +149,4 @@ __LONGER__
   picks prefer scenes they can show whole; `interest.json` keeps `story_complete`.
 - `explore-batch.sh` budgets a scene at its planned span plus the share measured above, and
   writes the frames and steps that ran into `index.csv`, which is what the cost model reads.
+  `CostModel.hiresSeconds(_:particles:)` prices a scene's hires on its own story.

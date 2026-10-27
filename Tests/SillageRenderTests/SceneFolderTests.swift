@@ -237,6 +237,18 @@ struct SceneFolderTests {
         #expect(first.record.frames == 30 && first.record.settle == same.record.settle)
     }
 
+    @Test func aShorterStoryCostsLessAtHighResolution() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        let model = CostModel.fallback()
+        let whole = try model.hiresSeconds(folder, particles: 2_000_000)
+        var clip = try folder.storedClip()
+        clip.story = Story.Span(startFrame: 300, endFrame: 599, startMyr: 0, endMyr: 0, complete: true)
+        try clip.encoded().write(to: folder.clip)
+        let story = try model.hiresSeconds(folder, particles: 2_000_000)
+        #expect(story < whole * 0.75 && story > whole * 0.5)
+    }
+
     @Test func exploreFollowsTheStoryUnlessCapped() throws {
         let folder = try temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder.batch) }

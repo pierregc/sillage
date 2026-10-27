@@ -15,10 +15,11 @@ DEFAULT_JOBS=4
 # the sizes a budget lands on: 101 at 50 000 a galaxy, 126 at 400 000, where the GPU is full.
 NS_PER_PARTICLE_STEP=126
 SECONDS_PER_SCENE=4     # starting up, and the steps before the first frame are counted apart
-# explore follows a story past the planned span until it is over (#123): on the 2026-10-25
-# night this much more of the span on average, which the budget and the disk count in.
-STORY_EXTRA=__EXTRA__
-MB_PER_SCENE=__MB__         # a raw preview at 960x540 is 5 to 25 MB for the planned span
+# explore follows a story past the planned span until it is over (#123): a fifth more of the
+# span on average on the 2026-10-25 night, a quarter with the pericentres now placed after the
+# approach. The budget and the disk count it in; Story.extraShare is the same figure.
+STORY_EXTRA=0.25
+MB_PER_SCENE=40         # a raw preview at 960x540 is 5 to 25 MB over the planned span
 MAX_FAILURES=5
 # What --hours and --scenes choose the particle count from, and how much of the time it plans
 # to fill: rejected draws, the scenes in flight at the deadline and the estimate's own error
