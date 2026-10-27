@@ -65,6 +65,7 @@ struct MainView: View {
                 }
             }
         }
+        .environment(\.queue, queue)
         // A run started anywhere, from a menu included, is watched in the workshop.
         .onChange(of: model.stage) { _, stage in
             if stage == .running, !model.contemplating { navigation.selection = .workshop }

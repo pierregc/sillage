@@ -15,6 +15,9 @@ final class QueueModel: ObservableObject {
     @Published var failure: String?
 
     private(set) var store: QueueStore
+    /// The runner started when nothing is at work; the checks clear it, so what they queue
+    /// stays queued.
+    var runnerURL: URL? = QueueModel.runnerExecutable
     private let readStatus: @Sendable (URL) -> QueueStatus
     private var timer: Timer?
     private var reading = false
@@ -112,12 +115,12 @@ final class QueueModel: ObservableObject {
         job: QueueJob, runner: Int32?
     ) {
         defer { refresh() }
-        return try store.submit(kind, path: path, options: options, runner: Self.runnerExecutable)
+        return try store.submit(kind, path: path, options: options, runner: runnerURL)
     }
 
     func cancel(_ id: Int) throws {
         defer { refresh() }
-        try store.cancel(id, runner: Self.runnerExecutable)
+        try store.cancel(id, runner: runnerURL)
     }
 
     func moveFirst(_ id: Int) throws {
@@ -132,7 +135,33 @@ final class QueueModel: ObservableObject {
 
     func resume() throws {
         defer { refresh() }
-        try store.resume(runner: Self.runnerExecutable)
+        try store.resume(runner: runnerURL)
+    }
+
+    /// Queues what the page planned, leaving out what is queued already. Returns how many.
+    @discardableResult
+    func submit(_ planned: [PlannedJob]) -> Int {
+        var added = 0
+        attempt {
+            for job in planned where !job.queued {
+                try submit(job.kind, path: job.path, options: job.options)
+                added += 1
+            }
+        }
+        return added
+    }
+
+    /// The status line of a job waiting or running.
+    func row(_ id: Int) -> QueueStatus.Row? {
+        ([status.running].compactMap { $0 } + status.waiting).first { $0.job == id }
+    }
+
+    /// The scene folders a hires waits or runs for, which the library lists as Haute résolution.
+    var activeHires: Set<String> {
+        Set(
+            queue.jobs.filter { !$0.isFinished && $0.kind == .hires }.map {
+                SceneFolder(path: $0.path).url.path
+            })
     }
 
     /// Runs an action from the view and keeps its error to show.

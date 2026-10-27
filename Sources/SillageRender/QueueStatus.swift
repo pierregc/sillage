@@ -40,6 +40,12 @@ public struct QueueStatus: Sendable, Equatable {
     public var waiting: [Row]
     /// The last ten, the latest first.
     public var finished: [Row]
+    /// When everything running and waiting should be done, so a new job would start: now when
+    /// nothing runs, nil when paused or when a job ahead has no estimate.
+    public var freeAt: Date?
+
+    /// The jobs a new one would wait behind.
+    public var ahead: Int { waitingCount + (isBusy ? 1 : 0) }
 
     public static let finishedShown = 10
 
@@ -187,16 +193,32 @@ public enum JobEstimate {
             let particles =
                 option("--particles", in: job.options).flatMap { Double($0) }.map { Int($0) }
                 ?? SceneFolder.maximumParticles()
-            return try? cost.hiresSeconds(folder, particles: particles)
+            return StageJobs.hiresSeconds(folder, particles: particles, cost: cost)
         case .export:
+            let number = { option($0, in: job.options).flatMap(Double.init) }
+            let clip = try? folder.storedClip()
+            if let format = option("--format", in: job.options) {
+                // A preview is 960 wide at 16 fps for eight seconds unless told otherwise.
+                let width = Int(number("--width") ?? 960)
+                let frames = Int((number("--fps") ?? 16) * (number("--duration") ?? 8))
+                let preset = VideoPreset(name: "preview-\(format)", width: width, height: width * 9 / 16)
+                return cost.exportSeconds(preset: preset, codec: .hevc, frames: frames)
+            }
             let name = option("--preset", in: job.options) ?? "1080p"
-            guard let preset = VideoPreset.all.first(where: { $0.name == name }) else { return nil }
+            guard let preset = VideoPreset.named(name) else { return nil }
             let codec = option("--codec", in: job.options).flatMap(VideoCodec.init(rawValue:))
-            let fps = option("--fps", in: job.options).flatMap { Int($0) } ?? 30
-            let frames =
-                option("--duration", in: job.options).flatMap { Double($0) }.map {
-                    Int($0 * Double(fps))
-                } ?? (try? folder.storedClip())?.frames
+            let hires = folder.storedHires()
+            let captured = Double(hires?.fps ?? clip?.fps ?? 30)
+            let fps = number("--fps") ?? captured
+            let frames: Int?
+            if let duration = number("--duration") {
+                frames = Int(duration * fps)
+            } else if let taken = hires?.frames ?? clip?.frames {
+                let left = Double(taken) / captured - (number("--start") ?? 0)
+                frames = Int(max(left, 0) * fps)
+            } else {
+                frames = nil
+            }
             return frames.map {
                 cost.exportSeconds(preset: preset, codec: codec ?? preset.defaultCodec, frames: $0)
             }
@@ -278,7 +300,8 @@ extension QueueStatus {
         self.headline = headline
 
         // Where each waiting job would start and end, one after the other.
-        var cursor: Date? = queue.paused ? nil : (row == nil && !alive ? inputs.now : readyAt)
+        let runningEnd = queued?.kind == .night ? (nightReady ?? nil) : readyAt
+        var cursor: Date? = queue.paused ? nil : (row == nil && !alive ? inputs.now : runningEnd)
         var rows: [Row] = []
         for job in queue.waiting {
             var timing: String?
@@ -299,6 +322,7 @@ extension QueueStatus {
                     progress: nil, timing: timing, options: Self.options(job)))
         }
         waiting = rows
+        freeAt = cursor
 
         finished = queue.finished.prefix(Self.finishedShown).map { job in
             Row(
