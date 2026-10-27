@@ -111,7 +111,7 @@ library/<batch>/
     <scene>/
         scene.json         the physics
         look.json          the image
-        clip.json          how long the clip runs and how large it is drawn
+        clip.json          how long the clip runs, where its story starts and ends, how large it is drawn
         preview.mov        the exploration clip
         thumbnail.png      one still from the middle of it, 480 px wide
         curves.csv         per frame separation, extent, stars formed, tails, disruption and centres
@@ -141,6 +141,17 @@ The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`
 `--settle`. To start a scene over, empty its folder. The same stages are
 `sillage-render <stage> <folder>`.
 
+**Whole stories.** `explore` does not stop at the planned frames while the scene's story goes
+on: it keeps capturing at the same cadence until the story is over, up to 2 Gyr of simulated
+time (`--story-cap <Myr>`, 0 to stop at the planned frames). The story starts 150 Myr before the
+first collision and ends once no pair will come closer again before the cap and tails, extent
+and disruption have stayed quiet for 150 Myr, or at the latest 400 Myr after the last pair was
+inside its reach. `clip.json` keeps the frames that ran and the story's frames and
+megayears, with `complete` false for a story still going at the cap.
+`sillage-render story <scene or batch folder>` judges curves already written the same way. The
+detector and its measured thresholds are in
+[docs/notes/whole-stories.md](docs/notes/whole-stories.md).
+
 ### High resolution
 
 `hires` runs the scene again from its `scene.json` at `--particles`, by default this Mac's
@@ -154,7 +165,9 @@ the interparticle spacing, so the step shrinks as the count grows, and `clip.jso
 `settle` are step counts at the preview's size: run as they are, they would show a shorter stretch
 of the encounter. They are turned into megayears and back, with a whole number of steps per
 frame, so every frame lands at the time the preview showed it and only the settle is rounded to
-the nearest step. `--frames N` runs the first N frames at the same cadence, for a quick look.
+the nearest step. Only the story is captured: what comes before it is settled through, and
+nothing after its end is run. `--frames N` runs the first N frames of it at the same cadence,
+for a quick look.
 
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
@@ -437,7 +450,10 @@ stops are started again.
 **The clip shows the encounter.** A step three and a half times the recommended one
 (`--dt-scale 3.5`, measured in #13), 400 steps to settle, which is the first 80 Myr, and then
 as many steps as cover `--span`, 700 Myr by default: a step is shorter the more particles a disk
-holds, so the step count is worked out per scene. The clip of #41, 900 steps at the generator's
+holds, so the step count is worked out per scene. The generator puts the first pericentre at
+least 150 Myr into the clip, and `explore` runs on past the span while the story goes on, so the
+budget plans for spans longer by the share measured in #123 and `index.csv` keeps the frames and
+steps that actually ran. The clip of #41, 900 steps at the generator's
 own scale, covers 40 Myr, which is one passage and no tails.
 
 **The particle count.** `--per-galaxy`, 50 000 by default, times the scene's galaxy count. With

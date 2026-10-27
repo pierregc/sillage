@@ -89,6 +89,15 @@ public struct CostModel: Codable, Sendable, Equatable {
         hires.seconds(Double(particles) * Double(steps))
     }
 
+    /// A scene's own hires at `particles`: its story's steps, settle included, so a short story
+    /// costs less than the clip it was explored in.
+    public func hiresSeconds(_ folder: SceneFolder, particles: Int) throws -> Double {
+        let record = try folder.hiresArguments(
+            ["--particles", String(particles)], maximumParticles: particles
+        ).record
+        return hiresSeconds(particles: particles, steps: record.settle + record.steps)
+    }
+
     public func exportSeconds(preset: VideoPreset, codec: VideoCodec, frames: Int) -> Double {
         exportLine(preset: preset, codec: codec).seconds(Double(frames))
     }

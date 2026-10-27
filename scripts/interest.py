@@ -31,6 +31,9 @@ FULL_BURST = 5.0
 EDGE = 0.03
 SMOOTHING_FRAMES = 15
 MINIMUM_RATED = 12
+# A story still going when explore reached its cap (#123) counts this share of its score, so
+# night picks prefer the scenes they can show whole.
+UNFINISHED = 0.5
 
 
 def number(value, default=0.0):
@@ -94,6 +97,16 @@ def score(found, weights=WEIGHTS):
     return sum(weights[name] * terms[name] for name in weights)
 
 
+def story_complete(folder):
+    """What explore recorded in clip.json, or None for a scene explored before #123."""
+    try:
+        with open(os.path.join(folder, "clip.json")) as handle:
+            story = json.load(handle).get("story")
+    except (OSError, ValueError):
+        return None
+    return None if story is None else bool(story.get("complete"))
+
+
 def score_scene(folder):
     curves = os.path.join(folder, "curves.csv")
     if not os.path.exists(curves):
@@ -101,7 +114,9 @@ def score_scene(folder):
     found = features(curves)
     if found is None:
         return None
-    result = {"version": 1, "score": round(score(found), 4), "features": found}
+    found["story_complete"] = story_complete(folder)
+    value = score(found) * (UNFINISHED if found["story_complete"] is False else 1.0)
+    result = {"version": 1, "score": round(value, 4), "features": found}
     with open(os.path.join(folder, "interest.json"), "w") as handle:
         json.dump(result, handle, indent=2, sort_keys=True)
         handle.write("\n")

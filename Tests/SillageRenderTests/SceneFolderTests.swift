@@ -218,6 +218,45 @@ struct SceneFolderTests {
         #expect(folder.removePartialOutputs().isEmpty)
     }
 
+    @Test func hiresReplaysTheStoryExploreFollowed() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        var clip = try folder.storedClip()
+        clip.frames = 1_200
+        clip.steps = 9_600
+        clip.story = Story.Span(startFrame: 100, endFrame: 1_099, startMyr: 0, endMyr: 0, complete: true)
+        try clip.encoded().write(to: folder.clip)
+        #expect(try folder.storedClip() == clip)
+
+        let same = try folder.hiresArguments(["--particles", "400000"], maximumParticles: 10_000_000)
+        #expect(same.record.frames == 1_000 && same.record.steps == 8_000)
+        #expect(same.record.settle == 400 + 100 * 8)
+        #expect(value("--frames", in: same.arguments) == "1000")
+        let first = try folder.hiresArguments(
+            ["--particles", "400000", "--frames", "30"], maximumParticles: 10_000_000)
+        #expect(first.record.frames == 30 && first.record.settle == same.record.settle)
+    }
+
+    @Test func aShorterStoryCostsLessAtHighResolution() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        let model = CostModel.fallback()
+        let whole = try model.hiresSeconds(folder, particles: 2_000_000)
+        var clip = try folder.storedClip()
+        clip.story = Story.Span(startFrame: 300, endFrame: 599, startMyr: 0, endMyr: 0, complete: true)
+        try clip.encoded().write(to: folder.clip)
+        let story = try model.hiresSeconds(folder, particles: 2_000_000)
+        #expect(story < whole * 0.75 && story > whole * 0.5)
+    }
+
+    @Test func exploreFollowsTheStoryUnlessCapped() throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        #expect(value("--story-cap", in: folder.exploreArguments([], clip: .init())) == String(Story.capMyr))
+        let capped = folder.exploreArguments(["--story-cap", "0"], clip: .init())
+        #expect(value("--story-cap", in: capped) == "0" && capped.filter { $0 == "--story-cap" }.count == 1)
+    }
+
     @Test func hiresRunsAtTheMaximumUnlessToldAndNeverAboveIt() throws {
         let folder = try explored()
         defer { try? FileManager.default.removeItem(at: folder.batch) }

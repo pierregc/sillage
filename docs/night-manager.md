@@ -90,11 +90,13 @@ what it left half written.
 - A scene is `--seed S --index N` of a generator: same two numbers, same scene.
 - `explore-batch.sh` runs 4 scenes at once, each at a low particle count with a plain look.
   Batches are resumable; settings are kept in `batch.conf`.
+- A preview runs until the scene's **story** is over: from 150 Myr before the first collision
+  until nothing moves, up to 2 Gyr. Clips differ in length; `clip.json` says where the story is.
 - Each scene gets an interest **score** (0-1) from its curves (closest approach, tidal tails,
   disruption). It only sorts; it never filters.
-- `hires` replays the same physics with more particles and saves the run as `take.sillage`.
-  Its default is the machine's maximum (`SILLAGE_MAX_PARTICLES`); cost grows with the count
-  (about 30 min at 1 M, 8 h at 10 M).
+- `hires` replays the same physics with more particles, over the story only, and saves the run
+  as `take.sillage`. Its default is the machine's maximum (`SILLAGE_MAX_PARTICLES`); cost grows
+  with the count and the story's length (about 30 min at 1 M, 8 h at 10 M for 700 Myr).
 - `look` and `export` only draw the take; no simulation. The chosen look is `look.json`.
 - Estimates come from `library/.sillage/costs.json`, fitted on past runs and refreshed after
   each one. `sillage-render costs` prints it; `--check <batch>` compares it with a batch.
