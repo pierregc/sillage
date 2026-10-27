@@ -20,6 +20,8 @@ final class AppNavigation: ObservableObject {
     static let windowID = "main"
 
     @Published var selection: SidebarItem = AppNavigation.initial
+    /// The new night sheet, opened from the sidebar and the toolbar.
+    @Published var showsNightSheet = false
 
     /// Selects the library, on the collection it was showing if it already is.
     func showLibrary() {
@@ -32,6 +34,14 @@ final class AppNavigation: ObservableObject {
             "--verify", "--cinema", "--presets", "--responsive", "--qa", "--soak",
         ]
         return CommandLine.arguments.contains(where: workshopChecks.contains) ? .workshop : .library(.all)
+    }
+
+    func newNight() { showsNightSheet = true }
+
+    /// A night launched shows the nights, where its page will be (#108).
+    func nightLaunched() {
+        showsNightSheet = false
+        selection = .nights
     }
 
     func openTake(_ model: SimulationModel) {
@@ -63,7 +73,28 @@ struct MainView: View {
                 } detail: {
                     detail
                 }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            navigation.newNight()
+                        } label: {
+                            Label("Nouvelle nuit", systemImage: "moon.stars")
+                        }
+                        .help("Préparer une nuit de calcul")
+                    }
+                }
+                .sheet(isPresented: $navigation.showsNightSheet) {
+                    NightSheetView(
+                        model: NightSheetModel(library: queue.store.library), queue: queue,
+                        dismiss: { navigation.showsNightSheet = false },
+                        launched: { navigation.nightLaunched() })
+                }
             }
+        }
+        // The night sheet opens on a plan already sized.
+        .onAppear {
+            let library = queue.store.library
+            Task.detached(priority: .utility) { NightSheetPlanner.shared(library: library).warm() }
         }
         // A run started anywhere, from a menu included, is watched in the workshop.
         .onChange(of: model.stage) { _, stage in
@@ -113,6 +144,11 @@ struct Sidebar: View {
             Section("Nuits") {
                 Label("Nuits", systemImage: "moon.stars")
                     .tag(SidebarItem.nights)
+                Button {
+                    navigation.newNight()
+                } label: {
+                    Label("Nouvelle nuit", systemImage: "plus.circle")
+                }
             }
             Section("Atelier") {
                 Label("Nouvelle collision", systemImage: "circle.circle")
