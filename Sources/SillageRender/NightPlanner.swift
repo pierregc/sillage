@@ -11,15 +11,19 @@ public struct NightScene: Sendable, Equatable {
     public var hiresUnits: Double
     /// Frames its hires captures, which each export draws.
     public var frames: Int
+    /// Marked yes by hand: a pick takes it before any scene the score alone puts forward.
+    public var chosenByHand = false
 
     public init(
-        name: String?, score: Double?, exploreUnits: Double, hiresUnits: Double, frames: Int
+        name: String?, score: Double?, exploreUnits: Double, hiresUnits: Double, frames: Int,
+        chosenByHand: Bool = false
     ) {
         self.name = name
         self.score = score
         self.exploreUnits = exploreUnits
         self.hiresUnits = hiresUnits
         self.frames = frames
+        self.chosenByHand = chosenByHand
     }
 }
 
@@ -223,10 +227,11 @@ public struct NightPlanner: Sendable {
 
     // MARK: Picks
 
-    /// The scenes a pick takes from, best first: Pierre's own yes first, then the score's;
-    /// a scene he said no to is never taken.
+    /// The scenes a pick takes from, best first: those marked yes by hand, then by score. A
+    /// scene marked no is not handed in at all.
     public static func ranked(_ scenes: [NightScene]) -> [NightScene] {
         scenes.sorted {
+            if $0.chosenByHand != $1.chosenByHand { return $0.chosenByHand }
             let (a, b) = ($0.score ?? -.infinity, $1.score ?? -.infinity)
             return a != b ? a > b : ($0.name ?? "") < ($1.name ?? "")
         }
@@ -263,7 +268,6 @@ public struct NightPlanner: Sendable {
         let total = deliverBy.timeIntervalSince(now)
         let available = total - Self.margin(total)
         let ladder = NightRecipe.perGalaxyLadder
-        let finish = finishSeconds(typical(perGalaxy: fixedCount ?? ladder[0]))
         let counts: [Int] =
             switch recipe.pick {
             case .none: [0]
@@ -281,6 +285,7 @@ public struct NightPlanner: Sendable {
             return Sizing(
                 scenes: explored, perGalaxy: fixedCount ?? ladder[0], picks: counts[0], budget: 0)
         }
+        let finish = finishSeconds(typical(perGalaxy: fixedCount ?? ladder[0]))
         // Fifty scenes, or the number asked, with room for as many picks as can be had.
         for picks in counts {
             let budget = available - Double(picks) * finish

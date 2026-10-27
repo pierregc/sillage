@@ -31,7 +31,8 @@ BUDGET_SAMPLE=16
 usage() {
     echo "usage: ${BASH_SOURCE[0]} [--scenes N] [--hours H] [--jobs N] [--seed S] [--out DIR]"
     echo "       [--per-galaxy N] [--span MYR | --steps N] [--dt-scale X] [--width W] [--height H]"
-    echo "       [--frames N] [--fps N] [--settle N] [--plan] [-- explore options...]"
+    echo "       [--frames N] [--fps N] [--settle N] [--galaxies MIN-MAX] [--only-archetypes A,B]"
+    echo "       [--plan] [-- explore options...]"
     echo "       ${BASH_SOURCE[0]} --benchmark [--scenes N] [--seed S] [--per-galaxy N] [--span MYR]"
 }
 
@@ -45,8 +46,10 @@ build=1
 quiet=0
 # The batch's own settings, recorded in batch.conf on the first run and read back on the next,
 # so a resumed batch draws and renders exactly as it started.
-keys="seed per_galaxy span steps dt_scale width height frames fps settle extra"
+keys="seed per_galaxy span steps dt_scale width height frames fps settle extra galaxy_range only_archetypes"
 seed="" per_galaxy="" span="" steps="" dt_scale="" width="" height="" frames="" fps="" settle="" extra=""
+# Draws outside these are skipped: a galaxy count, and for an archetype, its name.
+galaxy_range="" only_archetypes=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -64,6 +67,8 @@ while [ $# -gt 0 ]; do
         --frames)     frames="$2"; shift 2 ;;
         --fps)        fps="$2"; shift 2 ;;
         --settle)     settle="$2"; shift 2 ;;
+        --galaxies)   galaxy_range="$2"; shift 2 ;;
+        --only-archetypes) only_archetypes="$2"; shift 2 ;;
         --benchmark)  benchmark=1; shift ;;
         --no-build)   build=0; shift ;;
         --quiet)      quiet=1; shift ;;
@@ -83,9 +88,20 @@ probe() {
     # shellcheck disable=SC2086
     render --preset free --seed "$seed" --index "$1" --solver barnes-hut --particles "$2" \
         --dt-scale "$dt_scale" --check-only $extra 2>&1 | awk '
-            /^draw / { sub(/^[^:]*: /, ""); galaxies = split($0, f, ", ") }
+            /^draw / { generator = $2; sub(/,$/, "", generator); sub(/^[^:]*: /, "")
+                       galaxies = split($0, f, ", ") }
             /^check / { for (i = 2; i < NF; i++) if ($(i + 1) == "Myr," && $(i - 1) == "step") step = $i }
-            END { if (galaxies && step) print galaxies, step }' || true
+            END { if (galaxies && step) print galaxies, step, generator }' || true
+}
+
+# Whether the filters keep a draw of `$1` galaxies drawn by `$2`, free or an archetype.
+kept() {
+    if [ -n "$galaxy_range" ]; then
+        [ "$1" -ge "${galaxy_range%-*}" ] && [ "$1" -le "${galaxy_range#*-}" ] || return 1
+    fi
+    if [ -n "$only_archetypes" ] && [ "$2" != free ]; then
+        case ",$only_archetypes," in *",$2,"*) ;; *) return 1 ;; esac
+    fi
 }
 
 # Steps enough to cover the span, a whole number of them per frame. A step is shorter the more
@@ -99,14 +115,16 @@ steps_for() {
 # The largest count a galaxy can have for the batch to fit in its hours, judged on the first
 # scenes of the batch at each candidate count.
 budget() {
-    local n pg probed galaxies clip total best=""
+    local n pg first probed galaxies clip total best=""
     for pg in $PER_GALAXY_CANDIDATES; do
         total=0
         for n in $(seq 1 "$BUDGET_SAMPLE"); do
-            galaxies="$(probe "$n" "$pg" | cut -d' ' -f1)"
+            first="$(probe "$n" "$pg")"
+            galaxies="${first%% *}"
             [ -n "$galaxies" ] || continue
-            probed="$(probe "$n" $(( galaxies * pg )))"
-            clip="${steps:-$(steps_for "${probed#* }")}"
+            kept "$galaxies" "${first##* }" || continue
+            probed="$(probe "$n" $(( galaxies * pg )) | cut -d' ' -f2)"
+            clip="${steps:-$(steps_for "$probed")}"
             total=$(awk -v t="$total" -v p=$(( galaxies * pg )) -v s="$settle" -v k="$clip" \
                 -v x="$STORY_EXTRA" -v c="$NS_PER_PARTICLE_STEP" -v o="$SECONDS_PER_SCENE" \
                 'BEGIN { print t + o + p * (s + k * (1 + x)) * c / 1e9 }')
@@ -215,7 +233,7 @@ scored=0
 head -n 1 "$index" | grep -q ',score,rank,' && scored=1
 first_new_row=$(( $(wc -l <"$index") + 1 ))
 # A rejection is decided by the seed and the index alone, so a resumed batch need not ask again.
-rejected=" $(awk -F, '$NF == "rejected" { print $1 }' "$index" | tr '\n' ' ') "
+rejected=" $(awk -F, '$NF == "rejected" || $NF == "skipped" { print $1 }' "$index" | tr '\n' ' ') "
 
 note() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$log"; }
 finished() { find "$out" -mindepth 1 -maxdepth 1 -type d -name 'scene-*' | wc -l | tr -d ' '; }
@@ -230,7 +248,7 @@ fi
 # clip, the thumbnail and the curves are all written: the library skips hidden folders, so it
 # never shows a scene halfway, and on the next run a folder that exists is a scene that is done.
 explore_scene() {
-    local n=$1 id stage scene_log galaxies particles=0 clip="" probed rc=0 start status video_bytes=0
+    local n=$1 id stage scene_log first galaxies particles=0 clip="" probed rc=0 start status video_bytes=0
     local frames_run=""
     local score=""
     id="$(printf 'scene-%04d' "$n")"
@@ -241,11 +259,17 @@ explore_scene() {
 
     # The particle count follows from the galaxy count, and the steps from the time step at
     # that particle count.
-    galaxies="$(probe "$n" "$per_galaxy" | cut -d' ' -f1)"
+    first="$(probe "$n" "$per_galaxy")"
+    galaxies="${first%% *}"
+    if [ -n "$galaxies" ] && ! kept "$galaxies" "${first##* }"; then
+        # Outside the filters: a row so a resumed batch need not probe it again, nothing else.
+        echo "$id,$seed,$n,$galaxies,0,$width,$height,$frames,$fps,$settle,,0,0,$([ "$scored" -eq 0 ] || echo ',,')skipped" >>"$index"
+        return
+    fi
     if [ -n "$galaxies" ]; then
         particles=$(( galaxies * per_galaxy ))
-        probed="$(probe "$n" "$particles")"
-        [ -z "$probed" ] || clip="${steps:-$(steps_for "${probed#* }")}"
+        probed="$(probe "$n" "$particles" | cut -d' ' -f2)"
+        [ -z "$probed" ] || clip="${steps:-$(steps_for "$probed")}"
     fi
     if [ -z "$clip" ]; then
         status="failed:probe"
@@ -291,9 +315,19 @@ c = json.load(open(sys.argv[1])); print(c["frames"], c["steps"])' "$out/$id/clip
 }
 
 trap '' HUP
+# Every process the batch started, parents first, so a scene's subshell goes before it can
+# write a row for the render it ran. Not the whole process group: a night that started the
+# batch is in it, and goes on.
+descendants() {
+    local child
+    for child in $(pgrep -P "$1"); do
+        echo "$child"
+        descendants "$child"
+    done
+}
 # Takes the scenes in flight down with the batch; their hidden folders are cleared on resume.
 # TERM rather than INT, which a scene started in the background ignores.
-trap 'trap - INT TERM; note "interrupted"; echo interrupted; kill -TERM 0' INT TERM
+trap 'trap - INT TERM; note "interrupted"; echo interrupted; kill -TERM $(descendants $$) 2>/dev/null; exit 143' INT TERM
 
 # Left unbounded on both counts, a batch runs for a night.
 [ -n "$scenes" ] || [ -n "$hours" ] || hours=12
@@ -322,6 +356,10 @@ while :; do
         continue
     fi
     n=$(( n + 1 ))
+    if [ -n "$galaxy_range$only_archetypes" ] && [ -n "$scenes" ] && [ "$n" -gt $(( 50 * scenes + 100 )) ]; then
+        note "the filters keep too few draws"
+        break
+    fi
     id="$(printf 'scene-%04d' "$n")"
     [ ! -d "$out/$id" ] || continue
     case "$rejected" in *" $id "*) continue ;; esac

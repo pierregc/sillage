@@ -59,7 +59,7 @@ public final class QueueRunner: @unchecked Sendable {
         }
     }
 
-    static var exploreScript: URL {
+    public static var exploreScript: URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("scripts/explore-batch.sh")
     }
@@ -187,6 +187,7 @@ public final class QueueRunner: @unchecked Sendable {
             } else if stopAsked == nil, queue.paused != suspended {
                 suspended = queue.paused
                 killpg(pid, suspended ? SIGSTOP : SIGCONT)
+                if job.kind == .night { NightFile.mark(job.batchURL, suspended ? .paused : .running) }
                 say("job \(job.id)      \(suspended ? "suspended" : "resumed")")
                 // A paused queue keeps the Mac awake no longer.
                 hold(!suspended)
@@ -202,6 +203,10 @@ public final class QueueRunner: @unchecked Sendable {
         drainEvents(of: job.batchURL)
         if job.state == .failed { notify(Notices.failed(job)) }
         if job.state == .done, job.by == .hand { handJobsDone += 1 }
+        if job.kind == .night, job.state != .done {
+            // A night that could not say so itself: killed, or crashed.
+            NightFile.mark(job.batchURL, job.state == .cancelled ? .stopped : .failed, ended: Date())
+        }
         if job.state != .done {
             let removed =
                 job.isScene
