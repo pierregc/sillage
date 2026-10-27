@@ -97,7 +97,8 @@ and stops, `--no-check` renders anyway, and `--check` judges a scene read from a
 slot's next seed, and ends by printing how many draws were rejected.
 
 New here? [docs/night-manager.md](docs/night-manager.md) is the short user guide to the whole
-night batch, rating, hires, look and export workflow.
+night batch, rating, hires, look and export workflow. To follow a night from the phone, with a
+small model and an hourly routine, see [docs/night-status.md](docs/night-status.md).
 
 ## Scene folders
 
