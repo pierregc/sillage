@@ -9,6 +9,15 @@ import simd
 /// Gathered into one value so a look can be crossfaded rather than nudged one setter at a
 /// time.
 public struct RenderLook: Sendable, Equatable {
+    /// How the diffraction arms are laid out.
+    public enum SpikePattern: String, Codable, Sendable, CaseIterable {
+        /// `spikeArms` equal arms: four for Hubble's spider, six for a hexagonal mirror.
+        case even
+        /// Webb's: `spikeArms` long arms with one pair upright, plus two short horizontal
+        /// ones from the vertical strut.
+        case webb
+    }
+
     public var brightness: Float
     public var dustStrength: Float
     public var smoothingScale: Float
@@ -26,7 +35,15 @@ public struct RenderLook: Sendable, Equatable {
     public var spikeArms: Int
     public var spikeLength: Float
     public var spikeIntensity: Float
+    public var spikePattern: SpikePattern
+    /// How much of the light around a source is taken off before it throws spikes: 0 lets a
+    /// whole bright core throw wide cones, 1 leaves only stars and point-like cores, which is
+    /// what a telescope does.
+    public var spikeSharpness: Float
     public var skyLevel: Float
+    /// The sky's colour in linear sRGB, scaled by `skyLevel`: blue-black by default, cyan
+    /// black on Hubble, warm black on Webb.
+    public var skyColour: SIMD3<Float>
     public var noiseLevel: Float
     public var galaxyTint: Float
     public var starSize: Float
@@ -50,7 +67,10 @@ public struct RenderLook: Sendable, Equatable {
         spikeArms: Int = 6,
         spikeLength: Float = 72,
         spikeIntensity: Float = 0.38,
+        spikePattern: SpikePattern = .even,
+        spikeSharpness: Float = 0,
         skyLevel: Float = 0.0032,
+        skyColour: SIMD3<Float> = RenderLook.blueSky,
         noiseLevel: Float = 0.0016,
         galaxyTint: Float = 0.5,
         starSize: Float = 1.15,
@@ -71,7 +91,10 @@ public struct RenderLook: Sendable, Equatable {
         self.spikeArms = spikeArms
         self.spikeLength = spikeLength
         self.spikeIntensity = spikeIntensity
+        self.spikePattern = spikePattern
+        self.spikeSharpness = spikeSharpness
         self.skyLevel = skyLevel
+        self.skyColour = skyColour
         self.noiseLevel = noiseLevel
         self.galaxyTint = galaxyTint
         self.starSize = starSize
@@ -97,12 +120,15 @@ public struct RenderLook: Sendable, Equatable {
         // Arms are a count, and crossfading their intensity through zero is what keeps the
         // change of one from showing as a flicker.
         out.spikeArms = u < 0.5 ? a.spikeArms : b.spikeArms
+        out.spikePattern = u < 0.5 ? a.spikePattern : b.spikePattern
         out.spikeLength = f(a.spikeLength, b.spikeLength)
+        out.spikeSharpness = f(a.spikeSharpness, b.spikeSharpness)
         out.spikeIntensity =
-            a.spikeArms == b.spikeArms
+            a.spikeArms == b.spikeArms && a.spikePattern == b.spikePattern
             ? f(a.spikeIntensity, b.spikeIntensity)
             : (u < 0.5 ? f(a.spikeIntensity, 0) * (1 - 2 * u) : f(0, b.spikeIntensity))
         out.skyLevel = f(a.skyLevel, b.skyLevel)
+        out.skyColour = a.skyColour + (b.skyColour - a.skyColour) * u
         out.noiseLevel = f(a.noiseLevel, b.noiseLevel)
         out.galaxyTint = f(a.galaxyTint, b.galaxyTint)
         out.starSize = f(a.starSize, b.starSize)
@@ -110,6 +136,8 @@ public struct RenderLook: Sendable, Equatable {
         out.fieldOfView = f(a.fieldOfView, b.fieldOfView)
         return out
     }
+
+    public static let blueSky = SIMD3<Float>(0.36, 0.42, 0.60)
 
     /// What the telescope would actually record: modest bloom, honest colour, the diffraction
     /// pattern of a segmented mirror.
@@ -202,7 +230,10 @@ extension RenderLook: Codable {
             spikeArms: try c.value(.spikeArms, or: d.spikeArms),
             spikeLength: try c.value(.spikeLength, or: d.spikeLength),
             spikeIntensity: try c.value(.spikeIntensity, or: d.spikeIntensity),
+            spikePattern: try c.value(.spikePattern, or: d.spikePattern),
+            spikeSharpness: try c.value(.spikeSharpness, or: d.spikeSharpness),
             skyLevel: try c.value(.skyLevel, or: d.skyLevel),
+            skyColour: try c.value(.skyColour, or: d.skyColour),
             noiseLevel: try c.value(.noiseLevel, or: d.noiseLevel),
             galaxyTint: try c.value(.galaxyTint, or: d.galaxyTint),
             starSize: try c.value(.starSize, or: d.starSize),

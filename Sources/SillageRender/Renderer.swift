@@ -53,6 +53,9 @@ struct CompositeParams {
     var seed: Float
     var whitePoint: Float
     var fade: Float = 1
+    var skyRed: Float = 0.36
+    var skyGreen: Float = 0.42
+    var skyBlue: Float = 0.60
 }
 
 struct SpikeParams {
@@ -61,9 +64,9 @@ struct SpikeParams {
     var length: Float
     var falloff: Float
     var samples: UInt32
-    var pad0: Float = 0
-    var pad1: Float = 0
-    var pad2: Float = 0
+    var shortArms: UInt32 = 0
+    var shortBaseAngle: Float = 0
+    var shortScale: Float = 0
 }
 
 public struct RenderSettings: Sendable {
@@ -103,8 +106,12 @@ public struct RenderSettings: Sendable {
     public var spikeArms: Int
     public var spikeLength: Float
     public var spikeIntensity: Float
+    public var spikePattern: RenderLook.SpikePattern
+    public var spikeSharpness: Float
     /// Sky background and detector noise, both in linear signal units before tone mapping.
     public var skyLevel: Float
+    /// Colour of the sky background, scaled by `skyLevel`.
+    public var skyColour: SIMD3<Float>
     public var noiseLevel: Float
     /// How far the per-galaxy tint pulls the stars away from the colour their population
     /// implies. Zero is the physical answer; a little of it is what keeps stars torn out of
@@ -135,7 +142,10 @@ public struct RenderSettings: Sendable {
         spikeArms: Int = 6,
         spikeLength: Float = 72,
         spikeIntensity: Float = 0.38,
+        spikePattern: RenderLook.SpikePattern = .even,
+        spikeSharpness: Float = 0,
         skyLevel: Float = 0.0018,
+        skyColour: SIMD3<Float> = RenderLook.blueSky,
         noiseLevel: Float = 0.0016,
         galaxyTint: Float = 0.35,
         plain: Bool = false
@@ -160,7 +170,10 @@ public struct RenderSettings: Sendable {
         self.spikeArms = spikeArms
         self.spikeLength = spikeLength
         self.spikeIntensity = spikeIntensity
+        self.spikePattern = spikePattern
+        self.spikeSharpness = spikeSharpness
         self.skyLevel = skyLevel
+        self.skyColour = skyColour
         self.noiseLevel = noiseLevel
         self.galaxyTint = galaxyTint
         self.plain = plain
@@ -203,6 +216,7 @@ public final class Renderer {
     private let upsamplePipeline: MTLComputePipelineState
     private let compositePipeline: MTLComputePipelineState
     private let spikePipeline: MTLComputePipelineState
+    private let compactPipeline: MTLComputePipelineState
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
@@ -210,7 +224,13 @@ public final class Renderer {
     private let bloomDown: [MTLTexture]
     private let bloomUp: [MTLTexture]
     private let spikeTexture: MTLTexture
+    /// Source and result of sharp spikes, at a quarter of the output size: their source is
+    /// no finer than that, and gathering at half size cost a millisecond a frame on Webb.
+    private let sharpSource: MTLTexture
+    private let sharpSpikes: MTLTexture
     static let spikeVisible: Float = 0.0001
+    /// Webb's horizontal strut spikes, as a fraction of the long ones.
+    static let webbShortArm: Float = 0.4
     public let output: MTLTexture
 
     private let positionBuffer: MTLBuffer
@@ -351,6 +371,7 @@ public final class Renderer {
         upsamplePipeline = try compute("upsampleAdd")
         compositePipeline = try compute("composite")
         spikePipeline = try compute("diffractionSpikes")
+        compactPipeline = try compute("compactLight")
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -400,6 +421,12 @@ public final class Renderer {
 
         spikeTexture = try texture(
             max(settings.width / 2, 1), max(settings.height / 2, 1), .rgba16Float,
+            [.shaderRead, .shaderWrite])
+        sharpSource = try texture(
+            max(settings.width / 4, 1), max(settings.height / 4, 1), .rgba16Float,
+            [.shaderRead, .shaderWrite])
+        sharpSpikes = try texture(
+            max(settings.width / 4, 1), max(settings.height / 4, 1), .rgba16Float,
             [.shaderRead, .shaderWrite])
         output = try texture(
             settings.width, settings.height, .rgba8Unorm, [.shaderRead, .shaderWrite], shared: true)
@@ -541,7 +568,10 @@ public final class Renderer {
         settings.spikeArms = look.spikeArms
         settings.spikeLength = look.spikeLength
         settings.spikeIntensity = look.spikeIntensity
+        settings.spikePattern = look.spikePattern
+        settings.spikeSharpness = look.spikeSharpness
         settings.skyLevel = look.skyLevel
+        settings.skyColour = look.skyColour
         settings.noiseLevel = look.noiseLevel
         settings.galaxyTint = look.galaxyTint
         settings.starSize = look.starSize
@@ -750,13 +780,17 @@ public final class Renderer {
         let spikesOn = settings.spikeArms > 0 && settings.spikeIntensity >= Self.spikeVisible
         var bloom = BloomParams(
             threshold: settings.bloomThreshold, softKnee: settings.bloomSoftKnee)
+        // A sharp spike source is the light one bloom level down, a little wider than a pixel so
+        // taps two pixels apart do not bead, less the broad light two levels further down.
+        let broadLevel = min(3, bloomDown.count - 1)
+        let sharpSpikes = spikesOn && settings.spikeSharpness > 0 && broadLevel > 1
         if let first = bloomDown.first, bloomOn || spikesOn {
             dispatch(compute, brightPassPipeline, into: first) { encoder in
                 encoder.setTexture(resolved, index: 0)
                 encoder.setTexture(first, index: 1)
                 encoder.setBytes(&bloom, length: MemoryLayout<BloomParams>.stride, index: 0)
             }
-            for level in 1..<bloomDown.count where bloomOn {
+            for level in 1..<bloomDown.count where bloomOn || (sharpSpikes && level <= broadLevel) {
                 dispatch(compute, downsamplePipeline, into: bloomDown[level]) { encoder in
                     encoder.setTexture(bloomDown[level - 1], index: 0)
                     encoder.setTexture(bloomDown[level], index: 1)
@@ -786,11 +820,34 @@ public final class Renderer {
             length: settings.spikeLength,
             falloff: 4.2,
             samples: 28)
-        let spikeSource = bloomDown.first ?? resolved
+        // A sharp source is a pixel or two wide at quarter size, so the taps have to be that
+        // close or a spike comes out as a string of beads. Lengths are in half-size pixels.
+        if sharpSpikes {
+            spike.length = settings.spikeLength / 2
+            spike.samples = UInt32(min(max(28, settings.spikeLength / 2.5), 96))
+        }
+        if settings.spikePattern == .webb {
+            spike.baseAngle = .pi / 2
+            spike.shortArms = 2
+            spike.shortScale = Self.webbShortArm
+        }
+        var spikeSource = bloomDown.first ?? resolved
+        let spikeResult = sharpSpikes ? self.sharpSpikes : spikeTexture
+        if sharpSpikes {
+            var amount = min(max(settings.spikeSharpness, 0), 1)
+            let point = bloomDown[1]
+            dispatch(compute, compactPipeline, into: sharpSource) { encoder in
+                encoder.setTexture(point, index: 0)
+                encoder.setTexture(bloomDown[broadLevel], index: 1)
+                encoder.setTexture(sharpSource, index: 2)
+                encoder.setBytes(&amount, length: 4, index: 0)
+            }
+            spikeSource = sharpSource
+        }
         if spikesOn {
-            dispatch(compute, spikePipeline, into: spikeTexture) { encoder in
+            dispatch(compute, spikePipeline, into: spikeResult) { encoder in
                 encoder.setTexture(spikeSource, index: 0)
-                encoder.setTexture(spikeTexture, index: 1)
+                encoder.setTexture(spikeResult, index: 1)
                 encoder.setBytes(&spike, length: MemoryLayout<SpikeParams>.stride, index: 0)
             }
         }
@@ -805,13 +862,16 @@ public final class Renderer {
             noiseLevel: settings.noiseLevel,
             seed: frameSeed,
             whitePoint: settings.whitePoint,
-            fade: min(max(fade, 0), 1))
+            fade: min(max(fade, 0), 1),
+            skyRed: settings.skyColour.x,
+            skyGreen: settings.skyColour.y,
+            skyBlue: settings.skyColour.z)
         let target = present ?? output
         dispatch(compute, compositePipeline, into: target) { encoder in
             encoder.setTexture(resolved, index: 0)
             encoder.setTexture(bloomResult ?? resolved, index: 1)
             encoder.setTexture(target, index: 2)
-            encoder.setTexture(spikesOn ? spikeTexture : resolved, index: 3)
+            encoder.setTexture(spikesOn ? spikeResult : resolved, index: 3)
             encoder.setBytes(&composite, length: MemoryLayout<CompositeParams>.stride, index: 0)
         }
         compute.endEncoding()

@@ -37,6 +37,28 @@ struct LookFileTests {
         }
     }
 
+    /// Files written before the telescope renderings read as the free world, with spikes
+    /// spread evenly as they always were.
+    @Test func anOlderFileIsFreeWithEvenSpikes() throws {
+        let file = try decoded(#"{"version": 1, "look": {"spikeArms": 4}}"#)
+        #expect(file.world == .free && file.look.spikePattern == .even)
+        let webb = try decoded(
+            #"{"version": 1, "world": "telescope", "look": {"spikePattern": "webb"}}"#)
+        #expect(webb.world == .telescope && webb.look.spikePattern == .webb)
+        #expect(throws: DecodingError.self) {
+            try decoded(#"{"version": 1, "look": {"spikePattern": "jwst"}}"#)
+        }
+    }
+
+    @Test func aChangeOfSpikePatternFadesTheSpikesOut() {
+        let even = RenderLook.observatory
+        var webb = even
+        webb.spikePattern = .webb
+        #expect(RenderLook.mix(even, webb, 0.45).spikePattern == .even)
+        #expect(RenderLook.mix(even, webb, 0.45).spikeIntensity < 0.1 * even.spikeIntensity)
+        #expect(RenderLook.mix(even, webb, 1) == webb)
+    }
+
     @Test func aMisspeltFieldOrAnUnknownVersionIsRefused() throws {
         #expect(throws: DecodingError.self) { try decoded(#"{"version": 1, "brigthness": 1}"#) }
         #expect(throws: DecodingError.self) {
@@ -105,6 +127,9 @@ struct LookFileTests {
         file.look = .dream
         file.starCount = 1234
         file.look.whitePoint = 7
+        file.look.spikePattern = .webb
+        file.look.spikeSharpness = 0.8
+        file.look.skyColour = SIMD3(0.5, 0.45, 0.4)
         let s = file.renderSettings(width: 320, height: 200)
         let look = file.look
         #expect(s.width == 320 && s.height == 200)
@@ -118,7 +143,9 @@ struct LookFileTests {
                 bloomSoftKnee: s.bloomSoftKnee, bloomIntensity: s.bloomIntensity,
                 stretch: s.stretch, saturation: s.saturation, whitePoint: s.whitePoint,
                 spikeArms: s.spikeArms, spikeLength: s.spikeLength,
-                spikeIntensity: s.spikeIntensity, skyLevel: s.skyLevel, noiseLevel: s.noiseLevel,
+                spikeIntensity: s.spikeIntensity, spikePattern: s.spikePattern,
+                spikeSharpness: s.spikeSharpness,
+                skyLevel: s.skyLevel, skyColour: s.skyColour, noiseLevel: s.noiseLevel,
                 galaxyTint: s.galaxyTint, starSize: s.starSize,
                 armPersistence: look.armPersistence, fieldOfView: look.fieldOfView) == look)
     }
