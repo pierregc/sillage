@@ -100,3 +100,19 @@ everything by the median gets mud.
   tiny orange and red background galaxies; MIRI mosaics show a grey floor and the footprint edge.
 - **Grain.** Hubble arms are granular with resolved clusters; Webb close-ups resolve individual
   stars as a fine blue-white dust over the whole disk.
+
+## The two renderings (#126)
+
+`looks/hubble.look.json` and `looks/webb.look.json` carry `"world": "telescope"`;
+`LookCatalogue.renderings(.telescope, …)` returns them and the free world gets the rest.
+
+- **Spikes.** `spikePattern: "webb"` lays six long arms with one pair upright and adds two short
+  horizontal ones. `spikeSharpness` takes the broad light off before gathering, so only stars and
+  point-like cores throw spikes, as thin lines rather than cones; at 1 those spikes are gathered
+  at quarter size, which made the Webb look 0.7 ms a frame cheaper than six plain arms at 2 M
+  (`--replay`, 2560 x 1440).
+- **Sky.** `skyColour` replaces the fixed blue-black: cyan black at L 0.14 for Hubble, warm black at
+  L 0.17 for Webb, measured on renders against the table above.
+- **What stays off.** Pink knots on Hubble's arms and Webb's glowing coral dust are colours per
+  component inside one galaxy, which is #119. Until then Webb tints a galaxy coral or blue-white
+  as a whole.

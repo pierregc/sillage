@@ -26,7 +26,10 @@ extension LookFile {
             spikeArms: look.spikeArms,
             spikeLength: look.spikeLength,
             spikeIntensity: look.spikeIntensity,
+            spikePattern: look.spikePattern,
+            spikeSharpness: look.spikeSharpness,
             skyLevel: look.skyLevel,
+            skyColour: look.skyColour,
             noiseLevel: look.noiseLevel,
             galaxyTint: look.galaxyTint,
             plain: plain)

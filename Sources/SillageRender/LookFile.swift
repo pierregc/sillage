@@ -29,6 +29,8 @@ public struct LookFile: Codable, Sendable, Equatable {
     /// Where `palette` came from when a generator drew it. Left out by files written before,
     /// and never read to draw: the colours above are what the frame uses.
     public var paletteRecipe: Palette?
+    /// The colour world the look belongs to: the telescope renderings, or the free catalogue.
+    public var world: Palette.World
     public var camera: CameraPlan
 
     public struct CameraPlan: Codable, Sendable, Equatable {
@@ -91,7 +93,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         name: String = "standard", look: RenderLook = LookFile.standardLook,
         starCount: Int = 2500, supersample: Int = 2, bloomLevels: Int = 6, plain: Bool = false,
         armStrength: Float = 1, palette: [SIMD3<Float>] = [], paletteRecipe: Palette? = nil,
-        camera: CameraPlan = CameraPlan()
+        world: Palette.World = .free, camera: CameraPlan = CameraPlan()
     ) {
         version = Self.currentVersion
         self.name = name
@@ -103,6 +105,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         self.armStrength = armStrength
         self.palette = palette
         self.paletteRecipe = paletteRecipe
+        self.world = world
         self.camera = camera
     }
 
@@ -120,6 +123,7 @@ public struct LookFile: Codable, Sendable, Equatable {
             armStrength: try c.value(.armStrength, or: d.armStrength),
             palette: try c.value(.palette, or: d.palette),
             paletteRecipe: try c.decodeIfPresent(Palette.self, forKey: .paletteRecipe),
+            world: try c.value(.world, or: d.world),
             camera: try c.value(.camera, or: d.camera))
         version = try c.decode(Int.self, forKey: .version)
     }

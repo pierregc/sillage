@@ -92,12 +92,37 @@ struct LookStageTests {
         }
         for (name, file) in zip(names, files) { #expect(name == "\(file.name).look.json") }
         let added = zip(names, files).filter { !RenderLook.catalogue.map(\.id).contains($0.1.name) }
-            .map(\.1)
+            .map(\.1).filter { $0.world == .free }
         #expect(added.count >= 30)
         #expect(Set(added.map(\.palette.first!.x)).count > 8)
         #expect(added.filter { $0.look.dustStrength == 0 }.count * 2 > added.count)
         #expect(added.allSatisfy { $0.starCount <= 1000 && $0.look.skyLevel <= 0.0008 })
         #expect(added.allSatisfy { $0.look.spikeIntensity <= 0.2 })
+    }
+
+    /// The telescope world renders as Hubble or Webb and nothing else; the free world keeps
+    /// the rest of the catalogue.
+    @Test func theTelescopeWorldIsHubbleAndWebb() throws {
+        let catalogue = LookCatalogue.load(
+            from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                .deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("looks"))
+        let telescope = LookCatalogue.renderings(.telescope, in: catalogue)
+        #expect(telescope.map(\.name).sorted() == ["hubble", "webb"])
+        let free = LookCatalogue.renderings(.free, in: catalogue)
+        #expect(free.count + 2 == catalogue.count && free.count >= 35)
+
+        let hubble = try #require(telescope.first { $0.name == "hubble" })
+        let webb = try #require(telescope.first { $0.name == "webb" })
+        #expect(hubble.look.spikeArms == 4 && hubble.look.spikePattern == .even)
+        #expect(webb.look.spikeArms == 6 && webb.look.spikePattern == .webb)
+        // Hubble's dust is shadow and its bulge a broad glow; Webb's dust glows instead.
+        #expect(hubble.look.dustStrength > 3 * webb.look.dustStrength)
+        #expect(hubble.look.bloomIntensity > webb.look.bloomIntensity)
+        for file in telescope {
+            #expect(file.palette.count == 5)
+            #expect(PaletteGenerator.violations(file.palette, monochrome: false).isEmpty)
+        }
     }
 
     @Test func aVariantThatChangesNothingIsLeftOut() {

@@ -1,0 +1,64 @@
+{
+  "camera": {
+    "mode": "fixed"
+  },
+  "look": {
+    "armPersistence": 1,
+    "bloomIntensity": 0.2,
+    "bloomSoftKnee": 0.5,
+    "bloomThreshold": 0.6,
+    "brightness": 0.15,
+    "dustStrength": 0.08,
+    "galaxyTint": 0.55,
+    "maximumKernel": 56,
+    "minimumKernel": 0.8,
+    "noiseLevel": 0.0014,
+    "saturation": 2.2,
+    "skyColour": [
+      0.44,
+      0.42,
+      0.39
+    ],
+    "skyLevel": 0.0012,
+    "smoothingScale": 1.2,
+    "spikeArms": 6,
+    "spikeIntensity": 0.35,
+    "spikeLength": 110,
+    "spikePattern": "webb",
+    "spikeSharpness": 1,
+    "starSize": 0.9,
+    "stretch": 18,
+    "whitePoint": 3.5
+  },
+  "name": "webb",
+  "palette": [
+    [
+      0.819,
+      0.332,
+      0.162
+    ],
+    [
+      0.456,
+      0.664,
+      0.935
+    ],
+    [
+      0.742,
+      0.413,
+      0.578
+    ],
+    [
+      0.38,
+      0.669,
+      0.642
+    ],
+    [
+      0.55,
+      0.461,
+      0.761
+    ]
+  ],
+  "starCount": 6000,
+  "version": 1,
+  "world": "telescope"
+}

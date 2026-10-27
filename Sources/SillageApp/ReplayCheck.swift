@@ -3,7 +3,7 @@ import Foundation
 import SillageCore
 import SillageRender
 
-/// Plays a take and says where each frame's time went.
+/// Plays a take and says where each frame's time went. `--replay <take> [frames] [look.json]`.
 ///
 /// A played-back frame does four things on the main thread one after another: it waits for
 /// the snapshot the reader was supposed to have fetched, it reads what that snapshot was
@@ -24,11 +24,13 @@ enum ReplayCheck {
         let frames =
             flag + 2 < CommandLine.arguments.count
             ? Int(CommandLine.arguments[flag + 2]) ?? 300 : 300
+        let look = CommandLine.arguments.dropFirst(flag + 2).first { $0.hasSuffix(".look.json") }
         guard let model = SimulationModel() else {
             FileHandle.standardError.write(Data("replay: pas de périphérique Metal\n".utf8))
             exit(1)
         }
-        model.openTake(from: URL(fileURLWithPath: take))
+        model.openTake(
+            from: URL(fileURLWithPath: take), look: look.map { URL(fileURLWithPath: $0) })
         // The read happens on the simulation queue and lands back through the main queue, so
         // the run loop has to turn for it even though `NSApplication` has not started yet.
         let deadline = Date().addingTimeInterval(600)
