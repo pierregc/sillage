@@ -125,6 +125,18 @@ final class QueueModel: ObservableObject {
         return try sheet.launch(library: store.library, runner: runnerURL).job
     }
 
+    /// A night ends once the step it is on is done.
+    func stopAfterStep(_ id: Int) throws {
+        defer { refresh() }
+        try store.change { try $0.stopAfterStep(id, at: Date()) }
+    }
+
+    /// A night leaves out the scene it works on.
+    func skip(_ id: Int) throws {
+        defer { refresh() }
+        try store.change { try $0.skip(id, at: Date()) }
+    }
+
     func cancel(_ id: Int) throws {
         defer { refresh() }
         try store.cancel(id, runner: runnerURL)

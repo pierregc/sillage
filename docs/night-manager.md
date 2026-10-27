@@ -157,6 +157,33 @@ the settings in `library/.sillage/night-sheet.json` for the next sheet. `Sillage
 runs the model without a window (plan latency, warnings, launch) and writes
 `out/ui-night-sheet*.png`, as `--uishot` does.
 
+### The night page
+
+The Nuits section of the sidebar lists the nights newest first, each a day and "35 scènes · 4
+vidéos" (with "en cours", "en pause", "arrêtée", "en échec", "interrompue" or "en attente" when
+it is not over), and a night just launched opens on its page. The page, `NightsSnapshot.read`
+in `NightPage.swift`, shows:
+
+- the five phases (Aperçus, Sélection, Haute résolution, Style, Vidéos) with their counts, what
+  was rejected, failed or left out, when each finished and when the others are expected to;
+- while it runs, the job on one line ("scene-0023, haute résolution, image 412/900, prêt vers
+  1 h 12"), its bar, and the delivery against the deadline;
+- buttons: **Pause** / **Reprendre** (the whole queue), **Arrêter après cette étape**,
+  **Arrêter maintenant** (asks first), **Passer cette scène** (during a scene's own steps; once
+  asked it waits for the next scene) and **Trier**, which opens the triage view on the night's
+  scenes still to sort;
+- once it is over, the morning summary, `report.md` (written again from the files if it is
+  missing);
+- the scenes as cards as they arrive: the picked ones first in the order they were picked, then
+  the others latest first, each at the stage it has reached; a click opens its page;
+- the errors, each with a button to its log.
+
+Everything is read from `night.json`, `events.jsonl`, `report.md`, `activity.json` and the
+queue, every second, so a change shows within two and a night that ran while the app was closed
+shows as it ended. A night whose file says running with no process behind it is
+"interrompue". `Sillage.app --nightpagecheck` runs all this on copies of the fixtures of
+`Tests/Fixtures/night-status/`, without a window or the GPU, and writes `out/ui-night-page*.png`.
+
 ## Queue
 
 Heavy work can go through one queue per library instead, one job at a time, in a runner of its

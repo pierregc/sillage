@@ -12,11 +12,11 @@ enum NavigationCheck {
 
     static func run(
         _ model: SimulationModel, _ library: LibraryModel, _ navigation: AppNavigation,
-        _ queue: QueueModel
+        _ queue: QueueModel, _ nights: NightsModel
     ) {
         guard CommandLine.arguments.contains("--navcheck") else { return }
         Task {
-            await exercise(model, library, navigation, queue)
+            await exercise(model, library, navigation, queue, nights)
             let report = lines.joined(separator: "\n") + "\n\n\(failures) échec(s)"
             try? report.write(
                 to: URL(fileURLWithPath: "/tmp/sillage-navigation.log"), atomically: true,
@@ -47,7 +47,7 @@ enum NavigationCheck {
 
     private static func exercise(
         _ model: SimulationModel, _ library: LibraryModel, _ navigation: AppNavigation,
-        _ queue: QueueModel
+        _ queue: QueueModel, _ nights: NightsModel
     ) async {
         _ = await settle(model, 1)
         check("la bibliothèque est l'accueil", navigation.selection == .library(.all))
@@ -80,25 +80,49 @@ enum NavigationCheck {
         check("la ligne d'état a un texte", !queue.status.statusLine.isEmpty, queue.status.statusLine)
         snapshot("queue")
 
-        navigation.selection = .nights
-        check("les nuits remplacent la grille", await settle(model, 2) { !library.isShown })
+        // The library's own nights if it has any, else a name it has none of.
+        let night = nights.items.first?.id ?? "aucune-nuit"
+        navigation.selection = .night(night)
+        check("une nuit remplace la grille", await settle(model, 2) { !library.isShown })
         check("le dossier reste lu pour les compteurs", library.isWatching)
-        snapshot("nights")
+        check(
+            "la page lit la nuit choisie",
+            await settle(model, 3) { nights.selected == night },
+            "\(nights.items.count) nuits, la page est \(nights.page?.id ?? "vide")")
+        snapshot("night")
+        navigation.selection = .library(.all)
+        check(
+            "quitter la page rend la grille et arrête la lecture",
+            await settle(model, 3) { library.isShown && nights.selected == nil })
 
-        // The new night sheet comes over whatever shows, and a launch lands on the nights.
+        // The new night sheet comes over whatever shows, and a launch lands on the night's page.
         func sheetShown() -> Bool { NSApp.windows.contains { $0.attachedSheet != nil } }
         navigation.selection = .library(.all)
+        // A sheet hangs from a window that is on screen. A machine whose display sleeps, or a
+        // window behind another app, keeps it hidden: the app is brought forward first, and if
+        // the window still cannot be seen the sheet is checked in the model only, and says so.
+        let host = NSApp.windows.first { $0.contentView != nil && $0.canBecomeMain }
+        NSApp.activate(ignoringOtherApps: true)
+        host?.orderFrontRegardless()
+        _ = await settle(model, 1) { host?.isVisible == true }
+        let onScreen = host?.isVisible == true
         navigation.newNight()
-        check("Nouvelle nuit ouvre la feuille", await settle(model, 3) { sheetShown() })
+        if onScreen {
+            check("Nouvelle nuit ouvre la feuille", await settle(model, 3) { sheetShown() })
+        } else {
+            check(
+                "Nouvelle nuit demande la feuille (fenêtre cachée : le modèle seulement)",
+                navigation.showsNightSheet)
+        }
         navigation.showsNightSheet = false
         check("fermer la feuille la retire", await settle(model, 3) { !sheetShown() })
         check("la bibliothèque reste là", navigation.selection == .library(.all))
         navigation.newNight()
         _ = await settle(model, 2) { sheetShown() }
-        navigation.nightLaunched()
+        navigation.nightLaunched("2099-01-01")
         check(
-            "lancer une nuit ferme la feuille et montre les nuits",
-            await settle(model, 3) { !sheetShown() } && navigation.selection == .nights)
+            "lancer une nuit ferme la feuille et montre sa page",
+            await settle(model, 3) { !sheetShown() } && navigation.selection == .night("2099-01-01"))
 
         navigation.selection = .workshop
         check("nouvelle collision montre le réglage", await settle(model, 2) { model.hasPreviewCanvas })
