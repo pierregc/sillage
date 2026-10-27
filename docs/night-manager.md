@@ -33,15 +33,14 @@ or date. Ratings go to `<batch>/ratings.json`.
 ./scripts/dev.sh hires library/2026-10-24/scene-0001 --particles 2000000
 ```
 
-**4. Look** – compare looks in a grid, then promote one:
+**4. Look** – choose the scene's style:
 
 ```bash
-./scripts/dev.sh look library/2026-10-24/scene-0001            # writes looks/grid.png
-./scripts/dev.sh look library/2026-10-24/scene-0001 --promote <row-name>
+./scripts/dev.sh look library/2026-10-24/scene-0001 --style auto
 ```
 
-To choose it live, open the scene in the library and click **Choisir le style**: the style
-editor plays the take, and **Utiliser pour la scène** (⌘S) promotes.
+Or open the scene in the library and click **Choisir le style**: the style editor plays the
+take, and **Utiliser pour la scène** (⌘S) promotes.
 
 **5. Export**:
 
