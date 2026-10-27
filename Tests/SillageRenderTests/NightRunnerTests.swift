@@ -37,7 +37,7 @@ struct NightRunnerTests {
             clip.settle = 50
             try clip.encoded().write(to: folder.clip)
             var look = LookFile.raw
-            look.palette = [SIMD3(1, 0.5, 0.2), SIMD3(0.3, 0.7, 1)]
+            look.palette = [GalaxyColours(SIMD3(1, 0.5, 0.2)), GalaxyColours(SIMD3(0.3, 0.7, 1))]
             try look.encoded().write(to: folder.look)
             try Data(#"{"score": \#(score)}"#.utf8).write(to: folder.interest)
         }
