@@ -90,6 +90,42 @@ struct FrameScoreTests {
         #expect(noisy.noise < clean.noise - 0.3)
     }
 
+    @Test func aRampOnlyScoresWhenTheFrameIsMeantToShowOne() {
+        let frame = Self.frame()
+        #expect(Self.score(frame).variety == nil)
+        let ramped = FrameScore(
+            pixels: frame.pixels, width: Self.width, height: Self.height, owners: frame.owners,
+            ramps: true)
+        #expect(ramped.variety != nil && ramped.measures.spread != nil)
+    }
+
+    @Test func galaxiesDrawnInSeveralColoursSpreadMoreThanInOne() {
+        let (width, height) = (Self.width, Self.height)
+        var flat = Self.frame()
+        var banded = Self.frame()
+        // The second galaxy's outer half shifts to green: one colour against two.
+        for y in 0..<height {
+            for x in 0..<width where banded.owners[y * width + x] == 2 {
+                let outer = simd_distance(SIMD2(Float(x), Float(y)), SIMD2(112, 45)) > 14
+                if outer {
+                    let i = 4 * (y * width + x)
+                    (banded.pixels[i], banded.pixels[i + 1]) = (banded.pixels[i + 1], banded.pixels[i])
+                }
+            }
+        }
+        flat.owners = banded.owners
+        let one = Self.score(flat).measures.spread!
+        let several = Self.score(banded).measures.spread!
+        #expect(several > one * 1.3)
+        func variety(_ frame: (pixels: [UInt8], owners: [UInt8])) -> Float {
+            FrameScore(
+                pixels: frame.pixels, width: width, height: height, owners: frame.owners,
+                ramps: true
+            ).variety!
+        }
+        #expect(variety(banded) > variety(flat))
+    }
+
     @Test func theTelescopeWorldIsJudgedOnTheReferenceTones() throws {
         let set = try TelescopeReference(data: Data(referenceJSON.utf8), name: "hubble-visible")
         let frame = Self.frame()

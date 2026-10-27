@@ -107,7 +107,8 @@ public enum StyleAuto {
             candidates[row].frames.append(
                 FrameScore(
                     pixels: cell.pixels, width: cellWidth, height: cellHeight, owners: cell.owners,
-                    references: telescope ? (own.isEmpty ? references : own) : []))
+                    references: telescope ? (own.isEmpty ? references : own) : [],
+                    ramps: candidates[row].look.palette.contains { $0.ramp != nil }))
         }
         for index in candidates.indices {
             candidates[index].total =
@@ -131,11 +132,12 @@ public enum StyleAuto {
 
     /// The pairs of a scene with a take, in `world` or else its look's world. `catalogue` is
     /// the repository's looks, `references` #125's sets. `family` keeps the palettes to one
-    /// family, `fixed` to the one palette given; `favourites` join the palettes tried. Nothing is written.
+    /// family, `fixed` to the one palette given; `favourites` join the palettes tried. The
+    /// palettes come as ramps of colours unless `multicolour` is off. Nothing is written.
     public static func choose(
         _ folder: SceneFolder, world: Palette.World? = nil, family: String? = nil,
         fixed: Palette? = nil, catalogue: [LookFile], references: [TelescopeReference],
-        favourites: [Palette] = []
+        favourites: [Palette] = [], multicolour: Bool = true
     ) throws -> Outcome {
         guard FileManager.default.fileExists(atPath: folder.take.path) else {
             throw SceneFolder.LookError.noTake(folder.url)
@@ -155,7 +157,7 @@ public enum StyleAuto {
             palettes = Array(
                 try PaletteAuto.ranked(
                     galaxies: scene.galaxies.count, world: world, family: family, seed: scene.seed,
-                    telescope: references, favourites: favourites
+                    telescope: references, favourites: favourites, multicolour: multicolour
                 ).prefix(palettesPerRendering(world)))
         }
 

@@ -259,6 +259,11 @@ reference colours). The best pair is promoted, keeping the scene's camera; `--ke
 takes about 2 s in the telescope world and 8 s in the free one at 2 M particles; see
 [the note](docs/notes/frame-score.md).
 
+Palettes give each galaxy a ramp of colours (core, disk, outskirts, young stars, knots) unless
+`--single` asks for one colour per galaxy, on `look`, `export` and `palettes`; the style editor's
+Multicolore switch and the night's `style.multicolour` do the same. See
+[the note](docs/notes/multicolour-palettes.md).
+
 `export <scene> --palette auto|<family>|<file> [--world telescope|free]` draws that one export
 with another palette, as `look --palette` would, and leaves the scene's `look.json` alone.
 

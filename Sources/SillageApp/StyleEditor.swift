@@ -387,6 +387,13 @@ struct PaletteSection: View {
                     .help("Télescope : proche des images de Hubble et Webb. Libre : pour la beauté seule.")
                 }
             }
+            CheckToggle(
+                title: "Multicolore",
+                isOn: Binding(get: { session.multicolour }, set: { session.setMulticolour($0) })
+            )
+            .help(
+                "Chaque galaxie prend plusieurs couleurs, du cœur aux bords, aux jeunes étoiles et aux nœuds. Éteint, elle garde une seule couleur."
+            )
             HStack(alignment: .top) {
                 galaxies
                 Spacer()
@@ -454,6 +461,16 @@ struct PaletteSection: View {
     @ViewBuilder
     private func swatch(_ index: Int) -> some View {
         let colour = session.current.colour(ofGalaxy: index, in: session.model.scene)
+        VStack(spacing: 3) {
+            if index < session.current.palette.count, session.current.palette[index].ramp != nil {
+                RampSwatch(entry: session.current.palette[index], width: 38, height: 8)
+            }
+            colourPicker(index, colour)
+        }
+    }
+
+    @ViewBuilder
+    private func colourPicker(_ index: Int, _ colour: SIMD3<Float>) -> some View {
         if offscreen {
             RoundedRectangle(cornerRadius: 4)
                 .fill(LinearColour.color(colour))
@@ -490,7 +507,7 @@ struct PaletteSection: View {
                 session.use(ranked.palette)
             } label: {
                 HStack(spacing: 8) {
-                    Swatches(colours: ranked.palette.colours)
+                    proposalSwatches(ranked.palette)
                     Text("\(ranked.palette.family) · \(StyleNames.harmony(ranked.palette.harmony))")
                         .font(.caption)
                         .foregroundStyle(Palette.secondary)
@@ -515,6 +532,23 @@ struct PaletteSection: View {
         )
     }
 
+    /// A dot per galaxy, or its ramp when the palette has them.
+    @ViewBuilder
+    private func proposalSwatches(_ palette: SillageRender.Palette) -> some View {
+        if palette.multicolour {
+            HStack(spacing: 5) {
+                ForEach(
+                    Array(palette.galaxyColours(references: session.references).enumerated()),
+                    id: \.offset
+                ) { _, entry in
+                    RampSwatch(entry: entry, width: 30, height: 14)
+                }
+            }
+        } else {
+            Swatches(colours: palette.colours)
+        }
+    }
+
     /// Full on a favourite, which a click takes out of `palettes/`; empty on any other, which
     /// a click keeps under a name.
     @ViewBuilder
@@ -536,6 +570,36 @@ struct PaletteSection: View {
                     ? "Favori : un clic la retire de palettes/"
                     : "Garder cette palette dans palettes/, en tête des propositions")
         }
+    }
+}
+
+/// One galaxy's colours as a bar from its core to its outskirts, ending on the colours of its
+/// young stars and its knots; a single colour is a plain bar of it.
+struct RampSwatch: View {
+    let entry: GalaxyColours
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        let colours = entry.swatches.map(LinearColour.color)
+        HStack(spacing: 0) {
+            if colours.count == 5 {
+                LinearGradient(
+                    colors: Array(colours[0..<3]), startPoint: .leading, endPoint: .trailing
+                )
+                .frame(width: width * 0.7)
+                colours[3].frame(width: width * 0.15)
+                colours[4].frame(width: width * 0.15)
+            } else {
+                colours[0].frame(width: width)
+            }
+        }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: height / 3))
+        .overlay(RoundedRectangle(cornerRadius: height / 3).strokeBorder(Color(white: 0.3), lineWidth: 1))
+        .help(
+            colours.count == 5
+                ? "Du cœur aux bords, puis les jeunes étoiles et les nœuds" : "Une seule couleur")
     }
 }
 

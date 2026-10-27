@@ -80,18 +80,56 @@ public struct Palette: Codable, Sendable, Equatable {
     public var harmony: Harmony
     public var seed: UInt64
     public var colours: [SIMD3<Float>]
+    /// Each galaxy gets a ramp of colours from its own (#119), not the one colour. A palette
+    /// written before the switch existed is multicolour, as those of #119 were.
+    public var multicolour: Bool
 
     public init(
-        world: World, family: String, harmony: Harmony, seed: UInt64, colours: [SIMD3<Float>]
+        world: World, family: String, harmony: Harmony, seed: UInt64, colours: [SIMD3<Float>],
+        multicolour: Bool = true
     ) {
         self.world = world
         self.family = family
         self.harmony = harmony
         self.seed = seed
         self.colours = colours
+        self.multicolour = multicolour
     }
 
     public var name: String { "\(family)-\(harmony.rawValue)-\(seed)" }
+
+    /// The same palette with ramps or without.
+    public func withMulticolour(_ on: Bool) -> Palette {
+        var palette = self
+        palette.multicolour = on
+        return palette
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case world, family, harmony, seed, colours, multicolour
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            world: try c.decode(World.self, forKey: .world),
+            family: try c.decode(String.self, forKey: .family),
+            harmony: try c.decode(Harmony.self, forKey: .harmony),
+            seed: try c.decode(UInt64.self, forKey: .seed),
+            colours: try c.decode([SIMD3<Float>].self, forKey: .colours),
+            multicolour: try c.decodeIfPresent(Bool.self, forKey: .multicolour) ?? true)
+    }
+
+    /// `multicolour` is written only when it is off, so every palette on disk stays as it was.
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(world, forKey: .world)
+        try c.encode(family, forKey: .family)
+        try c.encode(harmony, forKey: .harmony)
+        try c.encode(seed, forKey: .seed)
+        try c.encode(colours, forKey: .colours)
+        if !multicolour { try c.encode(false, forKey: .multicolour) }
+    }
 }
 
 /// A range of hues, in degrees. `through` may pass 360 to wrap around red.
@@ -247,9 +285,14 @@ public enum PaletteGenerator {
     }
 
     /// `family` and `harmony` left out are drawn from the seed, afresh on every attempt.
+    /// A multicolour palette in the free world is held to the ramps' limits as well
+    /// (`RampMeasures`): each galaxy's colours turn no further than a harmony allows, and no two
+    /// galaxies' ramps run into each other. The telescope ramps are the pictures' own, so they
+    /// are scored (`PaletteScore.between`) and not refused. `references` give their regions.
     public static func palette(
         galaxies: Int, world: Palette.World, family: String? = nil,
-        harmony: Palette.Harmony? = nil, seed: UInt64, telescope: [PaletteFamily] = []
+        harmony: Palette.Harmony? = nil, seed: UInt64, telescope: [PaletteFamily] = [],
+        multicolour: Bool = true, references: [TelescopeReference] = []
     ) throws -> Palette {
         guard galaxies > 0 else { throw Failure.noGalaxies }
         guard galaxies <= 5 else { throw Failure.tooManyGalaxies(galaxies) }
@@ -268,9 +311,15 @@ public enum PaletteGenerator {
             if let colours = draw(galaxies, chosen, tune, &random),
                 violations(colours, monochrome: tune == .monochrome).isEmpty
             {
-                return Palette(
+                let palette = Palette(
                     world: world, family: chosen.name, harmony: tune, seed: seed,
-                    colours: colours)
+                    colours: colours, multicolour: multicolour)
+                if multicolour, world == .free,
+                    !RampMeasures(palette.galaxyColours(references: references)).violations.isEmpty
+                {
+                    continue
+                }
+                return palette
             }
         }
         throw Failure.noRoom(family: family, harmony: harmony, galaxies: galaxies)

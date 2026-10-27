@@ -88,7 +88,8 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
     if let choice = option("palette") {
         return try palettePromotion(
-            folder, choice: choice, world: option("world"), base: option("base"))
+            folder, choice: choice, world: option("world"), base: option("base"),
+            single: options.contains("--single"))
     }
     if let name = option("promote") {
         let file = try folder.promote(look: name)
@@ -263,9 +264,11 @@ func askedWorld(_ name: String?, command: String) -> Palette.World? {
 
 /// `auto`, a family or a `.palette.json` for `folder`'s scene: `auto` is the best scored of a
 /// fixed number of candidates drawn from the scene's seed, a family the same inside one family,
-/// and a file is taken as it is.
+/// and a file is taken as it is. Colours come as ramps (#120) unless `single` asks for one
+/// colour per galaxy.
 func resolvePalette(
-    _ folder: SceneFolder, choice: String, world asked: Palette.World?, command: String
+    _ folder: SceneFolder, choice: String, world asked: Palette.World?, command: String,
+    single: Bool = false
 ) throws -> PaletteChoice {
     let references = telescopeReferences()
     let favourites = FavouritePalettes.load()
@@ -276,13 +279,15 @@ func resolvePalette(
         guard favourite.palette.colours.count >= galaxies else {
             fail("\(command): favourite \(choice) has fewer colours than the scene has galaxies")
         }
-        let palette = favourite.palette.truncated(to: galaxies)
+        var palette = favourite.palette.truncated(to: galaxies)
+        if single { palette = palette.withMulticolour(false) }
         return .recipe(palette, PaletteScore(palette, references: references))
     }
     if FileManager.default.fileExists(atPath: choice) {
         let data = try Data(contentsOf: URL(fileURLWithPath: choice))
         struct Bare: Decodable { var colours: [SIMD3<Float>] }
-        if let recipe = try? JSONDecoder().decode(Palette.self, from: data) {
+        if var recipe = try? JSONDecoder().decode(Palette.self, from: data) {
+            if single { recipe = recipe.withMulticolour(false) }
             return .recipe(recipe, PaletteScore(recipe, references: references))
         }
         if let bare = try? JSONDecoder().decode(Bare.self, from: data), !bare.colours.isEmpty {
@@ -305,7 +310,7 @@ func resolvePalette(
     }
     let top = try PaletteAuto.ranked(
         galaxies: galaxies, world: chosen, family: family, seed: seed, telescope: references,
-        favourites: favourites.map(\.palette))[0]
+        favourites: favourites.map(\.palette), multicolour: !single)[0]
     return .recipe(top.palette, top.score)
 }
 
@@ -321,10 +326,11 @@ func apply(_ choice: PaletteChoice, to look: inout LookFile) {
     }
 }
 
-/// `look <scene folder> --palette auto|<family>|<file.palette.json> [--world telescope|free]`:
-/// puts a palette in the scene's look, promoted as `--promote` does with the old look kept.
+/// `look <scene folder> --palette auto|<family>|<file.palette.json> [--world telescope|free]
+/// [--single]`: puts a palette in the scene's look, promoted as `--promote` does with the old
+/// look kept. `--single` gives each galaxy one colour instead of a ramp.
 func palettePromotion(
-    _ folder: SceneFolder, choice: String, world: String?, base: String?
+    _ folder: SceneFolder, choice: String, world: String?, base: String?, single: Bool
 ) throws -> Int32 {
     var look =
         (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }
@@ -337,7 +343,8 @@ func palettePromotion(
         look = found
     }
     let picked = try resolvePalette(
-        folder, choice: choice, world: askedWorld(world, command: "look"), command: "look")
+        folder, choice: choice, world: askedWorld(world, command: "look"), command: "look",
+        single: single)
     apply(picked, to: &look)
     try folder.promote(look)
     switch picked {
@@ -352,7 +359,7 @@ func palettePromotion(
     return 0
 }
 
-/// `look <scene folder> --style auto [--world telescope|free] [--palette <family>|<file>] [--keep]`:
+/// `look <scene folder> --style auto [--world telescope|free] [--palette <family>|<file>] [--single] [--keep]`:
 /// every rendering of the world with the scene's best palettes (or the one palette asked for), drawn on three key frames and scored; the best
 /// pair is promoted unless `--keep`. Writes `looks/auto-<world>.png` (the best three) and
 /// `looks/auto-<world>.json` (every pair's score).
@@ -363,6 +370,7 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         }
     }
     let started = Date()
+    let single = options.contains("--single")
     var world = askedWorld(option("world"), command: "look")
     var family: String?
     var fixed: Palette?
@@ -373,14 +381,14 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         {
             guard
                 case .recipe(let palette, _) = try resolvePalette(
-                    folder, choice: choice, world: world, command: "look")
+                    folder, choice: choice, world: world, command: "look", single: single)
             else { fail("look: favourite \(choice) could not be read") }
             fixed = palette
             world = world ?? palette.world
         } else if FileManager.default.fileExists(atPath: choice) {
             guard
                 case .recipe(let palette, _) = try resolvePalette(
-                    folder, choice: choice, world: world, command: "look")
+                    folder, choice: choice, world: world, command: "look", single: single)
             else { fail("look: --style auto needs a palette file with a family, harmony and seed") }
             fixed = palette
             world = world ?? palette.world
@@ -399,7 +407,8 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
     let outcome = try StyleAuto.choose(
         folder, world: world, family: family, fixed: fixed, catalogue: catalogueLooks(),
-        references: telescopeReferences(), favourites: favourites.map(\.palette))
+        references: telescopeReferences(), favourites: favourites.map(\.palette),
+        multicolour: !single)
     let scoredAt = Date()
     let (sheet, keys, ranked) = (outcome.sheet, outcome.keys, outcome.ranked)
     let (width, height, fps) = (outcome.width, outcome.height, outcome.fps)
@@ -414,16 +423,17 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
             candidate.frames.map { $0[keyPath: path] }.reduce(0, +)
                 / Float(max(candidate.frames.count, 1))
         }
-        let reference = candidate.frames.compactMap(\.reference)
+        func mean(_ values: [Float]) -> String {
+            values.isEmpty ? "-" : String(format: "%.2f", values.reduce(0, +) / Float(values.count))
+        }
         print(
             String(
                 format:
-                    "style      %d. %@: clipping %.2f exposure %.2f colour %.2f separation %.2f noise %.2f detail %.2f reference %@ palette %.2f",
+                    "style      %d. %@: clipping %.2f exposure %.2f colour %.2f separation %.2f noise %.2f detail %.2f reference %@ variety %@ palette %.2f",
                 index + 1, label(candidate), part(\.clipping), part(\.exposure),
                 part(\.colourfulness), part(\.separation), part(\.noise), part(\.detail),
-                reference.isEmpty
-                    ? "-" : String(format: "%.2f", reference.reduce(0, +) / Float(reference.count)),
-                candidate.paletteScore.total))
+                mean(candidate.frames.compactMap(\.reference)),
+                mean(candidate.frames.compactMap(\.variety)), candidate.paletteScore.total))
     }
 
     let manager = FileManager.default
@@ -497,6 +507,7 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         }
         return harmony
     }
+    let single = options.contains("--single")
     let count = Int(option("count") ?? "24") ?? 24
     let firstSeed = UInt64(option("seed") ?? "1") ?? 1
     guard FileManager.default.fileExists(atPath: folder.take.path) else {
@@ -518,7 +529,7 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         guard harmony == nil else { fail("palettes: --best draws its own harmonies") }
         let top = try PaletteAuto.ranked(
             galaxies: galaxies, world: world, family: option("family"),
-            seed: try sceneSeed(folder).seed, telescope: references
+            seed: try sceneSeed(folder).seed, telescope: references, multicolour: !single
         ).prefix(max(best, 1))
         palettes = top.map(\.palette)
         labels = top.map { String(format: "%.2f %@", $0.score.total, $0.palette.name) }
@@ -527,16 +538,19 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
             print(
                 String(
                     format:
-                        "palettes   %@ %.2f: separation %.2f harmony %.2f range %.2f balance %.2f reference %@",
+                        "palettes   %@ %.2f: separation %.2f harmony %.2f range %.2f balance %.2f reference %@ inside %@ between %@",
                     ranked.palette.name, s.total, s.separation, s.harmony, s.range, s.balance,
-                    s.reference.map { String(format: "%.2f", $0) } ?? "-"))
+                    s.reference.map { String(format: "%.2f", $0) } ?? "-",
+                    s.inside.map { String(format: "%.2f", $0) } ?? "-",
+                    s.between.map { String(format: "%.2f", $0) } ?? "-"))
         }
     } else {
         for seed in firstSeed..<(firstSeed + UInt64(max(count, 1))) {
             palettes.append(
                 try PaletteGenerator.palette(
                     galaxies: galaxies, world: world, family: option("family"),
-                    harmony: harmony, seed: seed, telescope: telescope))
+                    harmony: harmony, seed: seed, telescope: telescope, multicolour: !single,
+                    references: references))
         }
     }
     // Palettes are judged on a full look: a plain one shows no glow, bloom or saturation.
@@ -667,7 +681,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         apply(
             try resolvePalette(
                 folder, choice: choice, world: askedWorld(option("world"), command: "export"),
-                command: "export"), to: &look)
+                command: "export", single: options.contains("--single")), to: &look)
     }
 
     let clip = try folder.storedClip()

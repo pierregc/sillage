@@ -23,6 +23,10 @@ public struct FrameScore: Sendable, Equatable, Codable {
         public var detail: Float
         /// Mean distance of the galaxies' drawn colours to the nearest reference tone.
         public var referenceMiss: Float?
+        /// Mean over the galaxies of how far their lit pixels spread in hue and saturation at
+        /// the common lightness (the standard deviation in the chromatic plane); nil with no
+        /// galaxy in sight.
+        public var spread: Float?
     }
 
     public var clipping: Float
@@ -34,14 +38,17 @@ public struct FrameScore: Sendable, Equatable, Codable {
     public var detail: Float
     /// Only in the telescope world, with the reference files of #125.
     public var reference: Float?
+    /// Only for a palette with a ramp per galaxy (#120): whether the ramps show, each galaxy
+    /// drawn in more than one colour.
+    public var variety: Float?
     public var total: Float
     public var measures: Measures
 
     static let weights:
         (
             clipping: Float, exposure: Float, colourfulness: Float, separation: Float,
-            noise: Float, detail: Float, reference: Float
-        ) = (0.1, 0.15, 0.2, 0.2, 0.1, 0.1, 0.15)
+            noise: Float, detail: Float, reference: Float, variety: Float
+        ) = (0.1, 0.15, 0.2, 0.2, 0.1, 0.1, 0.15, 0.1)
 
     /// Display luma above which a pixel belongs to something rather than to the sky.
     static let litLuma: Float = 0.1
@@ -49,13 +56,17 @@ public struct FrameScore: Sendable, Equatable, Codable {
     static let clipLevel: UInt8 = 250
     /// Local contrast at which a galaxy counts as fully drawn.
     static let sharpDetail: Float = 0.12
+    /// Spread at which a ramp counts as fully shown. On three night scenes the free world's
+    /// ramps spread 0.05 to 0.06 against 0.03 to 0.05 for one colour, the telescope's 0.02.
+    static let fullSpread: Float = 0.08
 
     /// `pixels` are 8-bit sRGB RGBA, `width` by `height`. `owners` gives each pixel's galaxy
     /// plus one, 0 where none or several share it; without it the frame counts as one galaxy.
-    /// `references` are #125's sets, given in the telescope world only.
+    /// `references` are #125's sets, given in the telescope world only. `ramps` says the
+    /// palette gives each galaxy several colours, so the frame is also judged on showing them.
     public init(
         pixels: [UInt8], width: Int, height: Int, owners: [UInt8]? = nil,
-        references: [TelescopeReference] = []
+        references: [TelescopeReference] = [], ramps: Bool = false
     ) {
         let count = width * height
         precondition(pixels.count >= count * 4)
@@ -90,7 +101,7 @@ public struct FrameScore: Sendable, Equatable, Codable {
             colourfulness: 0,
             nearest: nil, skyNoise: Self.skyNoise(luma, width: width, height: height),
             detail: Self.detail(luma, width: width, height: height),
-            referenceMiss: nil)
+            referenceMiss: nil, spread: nil)
         if lit > 0 {
             let n = Double(lit)
             m.clipped = Float(clipped) / Float(lit)
@@ -104,7 +115,9 @@ public struct FrameScore: Sendable, Equatable, Codable {
                     + 0.3 * (mean.0 * mean.0 + mean.1 * mean.1).squareRoot())
         }
 
-        let drawn = Self.drawnColours(pixels: pixels, luma: luma, owners: owners)
+        let groups = Self.litColours(pixels: pixels, luma: luma, owners: owners)
+        let drawn = Self.drawnColours(groups)
+        m.spread = Self.spread(groups)
         if drawn.count > 1 {
             var nearest = Float.infinity
             for i in drawn.indices {
@@ -123,11 +136,11 @@ public struct FrameScore: Sendable, Equatable, Codable {
                     references.map { $0.distance(lab: lab) }.min() ?? .infinity
                 }.reduce(0, +) / Float(drawn.count)
         }
-        self.init(measures: m)
+        self.init(measures: m, ramps: ramps)
     }
 
     /// The parts and the total from measures already taken.
-    public init(measures m: Measures) {
+    public init(measures m: Measures, ramps: Bool = false) {
         measures = m
         // A star field always clips a little; a tenth of what is lit is a blown core.
         clipping = 1 - PaletteScore.smooth((m.clipped - 0.01) / 0.12)
@@ -149,6 +162,7 @@ public struct FrameScore: Sendable, Equatable, Codable {
             let ratio = $0 / PaletteScore.referenceScale
             return 1 / (1 + ratio * ratio)
         }
+        variety = ramps ? m.spread.map { PaletteScore.smooth($0 / Self.fullSpread) } : nil
         let w = Self.weights
         var sum =
             w.clipping * clipping + w.exposure * exposure + w.colourfulness * colourfulness
@@ -159,13 +173,15 @@ public struct FrameScore: Sendable, Equatable, Codable {
             sum += w.reference * reference
             weight += w.reference
         }
+        if let variety {
+            sum += w.variety * variety
+            weight += w.variety
+        }
         total = sum / weight
     }
 
-    /// Each galaxy's colour as drawn, in OKLab: the mean of the most saturated sixth of its
-    /// lit, unclipped pixels, as #125 measured the pictures. Galaxies with too few pixels in
-    /// sight are left out.
-    static func drawnColours(pixels: [UInt8], luma: [Float], owners: [UInt8]?) -> [SIMD3<Float>] {
+    /// The OKLab colour of every lit, unclipped pixel, by galaxy.
+    static func litColours(pixels: [UInt8], luma: [Float], owners: [UInt8]?) -> [Int: [SIMD3<Float>]] {
         var groups: [Int: [SIMD3<Float>]] = [:]
         for i in luma.indices where luma[i] >= Self.litLuma {
             let galaxy = owners.map { Int($0[i]) } ?? 1
@@ -177,14 +193,38 @@ public struct FrameScore: Sendable, Equatable, Codable {
             groups[galaxy, default: []].append(
                 OKLab.lab(SIMD3(linear[Int(r)], linear[Int(g)], linear[Int(b)])))
         }
-        return groups.keys.sorted().compactMap { key in
+        return groups
+    }
+
+    /// Fewest pixels a galaxy needs to be judged.
+    static let minimumPixels = 24
+
+    /// Each galaxy's colour as drawn, in OKLab: the mean of the most saturated sixth of its
+    /// lit, unclipped pixels, as #125 measured the pictures. Galaxies with too few pixels in
+    /// sight are left out.
+    static func drawnColours(_ groups: [Int: [SIMD3<Float>]]) -> [SIMD3<Float>] {
+        groups.keys.sorted().compactMap { key in
             let labs = groups[key]!
-            guard labs.count >= 24 else { return nil }
+            guard labs.count >= minimumPixels else { return nil }
             let vivid = labs.sorted {
                 simd_length(TelescopeReference.plane($0)) > simd_length(TelescopeReference.plane($1))
             }.prefix(max(labs.count / 6, 1))
             return vivid.reduce(SIMD3<Float>.zero, +) / Float(vivid.count)
         }
+    }
+
+    /// Mean over the galaxies of the standard deviation of their pixels in the chromatic plane
+    /// at the common lightness.
+    static func spread(_ groups: [Int: [SIMD3<Float>]]) -> Float? {
+        let spreads = groups.keys.sorted().compactMap { key -> Float? in
+            let planes = groups[key]!.map(TelescopeReference.plane)
+            guard planes.count >= minimumPixels else { return nil }
+            let mean = planes.reduce(SIMD2<Float>.zero, +) / Float(planes.count)
+            let variance =
+                planes.reduce(Float(0)) { $0 + simd_length_squared($1 - mean) } / Float(planes.count)
+            return variance.squareRoot()
+        }
+        return spreads.isEmpty ? nil : spreads.reduce(0, +) / Float(spreads.count)
     }
 
     /// The median deviation of a sky pixel from the mean of its eight neighbours, ×255, so
