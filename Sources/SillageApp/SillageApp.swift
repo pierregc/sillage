@@ -80,7 +80,7 @@ struct SillageApp: App {
                     QACheck.run(model)
                     SoakCheck.run(model)
                     QueueSoak.run()
-                    NavigationCheck.run(model, library, navigation)
+                    NavigationCheck.run(model, library, navigation, queue)
                 }
         }
         .windowResizability(.contentMinSize)
