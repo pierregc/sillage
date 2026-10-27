@@ -47,6 +47,9 @@ enum QueueCheck {
             root.appendingPathComponent("2026-10-26").appendingPathComponent("scene-0001"))
         try FileManager.default.createDirectory(at: scene.url, withIntermediateDirectories: true)
         let model = QueueModel(library: root)
+        let noticeLog = root.appendingPathComponent("notices.log")
+        setenv(Notifier.logVariable, noticeLog.path, 1)
+        defer { unsetenv(Notifier.logVariable) }
 
         let (export, runner) = try model.submit(
             .export, path: scene.url.path, options: ["--preset", "1080p"])
@@ -80,9 +83,20 @@ enum QueueCheck {
         check(
             "l'échec est dans events.jsonl",
             events.contains { $0.kind == RunEvent.Kind.error && $0.log == failed?.log })
+        let notices =
+            (try? String(contentsOf: noticeLog, encoding: .utf8))?.split(separator: "\n") ?? []
+        check(
+            "l'échec est annoncé : étape, scène, raison",
+            notices.contains { $0.hasPrefix("Échec · Rendu\tscene-0001") },
+            notices.first.map(String.init) ?? "")
+        check(
+            "une file qui n'a rien réussi ne se dit pas vide",
+            !notices.contains { $0.hasPrefix("File d'attente vide") })
         let activity = ActivityFile.read(from: RunStatusFiles.activity(library: root))
         check("activity.json dit le Mac libre", activity?.state == .idle && activity?.job == nil)
 
+        try QueueSettings(notifications: false).write(model.store)
+        let before = notices.count
         try model.pause()
         let batch = root.appendingPathComponent("2026-10-27").path
         let (explore, held) = try model.submit(.explore, path: batch, options: ["--scenes", "0"])
@@ -102,6 +116,9 @@ enum QueueCheck {
         check(
             "elle va au bout", model.queue.job(explore.id)?.state == .done,
             model.queue.job(explore.id)?.message ?? "")
+        let after =
+            (try? String(contentsOf: noticeLog, encoding: .utf8))?.split(separator: "\n") ?? []
+        check("réglage coupé, le runner se tait", after.count == before, "\(after.count) lignes")
         check(
             "le lot est créé",
             FileManager.default.fileExists(atPath: batch + "/batch.conf"))

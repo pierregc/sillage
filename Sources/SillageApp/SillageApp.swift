@@ -17,12 +17,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct SillageApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = SimulationModel()!
-    @StateObject private var library = LibraryModel()
+    @StateObject private var library: LibraryModel
     @StateObject private var navigation = AppNavigation()
     @StateObject private var queue = QueueModel(
         library: LibraryModel.defaultRoot() ?? FileManager.default.homeDirectoryForCurrentUser)
+    @StateObject private var menuStatus: MenuBarStatus
 
     init() {
+        let library = LibraryModel()
+        _library = StateObject(wrappedValue: library)
+        _menuStatus = StateObject(wrappedValue: MenuBarStatus { library.root })
         if CommandLine.arguments.contains("--selftest") {
             MainActor.assumeIsolated { SillageApp.runSelfTest() }
         }
@@ -87,6 +91,12 @@ struct SillageApp: App {
         .commands {
             CommandGroup(before: .windowList) { LibraryCommand(navigation: navigation) }
             CommandGroup(after: .newItem) { LookCommands(model: model, navigation: navigation) }
+        }
+        Settings { SettingsView(library: library) }
+        MenuBarExtra(isInserted: .constant(menuStatus.isRunning)) {
+            StatusMenu(status: menuStatus, navigation: navigation)
+        } label: {
+            Image(nsImage: MenuBarStatus.ring(menuStatus.progress))
         }
     }
 
@@ -338,6 +348,21 @@ struct SillageApp: App {
                     .frame(width: 520, height: 340)
                     .background(Color.black)),
             to: "out/ui-oscillators.png")
+        write(
+            AnyView(SettingsForm(settings: NotificationSettings(library: nil))),
+            to: "out/ui-settings.png")
+        var activity = ActivityFile(state: .running, updated: Date())
+        activity.job = ActivityFile.Job(
+            kind: "hires", batch: "2026-10-25", scene: "scene-0023", startedAt: Date(), progress: 0.46,
+            detail: "image 412/900")
+        write(
+            AnyView(
+                HStack(spacing: 6) {
+                    Image(nsImage: MenuBarStatus.ring(0.46)).renderingMode(.template)
+                    Text(Notices.statusLine(activity))
+                }
+                .padding(10)),
+            to: "out/ui-menubar.png")
         exit(0)
     }
 
