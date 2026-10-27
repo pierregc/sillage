@@ -123,6 +123,26 @@ struct NightStatusTests {
                 && failures[0]["log"] as? String == "/library/2026-10-26/.logs/scene-0007.hires.log")
     }
 
+    @Test func theNightStatusPageNamesWhatTheCodeWrites() throws {
+        let page = try String(
+            contentsOf: Self.fixtures.deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("docs/night-status.md"),
+            encoding: .utf8)
+        let kinds = [
+            RunEvent.Kind.nightStart, RunEvent.Kind.exploreScene, RunEvent.Kind.pick,
+            RunEvent.Kind.hiresStart, RunEvent.Kind.hiresDone, RunEvent.Kind.exportDone,
+            RunEvent.Kind.style, RunEvent.Kind.skip, RunEvent.Kind.error, RunEvent.Kind.phaseDone,
+            RunEvent.Kind.nightDone,
+        ]
+        for kind in kinds { #expect(page.contains("`\(kind)`"), "\(kind)") }
+        #expect(page.contains("\(Int(QueueStatus.stuckAfter / 60)) minutes or more"))
+        #expect(page.contains("sillage-render status"))
+        for name in ["idle", "exploring", "mid hires", "failed", "done"] {
+            #expect(page.contains("| \(name) |"), "\(name)")
+        }
+        #expect(page.contains(try #require(Self.text("hires", "expected.txt")).split(separator: "\n")[0]))
+    }
+
     @Test func fullKeepsTheQueueViewsLines() {
         let library = Self.fixtures.appendingPathComponent("hires/library")
         var printed: [String] = []
