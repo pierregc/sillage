@@ -80,7 +80,8 @@ public struct FrameScore: Sendable, Equatable, Codable {
         }
 
         var m = Measures(
-            clipped: 0, litLuma: 0, peakLuma: Self.percentile(luma.filter { $0 >= Self.litLuma }, 0.95), colourfulness: 0,
+            clipped: 0, litLuma: 0, peakLuma: Self.percentile(luma.filter { $0 >= Self.litLuma }, 0.95),
+            colourfulness: 0,
             nearest: nil, skyNoise: Self.skyNoise(luma, width: width, height: height),
             referenceMiss: nil)
         if lit > 0 {
