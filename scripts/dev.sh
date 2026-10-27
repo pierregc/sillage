@@ -31,10 +31,11 @@ build_render() {
 
 run_tests() {
     cat > "$BUILD/runner.swift" <<'SWIFT'
+import Foundation
 import Testing
 
 @main struct Runner {
-    static func main() async { _ = await __swiftPMEntryPoint() as CInt }
+    static func main() async { exit(await __swiftPMEntryPoint() as CInt) }
 }
 SWIFT
     swiftc -O -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender \
