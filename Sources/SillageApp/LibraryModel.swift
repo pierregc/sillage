@@ -23,6 +23,8 @@ final class LibraryModel: ObservableObject {
     @Published var selection: String? { didSet { updatePlayback() } }
     @Published var enlarged: String? { didSet { updatePlayback() } }
     @Published var failure: String?
+    /// The triage view is open: one scene large, decided from the keyboard.
+    @Published private(set) var triage: Triage? { didSet { updatePlayback() } }
 
     /// Set by the grid from its width, so up and down move by a row.
     var columns = 4
@@ -42,6 +44,17 @@ final class LibraryModel: ObservableObject {
     private var probed: [String: Probe] = [:]
     private var writes = 0
     private var lastDigit: (scene: String, value: Int, at: Date)?
+
+    /// A sitting at the triage view. The scenes are fixed when it opens, in the sort order of
+    /// that moment, so a decision does not move the ones around it: a decided scene leaves À trier
+    /// but stays here, one key away.
+    struct Triage: Equatable {
+        var batch: String?
+        var order: [String]
+        var current: String
+        /// Nothing left to decide; the view says so.
+        var finished = false
+    }
 
     private struct Probe: Equatable {
         var bytes: Int
@@ -102,6 +115,7 @@ final class LibraryModel: ObservableObject {
 
     /// Nothing plays and nothing is enlarged while another part of the window shows.
     private func quiet() {
+        triage = nil
         enlarged = nil
         hovered = nil
         play(nil)
@@ -116,6 +130,7 @@ final class LibraryModel: ObservableObject {
         probed = [:]
         selection = nil
         enlarged = nil
+        triage = nil
         var fresh = LibraryQuery()
         fresh.collection = query.collection
         query = fresh
@@ -204,6 +219,7 @@ final class LibraryModel: ObservableObject {
         if let enlarged, !visible.contains(where: { $0.id == enlarged }) {
             self.enlarged = selection
         }
+        syncTriage()
     }
 
     // MARK: Toolbar
@@ -214,12 +230,105 @@ final class LibraryModel: ObservableObject {
         selection.flatMap { id in visible.first { $0.id == id } } ?? visible.first
     }
 
-    /// Opens the first scene to sort, enlarged. Yes and no then move on to the next one, since
-    /// a decided scene leaves the collection.
-    func startSorting() {
-        guard let scene = visible.first else { return }
-        selection = scene.id
-        enlarged = scene.id
+    // MARK: Triage
+
+    /// Opens the triage view on the scenes still to sort, optionally those of one night, at the
+    /// first one undecided.
+    func startTriage(batch: String? = nil) {
+        let order = triageScenes(batch: batch).map(\.id)
+        guard let first = order.first else { return }
+        let next = order.first(where: isUndecided)
+        enlarged = nil
+        selection = next ?? first
+        triage = Triage(batch: batch, order: order, current: next ?? first, finished: next == nil)
+    }
+
+    func endTriage() {
+        guard let current = triage?.current else { return }
+        triage = nil
+        if visible.contains(where: { $0.id == current }) { selection = current }
+    }
+
+    /// Decided scenes over all of the sitting's, for "12 / 35 triées".
+    var triageProgress: (decided: Int, total: Int)? {
+        triage.map { session in (session.order.filter { !isUndecided($0) }.count, session.order.count) }
+    }
+
+    private func isUndecided(_ id: String) -> Bool {
+        let entry = entries[id]
+        return entry?.choice == nil && entry?.picked == nil
+    }
+
+    private func triageScenes(batch: String?) -> [LibraryScene] {
+        var sorting = query
+        sorting.collection = .toSort
+        if let batch { sorting.batch = batch }
+        return sorting.apply(scenes, entries: entries)
+    }
+
+    /// Scenes that arrive during the sitting join the end of it; those that vanish leave.
+    private func syncTriage() {
+        guard var session = triage else { return }
+        let known = Set(scenes.map(\.id))
+        var order = session.order.filter(known.contains)
+        let present = Set(order)
+        order += triageScenes(batch: session.batch).map(\.id).filter { !present.contains($0) }
+        if order == session.order { return }
+        guard !order.isEmpty else {
+            triage = nil
+            return
+        }
+        session.order = order
+        if !order.contains(session.current) { session.current = order[0] }
+        if session.finished, order.contains(where: isUndecided) { session.finished = false }
+        triage = session
+    }
+
+    /// Yes and no go to the next undecided scene after this one, wrapping round to the first.
+    private func advanceTriage() {
+        guard var session = triage, let at = session.order.firstIndex(of: session.current) else { return }
+        let following = session.order[(at + 1)...] + session.order[..<at]
+        if let next = following.first(where: isUndecided) {
+            session.current = next
+            session.finished = false
+        } else {
+            session.finished = true
+        }
+        triage = session
+        selection = session.current
+    }
+
+    private func moveTriage(_ offset: Int) {
+        guard var session = triage, let at = session.order.firstIndex(of: session.current) else { return }
+        session.current = session.order[min(max(at + offset, 0), session.order.count - 1)]
+        session.finished = false
+        triage = session
+        selection = session.current
+    }
+
+    private func handleTriage(_ key: Key, at date: Date) -> Bool {
+        guard let session = triage else { return false }
+        if key == .close {
+            endTriage()
+            return true
+        }
+        switch key {
+        case .left: moveTriage(-1)
+        case .right: moveTriage(1)
+        case .yes, .no, .clear, .digit:
+            guard !session.finished else { return false }
+            let id = session.current
+            switch key {
+            case .yes: choose(.yes, for: id, toggle: false)
+            case .no: choose(.no, for: id, toggle: false)
+            case .clear: clear(id)
+            case .digit(let value): rateByKey(value, for: id, at: date)
+            default: break
+            }
+            if key == .yes || key == .no, entries[id]?.choice != nil { advanceTriage() }
+        default: return false
+        }
+        return true
     }
 
     /// Opens the take of the next scene in the workshop, with its style.
@@ -281,6 +390,7 @@ final class LibraryModel: ObservableObject {
     /// One key, one change, saved at once. Digits rate; a 1 followed quickly by a 0 is a ten.
     @discardableResult
     func handle(_ key: Key, at date: Date = Date()) -> Bool {
+        if triage != nil { return handleTriage(key, at: date) }
         if key == .close {
             guard enlarged != nil else { return false }
             enlarged = nil
@@ -311,20 +421,24 @@ final class LibraryModel: ObservableObject {
             case .yes: choose(.yes, for: id, toggle: false)
             case .no: choose(.no, for: id, toggle: false)
             case .clear: clear(id)
-            case .digit(let value):
-                if value == 0, let last = lastDigit, last.scene == id, last.value == 1,
-                    date.timeIntervalSince(last.at) < 0.8
-                {
-                    rate(10, for: id, toggle: false)
-                    lastDigit = nil
-                } else {
-                    rate(value, for: id, toggle: false)
-                    lastDigit = (id, value, date)
-                }
+            case .digit(let value): rateByKey(value, for: id, at: date)
             default: return false
             }
         }
         return true
+    }
+
+    /// A digit rates; a 1 followed quickly by a 0 is a ten.
+    private func rateByKey(_ value: Int, for id: String, at date: Date) {
+        if value == 0, let last = lastDigit, last.scene == id, last.value == 1,
+            date.timeIntervalSince(last.at) < 0.8
+        {
+            rate(10, for: id, toggle: false)
+            lastDigit = nil
+        } else {
+            rate(value, for: id, toggle: false)
+            lastDigit = (id, value, date)
+        }
     }
 
     // MARK: Playback
@@ -347,7 +461,11 @@ final class LibraryModel: ObservableObject {
     }
 
     private func updatePlayback() {
-        play(enlarged ?? hovered ?? selection)
+        if let triage {
+            play(triage.finished ? nil : triage.current)
+        } else {
+            play(enlarged ?? hovered ?? selection)
+        }
     }
 
     private func play(_ id: String?) {
