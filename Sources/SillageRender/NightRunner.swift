@@ -688,7 +688,7 @@ public final class NightRunner: @unchecked Sendable {
     }
 
     private func writeReport() {
-        let text = NightReport.markdown(night, events: folder.events)
+        let text = NightReport.markdown(night, events: folder.events, batch: batch)
         try? text.write(to: batch.appendingPathComponent("report.md"), atomically: true, encoding: .utf8)
     }
 

@@ -169,7 +169,7 @@ struct NightRunnerTests {
         #expect(
             events.filter { $0.kind == RunEvent.Kind.phaseDone }.compactMap(\.phase) == ["explore", "pick"])
         let report = try String(contentsOf: batch.appendingPathComponent("report.md"), encoding: .utf8)
-        #expect(report.contains("scene-0002 (0.90)") && report.contains("terminée"))
+        #expect(report.contains("scene-0002 (0,90)") && report.contains("terminée"))
         #expect(FileManager.default.fileExists(atPath: batch.appendingPathComponent("recipe.json").path))
         #expect(
             ActivityFile.read(from: RunStatusFiles.activity(library: batch.deletingLastPathComponent()))?

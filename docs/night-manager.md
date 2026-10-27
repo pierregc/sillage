@@ -127,6 +127,12 @@ The night writes `recipe.json` (as given), `night.json`, `events.jsonl` and `rep
 folder, and the logs of its steps in `.logs/` (`night-explore.log`, `<scene>.hires.log`, ...).
 Exit status: 0 done, 3 stopped on request, 1 failed.
 
+`report.md` is rewritten at the end of each phase and at the end, in French, from `night.json`
+and `events.jsonl` alone: seven lines (state and duration, delivery against the deadline, scenes
+explored, rejected and failed, picks with their score, hires done, videos with their weight,
+scenes left out and errors), then the list of hires with particles and minutes, of videos with
+their path from the night's folder, and of failures with the path of their log.
+
 ## Queue
 
 Heavy work can go through one queue per library instead, one job at a time, in a runner of its
@@ -225,9 +231,21 @@ Scripts add an event with `sillage-render event <batch> <kind> --scene scene-000
 (`--take-gb` for `takeGB`) rather than writing JSON by hand. The ETA of `hires` follows the pace
 of its frames once they start, and reaches the last frame, not the writing of the take after it.
 
-`sillage-render status` prints what the app's status line and queue view say, from the same
-formatter (`QueueStatus`): what runs and until when, the jobs waiting with their estimated start
-and end, the last ten finished. A `sillage-render` process that wrote no status shows as
+`sillage-render status` prints at most five lines, in the words of the app's status line and
+queue view (the first comes from the same formatter, `QueueStatus`, then the night's own files):
+
+```
+Nuit du 25 oct. · haute résolution 2/4 · scene-0023 image 412/900 · prêt vers 6 h 20 · 0 erreur
+Aperçus 50/50 (2 rejetés, 1 en échec) · choix 4/4 · haute résolution 1/4 · 1 vidéo
+Livraison : prête vers 6 h 20, avant 7 h 00, 40 min de marge
+Dernière vidéo : scene-0019/exports/4k.mp4 · 212,3 Mo · 0 h 40
+```
+
+A line of errors (the first, with its log) comes before the video when there are any. Idle, it
+says "Rien en cours · le Mac est libre" and names the last night with how it ended. `--night
+<folder>` reports that night instead, `--json` prints the same as one object (the `lines`, and
+the counts, failures and last video apart), and `--full` prints every job of the queue: what
+runs and until when, the jobs waiting with their estimated start and end, the last ten finished. A `sillage-render` process that wrote no status shows as
 "Calcul en cours (sans détail)", so "le Mac est libre" is only said when nothing runs. The
 fixtures in `Tests/Fixtures/queue-status/` hold the expected lines.
 
