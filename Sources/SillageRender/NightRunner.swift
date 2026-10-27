@@ -249,9 +249,6 @@ public final class NightRunner: @unchecked Sendable {
         night = NightFile(
             id: folder.id, phases: [], state: .running, startedAt: earlier?.startedAt ?? now,
             deliverBy: deliverBy)
-        for phase in earlier?.phases ?? [] {
-            counts[phase.name] = (phase.failed, 0)
-        }
         var started = RunEvent(RunEvent.Kind.nightStart)
         started.night = folder.id
         record(started)
@@ -261,7 +258,10 @@ public final class NightRunner: @unchecked Sendable {
 
         // Exploration.
         if !folder.progress().exploreDone {
-            switch explore(plan) {
+            let outcome = explore(plan)
+            // Scenes cut short in their hidden folders.
+            if outcome != .finished(0) { SceneFolder.removePartialOutputs(inBatch: batch) }
+            switch outcome {
             case .stopped: return finish(.stopped)
             case .finished(let status) where status != 0 && folder.scenes.isEmpty:
                 return finish(.failed, message: "exploration failed with status \(status)")
@@ -497,6 +497,8 @@ public final class NightRunner: @unchecked Sendable {
         while true {
             var raw: Int32 = 0
             if waitpid(pid, &raw, WNOHANG) == pid {
+                // Stopped with the night, by the queue's signal to the whole group.
+                if stop.isRaised { return .stopped }
                 let signal = raw & 0x7f
                 return .finished(signal == 0 ? (raw >> 8) & 0xff : 128 + signal)
             }

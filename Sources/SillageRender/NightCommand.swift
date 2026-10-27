@@ -77,6 +77,8 @@ public enum NightCommand {
                 queue.running.map { $0.kind == .night && $0.pid == me } ?? false
             }
             if isTheJob {
+                // Its log is a file: a line as it comes, not a block at the end.
+                setvbuf(stdout, nil, _IOLBF, 0)
                 return NightRunner(folder: folder, executable: executable, catalogue: catalogue, say: say)
                     .run()
             }

@@ -67,7 +67,7 @@ struct NightRunnerTests {
             done
             case "$command" in
                 hires)
-                    sleep "${NIGHT_TEST_HIRES:-0.2}"
+                    sleep "$(cat '\(root.path)/hires-seconds' 2>/dev/null || echo 0.2)"
                     touch "$scene/take.sillage"
                     echo "{\\"particles\\": $particles, \\"previewParticles\\": 40000, \\"width\\": 960,
                       \\"height\\": 540, \\"frames\\": $frames, \\"fps\\": 30, \\"settle\\": 1, \\"steps\\": 1,
@@ -180,22 +180,22 @@ struct NightRunnerTests {
         #expect(logged() == calls)
     }
 
-    @Test func aSkipLeavesTheCurrentSceneOutAndTheNightGoesOn() async throws {
+    @Test func aSkipLeavesTheCurrentSceneOutAndTheNightGoesOn() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try queueJob()
-        setenv("NIGHT_TEST_HIRES", "1.5", 1)
-        defer { unsetenv("NIGHT_TEST_HIRES") }
+        try Data("3".utf8).write(to: root.appendingPathComponent("hires-seconds"))
         let night = runner(recipe())
-        let skipping = Task.detached {
+        // A thread of its own: the test pool may be full of other tests that block.
+        let calls = calls
+        Thread.detachNewThread {
             while !((try? String(contentsOf: calls, encoding: .utf8)) ?? "").contains("hires ") {
-                try await Task.sleep(nanoseconds: 50_000_000)
+                Thread.sleep(forTimeInterval: 0.05)
             }
-            try store.change { queue in
+            try? store.change { queue in
                 if let id = queue.running?.id { try queue.skip(id, at: Date()) }
             }
         }
         #expect(night.run() == 0)
-        try await skipping.value
         let skip = try #require(events.first { $0.kind == RunEvent.Kind.skip })
         #expect(skip.scene == "scene-0002" && skip.stage == "hires" && skip.message == "skipped by hand")
         let scene = SceneFolder(batch.appendingPathComponent("scene-0002"))
