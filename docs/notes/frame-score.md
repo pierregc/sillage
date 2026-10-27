@@ -56,8 +56,8 @@ per camera plan, since outside the director's modes the look does not move the c
 ## What Auto picks
 
 Since #119 drew several colours per galaxy, the free world's picks vary: glint, gloss,
-gas-whisper, observatory and pointillist across ten scenes, mostly with the `spectrum` family.
-The telescope world picks Webb nine times in ten: its spikes and warmer sky score higher on
+gas-whisper, observatory and pointillist across ten scenes (glint five times), mostly with the `spectrum` family.
+The telescope world picks Webb eight times in ten: its spikes and warmer sky score higher on
 colourfulness and detail than Hubble's. Before the detail part, lone galaxies washed into a
 blob by `dream` won; they now lose.
 
