@@ -456,17 +456,6 @@ final class SimulationModel: ObservableObject {
         }
     }
 
-    /// Makes the look the scene's own, for the full render.
-    func promoteLook() {
-        guard let sceneFolder else { return }
-        do {
-            try sceneFolder.promote(lookFile)
-            lookURL = sceneFolder.look
-        } catch {
-            failure = "Look non enregistré : \(error)"
-        }
-    }
-
     /// Arm strength for the painted pattern: the file's own times the look's, which
     /// contemplation's director moves on the renderer.
     private var diskStrength: Float { lookFile.armStrength * (renderer?.armPersistence ?? 1) }
@@ -1204,7 +1193,7 @@ final class SimulationModel: ObservableObject {
         lookFile = file
     }
 
-    /// Opens a library scene's take with the scene's own look, for tuning.
+    /// Opens a library scene's take with the scene's own look, for the style editor.
     func tune(_ scene: LibraryScene) {
         guard let take = scene.take else { return }
         let look = scene.folder.map(\.look).flatMap {

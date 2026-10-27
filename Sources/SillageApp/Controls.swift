@@ -8,6 +8,7 @@ struct ParameterSlider: View {
     let range: ClosedRange<Float>
     var format = "%.2f"
     var onCommit: (() -> Void)?
+    @Environment(\.offscreen) private var offscreen
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -18,9 +19,50 @@ struct ParameterSlider: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Palette.secondary)
             }
-            Slider(value: $value, in: range) { editing in
-                if !editing { onCommit?() }
+            if offscreen {
+                OffscreenTrack(fraction: (value - range.lowerBound) / (range.upperBound - range.lowerBound))
+            } else {
+                Slider(value: $value, in: range) { editing in
+                    if !editing { onCommit?() }
+                }
             }
+        }
+    }
+}
+
+/// A slider's track as `ImageRenderer` can draw it, which shows a real slider as a blank.
+struct OffscreenTrack: View {
+    let fraction: Float
+
+    var body: some View {
+        GeometryReader { space in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color(white: 0.28)).frame(height: 4)
+                Capsule().fill(Color.accentColor)
+                    .frame(width: space.size.width * CGFloat(min(max(fraction, 0), 1)), height: 4)
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .frame(height: 18)
+    }
+}
+
+/// A switch, drawn as a box offscreen.
+struct CheckToggle: View {
+    let title: String
+    @Binding var isOn: Bool
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 6) {
+                Image(systemName: isOn ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(isOn ? Color.accentColor : Palette.secondary)
+                Text(title)
+            }
+            .font(.caption)
+        } else {
+            Toggle(title, isOn: $isOn).font(.caption)
         }
     }
 }

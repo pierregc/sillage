@@ -29,8 +29,6 @@ struct ControlPanelContent: View {
             rendering
             Divider()
             view
-            Divider()
-            LookFilePanel(model: model)
         }
     }
 
@@ -257,7 +255,7 @@ struct ControlPanelContent: View {
     /// knob to reach for.
     private var rendering: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Regard").font(.headline)
+            Text("Rendu").font(.headline)
             // A whole look in one press, from the honest telescope to the frankly invented.
             // The sliders below stay live afterwards: a look is a place to start, not a mode.
             Picker("", selection: lookBinding) {

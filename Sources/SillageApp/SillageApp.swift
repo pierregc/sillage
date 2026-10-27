@@ -351,6 +351,7 @@ struct SillageApp: App {
         write(
             AnyView(SettingsForm(settings: NotificationSettings(library: nil))),
             to: "out/ui-settings.png")
+        writeStyleEditor(model)
         var activity = ActivityFile(state: .running, updated: Date())
         activity.job = ActivityFile.Job(
             kind: "hires", batch: "2026-10-25", scene: "scene-0023", startedAt: Date(), progress: 0.46,
@@ -364,6 +365,42 @@ struct SillageApp: App {
                 .padding(10)),
             to: "out/ui-menubar.png")
         exit(0)
+    }
+
+    /// The style editor's top bar and inspector, folded and with the fine settings open, on the
+    /// running scene drawn with Webb and the first proposal.
+    @MainActor
+    private static func writeStyleEditor(_ model: SimulationModel) {
+        // A scene folder with the look the run opened with, so the edits below read as Modifié.
+        let folder = SceneFolder(
+            FileManager.default.temporaryDirectory.appendingPathComponent(
+                "uishot-\(UUID().uuidString)/2026-10-25-night/scene-0023"))
+        try? FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+        try? model.lookFile.encoded().write(to: folder.look)
+        defer { try? FileManager.default.removeItem(at: folder.batch.deletingLastPathComponent()) }
+        let scene = LibraryScene(
+            batch: "2026-10-25-night", batchURL: folder.batch, name: "scene-0023", folder: folder)
+        let session = StyleSession(scene: scene, model: model)
+        session.world = .telescope
+        session.propose(waiting: true)
+        if let webb = session.catalogue.first(where: { $0.name == "webb" }) {
+            model.lookFile = model.lookFile.withRendering(webb)
+        }
+        if let first = session.proposals.first {
+            model.lookFile = model.lookFile.withPalette(first.palette, in: model.scene)
+        }
+        session.locked = [1]
+        write(
+            AnyView(StyleTopBar(session: session, leave: {}).frame(width: 1100)),
+            to: "out/ui-style-bar.png")
+        write(
+            AnyView(StyleInspector(session: session, snapshot: true).padding(14).frame(width: 340)),
+            to: "out/ui-style.png")
+        write(
+            AnyView(
+                StyleInspector(session: session, snapshot: true, fineShown: true).padding(14)
+                    .frame(width: 340)),
+            to: "out/ui-style-fine.png")
     }
 
     @MainActor

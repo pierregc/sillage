@@ -3,8 +3,8 @@ import Foundation
 import SillageRender
 
 /// Walks the sidebar with the window up: what each part mounts, a run that keeps computing
-/// behind the library, a take opened for tuning, contemplation and its way back. Writes a
-/// picture of each part to `out/ui-main-*.png`.
+/// behind the library, a take opened in the style editor and left, contemplation and its way
+/// back. Writes a picture of each part to `out/ui-main-*.png`.
 @MainActor
 enum NavigationCheck {
     private static var lines: [String] = []
@@ -133,11 +133,25 @@ enum NavigationCheck {
             take: take)
         library.tune(scene)
         check(
-            "régler le style ouvre la prise dans l'atelier",
+            "choisir le style ouvre la prise dans l'éditeur",
             await settle(model, 20) {
-                navigation.selection == .workshop && model.mode == .playback && model.hasCanvas
+                navigation.selection == .style && navigation.style?.isOpen == true && model.hasCanvas
             },
             model.failure ?? "")
+        check("la bibliothèque laisse la place", !library.isShown)
+        _ = await settle(model, 1)
+        snapshot("style")
+        navigation.selection = .queue
+        check("le canevas quitte la fenêtre avec l'éditeur", await settle(model, 2) { !model.hasCanvas })
+        check("l'éditeur reste dans la barre latérale", navigation.style != nil)
+        navigation.selection = .style
+        check("y revenir remontre la prise", await settle(model, 3) { model.hasCanvas })
+        navigation.leaveStyle(library)
+        check(
+            "fermer revient à la bibliothèque",
+            await settle(model, 2) {
+                navigation.selection == .library(.all) && library.isShown && navigation.style == nil
+            })
 
         model.returnToSetup()
         navigation.selection = .library(.all)
@@ -167,7 +181,9 @@ enum NavigationCheck {
         else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         guard let png = rep.representation(using: .png, properties: [:]) else { return }
-        let url = URL(fileURLWithPath: "out/ui-main-\(name).png")
+        // Launched through `open`, the working directory is the root: the pictures go to /tmp.
+        let directory = FileManager.default.currentDirectoryPath == "/" ? "/tmp/sillage-ui" : "out"
+        let url = URL(fileURLWithPath: "\(directory)/ui-main-\(name).png")
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? png.write(to: url)
