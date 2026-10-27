@@ -2,9 +2,14 @@ import SillageRender
 import SwiftUI
 
 enum SidebarItem: Hashable {
-    case library
+    case library(LibraryCollection)
     case nights
     case workshop
+
+    var isLibrary: Bool {
+        if case .library = self { return true }
+        return false
+    }
 }
 
 /// Which part of the window is showing. Shared with the menu commands, which have no view of
@@ -15,12 +20,17 @@ final class AppNavigation: ObservableObject {
 
     @Published var selection: SidebarItem = AppNavigation.initial
 
+    /// Selects the library, on the collection it was showing if it already is.
+    func showLibrary() {
+        if !selection.isLibrary { selection = .library(.all) }
+    }
+
     /// The window checks drive the workshop, so they open on it.
     static var initial: SidebarItem {
         let workshopChecks: Set = [
             "--verify", "--cinema", "--presets", "--responsive", "--qa", "--soak",
         ]
-        return CommandLine.arguments.contains(where: workshopChecks.contains) ? .workshop : .library
+        return CommandLine.arguments.contains(where: workshopChecks.contains) ? .workshop : .library(.all)
     }
 
     func openTake(_ model: SimulationModel) {
@@ -46,7 +56,7 @@ struct MainView: View {
                 ContemplationView(model: model)
             } else {
                 NavigationSplitView {
-                    Sidebar(model: model, navigation: navigation)
+                    Sidebar(model: model, library: library, navigation: navigation)
                         .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
                 } detail: {
                     detail
@@ -62,7 +72,7 @@ struct MainView: View {
     @ViewBuilder
     private var detail: some View {
         switch navigation.selection {
-        case .library: LibraryView(model: library)
+        case .library(let collection): LibraryView(model: library, collection: collection)
         case .nights: NightsView()
         case .workshop:
             // Leaving the workshop drops the canvas and nothing else: the run keeps stepping
@@ -77,13 +87,18 @@ struct MainView: View {
 
 struct Sidebar: View {
     @ObservedObject var model: SimulationModel
+    @ObservedObject var library: LibraryModel
     @ObservedObject var navigation: AppNavigation
 
     var body: some View {
+        let counts = library.counts
         List(selection: selection) {
             Section("Bibliothèque") {
-                Label("Toutes les scènes", systemImage: "square.grid.2x2")
-                    .tag(SidebarItem.library)
+                ForEach(LibraryCollection.allCases, id: \.self) { collection in
+                    Label(collection.title, systemImage: collection.symbol)
+                        .badge(counts[collection] ?? 0)
+                        .tag(SidebarItem.library(collection))
+                }
             }
             Section("Nuits") {
                 Label("Nuits", systemImage: "moon.stars")
@@ -103,6 +118,8 @@ struct Sidebar: View {
         }
         .listStyle(.sidebar)
         .buttonStyle(.plain)
+        // The counts are the sidebar's, so the folder is read whatever part is showing.
+        .onAppear { library.watch() }
         .safeAreaInset(edge: .top, spacing: 0) {
             SidebarStatus(model: model) { navigation.selection = .workshop }
         }

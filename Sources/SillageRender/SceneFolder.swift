@@ -189,11 +189,6 @@ extension SceneFolder {
         public var peakMemoryBytes: Int?
         public var takeBytes: Int?
 
-        public var estimatedSeconds: Double {
-            Double(particles) * Double(settle + steps) * SceneFolder.nanosecondsPerParticleStep
-                / 1e9
-        }
-
         public func encoded() throws -> Data {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

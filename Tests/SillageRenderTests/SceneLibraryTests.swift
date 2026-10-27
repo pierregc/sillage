@@ -138,6 +138,154 @@ struct SceneLibraryTests {
         #expect(scenes["scene-0001"]?["updated"] as? String == "1970-01-01T00:00:00Z")
     }
 
+    /// One scene per row of the table, laid out the way the stages leave them.
+    @Test func everyStageIsReadFromTheFiles() throws {
+        let root = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let batch = root.appendingPathComponent("2026-10-26")
+        func scene(_ name: String, _ files: [String] = []) throws {
+            try touch(batch.appendingPathComponent("\(name)/thumbnail.png"))
+            for file in files { try touch(batch.appendingPathComponent("\(name)/\(file)")) }
+        }
+        try scene("unrated")
+        try scene("rated-only")
+        try scene("no")
+        try scene("yes")
+        try scene("yes-with-hires-record", ["hires.mov", "hires.json"])
+        try scene("picked")
+        try scene("take", ["take.sillage", "hires.mov"])
+        try scene("promoted", ["take.sillage", "look-raw.json"])
+        try scene("exported", ["take.sillage", "look-raw.json", "exports/1080p.mp4"])
+        try scene("exported-unstyled", ["take.sillage", "exports/1080p.mp4"])
+        try scene("empty-exports", ["take.sillage", "look-raw.json", "exports/.DS_Store"])
+        try scene("no-after-take", ["take.sillage"])
+        try touch(
+            batch.appendingPathComponent("yes-with-hires-record/hires.json"),
+            #"{"particles": 5000000, "seconds": 4012.5, "width": 3840}"#)
+        try touch(
+            SceneRatings.url(batch: batch),
+            """
+            {"version":1,"scenes":{
+            "rated-only":{"rating":6},
+            "no":{"choice":"no"},
+            "yes":{"choice":"yes"},
+            "yes-with-hires-record":{"choice":"yes"},
+            "picked":{"picked":{"by":"score","score":0.8,"date":"2026-10-25T19:57:45Z"}},
+            "take":{"choice":"yes"},
+            "promoted":{"choice":"yes"},
+            "exported":{"choice":"yes"},
+            "exported-unstyled":{"choice":"yes"},
+            "empty-exports":{"choice":"yes"},
+            "no-after-take":{"choice":"no"}}}
+            """)
+
+        let scenes = Dictionary(
+            uniqueKeysWithValues: SceneLibrary.scan(root).map { ($0.name, $0) })
+        func stage(_ name: String) -> SceneStage? { scenes[name]?.stage }
+        #expect(stage("unrated") == .toSort && stage("rated-only") == .toSort)
+        #expect(stage("no") == .discarded && stage("no-after-take") == .discarded)
+        #expect(stage("yes") == .chosen && stage("picked") == .chosen)
+        #expect(stage("yes-with-hires-record") == .chosen)
+        #expect(stage("take") == .toStyle)
+        #expect(stage("promoted") == .ready && stage("empty-exports") == .ready)
+        #expect(stage("exported") == .exported && stage("exported-unstyled") == .exported)
+
+        let scanned = try #require(scenes["exported"])
+        #expect(scanned.promoted && scanned.exports.map(\.lastPathComponent) == ["1080p.mp4"])
+        #expect(scanned.take?.lastPathComponent == "take.sillage")
+        #expect(scenes["take"]?.promoted == false && scenes["take"]?.exports.isEmpty == true)
+        let hires = try #require(scenes["yes-with-hires-record"])
+        #expect(hires.hiresVideo?.lastPathComponent == "hires.mov")
+        #expect(hires.hires == .init(particles: 5_000_000, seconds: 4012.5))
+        #expect(scenes["unrated"]?.hiresVideo == nil && scenes["unrated"]?.hires == nil)
+    }
+
+    @Test func aQueuedHighResolutionJobPutsTheScenesInHighResolution() throws {
+        let batch = URL(fileURLWithPath: "/l")
+        let folder = SceneFolder(path: "/l/s1")
+        var scene = LibraryScene(
+            batch: "l", batchURL: batch, name: "s1", folder: folder, take: folder.take, promoted: true)
+        let chosen = SceneRatings.Entry(choice: .yes)
+        #expect(SceneStage.of(scene, entry: chosen) == .ready)
+        scene.hiresActive = true
+        #expect(SceneStage.of(scene, entry: chosen) == .highResolution)
+        // It still waits for a yes, and a no wins over a job.
+        #expect(SceneStage.of(scene, entry: nil) == .toSort)
+        #expect(SceneStage.of(scene, entry: .init(choice: .no)) == .discarded)
+    }
+
+    /// The flat batches `scripts/library.sh` wrote have no folder to run a stage in.
+    @Test func aFlatBatchIsOnlyEverToSortOrDiscarded() throws {
+        let root = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let batch = root.appendingPathComponent("2026-09-21")
+        try touch(batch.appendingPathComponent("scene-0001.mov"))
+        try touch(batch.appendingPathComponent("scene-0002.mov"))
+        try touch(batch.appendingPathComponent("scene-0003.mov"))
+        try touch(
+            SceneRatings.url(batch: batch),
+            #"{"version":1,"scenes":{"scene-0002":{"choice":"no"},"scene-0003":{"choice":"yes"}}}"#)
+        let stages = Dictionary(
+            uniqueKeysWithValues: SceneLibrary.scan(root).map { ($0.name, $0.stage) })
+        #expect(stages == ["scene-0001": .toSort, "scene-0002": .discarded, "scene-0003": .toSort])
+    }
+
+    @Test func restagingFollowsTheRatingsWithoutAScan() {
+        let folder = SceneFolder(path: "/l/b/s1")
+        let scene = LibraryScene(
+            batch: "b", batchURL: folder.batch, name: "s1", folder: folder)
+        #expect(scene.stage == .toSort)
+        #expect(scene.staged(entry: .init(choice: .yes)).stage == .chosen)
+        #expect(scene.staged(entry: .init(choice: .no)).stage == .discarded)
+        #expect(scene.staged(entry: .init(choice: .yes)).staged(entry: nil).stage == .toSort)
+    }
+
+    @Test func collectionsAreInPipelineOrderAndDiscardedOnlyInAll() {
+        #expect(
+            LibraryCollection.allCases == [
+                .toSort, .chosen, .highResolution, .toStyle, .ready, .exported, .all,
+            ])
+        for stage in SceneStage.allCases {
+            let holding = LibraryCollection.allCases.filter { $0.contains(stage) }
+            #expect(holding.contains(.all))
+            #expect(holding.count == (stage == .discarded ? 1 : 2), "\(stage)")
+        }
+
+        let folder = SceneFolder(path: "/l/b/s")
+        func scene(_ stage: SceneStage) -> LibraryScene {
+            var scene = LibraryScene(batch: "b", batchURL: folder.batch, name: "s", folder: folder)
+            scene.stage = stage
+            return scene
+        }
+        let counts = LibraryCollection.counts(
+            [.toSort, .toSort, .discarded, .chosen, .exported].map(scene))
+        #expect(counts[.toSort] == 2 && counts[.chosen] == 1 && counts[.exported] == 1)
+        #expect(counts[.all] == 5 && counts[.ready] == nil)
+    }
+
+    @Test func searchAndGalaxyCountNarrowTheCollection() {
+        let batch = URL(fileURLWithPath: "/l")
+        func scene(_ name: String, _ galaxies: Int, _ stage: SceneStage) -> LibraryScene {
+            var scene = LibraryScene(batch: "b", batchURL: batch, name: name, galaxies: galaxies)
+            scene.stage = stage
+            return scene
+        }
+        let scenes = [
+            scene("scene-0001", 2, .toSort), scene("scene-0002", 3, .toSort),
+            scene("Scene-0103", 3, .chosen), scene("scene-0104", 3, .discarded),
+        ]
+        var query = LibraryQuery()
+        #expect(query.apply(scenes, entries: [:]).count == 4)
+        query.collection = .toSort
+        #expect(query.apply(scenes, entries: [:]).map(\.name) == ["scene-0001", "scene-0002"])
+        query.galaxies = 3
+        query.search = " 02 "
+        #expect(query.apply(scenes, entries: [:]).map(\.name) == ["scene-0002"])
+        query.collection = .all
+        query.search = "SCENE-01"
+        #expect(query.apply(scenes, entries: [:]).map(\.name) == ["Scene-0103", "scene-0104"])
+    }
+
     @Test func filtersAndOrders() {
         let batch = URL(fileURLWithPath: "/l")
         func scene(_ batchName: String, _ name: String, _ archetype: String? = nil, _ age: Double = 0)
