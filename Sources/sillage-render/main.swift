@@ -1682,7 +1682,8 @@ if curves != nil {
 }
 if let take, let path = argument("take") {
     if let failure = take.spillFailure { print("take       held in memory: \(failure)") }
-    try RecordingFile.write(take, scene: scene, particles: seeded, to: prepared(path))
+    let captured = gpuSolver?.capturedParticles(from: seeded) ?? seeded
+    try RecordingFile.write(take, scene: scene, particles: captured, to: prepared(path))
 }
 if let (folder, done) = hiresRun {
     do {

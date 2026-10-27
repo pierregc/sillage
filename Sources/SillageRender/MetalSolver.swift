@@ -194,6 +194,19 @@ public protocol GPUSolver: Solver, Sendable {
     var formation: MTLBuffer { get }
 }
 
+extension GPUSolver {
+    /// The particles a take should hold: the ones the run started from, with the formation
+    /// times it ended on. Star formation is written only to the solver's buffer, so the
+    /// sampled system still carries the start state's times and a take written from it loses
+    /// every knot that formed along the way.
+    public func capturedParticles(from sampled: ParticleSystem) -> ParticleSystem {
+        var captured = sampled
+        let times = formation.contents().bindMemory(to: Float.self, capacity: sampled.count)
+        captured.formation = Array(UnsafeBufferPointer(start: times, count: sampled.count))
+        return captured
+    }
+}
+
 extension MetalSolver: GPUSolver, @unchecked Sendable {}
 extension MetalBarnesHutSolver: GPUSolver, @unchecked Sendable {}
 
