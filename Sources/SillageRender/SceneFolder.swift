@@ -323,14 +323,51 @@ extension SceneFolder {
     public enum LookError: Error, CustomStringConvertible {
         case noTake(URL)
         case noSuchLook(String, URL)
+        case noRawLook(URL)
 
         public var description: String {
             switch self {
             case .noTake(let url): "\(url.path): no take.sillage yet, run hires first"
+            case .noRawLook(let url): "\(url.path): no look-raw.json, the look was never replaced"
             case .noSuchLook(let name, let looks):
                 "no look \"\(name)\" in \(looks.path), run look first or pick a row of its grid"
             }
         }
+    }
+
+    /// The scene renders with its raw look again, the one `explore` wrote.
+    public var hasRawLook: Bool {
+        guard let raw = try? Data(contentsOf: rawLook) else { return false }
+        return (try? Data(contentsOf: look)) == raw
+    }
+
+    /// Puts the look `explore` wrote back in `look.json`. The look it replaces is kept in
+    /// `looks/` first, unless a file there holds it already, so going back loses nothing.
+    /// Returns where it was kept.
+    @discardableResult
+    public func restoreRawLook() throws -> URL? {
+        guard let raw = try? Data(contentsOf: rawLook) else { throw LookError.noRawLook(url) }
+        var kept: URL?
+        if let current = try? Data(contentsOf: look), current != raw {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: looks.path)) ?? []
+            let files = names.filter { $0.hasSuffix(".look.json") }.map { looks.appendingPathComponent($0) }
+            kept = files.first { (try? Data(contentsOf: $0)) == current }
+            if kept == nil {
+                let name = (try? LookFile.decoded(from: current).name) ?? "style"
+                let base = name.isEmpty || name.contains("/") ? "style" : name
+                var candidate = lookFile(named: base)
+                var suffix = 2
+                while exists(candidate) {
+                    candidate = lookFile(named: "\(base)-\(suffix)")
+                    suffix += 1
+                }
+                try FileManager.default.createDirectory(at: looks, withIntermediateDirectories: true)
+                try current.write(to: candidate, options: .atomic)
+                kept = candidate
+            }
+        }
+        try raw.write(to: look, options: .atomic)
+        return kept
     }
 
     public func lookFile(named name: String) -> URL {

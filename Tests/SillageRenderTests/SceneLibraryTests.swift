@@ -240,6 +240,91 @@ struct SceneLibraryTests {
         #expect(scene.staged(entry: .init(choice: .yes)).staged(entry: nil).stage == .toSort)
     }
 
+    @Test func theNextStepIsTheFirstNotDone() {
+        let folder = SceneFolder(path: "/l/b/s")
+        let bare = LibraryScene(batch: "b", batchURL: folder.batch, name: "s", folder: folder)
+        func states(_ scene: LibraryScene, _ entry: SceneRatings.Entry?) -> [SceneStep.State] {
+            let states = SceneStep.states(scene, entry: entry)
+            return SceneStep.allCases.map { states[$0] ?? .later }
+        }
+        #expect(states(bare, nil) == [.done, .next, .later, .later, .later])
+        let picked = SceneRatings.Entry(picked: .init(score: 0.8, date: Date()))
+        #expect(states(bare, picked) == [.done, .done, .next, .later, .later])
+        #expect(states(bare, .init(rating: 7)) == [.done, .next, .later, .later, .later])
+        #expect(states(bare, .init(choice: .no)) == [.done, .done, .later, .later, .later])
+
+        var styled = bare
+        styled.take = folder.take
+        let yes = SceneRatings.Entry(choice: .yes)
+        #expect(states(styled, yes) == [.done, .done, .done, .next, .later])
+        styled.promoted = true
+        #expect(states(styled, yes) == [.done, .done, .done, .done, .next])
+        // An export made with the raw style still leaves the style to choose.
+        styled.promoted = false
+        styled.exports = [folder.export(preset: "1080p")]
+        #expect(states(styled, yes) == [.done, .done, .done, .next, .done])
+        // A no after a take keeps what was done and offers nothing next.
+        #expect(states(styled, .init(choice: .no)) == [.done, .done, .done, .later, .done])
+
+        let flat = LibraryScene(batch: "b", batchURL: folder.batch, name: "s")
+        #expect(states(flat, yes) == [.done, .done, .later, .later, .later])
+    }
+
+    @Test func theBatchSeedAndIndexOfANightAreRead() throws {
+        let root = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let batch = root.appendingPathComponent("2026-10-25")
+        try touch(batch.appendingPathComponent("scene-0003/thumbnail.png"))
+        try touch(
+            batch.appendingPathComponent("index.csv"),
+            "id,batch_seed,index,galaxies\nscene-0003,20261025,3,2\n")
+        let scene = try #require(SceneLibrary.scan(root).first)
+        #expect(scene.seed == "20261025" && scene.index == 3 && scene.galaxies == 2)
+    }
+
+    @Test func versionsArePreviewHighResolutionThenVideos() {
+        let folder = SceneFolder(path: "/l/b/s")
+        var scene = LibraryScene(
+            batch: "b", batchURL: folder.batch, name: "s", video: folder.preview, folder: folder)
+        #expect(scene.versions.map(\.kind) == [.preview] && scene.defaultVersion?.kind == .preview)
+        scene.hiresVideo = folder.hiresVideo
+        #expect(scene.defaultVersion?.kind == .highResolution)
+        scene.exports = ["1080p.mp4", "4k.mov", "whatsapp.txt", "square.webp"].map {
+            folder.exports.appendingPathComponent($0)
+        }
+        #expect(
+            scene.versions.map(\.kind) == [
+                .preview, .highResolution, .video("1080p"), .video("4k"),
+            ])
+        #expect(scene.defaultVersion?.kind == .video("1080p"))
+    }
+
+    @Test func goingBackToTheRawStyleKeepsTheOneItReplaces() throws {
+        let root = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = SceneFolder(root.appendingPathComponent("b/s"))
+        #expect(throws: SceneFolder.LookError.self) { try folder.restoreRawLook() }
+
+        try touch(folder.look, #"{"version":1,"name":"raw"}"#)
+        try folder.promote(LookFile(name: "dream"))
+        #expect(!folder.hasRawLook)
+        let kept = try #require(try folder.restoreRawLook())
+        #expect(kept.lastPathComponent == "dream.look.json")
+        let keptLook = try LookFile.decoded(from: Data(contentsOf: kept))
+        #expect(folder.hasRawLook && keptLook.name == "dream")
+        #expect(try folder.restoreRawLook() == nil)
+
+        // A tuned look of the same name is kept beside it rather than over it.
+        try folder.promote(LookFile(name: "dream", starCount: 10))
+        let second = try #require(try folder.restoreRawLook())
+        #expect(second.lastPathComponent == "dream-2.look.json")
+        // One already in looks/ is not copied again.
+        try folder.promote(look: "dream")
+        #expect(try folder.restoreRawLook()?.lastPathComponent == "dream.look.json")
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.looks.path).sorted()
+        #expect(names == ["dream-2.look.json", "dream.look.json"])
+    }
+
     @Test func collectionsAreInPipelineOrderAndDiscardedOnlyInAll() {
         #expect(
             LibraryCollection.allCases == [

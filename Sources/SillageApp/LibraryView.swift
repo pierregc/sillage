@@ -17,7 +17,16 @@ struct LibraryView: View {
             if let triage = model.triage {
                 TriageView(model: model, triage: triage) { open(.chosen) }
             } else {
-                browser
+                // The grid stays under the page, hidden, so escape finds it scrolled where it was.
+                ZStack {
+                    browser
+                        .opacity(model.opened == nil ? 1 : 0)
+                        .allowsHitTesting(model.opened == nil)
+                        .accessibilityHidden(model.opened != nil)
+                    if let scene = model.scene(model.opened) {
+                        ScenePage(model: model, scene: scene)
+                    }
+                }
             }
         }
         .panelSurface()
@@ -36,6 +45,7 @@ struct LibraryView: View {
         .onDisappear { model.show(false) }
         .onChange(of: collection) { _, collection in
             model.endTriage()
+            model.close()
             model.query.collection = collection
         }
         .onChange(of: model.selection) { if !model.isSearching { focused = true } }
@@ -46,15 +56,10 @@ struct LibraryView: View {
         VStack(spacing: 0) {
             LibraryHeader(model: model, collection: collection)
             Divider()
-            ZStack {
-                if model.visible.isEmpty {
-                    emptyState
-                } else {
-                    grid
-                }
-                if let id = model.enlarged, let scene = model.scene(id) {
-                    LibraryEnlarged(model: model, scene: scene)
-                }
+            if model.visible.isEmpty {
+                emptyState
+            } else {
+                grid
             }
             Divider()
             footer
@@ -68,7 +73,7 @@ struct LibraryView: View {
         case .rightArrow: return .right
         case .upArrow: return .up
         case .downArrow: return .down
-        case .space, .return: return .enlarge
+        case .space, .return: return .open
         case .escape: return .close
         case .delete, .deleteForward: return .clear
         default: break
@@ -95,7 +100,7 @@ struct LibraryView: View {
                             LibraryCard(
                                 model: model, scene: scene, entry: model.entries[scene.id],
                                 selected: model.selection == scene.id,
-                                playing: model.playing == scene.id && model.enlarged == nil,
+                                playing: model.playing == scene.id && model.opened == nil,
                                 ready: model.playable.contains(scene.id)
                             )
                             .id(scene.id)
@@ -141,7 +146,7 @@ struct LibraryView: View {
     private var footer: some View {
         HStack {
             Text(
-                "← → ↑ ↓ naviguer · Y oui · N non · 0 à 9 la note, 1 puis 0 pour 10 · ⌫ effacer · espace agrandir · échap fermer"
+                "← → ↑ ↓ naviguer · Y oui · N non · 0 à 9 la note, 1 puis 0 pour 10 · ⌫ effacer · espace ouvrir la scène"
             )
             .font(.caption)
             .foregroundStyle(Palette.secondary)
@@ -518,10 +523,7 @@ struct LibraryCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .contentShape(Rectangle())
         .onHover { model.hover(scene.id, inside: $0) }
-        .onTapGesture {
-            model.selection = scene.id
-            model.enlarged = scene.id
-        }
+        .onTapGesture { model.open(scene.id) }
     }
 
     private var details: String {
@@ -532,48 +534,6 @@ struct LibraryCard: View {
         if let score = scene.score { parts.append(String(format: "score %.2f", score)) }
         if parts.isEmpty { parts.append(scene.batch) }
         return parts.joined(separator: " · ")
-    }
-}
-
-struct LibraryEnlarged: View {
-    @ObservedObject var model: LibraryModel
-    let scene: LibraryScene
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.85)
-                .onTapGesture { model.enlarged = nil }
-            VStack(spacing: 12) {
-                ZStack {
-                    Color.black
-                    if let still = ThumbnailCache.shared.cached(scene) {
-                        Image(nsImage: still).resizable().aspectRatio(contentMode: .fit)
-                    }
-                    if model.playing == scene.id { PlayerView(player: model.player) }
-                }
-                .aspectRatio(16 / 9, contentMode: .fit)
-                .frame(maxWidth: 1280)
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(scene.name).font(.title3.monospacedDigit())
-                        Text(
-                            [scene.batch, scene.archetype, scene.tempo, scene.seed.map { "graine \($0)" }]
-                                .compactMap { $0 }.joined(separator: " · ")
-                        )
-                        .font(.caption)
-                        .foregroundStyle(Palette.secondary)
-                    }
-                    Spacer()
-                    TuneButton(model: model, scene: scene)
-                    ChoiceButtons(entry: model.entries[scene.id]) { model.choose($0, for: scene.id) }
-                        .frame(width: 180)
-                    RatingButtons(entry: model.entries[scene.id]) { model.rate($0, for: scene.id) }
-                        .frame(width: 330)
-                }
-                .frame(maxWidth: 1280)
-            }
-            .padding(24)
-        }
     }
 }
 
