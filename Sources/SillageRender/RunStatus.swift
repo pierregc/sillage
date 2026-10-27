@@ -246,6 +246,11 @@ public struct RunEvent: Codable, Sendable, Equatable {
     /// export.done.
     public var preset: String?
     public var style: String?
+    /// style and export.done, when the look's palette was drawn by the generator.
+    public var world: String?
+    public var family: String?
+    public var harmony: String?
+    public var seed: UInt64?
     public var codec: String?
     public var frames: Int?
     public var megabytes: Double?
@@ -266,6 +271,14 @@ public struct RunEvent: Codable, Sendable, Equatable {
         self.t = t
         self.kind = kind
         self.scene = scene
+    }
+
+    /// The generator's palette, when there is one.
+    public mutating func setPalette(_ palette: Palette?) {
+        world = palette?.world.rawValue
+        family = palette?.family
+        harmony = palette?.harmony.rawValue
+        seed = palette?.seed
     }
 
     /// Takes `--name value` pairs from a command line, as `sillage-render event` is given them.
@@ -295,6 +308,12 @@ public struct RunEvent: Codable, Sendable, Equatable {
             case "take-gb": takeGB = try number()
             case "preset": preset = value
             case "style": style = value
+            case "world": world = value
+            case "family": family = value
+            case "harmony": harmony = value
+            case "seed":
+                guard let parsed = UInt64(value) else { throw FieldError.notANumber(name, value) }
+                seed = parsed
             case "codec": codec = value
             case "frames": frames = Int(try number())
             case "megabytes": megabytes = try number()

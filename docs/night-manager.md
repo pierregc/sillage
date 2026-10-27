@@ -97,9 +97,18 @@ name is an error.
 | `pick` | `2` to `4`, or `"none"` to stop after exploring | 2 to 4 by score, as many as fit |
 | `hires.particles` | particles in all | 2 000 000 (or the machine's maximum) |
 | `hires.frames` | the first frames of the story only | the whole story |
-| `style.style` | a look of the catalogue, such as `hubble` or `aurora` | the standard rendering |
-| `style.world`, `style.palette` | `telescope` or `free`; a family or a `.palette.json` (`look --palette`) | the scene's own palette |
+| `style.world` | `telescope` or `free` | Auto: the two worlds in turn across the picks, best first, telescope then free |
+| `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |
+| `style.palette` | a family or a `.palette.json` (its world is the pick's) | Auto: the best of the scene's seed in the pick's world |
 | `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
+
+The style step. A world asked for holds for every pick; else a named `style.style` or a
+`style.palette` family or file gives it; else Auto takes the two worlds in turn, so a night of
+two picks shows one of each. A recipe whose parts disagree (a free family in the telescope world)
+is refused before the night starts. A named style gets a palette of its world (Auto's or the one
+given); no style is `look --style auto`, which scores every rendering of the world with the
+scene's best palettes (or the one given) on key frames of the take. Planned at 20 s in the
+telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named style.
 
 How it plans. `NightPlanner` turns the recipe and the cost model into steps, each with its
 duration, start and end, and the delivery of the whole night. Before exploring, it sizes the
@@ -126,6 +135,12 @@ running.
 The night writes `recipe.json` (as given), `night.json`, `events.jsonl` and `report.md` in its
 folder, and the logs of its steps in `.logs/` (`night-explore.log`, `<scene>.hires.log`, ...).
 Exit status: 0 done, 3 stopped on request, 1 failed.
+
+`report.md` is rewritten at the end of each phase and at the end, in French, from `night.json`
+and `events.jsonl` alone: seven lines (state and duration, delivery against the deadline, scenes
+explored, rejected and failed, picks with their score, hires done, videos with their weight,
+scenes left out and errors), then the list of hires with particles and minutes, of videos with
+their path from the night's folder, and of failures with the path of their log.
 
 ## Queue
 
@@ -215,9 +230,9 @@ applies, and these by kind.
 | `pick` | `chosen`, `rating`; `score` for a pick by the night |
 | `hires.start` | `particles`, `steps` |
 | `hires.done` | `particles`, `steps`, `minutes`, `takeGB` |
-| `export.done` | `preset`, `style`, `codec`, `frames`, `megabytes`, `seconds`, `path` |
+| `export.done` | `preset`, `style`, `world`, `family`, `harmony`, `seed`, `codec`, `frames`, `megabytes`, `seconds`, `path` |
 | `error` | `stage`, `message`, `log` |
-| `style` | `style`, `path` (the promoted `look.json`) |
+| `style` | `style`, `world`, `family`, `harmony`, `seed` (the palette's, as in `look.json`), `path` (the promoted `look.json`) |
 | `skip` | `stage`, `message` (skipped by hand, or for want of time) |
 | `phase.done` | `phase`, `count` |
 
@@ -225,9 +240,21 @@ Scripts add an event with `sillage-render event <batch> <kind> --scene scene-000
 (`--take-gb` for `takeGB`) rather than writing JSON by hand. The ETA of `hires` follows the pace
 of its frames once they start, and reaches the last frame, not the writing of the take after it.
 
-`sillage-render status` prints what the app's status line and queue view say, from the same
-formatter (`QueueStatus`): what runs and until when, the jobs waiting with their estimated start
-and end, the last ten finished. A `sillage-render` process that wrote no status shows as
+`sillage-render status` prints at most five lines, in the words of the app's status line and
+queue view (the first comes from the same formatter, `QueueStatus`, then the night's own files):
+
+```
+Nuit du 25 oct. · haute résolution 2/4 · scene-0023 image 412/900 · prêt vers 6 h 20 · 0 erreur
+Aperçus 50/50 (2 rejetés, 1 en échec) · choix 4/4 · haute résolution 1/4 · 1 vidéo
+Livraison : prête vers 6 h 20, avant 7 h 00, 40 min de marge
+Dernière vidéo : scene-0019/exports/4k.mp4 · 212,3 Mo · 0 h 40
+```
+
+A line of errors (the first, with its log) comes before the video when there are any. Idle, it
+says "Rien en cours · le Mac est libre" and names the last night with how it ended. `--night
+<folder>` reports that night instead, `--json` prints the same as one object (the `lines`, and
+the counts, failures and last video apart), and `--full` prints every job of the queue: what
+runs and until when, the jobs waiting with their estimated start and end, the last ten finished. A `sillage-render` process that wrote no status shows as
 "Calcul en cours (sans détail)", so "le Mac est libre" is only said when nothing runs. The
 fixtures in `Tests/Fixtures/queue-status/` hold the expected lines.
 

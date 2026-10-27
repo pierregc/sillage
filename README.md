@@ -272,6 +272,9 @@ reference colours). The best pair is promoted, keeping the scene's camera; `--ke
 takes about 2 s in the telescope world and 8 s in the free one at 2 M particles; see
 [the note](docs/notes/frame-score.md).
 
+`export <scene> --palette auto|<family>|<file> [--world telescope|free]` draws that one export
+with another palette, as `look --palette` would, and leaves the scene's `look.json` alone.
+
 The grid compares; the application chooses. In the library, **Choisir le style** on a scene
 that has a take opens the style editor: the take plays in the canvas with a transport bar under
 it, and an inspector holds four sections. **Rendu** offers the 42 looks of `looks/` as

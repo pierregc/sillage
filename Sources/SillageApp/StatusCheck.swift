@@ -110,7 +110,7 @@ enum StatusCheck {
         let process = Process()
         process.executableURL = executable
         process.arguments = [
-            "status", "--library", library.path, "--now", now, "--timezone", "Europe/Paris",
+            "status", "--full", "--library", library.path, "--now", now, "--timezone", "Europe/Paris",
             "--fixture", String(processes),
         ]
         let pipe = Pipe()

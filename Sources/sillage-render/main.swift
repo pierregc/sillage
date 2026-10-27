@@ -238,20 +238,74 @@ func sceneSeed(_ folder: SceneFolder) throws -> (seed: UInt64, galaxies: Int) {
     return (file.seed, file.galaxies.count)
 }
 
-/// `look <scene folder> --palette auto|<family>|<file.palette.json> [--world telescope|free]`:
-/// puts a palette in the scene's look, promoted as `--promote` does with the old look kept.
-/// `auto` is the best scored of a fixed number of candidates drawn from the scene's seed,
-/// `<family>` the same inside one family, and a file is taken as it is.
-func palettePromotion(
-    _ folder: SceneFolder, choice: String, world: String?, base: String?
-) throws -> Int32 {
-    let asked = world.map { name -> Palette.World in
+/// What `--palette` names: a generated or stored palette, or a bare list of colours.
+enum PaletteChoice {
+    case recipe(Palette, PaletteScore)
+    case colours([SIMD3<Float>])
+}
+
+func askedWorld(_ name: String?, command: String) -> Palette.World? {
+    name.map { name in
         guard let world = Palette.World(rawValue: name) else {
-            fail("look: --world is telescope or free")
+            fail("\(command): --world is telescope or free")
         }
         return world
     }
+}
+
+/// `auto`, a family or a `.palette.json` for `folder`'s scene: `auto` is the best scored of a
+/// fixed number of candidates drawn from the scene's seed, a family the same inside one family,
+/// and a file is taken as it is.
+func resolvePalette(
+    _ folder: SceneFolder, choice: String, world asked: Palette.World?, command: String
+) throws -> PaletteChoice {
     let references = telescopeReferences()
+    if FileManager.default.fileExists(atPath: choice) {
+        let data = try Data(contentsOf: URL(fileURLWithPath: choice))
+        struct Bare: Decodable { var colours: [SIMD3<Float>] }
+        if let recipe = try? JSONDecoder().decode(Palette.self, from: data) {
+            return .recipe(recipe, PaletteScore(recipe, references: references))
+        }
+        if let bare = try? JSONDecoder().decode(Bare.self, from: data), !bare.colours.isEmpty {
+            return .colours(bare.colours)
+        }
+        fail("\(command): \(choice) is not a palette file: {\"colours\": [[r, g, b], ...]}")
+    }
+    let (seed, galaxies) = try sceneSeed(folder)
+    let family = choice == "auto" ? nil : choice
+    var chosen = asked ?? .free
+    if let family, asked == nil {
+        let worlds = Palette.World.allCases.filter { world in
+            PaletteGenerator.families(world, telescope: references.map(\.family))
+                .contains { $0.name == family }
+        }
+        guard let found = worlds.first else {
+            fail("\(command): --palette is auto, a family or a .palette.json file, not \(choice)")
+        }
+        chosen = found
+    }
+    let top = try PaletteAuto.ranked(
+        galaxies: galaxies, world: chosen, family: family, seed: seed, telescope: references)[0]
+    return .recipe(top.palette, top.score)
+}
+
+/// Puts the palette in `look`, with the recipe it came from when it has one.
+func apply(_ choice: PaletteChoice, to look: inout LookFile) {
+    switch choice {
+    case .recipe(let palette, _):
+        look.paletteRecipe = palette
+        look.palette = palette.galaxyColours(references: telescopeReferences())
+    case .colours(let colours):
+        look.paletteRecipe = nil
+        look.palette = colours.map { GalaxyColours($0) }
+    }
+}
+
+/// `look <scene folder> --palette auto|<family>|<file.palette.json> [--world telescope|free]`:
+/// puts a palette in the scene's look, promoted as `--promote` does with the old look kept.
+func palettePromotion(
+    _ folder: SceneFolder, choice: String, world: String?, base: String?
+) throws -> Int32 {
     var look =
         (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }
         ?? .standard
@@ -262,59 +316,24 @@ func palettePromotion(
         else { fail("look: no look \(base)") }
         look = found
     }
-
-    let palette: Palette
-    var score: PaletteScore?
-    if FileManager.default.fileExists(atPath: choice) {
-        let data = try Data(contentsOf: URL(fileURLWithPath: choice))
-        struct Bare: Decodable { var colours: [SIMD3<Float>] }
-        if let recipe = try? JSONDecoder().decode(Palette.self, from: data) {
-            palette = recipe
-            score = PaletteScore(recipe, references: references)
-            look.paletteRecipe = recipe
-        } else if let bare = try? JSONDecoder().decode(Bare.self, from: data),
-            !bare.colours.isEmpty
-        {
-            look.paletteRecipe = nil
-            look.palette = bare.colours.map { GalaxyColours($0) }
-            try folder.promote(look)
-            print("look       \(choice): \(bare.colours.count) colours set in \(folder.look.path)")
-            return 0
-        } else {
-            fail("look: \(choice) is not a palette file: {\"colours\": [[r, g, b], ...]}")
-        }
-    } else {
-        let (seed, galaxies) = try sceneSeed(folder)
-        let family = choice == "auto" ? nil : choice
-        var chosen = asked ?? .free
-        if let family, asked == nil {
-            let worlds = Palette.World.allCases.filter { world in
-                PaletteGenerator.families(world, telescope: references.map(\.family))
-                    .contains { $0.name == family }
-            }
-            guard let found = worlds.first else {
-                fail("look: --palette is auto, a family or a .palette.json file, not \(choice)")
-            }
-            chosen = found
-        }
-        let top = try PaletteAuto.ranked(
-            galaxies: galaxies, world: chosen, family: family, seed: seed,
-            telescope: references)[0]
-        palette = top.palette
-        score = top.score
-        look.paletteRecipe = palette
-    }
-    look.palette = palette.galaxyColours(references: references)
+    let picked = try resolvePalette(
+        folder, choice: choice, world: askedWorld(world, command: "look"), command: "look")
+    apply(picked, to: &look)
     try folder.promote(look)
-    print(
-        String(
-            format: "look       palette %@ (%@ world, score %.2f) is now in %@", palette.name,
-            palette.world.rawValue, score?.total ?? 0, folder.look.path))
+    switch picked {
+    case .recipe(let palette, let score):
+        print(
+            String(
+                format: "look       palette %@ (%@ world, score %.2f) is now in %@", palette.name,
+                palette.world.rawValue, score.total, folder.look.path))
+    case .colours(let colours):
+        print("look       \(choice): \(colours.count) colours set in \(folder.look.path)")
+    }
     return 0
 }
 
-/// `look <scene folder> --style auto [--world telescope|free] [--keep]`: every rendering of
-/// the world with the scene's best palettes, drawn on three key frames and scored; the best
+/// `look <scene folder> --style auto [--world telescope|free] [--palette <family>|<file>] [--keep]`:
+/// every rendering of the world with the scene's best palettes (or the one palette asked for), drawn on three key frames and scored; the best
 /// pair is promoted unless `--keep`. Writes `looks/auto-<world>.png` (the best three) and
 /// `looks/auto-<world>.json` (every pair's score).
 func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
@@ -324,15 +343,33 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         }
     }
     let started = Date()
-    var world: Palette.World?
-    if let name = option("world") {
-        guard let asked = Palette.World(rawValue: name) else {
-            fail("look: --world is telescope or free")
+    var world = askedWorld(option("world"), command: "look")
+    var family: String?
+    var fixed: Palette?
+    if let choice = option("palette"), choice != "auto" {
+        if FileManager.default.fileExists(atPath: choice) {
+            guard
+                case .recipe(let palette, _) = try resolvePalette(
+                    folder, choice: choice, world: world, command: "look")
+            else { fail("look: --style auto needs a palette file with a family, harmony and seed") }
+            fixed = palette
+            world = world ?? palette.world
+        } else {
+            family = choice
+            world =
+                world
+                ?? Palette.World.allCases.first { world in
+                    PaletteGenerator.families(world, telescope: telescopeReferences().map(\.family))
+                        .contains { $0.name == choice }
+                }
+            if world == nil {
+                fail("look: --palette is auto, a family or a .palette.json file, not \(choice)")
+            }
         }
-        world = asked
     }
     let outcome = try StyleAuto.choose(
-        folder, world: world, catalogue: catalogueLooks(), references: telescopeReferences())
+        folder, world: world, family: family, fixed: fixed, catalogue: catalogueLooks(),
+        references: telescopeReferences())
     let scoredAt = Date()
     let (sheet, keys, ranked) = (outcome.sheet, outcome.keys, outcome.ranked)
     let (width, height, fps) = (outcome.width, outcome.height, outcome.fps)
@@ -595,6 +632,13 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         .nonEmpty ?? loaded.scene.galaxies.map { GalaxyColours($0.color) }
     var look = try folder.exportLook(option("look"), catalogue: catalogueLooks())
     if look.palette.isEmpty { look.palette = scenePalette }
+    // For this export only: the scene's look.json is left as it is.
+    if let choice = option("palette") {
+        apply(
+            try resolvePalette(
+                folder, choice: choice, world: askedWorld(option("world"), command: "export"),
+                command: "export"), to: &look)
+    }
 
     let clip = try folder.storedClip()
     let capturedRate = folder.storedHires()?.fps ?? clip.fps
@@ -677,6 +721,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     var done = RunEvent(RunEvent.Kind.exportDone)
     done.preset = preset.name
     done.style = look.name
+    done.setPalette(look.paletteRecipe)
     done.codec = codec.rawValue
     done.frames = report.frames
     done.megabytes = Double(bytes) / 1e6
@@ -756,6 +801,7 @@ func previewStage(
     var done = RunEvent(RunEvent.Kind.exportDone)
     done.preset = preset?.name
     done.style = export.look.name
+    done.setPalette(export.look.paletteRecipe)
     done.codec = format.rawValue
     done.frames = report.frames
     done.megabytes = Double(report.bytes) / 1e6

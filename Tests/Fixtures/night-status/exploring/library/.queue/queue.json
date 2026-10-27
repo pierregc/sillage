@@ -1,0 +1,23 @@
+{
+  "jobs": [
+    {
+      "added": "2026-10-26T21:59:00.000+01:00",
+      "by": "hand",
+      "id": 7,
+      "kind": "night",
+      "night": "2026-10-26",
+      "options": [
+        "/recipe.json"
+      ],
+      "path": "/library/2026-10-26",
+      "pid": 4242,
+      "pidStarted": "2026-10-26T22:00:00.000+01:00",
+      "started": "2026-10-26T22:00:00.000+01:00",
+      "state": "running"
+    }
+  ],
+  "nextID": 30,
+  "paused": false,
+  "updated": "2026-10-27T01:09:00.000+01:00",
+  "version": 1
+}

@@ -137,9 +137,12 @@ public struct NightPlanner: Sendable {
     /// 2.76 GB for 2 M particles over 900 frames at the take interval of 4 (`hires.json` of
     /// 2026-10-25).
     public static let takeBytesPerParticleFrame = 1.533
-    /// Promoting a look; drawing palettes from the scene's seed and scoring them.
-    public static let styleSeconds = 2.0
+    /// Drawing palettes from the scene's seed and scoring them, for a rendering the recipe names.
     public static let paletteSeconds = 20.0
+    /// Auto's choice of rendering and palette (#124) in a world, from the cost at a clip's
+    /// size (about 8 pairs at 1.5 s, or 52 at 7.5 s); with both worlds in turn, the mean.
+    public static let telescopeStyleSeconds = 20.0
+    public static let freeStyleSeconds = 400.0
     /// An animated WebP or GIF of eight seconds.
     public static let previewSeconds = 30.0
 
@@ -176,8 +179,12 @@ public struct NightPlanner: Sendable {
     public func hiresSeconds(_ scene: NightScene) -> Double { model.hires.seconds(scene.hiresUnits) }
 
     public var styleSeconds: Double {
-        recipe.style.palette.value != nil || recipe.style.world.value != nil
-            ? Self.paletteSeconds : Self.styleSeconds
+        if recipe.style.style.value != nil { return Self.paletteSeconds }
+        switch recipe.style.world.value.flatMap(Palette.World.init(rawValue:)) {
+        case .telescope: return Self.telescopeStyleSeconds
+        case .free: return Self.freeStyleSeconds
+        case nil: return (Self.telescopeStyleSeconds + Self.freeStyleSeconds) / 2
+        }
     }
 
     public func exportSeconds(_ format: String, frames: Int) -> Double {

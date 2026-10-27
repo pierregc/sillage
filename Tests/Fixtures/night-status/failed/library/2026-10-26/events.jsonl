@@ -1,0 +1,64 @@
+{"kind": "night.start", "night": "2026-10-26", "t": "2026-10-26T22:00:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0001", "score": 0.57, "seconds": 90, "status": "ok", "t": "2026-10-26T22:05:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0002", "score": 0.24, "seconds": 90, "status": "ok", "t": "2026-10-26T22:05:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0003", "score": 0.61, "seconds": 90, "status": "ok", "t": "2026-10-26T22:05:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0004", "score": 0.28, "seconds": 90, "status": "ok", "t": "2026-10-26T22:05:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0005", "score": 0.65, "seconds": 90, "status": "ok", "t": "2026-10-26T22:06:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0006", "score": 0.32, "seconds": 90, "status": "ok", "t": "2026-10-26T22:06:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0007", "score": 0.69, "seconds": 90, "status": "ok", "t": "2026-10-26T22:06:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0008", "score": 0.36, "seconds": 90, "status": "ok", "t": "2026-10-26T22:06:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0009", "score": 0.73, "seconds": 90, "status": "ok", "t": "2026-10-26T22:06:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0010", "score": 0.4, "seconds": 90, "status": "ok", "t": "2026-10-26T22:07:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0011", "score": 0.77, "seconds": 90, "status": "ok", "t": "2026-10-26T22:07:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0012", "score": 0.44, "seconds": 90, "status": "ok", "t": "2026-10-26T22:07:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0013", "score": 0.81, "seconds": 90, "status": "ok", "t": "2026-10-26T22:07:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0014", "score": 0.48, "seconds": 90, "status": "ok", "t": "2026-10-26T22:07:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0015", "score": 0.85, "seconds": 90, "status": "ok", "t": "2026-10-26T22:08:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0016", "score": 0.52, "seconds": 90, "status": "ok", "t": "2026-10-26T22:08:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0017", "score": 0.89, "seconds": 90, "status": "ok", "t": "2026-10-26T22:08:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0018", "score": 0.56, "seconds": 90, "status": "ok", "t": "2026-10-26T22:08:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0019", "score": 0.23, "seconds": 90, "status": "ok", "t": "2026-10-26T22:08:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0020", "score": 0.6, "seconds": 90, "status": "ok", "t": "2026-10-26T22:09:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0021", "score": 0.27, "seconds": 90, "status": "ok", "t": "2026-10-26T22:09:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0022", "score": 0.64, "seconds": 90, "status": "ok", "t": "2026-10-26T22:09:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0023", "score": 0.31, "seconds": 90, "status": "ok", "t": "2026-10-26T22:09:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0024", "score": 0.68, "seconds": 90, "status": "ok", "t": "2026-10-26T22:09:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0025", "score": 0.35, "seconds": 90, "status": "ok", "t": "2026-10-26T22:10:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0026", "score": 0.72, "seconds": 90, "status": "ok", "t": "2026-10-26T22:10:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0027", "score": 0.39, "seconds": 90, "status": "ok", "t": "2026-10-26T22:10:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0028", "score": 0.76, "seconds": 90, "status": "ok", "t": "2026-10-26T22:10:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0029", "score": 0.43, "seconds": 90, "status": "ok", "t": "2026-10-26T22:10:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0030", "score": 0.8, "seconds": 90, "status": "ok", "t": "2026-10-26T22:11:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0031", "score": 0.47, "seconds": 90, "status": "ok", "t": "2026-10-26T22:11:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0032", "score": 0.84, "seconds": 90, "status": "ok", "t": "2026-10-26T22:11:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0033", "score": 0.51, "seconds": 90, "status": "ok", "t": "2026-10-26T22:11:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0034", "score": 0.88, "seconds": 90, "status": "ok", "t": "2026-10-26T22:11:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0035", "score": 0.55, "seconds": 90, "status": "ok", "t": "2026-10-26T22:12:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0036", "score": 0.22, "seconds": 90, "status": "ok", "t": "2026-10-26T22:12:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0037", "score": 0.59, "seconds": 90, "status": "ok", "t": "2026-10-26T22:12:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0038", "score": 0.26, "seconds": 90, "status": "ok", "t": "2026-10-26T22:12:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0039", "score": 0.63, "seconds": 90, "status": "ok", "t": "2026-10-26T22:12:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0040", "score": 0.3, "seconds": 90, "status": "ok", "t": "2026-10-26T22:13:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0041", "score": 0.67, "seconds": 90, "status": "ok", "t": "2026-10-26T22:13:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0042", "score": 0.34, "seconds": 90, "status": "ok", "t": "2026-10-26T22:13:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0043", "score": 0.71, "seconds": 90, "status": "ok", "t": "2026-10-26T22:13:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0044", "score": 0.38, "seconds": 90, "status": "ok", "t": "2026-10-26T22:13:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0045", "score": 0.75, "seconds": 90, "status": "ok", "t": "2026-10-26T22:14:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0046", "score": 0.42, "seconds": 90, "status": "ok", "t": "2026-10-26T22:14:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0047", "score": 0.79, "seconds": 90, "status": "ok", "t": "2026-10-26T22:14:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0048", "seconds": 90, "status": "rejected", "t": "2026-10-26T22:14:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0049", "seconds": 90, "status": "rejected", "t": "2026-10-26T22:14:00.000+01:00"}
+{"kind": "explore.scene", "scene": "scene-0050", "seconds": 90, "status": "failed", "t": "2026-10-26T22:15:00.000+01:00"}
+{"count": 50, "kind": "phase.done", "night": "2026-10-26", "phase": "explore", "t": "2026-10-27T00:05:00.000+01:00"}
+{"chosen": true, "kind": "pick", "scene": "scene-0019", "score": 0.91, "t": "2026-10-27T00:06:00.000+01:00"}
+{"chosen": true, "kind": "pick", "scene": "scene-0007", "score": 0.88, "t": "2026-10-27T00:06:00.000+01:00"}
+{"chosen": true, "kind": "pick", "scene": "scene-0023", "score": 0.84, "t": "2026-10-27T00:06:00.000+01:00"}
+{"chosen": true, "kind": "pick", "scene": "scene-0031", "score": 0.8, "t": "2026-10-27T00:06:00.000+01:00"}
+{"count": 4, "kind": "phase.done", "night": "2026-10-26", "phase": "pick", "t": "2026-10-27T00:07:00.000+01:00"}
+{"kind": "hires.done", "minutes": 30, "particles": 2000000, "scene": "scene-0019", "steps": 900, "t": "2026-10-27T00:38:00.000+01:00", "takeGB": 18.2}
+{"kind": "style", "path": "/library/2026-10-26/scene-0019/look.json", "scene": "scene-0019", "style": "hubble", "t": "2026-10-27T00:39:00.000+01:00"}
+{"codec": "hevc", "frames": 900, "kind": "export.done", "megabytes": 212.3, "path": "/library/2026-10-26/scene-0019/exports/4k.mp4", "preset": "4k", "scene": "scene-0019", "seconds": 70, "style": "hubble", "t": "2026-10-27T00:40:00.000+01:00"}
+{"kind": "error", "log": "/library/2026-10-26/.logs/scene-0007.hires.log", "message": "failed with status 1", "scene": "scene-0007", "stage": "hires", "t": "2026-10-27T01:20:00.000+01:00"}
+{"kind": "error", "log": "/library/2026-10-26/.logs/scene-0023.hires.log", "message": "Metal command buffer failed", "scene": "scene-0023", "stage": "hires", "t": "2026-10-27T02:30:00.000+01:00"}
+{"kind": "skip", "message": "skipped by hand", "scene": "scene-0031", "stage": "hires", "t": "2026-10-27T03:00:00.000+01:00"}
+{"kind": "night.done", "message": "3 scenes lost", "night": "2026-10-26", "seconds": 18720, "status": "failed", "t": "2026-10-27T03:12:00.000+01:00"}
