@@ -4,7 +4,8 @@ import SwiftUI
 enum SidebarItem: Hashable {
     case library(LibraryCollection)
     case queue
-    case nights
+    /// A night's page, by its folder name.
+    case night(String)
     case workshop
 
     var isLibrary: Bool {
@@ -38,10 +39,10 @@ final class AppNavigation: ObservableObject {
 
     func newNight() { showsNightSheet = true }
 
-    /// A night launched shows the nights, where its page will be (#108).
-    func nightLaunched() {
+    /// A night launched shows its page.
+    func nightLaunched(_ batch: String?) {
         showsNightSheet = false
-        selection = .nights
+        if let batch { selection = .night(batch) }
     }
 
     func openTake(_ model: SimulationModel) {
@@ -61,6 +62,7 @@ struct MainView: View {
     @ObservedObject var library: LibraryModel
     @ObservedObject var navigation: AppNavigation
     @ObservedObject var queue: QueueModel
+    @ObservedObject var nights: NightsModel
 
     var body: some View {
         Group {
@@ -68,8 +70,11 @@ struct MainView: View {
                 ContemplationView(model: model)
             } else {
                 NavigationSplitView {
-                    Sidebar(model: model, library: library, queue: queue, navigation: navigation)
-                        .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
+                    Sidebar(
+                        model: model, library: library, queue: queue, nights: nights,
+                        navigation: navigation
+                    )
+                    .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
                 } detail: {
                     detail
                 }
@@ -87,7 +92,7 @@ struct MainView: View {
                     NightSheetView(
                         model: NightSheetModel(library: queue.store.library), queue: queue,
                         dismiss: { navigation.showsNightSheet = false },
-                        launched: { navigation.nightLaunched() })
+                        launched: { navigation.nightLaunched($0) })
                 }
             }
         }
@@ -108,7 +113,17 @@ struct MainView: View {
         case .library(let collection):
             LibraryView(model: library, collection: collection) { navigation.selection = .library($0) }
         case .queue: QueueView(queue: queue)
-        case .nights: NightsView()
+        case .night(let id):
+            NightPageView(
+                id: id, nights: nights, queue: queue, library: library,
+                openScene: { scene in
+                    navigation.selection = .library(.all)
+                    library.open(scene)
+                },
+                sort: { batch in
+                    library.startTriage(batch: batch)
+                    navigation.selection = .library(.toSort)
+                })
         case .workshop:
             // Leaving the workshop drops the canvas and nothing else: the run keeps stepping
             // on its own queue, as with "Afficher pendant le calcul" off.
@@ -124,6 +139,7 @@ struct Sidebar: View {
     @ObservedObject var model: SimulationModel
     @ObservedObject var library: LibraryModel
     @ObservedObject var queue: QueueModel
+    @ObservedObject var nights: NightsModel
     @ObservedObject var navigation: AppNavigation
 
     var body: some View {
@@ -142,8 +158,20 @@ struct Sidebar: View {
                 }
             }
             Section("Nuits") {
-                Label("Nuits", systemImage: "moon.stars")
-                    .tag(SidebarItem.nights)
+                ForEach(nights.items) { item in
+                    Label {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.day)
+                            Text(item.summary).font(.caption).foregroundStyle(Palette.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: item.live ? "moon.stars.fill" : "moon")
+                    }
+                    .tag(SidebarItem.night(item.id))
+                }
+                if nights.items.isEmpty {
+                    Text("Aucune nuit encore").font(.callout).foregroundStyle(Palette.secondary)
+                }
                 Button {
                     navigation.newNight()
                 } label: {
@@ -192,21 +220,5 @@ struct Sidebar: View {
         }
         .disabled(model.stage == .running)
         .help(model.stage == .running ? "Revenir d'abord à « Modifier la scène »" : help)
-    }
-}
-
-/// Filled by the night pages (#108).
-struct NightsView: View {
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "moon.stars")
-                .font(.system(size: 34))
-                .foregroundStyle(Palette.secondary)
-            Text("Les nuits apparaîtront ici").font(.title3)
-            Text("Chaque nuit de calcul, ses scènes et ses vidéos.")
-                .foregroundStyle(Palette.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .panelSurface()
     }
 }

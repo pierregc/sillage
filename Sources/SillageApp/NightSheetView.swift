@@ -74,7 +74,8 @@ struct NightSheetView: View {
     @StateObject private var model: NightSheetModel
     @ObservedObject var queue: QueueModel
     let dismiss: () -> Void
-    let launched: () -> Void
+    /// Told the folder of the night just queued.
+    let launched: (String?) -> Void
     /// `ImageRenderer` draws pickers and fields as blanks, so a picture of the sheet has them
     /// as text and the disclosure open.
     var snapshot = false
@@ -82,7 +83,7 @@ struct NightSheetView: View {
 
     init(
         model: NightSheetModel, queue: QueueModel, snapshot: Bool = false,
-        dismiss: @escaping () -> Void = {}, launched: @escaping () -> Void = {}
+        dismiss: @escaping () -> Void = {}, launched: @escaping (String?) -> Void = { _ in }
     ) {
         _model = StateObject(wrappedValue: model)
         self.queue = queue
@@ -317,7 +318,8 @@ struct NightSheetView: View {
                 Spacer()
                 Button("Annuler", action: dismiss).keyboardShortcut(.cancelAction)
                 Button("Lancer la nuit") {
-                    if model.launch({ try queue.launchNight($0) }) { launched() }
+                    var batch: String?
+                    if model.launch({ batch = try queue.launchNight($0).batch }) { launched(batch) }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(model.launching)

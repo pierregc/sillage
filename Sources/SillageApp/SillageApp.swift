@@ -21,6 +21,8 @@ struct SillageApp: App {
     @StateObject private var navigation = AppNavigation()
     @StateObject private var queue = QueueModel(
         library: LibraryModel.defaultRoot() ?? FileManager.default.homeDirectoryForCurrentUser)
+    @StateObject private var nights = NightsModel(
+        library: LibraryModel.defaultRoot() ?? FileManager.default.homeDirectoryForCurrentUser)
     @StateObject private var menuStatus: MenuBarStatus
 
     init() {
@@ -63,32 +65,40 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--nightcheck") {
             MainActor.assumeIsolated { NightSheetCheck.run() }
         }
+        if CommandLine.arguments.contains("--nightpagecheck") {
+            MainActor.assumeIsolated { NightPageCheck.run() }
+        }
     }
 
     var body: some Scene {
         Window("Sillage", id: AppNavigation.windowID) {
-            MainView(model: model, library: library, navigation: navigation, queue: queue)
-                .frame(minWidth: 1180, minHeight: 720)
-                // The panel draws on the system background, so the appearance is pinned rather
-                // than letting a light theme put dark text on the black canvas.
-                .preferredColorScheme(.dark)
-                .onReceive(library.$root) { root in
-                    if let root { queue.use(library: root) }
+            MainView(
+                model: model, library: library, navigation: navigation, queue: queue, nights: nights
+            )
+            .frame(minWidth: 1180, minHeight: 720)
+            // The panel draws on the system background, so the appearance is pinned rather
+            // than letting a light theme put dark text on the black canvas.
+            .preferredColorScheme(.dark)
+            .onReceive(library.$root) { root in
+                if let root {
+                    queue.use(library: root)
+                    nights.use(library: root)
                 }
-                .onAppear {
-                    library.onTune = { [weak model, weak navigation] scene in
-                        guard let model else { return }
-                        navigation?.tune(model, scene)
-                    }
-                    startFrameCheck()
-                    startCinemaCheck()
-                    PresetCheck.run(model)
-                    ResponsivenessCheck.run(model)
-                    QACheck.run(model)
-                    SoakCheck.run(model)
-                    QueueSoak.run()
-                    NavigationCheck.run(model, library, navigation, queue)
+            }
+            .onAppear {
+                library.onTune = { [weak model, weak navigation] scene in
+                    guard let model else { return }
+                    navigation?.tune(model, scene)
                 }
+                startFrameCheck()
+                startCinemaCheck()
+                PresetCheck.run(model)
+                ResponsivenessCheck.run(model)
+                QACheck.run(model)
+                SoakCheck.run(model)
+                QueueSoak.run()
+                NavigationCheck.run(model, library, navigation, queue, nights)
+            }
         }
         .windowResizability(.contentMinSize)
         .commands {
