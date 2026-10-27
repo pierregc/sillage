@@ -291,7 +291,7 @@ the whole camera plan, each with **Réinitialiser**; **Voir à travers le plan**
 the plan at the playhead, so scrubbing shows the render's own framing. The top bar says
 **Modifié** when the style differs from `look.json`, holding ⌥ or **Avant / Après** shows the
 saved style for as long as it is held, **Annuler** puts it back, and **Utiliser pour la scène**
-(⌘S) promotes it as `--promote` does, after which **Exporter…** is the main button. File > Open
+(⌘S) promotes it as `--promote` does, after which **Exporter…** opens the export sheet. File > Open
 takes any take (⌘O) and any look file (⇧⌘O) over the picture, ⇧⌘S saves the look anywhere, and
 outside the editor ⌘S writes it back where it came from. A file opened and saved untouched is
 the same file; see [the note](docs/notes/style-editor.md).

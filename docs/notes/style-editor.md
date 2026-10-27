@@ -41,8 +41,8 @@ nothing else, because the model publishes on every played frame.
   inspector can change.
 - **Annuler** puts the saved style back and returns to the scene page; it reads Fermer when
   nothing changed. **Utiliser pour la scène** (⌘S, which is "Enregistrer le look" elsewhere)
-  promotes the style; once the style is the scene's, **Exporter…** is the main button and goes
-  back to the page, where the export waits for the queue (#106).
+  promotes the style; once the style is the scene's, **Exporter…** is the main button and opens
+  the export sheet of #106, whose jobs go to the queue.
 - **The session survives the sidebar.** Going to the queue and back keeps the edits; a row
   "Style de scene-…" sits under the library while the editor is open. Choosing the style of the
   scene already on the canvas puts its saved style back rather than reading the take again.

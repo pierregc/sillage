@@ -58,6 +58,8 @@ struct StyleEditor: View {
 struct StyleTopBar: View {
     @ObservedObject var session: StyleSession
     let leave: () -> Void
+    @Environment(\.queue) private var queue
+    @State private var exporting = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -99,9 +101,15 @@ struct StyleTopBar: View {
                         : "Écrit ce style dans look.json (⌘S). Le premier style remplacé reste dans look-raw.json."
                 )
         } else {
-            Button("Exporter…") { leave() }
+            Button("Exporter…") { exporting = true }
                 .buttonStyle(.borderedProminent)
-                .help("Revient à la page de la scène, où se lance l'export")
+                .disabled(queue == nil || session.scene.folder == nil)
+                .help("Choisir les formats ; chaque export rejoint la file d'attente")
+                .sheet(isPresented: $exporting) {
+                    if let queue, let folder = session.scene.folder {
+                        ExportSheet(queue: queue, folders: [folder]) { exporting = false }
+                    }
+                }
         }
     }
 
