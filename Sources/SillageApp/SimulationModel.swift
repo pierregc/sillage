@@ -389,7 +389,10 @@ final class SimulationModel: ObservableObject {
 
     private func lookFileChanged(from old: LookFile) {
         guard !installingLook else { return }
-        if lookFile.palette != old.palette { repaint() }
+        if lookFile.palette != old.palette {
+            repaint()
+            renderer?.setGalaxyColours(lookFile.palette)
+        }
         if lookFile.look.fieldOfView != old.look.fieldOfView {
             camera.fieldOfView = lookFile.look.fieldOfView
         }
@@ -1231,6 +1234,7 @@ final class SimulationModel: ObservableObject {
                 externalFormation: mode == .playback ? nil : solver?.formation)
             renderer?.setSmoothing(smoothing?.buffer)
             renderer?.apply(look)
+            renderer?.setGalaxyColours(lookFile.palette)
             // Due on the next frame rather than now: a replay's positions buffer is still empty
             // here, and lengths taken from it would hold until the next refresh.
             framesSinceSmoothing = smoothingInterval

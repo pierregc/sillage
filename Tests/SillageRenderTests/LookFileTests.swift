@@ -81,7 +81,7 @@ struct LookFileTests {
         }
         var file = LookFile.raw
         file.paletteRecipe = Palette(
-            world: .free, family: "ember", harmony: .triadic, seed: 1, colours: file.palette)
+            world: .free, family: "ember", harmony: .triadic, seed: 1, colours: file.palette.map(\.colour))
         #expect(try keys(JSONEncoder().encode(file.look)) == fields(file.look))
         #expect(try keys(file.encoded()) == fields(file))
     }
@@ -155,7 +155,7 @@ struct LookFileTests {
         var live = base
         live.look = .ember
         live.armStrength = 0.4
-        live.palette = [SIMD3(1, 0, 0)]
+        live.palette = [GalaxyColours(SIMD3(1, 0, 0))]
         live.camera.zoom = 2
         #expect(!live.rebuildsRenderer(from: base))
         for change in [
@@ -172,7 +172,7 @@ struct LookFileTests {
         var scene = SceneConfig.merger(particleCount: 2000)
         let kept = scene.galaxies[1].color
         var file = LookFile.standard
-        file.palette = [SIMD3(0.1, 0.2, 0.3)]
+        file.palette = [GalaxyColours(SIMD3(0.1, 0.2, 0.3))]
         file.paint(&scene)
         #expect(scene.galaxies[0].color == SIMD3(0.1, 0.2, 0.3))
         #expect(scene.galaxies[1].color == kept)
@@ -207,7 +207,7 @@ struct LookFileTests {
         var file = LookFile.standard
         #expect(file.colour(ofGalaxy: 2, in: scene) == scene.galaxies[2].color)
         file.setColour(SIMD3(1, 0, 0), ofGalaxy: 1, in: scene)
-        #expect(file.palette == [scene.galaxies[0].color, SIMD3(1, 0, 0)])
+        #expect(file.palette.map(\.colour) == [scene.galaxies[0].color, SIMD3(1, 0, 0)])
         let painted = file.painted(scene)
         #expect(
             painted.galaxies.map(\.color) == [
@@ -225,7 +225,7 @@ struct LookFileTests {
         let scene = threeGalaxies()
         var original = LookFile.standard
         original.name = "tuned"
-        original.palette = [SIMD3(0.9, 0.8, 0.7)]
+        original.palette = [GalaxyColours(SIMD3(0.9, 0.8, 0.7))]
         original.camera = .init(mode: .fixed, elevation: 0.3, azimuthEnd: 1.2, zoom: 1.4)
         let written = try original.encoded()
 

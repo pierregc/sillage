@@ -176,6 +176,52 @@ struct RecordingFileTests {
         }
     }
 
+    /// Rewrites a take as an older version: the same layout without the birth radii.
+    private func downgrade(_ url: URL, to version: UInt64, particles: Int) throws {
+        var data = try Data(contentsOf: url)
+        let header = Int(data[16..<24].withUnsafeBytes { $0.loadUnaligned(as: UInt64.self) })
+        let radii = 24 + header + 16 * particles
+        data.removeSubrange(radii..<(radii + 4 * particles))
+        data.replaceSubrange(8..<16, with: withUnsafeBytes(of: version.littleEndian) { Data($0) })
+        try data.write(to: url)
+    }
+
+    /// The colour ramps read the radius each particle was born at, about its own galaxy.
+    @Test func aTakeKeepsTheBirthRadius() throws {
+        var (recording, system) = take(particles: 120, frames: 3, galaxies: 2)
+        system.birthRadius = (0..<120).map { Float($0) * 0.1 }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("birth-radius.\(RecordingFile.fileExtension)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try RecordingFile.write(
+            recording, scene: SceneConfig.merger(particleCount: 120), particles: system, to: url)
+        let loaded = try RecordingFile.read(from: url).particles
+        #expect(loaded.birthRadius == system.birthRadius)
+        #expect(loaded.colourRadius.isEmpty)
+    }
+
+    /// An old take keeps the radius it always replayed with, and gives the ramps the distance
+    /// to its galaxy's centre on the first frame.
+    @Test func anOldTakeRebuildsTheBirthRadiusFromTheFirstFrame() throws {
+        var (recording, system) = take(particles: 120, frames: 3, galaxies: 2)
+        system.birthRadius = (0..<120).map { Float($0) * 0.1 }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("version-5.\(RecordingFile.fileExtension)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try RecordingFile.write(
+            recording, scene: SceneConfig.merger(particleCount: 120), particles: system, to: url)
+        try downgrade(url, to: 5, particles: 120)
+        let loaded = try RecordingFile.read(from: url)
+        let positions = loaded.recording.positions(at: 0)
+        let centres = loaded.recording.centers(at: 0)
+        #expect(loaded.particles.birthRadius == positions.map { simd_length($0) })
+        #expect(loaded.particles.population == system.population)
+        for index in [0, 1, 77, 119] {
+            let centre = centres[Int(system.galaxyIndex[index])]
+            #expect(loaded.particles.colourRadius[index] == simd_distance(positions[index], centre))
+        }
+    }
+
     /// A take written before the interval existed has every frame, and says nothing about it.
     @Test func aVersionFourTakeStillReads() throws {
         let (recording, system) = take(particles: 100, frames: 5, galaxies: 2)
@@ -184,11 +230,8 @@ struct RecordingFileTests {
         defer { try? FileManager.default.removeItem(at: url) }
         try RecordingFile.write(
             recording, scene: SceneConfig.merger(particleCount: 100), particles: system, to: url)
-        // The layout is the same, only the version and two optional header fields differ.
-        let handle = try FileHandle(forUpdating: url)
-        try handle.seek(toOffset: 8)
-        try handle.write(contentsOf: withUnsafeBytes(of: UInt64(4).littleEndian) { Data($0) })
-        try handle.close()
+        // Version 4 lacks the birth radii and two optional header fields.
+        try downgrade(url, to: 4, particles: 100)
 
         let loaded = try RecordingFile.read(from: url).recording
         #expect(loaded.count == 5)

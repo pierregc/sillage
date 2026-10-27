@@ -18,6 +18,7 @@ import simd
 ///     population, luminosity           particleCount floats each
 ///     formation                        particleCount floats, version 2 and up
 ///     kernelScale                      particleCount floats, version 4 and up
+///     birthRadius                      particleCount floats, version 6 and up
 ///     component, galaxy                particleCount 32-bit words each
 ///     frames                           frameCount x 8 floats
 ///     disk states                      frameCount x galaxyCount x 4 floats, version 3 and up
@@ -40,7 +41,8 @@ public enum RecordingFile {
     /// merged spiral with its arms still in it.
     /// 5 may keep one captured frame in several, which the header says, and a reader that
     /// does not know to interpolate across the gaps would play it that many times too fast.
-    private static let version: UInt64 = 5
+    /// 6 adds each particle's birth radius, which the galaxy colour ramps read (#119).
+    private static let version: UInt64 = 6
     private static let oldestReadableVersion: UInt64 = 1
 
     public struct Header: Codable {
@@ -112,6 +114,7 @@ public enum RecordingFile {
         try handle.write(contentsOf: bytes(of: padded(particles.luminosity, Float(1))))
         try handle.write(contentsOf: bytes(of: padded(particles.formation, ParticleSystem.ancient)))
         try handle.write(contentsOf: bytes(of: padded(particles.kernelScale, Float(1))))
+        try handle.write(contentsOf: bytes(of: padded(particles.birthRadius, Float(0))))
         try handle.write(contentsOf: bytes(of: padded(particles.component, UInt32(0))))
         try handle.write(contentsOf: bytes(of: padded(particles.galaxyIndex, UInt32(0))))
 
@@ -212,6 +215,7 @@ public enum RecordingFile {
         particles.kernelScale =
             version >= 4
             ? try take(Float.self, count) : [Float](repeating: 1, count: count)
+        let birthRadius = version >= 6 ? try take(Float.self, count) : nil
         particles.component = try take(UInt32.self, count)
         if particles.formation.isEmpty {
             // A version 1 take was made before there was any star formation to record, so it
@@ -281,7 +285,20 @@ public enum RecordingFile {
         // costs one decode.
         particles.positions = recording.positions(at: 0)
         particles.velocities = [SIMD3<Float>](repeating: .zero, count: count)
-        particles.birthRadius = particles.positions.map { simd_length($0) }
+        if let birthRadius {
+            particles.birthRadius = birthRadius
+        } else {
+            // Kept as older builds rebuilt it, so an old take with an old look replays
+            // byte for byte; the colour ramps read the frame-0 centres instead, which rank
+            // like the true radius (Spearman 0.85 to 0.96, #118).
+            particles.birthRadius = particles.positions.map { simd_length($0) }
+            let centres = recording.centers(at: 0)
+            particles.colourRadius = particles.positions.indices.map { index in
+                let galaxy = Int(particles.galaxyIndex[index])
+                return simd_distance(
+                    particles.positions[index], galaxy < centres.count ? centres[galaxy] : .zero)
+            }
+        }
         particles.mass = [Float](repeating: 0, count: count)
         // Everything in a take is visible; there is no dark matter in the file.
         particles.setVisibleCount(count)
