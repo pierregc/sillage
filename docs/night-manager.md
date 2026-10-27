@@ -274,4 +274,6 @@ runs and until when, the jobs waiting with their estimated start and end, the la
 "Calcul en cours (sans détail)", so "le Mac est libre" is only said when nothing runs. The
 fixtures in `Tests/Fixtures/queue-status/` hold the expected lines.
 
+Following a night from afar, with a small model: [night-status.md](night-status.md).
+
 Details and measurements: [README](../README.md).
