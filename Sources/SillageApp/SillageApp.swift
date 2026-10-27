@@ -19,6 +19,8 @@ struct SillageApp: App {
     @StateObject private var model = SimulationModel()!
     @StateObject private var library: LibraryModel
     @StateObject private var navigation = AppNavigation()
+    @StateObject private var queue = QueueModel(
+        library: LibraryModel.defaultRoot() ?? FileManager.default.homeDirectoryForCurrentUser)
     @StateObject private var menuStatus: MenuBarStatus
 
     init() {
@@ -55,15 +57,21 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--queuecheck") {
             MainActor.assumeIsolated { QueueCheck.run() }
         }
+        if CommandLine.arguments.contains("--statuscheck") {
+            MainActor.assumeIsolated { StatusCheck.run() }
+        }
     }
 
     var body: some Scene {
         Window("Sillage", id: AppNavigation.windowID) {
-            MainView(model: model, library: library, navigation: navigation)
+            MainView(model: model, library: library, navigation: navigation, queue: queue)
                 .frame(minWidth: 1180, minHeight: 720)
                 // The panel draws on the system background, so the appearance is pinned rather
                 // than letting a light theme put dark text on the black canvas.
                 .preferredColorScheme(.dark)
+                .onReceive(library.$root) { root in
+                    if let root { queue.use(library: root) }
+                }
                 .onAppear {
                     library.onTune = { [weak model, weak navigation] scene in
                         guard let model else { return }
@@ -76,7 +84,7 @@ struct SillageApp: App {
                     QACheck.run(model)
                     SoakCheck.run(model)
                     QueueSoak.run()
-                    NavigationCheck.run(model, library, navigation)
+                    NavigationCheck.run(model, library, navigation, queue)
                 }
         }
         .windowResizability(.contentMinSize)

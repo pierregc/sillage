@@ -10,10 +10,13 @@ enum NavigationCheck {
     private static var lines: [String] = []
     private static var failures = 0
 
-    static func run(_ model: SimulationModel, _ library: LibraryModel, _ navigation: AppNavigation) {
+    static func run(
+        _ model: SimulationModel, _ library: LibraryModel, _ navigation: AppNavigation,
+        _ queue: QueueModel
+    ) {
         guard CommandLine.arguments.contains("--navcheck") else { return }
         Task {
-            await exercise(model, library, navigation)
+            await exercise(model, library, navigation, queue)
             let report = lines.joined(separator: "\n") + "\n\n\(failures) échec(s)"
             try? report.write(
                 to: URL(fileURLWithPath: "/tmp/sillage-navigation.log"), atomically: true,
@@ -43,7 +46,8 @@ enum NavigationCheck {
     }
 
     private static func exercise(
-        _ model: SimulationModel, _ library: LibraryModel, _ navigation: AppNavigation
+        _ model: SimulationModel, _ library: LibraryModel, _ navigation: AppNavigation,
+        _ queue: QueueModel
     ) async {
         _ = await settle(model, 1)
         check("la bibliothèque est l'accueil", navigation.selection == .library(.all))
@@ -70,6 +74,11 @@ enum NavigationCheck {
             "\(staged) + \(discarded) écartées sur \(library.scenes.count)")
         navigation.selection = .library(.all)
         _ = await settle(model, 1)
+
+        navigation.selection = .queue
+        check("la file d'attente remplace la grille", await settle(model, 2) { !library.isShown })
+        check("la ligne d'état a un texte", !queue.status.statusLine.isEmpty, queue.status.statusLine)
+        snapshot("queue")
 
         navigation.selection = .nights
         check("les nuits remplacent la grille", await settle(model, 2) { !library.isShown })

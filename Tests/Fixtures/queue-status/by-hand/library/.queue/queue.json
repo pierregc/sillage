@@ -1,0 +1,79 @@
+{
+  "jobs": [
+    {
+      "added": "2026-10-26T21:59:00.000+01:00",
+      "by": "hand",
+      "id": 20,
+      "kind": "hires",
+      "night": "2026-10-26",
+      "options": [
+        "--particles",
+        "2000000"
+      ],
+      "path": "/library/2026-10-26/scene-0031",
+      "state": "waiting"
+    },
+    {
+      "added": "2026-10-26T21:59:00.000+01:00",
+      "by": "night",
+      "ended": "2026-10-27T00:39:00.000+01:00",
+      "id": 13,
+      "kind": "hires",
+      "night": "2026-10-26",
+      "options": [
+        "--particles",
+        "2000000"
+      ],
+      "path": "/library/2026-10-26/scene-0019",
+      "started": "2026-10-26T23:10:00.000+01:00",
+      "state": "done",
+      "status": 0
+    },
+    {
+      "added": "2026-10-26T21:59:00.000+01:00",
+      "by": "night",
+      "ended": "2026-10-26T23:09:00.000+01:00",
+      "id": 12,
+      "kind": "export",
+      "night": "2026-10-26",
+      "options": [
+        "--preset",
+        "4k"
+      ],
+      "path": "/library/2026-10-26/scene-0019",
+      "started": "2026-10-26T22:50:00.000+01:00",
+      "state": "done",
+      "status": 0
+    },
+    {
+      "added": "2026-10-26T21:59:00.000+01:00",
+      "by": "night",
+      "ended": "2026-10-26T22:49:00.000+01:00",
+      "id": 11,
+      "kind": "hires",
+      "message": "exit status 1",
+      "night": "2026-10-26",
+      "options": [],
+      "path": "/library/2026-10-26/scene-0017",
+      "started": "2026-10-26T22:30:00.000+01:00",
+      "state": "failed",
+      "status": 1
+    },
+    {
+      "added": "2026-10-26T21:59:00.000+01:00",
+      "by": "night",
+      "ended": "2026-10-26T22:20:00.000+01:00",
+      "id": 10,
+      "kind": "explore",
+      "message": "cancelled before it started",
+      "night": "2026-10-26",
+      "options": [],
+      "path": "/library/2026-10-26",
+      "state": "cancelled"
+    }
+  ],
+  "nextID": 30,
+  "paused": false,
+  "updated": "2026-10-27T01:09:00.000+01:00",
+  "version": 1
+}

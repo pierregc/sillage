@@ -146,4 +146,10 @@ Scripts add an event with `sillage-render event <batch> <kind> --scene scene-000
 (`--take-gb` for `takeGB`) rather than writing JSON by hand. The ETA of `hires` follows the pace
 of its frames once they start, and reaches the last frame, not the writing of the take after it.
 
+`sillage-render status` prints what the app's status line and queue view say, from the same
+formatter (`QueueStatus`): what runs and until when, the jobs waiting with their estimated start
+and end, the last ten finished. A `sillage-render` process that wrote no status shows as
+"Calcul en cours (sans détail)", so "le Mac est libre" is only said when nothing runs. The
+fixtures in `Tests/Fixtures/queue-status/` hold the expected lines.
+
 Details and measurements: [README](../README.md).
