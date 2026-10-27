@@ -98,8 +98,22 @@ enum NavigationCheck {
         // The new night sheet comes over whatever shows, and a launch lands on the night's page.
         func sheetShown() -> Bool { NSApp.windows.contains { $0.attachedSheet != nil } }
         navigation.selection = .library(.all)
+        // A sheet hangs from a window that is on screen. A machine whose display sleeps, or a
+        // window behind another app, keeps it hidden: the app is brought forward first, and if
+        // the window still cannot be seen the sheet is checked in the model only, and says so.
+        let host = NSApp.windows.first { $0.contentView != nil && $0.canBecomeMain }
+        NSApp.activate(ignoringOtherApps: true)
+        host?.orderFrontRegardless()
+        _ = await settle(model, 1) { host?.isVisible == true }
+        let onScreen = host?.isVisible == true
         navigation.newNight()
-        check("Nouvelle nuit ouvre la feuille", await settle(model, 3) { sheetShown() })
+        if onScreen {
+            check("Nouvelle nuit ouvre la feuille", await settle(model, 3) { sheetShown() })
+        } else {
+            check(
+                "Nouvelle nuit demande la feuille (fenêtre cachée : le modèle seulement)",
+                navigation.showsNightSheet)
+        }
         navigation.showsNightSheet = false
         check("fermer la feuille la retire", await settle(model, 3) { !sheetShown() })
         check("la bibliothèque reste là", navigation.selection == .library(.all))
