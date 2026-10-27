@@ -897,7 +897,7 @@ final class SimulationModel: ObservableObject {
         guard let reel = recording, canReplay else { return }
         fileActivity = "Enregistrement de la prise…"
         let scene = self.scene
-        let particles = seeded
+        let particles = solver?.capturedParticles(from: seeded) ?? seeded
         simulationQueue.async { [weak self] in
             var failure: String?
             do {
@@ -1220,7 +1220,7 @@ final class SimulationModel: ObservableObject {
             }
             renderer = try Renderer(
                 device: device, particles: seeded, settings: settings, externalPositions: bound,
-                externalFormation: mode == .playback ? nil : solver?.formation)
+                externalFormation: solver?.formation)
             renderer?.setSmoothing(smoothing?.buffer)
             renderer?.apply(look)
             renderer?.setGalaxyColours(lookFile.palette)

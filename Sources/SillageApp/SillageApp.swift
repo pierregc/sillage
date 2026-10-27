@@ -60,6 +60,9 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--statuscheck") {
             MainActor.assumeIsolated { StatusCheck.run() }
         }
+        if CommandLine.arguments.contains("--nightcheck") {
+            MainActor.assumeIsolated { NightSheetCheck.run() }
+        }
     }
 
     var body: some Scene {
@@ -364,6 +367,7 @@ struct SillageApp: App {
                 }
                 .padding(10)),
             to: "out/ui-menubar.png")
+        NightSheetCheck.pictures()
         exit(0)
     }
 
@@ -404,7 +408,7 @@ struct SillageApp: App {
     }
 
     @MainActor
-    private static func write(_ view: AnyView, to path: String) {
+    static func write(_ view: AnyView, to path: String) {
         let renderer = ImageRenderer(
             content: view.environment(\.colorScheme, .dark).background(Palette.panel))
         renderer.proposedSize = .unspecified
