@@ -85,6 +85,17 @@ kept. Written under a lock by whoever changes it; read it freely.
 A runner that finds a job still marked running whose process is gone marks it failed and removes
 what it left half written.
 
+### Notifications
+
+The runner posts a macOS notification at each `phase.done` and at `night.done` it finds in a
+batch's `events.jsonl` while it works, when a job fails (stage and scene), and when the queue
+empties after jobs asked for by hand. It runs without a bundle, which `UNUserNotificationCenter`
+refuses, so it calls `osascript -e 'display notification …'` (0.14 s, exit 0 from a detached
+process). The switch is `notifications` in `library/.queue/settings.json`, written by the app's
+Réglages (⌘,) and read at every notice. While something runs, a menu bar ring shows the
+progress and the status line. `SILLAGE_NOTICE_LOG=<file>` appends notices there instead of
+showing them, for checks.
+
 ## How it works
 
 - A scene is `--seed S --index N` of a generator: same two numbers, same scene.
