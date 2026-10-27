@@ -48,6 +48,8 @@ final class StyleSession: ObservableObject {
     @Published private(set) var note: String?
     /// The file the saved style covers while Avant/Après is held.
     @Published private(set) var covered: LookFile?
+    /// The Rendu section's thumbnails, which publish on their own.
+    let thumbnails: StyleThumbnails
 
     /// Proposals shown at a time.
     static let proposalCount = 6
@@ -78,6 +80,7 @@ final class StyleSession: ObservableObject {
         promoted = folder.map { FileManager.default.fileExists(atPath: $0.rawLook.path) } ?? false
         sceneFile = folder.flatMap { try? SceneFile.decoded(from: Data(contentsOf: $0.scene)) }
         world = saved?.world ?? .free
+        thumbnails = StyleThumbnails(model: model, catalogue: catalogue, folder: folder)
         // The inspector watches this rather than the model, which publishes on every frame.
         watching = Publishers.MergeMany(
             model.$lookFile.map { _ in () }.eraseToAnyPublisher(),
@@ -91,6 +94,7 @@ final class StyleSession: ObservableObject {
         ).sink { [weak self] in
             MainActor.assumeIsolated { self?.objectWillChange.send() }
         }
+        thumbnails.session = self
         propose()
     }
 

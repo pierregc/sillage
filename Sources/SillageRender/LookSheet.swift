@@ -85,14 +85,19 @@ public final class LookSheet {
     }
 
     /// Hands each cell to `each` with its look and frame indices as it is drawn, frame by
-    /// frame, so many looks need not all be held at once.
+    /// frame, so many looks need not all be held at once. A `camera` given frames every cell
+    /// in place of each look's plan.
     public func draw(
         looks: [LookFile], frames: [Int], width: Int, height: Int, cellWidth: Int,
-        cellHeight: Int, framesPerSecond: Int, owners: Bool = false,
+        cellHeight: Int, framesPerSecond: Int, owners: Bool = false, camera: Camera? = nil,
+        slice: Int? = nil, pacer: CanvasPacer? = nil,
         each: (_ look: Int, _ frame: Int, _ cell: Cell) throws -> Void
     ) throws {
         let recording = take.recording
-        let shots = looks.map { self.shots(of: $0, at: frames, fps: framesPerSecond) }
+        let shots = looks.map { file -> [ShotReplay.Shot] in
+            guard let camera else { return self.shots(of: file, at: frames, fps: framesPerSecond) }
+            return frames.map { _ in (camera, file.look) }
+        }
         for (column, frame) in frames.enumerated() {
             guard let blend = recording.blend(atCaptured: frame) else { continue }
             try expand(blend)
@@ -102,10 +107,11 @@ public final class LookSheet {
                 let renderer = try renderer(for: file, width: width, height: height)
                 let shot = shots[row][column]
                 renderer.prepare(file, shot: shot, take: take, at: blend)
+                let drawn =
+                    slice.map { renderer.render(camera: shot.camera, slice: $0, pacer: pacer) }
+                    ?? renderer.render(camera: shot.camera)
                 var cell = Cell(
-                    pixels: LookGrid.scaled(
-                        renderer.render(camera: shot.camera), from: (width, height),
-                        to: (cellWidth, cellHeight)))
+                    pixels: LookGrid.scaled(drawn, from: (width, height), to: (cellWidth, cellHeight)))
                 if owners {
                     let c = shot.camera
                     let key = "\(c.eye) \(c.target) \(c.up) \(c.fieldOfView)"
@@ -165,6 +171,55 @@ public final class LookSheet {
         expander.expand(
             frames: frames, at: (0..<4).map { $0 * stride }, blend: blend, from: snapshots,
             into: positions)
+    }
+
+    /// Builds the renderers `looks` lack side by side: at two million particles each costs a
+    /// quarter of a second on one core, most of what a first pass over the catalogue takes.
+    public func build(_ looks: [LookFile], width: Int, height: Int) throws {
+        var wanted: [LookFile] = []
+        for file in looks
+        where !renderers.contains(where: { !file.rebuildsRenderer(from: $0.file) })
+            && !wanted.contains(where: { !file.rebuildsRenderer(from: $0) })
+        {
+            wanted.append(file)
+        }
+        guard !wanted.isEmpty else { return }
+        let files = wanted
+        let built = Built(count: files.count)
+        let (device, particles, positions) = (device, take.particles, positions)
+        let lanes = min(Self.buildLanes, files.count)
+        DispatchQueue.concurrentPerform(iterations: lanes) { lane in
+            for index in Swift.stride(from: lane, to: files.count, by: lanes) {
+                built.set(
+                    index,
+                    Result {
+                        try Renderer(
+                            device: device, particles: particles,
+                            settings: files[index].renderSettings(width: width, height: height),
+                            externalPositions: positions)
+                    })
+            }
+        }
+        for (file, result) in zip(files, built.results) {
+            let renderer = try result.get()
+            renderer.setSmoothing(smoothing.buffer)
+            renderers.append((file, renderer))
+        }
+    }
+
+    /// Builds at once: enough to take a first pass at 2 M from four seconds to two, few
+    /// enough to leave the main thread its cores.
+    static let buildLanes = 4
+
+    private final class Built: @unchecked Sendable {
+        private let lock = NSLock()
+        private(set) var results: [Result<Renderer, any Error>]
+
+        init(count: Int) { results = Array(repeating: .failure(RenderError.noDevice), count: count) }
+
+        func set(_ index: Int, _ result: Result<Renderer, any Error>) {
+            lock.withLock { results[index] = result }
+        }
     }
 
     private func renderer(for file: LookFile, width: Int, height: Int) throws -> Renderer {

@@ -37,6 +37,24 @@ struct PlainRenderTests {
         #expect(pixels[0] == 0 && pixels[1] == 0 && pixels[2] == 0)
     }
 
+    @Test func aSlicedSplatDrawsTheSamePicture() throws {
+        let scene = SceneConfig.merger(particleCount: 20_000)
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        let renderer = try Renderer(
+            particles: particles,
+            settings: RenderSettings(
+                width: 320, height: 180, supersample: 2, brightness: 0.12, dustStrength: 0.5,
+                starCount: 300, bloomIntensity: 0.3, spikeArms: 4, noiseLevel: 0))
+        renderer.setDiskFrames(
+            DiskFrame.make(
+                scene: scene, centers: scene.galaxies.map(\.position), time: 0, strength: 1))
+        let camera = Camera.framing(radius: 80)
+        let whole = renderer.render(camera: camera)
+        let sliced = renderer.render(camera: camera, slice: 3_000)
+        #expect(whole.contains { $0 > 0 })
+        #expect(sliced == whole)
+    }
+
     @Test func theAutoCameraHoldsEveryGalaxyAtEveryFrame() {
         var camera = AutoCamera()
         let margins: [Float] = [10, 6, 8]
