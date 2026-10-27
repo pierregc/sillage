@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 import simd
 
 /// The style Auto chooses for a scene: the best (rendering, palette) pair of a world, judged on
@@ -111,5 +112,63 @@ public enum StyleAuto {
                 + paletteWeight * candidates[index].paletteScore.total
         }
         return candidates.sorted { $0.total > $1.total }
+    }
+
+    /// What `choose` found: the pairs best first, the frames they were judged on and the sheet
+    /// that drew them, to draw more.
+    public struct Outcome {
+        public var world: Palette.World
+        public var keys: [KeyFrame]
+        public var ranked: [Candidate]
+        public var sheet: LookSheet
+        public var width: Int
+        public var height: Int
+        public var fps: Int
+    }
+
+    /// The pairs of a scene with a take, in `world` or else its look's world. `catalogue` is
+    /// the repository's looks, `references` #125's sets. Nothing is written.
+    public static func choose(
+        _ folder: SceneFolder, world: Palette.World? = nil, catalogue: [LookFile],
+        references: [TelescopeReference]
+    ) throws -> Outcome {
+        guard FileManager.default.fileExists(atPath: folder.take.path) else {
+            throw SceneFolder.LookError.noTake(folder.url)
+        }
+        let base =
+            (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }
+            ?? .standard
+        let world = world ?? base.world
+        let renderings = LookCatalogue.renderings(world, in: catalogue)
+        let scene = try SceneFile.decoded(from: Data(contentsOf: folder.scene))
+        let palettes = Array(
+            try PaletteAuto.ranked(
+                galaxies: scene.galaxies.count, world: world, seed: scene.seed,
+                telescope: references
+            ).prefix(palettesPerRendering(world)))
+
+        let sheet = try LookSheet(take: try RecordingFile.read(from: folder.take))
+        let lastFrame = sheet.capturedFrames - 1
+        let samples =
+            (try? String(contentsOf: folder.hiresCurves, encoding: .utf8))
+            .map(KeyFrames.samples) ?? []
+        var keys = frames(KeyFrames.pick(samples.filter { $0.frame <= lastFrame }))
+        if keys.isEmpty {
+            keys = [lastFrame / 4, lastFrame / 2, 3 * lastFrame / 4].map {
+                KeyFrame(frame: $0, role: .middle, timeMyr: 0)
+            }
+        }
+        let clip = try folder.storedClip()
+        let hires = folder.storedHires()
+        let width = hires?.width ?? clip.width
+        let height = hires?.height ?? clip.height
+        let fps = hires?.fps ?? clip.fps
+        let ranked = try self.ranked(
+            sheet: sheet, base: base, renderings: renderings, palettes: palettes,
+            frames: keys.map(\.frame), width: width, height: height, framesPerSecond: fps,
+            references: references)
+        return Outcome(
+            world: world, keys: keys, ranked: ranked, sheet: sheet, width: width, height: height,
+            fps: fps)
     }
 }

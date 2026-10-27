@@ -19,6 +19,8 @@ public struct FrameScore: Sendable, Equatable, Codable {
         public var nearest: Float?
         /// Median deviation of a sky pixel from its neighbours, on 0 to 255 values.
         public var skyNoise: Float
+        /// Mean local contrast of the lit pixels against a 7 pixel box around them.
+        public var detail: Float
         /// Mean distance of the galaxies' drawn colours to the nearest reference tone.
         public var referenceMiss: Float?
     }
@@ -28,6 +30,8 @@ public struct FrameScore: Sendable, Equatable, Codable {
     public var colourfulness: Float
     public var separation: Float
     public var noise: Float
+    /// Structure left in the galaxies: low when glow washes the arms and knots into blobs.
+    public var detail: Float
     /// Only in the telescope world, with the reference files of #125.
     public var reference: Float?
     public var total: Float
@@ -36,13 +40,15 @@ public struct FrameScore: Sendable, Equatable, Codable {
     static let weights:
         (
             clipping: Float, exposure: Float, colourfulness: Float, separation: Float,
-            noise: Float, reference: Float
-        ) = (0.15, 0.2, 0.2, 0.2, 0.1, 0.15)
+            noise: Float, detail: Float, reference: Float
+        ) = (0.1, 0.15, 0.2, 0.2, 0.1, 0.15, 0.15)
 
     /// Display luma above which a pixel belongs to something rather than to the sky.
     static let litLuma: Float = 0.1
     /// An 8-bit channel at or above this is clipped.
     static let clipLevel: UInt8 = 250
+    /// Local contrast at which a galaxy counts as fully drawn.
+    static let sharpDetail: Float = 0.3
 
     /// `pixels` are 8-bit sRGB RGBA, `width` by `height`. `owners` gives each pixel's galaxy
     /// plus one, 0 where none or several share it; without it the frame counts as one galaxy.
@@ -83,6 +89,7 @@ public struct FrameScore: Sendable, Equatable, Codable {
             clipped: 0, litLuma: 0, peakLuma: Self.percentile(luma.filter { $0 >= Self.litLuma }, 0.95),
             colourfulness: 0,
             nearest: nil, skyNoise: Self.skyNoise(luma, width: width, height: height),
+            detail: Self.detail(luma, width: width, height: height),
             referenceMiss: nil)
         if lit > 0 {
             let n = Double(lit)
@@ -132,11 +139,12 @@ public struct FrameScore: Sendable, Equatable, Codable {
         // Hasler and Süsstrunk call 45 fairly colourful and 110 extremely: past that it is
         // neon.
         colourfulness =
-            PaletteScore.smooth(m.colourfulness / 45)
-            * (1 - 0.6 * PaletteScore.smooth((m.colourfulness - 100) / 80))
+            PaletteScore.smooth(m.colourfulness / 40)
+            * (1 - 0.7 * PaletteScore.smooth((m.colourfulness - 80) / 70))
         separation = m.nearest.map { PaletteScore.smooth($0 / 0.06) } ?? 1
         // The looks' own grain sits near 2; twice that shows.
         noise = 1 - PaletteScore.smooth((m.skyNoise - 1.5) / 4)
+        detail = PaletteScore.smooth(m.detail / Self.sharpDetail)
         reference = m.referenceMiss.map {
             let ratio = $0 / PaletteScore.referenceScale
             return 1 / (1 + ratio * ratio)
@@ -144,8 +152,9 @@ public struct FrameScore: Sendable, Equatable, Codable {
         let w = Self.weights
         var sum =
             w.clipping * clipping + w.exposure * exposure + w.colourfulness * colourfulness
-            + w.separation * separation + w.noise * noise
-        var weight = w.clipping + w.exposure + w.colourfulness + w.separation + w.noise
+            + w.separation * separation + w.noise * noise + w.detail * detail
+        var weight =
+            w.clipping + w.exposure + w.colourfulness + w.separation + w.noise + w.detail
         if let reference {
             sum += w.reference * reference
             weight += w.reference
@@ -196,6 +205,38 @@ public struct FrameScore: Sendable, Equatable, Codable {
             }
         }
         return percentile(deviations, 0.5)
+    }
+
+    /// Mean over the lit pixels of their distance to the mean of the 7 by 7 box around them,
+    /// relative to that mean.
+    static func detail(_ luma: [Float], width: Int, height: Int) -> Float {
+        let r = 3
+        guard width > 2 * r, height > 2 * r else { return 0 }
+        var integral = [Double](repeating: 0, count: (width + 1) * (height + 1))
+        for y in 0..<height {
+            var row: Double = 0
+            for x in 0..<width {
+                row += Double(luma[y * width + x])
+                integral[(y + 1) * (width + 1) + x + 1] = integral[y * (width + 1) + x + 1] + row
+            }
+        }
+        func box(_ x0: Int, _ y0: Int, _ x1: Int, _ y1: Int) -> Double {
+            integral[y1 * (width + 1) + x1] - integral[y0 * (width + 1) + x1]
+                - integral[y1 * (width + 1) + x0] + integral[y0 * (width + 1) + x0]
+        }
+        let area = Double((2 * r + 1) * (2 * r + 1))
+        var sum: Double = 0
+        var count = 0
+        for y in r..<(height - r) {
+            for x in r..<(width - r) {
+                let value = luma[y * width + x]
+                guard value >= Self.litLuma else { continue }
+                let around = Float(box(x - r, y - r, x + r + 1, y + r + 1) / area)
+                sum += Double(abs(value - around) / max(around, 0.05))
+                count += 1
+            }
+        }
+        return count == 0 ? 0 : Float(sum / Double(count))
     }
 
     static func percentile(_ values: [Float], _ p: Float) -> Float {

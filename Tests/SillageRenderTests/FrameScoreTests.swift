@@ -14,7 +14,7 @@ struct FrameScoreTests {
     /// galaxy plus one.
     static func frame(
         colours: (SIMD3<Float>, SIMD3<Float>) = (SIMD3(1, 0.55, 0.3), SIMD3(0.35, 0.6, 1)),
-        gain: Float = 0.75, skyNoise: Float = 0
+        gain: Float = 0.75, skyNoise: Float = 0, arms: Float = 0
     ) -> (pixels: [UInt8], owners: [UInt8]) {
         var random = SeededGenerator(seed: 7)
         var pixels = [UInt8](repeating: 255, count: width * height * 4)
@@ -29,7 +29,9 @@ struct FrameScoreTests {
                     let r = simd_distance(SIMD2(Float(x), Float(y)), centre) / 28
                     guard r < 1 else { continue }
                     let tint = galaxy == 0 ? colours.0 : colours.1
-                    let level = gain * (1 - r * r) + 0.05
+                    let angle = atan2(Float(y) - centre.y, Float(x) - centre.x)
+                    let wave = 1 - arms * (0.5 + 0.5 * sin(2 * angle + 9 * r))
+                    let level = gain * (1 - r * r) * wave + 0.05
                     let white = (1 - r) * 0.5
                     colour = tint * level * (1 - white) + SIMD3(repeating: level * white)
                     owners[i] = UInt8(galaxy + 1)
@@ -72,6 +74,13 @@ struct FrameScoreTests {
         #expect(apart.separation > 0.9)
         #expect(alike.separation < 0.2)
         #expect(alike.colourfulness < apart.colourfulness)
+    }
+
+    @Test func armsDrawnShowMoreDetailThanASmoothGlow() {
+        let smooth = Self.score(Self.frame())
+        let armed = Self.score(Self.frame(arms: 0.8))
+        #expect(armed.measures.detail > 2 * smooth.measures.detail)
+        #expect(armed.detail > smooth.detail)
     }
 
     @Test func aNoisySkyScoresLower() {

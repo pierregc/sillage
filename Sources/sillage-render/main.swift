@@ -323,54 +323,21 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
             $0 + 1 < options.count ? options[$0 + 1] : nil
         }
     }
-    guard FileManager.default.fileExists(atPath: folder.take.path) else {
-        throw SceneFolder.LookError.noTake(folder.url)
-    }
     let started = Date()
-    let base =
-        (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }
-        ?? .standard
-    let world: Palette.World
+    var world: Palette.World?
     if let name = option("world") {
         guard let asked = Palette.World(rawValue: name) else {
             fail("look: --world is telescope or free")
         }
         world = asked
-    } else {
-        world = base.world
     }
-    let references = telescopeReferences()
-    let renderings = LookCatalogue.renderings(world, in: catalogueLooks())
-    guard !renderings.isEmpty else { fail("look: no rendering in the \(world.rawValue) world") }
-    let (seed, galaxies) = try sceneSeed(folder)
-    let palettes = Array(
-        try PaletteAuto.ranked(
-            galaxies: galaxies, world: world, seed: seed, telescope: references
-        ).prefix(StyleAuto.palettesPerRendering(world)))
-
-    let loaded = try RecordingFile.read(from: folder.take)
-    let sheet = try LookSheet(take: loaded)
-    let lastFrame = sheet.capturedFrames - 1
-    let samples =
-        (try? String(contentsOf: folder.hiresCurves, encoding: .utf8))
-        .map(KeyFrames.samples) ?? []
-    var keys = StyleAuto.frames(KeyFrames.pick(samples.filter { $0.frame <= lastFrame }))
-    if keys.isEmpty {
-        keys = [lastFrame / 4, lastFrame / 2, 3 * lastFrame / 4].map {
-            KeyFrame(frame: $0, role: .middle, timeMyr: 0)
-        }
-    }
-    let loadedAt = Date()
-    let clip = try folder.storedClip()
-    let hires = folder.storedHires()
-    let width = hires?.width ?? clip.width
-    let height = hires?.height ?? clip.height
-    let fps = hires?.fps ?? clip.fps
-    let ranked = try StyleAuto.ranked(
-        sheet: sheet, base: base, renderings: renderings, palettes: palettes,
-        frames: keys.map(\.frame), width: width, height: height, framesPerSecond: fps,
-        references: references)
+    let outcome = try StyleAuto.choose(
+        folder, world: world, catalogue: catalogueLooks(), references: telescopeReferences())
     let scoredAt = Date()
+    let (sheet, keys, ranked) = (outcome.sheet, outcome.keys, outcome.ranked)
+    let (width, height, fps) = (outcome.width, outcome.height, outcome.fps)
+    let renderings = Set(ranked.map(\.rendering)).count
+    let palettes = Set(ranked.map(\.palette.name)).count
 
     func label(_ candidate: StyleAuto.Candidate) -> String {
         String(format: "%.3f %@ · %@", candidate.total, candidate.rendering, candidate.palette.name)
@@ -384,9 +351,9 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         print(
             String(
                 format:
-                    "style      %d. %@: clipping %.2f exposure %.2f colour %.2f separation %.2f noise %.2f reference %@ palette %.2f",
+                    "style      %d. %@: clipping %.2f exposure %.2f colour %.2f separation %.2f noise %.2f detail %.2f reference %@ palette %.2f",
                 index + 1, label(candidate), part(\.clipping), part(\.exposure),
-                part(\.colourfulness), part(\.separation), part(\.noise),
+                part(\.colourfulness), part(\.separation), part(\.noise), part(\.detail),
                 reference.isEmpty
                     ? "-" : String(format: "%.2f", reference.reduce(0, +) / Float(reference.count)),
                 candidate.paletteScore.total))
@@ -403,7 +370,7 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let report = folder.looks.appendingPathComponent("auto-\(world.rawValue).json")
+    let report = folder.looks.appendingPathComponent("auto-\(outcome.world.rawValue).json")
     try encoder.encode(
         ranked.map {
             Row(
@@ -426,16 +393,15 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
                     format: "%@ · %.0f Myr", $0.role.rawValue, sheet.timeMyr(atCaptured: $0.frame))
             }, cellWidth: StyleAuto.cellWidth, cellHeight: cellHeight)
     else { fail("look: could not compose the grid") }
-    let gridURL = folder.looks.appendingPathComponent("auto-\(world.rawValue).png")
+    let gridURL = folder.looks.appendingPathComponent("auto-\(outcome.world.rawValue).png")
     try PNGWriter.write(grid, to: gridURL)
 
     print(
         String(
             format:
-                "style      %d pairs (%d renderings x %d palettes) on %d frames at %dx%d: %.1f s (take %.1f s, scoring %.1f s)",
-            ranked.count, renderings.count, palettes.count, keys.count, width, height,
-            scoredAt.timeIntervalSince(started), loadedAt.timeIntervalSince(started),
-            scoredAt.timeIntervalSince(loadedAt)))
+                "style      %d pairs (%d renderings, %d palettes) on %d frames at %dx%d: %.1f s",
+            ranked.count, renderings, palettes, keys.count, width, height,
+            scoredAt.timeIntervalSince(started)))
     print("grid       \(gridURL.path)")
     print("scores     \(report.path)")
     if let best = ranked.first, !options.contains("--keep") {
