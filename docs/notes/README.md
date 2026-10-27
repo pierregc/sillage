@@ -20,6 +20,7 @@ session. Read the note for an area before changing it.
 - [Quadrupoles, and why the orbit chose the angle](quadrupoles.md)
 - [The tree on the GPU](gpu-tree.md): and the gap the frames were using
 - [Encounters placed from their pericentre](encounters.md)
+- [Whole stories](whole-stories.md): when a scene's story is over, and how long clips run
 
 ## Physics and galaxies
 

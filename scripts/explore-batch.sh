@@ -15,7 +15,10 @@ DEFAULT_JOBS=4
 # the sizes a budget lands on: 101 at 50 000 a galaxy, 126 at 400 000, where the GPU is full.
 NS_PER_PARTICLE_STEP=126
 SECONDS_PER_SCENE=4     # starting up, and the steps before the first frame are counted apart
-MB_PER_SCENE=30         # a raw preview at 960x540 is 5 to 25 MB
+# explore follows a story past the planned span until it is over (#123): on the 2026-10-25
+# night this much more of the span on average, which the budget and the disk count in.
+STORY_EXTRA=__EXTRA__
+MB_PER_SCENE=__MB__         # a raw preview at 960x540 is 5 to 25 MB for the planned span
 MAX_FAILURES=5
 # What --hours and --scenes choose the particle count from, and how much of the time it plans
 # to fill: rejected draws, the scenes in flight at the deadline and the estimate's own error
@@ -103,8 +106,9 @@ budget() {
             [ -n "$galaxies" ] || continue
             probed="$(probe "$n" $(( galaxies * pg )))"
             clip="${steps:-$(steps_for "${probed#* }")}"
-            total=$(awk -v t="$total" -v p=$(( galaxies * pg )) -v s=$(( settle + clip )) \
-                -v c="$NS_PER_PARTICLE_STEP" -v o="$SECONDS_PER_SCENE" 'BEGIN { print t + o + p * s * c / 1e9 }')
+            total=$(awk -v t="$total" -v p=$(( galaxies * pg )) -v s="$settle" -v k="$clip" \
+                -v x="$STORY_EXTRA" -v c="$NS_PER_PARTICLE_STEP" -v o="$SECONDS_PER_SCENE" \
+                'BEGIN { print t + o + p * (s + k * (1 + x)) * c / 1e9 }')
         done
         if awk -v t="$total" -v k="$BUDGET_SAMPLE" -v n="$scenes" -v h="$hours" -v f="$BUDGET_FILL" \
             'BEGIN { exit !(n * t / k <= h * 3600 * f) }'
@@ -226,6 +230,7 @@ fi
 # never shows a scene halfway, and on the next run a folder that exists is a scene that is done.
 explore_scene() {
     local n=$1 id stage scene_log galaxies particles=0 clip="" probed rc=0 start status video_bytes=0
+    local frames_run=""
     local score=""
     id="$(printf 'scene-%04d' "$n")"
     stage="$out/.$id"
@@ -255,6 +260,9 @@ explore_scene() {
             mv "$stage" "$out/$id"
             status=ok
             video_bytes=$(stat -f%z "$out/$id/preview.mov")
+            # What ran, which is longer than planned when the story went on.
+            read -r frames_run clip < <(python3 -c 'import json, sys
+c = json.load(open(sys.argv[1])); print(c["frames"], c["steps"])' "$out/$id/clip.json")
         elif [ "$rc" -eq 3 ]; then
             status=rejected
             note "$id rejected: $(grep -m1 '^rejected' "$scene_log" | sed 's/^rejected *//')"
@@ -268,7 +276,7 @@ explore_scene() {
     # One short line in a single write, so rows from scenes finishing together do not mix.
     local columns="$video_bytes"
     [ "$scored" -eq 0 ] || columns="$video_bytes,$score,"
-    echo "$id,$seed,$n,$galaxies,$particles,$width,$height,$frames,$fps,$settle,$clip,$wall,$columns,$status" >>"$index"
+    echo "$id,$seed,$n,$galaxies,$particles,$width,$height,${frames_run:-$frames},$fps,$settle,$clip,$wall,$columns,$status" >>"$index"
     # Through the binary, which writes one whole line however many scenes finish together.
     local event=(--scene "$id" --status "${status%%:*}" --seconds "$wall")
     case "$score" in "" | *[!0-9.]*) ;; *) event+=(--score "$score") ;; esac

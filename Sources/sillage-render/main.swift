@@ -1131,7 +1131,11 @@ let curves: FileHandle? = try argument("curves").map { path in
 let storyCap = argument("story-cap").flatMap(Double.init) ?? 0
 // Frames kept after the story ends, to see that nothing happens next. For measuring only.
 let storyAfter = number("story-after", 0)
-var story = storyCap > 0 && curves != nil ? Story.Tracker(story: Story(scene: scene)) : nil
+var storySettings = Story.Settings()
+storySettings.horizon = storyCap
+var story =
+    storyCap > 0 && curves != nil
+    ? Story.Tracker(story: Story(scene: scene, settings: storySettings)) : nil
 var previousTime = solver.time
 var curvesSeconds: Double = 0
 // `--density path` counts the stars on a fixed grid at `--density-frames` instants, the same
