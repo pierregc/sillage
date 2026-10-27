@@ -69,8 +69,10 @@ func catalogueLooks() -> [LookFile] {
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("looks"))
 }
 
-/// `look <scene folder>`: a grid of looks against key frames of the take, and `--promote
-/// <name>` to make one of its rows the scene's look.
+/// `look <scene folder>`: `--style`, `--palette` and `--promote <name>` choose the scene's style;
+/// `--grid` draws a grid of looks against key frames of the take (options: `--base <look|file>`,
+/// `--no-variants`, `--no-catalogue`, `--width`, `--take`, `--frames`, `--times`, and any
+/// `.look.json`; every row is kept as `looks/<name>.look.json`).
 func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     func option(_ name: String) -> String? {
         options.firstIndex(of: "--\(name)").flatMap {
@@ -91,6 +93,12 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     if let name = option("promote") {
         let file = try folder.promote(look: name)
         print("look       \(file.name) is now \(folder.look.path)")
+        return 0
+    }
+    guard options.contains("--grid") else {
+        print("look       choose a style in the app (Choisir le style), or with")
+        print("           sillage-render look \(folder.url.path) --style auto")
+        print("           sillage-render look \(folder.url.path) --palette auto")
         return 0
     }
 
