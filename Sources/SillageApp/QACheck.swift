@@ -386,18 +386,21 @@ enum QACheck {
                     model.resumeRunning()
                     return model.mode == .playback
                 }())
-            // And out as a video, which is what leaves the application.
-            let videoURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("qa.mov")
-            try? FileManager.default.removeItem(at: videoURL)
-            model.exportVideo(to: videoURL, width: 320, height: 240, framesPerSecond: 30)
-            while model.fileActivity != nil { await settle(0.3) }
-            let movie = (try? FileManager.default.attributesOfItem(atPath: videoURL.path)[.size])
+            // A video leaves through the queue, from a scene folder: a loose take offers none,
+            // its scene's take does.
+            report.check("une prise hors d'une scène n'offre pas Vidéo…", model.takeFolder == nil)
+            let sceneURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("qa-\(UUID().uuidString)/scene-0001", isDirectory: true)
+            let folder = SceneFolder(sceneURL)
+            try? FileManager.default.createDirectory(at: sceneURL, withIntermediateDirectories: true)
+            try? Data("{}".utf8).write(to: folder.scene)
+            try? FileManager.default.copyItem(at: takeURL, to: folder.take)
+            model.openTake(from: folder.take)
+            while model.fileActivity != nil { await settle(0.2) }
             report.check(
-                "la vidéo s'exporte", (movie as? Int ?? 0) > 10_000,
-                String(format: "%.2f Mo", Double(movie as? Int ?? 0) / 1_048_576))
-            report.check("l'export ne casse rien", model.failure == nil, model.failure ?? "")
-            try? FileManager.default.removeItem(at: videoURL)
+                "la prise d'une scène offre Vidéo… sur sa scène",
+                model.isOpenedTake && model.takeFolder == folder, model.takeFolder?.sceneID ?? "aucune")
+            try? FileManager.default.removeItem(at: sceneURL.deletingLastPathComponent())
             try? FileManager.default.removeItem(at: takeURL)
 
             model.returnToSetup()

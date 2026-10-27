@@ -343,6 +343,11 @@ enum LibraryCheck {
         model.pasteboard = NSPasteboard(name: .init("dev.pierregc.sillage.librarycheck"))
         model.watch()
         defer { model.stop() }
+        // Nothing queued here runs: no runner is started.
+        let queue = QueueModel(library: root, watch: false)
+        queue.runnerURL = nil
+        renderQueue = queue
+        defer { renderQueue = nil }
         check("trois scènes pour la page", wait(10) { model.scenes.count == 3 && model.playable.count == 3 })
         let id = { (index: Int) in "2026-10-26/" + String(format: "scene-%04d", index) }
 
@@ -418,27 +423,7 @@ enum LibraryCheck {
             wait(8) { model.facts?.exports.count == 4 })
         render(ScenePage(model: model, scene: scene, snapshot: true), to: "out/ui-scene-page.png")
 
-        let hires = StageCommand.hires(done, particles: 5_000_000)
-        check(
-            "la commande hires vise le dossier et la taille",
-            hires.contains("dev.sh hires \(done.url.path) --particles 5000000"), hires)
-        let again = StageCommand.export(done, preset: "1080p", existing: scene.exports)
-        check(
-            "exporter à nouveau ne remplace pas la vidéo",
-            again.hasSuffix("--preset 1080p --out \(done.exports.path)/1080p-2.mp4"), again)
-        let otherLook = StageCommand.export(
-            done, preset: "1080p", look: facts?.otherLooks.first, existing: scene.exports)
-        check(
-            "un autre style va dans un fichier à lui",
-            otherLook.contains("--look \(done.rawLook.path)") && otherLook.hasSuffix("1080p-raw.mp4"),
-            otherLook)
-        check(
-            "4k va à sa place",
-            StageCommand.export(done, preset: "4k", existing: scene.exports).hasSuffix("--preset 4k"))
-        model.copy(hires)
-        check(
-            "copier met la commande dans le presse-papiers",
-            model.pasteboard.string(forType: .string) == hires && model.copied == hires)
+        try exerciseStageJobs(model, queue: queue, done: done, chosen: folders[2], id: id)
 
         model.restoreRawLook(scene)
         check(
@@ -466,10 +451,6 @@ enum LibraryCheck {
         model.query.collection = .chosen
         model.open(id(3))
         _ = wait(5) { model.facts?.id == id(3) }
-        check(
-            "les tailles proposées disent leur durée",
-            model.facts?.hiresCosts.first { $0.particles == 2_000_000 }?.label == "2 M, environ 1 h 25",
-            model.facts?.hiresCosts.map(\.label).joined(separator: " / ") ?? "rien")
         render(
             ScenePage(model: model, scene: try found(model.scene(id(3))), snapshot: true),
             to: "out/ui-scene-page-next.png")
@@ -493,8 +474,106 @@ enum LibraryCheck {
         return value
     }
 
+    /// The queue the page's buttons add to, in the snapshots.
+    private static var renderQueue: QueueModel?
+
     private static func render(_ page: ScenePage, to path: String) {
         write(page.frame(width: 1180, height: 940), to: path)
+    }
+
+    /// Calculer and Exporter through the queue, as the form and the sheet plan them, without a
+    /// runner: the jobs are checked in `queue.json`, shown on the page and cancelled.
+    private static func exerciseStageJobs(
+        _ model: LibraryModel, queue: QueueModel, done: SceneFolder, chosen: SceneFolder,
+        id: (Int) -> String
+    ) throws {
+        let quotes = StageQuotes.read([done, chosen], library: queue.store.library)
+        check(
+            "chaque taille de haute résolution a sa durée",
+            StageJobs.hiresSizes.filter { $0 <= quotes.maximum }.allSatisfy { quotes.hires[$0] != nil },
+            quotes.sizes.map { "\(StageJobs.particles($0)) \(Format.duration(quotes.hires[$0] ?? 0))" }
+                .joined(separator: ", "))
+
+        let hires = StageJobs.hires(chosen, particles: 2_000_000, cost: quotes.cost, queue: queue.queue)
+        let forecast = StageForecast(jobs: [hires], status: queue.status, now: Date())
+        check(
+            "Calculer dit quand ce sera prêt",
+            forecast.summary.contains("prêt vers") || forecast.summary.contains("avant celui-ci"),
+            forecast.summary)
+        render(
+            ScenePage(model: model, scene: try found(model.scene(id(3))), snapshot: true),
+            to: "out/ui-scene-page-hires.png")
+        check("Calculer ajoute une haute résolution", queue.submit([hires]) == 1)
+        let queued = queue.queue.unfinished(at: chosen)
+        check(
+            "la tâche vise la scène et la taille",
+            queued.count == 1 && queued.first?.kind == .hires
+                && queued.first?.options == ["--particles", "2000000"]
+                && SceneFolder(path: queued.first?.path ?? "").url.path == chosen.url.path,
+            queued.first?.summary ?? "rien")
+        check(
+            "la même demande n'est pas ajoutée deux fois",
+            queue.submit([
+                StageJobs.hires(chosen, particles: 5_000_000, cost: quotes.cost, queue: queue.queue)
+            ])
+                == 0)
+        model.activeHires = queue.activeHires
+        check(
+            "la scène passe en Haute résolution le temps du calcul",
+            model.scene(id(3))?.stage == .highResolution && model.counts[.highResolution] == 1,
+            "\(model.scene(id(3))?.stage.rawValue ?? "absente"), \(model.counts)")
+
+        let state = quotes.exports[done.url.path] ?? .init()
+        let plan = { (choice: ExportChoice, settings: ExportSettings) in
+            StageJobs.export(
+                choice, settings, folder: done, state: state, cost: quotes.cost, queue: queue.queue)
+        }
+        let again = plan(.hd, ExportSettings())
+        check(
+            "le même export après la même prise remplace son fichier",
+            again.replaces && again.output == done.export(preset: "1080p"),
+            again.output?.lastPathComponent ?? "rien")
+        var styled = ExportSettings()
+        styled.look = model.facts?.otherLooks.first
+        let otherLook = plan(.hd, styled)
+        check(
+            "un autre style va dans un fichier à lui",
+            !otherLook.replaces && otherLook.output?.lastPathComponent == "1080p-raw.mp4"
+                && otherLook.options.contains(done.rawLook.path),
+            otherLook.options.joined(separator: " "))
+        var prores = ExportSettings()
+        prores.codec = .prores
+        check(
+            "ProRes écrit un .mov à côté",
+            plan(.uhd, prores).output?.lastPathComponent == "4k-prores.mov"
+                && plan(.whatsapp, prores).output?.lastPathComponent == "whatsapp.mp4")
+        let sheet = ExportSheet(
+            queue: queue, folders: [done], looks: model.facts?.otherLooks ?? [], close: {},
+            ticked: [.uhd, .webp], quotes: quotes)
+        check(
+            "chaque case cochée est une tâche, avec sa durée",
+            sheet.planned.map(\.title) == ["4K", "Aperçu animé WebP"]
+                && sheet.planned.allSatisfy { $0.seconds != nil })
+        write(sheet.environment(\.offscreen, true), to: "out/ui-export-sheet.png")
+        check("Exporter ajoute une tâche par case", queue.submit(sheet.planned) == 2)
+        let exports = queue.queue.unfinished(at: done).filter { $0.kind == .export }
+        check(
+            "les exports attendent avec leur fichier",
+            exports.map { StageJobs.title(of: $0) } == ["4K · 4k.mp4", "Aperçu animé WebP · preview.webp"],
+            exports.map { StageJobs.title(of: $0) }.joined(separator: ", "))
+        queue.refresh()
+        check(
+            "chaque tâche en attente a sa ligne dans la file",
+            exports.allSatisfy { queue.row($0.id) != nil })
+        render(
+            ScenePage(model: model, scene: try found(model.scene(id(1))), snapshot: true),
+            to: "out/ui-scene-page-jobs.png")
+        let first = try found(exports.first)
+        queue.attempt { try queue.cancel(first.id) }
+        check(
+            "Annuler retire la tâche de la file",
+            queue.failure == nil && queue.queue.job(first.id)?.state == .cancelled
+                && queue.queue.unfinished(at: done).count == 1)
     }
 
     /// Four scored scenes in one night, sorted through the triage view the way a night is: yes,
@@ -657,7 +736,8 @@ enum LibraryCheck {
     }
 
     private static func write(_ view: some View, to path: String) {
-        let renderer = ImageRenderer(content: view.panelSurface().environment(\.colorScheme, .dark))
+        let renderer = ImageRenderer(
+            content: view.panelSurface().environment(\.colorScheme, .dark).environment(\.queue, renderQueue))
         renderer.scale = 2
         guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
             let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])

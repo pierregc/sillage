@@ -19,6 +19,10 @@ struct ControlPanel: View {
 /// Split out from the scroll view so it can be rendered offscreen for inspection.
 struct ControlPanelContent: View {
     @ObservedObject var model: SimulationModel
+    @Environment(\.queue) private var queue
+    @State private var exporting = false
+
+    private var exportFolder: SceneFolder? { model.isOpenedTake ? model.takeFolder : nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -209,10 +213,19 @@ struct ControlPanelContent: View {
                 HStack {
                     Button("Enregistrer…") { TakeFiles.save(model) }
                     Button("Ouvrir…") { TakeFiles.open(model) }
-                    Button("Vidéo…") { TakeFiles.exportVideo(model) }
+                    // A video is made from a scene folder, through the queue and its presets.
+                    if queue != nil, exportFolder != nil {
+                        Button("Vidéo…") { exporting = true }
+                            .help("Exporte la scène de cette prise avec les préréglages")
+                    }
                 }
                 .buttonStyle(.bordered)
                 .disabled(model.fileActivity != nil)
+                .sheet(isPresented: $exporting) {
+                    if let queue, let exportFolder {
+                        ExportSheet(queue: queue, folders: [exportFolder]) { exporting = false }
+                    }
+                }
 
                 if model.isOpenedTake {
                     Text(

@@ -75,6 +75,7 @@ struct SillageApp: App {
                 .onReceive(library.$root) { root in
                     if let root { queue.use(library: root) }
                 }
+                .onReceive(queue.$queue) { _ in library.activeHires = queue.activeHires }
                 .onAppear {
                     library.onTune = { [weak model, weak navigation] scene in
                         guard let model else { return }

@@ -121,6 +121,7 @@ struct MainView: View {
                 }
             }
         }
+        .environment(\.queue, queue)
         // The night sheet opens on a plan already sized.
         .onAppear {
             let library = queue.store.library

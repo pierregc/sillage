@@ -335,6 +335,9 @@ final class SimulationModel: ObservableObject {
     @Published var lookURL: URL?
     /// The scene folder the take was opened from, which a look can be promoted into.
     @Published private(set) var sceneFolder: SceneFolder?
+    /// The scene folder the take opened is the take of, by any way it was opened: what Vidéo…
+    /// exports, through the queue.
+    @Published private(set) var takeFolder: SceneFolder?
     /// On playback, draw through the file's camera plan rather than the orbit rig, so the
     /// picture is the one the render will make.
     @Published var followsPlan = false
@@ -912,54 +915,6 @@ final class SimulationModel: ObservableObject {
         }
     }
 
-    /// Renders the take to a video file, at whatever size is asked for.
-    ///
-    /// The take itself is the better thing to keep, since it comes back as the run. A video is
-    /// what leaves the application, and it is rendered here rather than grabbed from the
-    /// window: the resolution has nothing to do with the display and no frame is dropped.
-    func exportVideo(to url: URL, width: Int, height: Int, framesPerSecond: Int) {
-        guard let reel = recording, canReplay else { return }
-        reel.close()
-        let scene = self.scene
-        let particles = seeded
-        let camera = self.camera.camera
-        let arms = diskStrength
-        let metadata = VideoMetadata(sceneID: sceneFolder?.sceneID ?? scene.name)
-        var settings = renderSettings(width: width, height: height)
-        settings.supersample = max(supersample, 1)
-        let total = reel.capturedCount
-        fileActivity = "Export de la vidéo…"
-
-        simulationQueue.async { [weak self] in
-            var failure: String?
-            do {
-                try VideoExport.write(
-                    recording: reel, particles: particles, scene: scene, settings: settings,
-                    camera: camera, armStrength: arms,
-                    framesPerSecond: Int32(max(framesPerSecond, 1)), metadata: metadata, to: url
-                ) { fraction in
-                    DispatchQueue.main.async {
-                        self?.fileActivity = String(
-                            format: "Export de la vidéo… %.0f %% (%d images)", fraction * 100,
-                            total)
-                    }
-                }
-            } catch {
-                failure = "\(error)"
-            }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.fileActivity = nil
-                if let failure { self.failure = failure }
-                // Everything asked for has happened: the run reached its finish and is on
-                // disk. Nothing is left to compute or to look at.
-                if failure == nil, self.quitWhenFinished, self.reachedFinish {
-                    NSApplication.shared.terminate(nil)
-                }
-            }
-        }
-    }
-
     /// Opens a take and plays it, with no solver behind it.
     ///
     /// Nothing about how a run looks is baked into the file: exposure, colour, the telescope
@@ -1001,6 +956,7 @@ final class SimulationModel: ObservableObject {
                 if let file { self.take(file, from: lookURL) }
                 self.installTake(loaded, expander: expander)
                 self.sceneFolder = folder
+                self.takeFolder = folder ?? SceneFolder.holding(take: url)
                 if let file { self.followsPlan = [.fixed, .auto].contains(file.camera.mode) }
             }
         }
@@ -1014,6 +970,7 @@ final class SimulationModel: ObservableObject {
         scene = lookFile.painted(loaded.scene)
         draft = loaded.scene
         sceneFolder = nil
+        takeFolder = nil
         seeded = loaded.particles
         particleCount = loaded.particles.count
         recording = loaded.recording

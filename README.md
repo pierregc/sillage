@@ -331,16 +331,16 @@ decides where a given picture lands, so try it on the take.
 
 Every video leaves with the licence in its metadata: `Copyright <year> Pierre Gunet-Caplain, CC BY
 4.0 (https://creativecommons.org/licenses/by/4.0/)`, the author, a title and description naming
-the scene as `<batch>/<scene>`, and the creation date. The application's video export writes the
-same. A movie (ProRes, and the application's `.mov`) keeps them as QuickTime keys, which Finder,
+the scene as `<batch>/<scene>`, and the creation date. A movie (ProRes) keeps them as QuickTime
+keys, which Finder,
 `mdls` and `ffprobe` show; an MP4 keeps them as user data atoms, which `AVAsset` reads back
 (`ffprobe` and Spotlight skip those in an MP4, whatever wrote them).
 
 The camera is replayed from the take's first frame exactly as the look grid replays it, through
 the same code, so a cell of the grid and the same frame of the export are the same picture.
 Every frame is drawn straight into a pixel buffer of the encoder's pool, a BGRA Metal texture
-over it, and compressed on a queue of its own while the next one renders; the application's
-video export and `explore`'s preview go through the same writer. Stars, spikes and kernels are
+over it, and compressed on a queue of its own while the next one renders; `explore`'s preview
+goes through the same writer. Stars, spikes and kernels are
 sized in pixels, so a 4k export shows them finer than a grid drawn at the clip's size.
 
 Measured on the M4 Max with a 2 M take of 300 frames and the standard look, nothing else
@@ -546,6 +546,17 @@ rating, batch and archetype.
 
 The scenes kept for the next stage are
 `jq -r '.scenes | to_entries[] | select(.value.choice == "yes") | .key' ratings.json`.
+A scene's page moves it on without a terminal. **Calculer** on Haute résolution queues a
+`hires` job at a size (Auto is the most particles that end before seven in the morning behind
+the queue, else the machine's maximum); **Exporter…** opens a sheet of presets to tick
+(1080p, 4K, Vertical, Carré, WhatsApp, animated WebP, GIF, with codec, range, frame rate and
+style under Avancé), each ticked card one `export` job. Both say how long each job takes and
+when it will be ready, queue ahead included. A job waiting or running shows on its stage with
+its progress and Annuler. Redoing a stage touches nothing else: another format, style or range
+writes a new file, while the same export after a new take replaces its own. Choisies and
+Prêtes do the same for every scene they list, and the Atelier's Vidéo… opens the sheet for a
+take of a scene folder.
+
 `Sillage.app --librarycheck` drives the whole window model through a library it builds on disk.
 
 ## The physics
