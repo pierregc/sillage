@@ -209,6 +209,15 @@ enum LibraryCheck {
         var clock = Date()
         try renderShot(model)
 
+        // The card says what the scene is and where it stands.
+        var sample = model.scenes[0]
+        check("pas de vidéo, pas de compteur", LibraryCard.videoCount(sample) == nil)
+        sample.exports = [URL(fileURLWithPath: "/a.mp4"), URL(fileURLWithPath: "/b.mp4")]
+        check("le compteur de vidéos", LibraryCard.videoCount(sample) == 2)
+        check(
+            "chaque étape a une pastille",
+            Set(SceneStage.allCases.map(\.pillTitle)).count == SceneStage.allCases.count)
+
         // A library of about a hundred scenes with every kind of file, read in one scan.
         let stages = FileManager.default.temporaryDirectory
             .appendingPathComponent("sillage-stagescan-\(UUID().uuidString)", isDirectory: true)

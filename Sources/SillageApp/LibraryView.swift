@@ -146,7 +146,7 @@ struct LibraryView: View {
     private var footer: some View {
         HStack {
             Text(
-                "← → ↑ ↓ naviguer · Y oui · N non · 0 à 9 la note, 1 puis 0 pour 10 · ⌫ effacer · espace ouvrir la scène"
+                "← → ↑ ↓ naviguer · Y oui · N non · 0 à 9 la note · ⌫ effacer · espace ouvrir la scène"
             )
             .font(.caption)
             .foregroundStyle(Palette.secondary)
@@ -481,13 +481,21 @@ struct LibraryCard: View {
         VStack(alignment: .leading, spacing: 6) {
             preview
             HStack(spacing: 6) {
-                Text(scene.name).font(.callout.monospacedDigit())
+                Text(scene.name).font(.callout.monospacedDigit()).lineLimit(1)
                 Spacer(minLength: 4)
-                Text(details).font(.caption).foregroundStyle(Palette.secondary).lineLimit(1)
-                TuneButton(model: model, scene: scene)
+                if scene.take != nil { Pill(text: "HD", tint: Color.accentColor) }
+                Pill(text: scene.stage.pillTitle, tint: Color(white: 0.5))
             }
-            ChoiceButtons(entry: entry) { model.choose($0, for: scene.id) }
-            RatingButtons(entry: entry) { model.rate($0, for: scene.id) }
+            HStack(spacing: 6) {
+                Text(summary).font(.caption.monospacedDigit()).foregroundStyle(Palette.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if let videos = Self.videoCount(scene) {
+                    Label("\(videos)", systemImage: "film").font(.caption.monospacedDigit())
+                        .foregroundStyle(Palette.secondary)
+                        .help("Vidéos")
+                }
+            }
         }
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 8).fill(Palette.card))
@@ -517,7 +525,8 @@ struct LibraryCard: View {
                     .background(Capsule().fill(Color.black.opacity(0.6)))
                     .padding(6)
             }
-            ChoiceBadge(entry: entry).padding(6).frame(maxWidth: .infinity, alignment: .topLeading)
+            ChoiceBadge(entry: entry, showsRating: false).padding(6)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .aspectRatio(16 / 9, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -526,29 +535,43 @@ struct LibraryCard: View {
         .onTapGesture { model.open(scene.id) }
     }
 
-    private var details: String {
-        var parts: [String] = []
-        if let archetype = scene.archetype { parts.append(archetype) }
-        if let tempo = scene.tempo { parts.append(tempo) }
-        if let galaxies = scene.galaxies { parts.append("\(galaxies) gal.") }
-        if let score = scene.score { parts.append(String(format: "score %.2f", score)) }
-        if parts.isEmpty { parts.append(scene.batch) }
-        return parts.joined(separator: " · ")
+    /// The rating if there is one, else the score.
+    private var summary: String {
+        if let rating = entry?.rating { return "note \(rating)" }
+        if let score = scene.score { return String(format: "score %.2f", score) }
+        return " "
+    }
+
+    static func videoCount(_ scene: LibraryScene) -> Int? {
+        scene.exports.isEmpty ? nil : scene.exports.count
     }
 }
 
-/// Opens the scene's high resolution take with its look, in the main window, for tuning.
-/// Only there once `hires` has written a take.
-struct TuneButton: View {
-    let model: LibraryModel
-    let scene: LibraryScene
+struct Pill: View {
+    let text: String
+    let tint: Color
 
     var body: some View {
-        if scene.take != nil {
-            Button("Régler le look") { model.tune(scene) }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Ouvre la prise haute résolution avec le look de la scène")
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(tint.opacity(0.25)))
+            .foregroundStyle(Palette.label)
+            .lineLimit(1)
+    }
+}
+
+extension SceneStage {
+    var pillTitle: String {
+        switch self {
+        case .toSort: "À trier"
+        case .discarded: "Écartée"
+        case .chosen: "Choisie"
+        case .highResolution: "Haute résolution"
+        case .toStyle: "Style à choisir"
+        case .ready: "Prête"
+        case .exported: "Exportée"
         }
     }
 }
@@ -611,6 +634,7 @@ struct RatingButtons: View {
 
 struct ChoiceBadge: View {
     let entry: SceneRatings.Entry?
+    var showsRating = true
 
     var body: some View {
         HStack(spacing: 4) {
@@ -624,7 +648,7 @@ struct ChoiceBadge: View {
             if entry?.choice == nil, entry?.picked != nil {
                 Text("choisie par le score").foregroundStyle(Color(red: 0.55, green: 0.75, blue: 0.95))
             }
-            if let rating = entry?.rating { Text("\(rating)") }
+            if showsRating, let rating = entry?.rating { Text("\(rating)") }
         }
         .font(.caption.weight(.semibold).monospacedDigit())
         .padding(.horizontal, entry?.isEmpty == false ? 6 : 0)
