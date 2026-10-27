@@ -55,7 +55,7 @@ struct LookStageTests {
 
     @Test func variantsChangeOneThingEach() {
         var base = LookFile.standard
-        base.palette = [SIMD3(1, 0.5, 0.2)]
+        base.palette = [GalaxyColours(SIMD3(1, 0.5, 0.2))]
         let variants = LookVariants.around(base)
         #expect(variants.first == base)
         #expect(Set(variants.map(\.name)).count == variants.count)
@@ -94,7 +94,7 @@ struct LookStageTests {
         let added = zip(names, files).filter { !RenderLook.catalogue.map(\.id).contains($0.1.name) }
             .map(\.1).filter { $0.world == .free }
         #expect(added.count >= 30)
-        #expect(Set(added.map(\.palette.first!.x)).count > 8)
+        #expect(Set(added.map(\.palette.first!.colour.x)).count > 8)
         #expect(added.filter { $0.look.dustStrength == 0 }.count * 2 > added.count)
         #expect(added.allSatisfy { $0.starCount <= 1000 && $0.look.skyLevel <= 0.0008 })
         #expect(added.allSatisfy { $0.look.spikeIntensity <= 0.2 })
@@ -121,7 +121,7 @@ struct LookStageTests {
         #expect(hubble.look.bloomIntensity > webb.look.bloomIntensity)
         for file in telescope {
             #expect(file.palette.count == 5)
-            #expect(PaletteGenerator.violations(file.palette, monochrome: false).isEmpty)
+            #expect(PaletteGenerator.violations(file.palette.map(\.colour), monochrome: false).isEmpty)
         }
     }
 

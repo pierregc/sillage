@@ -1,0 +1,15 @@
+{
+  "job": {
+    "batch": "2026-10-26",
+    "detail": "frame 412/900",
+    "eta": "2026-10-27T02:20:00.000+01:00",
+    "kind": "hires",
+    "progress": 0.458,
+    "scene": "scene-0023",
+    "startedAt": "2026-10-27T00:40:00.000+01:00"
+  },
+  "state": "paused",
+  "updated": "2026-10-27T01:09:55.000+01:00",
+  "version": 1,
+  "waiting": 1
+}

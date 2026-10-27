@@ -34,7 +34,34 @@ enum Shaders {
             /// 0 draws the dust, 1 draws everything that emits. Two draws over one buffer,
             /// because the extinction has to be in the attachment before a star reads it.
             uint pass;
+            /// Whether any galaxy has a colour ramp (#119).
+            uint mapped;
         };
+
+        struct GalaxyRamp {
+            float4 core;
+            float4 disk;
+            float4 outskirts;
+            float4 young;
+            float4 knot;
+            /// Core, disk start, disk end and outskirts, in scale lengths of birth radius.
+            float4 stops;
+            /// Blend into the population colour, mix mapping, has a ramp.
+            float4 params;
+        };
+
+        // The colour a galaxy's ramp gives this particle. With the mix mapping, gas and the
+        // stars the run formed take the young colour, bulge and outskirts the ramp's ends.
+        static float3 rampColour(constant GalaxyRamp &ramp, float radius, uint kind, float born) {
+            if (ramp.params.y > 0.5) {
+                if (kind == 1u || kind == 2u || (born >= 0.0 && born < 1e8)) { return ramp.young.rgb; }
+                if (kind == 4u) { return ramp.core.rgb; }
+                if (kind == 5u) { return ramp.outskirts.rgb; }
+            }
+            float4 s = ramp.stops;
+            float3 inner = mix(ramp.core.rgb, ramp.disk.rgb, saturate((radius - s.x) / (s.y - s.x)));
+            return mix(inner, ramp.outskirts.rgb, saturate((radius - s.z) / (s.w - s.z)));
+        }
 
         struct BloomParams {
             float threshold;
@@ -314,7 +341,9 @@ enum Shaders {
                                     constant DiskFrame *frames [[buffer(6)]],
                                     device const float *smoothing [[buffer(7)]],
                                     device const float2 *stellar [[buffer(9)]],
-                                    device const float2 *traits [[buffer(10)]]) {
+                                    device const float2 *traits [[buffer(10)]],
+                                    device const float *rampKeys [[buffer(11)]],
+                                    constant GalaxyRamp *ramps [[buffer(12)]]) {
             SplatOut out;
             float3 position = positions[vid];
             DiskFrame frame = frames[galaxy[vid]];
@@ -472,6 +501,13 @@ enum Shaders {
                 // It is a departure from the physical colour, so it is dialled rather than
                 // applied: at 0 the two galaxies are coloured by their populations alone.
                 emitted *= mix(float3(1.0), chromaticity(frame.tint.rgb), u.galaxyTint);
+                if (u.mapped != 0u) {
+                    constant GalaxyRamp &ramp = ramps[galaxy[vid]];
+                    if (ramp.params.z > 0.5) {
+                        float3 painted = rampColour(ramp, rampKeys[vid], kind, born);
+                        emitted = mix(mix(stellarLight, painted, ramp.params.x), ramp.knot.rgb, alive);
+                    }
+                }
                 out.pointSize = span * (alive > 0.15 ? 1.3 : 1.0);
                 out.color = half3(emitted * (u.brightness * weight * gain * spread));
                 out.opticalDepth = 0.0h;

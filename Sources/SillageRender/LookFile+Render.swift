@@ -44,8 +44,8 @@ extension LookFile {
     /// Each palette entry recolours the galaxy at its index; a galaxy past the end keeps its
     /// own colour.
     public func paint(_ scene: inout SceneConfig) {
-        for (index, colour) in palette.enumerated() where index < scene.galaxies.count {
-            scene.galaxies[index].color = colour
+        for (index, entry) in palette.enumerated() where index < scene.galaxies.count {
+            scene.galaxies[index].color = entry.colour
         }
     }
 
@@ -83,7 +83,10 @@ extension LookFile.CameraPlan {
 }
 
 extension Renderer {
-    public func apply(_ file: LookFile) { apply(file.look) }
+    public func apply(_ file: LookFile) {
+        apply(file.look)
+        setGalaxyColours(file.palette)
+    }
 
     /// Everything but the positions, for drawing `file` on a moment of a take.
     public func prepare(
@@ -91,6 +94,7 @@ extension Renderer {
         at blend: Recording.Blend
     ) {
         apply(shot.look)
+        setGalaxyColours(file.palette)
         time = blend.time
         var scene = take.scene
         file.paint(&scene)

@@ -118,7 +118,7 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     let loaded = try RecordingFile.read(from: takeURL)
     let scenePalette =
         (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }?.palette
-        .nonEmpty ?? loaded.scene.galaxies.map(\.color)
+        .nonEmpty ?? loaded.scene.galaxies.map { GalaxyColours($0.color) }
     func withScenePalette(_ file: LookFile) -> LookFile {
         var file = file
         if file.palette.isEmpty { file.palette = scenePalette }
@@ -276,7 +276,7 @@ func palettePromotion(
             !bare.colours.isEmpty
         {
             look.paletteRecipe = nil
-            look.palette = bare.colours
+            look.palette = bare.colours.map { GalaxyColours($0) }
             try folder.promote(look)
             print("look       \(choice): \(bare.colours.count) colours set in \(folder.look.path)")
             return 0
@@ -304,7 +304,7 @@ func palettePromotion(
         score = top.score
         look.paletteRecipe = palette
     }
-    look.palette = palette.colours
+    look.palette = palette.galaxyColours(references: references)
     try folder.promote(look)
     print(
         String(
@@ -492,7 +492,7 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     let looks = palettes.map { palette in
         var file = base
         file.name = palette.name
-        file.palette = palette.colours
+        file.palette = palette.galaxyColours(references: references)
         file.paletteRecipe = palette
         return file
     }
@@ -592,7 +592,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     let loaded = try RecordingFile.read(from: takeURL)
     let scenePalette =
         (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }?.palette
-        .nonEmpty ?? loaded.scene.galaxies.map(\.color)
+        .nonEmpty ?? loaded.scene.galaxies.map { GalaxyColours($0.color) }
     var look = try folder.exportLook(option("look"), catalogue: catalogueLooks())
     if look.palette.isEmpty { look.palette = scenePalette }
 
@@ -905,6 +905,9 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "queue" {
         QueueCommand.main(
             Array(CommandLine.arguments.dropFirst(2)), executable: Spawn.currentExecutable))
 }
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "status" {
+    exit(StatusCommand.main(Array(CommandLine.arguments.dropFirst(2))))
+}
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "story" {
     exit(storyCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
@@ -1156,8 +1159,8 @@ if let dissipation = argument("dissipation").flatMap(Float.init) {
 if let dt = argument("dt").flatMap(Float.init) { file.timeStep = dt }
 if let theta = argument("theta").flatMap(Float.init) { file.openingAngle = theta }
 if let value = argument("softening").flatMap(Float.init) { file.softening = value }
-for (index, colour) in look.palette.enumerated() {
-    if index < palette.count { palette[index] = colour } else { palette.append(colour) }
+for (index, entry) in look.palette.enumerated() {
+    if index < palette.count { palette[index] = entry.colour } else { palette.append(entry.colour) }
 }
 var scene = file.scene(particleCount: particles, palette: palette)
 // Encounters are placed for a solver and a halo; a flag that changes either places them again.
@@ -1220,7 +1223,9 @@ if generatedHaste != nil && !arguments.contains("--no-check")
     if arguments.contains("--check-only") { exit(0) }
 }
 // The colours the scene was drawn with, so the look file written beside it replays it exactly.
-look.palette = scene.galaxies.map(\.color)
+look.palette = scene.galaxies.enumerated().map { index, galaxy in
+    index < look.palette.count ? look.palette[index] : GalaxyColours(galaxy.color)
+}
 
 let settings = look.renderSettings(width: width, height: height)
 
@@ -1241,6 +1246,7 @@ let renderer = try Renderer(
 let drawnCount = seeded.visibleCount > 0 ? seeded.visibleCount : seeded.count
 let smoothing = try SmoothingField(device: renderer.device, particleCount: drawnCount)
 renderer.setSmoothing(smoothing.buffer)
+renderer.setGalaxyColours(look.palette)
 print("solver     \(backend) (\(scene.solver.rawValue))")
 print("gpu        \(renderer.gpuName)")
 
