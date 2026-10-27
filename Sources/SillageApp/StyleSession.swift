@@ -27,7 +27,19 @@ final class StyleSession: ObservableObject {
             propose()
         }
     }
-    @Published private(set) var proposals: [PaletteAuto.Ranked] = []
+    /// The favourites that fit the world and the galaxies, then the best of the round.
+    var proposals: [PaletteAuto.Ranked] {
+        favouriteProposals
+            + generated.filter { drawn in
+                !favouriteProposals.contains { $0.palette == drawn.palette }
+            }
+    }
+    @Published private(set) var generated: [PaletteAuto.Ranked] = []
+    @Published private(set) var favouriteProposals: [PaletteAuto.Ranked] = []
+    @Published private(set) var favourites: [FavouritePalettes.Favourite]
+    /// The palette waiting for a name, which the heart asks once.
+    @Published var naming: SillageRender.Palette?
+    let favouritesDirectory: URL
     @Published private(set) var proposalNote: String?
     /// Galaxies whose colour no proposal or Auto replaces.
     @Published var locked: Set<Int> = []
@@ -51,12 +63,15 @@ final class StyleSession: ObservableObject {
     init(
         scene: LibraryScene, model: SimulationModel,
         catalogue: [LookFile] = LookCatalogue.repository,
-        references: [TelescopeReference] = TelescopeReference.repository
+        references: [TelescopeReference] = TelescopeReference.repository,
+        favouritesDirectory: URL = FavouritePalettes.directory
     ) {
         self.scene = scene
         self.model = model
         self.catalogue = catalogue
         self.references = references
+        self.favouritesDirectory = favouritesDirectory
+        favourites = FavouritePalettes.load(from: favouritesDirectory)
         let folder = scene.folder
         let saved = folder.flatMap { try? LookFile.decoded(from: Data(contentsOf: $0.look)) }
         self.saved = saved
@@ -110,6 +125,7 @@ final class StyleSession: ObservableObject {
     /// good as the first.
     func propose(waiting: Bool = false) {
         proposing?.cancel()
+        showFavourites()
         let (galaxies, world, references) = (galaxyCount, world, references)
         let base = sceneFile?.seed ?? model.scene.seed
         let seed = base &+ UInt64(round) &* 0x9E37_79B9_7F4A_7C15
@@ -130,12 +146,60 @@ final class StyleSession: ObservableObject {
     private func show(_ outcome: Result<[PaletteAuto.Ranked], any Error>) {
         switch outcome {
         case .success(let ranked):
-            proposals = Array(ranked.prefix(Self.proposalCount))
+            generated = Array(ranked.prefix(Self.proposalCount))
             proposalNote = nil
         case .failure(let error):
-            proposals = []
-            proposalNote = Self.describe(error)
+            generated = []
+            proposalNote = favouriteProposals.isEmpty ? Self.describe(error) : nil
         }
+    }
+
+    private func showFavourites() {
+        let references = references
+        favouriteProposals = FavouritePalettes.fitting(
+            favourites, world: world, galaxies: galaxyCount
+        ).map {
+            PaletteAuto.Ranked(palette: $0.palette, score: PaletteScore($0.palette, references: references))
+        }
+    }
+
+    // MARK: Favourites
+
+    func isFavourite(_ palette: SillageRender.Palette) -> Bool {
+        FavouritePalettes.favourite(matching: palette, in: favourites) != nil
+    }
+
+    /// A heart on a favourite takes it out of `palettes/`; on any other palette it asks a name.
+    func toggleFavourite(_ palette: SillageRender.Palette) {
+        guard let favourite = FavouritePalettes.favourite(matching: palette, in: favourites) else {
+            naming = palette
+            return
+        }
+        do {
+            try FavouritePalettes.remove(favourite, in: favouritesDirectory)
+            note = "Favori retiré : \(favourite.name)"
+        } catch {
+            note = "Favori non retiré : \(error.localizedDescription)"
+        }
+        reloadFavourites()
+    }
+
+    func saveFavourite(_ palette: SillageRender.Palette, named name: String) {
+        naming = nil
+        do {
+            let kept = try FavouritePalettes.save(palette, named: name, in: favouritesDirectory)
+            note = "Favori gardé : palettes/\(kept.name).palette.json"
+        } catch let error as FavouritePalettes.Failure {
+            note = "Favori non gardé : \(error.description)"
+        } catch {
+            note = "Favori non gardé : \(error.localizedDescription)"
+        }
+        reloadFavourites()
+    }
+
+    private func reloadFavourites() {
+        favourites = FavouritePalettes.load(from: favouritesDirectory)
+        showFavourites()
     }
 
     /// The next round, for "Autres palettes".
@@ -191,11 +255,14 @@ final class StyleSession: ObservableObject {
         autoRunning = true
         note = nil
         let (world, catalogue, references) = (world, catalogue, references)
+        let favourites = FavouritePalettes.fitting(favourites, world: world, galaxies: galaxyCount)
+            .map(\.palette)
         Task { [weak self] in
             let outcome = await Task.detached(priority: .userInitiated) { () -> Result<Pick, any Error> in
                 Result {
                     let found = try StyleAuto.choose(
-                        folder, world: world, catalogue: catalogue, references: references)
+                        folder, world: world, catalogue: catalogue, references: references,
+                        favourites: favourites)
                     guard let best = found.ranked.first,
                         let rendering = catalogue.first(where: { $0.name == best.rendering })
                     else { throw AutoFailure.nothing }

@@ -110,7 +110,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         public var world: Setting<String> = .auto
         /// A rendering of the look catalogue, such as `hubble` or `aurora`.
         public var style: Setting<String> = .auto
-        /// A palette family, or a `.palette.json` file.
+        /// A palette family, a favourite's name or a `.palette.json` file.
         public var palette: Setting<String> = .auto
 
         public init() {}

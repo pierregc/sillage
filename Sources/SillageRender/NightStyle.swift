@@ -6,7 +6,7 @@ public struct NightStyle: Equatable, Sendable {
     public var world: Palette.World
     /// A rendering of the catalogue, or nil for Auto to choose one.
     public var rendering: String?
-    /// `auto`, a family or a `.palette.json` file.
+    /// `auto`, a family, a favourite's name or a `.palette.json` file.
     public var palette: String
 
     /// The world Auto gives the pick at `index`, best first: the two worlds in turn, so each
@@ -17,12 +17,16 @@ public struct NightStyle: Equatable, Sendable {
 
     /// The world a family or a stored palette belongs to; nil for `auto` or bare colours.
     public static func world(
-        ofPalette choice: String, references: [TelescopeReference]
+        ofPalette choice: String, references: [TelescopeReference],
+        favourites: [FavouritePalettes.Favourite] = FavouritePalettes.load()
     ) -> Palette.World? {
         if FileManager.default.fileExists(atPath: choice) {
             return
                 (try? JSONDecoder().decode(Palette.self, from: Data(contentsOf: URL(fileURLWithPath: choice))))?
                 .world
+        }
+        if let favourite = FavouritePalettes.find(choice, in: favourites) {
+            return favourite.palette.world
         }
         return Palette.World.allCases.first { world in
             PaletteGenerator.families(world, telescope: references.map(\.family))
@@ -34,7 +38,8 @@ public struct NightStyle: Equatable, Sendable {
     /// and the palette's, then the turn of the picks. A recipe whose parts disagree is refused.
     public static func resolve(
         _ style: NightRecipe.Style, pick index: Int, catalogue: [LookFile],
-        references: [TelescopeReference]
+        references: [TelescopeReference],
+        favourites: [FavouritePalettes.Favourite] = FavouritePalettes.load()
     ) throws -> NightStyle {
         let asked = style.world.value.flatMap(Palette.World.init(rawValue:))
         let choice = style.palette.value ?? "auto"
@@ -47,11 +52,12 @@ public struct NightStyle: Equatable, Sendable {
         }
         var palette: Palette.World?
         if choice != "auto" {
-            palette = world(ofPalette: choice, references: references)
+            palette = world(ofPalette: choice, references: references, favourites: favourites)
             if palette == nil {
                 guard FileManager.default.fileExists(atPath: choice) else {
                     throw NightRecipe.Failure.badValue(
-                        "style.palette", "\(choice) is not auto, a family or a .palette.json file")
+                        "style.palette",
+                        "\(choice) is not auto, a family, a favourite or a .palette.json file")
                 }
                 guard rendering != nil else {
                     throw NightRecipe.Failure.badValue(

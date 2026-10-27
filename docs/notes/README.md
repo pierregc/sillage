@@ -53,6 +53,7 @@ session. Read the note for an area before changing it.
 - [Flying rather than orbiting](fly-camera.md): `FlyCamera`
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
+- [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first
 - [The style editor](style-editor.md): renderings, palettes and locks, Auto, Avant/Après
 - [Making a galaxy read as matter rather than as a graphic](galaxy-as-matter.md)
 

@@ -131,10 +131,11 @@ public enum StyleAuto {
 
     /// The pairs of a scene with a take, in `world` or else its look's world. `catalogue` is
     /// the repository's looks, `references` #125's sets. `family` keeps the palettes to one
-    /// family, `fixed` to the one palette given. Nothing is written.
+    /// family, `fixed` to the one palette given; `favourites` join the palettes tried. Nothing is written.
     public static func choose(
         _ folder: SceneFolder, world: Palette.World? = nil, family: String? = nil,
-        fixed: Palette? = nil, catalogue: [LookFile], references: [TelescopeReference]
+        fixed: Palette? = nil, catalogue: [LookFile], references: [TelescopeReference],
+        favourites: [Palette] = []
     ) throws -> Outcome {
         guard FileManager.default.fileExists(atPath: folder.take.path) else {
             throw SceneFolder.LookError.noTake(folder.url)
@@ -154,7 +155,7 @@ public enum StyleAuto {
             palettes = Array(
                 try PaletteAuto.ranked(
                     galaxies: scene.galaxies.count, world: world, family: family, seed: scene.seed,
-                    telescope: references
+                    telescope: references, favourites: favourites
                 ).prefix(palettesPerRendering(world)))
         }
 

@@ -243,7 +243,10 @@ struct StyleInspector: View {
             if let note = session.note {
                 Text(note)
                     .font(.caption)
-                    .foregroundStyle(note.hasPrefix("Auto :") ? Palette.label : Palette.warning)
+                    .foregroundStyle(
+                        note.hasPrefix("Auto :") || note.hasPrefix("Favori gardé")
+                            || note.hasPrefix("Favori retiré") ? Palette.label : Palette.warning
+                    )
                     .fixedSize(horizontal: false, vertical: true)
             }
             RenderingSection(session: session)
@@ -363,6 +366,7 @@ struct TileRows<Tile: View>: View {
 /// The world, one swatch and lock per galaxy, six proposals, "Autres palettes" and Auto.
 struct PaletteSection: View {
     @ObservedObject var session: StyleSession
+    @State private var name = ""
     @Environment(\.offscreen) private var offscreen
 
     var body: some View {
@@ -383,7 +387,11 @@ struct PaletteSection: View {
                     .help("Télescope : proche des images de Hubble et Webb. Libre : pour la beauté seule.")
                 }
             }
-            galaxies
+            HStack(alignment: .top) {
+                galaxies
+                Spacer()
+                if let recipe = session.current.paletteRecipe { heart(recipe).padding(.top, 4) }
+            }
             proposals
             HStack {
                 Button("Autres palettes") { session.moreProposals() }
@@ -404,6 +412,20 @@ struct PaletteSection: View {
             }
             .controlSize(.small)
         }
+        .alert(
+            "Nom de la palette",
+            isPresented: Binding(
+                get: { session.naming != nil }, set: { if !$0 { session.naming = nil } })
+        ) {
+            TextField("Nom", text: $name)
+            Button("Garder") {
+                if let palette = session.naming { session.saveFavourite(palette, named: name) }
+            }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Elle sera gardée dans palettes/ du dépôt, et proposée en premier.")
+        }
+        .onChange(of: session.naming) { _, palette in name = palette?.name ?? "" }
     }
 
     private var galaxies: some View {
@@ -463,30 +485,57 @@ struct PaletteSection: View {
 
     private func proposal(_ ranked: PaletteAuto.Ranked) -> some View {
         let chosen = session.current.paletteRecipe == ranked.palette
-        return Button {
-            session.use(ranked.palette)
-        } label: {
-            HStack(spacing: 8) {
-                Swatches(colours: ranked.palette.colours)
-                Text("\(ranked.palette.family) · \(StyleNames.harmony(ranked.palette.harmony))")
-                    .font(.caption)
-                    .foregroundStyle(Palette.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                Text(StyleNames.number(ranked.score.total))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(Palette.secondary)
+        return HStack(spacing: 8) {
+            Button {
+                session.use(ranked.palette)
+            } label: {
+                HStack(spacing: 8) {
+                    Swatches(colours: ranked.palette.colours)
+                    Text("\(ranked.palette.family) · \(StyleNames.harmony(ranked.palette.harmony))")
+                        .font(.caption)
+                        .foregroundStyle(Palette.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(StyleNames.number(ranked.score.total))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Palette.secondary)
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(chosen ? Color.accentColor.opacity(0.3) : Palette.card)
-            )
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help(
+                "La note de la palette seule, de 0 à 1. Un clic l'applique, sauf aux couleurs sous cadenas.")
+            heart(ranked.palette)
         }
-        .buttonStyle(.plain)
-        .help("La note de la palette seule, de 0 à 1. Un clic l'applique, sauf aux couleurs sous cadenas.")
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(chosen ? Color.accentColor.opacity(0.3) : Palette.card)
+        )
+    }
+
+    /// Full on a favourite, which a click takes out of `palettes/`; empty on any other, which
+    /// a click keeps under a name.
+    @ViewBuilder
+    private func heart(_ palette: SillageRender.Palette) -> some View {
+        let kept = session.isFavourite(palette)
+        let image = Image(systemName: kept ? "heart.fill" : "heart")
+            .foregroundStyle(kept ? Palette.warning : Palette.secondary)
+        if offscreen {
+            image
+        } else {
+            Button {
+                session.toggleFavourite(palette)
+            } label: {
+                image
+            }
+            .buttonStyle(.plain)
+            .help(
+                kept
+                    ? "Favori : un clic la retire de palettes/"
+                    : "Garder cette palette dans palettes/, en tête des propositions")
+        }
     }
 }
 
