@@ -29,6 +29,7 @@ struct SplatUniforms {
     var slabNear: Float
     var slabScale: Float
     var pass: UInt32
+    var mapped: UInt32 = 0
 }
 
 struct BackgroundStar {
@@ -247,6 +248,14 @@ public final class Renderer {
     /// The composition is taken from `birthRadius` and not from where the particle stands now:
     /// a star flung out of a nucleus by an encounter keeps the composition of the nucleus.
     private let traitBuffer: MTLBuffer
+    /// Each particle's birth radius in its galaxy's scale lengths, where the colour ramps
+    /// look it up (#119).
+    private let rampKeyBuffer: MTLBuffer
+    /// One `GalaxyRamp` per galaxy; none of them mapped until a look gives ramps.
+    private let rampBuffer: MTLBuffer
+    private let galaxySlots: Int
+    private var mapped = false
+    private var galaxyColours: [GalaxyColours] = []
     private let luminosityBuffer: MTLBuffer
     private let componentBuffer: MTLBuffer
     private let galaxyBuffer: MTLBuffer
@@ -439,6 +448,10 @@ public final class Renderer {
         func attribute<T>(_ values: [T], _ fallback: T) -> [T] {
             values.count == count ? values : [T](repeating: fallback, count: count)
         }
+        // Sorting every galaxy's radii is most of what building the two costs, so once.
+        let birthScales =
+            particles.birthRadius.count == particles.count
+            ? Renderer.scaleLengths(particles.birthRadius, of: particles) : [:]
         guard
             let positionBuffer = externalPositions
                 ?? device.makeBuffer(length: count * stride, options: .storageModeShared),
@@ -456,8 +469,12 @@ public final class Renderer {
                 bytes: attribute(particles.component, UInt32(0)),
                 length: count * 4, options: .storageModeShared),
             let traitBuffer = device.makeBuffer(
-                bytes: Renderer.traits(of: particles),
+                bytes: Renderer.traits(of: particles, scales: birthScales),
                 length: count * MemoryLayout<SIMD2<Float>>.stride,
+                options: .storageModeShared),
+            let rampKeyBuffer = device.makeBuffer(
+                bytes: Renderer.rampKeys(of: particles, birthScales: birthScales),
+                length: count * 4,
                 options: .storageModeShared),
             let stellarBuffer = device.makeBuffer(
                 bytes: StellarPopulation.table,
@@ -477,6 +494,15 @@ public final class Renderer {
         self.componentBuffer = componentBuffer
         self.stellarBuffer = stellarBuffer
         self.traitBuffer = traitBuffer
+        self.rampKeyBuffer = rampKeyBuffer
+        galaxySlots = Int(particles.galaxyIndex.max() ?? 0) + 1
+        guard
+            let rampBuffer = device.makeBuffer(
+                bytes: [GalaxyRamp](repeating: .none, count: galaxySlots),
+                length: galaxySlots * MemoryLayout<GalaxyRamp>.stride,
+                options: .storageModeShared)
+        else { throw RenderError.textureAllocation }
+        self.rampBuffer = rampBuffer
         self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
         if externalPositions == nil {
             upload(positions: particles.positions)
@@ -542,6 +568,20 @@ public final class Renderer {
         }
     }
 
+    /// Each galaxy's colours from a look file's palette; a galaxy with no ramp, or past the
+    /// palette's end, keeps the one-colour shading.
+    public func setGalaxyColours(_ palette: [GalaxyColours]) {
+        guard palette != galaxyColours else { return }
+        galaxyColours = palette
+        let ramps = (0..<galaxySlots).map {
+            $0 < palette.count ? GalaxyRamp(palette[$0]) : GalaxyRamp.none
+        }
+        mapped = ramps.contains { $0.params.z > 0 }
+        ramps.withUnsafeBytes { source in
+            rampBuffer.contents().copyMemory(from: source.baseAddress!, byteCount: source.count)
+        }
+    }
+
     /// Unified memory means this is a plain memcpy into a buffer the GPU already sees.
     public func upload(positions: [SIMD3<Float>]) {
         guard !positions.isEmpty else { return }
@@ -590,23 +630,15 @@ public final class Renderer {
     /// given the scene, and for an exponential disk the median radius is 1.678 scale lengths,
     /// which is a sturdier way to ask the question than trusting a configuration field to
     /// still describe the particles by the time they arrive here.
-    private static func traits(of particles: ParticleSystem) -> [SIMD2<Float>] {
+    private static func traits(of particles: ParticleSystem, scales scaleLength: [UInt32: Float])
+        -> [SIMD2<Float>]
+    {
         let count = particles.count
         let scales =
             particles.kernelScale.count == count
             ? particles.kernelScale : [Float](repeating: 1, count: count)
         guard particles.birthRadius.count == count else {
             return (0..<max(count, 1)).map { SIMD2<Float>(1, $0 < scales.count ? scales[$0] : 1) }
-        }
-        var byGalaxy: [UInt32: [Float]] = [:]
-        for index in 0..<count
-        where particles.component[index] == ParticleComponent.star.rawValue {
-            byGalaxy[particles.galaxyIndex[index], default: []].append(particles.birthRadius[index])
-        }
-        var scaleLength: [UInt32: Float] = [:]
-        for (galaxy, radii) in byGalaxy where !radii.isEmpty {
-            let sorted = radii.sorted()
-            scaleLength[galaxy] = max(sorted[sorted.count / 2] / 1.678, 1e-3)
         }
         return (0..<count).map { index in
             guard let scale = scaleLength[particles.galaxyIndex[index]] else {
@@ -616,6 +648,37 @@ public final class Renderer {
                 StellarPopulation.metallicity(
                     atScaleLengths: particles.birthRadius[index] / scale))
             return SIMD2<Float>(warming, scales[index])
+        }
+    }
+
+    /// For an exponential disk the median radius is 1.678 scale lengths.
+    private static func scaleLengths(_ radii: [Float], of particles: ParticleSystem) -> [UInt32:
+        Float]
+    {
+        var byGalaxy: [UInt32: [Float]] = [:]
+        for index in 0..<particles.count
+        where particles.component[index] == ParticleComponent.star.rawValue {
+            byGalaxy[particles.galaxyIndex[index], default: []].append(radii[index])
+        }
+        var scaleLength: [UInt32: Float] = [:]
+        for (galaxy, radii) in byGalaxy where !radii.isEmpty {
+            let sorted = radii.sorted()
+            scaleLength[galaxy] = max(sorted[sorted.count / 2] / 1.678, 1e-3)
+        }
+        return scaleLength
+    }
+
+    /// Birth radius in scale lengths of the particle's own galaxy, one per particle.
+    static func rampKeys(of particles: ParticleSystem, birthScales: [UInt32: Float]) -> [Float] {
+        let count = particles.count
+        let rebuilt = particles.colourRadius.count == count
+        let radii = rebuilt ? particles.colourRadius : particles.birthRadius
+        guard radii.count == count, count > 0 else {
+            return [Float](repeating: 1.7, count: max(count, 1))
+        }
+        let scales = rebuilt ? scaleLengths(radii, of: particles) : birthScales
+        return (0..<count).map { index in
+            scales[particles.galaxyIndex[index]].map { radii[index] / $0 } ?? 1.7
         }
     }
 
@@ -717,7 +780,7 @@ public final class Renderer {
             galaxyTint: settings.galaxyTint,
             slabNear: slabNear,
             slabScale: 1 / max(2 * halfExtent, 1e-3),
-            pass: 0)
+            pass: 0, mapped: mapped ? 1 : 0)
 
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {
@@ -748,6 +811,8 @@ public final class Renderer {
             encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
             encoder.setVertexBuffer(stellarBuffer, offset: 0, index: 9)
             encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
+            encoder.setVertexBuffer(rampKeyBuffer, offset: 0, index: 11)
+            encoder.setVertexBuffer(rampBuffer, offset: 0, index: 12)
             // Twice over the same buffer: the dust first, so that its opacity is standing in
             // the attachment when the stars are drawn and read it back. Each draw throws away
             // the particles belonging to the other one in the vertex stage, before any

@@ -23,9 +23,9 @@ public struct LookFile: Codable, Sendable, Equatable {
     /// Strength of the density wave painted over each disk; zero leaves the particles as the
     /// solver put them.
     public var armStrength: Float
-    /// One emission colour per galaxy, in scene order. A galaxy past its end keeps the colour
-    /// its scene gives it.
-    public var palette: [SIMD3<Float>]
+    /// One entry per galaxy, in scene order: a colour, or a ramp of them (#119). A galaxy past
+    /// its end keeps the colour its scene gives it.
+    public var palette: [GalaxyColours]
     /// Where `palette` came from when a generator drew it. Left out by files written before,
     /// and never read to draw: the colours above are what the frame uses.
     public var paletteRecipe: Palette?
@@ -92,7 +92,7 @@ public struct LookFile: Codable, Sendable, Equatable {
     public init(
         name: String = "standard", look: RenderLook = LookFile.standardLook,
         starCount: Int = 2500, supersample: Int = 2, bloomLevels: Int = 6, plain: Bool = false,
-        armStrength: Float = 1, palette: [SIMD3<Float>] = [], paletteRecipe: Palette? = nil,
+        armStrength: Float = 1, palette: [GalaxyColours] = [], paletteRecipe: Palette? = nil,
         world: Palette.World = .free, camera: CameraPlan = CameraPlan()
     ) {
         version = Self.currentVersion
@@ -154,7 +154,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         palette: [
             SIMD3(1.00, 0.62, 0.25), SIMD3(0.30, 0.70, 1.00), SIMD3(0.45, 1.00, 0.45),
             SIMD3(1.00, 0.40, 0.80), SIMD3(1.00, 0.95, 0.35), SIMD3(0.70, 0.50, 1.00),
-        ],
+        ].map { GalaxyColours($0) },
         camera: CameraPlan(mode: .auto))
 
     public enum ReadError: Error, CustomStringConvertible {

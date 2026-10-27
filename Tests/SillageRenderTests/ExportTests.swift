@@ -130,7 +130,7 @@ struct ExportTests {
     @Test func aFrameOfTheExportIsTheSameAsTheGridsStill() throws {
         let loaded = try take(frames: 12, interval: 3)
         var file = autoLook
-        file.palette = loaded.scene.galaxies.map(\.color)
+        file.palette = loaded.scene.galaxies.map { GalaxyColours($0.color) }
         let (width, height) = (96, 54)
         for frame in [0, 7] {
             let cells = try LookSheet(take: loaded).render(

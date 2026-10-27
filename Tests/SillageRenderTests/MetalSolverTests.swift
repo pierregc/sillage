@@ -97,6 +97,9 @@ struct MetalSolverTests {
             Self.shaderStride(of: "SplatUniforms", in: Shaders.source)
                 == MemoryLayout<SplatUniforms>.stride)
         #expect(
+            Self.shaderStride(of: "GalaxyRamp", in: Shaders.source)
+                == MemoryLayout<GalaxyRamp>.stride)
+        #expect(
             Self.shaderStride(of: "BloomParams", in: Shaders.source)
                 == MemoryLayout<BloomParams>.stride)
         #expect(
