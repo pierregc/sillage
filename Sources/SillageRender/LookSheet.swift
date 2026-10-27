@@ -12,6 +12,7 @@ public final class LookSheet {
     private let snapshots: MTLBuffer
     private let positions: MTLBuffer
     private let smoothing: SmoothingField
+    private var cameras: [String: [Camera]] = [:]
     private var renderers: [(file: LookFile, renderer: Renderer)] = []
 
     public init(take: RecordingFile.Loaded, device: MTLDevice? = nil) throws {
@@ -57,25 +58,100 @@ public final class LookSheet {
         looks: [LookFile], frames: [Int], width: Int, height: Int, cellWidth: Int,
         cellHeight: Int, framesPerSecond: Int
     ) throws -> [[[UInt8]]] {
+        try cells(
+            looks: looks, frames: frames, width: width, height: height, cellWidth: cellWidth,
+            cellHeight: cellHeight, framesPerSecond: framesPerSecond
+        ).map { $0.map(\.pixels) }
+    }
+
+    /// A drawn cell, and with `owners` asked which galaxy each of its pixels shows.
+    public struct Cell: Sendable {
+        public var pixels: [UInt8]
+        /// Galaxy plus one per pixel, 0 where none or several share it.
+        public var owners: [UInt8]?
+    }
+
+    /// As `render`, with each cell's owners when `owners` is set.
+    public func cells(
+        looks: [LookFile], frames: [Int], width: Int, height: Int, cellWidth: Int,
+        cellHeight: Int, framesPerSecond: Int, owners: Bool = false
+    ) throws -> [[Cell]] {
+        var cells = [[Cell]](repeating: [], count: looks.count)
+        try draw(
+            looks: looks, frames: frames, width: width, height: height, cellWidth: cellWidth,
+            cellHeight: cellHeight, framesPerSecond: framesPerSecond, owners: owners
+        ) { row, _, cell in cells[row].append(cell) }
+        return cells
+    }
+
+    /// Hands each cell to `each` with its look and frame indices as it is drawn, frame by
+    /// frame, so many looks need not all be held at once.
+    public func draw(
+        looks: [LookFile], frames: [Int], width: Int, height: Int, cellWidth: Int,
+        cellHeight: Int, framesPerSecond: Int, owners: Bool = false,
+        each: (_ look: Int, _ frame: Int, _ cell: Cell) throws -> Void
+    ) throws {
         let recording = take.recording
         let shots = looks.map { self.shots(of: $0, at: frames, fps: framesPerSecond) }
-
-        var cells = [[[UInt8]]](repeating: [], count: looks.count)
         for (column, frame) in frames.enumerated() {
             guard let blend = recording.blend(atCaptured: frame) else { continue }
             try expand(blend)
             smoothing.update(from: positions)
+            var owned: [String: [UInt8]] = [:]
             for (row, file) in looks.enumerated() {
                 let renderer = try renderer(for: file, width: width, height: height)
                 let shot = shots[row][column]
                 renderer.prepare(file, shot: shot, take: take, at: blend)
-                cells[row].append(
-                    LookGrid.scaled(
+                var cell = Cell(
+                    pixels: LookGrid.scaled(
                         renderer.render(camera: shot.camera), from: (width, height),
                         to: (cellWidth, cellHeight)))
+                if owners {
+                    let c = shot.camera
+                    let key = "\(c.eye) \(c.target) \(c.up) \(c.fieldOfView)"
+                    if owned[key] == nil {
+                        owned[key] = self.owners(
+                            camera: c, aspectRatio: Float(width) / Float(height),
+                            width: cellWidth, height: cellHeight)
+                    }
+                    cell.owners = owned[key]
+                }
+                try each(row, column, cell)
             }
         }
-        return cells
+    }
+
+    /// Which galaxy each pixel of a `width` by `height` image shows, from a sample of the
+    /// visible particles at the frame last expanded: the galaxy holding three quarters of the
+    /// pixel's particles, plus one, else 0.
+    func owners(camera: Camera, aspectRatio: Float, width: Int, height: Int) -> [UInt8] {
+        let particles = take.particles
+        let galaxies = Int(particles.galaxyIndex.max() ?? 0) + 1
+        guard galaxies < 255 else { return [UInt8](repeating: 0, count: width * height) }
+        let matrix = camera.viewProjection(aspectRatio: aspectRatio)
+        let count = particles.count
+        let step = max(count / 400_000, 1)
+        let points = positions.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
+        var counts = [UInt32](repeating: 0, count: width * height * galaxies)
+        for i in stride(from: 0, to: count, by: step) {
+            guard ParticleComponent(rawValue: particles.component[i])?.isVisible ?? true else {
+                continue
+            }
+            let clip = matrix * SIMD4(points[i], 1)
+            guard clip.w > 0 else { continue }
+            let x = Int((clip.x / clip.w * 0.5 + 0.5) * Float(width))
+            let y = Int((0.5 - clip.y / clip.w * 0.5) * Float(height))
+            guard x >= 0, x < width, y >= 0, y < height else { continue }
+            counts[(y * width + x) * galaxies + Int(particles.galaxyIndex[i])] += 1
+        }
+        return (0..<(width * height)).map { pixel in
+            let slice = counts[(pixel * galaxies)..<((pixel + 1) * galaxies)]
+            let total = slice.reduce(0, +)
+            guard total > 0, let top = slice.indices.max(by: { slice[$0] < slice[$1] }),
+                slice[top] * 4 >= total * 3
+            else { return 0 }
+            return UInt8(top - pixel * galaxies + 1)
+        }
     }
 
     private func expand(_ blend: Recording.Blend) throws {
@@ -104,11 +180,18 @@ public final class LookSheet {
         return renderer
     }
 
+    /// Replayed once per camera: outside the director's modes the shot's look is the file's
+    /// own and only the camera plan and the field of view place the camera.
     private func shots(of file: LookFile, at frames: [Int], fps: Int) -> [ShotReplay.Shot] {
+        let directed = file.camera.mode == .director || file.camera.mode == .immersed
+        let key = "\(file.camera) \(file.look.fieldOfView) \(frames) \(fps)"
+        if !directed, let cameras = cameras[key] { return cameras.map { ($0, file.look) } }
         let replay = ShotReplay(
             file: file, take: take, capturedFrames: capturedFrames, framesPerSecond: fps)
         var shots: [Int: ShotReplay.Shot] = [:]
         for frame in Set(frames).sorted() { shots[frame] = replay.shot(atCaptured: frame) }
-        return frames.map { shots[$0]! }
+        let out = frames.map { shots[$0]! }
+        if !directed { cameras[key] = out.map(\.camera) }
+        return out
     }
 }

@@ -80,6 +80,10 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     func readLook(_ path: String) throws -> LookFile {
         try LookFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: path)))
     }
+    if let choice = option("style") {
+        guard choice == "auto" else { fail("look: --style is auto") }
+        return try styleAuto(folder, options: options)
+    }
     if let choice = option("palette") {
         return try palettePromotion(
             folder, choice: choice, world: option("world"), base: option("base"))
@@ -306,6 +310,104 @@ func palettePromotion(
         String(
             format: "look       palette %@ (%@ world, score %.2f) is now in %@", palette.name,
             palette.world.rawValue, score?.total ?? 0, folder.look.path))
+    return 0
+}
+
+/// `look <scene folder> --style auto [--world telescope|free] [--keep]`: every rendering of
+/// the world with the scene's best palettes, drawn on three key frames and scored; the best
+/// pair is promoted unless `--keep`. Writes `looks/auto-<world>.png` (the best three) and
+/// `looks/auto-<world>.json` (every pair's score).
+func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
+    func option(_ name: String) -> String? {
+        options.firstIndex(of: "--\(name)").flatMap {
+            $0 + 1 < options.count ? options[$0 + 1] : nil
+        }
+    }
+    let started = Date()
+    var world: Palette.World?
+    if let name = option("world") {
+        guard let asked = Palette.World(rawValue: name) else {
+            fail("look: --world is telescope or free")
+        }
+        world = asked
+    }
+    let outcome = try StyleAuto.choose(
+        folder, world: world, catalogue: catalogueLooks(), references: telescopeReferences())
+    let scoredAt = Date()
+    let (sheet, keys, ranked) = (outcome.sheet, outcome.keys, outcome.ranked)
+    let (width, height, fps) = (outcome.width, outcome.height, outcome.fps)
+    let renderings = Set(ranked.map(\.rendering)).count
+    let palettes = Set(ranked.map(\.palette.name)).count
+
+    func label(_ candidate: StyleAuto.Candidate) -> String {
+        String(format: "%.3f %@ · %@", candidate.total, candidate.rendering, candidate.palette.name)
+    }
+    for (index, candidate) in ranked.prefix(5).enumerated() {
+        func part(_ path: KeyPath<FrameScore, Float>) -> Float {
+            candidate.frames.map { $0[keyPath: path] }.reduce(0, +)
+                / Float(max(candidate.frames.count, 1))
+        }
+        let reference = candidate.frames.compactMap(\.reference)
+        print(
+            String(
+                format:
+                    "style      %d. %@: clipping %.2f exposure %.2f colour %.2f separation %.2f noise %.2f detail %.2f reference %@ palette %.2f",
+                index + 1, label(candidate), part(\.clipping), part(\.exposure),
+                part(\.colourfulness), part(\.separation), part(\.noise), part(\.detail),
+                reference.isEmpty
+                    ? "-" : String(format: "%.2f", reference.reduce(0, +) / Float(reference.count)),
+                candidate.paletteScore.total))
+    }
+
+    let manager = FileManager.default
+    try manager.createDirectory(at: folder.looks, withIntermediateDirectories: true)
+    struct Row: Encodable {
+        var rendering: String
+        var palette: Palette
+        var total: Float
+        var paletteScore: Float
+        var frames: [FrameScore]
+    }
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let report = folder.looks.appendingPathComponent("auto-\(outcome.world.rawValue).json")
+    try encoder.encode(
+        ranked.map {
+            Row(
+                rendering: $0.rendering, palette: $0.palette, total: $0.total,
+                paletteScore: $0.paletteScore.total, frames: $0.frames)
+        }
+    ).write(to: report)
+
+    let top = Array(ranked.prefix(3))
+    let cellHeight = max(
+        Int((Double(StyleAuto.cellWidth) * Double(height) / Double(width)).rounded()), 1)
+    let cells = try sheet.render(
+        looks: top.map(\.look), frames: keys.map(\.frame), width: width, height: height,
+        cellWidth: StyleAuto.cellWidth, cellHeight: cellHeight, framesPerSecond: fps)
+    guard
+        let grid = LookGrid.image(
+            cells: cells, rowLabels: top.map(label),
+            columnLabels: keys.map {
+                String(
+                    format: "%@ · %.0f Myr", $0.role.rawValue, sheet.timeMyr(atCaptured: $0.frame))
+            }, cellWidth: StyleAuto.cellWidth, cellHeight: cellHeight)
+    else { fail("look: could not compose the grid") }
+    let gridURL = folder.looks.appendingPathComponent("auto-\(outcome.world.rawValue).png")
+    try PNGWriter.write(grid, to: gridURL)
+
+    print(
+        String(
+            format:
+                "style      %d pairs (%d renderings, %d palettes) on %d frames at %dx%d: %.1f s",
+            ranked.count, renderings, palettes, keys.count, width, height,
+            scoredAt.timeIntervalSince(started)))
+    print("grid       \(gridURL.path)")
+    print("scores     \(report.path)")
+    if let best = ranked.first, !options.contains("--keep") {
+        try folder.promote(best.look)
+        print("look       \(label(best)) is now \(folder.look.path)")
+    }
     return 0
 }
 
