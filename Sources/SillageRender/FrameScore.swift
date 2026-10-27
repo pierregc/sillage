@@ -41,14 +41,14 @@ public struct FrameScore: Sendable, Equatable, Codable {
         (
             clipping: Float, exposure: Float, colourfulness: Float, separation: Float,
             noise: Float, detail: Float, reference: Float
-        ) = (0.1, 0.15, 0.2, 0.2, 0.1, 0.15, 0.15)
+        ) = (0.1, 0.15, 0.2, 0.2, 0.1, 0.1, 0.15)
 
     /// Display luma above which a pixel belongs to something rather than to the sky.
     static let litLuma: Float = 0.1
     /// An 8-bit channel at or above this is clipped.
     static let clipLevel: UInt8 = 250
     /// Local contrast at which a galaxy counts as fully drawn.
-    static let sharpDetail: Float = 0.3
+    static let sharpDetail: Float = 0.12
 
     /// `pixels` are 8-bit sRGB RGBA, `width` by `height`. `owners` gives each pixel's galaxy
     /// plus one, 0 where none or several share it; without it the frame counts as one galaxy.
