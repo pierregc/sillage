@@ -121,7 +121,7 @@ library/<batch>/
         curves-hires.csv   its curves, in the format of curves.csv
         hires.json         the particle count, steps and settings it ran with, and its cost
         take.sillage       the run at full size, for the later stages
-        looks/             the look stage's grid.png and one .look.json per row
+        looks/             the looks the scene has been through, one .look.json each
         look-raw.json      the look explore wrote, once another is promoted over it
         exports/           the finished videos
 ```
@@ -224,37 +224,16 @@ and export rely on, for a smaller saving than the interval already makes.
 ### Looks
 
 ```bash
-./scripts/dev.sh look library/2026-10-23/scene-0001                    # the grid
-./scripts/dev.sh look library/2026-10-23/scene-0001 --base dream my.look.json
+./scripts/dev.sh look library/2026-10-23/scene-0001 --style auto
 ./scripts/dev.sh look library/2026-10-23/scene-0001 --promote standard-vivid
 ```
 
-`look` draws the take, `take.sillage` from `hires`, with no solver: a few frames, several looks,
-one grid in `looks/grid.png`, a row per look and a column per key frame. The rows are a base
-look, `LookFile.standard` unless `--base` names a look of `looks/` or a file, then the base one
-change at a time (brighter, dimmer, more and less colour, spikes, bloom, camera higher, lower,
-closer, wider), then the catalogue in the repository's `looks/` (observatory, dream, gloss, ink,
-ember and some thirty more: most with no gas, a discreet or absent starfield, few or no
-spikes, each with colours of its own), then any `.look.json` given. A row keeps the scene's
-palette, the one in its `look.json`, unless its file has a palette of its own. The base's
-variants also include the base with its palette turned around the hue wheel (`hue-60` to
-`hue-240`), `no-gas`, `no-stars` and `no-sky`. The rows are written 15 to an image, `grid.png`,
-`grid-2.png` and so on. `--no-variants` and `--no-catalogue` leave rows
-out, `--width` sets a cell's width (480), and `--take` draws a smaller take instead.
+`look` draws the take, `take.sillage` from `hires`, with no solver. `--promote <name>` makes a
+look of the repository's `looks/` (observatory, dream, gloss, ink, ember and some thirty more)
+the scene's `look.json` for the export, moving the raw one explore wrote to `look-raw.json` the
+first time; a later promotion replaces the earlier one, which stays in the scene's `looks/`.
 
-The key frames come from `curves-hires.csv`: the start, the approach (halfway in distance to the
-pericentre), the pericentre (the smallest separation), the tails (the largest tidal fraction
-after it) and the end, less any that fall within a twentieth of the clip of another. `--frames
-0,150,299` picks captured frames by hand, `--times 120,300` the frames nearest those megayears.
-Each column says whether its frame is one the take kept or one drawn through the cubic between
-them. Every camera is played from the first frame to the key frame, so the auto camera's easing
-and the director's cuts land where the full render puts them.
-
-Every row's look is kept as `looks/<name>.look.json`. `--promote <name>` makes one the scene's
-`look.json` for the export, moving the raw one explore wrote to `look-raw.json` the first time;
-a later promotion replaces the earlier one, which stays in `looks/`.
-
-A scene's palette can be chosen without a grid: `look <scene> --palette auto` scores a fixed
+A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
 above, so the same scene always gets the same palette. `--palette <family>` does the same inside
 one family, `--palette <file.palette.json>` takes a palette as it is (a `Palette` as `look.json`
@@ -276,7 +255,7 @@ takes about 2 s in the telescope world and 8 s in the free one at 2 M particles;
 `export <scene> --palette auto|<family>|<file> [--world telescope|free]` draws that one export
 with another palette, as `look --palette` would, and leaves the scene's `look.json` alone.
 
-The grid compares; the application chooses. In the library, **Choisir le style** on a scene
+In the library, **Choisir le style** on a scene
 that has a take opens the style editor: the take plays in the canvas with a transport bar under
 it, and an inspector holds four sections. **Rendu** offers the 42 looks of `looks/` as
 renderings: a click puts a look's light, instrument and buffers on the picture and keeps the
@@ -313,8 +292,8 @@ a second of HEVC, twelve of H.264, since a galaxy is mostly faint gradient that 
 `--height` and `--bitrate` (Mbit/s) override the preset, `--start` and `--duration` (seconds) cut
 the clip, and `--fps` defaults to the rate the take was captured at; any other rate draws the
 moments between captured frames through the same cubic the take's skipped frames use, and the
-camera between the two captured frames around them. `--look` takes a file, a row of the look
-grid by name or a catalogue look, `--take` another take and `--out` another path.
+camera between the two captured frames around them. `--look` takes a file, a look kept in
+the scene's `looks/` by name or a catalogue look, `--take` another take and `--out` another path.
 
 `--codec hevc|h264|prores` picks what the frames are compressed with, all on the media engine:
 
@@ -336,12 +315,12 @@ keys, which Finder,
 `mdls` and `ffprobe` show; an MP4 keeps them as user data atoms, which `AVAsset` reads back
 (`ffprobe` and Spotlight skip those in an MP4, whatever wrote them).
 
-The camera is replayed from the take's first frame exactly as the look grid replays it, through
-the same code, so a cell of the grid and the same frame of the export are the same picture.
+The camera is replayed from the take's first frame exactly as the look stage replays it, through
+the same code, so a style editor frame and the same frame of the export are the same picture.
 Every frame is drawn straight into a pixel buffer of the encoder's pool, a BGRA Metal texture
 over it, and compressed on a queue of its own while the next one renders; `explore`'s preview
 goes through the same writer. Stars, spikes and kernels are
-sized in pixels, so a 4k export shows them finer than a grid drawn at the clip's size.
+sized in pixels, so a 4k export shows them finer than a frame drawn at the clip's size.
 
 Measured on the M4 Max with a 2 M take of 300 frames and the standard look, nothing else
 running, the same over two runs:

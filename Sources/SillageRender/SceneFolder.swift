@@ -401,7 +401,7 @@ extension SceneFolder {
                 "no preset \"\(name)\", pick one of "
                     + VideoPreset.all.map(\.name).joined(separator: ", ")
             case .noSuchLook(let name):
-                "no look \"\(name)\": neither a file, a row of the look grid nor a catalogue look"
+                "no look \"\(name)\": neither a file, a look kept in the scene nor a catalogue look"
             case .badValue(let option, let value): "--\(option) \(value) is not usable"
             case .noSuchCodec(let name):
                 "no codec \"\(name)\", pick one of "
