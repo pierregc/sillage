@@ -481,7 +481,7 @@ final class SimulationModel: ObservableObject {
             let reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
             let centres =
                 playbackCenters.isEmpty ? scene.galaxies.map(\.position) : playbackCenters
-            let framed = auto.frame(centres: centres, margins: reach)
+            let framed = auto.frame(centres: scene.framedCentres(centres), margins: reach)
             return plan.camera(
                 progress: progress, radius: framed.radius / plan.zoom, center: framed.center,
                 fieldOfView: look.fieldOfView)

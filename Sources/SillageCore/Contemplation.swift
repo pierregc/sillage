@@ -74,14 +74,18 @@ extension SceneConfig {
     /// What every generated scene shares once its galaxies and encounters are drawn.
     mutating func finishGenerated(using generator: inout SeededGenerator) {
         solver = .barnesHut
+        let hole = hasBlackHole
         for index in galaxies.indices {
             // A rigid analytic halo. Live dark matter would triple the particle count for
             // material that reaches no pixel, and what it buys — dynamical friction, so a
-            // pair actually merges — is not what an eleven minute scene is watching.
-            galaxies[index].haloParticleRatio = 0
+            // pair actually merges — is not what an eleven minute scene is watching. Except
+            // beside a black hole: a rigid halo takes no reaction from a mass a tenth of its
+            // own, and the hole would pull on a galaxy that cannot move.
+            galaxies[index].haloParticleRatio = hole && galaxies[index].kind != .blackHole ? 1.5 : 0
             // Gas standing in for itself: without it a disk heats until its arms stop coming,
             // which is exactly the stretch of a scene somebody is sitting through.
-            galaxies[index].dissipationTime = generator.uniform(in: 180...320)
+            let cooling = generator.uniform(in: 180...320)
+            galaxies[index].dissipationTime = galaxies[index].kind == .blackHole ? 0 : cooling
         }
         // Fewer, larger steps. Each one costs a tree built across every core as much as it
         // costs the GPU, so halving their number is worth twice what tuning the force pass

@@ -10,6 +10,14 @@ struct HaloGPU {
     var shape: SIMD4<Float>
 }
 
+/// A black hole the solver pulls with outside the tree.
+struct HoleGPU {
+    /// Mass times G in w.
+    var massG: SIMD4<Float>
+    /// Softening squared, then the particle's index as a bit pattern.
+    var shape: SIMD4<Float>
+}
+
 struct StarFormationGPU {
     var efficiency: Float
     var threshold: Float
@@ -108,8 +116,16 @@ public final class MetalBarnesHutSolver: Solver {
     private var componentBuffer: MTLBuffer?
     private var galaxyBuffer: MTLBuffer?
 
-    /// Masses never change, so they are read once.
+    /// Masses never change, so they are read once. A black hole's is here and not in the
+    /// buffer the tree is built from.
     private let particleMass: [Float]
+    /// Black holes, pulled outside the tree; empty in a scene without one.
+    private let holes: [HoleGPU]
+    private let holePull: MTLComputePipelineState?
+    private let holeSettle: MTLComputePipelineState?
+    private let holePartial: MTLBuffer?
+    private static let holeLimit = 4
+    private static let holeGroupWidth = 256
     private let template: ParticleSystem
     private let count: Int
     private let galaxyOf: [UInt32]
@@ -185,6 +201,24 @@ public final class MetalBarnesHutSolver: Solver {
             masses = [Float](repeating: 0, count: self.count)
         }
         self.particleMass = masses
+        // Never softer than the stars, whatever the scene says.
+        var holes: [HoleGPU] = []
+        for index in particles.component.indices
+        where particles.component[index] == ParticleComponent.hole.rawValue
+            && holes.count < Self.holeLimit && index < masses.count
+        {
+            let galaxy = Int(particles.galaxyIndex[index])
+            let own =
+                scene.galaxies.indices.contains(galaxy) ? scene.galaxies[galaxy].potential.scaleRadius : 0
+            let length = max(own, scene.softening)
+            holes.append(
+                HoleGPU(
+                    massG: SIMD4<Float>(0, 0, 0, masses[index] * Physics.gravitationalConstant),
+                    shape: SIMD4<Float>(length * length, Float(bitPattern: UInt32(index)), 0, 0)))
+        }
+        self.holes = holes
+        var treeMass = masses
+        for hole in holes { treeMass[Int(hole.shape.y.bitPattern)] = 0 }
 
         var stripped = particles
         stripped.positions = []
@@ -223,6 +257,8 @@ public final class MetalBarnesHutSolver: Solver {
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
         formStars = try pipeline("bhFormStars")
+        holePull = holes.isEmpty ? nil : try pipeline("bhHolePull")
+        holeSettle = holes.isEmpty ? nil : try pipeline("bhHoleSettle")
 
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -236,8 +272,7 @@ public final class MetalBarnesHutSolver: Solver {
             let accelerationBuffer = device.makeBuffer(
                 length: count * stride, options: .storageModeShared),
             let massBuffer = device.makeBuffer(
-                bytes: particles.mass.isEmpty ? [Float(0)] : particles.mass,
-                length: count * 4, options: .storageModeShared),
+                bytes: treeMass, length: count * 4, options: .storageModeShared),
             let sortedBuffer = device.makeBuffer(
                 length: count * MemoryLayout<SIMD4<Float>>.stride, options: .storageModePrivate),
             let costBuffer = device.makeBuffer(
@@ -257,6 +292,13 @@ public final class MetalBarnesHutSolver: Solver {
         self.sortedBuffer = sortedBuffer
         self.formationBuffer = formationBuffer
         self.costBuffer = costBuffer
+        holePartial =
+            holes.isEmpty
+            ? nil
+            : device.makeBuffer(
+                length: ((count + Self.holeGroupWidth - 1) / Self.holeGroupWidth) * Self.holeLimit
+                    * MemoryLayout<SIMD4<Float>>.stride,
+                options: .storageModePrivate)
         builder = try GPUTreeBuilder(
             device: device, count: count, leafCapacity: Self.leafCapacity,
             maximumDepth: Self.maximumTreeDepth, quadrupole: quadrupole,
@@ -288,6 +330,7 @@ public final class MetalBarnesHutSolver: Solver {
         rebuildTree()
         if let buffer = queue.makeCommandBuffer() {
             encodeAccelerations(into: buffer)
+            encodeHoles(into: buffer)
             submit(buffer)
         }
     }
@@ -324,6 +367,7 @@ public final class MetalBarnesHutSolver: Solver {
             clock = Date()
             if profiling {
                 profiledPass("force") { encodeAccelerations(into: $0) }
+                if !holes.isEmpty { profiledPass("black holes") { encodeHoles(into: $0) } }
                 profiledPass("kick") { encodeKick(into: $0) }
                 profiledPass("dissipation") { encodeShedRandomMotion(into: $0) }
             } else {
@@ -356,6 +400,7 @@ public final class MetalBarnesHutSolver: Solver {
             encodeAccelerations(into: buffer, pieces: start..<(start + span))
             start += span
             if start >= count {
+                encodeHoles(into: buffer)
                 encodeKick(into: buffer)
                 encodeShedRandomMotion(into: buffer)
             }
@@ -427,7 +472,7 @@ public final class MetalBarnesHutSolver: Solver {
             let wrecked = state.disruption
             let quiet = max((1 - disturbed) * (1 - wrecked), 0)
             let damping =
-                galaxy.dissipationTime > 0 && galaxy.kind != .globular
+                galaxy.dissipationTime > 0 && galaxy.kind.isRotating
                 ? quiet * (1 - exp(-elapsed / galaxy.dissipationTime)) : 0
             let edge = max(galaxy.diskScaleLength, 0.1)
             // The floor the disk cools to, taken from the equilibrium it was sampled in so it
@@ -814,7 +859,7 @@ public final class MetalBarnesHutSolver: Solver {
         for galaxy in 0..<galaxies {
             // A globular has no ordered rotation to lose and is never cooled, so leaving its
             // state alone keeps the reading worth looking at rather than pinned at one.
-            guard scene.galaxies[galaxy].kind != .globular else { continue }
+            guard scene.galaxies[galaxy].kind.isRotating else { continue }
             diskStates[galaxy].fold(
                 momentum: angular[galaxy], scalar: scalar[galaxy],
                 height: height[galaxy], across: across[galaxy])
@@ -857,8 +902,39 @@ public final class MetalBarnesHutSolver: Solver {
     }
 
     /// Particles are taken by Morton slot, so `pieces` is a range of slots.
-    private func encodeAccelerations(into buffer: MTLCommandBuffer, pieces: Range<Int>? = nil) {
+    /// The black holes' pull on everything, and everything's back on them. After the whole
+    /// force pass, which leaves each hole the analytic halos' pull and nothing else that is
+    /// kept: the tree saw it as a test particle, at the stars' softening.
+    private func encodeHoles(into buffer: MTLCommandBuffer) {
+        guard let holePull, let holeSettle, let holePartial, !holes.isEmpty else { return }
         var p = params
+        var list = haloList
+        var count = UInt32(holes.count)
+        var groups = UInt32((self.count + Self.holeGroupWidth - 1) / Self.holeGroupWidth)
+        encode(into: buffer, holePull, width: Self.holeGroupWidth) { encoder in
+            encoder.setBuffer(positionBuffer, offset: 0, index: 0)
+            encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
+            encoder.setBuffer(massBuffer, offset: 0, index: 2)
+            encoder.setBuffer(componentBuffer, offset: 0, index: 3)
+            encoder.setBytes(holes, length: holes.count * MemoryLayout<HoleGPU>.stride, index: 4)
+            encoder.setBytes(&count, length: 4, index: 5)
+            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
+            encoder.setBuffer(holePartial, offset: 0, index: 7)
+        }
+        encode(into: buffer, holeSettle, threads: 1, width: 1) { encoder in
+            encoder.setBuffer(positionBuffer, offset: 0, index: 0)
+            encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
+            encoder.setBytes(holes, length: holes.count * MemoryLayout<HoleGPU>.stride, index: 2)
+            encoder.setBytes(&count, length: 4, index: 3)
+            encoder.setBytes(&groups, length: 4, index: 4)
+            encoder.setBuffer(holePartial, offset: 0, index: 5)
+            encoder.setBytes(&list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 6)
+            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 7)
+        }
+    }
+
+    /// The analytic halos the force pass adds, one a galaxy, at the current centres.
+    private var haloList: [HaloGPU] {
         var list = scene.galaxies.enumerated().map { index, galaxy -> HaloGPU in
             let center = index < haloCenters.count ? haloCenters[index] : galaxy.position
             let haloMass =
@@ -872,6 +948,12 @@ public final class MetalBarnesHutSolver: Solver {
                     galaxy.potential.profile == .plummer ? 0 : 1, 0))
         }
         if list.isEmpty { list = [HaloGPU(centerBefore: .zero, centerAfter: .zero, shape: .zero)] }
+        return list
+    }
+
+    private func encodeAccelerations(into buffer: MTLCommandBuffer, pieces: Range<Int>? = nil) {
+        var p = params
+        let list = haloList
 
         // A reused tree still needs this step's positions in its order.
         if !gathered {
@@ -910,9 +992,10 @@ public final class MetalBarnesHutSolver: Solver {
     public func momentum() -> SIMD3<Float> {
         let velocities = velocityBuffer.contents().bindMemory(
             to: SIMD3<Float>.self, capacity: count)
-        let masses = massBuffer.contents().bindMemory(to: Float.self, capacity: count)
         var total = SIMD3<Float>.zero
-        for index in 0..<count { total += velocities[index] * masses[index] }
+        for index in 0..<min(count, particleMass.count) {
+            total += velocities[index] * particleMass[index]
+        }
         return total
     }
 

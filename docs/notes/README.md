@@ -21,6 +21,7 @@ session. Read the note for an area before changing it.
 - [The tree on the GPU](gpu-tree.md): and the gap the frames were using
 - [Encounters placed from their pericentre](encounters.md)
 - [Whole stories](whole-stories.md): when a scene's story is over, and how long clips run
+- [A black hole outside the tree](black-holes.md): its own softening, the step, energy across the mass range
 
 ## Physics and galaxies
 

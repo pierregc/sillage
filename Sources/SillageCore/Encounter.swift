@@ -195,6 +195,11 @@ public struct EncounterCentres {
                     stellarMass: mass, stellarScale: Double(scene.centerSoftening), haloMass: 0,
                     haloScale: 1, haloPlummer: false, haloEdge: nil)
             }
+            if galaxy.kind == .blackHole {
+                return Profile(
+                    stellarMass: mass, stellarScale: Double(galaxy.potential.scaleRadius),
+                    haloMass: 0, haloScale: 1, haloPlummer: false, haloEdge: nil)
+            }
             let stellar = mass * Double(galaxy.diskMassFraction)
             // An exponential disk holds half its mass inside 1.68 scale lengths and a Plummer
             // sphere inside 1.3 of its scale.
@@ -491,8 +496,9 @@ extension SceneConfig {
         let total = totalParticleCount
         let mass = galaxies.reduce(Float(0)) { $0 + $1.potential.mass }
         guard total > 0, mass > 0 else { return }
-        var counts = galaxies.map { Int((Double(total) * Double($0.potential.mass / mass)).rounded()) }
-        counts[0] = max(total - counts.dropFirst().reduce(0, +), 0)
+        let counts = Self.sharedCounts(
+            total, weights: galaxies.map { Double($0.potential.mass / mass) },
+            kinds: galaxies.map(\.kind))
         for index in galaxies.indices { galaxies[index].particleCount = counts[index] }
     }
 

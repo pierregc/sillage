@@ -4,6 +4,7 @@ import Foundation
 /// down: an elliptical and a globular are both spheroids, a dwarf is a small disk.
 public enum GalaxyFamily: String, Codable, Sendable, CaseIterable {
     case spiral, disk, elliptical, dwarf, globular
+    case blackHole = "black-hole"
 }
 
 /// How a scene was drawn, kept in its scene file.
@@ -89,6 +90,8 @@ public struct FreeDraw: Sendable {
                 if gap >= spacing { break }
             }
             guard var chosen = best else { break }
+            // After the choice, so the scenes around it are the ones the batch always drew.
+            if let hole = Self.withBlackHole(chosen.scene) { chosen.scene = hole }
             chosen.scene.draw?.index = kept.count
             kept.append(chosen.scene)
             signatures.append(chosen.signature)
@@ -206,6 +209,38 @@ public struct FreeDraw: Sendable {
         return scene
     }
 
+    /// Share of free scenes whose first companion is a black hole instead.
+    public static let blackHoleShare: Float = 0.04
+
+    /// The scene with its first companion swapped for a black hole, for `blackHoleShare` of
+    /// the scenes that have one to swap, decided by a stream of the scene's own so every other
+    /// scene of a batch stays as it was. The passage is drawn again over the hole's ranges:
+    /// fly-bys mostly, a bound orbit one time in five.
+    static func withBlackHole(_ scene: SceneConfig) -> SceneConfig? {
+        guard scene.galaxies.count >= 2, let first = scene.encounters.first, first.secondary == 1,
+            !scene.encounters.contains(where: { $0.primary == 1 })
+        else { return nil }
+        var draws = SeededGenerator(seed: scene.seed ^ 0x424C_4143_4B48_4F4C)
+        guard draws.uniform() < blackHoleShare else { return nil }
+        var hole = scene
+        let companion = hole.galaxies[1]
+        hole.galaxies[1] = galaxy(
+            .blackHole, size: 0, arms: 0, pitch: 0, bulge: 0, thickness: 0, stream: &draws)
+        hole.galaxies[1].name = companion.name
+        hole.galaxies[1].color = companion.color
+        hole.galaxies[1].particleCount = 1
+        hole.galaxies[0].particleCount += companion.particleCount - 1
+        var meeting = first
+        meeting.massRatio = logarithmic(draws.uniform(), in: massRatios(.blackHole))
+        meeting.pericentre = logarithmic(draws.uniform(), in: 0.5...20)
+        meeting.eccentricity =
+            draws.uniform() < 0.2 ? draws.uniform(in: 0.7...0.95) : draws.uniform(in: 1...1.6)
+        meeting.secondaryDisk = Encounter.Disk()
+        hole.encounters[0] = meeting
+        hole.draw?.families[1] = .blackHole
+        return hole
+    }
+
     /// The range of mass ratios a companion of a family is drawn from, against the galaxy it
     /// passes.
     static func massRatios(_ family: GalaxyFamily) -> ClosedRange<Float> {
@@ -214,6 +249,9 @@ public struct FreeDraw: Sendable {
         case .elliptical: 0.25...1
         case .dwarf: 0.03...0.2
         case .globular: 0.08...0.3
+        // A 10^9 to 10^11 solar mass hole against a 10^11 to 10^12 host. Past a tenth it is
+        // more a massive intruder than any black hole known, kept for what the disk does.
+        case .blackHole: 0.01...0.3
         }
     }
 
@@ -315,6 +353,9 @@ public struct FreeDraw: Sendable {
                 inclination: stream.uniform(in: -1.2...1.2),
                 positionAngle: stream.uniform(in: 0...(2 * .pi)),
                 spin: stream.uniform() < 0.5 ? .prograde : .retrograde)
+        case .blackHole:
+            // Weighed and sized by the encounter's mass ratio, the softening with it.
+            return .blackHole(mass: 1, softening: GalaxyConfig.blackHoleSoftening(mass: 1))
         case .globular:
             // Small and dense: it punches through a disk rather than orbiting it.
             var galaxy = GalaxyConfig(
@@ -364,7 +405,9 @@ extension SceneConfig {
         guard let galaxy else { return [Float](repeating: 0, count: 8) }
         let spiral = galaxy.kind == .spiral
         let rotating = galaxy.kind.isRotating
-        let compact = galaxy.kind == .globular && galaxy.potential.profile == .plummer
+        let compact =
+            galaxy.kind == .blackHole
+            || galaxy.kind == .globular && galaxy.potential.profile == .plummer
         return [
             spiral ? 0.5 : 0, galaxy.kind == .disk ? 0.5 : 0, galaxy.kind == .globular ? 0.5 : 0,
             compact ? 0.5 : 0,

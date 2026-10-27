@@ -51,6 +51,9 @@ public struct RenderLook: Sendable, Equatable {
     /// the whole point of the dreamier looks.
     public var armPersistence: Float
     public var fieldOfView: Float
+    /// Radius in kpc of the dark dot a black hole is drawn as. Zero, the default, draws
+    /// nothing there: the hole shows only by the stars it drags.
+    public var holeShadow: Float
 
     public init(
         brightness: Float = 0.15,
@@ -75,7 +78,8 @@ public struct RenderLook: Sendable, Equatable {
         galaxyTint: Float = 0.5,
         starSize: Float = 1.15,
         armPersistence: Float = 1,
-        fieldOfView: Float = 0.6
+        fieldOfView: Float = 0.6,
+        holeShadow: Float = 0
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -100,6 +104,7 @@ public struct RenderLook: Sendable, Equatable {
         self.starSize = starSize
         self.armPersistence = armPersistence
         self.fieldOfView = fieldOfView
+        self.holeShadow = holeShadow
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -134,6 +139,7 @@ public struct RenderLook: Sendable, Equatable {
         out.starSize = f(a.starSize, b.starSize)
         out.armPersistence = f(a.armPersistence, b.armPersistence)
         out.fieldOfView = f(a.fieldOfView, b.fieldOfView)
+        out.holeShadow = f(a.holeShadow, b.holeShadow)
         return out
     }
 
@@ -238,6 +244,7 @@ extension RenderLook: Codable {
             galaxyTint: try c.value(.galaxyTint, or: d.galaxyTint),
             starSize: try c.value(.starSize, or: d.starSize),
             armPersistence: try c.value(.armPersistence, or: d.armPersistence),
-            fieldOfView: try c.value(.fieldOfView, or: d.fieldOfView))
+            fieldOfView: try c.value(.fieldOfView, or: d.fieldOfView),
+            holeShadow: try c.value(.holeShadow, or: d.holeShadow))
     }
 }

@@ -177,12 +177,31 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
 
     /// Stars placed in the bulge. Spheroids have no bulge of their own to speak of.
     public var bulgeParticleCount: Int {
-        kind == .globular ? 0 : Int(Float(particleCount) * min(max(bulgeFraction, 0), 0.9))
+        kind.isRotating ? Int(Float(particleCount) * min(max(bulgeFraction, 0), 0.9)) : 0
     }
 
     /// Number of halo particles this galaxy contributes when self-gravitating.
     public var haloParticleCount: Int {
-        haloParticleRatio > 0 ? Int(Float(particleCount) * haloParticleRatio) : 0
+        haloParticleRatio > 0 && kind != .blackHole ? Int(Float(particleCount) * haloParticleRatio) : 0
+    }
+
+    /// A black hole of `mass`, softened at `softening` kpc. It is one particle carrying the
+    /// whole mass, so `particleCount` is one whatever the scene's count.
+    public static func blackHole(mass: Float, softening: Float) -> GalaxyConfig {
+        GalaxyConfig(
+            name: "", particleCount: 1, kind: .blackHole,
+            potential: GalaxyPotential(profile: .plummer, mass: mass, scaleRadius: softening),
+            diskScaleLength: softening, diskTruncation: 1, diskThickness: softening,
+            velocityDispersion: 0, armStrength: 0, dustFraction: 0, starFormingFraction: 0,
+            bulgeFraction: 0, clumpiness: 0, outskirtFraction: 0, armIrregularity: 0,
+            diskMassFraction: 1, haloParticleRatio: 0, dissipationTime: 0)
+    }
+
+    /// The softening a black hole of `mass` is drawn with, in kpc: a quarter of a kiloparsec
+    /// at 10^10 solar masses, growing as the cube root, the way a galaxy's lengths follow its
+    /// mass under `Encounter.massRatio`. See docs/notes/black-holes.md for the measurement.
+    public static func blackHoleSoftening(mass: Float) -> Float {
+        0.25 * cbrt(max(mass, 1e-6))
     }
 
     /// Maps the disk plane onto its world orientation.

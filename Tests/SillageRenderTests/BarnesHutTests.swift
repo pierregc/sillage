@@ -184,6 +184,67 @@ struct BarnesHutTests {
         #expect(try meanError(quadrupole: true) < meanError(quadrupole: false) / 2)
     }
 
+    /// A black hole pulls outside the tree, at its own softening, and takes the exact
+    /// reaction: inside a cluster or beside it, its pull and the cluster's on it match direct
+    /// summation, and the total force on everything is nothing.
+    @Test(arguments: [SIMD3<Float>(0.3, -0.2, 0.1), SIMD3<Float>(9, 2, -1)])
+    func aBlackHolePullsDirectlyAndTakesTheReaction(at place: SIMD3<Float>) throws {
+        let count = 3_000
+        let (positions, mass) = cluster(count: count, seed: 9)
+        let holeMass: Float = 3
+        let holeSoftening: Float = 0.6
+        var particles = ParticleSystem(capacity: count + 1)
+        for index in 0..<count {
+            particles.append(
+                position: positions[index], velocity: .zero, galaxy: 0, radius: 1,
+                mass: mass[index])
+        }
+        particles.append(
+            position: place, velocity: .zero, galaxy: 1, radius: 0, component: .hole,
+            mass: holeMass)
+        var hole = GalaxyConfig.blackHole(mass: holeMass, softening: holeSoftening)
+        hole.position = place
+        let scene = SceneConfig(
+            name: "cluster and hole",
+            galaxies: [
+                GalaxyConfig(
+                    name: "cluster", particleCount: count,
+                    potential: GalaxyPotential(profile: .plummer, mass: 10, scaleRadius: 3),
+                    diskScaleLength: 3, diskMassFraction: 1, haloParticleRatio: 0),
+                hole,
+            ],
+            solver: .barnesHut, openingAngle: 0.5, softening: 0.25)
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+        let computed = solver.accelerations
+        let all = positions + [place]
+        let masses = mass + [holeMass]
+        func direct(_ index: Int) -> SIMD3<Float> {
+            var total = SIMD3<Float>.zero
+            for other in all.indices where other != index {
+                let soft = index == count || other == count ? holeSoftening : 0.25
+                let offset = all[other] - all[index]
+                let r2 = simd_length_squared(offset) + soft * soft
+                total += offset * (masses[other] / (r2 * r2.squareRoot()))
+            }
+            return total
+        }
+        let onHole = direct(count)
+        #expect(simd_length(computed[count] - onHole) / simd_length(onHole) < 1e-4)
+        var worst: Float = 0
+        for index in stride(from: 0, to: count, by: 17) {
+            let reference = direct(index)
+            worst = max(worst, simd_length(computed[index] - reference) / simd_length(reference))
+        }
+        #expect(worst < 0.05)
+        var net = SIMD3<Float>.zero
+        var scale: Float = 0
+        for index in all.indices {
+            net += computed[index] * masses[index]
+            scale += simd_length(computed[index]) * masses[index]
+        }
+        #expect(simd_length(net) / scale < 0.01)
+    }
+
     /// What the default angle is chosen on. With the quadrupole, momentum no longer tracks the
     /// force error, and the orbit does: a merger's separation through its second approach stays
     /// closer to a run at 0.5 than the monopole's at 0.7. Measured from 12 000 to 200 000

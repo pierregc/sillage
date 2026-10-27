@@ -59,7 +59,8 @@ pericentres inside the clip it is rendered for, between `--settle` and `--steps`
 
 `--preset free --seed S --index N` is scene `N` of batch `S` from the free generator, which
 spreads a batch evenly over everything a scene can physically be: one to five galaxies, each a
-spiral, a lenticular disk, an elliptical, a dwarf or a compact globular, with their arm count,
+spiral, a lenticular disk, an elliptical, a dwarf, a compact globular or, for 4 % of the scenes
+with a companion, a lone black hole in place of the first one, with their arm count,
 arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. What changes
 a scene most is drawn from a Sobol sequence shifted by the batch seed, so a batch covers the
 space instead of clumping; the rest comes from a stream seeded by the scene. A candidate whose
@@ -71,13 +72,15 @@ particle, so a scene is found again from those two numbers alone.
 
 A batch also holds archetypes, known interacting systems as starting points: `antennae`
 (NGC 4038/9), `mice` (NGC 4676), `ring` (a head-on collision, as in the Cartwheel), `tadpole`
-(UGC 10214), `polar-ring` (NGC 4650A), `minor-merger` and `compact-group` (in the style of
-Stephan's Quintet). Each is a set of galaxies and encounter geometry with ranges of its own,
+(UGC 10214), `polar-ring` (NGC 4650A), `minor-merger`, `compact-group` (in the style of
+Stephan's Quintet) and `black-hole-pass`, a galaxy and a lone black hole of a hundredth to
+three tenths of its mass, passing slowly near the plane, fast over the poles, plunging through
+the centre or bound and sinking ([`docs/notes/black-holes.md`](docs/notes/black-holes.md)). Each is a set of galaxies and encounter geometry with ranges of its own,
 narrow enough that it reads as what it is named after: the Antennae are two comparable spirals,
 both prograde and steeply inclined, on a bound orbit; the ring is a compact companion dropped
 through a disk along its axis. One scene in four is an archetype, `--archetypes 0.4` for
 another share and `0` for free draws only. Which places are archetypes follows from the share,
-so every stretch of a batch holds it, each archetype comes once in every seven archetype places
+so every stretch of a batch holds it, each archetype comes once in every eight archetype places
 in an order shuffled each time, and the free places take the free draws in order.
 `--preset antennae --seed S --index K` draws the Antennae alone: their scene `K` of batch `S`,
 the same one the batch draws when they come round for the `K`-th time. `draw.generator` in the
