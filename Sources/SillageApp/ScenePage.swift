@@ -40,6 +40,7 @@ struct ScenePage: View {
         VStack(alignment: .leading, spacing: 16) {
             player
             StageTracker(model: model, scene: scene, entry: entry, facts: facts)
+            ExportList(model: model, files: facts?.exports ?? [])
             technicalDetails
         }
         .padding(20)
@@ -101,7 +102,11 @@ struct ScenePage: View {
                 if let still = still ?? ThumbnailCache.shared.cached(scene) {
                     Image(nsImage: still).resizable().aspectRatio(contentMode: .fit)
                 }
-                if model.playing == scene.id, !snapshot { PlayerView(player: model.player) }
+                if let image = shownImage {
+                    ExportedImage(url: image).background(Color.black)
+                } else if model.playing == scene.id, !snapshot {
+                    PlayerView(player: model.player)
+                }
                 ChoiceBadge(entry: entry).padding(10)
             }
             .aspectRatio(16 / 9, contentMode: .fit)
@@ -110,6 +115,14 @@ struct ScenePage: View {
             .frame(maxWidth: .infinity)
             VersionPicker(model: model, scene: scene)
         }
+    }
+
+    /// An animated WebP or GIF picked in the export list, which AVPlayer does not play.
+    private var shownImage: URL? {
+        guard let url = model.version, ExportedFile.imageExtensions.contains(url.pathExtension.lowercased()),
+            scene.exports.contains(url)
+        else { return nil }
+        return url
     }
 
     private var technicalDetails: some View {
@@ -159,7 +172,7 @@ struct ScenePage: View {
             if let failure = model.failure {
                 Text(failure).font(.caption).foregroundStyle(Palette.warning)
             } else if model.copied != nil {
-                Text("Commande copiée, à coller dans le Terminal")
+                Text(model.copiedNote)
                     .font(.caption)
                     .foregroundStyle(Color(red: 0.45, green: 0.85, blue: 0.55))
             }
@@ -331,15 +344,12 @@ struct StageTracker: View {
         switch state {
         case .done:
             VStack(alignment: .leading, spacing: 3) {
-                let videos = scene.videos
-                fact(videos.count == 1 ? "1 vidéo" : "\(videos.count) vidéos")
-                ForEach(videos, id: \.self) { url in
-                    Button(url.deletingPathExtension().lastPathComponent) { model.version = url }
-                        .buttonStyle(.plain)
-                        .font(.callout)
-                        .foregroundStyle(Color.accentColor)
-                        .help("La lire")
+                let files = scene.exports.filter {
+                    LibraryScene.videoExtensions.contains($0.pathExtension.lowercased())
+                        || ExportedFile.imageExtensions.contains($0.pathExtension.lowercased())
                 }
+                fact(files.count == 1 ? "1 fichier" : "\(files.count) fichiers")
+                Text("Liste ci-dessous").font(.caption).foregroundStyle(Palette.secondary)
             }
         case .next:
             ExportOffer(model: model, scene: scene)
@@ -627,6 +637,8 @@ struct ScenePageFacts: Sendable, Equatable {
     var rawStyle = false
     var otherLooks: [OtherLook] = []
     var hiresCosts: [HiresCost] = []
+    /// The videos and animations of `exports/`, newest first.
+    var exports: [ExportedFile] = []
 
     /// The sizes offered, measured on this Mac (#19): about 30 min at 1 M, 85 min at 2 M, 4 h
     /// at 5 M and 8 h at 10 M for a 700 Myr story, and from the cost model once it has runs.
@@ -760,5 +772,109 @@ extension EnvironmentValues {
     var offscreen: Bool {
         get { self[OffscreenKey.self] }
         set { self[OffscreenKey.self] = newValue }
+    }
+}
+
+/// An animated WebP or GIF, which the player cannot show: drawn as an image that animates
+/// where AppKit can, and as a still offscreen.
+struct ExportedImage: View {
+    let url: URL
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            Image(nsImage: NSImage(contentsOf: url) ?? NSImage()).resizable().aspectRatio(contentMode: .fit)
+        } else {
+            AnimatedImageView(url: url)
+        }
+    }
+}
+
+struct AnimatedImageView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> NSImageView {
+        let view = NSImageView()
+        view.animates = true
+        view.imageScaling = .scaleProportionallyUpOrDown
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        return view
+    }
+
+    func updateNSView(_ view: NSImageView, context: Context) {
+        view.image = NSImage(contentsOf: url)
+    }
+}
+
+/// Every video and animation of `exports/` with what it is and what can be done with it.
+/// There is no share sheet: Montrer dans le Finder and Copier le chemin work wherever the
+/// file goes next.
+struct ExportList: View {
+    @ObservedObject var model: LibraryModel
+    let files: [ExportedFile]
+
+    var body: some View {
+        if !files.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(files.count == 1 ? "Vidéo exportée" : "Vidéos exportées").font(.headline)
+                ForEach(files) { file in
+                    ExportRow(model: model, file: file)
+                    if file.id != files.last?.id { Divider() }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Palette.card))
+        }
+    }
+}
+
+struct ExportRow: View {
+    @ObservedObject var model: LibraryModel
+    let file: ExportedFile
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(file.url.lastPathComponent).font(.callout.monospaced())
+                Text(details).font(.caption.monospacedDigit()).foregroundStyle(Palette.secondary)
+            }
+            Spacer(minLength: 12)
+            if offscreen {
+                Text(
+                    "Lire · Montrer dans le Finder · Copier le chemin"
+                        + (file.caption == nil ? "" : " · Copier la légende")
+                )
+                .font(.caption).foregroundStyle(Palette.secondary)
+            } else {
+                Button("Lire") { model.version = file.url }
+                    .help(file.isImage ? "L'affiche dans le lecteur" : "La lit dans le lecteur")
+                Button("Montrer dans le Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([file.url])
+                }
+                Button("Copier le chemin") { model.copy(file.url.path, note: "Chemin copié") }
+                if let caption = file.caption {
+                    Button("Copier la légende") { model.copyCaption(caption) }
+                }
+            }
+        }
+        .controlSize(.small)
+    }
+
+    /// Preset, style, codec, size on screen, duration, weight, date.
+    var details: String { Self.details(file) }
+
+    static func details(_ file: ExportedFile) -> String {
+        var parts: [String] = []
+        parts.append(file.preset.map { "Préréglage \($0)" } ?? "Préréglage libre")
+        if let style = file.style { parts.append("Style \(style)") }
+        if !file.codec.isEmpty { parts.append(file.codec) }
+        if let size = file.size { parts.append(size) }
+        if let seconds = file.seconds { parts.append(String(format: "%.1f s", seconds)) }
+        parts.append(String(format: "%.1f Mo", Double(file.bytes) / 1_000_000))
+        parts.append(Format.date(file.date))
+        return parts.joined(separator: " · ")
     }
 }
