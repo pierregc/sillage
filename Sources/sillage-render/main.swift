@@ -255,7 +255,7 @@ func sceneSeed(_ folder: SceneFolder) throws -> (seed: UInt64, galaxies: Int) {
 func palettePromotion(
     _ folder: SceneFolder, choice: String, world: String?, base: String?
 ) throws -> Int32 {
-    let asked = try world.map { name -> Palette.World in
+    let asked = world.map { name -> Palette.World in
         guard let world = Palette.World(rawValue: name) else {
             fail("look: --world is telescope or free")
         }
