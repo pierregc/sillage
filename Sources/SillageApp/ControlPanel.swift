@@ -325,6 +325,13 @@ struct ControlPanelContent: View {
             ParameterSlider(
                 title: "Longueur des aigrettes", value: $model.look.spikeLength, range: 0...200,
                 format: "%.0f")
+            Toggle(
+                "Aigrettes de Webb",
+                isOn: Binding(
+                    get: { model.look.spikePattern == .webb },
+                    set: { model.look.spikePattern = $0 ? .webb : .even })
+            )
+            .font(.caption)
             ParameterSlider(
                 title: "Taille des étoiles de champ", value: $model.look.starSize, range: 0.2...4)
             ParameterSlider(

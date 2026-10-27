@@ -8,9 +8,41 @@ import SwiftUI
 struct LibraryView: View {
     @ObservedObject var model: LibraryModel
     let collection: LibraryCollection
+    /// Shows another collection of the sidebar.
+    let open: (LibraryCollection) -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
+        Group {
+            if let triage = model.triage {
+                TriageView(model: model, triage: triage) { open(.chosen) }
+            } else {
+                browser
+            }
+        }
+        .panelSurface()
+        .focusable()
+        .focusEffectDisabled()
+        .focused($focused)
+        .onKeyPress(phases: .down) { press in
+            guard let key = Self.key(press) else { return .ignored }
+            return model.handle(key) ? .handled : .ignored
+        }
+        .onAppear {
+            focused = true
+            model.query.collection = collection
+            model.show(true)
+        }
+        .onDisappear { model.show(false) }
+        .onChange(of: collection) { _, collection in
+            model.endTriage()
+            model.query.collection = collection
+        }
+        .onChange(of: model.selection) { if !model.isSearching { focused = true } }
+        .onChange(of: model.gridFocusRequests) { focused = true }
+    }
+
+    private var browser: some View {
         VStack(spacing: 0) {
             LibraryHeader(model: model, collection: collection)
             Divider()
@@ -27,23 +59,6 @@ struct LibraryView: View {
             Divider()
             footer
         }
-        .panelSurface()
-        .focusable()
-        .focusEffectDisabled()
-        .focused($focused)
-        .onKeyPress(phases: .down) { press in
-            guard let key = Self.key(press) else { return .ignored }
-            return model.handle(key) ? .handled : .ignored
-        }
-        .onAppear {
-            focused = true
-            model.query.collection = collection
-            model.show(true)
-        }
-        .onDisappear { model.show(false) }
-        .onChange(of: collection) { _, collection in model.query.collection = collection }
-        .onChange(of: model.selection) { if !model.isSearching { focused = true } }
-        .onChange(of: model.gridFocusRequests) { focused = true }
     }
 
     private static func key(_ press: KeyPress) -> LibraryModel.Key? {
@@ -186,7 +201,7 @@ struct LibraryPrimaryButton: View {
     var body: some View {
         switch collection {
         case .toSort:
-            button("Trier", "Ouvre la première scène à trier") { model.startSorting() }
+            button("Trier", "Une scène à la fois, au clavier") { model.startTriage() }
         case .chosen:
             waiting("Calculer en haute résolution")
         case .toStyle:
@@ -216,6 +231,140 @@ struct LibraryPrimaryButton: View {
             .buttonStyle(.borderedProminent)
             .disabled(true)
             .help("Disponible avec la file d'attente")
+    }
+}
+
+/// The triage view: one scene large and looping, decided from the keyboard. It lists the scenes
+/// as they were when it opened, so the scene just decided does not slip away under the hand.
+struct TriageView: View {
+    @ObservedObject var model: LibraryModel
+    let triage: LibraryModel.Triage
+    /// Goes to Choisies, once nothing is left to sort.
+    let showChosen: () -> Void
+    @State private var still: NSImage?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            Group {
+                if triage.finished {
+                    finished
+                } else if let scene = model.scene(triage.current) {
+                    content(scene)
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            footer
+        }
+    }
+
+    private var header: some View {
+        let progress = model.triageProgress ?? (0, 0)
+        return HStack(spacing: 12) {
+            Text("Trier").font(.title2.bold())
+            Text("\(progress.0) / \(progress.1) triées")
+                .font(.title3.monospacedDigit())
+                .foregroundStyle(Palette.secondary)
+            GeometryReader { bar in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(white: 0.2))
+                    Capsule().fill(Color.accentColor)
+                        .frame(width: bar.size.width * Double(progress.0) / Double(max(progress.1, 1)))
+                }
+            }
+            .frame(width: 240, height: 6)
+            Spacer()
+            Button("Quitter") { model.endTriage() }
+                .help("Revient à la grille (échap)")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private func content(_ scene: LibraryScene) -> some View {
+        let entry = model.entries[scene.id]
+        return VStack(spacing: 14) {
+            ZStack(alignment: .topLeading) {
+                Color.black
+                if let still { Image(nsImage: still).resizable().aspectRatio(contentMode: .fit) }
+                if model.playing == scene.id { PlayerView(player: model.player) }
+                ChoiceBadge(entry: entry).padding(10)
+            }
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .frame(maxWidth: 1180)
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                Text(scene.name).font(.title2.monospacedDigit())
+                Text(details(scene)).foregroundStyle(Palette.secondary)
+                Spacer()
+            }
+            .frame(maxWidth: 1180)
+            HStack(spacing: 16) {
+                Button {
+                    model.handle(.left)
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .help("La scène d'avant (←)")
+                ChoiceButtons(entry: entry) { model.handle($0 == .yes ? .yes : .no) }
+                    .frame(width: 220)
+                RatingButtons(entry: entry) { model.rate($0, for: scene.id) }
+                    .frame(width: 380)
+                Button {
+                    model.handle(.right)
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .help("La scène suivante (→)")
+            }
+        }
+        .padding(20)
+        .task(id: ThumbnailCache.shared.key(scene)) {
+            still = ThumbnailCache.shared.cached(scene)
+            if let image = await ThumbnailCache.shared.load(scene) { still = image }
+        }
+    }
+
+    private func details(_ scene: LibraryScene) -> String {
+        var parts = [scene.archetype ?? "libre"]
+        if let galaxies = scene.galaxies {
+            parts.append(galaxies == 1 ? "1 galaxie" : "\(galaxies) galaxies")
+        }
+        if let score = scene.score { parts.append(String(format: "score %.2f", score)) }
+        return parts.joined(separator: " · ")
+    }
+
+    private var finished: some View {
+        let entries = triage.order.compactMap { model.entries[$0]?.choice }
+        let kept = entries.filter { $0 == .yes }.count
+        return VStack(spacing: 12) {
+            Text(LibraryCollection.toSort.emptyTitle).font(.title)
+            Text("\(kept) choisies, \(entries.count - kept) écartées.")
+                .foregroundStyle(Palette.secondary)
+            Button("Aller aux Choisies", action: showChosen)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            Text(
+                "Y oui · N non · 0 à 9 la note, 1 puis 0 pour 10 · ← → scène précédente, suivante · ⌫ effacer · échap quitter"
+            )
+            .font(.caption)
+            .foregroundStyle(Palette.secondary)
+            Spacer()
+            if let failure = model.failure {
+                Text(failure).font(.caption).foregroundStyle(Palette.warning)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }
 

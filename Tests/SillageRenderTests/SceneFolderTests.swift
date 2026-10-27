@@ -157,9 +157,9 @@ struct SceneFolderTests {
         #expect(value("--steps", in: arguments) == String(record.steps))
         #expect(value("--settle", in: arguments) == String(record.settle))
         #expect(value("--width", in: arguments) == "1600" && value("--frames", in: arguments) == "900")
-        #expect(value("--video", in: arguments) == folder.hiresVideo.path)
-        #expect(value("--curves", in: arguments) == folder.hiresCurves.path)
-        #expect(value("--take", in: arguments) == folder.take.path)
+        #expect(value("--video", in: arguments) == SceneFolder.partial(folder.hiresVideo).path)
+        #expect(value("--curves", in: arguments) == SceneFolder.partial(folder.hiresCurves).path)
+        #expect(value("--take", in: arguments) == SceneFolder.partial(folder.take).path)
         #expect(value("--scene", in: arguments) == folder.scene.path)
         #expect(value("--look", in: arguments) == folder.look.path)
         #expect(value("--brightness", in: arguments) == "0.2")
@@ -172,6 +172,50 @@ struct SceneFolderTests {
         #expect(every.filter { $0 == "--take-interval" }.count == 1)
         #expect(value("--scene-out", in: arguments) == nil && value("--thumbnail", in: arguments) == nil)
         #expect(!arguments.contains(folder.preview.path) && !arguments.contains(folder.curves.path))
+    }
+
+    @Test func anOutputIsWrittenHiddenAndPutInPlaceWhole() throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        #expect(SceneFolder.partial(folder.take).path == folder.url.path + "/.take.sillage")
+        try Data("old".utf8).write(to: folder.take)
+        for url in [folder.take, folder.hiresVideo, folder.hiresCurves] {
+            try Data("new".utf8).write(to: SceneFolder.partial(url))
+        }
+        try folder.commitHires()
+        #expect(try String(contentsOf: folder.take, encoding: .utf8) == "new")
+        #expect(!FileManager.default.fileExists(atPath: SceneFolder.partial(folder.take).path))
+        #expect(throws: POSIXError.self) { try SceneFolder.commit(folder.preview) }
+    }
+
+    @Test func whatAnInterruptedStageLeftIsRemovedAndNothingElse() throws {
+        let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        let manager = FileManager.default
+        try manager.createDirectory(at: folder.exports, withIntermediateDirectories: true)
+        let exploring = folder.batch.appendingPathComponent(".scene-0002")
+        try manager.createDirectory(at: exploring, withIntermediateDirectories: true)
+        try manager.createDirectory(
+            at: folder.batch.appendingPathComponent(".logs"), withIntermediateDirectories: true)
+        let partials = [
+            SceneFolder.partial(folder.take), SceneFolder.partial(folder.hiresVideo),
+            folder.exports.appendingPathComponent(".4k.mp4"),
+        ]
+        let kept = [
+            folder.take, folder.exports.appendingPathComponent("4k.mp4"),
+            folder.exports.appendingPathComponent(".DS_Store"),
+        ]
+        for url in partials + kept { try Data("x".utf8).write(to: url) }
+
+        let removed = SceneFolder.removePartialOutputs(inBatch: folder.batch)
+        #expect(
+            Set(removed.map(\.lastPathComponent)) == [
+                ".scene-0002", ".take.sillage", ".hires.mov", ".4k.mp4",
+            ])
+        #expect(partials.allSatisfy { !manager.fileExists(atPath: $0.path) })
+        #expect(kept.allSatisfy { manager.fileExists(atPath: $0.path) })
+        #expect(manager.fileExists(atPath: folder.batch.appendingPathComponent(".logs").path))
+        #expect(folder.removePartialOutputs().isEmpty)
     }
 
     @Test func hiresRunsAtTheMaximumUnlessToldAndNeverAboveIt() throws {

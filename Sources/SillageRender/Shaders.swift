@@ -56,6 +56,9 @@ enum Shaders {
             /// 1 shows the frame, 0 shows black. Applied after the tone curve so a fade goes
             /// evenly to black instead of sliding down the curve's shoulder first.
             float fade;
+            float skyRed;
+            float skyGreen;
+            float skyBlue;
         };
 
         struct SpikeParams {
@@ -64,9 +67,9 @@ enum Shaders {
             float length;
             float falloff;
             uint samples;
-            float _pad0;
-            float _pad1;
-            float _pad2;
+            uint shortArms;
+            float shortBaseAngle;
+            float shortScale;
         };
 
         struct SplatOut {
@@ -672,10 +675,24 @@ enum Shaders {
             dst.write(float4(sum / 12.0 + base.read(gid).rgb, 1.0), gid);
         }
 
+        // The light of a source with its surroundings taken off, so a star keeps nearly all of
+        // its own and an extended core almost none: what throws thin spikes rather than cones.
+        kernel void compactLight(texture2d<float, access::sample> point [[texture(0)]],
+                                 texture2d<float, access::sample> broad [[texture(1)]],
+                                 texture2d<float, access::write> dst [[texture(2)]],
+                                 constant float &amount [[buffer(0)]],
+                                 uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            float2 uv = (float2(gid) + 0.5) / float2(dst.get_width(), dst.get_height());
+            float3 around = broad.sample(bilinear, uv).rgb;
+            dst.write(float4(max(point.sample(bilinear, uv).rgb - amount * around, 0.0), 1.0), gid);
+        }
+
         // Diffraction spikes. A telescope's secondary supports and, on a segmented mirror, the
         // segment edges throw light into a fixed set of directions; six arms for a hexagonal
-        // mirror, four for a Cassegrain spider. Gathering bright light back along those
-        // directions is most of what makes a rendered field read as an exposure.
+        // mirror, four for a Cassegrain spider, and on Webb two short ones from the strut.
+        // Gathering bright light back along those directions is most of what makes a rendered
+        // field read as an exposure.
         kernel void diffractionSpikes(texture2d<float, access::sample> src [[texture(0)]],
                                       texture2d<float, access::write> dst [[texture(1)]],
                                       constant SpikeParams &p [[buffer(0)]],
@@ -694,6 +711,16 @@ enum Shaders {
                 for (uint sample = 1; sample <= p.samples; ++sample) {
                     float t = float(sample) / float(p.samples);
                     total += src.sample(bilinear, uv + step * (t * p.length)).rgb
+                           * exp(-t * p.falloff);
+                }
+            }
+            uint shortSamples = max(8u, uint(float(p.samples) * p.shortScale));
+            for (uint arm = 0; arm < p.shortArms; ++arm) {
+                float angle = p.shortBaseAngle + float(arm) * 6.2831853 / float(p.shortArms);
+                float2 step = float2(cos(angle), sin(angle)) / size;
+                for (uint sample = 1; sample <= shortSamples; ++sample) {
+                    float t = float(sample) / float(shortSamples);
+                    total += src.sample(bilinear, uv + step * (t * p.length * p.shortScale)).rgb
                            * exp(-t * p.falloff);
                 }
             }
@@ -731,7 +758,7 @@ enum Shaders {
             // across it. That is not a sky, it is a screensaver, and even standing still the
             // patches read as cloud rather than as depth. What makes a background convincing
             // is the field stars and the shot noise, both of which are still there.
-            energy += p.skyLevel * float3(0.36, 0.42, 0.60);
+            energy += p.skyLevel * float3(p.skyRed, p.skyGreen, p.skyBlue);
             if (p.noiseLevel > 0.0) {
                 float2 cell = float2(gid) + p.seed;
                 float read = hash2(cell) - 0.5;
