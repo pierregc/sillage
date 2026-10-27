@@ -272,6 +272,9 @@ reference colours). The best pair is promoted, keeping the scene's camera; `--ke
 takes about 2 s in the telescope world and 8 s in the free one at 2 M particles; see
 [the note](docs/notes/frame-score.md).
 
+`export <scene> --palette auto|<family>|<file> [--world telescope|free]` draws that one export
+with another palette, as `look --palette` would, and leaves the scene's `look.json` alone.
+
 The grid compares; the application tunes. In the library, **Régler le look** on a scene
 that has a take opens `take.sillage` with the scene's `look.json` in the Atelier, and File > Open takes any take
 (⌘O) and any look file (⇧⌘O) over it. Once the grid has been drawn, the panel's **Catalogue** menu

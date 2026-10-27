@@ -41,6 +41,16 @@ struct NightRunnerTests {
             try look.encoded().write(to: folder.look)
             try Data(#"{"score": \#(score)}"#.utf8).write(to: folder.interest)
         }
+        for (world, family) in [(Palette.World.telescope, "hubble-visible"), (.free, "aurora")] {
+            var styled = LookFile.standard
+            styled.name = "styled-\(world.rawValue)"
+            styled.world = world
+            styled.paletteRecipe = Palette(
+                world: world, family: family, harmony: .analogous, seed: 7,
+                colours: [SIMD3(1, 0.5, 0.2), SIMD3(0.3, 0.7, 1)])
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try styled.encoded().write(to: root.appendingPathComponent("styled-\(world.rawValue).look.json"))
+        }
         try write(
             explore,
             """
@@ -56,12 +66,13 @@ struct NightRunnerTests {
             #!/bin/bash
             echo "$*" >> '\(calls.path)'
             command="$1"; scene="$2"; shift 2
-            particles=0; frames=0; preset=""
+            particles=0; frames=0; preset=""; world=""
             while [ $# -gt 0 ]; do
                 case "$1" in
                     --particles) particles="$2"; shift 2 ;;
                     --frames) frames="$2"; shift 2 ;;
                     --preset|--format) preset="$2"; shift 2 ;;
+                    --world) world="$2"; shift 2 ;;
                     *) shift ;;
                 esac
             done
@@ -74,6 +85,8 @@ struct NightRunnerTests {
                       \\"timeStepScale\\": 3.5, \\"timeStep\\": 0.01, \\"timeStepMyr\\": 0.05,
                       \\"previewTimeStepMyr\\": 0.1, \\"softening\\": 0.1, \\"clipStartMyr\\": 0,
                       \\"clipEndMyr\\": 100}" > "$scene/hires.json" ;;
+                look) [ -f "$scene/look-raw.json" ] || cp "$scene/look.json" "$scene/look-raw.json"
+                    cp '\(root.path)'/styled-"$world".look.json "$scene/look.json" ;;
                 export) mkdir -p "$scene/exports"; touch "$scene/exports/$preset.mp4" ;;
             esac
             """)
@@ -152,7 +165,7 @@ struct NightRunnerTests {
             let scene = SceneFolder(batch.appendingPathComponent(name))
             #expect(FileManager.default.fileExists(atPath: scene.rawLook.path))
             let look = try LookFile.decoded(from: Data(contentsOf: scene.look))
-            #expect(look.name == "standard" && look.palette.count == 2 && look.camera.mode == .auto)
+            #expect(look.name.hasPrefix("styled-") && look.paletteRecipe?.seed == 7)
             #expect(FileManager.default.fileExists(atPath: scene.export(preset: "1080p").path))
         }
 
@@ -166,6 +179,15 @@ struct NightRunnerTests {
         #expect(kinds.first == RunEvent.Kind.nightStart && kinds.last == RunEvent.Kind.nightDone)
         #expect(kinds.filter { $0 == RunEvent.Kind.pick }.count == 2)
         #expect(kinds.filter { $0 == RunEvent.Kind.style }.count == 2)
+        // Auto alternates the worlds across the picks, best first, and says which it chose.
+        let looks = calls.filter { $0.hasPrefix("look ") }
+        #expect(looks.count == 2)
+        #expect(looks[0].contains("scene-0002 --style auto --world telescope"))
+        #expect(looks[1].contains("scene-0003 --style auto --world free"))
+        let styled = events.filter { $0.kind == RunEvent.Kind.style }
+        #expect(styled.map(\.world) == ["telescope", "free"])
+        #expect(styled.map(\.family) == ["hubble-visible", "aurora"])
+        #expect(styled.allSatisfy { $0.harmony == "analogous" && $0.seed == 7 })
         #expect(
             events.filter { $0.kind == RunEvent.Kind.phaseDone }.compactMap(\.phase) == ["explore", "pick"])
         let report = try String(contentsOf: batch.appendingPathComponent("report.md"), encoding: .utf8)

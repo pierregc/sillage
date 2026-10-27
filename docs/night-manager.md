@@ -97,9 +97,18 @@ name is an error.
 | `pick` | `2` to `4`, or `"none"` to stop after exploring | 2 to 4 by score, as many as fit |
 | `hires.particles` | particles in all | 2 000 000 (or the machine's maximum) |
 | `hires.frames` | the first frames of the story only | the whole story |
-| `style.style` | a look of the catalogue, such as `hubble` or `aurora` | the standard rendering |
-| `style.world`, `style.palette` | `telescope` or `free`; a family or a `.palette.json` (`look --palette`) | the scene's own palette |
+| `style.world` | `telescope` or `free` | Auto: the two worlds in turn across the picks, best first, telescope then free |
+| `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |
+| `style.palette` | a family or a `.palette.json` (its world is the pick's) | Auto: the best of the scene's seed in the pick's world |
 | `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
+
+The style step. A world asked for holds for every pick; else a named `style.style` or a
+`style.palette` family or file gives it; else Auto takes the two worlds in turn, so a night of
+two picks shows one of each. A recipe whose parts disagree (a free family in the telescope world)
+is refused before the night starts. A named style gets a palette of its world (Auto's or the one
+given); no style is `look --style auto`, which scores every rendering of the world with the
+scene's best palettes (or the one given) on key frames of the take. Planned at 20 s in the
+telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named style.
 
 How it plans. `NightPlanner` turns the recipe and the cost model into steps, each with its
 duration, start and end, and the delivery of the whole night. Before exploring, it sizes the
@@ -215,9 +224,9 @@ applies, and these by kind.
 | `pick` | `chosen`, `rating`; `score` for a pick by the night |
 | `hires.start` | `particles`, `steps` |
 | `hires.done` | `particles`, `steps`, `minutes`, `takeGB` |
-| `export.done` | `preset`, `style`, `codec`, `frames`, `megabytes`, `seconds`, `path` |
+| `export.done` | `preset`, `style`, `world`, `family`, `harmony`, `seed`, `codec`, `frames`, `megabytes`, `seconds`, `path` |
 | `error` | `stage`, `message`, `log` |
-| `style` | `style`, `path` (the promoted `look.json`) |
+| `style` | `style`, `world`, `family`, `harmony`, `seed` (the palette's, as in `look.json`), `path` (the promoted `look.json`) |
 | `skip` | `stage`, `message` (skipped by hand, or for want of time) |
 | `phase.done` | `phase`, `count` |
 
