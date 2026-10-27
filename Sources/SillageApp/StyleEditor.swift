@@ -249,7 +249,7 @@ struct StyleInspector: View {
                     )
                     .fixedSize(horizontal: false, vertical: true)
             }
-            RenderingSection(session: session)
+            RenderingSection(session: session, thumbnails: session.thumbnails)
             Divider()
             PaletteSection(session: session)
             Divider()
@@ -262,10 +262,13 @@ struct StyleInspector: View {
     }
 }
 
-/// The catalogue's looks as renderings: a click puts the light, the instrument and the buffers
-/// on the picture and keeps the palette; "Avec ses couleurs" takes the look's colours too.
+/// The catalogue's looks as renderings, each a thumbnail of the frame on the canvas: a click
+/// puts the light, the instrument and the buffers on the picture and keeps the palette; "Avec
+/// ses couleurs" takes the look's colours too.
 struct RenderingSection: View {
     @ObservedObject var session: StyleSession
+    @ObservedObject var thumbnails: StyleThumbnails
+    @Environment(\.offscreen) private var offscreen
 
     var body: some View {
         let current = session.rendering
@@ -276,6 +279,20 @@ struct RenderingSection: View {
                 Text(current.map { StyleNames.rendering($0.name) } ?? "retouché")
                     .font(.callout)
                     .foregroundStyle(Palette.secondary)
+                if offscreen {
+                    // ImageRenderer draws a borderless button as a blank.
+                    Text("↻").font(.callout).foregroundStyle(Palette.secondary)
+                } else {
+                    Button {
+                        thumbnails.refresh()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .disabled(thumbnails.drawing)
+                    .help("Redessiner les vignettes sur l'image et le cadrage affichés")
+                }
             }
             group("Télescope", world: .telescope, current: current)
             group("Libre", world: .free, current: current)
@@ -310,25 +327,39 @@ struct RenderingSection: View {
         }
     }
 
+    /// A third of the 340 pt inspector, less the gaps.
+    static let thumbnailWidth = 96.0
+
     private func tile(_ file: LookFile, selected: Bool) -> some View {
         Button {
             session.apply(file)
         } label: {
-            Text(StyleNames.rendering(file.name))
-                .font(.caption)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity, minHeight: 24)
-                .padding(.horizontal, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(selected ? Color.accentColor.opacity(0.45) : Palette.card)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(selected ? Color.accentColor : Color(white: 0.24), lineWidth: 1)
-                )
-                .contentShape(Rectangle())
+            VStack(spacing: 2) {
+                Rectangle().fill(Color.black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: (Self.thumbnailWidth / thumbnails.aspectRatio).rounded())
+                    .overlay {
+                        if let image = thumbnails.images[file.name] {
+                            Image(decorative: image, scale: 2).resizable().scaledToFill()
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                Text(StyleNames.rendering(file.name))
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(3)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(selected ? Color.accentColor.opacity(0.45) : Palette.card)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(selected ? Color.accentColor : Color(white: 0.24), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(StyleNames.traits(file))
@@ -354,7 +385,7 @@ struct TileRows<Tile: View>: View {
                         if index < count {
                             tile(index)
                         } else {
-                            Color.clear.frame(maxWidth: .infinity, minHeight: 24)
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
                         }
                     }
                 }

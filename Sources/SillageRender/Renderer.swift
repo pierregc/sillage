@@ -734,8 +734,14 @@ public final class Renderer {
         compute.endEncoding()
     }
 
-    private func encodeSplat(camera: Camera, into buffer: MTLCommandBuffer) {
+    /// `particles` and `stages` draw part of the splat into what earlier parts left, for
+    /// `render(camera:slice:)`; the first part clears and draws the star field.
+    private func encodeSplat(
+        camera: Camera, into buffer: MTLCommandBuffer, particles: Range<Int>? = nil,
+        stages: ClosedRange<UInt32> = 0...1, first: Bool = true
+    ) {
         if settings.plain { return encodePlain(camera: camera, into: buffer) }
+        let particles = particles ?? 0..<drawnCount
         let scale = settings.supersample
         let aspect = Float(settings.width) / Float(settings.height)
 
@@ -789,7 +795,7 @@ public final class Renderer {
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {
             pass.colorAttachments[index].texture = target
-            pass.colorAttachments[index].loadAction = .clear
+            pass.colorAttachments[index].loadAction = first ? .clear : .load
             pass.colorAttachments[index].clearColor = MTLClearColor(
                 red: 0, green: 0, blue: 0, alpha: 0)
             pass.colorAttachments[index].storeAction = .store
@@ -798,7 +804,7 @@ public final class Renderer {
         if let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) {
             encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
 
-            if let starBuffer {
+            if first, let starBuffer {
                 encoder.setRenderPipelineState(starfieldPipeline)
                 encoder.setVertexBuffer(starBuffer, offset: 0, index: 0)
                 encoder.drawPrimitives(
@@ -823,12 +829,13 @@ public final class Renderer {
             // fragment work, so the cost of the second pass is a vertex shader over the whole
             // buffer and nothing else. Compacting each draw's particles into its own index
             // list was measured in #35: the vertex stage did not shrink and the frame got slower.
-            for stage in UInt32(0)...1 {
+            for stage in stages {
                 splat.pass = stage
                 encoder.setRenderPipelineState(stage == 0 ? dustPipeline : splatPipeline)
                 encoder.setVertexBytes(
                     &splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-                encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+                encoder.drawPrimitives(
+                    type: .point, vertexStart: particles.lowerBound, vertexCount: particles.count)
             }
             encoder.endEncoding()
         }
@@ -998,13 +1005,17 @@ public final class Renderer {
     public func present(camera: Camera, drawable: CAMetalDrawable) {
         guard let buffer = queue.makeCommandBuffer() else { return }
         encode(camera: camera, into: buffer, present: drawable.texture)
-        let clock = gpuClock
+        let (clock, pacer) = (gpuClock, pacer)
         buffer.addCompletedHandler { finished in
             clock.milliseconds = (finished.gpuEndTime - finished.gpuStartTime) * 1000
+            pacer?.frameFinished(gpuSeconds: finished.gpuEndTime - finished.gpuStartTime)
         }
         buffer.present(drawable)
         buffer.commit()
     }
+
+    /// Told when each presented frame finishes, so background work can fit between frames.
+    public var pacer: CanvasPacer?
 
     /// Submits the splat pass alone while set, so `lastSplatTime` is its own span on the GPU
     /// clock and not a share of the frame's.
@@ -1026,7 +1037,48 @@ public final class Renderer {
         buffer.commit()
         buffer.waitUntilCompleted()
         lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
+        return readBack()
+    }
 
+    /// As `render`, with the splat cut into command buffers of `slice` particles at most, each
+    /// waited for before the next and each first handed to `pacer` with what the one before
+    /// took, so the canvas's frames can go between them (#114). Additive, in the same order, so
+    /// the same picture.
+    public func render(camera: Camera, slice: Int, pacer: CanvasPacer? = nil) -> [UInt8] {
+        guard !settings.plain, slice > 0, drawnCount > slice else {
+            pacer?.waitForGap(lastGPUTime)
+            return render(camera: camera)
+        }
+        var first = true
+        var took = 0.0
+        func run(_ encode: (MTLCommandBuffer) -> Void) -> Bool {
+            guard let buffer = queue.makeCommandBuffer() else { return false }
+            encode(buffer)
+            pacer?.waitForGap(took)
+            buffer.commit()
+            buffer.waitUntilCompleted()
+            took = buffer.gpuEndTime - buffer.gpuStartTime
+            return true
+        }
+        for stage in UInt32(0)...1 {
+            for start in Swift.stride(from: 0, to: drawnCount, by: slice) {
+                let range = start..<min(start + slice, drawnCount)
+                guard
+                    run({
+                        encodeSplat(
+                            camera: camera, into: $0, particles: range, stages: stage...stage,
+                            first: first)
+                    })
+                else { return [] }
+                first = false
+            }
+        }
+        guard run({ encodePost(into: $0, present: nil) }) else { return [] }
+        lastGPUTime = took
+        return readBack()
+    }
+
+    private func readBack() -> [UInt8] {
         var pixels = [UInt8](repeating: 0, count: settings.width * settings.height * 4)
         pixels.withUnsafeMutableBytes { destination in
             output.getBytes(

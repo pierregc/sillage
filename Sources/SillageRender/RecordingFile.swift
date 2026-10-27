@@ -65,6 +65,12 @@ public enum RecordingFile {
         public var scene: SceneConfig
         public var recording: Recording
         public var particles: ParticleSystem
+
+        public init(scene: SceneConfig, recording: Recording, particles: ParticleSystem) {
+            self.scene = scene
+            self.recording = recording
+            self.particles = particles
+        }
     }
 
     public enum Failure: Error, CustomStringConvertible {
