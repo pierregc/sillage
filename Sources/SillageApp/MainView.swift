@@ -3,6 +3,7 @@ import SwiftUI
 
 enum SidebarItem: Hashable {
     case library(LibraryCollection)
+    case queue
     case nights
     case workshop
 
@@ -49,6 +50,7 @@ struct MainView: View {
     @ObservedObject var model: SimulationModel
     @ObservedObject var library: LibraryModel
     @ObservedObject var navigation: AppNavigation
+    @ObservedObject var queue: QueueModel
 
     var body: some View {
         Group {
@@ -56,7 +58,7 @@ struct MainView: View {
                 ContemplationView(model: model)
             } else {
                 NavigationSplitView {
-                    Sidebar(model: model, library: library, navigation: navigation)
+                    Sidebar(model: model, library: library, queue: queue, navigation: navigation)
                         .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
                 } detail: {
                     detail
@@ -74,6 +76,7 @@ struct MainView: View {
         switch navigation.selection {
         case .library(let collection):
             LibraryView(model: library, collection: collection) { navigation.selection = .library($0) }
+        case .queue: QueueView(queue: queue)
         case .nights: NightsView()
         case .workshop:
             // Leaving the workshop drops the canvas and nothing else: the run keeps stepping
@@ -89,11 +92,17 @@ struct MainView: View {
 struct Sidebar: View {
     @ObservedObject var model: SimulationModel
     @ObservedObject var library: LibraryModel
+    @ObservedObject var queue: QueueModel
     @ObservedObject var navigation: AppNavigation
 
     var body: some View {
         let counts = library.counts
         List(selection: selection) {
+            Section {
+                Label("File d'attente", systemImage: "list.bullet.rectangle")
+                    .badge(queue.status.waitingCount)
+                    .tag(SidebarItem.queue)
+            }
             Section("Bibliothèque") {
                 ForEach(LibraryCollection.allCases, id: \.self) { collection in
                     Label(collection.title, systemImage: collection.symbol)
@@ -122,7 +131,9 @@ struct Sidebar: View {
         // The counts are the sidebar's, so the folder is read whatever part is showing.
         .onAppear { library.watch() }
         .safeAreaInset(edge: .top, spacing: 0) {
-            SidebarStatus(model: model) { navigation.selection = .workshop }
+            SidebarStatus(
+                model: model, queue: queue, openQueue: { navigation.selection = .queue },
+                openWorkshop: { navigation.selection = .workshop })
         }
     }
 
@@ -145,37 +156,6 @@ struct Sidebar: View {
         }
         .disabled(model.stage == .running)
         .help(model.stage == .running ? "Revenir d'abord à « Modifier la scène »" : help)
-    }
-}
-
-/// The top of the sidebar. Says what the workshop is doing while another part is showing; the
-/// queue (#121) takes this place over.
-struct SidebarStatus: View {
-    @ObservedObject var model: SimulationModel
-    let open: () -> Void
-
-    var body: some View {
-        if model.stage == .running, !model.contemplating {
-            Button(action: open) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.callout)
-                    Text(String(format: "%.0f Myr", model.elapsedMyr))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(Palette.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .help("Afficher dans l'Atelier")
-        }
-    }
-
-    private var title: String {
-        if model.mode == .playback { return "Prise ouverte dans l'Atelier" }
-        return model.isPlaying ? "Simulation en cours" : "Simulation en pause"
     }
 }
 
