@@ -35,3 +35,19 @@ sleep, so a run no longer needs a `caffeinate` beside it at all.
 burned, how far the solver has got and whether the window was on a display that was awake.
 The processor column is the one that matters — timestamps alone cannot tell a solver that
 stopped from a logger that was merely throttled.
+
+## A job of the queue
+
+A job of the queue (#102) runs in a process of its own, not in the app, so the same question
+was asked again of it. A hires of 2 million particles, added from the app with `--queuesoak`,
+five minutes either side of `pmset displaysleepnow`, the display confirmed asleep throughout by
+`CGDisplayIsAsleep`:
+
+| screen | ms a frame | s a frame, wall clock | job processor s per wall s | GPU use |
+| --- | --- | --- | --- | --- |
+| awake | 1714 | 1.76 | 0.08 | 99 % |
+| asleep | 1679 | 1.69 | 0.08 | 99 % |
+
+The pace holds, and is 2 % faster asleep, as the last row above was. The runner holds the same
+`.userInitiated` activity for as long as a job runs, which keeps idle sleep off without a
+`caffeinate`. The app was then quit at frame 376; a minute later the job was at frame 414.
