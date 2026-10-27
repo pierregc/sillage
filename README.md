@@ -276,18 +276,25 @@ takes about 2 s in the telescope world and 8 s in the free one at 2 M particles;
 `export <scene> --palette auto|<family>|<file> [--world telescope|free]` draws that one export
 with another palette, as `look --palette` would, and leaves the scene's `look.json` alone.
 
-The grid compares; the application tunes. In the library, **Régler le look** on a scene
-that has a take opens `take.sillage` with the scene's `look.json` in the Atelier, and File > Open takes any take
-(⌘O) and any look file (⇧⌘O) over it. Once the grid has been drawn, the panel's **Catalogue** menu
-lists the scene's `looks/` to try one over the picture in a click. The panel edits every field of the file with the picture
-live: the look's sliders, each galaxy's colour, the file's own arm strength, the starfield, the
-bloom levels, supersampling and plain points (these four rebuild the renderer, the slider on
-release), and the camera plan. **Voir à travers le plan** draws through the plan at the
-playhead, so scrubbing shows the render's own framing; a fixed plan is framed on the take's
-first frame, an auto one on each frame afresh, and the director's plans have no frame by frame
-picture to give and leave the camera in hand. ⌘S writes the file back where it came from, ⇧⌘S
-somewhere new (the scene's `looks/` by default), and **En faire le look de la scène** promotes
-it as `--promote` does. A file opened and saved untouched is the same file.
+The grid compares; the application chooses. In the library, **Choisir le style** on a scene
+that has a take opens the style editor: the take plays in the canvas with a transport bar under
+it, and an inspector holds four sections. **Rendu** offers the 42 looks of `looks/` as
+renderings: a click puts a look's light, instrument and buffers on the picture and keeps the
+palette and the camera, **Avec ses couleurs** takes its palette too. **Palette** has a Télescope
+/ Libre switch, one swatch per galaxy (a click opens a colour picker, a lock keeps that colour
+through any new palette), six proposals from the generator with their score, **Autres
+palettes**, and **Auto**, which draws three key frames with every rendering of the world and
+applies the best rendering and palette (`--style auto` below). **Caméra** sets the plan's mode,
+zoom and rotation over the clip. **Réglages fins**, folded, hold Lumière, Instrument, Rendu
+détaillé (starfield, bloom levels, supersampling, plain points, which rebuild the renderer) and
+the whole camera plan, each with **Réinitialiser**; **Voir à travers le plan** draws through
+the plan at the playhead, so scrubbing shows the render's own framing. The top bar says
+**Modifié** when the style differs from `look.json`, holding ⌥ or **Avant / Après** shows the
+saved style for as long as it is held, **Annuler** puts it back, and **Utiliser pour la scène**
+(⌘S) promotes it as `--promote` does, after which **Exporter…** opens the export sheet. File > Open
+takes any take (⌘O) and any look file (⇧⌘O) over the picture, ⇧⌘S saves the look anywhere, and
+outside the editor ⌘S writes it back where it came from. A file opened and saved untouched is
+the same file; see [the note](docs/notes/style-editor.md).
 `Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing.
 
 ### Export

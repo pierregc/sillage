@@ -347,7 +347,7 @@ struct StageTracker: View {
         case .next:
             Button("Choisir le style") { model.tune(scene) }
                 .buttonStyle(.borderedProminent)
-                .help("Ouvre la prise haute résolution avec son style dans l'Atelier")
+                .help("Ouvre l'éditeur de style sur la haute résolution")
         case .later:
             later("Après la haute résolution")
         }

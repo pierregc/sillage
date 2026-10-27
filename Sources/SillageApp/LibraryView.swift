@@ -223,7 +223,7 @@ struct LibraryPrimaryButton: View {
                 }
             }
         case .toStyle:
-            button("Choisir le style de la suivante", "Ouvre la prise dans l'Atelier") {
+            button("Choisir le style de la suivante", "Ouvre l'éditeur de style sur sa haute résolution") {
                 model.chooseStyleOfNext()
             }
         case .ready:

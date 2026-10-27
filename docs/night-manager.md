@@ -40,8 +40,8 @@ or date. Ratings go to `<batch>/ratings.json`.
 ./scripts/dev.sh look library/2026-10-24/scene-0001 --promote <row-name>
 ```
 
-To tune live, select the scene in the library and click **Régler le look** (⌘S saves,
-**En faire le look de la scène** promotes).
+To choose it live, open the scene in the library and click **Choisir le style**: the style
+editor plays the take, and **Utiliser pour la scène** (⌘S) promotes.
 
 **5. Export**:
 

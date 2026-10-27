@@ -5,7 +5,9 @@ import SillageRender
 
 /// Opens a take with a look file the way the library does, and checks what tuning promises:
 /// the file comes back byte for byte, every kind of edit lands where it should and survives a
-/// save, and the playhead can be thrown backwards and forwards at the take's full size.
+/// save, and the playhead can be thrown backwards and forwards at the take's full size. Then
+/// the style editor's session on it: renderings, palettes and locks, Avant/Après, Annuler,
+/// Utiliser pour la scène, and Auto when the take sits in a scene folder.
 ///
 /// `--lookcheck <take> [look]`. Headless, for the same reason as `--replay`.
 enum LookCheck {
@@ -31,6 +33,15 @@ enum LookCheck {
             FileManager.default.temporaryDirectory.appendingPathComponent(
                 "lookcheck-\(UUID().uuidString)/scene-0001"))
         try? FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+        // A take in a scene folder lends it what Auto reads, so Auto can run here too.
+        let home = SceneFolder(take.deletingLastPathComponent())
+        let lent = [
+            (home.scene, folder.scene), (home.clip, folder.clip), (home.hires, folder.hires),
+            (home.hiresCurves, folder.hiresCurves), (take, folder.take),
+        ]
+        for (from, to) in lent where FileManager.default.fileExists(atPath: from.path) {
+            try? FileManager.default.createSymbolicLink(at: to, withDestinationURL: from)
+        }
         var original = LookFile.standard
         original.name = "lookcheck"
         original.look = .ink
@@ -138,12 +149,47 @@ enum LookCheck {
         model.adopt(LookFile.standard, from: nil)
         model.openLook(from: saved)
         check("enregistré puis rouvert : le même look", model.lookFile == edited)
-        model.promoteLook()
-        let keptAside = lookURL == folder.look ? loaded : nil
+        // The editor reads the scene's look.json, which a look given on the command line is not.
+        if !FileManager.default.fileExists(atPath: folder.look.path) {
+            try? originalBytes.write(to: folder.look)
+        }
+        let savedBefore = try? Data(contentsOf: folder.look)
+        let scene = LibraryScene(
+            batch: "lookcheck", batchURL: folder.batch, name: "scene-0001", folder: folder, take: take)
+        let session = StyleSession(scene: scene, model: model)
+        check("l'éditeur trouve la prise ouverte", session.isOpen)
+        check("les retouches faites avant se voient", session.saved == loaded && session.isModified)
+        session.cancel()
+        check("annuler remet le style enregistré", model.lookFile == loaded && !session.isModified)
+        exerciseStyle(session, model, folder, check)
+
+        // Annuler after all of it: the saved style back on the picture, nothing written.
+        session.cancel()
+        check("annuler après les essais", model.lookFile == loaded && !session.isModified)
         check(
-            "promu dans la scène, l'ancien gardé à côté",
-            (try? LookFile.decoded(from: Data(contentsOf: folder.look))) == edited
-                && (try? LookFile.decoded(from: Data(contentsOf: folder.rawLook))) == keptAside)
+            "annuler n'écrit rien",
+            (try? Data(contentsOf: folder.look)) == savedBefore
+                && !FileManager.default.fileExists(atPath: folder.rawLook.path))
+
+        // Utiliser pour la scène: look.json is the style on screen, the explored look stays aside.
+        if let hubble = session.catalogue.first(where: { $0.name == "hubble" }) { session.apply(hubble) }
+        model.lookFile.camera.zoom = 1.3
+        let chosen = model.lookFile
+        check("une retouche se voit", session.isModified)
+        check("utiliser pour la scène écrit look.json", session.promote())
+        check(
+            "look.json est le style à l'écran",
+            (try? LookFile.decoded(from: Data(contentsOf: folder.look))) == chosen
+                && session.saved == chosen && !session.isModified && session.promoted)
+        check(
+            "l'ancien look reste dans look-raw.json", (try? Data(contentsOf: folder.rawLook)) == savedBefore)
+        check("le look de l'atelier pointe sur la scène", model.lookURL == folder.look)
+
+        if FileManager.default.fileExists(atPath: folder.scene.path) {
+            exerciseAuto(session, model, check)
+        } else {
+            lines.append("—    Auto non essayé : la prise n'est pas dans un dossier de scène")
+        }
 
         func split(_ name: String, _ samples: [Double]) -> String {
             let sorted = samples.sorted()
@@ -163,5 +209,107 @@ enum LookCheck {
             encoding: .utf8)
         print(report)
         exit(failed ? 1 : 0)
+    }
+
+    /// Renderings, palettes and their locks, the camera, a reset and Avant/Après, each on the
+    /// picture and none written.
+    @MainActor
+    private static func exerciseStyle(
+        _ session: StyleSession, _ model: SimulationModel, _ folder: SceneFolder,
+        _ check: (String, Bool, String) -> Void
+    ) {
+        let before = model.lookFile
+        let onDisk = try? Data(contentsOf: folder.look)
+        guard let webb = session.catalogue.first(where: { $0.name == "webb" }) else {
+            return check("le catalogue a Webb", false, "")
+        }
+        session.apply(webb)
+        check(
+            "un rendu garde la palette et le plan",
+            session.rendering?.name == "webb" && model.lookFile.palette == before.palette
+                && model.lookFile.camera == before.camera && session.isModified, "")
+        session.apply(webb, colours: true)
+        check(
+            "avec ses couleurs prend aussi sa palette",
+            model.lookFile.palette == webb.palette && session.world == .telescope, "")
+
+        session.world = .free
+        session.propose(waiting: true)
+        let galaxies = model.scene.galaxies.count
+        check(
+            "six propositions dans le monde choisi",
+            session.proposals.count == StyleSession.proposalCount
+                && session.proposals.allSatisfy { $0.palette.world == .free }, "\(session.proposals.count)")
+        let first = session.proposals.map(\.palette)
+        session.moreProposals(waiting: true)
+        check("autres palettes en propose d'autres", session.proposals.map(\.palette) != first, "")
+        if galaxies > 1, let proposal = session.proposals.last?.palette {
+            let kept = model.lookFile.palette[0]
+            session.toggleLock(0)
+            session.use(proposal)
+            check(
+                "un cadenas garde sa couleur, les autres changent",
+                model.lookFile.palette[0] == kept && model.lookFile.palette[1].colour == proposal.colours[1]
+                    && model.lookFile.paletteRecipe == proposal, "")
+            check(
+                "la palette arrive à la scène",
+                model.scene.galaxies[1].color == proposal.colours[1], "")
+        }
+
+        session.setCameraMode(.fixed)
+        session.binding(\.camera.rotation).wrappedValue = .pi / 2
+        check(
+            "caméra fixe et rotation",
+            model.lookFile.camera.mode == .fixed && model.followsPlan
+                && abs((model.lookFile.camera.azimuthEnd ?? 0) - model.lookFile.camera.azimuth - .pi / 2)
+                    < 1e-5,
+            "")
+        session.binding(\.look.brightness).wrappedValue = 1.7
+        session.reset(.light)
+        check(
+            "réinitialiser la lumière revient au rendu",
+            model.lookFile.look.brightness == webb.look.brightness, "")
+        session.reset(.camera)
+        check("réinitialiser le plan revient au style enregistré", model.lookFile.camera == before.camera, "")
+
+        let edited = model.lookFile
+        session.showSaved(true)
+        check(
+            "avant : le style enregistré à l'écran",
+            model.lookFile == session.saved && session.covered == edited && session.isModified, "")
+        session.binding(\.look.brightness).wrappedValue = 0.01
+        check("rien ne bouge pendant l'avant", model.lookFile == session.saved, "")
+        session.showSaved(false)
+        check("après : la retouche revient", model.lookFile == edited && session.covered == nil, "")
+        check("rien d'écrit pendant les essais", (try? Data(contentsOf: folder.look)) == onDisk, "")
+    }
+
+    /// Auto on the telescope world, with a lock: a rendering and a palette from the catalogue,
+    /// the locked colour kept, the camera left alone.
+    @MainActor
+    private static func exerciseAuto(
+        _ session: StyleSession, _ model: SimulationModel, _ check: (String, Bool, String) -> Void
+    ) {
+        session.world = .telescope
+        session.locked = [0]
+        let kept = model.lookFile.colour(ofGalaxy: 0, in: model.scene)
+        let camera = model.lookFile.camera
+        let started = CACurrentMediaTime()
+        session.runAuto()
+        let deadline = Date().addingTimeInterval(300)
+        while session.autoRunning, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        let seconds = CACurrentMediaTime() - started
+        let note = session.note ?? ""
+        check(
+            "auto choisit un rendu et une palette du télescope",
+            note.hasPrefix("Auto :") && session.rendering?.world == .telescope
+                && model.lookFile.paletteRecipe?.world == .telescope,
+            String(format: "%.1f s · %@", seconds, note))
+        check(
+            "auto respecte le cadenas et le plan",
+            model.lookFile.colour(ofGalaxy: 0, in: model.scene) == kept && model.lookFile.camera == camera,
+            "")
     }
 }

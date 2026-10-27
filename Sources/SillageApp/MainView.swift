@@ -6,6 +6,8 @@ enum SidebarItem: Hashable {
     case queue
     case nights
     case workshop
+    /// The style editor, on the scene `AppNavigation.style` holds.
+    case style
 
     var isLibrary: Bool {
         if case .library = self { return true }
@@ -20,6 +22,11 @@ final class AppNavigation: ObservableObject {
     static let windowID = "main"
 
     @Published var selection: SidebarItem = AppNavigation.initial
+    /// The style being chosen. It stays while other parts show, so the sidebar can come back
+    /// to it, and goes when the editor is left.
+    @Published private(set) var style: StyleSession?
+    /// Where leaving the editor goes back to: the collection it was opened from.
+    private var styleReturn: SidebarItem = .library(.all)
     /// The new night sheet, opened from the sidebar and the toolbar.
     @Published var showsNightSheet = false
 
@@ -48,10 +55,33 @@ final class AppNavigation: ObservableObject {
         if TakeFiles.open(model) { selection = .workshop }
     }
 
+    /// Opens the style editor on a scene's take. The same scene still open there is shown as
+    /// it was left, edits included.
     func tune(_ model: SimulationModel, _ scene: LibraryScene) {
         guard scene.take != nil else { return }
-        model.tune(scene)
-        selection = .workshop
+        if case .library = selection { styleReturn = selection }
+        if style?.scene.id != scene.id || style?.isOpen != true {
+            let session = StyleSession(scene: scene, model: model)
+            style = session
+            // Already on the canvas: its saved style is put back rather than the take read again.
+            if scene.folder != nil, session.isOpen, let saved = session.saved {
+                model.adopt(saved, from: scene.folder?.look)
+            } else {
+                model.tune(scene)
+            }
+        }
+        selection = .style
+    }
+
+    /// The style editor, when it is the part showing.
+    var editingStyle: StyleSession? { selection == .style ? style : nil }
+
+    /// Back to the scene's page, in the collection the editor was opened from.
+    func leaveStyle(_ library: LibraryModel) {
+        guard let style else { return }
+        selection = styleReturn
+        library.open(style.scene.id)
+        self.style = nil
     }
 }
 
@@ -97,9 +127,12 @@ struct MainView: View {
             let library = queue.store.library
             Task.detached(priority: .utility) { NightSheetPlanner.shared(library: library).warm() }
         }
-        // A run started anywhere, from a menu included, is watched in the workshop.
+        // A run started anywhere, from a menu included, is watched in the workshop. A take
+        // opened for its style stays in the editor.
         .onChange(of: model.stage) { _, stage in
-            if stage == .running, !model.contemplating { navigation.selection = .workshop }
+            if stage == .running, model.mode == .running, !model.contemplating {
+                navigation.selection = .workshop
+            }
         }
     }
 
@@ -116,6 +149,14 @@ struct MainView: View {
             switch model.stage {
             case .setup: SetupView(model: model)
             case .running: RunningView(model: model)
+            }
+        case .style:
+            if let style = navigation.style {
+                StyleEditor(
+                    session: style, leave: { navigation.leaveStyle(library) },
+                    reopen: { navigation.tune(model, style.scene) })
+            } else {
+                Color.clear.panelSurface()
             }
         }
     }
@@ -140,6 +181,10 @@ struct Sidebar: View {
                     Label(collection.title, systemImage: collection.symbol)
                         .badge(counts[collection] ?? 0)
                         .tag(SidebarItem.library(collection))
+                }
+                if let style = navigation.style {
+                    Label("Style de \(style.scene.name)", systemImage: "paintpalette")
+                        .tag(SidebarItem.style)
                 }
             }
             Section("Nuits") {
