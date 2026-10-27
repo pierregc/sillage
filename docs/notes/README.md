@@ -26,6 +26,7 @@ session. Read the note for an area before changing it.
 - [Star formation, and why density alone gives no burst](star-formation.md)
 - [One age per particle](one-age-per-particle.md)
 - [A galaxy that keeps its colour](galaxy-colour.md)
+- [Several colours per galaxy](galaxy-colours.md): the mapping per world, blend, birth radius
 - [What was actually cooking the disk](disk-heating.md)
 - [Why a disk keeps its arms](spiral-arms.md)
 - [Why a merged disk stays merged](merged-disk.md)
