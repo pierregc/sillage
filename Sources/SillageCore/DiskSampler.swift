@@ -177,6 +177,11 @@ public enum DiskSampler {
             sampleSpheroid(
                 config, galaxyIndex: galaxyIndex, selfGravitating: selfGravitating,
                 into: &system, using: &generator)
+        case .blackHole:
+            system.append(
+                position: config.position, velocity: config.velocity, galaxy: galaxyIndex,
+                radius: 0, luminosity: 0, component: .hole,
+                mass: selfGravitating ? config.potential.mass : 0)
         }
         if selfGravitating {
             sampleHalo(config, galaxyIndex: galaxyIndex, into: &system, using: &generator)
@@ -797,7 +802,7 @@ public enum DiskSampler {
                     (0.25 + 1.9 * grain(along * 2.6)) * (0.8 + 0.5 * generator.uniform())
                     * max(taper, 0.02)
                 formation = ParticleSystem.unformed
-            case .star, .halo, .bulge, .outskirt:
+            case .star, .halo, .bulge, .outskirt, .hole:
                 if outskirt {
                     // Old everywhere, and faint. The metallicity gradient does the rest on its
                     // own: these sit at large birth radii, so they come out metal-poor.

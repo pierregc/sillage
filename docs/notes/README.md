@@ -21,6 +21,7 @@ session. Read the note for an area before changing it.
 - [The tree on the GPU](gpu-tree.md): and the gap the frames were using
 - [Encounters placed from their pericentre](encounters.md)
 - [Whole stories](whole-stories.md): when a scene's story is over, and how long clips run
+- [A black hole outside the tree](black-holes.md): its own softening, the step, energy across the mass range
 
 ## Physics and galaxies
 
@@ -52,6 +53,7 @@ session. Read the note for an area before changing it.
 - [Flying rather than orbiting](fly-camera.md): `FlyCamera`
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
+- [The style editor](style-editor.md): renderings, palettes and locks, Auto, Avant/Après
 - [Making a galaxy read as matter rather than as a graphic](galaxy-as-matter.md)
 
 ## State

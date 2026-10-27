@@ -120,4 +120,23 @@ struct SceneCheckTests {
         #expect(accepted >= 30)
         #expect(Date().timeIntervalSince(start) < 20)
     }
+
+    /// A camera follows a black hole while it is near its host and lets it go as it leaves.
+    @Test func aCameraFramesABlackHoleOnlyNearItsHost() {
+        let scene = Archetype.blackHolePass.scene(batchSeed: 2, occurrence: 0, particleCount: 10_000)
+        let reach = SceneCheck.reach(scene.galaxies[0])
+        let host = SIMD3<Float>(5, -3, 1)
+        func framed(at distance: Float) -> SIMD3<Float> {
+            scene.framedCentres([host, host + SIMD3(distance, 0, 0)])[1]
+        }
+        #expect(framed(at: reach * 0.8) == host + SIMD3(reach * 0.8, 0, 0))
+        #expect(framed(at: reach * 2.5) == host)
+        let leaving = stride(from: reach, through: reach * 2, by: reach / 20).map {
+            simd_distance(framed(at: $0), host)
+        }
+        #expect(leaving.max()! < reach * 1.5 && leaving.last! < 1e-4)
+        let pair = SceneConfig.merger(particleCount: 1_000)
+        let far = [SIMD3<Float>(0, 0, 0), SIMD3<Float>(500, 0, 0)]
+        #expect(pair.framedCentres(far) == far)
+    }
 }

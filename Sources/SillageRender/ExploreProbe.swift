@@ -59,7 +59,8 @@ public struct ExploreProbe: Sendable {
 
     public func draw(_ index: Int, perGalaxy: Int) -> Draw? {
         let (generator, file) = file(index)
-        let count = file.galaxies.count
+        // A black hole has no stars to share, so the host keeps a galaxy's worth.
+        let count = file.galaxies.filter { $0.kind != .blackHole }.count
         if let galaxies, !galaxies.contains(count) { return nil }
         if let archetypes, generator != "free", !archetypes.contains(generator) { return nil }
         let particles = count * perGalaxy

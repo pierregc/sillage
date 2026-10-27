@@ -19,6 +19,10 @@ struct ControlPanel: View {
 /// Split out from the scroll view so it can be rendered offscreen for inspection.
 struct ControlPanelContent: View {
     @ObservedObject var model: SimulationModel
+    @Environment(\.queue) private var queue
+    @State private var exporting = false
+
+    private var exportFolder: SceneFolder? { model.isOpenedTake ? model.takeFolder : nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -29,8 +33,6 @@ struct ControlPanelContent: View {
             rendering
             Divider()
             view
-            Divider()
-            LookFilePanel(model: model)
         }
     }
 
@@ -211,10 +213,19 @@ struct ControlPanelContent: View {
                 HStack {
                     Button("Enregistrer…") { TakeFiles.save(model) }
                     Button("Ouvrir…") { TakeFiles.open(model) }
-                    Button("Vidéo…") { TakeFiles.exportVideo(model) }
+                    // A video is made from a scene folder, through the queue and its presets.
+                    if queue != nil, exportFolder != nil {
+                        Button("Vidéo…") { exporting = true }
+                            .help("Exporte la scène de cette prise avec les préréglages")
+                    }
                 }
                 .buttonStyle(.bordered)
                 .disabled(model.fileActivity != nil)
+                .sheet(isPresented: $exporting) {
+                    if let queue, let exportFolder {
+                        ExportSheet(queue: queue, folders: [exportFolder]) { exporting = false }
+                    }
+                }
 
                 if model.isOpenedTake {
                     Text(
@@ -257,7 +268,7 @@ struct ControlPanelContent: View {
     /// knob to reach for.
     private var rendering: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Regard").font(.headline)
+            Text("Rendu").font(.headline)
             // A whole look in one press, from the honest telescope to the frankly invented.
             // The sliders below stay live afterwards: a look is a place to start, not a mode.
             Picker("", selection: lookBinding) {

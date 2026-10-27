@@ -97,6 +97,25 @@ final class LibraryModel: ObservableObject {
 
     var counts: [LibraryCollection: Int] { LibraryCollection.counts(scenes) }
 
+    /// The scene folders a hires is queued or running for, from the queue: they are listed as
+    /// Haute résolution until it ends.
+    var activeHires: Set<String> = [] {
+        didSet {
+            guard activeHires != oldValue else { return }
+            let restaged = scenes.map(staged)
+            if restaged != scenes {
+                scenes = restaged
+                refreshVisible()
+            }
+        }
+    }
+
+    private func staged(_ scene: LibraryScene) -> LibraryScene {
+        var scene = scene
+        scene.hiresActive = scene.folder.map { activeHires.contains($0.url.path) } ?? false
+        return scene.staged(entry: entries[scene.id])
+    }
+
     /// Set by the application: opens a take for look tuning in the main window.
     var onTune: ((LibraryScene) -> Void)?
 
@@ -192,10 +211,10 @@ final class LibraryModel: ObservableObject {
             entries = read
             changed = true
         }
-        let staged = found.map { $0.staged(entry: entries[$0.id]) }
-        if staged != scenes {
+        let restaged = found.map(staged)
+        if restaged != scenes {
             let page = scene(opened)
-            scenes = staged
+            scenes = restaged
             changed = true
             if let opened, scene(opened) == nil {
                 close()
@@ -401,7 +420,7 @@ final class LibraryModel: ObservableObject {
             var updated = entries.filter { !$0.key.hasPrefix(scene.batch + "/") }
             for (name, entry) in ratings.scenes { updated["\(scene.batch)/\(name)"] = entry }
             entries = updated
-            scenes = scenes.map { $0.staged(entry: entries[$0.id]) }
+            scenes = scenes.map(staged)
             failure = nil
             refreshVisible()
         } catch {
@@ -476,7 +495,6 @@ final class LibraryModel: ObservableObject {
         }
     }
 
-    /// Puts a command line on the pasteboard and says so under the page.
     /// The caption written beside a video, ready to paste where it goes.
     func copyCaption(_ url: URL) {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
@@ -486,10 +504,11 @@ final class LibraryModel: ObservableObject {
         copy(text.trimmingCharacters(in: .whitespacesAndNewlines), note: "Légende copiée")
     }
 
-    func copy(_ command: String, note: String = "Commande copiée, à coller dans le Terminal") {
+    /// Puts text on the pasteboard and says so under the page.
+    func copy(_ text: String, note: String) {
         pasteboard.clearContents()
-        pasteboard.setString(command, forType: .string)
-        copied = command
+        pasteboard.setString(text, forType: .string)
+        copied = text
         copiedNote = note
         copiedTask?.cancel()
         copiedTask = Task { [weak self] in

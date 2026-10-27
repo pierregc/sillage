@@ -7,10 +7,11 @@ import Testing
 struct ArchetypeTests {
     @Test func everyRoundOfABatchHoldsEachArchetypeOnce() {
         let batch = BatchDraw(batchSeed: 4)
-        let places = (0..<280).map(batch.place)
+        let length = Archetype.allCases.count * 4
+        let places = (0..<(length * 10)).map(batch.place)
         for round in 0..<10 {
             var drawn: [Archetype] = []
-            for place in places[(round * 28)..<((round + 1) * 28)] {
+            for place in places[(round * length)..<((round + 1) * length)] {
                 guard case .archetype(let archetype, let occurrence) = place else { continue }
                 #expect(occurrence == round)
                 drawn.append(archetype)
@@ -22,7 +23,7 @@ struct ArchetypeTests {
         let free = places.compactMap { place -> Int? in
             if case .free(let index) = place { index } else { nil }
         }
-        #expect(free == Array(0..<210))
+        #expect(free == Array(0..<(length * 10 * 3 / 4)))
     }
 
     @Test(arguments: [Float(0.1), 0.3, 0.5])
@@ -104,10 +105,27 @@ struct ArchetypeTests {
                 #expect(intruder.secondary == scene.galaxies.count - 1)
                 #expect(scene.encounters.allSatisfy { $0.eccentricity <= intruder.eccentricity })
                 #expect(scene.encounters.allSatisfy { $0.pericentreTime <= intruder.pericentreTime })
+            case .blackHolePass:
+                #expect([.spiral, .disk].contains(families[0]) && families[1] == .blackHole)
+                #expect(scene.galaxies[1].kind == .blackHole && scene.galaxies[1].particleCount == 1)
+                #expect((0.01...0.3).contains(first.massRatio))
+                let disk = first.primaryDisk
+                switch Archetype.BlackHolePass.of(batchSeed: 3, occurrence: occurrence) {
+                case .slowInPlane:
+                    #expect((1...1.15).contains(first.eccentricity) && disk.inclination <= 0.35)
+                    #expect((2...12).contains(first.pericentre))
+                case .fastPolar:
+                    #expect(first.eccentricity >= 1.3 && abs(cos(disk.inclination)) < 0.3)
+                case .plunge:
+                    #expect(first.pericentre <= 2 && abs(sin(disk.inclination) * cos(disk.argument)) > 0.9)
+                case .capture:
+                    #expect(first.eccentricity < 1)
+                }
             }
             #expect(scene.galaxies.count == families.count)
             for galaxy in scene.galaxies {
                 #expect(galaxy.potential.mass > 0 && galaxy.potential.scaleRadius > 0)
+                if galaxy.kind == .blackHole { continue }
                 #expect(galaxy.diskScaleLength > 0 && galaxy.diskTruncation >= 3)
                 if galaxy.kind.isRotating { #expect((1.2...2.0).contains(galaxy.toomreQ)) }
             }
@@ -137,5 +155,25 @@ struct ArchetypeTests {
             if scene.sanityCheck(settleSteps: 400, steps: 3_600).accepted { accepted += 1 }
         }
         #expect(accepted >= tries - 1, "\(archetype.rawValue): \(accepted) of \(tries)")
+    }
+
+    @Test func aBlackHolePassComesInEveryVariantAndIsPlaced() {
+        let variants = (0..<16).map { Archetype.BlackHolePass.of(batchSeed: 5, occurrence: $0) }
+        #expect(Set(variants) == Set(Archetype.BlackHolePass.allCases))
+        for occurrence in 0..<6 {
+            let scene = Archetype.blackHolePass.scene(
+                batchSeed: 5, occurrence: occurrence, particleCount: 200_000)
+            // One particle carrying the hole's whole mass, the host keeping every other, and a
+            // live halo round the host only.
+            #expect(scene.galaxies.map(\.particleCount) == [199_999, 1])
+            #expect(scene.galaxies[0].haloParticleRatio > 0 && scene.galaxies[1].haloParticleCount == 0)
+            let ratio = scene.galaxies[1].potential.mass / scene.galaxies[0].potential.mass
+            #expect(abs(ratio - scene.encounters[0].massRatio) < 1e-4)
+            #expect(
+                abs(
+                    scene.galaxies[1].potential.scaleRadius
+                        - GalaxyConfig.blackHoleSoftening(mass: scene.galaxies[1].potential.mass)) < 1e-4)
+            EncounterTests.expectLanded(scene, within: 0.05)
+        }
     }
 }

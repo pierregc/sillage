@@ -41,7 +41,7 @@ public struct DiskEquilibrium {
         // A spheroidal galaxy's stars follow the potential's own profile at its own scale, and
         // a tracer run has no mass of its own at all, so in both cases the analytic curve was
         // right all along.
-        guard selfGravitating, config.kind != .globular else {
+        guard selfGravitating, config.kind.isRotating else {
             return config.potential.circularSpeed(atRadius: radius)
         }
         let r = max(radius, 1e-4)

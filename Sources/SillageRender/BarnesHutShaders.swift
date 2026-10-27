@@ -307,6 +307,88 @@ enum BarnesHutShaders {
             sorted[slot] = float4(positions[i], mass[i]);
         }
 
+        // Black holes pull outside the tree. A hole is one particle up to a hundred thousand
+        // times heavier than a star; summed through the tree it would be softened at the
+        // stars' length and fold into every cell it sits in. Here it pulls on every particle
+        // directly at a softening of its own, and takes the exact reaction back, so the pair
+        // forces stay equal and opposite. The tree sees it with no mass.
+        struct HoleGPU {
+            // xyz unused, w the mass times the gravitational constant.
+            float4 massG;
+            // x the softening squared, y the particle's index as a bit pattern.
+            float4 shape;
+        };
+
+        constant uint bhHoleLimit = 4;
+
+        kernel void bhHolePull(device const float3 *positions [[buffer(0)]],
+                               device float3 *accelerations [[buffer(1)]],
+                               device const float *mass [[buffer(2)]],
+                               device const uint *component [[buffer(3)]],
+                               constant HoleGPU *holes [[buffer(4)]],
+                               constant uint &holeCount [[buffer(5)]],
+                               constant BHParams &p [[buffer(6)]],
+                               device float4 *partial [[buffer(7)]],
+                               uint i [[thread_position_in_grid]],
+                               uint lane [[thread_index_in_threadgroup]],
+                               uint group [[threadgroup_position_in_grid]],
+                               uint width [[threads_per_threadgroup]],
+                               uint simdLane [[thread_index_in_simdgroup]],
+                               uint simdGroup [[simdgroup_index_in_threadgroup]]) {
+            threadgroup float3 sums[bhHoleLimit][32];
+            bool counted = i < p.particleCount && component[i] != 6u;
+            float3 position = counted ? positions[i] : float3(0.0);
+            float3 pulled = float3(0.0);
+            for (uint h = 0; h < holeCount; ++h) {
+                float3 back = float3(0.0);
+                if (counted) {
+                    float3 d = position - positions[as_type<uint>(holes[h].shape.y)];
+                    float r2 = dot(d, d) + holes[h].shape.x;
+                    float inverse = 1.0 / (r2 * sqrt(r2));
+                    pulled -= d * (holes[h].massG.w * inverse);
+                    back = d * (p.gravitationalConstant * mass[i] * inverse);
+                }
+                back = simd_sum(back);
+                if (simdLane == 0) { sums[h][simdGroup] = back; }
+            }
+            if (counted) { accelerations[i] += pulled; }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            if (lane != 0) { return; }
+            uint groups = (width + 31) / 32;
+            for (uint h = 0; h < holeCount; ++h) {
+                float3 total = float3(0.0);
+                for (uint g = 0; g < groups; ++g) { total += sums[h][g]; }
+                partial[group * bhHoleLimit + h] = float4(total, 0.0);
+            }
+        }
+
+        // One thread: the reactions added up in a fixed order, so a run repeats exactly, and
+        // the holes' pull on each other. The analytic halos the tree added are kept.
+        kernel void bhHoleSettle(device const float3 *positions [[buffer(0)]],
+                                 device float3 *accelerations [[buffer(1)]],
+                                 constant HoleGPU *holes [[buffer(2)]],
+                                 constant uint &holeCount [[buffer(3)]],
+                                 constant uint &groups [[buffer(4)]],
+                                 device const float4 *partial [[buffer(5)]],
+                                 constant HaloGPU *haloList [[buffer(6)]],
+                                 constant BHParams &p [[buffer(7)]],
+                                 uint gid [[thread_position_in_grid]]) {
+            if (gid != 0) { return; }
+            for (uint h = 0; h < holeCount; ++h) {
+                uint index = as_type<uint>(holes[h].shape.y);
+                float3 position = positions[index];
+                float3 total = float3(0.0);
+                for (uint g = 0; g < groups; ++g) { total += partial[g * bhHoleLimit + h].xyz; }
+                for (uint o = 0; o < holeCount; ++o) {
+                    if (o == h) { continue; }
+                    float3 d = positions[as_type<uint>(holes[o].shape.y)] - position;
+                    float r2 = dot(d, d) + max(holes[o].shape.x, holes[h].shape.x);
+                    total += d * (holes[o].massG.w / (r2 * sqrt(r2)));
+                }
+                accelerations[index] = total + halos(position, haloList, p.haloCount, true);
+            }
+        }
+
         constant bool bhQuadrupole [[function_constant(0)]];
 
         // One traversal per particle. A cell is accepted whole when its width subtends less than

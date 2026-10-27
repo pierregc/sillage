@@ -40,8 +40,8 @@ or date. Ratings go to `<batch>/ratings.json`.
 ./scripts/dev.sh look library/2026-10-24/scene-0001 --promote <row-name>
 ```
 
-To tune live, select the scene in the library and click **Régler le look** (⌘S saves,
-**En faire le look de la scène** promotes).
+To choose it live, open the scene in the library and click **Choisir le style**: the style
+editor plays the take, and **Utiliser pour la scène** (⌘S) promotes.
 
 **5. Export**:
 
@@ -300,5 +300,7 @@ the counts, failures and last video apart), and `--full` prints every job of the
 runs and until when, the jobs waiting with their estimated start and end, the last ten finished. A `sillage-render` process that wrote no status shows as
 "Calcul en cours (sans détail)", so "le Mac est libre" is only said when nothing runs. The
 fixtures in `Tests/Fixtures/queue-status/` hold the expected lines.
+
+Following a night from afar, with a small model: [night-status.md](night-status.md).
 
 Details and measurements: [README](../README.md).

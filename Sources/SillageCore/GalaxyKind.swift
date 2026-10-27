@@ -7,14 +7,17 @@ public enum GalaxyKind: String, Codable, Sendable, CaseIterable {
     case disk
     /// Pressure-supported sphere with no ordered rotation.
     case globular
+    /// A lone supermassive black hole: one heavy particle, no stars, no disk, no halo.
+    case blackHole = "black-hole"
 
     public var displayName: String {
         switch self {
         case .spiral: "Spirale"
         case .disk: "Disque"
         case .globular: "Globulaire"
+        case .blackHole: "Trou noir"
         }
     }
 
-    public var isRotating: Bool { self != .globular }
+    public var isRotating: Bool { self == .spiral || self == .disk }
 }

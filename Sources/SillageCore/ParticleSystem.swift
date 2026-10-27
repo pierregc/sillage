@@ -16,6 +16,10 @@ public enum ParticleComponent: UInt32, Codable, Sendable, CaseIterable {
     /// the thin disk thin has to leave it alone — without that exclusion it flattens into the
     /// plane within a couple of hundred megayears and takes the galaxy's soft edge with it.
     case outskirt = 5
+    /// A black hole: one heavy particle, kept among the visible ones so a take records its
+    /// path, but emitting nothing. The solver pulls with it directly rather than through the
+    /// tree, at a softening of its own.
+    case hole = 6
 
     public var isVisible: Bool { self != .halo }
     /// Emits starlight, so it frames a picture and carries the exposure.

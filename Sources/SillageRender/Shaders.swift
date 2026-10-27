@@ -36,6 +36,8 @@ enum Shaders {
             uint pass;
             /// Whether any galaxy has a colour ramp (#119).
             uint mapped;
+            /// Radius in kpc of a black hole's dark dot, zero for none.
+            float holeShadow;
         };
 
         struct GalaxyRamp {
@@ -367,12 +369,15 @@ enum Shaders {
             float ageMyr = (nursery || born >= 0.0)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
             bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
-            bool absorbing = kind == 2u && !knot;
+            // A black hole emits nothing. Asked for, it absorbs like a knot of dust that lets
+            // nothing through, so it is drawn with the dust and darkens what lies behind it.
+            bool hole = kind == 6u;
+            bool absorbing = (kind == 2u && !knot) || hole;
 
             // Dark matter carries mass but no light, and every particle is skipped by one of
             // the two draws. Pushing them outside the clip volume drops them before any
             // fragment work rather than drawing a black point over the galaxy.
-            if (kind == 3u || absorbing != (u.pass == 0u)) {
+            if (kind == 3u || (hole && u.holeShadow <= 0.0) || absorbing != (u.pass == 0u)) {
                 out.position = float4(2.0, 2.0, 2.0, 1.0);
                 out.pointSize = 0.0;
                 out.color = half3(0.0h);
@@ -448,6 +453,11 @@ enum Shaders {
                 out.pointSize = span * 1.3;
                 out.color = half3(0.0h);
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
+                if (hole) {
+                    // Twice the radius, since the kernel falls to a hundredth at its edge.
+                    out.pointSize = max(4.0 * u.holeShadow * perPixel, 2.0);
+                    out.opticalDepth = 8.0h;
+                }
             } else {
                 // An arm is brighter than the disk around it, by about the factor of two a
                 // grand-design spiral shows between arm and interarm. This is the only thing
@@ -587,7 +597,7 @@ enum Shaders {
             out.position = u.viewProjection * float4(positions[vid], 1.0);
             out.pointSize = u.minimumSize;
             out.color = half3(frames[galaxy[vid]].tint.xyz * u.brightness);
-            if (component[vid] == 3u) { out.position = float4(2.0, 2.0, 2.0, 1.0); }
+            if (component[vid] == 3u || component[vid] == 6u) { out.position = float4(2.0, 2.0, 2.0, 1.0); }
             return out;
         }
 

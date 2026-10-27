@@ -59,7 +59,8 @@ pericentres inside the clip it is rendered for, between `--settle` and `--steps`
 
 `--preset free --seed S --index N` is scene `N` of batch `S` from the free generator, which
 spreads a batch evenly over everything a scene can physically be: one to five galaxies, each a
-spiral, a lenticular disk, an elliptical, a dwarf or a compact globular, with their arm count,
+spiral, a lenticular disk, an elliptical, a dwarf, a compact globular or, for 4 % of the scenes
+with a companion, a lone black hole in place of the first one, with their arm count,
 arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. What changes
 a scene most is drawn from a Sobol sequence shifted by the batch seed, so a batch covers the
 space instead of clumping; the rest comes from a stream seeded by the scene. A candidate whose
@@ -71,13 +72,15 @@ particle, so a scene is found again from those two numbers alone.
 
 A batch also holds archetypes, known interacting systems as starting points: `antennae`
 (NGC 4038/9), `mice` (NGC 4676), `ring` (a head-on collision, as in the Cartwheel), `tadpole`
-(UGC 10214), `polar-ring` (NGC 4650A), `minor-merger` and `compact-group` (in the style of
-Stephan's Quintet). Each is a set of galaxies and encounter geometry with ranges of its own,
+(UGC 10214), `polar-ring` (NGC 4650A), `minor-merger`, `compact-group` (in the style of
+Stephan's Quintet) and `black-hole-pass`, a galaxy and a lone black hole of a hundredth to
+three tenths of its mass, passing slowly near the plane, fast over the poles, plunging through
+the centre or bound and sinking ([`docs/notes/black-holes.md`](docs/notes/black-holes.md)). Each is a set of galaxies and encounter geometry with ranges of its own,
 narrow enough that it reads as what it is named after: the Antennae are two comparable spirals,
 both prograde and steeply inclined, on a bound orbit; the ring is a compact companion dropped
 through a disk along its axis. One scene in four is an archetype, `--archetypes 0.4` for
 another share and `0` for free draws only. Which places are archetypes follows from the share,
-so every stretch of a batch holds it, each archetype comes once in every seven archetype places
+so every stretch of a batch holds it, each archetype comes once in every eight archetype places
 in an order shuffled each time, and the free places take the free draws in order.
 `--preset antennae --seed S --index K` draws the Antennae alone: their scene `K` of batch `S`,
 the same one the batch draws when they come round for the `K`-th time. `draw.generator` in the
@@ -97,7 +100,8 @@ and stops, `--no-check` renders anyway, and `--check` judges a scene read from a
 slot's next seed, and ends by printing how many draws were rejected.
 
 New here? [docs/night-manager.md](docs/night-manager.md) is the short user guide to the whole
-night batch, rating, hires, look and export workflow.
+night batch, rating, hires, look and export workflow. To follow a night from the phone, with a
+small model and an hourly routine, see [docs/night-status.md](docs/night-status.md).
 
 ## Scene folders
 
@@ -275,18 +279,25 @@ takes about 2 s in the telescope world and 8 s in the free one at 2 M particles;
 `export <scene> --palette auto|<family>|<file> [--world telescope|free]` draws that one export
 with another palette, as `look --palette` would, and leaves the scene's `look.json` alone.
 
-The grid compares; the application tunes. In the library, **Régler le look** on a scene
-that has a take opens `take.sillage` with the scene's `look.json` in the Atelier, and File > Open takes any take
-(⌘O) and any look file (⇧⌘O) over it. Once the grid has been drawn, the panel's **Catalogue** menu
-lists the scene's `looks/` to try one over the picture in a click. The panel edits every field of the file with the picture
-live: the look's sliders, each galaxy's colour, the file's own arm strength, the starfield, the
-bloom levels, supersampling and plain points (these four rebuild the renderer, the slider on
-release), and the camera plan. **Voir à travers le plan** draws through the plan at the
-playhead, so scrubbing shows the render's own framing; a fixed plan is framed on the take's
-first frame, an auto one on each frame afresh, and the director's plans have no frame by frame
-picture to give and leave the camera in hand. ⌘S writes the file back where it came from, ⇧⌘S
-somewhere new (the scene's `looks/` by default), and **En faire le look de la scène** promotes
-it as `--promote` does. A file opened and saved untouched is the same file.
+The grid compares; the application chooses. In the library, **Choisir le style** on a scene
+that has a take opens the style editor: the take plays in the canvas with a transport bar under
+it, and an inspector holds four sections. **Rendu** offers the 42 looks of `looks/` as
+renderings: a click puts a look's light, instrument and buffers on the picture and keeps the
+palette and the camera, **Avec ses couleurs** takes its palette too. **Palette** has a Télescope
+/ Libre switch, one swatch per galaxy (a click opens a colour picker, a lock keeps that colour
+through any new palette), six proposals from the generator with their score, **Autres
+palettes**, and **Auto**, which draws three key frames with every rendering of the world and
+applies the best rendering and palette (`--style auto` below). **Caméra** sets the plan's mode,
+zoom and rotation over the clip. **Réglages fins**, folded, hold Lumière, Instrument, Rendu
+détaillé (starfield, bloom levels, supersampling, plain points, which rebuild the renderer) and
+the whole camera plan, each with **Réinitialiser**; **Voir à travers le plan** draws through
+the plan at the playhead, so scrubbing shows the render's own framing. The top bar says
+**Modifié** when the style differs from `look.json`, holding ⌥ or **Avant / Après** shows the
+saved style for as long as it is held, **Annuler** puts it back, and **Utiliser pour la scène**
+(⌘S) promotes it as `--promote` does, after which **Exporter…** opens the export sheet. File > Open
+takes any take (⌘O) and any look file (⇧⌘O) over the picture, ⇧⌘S saves the look anywhere, and
+outside the editor ⌘S writes it back where it came from. A file opened and saved untouched is
+the same file; see [the note](docs/notes/style-editor.md).
 `Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing.
 
 ### Export
@@ -323,16 +334,16 @@ decides where a given picture lands, so try it on the take.
 
 Every video leaves with the licence in its metadata: `Copyright <year> Pierre Gunet-Caplain, CC BY
 4.0 (https://creativecommons.org/licenses/by/4.0/)`, the author, a title and description naming
-the scene as `<batch>/<scene>`, and the creation date. The application's video export writes the
-same. A movie (ProRes, and the application's `.mov`) keeps them as QuickTime keys, which Finder,
+the scene as `<batch>/<scene>`, and the creation date. A movie (ProRes) keeps them as QuickTime
+keys, which Finder,
 `mdls` and `ffprobe` show; an MP4 keeps them as user data atoms, which `AVAsset` reads back
 (`ffprobe` and Spotlight skip those in an MP4, whatever wrote them).
 
 The camera is replayed from the take's first frame exactly as the look grid replays it, through
 the same code, so a cell of the grid and the same frame of the export are the same picture.
 Every frame is drawn straight into a pixel buffer of the encoder's pool, a BGRA Metal texture
-over it, and compressed on a queue of its own while the next one renders; the application's
-video export and `explore`'s preview go through the same writer. Stars, spikes and kernels are
+over it, and compressed on a queue of its own while the next one renders; `explore`'s preview
+goes through the same writer. Stars, spikes and kernels are
 sized in pixels, so a 4k export shows them finer than a grid drawn at the clip's size.
 
 Measured on the M4 Max with a 2 M take of 300 frames and the standard look, nothing else
@@ -538,6 +549,17 @@ rating, batch and archetype.
 
 The scenes kept for the next stage are
 `jq -r '.scenes | to_entries[] | select(.value.choice == "yes") | .key' ratings.json`.
+A scene's page moves it on without a terminal. **Calculer** on Haute résolution queues a
+`hires` job at a size (Auto is the most particles that end before seven in the morning behind
+the queue, else the machine's maximum); **Exporter…** opens a sheet of presets to tick
+(1080p, 4K, Vertical, Carré, WhatsApp, animated WebP, GIF, with codec, range, frame rate and
+style under Avancé), each ticked card one `export` job. Both say how long each job takes and
+when it will be ready, queue ahead included. A job waiting or running shows on its stage with
+its progress and Annuler. Redoing a stage touches nothing else: another format, style or range
+writes a new file, while the same export after a new take replaces its own. Choisies and
+Prêtes do the same for every scene they list, and the Atelier's Vidéo… opens the sheet for a
+take of a scene folder.
+
 `Sillage.app --librarycheck` drives the whole window model through a library it builds on disk.
 
 ## The physics

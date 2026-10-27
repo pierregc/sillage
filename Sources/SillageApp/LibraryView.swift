@@ -197,24 +197,45 @@ struct LibraryHeader: View {
     }
 }
 
-/// The one thing to do next with the collection, which is the stage's own step. The calculations
-/// wait for the queue (#102) and the sheets of #106.
+/// The one thing to do next with the collection, which is the stage's own step. Calculer and
+/// Exporter act on every scene listed, through the same form and sheet as the scene page.
 struct LibraryPrimaryButton: View {
     @ObservedObject var model: LibraryModel
     let collection: LibraryCollection
+    @Environment(\.queue) private var queue
+    @State private var computing = false
+    @State private var exporting = false
 
     var body: some View {
         switch collection {
         case .toSort:
             button("Trier", "Une scène à la fois, au clavier") { model.startTriage() }
         case .chosen:
-            waiting("Calculer en haute résolution")
+            if let queue {
+                button(
+                    "Calculer en haute résolution (\(folders.count))",
+                    "Une haute résolution pour chaque scène listée", count: folders.count
+                ) { computing = true }
+                .popover(isPresented: $computing, arrowEdge: .bottom) {
+                    HiresForm(queue: queue, folders: folders) { computing = false }
+                        .padding(16)
+                        .frame(width: 340, alignment: .leading)
+                }
+            }
         case .toStyle:
-            button("Choisir le style de la suivante", "Ouvre la prise dans l'Atelier") {
+            button("Choisir le style de la suivante", "Ouvre l'éditeur de style sur sa haute résolution") {
                 model.chooseStyleOfNext()
             }
         case .ready:
-            waiting("Exporter")
+            if let queue {
+                button(
+                    "Exporter (\(folders.count))", "Les mêmes vidéos pour chaque scène listée",
+                    count: folders.count
+                ) { exporting = true }
+                .sheet(isPresented: $exporting) {
+                    ExportSheet(queue: queue, folders: folders) { exporting = false }
+                }
+            }
         case .exported:
             button("Montrer les vidéos", "Les montre dans le Finder") { model.revealExports() }
         case .highResolution, .all:
@@ -222,20 +243,16 @@ struct LibraryPrimaryButton: View {
         }
     }
 
-    private func button(_ title: String, _ help: String, _ action: @escaping () -> Void)
-        -> some View
-    {
+    /// The scenes listed that have a folder to compute from.
+    var folders: [SceneFolder] { model.visible.compactMap(\.folder) }
+
+    private func button(
+        _ title: String, _ help: String, count: Int? = nil, _ action: @escaping () -> Void
+    ) -> some View {
         Button(title, action: action)
             .buttonStyle(.borderedProminent)
-            .disabled(model.visible.isEmpty)
+            .disabled((count ?? model.visible.count) == 0)
             .help(help)
-    }
-
-    private func waiting(_ title: String) -> some View {
-        Button(title) {}
-            .buttonStyle(.borderedProminent)
-            .disabled(true)
-            .help("Disponible avec la file d'attente")
     }
 }
 

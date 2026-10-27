@@ -239,6 +239,8 @@ struct StageTracker: View {
     let scene: LibraryScene
     let entry: SceneRatings.Entry?
     let facts: ScenePageFacts?
+    @Environment(\.queue) private var queue
+    @State private var exporting = false
 
     var body: some View {
         let states = SceneStep.states(scene, entry: entry)
@@ -246,6 +248,13 @@ struct StageTracker: View {
             ForEach(SceneStep.allCases, id: \.self) { step in
                 StageColumn(step: step, state: states[step] ?? .later) {
                     content(step, states[step] ?? .later)
+                }
+            }
+        }
+        .sheet(isPresented: $exporting) {
+            if let queue, let folder = scene.folder {
+                ExportSheet(queue: queue, folders: [folder], looks: facts?.otherLooks ?? []) {
+                    exporting = false
                 }
             }
         }
@@ -312,13 +321,18 @@ struct StageTracker: View {
                 if let date = facts?.hiresDate { fact(Format.date(date)) }
             }
         case .next:
-            if scene.hiresActive {
-                fact("Dans la file d'attente")
-            } else {
-                HiresOffer(model: model, scene: scene, facts: facts)
+            if let queue, let folder = scene.folder {
+                if queue.queue.unfinished(at: folder).contains(where: { $0.kind == .hires }) {
+                    StageJobLines(queue: queue, folder: folder, kind: .hires)
+                } else {
+                    HiresForm(queue: queue, folders: [folder])
+                }
             }
         case .later:
             later(scene.folder == nil ? "Pas de dossier de scène" : "Après le choix")
+        }
+        if state == .done, let queue, let folder = scene.folder {
+            StageJobLines(queue: queue, folder: folder, kind: .hires)
         }
     }
 
@@ -333,7 +347,7 @@ struct StageTracker: View {
         case .next:
             Button("Choisir le style") { model.tune(scene) }
                 .buttonStyle(.borderedProminent)
-                .help("Ouvre la prise haute résolution avec son style dans l'Atelier")
+                .help("Ouvre l'éditeur de style sur la haute résolution")
         case .later:
             later("Après la haute résolution")
         }
@@ -343,18 +357,33 @@ struct StageTracker: View {
     private func export(_ state: SceneStep.State) -> some View {
         switch state {
         case .done:
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 6) {
                 let files = scene.exports.filter {
                     LibraryScene.videoExtensions.contains($0.pathExtension.lowercased())
                         || ExportedFile.imageExtensions.contains($0.pathExtension.lowercased())
                 }
                 fact(files.count == 1 ? "1 fichier" : "\(files.count) fichiers")
                 Text("Liste ci-dessous").font(.caption).foregroundStyle(Palette.secondary)
+                exportButton(prominent: false)
             }
         case .next:
-            ExportOffer(model: model, scene: scene)
+            exportButton(prominent: true)
         case .later:
             later("Après le style")
+        }
+        if state != .later, let queue, let folder = scene.folder {
+            StageJobLines(queue: queue, folder: folder, kind: .export)
+        }
+    }
+
+    @ViewBuilder
+    private func exportButton(prominent: Bool) -> some View {
+        if queue != nil, scene.folder != nil {
+            if prominent {
+                Button("Exporter…") { exporting = true }.buttonStyle(.borderedProminent)
+            } else {
+                Button("Exporter…") { exporting = true }.controlSize(.small)
+            }
         }
     }
 
@@ -418,90 +447,6 @@ extension SceneStep {
     }
 }
 
-/// Calculer waits for the queue's sheet (#106); until then, the command line to copy, at the
-/// size picked, with what it costs.
-struct HiresOffer: View {
-    @ObservedObject var model: LibraryModel
-    let scene: LibraryScene
-    let facts: ScenePageFacts?
-    @State private var particles = 2_000_000
-    @Environment(\.offscreen) private var offscreen
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button("Calculer") {}
-                .buttonStyle(.borderedProminent)
-                .disabled(true)
-                .help("Disponible avec la file d'attente")
-            if let folder = scene.folder {
-                if offscreen {
-                    Text(facts?.hiresCosts.first { $0.particles == particles }?.label ?? "")
-                        .font(.callout)
-                } else {
-                    Picker("Taille", selection: $particles) {
-                        ForEach(facts?.hiresCosts ?? [], id: \.particles) { cost in
-                            Text(cost.label).tag(cost.particles)
-                        }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                }
-                CopyCommand(model: model, command: StageCommand.hires(folder, particles: particles))
-            }
-        }
-    }
-}
-
-/// Exporter… waits for #106 too; until then, the command for the preset picked.
-struct ExportOffer: View {
-    @ObservedObject var model: LibraryModel
-    let scene: LibraryScene
-    @State private var preset = "1080p"
-    @Environment(\.offscreen) private var offscreen
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button("Exporter…") {}
-                .buttonStyle(.borderedProminent)
-                .disabled(true)
-                .help("Disponible avec la file d'attente")
-            if let folder = scene.folder {
-                if offscreen {
-                    Text(preset).font(.callout)
-                } else {
-                    Picker("Format", selection: $preset) {
-                        ForEach(VideoPreset.all.map(\.name), id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                }
-                CopyCommand(
-                    model: model,
-                    command: StageCommand.export(folder, preset: preset, existing: scene.exports))
-            }
-        }
-    }
-}
-
-/// A command line, cut short, and the button that copies it whole.
-struct CopyCommand: View {
-    let model: LibraryModel
-    let command: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(command)
-                .font(.caption2.monospaced())
-                .foregroundStyle(Palette.secondary)
-                .lineLimit(2)
-                .truncationMode(.head)
-                .help(command)
-            Button("Copier la commande") { model.copy(command) }
-                .controlSize(.small)
-        }
-    }
-}
-
 /// The 0 to 10 rating in two rows, to fit a step's column.
 struct RatingGrid: View {
     let entry: SceneRatings.Entry?
@@ -550,13 +495,19 @@ struct Swatches: View {
     }
 }
 
-/// Every step already done, redone on its own. What the app cannot run yet copies its
-/// command line instead.
+/// Every step already done, redone on its own: nothing else is.
 struct RedoMenu: View {
     @ObservedObject var model: LibraryModel
     let scene: LibraryScene
     let entry: SceneRatings.Entry?
     let facts: ScenePageFacts?
+    @Environment(\.queue) private var queue
+    @State private var sheet: Sheet?
+
+    enum Sheet: Identifiable {
+        case hires, export
+        var id: Self { self }
+    }
 
     var body: some View {
         let states = SceneStep.states(scene, entry: entry)
@@ -565,14 +516,9 @@ struct RedoMenu: View {
             if done(.choice) {
                 Button("Effacer le choix et la note") { model.clear(scene.id) }
             }
-            if done(.highResolution), let folder = scene.folder {
-                Menu("Recalculer en haute résolution (copier la commande)") {
-                    ForEach(facts?.hiresCosts ?? [], id: \.particles) { cost in
-                        Button(cost.label) {
-                            model.copy(StageCommand.hires(folder, particles: cost.particles))
-                        }
-                    }
-                }
+            if done(.highResolution), queue != nil, scene.folder != nil {
+                Button("Recalculer en haute résolution…") { sheet = .hires }
+                    .help("Les vidéos restent jusqu'à ce qu'un nouvel export les remplace")
             }
             if done(.style) {
                 Button("Choisir le style à nouveau") { model.tune(scene) }
@@ -581,53 +527,32 @@ struct RedoMenu: View {
                         .help("Le style actuel reste dans looks/")
                 }
             }
-            if done(.export), let folder = scene.folder {
-                Menu("Exporter dans un autre format (copier la commande)") {
-                    ForEach(VideoPreset.all.map(\.name), id: \.self) { preset in
-                        Button(preset) {
-                            model.copy(StageCommand.export(folder, preset: preset, existing: scene.exports))
-                        }
-                    }
-                }
-                Menu("Exporter avec un autre style (copier la commande)") {
-                    let looks = facts?.otherLooks ?? []
-                    if looks.isEmpty {
-                        Text("Aucun autre style pour cette scène")
-                    }
-                    ForEach(looks, id: \.name) { look in
-                        Button(look.name == StageCommand.rawLookName ? "Style brut" : look.name) {
-                            model.copy(
-                                StageCommand.export(
-                                    folder, preset: "1080p", look: look, existing: scene.exports))
-                        }
-                    }
-                }
+            if done(.export), queue != nil, scene.folder != nil {
+                Button("Exporter dans un autre format ou un autre style…") { sheet = .export }
+                    .help("Écrit un nouveau fichier et garde les autres")
             }
         } label: {
             Label("Refaire", systemImage: "arrow.counterclockwise")
         }
         .fixedSize()
         .disabled(!SceneStep.allCases.dropFirst().contains(where: done))
+        .sheet(item: $sheet) { which in
+            if let queue, let folder = scene.folder {
+                switch which {
+                case .hires:
+                    HiresSheet(queue: queue, folders: [folder]) { sheet = nil }
+                case .export:
+                    ExportSheet(queue: queue, folders: [folder], looks: facts?.otherLooks ?? []) {
+                        sheet = nil
+                    }
+                }
+            }
+        }
     }
 }
 
 /// What the page reads beyond the scan, off the main actor when a scene opens.
 struct ScenePageFacts: Sendable, Equatable {
-    struct HiresCost: Sendable, Equatable {
-        var particles: Int
-        var seconds: Double?
-
-        var label: String {
-            "\(Format.particles(particles))" + (seconds.map { ", environ \(Format.duration($0))" } ?? "")
-        }
-    }
-
-    /// A look the scene can be exported with besides its own: one of `looks/`, or the raw one.
-    struct OtherLook: Sendable, Equatable {
-        var name: String
-        var file: URL
-    }
-
     var id: String
     var story: Story.Span?
     var hires: SceneFolder.Hires?
@@ -635,17 +560,9 @@ struct ScenePageFacts: Sendable, Equatable {
     var styleName: String?
     var palette: [SIMD3<Float>] = []
     var rawStyle = false
-    var otherLooks: [OtherLook] = []
-    var hiresCosts: [HiresCost] = []
+    var otherLooks: [StageLook] = []
     /// The videos and animations of `exports/`, newest first.
     var exports: [ExportedFile] = []
-
-    /// The sizes offered, measured on this Mac (#19): about 30 min at 1 M, 85 min at 2 M, 4 h
-    /// at 5 M and 8 h at 10 M for a 700 Myr story, and from the cost model once it has runs.
-    static let hiresSizes = [1_000_000, 2_000_000, 5_000_000, 10_000_000]
-    static let measuredSeconds: [Int: Double] = [
-        1_000_000: 1_800, 2_000_000: 5_100, 5_000_000: 14_400, 10_000_000: 28_800,
-    ]
 
     nonisolated static func read(_ scene: LibraryScene) -> ScenePageFacts {
         var facts = ScenePageFacts(id: scene.id)
@@ -663,90 +580,18 @@ struct ScenePageFacts: Sendable, Equatable {
         let names = ((try? manager.contentsOfDirectory(atPath: folder.looks.path)) ?? [])
             .filter { $0.hasSuffix(".look.json") }.sorted()
         facts.otherLooks = names.map {
-            OtherLook(
+            StageLook(
                 name: String($0.dropLast(".look.json".count)), file: folder.looks.appendingPathComponent($0))
         }
         if manager.fileExists(atPath: folder.rawLook.path), !facts.rawStyle {
-            facts.otherLooks.insert(OtherLook(name: StageCommand.rawLookName, file: folder.rawLook), at: 0)
-        }
-        let maximum = SceneFolder.maximumParticles()
-        let costs = CostModel.current(library: folder.batch.deletingLastPathComponent())
-        facts.hiresCosts = hiresSizes.filter { $0 <= maximum }.map {
-            HiresCost(
-                particles: $0,
-                seconds: (try? costs.hiresSeconds(folder, particles: $0)) ?? measuredSeconds[$0])
+            facts.otherLooks.insert(StageLook(name: StageLook.rawName, file: folder.rawLook), at: 0)
         }
         return facts
     }
 }
 
-/// The command lines for what the app cannot run yet, through `scripts/dev.sh`.
-enum StageCommand {
-    static let rawLookName = "raw"
-
-    static func hires(_ folder: SceneFolder, particles: Int) -> String {
-        [script(near: folder), "hires", quoted(folder.url.path), "--particles", String(particles)]
-            .joined(separator: " ")
-    }
-
-    /// Never over a video already there: a second export of a preset, or one with another
-    /// look, goes to a file of its own.
-    static func export(
-        _ folder: SceneFolder, preset: String, look: ScenePageFacts.OtherLook? = nil,
-        existing: [URL]
-    ) -> String {
-        var parts = [script(near: folder), "export", quoted(folder.url.path), "--preset", preset]
-        let standard = folder.export(preset: preset)
-        let taken = Set(existing.map(\.lastPathComponent))
-        var out = standard
-        if let look {
-            parts += ["--look", look.name == rawLookName ? quoted(look.file.path) : quoted(look.name)]
-            out = named("\(preset)-\(look.name)", like: standard)
-        }
-        var suffix = 2
-        let base = out.deletingPathExtension().lastPathComponent
-        while taken.contains(out.lastPathComponent) {
-            out = named("\(base)-\(suffix)", like: standard)
-            suffix += 1
-        }
-        if out != standard { parts += ["--out", quoted(out.path)] }
-        return parts.joined(separator: " ")
-    }
-
-    private static func named(_ name: String, like url: URL) -> URL {
-        url.deletingLastPathComponent().appendingPathComponent("\(name).\(url.pathExtension)")
-    }
-
-    /// The repository's script, found above the library or the application, so the command
-    /// runs from any folder.
-    static func script(near folder: SceneFolder) -> String {
-        for start in [folder.url, Bundle.main.bundleURL] {
-            var url = start
-            for _ in 0..<8 {
-                url = url.deletingLastPathComponent()
-                let script = url.appendingPathComponent("scripts/dev.sh")
-                if FileManager.default.fileExists(atPath: script.path) { return quoted(script.path) }
-            }
-        }
-        return "./scripts/dev.sh"
-    }
-
-    static func quoted(_ text: String) -> String {
-        let plain = text.allSatisfy { $0.isLetter || $0.isNumber || "/._-+@:".contains($0) }
-        return plain ? text : "'" + text.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
-    }
-}
-
 enum Format {
-    static func particles(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            let millions = Double(count) / 1_000_000
-            return millions == millions.rounded()
-                ? "\(Int(millions)) M"
-                : String(format: "%.1f M", millions).replacingOccurrences(of: ".", with: ",")
-        }
-        return count >= 1_000 ? "\(count / 1_000) k" : "\(count)"
-    }
+    static func particles(_ count: Int) -> String { StageJobs.particles(count) }
 
     static func duration(_ seconds: Double) -> String {
         let minutes = Int((seconds / 60).rounded())
@@ -754,6 +599,11 @@ enum Format {
         if minutes < 60 { return "\(minutes) min" }
         let (hours, rest) = (minutes / 60, minutes % 60)
         return rest == 0 ? "\(hours) h" : "\(hours) h \(String(format: "%02d", rest))"
+    }
+
+    /// "environ 12 min", "moins d'une minute".
+    static func about(_ seconds: Double) -> String {
+        seconds < 60 ? duration(seconds) : "environ " + duration(seconds)
     }
 
     static func date(_ date: Date) -> String {

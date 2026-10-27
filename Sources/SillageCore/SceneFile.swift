@@ -160,10 +160,8 @@ public struct SceneFile: Codable, Sendable, Equatable {
     /// from, every galaxy gets exactly the particles it had. Colours are not part of the file;
     /// `palette` supplies them by galaxy, and any galaxy past its end keeps the default.
     public func scene(particleCount: Int, palette: [SIMD3<Float>] = []) -> SceneConfig {
-        var counts = galaxies.map { Int(($0.particleShare * Double(particleCount)).rounded()) }
-        if !counts.isEmpty {
-            counts[0] = max(particleCount - counts.dropFirst().reduce(0, +), 0)
-        }
+        let counts = SceneConfig.sharedCounts(
+            particleCount, weights: galaxies.map(\.particleShare), kinds: galaxies.map(\.kind))
         var scene = SceneConfig(
             name: name,
             galaxies: galaxies.indices.map { index in

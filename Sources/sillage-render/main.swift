@@ -1193,7 +1193,9 @@ switch backend {
 case "barnes-hut":
     file.solver = .barnesHut
     if let ratio = argument("halo").flatMap(Float.init) ?? (scenePath == nil ? 1.5 : nil) {
-        for index in file.galaxies.indices { file.galaxies[index].haloParticleRatio = ratio }
+        for index in file.galaxies.indices where file.galaxies[index].kind != .blackHole {
+            file.galaxies[index].haloParticleRatio = ratio
+        }
     }
 case "restricted", "cpu":
     file.solver = .restricted
@@ -1410,8 +1412,9 @@ var density = densityURL.map { _ in
         frames: frames, count: Int(number("density-frames", 8)),
         extent: Float(number("density-extent", 60)))
 }
-// A sampled star farther than this from every centre is in a tail or a bridge, not a disk.
-let tidalReach = reach.map { $0 * 1.5 }
+// A sampled star farther than this from every centre is in a tail or a bridge, not a disk. A
+// black hole holds no disk, so the stars it carries off count as torn from the host.
+let tidalReach = zip(reach, scene.galaxies).map { $1.kind == .blackHole ? 0 : $0 * 1.5 }
 
 // Steps run before the first frame is written. A sampled disk is not born in equilibrium and
 // settles over its first few hundred megayears, which is worth simulating and not worth
@@ -1489,13 +1492,13 @@ while frame < frames || storyGoesOn() {
         // same however long the frame took to compute.
         director.advance(
             seconds: 1 / Double(framesPerSecond),
-            of: Subject(centres: solver.centers, radius: frozenRadius))
+            of: Subject(centres: scene.framedCentres(solver.centers), radius: frozenRadius))
         renderer.apply(director.look)
         camera = director.camera
     } else {
         var framed = (center: SIMD3<Float>.zero, radius: frozenRadius)
         if look.camera.mode == .auto {
-            framed = autoCamera.frame(centres: solver.centers, margins: reach)
+            framed = autoCamera.frame(centres: scene.framedCentres(solver.centers), margins: reach)
             framed.radius /= zoom
         }
         camera = look.camera.camera(

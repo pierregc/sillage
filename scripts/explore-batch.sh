@@ -89,7 +89,9 @@ probe() {
     render --preset free --seed "$seed" --index "$1" --solver barnes-hut --particles "$2" \
         --dt-scale "$dt_scale" --check-only $extra 2>&1 | awk '
             /^draw / { generator = $2; sub(/,$/, "", generator); sub(/^[^:]*: /, "")
-                       galaxies = split($0, f, ", ") }
+                       galaxies = split($0, f, ", ")
+                       # A black hole has no stars to share: the host keeps the count.
+                       for (i in f) if (f[i] == "black-hole") galaxies-- }
             /^check / { for (i = 2; i < NF; i++) if ($(i + 1) == "Myr," && $(i - 1) == "step") step = $i }
             END { if (galaxies && step) print galaxies, step, generator }' || true
 }

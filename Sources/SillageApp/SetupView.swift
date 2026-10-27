@@ -270,7 +270,9 @@ struct GalaxyCard: View {
                 }
 
                 Picker("", selection: galaxy.kind) {
-                    ForEach(GalaxyKind.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    ForEach(GalaxyKind.allCases.filter { $0 != .blackHole }, id: \.self) {
+                        Text($0.displayName).tag($0)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()

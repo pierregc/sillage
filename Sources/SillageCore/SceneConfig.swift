@@ -104,7 +104,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     /// out. Derived rather than exposed, because nobody can guess it.
     public var recommendedSoftening: Float {
         var best: Float = 0.03
-        for galaxy in galaxies where galaxy.particleCount > 0 {
+        for galaxy in galaxies where galaxy.particleCount > 0 && galaxy.kind != .blackHole {
             let edge = max(galaxy.diskScaleLength * galaxy.diskTruncation, 0.1)
             let spacing = (Float.pi * edge * edge / Float(galaxy.particleCount)).squareRoot()
             best = max(best, spacing * 1.5)
@@ -116,7 +116,9 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     public var recommendedTimeStep: Float {
         guard solver.isSelfGravitating else { return 0.02 }
         var speed: Float = 1
-        for galaxy in galaxies {
+        // A black hole's own pull is softened at its own length, several times this one, so
+        // the disks still set the step. Measured in docs/notes/black-holes.md.
+        for galaxy in galaxies where galaxy.kind != .blackHole {
             speed = max(
                 speed, galaxy.potential.circularSpeed(atRadius: galaxy.diskScaleLength))
         }
@@ -128,6 +130,28 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     public mutating func retune() {
         softening = recommendedSoftening
         timeStep = recommendedTimeStep * max(timeStepScale, 0.01)
+    }
+
+    public var hasBlackHole: Bool { galaxies.contains { $0.kind == .blackHole } }
+
+    /// Visible particles shared out by `weights`, shares that sum to one, every black hole
+    /// taking exactly its one and the others sharing what is left in proportion. The first
+    /// galaxy that is not a hole takes what rounding leaves. Without a hole this is the
+    /// rounding the counts always had, so no scene drawn before holes moves a particle.
+    static func sharedCounts(_ total: Int, weights: [Double], kinds: [GalaxyKind]) -> [Int] {
+        let holes = kinds.filter { $0 == .blackHole }.count
+        let rest = max(total - holes, 0)
+        let sum =
+            holes == 0
+            ? 1 : zip(weights, kinds).reduce(0) { $0 + ($1.1 == .blackHole ? 0 : max($1.0, 0)) }
+        var counts = zip(weights, kinds).map { weight, kind in
+            kind == .blackHole ? 1 : sum > 0 ? Int((Double(rest) * max(weight, 0) / sum).rounded()) : 0
+        }
+        if let first = kinds.firstIndex(where: { $0 != .blackHole }) {
+            let others = counts.indices.filter { $0 != first && kinds[$0] != .blackHole }
+            counts[first] = max(rest - others.reduce(0) { $0 + counts[$1] }, 0)
+        }
+        return counts
     }
 
     public var hasLiveHalos: Bool {

@@ -430,6 +430,16 @@ extension SceneFolder {
         exports.appendingPathComponent("\(name).\(`extension`)")
     }
 
+    /// The scene folder a take belongs to, when it is that folder's own `take.sillage`.
+    public static func holding(take url: URL) -> SceneFolder? {
+        let folder = SceneFolder(url.deletingLastPathComponent())
+        let manager = FileManager.default
+        guard folder.take.path == url.standardizedFileURL.path,
+            manager.fileExists(atPath: folder.scene.path) || manager.fileExists(atPath: folder.clip.path)
+        else { return nil }
+        return folder
+    }
+
     /// `<batch>/<scene>`, which names the scene wherever its video ends up.
     public var sceneID: String {
         "\(batch.lastPathComponent)/\(url.lastPathComponent)"
