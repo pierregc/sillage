@@ -1,0 +1,5 @@
+Rien en cours · le Mac est libre
+Nuit du 26 oct. · en échec 3 h 12 · 2 erreurs
+Aperçus 50/50 (2 rejetés, 1 en échec) · choix 4/4 · haute résolution 1/4 (2 en échec, 1 laissée de côté) · 1 vidéo
+Erreurs : scene-0007 haute résolution : failed with status 1 (journal .logs/scene-0007.hires.log) · et 1 de plus
+Dernière vidéo : scene-0019/exports/4k.mp4 · 212,3 Mo · 0 h 40
