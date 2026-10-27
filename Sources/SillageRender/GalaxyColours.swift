@@ -170,7 +170,8 @@ public struct GalaxyColourSpike: Sendable {
                 young: tinted(set.young), knot: tinted(set.knot))
         case .free:
             let lch = OKLab.lch(tint)
-            let (L, C, h) = (lch.x, lch.y, lch.z)
+            let boost = ProcessInfo.processInfo.environment["SILLAGE_COLOUR_CHROMA"].flatMap(Float.init) ?? 1
+            let (L, C, h) = (lch.x, lch.y * boost, lch.z)
             let toGold = Self.toward(h, 75, by: 40)
             let core = OKLab.rgb(lch: SIMD3(min(L + 0.08, 0.95), C * 0.45, toGold))
             let named = PaletteFamily.free.first { $0.name == self.family }
@@ -187,7 +188,7 @@ public struct GalaxyColourSpike: Sendable {
             let knot = Self.normalised(
                 simd_mix(SIMD3<Float>(1.00, 0.34, 0.30), Self.normalised(tint), SIMD3(repeating: 0.4)))
             return Colours(
-                core: Self.normalised(core), body: Self.normalised(tint),
+                core: Self.normalised(core), body: Self.normalised(OKLab.rgb(lch: SIMD3(L, C, h))),
                 outer: Self.normalised(outer), young: Self.normalised(outer), knot: knot)
         }
     }
