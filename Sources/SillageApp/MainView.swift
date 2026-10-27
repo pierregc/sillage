@@ -62,7 +62,8 @@ struct MainView: View {
     @ObservedObject var library: LibraryModel
     @ObservedObject var navigation: AppNavigation
     @ObservedObject var queue: QueueModel
-    @ObservedObject var nights: NightsModel
+    /// Watched by the sidebar and the night page, not here: the sheet below would be rebuilt.
+    let nights: NightsModel
 
     var body: some View {
         Group {
