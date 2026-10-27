@@ -329,7 +329,12 @@ enum LibraryCheck {
                 name: "dream", palette: [GalaxyColours([0.9, 0.3, 0.6]), GalaxyColours([0.2, 0.9, 0.8])]))
         try FileManager.default.createDirectory(at: done.exports, withIntermediateDirectories: true)
         try writeVideo(to: done.export(preset: "1080p"), tint: 12)
+        try writeVideo(to: done.export(preset: "whatsapp", codec: nil), tint: 3)
         try Data("légende".utf8).write(to: done.exports.appendingPathComponent("whatsapp.txt"))
+        let frame = [UInt8](repeating: 200, count: 16 * 16 * 4)
+        try AnimatedImage.write(
+            [frame, frame], width: 16, height: 16, framesPerSecond: 10, format: .gif,
+            to: done.preview("1080p-dream", extension: "gif"))
         try SceneRatings(scenes: [
             "scene-0001": .init(choice: .yes, rating: 8), "scene-0003": .init(choice: .yes),
         ]).write(batch: night)
@@ -351,7 +356,7 @@ enum LibraryCheck {
         let scene = try found(model.scene(id(1)))
         check(
             "versions : aperçu, haute résolution, puis chaque vidéo",
-            scene.versions.map(\.title) == ["Aperçu", "Haute résolution", "Vidéo 1080p"],
+            scene.versions.map(\.title) == ["Aperçu", "Haute résolution", "Vidéo 1080p", "Vidéo whatsapp"],
             scene.versions.map(\.title).joined(separator: ", "))
         check(
             "la page joue d'abord la vidéo exportée",
@@ -374,6 +379,43 @@ enum LibraryCheck {
                 && facts?.otherLooks.map(\.name) == ["raw"],
             facts?.styleName ?? "pas de style")
         check("graine et index du lot", scene.seed == "20261026" && scene.index == 1)
+        let files = model.facts?.exports ?? []
+        check(
+            "chaque fichier de exports/ a sa ligne, la légende reste à sa vidéo",
+            Set(files.map(\.url.lastPathComponent)) == ["1080p.mp4", "whatsapp.mp4", "1080p-dream.gif"]
+                && files.first { $0.url.lastPathComponent == "whatsapp.mp4" }?.caption?.lastPathComponent
+                    == "whatsapp.txt",
+            files.map(\.url.lastPathComponent).joined(separator: ", "))
+        let exported = files.first { $0.url.lastPathComponent == "1080p.mp4" }
+        check(
+            "préréglage, codec, taille, durée et poids lus",
+            exported?.preset == "1080p" && exported?.codec == "H.264" && exported?.size != nil
+                && (exported?.seconds ?? 0) > 0 && (exported?.bytes ?? 0) > 0,
+            exported.map { ExportRow.details($0) } ?? "pas de ligne")
+        let still = files.first { $0.url.lastPathComponent == "1080p-dream.gif" }
+        check(
+            "un GIF est une image avec son style, pas une vidéo",
+            still?.isImage == true && still?.codec == "GIF" && still?.style == "dream"
+                && still?.size == "16×16" && !scene.videos.contains { $0.pathExtension == "gif" })
+        check(
+            "les noms de fichiers disent préréglage et style",
+            ExportedFile.names(of: "4k-aurora") == ("4k", "aurora")
+                && ExportedFile.names(of: "1080p-h264") == ("1080p", nil)
+                && ExportedFile.names(of: "1080p-gold-leaf-hevc") == ("1080p", "gold-leaf")
+                && ExportedFile.names(of: "1080p-2") == ("1080p", nil)
+                && ExportedFile.names(of: "montage").preset == nil)
+        model.copyCaption(try found(files.first { $0.caption != nil }?.caption))
+        check(
+            "copier la légende met son texte dans le presse-papiers",
+            model.pasteboard.string(forType: .string) == "légende" && model.copiedNote == "Légende copiée")
+        model.version = still?.url
+        check("lire un GIF ne lance pas le lecteur", model.playing == nil || model.playingURL != still?.url)
+        model.version = nil
+        // A new export lands and the next scan lists it.
+        try writeVideo(to: done.export(preset: "square"), tint: 5)
+        check(
+            "un export qui arrive s'ajoute à la liste",
+            wait(8) { model.facts?.exports.count == 4 })
         render(ScenePage(model: model, scene: scene, snapshot: true), to: "out/ui-scene-page.png")
 
         let hires = StageCommand.hires(done, particles: 5_000_000)

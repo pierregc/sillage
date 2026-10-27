@@ -37,6 +37,7 @@ final class LibraryModel: ObservableObject {
     @Published private(set) var facts: ScenePageFacts?
     /// The last command line copied for the user, said under the page for a moment.
     @Published private(set) var copied: String?
+    @Published private(set) var copiedNote = ""
     @Published var failure: String?
     /// The triage view is open: one scene large, decided from the keyboard.
     @Published private(set) var triage: Triage? { didSet { updatePlayback() } }
@@ -360,13 +361,13 @@ final class LibraryModel: ObservableObject {
         tune(scene)
     }
 
-    /// Shows the scene's videos in the Finder: the first one selected, else the folder.
+    /// Opens the exports folder of the selected scene in the Finder.
     func revealExports() {
         guard let scene = target, let folder = scene.folder else { return }
-        if scene.exports.isEmpty {
+        if FileManager.default.fileExists(atPath: folder.exports.path) {
             NSWorkspace.shared.open(folder.exports)
         } else {
-            NSWorkspace.shared.activateFileViewerSelecting(scene.exports)
+            NSWorkspace.shared.activateFileViewerSelecting([folder.url])
         }
     }
 
@@ -468,17 +469,28 @@ final class LibraryModel: ObservableObject {
         }
         if facts?.id != scene.id { facts = nil }
         factsTask = Task { [weak self] in
-            let read = await Task.detached { ScenePageFacts.read(scene) }.value
+            var read = await Task.detached { ScenePageFacts.read(scene) }.value
+            read.exports = await ExportedFile.list(scene.exports)
             guard !Task.isCancelled, let self, self.opened == scene.id else { return }
             self.facts = read
         }
     }
 
     /// Puts a command line on the pasteboard and says so under the page.
-    func copy(_ command: String) {
+    /// The caption written beside a video, ready to paste where it goes.
+    func copyCaption(_ url: URL) {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+            failure = "Impossible de lire la légende \(url.lastPathComponent)"
+            return
+        }
+        copy(text.trimmingCharacters(in: .whitespacesAndNewlines), note: "Légende copiée")
+    }
+
+    func copy(_ command: String, note: String = "Commande copiée, à coller dans le Terminal") {
         pasteboard.clearContents()
         pasteboard.setString(command, forType: .string)
         copied = command
+        copiedNote = note
         copiedTask?.cancel()
         copiedTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
