@@ -1,0 +1,25 @@
+{
+  "jobs": [
+    {
+      "added": "2026-10-26T21:59:00.000+01:00",
+      "by": "hand",
+      "ended": "2026-10-27T03:12:00.000+01:00",
+      "id": 7,
+      "kind": "night",
+      "message": "exit status 1",
+      "night": "2026-10-26",
+      "options": [
+        "/recipe.json"
+      ],
+      "path": "/library/2026-10-26",
+      "pid": 4242,
+      "started": "2026-10-26T22:00:00.000+01:00",
+      "state": "failed",
+      "status": 1
+    }
+  ],
+  "nextID": 8,
+  "paused": false,
+  "updated": "2026-10-27T01:09:00.000+01:00",
+  "version": 1
+}

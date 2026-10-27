@@ -92,9 +92,8 @@ public enum NightCommand {
 
     /// A recipe this Mac can run.
     public static func checked(_ recipe: NightRecipe) throws -> NightRecipe {
-        if let name = recipe.style.style.value, !catalogue.contains(where: { $0.name == name }) {
-            throw Failure.noStyle(name)
-        }
+        _ = try NightStyle.resolve(
+            recipe.style, pick: 0, catalogue: catalogue, references: TelescopeReference.repository)
         let maximum = SceneFolder.maximumParticles()
         if let particles = recipe.hires.particles.value, particles > maximum {
             throw Failure.tooManyParticles(particles, maximum)

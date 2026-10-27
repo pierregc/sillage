@@ -3,10 +3,13 @@ import Foundation
 /// `sillage-render status`: the lines the app shows, from the terminal.
 public enum StatusCommand {
     public static let usage = """
-        usage: sillage-render status [--library DIR]
-        Prints what runs, what waits and what ended last. DIR is by default $SILLAGE_LIBRARY or
-        the repository's library/. For fixtures: --now ISO8601, --timezone ID, --fixture N, which takes
-        N sillage-render processes as running and a running job as alive.
+        usage: sillage-render status [--night FOLDER] [--json] [--full] [--library DIR]
+        Prints in five lines at most what runs, how far it has got, when it will be ready, what
+        failed and the last video. Idle, it says so and names the last night. --night reports
+        the night in FOLDER, --json prints the same as one object, --full prints every job of
+        the queue instead. DIR is by default $SILLAGE_LIBRARY or the repository's library/.
+        For fixtures: --now ISO8601, --timezone ID, --fixture N, which takes N sillage-render
+        processes as running and a running job as alive.
         """
 
     public static func main(_ arguments: [String], say: (String) -> Void = { print($0) }) -> Int32 {
@@ -15,8 +18,22 @@ public enum StatusCommand {
         var timeZone = TimeZone.current
         var processes: [QueueStatus.ProcessInfo]?
         var fixture = false
+        var night: URL?
+        var json = false
+        var full = false
         var index = 0
         while index < arguments.count {
+            switch arguments[index] {
+            case "--json":
+                json = true
+                index += 1
+                continue
+            case "--full":
+                full = true
+                index += 1
+                continue
+            default: break
+            }
             guard index + 1 < arguments.count else {
                 say(usage)
                 return 2
@@ -24,6 +41,7 @@ public enum StatusCommand {
             let value = arguments[index + 1]
             switch arguments[index] {
             case "--library": library = URL(fileURLWithPath: value, isDirectory: true)
+            case "--night": night = URL(fileURLWithPath: value, isDirectory: true)
             case "--now":
                 guard let date = RunStatus.date(value) else {
                     say("status: \(value) is not an ISO 8601 date")
@@ -55,10 +73,27 @@ public enum StatusCommand {
         let alive: @Sendable (QueueJob) -> Bool = { job in
             !real || ProcessProbe.isAlive(pid: job.pid, started: job.pidStarted)
         }
-        let status = QueueStatus.read(
-            library: library, now: now, timeZone: timeZone, processes: processes,
-            isAlive: alive)
-        for line in status.lines { say(line) }
+        if full {
+            let status = QueueStatus.read(
+                library: library, now: now, timeZone: timeZone, processes: processes,
+                isAlive: alive)
+            for line in status.lines { say(line) }
+            return 0
+        }
+        guard
+            let digest = NightDigest.read(
+                library: library, night: night, now: now, timeZone: timeZone,
+                processes: processes, isAlive: alive)
+        else {
+            say("status: no night.json in \(night?.path ?? "")")
+            return 1
+        }
+        if json {
+            guard let data = try? digest.json() else { return 1 }
+            say(String(decoding: data, as: UTF8.self))
+        } else {
+            for line in digest.lines { say(line) }
+        }
         return 0
     }
 }

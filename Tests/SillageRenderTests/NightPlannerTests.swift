@@ -246,7 +246,7 @@ struct NightPlannerTests {
             now: start, deliverBy: start.addingTimeInterval(3_600))
         #expect(plan.steps.map(\.done) == [true, true, true, false, true])
         #expect(plan.steps.filter(\.done).allSatisfy { $0.seconds == 0 })
-        #expect(plan.end.timeIntervalSince(start) == NightPlanner.styleSeconds)
+        #expect(plan.end.timeIntervalSince(start) == planner(recipe()).styleSeconds)
         #expect(plan.diskBytes == 0)
     }
 

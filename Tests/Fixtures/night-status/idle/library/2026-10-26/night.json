@@ -1,0 +1,44 @@
+{
+  "deliverBy": "2026-10-27T07:00:00.000+01:00",
+  "endedAt": "2026-10-27T06:41:00.000+01:00",
+  "estimatedEnd": "2026-10-27T06:41:00.000+01:00",
+  "id": "2026-10-26",
+  "phases": [
+    {
+      "done": 50,
+      "failed": 1,
+      "name": "explore",
+      "planned": 50
+    },
+    {
+      "done": 4,
+      "failed": 0,
+      "name": "pick",
+      "planned": 4
+    },
+    {
+      "done": 4,
+      "failed": 0,
+      "name": "hires",
+      "planned": 4
+    },
+    {
+      "done": 4,
+      "failed": 0,
+      "name": "style",
+      "planned": 4
+    },
+    {
+      "done": 4,
+      "failed": 0,
+      "name": "export",
+      "planned": 4
+    }
+  ],
+  "recipe": {
+    "scenes": "50"
+  },
+  "startedAt": "2026-10-26T22:00:00.000+01:00",
+  "state": "done",
+  "version": 1
+}

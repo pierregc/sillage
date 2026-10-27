@@ -1,0 +1,32 @@
+{
+  "deliverBy": "2026-10-26T07:00:00.000+01:00",
+  "endedAt": "2026-10-25T23:30:00.000+01:00",
+  "estimatedEnd": "2026-10-25T23:30:00.000+01:00",
+  "id": "2026-10-25",
+  "phases": [
+    {
+      "done": 12,
+      "failed": 0,
+      "name": "explore",
+      "planned": 50
+    },
+    {
+      "done": 0,
+      "failed": 0,
+      "name": "pick",
+      "planned": 4
+    },
+    {
+      "done": 0,
+      "failed": 0,
+      "name": "hires",
+      "planned": 4
+    }
+  ],
+  "recipe": {
+    "scenes": "50"
+  },
+  "startedAt": "2026-10-25T22:00:00.000+01:00",
+  "state": "stopped",
+  "version": 1
+}
