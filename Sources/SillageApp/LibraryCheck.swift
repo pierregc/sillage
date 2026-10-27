@@ -313,8 +313,11 @@ enum LibraryCheck {
             "previewTimeStepMyr":0.2,"softening":0.08,"clipStartMyr":82,"clipEndMyr":461,"seconds":5100}
             """.utf8
         ).write(to: done.hires)
-        try LookFile(name: "raw", palette: [[1, 0.62, 0.25], [0.3, 0.7, 1]]).encoded().write(to: done.look)
-        try done.promote(LookFile(name: "dream", palette: [[0.9, 0.3, 0.6], [0.2, 0.9, 0.8]]))
+        try LookFile(name: "raw", palette: [GalaxyColours([1, 0.62, 0.25]), GalaxyColours([0.3, 0.7, 1])])
+            .encoded().write(to: done.look)
+        try done.promote(
+            LookFile(
+                name: "dream", palette: [GalaxyColours([0.9, 0.3, 0.6]), GalaxyColours([0.2, 0.9, 0.8])]))
         try FileManager.default.createDirectory(at: done.exports, withIntermediateDirectories: true)
         try writeVideo(to: done.export(preset: "1080p"), tint: 12)
         try Data("légende".utf8).write(to: done.exports.appendingPathComponent("whatsapp.txt"))

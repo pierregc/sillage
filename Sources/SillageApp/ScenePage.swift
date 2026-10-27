@@ -645,7 +645,7 @@ struct ScenePageFacts: Sendable, Equatable {
             (try? manager.attributesOfItem(atPath: folder.hires.path))?[.modificationDate] as? Date
         if let data = try? Data(contentsOf: folder.look), let look = try? LookFile.decoded(from: data) {
             facts.styleName = look.name
-            facts.palette = look.palette
+            facts.palette = look.palette.map(\.colour)
         }
         facts.rawStyle = folder.hasRawLook
         let names = ((try? manager.contentsOfDirectory(atPath: folder.looks.path)) ?? [])
