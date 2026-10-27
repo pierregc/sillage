@@ -34,7 +34,7 @@ enum LookCheck {
         var original = LookFile.standard
         original.name = "lookcheck"
         original.look = .ink
-        original.palette = [SIMD3(0.9, 0.7, 0.5)]
+        original.palette = [GalaxyColours(SIMD3(0.9, 0.7, 0.5))]
         original.camera = .init(mode: .fixed, elevation: 0.5, elevationEnd: 0.9, azimuthEnd: 1.5)
         let lookURL: URL
         if flag + 2 < CommandLine.arguments.count {
@@ -65,7 +65,7 @@ enum LookCheck {
         check("une seule construction du rendu à l'ouverture", builds == 1, "\(builds)")
         check(
             "la palette du fichier colore la scène",
-            loaded.palette.isEmpty || model.scene.galaxies[0].color == loaded.palette[0])
+            loaded.palette.isEmpty || model.scene.galaxies[0].color == loaded.palette[0].colour)
         check(
             "le plan de caméra est suivi", model.followsPlan == [.fixed, .auto].contains(loaded.camera.mode))
 
