@@ -156,7 +156,9 @@ enum LookCheck {
         let savedBefore = try? Data(contentsOf: folder.look)
         let scene = LibraryScene(
             batch: "lookcheck", batchURL: folder.batch, name: "scene-0001", folder: folder, take: take)
-        let session = StyleSession(scene: scene, model: model)
+        let favourites = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "lookcheck-favourites-\(UUID().uuidString)")
+        let session = StyleSession(scene: scene, model: model, favouritesDirectory: favourites)
         check("l'éditeur trouve la prise ouverte", session.isOpen)
         check("les retouches faites avant se voient", session.saved == loaded && session.isModified)
         session.cancel()
@@ -243,6 +245,34 @@ enum LookCheck {
         let first = session.proposals.map(\.palette)
         session.moreProposals(waiting: true)
         check("autres palettes en propose d'autres", session.proposals.map(\.palette) != first, "")
+        if let proposal = session.proposals.first?.palette {
+            let file = session.favouritesDirectory.appendingPathComponent("soir-de-test.palette.json")
+            check("aucun favori au départ", session.favourites.isEmpty && !session.isFavourite(proposal), "")
+            session.toggleFavourite(proposal)
+            check("le cœur demande un nom", session.naming == proposal && session.favourites.isEmpty, "")
+            session.saveFavourite(proposal, named: "Soir de Test")
+            check(
+                "le favori est écrit et reconnu",
+                FileManager.default.fileExists(atPath: file.path) && session.isFavourite(proposal)
+                    && session.naming == nil, "")
+            session.propose(waiting: true)
+            check(
+                "le favori passe en tête des propositions",
+                session.proposals.first?.palette == proposal.truncated(to: galaxies)
+                    && session.proposals.count == StyleSession.proposalCount
+                    && session.favouriteProposals.count == 1, "\(session.proposals.count)")
+            session.world = .telescope
+            session.propose(waiting: true)
+            check("un favori d'un autre monde ne s'y propose pas", session.favouriteProposals.isEmpty, "")
+            session.world = .free
+            session.propose(waiting: true)
+            session.toggleFavourite(proposal)
+            check(
+                "un second clic retire le favori",
+                !FileManager.default.fileExists(atPath: file.path) && session.favourites.isEmpty
+                    && !session.isFavourite(proposal), "")
+            try? FileManager.default.removeItem(at: session.favouritesDirectory)
+        }
         if galaxies > 1, let proposal = session.proposals.last?.palette {
             let kept = model.lookFile.palette[0]
             session.toggleLock(0)

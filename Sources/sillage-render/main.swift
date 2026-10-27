@@ -260,6 +260,17 @@ func resolvePalette(
     _ folder: SceneFolder, choice: String, world asked: Palette.World?, command: String
 ) throws -> PaletteChoice {
     let references = telescopeReferences()
+    let favourites = FavouritePalettes.load()
+    if !FileManager.default.fileExists(atPath: choice),
+        let favourite = FavouritePalettes.find(choice, in: favourites)
+    {
+        let (_, galaxies) = try sceneSeed(folder)
+        guard favourite.palette.colours.count >= galaxies else {
+            fail("\(command): favourite \(choice) has fewer colours than the scene has galaxies")
+        }
+        let palette = favourite.palette.truncated(to: galaxies)
+        return .recipe(palette, PaletteScore(palette, references: references))
+    }
     if FileManager.default.fileExists(atPath: choice) {
         let data = try Data(contentsOf: URL(fileURLWithPath: choice))
         struct Bare: Decodable { var colours: [SIMD3<Float>] }
@@ -285,7 +296,8 @@ func resolvePalette(
         chosen = found
     }
     let top = try PaletteAuto.ranked(
-        galaxies: galaxies, world: chosen, family: family, seed: seed, telescope: references)[0]
+        galaxies: galaxies, world: chosen, family: family, seed: seed, telescope: references,
+        favourites: favourites.map(\.palette))[0]
     return .recipe(top.palette, top.score)
 }
 
@@ -346,8 +358,18 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     var world = askedWorld(option("world"), command: "look")
     var family: String?
     var fixed: Palette?
+    let favourites = FavouritePalettes.load()
     if let choice = option("palette"), choice != "auto" {
-        if FileManager.default.fileExists(atPath: choice) {
+        if !FileManager.default.fileExists(atPath: choice),
+            FavouritePalettes.find(choice, in: favourites) != nil
+        {
+            guard
+                case .recipe(let palette, _) = try resolvePalette(
+                    folder, choice: choice, world: world, command: "look")
+            else { fail("look: favourite \(choice) could not be read") }
+            fixed = palette
+            world = world ?? palette.world
+        } else if FileManager.default.fileExists(atPath: choice) {
             guard
                 case .recipe(let palette, _) = try resolvePalette(
                     folder, choice: choice, world: world, command: "look")
@@ -369,7 +391,7 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
     let outcome = try StyleAuto.choose(
         folder, world: world, family: family, fixed: fixed, catalogue: catalogueLooks(),
-        references: telescopeReferences())
+        references: telescopeReferences(), favourites: favourites.map(\.palette))
     let scoredAt = Date()
     let (sheet, keys, ranked) = (outcome.sheet, outcome.keys, outcome.ranked)
     let (width, height, fps) = (outcome.width, outcome.height, outcome.fps)

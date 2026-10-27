@@ -99,7 +99,7 @@ name is an error.
 | `hires.frames` | the first frames of the story only | the whole story |
 | `style.world` | `telescope` or `free` | Auto: the two worlds in turn across the picks, best first, telescope then free |
 | `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |
-| `style.palette` | a family or a `.palette.json` (its world is the pick's) | Auto: the best of the scene's seed in the pick's world |
+| `style.palette` | a family, the name of a favourite in `palettes/` or a `.palette.json` (its world is the pick's) | Auto: the best of the scene's seed in the pick's world, the favourites that fit among the candidates |
 | `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
 
 The style step. A world asked for holds for every pick; else a named `style.style` or a

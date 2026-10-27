@@ -263,6 +263,10 @@ picks the colour world (free by default). `--base` starts from another look inst
 scene's. `palettes <scene> --best 3` draws the three best-scored palettes of the scene on a
 frame of its take, the score under each; see [the note](docs/notes/palette-score.md).
 
+Palettes worth keeping live in `palettes/<name>.palette.json`, saved by the heart in the style
+editor; `--palette <name>` takes one by its name and Auto adds the ones that fit to its
+candidates. See [the note](docs/notes/favourite-palettes.md).
+
 `look <scene> --style auto` chooses the rendering and the palette together, on the picture:
 every rendering of the world (`--world`, else the world of the scene's look) is drawn with the
 scene's best palette on three key frames at the clip's size, then the four best renderings with

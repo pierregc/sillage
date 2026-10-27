@@ -145,17 +145,28 @@ public enum PaletteAuto {
     public struct Ranked: Sendable, Equatable {
         public var palette: Palette
         public var score: PaletteScore
+
+        public init(palette: Palette, score: PaletteScore) {
+            self.palette = palette
+            self.score = score
+        }
     }
 
     /// Every candidate that could be drawn, best first, ties by order of drawing. `family`
     /// keeps the candidates to one family; candidates that find no room are dropped.
     public static func ranked(
         galaxies: Int, world: Palette.World, family: String? = nil, seed: UInt64,
-        telescope: [TelescopeReference] = []
+        telescope: [TelescopeReference] = [], favourites: [Palette] = []
     ) throws -> [Ranked] {
         let families = telescope.map(\.family)
         var random = SeededGenerator(seed: seed ^ 0x5A17_7A6E_0000_0112)
-        var found: [Ranked] = []
+        // Favourites that fit are drawn first, so they win a tie.
+        var found: [Ranked] = favourites.filter {
+            $0.world == world && $0.colours.count >= galaxies && (family == nil || $0.family == family)
+        }.map {
+            let palette = $0.truncated(to: galaxies)
+            return Ranked(palette: palette, score: PaletteScore(palette, references: telescope))
+        }
         var failure: Error?
         for _ in 0..<candidates {
             do {
