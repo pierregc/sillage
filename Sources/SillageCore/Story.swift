@@ -46,6 +46,12 @@ public struct Story: Sendable {
         public var disruption = 0.05
         /// The approach shown before the first collision, in Myr.
         public var lead = 150.0
+        /// How long after the last pair left its reach a story with nothing more to come may run,
+        /// in Myr: tails take up to 250 Myr to form, and the window closes the clip. Past it, what
+        /// still changes is a disk heating on its own or the centre of mass of debris drifting.
+        public var aftermath = 400.0
+        /// A collision due after this moment, in Myr of simulated time, is not this story's.
+        public var horizon = Story.capMyr
 
         public init() {}
     }
@@ -133,17 +139,26 @@ public struct Story: Sendable {
         settings.reach * (reaches[i] + reaches[j])
     }
 
-    /// What still goes on at `index`, judged on the samples up to it and none after; empty once
-    /// the story is over.
-    public func activity(_ samples: [Sample], at index: Int) -> [Activity] {
+    /// What a frame says, judged on the samples up to it and none after.
+    public struct Reading: Sendable, Equatable {
+        /// Collisions still to come, or too early to tell.
+        public var pairs: [Activity] = []
+        /// Tails, extent or disruption still changing over the window.
+        public var window: [Activity] = []
+        /// Some pair is inside its reach and still moving as two bodies.
+        public var engaged = false
+    }
+
+    public func reading(_ samples: [Sample], at index: Int) -> Reading {
         let now = samples[index]
+        var reading = Reading()
         guard let first = samples.first, now.timeMyr - first.timeMyr >= settings.window else {
-            return [.warmingUp]
+            reading.pairs = [.warmingUp]
+            return reading
         }
         let window = samples[Self.start(of: now.timeMyr - settings.window, in: samples, upTo: index)...index]
         let fit = samples[
             Self.start(of: now.timeMyr - settings.velocityFit, in: samples, upTo: index)...index]
-        var found: [Activity] = []
         var together = true
         let count = min(now.centres.count, profiles.count)
         for i in 0..<count {
@@ -157,36 +172,117 @@ public struct Story: Sendable {
                 let radial = simd_dot(offset, velocity) / r
                 let momentum = simd_length(simd_cross(offset, velocity))
                 let energy = simd_length_squared(velocity) / 2 + potential(i, j, r)
-                // Parted for good.
-                if energy >= 0 && radial >= 0 { continue }
-                let pericentre = innerTurningPoint(i, j, energy: energy, momentum: momentum, from: r)
-                // Passes wide.
-                if pericentre >= limit { continue }
-                if energy >= 0 {
-                    found.append(.approaching(i, j, pericentreKpc: pericentre))
-                } else if !settled(i, j, window, at: r) {
-                    found.append(.returning(i, j, pericentreKpc: pericentre))
-                }
+                let settled = energy < 0 && settled(i, j, window, at: r)
+                if r < limit && !settled { reading.engaged = true }
+                // Parted for good, or merged.
+                if energy >= 0 && radial >= 0 || settled { continue }
+                let orbit = Orbit(story: self, i, j, energy: energy, momentum: momentum, from: r)
+                // Passes wide, or after the horizon.
+                guard orbit.pericentre < limit,
+                    let wait = orbit.timeToPericentre(receding: radial >= 0),
+                    now.timeMyr + wait < settings.horizon
+                else { continue }
+                reading.pairs.append(
+                    energy >= 0
+                        ? .approaching(i, j, pericentreKpc: orbit.pericentre)
+                        : .returning(i, j, pericentreKpc: orbit.pericentre))
             }
         }
         let tails = window.map(\.tails)
         if let low = tails.min(), let high = tails.max(), high - low >= settings.tails {
-            found.append(.tails(high - low))
+            reading.window.append(.tails(high - low))
         }
         // Galaxies parting stretch the extent for as long as they move, whatever the stars do.
         let extents = window.map(\.extent)
         if together, let low = extents.min(), let high = extents.max(), high > 0,
             (high - low) / high >= settings.extent
         {
-            found.append(.extent((high - low) / high))
+            reading.window.append(.extent((high - low) / high))
         }
         for galaxy in 0..<now.disruption.count {
             let values = window.compactMap { galaxy < $0.disruption.count ? $0.disruption[galaxy] : nil }
             if let low = values.min(), let high = values.max(), high - low >= settings.disruption {
-                found.append(.disruption(galaxy, high - low))
+                reading.window.append(.disruption(galaxy, high - low))
             }
         }
-        return found
+        return reading
+    }
+
+    /// What still goes on: a collision to come keeps the story going; otherwise whatever still
+    /// changes over the window does, until `aftermath` past the last moment a pair was engaged.
+    /// Empty once the story is over.
+    public func activity(_ reading: Reading, atMyr time: Double, engagedMyr: Double) -> [Activity] {
+        if !reading.pairs.isEmpty { return reading.pairs + reading.window }
+        return time - engagedMyr >= settings.aftermath ? [] : reading.window
+    }
+
+    /// A pair's relative orbit in its own potential, energy and angular momentum held.
+    struct Orbit {
+        let story: Story
+        let i: Int
+        let j: Int
+        let energy: Double
+        let momentum: Double
+        let r: Double
+        let pericentre: Double
+
+        init(story: Story, _ i: Int, _ j: Int, energy: Double, momentum: Double, from r: Double) {
+            self.story = story
+            self.i = i
+            self.j = j
+            self.energy = energy
+            self.momentum = momentum
+            self.r = r
+            pericentre = story.innerTurningPoint(i, j, energy: energy, momentum: momentum, from: r)
+        }
+
+        func radialSpeed(_ x: Double) -> Double {
+            max(2 * (energy - story.potential(i, j, x)) - momentum * momentum / (x * x), 0).squareRoot()
+        }
+
+        /// Where a bound orbit turns at its outer end, nil for an unbound one.
+        var apocentre: Double? {
+            guard energy < 0 else { return nil }
+            var low = r
+            var high = r
+            while radialSpeed(high) > 0 || high == r {
+                low = high
+                high *= 2
+                if high > 1e6 { return nil }
+            }
+            for _ in 0..<60 {
+                let middle = (low + high) / 2
+                if radialSpeed(middle) > 0 { low = middle } else { high = middle }
+            }
+            return (low + high) / 2
+        }
+
+        /// Time between two radii of the orbit in Myr, by substitutions that keep the integrand
+        /// finite at a turning point.
+        func time(from a: Double, to b: Double, steps: Int = 200) -> Double {
+            guard b > a else { return 0 }
+            let middle = (a + b) / 2
+            var total = 0.0
+            // Near a: x = a + u², near b: x = b - w².
+            for (from, sign) in [(a, 1.0), (b, -1.0)] {
+                let span = abs(middle - from).squareRoot()
+                for k in 0..<steps {
+                    let u = (Double(k) + 0.5) / Double(steps) * span
+                    let x = from + sign * u * u
+                    let speed = radialSpeed(x)
+                    guard speed > 0 else { continue }
+                    total += 2 * u * (span / Double(steps)) / speed
+                }
+            }
+            return total * Story.unit
+        }
+
+        /// How long until the next pericentre, nil if the pair never comes back.
+        func timeToPericentre(receding: Bool) -> Double? {
+            guard receding else { return time(from: pericentre, to: r) }
+            guard let apocentre else { return nil }
+            return time(from: r, to: apocentre) + time(from: pericentre, to: apocentre)
+        }
     }
 
     /// A bound pair inside its reach whose centres no longer pull on each other as two bodies:
@@ -287,6 +383,8 @@ public struct Story: Sendable {
         public private(set) var activity: [Activity] = [.warmingUp]
         /// The first frame of the current quiet stretch.
         public private(set) var quietFrom: Int?
+        /// The last moment a pair was inside its reach and moving as two bodies.
+        public private(set) var engagedMyr: Double?
 
         public init(story: Story) { self.story = story }
 
@@ -294,7 +392,10 @@ public struct Story: Sendable {
 
         public mutating func append(_ sample: Sample) {
             samples.append(sample)
-            activity = story.activity(samples, at: samples.count - 1)
+            let reading = story.reading(samples, at: samples.count - 1)
+            if reading.engaged || engagedMyr == nil { engagedMyr = sample.timeMyr }
+            activity = story.activity(
+                reading, atMyr: sample.timeMyr, engagedMyr: engagedMyr ?? sample.timeMyr)
             if !activity.isEmpty {
                 quietFrom = nil
             } else if quietFrom == nil {

@@ -19,7 +19,7 @@ struct StoryTests {
     /// while after each pericentre closer than 30 kpc, then hold.
     static func run(
         from position: SIMD3<Double>, velocity: SIMD3<Double>, drag: Double = 0, dragInside: Double = 20,
-        untilMyr: Double
+        untilMyr: Double, streaming: Double = 0
     ) -> (samples: [Story.Sample], pericentres: [Double]) {
         let unit = Physics.megayearsPerTimeUnit
         let dt = 0.002
@@ -50,6 +50,9 @@ struct StoryTests {
             if let last = pericentres.last, time - last < 120 {
                 tails += 0.001
                 disruption = min(disruption + 0.01, 1)
+            } else if !pericentres.isEmpty {
+                // A stream that keeps lengthening once the tails have formed.
+                tails += streaming
             }
             let spread = 8.0
             samples.append(
@@ -87,7 +90,7 @@ struct StoryTests {
         #expect(abs(span.endMyr - (pericentre + 250)) <= 5)
 
         // On the way in it is a collision to come.
-        let before = Self.story.activity(samples, at: Int(pericentre - 80) - 60)
+        let before = Self.story.reading(samples, at: Int(pericentre - 80) - 60).pairs
         #expect(before.contains { if case .approaching = $0 { true } else { false } })
     }
 
@@ -103,18 +106,39 @@ struct StoryTests {
         #expect(span.endMyr >= last + 150)
         #expect(span.endMyr < 2_000)
         // Between passages, still bound and coming back.
-        let between = Self.story.activity(samples, at: Int(pericentres[0] - 80) + 40)
+        let between = Self.story.reading(samples, at: Int(pericentres[0] - 80) + 40).pairs
         #expect(between.contains { if case .returning = $0 { true } else { false } }, "\(between)")
     }
 
-    @Test func aWideBoundOrbitIsStillGoingAtTheCap() throws {
-        let (samples, _) = Self.run(from: [150, 0, 0], velocity: [0.3, 0.02, 0], untilMyr: 1_000)
+    @Test func aBoundPairComingBackIsStillGoingAtTheCap() throws {
+        let (samples, _) = Self.run(from: [60, 0, 0], velocity: [0.3, 0.02, 0], untilMyr: 1_000)
         let tracker = Self.tracked(samples)
         #expect(!tracker.activity.isEmpty)
         #expect(tracker.activity.contains { if case .returning = $0 { true } else { false } })
         let span = try #require(tracker.span(plannedFrames: 700))
         #expect(!span.complete)
         #expect(span.endFrame == samples.count - 1)
+    }
+
+    @Test func aReturnPastTheHorizonIsNotThisStory() {
+        // Bound, but falling back from 190 kpc takes longer than the 2 Gyr a run may last.
+        let (samples, _) = Self.run(from: [150, 0, 0], velocity: [0.3, 0.02, 0], untilMyr: 600)
+        #expect(Self.story.reading(samples, at: samples.count - 1).pairs.isEmpty)
+        var near = Self.story.settings
+        near.horizon = 20_000
+        let patient = Story(profiles: Self.story.profiles, reaches: [10, 10], settings: near)
+        #expect(!patient.reading(samples, at: samples.count - 1).pairs.isEmpty)
+    }
+
+    @Test func aStreamThatKeepsGrowingEndsAfterItsAftermath() throws {
+        let (samples, pericentres) = Self.run(
+            from: [100, 8, 0], velocity: [-1.2, 0, 0], untilMyr: 1_500, streaming: 0.0005)
+        let pericentre = try #require(pericentres.first)
+        let tracker = Self.tracked(samples)
+        #expect(tracker.activity.isEmpty, "\(tracker.activity)")
+        let span = try #require(tracker.span(plannedFrames: 700))
+        // The pair leaves its 30 kpc reach about 60 Myr after pericentre.
+        #expect(span.endMyr > pericentre + 400 && span.endMyr < pericentre + 520)
     }
 
     @Test func debrisDriftingApartAfterAMergerIsNotAnOrbit() {
@@ -125,7 +149,8 @@ struct StoryTests {
                 timeMyr: 80 + Double(index), centres: [.zero, [offset, 0, 0]], extent: 20, tails: 0.1,
                 disruption: [1, 1])
         }
-        #expect(Self.story.activity(samples, at: samples.count - 1).isEmpty)
+        let reading = Self.story.reading(samples, at: samples.count - 1)
+        #expect(reading.pairs.isEmpty && reading.window.isEmpty && !reading.engaged)
     }
 
     @Test func aLoneGalaxyKeepsItsPlannedClip() throws {
