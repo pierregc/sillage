@@ -130,10 +130,11 @@ public enum StyleAuto {
     }
 
     /// The pairs of a scene with a take, in `world` or else its look's world. `catalogue` is
-    /// the repository's looks, `references` #125's sets. Nothing is written.
+    /// the repository's looks, `references` #125's sets. `family` keeps the palettes to one
+    /// family, `fixed` to the one palette given. Nothing is written.
     public static func choose(
-        _ folder: SceneFolder, world: Palette.World? = nil, catalogue: [LookFile],
-        references: [TelescopeReference]
+        _ folder: SceneFolder, world: Palette.World? = nil, family: String? = nil,
+        fixed: Palette? = nil, catalogue: [LookFile], references: [TelescopeReference]
     ) throws -> Outcome {
         guard FileManager.default.fileExists(atPath: folder.take.path) else {
             throw SceneFolder.LookError.noTake(folder.url)
@@ -144,11 +145,18 @@ public enum StyleAuto {
         let world = world ?? base.world
         let renderings = LookCatalogue.renderings(world, in: catalogue)
         let scene = try SceneFile.decoded(from: Data(contentsOf: folder.scene))
-        let palettes = Array(
-            try PaletteAuto.ranked(
-                galaxies: scene.galaxies.count, world: world, seed: scene.seed,
-                telescope: references
-            ).prefix(palettesPerRendering(world)))
+        let palettes: [PaletteAuto.Ranked]
+        if let fixed {
+            palettes = [
+                PaletteAuto.Ranked(palette: fixed, score: PaletteScore(fixed, references: references))
+            ]
+        } else {
+            palettes = Array(
+                try PaletteAuto.ranked(
+                    galaxies: scene.galaxies.count, world: world, family: family, seed: scene.seed,
+                    telescope: references
+                ).prefix(palettesPerRendering(world)))
+        }
 
         let sheet = try LookSheet(take: try RecordingFile.read(from: folder.take))
         let lastFrame = sheet.capturedFrames - 1

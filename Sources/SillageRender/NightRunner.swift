@@ -278,19 +278,19 @@ public final class NightRunner: @unchecked Sendable {
         update(phase: "hires")
 
         // Each pick to its end, best first.
-        for name in folder.progress().picks ?? [] {
+        for (index, name) in (folder.progress().picks ?? []).enumerated() {
             let scene = SceneFolder(batch.appendingPathComponent(name, isDirectory: true))
             skipNext = false
             readControls()
             if stop.isRaised { return finish(.stopped) }
             if stopAfterStep { return finish(.stopped) }
-            if !finishScene(scene) { return finish(.stopped) }
+            if !finishScene(scene, pick: index) { return finish(.stopped) }
         }
         return finish(stop.isRaised || stopAfterStep ? .stopped : .done)
     }
 
     /// Hires, style and exports of one scene. False when the night is to stop.
-    private func finishScene(_ scene: SceneFolder) -> Bool {
+    private func finishScene(_ scene: SceneFolder, pick: Int) -> Bool {
         let name = scene.url.lastPathComponent
         let steps: [(phase: NightPlan.Phase, format: String?)] =
             [(.hires, nil), (.style, nil)] + recipe.exports.map { (.export, $0) }
@@ -315,7 +315,7 @@ public final class NightRunner: @unchecked Sendable {
             let outcome: Outcome
             switch phase {
             case .hires: outcome = hires(scene)
-            case .style: outcome = style(scene)
+            case .style: outcome = style(scene, pick: pick)
             default: outcome = export(scene, format: format ?? "1080p")
             }
             switch outcome {
@@ -413,41 +413,22 @@ public final class NightRunner: @unchecked Sendable {
         return outcome
     }
 
-    /// The recipe's rendering with the scene's own palette, or a palette of a world or family
-    /// through `look --palette`.
-    private func style(_ scene: SceneFolder) -> Outcome {
+    /// The style of the pick: Auto's choice of rendering and palette in the pick's world
+    /// (#124), or the rendering the recipe names with a palette of that world.
+    private func style(_ scene: SceneFolder, pick: Int) -> Outcome {
         let name = scene.url.lastPathComponent
-        let palette = recipe.style.palette.value
-        let world = recipe.style.world.value
-        if palette != nil || world != nil {
-            var arguments = ["look", scene.url.path, "--palette", palette ?? "auto"]
-            if let world { arguments += ["--world", world] }
-            if let style = recipe.style.style.value { arguments += ["--base", style] }
+        do {
+            let chosen = try NightStyle.resolve(
+                recipe.style, pick: pick, catalogue: catalogue, references: TelescopeReference.repository)
             say(
-                "night      style \(name): palette \(palette ?? "auto")\(world.map { " in the \($0) world" } ?? "")"
+                "night      style \(name): \(chosen.rendering ?? "auto") in the \(chosen.world.rawValue) world, palette \(chosen.palette)"
             )
             let outcome = runChild(
-                executable.path, arguments, log: logs.appendingPathComponent("\(name).style.log")
+                executable.path, chosen.arguments(scene: scene.url.path),
+                log: logs.appendingPathComponent("\(name).style.log")
             ) {}
             if outcome == .finished(0) { styled(scene) }
             return outcome
-        }
-        do {
-            let own = (try? Data(contentsOf: scene.look)).flatMap { try? LookFile.decoded(from: $0) }
-            var look = LookFile.standard
-            if let named = recipe.style.style.value {
-                guard let found = catalogue.first(where: { $0.name == named }) else {
-                    throw NightCommand.Failure.noStyle(named)
-                }
-                look = found
-            } else if let own {
-                look.camera = own.camera
-            }
-            if look.palette.isEmpty { look.palette = own?.palette ?? [] }
-            try scene.promote(look)
-            say("night      style \(name): \(look.name)")
-            styled(scene)
-            return .finished(0)
         } catch {
             var event = RunEvent(RunEvent.Kind.error, scene: name)
             event.stage = "style"
@@ -461,6 +442,7 @@ public final class NightRunner: @unchecked Sendable {
         var event = RunEvent(RunEvent.Kind.style, scene: scene.url.lastPathComponent)
         let look = (try? Data(contentsOf: scene.look)).flatMap { try? LookFile.decoded(from: $0) }
         event.style = look?.name
+        event.setPalette(look?.paletteRecipe)
         event.path = scene.look.path
         record(event)
     }
