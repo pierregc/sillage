@@ -127,6 +127,22 @@ The night writes `recipe.json` (as given), `night.json`, `events.jsonl` and `rep
 folder, and the logs of its steps in `.logs/` (`night-explore.log`, `<scene>.hires.log`, ...).
 Exit status: 0 done, 3 stopped on request, 1 failed.
 
+### The night sheet
+
+"Nouvelle nuit" (the Nuits entry of the sidebar, and the toolbar) opens a sheet whose only
+control in view is the time, **Prêt à** a delivery time (7 h 00 unless changed) or **Pendant** a
+number of hours. Under it, `NightSheetPlanner` plans the night with `NightPlanner` again after
+every change (about 75 ms once the batch's draws are sized, which the app does at launch and the
+sheet shares): one line a phase with what it computes, how long it takes and when it ends, then
+the delivery and the margin. Disk too small, a hires that does not fit, fewer hires scenes than
+asked for, a night that ends late: it warns and does not block. "Personnaliser" is closed and
+holds four settings, each Auto: hires scenes (2 to 4), colour world, formats (4K, vertical),
+exploration only. **Lancer la nuit** writes the recipe to `library/.sillage/recipes/` (a file
+a night, as a queued night reads it when its turn comes), adds the job to the queue and keeps
+the settings in `library/.sillage/night-sheet.json` for the next sheet. `Sillage.app --nightcheck`
+runs the model without a window (plan latency, warnings, launch) and writes
+`out/ui-night-sheet*.png`, as `--uishot` does.
+
 ## Queue
 
 Heavy work can go through one queue per library instead, one job at a time, in a runner of its
