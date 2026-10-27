@@ -30,6 +30,11 @@ public struct QueueJob: Codable, Sendable, Equatable, Identifiable {
     public var log: String?
     /// Asked to stop while it runs; the runner stops it and leaves it cancelled.
     public var stopping: Bool?
+    /// A night asked to stop once the step it is on is done.
+    public var stopAfterStep: Bool?
+    /// How many times a night was asked to leave out the scene it works on: it leaves out one
+    /// each time the count goes up.
+    public var skips: Int?
 
     public init(
         id: Int, kind: Kind, path: String, options: [String] = [], by: Origin = .hand,
@@ -72,9 +77,11 @@ public struct JobQueue: Codable, Sendable, Equatable {
         case noSuchJob(Int)
         case notWaiting(Int, QueueJob.State)
         case finished(Int, QueueJob.State)
+        case notARunningNight(Int)
 
         public var description: String {
             switch self {
+            case .notARunningNight(let id): "job \(id) is not a night that runs"
             case .noSuchJob(let id): "no job \(id) in the queue"
             case .notWaiting(let id, let state): "job \(id) is \(state.rawValue), not waiting"
             case .finished(let id, let state): "job \(id) is \(state.rawValue) already"
@@ -144,6 +151,9 @@ public struct JobQueue: Codable, Sendable, Equatable {
         if job.stopping == true {
             job.state = .cancelled
             job.message = "cancelled while it ran"
+        } else if job.stopAfterStep == true, status != 0 {
+            job.state = .cancelled
+            job.message = "stopped after a step"
         } else if status == 0 {
             job.state = .done
         } else {
@@ -174,6 +184,28 @@ public struct JobQueue: Codable, Sendable, Equatable {
         }
         updated = date
         return jobs[index].state
+    }
+
+    /// A running night ends once its current step is done.
+    public mutating func stopAfterStep(_ id: Int, at date: Date) throws {
+        let index = try runningNight(id)
+        jobs[index].stopAfterStep = true
+        updated = date
+    }
+
+    /// A running night leaves out the scene it works on and goes on with the next.
+    public mutating func skip(_ id: Int, at date: Date) throws {
+        let index = try runningNight(id)
+        jobs[index].skips = (jobs[index].skips ?? 0) + 1
+        updated = date
+    }
+
+    private func runningNight(_ id: Int) throws -> Int {
+        let index = try self.index(id)
+        guard jobs[index].kind == .night, jobs[index].state == .running else {
+            throw Failure.notARunningNight(id)
+        }
+        return index
     }
 
     /// Puts a waiting job before every other waiting one: it starts once the running job ends.

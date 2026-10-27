@@ -138,12 +138,23 @@ public struct NightFile: Codable, Sendable, Equatable {
         public var planned: Int
         public var done = 0
         public var failed = 0
+        /// Left out by hand, or for want of time before the delivery.
+        public var skipped: Int?
+        /// Planned from the cost model, and moved as the night goes.
+        public var estimatedStart: Date?
+        public var estimatedEnd: Date?
 
-        public init(name: String, planned: Int, done: Int = 0, failed: Int = 0) {
+        public init(
+            name: String, planned: Int, done: Int = 0, failed: Int = 0, skipped: Int? = nil,
+            estimatedStart: Date? = nil, estimatedEnd: Date? = nil
+        ) {
             self.name = name
             self.planned = planned
             self.done = done
             self.failed = failed
+            self.skipped = skipped
+            self.estimatedStart = estimatedStart
+            self.estimatedEnd = estimatedEnd
         }
     }
 
@@ -155,23 +166,49 @@ public struct NightFile: Codable, Sendable, Equatable {
     public var phases: [Phase]
     public var state: State
     public var startedAt: Date
+    /// When it must be done, from the recipe.
+    public var deliverBy: Date?
     public var estimatedEnd: Date?
     public var endedAt: Date?
 
     public init(
         id: String, recipe: [String: String] = [:], phases: [Phase], state: State = .running,
-        startedAt: Date, estimatedEnd: Date? = nil, endedAt: Date? = nil
+        startedAt: Date, deliverBy: Date? = nil, estimatedEnd: Date? = nil, endedAt: Date? = nil
     ) {
         self.id = id
         self.recipe = recipe
         self.phases = phases
         self.state = state
         self.startedAt = startedAt
+        self.deliverBy = deliverBy
         self.estimatedEnd = estimatedEnd
         self.endedAt = endedAt
     }
 
     public func encoded() throws -> Data { try RunStatus.encoder().encode(self) }
+
+    /// Sets the state of a night still marked running or paused, as the queue sees it: paused
+    /// with its job, or ended when the night was stopped before it could write so. A night that
+    /// ended on its own keeps its state.
+    public static func mark(_ batch: URL, _ state: State, ended: Date? = nil) {
+        let url = RunStatusFiles.night(batch: batch)
+        guard var night = read(from: url), night.state == .running || night.state == .paused else {
+            return
+        }
+        night.state = state
+        if let ended {
+            night.endedAt = ended
+            night.estimatedEnd = ended
+        }
+        if let data = try? night.encoded() { try? RunStatusFiles.write(data, to: url) }
+        guard ended != nil else { return }
+        let activity = RunStatusFiles.activity(library: batch.deletingLastPathComponent())
+        if var file = ActivityFile.read(from: activity), file.night?.id == night.id {
+            file.night = nil
+            file.updated = ended ?? Date()
+            if let data = try? file.encoded() { try? RunStatusFiles.write(data, to: activity) }
+        }
+    }
 
     public static func read(from url: URL) -> NightFile? {
         (try? Data(contentsOf: url)).flatMap { try? RunStatus.decoder().decode(Self.self, from: $0) }
@@ -187,6 +224,8 @@ public struct RunEvent: Codable, Sendable, Equatable {
         public static let hiresStart = "hires.start"
         public static let hiresDone = "hires.done"
         public static let exportDone = "export.done"
+        public static let style = "style"
+        public static let skip = "skip"
         public static let error = "error"
         public static let phaseDone = "phase.done"
         public static let nightDone = "night.done"
@@ -195,7 +234,7 @@ public struct RunEvent: Codable, Sendable, Equatable {
     public var t: Date
     public var kind: String
     public var scene: String?
-    /// explore.scene: ok, rejected or failed.
+    /// explore.scene: ok, rejected or failed. night.done: done, stopped or failed.
     public var status: String?
     public var score: Double?
     public var seconds: Double?

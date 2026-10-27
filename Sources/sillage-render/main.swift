@@ -905,6 +905,11 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "queue" {
         QueueCommand.main(
             Array(CommandLine.arguments.dropFirst(2)), executable: Spawn.currentExecutable))
 }
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "night" {
+    exit(
+        NightCommand.main(
+            Array(CommandLine.arguments.dropFirst(2)), executable: Spawn.currentExecutable))
+}
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "status" {
     exit(StatusCommand.main(Array(CommandLine.arguments.dropFirst(2))))
 }

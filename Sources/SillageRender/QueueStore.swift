@@ -300,6 +300,14 @@ public enum Spawn {
         try spawn(executable, arguments, log: log, flags: POSIX_SPAWN_SETPGROUP)
     }
 
+    /// In the caller's own process group, so whatever suspends or stops the group, the queue's
+    /// pause and cancel, reaches it too. The caller waits for it.
+    public static func member(_ executable: String, _ arguments: [String], log: URL) throws
+        -> Int32
+    {
+        try spawn(executable, arguments, log: log, flags: 0)
+    }
+
     private static func spawn(
         _ executable: String, _ arguments: [String], log: URL, flags: Int32
     ) throws -> Int32 {

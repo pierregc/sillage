@@ -7,8 +7,12 @@ public enum QueueCommand {
                sillage-render queue add hires <scene or batch> [--particles N] [hires options]
                sillage-render queue add export <scene> --preset NAME [export options]
                sillage-render queue add explore [explore-batch.sh options]
+               sillage-render queue add night <recipe.json> [--out DIR]
                sillage-render queue list [--json]
                sillage-render queue cancel <id> | first <id> | pause | resume
+               sillage-render queue stop [<id>] [--now] | skip [<id>]
+        stop ends a night after its current step (--now at once, as cancel); skip leaves out the
+        scene it works on. Without an id, they act on the night running.
         Each takes --library DIR, by default $SILLAGE_LIBRARY or the repository's library/;
         add hires and add export use the scene's own library.
         """
@@ -70,6 +74,18 @@ public enum QueueCommand {
                 let id = try number(rest)
                 let state = try store.cancel(id, runner: executable)
                 say("queue      job \(id) \(state == .running ? "is stopping" : "cancelled")")
+            case "stop" where rest.contains("--now"):
+                let id = try nightID(rest.filter { $0 != "--now" }, store)
+                _ = try store.cancel(id, runner: executable)
+                say("queue      job \(id) is stopping")
+            case "stop":
+                let id = try nightID(rest, store)
+                try store.change { try $0.stopAfterStep(id, at: Date()) }
+                say("queue      night \(id) stops after its current step")
+            case "skip":
+                let id = try nightID(rest, store)
+                try store.change { try $0.skip(id, at: Date()) }
+                say("queue      night \(id) leaves out its current scene")
             case "first":
                 let id = try number(rest)
                 try store.change { try $0.moveFirst(id, at: Date()) }
@@ -99,6 +115,15 @@ public enum QueueCommand {
         return id
     }
 
+    /// The id given, or the night running.
+    private static func nightID(_ rest: [String], _ store: QueueStore) throws -> Int {
+        if !rest.isEmpty { return try number(rest) }
+        guard let night = store.read().running, night.kind == .night else {
+            throw Failure.invalid("queue: no night runs; give a job id")
+        }
+        return night.id
+    }
+
     private static func started(_ pid: Int32, _ store: QueueStore, _ say: (String) -> Void) {
         say("runner     started, pid \(pid), log \(store.runnerLog.path)")
     }
@@ -126,7 +151,22 @@ public enum QueueCommand {
             }
             jobs = [(out, options, library)]
         case .night:
-            throw Failure.invalid("queue: the night command comes with #104")
+            guard rest.count > 1 else { throw Failure.usage }
+            var options = Array(rest.dropFirst(2))
+            var out = library.appendingPathComponent(day(Date()), isDirectory: true)
+            if let index = options.firstIndex(of: "--out"), index + 1 < options.count {
+                out = URL(fileURLWithPath: options[index + 1], isDirectory: true).standardizedFileURL
+                options.removeSubrange(index...index + 1)
+            }
+            guard options.isEmpty else { throw Failure.usage }
+            do {
+                try NightCommand.submit(
+                    recipe: URL(fileURLWithPath: rest[1]).standardizedFileURL, batch: out,
+                    executable: executable, say: say)
+            } catch {
+                throw Failure.invalid("\(error)")
+            }
+            return
         }
         for job in jobs {
             let store = QueueStore(library: job.library)

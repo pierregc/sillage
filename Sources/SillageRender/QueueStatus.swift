@@ -310,7 +310,9 @@ extension QueueStatus {
     }
 
     static func shows(_ shown: ActivityFile.Job, _ job: QueueJob) -> Bool {
-        shown.kind == job.kind.rawValue && shown.batch == job.batch
+        // A night's steps write their own job, in the night's batch.
+        if job.kind == .night { return shown.batch == job.batch }
+        return shown.kind == job.kind.rawValue && shown.batch == job.batch
             && (job.scene == nil || shown.scene == job.scene)
     }
 
@@ -390,7 +392,7 @@ extension QueueStatus {
         case "explore": "aperçus"
         case "pick": "choix"
         case "hires": "haute résolution"
-        case "look": "style"
+        case "look", "style": "style"
         case "export": "vidéos"
         default: name
         }
