@@ -118,6 +118,13 @@ final class QueueModel: ObservableObject {
         return try store.submit(kind, path: path, options: options, runner: runnerURL)
     }
 
+    /// Adds a night from the new night sheet, with a recipe file of its own.
+    @discardableResult
+    func launchNight(_ sheet: NightSheet) throws -> QueueJob {
+        defer { refresh() }
+        return try sheet.launch(library: store.library, runner: runnerURL).job
+    }
+
     func cancel(_ id: Int) throws {
         defer { refresh() }
         try store.cancel(id, runner: runnerURL)

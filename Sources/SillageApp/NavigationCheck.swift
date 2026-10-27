@@ -85,6 +85,21 @@ enum NavigationCheck {
         check("le dossier reste lu pour les compteurs", library.isWatching)
         snapshot("nights")
 
+        // The new night sheet comes over whatever shows, and a launch lands on the nights.
+        func sheetShown() -> Bool { NSApp.windows.contains { $0.attachedSheet != nil } }
+        navigation.selection = .library(.all)
+        navigation.newNight()
+        check("Nouvelle nuit ouvre la feuille", await settle(model, 3) { sheetShown() })
+        navigation.showsNightSheet = false
+        check("fermer la feuille la retire", await settle(model, 3) { !sheetShown() })
+        check("la bibliothèque reste là", navigation.selection == .library(.all))
+        navigation.newNight()
+        _ = await settle(model, 2) { sheetShown() }
+        navigation.nightLaunched()
+        check(
+            "lancer une nuit ferme la feuille et montre les nuits",
+            await settle(model, 3) { !sheetShown() } && navigation.selection == .nights)
+
         navigation.selection = .workshop
         check("nouvelle collision montre le réglage", await settle(model, 2) { model.hasPreviewCanvas })
         snapshot("workshop")

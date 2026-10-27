@@ -31,6 +31,9 @@ public struct QueueStatus: Sendable, Equatable {
 
     /// What the top of the sidebar says, without the number of jobs waiting.
     public var headline: String
+    /// The headline with the scene and the image it is on, for `status`:
+    /// "Nuit du 25 oct. · haute résolution 2/4 · scene-0023 image 412/900 · prêt vers 6 h 20".
+    public var summary: String
     public var isBusy: Bool
     public var isPaused: Bool
     /// Running with nothing written for a quarter of an hour.
@@ -173,12 +176,20 @@ extension QueueStatus {
     }
 
     static func night(of activity: ActivityFile?, library: URL) -> NightFile? {
+        nightFolder(of: activity, library: library)?.file
+    }
+
+    /// The folder and the file of the night the activity file names.
+    static func nightFolder(
+        of activity: ActivityFile?, library: URL
+    ) -> (batch: URL, file: NightFile)? {
         guard let night = activity?.night else { return nil }
         let batches = [activity?.job?.batch, night.id].compactMap { $0 }
-        for batch in batches {
-            let url = RunStatusFiles.night(
-                batch: library.appendingPathComponent(batch, isDirectory: true))
-            if let file = NightFile.read(from: url), file.id == night.id { return file }
+        for name in batches {
+            let batch = library.appendingPathComponent(name, isDirectory: true)
+            if let file = NightFile.read(from: RunStatusFiles.night(batch: batch)), file.id == night.id {
+                return (batch, file)
+            }
         }
         return nil
     }
@@ -280,24 +291,24 @@ extension QueueStatus {
         running = row
         isBusy = row != nil || alive
 
-        let busyHeadline: String
-        if let row {
-            busyHeadline = Self.headline(
-                row: row, activity: activity, night: inputs.night,
-                ready: isPaused ? nil : nightReady ?? readyAt, words: words)
-        } else {
-            busyHeadline = "Calcul en cours (sans détail)"
+        let (paused, stuck, busy) = (isPaused, isStuck, isBusy)
+        func makeHeadline(detailed: Bool) -> String {
+            var text = "Calcul en cours (sans détail)"
+            if let row {
+                text = Self.headline(
+                    row: row, activity: activity, night: inputs.night,
+                    ready: paused ? nil : nightReady ?? readyAt, words: words, detailed: detailed)
+            }
+            if !busy {
+                text = queue.paused ? "File en pause · le Mac est libre" : "Rien en cours · le Mac est libre"
+            } else if paused {
+                text = "En pause · " + text
+            }
+            if busy, stuck { text += " · semble bloqué, rien écrit depuis \(Words.duration(age))" }
+            return text
         }
-        var headline = isBusy ? busyHeadline : "Rien en cours · le Mac est libre"
-        if isBusy, isPaused {
-            headline = "En pause · " + headline
-        } else if !isBusy, queue.paused {
-            headline = "File en pause · le Mac est libre"
-        }
-        if isBusy, isStuck {
-            headline += " · semble bloqué, rien écrit depuis \(Words.duration(age))"
-        }
-        self.headline = headline
+        self.headline = makeHeadline(detailed: false)
+        summary = makeHeadline(detailed: true)
 
         // Where each waiting job would start and end, one after the other.
         let runningEnd = queued?.kind == .night ? (nightReady ?? nil) : readyAt
@@ -389,14 +400,20 @@ extension QueueStatus {
 
     /// "Nuit du 26 oct. · haute résolution 2/4 · prêt vers 6 h 20", or the job alone.
     static func headline(
-        row: Row, activity: ActivityFile?, night: NightFile?, ready: Date?, words: Words
+        row: Row, activity: ActivityFile?, night: NightFile?, ready: Date?, words: Words,
+        detailed: Bool = false
     ) -> String {
         var parts: [String] = []
         if let running = activity?.night {
             parts.append("Nuit du " + (words.nightDate(night: running.id, file: night) ?? running.id))
             parts.append(Self.phase(running.phase, file: night))
+            if detailed, let job = activity?.job {
+                let doing = [job.scene, Self.detail(job.detail)].compactMap { $0 }
+                if !doing.isEmpty { parts.append(doing.joined(separator: " ")) }
+            }
         } else {
             parts += [row.title, row.subject]
+            if detailed, let detail = row.detail { parts.append(detail) }
         }
         if let ready { parts.append("prêt \(words.about(ready))") }
         return parts.joined(separator: " · ")
@@ -478,6 +495,28 @@ struct Words {
         if total >= 3600 { return String(format: "%d h %02d", total / 3600, total % 3600 / 60) }
         if total >= 60 { return "\(total / 60) min" }
         return "\(total) s"
+    }
+
+    /// "0,91", with a comma.
+    static func decimal(_ value: Double, digits: Int) -> String {
+        String(format: "%.\(digits)f", value).replacingOccurrences(of: ".", with: ",")
+    }
+
+    /// "212,3 Mo", "3,4 Go".
+    static func size(megabytes: Double) -> String {
+        megabytes >= 1000
+            ? decimal(megabytes / 1000, digits: 1) + " Go" : decimal(megabytes, digits: 1) + " Mo"
+    }
+
+    /// "2 000 000".
+    static func thousands(_ value: Int) -> String {
+        var digits = Array(String(abs(value)))
+        var index = digits.count - 3
+        while index > 0 {
+            digits.insert(" ", at: index)
+            index -= 3
+        }
+        return (value < 0 ? "-" : "") + String(digits)
     }
 
     /// The day a night is named for, from the folder's date or its first moment.

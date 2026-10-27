@@ -762,6 +762,40 @@ struct BarnesHutTests {
         }
     }
 
+    /// A take written after a run holds the stars that formed during it (#150). The solver
+    /// writes formation times only to its own buffer, so the sampled system a take is written
+    /// from still has the start state's.
+    @Test func aTakeKeepsTheStarsFormedDuringTheRun() throws {
+        var scene = SceneConfig.isolatedDisk(particleCount: 30_000)
+        scene.galaxies[0].kind = .spiral
+        scene.timeStepScale = 8
+        scene.retune()
+        let sampled = RestrictedSolver.sampleParticles(for: scene)
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: sampled)
+        solver.step(count: 240)
+
+        let captured = solver.capturedParticles(from: sampled)
+        #expect(captured.formation == solver.particles.formation)
+        #expect(captured.formation != sampled.formation)
+        #expect(captured.positions == sampled.positions)
+
+        let count = 500
+        let recording = Recording(particleCount: count, galaxyCount: 1)
+        let positions = [SIMD3<Float>](repeating: .zero, count: count)
+        for frame in 0..<3 {
+            positions.withUnsafeBufferPointer {
+                recording.append(
+                    positions: $0.baseAddress!, time: Float(frame), centers: [.zero])
+            }
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stars-\(UUID().uuidString).\(RecordingFile.fileExtension)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try RecordingFile.write(recording, scene: scene, particles: captured, to: url)
+        let loaded = try RecordingFile.read(from: url)
+        #expect(loaded.particles.formation == Array(captured.formation[0..<count]))
+    }
+
     /// The thing an encounter is watched for: a burst, in the places the physics puts it.
     ///
     /// Density alone does not give one, and that is why the compression term exists. Star
