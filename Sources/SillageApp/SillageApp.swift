@@ -53,6 +53,9 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--lookcheck") {
             MainActor.assumeIsolated { LookCheck.run() }
         }
+        if CommandLine.arguments.contains("--thumbcheck") {
+            MainActor.assumeIsolated { ThumbnailCheck.run() }
+        }
         if CommandLine.arguments.contains("--librarycheck") {
             MainActor.assumeIsolated { LibraryCheck.run() }
         }

@@ -265,8 +265,11 @@ with another palette, as `look --palette` would, and leaves the scene's `look.js
 In the library, **Choisir le style** on a scene
 that has a take opens the style editor: the take plays in the canvas with a transport bar under
 it, and an inspector holds four sections. **Rendu** offers the 42 looks of `looks/` as
-renderings: a click puts a look's light, instrument and buffers on the picture and keeps the
-palette and the camera, **Avec ses couleurs** takes its palette too. **Palette** has a Télescope
+renderings, each a thumbnail of the frame on the canvas drawn with it and the current palette,
+drawn again past a tenth of the take, on a new palette or with the button beside the title,
+and fitted between the canvas's frames so it keeps its frame rate: a click puts a look's light,
+instrument and buffers on the picture and keeps the palette and the camera, **Avec ses
+couleurs** takes its palette too. **Palette** has a Télescope
 / Libre switch, one swatch per galaxy (a click opens a colour picker, a lock keeps that colour
 through any new palette), six proposals from the generator with their score, **Autres
 palettes**, and **Auto**, which draws three key frames with every rendering of the world and
@@ -281,7 +284,8 @@ saved style for as long as it is held, **Annuler** puts it back, and **Utiliser 
 takes any take (⌘O) and any look file (⇧⌘O) over the picture, ⇧⌘S saves the look anywhere, and
 outside the editor ⌘S writes it back where it came from. A file opened and saved untouched is
 the same file; see [the note](docs/notes/style-editor.md).
-`Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing.
+`Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing;
+`Sillage.app --thumbcheck <take>` times the thumbnails and the canvas beside them.
 
 ### Export
 

@@ -62,6 +62,7 @@ final class AppNavigation: ObservableObject {
         guard scene.take != nil else { return }
         if case .library = selection { styleReturn = selection }
         if style?.scene.id != scene.id || style?.isOpen != true {
+            style?.thumbnails.close()
             let session = StyleSession(scene: scene, model: model)
             style = session
             // Already on the canvas: its saved style is put back rather than the take read again.
@@ -82,6 +83,7 @@ final class AppNavigation: ObservableObject {
         guard let style else { return }
         selection = styleReturn
         library.open(style.scene.id)
+        style.thumbnails.close()
         self.style = nil
     }
 }

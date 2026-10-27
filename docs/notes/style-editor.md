@@ -13,6 +13,9 @@ fins; the top bar says Modifié and saves.
 | The session: the saved style, proposals, locks, Auto, Avant/Après, Annuler, promote | `StyleSession.swift` |
 | The views | `StyleEditor.swift` |
 | Opening and leaving, the sidebar row | `AppNavigation.tune`, `leaveStyle` in `MainView.swift` |
+| The Rendu thumbnails: when they are drawn, on which queue | `StyleThumbnails.swift` |
+| Drawing them: the cache, the renderers built side by side, the sliced splat | `RenderingThumbnails.swift`, `LookSheet.build`, `Renderer.render(camera:slice:pacer:)` |
+| Where the canvas leaves the GPU free | `CanvasPacer.swift` |
 
 The picture and the look file stay the model's (`SimulationModel.lookFile`); the session edits
 them and adds what the editor needs. It forwards the few model changes the inspector reads and
@@ -23,8 +26,26 @@ nothing else, because the model publishes on every played frame.
 - **A rendering is everything but the colours and the camera.** A click takes a look's light,
   instrument and buffers and keeps the palette, its world, the plan and the field of view, as
   `StyleAuto.apply` does. "Avec ses couleurs" takes the look's palette and world too. All 42
-  looks of `looks/` are offered, Hubble and Webb first: the plan names them all, and #114 turns
-  the names into thumbnails.
+  looks of `looks/` are offered, Hubble and Webb first: the plan names them all.
+- **Each rendering is a thumbnail of the frame on the canvas (#114)**, drawn with the style's
+  palette and camera plan through the camera on the canvas, at the clip's size (the hires
+  size when there is one, as Auto does) and scaled to 192 px, because stars and spikes are
+  sized in pixels (#22). They are drawn on their own queue and kept by frame, camera and look,
+  so coming back to a frame or a palette draws nothing. They are drawn again when the playhead
+  has moved more than a tenth of the take, when the palette, its world, the camera plan or the
+  field of view changed (a rendering applied changes none of them), and with the button next
+  to "Rendu", which also takes the camera as it is now. A tile keeps its last picture until the
+  new one arrives.
+- **The canvas goes first.** Two command queues share the GPU rather than take turns, so a
+  canvas frame drawn beside a thumbnail took four times as long (7 ms to 30 ms at 2 M). The
+  thumbnails' splat is cut into command buffers of 250 000 particles, and `CanvasPacer`, told
+  by the canvas when each frame finishes, holds each one until it fits before the next frame
+  starts. A canvas that has no gap left (its own frame already takes more than 16.7 ms) gets
+  one slice after each of its frames, so the thumbnails take longer rather than cost it frames.
+  The sliced picture is the same picture, byte for byte (`aSlicedSplatDrawsTheSamePicture`).
+- **The renderers are built four at a time.** Each costs a quarter of a second at 2 M on one
+  core and the catalogue needs fourteen; all at once starved the main thread enough to lose
+  canvas frames.
 - **The Télescope / Libre switch drives the proposals and Auto, not the rendering list.** A
   palette applied writes its world into the file; a rendering alone does not change it.
 - **Proposals are the best six of a round.** Each round draws `PaletteAuto`'s 48 candidates from
@@ -59,3 +80,17 @@ nothing else, because the model publishes on every played frame.
 - `--navcheck` opens the editor from the library, leaves it for the queue and comes back, then
   closes it.
 - `--uishot` writes `out/ui-style-bar.png`, `out/ui-style.png` and `out/ui-style-fine.png`.
+- `--thumbcheck <take>` opens the take headless with a 1920×1080 canvas paced at 60 Hz, opens
+  the editor and reports every pass: how long, and the canvas's frames alone and during. It
+  checks the cache, that a rendering applied draws nothing, the tenth-of-a-take rule, a palette,
+  a canvas with no gap, and writes `out/ui-style-thumbnails.png`. On the M4 Max with a 2 M take
+  (`2026-10-25-night/scene-0023`, clip 960×540, 42 renderings), alone on the GPU:
+
+  | Pass | Thumbnails | Canvas alone | Canvas during |
+  | --- | --- | --- | --- |
+  | First, renderers built | 2.2 s | 0–1 % late | 0 % late |
+  | Another palette | 1.3 s | 4 % late | 1 % late |
+  | Playhead moved past a tenth | 1.6 s | 0 % late | 0 % late |
+  | Canvas with Hubble, 20 ms a frame | 15.6 s | 100 % late | 100 % late, same 21.3 ms |
+
+  Peak footprint 3.5 GB, the take and fourteen renderers.

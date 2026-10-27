@@ -463,6 +463,22 @@ final class SimulationModel: ObservableObject {
     /// contemplation's director moves on the renderer.
     private var diskStrength: Float { lookFile.armStrength * (renderer?.armPersistence ?? 1) }
 
+    /// Where the canvas leaves the GPU free, for the style editor's thumbnails.
+    let canvasPacer = CanvasPacer()
+
+    /// The take on the canvas, shared rather than read again, to be drawn elsewhere.
+    var playedTake: RecordingFile.Loaded? {
+        guard mode == .playback, let recording, let unpaintedScene else { return nil }
+        return RecordingFile.Loaded(scene: unpaintedScene, recording: recording, particles: seeded)
+    }
+
+    /// The playhead counted in the run's captured frames, as `LookSheet` counts them.
+    var playheadCapturedFrame: Int {
+        guard let recording else { return 0 }
+        let frame = Int((playbackPosition * Double(recording.interval)).rounded())
+        return min(max(frame, 0), max(recording.capturedFrames - 1, 0))
+    }
+
     /// The file's camera plan at the playhead, or nil where the plan has no picture to give
     /// here: the director decides its shots as a clip plays, and cannot be scrubbed.
     var planCamera: Camera? {
@@ -1179,6 +1195,7 @@ final class SimulationModel: ObservableObject {
                 device: device, particles: seeded, settings: settings, externalPositions: bound,
                 externalFormation: solver?.formation)
             renderer?.setSmoothing(smoothing?.buffer)
+            renderer?.pacer = canvasPacer
             renderer?.apply(look)
             renderer?.setGalaxyColours(lookFile.palette)
             // Due on the next frame rather than now: a replay's positions buffer is still empty
@@ -1255,7 +1272,9 @@ final class SimulationModel: ObservableObject {
             DiskFrame.make(
                 scene: scene, centers: centers, time: renderer.time,
                 strength: diskStrength, disks: disks))
-        return renderer.render(camera: activeCamera)
+        let pixels = renderer.render(camera: activeCamera)
+        canvasPacer.frameFinished(gpuSeconds: renderer.lastGPUTime)
+        return pixels
     }
 
     /// What the last offscreen render cost the GPU, in milliseconds.
