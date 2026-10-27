@@ -10,14 +10,14 @@ public enum PaletteSheet {
     static let labelHeight = 22
 
     /// One row per palette: its name, then a block per galaxy.
-    public static func swatches(_ palettes: [Palette]) -> CGImage? {
+    public static func swatches(_ palettes: [Palette], labels: [String]? = nil) -> CGImage? {
         let width = LookGrid.labelWidth + 5 * (swatchWidth + LookGrid.gap) + 12
         let height = palettes.count * (swatchHeight + LookGrid.gap) + LookGrid.gap
         guard let context = canvas(width: width, height: height) else { return nil }
         for (row, palette) in palettes.enumerated() {
             let top = height - LookGrid.gap - row * (swatchHeight + LookGrid.gap) - swatchHeight
             LookGrid.draw(
-                palette.name, in: context, at: CGPoint(x: 10, y: top + swatchHeight / 2 - 5),
+                labels?[row] ?? palette.name, in: context, at: CGPoint(x: 10, y: top + swatchHeight / 2 - 5),
                 maximumWidth: CGFloat(LookGrid.labelWidth - 16))
             for (index, colour) in palette.colours.enumerated() {
                 context.setFillColor(displayed(colour))
@@ -31,9 +31,10 @@ public enum PaletteSheet {
     }
 
     /// Tiles of `columns` across: the palette's name, its frame, and its colours in a strip
-    /// under it. `cells[i]` holds RGBA pixels of `cellWidth` by `cellHeight`.
+    /// under it; `labels` stand in for the names. `cells[i]` holds RGBA pixels of `cellWidth` by `cellHeight`.
     public static func sheet(
-        cells: [[UInt8]], palettes: [Palette], cellWidth: Int, cellHeight: Int, columns: Int
+        cells: [[UInt8]], palettes: [Palette], cellWidth: Int, cellHeight: Int, columns: Int,
+        labels: [String]? = nil
     ) -> CGImage? {
         let tileHeight = labelHeight + cellHeight + stripHeight
         let rows = (palettes.count + columns - 1) / columns
@@ -44,7 +45,7 @@ public enum PaletteSheet {
             let x = LookGrid.gap + (index % columns) * (cellWidth + LookGrid.gap)
             let top = height - LookGrid.gap - (index / columns) * (tileHeight + LookGrid.gap)
             LookGrid.draw(
-                palette.name, in: context, at: CGPoint(x: x + 4, y: top - labelHeight + 6),
+                labels?[index] ?? palette.name, in: context, at: CGPoint(x: x + 4, y: top - labelHeight + 6),
                 maximumWidth: CGFloat(cellWidth - 8))
             if index < cells.count,
                 let frame = LookGrid.cgImage(cells[index], width: cellWidth, height: cellHeight)

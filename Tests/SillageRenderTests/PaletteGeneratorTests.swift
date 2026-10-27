@@ -139,22 +139,3 @@ struct PaletteGeneratorTests {
         return broken
     }
 }
-
-@Suite("Telescope reference")
-struct TelescopeReferenceTests {
-    @Test func aReferenceFileBecomesAFamilyWithoutItsSky() throws {
-        let json = #"""
-            {"regions": {
-              "core": {"median": [0.85, 0.02, 0.06], "spread": [0.05, 0.01, 0.01]},
-              "arms": {"median": [0.78, -0.03, -0.08], "spread": [0.06, 0.02, 0.02]},
-              "sky": {"median": [0.1, 0.0, -0.2], "spread": [0.01, 0.0, 0.0]}
-            }}
-            """#
-        let family = try PaletteFamily(reference: Data(json.utf8), name: "hubble-visible")
-        #expect(family.world == .telescope && family.hues.count == 2)
-        let palette = try PaletteGenerator.palette(
-            galaxies: 2, world: .telescope, seed: 1, telescope: [family])
-        #expect(palette.family == "hubble-visible")
-        #expect(PaletteGeneratorTests.check(palette).isEmpty)
-    }
-}

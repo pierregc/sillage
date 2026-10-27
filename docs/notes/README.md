@@ -35,6 +35,7 @@ session. Read the note for an area before changing it.
 - [Why the red went out](red-population.md): and what a constant population costs
 - [Gas in filaments](gas-filaments.md): and which frame a dust lane lives in
 - [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Télescope world
+- [Scoring a palette, and the Auto palette](palette-score.md): the five parts, the reference tones, what Auto picks
 
 ## Capture and playback
 

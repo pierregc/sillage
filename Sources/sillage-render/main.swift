@@ -80,6 +80,10 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     func readLook(_ path: String) throws -> LookFile {
         try LookFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: path)))
     }
+    if let choice = option("palette") {
+        return try palettePromotion(
+            folder, choice: choice, world: option("world"), base: option("base"))
+    }
     if let name = option("promote") {
         let file = try folder.promote(look: name)
         print("look       \(file.name) is now \(folder.look.path)")
@@ -216,6 +220,95 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     return 0
 }
 
+/// The measured Hubble and Webb colour sets of `references/telescope`.
+func telescopeReferences() -> [TelescopeReference] {
+    TelescopeReference.load(
+        from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("references/telescope"))
+}
+
+/// What a scene's palette is drawn from: the seed in its `scene.json`.
+func sceneSeed(_ folder: SceneFolder) throws -> (seed: UInt64, galaxies: Int) {
+    let file = try SceneFile.decoded(from: Data(contentsOf: folder.scene))
+    return (file.seed, file.galaxies.count)
+}
+
+/// `look <scene folder> --palette auto|<family>|<file.palette.json> [--world telescope|free]`:
+/// puts a palette in the scene's look, promoted as `--promote` does with the old look kept.
+/// `auto` is the best scored of a fixed number of candidates drawn from the scene's seed,
+/// `<family>` the same inside one family, and a file is taken as it is.
+func palettePromotion(
+    _ folder: SceneFolder, choice: String, world: String?, base: String?
+) throws -> Int32 {
+    let asked = world.map { name -> Palette.World in
+        guard let world = Palette.World(rawValue: name) else {
+            fail("look: --world is telescope or free")
+        }
+        return world
+    }
+    let references = telescopeReferences()
+    var look =
+        (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }
+        ?? .standard
+    if let base {
+        guard
+            let found = catalogueLooks().first(where: { $0.name == base })
+                ?? (try? LookFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: base))))
+        else { fail("look: no look \(base)") }
+        look = found
+    }
+
+    let palette: Palette
+    var score: PaletteScore?
+    if FileManager.default.fileExists(atPath: choice) {
+        let data = try Data(contentsOf: URL(fileURLWithPath: choice))
+        struct Bare: Decodable { var colours: [SIMD3<Float>] }
+        if let recipe = try? JSONDecoder().decode(Palette.self, from: data) {
+            palette = recipe
+            score = PaletteScore(recipe, references: references)
+            look.paletteRecipe = recipe
+        } else if let bare = try? JSONDecoder().decode(Bare.self, from: data),
+            !bare.colours.isEmpty
+        {
+            look.paletteRecipe = nil
+            look.palette = bare.colours
+            try folder.promote(look)
+            print("look       \(choice): \(bare.colours.count) colours set in \(folder.look.path)")
+            return 0
+        } else {
+            fail("look: \(choice) is not a palette file: {\"colours\": [[r, g, b], ...]}")
+        }
+    } else {
+        let (seed, galaxies) = try sceneSeed(folder)
+        let family = choice == "auto" ? nil : choice
+        var chosen = asked ?? .free
+        if let family, asked == nil {
+            let worlds = Palette.World.allCases.filter { world in
+                PaletteGenerator.families(world, telescope: references.map(\.family))
+                    .contains { $0.name == family }
+            }
+            guard let found = worlds.first else {
+                fail("look: --palette is auto, a family or a .palette.json file, not \(choice)")
+            }
+            chosen = found
+        }
+        let top = try PaletteAuto.ranked(
+            galaxies: galaxies, world: chosen, family: family, seed: seed,
+            telescope: references)[0]
+        palette = top.palette
+        score = top.score
+        look.paletteRecipe = palette
+    }
+    look.palette = palette.colours
+    try folder.promote(look)
+    print(
+        String(
+            format: "look       palette %@ (%@ world, score %.2f) is now in %@", palette.name,
+            palette.world.rawValue, score?.total ?? 0, folder.look.path))
+    return 0
+}
+
 /// `palettes <scene folder>`: palettes drawn from seeds for the scene's galaxies, each on a
 /// frame of the take, beside a sheet of their swatches.
 func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
@@ -241,17 +334,8 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         throw SceneFolder.LookError.noTake(folder.url)
     }
 
-    let references = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        .deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("references/telescope")
-    let telescope =
-        ((try? FileManager.default.contentsOfDirectory(atPath: references.path)) ?? [])
-        .filter { $0.hasSuffix(".json") }.sorted()
-        .compactMap { name in
-            (try? Data(contentsOf: references.appendingPathComponent(name))).flatMap {
-                try? PaletteFamily(reference: $0, name: String(name.dropLast(5)))
-            }
-        }
+    let references = telescopeReferences()
+    let telescope = references.map(\.family)
     for family in PaletteGenerator.families(world, telescope: telescope) {
         if let note = family.note { print("palettes   \(note)") }
     }
@@ -259,11 +343,32 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     let loaded = try RecordingFile.read(from: folder.take)
     let galaxies = min(max(loaded.scene.galaxies.count, 1), 5)
     var palettes: [Palette] = []
-    for seed in firstSeed..<(firstSeed + UInt64(max(count, 1))) {
-        palettes.append(
-            try PaletteGenerator.palette(
-                galaxies: galaxies, world: world, family: option("family"), harmony: harmony,
-                seed: seed, telescope: telescope))
+    var labels: [String]?
+    if let best = option("best").flatMap(Int.init) {
+        // The Auto candidates of the scene, best first, instead of seeds in a row.
+        guard harmony == nil else { fail("palettes: --best draws its own harmonies") }
+        let top = try PaletteAuto.ranked(
+            galaxies: galaxies, world: world, family: option("family"),
+            seed: try sceneSeed(folder).seed, telescope: references
+        ).prefix(max(best, 1))
+        palettes = top.map(\.palette)
+        labels = top.map { String(format: "%.2f %@", $0.score.total, $0.palette.name) }
+        for ranked in top {
+            let s = ranked.score
+            print(
+                String(
+                    format:
+                        "palettes   %@ %.2f: separation %.2f harmony %.2f range %.2f balance %.2f reference %@",
+                    ranked.palette.name, s.total, s.separation, s.harmony, s.range, s.balance,
+                    s.reference.map { String(format: "%.2f", $0) } ?? "-"))
+        }
+    } else {
+        for seed in firstSeed..<(firstSeed + UInt64(max(count, 1))) {
+            palettes.append(
+                try PaletteGenerator.palette(
+                    galaxies: galaxies, world: world, family: option("family"),
+                    harmony: harmony, seed: seed, telescope: telescope))
+        }
     }
     // Palettes are judged on a full look: a plain one shows no glow, bloom or saturation.
     let catalogue = catalogueLooks()
@@ -332,8 +437,8 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     guard
         let tiles = PaletteSheet.sheet(
             cells: cells, palettes: palettes, cellWidth: cellWidth, cellHeight: cellHeight,
-            columns: min(palettes.count, 4)),
-        let swatches = PaletteSheet.swatches(palettes)
+            columns: min(palettes.count, 4), labels: labels),
+        let swatches = PaletteSheet.swatches(palettes, labels: labels)
     else { fail("palettes: could not compose the sheet") }
     let sheetURL = folder.palettes.appendingPathComponent("sheet.png")
     let swatchURL = folder.palettes.appendingPathComponent("swatches.png")

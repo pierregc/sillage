@@ -253,6 +253,15 @@ Every row's look is kept as `looks/<name>.look.json`. `--promote <name>` makes o
 `look.json` for the export, moving the raw one explore wrote to `look-raw.json` the first time;
 a later promotion replaces the earlier one, which stays in `looks/`.
 
+A scene's palette can be chosen without a grid: `look <scene> --palette auto` scores a fixed
+number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
+above, so the same scene always gets the same palette. `--palette <family>` does the same inside
+one family, `--palette <file.palette.json>` takes a palette as it is (a `Palette` as `look.json`
+records it, or just `{"colours": [[r, g, b], ...]}` in linear sRGB), and `--world telescope|free`
+picks the colour world (free by default). `--base` starts from another look instead of the
+scene's. `palettes <scene> --best 3` draws the three best-scored palettes of the scene on a
+frame of its take, the score under each; see [the note](docs/notes/palette-score.md).
+
 The grid compares; the application tunes. In the library, **Régler le look** on a scene
 that has a take opens `take.sillage` with the scene's `look.json` in the Atelier, and File > Open takes any take
 (⌘O) and any look file (⇧⌘O) over it. Once the grid has been drawn, the panel's **Catalogue** menu
