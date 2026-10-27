@@ -103,7 +103,7 @@ struct PaletteGeneratorTests {
     @Test func aLookFileKeepsItsRecipeAndReadsWithoutOne() throws {
         let recipe = try PaletteGenerator.palette(galaxies: 2, world: .free, seed: 9)
         var file = LookFile.standard
-        file.palette = recipe.colours
+        file.palette = recipe.galaxyColours()
         file.paletteRecipe = recipe
         let written = try file.encoded()
         #expect(try LookFile.decoded(from: written) == file)

@@ -22,3 +22,22 @@ the shader blends the looked-up colour with the population colour.
   0.85 to 0.96 against the sampler; the distance to the origin that takes use today ranks at
   0.40 to -0.04 and also breaks the metallicity gradient of every replay. Old takes fall back to
   the frame-0 centres.
+
+## What #119 built
+
+- **The look file holds the colours.** A palette entry is `[r, g, b]` as before, or an object:
+  the galaxy's own colour, the mapping (`radius` in the free world, `mix` in the telescope one),
+  core, disk, outskirts, young and knot colours, and the blend. `look --palette` and `palettes`
+  write ramps; a file with plain colours renders as it always did, so nothing old changes.
+- **The shader looks the colour up per particle.** A static key per particle (birth radius in
+  its galaxy's scale lengths) and one `GalaxyRamp` per galaxy; gas, knots and the stars the run
+  forms are recognised on the GPU, so a live run's new stars take the young colour as they form.
+  A galaxy without a ramp keeps the one-colour shading, and so does the plain look.
+- **Takes are version 6** and carry the birth radius. An older take keeps the radius it always
+  replayed with (distance to the origin) for the metallicity, so it renders byte for byte as
+  before; only the ramps read the frame-0 centres. Checked on night scenes 23 and 18 with
+  `nebula-soft` and `hubble`: grids identical to `main`.
+- **Cost**: night scene 23, 2 M particles, `--replay` at 2560×1440 with `nebula-soft`, three
+  alternated runs: GPU median 42.8 / 43.7 / 43.5 ms with ramps, 43.1 / 43.7 / 43.9 ms without.
+- `--selftest` is not byte-deterministic on `main` either (two runs differ by 7.8 on average),
+  so it cannot prove a neutral change; a look grid on a take can.

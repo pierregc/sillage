@@ -33,6 +33,9 @@ public struct ParticleSystem: Sendable {
     public var galaxyIndex: [UInt32]
     /// Galactocentric radius at t = 0, for radial colour ramps.
     public var birthRadius: [Float]
+    /// What the galaxy colour ramps read instead of `birthRadius` when it cannot be trusted:
+    /// a take before version 6 rebuilds that as the distance to the origin. Empty otherwise.
+    public var colourRadius: [Float] = []
     /// Stellar population, 0 for an old warm population and 1 for young blue stars.
     public var population: [Float]
     /// Per-particle brightness multiplier. Star-forming knots are far brighter than the mean.

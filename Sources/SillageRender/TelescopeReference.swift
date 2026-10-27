@@ -17,6 +17,8 @@ public struct TelescopeReference: Sendable, Equatable {
 
     public var name: String
     public var tones: [Tone]
+    /// The colours a galaxy's ramp is drawn from in the telescope world (#119), in OKLab.
+    public var ramp: GalaxyColours.Regions?
 
     /// Tones that fewer than this share of a region's vivid pixels hold are noise.
     static let minimumShare: Float = 0.1
@@ -30,9 +32,22 @@ public struct TelescopeReference: Sendable, Equatable {
             var share: Float
             var median: SIMD3<Float>
         }
-        struct Region: Decodable { var vivid: [String: Vivid]? }
+        struct Region: Decodable {
+            var median: SIMD3<Float>?
+            var vivid: [String: Vivid]?
+        }
         struct File: Decodable { var regions: [String: Region] }
         let regions = try JSONDecoder().decode(File.self, from: data).regions
+        func vivid(_ region: String, _ side: String) -> SIMD3<Float>? {
+            regions[region]?.vivid?[side]?.median ?? regions[region]?.median
+        }
+        if let core = vivid("core", "warm"), let disk = regions["disk"]?.median,
+            let young = vivid("knots", "cool"), let knot = vivid("knots", "warm")
+        {
+            ramp = GalaxyColours.Regions(
+                core: core, disk: disk, outskirts: vivid("tails", "cool") ?? disk, young: young,
+                knot: knot)
+        }
         var tones: [Tone] = []
         for region in regions.keys.sorted() where region != "sky" && region != "tails" {
             for side in (regions[region]?.vivid ?? [:]).keys.sorted() {
@@ -77,6 +92,12 @@ public struct TelescopeReference: Sendable, Equatable {
         return PaletteFamily(
             name: name, world: .telescope, hues: hues, chroma: low...high, lightness: 0.8...0.95)
     }
+
+    /// The sets in this repository's `references/telescope`.
+    public static let repository = load(
+        from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("references/telescope"))
 
     /// Every `*.json` in `directory` that is a colour set, by file name; `marks.json` and
     /// anything else that is not one is skipped.
