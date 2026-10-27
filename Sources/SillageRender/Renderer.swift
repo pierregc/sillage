@@ -30,6 +30,7 @@ struct SplatUniforms {
     var slabScale: Float
     var pass: UInt32
     var mapped: UInt32 = 0
+    var holeShadow: Float = 0
 }
 
 struct BackgroundStar {
@@ -118,6 +119,8 @@ public struct RenderSettings: Sendable {
     /// implies. Zero is the physical answer; a little of it is what keeps stars torn out of
     /// one disk recognisable inside the other.
     public var galaxyTint: Float
+    /// Radius in kpc of a black hole's dark dot, zero for none.
+    public var holeShadow: Float = 0
     /// Draws the raw look: plain points and one pass, instead of the splat, dust and post
     /// stages. Fixed for the renderer's life, since it decides which pipelines get built.
     public var plain: Bool
@@ -614,6 +617,7 @@ public final class Renderer {
         settings.skyColour = look.skyColour
         settings.noiseLevel = look.noiseLevel
         settings.galaxyTint = look.galaxyTint
+        settings.holeShadow = look.holeShadow
         settings.starSize = look.starSize
         armPersistence = look.armPersistence
     }
@@ -780,7 +784,7 @@ public final class Renderer {
             galaxyTint: settings.galaxyTint,
             slabNear: slabNear,
             slabScale: 1 / max(2 * halfExtent, 1e-3),
-            pass: 0, mapped: mapped ? 1 : 0)
+            pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow)
 
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {

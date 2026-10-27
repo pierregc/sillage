@@ -13,6 +13,7 @@ public final class ShotReplay {
     private let span: Float
     private let radius: Float
     private let reach: [Float]
+    private let scene: SceneConfig
     private let director: Cinematographer?
     private let secondsPerFrame: Double
     private var auto = AutoCamera()
@@ -26,6 +27,7 @@ public final class ShotReplay {
         self.file = file
         recording = take.recording
         let scene = take.scene
+        self.scene = scene
         span = Float(max(capturedFrames - 1, 1))
         radius = file.camera.framedRadius(positions: take.particles.positions)
         reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
@@ -61,7 +63,8 @@ public final class ShotReplay {
     }
 
     private func advance(to frame: Int) -> Shot {
-        let around = recording.blend(atCaptured: frame).map { recording.centers(at: $0) } ?? []
+        let around = scene.framedCentres(
+            recording.blend(atCaptured: frame).map { recording.centers(at: $0) } ?? [])
         if let director {
             director.advance(seconds: secondsPerFrame, of: Subject(centres: around, radius: radius))
             return (director.camera, director.look)

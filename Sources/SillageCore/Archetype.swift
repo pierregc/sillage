@@ -25,6 +25,32 @@ public enum Archetype: String, Codable, Sendable, CaseIterable {
     /// Stephan's Quintet. Four or five galaxies close together, passing the largest in turn,
     /// and an intruder arriving fast later in the clip.
     case compactGroup = "compact-group"
+    /// A galaxy and a lone supermassive black hole: no stars of its own, only the wake it
+    /// drags through the disk. Four ways it goes, chosen first: a slow pass near the plane,
+    /// a fast polar one, a plunge through the centre that rings the disk, and a bound orbit
+    /// that falls back and sinks.
+    case blackHolePass = "black-hole-pass"
+
+    /// The four ways a black hole meets its galaxy.
+    public enum BlackHolePass: String, Sendable, CaseIterable {
+        case slowInPlane = "slow-in-plane"
+        case fastPolar = "fast-polar"
+        case plunge
+        case capture
+
+        /// Which one a draw in [0, 1) picks.
+        public static func at(_ u: Float) -> BlackHolePass {
+            FreeDraw.pick(u, [(.slowInPlane, 0.3), (.fastPolar, 0.25), (.plunge, 0.25), (.capture, 0.2)])
+        }
+
+        /// Which one the archetype's scene `occurrence` of batch `batchSeed` is: the first
+        /// number its draw takes.
+        public static func of(batchSeed: UInt64, occurrence: Int) -> BlackHolePass {
+            at(
+                Sobol(dimensions: Archetype.dimensions, seed: batchSeed ^ Archetype.blackHolePass.salt)
+                    .point(occurrence + 1)[0])
+        }
+    }
 
     /// Coordinates of the sequence an archetype draws its first parameters from.
     static let dimensions = 10
@@ -64,14 +90,17 @@ public enum Archetype: String, Codable, Sendable, CaseIterable {
         shape(&draft)
 
         var galaxies = draft.galaxies
-        let count = galaxies.count
+        // A black hole takes its one particle and is no galaxy for the rest.
+        let holes = galaxies.filter { $0.kind == .blackHole }.count
+        let count = galaxies.count - holes
+        let shared = particleCount - holes
         for index in galaxies.indices {
             galaxies[index].name = FreeDraw.names[index]
             galaxies[index].color = index % 2 == 0 ? palette.primary : palette.secondary
             // Shared out again by mass once the encounters are placed.
             galaxies[index].particleCount =
-                index == 0
-                ? particleCount - particleCount / count * (count - 1) : particleCount / count
+                galaxies[index].kind == .blackHole
+                ? 1 : index == 0 ? shared - shared / count * (count - 1) : shared / count
         }
         var scene = SceneConfig(name: "Archétype", galaxies: galaxies, centerSoftening: 1.2)
         scene.encounters = draft.encounters
@@ -261,6 +290,68 @@ public enum Archetype: String, Codable, Sendable, CaseIterable {
                     primaryDisk: d.disk(d.draws.uniform() * .pi / 2, spin: d.draws.spin()),
                     secondaryDisk: d.disk(d.draws.uniform() * .pi / 2, spin: d.draws.spin()))
             }
+
+        case .blackHolePass:
+            Self.blackHolePass(&d)
+        }
+    }
+
+    /// The holes are a hundredth to three tenths of the host: past a tenth heavier than any
+    /// known, kept because it is where the disk answers most. A captured one is at least a
+    /// twentieth, or it does not sink within the few gigayears a story may run. The host keeps
+    /// a live halo, which `finishGenerated` sees to: a rigid one would take no reaction from a
+    /// mass this size.
+    private static func blackHolePass(_ d: inout Draft) {
+        let variant = BlackHolePass.at(d.draws.uniform())
+        let ratio = d.draws.logarithmic(
+            in: variant == .capture ? 0.05...0.3 : FreeDraw.massRatios(.blackHole))
+        let size = d.draws.uniform(in: 0.4...1)
+        let lenticular = d.draws.uniform() < 0.3
+        d.add(
+            lenticular ? .disk : .spiral, size: size, bulge: d.draws.uniform(in: 0...0.4),
+            thickness: d.draws.uniform(in: 0...0.4))
+        d.add(.blackHole, size: 0, bulge: 0, thickness: 0)
+        let spin: Spin = d.draws.stream.uniform() < 0.7 ? .prograde : .retrograde
+        switch variant {
+        case .slowInPlane:
+            // Barely unbound and near the plane: the hole lingers in the disk's own sense of
+            // rotation and drags a wake behind it, the disk left lopsided.
+            d.meet(
+                0, 1, pericentre: d.draws.logarithmic(in: 2...12),
+                eccentricity: d.draws.uniform(in: 1...1.15), massRatio: ratio,
+                along: d.draws.uniform(in: 0.15...0.4),
+                primaryDisk: d.disk(d.draws.uniform(in: 0...0.35), spin: spin),
+                secondaryDisk: d.disk(0))
+        case .fastPolar:
+            // Over the poles and fast: one short kick, the disk warped rather than torn.
+            d.meet(
+                0, 1, pericentre: d.draws.logarithmic(in: 1...10),
+                eccentricity: d.draws.uniform(in: 1.3...1.6), massRatio: ratio,
+                along: d.draws.uniform(in: 0.2...0.45),
+                primaryDisk: d.disk(.pi / 2 - d.draws.uniform(in: 0...0.3), spin: spin),
+                secondaryDisk: d.disk(0))
+        case .plunge:
+            // As `ring` drops its companion, but a point mass: square through the centre.
+            let offAxis = d.draws.uniform(in: 0...0.3)
+            let side: Float = d.draws.uniform() < 0.5 ? 0 : .pi
+            d.meet(
+                0, 1, pericentre: d.draws.logarithmic(in: 0.5...2),
+                eccentricity: d.draws.uniform(in: 1...1.3), massRatio: ratio,
+                along: d.draws.uniform(in: 0.2...0.4),
+                primaryDisk: Encounter.Disk(
+                    inclination: .pi / 2 - offAxis,
+                    argument: side + d.draws.stream.uniform(in: -0.2...0.2), spin: spin),
+                secondaryDisk: d.disk(0))
+        case .capture:
+            // Bound, at any angle, early in the clip so it can fall back and sink. From far
+            // enough out that it is still falling in when the clip opens.
+            let pericentre = d.draws.uniform(in: 3...10)
+            d.meet(
+                0, 1, pericentre: pericentre,
+                eccentricity: Self.eccentricity(pericentre, apocentre: d.draws.uniform(in: 40...70)),
+                massRatio: ratio, along: d.draws.uniform(in: 0.02...0.08),
+                primaryDisk: d.disk(d.draws.uniform() * .pi / 2, spin: spin),
+                secondaryDisk: d.disk(0))
         }
     }
 
@@ -355,7 +446,7 @@ private struct Draft {
 /// its share, and the archetypes come round in a shuffled order, each once a round. The free
 /// places take `FreeDraw`'s scenes in order, so a batch with no archetypes is the free one.
 public struct BatchDraw: Sendable {
-    /// One scene in four: each archetype once in every 28 scenes.
+    /// One scene in four: each archetype once in every 32 scenes.
     public static let defaultArchetypeShare: Float = 0.25
 
     public var free: FreeDraw

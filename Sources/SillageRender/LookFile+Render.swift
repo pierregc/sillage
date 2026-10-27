@@ -5,7 +5,7 @@ import simd
 /// draw the same file the same way.
 extension LookFile {
     public func renderSettings(width: Int, height: Int) -> RenderSettings {
-        RenderSettings(
+        var settings = RenderSettings(
             width: width,
             height: height,
             supersample: supersample,
@@ -33,6 +33,8 @@ extension LookFile {
             noiseLevel: look.noiseLevel,
             galaxyTint: look.galaxyTint,
             plain: plain)
+        settings.holeShadow = look.holeShadow
+        return settings
     }
 
     /// Whether going from `other` to this file changes something a renderer owns buffers for.

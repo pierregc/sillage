@@ -190,6 +190,25 @@ public struct SceneCheck: Sendable, Equatable {
 }
 
 extension SceneConfig {
+    /// The centres a camera frames: a black hole's only while it is near a galaxy with stars,
+    /// eased back onto that galaxy between one and two of its reaches, so a hole flying off
+    /// on its way out does not take the frame with it.
+    public func framedCentres(_ centres: [SIMD3<Float>]) -> [SIMD3<Float>] {
+        guard centres.count == galaxies.count, hasBlackHole else { return centres }
+        let hosts = galaxies.indices.filter { galaxies[$0].kind != .blackHole }
+        return centres.indices.map { index in
+            guard galaxies[index].kind == .blackHole,
+                let host = hosts.min(by: {
+                    simd_distance(centres[$0], centres[index]) < simd_distance(centres[$1], centres[index])
+                })
+            else { return centres[index] }
+            let reach = SceneCheck.reach(galaxies[host])
+            let t = min(max((simd_distance(centres[index], centres[host]) - reach) / reach, 0), 1)
+            let near = 1 - t * t * (3 - 2 * t)
+            return centres[host] + (centres[index] - centres[host]) * near
+        }
+    }
+
     /// The check for a clip of `steps` steps after `settleSteps` of settling.
     public func sanityCheck(
         settleSteps: Int, steps: Int, limits: SceneCheck.Limits = SceneCheck.Limits()

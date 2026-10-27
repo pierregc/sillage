@@ -22,7 +22,10 @@ struct FreeDrawTests {
     @Test func aBatchCoversTheWholeRange() {
         let drafts = FreeDraw(batchSeed: 3).drafts(60, particleCount: 100_000)
         #expect(Set(drafts.map(\.galaxies.count)) == Set(1...5))
-        #expect(Set(drafts.flatMap { $0.draw!.families }) == Set(GalaxyFamily.allCases))
+        // A black hole is a few per cent of the scenes, and may miss sixty of them.
+        #expect(
+            Set(drafts.flatMap { $0.draw!.families }).subtracting([.blackHole])
+                == Set(GalaxyFamily.allCases).subtracting([.blackHole]))
         let spirals = drafts.flatMap(\.galaxies).filter { $0.kind == .spiral }
         #expect(Set(spirals.map(\.armCount)) == Set(2...5))
         let pitches = spirals.map(\.armPitch)
@@ -56,7 +59,7 @@ struct FreeDrawTests {
 
     @Test func everyGalaxyIsPlausible() {
         for scene in FreeDraw(batchSeed: 5).drafts(200, particleCount: 100_000) {
-            for galaxy in scene.galaxies {
+            for galaxy in scene.galaxies where galaxy.kind != .blackHole {
                 #expect(galaxy.potential.mass > 0 && galaxy.potential.scaleRadius > 0)
                 #expect(galaxy.diskScaleLength > 0 && galaxy.diskTruncation >= 3)
                 if galaxy.kind.isRotating {
@@ -66,10 +69,30 @@ struct FreeDrawTests {
                 }
             }
             for encounter in scene.encounters {
-                #expect(encounter.massRatio > 0 && encounter.massRatio <= 1)
-                #expect(encounter.pericentre >= 1.5 && encounter.pericentre <= 30)
+                let hole = scene.galaxies[encounter.secondary].kind == .blackHole
+                #expect(encounter.massRatio > 0 && encounter.massRatio <= (hole ? 0.3 : 1))
+                #expect(encounter.pericentre >= (hole ? 0.5 : 1.5) && encounter.pericentre <= 30)
             }
         }
+    }
+
+    /// A few per cent of free scenes swap their first companion for a black hole.
+    @Test func aFewFreeScenesMeetABlackHole() {
+        let drafts = FreeDraw(batchSeed: 7).drafts(400, particleCount: 100_000)
+        let holes = drafts.filter { $0.draw!.families.contains(.blackHole) }
+        let pairs = drafts.filter { $0.galaxies.count >= 2 }.count
+        #expect(holes.count >= pairs / 100 && holes.count <= pairs / 10)
+        for scene in holes {
+            #expect(scene.draw!.families[1] == .blackHole && scene.galaxies[1].particleCount == 1)
+            #expect(scene.galaxies.filter { $0.kind == .blackHole }.count == 1)
+            #expect((0.01...0.3).contains(scene.encounters[0].massRatio))
+            // Swapped after the choice: what the signatures saw is the scene as first drawn.
+            let drawn = FreeDraw(batchSeed: 7).draft(point: scene.draw!.point, particleCount: 100_000)
+            #expect(FreeDraw.withBlackHole(drawn)?.galaxies == scene.galaxies)
+        }
+        let placed = FreeDraw(batchSeed: 7).scene(at: holes[0].draw!.index, particleCount: 200_000)
+        #expect(placed.galaxies[1].kind == .blackHole && placed.galaxies[0].particleCount == 199_999)
+        #expect(EncounterTests.passages(placed).allSatisfy { $0 != nil })
     }
 
     @Test func aSceneIsFoundAgainFromItsBatchAndIndex() throws {
