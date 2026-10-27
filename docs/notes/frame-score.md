@@ -17,7 +17,7 @@ luma of 0.1 or more; the rest is sky.
 | colourfulness | 0.20 | Hasler and Süsstrunk's M on the lit pixels. Rises to 1 at 40, falls from 80 to 0.3 at 150: neon. |
 | separation | 0.20 | Smallest distance between two galaxies' colours as drawn, at the common lightness 0.8. 1 from 0.06. |
 | noise | 0.10 | Median deviation of a sky pixel from its eight neighbours, ×255. 1 up to 1.5, 0 at 5.5. The looks' own grain sits near 2. |
-| detail | 0.15 | Mean local contrast of the lit pixels against the 7 × 7 box around them. 1 from 0.3. Glow that washes arms and knots into a blob scores low. |
+| detail | 0.10 | Mean local contrast of the lit pixels against the 7 × 7 box around them. 1 from 0.12, so sparkle earns nothing more than structure. Glow that washes arms and knots into a blob scores low. |
 | reference | 0.15 | Telescope world only: mean distance of the drawn colours to the nearest tone of #125's set for the palette's family. One half at 0.035. |
 
 A galaxy's colour "as drawn" is the mean, in OKLab, of the most saturated sixth of its lit,
@@ -43,10 +43,23 @@ keeps its camera and field of view, so the framing does not change with the styl
 
 Measured on the M4 Max, whole process, clips of 960 × 540:
 
-MEASURES
+| Scene | Particles | Telescope (8 pairs) | Free (52 pairs) |
+| --- | --- | --- | --- |
+| night 18, 23, 31, 34, 4k-b 1 | 2 M | 1.4 to 1.6 s | 7.2 to 8.1 s |
+| night 4, 5, 6, 13, 21 | 150 k | 0.5 to 0.6 s | 2.4 to 3.4 s |
+
+Well under the 30 s asked for at 2 M.
 
 Replaying the camera for every look was half the time at first: cameras are now replayed once
 per camera plan, since outside the director's modes the look does not move the camera.
+
+## What Auto picks
+
+Since #119 drew several colours per galaxy, the free world's picks vary: glint, gloss,
+gas-whisper, observatory and pointillist across ten scenes, mostly with the `spectrum` family.
+The telescope world picks Webb nine times in ten: its spikes and warmer sky score higher on
+colourfulness and detail than Hubble's. Before the detail part, lone galaxies washed into a
+blob by `dream` won; they now lose.
 
 ## Use
 

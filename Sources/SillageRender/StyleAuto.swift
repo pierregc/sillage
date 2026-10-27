@@ -26,7 +26,10 @@ public enum StyleAuto {
 
     /// `base` with `rendering`'s settings and `palette`: the camera and the field of view stay
     /// the scene's, so the framing does not change with the style.
-    public static func apply(_ rendering: LookFile, palette: Palette, to base: LookFile) -> LookFile {
+    public static func apply(
+        _ rendering: LookFile, palette: Palette, to base: LookFile,
+        references: [TelescopeReference] = TelescopeReference.repository
+    ) -> LookFile {
         var file = base
         file.name = rendering.name
         file.look = rendering.look
@@ -37,7 +40,7 @@ public enum StyleAuto {
         file.plain = rendering.plain
         file.armStrength = rendering.armStrength
         file.world = rendering.world
-        file.palette = palette.colours
+        file.palette = palette.galaxyColours(references: references)
         file.paletteRecipe = palette
         return file
     }
@@ -87,7 +90,7 @@ public enum StyleAuto {
     ) throws -> [Candidate] {
         var candidates = pairs.map { rendering, ranked in
             Candidate(
-                look: apply(rendering, palette: ranked.palette, to: base),
+                look: apply(rendering, palette: ranked.palette, to: base, references: references),
                 rendering: rendering.name, palette: ranked.palette, paletteScore: ranked.score,
                 frames: [], total: 0)
         }

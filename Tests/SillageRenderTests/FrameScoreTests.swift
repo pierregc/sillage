@@ -129,6 +129,6 @@ struct FrameScoreTests {
         let file = StyleAuto.apply(rendering, palette: palette, to: base)
         #expect(file.camera.mode == .director && file.look.fieldOfView == 0.42)
         #expect(file.look.bloomIntensity == 0.9 && file.world == .telescope)
-        #expect(file.palette == palette.colours && file.paletteRecipe == palette)
+        #expect(file.palette.map(\.colour) == palette.colours && file.paletteRecipe == palette)
     }
 }
