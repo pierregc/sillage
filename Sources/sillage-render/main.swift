@@ -437,6 +437,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
             preset: preset.name, codec: codec == preset.defaultCodec ? nil : codec)
     try FileManager.default.createDirectory(
         at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let partial = SceneFolder.partial(out)
 
     let duration = try value("duration")
     let frames = export.positions(framesPerSecond: fps, start: start, duration: duration).count
@@ -459,7 +460,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     var reported = 0
     reporter.start(detail: "frame 0/\(frames)")
     let report = try export.write(
-        to: out, width: width, height: height, framesPerSecond: fps, start: start,
+        to: partial, width: width, height: height, framesPerSecond: fps, start: start,
         duration: duration, codec: codec, bitsPerSecond: bitRate, quality: quality,
         metadata: VideoMetadata(sceneID: folder.sceneID)
     ) { done, total in
@@ -471,6 +472,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
             print("export     \(done)/\(total)")
         }
     }
+    try SceneFolder.commit(out)
     let bytes =
         (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
     print(
@@ -536,9 +538,10 @@ func previewStage(
             export.look.name, maximum.map { String(format: ", at most %.1f MB", Double($0) / 1e6) } ?? ""))
     reporter.start(detail: "\(format.rawValue) preview")
     let report = try export.writePreview(
-        to: out, format: format, width: width, height: height, framesPerSecond: fps,
-        start: start, duration: duration, maximumBytes: maximum,
+        to: SceneFolder.partial(out), format: format, width: width, height: height,
+        framesPerSecond: fps, start: start, duration: duration, maximumBytes: maximum,
         quality: Int((quality * 100).rounded()))
+    try SceneFolder.commit(out)
     for attempt in report.attempts.dropLast() {
         print(
             String(
@@ -651,6 +654,11 @@ let arguments: [String]
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "event" {
     exit(eventCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "queue" {
+    exit(
+        QueueCommand.main(
+            Array(CommandLine.arguments.dropFirst(2)), executable: Spawn.currentExecutable))
+}
 var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
 var exploreRun: SceneFolder?
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "costs" {
@@ -728,6 +736,11 @@ if CommandLine.arguments.count > 1,
         exploreRun = folder
     }
 } else {
+    // A plain render takes flags only: a word here is a command this binary does not have,
+    // and must not start a render of a million particles.
+    if let word = CommandLine.arguments.dropFirst().first, !word.hasPrefix("--") {
+        fail("sillage-render: no command \"\(word)\"")
+    }
     arguments = Array(CommandLine.arguments.dropFirst())
 }
 
@@ -1316,6 +1329,11 @@ if let take, let path = argument("take") {
     try RecordingFile.write(take, scene: scene, particles: seeded, to: prepared(path))
 }
 if let (folder, done) = hiresRun {
+    do {
+        try folder.commitHires()
+    } catch {
+        fail("hires: could not put the take in place: \(error)")
+    }
     var record = done
     record.seconds = Date().timeIntervalSince(started)
     record.peakMemoryBytes = peakFootprint()
