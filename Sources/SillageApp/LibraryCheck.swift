@@ -189,18 +189,18 @@ enum LibraryCheck {
         try writeVideo(to: arriving.preview, tint: 5)
         check("finie, elle joue", wait(8) { model.playable.contains("2026-10-24/scene-0004") })
 
-        // One player, following the pointer, then the enlarged scene.
+        // One player, following the pointer, then the opened scene.
         model.selection = "2026-10-24/scene-0001"
         check("la sélection joue", model.playing == "2026-10-24/scene-0001")
         model.hover("2026-10-24/scene-0002", inside: true)
         check("le survol joue", wait(2) { model.playing == "2026-10-24/scene-0002" })
-        model.enlarged = "2026-10-24/scene-0003"
-        check("l'agrandie passe avant le survol", model.playing == "2026-10-24/scene-0003")
+        model.open("2026-10-24/scene-0003")
+        check("la scène ouverte passe avant le survol", model.playing == "2026-10-24/scene-0003")
         check(
             "le lecteur lit vraiment",
             wait(5) { model.player.currentItem?.status == .readyToPlay },
             "\(model.player.currentItem?.status.rawValue ?? -1)")
-        check("échap referme", model.handle(.close) && model.enlarged == nil)
+        check("échap referme", model.handle(.close) && model.opened == nil)
         model.hover("2026-10-24/scene-0002", inside: false)
         check(
             "un seul lecteur", model.player.items().count <= 3,
@@ -277,6 +277,170 @@ enum LibraryCheck {
             "dernier scan \(ms(model.lastScan))")
 
         try exerciseTriage()
+        try exerciseScenePage()
+    }
+
+    /// Three scenes of one night at different steps, walked through the scene page: versions,
+    /// steps, neighbours, a choice that takes the scene out of its collection, the commands to
+    /// copy and the way back to the raw style.
+    private static func exerciseScenePage() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sillage-scenepage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let night = root.appendingPathComponent("2026-10-26", isDirectory: true)
+        let folders = (1...3).map {
+            SceneFolder(night.appendingPathComponent(String(format: "scene-%04d", $0)))
+        }
+        for (offset, folder) in folders.enumerated() {
+            try writeScene(folder, tint: offset + 6, archetype: offset == 0 ? "antennae" : nil)
+            try Data(#"{"score":\#(0.9 - Double(offset) / 10)}"#.utf8).write(to: folder.interest)
+        }
+        try Data(
+            "id,batch_seed,index,galaxies\nscene-0001,20261026,1,2\nscene-0002,20261026,2,3\n".utf8
+        ).write(to: night.appendingPathComponent("index.csv"))
+        var clip = SceneFolder.Clip()
+        clip.story = .init(startFrame: 40, endFrame: 700, startMyr: 82, endMyr: 461, complete: true)
+        try clip.encoded().write(to: folders[0].clip)
+
+        // The first has gone all the way: take, hires record and clip, a style, two exports.
+        let done = folders[0]
+        try Data().write(to: done.take)
+        try writeVideo(to: done.hiresVideo, tint: 9)
+        try Data(
+            """
+            {"particles":2000000,"previewParticles":200000,"width":1920,"height":1080,"frames":660,
+            "fps":30,"settle":300,"steps":1980,"timeStepScale":1,"timeStep":0.05,"timeStepMyr":0.2,
+            "previewTimeStepMyr":0.2,"softening":0.08,"clipStartMyr":82,"clipEndMyr":461,"seconds":5100}
+            """.utf8
+        ).write(to: done.hires)
+        try LookFile(name: "raw", palette: [[1, 0.62, 0.25], [0.3, 0.7, 1]]).encoded().write(to: done.look)
+        try done.promote(LookFile(name: "dream", palette: [[0.9, 0.3, 0.6], [0.2, 0.9, 0.8]]))
+        try FileManager.default.createDirectory(at: done.exports, withIntermediateDirectories: true)
+        try writeVideo(to: done.export(preset: "1080p"), tint: 12)
+        try Data("légende".utf8).write(to: done.exports.appendingPathComponent("whatsapp.txt"))
+        try SceneRatings(scenes: [
+            "scene-0001": .init(choice: .yes, rating: 8), "scene-0003": .init(choice: .yes),
+        ]).write(batch: night)
+
+        let model = LibraryModel(root: root)
+        model.pasteboard = NSPasteboard(name: .init("dev.pierregc.sillage.librarycheck"))
+        model.watch()
+        defer { model.stop() }
+        check("trois scènes pour la page", wait(10) { model.scenes.count == 3 && model.playable.count == 3 })
+        let id = { (index: Int) in "2026-10-26/" + String(format: "scene-%04d", index) }
+
+        stills = 0
+        let pageScenes = model.scenes
+        Task { for scene in pageScenes where await ThumbnailCache.shared.load(scene) != nil { stills += 1 } }
+        _ = wait(10) { stills == 3 }
+        model.open(id(1))
+        check("un clic ouvre la page de la scène", model.opened == id(1) && model.selection == id(1))
+        check("ce que la page lit arrive", wait(5) { model.facts?.id == id(1) })
+        let scene = try found(model.scene(id(1)))
+        check(
+            "versions : aperçu, haute résolution, puis chaque vidéo",
+            scene.versions.map(\.title) == ["Aperçu", "Haute résolution", "Vidéo 1080p"],
+            scene.versions.map(\.title).joined(separator: ", "))
+        check(
+            "la page joue d'abord la vidéo exportée",
+            model.playingURL?.lastPathComponent == "1080p.mp4" && model.playing == id(1))
+        model.version = done.hiresVideo
+        check("choisir une version la joue à la place", model.playingURL == done.hiresVideo)
+        check(
+            "un seul décodeur",
+            model.player.items().count <= 3
+                && wait(5) {
+                    model.player.currentItem?.status == .readyToPlay
+                })
+        let states = SceneStep.states(scene, entry: model.entries[id(1)])
+        check("tout est fait, rien n'est la suite", SceneStep.allCases.allSatisfy { states[$0] == .done })
+        let facts = model.facts
+        check(
+            "la page lit l'histoire, le calcul et le style",
+            facts?.story?.endMyr == 461 && facts?.hires?.particles == 2_000_000
+                && facts?.styleName == "dream" && facts?.palette.count == 2 && facts?.rawStyle == false
+                && facts?.otherLooks.map(\.name) == ["raw"],
+            facts?.styleName ?? "pas de style")
+        check("graine et index du lot", scene.seed == "20261026" && scene.index == 1)
+        render(ScenePage(model: model, scene: scene, snapshot: true), to: "out/ui-scene-page.png")
+
+        let hires = StageCommand.hires(done, particles: 5_000_000)
+        check(
+            "la commande hires vise le dossier et la taille",
+            hires.contains("dev.sh hires \(done.url.path) --particles 5000000"), hires)
+        let again = StageCommand.export(done, preset: "1080p", existing: scene.exports)
+        check(
+            "exporter à nouveau ne remplace pas la vidéo",
+            again.hasSuffix("--preset 1080p --out \(done.exports.path)/1080p-2.mp4"), again)
+        let otherLook = StageCommand.export(
+            done, preset: "1080p", look: facts?.otherLooks.first, existing: scene.exports)
+        check(
+            "un autre style va dans un fichier à lui",
+            otherLook.contains("--look \(done.rawLook.path)") && otherLook.hasSuffix("1080p-raw.mp4"),
+            otherLook)
+        check(
+            "4k va à sa place",
+            StageCommand.export(done, preset: "4k", existing: scene.exports).hasSuffix("--preset 4k"))
+        model.copy(hires)
+        check(
+            "copier met la commande dans le presse-papiers",
+            model.pasteboard.string(forType: .string) == hires && model.copied == hires)
+
+        model.restoreRawLook(scene)
+        check(
+            "revenir au style brut garde l'autre dans looks/",
+            done.hasRawLook && FileManager.default.fileExists(atPath: done.lookFile(named: "dream").path)
+                && wait(5) { model.facts?.rawStyle == true })
+
+        // Neighbours in the collection, and a choice that takes the scene out of it.
+        model.handle(.right)
+        check(
+            "→ passe à la voisine et revient à sa version par défaut",
+            model.opened == id(2) && model.version == nil
+                && model.playingURL == folders[1].preview)
+        model.close()
+        model.query.collection = .toSort
+        model.open(id(2))
+        model.handle(.yes)
+        check(
+            "oui sur la page : la scène quitte À trier mais la page reste",
+            model.opened == id(2) && !model.visible.contains { $0.id == id(2) }
+                && model.entries[id(2)]?.choice == .yes)
+        let chosen = try found(model.scene(id(2)))
+        let next = SceneStep.states(chosen, entry: model.entries[id(2)])
+        check("la suite est la haute résolution", next[.highResolution] == .next && next[.style] == .later)
+        model.query.collection = .chosen
+        model.open(id(3))
+        _ = wait(5) { model.facts?.id == id(3) }
+        check(
+            "les tailles proposées disent leur durée",
+            model.facts?.hiresCosts.first { $0.particles == 2_000_000 }?.label == "2 M, environ 1 h 25",
+            model.facts?.hiresCosts.map(\.label).joined(separator: " / ") ?? "rien")
+        render(
+            ScenePage(model: model, scene: try found(model.scene(id(3))), snapshot: true),
+            to: "out/ui-scene-page-next.png")
+        model.handle(.left)
+        check("← passe à la voisine de Choisies", model.opened == id(2), model.opened ?? "fermée")
+        model.handle(.digit(6))
+        check("un chiffre note la scène de la page", model.entries[id(2)]?.rating == 6)
+        check(
+            "échap revient à la grille sur la même scène",
+            model.handle(.close) && model.opened == nil && model.selection == id(2))
+        model.handle(.open)
+        check("espace rouvre la page", model.opened == id(2))
+        model.stop()
+        check("quitter la bibliothèque ferme la page", model.opened == nil && model.playing == nil)
+    }
+
+    private struct Missing: Error {}
+
+    private static func found<T>(_ value: T?) throws -> T {
+        guard let value else { throw Missing() }
+        return value
+    }
+
+    private static func render(_ page: ScenePage, to path: String) {
+        write(page.frame(width: 1180, height: 940), to: path)
     }
 
     /// Four scored scenes in one night, sorted through the triage view the way a night is: yes,

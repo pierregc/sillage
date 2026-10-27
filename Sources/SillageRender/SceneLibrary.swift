@@ -13,6 +13,8 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
     public var tempo: String?
     public var galaxies: Int?
     public var seed: String?
+    /// The scene's number in its batch, which with the seed draws it again.
+    public var index: Int?
     /// How promising the scene looks from its curves alone (#45), higher first.
     public var score: Double?
     /// Size and date of the video, which change for as long as a render is writing it.
@@ -242,7 +244,8 @@ public enum SceneLibrary {
         if let row = index[scene.name] {
             scene.tempo = row["tempo"].flatMap { $0.isEmpty ? nil : $0 }
             scene.galaxies = row["galaxies"].flatMap { Int($0) }
-            scene.seed = row["seed"].flatMap { $0.isEmpty ? nil : $0 }
+            scene.seed = (row["seed"] ?? row["batch_seed"]).flatMap { $0.isEmpty ? nil : $0 }
+            scene.index = row["index"].flatMap { Int($0) }
             if scene.archetype == nil, let archetype = row["archetype"], !archetype.isEmpty {
                 scene.archetype = archetype
             }

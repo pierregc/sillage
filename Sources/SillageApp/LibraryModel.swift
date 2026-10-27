@@ -9,7 +9,7 @@ import SwiftUI
 @MainActor
 final class LibraryModel: ObservableObject {
     enum Key: Equatable {
-        case left, right, up, down, yes, no, clear, enlarge, close
+        case left, right, up, down, yes, no, clear, open, close
         case digit(Int)
     }
 
@@ -19,9 +19,24 @@ final class LibraryModel: ObservableObject {
     @Published private(set) var visible: [LibraryScene] = []
     @Published private(set) var playable: Set<String> = []
     @Published private(set) var playing: String?
+    @Published private(set) var playingURL: URL?
     @Published var query = LibraryQuery() { didSet { refreshVisible() } }
     @Published var selection: String? { didSet { updatePlayback() } }
-    @Published var enlarged: String? { didSet { updatePlayback() } }
+    /// The scene whose page shows in place of the grid.
+    @Published private(set) var opened: String? {
+        didSet {
+            guard opened != oldValue else { return }
+            version = nil
+            rememberPlace()
+            loadFacts()
+        }
+    }
+    /// The version the page plays, by its file; nil plays the scene's default one.
+    @Published var version: URL? { didSet { updatePlayback() } }
+    /// What the page shows beyond the scan: the story, the hires record, the style, the costs.
+    @Published private(set) var facts: ScenePageFacts?
+    /// The last command line copied for the user, said under the page for a moment.
+    @Published private(set) var copied: String?
     @Published var failure: String?
     /// The triage view is open: one scene large, decided from the keyboard.
     @Published private(set) var triage: Triage? { didSet { updatePlayback() } }
@@ -44,6 +59,11 @@ final class LibraryModel: ObservableObject {
     private var probed: [String: Probe] = [:]
     private var writes = 0
     private var lastDigit: (scene: String, value: Int, at: Date)?
+    /// Where the opened scene sat in the collection, for its neighbours once it has left it.
+    private var openedPlace: Int?
+    private var copiedTask: Task<Void, Never>?
+    /// The general one; the checks use their own, so as not to clobber the user's.
+    var pasteboard = NSPasteboard.general
 
     /// A sitting at the triage view. The scenes are fixed when it opens, in the sort order of
     /// that moment, so a decision does not move the ones around it: a decided scene leaves À trier
@@ -80,7 +100,6 @@ final class LibraryModel: ObservableObject {
     var onTune: ((LibraryScene) -> Void)?
 
     func tune(_ scene: LibraryScene) {
-        enlarged = nil
         onTune?(scene)
     }
 
@@ -113,10 +132,10 @@ final class LibraryModel: ObservableObject {
         if shown { watch() } else { quiet() }
     }
 
-    /// Nothing plays and nothing is enlarged while another part of the window shows.
+    /// Nothing plays and no page is open while another part of the window shows.
     private func quiet() {
         triage = nil
-        enlarged = nil
+        opened = nil
         hovered = nil
         play(nil)
     }
@@ -129,7 +148,7 @@ final class LibraryModel: ObservableObject {
         playable = []
         probed = [:]
         selection = nil
-        enlarged = nil
+        opened = nil
         triage = nil
         var fresh = LibraryQuery()
         fresh.collection = query.collection
@@ -174,8 +193,14 @@ final class LibraryModel: ObservableObject {
         }
         let staged = found.map { $0.staged(entry: entries[$0.id]) }
         if staged != scenes {
+            let page = scene(opened)
             scenes = staged
             changed = true
+            if let opened, scene(opened) == nil {
+                close()
+            } else if page != scene(opened) {
+                loadFacts()
+            }
         }
         if changed { refreshVisible() }
         await probe(found)
@@ -216,9 +241,7 @@ final class LibraryModel: ObservableObject {
                 self.selection = nil
             }
         }
-        if let enlarged, !visible.contains(where: { $0.id == enlarged }) {
-            self.enlarged = selection
-        }
+        rememberPlace()
         syncTriage()
     }
 
@@ -238,7 +261,7 @@ final class LibraryModel: ObservableObject {
         let order = triageScenes(batch: batch).map(\.id)
         guard let first = order.first else { return }
         let next = order.first(where: isUndecided)
-        enlarged = nil
+        opened = nil
         selection = next ?? first
         triage = Triage(batch: batch, order: order, current: next ?? first, finished: next == nil)
     }
@@ -385,33 +408,119 @@ final class LibraryModel: ObservableObject {
         }
     }
 
+    // MARK: Scene page
+
+    func open(_ id: String) {
+        guard scene(id) != nil else { return }
+        selection = id
+        opened = id
+    }
+
+    /// Back to the grid, on the scene the page was showing if the collection still holds it.
+    func close() {
+        guard let id = opened else { return }
+        opened = nil
+        if visible.contains(where: { $0.id == id }) { selection = id }
+        updatePlayback()
+    }
+
+    private func rememberPlace() {
+        if let opened, let at = visible.firstIndex(where: { $0.id == opened }) { openedPlace = at }
+    }
+
+    /// The neighbours are the collection's. A scene a choice took out of the collection stays
+    /// open, and its neighbours are the ones on either side of where it was.
+    func moveOpened(_ offset: Int) {
+        guard !visible.isEmpty else { return }
+        let target: Int
+        if let at = visible.firstIndex(where: { $0.id == opened }) {
+            target = at + offset
+        } else {
+            let place = openedPlace ?? 0
+            target = offset > 0 ? place + offset - 1 : place + offset
+        }
+        open(visible[min(max(target, 0), visible.count - 1)].id)
+    }
+
+    /// The same keys as the grid, on the page's scene.
+    private func handlePage(_ key: Key, at date: Date) -> Bool {
+        guard let id = opened else { return false }
+        switch key {
+        case .close, .open: close()
+        case .left: moveOpened(-1)
+        case .right: moveOpened(1)
+        case .yes: choose(.yes, for: id, toggle: false)
+        case .no: choose(.no, for: id, toggle: false)
+        case .clear: clear(id)
+        case .digit(let value): rateByKey(value, for: id, at: date)
+        case .up, .down: return false
+        }
+        return true
+    }
+
+    private var factsTask: Task<Void, Never>?
+
+    func loadFacts() {
+        factsTask?.cancel()
+        guard let scene = scene(opened) else {
+            facts = nil
+            return
+        }
+        if facts?.id != scene.id { facts = nil }
+        factsTask = Task { [weak self] in
+            let read = await Task.detached { ScenePageFacts.read(scene) }.value
+            guard !Task.isCancelled, let self, self.opened == scene.id else { return }
+            self.facts = read
+        }
+    }
+
+    /// Puts a command line on the pasteboard and says so under the page.
+    func copy(_ command: String) {
+        pasteboard.clearContents()
+        pasteboard.setString(command, forType: .string)
+        copied = command
+        copiedTask?.cancel()
+        copiedTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            self?.copied = nil
+        }
+    }
+
+    /// The scene renders with the look `explore` wrote again; the one it had stays in `looks/`.
+    func restoreRawLook(_ scene: LibraryScene) {
+        guard let folder = scene.folder else { return }
+        do {
+            try folder.restoreRawLook()
+            failure = nil
+        } catch {
+            failure = "Impossible de revenir au style brut : \(error)"
+        }
+        loadFacts()
+    }
+
     // MARK: Keyboard
 
     /// One key, one change, saved at once. Digits rate; a 1 followed quickly by a 0 is a ten.
     @discardableResult
     func handle(_ key: Key, at date: Date = Date()) -> Bool {
         if triage != nil { return handleTriage(key, at: date) }
-        if key == .close {
-            guard enlarged != nil else { return false }
-            enlarged = nil
-            return true
-        }
+        if opened != nil { return handlePage(key, at: date) }
+        if key == .close { return false }
         guard !visible.isEmpty else { return false }
         let index = selection.flatMap { id in visible.firstIndex { $0.id == id } }
         func move(_ offset: Int) {
             let target = index.map { min(max($0 + offset, 0), visible.count - 1) } ?? 0
             selection = visible[target].id
-            if enlarged != nil { enlarged = selection }
         }
         switch key {
         case .left: move(-1)
         case .right: move(1)
         case .up: move(-max(columns, 1))
         case .down: move(max(columns, 1))
-        case .enlarge:
+        case .open:
             guard let selection = selection ?? visible.first?.id else { return false }
-            self.selection = selection
-            enlarged = enlarged == nil ? selection : nil
+            open(selection)
         default:
             guard let id = selection else {
                 selection = visible.first?.id
@@ -464,21 +573,33 @@ final class LibraryModel: ObservableObject {
         if let triage {
             play(triage.finished ? nil : triage.current)
         } else {
-            play(enlarged ?? hovered ?? selection)
+            play(opened ?? hovered ?? selection)
         }
     }
 
+    /// The file the scene plays: on its page the version picked, elsewhere its preview once
+    /// it is whole. The other versions are only ever renamed into place whole.
+    private func playbackURL(_ id: String) -> URL? {
+        guard let scene = scene(id) else { return nil }
+        if id == opened, let url = version ?? scene.defaultVersion?.url, url != scene.video {
+            return scene.versions.contains { $0.url == url } ? url : nil
+        }
+        return playable.contains(id) ? scene.video : nil
+    }
+
     private func play(_ id: String?) {
-        let target = id.flatMap { playable.contains($0) ? $0 : nil }
-        guard target != playing else { return }
+        let url = id.flatMap(playbackURL)
+        guard url != playingURL else { return }
         looper?.disableLooping()
         looper = nil
         player.removeAllItems()
         playing = nil
-        guard let target, let video = scene(target)?.video else { return }
-        looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: video))
+        playingURL = nil
+        guard let id, let url else { return }
+        looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
         player.play()
-        playing = target
+        playing = id
+        playingURL = url
     }
 
     // MARK: Where the library is
