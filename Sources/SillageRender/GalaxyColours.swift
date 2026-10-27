@@ -120,6 +120,19 @@ public struct GalaxyColours: Codable, Sendable, Equatable {
         }
     }
 
+    /// The ramp of `colour` in `world`, the telescope regions taken from the set named `family`,
+    /// else from Hubble's visible one.
+    public static func ramped(
+        _ colour: SIMD3<Float>, world: Palette.World, family: String?,
+        references: [TelescopeReference]
+    ) -> GalaxyColours {
+        let regions =
+            world == .telescope
+            ? (references.first { $0.name == family }
+                ?? references.first { $0.name == "hubble-visible" })?.ramp : nil
+        return ramped(colour, world: world, family: family, regions: regions)
+    }
+
     /// Every colour turned by `transform`, the ramp's with the galaxy's own.
     public func map(_ transform: (SIMD3<Float>) -> SIMD3<Float>) -> GalaxyColours {
         var out = GalaxyColours(transform(colour), ramp: ramp)
@@ -200,18 +213,14 @@ public struct GalaxyColours: Codable, Sendable, Equatable {
 }
 
 extension Palette {
-    /// The palette as a look file holds it: each colour with the ramp of its world.
+    /// The palette as a look file holds it: each colour with the ramp of its world, or the
+    /// colour alone when the palette is not multicolour.
     public func galaxyColours(
         references: [TelescopeReference] = TelescopeReference.repository
     ) -> [GalaxyColours] {
-        let regions =
-            world == .telescope
-            ? (references.first { $0.name == family }
-                ?? references.first {
-                    $0.name == "hubble-visible"
-                })?.ramp : nil
+        guard multicolour else { return colours.map { GalaxyColours($0) } }
         return colours.map {
-            GalaxyColours.ramped($0, world: world, family: family, regions: regions)
+            GalaxyColours.ramped($0, world: world, family: family, references: references)
         }
     }
 }

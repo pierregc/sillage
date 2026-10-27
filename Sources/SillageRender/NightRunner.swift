@@ -609,6 +609,7 @@ public final class NightRunner: @unchecked Sendable {
             "style": recipe.style.style.value ?? "standard",
             "palette": recipe.style.palette.value ?? (recipe.style.world.value == nil ? "scene" : "auto"),
             "world": recipe.style.world.value ?? "auto",
+            "multicolour": String(recipe.style.multicolour.value ?? true),
         ]
         if let frames = recipe.hires.frames.value { values["hiresFrames"] = String(frames) }
         if let range = recipe.galaxyRange { values["galaxies"] = "\(range.lowerBound)-\(range.upperBound)" }

@@ -27,6 +27,8 @@ final class StyleSession: ObservableObject {
             propose()
         }
     }
+    /// Each galaxy in a ramp of colours, or in one (#120). The proposals and Auto follow it.
+    @Published private(set) var multicolour: Bool
     /// The favourites that fit the world and the galaxies, then the best of the round.
     var proposals: [PaletteAuto.Ranked] {
         favouriteProposals
@@ -80,6 +82,7 @@ final class StyleSession: ObservableObject {
         promoted = folder.map { FileManager.default.fileExists(atPath: $0.rawLook.path) } ?? false
         sceneFile = folder.flatMap { try? SceneFile.decoded(from: Data(contentsOf: $0.scene)) }
         world = saved?.world ?? .free
+        multicolour = saved.map { $0.palette.isEmpty || $0.hasRamps } ?? true
         thumbnails = StyleThumbnails(model: model, catalogue: catalogue, folder: folder)
         // The inspector watches this rather than the model, which publishes on every frame.
         watching = Publishers.MergeMany(
@@ -119,7 +122,11 @@ final class StyleSession: ObservableObject {
     func apply(_ rendering: LookFile, colours: Bool = false) {
         guard edit({ $0.withRendering(rendering, colours: colours) }) else { return }
         renderingBaseline = model.lookFile
-        if colours { world = rendering.world }
+        if colours {
+            if !rendering.palette.isEmpty { multicolour = rendering.hasRamps }
+            world = rendering.world
+            propose()
+        }
     }
 
     // MARK: Palette
@@ -130,13 +137,14 @@ final class StyleSession: ObservableObject {
     func propose(waiting: Bool = false) {
         proposing?.cancel()
         showFavourites()
-        let (galaxies, world, references) = (galaxyCount, world, references)
+        let (galaxies, world, references, multicolour) = (galaxyCount, world, references, multicolour)
         let base = sceneFile?.seed ?? model.scene.seed
         let seed = base &+ UInt64(round) &* 0x9E37_79B9_7F4A_7C15
         let draw: @Sendable () -> Result<[PaletteAuto.Ranked], any Error> = {
             Result {
                 try PaletteAuto.ranked(
-                    galaxies: galaxies, world: world, seed: seed, telescope: references)
+                    galaxies: galaxies, world: world, seed: seed, telescope: references,
+                    multicolour: multicolour)
             }
         }
         if waiting { return show(draw()) }
@@ -159,11 +167,12 @@ final class StyleSession: ObservableObject {
     }
 
     private func showFavourites() {
-        let references = references
+        let (references, multicolour) = (references, multicolour)
         favouriteProposals = FavouritePalettes.fitting(
             favourites, world: world, galaxies: galaxyCount
         ).map {
-            PaletteAuto.Ranked(palette: $0.palette, score: PaletteScore($0.palette, references: references))
+            let palette = $0.palette.withMulticolour(multicolour)
+            return PaletteAuto.Ranked(palette: palette, score: PaletteScore(palette, references: references))
         }
     }
 
@@ -218,6 +227,17 @@ final class StyleSession: ObservableObject {
         edit { $0.withPalette(palette, keeping: locked, in: scene, references: references) }
     }
 
+    /// Puts every galaxy that is not locked in a ramp of colours, or in its own colour alone,
+    /// and draws the proposals again in the same way.
+    func setMulticolour(_ on: Bool, waiting: Bool = false) {
+        guard on != multicolour else { return }
+        multicolour = on
+        let (locked, references) = (locked, references)
+        edit { $0.withRamps(on, keeping: locked, references: references) }
+        round = 0
+        propose(waiting: waiting)
+    }
+
     func toggleLock(_ galaxy: Int) {
         if locked.contains(galaxy) { locked.remove(galaxy) } else { locked.insert(galaxy) }
     }
@@ -261,12 +281,13 @@ final class StyleSession: ObservableObject {
         let (world, catalogue, references) = (world, catalogue, references)
         let favourites = FavouritePalettes.fitting(favourites, world: world, galaxies: galaxyCount)
             .map(\.palette)
+        let multicolour = multicolour
         Task { [weak self] in
             let outcome = await Task.detached(priority: .userInitiated) { () -> Result<Pick, any Error> in
                 Result {
                     let found = try StyleAuto.choose(
                         folder, world: world, catalogue: catalogue, references: references,
-                        favourites: favourites)
+                        favourites: favourites, multicolour: multicolour)
                     guard let best = found.ranked.first,
                         let rendering = catalogue.first(where: { $0.name == best.rendering })
                     else { throw AutoFailure.nothing }
@@ -347,6 +368,11 @@ final class StyleSession: ObservableObject {
         showSaved(false)
         if let saved, isOpen, model.lookFile != saved {
             model.adopt(saved, from: scene.folder?.look)
+            let ramps = saved.palette.isEmpty || saved.hasRamps
+            if ramps != multicolour {
+                multicolour = ramps
+                propose()
+            }
         }
     }
 

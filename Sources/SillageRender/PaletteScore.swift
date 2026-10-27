@@ -16,6 +16,11 @@ public struct PaletteScore: Sendable, Equatable {
     /// How close the colours are to the pictures of #125; only in the telescope world, and only
     /// once the reference files are given.
     public var reference: Float?
+    /// How well each galaxy's own colours hold together; only in the free world and only with
+    /// ramps. The telescope ones are the pictures' own, warm cores under cool tails.
+    public var inside: Float?
+    /// How far apart the galaxies' ramps stay; only with ramps.
+    public var between: Float?
     public var total: Float
 
     /// Distance at which two colours count as fully apart. The generator's own floor is
@@ -27,6 +32,8 @@ public struct PaletteScore: Sendable, Equatable {
     static let warmHue: Float = 50
     static let weights: (separation: Float, harmony: Float, range: Float, balance: Float, reference: Float) =
         (0.30, 0.20, 0.15, 0.10, 0.25)
+    /// The ramps' parts (#120), weighed against the 1.0 the others add up to.
+    static let rampWeights: (inside: Float, between: Float) = (0.10, 0.15)
 
     /// `references` are the sets of #125; a palette is compared with the set of its family when
     /// there is one, else with all of them.
@@ -40,6 +47,11 @@ public struct PaletteScore: Sendable, Equatable {
             let own = references.filter { $0.name == palette.family }
             reference = Self.reference(colours, own.isEmpty ? references : own)
         }
+        if palette.multicolour {
+            let measures = RampMeasures(palette.galaxyColours(references: references))
+            if palette.world == .free { inside = measures.inside }
+            between = measures.between
+        }
         let w = Self.weights
         var sum =
             w.separation * separation + w.harmony * harmony + w.range * range
@@ -48,6 +60,14 @@ public struct PaletteScore: Sendable, Equatable {
         if let reference {
             sum += w.reference * reference
             weight += w.reference
+        }
+        if let inside {
+            sum += Self.rampWeights.inside * inside
+            weight += Self.rampWeights.inside
+        }
+        if let between {
+            sum += Self.rampWeights.between * between
+            weight += Self.rampWeights.between
         }
         total = sum / weight
     }
@@ -156,7 +176,7 @@ public enum PaletteAuto {
     /// keeps the candidates to one family; candidates that find no room are dropped.
     public static func ranked(
         galaxies: Int, world: Palette.World, family: String? = nil, seed: UInt64,
-        telescope: [TelescopeReference] = [], favourites: [Palette] = []
+        telescope: [TelescopeReference] = [], favourites: [Palette] = [], multicolour: Bool = true
     ) throws -> [Ranked] {
         let families = telescope.map(\.family)
         var random = SeededGenerator(seed: seed ^ 0x5A17_7A6E_0000_0112)
@@ -164,7 +184,7 @@ public enum PaletteAuto {
         var found: [Ranked] = favourites.filter {
             $0.world == world && $0.colours.count >= galaxies && (family == nil || $0.family == family)
         }.map {
-            let palette = $0.truncated(to: galaxies)
+            let palette = $0.truncated(to: galaxies).withMulticolour(multicolour)
             return Ranked(palette: palette, score: PaletteScore(palette, references: telescope))
         }
         var failure: Error?
@@ -172,7 +192,7 @@ public enum PaletteAuto {
             do {
                 let palette = try PaletteGenerator.palette(
                     galaxies: galaxies, world: world, family: family, seed: random.next(),
-                    telescope: families)
+                    telescope: families, multicolour: multicolour, references: telescope)
                 found.append(
                     Ranked(palette: palette, score: PaletteScore(palette, references: telescope)))
             } catch let error as PaletteGenerator.Failure {
@@ -188,10 +208,11 @@ public enum PaletteAuto {
 
     public static func palette(
         galaxies: Int, world: Palette.World, family: String? = nil, seed: UInt64,
-        telescope: [TelescopeReference] = []
+        telescope: [TelescopeReference] = [], multicolour: Bool = true
     ) throws -> Palette {
         try ranked(
-            galaxies: galaxies, world: world, family: family, seed: seed, telescope: telescope
+            galaxies: galaxies, world: world, family: family, seed: seed, telescope: telescope,
+            multicolour: multicolour
         )[0].palette
     }
 }

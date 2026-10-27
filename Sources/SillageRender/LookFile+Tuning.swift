@@ -25,9 +25,9 @@ extension LookFile {
             return
         }
         let world: Palette.World = ramp.mapping == .mix ? .telescope : .free
-        let family = paletteRecipe?.family
-        let regions = TelescopeReference.repository.first { $0.name == family }?.ramp
-        palette[index] = .ramped(colour, world: world, family: family, regions: regions)
+        palette[index] = .ramped(
+            colour, world: world, family: paletteRecipe?.family,
+            references: TelescopeReference.repository)
     }
 
     /// `scene` drawn with this file's palette.

@@ -8,6 +8,8 @@ public struct NightStyle: Equatable, Sendable {
     public var rendering: String?
     /// `auto`, a family, a favourite's name or a `.palette.json` file.
     public var palette: String
+    /// False gives each galaxy one colour instead of a ramp.
+    public var multicolour = true
 
     /// The world Auto gives the pick at `index`, best first: the two worlds in turn, so each
     /// morning shows both.
@@ -78,15 +80,18 @@ public struct NightStyle: Equatable, Sendable {
         }
         return NightStyle(
             world: asked ?? rendering?.world ?? palette ?? alternate(index),
-            rendering: rendering?.name, palette: choice)
+            rendering: rendering?.name, palette: choice,
+            multicolour: style.multicolour.value ?? true)
     }
 
     /// The `look` command that carries it out.
     public func arguments(scene: String) -> [String] {
+        let single = multicolour ? [] : ["--single"]
         if let rendering {
             return ["look", scene, "--palette", palette, "--world", world.rawValue, "--base", rendering]
+                + single
         }
         return ["look", scene, "--style", "auto", "--world", world.rawValue]
-            + (palette == "auto" ? [] : ["--palette", palette])
+            + (palette == "auto" ? [] : ["--palette", palette]) + single
     }
 }

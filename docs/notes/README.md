@@ -29,6 +29,7 @@ session. Read the note for an area before changing it.
 - [One age per particle](one-age-per-particle.md)
 - [A galaxy that keeps its colour](galaxy-colour.md)
 - [Several colours per galaxy](galaxy-colours.md): the mapping per world, blend, birth radius
+- [Several colours per galaxy, in the generator and the editor](multicolour-palettes.md): the switch, the ramp limits, the scores
 - [What was actually cooking the disk](disk-heating.md)
 - [Why a disk keeps its arms](spiral-arms.md)
 - [Why a merged disk stays merged](merged-disk.md)

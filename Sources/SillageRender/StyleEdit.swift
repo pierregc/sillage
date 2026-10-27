@@ -57,6 +57,29 @@ extension LookFile {
         return file
     }
 
+    /// Every galaxy but the `locked` ones in a ramp of colours around its own colour, or in that
+    /// colour alone. The colours themselves stay, so a hand-picked one is kept; the recipe, if
+    /// any, records the switch.
+    public func withRamps(
+        _ on: Bool, keeping locked: Set<Int> = [],
+        references: [TelescopeReference] = TelescopeReference.repository
+    ) -> LookFile {
+        var file = self
+        file.palette = palette.enumerated().map { index, entry in
+            if locked.contains(index) { return entry }
+            return on
+                ? .ramped(
+                    entry.colour, world: world, family: paletteRecipe?.family,
+                    references: references)
+                : GalaxyColours(entry.colour)
+        }
+        file.paletteRecipe = paletteRecipe?.withMulticolour(on)
+        return file
+    }
+
+    /// Whether some galaxy is drawn in more than one colour.
+    public var hasRamps: Bool { palette.contains { $0.ramp != nil } }
+
     /// This file with `group` taken from `baseline`.
     public func resetting(_ group: Group, to baseline: LookFile) -> LookFile {
         var file = self

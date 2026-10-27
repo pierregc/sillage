@@ -112,6 +112,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         public var style: Setting<String> = .auto
         /// A palette family, a favourite's name or a `.palette.json` file.
         public var palette: Setting<String> = .auto
+        /// Several colours per galaxy (#120). Auto is on; `false` gives each galaxy one colour.
+        public var multicolour: Setting<Bool> = .auto
 
         public init() {}
 
@@ -120,6 +122,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             world = try c.decodeIfPresent(Setting<String>.self, forKey: .world) ?? .auto
             style = try c.decodeIfPresent(Setting<String>.self, forKey: .style) ?? .auto
             palette = try c.decodeIfPresent(Setting<String>.self, forKey: .palette) ?? .auto
+            multicolour =
+                try c.decodeIfPresent(Setting<Bool>.self, forKey: .multicolour) ?? .auto
         }
     }
 
@@ -219,7 +223,7 @@ extension NightRecipe {
         "": ["version", "deliver", "hours", "explore", "pick", "hires", "style", "export"],
         "explore": ["scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "galaxies", "seed"],
         "hires": ["particles", "frames"],
-        "style": ["world", "style", "palette"],
+        "style": ["world", "style", "palette", "multicolour"],
     ]
 
     /// Reads a recipe and checks it: a misspelt setting is an error rather than a silent Auto.

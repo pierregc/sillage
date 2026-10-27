@@ -284,6 +284,33 @@ enum LookCheck {
             check(
                 "la palette arrive à la scène",
                 model.scene.galaxies[1].color == proposal.colours[1], "")
+
+            // The look this check opens has plain colours, so the switch starts off.
+            check(
+                "multicolore éteint sur un look sans rampes : propositions et palette unies",
+                !session.multicolour && !model.lookFile.hasRamps
+                    && session.proposals.allSatisfy { !$0.palette.multicolour }, "")
+            session.setMulticolour(true, waiting: true)
+            check(
+                "allumé : une rampe par galaxie libre, la couleur choisie et le cadenas gardés",
+                session.multicolour && model.lookFile.palette[0] == kept
+                    && model.lookFile.palette[1].ramp != nil
+                    && model.lookFile.palette[1].colour == proposal.colours[1]
+                    && model.lookFile.paletteRecipe == proposal.withMulticolour(true), "")
+            check(
+                "allumé : les propositions ont des rampes et leurs notes",
+                session.proposals.count == StyleSession.proposalCount
+                    && session.proposals.allSatisfy { $0.palette.multicolour && $0.score.between != nil },
+                "")
+            session.setMulticolour(false, waiting: true)
+            check(
+                "éteint : une couleur par galaxie, les propositions sans notes de rampe",
+                !session.multicolour && !model.lookFile.hasRamps
+                    && model.lookFile.palette[1].colour == proposal.colours[1]
+                    && model.lookFile.paletteRecipe?.multicolour == false
+                    && session.proposals.allSatisfy { !$0.palette.multicolour && $0.score.between == nil },
+                "")
+            session.setMulticolour(true, waiting: true)
         }
 
         session.setCameraMode(.fixed)
@@ -322,6 +349,7 @@ enum LookCheck {
     ) {
         session.world = .telescope
         session.locked = [0]
+        session.setMulticolour(true, waiting: true)
         let kept = model.lookFile.colour(ofGalaxy: 0, in: model.scene)
         let camera = model.lookFile.camera
         let started = CACurrentMediaTime()
@@ -337,6 +365,10 @@ enum LookCheck {
             note.hasPrefix("Auto :") && session.rendering?.world == .telescope
                 && model.lookFile.paletteRecipe?.world == .telescope,
             String(format: "%.1f s · %@", seconds, note))
+        check(
+            "auto donne des rampes quand multicolore est allumé",
+            session.multicolour && model.lookFile.palette.dropFirst().allSatisfy { $0.ramp != nil }
+                && model.lookFile.paletteRecipe?.multicolour == true, "")
         check(
             "auto respecte le cadenas et le plan",
             model.lookFile.colour(ofGalaxy: 0, in: model.scene) == kept && model.lookFile.camera == camera,
