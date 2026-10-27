@@ -19,6 +19,8 @@ public struct SceneFolder: Sendable, Equatable {
         public var fps = 30
         public var steps = 900
         public var settle = 400
+        /// Where the story runs in the captured frames, once `explore` has followed it to its end.
+        public var story: Story.Span?
 
         public init() {}
 
@@ -135,7 +137,8 @@ public struct SceneFolder: Sendable, Equatable {
 
     /// The `sillage-render` command line `explore` runs. The first occurrence of a flag wins,
     /// so the outputs come first and the folder cannot be written around, then the options
-    /// given, then the files already here. A folder with no scene file yet starts a free draw,
+    /// given, then the files already here. The story is followed past the planned clip to its
+    /// end, up to `Story.capMyr`. A folder with no scene file yet starts a free draw,
     /// self-gravitating, at whatever `--batch-seed` and `--index` the options give.
     public func exploreArguments(_ options: [String], clip: Clip) -> [String] {
         var arguments = [
@@ -143,6 +146,7 @@ public struct SceneFolder: Sendable, Equatable {
             "--scene-out", scene.path, "--look-out", look.path,
         ]
         arguments += options + clip.arguments
+        if !options.contains("--story-cap") { arguments += ["--story-cap", String(Story.capMyr)] }
         arguments +=
             exists(scene)
             ? ["--scene", scene.path] : ["--preset", "free", "--solver", "barnes-hut"]
@@ -152,18 +156,24 @@ public struct SceneFolder: Sendable, Equatable {
 }
 
 extension SceneFolder.Clip {
-    /// The preview's stretch of simulated time at a step no longer than `maximumStep`. A whole
-    /// number of steps per frame keeps every frame at the time the preview showed it; only the
-    /// settle is rounded, to the nearest step.
+    /// The preview's story, or its whole clip before one was recorded, at a step no longer than
+    /// `maximumStep`. A whole number of steps per frame keeps every frame at the time the preview
+    /// showed it; only the settle is rounded, to the nearest step. `frames` takes that many from
+    /// the start of the story.
     public func spanning(previewStep: Double, maximumStep: Double, frames: Int? = nil)
         -> (settle: Int, steps: Int, timeStep: Double)
     {
         let interval = Double(max(steps / max(self.frames, 1), 1)) * previewStep
         let perFrame = max(Int((interval / maximumStep * (1 - 1e-9)).rounded(.up)), 1)
         let timeStep = interval / Double(perFrame)
-        let settle = Int((Double(self.settle) * previewStep / timeStep).rounded())
-        return (settle, perFrame * (frames ?? self.frames), timeStep)
+        let settle =
+            Int((Double(self.settle) * previewStep / timeStep).rounded())
+            + (story?.startFrame ?? 0) * perFrame
+        return (settle, perFrame * (frames ?? storyFrames), timeStep)
     }
+
+    /// How many captured frames the story holds.
+    public var storyFrames: Int { story?.frames ?? frames }
 }
 
 extension SceneFolder {
@@ -251,9 +261,10 @@ extension SceneFolder {
 
     /// The `sillage-render` command line `hires` runs, and what it will record. The scene and
     /// the look are the preview's, the particle count is the one asked for, and the steps are
-    /// worked out again so the clip spans the same megayears. `--frames` takes the first frames
-    /// of the clip at the same cadence, for a shorter run. Nothing the preview wrote is touched.
-    /// The take, the video and the curves go to their partial paths, for `commitHires`.
+    /// worked out again so the run spans the same megayears as the preview's story. `--frames`
+    /// takes the first frames of it at the same cadence, for a shorter run. Nothing the preview
+    /// wrote is touched. The take, the video and the curves go to their partial paths, for
+    /// `commitHires`.
     public func hiresArguments(_ options: [String], maximumParticles: Int) throws -> (
         arguments: [String], record: Hires
     ) {
@@ -264,6 +275,7 @@ extension SceneFolder {
         let preview = try storedClip()
         var (asked, rest) = preview.updated(with: options)
         if !options.contains("--particles") { asked.particles = maximumParticles }
+        if !options.contains("--frames") { asked.frames = preview.storyFrames }
         guard asked.particles <= maximumParticles else {
             throw HiresError.aboveMaximum(asked.particles, maximumParticles)
         }

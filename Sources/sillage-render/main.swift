@@ -574,6 +574,59 @@ func eventCommand(_ arguments: [String]) -> Int32 {
     }
 }
 
+/// `story <scene folder | batch folder>`: the story judged again on curves already written,
+/// one line a scene: the first collision, and where the story starts and ends or what still goes
+/// on when the curves stop.
+func storyCommand(_ arguments: [String]) -> Int32 {
+    guard let path = arguments.first, !path.hasPrefix("--") else {
+        fail("usage: sillage-render story <scene folder | batch folder>")
+    }
+    let root = SceneFolder(path: path)
+    let manager = FileManager.default
+    let folders =
+        manager.fileExists(atPath: root.curves.path)
+        ? [root]
+        : ((try? manager.contentsOfDirectory(atPath: root.url.path)) ?? []).sorted()
+            .filter { !$0.hasPrefix(".") }
+            .map { SceneFolder(root.url.appendingPathComponent($0, isDirectory: true)) }
+            .filter {
+                manager.fileExists(atPath: $0.curves.path) && manager.fileExists(atPath: $0.scene.path)
+            }
+    var over = 0
+    for folder in folders {
+        guard let text = try? String(contentsOf: folder.curves, encoding: .utf8),
+            let data = try? Data(contentsOf: folder.scene), let file = try? SceneFile.decoded(from: data),
+            let clip = try? folder.storedClip()
+        else {
+            print("\(folder.url.lastPathComponent)  unreadable")
+            continue
+        }
+        let samples = Story.samples(csv: text)
+        let story = Story(scene: file.scene(particleCount: clip.particles))
+        var tracker = Story.Tracker(story: story)
+        for sample in samples { tracker.append(sample) }
+        guard let first = samples.first, let last = samples.last,
+            let span = tracker.span(plannedFrames: clip.frames)
+        else { continue }
+        if span.complete { over += 1 }
+        let collision =
+            story.firstApproach(samples).map {
+                String(
+                    format: "collision %.0f Myr (%.1f kpc, %.0f after the start)", $0.timeMyr,
+                    $0.distanceKpc, $0.timeMyr - first.timeMyr)
+            } ?? "no collision"
+        print(
+            String(
+                format: "%@  %d galaxies  curves %.0f-%.0f Myr  %@  story %.0f-%.0f Myr  %@",
+                folder.url.lastPathComponent, file.galaxies.count, first.timeMyr, last.timeMyr,
+                collision, span.startMyr, span.endMyr,
+                span.complete
+                    ? "over" : "going on: " + tracker.activity.map(\.description).joined(separator: "; ")))
+    }
+    print("story      \(over) of \(folders.count) over")
+    return 0
+}
+
 extension Array {
     var nonEmpty: Self? { isEmpty ? nil : self }
 }
@@ -645,6 +698,9 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "queue" {
         QueueCommand.main(
             Array(CommandLine.arguments.dropFirst(2)), executable: Spawn.currentExecutable))
 }
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "story" {
+    exit(storyCommand(Array(CommandLine.arguments.dropFirst(2))))
+}
 var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
 var exploreRun: SceneFolder?
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "costs" {
@@ -712,10 +768,13 @@ if CommandLine.arguments.count > 1,
             fail("hires: \(error)")
         }
     default:
-        let (clip, rest) = try folder.storedClip().updated(with: options)
+        var (clip, rest) = try folder.storedClip().updated(with: options)
+        // Written again once the run has followed the story to its end.
+        clip.story = nil
         try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
         try clip.encoded().write(to: folder.clip)
         arguments = folder.exploreArguments(rest, clip: clip)
+        exploreRun = folder
         let run = StageReporter(stage: stage.rawValue, folder: folder)
         reporter = run
         run.start(detail: "starting")
@@ -902,7 +961,7 @@ if !scene.encounters.isEmpty,
     if let generatedHaste {
         scene.retimeEncounters(
             from: SceneConfig.contemplationWindow(haste: generatedHaste),
-            to: scene.clipWindow(
+            to: scene.encounterWindow(
                 settleSteps: Int(number("settle", 0)), steps: Int(number("steps", 3_000))))
     }
     scene.placeEncountersGivingWay()
@@ -1055,18 +1114,28 @@ let take: Recording? = argument("take").map { _ in
 
 /// Per frame scalars, written for whoever scores the result later: a curve to drive a filter
 /// with is worth more than a picture of one.
+let curvesHeader =
+    "frame,time_myr,separation_kpc,extent_kpc,formed,closest_kpc,tidal_fraction"
+    + scene.galaxies.indices.map { ",disruption_\($0)" }.joined()
+    + scene.galaxies.indices.map { ",x_\($0),y_\($0),z_\($0)" }.joined() + "\n"
 let curves: FileHandle? = try argument("curves").map { path in
     let url = try prepared(path)
     FileManager.default.createFile(atPath: url.path, contents: nil)
     let handle = try FileHandle(forWritingTo: url)
-    let disks = scene.galaxies.indices.map { ",disruption_\($0)" }.joined()
-    let centres = scene.galaxies.indices.map { ",x_\($0),y_\($0),z_\($0)" }.joined()
-    try handle.write(
-        contentsOf: Data(
-            ("frame,time_myr,separation_kpc,extent_kpc,formed,closest_kpc,tidal_fraction"
-                + disks + centres + "\n").utf8))
+    try handle.write(contentsOf: Data(curvesHeader.utf8))
     return handle
 }
+// `--story-cap <Myr>` keeps capturing past the planned frames while the story goes on, up to
+// that much simulated time; `explore` asks for it. It reads the curves as written, so judging
+// the file again afterwards gives the same answer.
+let storyCap = argument("story-cap").flatMap(Double.init) ?? 0
+// Frames kept after the story ends, to see that nothing happens next. For measuring only.
+let storyAfter = number("story-after", 0)
+var storySettings = Story.Settings()
+storySettings.horizon = storyCap
+var story =
+    storyCap > 0 && curves != nil
+    ? Story.Tracker(story: Story(scene: scene, settings: storySettings)) : nil
 var previousTime = solver.time
 var curvesSeconds: Double = 0
 // `--density path` counts the stars on a fixed grid at `--density-frames` instants, the same
@@ -1113,8 +1182,17 @@ if settle > 0 {
     previousTime = solver.time
 }
 
+/// Past the planned frames, whether the story still wants more.
+func storyGoesOn() -> Bool {
+    guard let story, let last = story.samples.last, last.timeMyr < storyCap else { return false }
+    guard let quiet = story.quietFrom else { return true }
+    return last.timeMyr < story.samples[quiet].timeMyr + storyAfter
+}
+
 let framesStart = Date()
-for frame in 0..<frames {
+var frame = 0
+while frame < frames || storyGoesOn() {
+    defer { frame += 1 }
     let simulationStart = Date()
     solver.step(count: stepsPerFrame)
     let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
@@ -1276,16 +1354,26 @@ for frame in 0..<frames {
                 format: "%d,%.3f,%.4f,%.4f,%d,%.4f,%.4f", frame, myr, separation, extent, formed,
                 closest, tidalFraction) + disks + track + "\n"
         try curves.write(contentsOf: Data(line.utf8))
+        if let sample = Story.samples(csv: curvesHeader + line).first { story?.append(sample) }
         curvesSeconds += Date().timeIntervalSince(curvesStart)
     }
     previousTime = solver.time
 
-    let framesDone = Double(frame + 1) / Double(max(frames, 1))
-    reporter?.update(
-        progress: Double(settle + (frame + 1) * stepsPerFrame) / Double(max(totalSteps, 1)),
-        detail: "frame \(frame + 1)/\(frames)",
-        eta: RunStatus.eta(
-            elapsed: Date().timeIntervalSince(framesStart), progress: framesDone, now: Date()))
+    if frame < frames {
+        let framesDone = Double(frame + 1) / Double(max(frames, 1))
+        reporter?.update(
+            progress: Double(settle + (frame + 1) * stepsPerFrame) / Double(max(totalSteps, 1)),
+            detail: "frame \(frame + 1)/\(frames)",
+            eta: RunStatus.eta(
+                elapsed: Date().timeIntervalSince(framesStart), progress: framesDone, now: Date()))
+    } else {
+        // How long a story still has is not known until it ends.
+        reporter?.update(
+            progress: 0.99,
+            detail: String(
+                format: "frame %d, story going on at %.0f Myr", frame + 1,
+                Double(solver.time) * Physics.megayearsPerTimeUnit))
+    }
 
     print(
         String(
@@ -1300,6 +1388,24 @@ for frame in 0..<frames {
 reporter?.update(progress: 1, detail: "finishing", eta: Date())
 try videoWriter?.finish()
 try curves?.close()
+if let story, let span = story.span(plannedFrames: frames) {
+    print(
+        String(
+            format: "story      %.0f to %.0f Myr (frames %d to %d of %d), %@", span.startMyr,
+            span.endMyr, span.startFrame, span.endFrame, frame,
+            span.complete
+                ? "over"
+                : "still going at the cap: "
+                    + story.activity.map(\.description).joined(separator: "; ")))
+    // The clip as it ran, so a rerun and every later stage see the same stretch of time.
+    if let folder = exploreRun {
+        var clip = try folder.storedClip()
+        clip.frames = frame
+        clip.steps = frame * stepsPerFrame
+        clip.story = span
+        try clip.encoded().write(to: folder.clip)
+    }
+}
 if let density, let densityURL {
     try density.npy().write(to: densityURL)
     print("density    \(density.instants.count) maps, \(densityURL.path)")
