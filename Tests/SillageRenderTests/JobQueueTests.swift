@@ -132,4 +132,21 @@ struct JobQueueTests {
         #expect(text.contains("\"state\" : \"running\"") && text.contains("\"paused\" : true"))
         #expect(try JobQueue.decoded(from: queue.encoded()) == queue)
     }
+
+    @Test func aRunningNightCanStopAfterItsStepOrSkipItsScene() throws {
+        var queue = queue(1)
+        let night = queue.add(.night, path: "/library/2026-10-28", options: ["/r.json"], at: noon)
+        #expect(throws: JobQueue.Failure.notARunningNight(night.id)) { try queue.skip(night.id, at: noon) }
+        #expect(throws: JobQueue.Failure.notARunningNight(1)) { try queue.stopAfterStep(1, at: noon) }
+        queue.end(1, status: 0, at: noon)
+        try queue.start(night.id, pid: 500, pidStarted: noon, log: nil, at: noon)
+        try queue.skip(night.id, at: noon)
+        try queue.skip(night.id, at: noon)
+        try queue.stopAfterStep(night.id, at: noon)
+        #expect(queue.job(night.id)?.skips == 2 && queue.job(night.id)?.stopAfterStep == true)
+        // Exit status 3: stopped after a step, as asked.
+        queue.end(night.id, status: 3, at: noon)
+        #expect(queue.job(night.id)?.state == .cancelled)
+        #expect(queue.job(night.id)?.message == "stopped after a step")
+    }
 }

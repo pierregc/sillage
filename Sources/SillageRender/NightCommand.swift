@@ -125,23 +125,31 @@ public enum NightCommand {
         func thousands(_ value: Int) -> String {
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
+            formatter.usesGroupingSeparator = true
             formatter.groupingSeparator = " "
-            formatter.locale = Locale(identifier: "en_US_POSIX")
             return formatter.string(from: NSNumber(value: value)) ?? String(value)
         }
         var lines = [
             "plan       deliver by \(time(plan.deliverBy)), \(duration(plan.deliverBy.timeIntervalSince(plan.start))) from now"
         ]
         for step in plan.steps {
-            let state = step.done ? "done" : step.fits ? "\(duration(step.seconds)) · \(time(step.start)) to \(time(step.end))" : "left out"
+            let state =
+                step.done
+                ? "done"
+                : step.fits
+                    ? "\(duration(step.seconds)) · \(time(step.start)) to \(time(step.end))" : "left out"
             let line: String
             switch step.phase {
             case .explore:
-                line = "explore    \(step.count ?? 0) scenes at \(thousands(step.particles ?? 0)) a galaxy · \(state)"
+                line =
+                    "explore    \(step.count ?? 0) scenes at \(thousands(step.particles ?? 0)) a galaxy · \(state)"
             case .pick:
-                line = "pick       \(step.count ?? 0) scenes" + (step.done ? " · done" : " · at \(time(step.start))")
+                line =
+                    "pick       \(step.count ?? 0) scenes"
+                    + (step.done ? " · done" : " · at \(time(step.start))")
             case .hires:
-                line = "hires      \(step.scene ?? "") · \(thousands(step.particles ?? 0)) particles · \(state)"
+                line =
+                    "hires      \(step.scene ?? "") · \(thousands(step.particles ?? 0)) particles · \(state)"
             case .style:
                 line = "style      \(step.scene ?? "") · \(state)"
             case .export:
@@ -152,7 +160,8 @@ public enum NightCommand {
         let early = plan.deliverBy.timeIntervalSince(plan.end)
         lines.append(
             "end        \(time(plan.end)), "
-                + (early >= 0 ? "\(duration(early)) before the delivery" : "\(duration(-early)) after the delivery"))
+                + (early >= 0
+                    ? "\(duration(early)) before the delivery" : "\(duration(-early)) after the delivery"))
         lines.append(
             String(format: "disk       %.1f GB needed", plan.diskBytes / 1e9)
                 + (plan.freeBytes.map { String(format: ", %.1f GB free", $0 / 1e9) } ?? ""))

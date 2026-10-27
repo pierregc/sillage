@@ -36,7 +36,8 @@ public enum NightReport {
             "- Choisies : "
                 + (picks.isEmpty
                     ? "aucune"
-                    : picks.map { String(format: "%@ (%.2f)", $0.scene ?? "", $0.score ?? 0) }.joined(separator: ", ")),
+                    : picks.map { String(format: "%@ (%.2f)", $0.scene ?? "", $0.score ?? 0) }.joined(
+                        separator: ", ")),
             "- Haute résolution : \(hires.count) faites",
             "- Vidéos : \(videos.count)",
             "- Laissées de côté : \(skipped.count) · erreurs : \(errors.count)",
@@ -44,7 +45,9 @@ public enum NightReport {
         if !hires.isEmpty {
             lines += ["", "## Haute résolution", ""]
             lines += hires.map {
-                String(format: "- %@ : %d particules en %.0f min", $0.scene ?? "", $0.particles ?? 0, $0.minutes ?? 0)
+                String(
+                    format: "- %@ : %d particules en %.0f min", $0.scene ?? "", $0.particles ?? 0,
+                    $0.minutes ?? 0)
             }
         }
         if !videos.isEmpty {

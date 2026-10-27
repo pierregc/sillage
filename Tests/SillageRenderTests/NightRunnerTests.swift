@@ -104,7 +104,11 @@ struct NightRunnerTests {
             executable: stage, exploreScript: explore, catalogue: [], poll: 0.05,
             handlesSignals: false,
             draws: { perGalaxy in
-                [NightScene(name: nil, score: nil, exploreUnits: Double(perGalaxy) * 1_000, hiresUnits: 1e6, frames: 30)]
+                [
+                    NightScene(
+                        name: nil, score: nil, exploreUnits: Double(perGalaxy) * 1_000, hiresUnits: 1e6,
+                        frames: 30)
+                ]
             }, say: { _ in })
     }
 
@@ -113,7 +117,8 @@ struct NightRunnerTests {
     }
 
     private var events: [RunEvent] {
-        RunEvent.decodeLines((try? String(contentsOf: RunStatusFiles.events(batch: batch), encoding: .utf8)) ?? "")
+        RunEvent.decodeLines(
+            (try? String(contentsOf: RunStatusFiles.events(batch: batch), encoding: .utf8)) ?? "")
     }
 
     /// The night's own job in its library's queue, running in this process.
@@ -132,13 +137,17 @@ struct NightRunnerTests {
         #expect(runner(recipe()).run() == 0)
         let calls = logged()
         #expect(calls.filter { $0.hasPrefix("explore ") }.count == 1)
-        #expect(calls.filter { $0.hasPrefix("hires ") }.map { URL(fileURLWithPath: $0.split(separator: " ")[1].description).lastPathComponent } == ["scene-0002", "scene-0003"])
+        #expect(
+            calls.filter { $0.hasPrefix("hires ") }.map {
+                URL(fileURLWithPath: $0.split(separator: " ")[1].description).lastPathComponent
+            } == ["scene-0002", "scene-0003"])
         #expect(calls.filter { $0.hasPrefix("export ") }.count == 2)
         #expect(calls.contains { $0.contains("--particles 100000 --frames 30") })
 
         let ratings = SceneRatings.read(batch: batch)
         #expect(ratings.chosen == ["scene-0002", "scene-0003"])
-        #expect(ratings.scenes["scene-0002"]?.picked?.score == 0.9 && ratings.scenes["scene-0002"]?.choice == nil)
+        #expect(
+            ratings.scenes["scene-0002"]?.picked?.score == 0.9 && ratings.scenes["scene-0002"]?.choice == nil)
         for name in ["scene-0002", "scene-0003"] {
             let scene = SceneFolder(batch.appendingPathComponent(name))
             #expect(FileManager.default.fileExists(atPath: scene.rawLook.path))
@@ -150,17 +159,21 @@ struct NightRunnerTests {
         let night = try #require(NightFile.read(from: RunStatusFiles.night(batch: batch)))
         #expect(night.state == .done && night.endedAt != nil && night.deliverBy != nil)
         #expect(night.phases.map(\.name) == ["explore", "pick", "hires", "style", "export"])
-        #expect(night.phases.map(\.done) == [3, 2, 2, 2, 2] && night.phases.map(\.planned) == [3, 2, 2, 2, 2])
+        #expect(
+            night.phases.map(\.done) == [3, 2, 2, 2, 2] && night.phases.map(\.planned) == [3, 2, 2, 2, 2])
         #expect(night.recipe["hiresParticles"] == "100000" && night.recipe["scenes"] == "3")
         let kinds = events.map(\.kind)
         #expect(kinds.first == RunEvent.Kind.nightStart && kinds.last == RunEvent.Kind.nightDone)
         #expect(kinds.filter { $0 == RunEvent.Kind.pick }.count == 2)
         #expect(kinds.filter { $0 == RunEvent.Kind.style }.count == 2)
-        #expect(events.filter { $0.kind == RunEvent.Kind.phaseDone }.compactMap(\.phase) == ["explore", "pick"])
+        #expect(
+            events.filter { $0.kind == RunEvent.Kind.phaseDone }.compactMap(\.phase) == ["explore", "pick"])
         let report = try String(contentsOf: batch.appendingPathComponent("report.md"), encoding: .utf8)
         #expect(report.contains("scene-0002 (0.90)") && report.contains("terminée"))
         #expect(FileManager.default.fileExists(atPath: batch.appendingPathComponent("recipe.json").path))
-        #expect(ActivityFile.read(from: RunStatusFiles.activity(library: batch.deletingLastPathComponent()))?.night == nil)
+        #expect(
+            ActivityFile.read(from: RunStatusFiles.activity(library: batch.deletingLastPathComponent()))?
+                .night == nil)
 
         // The same night again: everything is there, nothing runs.
         #expect(runner(recipe()).run() == 0)

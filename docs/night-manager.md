@@ -8,7 +8,8 @@ high resolution into finished videos. Each stage reads and writes the scene's ow
 explore-batch → library (rate) → hires → look → export
 ```
 
-Run everything through `./scripts/dev.sh` (not SwiftPM). macOS 14+, Apple Silicon.
+Run everything through `./scripts/dev.sh` (not SwiftPM). macOS 14+, Apple Silicon. A
+[night](#night) runs all of it from one recipe, unattended.
 
 ## Run it
 
@@ -18,6 +19,7 @@ Run everything through `./scripts/dev.sh` (not SwiftPM). macOS 14+, Apple Silico
 scripts/explore-batch.sh --scenes 50 --hours 8        # particle count chosen to fit the time
 scripts/explore-batch.sh --scenes 20 --per-galaxy 50000   # quick
 scripts/explore-batch.sh --out library/2026-10-24     # resume a stopped batch
+scripts/explore-batch.sh --scenes 20 --galaxies 2-3 --only-archetypes antennae,mice  # skip other draws
 ```
 
 **2. Rate** – open the app (`./scripts/dev.sh app && open .build/dev/Sillage.app`), press
@@ -54,6 +56,77 @@ Presets: `1080p` (default), `4k`, `vertical`, `square`, `whatsapp`.
 `--codec hevc|h264|prores` (default `hevc`). `--start` / `--duration` cut the clip,
 `--look` picks a look. WebP needs `brew install webp`.
 
+## Night
+
+A whole night in one command: explore, pick the best scenes by score, run each at high
+resolution, give it a style and export it, done by a delivery time.
+
+```bash
+R=".build/dev/sillage-render"   # with DYLD_LIBRARY_PATH=.build/dev, as dev.sh does
+$R night tonight.night.json --plan          # what it would compute, how long, done when
+$R night tonight.night.json                 # queued, into library/<today>
+$R night tonight.night.json --out library/2026-10-28   # the same folder again resumes it
+```
+
+The recipe is JSON. Every setting is `"auto"` or a value, and one left out is Auto; a misspelt
+name is an error.
+
+```json
+{
+  "version": 1,
+  "deliver": "07:00",
+  "explore": { "scenes": "auto", "particlesPerGalaxy": "auto", "archetypeShare": "auto",
+               "archetypes": "auto", "galaxies": "auto", "seed": "auto" },
+  "pick": "auto",
+  "hires": { "particles": "auto", "frames": "auto" },
+  "style": { "world": "auto", "style": "auto", "palette": "auto" },
+  "export": "auto"
+}
+```
+
+| setting | value | Auto |
+|---|---|---|
+| `deliver` | `"HH:mm"` (its next occurrence) or an ISO 8601 date | `07:00` |
+| `hours` | instead of `deliver`: hours from the start | |
+| `explore.scenes` | scenes to explore | 50, fewer when even 50 000 a galaxy does not fit |
+| `explore.particlesPerGalaxy` | particles a galaxy in the previews | largest of 50 000 to 200 000 that fits |
+| `explore.archetypeShare` | share of archetype scenes, 0 to 1 | 0.25 |
+| `explore.archetypes` | archetypes allowed, `["antennae", "mice"]`; a place drawn for another is skipped | all |
+| `explore.galaxies` | `[least, most]` galaxies a scene has; others are skipped | any |
+| `explore.seed` | the batch seed | the day, `20261028` |
+| `pick` | `2` to `4`, or `"none"` to stop after exploring | 2 to 4 by score, as many as fit |
+| `hires.particles` | particles in all | 2 000 000 (or the machine's maximum) |
+| `hires.frames` | the first frames of the story only | the whole story |
+| `style.style` | a look of the catalogue, such as `hubble` or `aurora` | the standard rendering |
+| `style.world`, `style.palette` | `telescope` or `free`; a family or a `.palette.json` (`look --palette`) | the scene's own palette |
+| `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
+
+How it plans. `NightPlanner` turns the recipe and the cost model into steps, each with its
+duration, start and end, and the delivery of the whole night. Before exploring, it sizes the
+first 16 draws of the batch from the generator alone (`ExploreProbe`, the same particles and
+steps `explore-batch.sh` gives them, a quarter more for the story); after, it uses each scene's
+own story. Auto keeps time for four picks, then three, then two, and explores fifty scenes at
+the largest count a galaxy that fits in what is left, less a margin (5 %, 5 to 20 minutes).
+The pick takes scenes marked yes by hand first, then the best scores, never one marked no;
+score picks go to `ratings.json` as `picked`.
+
+How it runs. Explore (through `explore-batch.sh`, stopped at its share of the night), pick, then
+for each pick, best first: hires, style, exports. Before each step it plans again from the
+files. A hires starts only if its scene, style and exports included, ends before the delivery
+time; a style or an export may end up to 15 minutes past it; a step still running then is
+stopped. A step that fails or is left out leaves the scene out for the night, and the night goes
+on with the next one. The same command on the same folder resumes: explored scenes, done hires,
+promoted looks and existing exports are skipped; what was left out is tried again.
+
+Steering it, through the queue: `queue pause` and `resume` suspend the night and its step;
+`queue stop` ends it after the current step; `queue stop --now` (or `cancel`) at once;
+`queue skip` leaves out the scene it works on. Each takes the job's id, or acts on the night
+running.
+
+The night writes `recipe.json` (as given), `night.json`, `events.jsonl` and `report.md` in its
+folder, and the logs of its steps in `.logs/` (`night-explore.log`, `<scene>.hires.log`, ...).
+Exit status: 0 done, 3 stopped on request, 1 failed.
+
 ## Queue
 
 Heavy work can go through one queue per library instead, one job at a time, in a runner of its
@@ -65,8 +138,10 @@ $R queue add hires library/2026-10-24/scene-0001 --particles 2000000
 $R queue add hires library/2026-10-24                 # every chosen scene not done at that size
 $R queue add export library/2026-10-24/scene-0001 --preset 4k
 $R queue add explore --scenes 50 --hours 8            # explore-batch.sh options
+$R queue add night tonight.night.json                 # as night <recipe>
 $R queue list                                         # --json for the file itself
 $R queue first 7 | cancel 7 | pause | resume
+$R queue stop [7] [--now] | skip [7]                  # a night: after its step, or its scene
 ```
 
 `add` starts a runner (`queue run`, log in `library/.queue/runner.log`) unless one is at work;
@@ -124,22 +199,26 @@ local offset, read alike by the app, a status command or a language model from a
 `state: running` with an `updated` older than 15 minutes is a stuck run. Scenes explored side by
 side share it: it shows whichever wrote last.
 
-**`<batch>/night.json`**: `version`, `id`, `recipe` (the settings), `phases` (each `name`,
-`planned`, `done`, `failed`), `state` (`running`, `paused`, `done`, `failed`, `stopped`),
-`startedAt`, `estimatedEnd`, `endedAt`.
+**`<batch>/night.json`**: `version`, `id`, `recipe` (the settings resolved), `phases` (`explore`,
+`pick`, `hires`, `style`, `export`, each `name`, `planned`, `done`, `failed`, `skipped`,
+`estimatedStart`, `estimatedEnd`), `state` (`running`, `paused`, `done`, `failed`, `stopped`),
+`startedAt`, `deliverBy`, `estimatedEnd`, `endedAt`. The queue marks a night `paused` while it
+is, and `stopped` or `failed` when it ended without saying so itself.
 
 **`<batch>/events.jsonl`**, one JSON object a line, appended: `t`, `kind`, `scene` when it
 applies, and these by kind.
 
 | kind | fields |
 |---|---|
-| `night.start`, `night.done` | `night`, `seconds` |
+| `night.start`, `night.done` | `night`, `seconds`; `status` (done, stopped, failed) at the end |
 | `explore.scene` | `status` (ok, rejected, failed), `score`, `seconds` |
-| `pick` | `chosen`, `rating` |
+| `pick` | `chosen`, `rating`; `score` for a pick by the night |
 | `hires.start` | `particles`, `steps` |
 | `hires.done` | `particles`, `steps`, `minutes`, `takeGB` |
 | `export.done` | `preset`, `style`, `codec`, `frames`, `megabytes`, `seconds`, `path` |
 | `error` | `stage`, `message`, `log` |
+| `style` | `style`, `path` (the promoted `look.json`) |
+| `skip` | `stage`, `message` (skipped by hand, or for want of time) |
 | `phase.done` | `phase`, `count` |
 
 Scripts add an event with `sillage-render event <batch> <kind> --scene scene-0007 --status ok`

@@ -20,7 +20,8 @@ public struct NightFolder: Sendable {
 
     /// `batch.conf`, which `explore-batch.sh` writes on its first run and keeps to.
     public var batchConf: [String: String] {
-        let text = (try? String(contentsOf: batch.appendingPathComponent("batch.conf"), encoding: .utf8)) ?? ""
+        let text =
+            (try? String(contentsOf: batch.appendingPathComponent("batch.conf"), encoding: .utf8)) ?? ""
         var values: [String: String] = [:]
         for line in text.split(whereSeparator: \.isNewline) {
             guard let equals = line.firstIndex(of: "=") else { continue }
@@ -378,7 +379,8 @@ public final class NightRunner: @unchecked Sendable {
     /// The best scenes by score, as many as the recipe or the time allows, written as picks:
     /// a scene marked yes by hand stays a choice and is not written over.
     private func pick() {
-        let plan = folder.planner(now: Date(), probe: probe, draws: draws).plan(now: Date(), deliverBy: deliverBy)
+        let plan = folder.planner(now: Date(), probe: probe, draws: draws).plan(
+            now: Date(), deliverBy: deliverBy)
         let names = plan.steps.filter { $0.phase == .hires }.compactMap(\.scene)
         let progress = folder.progress()
         let ratings = SceneRatings.read(batch: batch)
@@ -421,7 +423,9 @@ public final class NightRunner: @unchecked Sendable {
             var arguments = ["look", scene.url.path, "--palette", palette ?? "auto"]
             if let world { arguments += ["--world", world] }
             if let style = recipe.style.style.value { arguments += ["--base", style] }
-            say("night      style \(name): palette \(palette ?? "auto")\(world.map { " in the \($0) world" } ?? "")")
+            say(
+                "night      style \(name): palette \(palette ?? "auto")\(world.map { " in the \($0) world" } ?? "")"
+            )
             let outcome = runChild(
                 executable.path, arguments, log: logs.appendingPathComponent("\(name).style.log")
             ) {}
@@ -506,7 +510,9 @@ public final class NightRunner: @unchecked Sendable {
                 ending = .late
             }
             if let ending {
-                say("night      stopping \(URL(fileURLWithPath: arguments.first ?? executable).lastPathComponent)")
+                say(
+                    "night      stopping \(URL(fileURLWithPath: arguments.first ?? executable).lastPathComponent)"
+                )
                 end(pid)
                 clearJob()
                 return ending
@@ -709,6 +715,7 @@ public final class NightRunner: @unchecked Sendable {
 
     static func clock(_ date: Date) -> String {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = Calendar.current.isDateInToday(date) ? "HH:mm" : "EEE HH:mm"
         return formatter.string(from: date)
     }
