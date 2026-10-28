@@ -79,10 +79,11 @@ From 0.6 to 0.9 a step is 2.48x and 2.60x faster at 400k on two scenes, 2.54x at
 3 h instead of 8, and a night of explore about 2.5 times the scenes. The error at 0.9 is the
 app's, 0.3 to 0.5 % in [the quadrupole note](quadrupoles.md).
 
-Not switched here: it moves every scene within the force error, and the explore-to-hires
-fidelity of #21 was measured at 0.6. Before switching, run `scripts/fidelity.py` at 0.9 (or 0.8)
-against 0.6 on a few scenes, and keep explore and hires of one scene at the same angle; the scene
-files already written say 0.6 and will keep saying it.
+Switched to 0.9 the same day, after the #21 fidelity check: two scenes of the 2026-10-24
+fidelity batch replayed at 200k a galaxy and 0.9, against their 1M-a-galaxy reference at 0.6,
+land as close as the replays at 0.6 did. Centres rms 0.69 against 0.68 kpc and 1.70 against
+1.76, pericentre within 0.8 Myr and 0.6 kpc, same tails and density maps, in 96 and 98 s against
+265 and 255. The local library's scene files were moved to 0.9 with it.
 
 ## What is left in the force pass
 

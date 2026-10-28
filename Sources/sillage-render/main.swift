@@ -1225,7 +1225,7 @@ if let scenePath {
     }
     file = SceneFile(preset)
     palette = preset.galaxies.map(\.color)
-    file.openingAngle = 0.6
+    file.openingAngle = 0.9
 }
 let batchSeeded = presetName == "free" || Archetype(rawValue: presetName) != nil
 if let seed, scenePath != nil || !batchSeeded { file.seed = seed }
