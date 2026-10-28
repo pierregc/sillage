@@ -2,16 +2,102 @@
 
 Generates many random galaxy-collision scenes, lets you pick the best, and renders those at
 high resolution into finished videos. Each stage reads and writes the scene's own folder in
-`library/<batch>/<scene>/`.
+`library/<night>/<scene>/`.
 
-```
-explore-batch → library (rate) → hires → look → export
-```
+The app is the way in; the command line does the same and is kept as the [appendix](#appendix-the-command-line)
+below. Build and open the app with `./scripts/dev.sh app && open .build/dev/Sillage.app`
+(macOS 14+, Apple Silicon; everything goes through `./scripts/dev.sh`, not SwiftPM).
 
-Run everything through `./scripts/dev.sh` (not SwiftPM). macOS 14+, Apple Silicon. A
-[night](#night) runs all of it from one recipe, unattended.
+## The words
 
-## Run it
+The app, the command line's messages and these docs use one word per thing. The code and the
+files keep their names (`hires`, `look.json`, `take.sillage`), so the right column is what you
+will meet in a command or a path.
+
+| in the app | what it is | in the code and on disk |
+|---|---|---|
+| **Nuit** (**Lot** when started by hand) | a folder of scenes and the run that fills it | batch, `night.json` |
+| **Aperçu** | the 30 s clip a scene is first explored as | `preview.mov` |
+| **Choisie** / **Écartée** (buttons **Oui** / **Non**) | your verdict on a scene | `ratings.json`, yes / no |
+| **Score** | the interest of a scene, 0 to 1, which only sorts | interest score |
+| **Haute résolution** (badge **HD**) | the scene replayed with many more particles | hires, `take.sillage` |
+| **Style** | how the scene is drawn; **Utiliser pour la scène** makes it the scene's | look, `look.json`, promote |
+| **Rendu** | one drawing of the style (halo, spikes, dust) | `RenderLook` |
+| **Palette** | the colours, with a world (**Télescope** or **Libre**) | palette |
+| **Vidéos** | the finished files of a scene | `exports/` |
+| **File d'attente** | the heavy work waiting its turn, one at a time | job queue |
+| **Prise** | a recording opened by hand; only in the **Atelier** | take |
+
+## In the app
+
+The sidebar has **Bibliothèque** (the landing screen), **Nuits** and **Atelier**, the status
+line and the **File d'attente** at its top. A scene goes through five stages; the library
+groups its scenes by the stage they wait at (**À trier**, **Choisies**, **En haute résolution**,
+**Style à choisir**, **Prêtes**, **Exportées**, **Toutes**).
+
+1. **Aperçus.** Click **Nouvelle nuit** (sidebar or toolbar), leave everything on Auto, and
+   click **Lancer la nuit**: the scenes are explored overnight. By hand, outside a night, the
+   command line is the way (see the appendix); the scenes land in the library as **Lot**.
+2. **Choix.** Open **À trier**. Each scene shows its Aperçu and its Score; press **Y** or **N**
+   (buttons **Oui** / **Non**) to choose or discard it, and a digit 0 to 9 to rate it. The
+   night picks the best by Score when you have not.
+3. **Haute résolution.** Open a scene and click **Recalculer en haute résolution…**, or open **Choisies** and click **Calculer en haute résolution (n)** for the whole collection. The job goes to the **File d'attente**.
+4. **Style.** Click **Choisir le style** on a scene computed in high resolution. The style
+   editor plays the scene; pick a **Rendu** and a **Palette**, then **Utiliser pour la scène**
+   (⌘S).
+5. **Vidéos.** Click **Exporter…**, choose the formats, and the job joins the queue. The
+   files appear under the scene's **Vidéos**.
+
+## Nuits
+
+"Nouvelle nuit" (the Nuits entry of the sidebar, and the toolbar) opens a sheet whose only
+control in view is the time, **Prêt à** a delivery time (7 h 00 unless changed) or **Pendant** a
+number of hours. Under it, `NightSheetPlanner` plans the night with `NightPlanner` again after
+every change (about 75 ms once the batch's draws are sized, which the app does at launch and the
+sheet shares): one line a phase with what it computes, how long it takes and when it ends, then
+the delivery and the margin. Disk too small, a hires that does not fit, fewer hires scenes than
+asked for, a night that ends late: it warns and does not block. "Personnaliser" is closed and
+holds four settings, each Auto: hires scenes (2 to 4), colour world, formats (4K, vertical),
+exploration only. **Lancer la nuit** writes the recipe to `library/.sillage/recipes/` (a file
+a night, as a queued night reads it when its turn comes), adds the job to the queue and keeps
+the settings in `library/.sillage/night-sheet.json` for the next sheet. `Sillage.app --nightcheck`
+runs the model without a window (plan latency, warnings, launch) and writes
+`out/ui-night-sheet*.png`, as `--uishot` does.
+
+### The night page
+
+The Nuits section of the sidebar lists the nights newest first, each a day and "35 scènes · 4
+vidéos" (with "en cours", "en pause", "arrêtée", "en échec", "interrompue" or "en attente" when
+it is not over), and a night just launched opens on its page. The page, `NightsSnapshot.read`
+in `NightPage.swift`, shows:
+
+- the five phases (Aperçus, Sélection, Haute résolution, Style, Vidéos) with their counts, what
+  was rejected, failed or left out, when each finished and when the others are expected to;
+- while it runs, the job on one line ("scene-0023, haute résolution, image 412/900, prêt vers
+  1 h 12"), its bar, and the delivery against the deadline;
+- buttons: **Pause** / **Reprendre** (the whole queue), **Arrêter après cette étape**,
+  **Arrêter maintenant** (asks first), **Passer cette scène** (during a scene's own steps; once
+  asked it waits for the next scene) and **Trier**, which opens the triage view on the night's
+  scenes still to sort;
+- once it is over, the morning summary, `report.md` (written again from the files if it is
+  missing);
+- the scenes as cards as they arrive: the picked ones first in the order they were picked, then
+  the others latest first, each at the stage it has reached; a click opens its page;
+- the errors, each with a button to its log.
+
+Everything is read from `night.json`, `events.jsonl`, `report.md`, `activity.json` and the
+queue, every second, so a change shows within two and a night that ran while the app was closed
+shows as it ended. A night whose file says running with no process behind it is
+"interrompue". `Sillage.app --nightpagecheck` runs all this on copies of the fixtures of
+`Tests/Fixtures/night-status/`, without a window or the GPU, and writes `out/ui-night-page*.png`.
+
+
+## Appendix: the command line
+
+Everything above can be run from a terminal; the stage commands first, then the night's recipe,
+the queue and the status files, which the app reads and writes too.
+
+### Stage by stage
 
 **1. Explore** – generate scenes (30 s previews):
 
@@ -22,9 +108,7 @@ scripts/explore-batch.sh --out library/2026-10-24     # resume a stopped batch
 scripts/explore-batch.sh --scenes 20 --galaxies 2-3 --only-archetypes antennae,mice  # skip other draws
 ```
 
-**2. Rate** – open the app (`./scripts/dev.sh app && open .build/dev/Sillage.app`), press
-**⌘L**. Each scene gets yes / no (`Y` / `N`) and a rating 0-10 (digits). Sort by score, rating
-or date. Ratings go to `<batch>/ratings.json`.
+**2. Rate** – in the app (**Bibliothèque**), or by editing `<batch>/ratings.json`.
 
 **3. Hires** – re-run the scenes at high resolution:
 
@@ -55,7 +139,7 @@ Presets: `1080p` (default), `4k`, `vertical`, `square`, `whatsapp`.
 `--codec hevc|h264|prores` (default `hevc`). `--start` / `--duration` cut the clip,
 `--look` picks a look. WebP needs `brew install webp`.
 
-## Night
+### The night recipe
 
 A whole night in one command: explore, pick the best scenes by score, run each at high
 resolution, give it a style and export it, done by a delivery time.
@@ -142,50 +226,7 @@ explored, rejected and failed, picks with their score, hires done, videos with t
 scenes left out and errors), then the list of hires with particles and minutes, of videos with
 their path from the night's folder, and of failures with the path of their log.
 
-### The night sheet
-
-"Nouvelle nuit" (the Nuits entry of the sidebar, and the toolbar) opens a sheet whose only
-control in view is the time, **Prêt à** a delivery time (7 h 00 unless changed) or **Pendant** a
-number of hours. Under it, `NightSheetPlanner` plans the night with `NightPlanner` again after
-every change (about 75 ms once the batch's draws are sized, which the app does at launch and the
-sheet shares): one line a phase with what it computes, how long it takes and when it ends, then
-the delivery and the margin. Disk too small, a hires that does not fit, fewer hires scenes than
-asked for, a night that ends late: it warns and does not block. "Personnaliser" is closed and
-holds four settings, each Auto: hires scenes (2 to 4), colour world, formats (4K, vertical),
-exploration only. **Lancer la nuit** writes the recipe to `library/.sillage/recipes/` (a file
-a night, as a queued night reads it when its turn comes), adds the job to the queue and keeps
-the settings in `library/.sillage/night-sheet.json` for the next sheet. `Sillage.app --nightcheck`
-runs the model without a window (plan latency, warnings, launch) and writes
-`out/ui-night-sheet*.png`, as `--uishot` does.
-
-### The night page
-
-The Nuits section of the sidebar lists the nights newest first, each a day and "35 scènes · 4
-vidéos" (with "en cours", "en pause", "arrêtée", "en échec", "interrompue" or "en attente" when
-it is not over), and a night just launched opens on its page. The page, `NightsSnapshot.read`
-in `NightPage.swift`, shows:
-
-- the five phases (Aperçus, Sélection, Haute résolution, Style, Vidéos) with their counts, what
-  was rejected, failed or left out, when each finished and when the others are expected to;
-- while it runs, the job on one line ("scene-0023, haute résolution, image 412/900, prêt vers
-  1 h 12"), its bar, and the delivery against the deadline;
-- buttons: **Pause** / **Reprendre** (the whole queue), **Arrêter après cette étape**,
-  **Arrêter maintenant** (asks first), **Passer cette scène** (during a scene's own steps; once
-  asked it waits for the next scene) and **Trier**, which opens the triage view on the night's
-  scenes still to sort;
-- once it is over, the morning summary, `report.md` (written again from the files if it is
-  missing);
-- the scenes as cards as they arrive: the picked ones first in the order they were picked, then
-  the others latest first, each at the stage it has reached; a click opens its page;
-- the errors, each with a button to its log.
-
-Everything is read from `night.json`, `events.jsonl`, `report.md`, `activity.json` and the
-queue, every second, so a change shows within two and a night that ran while the app was closed
-shows as it ended. A night whose file says running with no process behind it is
-"interrompue". `Sillage.app --nightpagecheck` runs all this on copies of the fixtures of
-`Tests/Fixtures/night-status/`, without a window or the GPU, and writes `out/ui-night-page*.png`.
-
-## Queue
+### Queue
 
 Heavy work can go through one queue per library instead, one job at a time, in a runner of its
 own that outlives the terminal or the app that started it and keeps the Mac awake:
@@ -218,7 +259,7 @@ kept. Written under a lock by whoever changes it; read it freely.
 A runner that finds a job still marked running whose process is gone marks it failed and removes
 what it left half written.
 
-### Notifications
+#### Notifications
 
 The runner posts a macOS notification at each `phase.done` and at `night.done` it finds in a
 batch's `events.jsonl` while it works, when a job fails (stage and scene), and when the queue
@@ -229,7 +270,7 @@ Réglages (⌘,) and read at every notice. While something runs, a menu bar ring
 progress and the status line. `SILLAGE_NOTICE_LOG=<file>` appends notices there instead of
 showing them, for checks.
 
-## How it works
+### How it works
 
 - A scene is `--seed S --index N` of a generator: same two numbers, same scene.
 - `explore-batch.sh` runs 4 scenes at once, each at a low particle count with a plain look.
@@ -245,7 +286,7 @@ showing them, for checks.
 - Estimates come from `library/.sillage/costs.json`, fitted on past runs and refreshed after
   each one. `sillage-render costs` prints it; `--check <batch>` compares it with a batch.
 
-## Status files
+### Status files
 
 What is running is written, not guessed. Three small JSON files, all with ISO 8601 dates and the
 local offset, read alike by the app, a status command or a language model from afar.

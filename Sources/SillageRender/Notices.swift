@@ -16,10 +16,10 @@ public enum Notices {
     /// A stage as the app names it.
     public static func stage(_ name: String) -> String {
         switch name {
-        case "explore", "exploration": "Exploration"
+        case "explore", "exploration": "Aperçus"
         case "hires": "Haute résolution"
         case "look", "style": "Style"
-        case "export": "Rendu"
+        case "export": "Vidéos"
         case "night": "Nuit"
         default: name.prefix(1).uppercased() + name.dropFirst()
         }
@@ -44,7 +44,7 @@ public enum Notices {
 
     /// A phase of a night is over.
     public static func phaseDone(_ event: RunEvent) -> Notice {
-        var body = "\(stage(event.phase ?? "")) terminée"
+        var body = "\(stage(event.phase ?? "")) : fini"
         if let n = event.count { body += " · \(count(n, "scène", "scènes"))" }
         return Notice(night(event.night), body)
     }

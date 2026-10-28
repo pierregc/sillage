@@ -261,7 +261,7 @@ struct NightSheetView: View {
                         }
                     }
                     .disabled(model.sheet.exploreOnly)
-                    checkbox("Exploration seulement", $model.sheet.exploreOnly)
+                    checkbox("Aperçus seulement", $model.sheet.exploreOnly)
                     Text("Tout le reste est laissé en Auto.")
                         .font(.caption).foregroundStyle(Palette.secondary)
                 }

@@ -179,7 +179,7 @@ final class LibraryModel: ObservableObject {
     func pickRoot() {
         let panel = NSOpenPanel()
         panel.title = "Choisir la bibliothèque"
-        panel.message = "Le dossier library, ou un seul lot."
+        panel.message = "Le dossier library, ou une seule nuit."
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.directoryURL = root

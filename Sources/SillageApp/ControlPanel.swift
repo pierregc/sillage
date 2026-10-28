@@ -303,7 +303,7 @@ struct ControlPanelContent: View {
             ParameterSlider(
                 title: "Force des bras peints", value: $model.look.armPersistence, range: 0...2)
             Text(
-                "Au-dessus de 1 les bras sont une invention franche, ce que les looks les plus doux assument."
+                "Au-dessus de 1 les bras sont une invention franche, ce que les styles les plus doux assument."
             )
             .font(.caption2)
             .foregroundStyle(Palette.secondary)
