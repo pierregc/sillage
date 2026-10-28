@@ -284,6 +284,46 @@ struct SamplingTests {
         #expect(radii[radii.count / 2] < scale * 2.5)
     }
 
+    /// No arm reaches inside the bulge, so no young arm stars either. Proximity there was
+    /// the neutral 0.5 and a fifth of the core was drawn young, which made it blue-white
+    /// face-on and hid the bulge.
+    @Test func theCoreHasNoYoungDiskStars() {
+        let config = Self.spiral(bulge: 0.15)
+        let system = Self.sampled(config)
+        let inner = 0.4 * config.bulgeExtent * config.diskScaleLength
+        var young = 0
+        var all = 0
+        for i in 0..<system.count
+        where system.component[i] == ParticleComponent.star.rawValue
+            && system.birthRadius[i] < inner
+        {
+            all += 1
+            if -system.formation[i] * Float(Physics.megayearsPerTimeUnit) < 1_000 { young += 1 }
+        }
+        try? #require(all > 100)
+        #expect(Double(young) / Double(all) < 0.02)
+    }
+
+    /// The outskirts stand well off the plane, so edge-on they are most of what is seen
+    /// there. At 1.7 % of the light they made a cloud of yellow points; a stellar halo holds
+    /// well under one per cent.
+    @Test func theOutskirtsCarryLittleLight() {
+        let system = Self.sampled(Self.spiral(bulge: 0.15))
+        var outskirts = 0.0
+        var total = 0.0
+        for i in 0..<system.count {
+            guard let kind = ParticleComponent(rawValue: system.component[i]), kind.emits
+            else { continue }
+            let age = -system.formation[i] * Float(Physics.megayearsPerTimeUnit)
+            let light = Double(
+                system.luminosity[i] * StellarPopulation.sampled(ageMyr: age).lightPerMass)
+            total += light
+            if kind == .outskirt { outskirts += light }
+        }
+        #expect(outskirts > 0)
+        #expect(outskirts / total < 0.008)
+    }
+
     @Test func theBulgeIsPressureSupportedNotRotating() {
         let config = Self.spiral(bulge: 0.4)
         let system = Self.sampled(config)

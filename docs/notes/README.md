@@ -34,6 +34,7 @@ session. Read the note for an area before changing it.
 - [Why a disk keeps its arms](spiral-arms.md)
 - [Why a merged disk stays merged](merged-disk.md)
 - [A breathing core, and a bulge with no edge](breathing-core.md)
+- [Old stars seen edge-on and face-on](old-stars-by-angle.md): the outskirts' light, no young stars in the bulge
 - [Why the red went out](red-population.md): and what a constant population costs
 - [Gas in filaments](gas-filaments.md): and which frame a dust lane lives in
 - [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Télescope world

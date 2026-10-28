@@ -8,6 +8,8 @@ public enum DiskSampler {
     /// that was laid down as three is three per cent fast, and the disk rings for it.
     public static let dustScaleMultiplier: Float = 1.5
     public static let outskirtScaleMultiplier: Float = 1.4
+    /// Scales the light of the outskirts, the thick disk and inner halo.
+    public static let outskirtLight: Float = 0.3
 
     /// Scale radii the bulge is drawn out to, and `DiskEquilibrium` reads this one for the
     /// same reason: past it the sphere holds all of its mass rather than none of it.
@@ -769,7 +771,9 @@ public enum DiskSampler {
             // reservoir and has made nothing yet.
             var formation = StarFormation.sampledFormation(
                 edge: edge / max(config.diskTruncation, 1e-3),
-                armProximity: proximity, roll: generator.uniform())
+                // No arm reaches inside the bulge, so nothing young either: proximity there
+                // is 0.5 by default and drew a fifth of the core as arm stars.
+                armProximity: proximity * (1 - bulgeWeight), roll: generator.uniform())
             switch component {
             case .hiiRegion:
                 population = 1
@@ -806,8 +810,11 @@ public enum DiskSampler {
                 if outskirt {
                     // Old everywhere, and faint. The metallicity gradient does the rest on its
                     // own: these sit at large birth radii, so they come out metal-poor.
+                    // A stellar halo holds well under one per cent of a galaxy's light. At 1.7 %
+                    // it was half of what shows off the plane edge-on, a cloud of yellow points.
                     formation = StarFormation.oldFormation(roll: generator.uniform())
-                    brightness = (0.25 + 0.7 * generator.uniform()) * max(taper, 0.02)
+                    brightness =
+                        outskirtLight * (0.25 + 0.7 * generator.uniform()) * max(taper, 0.02)
                     population = 0.05
                 }
             }
