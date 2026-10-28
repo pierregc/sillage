@@ -125,12 +125,16 @@ struct ScenePage: View {
         return url
     }
 
+    private var isNight: Bool {
+        FileManager.default.fileExists(atPath: scene.batchURL.appendingPathComponent("night.json").path)
+    }
+
     private var technicalDetails: some View {
         DisclosureGroup("Détails techniques", isExpanded: $detailsShown) {
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
                 row("Graine", scene.seed ?? "inconnue")
                 row("Index", scene.index.map(String.init) ?? "inconnu")
-                row("Lot", scene.batch)
+                row(isNight ? "Nuit" : "Lot", scene.batch)
                 GridRow {
                     Text("Dossier").foregroundStyle(Palette.secondary)
                     HStack(spacing: 10) {
@@ -296,8 +300,8 @@ struct StageTracker: View {
     private var choiceSummary: String {
         var parts: [String] = []
         switch entry?.choice {
-        case .yes: parts.append("Oui")
-        case .no: parts.append("Non")
+        case .yes: parts.append("Choisie")
+        case .no: parts.append("Écartée")
         case nil:
             if let picked = entry?.picked {
                 parts.append(String(format: "Choisie par le score (%.2f)", picked.score))
@@ -438,11 +442,11 @@ struct StageColumn<Content: View>: View {
 extension SceneStep {
     var title: String {
         switch self {
-        case .exploration: "Exploration"
+        case .exploration: "Aperçu"
         case .choice: "Choix"
         case .highResolution: "Haute résolution"
         case .style: "Style"
-        case .export: "Export"
+        case .export: "Vidéos"
         }
     }
 }
@@ -524,7 +528,7 @@ struct RedoMenu: View {
                 Button("Choisir le style à nouveau") { model.tune(scene) }
                 if facts?.rawStyle == false {
                     Button("Revenir au style brut") { model.restoreRawLook(scene) }
-                        .help("Le style actuel reste dans looks/")
+                        .help("Le style actuel reste dans le dossier de la scène")
                 }
             }
             if done(.export), queue != nil, scene.folder != nil {

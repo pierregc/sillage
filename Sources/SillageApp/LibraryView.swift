@@ -656,14 +656,14 @@ struct ChoiceBadge: View {
     var body: some View {
         HStack(spacing: 4) {
             if let choice = entry?.choice {
-                Text(choice == .yes ? "oui" : "non")
+                Text(choice == .yes ? "Choisie" : "Écartée")
                     .foregroundStyle(
                         choice == .yes
                             ? Color(red: 0.45, green: 0.85, blue: 0.55)
                             : Color(red: 0.95, green: 0.5, blue: 0.45))
             }
             if entry?.choice == nil, entry?.picked != nil {
-                Text("choisie par le score").foregroundStyle(Color(red: 0.55, green: 0.75, blue: 0.95))
+                Text("Choisie par le score").foregroundStyle(Color(red: 0.55, green: 0.75, blue: 0.95))
             }
             if showsRating, let rating = entry?.rating { Text("\(rating)") }
         }

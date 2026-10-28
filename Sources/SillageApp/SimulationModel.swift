@@ -446,7 +446,7 @@ final class SimulationModel: ObservableObject {
         do {
             adopt(try LookFile.decoded(from: Data(contentsOf: url)), from: url)
         } catch {
-            failure = "Look illisible : \(error)"
+            failure = "Style illisible : \(error)"
         }
     }
 
@@ -455,7 +455,7 @@ final class SimulationModel: ObservableObject {
             try lookFile.encoded().write(to: url, options: .atomic)
             lookURL = url
         } catch {
-            failure = "Look non enregistré : \(error)"
+            failure = "Style non enregistré : \(error)"
         }
     }
 
@@ -941,7 +941,7 @@ final class SimulationModel: ObservableObject {
             do {
                 file = try LookFile.decoded(from: Data(contentsOf: lookURL))
             } catch {
-                failure = "Look illisible : \(error)"
+                failure = "Style illisible : \(error)"
                 return
             }
         }

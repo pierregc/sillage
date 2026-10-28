@@ -33,7 +33,7 @@ struct NoticesTests {
 
     @Test func wordsFollowTheGlossary() {
         #expect(Notices.stage("hires") == "Haute résolution")
-        #expect(Notices.stage("export") == "Rendu")
+        #expect(Notices.stage("export") == "Vidéos")
         #expect(Notices.night("2026-10-25") == "Nuit du 25 oct.")
         #expect(Notices.night(nil) == "Nuit")
         #expect(Notices.queueEmpty(finished: 1).body == "1 travail terminé")
@@ -43,7 +43,7 @@ struct NoticesTests {
         event.phase = "hires"
         event.count = 4
         #expect(
-            Notices.phaseDone(event) == Notice("Nuit du 25 oct.", "Haute résolution terminée · 4 scènes"))
+            Notices.phaseDone(event) == Notice("Nuit du 25 oct.", "Haute résolution : fini · 4 scènes"))
     }
 
     @Test func aNightEndsWithWhatItDid() {
@@ -114,7 +114,7 @@ struct NoticesTests {
         #expect(runner(store, box) { job in job.id == 1 ? "echo no take; exit 2" : "true" }.run() == 0)
         #expect(
             box.notices == [
-                Notice("Échec · Rendu", "scene-0001 : exit status 2: no take"),
+                Notice("Échec · Vidéos", "scene-0001 : exit status 2: no take"),
                 Notice("File d'attente vide", "1 travail terminé"),
             ])
     }
@@ -162,8 +162,8 @@ struct NoticesTests {
         #expect(runner(store, box) { _ in script }.run() == 0)
         #expect(
             box.notices == [
-                Notice("Nuit du 26 oct.", "Exploration terminée · 12 scènes"),
-                Notice("Nuit du 26 oct.", "Haute résolution terminée · 4 scènes"),
+                Notice("Nuit du 26 oct.", "Aperçus : fini · 12 scènes"),
+                Notice("Nuit du 26 oct.", "Haute résolution : fini · 4 scènes"),
                 Notice(
                     "Nuit du 26 oct. terminée",
                     "1 scène explorée · 0 en haute résolution · 0 vidéo · aucune erreur"),

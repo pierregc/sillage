@@ -10,7 +10,7 @@ enum LookFiles {
     @MainActor
     static func open(_ model: SimulationModel) {
         let panel = NSOpenPanel()
-        panel.title = "Ouvrir un look"
+        panel.title = "Ouvrir un style"
         panel.allowedContentTypes = [contentType]
         panel.directoryURL =
             model.lookURL?.deletingLastPathComponent() ?? model.sceneFolder?.looks
@@ -29,7 +29,7 @@ enum LookFiles {
     @MainActor
     static func saveAs(_ model: SimulationModel) {
         let panel = NSSavePanel()
-        panel.title = "Enregistrer le look"
+        panel.title = "Enregistrer le style"
         panel.allowedContentTypes = [contentType]
         panel.nameFieldStringValue = "\(model.lookFile.name).look.json"
         panel.directoryURL =
@@ -52,15 +52,15 @@ struct LookCommands: View {
         Divider()
         Button("Ouvrir une prise…") { navigation.openTake(model) }
             .keyboardShortcut("o", modifiers: .command)
-        Button("Ouvrir un look…") { LookFiles.open(model) }
+        Button("Ouvrir un style…") { LookFiles.open(model) }
             .keyboardShortcut("o", modifiers: [.command, .shift])
         if let style = navigation.editingStyle {
             PromoteCommand(session: style)
         } else {
-            Button("Enregistrer le look") { LookFiles.save(model) }
+            Button("Enregistrer le style") { LookFiles.save(model) }
                 .keyboardShortcut("s", modifiers: .command)
         }
-        Button("Enregistrer le look sous…") { LookFiles.saveAs(model) }
+        Button("Enregistrer le style sous…") { LookFiles.saveAs(model) }
             .keyboardShortcut("s", modifiers: [.command, .shift])
     }
 }
