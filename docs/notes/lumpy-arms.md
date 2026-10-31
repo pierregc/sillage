@@ -59,9 +59,10 @@ on the stars' lumpiness (structure below a fifth of a scale length): at clumpine
 reads 0.38 at t = 0, 0.21 at 8 Myr and 0.13 at 16; the baseline's 0.23 is 0.08 by 16 Myr; the
 young population's 0.55 is 0.15 by 16 Myr whatever the clumpiness. The start reads
 `lump_stars` = 0.06 + 0.72 x clumpiness over the whole sweep, so the knob does what it says on
-the first frame and nothing after. The late lumpiness is 0.5 to 1.0 for every clumpiness,
-self-made structure (bar, fragments, sharpened arms), and the heating does not follow the knob
-either:
+the first frame and little after: while they dissolve the clumps order sigma_R / v_c by the knob
+between 16 and 47 Myr, by 0.02 at most, and by 100 Myr the order is inside the seed spread.
+From about 500 Myr the lumpiness is 0.5 to 1.0 for every clumpiness, with no order: self-made
+structure (bar, fragments, sharpened arms). The heating at 300 Myr does not follow the knob:
 
 | clumpiness | 0 | 0.06 | 0.12 | 0.18 | 0.25 (base) | 0.35 | 0.44 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -95,8 +96,9 @@ scale lengths, where real spirals have theirs; the renderer paints the wave at 0
 (half the analytic rate, corotation at 4.3 scale lengths, inner Lindblad resonance at 1.0).
 Paint and matter therefore turn against each other at a quarter turn per 100 Myr, and the
 "deformed" look of a settled disk is two patterns beating. What the particles hold once the
-painted wave has gone is not arms at all: within 60 to 160 Myr the spectrum is flat from m = 1
-to m = 8 at 0.2 to 0.5, the signature of compact knots, and it scales with the cooling, which
+painted wave has gone is not arms at all: by 300 to 600 Myr the spectrum is flat from m = 1
+to m = 8 at 0.2 to 0.55 (the strongest order over the weakest: 8 at t = 0, 3 at 160 Myr, 1.4 at
+600 on Première), the signature of compact knots, and it scales with the cooling, which
 pulls the thin-disk stars themselves towards circular orbits (late lumpiness 0.05 with no
 dissipation, 0.38 at 600 Myr, 1.0 at the default 306, and fragmentation at 150). Three or four painted arms (`m3`,
 `m4`) peak lower (a2 0.40 and 0.37) and end as many-armed disks of a2 0.23, no calmer. A
@@ -110,8 +112,8 @@ and 0.31, the late lumpiness 0.76, 1.0, 0.76, 0.90 and 1.16, the first excursion
 and 13 %; Deuxième from 46 000 to 921 000 reads 0.137, 0.150, 0.137 and 0.162 at 300 Myr and
 8, 9, 11 and 11 %. What varies between counts is within the seed spread. The structure is the
 initial conditions' physics, not shot noise, and explore shows what hires shows: the knots
-formed scale with the count (1 185 in 300 Myr at 108 000 stars, 32 000 at a million) and the
-floor under the amplitudes falls with it, nothing else moves.
+formed grow faster than the count (0.9 % of the stars in 300 Myr at 54 000, 1.1 % at 108 000,
+3.0 % at a million) and the floor under the amplitudes falls with it, nothing else moves.
 
 **A hotter disk is calmer, and the cooling decides what is left.** Toomre Q 2.0 starts at
 0.20, cools to 0.14 under the dissipation and ends with a soft two-armed pattern of a2 0.15,

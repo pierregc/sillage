@@ -155,7 +155,7 @@ hires count (2 M a scene: 1 078 000 and 921 000 stars, 2.7 M and 2.3 M particles
 went through the same gigayear: the same first excursion within 2 points (13.3 % against
 15.1 %, 10.5 against 8.8), the same heating at 300 Myr within the seed spread (0.224 against
 0.213, 0.162 against 0.150), a bar by 300 Myr on Première at every count, a late a2 of 0.2 to
-0.3 on both; what the count changes is the knots formed (in proportion to it) and the floor
+0.3 on both; what the count changes is the knots formed (faster than the count) and the floor
 under the amplitudes. The `facts` of Première: X_2 2.75, 3.65 and 5.3 at one,
 two and three scale lengths, 3.6 preferred arms at two, the painted pattern at 0.0121 rad/Myr
 with corotation at 4.3 scale lengths and the inner Lindblad resonance at 1.0, v_c 315 km/s,
