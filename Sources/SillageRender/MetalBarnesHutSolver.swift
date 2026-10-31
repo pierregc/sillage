@@ -141,6 +141,8 @@ public final class MetalBarnesHutSolver: Solver {
     private let centersLock = NSLock()
 
     public var positions: MTLBuffer { positionBuffer }
+    /// Read in place by the disk probe, which needs every velocity and must not copy them.
+    public var velocities: MTLBuffer { velocityBuffer }
     public var formation: MTLBuffer { formationBuffer }
     /// Written on whichever queue is stepping and read by the renderer on the main thread,
     /// so the array is handed over under a lock rather than copied out from under the write.
