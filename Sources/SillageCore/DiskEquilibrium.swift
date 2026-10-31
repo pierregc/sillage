@@ -177,18 +177,18 @@ public struct DiskEquilibrium {
         return sqrt(max(circular * circular - drift, 0))
     }
 
-    /// What the disk's own pattern turns at, as a share of the circular frequency at two
-    /// scale lengths. Measured with the calm-disk probe on every disk of the sweep: 0.8 to
-    /// 1.0, corotation at 2.1 to 2.3 scale lengths, where real spirals have theirs. The paint
-    /// used to turn at half the analytic sphere's rate, 0.42 of this, and beat against the
-    /// matter (docs/notes/lumpy-arms.md).
-    public static let patternShare: Float = 0.9
-
     /// The rate the painted pattern turns at and the streaming is computed for, in radians
-    /// per time unit, unsigned.
+    /// per time unit, unsigned: `patternShare` of the circular frequency at two scale lengths.
+    /// The disk's own pattern turns at 0.8 to 1.0 of it, with corotation at 2.1 to 2.3 scale
+    /// lengths, where real spirals have theirs (docs/notes/lumpy-arms.md). A galaxy described
+    /// before the field, `patternShare` zero, keeps half the analytic potential's rate, 0.42
+    /// of the material's, which beat against the matter.
     public func patternSpeed() -> Float {
         let reference = max(config.diskScaleLength * 2, 0.5)
-        return circularSpeed(atRadius: reference) / reference * Self.patternShare
+        guard config.patternShare > 0 else {
+            return config.potential.circularSpeed(atRadius: reference) / reference * 0.5
+        }
+        return circularSpeed(atRadius: reference) / reference * config.patternShare
     }
 
     /// Where a pattern at `patternSpeed` resonates with the disk: the inner Lindblad radius,

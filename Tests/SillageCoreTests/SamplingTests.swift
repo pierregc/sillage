@@ -468,24 +468,62 @@ struct CalmDiskSamplingTests {
         #expect(galaxy.armMassContrast < galaxy.armStrength)
     }
 
-    /// A galaxy written before the mass contrast, the streaming and the young clumps existed
-    /// reads with their defaults, so every take and scene file still opens.
-    @Test func anOlderGalaxyReadsWithTheDefaults() throws {
+    /// A galaxy written before the calm disk reads as it was written, so a scene explored
+    /// before it gives the same particles at hires and an old take paints the same wave.
+    @Test func anOlderGalaxyReadsAsItWasWritten() throws {
         var galaxy = GalaxyConfig(
             name: "old", particleCount: 10,
             potential: GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5), diskScaleLength: 4)
-        galaxy.armMassContrast = 0.7
-        galaxy.armStreaming = 0.3
-        galaxy.youngClumpiness = 0.9
+        galaxy.clumpiness = 0.2
+        galaxy.armStrength = 0.8
+        galaxy.armMassContrast = 0.25
+        galaxy.armStreaming = 0.6
+        galaxy.youngClumpiness = 0.45
         let encoded = try JSONEncoder().encode(galaxy)
         var json = try #require(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        for key in ["armMassContrast", "armStreaming", "youngClumpiness"] {
-            json.removeValue(forKey: key)
-        }
+        let fields = [
+            "armMassContrast", "armStreaming", "youngClumpiness", "massLopsidedness", "patternShare",
+        ]
+        for key in fields { json.removeValue(forKey: key) }
         let data = try JSONSerialization.data(withJSONObject: json)
         let read = try JSONDecoder().decode(GalaxyConfig.self, from: data)
-        #expect(read.armMassContrast == 0.3 && read.armStreaming == 1 && read.youngClumpiness == 0.5)
+        #expect(abs(read.youngClumpiness - 0.5) < 1e-6)
+        #expect(read.armMassContrast == 0.8 && read.armStreaming == 0)
+        #expect(read.massLopsidedness == 0.30 && read.patternShare == 0)
         let round = try JSONDecoder().decode(GalaxyConfig.self, from: encoded)
         #expect(round == galaxy)
+
+        // The same through a scene file, and `--calm` moves it onto the calm disk.
+        var scene = SceneConfig.isolatedDisk(particleCount: 1_000)
+        scene.galaxies[0] = galaxy
+        let fileData = try SceneFile(scene).encoded()
+        var fileJSON = try #require(try JSONSerialization.jsonObject(with: fileData) as? [String: Any])
+        var galaxies = try #require(fileJSON["galaxies"] as? [[String: Any]])
+        for key in fields { galaxies[0].removeValue(forKey: key) }
+        fileJSON["galaxies"] = galaxies
+        var file = try SceneFile.decoded(from: JSONSerialization.data(withJSONObject: fileJSON))
+        let old = file.scene(particleCount: 1_000).galaxies[0]
+        #expect(old.armMassContrast == 0.8 && old.armStreaming == 0 && old.patternShare == 0)
+        file.galaxies[0].adoptCalmDisk()
+        let calm = file.scene(particleCount: 1_000).galaxies[0]
+        #expect(calm.armStreaming == 1 && calm.patternShare > 0 && calm.armMassContrast < 0.8)
+        #expect(calm.clumpiness == 0.2)
+    }
+
+    /// A galaxy read as it was written samples exactly as before the calm disk: the stars at
+    /// the painted contrast, nothing added to their velocities.
+    @Test func theOldModelSamplesTheStarsAtThePaintedContrast() {
+        let calm = scene()
+        var old = calm
+        let legacy = GalaxyConfig.legacy(clumpiness: old.galaxies[0].clumpiness, armStrength: 0.95)
+        old.galaxies[0].armMassContrast = legacy.armMassContrast
+        old.galaxies[0].youngClumpiness = legacy.youngClumpiness
+        old.galaxies[0].massLopsidedness = legacy.massLopsidedness
+        old.galaxies[0].armStreaming = 0
+        old.galaxies[0].patternShare = 0
+        let scale = calm.galaxies[0].diskScaleLength
+        let before = amplitude2(RestrictedSolver.sampleParticles(for: old), .star, scale: scale)
+        let after = amplitude2(RestrictedSolver.sampleParticles(for: calm), .star, scale: scale)
+        #expect(before > 1.8 * after)
     }
 }

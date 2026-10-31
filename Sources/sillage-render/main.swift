@@ -932,7 +932,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
         + " [--painted] [--lag-myr T] [--stills 0,300,...] [--dt-scale X]"
         + " [--clumpiness X] [--toomre-q X] [--arm-strength X] [--arm-count N]"
         + " [--arm-irregularity X] [--disk-mass-fraction X] [--dissipation T]"
-        + " [--mass-contrast X] [--streaming X] [--young-clumpiness X]"
+        + " [--mass-contrast X] [--streaming X] [--young-clumpiness X] [--calm]"
     guard arguments.count >= 2, !arguments[0].hasPrefix("--"), let galaxy = Int(arguments[1]) else {
         fail(usage)
     }
@@ -948,7 +948,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
             "particles", "myr", "frame-myr", "seed", "out", "width", "height", "no-clip", "painted",
             "lag-myr", "stills", "dt-scale", "clumpiness", "toomre-q", "arm-strength", "arm-count",
             "arm-irregularity", "disk-mass-fraction", "dissipation", "mass-contrast", "streaming",
-            "young-clumpiness",
+            "young-clumpiness", "calm",
         ]
         guard known.contains(String(word.dropFirst(2))) else {
             fail("probe-disk: unknown option \(word)\n" + usage)
@@ -976,6 +976,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
     options.armMassContrast = float("mass-contrast")
     options.armStreaming = float("streaming")
     options.youngClumpiness = float("young-clumpiness")
+    options.calm = rest.contains("--calm")
     do {
         let report = try DiskProbe.run(options)
         let summary = report.summary
@@ -1314,6 +1315,11 @@ if let scenePath {
     file = SceneFile(preset)
     palette = preset.galaxies.map(\.color)
     file.openingAngle = 0.9
+}
+// A scene described before the calm disk (#167) replays as it was written; `--calm` moves
+// every galaxy onto it, and the scene file written beside the output records the change.
+if arguments.contains("--calm") {
+    for index in file.galaxies.indices { file.galaxies[index].adoptCalmDisk() }
 }
 let batchSeeded = presetName == "free" || Archetype(rawValue: presetName) != nil
 if let seed, scenePath != nil || !batchSeeded { file.seed = seed }

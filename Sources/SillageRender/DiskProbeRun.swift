@@ -30,6 +30,8 @@ extension DiskProbe {
         public var armMassContrast: Float?
         public var armStreaming: Float?
         public var youngClumpiness: Float?
+        /// Move a galaxy described before the calm disk onto it before the overrides apply.
+        public var calm = false
         public var timeStepScale: Float?
         /// Where the files go. Absent, `probe/g<index>` in the scene folder, or under `out/`.
         public var output: String?
@@ -181,6 +183,10 @@ extension DiskProbe {
             throw ProbeError.notADisk(full.galaxies[options.galaxy].name)
         }
         var overrides: [String: Double] = [:]
+        if options.calm {
+            full.galaxies[options.galaxy].adoptCalmDisk()
+            overrides["calm"] = 1
+        }
         func override<T: BinaryFloatingPoint>(
             _ value: T?, _ name: String, _ path: WritableKeyPath<GalaxyConfig, Float>
         ) {

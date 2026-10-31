@@ -14,10 +14,6 @@ public enum DiskSampler {
     /// Scale radii the bulge is drawn out to, and `DiskEquilibrium` reads this one for the
     /// same reason: past it the sphere holds all of its mass rather than none of it.
     public static let bulgeTruncation: Float = 6
-    /// The lopsided term of the pattern as the old stars see it, against the 0.30 the light
-    /// keeps: measured, the full term put an m = 1 of 0.21 in the mass from the first frame,
-    /// four times a real inner disk, and cost seven points of the first radial excursion.
-    public static let massLopsidedness: Float = 0.03
 
     /// Inverts the cumulative mass of an exponential disk, M(<x) proportional to
     /// 1 - (1 + x) exp(-x), by Newton iteration. `x` is radius in scale lengths.
@@ -521,8 +517,9 @@ public enum DiskSampler {
             index: Int(galaxyIndex))
         let massShape = SpiralPattern.Shape(
             arms: arms, windRate: windRate, irregularity: config.armIrregularity,
-            index: Int(galaxyIndex), lopsided: massLopsidedness)
-        let massStrength = arms > 0 ? min(max(config.armMassContrast, 0), 0.95) : 0
+            index: Int(galaxyIndex), lopsided: max(config.massLopsidedness, 0))
+        // Never more than the light: a weak painted pattern stays weak in the mass.
+        let massStrength = arms > 0 ? min(max(config.armMassContrast, 0), strength) : 0
         let scale = config.diskScaleLength
 
         // A density wave comes with a velocity field, and a painted one that had none made
