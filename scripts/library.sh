@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MB_PER_SCENE=80         # video and curves only; --takes raises it
 MB_PER_TAKE=2000
 MINUTES_PER_SCENE=9    # rough, and only used for the plan
-SETTLE=400              # steps before the first frame, so a scene opens settled
+SETTLE=750              # steps before the first frame, 150 Myr: past the first excursion (#167)
 FRAMES=900              # 30 s at 30 fps
 FPS=30
 # The look, handed to the director as its base. It re-applies a look every frame and would

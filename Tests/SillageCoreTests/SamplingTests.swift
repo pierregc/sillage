@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import simd
 
@@ -369,5 +370,181 @@ struct SamplingTests {
         }
         #expect(angularMomentum(.prograde) > 0)
         #expect(angularMomentum(.retrograde) < 0)
+    }
+}
+
+@Suite("Calm disk sampling")
+struct CalmDiskSamplingTests {
+    private func scene(_ change: (inout GalaxyConfig) -> Void = { _ in }) -> SceneConfig {
+        var scene = SceneConfig.isolatedDisk(particleCount: 60_000)
+        scene.solver = .barnesHut
+        scene.galaxies[0].kind = .spiral
+        scene.galaxies[0].armStrength = 0.95
+        scene.galaxies[0].bulgeFraction = 0
+        change(&scene.galaxies[0])
+        return scene
+    }
+
+    /// |sum e^{2 i phi}| / N over the particles of one component between 1.5 and 3 scale
+    /// lengths: half the sinusoid's contrast.
+    private func amplitude2(_ system: ParticleSystem, _ component: ParticleComponent, scale: Float)
+        -> Float
+    {
+        var re: Float = 0
+        var im: Float = 0
+        var count: Float = 0
+        for index in 0..<system.count where system.component[index] == component.rawValue {
+            let p = system.positions[index]
+            let radius = (p.x * p.x + p.y * p.y).squareRoot()
+            guard radius > 1.5 * scale, radius < 3 * scale else { continue }
+            let phi = atan2(p.y, p.x)
+            re += cos(2 * phi)
+            im += sin(2 * phi)
+            count += 1
+        }
+        return count > 0 ? (re * re + im * im).squareRoot() / count : 0
+    }
+
+    /// The old stars carry the wave a real old disk carries; the light keeps the painted
+    /// contrast through the young population.
+    @Test func theOldStarsCarryLessOfTheWaveThanTheYoung() {
+        let scene = scene()
+        let system = RestrictedSolver.sampleParticles(for: scene)
+        let scale = scene.galaxies[0].diskScaleLength
+        let old = amplitude2(system, .star, scale: scale)
+        let young = amplitude2(system, .dust, scale: scale)
+        #expect(old > 0.05 && old < 0.25)
+        #expect(young > 2 * old)
+
+        var strong = scene
+        strong.galaxies[0].armMassContrast = 0.95
+        let asPainted = amplitude2(RestrictedSolver.sampleParticles(for: strong), .star, scale: scale)
+        #expect(asPainted > 1.8 * old)
+    }
+
+    /// Inside corotation the streaming is inward at the crest and absent without the knob.
+    @Test func theStreamingIsInwardAtTheCrestInsideCorotation() {
+        func inflowAtCrest(_ scene: SceneConfig) -> Float {
+            let system = RestrictedSolver.sampleParticles(for: scene)
+            let galaxy = scene.galaxies[0]
+            let equilibrium = DiskEquilibrium(config: galaxy, selfGravitating: true)
+            let resonances = equilibrium.resonances(of: equilibrium.patternSpeed())
+            let shape = SpiralPattern.Shape(
+                arms: galaxy.armCount, windRate: galaxy.armWindRate, irregularity: 0, index: 0)
+            var inward: Float = 0
+            var count: Float = 0
+            let star = ParticleComponent.star.rawValue
+            for index in 0..<system.count where system.component[index] == star {
+                let p = system.positions[index]
+                let radius = (p.x * p.x + p.y * p.y).squareRoot()
+                guard radius > resonances.lindblad * 1.3, radius < resonances.corotation * 0.9 else {
+                    continue
+                }
+                let phi = atan2(p.y, p.x)
+                // On the clean ridge, where the crest of the wave is.
+                let extent = radius / galaxy.diskScaleLength
+                guard SpiralPattern.ridge(extent: extent, phi: phi, shape: shape) > 0.9 else { continue }
+                let v = system.velocities[index]
+                inward -= (v.x * p.x + v.y * p.y) / radius
+                count += 1
+            }
+            return count > 0 ? inward / count : 0
+        }
+        let streaming = inflowAtCrest(scene { $0.armIrregularity = 0 })
+        let still = inflowAtCrest(
+            scene {
+                $0.armIrregularity = 0
+                $0.armStreaming = 0
+            })
+        #expect(streaming > 0.02)
+        #expect(abs(still) < 0.01)
+    }
+
+    @Test func clumpsBelongToTheYoungPopulationByDefault() {
+        let galaxy = GalaxyConfig(
+            name: "d", particleCount: 10,
+            potential: GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5), diskScaleLength: 4)
+        #expect(galaxy.clumpiness < galaxy.youngClumpiness)
+        #expect(galaxy.armMassContrast < galaxy.armStrength)
+    }
+
+    /// A galaxy written before the calm disk reads as it was written, so a scene explored
+    /// before it gives the same particles at hires and an old take paints the same wave.
+    @Test func anOlderGalaxyReadsAsItWasWritten() throws {
+        var galaxy = GalaxyConfig(
+            name: "old", particleCount: 10,
+            potential: GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5), diskScaleLength: 4)
+        galaxy.clumpiness = 0.2
+        galaxy.armStrength = 0.8
+        galaxy.armMassContrast = 0.25
+        galaxy.armStreaming = 0.6
+        galaxy.youngClumpiness = 0.45
+        let encoded = try JSONEncoder().encode(galaxy)
+        var json = try #require(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let fields = [
+            "armMassContrast", "armStreaming", "youngClumpiness", "massLopsidedness", "patternShare",
+        ]
+        for key in fields { json.removeValue(forKey: key) }
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let read = try JSONDecoder().decode(GalaxyConfig.self, from: data)
+        #expect(abs(read.youngClumpiness - 0.5) < 1e-6)
+        #expect(read.armMassContrast == 0.8 && read.armStreaming == 0)
+        #expect(read.massLopsidedness == 0.30 && read.patternShare == 0)
+        let round = try JSONDecoder().decode(GalaxyConfig.self, from: encoded)
+        #expect(round == galaxy)
+
+        // The same through a scene file, and `--calm` moves it onto the calm disk.
+        var scene = SceneConfig.isolatedDisk(particleCount: 1_000)
+        scene.galaxies[0] = galaxy
+        let fileData = try SceneFile(scene).encoded()
+        var fileJSON = try #require(try JSONSerialization.jsonObject(with: fileData) as? [String: Any])
+        var galaxies = try #require(fileJSON["galaxies"] as? [[String: Any]])
+        for key in fields { galaxies[0].removeValue(forKey: key) }
+        fileJSON["galaxies"] = galaxies
+        var file = try SceneFile.decoded(from: JSONSerialization.data(withJSONObject: fileJSON))
+        let old = file.scene(particleCount: 1_000).galaxies[0]
+        #expect(old.armMassContrast == 0.8 && old.armStreaming == 0 && old.patternShare == 0)
+        file.galaxies[0].adoptCalmDisk()
+        let calm = file.scene(particleCount: 1_000).galaxies[0]
+        #expect(calm.armStreaming == 1 && calm.patternShare > 0 && calm.armMassContrast < 0.8)
+        #expect(calm.clumpiness == 0.2)
+    }
+
+    /// `--calm` moves a galaxy described before the calm disk onto it and leaves one already
+    /// on it as it was drawn; the old young attachment clamps the clumpiness as the sampler did.
+    @Test func calmLeavesACalmGalaxyAlone() {
+        var drawn = GalaxyConfig(
+            name: "drawn", particleCount: 10,
+            potential: GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5), diskScaleLength: 4)
+        drawn.armMassContrast = 0.42
+        drawn.youngClumpiness = 0.58
+        let before = drawn
+        drawn.adoptCalmDisk()
+        #expect(drawn == before)
+
+        var old = before
+        old.patternShare = 0
+        old.armStreaming = 0
+        old.adoptCalmDisk()
+        #expect(old.patternShare > 0 && old.armStreaming == 1)
+        #expect(GalaxyConfig.legacy(clumpiness: -0.2, armStrength: 0.8).youngClumpiness == 0.3)
+        #expect(GalaxyConfig.legacy(clumpiness: 1.4, armStrength: 0.8).youngClumpiness == 0.97)
+    }
+
+    /// A galaxy read as it was written samples exactly as before the calm disk: the stars at
+    /// the painted contrast, nothing added to their velocities.
+    @Test func theOldModelSamplesTheStarsAtThePaintedContrast() {
+        let calm = scene()
+        var old = calm
+        let legacy = GalaxyConfig.legacy(clumpiness: old.galaxies[0].clumpiness, armStrength: 0.95)
+        old.galaxies[0].armMassContrast = legacy.armMassContrast
+        old.galaxies[0].youngClumpiness = legacy.youngClumpiness
+        old.galaxies[0].massLopsidedness = legacy.massLopsidedness
+        old.galaxies[0].armStreaming = 0
+        old.galaxies[0].patternShare = 0
+        let scale = calm.galaxies[0].diskScaleLength
+        let before = amplitude2(RestrictedSolver.sampleParticles(for: old), .star, scale: scale)
+        let after = amplitude2(RestrictedSolver.sampleParticles(for: calm), .star, scale: scale)
+        #expect(before > 1.8 * after)
     }
 }

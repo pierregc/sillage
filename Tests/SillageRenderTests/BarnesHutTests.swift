@@ -659,7 +659,9 @@ struct BarnesHutTests {
 
     /// Summed in blocks on every core, and in double precision because the float running sum
     /// it replaced was 23 pc off here. Enough particles for several blocks, and two galaxies
-    /// so a block writing into the other one's slot would show.
+    /// so a block writing into the other one's slot would show. The centre is the nucleus:
+    /// the disk material and the bulge inside one and a half scale lengths of where the
+    /// galaxy was, not the centre of mass of everything visible (#167).
     @Test func haloCentresSummedInBlocksAreTheCentresOfMass() throws {
         var scene = SceneConfig.merger(particleCount: 120_000)
         scene.solver = .barnesHut
@@ -671,9 +673,12 @@ struct BarnesHutTests {
 
         var weighted = [SIMD3<Double>](repeating: .zero, count: scene.galaxies.count)
         var totals = [Double](repeating: 0, count: scene.galaxies.count)
-        for index in particles.positions.indices
-        where particles.component[index] != ParticleComponent.halo.rawValue {
+        let outside = [ParticleComponent.halo.rawValue, ParticleComponent.outskirt.rawValue]
+        for index in particles.positions.indices where !outside.contains(particles.component[index]) {
             let galaxy = Int(particles.galaxyIndex[index])
+            let home = scene.galaxies[galaxy]
+            let reach = home.diskScaleLength * 1.5
+            guard simd_length_squared(positions[index] - home.position) < reach * reach else { continue }
             let m = Double(max(particles.mass[index], 1e-20))
             weighted[galaxy] += SIMD3<Double>(positions[index]) * m
             totals[galaxy] += m
@@ -682,6 +687,33 @@ struct BarnesHutTests {
         for galaxy in scene.galaxies.indices {
             let expected = weighted[galaxy] / totals[galaxy]
             #expect(simd_distance(SIMD3<Double>(centers[galaxy]), expected) < 1e-4)
+        }
+    }
+
+    /// A rigid analytic halo stays on the centre of mass of its galaxy's visible particles,
+    /// whatever the nucleus the camera follows: on the nucleus it pulls on its own lopsided
+    /// stars with nothing pulling back, and the galaxy pushes itself along.
+    @Test func aRigidHaloSitsOnTheCentreOfMass() throws {
+        var scene = SceneConfig.merger(particleCount: 120_000)
+        scene.solver = .barnesHut
+        for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = 0 }
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+        solver.step(count: 2)
+        let system = solver.particles
+        var weighted = [SIMD3<Double>](repeating: .zero, count: scene.galaxies.count)
+        var totals = [Double](repeating: 0, count: scene.galaxies.count)
+        for index in system.positions.indices
+        where system.component[index] != ParticleComponent.halo.rawValue {
+            let galaxy = Int(system.galaxyIndex[index])
+            let m = Double(max(system.mass[index], 1e-20))
+            weighted[galaxy] += SIMD3<Double>(system.positions[index]) * m
+            totals[galaxy] += m
+        }
+        for galaxy in scene.galaxies.indices {
+            let expected = weighted[galaxy] / totals[galaxy]
+            // Taken at the last tree build, one drift before the positions read here.
+            #expect(simd_distance(SIMD3<Double>(solver.massCenters[galaxy]), expected) < 0.05)
         }
     }
 

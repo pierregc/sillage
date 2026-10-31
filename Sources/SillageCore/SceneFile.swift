@@ -45,6 +45,13 @@ public struct SceneFile: Codable, Sendable, Equatable {
         public var bulgeFraction: Float
         public var bulgeFlattening: Float
         public var clumpiness: Float
+        /// Absent in files written before the calm disk (#167), which then read as they were
+        /// written: see `GalaxyConfig.init(from:)`.
+        public var youngClumpiness: Float?
+        public var armMassContrast: Float?
+        public var armStreaming: Float?
+        public var massLopsidedness: Float?
+        public var patternShare: Float?
         public var outskirtFraction: Float
         public var diskMassFraction: Float
         public var toomreQ: Float
@@ -76,6 +83,11 @@ public struct SceneFile: Codable, Sendable, Equatable {
             bulgeFraction = galaxy.bulgeFraction
             bulgeFlattening = galaxy.bulgeFlattening
             clumpiness = galaxy.clumpiness
+            youngClumpiness = galaxy.youngClumpiness
+            armMassContrast = galaxy.armMassContrast
+            armStreaming = galaxy.armStreaming
+            massLopsidedness = galaxy.massLopsidedness
+            patternShare = galaxy.patternShare
             outskirtFraction = galaxy.outskirtFraction
             diskMassFraction = galaxy.diskMassFraction
             toomreQ = galaxy.toomreQ
@@ -87,6 +99,19 @@ public struct SceneFile: Codable, Sendable, Equatable {
             inclination = galaxy.inclination
             positionAngle = galaxy.positionAngle
             spin = galaxy.spin
+        }
+
+        /// Moves a galaxy described before the calm disk onto it (`GalaxyConfig.adoptCalmDisk`),
+        /// so a scene explored with `--calm` writes the fields and its hires reads them back.
+        public mutating func adoptCalmDisk() {
+            guard (patternShare ?? 0) <= 0 else { return }
+            var calm = config(particleCount: 1, color: nil)
+            calm.adoptCalmDisk()
+            youngClumpiness = calm.youngClumpiness
+            armMassContrast = calm.armMassContrast
+            armStreaming = calm.armStreaming
+            massLopsidedness = calm.massLopsidedness
+            patternShare = calm.patternShare
         }
 
         func config(particleCount: Int, color: SIMD3<Float>?) -> GalaxyConfig {
@@ -121,6 +146,12 @@ public struct SceneFile: Codable, Sendable, Equatable {
                 positionAngle: positionAngle,
                 spin: spin)
             if let color { galaxy.color = color }
+            let legacy = GalaxyConfig.legacy(clumpiness: clumpiness, armStrength: armStrength)
+            galaxy.youngClumpiness = youngClumpiness ?? legacy.youngClumpiness
+            galaxy.armMassContrast = armMassContrast ?? legacy.armMassContrast
+            galaxy.armStreaming = armStreaming ?? 0
+            galaxy.massLopsidedness = massLopsidedness ?? legacy.massLopsidedness
+            galaxy.patternShare = patternShare ?? 0
             return galaxy
         }
     }

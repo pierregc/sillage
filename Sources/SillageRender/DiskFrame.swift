@@ -82,12 +82,13 @@ public struct DiskFrame {
                 galaxy.kind == .spiral
                 ? min(max(galaxy.armStrength * strength, 0), 1) * intact : 0
 
-            // A pattern speed of roughly half the material rotation at two scale lengths is
-            // typical, and is what keeps the arms from either freezing or winding up.
-            let reference = max(galaxy.diskScaleLength * 2, 0.5)
+            // The particles turn their own pattern at 0.8 to 1.0 of the material's rate at two
+            // scale lengths (docs/notes/lumpy-arms.md); the paint used to turn at half the
+            // analytic sphere's, 0.42 of that, and the two beat. One expression now, shared
+            // with the sampler's streaming and the probe.
             let patternSpeed =
-                galaxy.potential.circularSpeed(atRadius: reference) / reference * 0.5
-                * galaxy.spin.sign
+                DiskEquilibrium(config: galaxy, selfGravitating: scene.solver.isSelfGravitating)
+                .patternSpeed() * galaxy.spin.sign
 
             return DiskFrame(
                 center: SIMD4<Float>(center.x, center.y, center.z, galaxy.diskScaleLength),

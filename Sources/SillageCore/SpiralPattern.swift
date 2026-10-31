@@ -44,15 +44,33 @@ public enum SpiralPattern {
         public var windRate: Float
         public var irregularity: Float
         public var seed: Float
+        /// How much heavier one side of the pattern is than the other, per unit of
+        /// irregularity. The light keeps the 0.30 the shader paints; the old stars take a
+        /// tenth of it, since a lopsided mass sloshes about its halo and reads as a wobble
+        /// (docs/notes/lumpy-arms.md).
+        public var lopsided: Float
 
-        public init(arms: Int, windRate: Float, irregularity: Float, index: Int) {
+        public init(
+            arms: Int, windRate: Float, irregularity: Float, index: Int, lopsided: Float = 0.30
+        ) {
             self.arms = Float(max(arms, 1))
             self.windRate = windRate
             self.irregularity = min(max(irregularity, 0), 1)
+            self.lopsided = lopsided
             // The same expression `DiskFrame.make` uses to seed the painted pattern, so a
             // galaxy's arms are in the same places in both.
             self.seed = Float(index) * 37.4 + 5.1
         }
+    }
+
+    /// The azimuth unwound along the arms: a ridge where `arms x wound` is a multiple of two pi.
+    /// Shared with the streaming the sampler gives the wave, so the velocities follow the crest
+    /// the particles were placed on, wander included.
+    public static func wound(extent: Float, phi: Float, shape: Shape, phase: Float = 0) -> Float {
+        // An arm that does not hold its pitch. Without this every arm is the same curve at a
+        // different angle and the eye reads the construction rather than the galaxy.
+        let wander = (fractalNoise(extent * 1.5 + shape.seed) - 0.5) * 2.6 * shape.irregularity
+        return phi - shape.windRate * log(max(extent, 1e-3)) - phase + wander
     }
 
     /// How far along an arm a point sits: 0 between arms, 1 on a ridge. `extent` is the radius
@@ -62,10 +80,7 @@ public enum SpiralPattern {
     public static func ridge(extent: Float, phi: Float, shape: Shape, phase: Float = 0) -> Float {
         let irregular = shape.irregularity
         let seed = shape.seed
-        // An arm that does not hold its pitch. Without this every arm is the same curve at a
-        // different angle and the eye reads the construction rather than the galaxy.
-        let wander = (fractalNoise(extent * 1.5 + seed) - 0.5) * 2.6 * irregular
-        let wound = phi - shape.windRate * log(max(extent, 1e-3)) - phase + wander
+        let wound = Self.wound(extent: extent, phi: phi, shape: shape, phase: phase)
 
         let armPhase = shape.arms * wound
         var ridge = 0.5 + 0.5 * cos(armPhase)
@@ -97,7 +112,7 @@ public enum SpiralPattern {
         // And the two halves of a disk are never equal. One arm's worth of asymmetry over the
         // whole pattern is the cheapest true thing to say about that, and it is what stops a
         // galaxy looking like a machined part.
-        let lopsided = 1 + irregular * 0.30 * cos(phi + seed * 2.1)
+        let lopsided = 1 + irregular * shape.lopsided * cos(phi + seed * 2.1)
         return min(max(ridge * lopsided, 0), 1)
     }
 

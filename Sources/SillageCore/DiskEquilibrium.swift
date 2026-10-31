@@ -177,6 +177,48 @@ public struct DiskEquilibrium {
         return sqrt(max(circular * circular - drift, 0))
     }
 
+    /// The rate the painted pattern turns at and the streaming is computed for, in radians
+    /// per time unit, unsigned: `patternShare` of the circular frequency at two scale lengths.
+    /// The disk's own pattern turns at 0.8 to 1.0 of it, with corotation at 2.1 to 2.3 scale
+    /// lengths, where real spirals have theirs (docs/notes/lumpy-arms.md). A galaxy described
+    /// before the field, `patternShare` zero, keeps half the analytic potential's rate, 0.42
+    /// of the material's, which beat against the matter.
+    public func patternSpeed() -> Float {
+        let reference = max(config.diskScaleLength * 2, 0.5)
+        guard config.patternShare > 0 else {
+            return config.potential.circularSpeed(atRadius: reference) / reference * 0.5
+        }
+        return circularSpeed(atRadius: reference) / reference * config.patternShare
+    }
+
+    /// Where a pattern at `patternSpeed` resonates with the disk: the inner Lindblad radius,
+    /// inside which a density wave at that speed cannot exist, and the corotation radius,
+    /// outside which the streaming reverses. Read on a grid of a twentieth of a scale length;
+    /// the Lindblad radius is zero and the corotation infinite when the curve never crosses.
+    public func resonances(of patternSpeed: Float) -> (lindblad: Float, corotation: Float) {
+        let scale = max(config.diskScaleLength, 1e-3)
+        var lindblad: Float = 0
+        var corotation: Float = .infinity
+        var previous: Float?
+        for step in 1...240 {
+            let r = Float(step) * 0.05 * scale
+            let value = circularSpeed(atRadius: r) / r - epicyclicFrequency(atRadius: r) / 2 - patternSpeed
+            if let p = previous, p > 0, value <= 0 {
+                lindblad = r - 0.025 * scale
+                break
+            }
+            previous = value
+        }
+        for step in 1...240 {
+            let r = Float(step) * 0.05 * scale
+            if circularSpeed(atRadius: r) / r < patternSpeed {
+                corotation = r
+                break
+            }
+        }
+        return (lindblad, corotation)
+    }
+
     /// Toomre Q actually realised by a given radial dispersion, for verification.
     public func toomreQ(atRadius radius: Float, radialDispersion sigma: Float) -> Float {
         let kappa = epicyclicFrequency(atRadius: radius)

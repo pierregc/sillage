@@ -150,11 +150,12 @@ defaults() {
     [ -n "$height" ] || height=540
     [ -n "$frames" ] || frames=900
     [ -n "$fps" ] || fps=30
-    [ -n "$settle" ] || settle=400
+    [ -n "$settle" ] || settle=750
     # The exploration clip #13 measured: a step three and a half times the recommended one,
-    # which settles over the first eighty megayears, and seven hundred more for the passages,
-    # the tails and what they fall back into. The clip of #41, 900 steps at the generator's own
-    # scale, covers forty.
+    # which settles over the first hundred and fifty megayears, where a sampled disk's first
+    # radial excursion has peaked (#167), and seven hundred more for the passages, the tails
+    # and what they fall back into. The clip of #41, 900 steps at the generator's own scale,
+    # covers forty. A batch started before keeps the settle its batch.conf recorded.
     [ -n "$dt_scale" ] || dt_scale=3.5
     [ -n "$steps" ] || [ -n "$span" ] || span=700
     if [ -z "$per_galaxy" ] && [ -n "$scenes" ] && [ -n "$hours" ]; then

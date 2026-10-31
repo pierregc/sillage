@@ -57,7 +57,35 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     ///
     /// The trade is real in both directions: clumps are also what seeds the spiral response,
     /// and at zero the m = 2 amplitude collapses to nothing. 0.12 keeps a flocculent disk.
+    ///
+    /// Measured again with the calm-disk probe (docs/notes/lumpy-arms.md): the clumps carry
+    /// the disk's own velocity dispersion, so they evaporate within fifteen megayears and heat
+    /// nothing; what the knob sets is the first frame's graininess, and a real old disk has
+    /// none. 0.05 now; the knots belong to `youngClumpiness`.
     public var clumpiness: Float
+    /// Share of the gas and the young stars drawn in clumps, the knots of a real disk. Used
+    /// to be `clumpiness` plus 0.3.
+    public var youngClumpiness: Float
+    /// Contrast of the painted pattern the old stars are placed at. The light keeps
+    /// `armStrength` through the young population and the paint; the mass holds what a real
+    /// old disk holds, an m = 2 of about 0.15, which is what keeps the disk from sharpening
+    /// its own arms into a bar within three hundred megayears (docs/notes/lumpy-arms.md).
+    public var armMassContrast: Float
+    /// Share of the streaming a density wave needs that the disk is launched with: the
+    /// linear tight-winding response to the painted pattern, inward at the crest inside
+    /// corotation and faster ahead of the arm than behind. Zero launches every star on an
+    /// axisymmetric orbit, which is what made the disk ring and contract
+    /// (docs/notes/disk-settling.md).
+    public var armStreaming: Float
+    /// How much heavier one side of the old stars' pattern is than the other, per unit of
+    /// `armIrregularity`. The light keeps the 0.30 the shader paints; at that in the mass the
+    /// disk started with an m = 1 of 0.21, four times a real inner disk, and sloshed.
+    public var massLopsidedness: Float
+    /// What the painted pattern turns at, as a share of the circular frequency at two scale
+    /// lengths (`DiskEquilibrium.patternSpeed`). The disk's own pattern turns at 0.8 to 1.0 of
+    /// it; zero keeps the speed files written before this field used, half the analytic
+    /// potential's, which beat against the matter.
+    public var patternShare: Float
 
     /// Share of a disk's stars belonging to the thick disk and inner halo rather than to the
     /// thin disk: old, metal-poor, spread wider and standing well off the plane.
@@ -119,7 +147,12 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         bulgeFraction: Float = 0.15,
         bulgeFlattening: Float = 0.7,
         color: SIMD3<Float> = SIMD3<Float>(1.0, 0.90, 0.74),
-        clumpiness: Float = 0.12,
+        clumpiness: Float = 0.05,
+        youngClumpiness: Float = 0.5,
+        armMassContrast: Float = 0.3,
+        armStreaming: Float = 1,
+        massLopsidedness: Float = 0.03,
+        patternShare: Float = 0.9,
         outskirtFraction: Float = 0.12,
         armIrregularity: Float = 0.55,
         diskMassFraction: Float = 0.22,
@@ -151,6 +184,11 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.bulgeFlattening = bulgeFlattening
         self.color = color
         self.clumpiness = clumpiness
+        self.youngClumpiness = youngClumpiness
+        self.armMassContrast = armMassContrast
+        self.armStreaming = armStreaming
+        self.massLopsidedness = massLopsidedness
+        self.patternShare = patternShare
         self.outskirtFraction = outskirtFraction
         self.armIrregularity = armIrregularity
         self.diskMassFraction = diskMassFraction
@@ -163,6 +201,86 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.inclination = inclination
         self.positionAngle = positionAngle
         self.spin = spin
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, particleCount, kind, potential, diskScaleLength, diskTruncation, diskThickness
+        case velocityDispersion, armCount, armStrength, armPitch, dustFraction, starFormingFraction
+        case bulgeExtent, bulgeFraction, bulgeFlattening, color, clumpiness, youngClumpiness
+        case armMassContrast, armStreaming, massLopsidedness, patternShare, outskirtFraction
+        case armIrregularity, diskMassFraction
+        case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
+        case inclination, positionAngle, spin
+    }
+
+    /// Takes and scene files written before the calm disk (#167) read as they were written:
+    /// every star at the painted contrast, no streaming, the young population at the
+    /// clumpiness plus 0.3, the full lopsided term and the old pattern speed, so a scene
+    /// explored before it replays the same at any size and a take exports the same.
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        particleCount = try values.decode(Int.self, forKey: .particleCount)
+        kind = try values.decode(GalaxyKind.self, forKey: .kind)
+        potential = try values.decode(GalaxyPotential.self, forKey: .potential)
+        diskScaleLength = try values.decode(Float.self, forKey: .diskScaleLength)
+        diskTruncation = try values.decode(Float.self, forKey: .diskTruncation)
+        diskThickness = try values.decode(Float.self, forKey: .diskThickness)
+        velocityDispersion = try values.decode(Float.self, forKey: .velocityDispersion)
+        armCount = try values.decode(Int.self, forKey: .armCount)
+        armStrength = try values.decode(Float.self, forKey: .armStrength)
+        armPitch = try values.decode(Float.self, forKey: .armPitch)
+        dustFraction = try values.decode(Float.self, forKey: .dustFraction)
+        starFormingFraction = try values.decode(Float.self, forKey: .starFormingFraction)
+        bulgeExtent = try values.decode(Float.self, forKey: .bulgeExtent)
+        bulgeFraction = try values.decode(Float.self, forKey: .bulgeFraction)
+        bulgeFlattening = try values.decode(Float.self, forKey: .bulgeFlattening)
+        color = try values.decode(SIMD3<Float>.self, forKey: .color)
+        clumpiness = try values.decode(Float.self, forKey: .clumpiness)
+        let legacy = Self.legacy(clumpiness: clumpiness, armStrength: armStrength)
+        youngClumpiness =
+            try values.decodeIfPresent(Float.self, forKey: .youngClumpiness) ?? legacy.youngClumpiness
+        armMassContrast =
+            try values.decodeIfPresent(Float.self, forKey: .armMassContrast) ?? legacy.armMassContrast
+        armStreaming = try values.decodeIfPresent(Float.self, forKey: .armStreaming) ?? 0
+        massLopsidedness =
+            try values.decodeIfPresent(Float.self, forKey: .massLopsidedness) ?? legacy.massLopsidedness
+        patternShare = try values.decodeIfPresent(Float.self, forKey: .patternShare) ?? 0
+        outskirtFraction = try values.decode(Float.self, forKey: .outskirtFraction)
+        armIrregularity = try values.decode(Float.self, forKey: .armIrregularity)
+        diskMassFraction = try values.decode(Float.self, forKey: .diskMassFraction)
+        toomreQ = try values.decode(Float.self, forKey: .toomreQ)
+        haloParticleRatio = try values.decode(Float.self, forKey: .haloParticleRatio)
+        haloExtent = try values.decode(Float.self, forKey: .haloExtent)
+        dissipationTime = try values.decode(Float.self, forKey: .dissipationTime)
+        position = try values.decode(SIMD3<Float>.self, forKey: .position)
+        velocity = try values.decode(SIMD3<Float>.self, forKey: .velocity)
+        inclination = try values.decode(Float.self, forKey: .inclination)
+        positionAngle = try values.decode(Float.self, forKey: .positionAngle)
+        spin = try values.decode(Spin.self, forKey: .spin)
+    }
+
+    /// What a galaxy described before the calm disk carried, for the fields it lacks.
+    public static func legacy(clumpiness: Float, armStrength: Float) -> (
+        youngClumpiness: Float, armMassContrast: Float, massLopsidedness: Float
+    ) {
+        (min(min(max(clumpiness, 0), 1) + 0.3, 0.97), armStrength, 0.30)
+    }
+
+    /// The calm disk of #167 on a galaxy described before it: the old stars at a contrast
+    /// they can hold, with the streaming, an even-handed mass, the young population's clumps
+    /// and the pattern turning with the matter. The clumpiness is left as it was, and a galaxy
+    /// already on the calm disk keeps what it was drawn with.
+    public mutating func adoptCalmDisk() {
+        guard patternShare <= 0 else { return }
+        let calm = GalaxyConfig(
+            name: name, particleCount: particleCount, potential: potential,
+            diskScaleLength: diskScaleLength)
+        youngClumpiness = calm.youngClumpiness
+        armMassContrast = min(calm.armMassContrast, armStrength)
+        armStreaming = calm.armStreaming
+        massLopsidedness = calm.massLopsidedness
+        patternShare = calm.patternShare
     }
 
     /// Signed rate at which the spiral pattern winds, in radians per e-folding of radius.
@@ -193,8 +311,10 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             potential: GalaxyPotential(profile: .plummer, mass: mass, scaleRadius: softening),
             diskScaleLength: softening, diskTruncation: 1, diskThickness: softening,
             velocityDispersion: 0, armStrength: 0, dustFraction: 0, starFormingFraction: 0,
-            bulgeFraction: 0, clumpiness: 0, outskirtFraction: 0, armIrregularity: 0,
-            diskMassFraction: 1, haloParticleRatio: 0, dissipationTime: 0)
+            bulgeFraction: 0, clumpiness: 0, youngClumpiness: 0, armMassContrast: 0,
+            armStreaming: 0, massLopsidedness: 0, outskirtFraction: 0, armIrregularity: 0,
+            diskMassFraction: 1,
+            haloParticleRatio: 0, dissipationTime: 0)
     }
 
     /// The softening a black hole of `mass` is drawn with, in kpc: a quarter of a kiloparsec

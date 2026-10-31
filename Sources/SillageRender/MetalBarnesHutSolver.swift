@@ -136,11 +136,17 @@ public final class MetalBarnesHutSolver: Solver {
     /// Only ever used to vary the per-step random draw in the star formation pass.
     private var stepsSinceFormation = 0
     private var haloCenters: [SIMD3<Float>]
+    /// Where a rigid analytic halo sits: the centre of mass of the galaxy's visible particles.
+    /// Not the nucleus the rest follows: a rigid halo on the nucleus pulls on its own lopsided
+    /// stars with nothing pulling back, and the galaxy pushes itself along (review of #179).
+    private(set) var massCenters: [SIMD3<Float>]
     private var galaxyMotion: [SIMD3<Float>]
     private var diskStates: [DiskState]
     private let centersLock = NSLock()
 
     public var positions: MTLBuffer { positionBuffer }
+    /// Read in place by the disk probe, which needs every velocity and must not copy them.
+    public var velocities: MTLBuffer { velocityBuffer }
     public var formation: MTLBuffer { formationBuffer }
     /// Written on whichever queue is stepping and read by the renderer on the main thread,
     /// so the array is handed over under a lock rather than copied out from under the write.
@@ -194,6 +200,7 @@ public final class MetalBarnesHutSolver: Solver {
         self.liveHalos = scene.hasLiveHalos
         self.quadrupole = quadrupole
         self.haloCenters = scene.galaxies.map(\.position)
+        self.massCenters = scene.galaxies.map(\.position)
         self.galaxyMotion = scene.galaxies.map(\.velocity)
         self.diskStates = DiskState.natal(scene)
         var masses = particles.mass
@@ -733,9 +740,22 @@ public final class MetalBarnesHutSolver: Solver {
         let limit = min(count, galaxyOf.count)
         let block = 65_536
         let blocks = (limit + block - 1) / block
-        // Three sums a galaxy a block: position and velocity weighted by mass, then the mass.
-        var partial = [SIMD3<Double>](repeating: .zero, count: blocks * galaxies * 3)
+        // Six sums a galaxy a block: position and velocity weighted by mass, then the mass,
+        // over every visible particle and again over the nucleus alone.
+        var partial = [SIMD3<Double>](repeating: .zero, count: blocks * galaxies * 6)
         let halo = ParticleComponent.halo.rawValue
+        let outskirt = ParticleComponent.outskirt.rawValue
+        // The nucleus: the disk material and the bulge inside one and a half scale lengths of
+        // where the centre was. The centre of mass of every visible particle, which this used
+        // to be, sat 0.3 to 5 kpc off it once the outskirts went lopsided, and the camera and
+        // the cooling followed that (docs/notes/lumpy-arms.md). Real galaxies are centred on
+        // their bulge to a few pixels whatever their outskirts do.
+        centersLock.lock()
+        let previous = haloCenters
+        centersLock.unlock()
+        let reach = scene.galaxies.map { galaxy -> Float in
+            galaxy.kind == .blackHole ? 0 : max(galaxy.diskScaleLength * 1.5, 0.5)
+        }
         galaxyOf.withUnsafeBufferPointer { galaxyOf in
             componentOf.withUnsafeBufferPointer { componentOf in
                 particleMass.withUnsafeBufferPointer { mass in
@@ -744,27 +764,42 @@ public final class MetalBarnesHutSolver: Solver {
                             var weighted = [SIMD3<Double>](repeating: .zero, count: galaxies)
                             var drift = weighted
                             var totals = [Double](repeating: 0, count: galaxies)
+                            var innerWeighted = weighted
+                            var innerDrift = weighted
+                            var innerTotals = totals
                             for particle in index * block..<min((index + 1) * block, limit) {
                                 let galaxy = Int(galaxyOf[particle])
                                 guard galaxy < galaxies else { continue }
                                 // Halo particles outnumber the disk, so including them would
                                 // put the centre at the halo's centroid rather than at the
                                 // visible galaxy's.
-                                if particle < componentOf.count, componentOf[particle] == halo {
-                                    continue
-                                }
+                                let kind = particle < componentOf.count ? componentOf[particle] : halo
+                                if kind == halo { continue }
                                 let m = Double(max(mass[particle], 1e-20))
-                                weighted[galaxy] += SIMD3<Double>(positions[particle]) * m
+                                let position = positions[particle]
+                                weighted[galaxy] += SIMD3<Double>(position) * m
                                 if let velocities {
                                     drift[galaxy] += SIMD3<Double>(velocities[particle]) * m
                                 }
                                 totals[galaxy] += m
+                                let offset = position - previous[galaxy]
+                                let inside = simd_length_squared(offset) < reach[galaxy] * reach[galaxy]
+                                if kind != outskirt, inside {
+                                    innerWeighted[galaxy] += SIMD3<Double>(position) * m
+                                    if let velocities {
+                                        innerDrift[galaxy] += SIMD3<Double>(velocities[particle]) * m
+                                    }
+                                    innerTotals[galaxy] += m
+                                }
                             }
                             for galaxy in 0..<galaxies {
-                                let base = (index * galaxies + galaxy) * 3
+                                let base = (index * galaxies + galaxy) * 6
                                 partial[base] = weighted[galaxy]
                                 partial[base + 1] = drift[galaxy]
                                 partial[base + 2] = SIMD3<Double>(repeating: totals[galaxy])
+                                partial[base + 3] = innerWeighted[galaxy]
+                                partial[base + 4] = innerDrift[galaxy]
+                                partial[base + 5] = SIMD3<Double>(repeating: innerTotals[galaxy])
                             }
                         }
                     }
@@ -774,23 +809,38 @@ public final class MetalBarnesHutSolver: Solver {
         var weighted = [SIMD3<Double>](repeating: .zero, count: galaxies)
         var drift = weighted
         var totals = [Double](repeating: 0, count: galaxies)
+        var innerWeighted = weighted
+        var innerDrift = weighted
+        var innerTotals = totals
         for index in 0..<blocks {
             for galaxy in 0..<galaxies {
-                let base = (index * galaxies + galaxy) * 3
+                let base = (index * galaxies + galaxy) * 6
                 weighted[galaxy] += partial[base]
                 drift[galaxy] += partial[base + 1]
                 totals[galaxy] += partial[base + 2].x
+                innerWeighted[galaxy] += partial[base + 3]
+                innerDrift[galaxy] += partial[base + 4]
+                innerTotals[galaxy] += partial[base + 5].x
             }
         }
         var updated = centers
+        var masses = massCenters
         for galaxy in updated.indices where totals[galaxy] > 0 {
-            updated[galaxy] = SIMD3<Float>(weighted[galaxy] / totals[galaxy])
+            masses[galaxy] = SIMD3<Float>(weighted[galaxy] / totals[galaxy])
+            // The nucleus when there still is one; a galaxy torn apart, or a black hole, is
+            // wherever its mass is.
+            let nucleus = innerTotals[galaxy] > 0.01 * totals[galaxy]
+            let sum = nucleus ? innerWeighted[galaxy] : weighted[galaxy]
+            let motion = nucleus ? innerDrift[galaxy] : drift[galaxy]
+            let mass = nucleus ? innerTotals[galaxy] : totals[galaxy]
+            updated[galaxy] = SIMD3<Float>(sum / mass)
             if velocities != nil {
-                galaxyMotion[galaxy] = SIMD3<Float>(drift[galaxy] / totals[galaxy])
+                galaxyMotion[galaxy] = SIMD3<Float>(motion / mass)
             }
         }
         centersLock.lock()
         haloCenters = updated
+        massCenters = masses
         centersLock.unlock()
     }
 
@@ -936,7 +986,7 @@ public final class MetalBarnesHutSolver: Solver {
     /// The analytic halos the force pass adds, one a galaxy, at the current centres.
     private var haloList: [HaloGPU] {
         var list = scene.galaxies.enumerated().map { index, galaxy -> HaloGPU in
-            let center = index < haloCenters.count ? haloCenters[index] : galaxy.position
+            let center = index < massCenters.count ? massCenters[index] : galaxy.position
             let haloMass =
                 galaxy.potential.mass * (1 - galaxy.diskMassFraction)
                 * Physics.gravitationalConstant

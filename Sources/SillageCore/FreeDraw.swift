@@ -286,9 +286,16 @@ public struct FreeDraw: Sendable {
                 bulgeExtent: (0.07 + 0.1 * bulge) * stream.uniform(in: 0.8...1.2),
                 bulgeFraction: 0.2 * bulge,
                 bulgeFlattening: stream.uniform(in: 0.45...0.95),
-                clumpiness: stream.uniform(in: 0.18...0.44),
+                // The old disk of a real spiral carries no clumps and a wave of 0.15 to 0.2;
+                // the knots and the painted contrast are the young population's. With the
+                // streaming the disk holds that wave, and a Toomre Q of 1.25 to 1.45 keeps it
+                // responsive enough to grow arms of its own: at 1.6 and over a generated disk
+                // went featureless within a hundred megayears (docs/notes/lumpy-arms.md).
+                clumpiness: stream.uniform(in: 0.02...0.08),
+                youngClumpiness: stream.uniform(in: 0.4...0.6),
+                armMassContrast: stream.uniform(in: 0.3...0.45),
                 armIrregularity: stream.uniform(in: 0.3...0.78),
-                toomreQ: stream.uniform(in: 1.25...1.7),
+                toomreQ: stream.uniform(in: 1.25...1.45),
                 inclination: stream.uniform(in: -1.2...1.2),
                 positionAngle: stream.uniform(in: 0...(2 * .pi)),
                 spin: stream.uniform() < 0.5 ? .prograde : .retrograde)
@@ -310,7 +317,8 @@ public struct FreeDraw: Sendable {
                 bulgeExtent: (0.12 + 0.14 * bulge) * stream.uniform(in: 0.8...1.2),
                 bulgeFraction: 0.1 + 0.32 * bulge,
                 bulgeFlattening: stream.uniform(in: 0.5...0.9),
-                clumpiness: stream.uniform(in: 0.06...0.16),
+                clumpiness: stream.uniform(in: 0.02...0.06),
+                youngClumpiness: stream.uniform(in: 0.3...0.5),
                 toomreQ: stream.uniform(in: 1.4...2.0),
                 inclination: stream.uniform(in: -1.2...1.2),
                 positionAngle: stream.uniform(in: 0...(2 * .pi)),
@@ -347,7 +355,9 @@ public struct FreeDraw: Sendable {
                 starFormingFraction: stream.uniform(in: 0.03...0.07),
                 bulgeExtent: 0.1,
                 bulgeFraction: 0.04 * bulge,
-                clumpiness: stream.uniform(in: 0.3...0.5),
+                // A dwarf is young and clumpy through and through.
+                clumpiness: stream.uniform(in: 0.1...0.2),
+                youngClumpiness: stream.uniform(in: 0.6...0.8),
                 diskMassFraction: stream.uniform(in: 0.1...0.18),
                 toomreQ: stream.uniform(in: 1.4...1.9),
                 inclination: stream.uniform(in: -1.2...1.2),

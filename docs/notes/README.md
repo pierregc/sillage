@@ -33,6 +33,9 @@ session. Read the note for an area before changing it.
 - [Several colours per galaxy, in the generator and the editor](multicolour-palettes.md): the switch, the ramp limits, the scores
 - [What was actually cooking the disk](disk-heating.md)
 - [Why a disk keeps its arms](spiral-arms.md)
+- [The calm-disk probe](calm-disk-probe.md): `probe-disk`, one galaxy alone, its own frame, the columns and how to read them
+- [Why a generated disk takes several turns to settle](disk-settling.md): spike #170
+- [Why settled arms stay lumpy and wobbly](lumpy-arms.md): spike #171
 - [Why a merged disk stays merged](merged-disk.md)
 - [A breathing core, and a bulge with no edge](breathing-core.md)
 - [Old stars seen edge-on and face-on](old-stars-by-angle.md): the outskirts' light, no young stars in the bulge

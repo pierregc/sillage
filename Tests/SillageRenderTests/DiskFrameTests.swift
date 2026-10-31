@@ -39,11 +39,14 @@ struct DiskFrameTests {
         #expect(phase(at: 0) == 0)
         #expect(abs(phase(at: 10)) > 0)
 
-        // Slower than the disk at two scale lengths, or the pattern would be the material.
+        // Slower than the disk at two scale lengths, or the pattern would be the material, and
+        // the one rate the sampler's streaming and the probe compute, so paint and matter agree.
         let galaxy = scene.galaxies[0]
+        let equilibrium = DiskEquilibrium(config: galaxy, selfGravitating: true)
         let reference = galaxy.diskScaleLength * 2
-        let material = galaxy.potential.circularSpeed(atRadius: reference) / reference
+        let material = equilibrium.circularSpeed(atRadius: reference) / reference
         #expect(abs(phase(at: 1)) < material)
+        #expect(abs(abs(phase(at: 1)) - equilibrium.patternSpeed()) < 1e-5)
     }
 
     /// Turning the arms off has to leave a smooth disk rather than a faint pattern.

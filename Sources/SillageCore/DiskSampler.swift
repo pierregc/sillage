@@ -507,12 +507,34 @@ public enum DiskSampler {
         let dustShare = min(max(config.dustFraction, 0), 0.8)
         let hiiShare = min(max(config.starFormingFraction, 0), 0.3)
         let clumpiness = min(max(config.clumpiness, 0), 1)
+        let youngClumpiness = min(max(config.youngClumpiness, 0), 1)
         let outskirtShare = min(max(config.outskirtFraction, 0), 0.5)
-        // The pattern, described once and shared with the renderer that paints it.
+        // The pattern, described once and shared with the renderer that paints it. The old
+        // stars see it at the contrast a real old disk carries and nearly even-handed; the
+        // young population and the gas, which are the light, see it as painted.
         let shape = SpiralPattern.Shape(
             arms: arms, windRate: windRate, irregularity: config.armIrregularity,
             index: Int(galaxyIndex))
+        let massShape = SpiralPattern.Shape(
+            arms: arms, windRate: windRate, irregularity: config.armIrregularity,
+            index: Int(galaxyIndex), lopsided: max(config.massLopsidedness, 0))
+        // Never more than the light: a weak painted pattern stays weak in the mass.
+        let massStrength = arms > 0 ? min(max(config.armMassContrast, 0), strength) : 0
         let scale = config.diskScaleLength
+
+        // A density wave comes with a velocity field, and a painted one that had none made
+        // the disk answer it: the wave sharpened into a bar within three hundred megayears,
+        // the disk heated and contracted. The linear tight-winding response to a pattern of
+        // contrast delta turning at the painted speed (Binney & Tremaine 2008, sect. 6.2) is
+        // inward at the crest inside corotation and faster ahead of the arm than behind. It
+        // holds between the inner Lindblad resonance, inside which the wave cannot exist, and
+        // the corotation, outside which every sign reverses, and is faded to nothing on both
+        // sides. Measured in docs/notes/disk-settling.md.
+        let streamingScale = selfGravitating && arms > 0 ? min(max(config.armStreaming, 0), 2) : 0
+        let patternSpeed = equilibrium.patternSpeed()
+        let resonances =
+            streamingScale > 0 ? equilibrium.resonances(of: patternSpeed) : (lindblad: 0, corotation: 0)
+        func angularRate(_ r: Float) -> Float { equilibrium.circularSpeed(atRadius: r) / max(r, 1e-3) }
 
         // Star formation is hierarchical: giant complexes, clumps inside them, stars inside
         // those. Drawing every particle straight from the smooth profile is what makes a
@@ -597,10 +619,13 @@ public enum DiskSampler {
 
             // Gas, dust and young stars trace the complexes most strongly; the old smooth
             // disk underneath keeps the profile from turning into a field of blobs.
-            let attachment = component == .star ? clumpiness : min(clumpiness + 0.3, 0.97)
+            let attachment = component == .star ? clumpiness : min(youngClumpiness, 0.97)
             var radius: Float
             var phi: Float
             var proximity: Float
+            /// Where this grain's crest is against the pattern's own, as `samplePlanePosition`
+            /// shifted it, so the streaming follows the crest it was placed on.
+            var crestShift: Float = 0
             /// How far this grain's strand is warped out of the plane where it sits.
             var strandLift: Float = 0
 
@@ -661,7 +686,9 @@ public enum DiskSampler {
                 phi = placed.phi
                 proximity = 1
             } else {
-                let contrast = component == .dust ? min(strength * 1.4, 0.95) : strength
+                let contrast =
+                    component == .dust
+                    ? min(strength * 1.4, 0.95) : (component == .star ? massStrength : strength)
                 let placed = samplePlanePosition(
                     config, arms: arms, contrast: contrast, windRate: windRate,
                     // Neither the gas nor the young stars belong inside the bulge. A spheroid
@@ -676,8 +703,9 @@ public enum DiskSampler {
                     // on the ridge. Which edge that is follows the direction of rotation.
                     phaseOffset: component == .dust ? -0.85 * spin : 0,
                     scaleMultiplier: component == .dust ? dustScaleMultiplier : 1,
-                    shape: shape,
+                    shape: component == .star ? massShape : shape,
                     using: &generator)
+                if component == .dust { crestShift = 0.85 * spin / Float(max(arms, 1)) }
                 radius = placed.radius
                 phi = placed.phi
                 proximity = placed.armProximity
@@ -694,7 +722,7 @@ public enum DiskSampler {
 
             let outward = SIMD3<Float>(cos(phi), sin(phi), 0)
             let along = SIMD3<Float>(-sin(phi), cos(phi), 0)
-            let localVelocity: SIMD3<Float>
+            var localVelocity: SIMD3<Float>
             if selfGravitating {
                 // Anisotropic by construction: the epicyclic ratio fixes how the radial and
                 // azimuthal dispersions relate, and the streaming speed lags the circular
@@ -739,6 +767,49 @@ public enum DiskSampler {
                             * equilibrium.azimuthalDispersion(atRadius: radius))
                         + SIMD3<Float>(0, 0, 1)
                         * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius))
+                    if streamingScale > 0 {
+                        let extent = radius / scale
+                        let lindblad = resonances.lindblad
+                        let corotation = resonances.corotation
+                        let outer =
+                            corotation.isFinite
+                            ? 1 - smoothstep(corotation * 0.9, corotation * 1.1, radius) : 1
+                        let window = smoothstep(lindblad, lindblad * 1.3, radius) * outer
+                        if window > 0 {
+                            let omega = angularRate(radius)
+                            let kappa = equilibrium.epicyclicFrequency(atRadius: radius)
+                            // The fundamental of the density this population was placed at,
+                            // 1 + delta cos(theta), faded inside the bulge as the placement is.
+                            let placedAt =
+                                component == .dust
+                                ? min(strength * 1.4, 0.95) : (component == .star ? massStrength : strength)
+                            let delta = placedAt * smoothstep(0.25, 1.1, extent)
+                            let m = Float(arms)
+                            // Azimuth in the direction of rotation, so the same expressions
+                            // hold for either spin, unwound along the arms exactly as the
+                            // ridge the grain was placed on, wander included: the crest is
+                            // where cos(theta) peaks.
+                            let wound = SpiralPattern.wound(
+                                extent: extent, phi: phi + crestShift,
+                                shape: component == .star ? massShape : shape)
+                            let theta = spin * m * wound
+                            let k = m * abs(windRate) / max(radius, 1e-3)
+                            let forcing = m * (patternSpeed - omega)
+                            let gain: Float = streamingScale * window
+                            // Less the density-weighted mean of cos(theta), delta / 2: a
+                            // ring at 1 + delta cos(theta) streaming as cos(theta) alone has
+                            // a net flow through it, inward inside corotation, and the disk
+                            // contracts for it. Each population keeps the streaming of its
+                            // own contrast, which is what keeps its own arms from winding.
+                            let radialStream: Float =
+                                forcing * delta / k * (cos(theta) - delta / 2) * gain
+                            let azimuthalStream: Float =
+                                kappa * kappa * delta / (2 * omega * k) * sin(theta) * gain * spin
+                            let streamOut: SIMD3<Float> = outward * radialStream
+                            let streamAlong: SIMD3<Float> = along * azimuthalStream
+                            localVelocity += streamOut + streamAlong
+                        }
+                    }
                 }
             } else {
                 let speed = config.potential.circularSpeed(atRadius: radius)
