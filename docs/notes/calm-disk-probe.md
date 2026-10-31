@@ -16,7 +16,7 @@ python3 scripts/probe-report.py compare <run a> <run b>
 Options: `--particles N` (the scene's visible count; the galaxy takes its share), `--myr T`
 (1000), `--frame-myr T` (4), `--seed S`, `--dt-scale X`, the overrides `--clumpiness`,
 `--toomre-q`, `--arm-strength`, `--arm-count`, `--arm-irregularity`, `--disk-mass-fraction`,
-`--dissipation`, and for the picture `--width`, `--height` (one pane, 720), `--no-clip`,
+`--dissipation`, `--mass-contrast`, `--streaming`, `--young-clumpiness`, and for the picture `--width`, `--height` (one pane, 720), `--no-clip`,
 `--painted` (paint the density wave as the app does), `--stills 0,300,...`, `--lag-myr T` (50).
 
 ## What runs

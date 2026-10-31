@@ -27,6 +27,9 @@ extension DiskProbe {
         public var armIrregularity: Float?
         public var diskMassFraction: Float?
         public var dissipationTime: Float?
+        public var armMassContrast: Float?
+        public var armStreaming: Float?
+        public var youngClumpiness: Float?
         public var timeStepScale: Float?
         /// Where the files go. Absent, `probe/g<index>` in the scene folder, or under `out/`.
         public var output: String?
@@ -166,6 +169,10 @@ extension DiskProbe {
         if let scale = options.timeStepScale { file.timeStepScale = scale }
         if let seed = options.seed { file.seed = seed }
         let sceneParticles = options.particles ?? source.particles
+        // The probe runs the self-gravitating solver, so the galaxy is sampled for it: a file
+        // written for the tracer solver would give every star the same isotropic jitter and
+        // no equilibrium dispersion, which a live disk answers by fragmenting at once.
+        file.solver = .barnesHut
         var full = file.scene(particleCount: sceneParticles)
         guard full.galaxies.indices.contains(options.galaxy) else {
             throw ProbeError.noSuchGalaxy(options.galaxy, full.galaxies.count)
@@ -187,6 +194,9 @@ extension DiskProbe {
         override(options.armIrregularity, "armIrregularity", \.armIrregularity)
         override(options.diskMassFraction, "diskMassFraction", \.diskMassFraction)
         override(options.dissipationTime, "dissipationTime", \.dissipationTime)
+        override(options.armMassContrast, "armMassContrast", \.armMassContrast)
+        override(options.armStreaming, "armStreaming", \.armStreaming)
+        override(options.youngClumpiness, "youngClumpiness", \.youngClumpiness)
         if let count = options.armCount {
             full.galaxies[options.galaxy].armCount = count
             overrides["armCount"] = Double(count)
