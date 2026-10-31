@@ -45,6 +45,10 @@ public struct SceneFile: Codable, Sendable, Equatable {
         public var bulgeFraction: Float
         public var bulgeFlattening: Float
         public var clumpiness: Float
+        /// Absent in files written before they existed, which then read with the defaults.
+        public var youngClumpiness: Float?
+        public var armMassContrast: Float?
+        public var armStreaming: Float?
         public var outskirtFraction: Float
         public var diskMassFraction: Float
         public var toomreQ: Float
@@ -76,6 +80,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
             bulgeFraction = galaxy.bulgeFraction
             bulgeFlattening = galaxy.bulgeFlattening
             clumpiness = galaxy.clumpiness
+            youngClumpiness = galaxy.youngClumpiness
+            armMassContrast = galaxy.armMassContrast
+            armStreaming = galaxy.armStreaming
             outskirtFraction = galaxy.outskirtFraction
             diskMassFraction = galaxy.diskMassFraction
             toomreQ = galaxy.toomreQ
@@ -121,6 +128,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
                 positionAngle: positionAngle,
                 spin: spin)
             if let color { galaxy.color = color }
+            if let youngClumpiness { galaxy.youngClumpiness = youngClumpiness }
+            if let armMassContrast { galaxy.armMassContrast = armMassContrast }
+            if let armStreaming { galaxy.armStreaming = armStreaming }
             return galaxy
         }
     }
