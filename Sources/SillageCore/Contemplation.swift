@@ -197,7 +197,7 @@ extension SceneConfig {
             color: colour,
             clumpiness: generator.uniform(in: 0.02...0.08),
             youngClumpiness: generator.uniform(in: 0.4...0.6),
-            armMassContrast: generator.uniform(in: 0.2...0.35),
+            armMassContrast: generator.uniform(in: 0.3...0.45),
             armIrregularity: generator.uniform(in: 0.3...0.78),
             inclination: generator.uniform(in: -1.2...1.2),
             positionAngle: generator.uniform(in: 0...6.28),
