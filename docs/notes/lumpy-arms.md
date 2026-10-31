@@ -215,28 +215,41 @@ painted arms, disk mass fraction left at 0.22.
 
 ## What was done
 
-Implemented in the same pull request as the probe, so a scene drawn or replayed after it gets
-all of it:
+Implemented in the same pull request as the probe, for every galaxy drawn after it:
 
-- `GalaxyConfig.armMassContrast` (0.3): the old stars are placed on the pattern at that
-  contrast, the young population and the gas at `armStrength` as before; and the old stars
-  see the pattern's lopsided term at a tenth (`DiskSampler.massLopsidedness`).
+- `GalaxyConfig.armMassContrast` (0.3, never above `armStrength`): the old stars are placed
+  on the pattern at that contrast, the young population and the gas at `armStrength` as
+  before; and the old stars see the pattern's lopsided term at a tenth
+  (`GalaxyConfig.massLopsidedness`, 0.03 against the light's 0.30).
 - `GalaxyConfig.armStreaming` (1): the linear streaming field of the wave, between the inner
   Lindblad resonance and the corotation of the painted speed.
 - `GalaxyConfig.youngClumpiness` (0.5) for the gas and the young stars; `clumpiness` (0.05)
   is the old stars' alone.
-- The painted pattern turns at `DiskEquilibrium.patternSpeed()`, 0.9 of the circular
-  frequency at two scale lengths, the one expression the paint, the streaming and the probe
-  read; it used to be half the analytic sphere's.
+- The painted pattern turns at `DiskEquilibrium.patternSpeed()`, `GalaxyConfig.patternShare`
+  (0.9) of the circular frequency at two scale lengths, the one expression the paint, the
+  streaming and the probe read; it used to be half the analytic sphere's.
 - The centre the solver reports, which the camera and the cooling follow, is the nucleus:
   the disk material and the bulge inside one and a half scale lengths of where it was.
 - The generators draw the old stars' clumpiness in 0.02 to 0.08, the young population's in
-  0.4 to 0.6, the mass contrast in 0.2 to 0.35 and Toomre Q in 1.4 to 1.8; lenticulars and
+  0.4 to 0.6, the mass contrast in 0.3 to 0.45 and Toomre Q in 1.25 to 1.45; lenticulars and
   dwarfs in proportion.
-- Scene files and takes written before read with the defaults above.
+- **A scene file or a take written before reads as it was written**: every star at the painted
+  contrast, no streaming, the young population at the clumpiness plus 0.3, the full lopsided
+  term and the old pattern speed (`GalaxyConfig.legacy`), so a scene explored before replays
+  the same at hires and an old take exports the same. `--calm` on a render, an explore or the
+  probe moves every galaxy of a stored scene onto the calm disk (its clumpiness is left
+  alone), and explore writes the fields into `scene.json`, so its hires follows.
 
-Measured again with the probe on the same two galaxies, as stored (their clumpiness stays
-what the file says, 0.25 and 0.22; the new defaults do the rest):
+**The Toomre Q of the generator was the last lever, and it was found on the pictures.** With
+the contrast in the mass lowered, the generated spirals drawn at Q 1.4 to 1.8 kept their arms
+in the particles for 100 Myr and then went smooth and stayed so, the painted wave alone too
+faint to carry them: the airbrushed disk the epic warned of. The same galaxies at Q 1.3 grow
+flocculent arms of their own, two to five of them, visible through 400 Myr and more, with a
+first excursion of 4.4 to 6 % (`qtest` runs: a five-armed, a four-armed and a two-armed
+spiral of batch 20261031). Hence 1.25 to 1.45.
+
+Measured again with the probe on the same two galaxies moved onto the calm disk (`--calm`:
+their clumpiness stays what the file says, 0.25 and 0.22, their Q 1.33 and 1.34):
 
 | | Première before | after | Deuxième before | after |
 | --- | --- | --- | --- | --- |
