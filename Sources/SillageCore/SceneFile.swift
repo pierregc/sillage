@@ -104,6 +104,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
         /// Moves a galaxy described before the calm disk onto it (`GalaxyConfig.adoptCalmDisk`),
         /// so a scene explored with `--calm` writes the fields and its hires reads them back.
         public mutating func adoptCalmDisk() {
+            guard (patternShare ?? 0) <= 0 else { return }
             var calm = config(particleCount: 1, color: nil)
             calm.adoptCalmDisk()
             youngClumpiness = calm.youngClumpiness

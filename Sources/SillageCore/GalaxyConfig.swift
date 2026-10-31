@@ -264,13 +264,15 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public static func legacy(clumpiness: Float, armStrength: Float) -> (
         youngClumpiness: Float, armMassContrast: Float, massLopsidedness: Float
     ) {
-        (min(clumpiness + 0.3, 0.97), armStrength, 0.30)
+        (min(min(max(clumpiness, 0), 1) + 0.3, 0.97), armStrength, 0.30)
     }
 
     /// The calm disk of #167 on a galaxy described before it: the old stars at a contrast
     /// they can hold, with the streaming, an even-handed mass, the young population's clumps
-    /// and the pattern turning with the matter. The clumpiness is left as it was.
+    /// and the pattern turning with the matter. The clumpiness is left as it was, and a galaxy
+    /// already on the calm disk keeps what it was drawn with.
     public mutating func adoptCalmDisk() {
+        guard patternShare <= 0 else { return }
         let calm = GalaxyConfig(
             name: name, particleCount: particleCount, potential: potential,
             diskScaleLength: diskScaleLength)

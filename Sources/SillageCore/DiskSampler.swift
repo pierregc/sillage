@@ -623,6 +623,9 @@ public enum DiskSampler {
             var radius: Float
             var phi: Float
             var proximity: Float
+            /// Where this grain's crest is against the pattern's own, as `samplePlanePosition`
+            /// shifted it, so the streaming follows the crest it was placed on.
+            var crestShift: Float = 0
             /// How far this grain's strand is warped out of the plane where it sits.
             var strandLift: Float = 0
 
@@ -702,6 +705,7 @@ public enum DiskSampler {
                     scaleMultiplier: component == .dust ? dustScaleMultiplier : 1,
                     shape: component == .star ? massShape : shape,
                     using: &generator)
+                if component == .dust { crestShift = 0.85 * spin / Float(max(arms, 1)) }
                 radius = placed.radius
                 phi = placed.phi
                 proximity = placed.armProximity
@@ -767,9 +771,10 @@ public enum DiskSampler {
                         let extent = radius / scale
                         let lindblad = resonances.lindblad
                         let corotation = resonances.corotation
-                        let window =
-                            smoothstep(lindblad, lindblad * 1.3, radius)
-                            * (1 - smoothstep(corotation * 0.9, corotation * 1.1, radius))
+                        let outer =
+                            corotation.isFinite
+                            ? 1 - smoothstep(corotation * 0.9, corotation * 1.1, radius) : 1
+                        let window = smoothstep(lindblad, lindblad * 1.3, radius) * outer
                         if window > 0 {
                             let omega = angularRate(radius)
                             let kappa = equilibrium.epicyclicFrequency(atRadius: radius)
@@ -781,13 +786,23 @@ public enum DiskSampler {
                             let delta = placedAt * smoothstep(0.25, 1.1, extent)
                             let m = Float(arms)
                             // Azimuth in the direction of rotation, so the same expressions
-                            // hold for either spin; the clean ridge is where cos(m wound) peaks.
-                            let wound = phi - windRate * log(max(extent, 1e-3))
+                            // hold for either spin, unwound along the arms exactly as the
+                            // ridge the grain was placed on, wander included: the crest is
+                            // where cos(theta) peaks.
+                            let wound = SpiralPattern.wound(
+                                extent: extent, phi: phi + crestShift,
+                                shape: component == .star ? massShape : shape)
                             let theta = spin * m * wound
                             let k = m * abs(windRate) / max(radius, 1e-3)
                             let forcing = m * (patternSpeed - omega)
                             let gain: Float = streamingScale * window
-                            let radialStream: Float = forcing * delta / k * cos(theta) * gain
+                            // Less the density-weighted mean of cos(theta), delta / 2: a
+                            // ring at 1 + delta cos(theta) streaming as cos(theta) alone has
+                            // a net flow through it, inward inside corotation, and the disk
+                            // contracts for it. Each population keeps the streaming of its
+                            // own contrast, which is what keeps its own arms from winding.
+                            let radialStream: Float =
+                                forcing * delta / k * (cos(theta) - delta / 2) * gain
                             let azimuthalStream: Float =
                                 kappa * kappa * delta / (2 * omega * k) * sin(theta) * gain * spin
                             let streamOut: SIMD3<Float> = outward * radialStream

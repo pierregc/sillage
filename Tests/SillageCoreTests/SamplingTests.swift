@@ -510,6 +510,27 @@ struct CalmDiskSamplingTests {
         #expect(calm.clumpiness == 0.2)
     }
 
+    /// `--calm` moves a galaxy described before the calm disk onto it and leaves one already
+    /// on it as it was drawn; the old young attachment clamps the clumpiness as the sampler did.
+    @Test func calmLeavesACalmGalaxyAlone() {
+        var drawn = GalaxyConfig(
+            name: "drawn", particleCount: 10,
+            potential: GalaxyPotential(profile: .hernquist, mass: 50, scaleRadius: 5), diskScaleLength: 4)
+        drawn.armMassContrast = 0.42
+        drawn.youngClumpiness = 0.58
+        let before = drawn
+        drawn.adoptCalmDisk()
+        #expect(drawn == before)
+
+        var old = before
+        old.patternShare = 0
+        old.armStreaming = 0
+        old.adoptCalmDisk()
+        #expect(old.patternShare > 0 && old.armStreaming == 1)
+        #expect(GalaxyConfig.legacy(clumpiness: -0.2, armStrength: 0.8).youngClumpiness == 0.3)
+        #expect(GalaxyConfig.legacy(clumpiness: 1.4, armStrength: 0.8).youngClumpiness == 0.97)
+    }
+
     /// A galaxy read as it was written samples exactly as before the calm disk: the stars at
     /// the painted contrast, nothing added to their velocities.
     @Test func theOldModelSamplesTheStarsAtThePaintedContrast() {

@@ -63,6 +63,16 @@ public enum SpiralPattern {
         }
     }
 
+    /// The azimuth unwound along the arms: a ridge where `arms x wound` is a multiple of two pi.
+    /// Shared with the streaming the sampler gives the wave, so the velocities follow the crest
+    /// the particles were placed on, wander included.
+    public static func wound(extent: Float, phi: Float, shape: Shape, phase: Float = 0) -> Float {
+        // An arm that does not hold its pitch. Without this every arm is the same curve at a
+        // different angle and the eye reads the construction rather than the galaxy.
+        let wander = (fractalNoise(extent * 1.5 + shape.seed) - 0.5) * 2.6 * shape.irregularity
+        return phi - shape.windRate * log(max(extent, 1e-3)) - phase + wander
+    }
+
     /// How far along an arm a point sits: 0 between arms, 1 on a ridge. `extent` is the radius
     /// in scale lengths and `phi` the azimuth in the disk's own plane.
     ///
@@ -70,10 +80,7 @@ public enum SpiralPattern {
     public static func ridge(extent: Float, phi: Float, shape: Shape, phase: Float = 0) -> Float {
         let irregular = shape.irregularity
         let seed = shape.seed
-        // An arm that does not hold its pitch. Without this every arm is the same curve at a
-        // different angle and the eye reads the construction rather than the galaxy.
-        let wander = (fractalNoise(extent * 1.5 + seed) - 0.5) * 2.6 * irregular
-        let wound = phi - shape.windRate * log(max(extent, 1e-3)) - phase + wander
+        let wound = Self.wound(extent: extent, phi: phi, shape: shape, phase: phase)
 
         let armPhase = shape.arms * wound
         var ridge = 0.5 + 0.5 * cos(armPhase)
