@@ -129,3 +129,14 @@ contrast, the streaming, the lopsided term out of the mass; `old-stars-smooth`,
 `arm-streaming` under #167), then a settle of about 150 Myr before the clip at explore and at
 hires (one rotation at two scale lengths is 160 to 217 Myr; the arms-off excursion peaks at
 99 to 237 Myr), measured again with the probe on the night's draws before the settle is set.
+
+## What was done
+
+The sampler changes of `lumpy-arms.md` (the contrast in the mass at 0.3, the streaming field,
+the lopsided term at a tenth, the clumps moved to the young population), and the explore
+clip's settle raised from 400 steps to 750, 150 Myr at the explore count, which hires converts
+to the same megayears. Measured again with the probe on the galaxies of scene-0031 as stored:
+Première's first excursion 9.8 % at 123 Myr against 15.1 % at 289, its heating at 300 Myr
+0.146 against 0.213 and its contraction over the gigayear 10 % against 29 %; Deuxième 6.2 %
+against 8.8, 0.125 against 0.150. A settle of 150 Myr now covers the first dip on both. The
+twenty generated spirals: TBD_GENERATED

@@ -204,3 +204,42 @@ For #172: clumpiness of the stars 0.02 to 0.08 (default 0.05), of the young popu
 0.6, Toomre Q 1.4 to 1.8, the mass contrast 0.2 to 0.35 with `armStrength` 0.6 to 1.0 kept
 for the light, dissipation 300 to 600 Myr, lopsidedness a tenth of what it is, two to four
 painted arms, disk mass fraction left at 0.22.
+
+## What was done
+
+Implemented in the same pull request as the probe, so a scene drawn or replayed after it gets
+all of it:
+
+- `GalaxyConfig.armMassContrast` (0.3): the old stars are placed on the pattern at that
+  contrast, the young population and the gas at `armStrength` as before; and the old stars
+  see the pattern's lopsided term at a tenth (`DiskSampler.massLopsidedness`).
+- `GalaxyConfig.armStreaming` (1): the linear streaming field of the wave, between the inner
+  Lindblad resonance and the corotation of the painted speed.
+- `GalaxyConfig.youngClumpiness` (0.5) for the gas and the young stars; `clumpiness` (0.05)
+  is the old stars' alone.
+- The painted pattern turns at `DiskEquilibrium.patternSpeed()`, 0.9 of the circular
+  frequency at two scale lengths, the one expression the paint, the streaming and the probe
+  read; it used to be half the analytic sphere's.
+- The centre the solver reports, which the camera and the cooling follow, is the nucleus:
+  the disk material and the bulge inside one and a half scale lengths of where it was.
+- The generators draw the old stars' clumpiness in 0.02 to 0.08, the young population's in
+  0.4 to 0.6, the mass contrast in 0.2 to 0.35 and Toomre Q in 1.4 to 1.8; lenticulars and
+  dwarfs in proportion.
+- Scene files and takes written before read with the defaults above.
+
+Measured again with the probe on the same two galaxies, as stored (their clumpiness stays
+what the file says, 0.25 and 0.22; the new defaults do the rest):
+
+| | Première before | after | Deuxième before | after |
+| --- | --- | --- | --- | --- |
+| first excursion | 15.1 % at 289 Myr | 9.8 % at 123 | 8.8 % at 91 | 6.2 % at 269 |
+| r50, 0 to 1000 Myr | 8.52 to 6.04 kpc (-29 %) | 8.40 to 7.56 (-10 %) | 6.99 to 6.25 (-11 %) | 6.86 to 6.00 (-13 %) |
+| sigma_R / v_c at 300 Myr, worst | 0.213, 0.239 | 0.146, 0.175 | 0.150, 0.155 | 0.125, 0.166 |
+| a2 mid, peak and late | 0.61 at 475 Myr, 0.49 | 0.41 at 107, 0.24 | 0.56 at 55, 0.21 | 0.45 at 977, 0.20 |
+| a2 inner, worst | 0.37 (a bar from 300 Myr) | 0.39 for one frame, 0.12 to 0.3 otherwise | 0.25 | 0.32 at the end |
+| a1 mid, t = 0 and late | 0.21, 0.38 | 0.09, 0.20 | 0.10, 0.17 | 0.05, 0.14 |
+| nucleus to the reported centre, late | 0.91 kpc | 0.07 | 0.27 | 0.08 |
+
+On the sheets Première no longer bars: the painted arms soften into a flocculent pattern of
+three to four arms that holds through the gigayear, the outskirts stay with the disk, and the
+app's framing sits on the nucleus. The twenty generated spirals: TBD_GENERATED
