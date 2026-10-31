@@ -156,6 +156,15 @@ megayears, with `complete` false for a story still going at the cap.
 detector and its measured thresholds are in
 [docs/notes/whole-stories.md](docs/notes/whole-stories.md).
 
+**One galaxy alone.** `sillage-render probe-disk <scene.json or scene folder> <galaxy index>` takes
+one galaxy out of a scene, star for star, runs it alone for `--myr` (1000) at the scene's own
+softening and step for `--particles`, and writes one line a frame of what its disk is doing:
+radii, dispersions, Fourier amplitudes by zone, pattern speed, coherence, lumpiness, where its
+nucleus and the solver's centre are, next to a two-pane clip in the disk's own frame and in the
+app's. `--clumpiness`, `--toomre-q`, `--arm-strength`, `--arm-count`, `--disk-mass-fraction` and
+`--dissipation` override the galaxy for a sweep, and `scripts/probe-report.py` lays runs side
+by side. The columns and how to read them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
+
 ### High resolution
 
 `hires` runs the scene again from its `scene.json` at `--particles`, by default this Mac's
