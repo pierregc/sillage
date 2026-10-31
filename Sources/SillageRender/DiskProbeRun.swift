@@ -327,8 +327,10 @@ extension DiskProbe {
             if index > 0 {
                 let born = solver.formation.contents().bindMemory(to: Float.self, capacity: drawn)
                 var formed = 0
+                // A knot carries the time at the start of the step that lit it, so the
+                // first step of this frame is `previousTime` itself and the last is before now.
                 for particle in 0..<drawn
-                where born[particle] > previousTime && born[particle] <= solver.time {
+                where born[particle] >= previousTime && born[particle] < solver.time {
                     formed += 1
                 }
                 reading.formed = formed

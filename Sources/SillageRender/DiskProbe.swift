@@ -395,7 +395,6 @@ public enum DiskProbe {
         let profileScale = Float(profileBins) / (profileReach * h)
         let cellScale = Float(cells) / (2 * reach * h)
         let sectorScale = Float(sectors) / (2 * .pi)
-        var parity = false
 
         for index in 0..<count {
             let component = particles.component[index]
@@ -409,6 +408,7 @@ public enum DiskProbe {
             guard radius > 1e-4 else { continue }
             let scaled = radius / h
 
+            guard radius.isFinite, z.isFinite else { continue }
             let bin = min(Int(radius * profileScale), profileBins - 1)
             if young { youngProfile[bin] += 1 } else { profile[bin] += 1 }
             let cx = Int((x + reach * h) * cellScale)
@@ -425,9 +425,9 @@ public enum DiskProbe {
                 youngPolar[cell] += 1
                 continue
             }
-            // Alternate halves, so a lag's two maps never share a particle.
-            if parity { polarB[cell] += 1 } else { polarA[cell] += 1 }
-            parity.toggle()
+            // Halves by the particle's own index, so a lag's two maps never share a particle
+            // whatever enters or leaves the annulus in between.
+            if index & 1 == 1 { polarB[cell] += 1 } else { polarA[cell] += 1 }
 
             let zone = ringZones[ring]
             zoneCounts[zone] += 1
@@ -598,8 +598,9 @@ public enum DiskProbe {
         return -1
     }
 
+    /// The azimuth at the middle of each sector, as the measurement bins it: from minus pi.
     static let sectorPhasors: [(cos: Double, sin: Double)] = (0..<sectors).map {
-        let angle = (Double($0) + 0.5) / Double(sectors) * 2 * .pi
+        let angle = -Double.pi + (Double($0) + 0.5) / Double(sectors) * 2 * .pi
         return (cos(angle), sin(angle))
     }
 
@@ -750,9 +751,9 @@ public enum DiskProbe {
             if let last = history.last, reading.timeMyr > last.timeMyr {
                 let elapsed = reading.timeMyr - last.timeMyr
                 // Each ring of the middle zone says how far its pattern turned; the mode's
-                // own period is the ambiguity of the reading, so each step is taken closest
-                // to zero, which holds for any cadence under a quarter of a pattern turn.
-                let period = .pi / Double(patternMode)
+                // own period, 2 pi / m, is the ambiguity of the reading, so each step is taken
+                // closest to zero, which holds for any cadence under half a pattern period.
+                let period = 2 * .pi / Double(patternMode)
                 var rate = 0.0
                 var square = 0.0
                 var weight = 0.0
@@ -866,7 +867,8 @@ public enum DiskProbe {
             var weight = 0.0
             for ring in 0..<rings where meansA[ring] >= 1 && meansB[ring] >= 1 {
                 let w = meansA[ring] + meansB[ring]
-                let turned = Int((shift[ring] / (2 * .pi) * Double(n)).rounded())
+                let turns = shift[ring].isFinite ? shift[ring] / (2 * .pi) * Double(n) : 0
+                let turned = Int(turns.rounded())
                 for sector in 0..<n {
                     let a = contrast(earlier.a, meansA, ring, sector)
                     let b = contrast(later.b, meansB, ring, ((sector + turned) % n + n) % n)

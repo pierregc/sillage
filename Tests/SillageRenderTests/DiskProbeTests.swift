@@ -26,7 +26,7 @@ struct DiskProbeTests {
 
         init(
             count: Int, seed: UInt64, contrast: Float = 0, phase: Float = 0, clumps: Int = 0,
-            clumpShare: Float = 0, radialDispersion: Float = 0
+            clumpShare: Float = 0, radialDispersion: Float = 0, arms: Float = 2
         ) {
             var generator = SeededGenerator(seed: seed)
             let h = DiskProbeTests.scaleLength
@@ -42,8 +42,8 @@ struct DiskProbeTests {
                 var radius = h * DiskSampler.inverseExponentialCDF(generator.uniform(), truncation: 4)
                 var phi = generator.uniform() * 2 * .pi
                 if contrast > 0 {
-                    // Accept and reject against 1 + contrast cos 2(phi - phase).
-                    let weight = (1 + contrast * cos(2 * (phi - phase))) / (1 + contrast)
+                    // Accept and reject against 1 + contrast cos m(phi - phase).
+                    let weight = (1 + contrast * cos(arms * (phi - phase))) / (1 + contrast)
                     if generator.uniform() > weight { continue }
                 }
                 if !centres.isEmpty, generator.uniform() < clumpShare {
@@ -62,7 +62,7 @@ struct DiskProbeTests {
 
         func measure(
             galaxy: GalaxyConfig = DiskProbeTests.galaxy(), frame: DiskProbe.Frame? = nil,
-            timeMyr: Double = 0
+            timeMyr: Double = 0, patternMode: Int = 2
         ) -> (DiskProbe.Measurement, DiskProbe.PolarMap, DiskProbe.Frame) {
             DiskProbe.withParticles(
                 positions: positions, velocities: velocities, component: component
@@ -72,7 +72,7 @@ struct DiskProbeTests {
                 let (reading, map) = DiskProbe.measure(
                     particles, frame: found, galaxy: galaxy,
                     equilibrium: DiskEquilibrium(config: galaxy, selfGravitating: true),
-                    solverCentre: .zero, timeMyr: timeMyr)
+                    solverCentre: .zero, timeMyr: timeMyr, patternMode: patternMode)
                 return (reading, map, found)
             }
         }
@@ -132,6 +132,19 @@ struct DiskProbeTests {
         while phase > .pi / 2 { phase -= .pi }
         while phase < -.pi / 2 { phase += .pi }
         #expect(abs(phase) < 0.02)
+    }
+
+    /// An odd pattern reads its own phase too: the sectors' phasors are the azimuths the
+    /// measurement bins, so no order is turned by half a period.
+    @Test func aThreeArmedDiskReadsItsPhase() {
+        let disk = Disk(count: 200_000, seed: 12, contrast: 0.4, phase: 0.5, arms: 3)
+        let (reading, _, _) = disk.measure(patternMode: 3)
+        #expect(abs(reading.amplitudes[1][2] - 0.2) < 0.015)
+        let period = 2 * Double.pi / 3
+        var phase = reading.patternAngle - 0.5
+        while phase > period / 2 { phase -= period }
+        while phase < -period / 2 { phase += period }
+        #expect(abs(phase) < 0.03)
     }
 
     /// A retrograde disk turns the other way in the same plane, and reads exactly the same:
