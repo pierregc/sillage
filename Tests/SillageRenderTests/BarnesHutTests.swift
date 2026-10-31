@@ -690,6 +690,33 @@ struct BarnesHutTests {
         }
     }
 
+    /// A rigid analytic halo stays on the centre of mass of its galaxy's visible particles,
+    /// whatever the nucleus the camera follows: on the nucleus it pulls on its own lopsided
+    /// stars with nothing pulling back, and the galaxy pushes itself along.
+    @Test func aRigidHaloSitsOnTheCentreOfMass() throws {
+        var scene = SceneConfig.merger(particleCount: 120_000)
+        scene.solver = .barnesHut
+        for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = 0 }
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
+        solver.step(count: 2)
+        let system = solver.particles
+        var weighted = [SIMD3<Double>](repeating: .zero, count: scene.galaxies.count)
+        var totals = [Double](repeating: 0, count: scene.galaxies.count)
+        for index in system.positions.indices
+        where system.component[index] != ParticleComponent.halo.rawValue {
+            let galaxy = Int(system.galaxyIndex[index])
+            let m = Double(max(system.mass[index], 1e-20))
+            weighted[galaxy] += SIMD3<Double>(system.positions[index]) * m
+            totals[galaxy] += m
+        }
+        for galaxy in scene.galaxies.indices {
+            let expected = weighted[galaxy] / totals[galaxy]
+            // Taken at the last tree build, one drift before the positions read here.
+            #expect(simd_distance(SIMD3<Double>(solver.massCenters[galaxy]), expected) < 0.05)
+        }
+    }
+
     @Test func selfGravitatingSamplingAssignsMass() {
         var scene = SceneConfig.merger(particleCount: 2_000)
         scene.solver = .barnesHut

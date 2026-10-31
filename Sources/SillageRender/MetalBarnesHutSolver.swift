@@ -136,6 +136,10 @@ public final class MetalBarnesHutSolver: Solver {
     /// Only ever used to vary the per-step random draw in the star formation pass.
     private var stepsSinceFormation = 0
     private var haloCenters: [SIMD3<Float>]
+    /// Where a rigid analytic halo sits: the centre of mass of the galaxy's visible particles.
+    /// Not the nucleus the rest follows: a rigid halo on the nucleus pulls on its own lopsided
+    /// stars with nothing pulling back, and the galaxy pushes itself along (review of #179).
+    private(set) var massCenters: [SIMD3<Float>]
     private var galaxyMotion: [SIMD3<Float>]
     private var diskStates: [DiskState]
     private let centersLock = NSLock()
@@ -196,6 +200,7 @@ public final class MetalBarnesHutSolver: Solver {
         self.liveHalos = scene.hasLiveHalos
         self.quadrupole = quadrupole
         self.haloCenters = scene.galaxies.map(\.position)
+        self.massCenters = scene.galaxies.map(\.position)
         self.galaxyMotion = scene.galaxies.map(\.velocity)
         self.diskStates = DiskState.natal(scene)
         var masses = particles.mass
@@ -819,7 +824,9 @@ public final class MetalBarnesHutSolver: Solver {
             }
         }
         var updated = centers
+        var masses = massCenters
         for galaxy in updated.indices where totals[galaxy] > 0 {
+            masses[galaxy] = SIMD3<Float>(weighted[galaxy] / totals[galaxy])
             // The nucleus when there still is one; a galaxy torn apart, or a black hole, is
             // wherever its mass is.
             let nucleus = innerTotals[galaxy] > 0.01 * totals[galaxy]
@@ -833,6 +840,7 @@ public final class MetalBarnesHutSolver: Solver {
         }
         centersLock.lock()
         haloCenters = updated
+        massCenters = masses
         centersLock.unlock()
     }
 
@@ -978,7 +986,7 @@ public final class MetalBarnesHutSolver: Solver {
     /// The analytic halos the force pass adds, one a galaxy, at the current centres.
     private var haloList: [HaloGPU] {
         var list = scene.galaxies.enumerated().map { index, galaxy -> HaloGPU in
-            let center = index < haloCenters.count ? haloCenters[index] : galaxy.position
+            let center = index < massCenters.count ? massCenters[index] : galaxy.position
             let haloMass =
                 galaxy.potential.mass * (1 - galaxy.diskMassFraction)
                 * Physics.gravitationalConstant
