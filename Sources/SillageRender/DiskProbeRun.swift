@@ -539,26 +539,13 @@ extension DiskProbe {
             Double(equilibrium.circularSpeed(atRadius: two)) * Physics.kilometersPerSecondPerVelocityUnit
         facts.rotationPeriodAt2hMyr = 2 * .pi / omega(two)
         facts.epicyclicPeriodAt2hMyr = 2 * .pi / kappa(two)
-        // The renderer's pattern speed, as DiskFrame.make sets it: half the analytic circular
-        // frequency at two scale lengths.
-        let reference = max(two, 0.5)
-        facts.paintedPatternSpeed =
-            Double(galaxy.potential.circularSpeed(atRadius: reference) / reference) * 0.5 / myr
-        facts.paintedCorotation = corotation(
-            patternSpeed: facts.paintedPatternSpeed, equilibrium: equilibrium)
-        // The inner Lindblad resonance, where Omega - kappa / 2 meets the pattern speed, read
-        // from the inside out on a grid.
-        var previous: Double?
-        for step in 1...240 {
-            let scaled = Double(step) * 0.05
-            let radius = Float(scaled) * h
-            let value = omega(radius) - kappa(radius) / 2 - facts.paintedPatternSpeed
-            if let previous, previous > 0, value <= 0 {
-                facts.paintedInnerLindblad = scaled - 0.025
-                break
-            }
-            previous = value
-        }
+        // The renderer's pattern speed, the one expression DiskFrame.make and the sampler use.
+        let painted = equilibrium.patternSpeed()
+        facts.paintedPatternSpeed = Double(painted) / myr
+        let resonances = equilibrium.resonances(of: painted)
+        facts.paintedCorotation =
+            resonances.corotation.isFinite ? Double(resonances.corotation / h) : .nan
+        facts.paintedInnerLindblad = resonances.lindblad > 0 ? Double(resonances.lindblad / h) : .nan
         return facts
     }
 
