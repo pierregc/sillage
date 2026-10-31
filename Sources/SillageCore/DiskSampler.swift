@@ -15,6 +15,16 @@ public enum DiskSampler {
     /// same reason: past it the sphere holds all of its mass rather than none of it.
     public static let bulgeTruncation: Float = 6
 
+    /// Prototype knobs for the stability spikes (#170, #171), set by the probe before sampling.
+    ///
+    /// `armStreaming` scales the linear tight-winding response of a star to the painted density
+    /// wave, so the arms come with the velocity field a density wave has: zero leaves every star
+    /// on an axisymmetric orbit, as today. `youngAttachment` is the share of gas and young stars
+    /// drawn in clumps, on top of the galaxy's clumpiness; 0.3 is what the sampler has always
+    /// used.
+    nonisolated(unsafe) public static var armStreaming: Float = 0
+    nonisolated(unsafe) public static var youngAttachment: Float = 0.3
+
     /// Inverts the cumulative mass of an exponential disk, M(<x) proportional to
     /// 1 - (1 + x) exp(-x), by Newton iteration. `x` is radius in scale lengths.
     static func inverseExponentialCDF(_ u: Float, truncation: Float) -> Float {
@@ -514,6 +524,39 @@ public enum DiskSampler {
             index: Int(galaxyIndex))
         let scale = config.diskScaleLength
 
+        // The painted pattern turns at the renderer's speed (DiskFrame.make). The linear
+        // response of a star to it holds between the inner Lindblad resonance and the
+        // corotation of that speed: inside the ILR the wave cannot exist and outside the CR
+        // the signs reverse, so the streaming is faded to nothing on both sides.
+        let streamingScale = Self.armStreaming
+        let patternReference = max(scale * 2, 0.5)
+        let patternSpeed =
+            config.potential.circularSpeed(atRadius: patternReference) / patternReference * 0.5
+        func angularRate(_ r: Float) -> Float {
+            equilibrium.circularSpeed(atRadius: r) / max(r, 1e-3)
+        }
+        var lindblad: Float = 0
+        var corotation: Float = .infinity
+        if streamingScale > 0, arms > 0, strength > 0, selfGravitating {
+            var previous: Float?
+            for step in 1...240 {
+                let r = Float(step) * 0.05 * scale
+                let value = angularRate(r) - equilibrium.epicyclicFrequency(atRadius: r) / 2 - patternSpeed
+                if let p = previous, p > 0, value <= 0 {
+                    lindblad = r - 0.025 * scale
+                    break
+                }
+                previous = value
+            }
+            for step in 1...240 {
+                let r = Float(step) * 0.05 * scale
+                if angularRate(r) < patternSpeed {
+                    corotation = r
+                    break
+                }
+            }
+        }
+
         // Star formation is hierarchical: giant complexes, clumps inside them, stars inside
         // those. Drawing every particle straight from the smooth profile is what makes a
         // simulated disk look airbrushed next to a real one.
@@ -597,7 +640,8 @@ public enum DiskSampler {
 
             // Gas, dust and young stars trace the complexes most strongly; the old smooth
             // disk underneath keeps the profile from turning into a field of blobs.
-            let attachment = component == .star ? clumpiness : min(clumpiness + 0.3, 0.97)
+            let attachment =
+                component == .star ? clumpiness : min(clumpiness + Self.youngAttachment, 0.97)
             var radius: Float
             var phi: Float
             var proximity: Float
@@ -739,6 +783,30 @@ public enum DiskSampler {
                             * equilibrium.azimuthalDispersion(atRadius: radius))
                         + SIMD3<Float>(0, 0, 1)
                         * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius))
+                    if streamingScale > 0, arms > 0, strength > 0 {
+                        let extent = radius / scale
+                        let window =
+                            smoothstep(lindblad, lindblad * 1.3, radius)
+                            * (1 - smoothstep(corotation * 0.9, corotation * 1.1, radius))
+                        if window > 0 {
+                            let omega = angularRate(radius)
+                            let kappa = equilibrium.epicyclicFrequency(atRadius: radius)
+                            // The fundamental of the painted density, 1 + delta cos(theta).
+                            let delta = min(strength * smoothstep(0.25, 1.1, extent), 0.95)
+                            let m = Float(arms)
+                            // Azimuth in the direction of rotation, so the formulas hold for
+                            // either spin; the clean ridge is where cos(m * wound) peaks.
+                            let wound = phi - windRate * log(max(extent, 1e-3))
+                            let theta = spin * m * wound
+                            let k = m * abs(windRate) / max(radius, 1e-3)
+                            let forcing = m * (patternSpeed - omega)
+                            let radialStream = forcing * delta / k * cos(theta)
+                            let azimuthalStream = kappa * kappa * delta / (2 * omega * k) * sin(theta)
+                            localVelocity +=
+                                (outward * radialStream + along * (spin * azimuthalStream))
+                                * (streamingScale * window)
+                        }
+                    }
                 }
             } else {
                 let speed = config.potential.circularSpeed(atRadius: radius)
