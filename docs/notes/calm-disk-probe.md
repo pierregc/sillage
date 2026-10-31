@@ -145,6 +145,38 @@ and Tamburro et al. 2008 for the pattern speeds):
 | `omega_p_rad_myr` / `omega_2h_rad_myr` | 0.6 to 1 (corotation at 2 to 3.3 scale lengths); the painted 0.5 puts it at 4 |
 | `lump_stars` | about 0: the old disk carries no knots; all lumpiness lives in the young tracers |
 
-## Baseline: scene-0031
+## Baseline: scene-0031, and what two runs may differ by
 
-TBD: the two galaxies at 200 k and 2 M for 1 Gyr, and the chaotic spread between two seeds.
+Both galaxies of library `2026-10-30-b/scene-0031` run alone for 1 Gyr at the explore count
+(200 000 a scene: 108 000 and 92 000 stars, 270 000 and 230 000 particles with the halo) in
+53 and 47 s, 9.3 and 8.3 ms a step of 0.198 Myr, the measurement 6 ms a frame on top; at the
+hires count (2 M a scene: 1 078 000 and 921 000 stars, 2.7 M and 2.3 M particles) in 628 and 531 s,
+63 and 53 ms a step of 0.105 Myr, the measurement 60 ms a frame. Both galaxies at both counts
+went through the same gigayear: the same first excursion within 2 points (13.3 % against
+15.1 %, 10.5 against 8.8), the same heating at 300 Myr within the seed spread (0.224 against
+0.213, 0.162 against 0.150), a bar by 300 Myr on Première at every count, a late a2 of 0.2 to
+0.3 on both; what the count changes is the knots formed (in proportion to it) and the floor
+under the amplitudes. The `facts` of Première: X_2 2.75, 3.65 and 5.3 at one,
+two and three scale lengths, 3.6 preferred arms at two, the painted pattern at 0.0121 rad/Myr
+with corotation at 4.3 scale lengths and the inner Lindblad resonance at 1.0, v_c 315 km/s,
+a rotation of 217 Myr and an epicycle of 153 Myr at two scale lengths.
+
+| | Première 108 k | seed 2 | Deuxième 92 k | seed 2 |
+| --- | --- | --- | --- | --- |
+| first excursion | 15.1 % at 289 Myr | 14.5 % at 265 | 8.8 % at 91 | 7.7 % at 99 |
+| r50, 0 / 300 / 1000 Myr | 8.52 / 7.25 / 6.04 | 8.19 / 7.48 / 6.90 | 6.99 / 6.43 / 6.25 | 6.88 / 6.44 / 6.04 |
+| sigma_R / v_c, 0 / 300 / 1000 | 0.135 / 0.213 / 0.158 | 0.131 / 0.180 / 0.157 | 0.134 / 0.150 / 0.115 | 0.132 / 0.143 / 0.157 |
+| a2 mid, 0 / 400 / 1000 | 0.36 / 0.55 / 0.46 | 0.41 / 0.52 / 0.29 | 0.36 / 0.24 / 0.17 | |
+| a1 mid, 0 / 1000 | 0.21 / 0.41 | 0.11 / 0.19 | 0.10 / 0.13 | |
+| lump stars, 0 / 16 / 1000 | 0.23 / 0.08 / 0.82 | 0.23 / 0.06 / 0.63 | 0.19 / 0.08 / 0.43 | |
+
+**The same seed gives the same run**: Première run again for 300 Myr matched the first run on
+every column to the printed digits on all 77 frames, GPU included. **Another seed is another
+galaxy.**
+The two samplings of Première agree over the first 300 Myr to 5 % on `r50` (worst 8 %), 2 %
+on `r90`, 0.02 on `sigma_R / v_c`, 0.1 on `a2_mid` and 0.07 on `a1_mid`; after the bar forms
+(at 257 Myr on one, 475 on the other) they part for good: 17 % on `r50`, 0.37 on `a2_mid`,
+0.32 on `a1_mid`. That is the spread a comparison of two runs has to beat, and it is why the
+spikes read the first 300 Myr and the late means rather than one late frame, and why the two
+seeds are run for every finding that matters. The percent on the deciles quoted in
+`state-and-known-limitations.md` is for one sampling at two time steps, a different question.
