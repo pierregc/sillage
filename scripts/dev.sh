@@ -131,10 +131,11 @@ case "${1:-check}" in
     app)    build_app ;;
     render) shift || true; build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
-    explore|hires|look|export|palettes)
+    explore|hires|look|export|palettes|probe-disk)
             build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
     *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|render|app]" >&2
             echo "       ${BASH_SOURCE[0]} explore|hires|look|export|palettes <scene folder> [options]" >&2
+            echo "       ${BASH_SOURCE[0]} probe-disk <scene.json | scene folder> <galaxy> [options]" >&2
             exit 2 ;;
 esac
