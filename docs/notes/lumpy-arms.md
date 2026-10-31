@@ -94,7 +94,11 @@ to 1.0 times the material's own rate at two scale lengths, with its corotation a
 scale lengths, where real spirals have theirs; the renderer paints the wave at 0.012 rad/Myr
 (half the analytic rate, corotation at 4.3 scale lengths, inner Lindblad resonance at 1.0).
 Paint and matter therefore turn against each other at a quarter turn per 100 Myr, and the
-"deformed" look of a settled disk is two patterns beating. Three or four painted arms (`m3`,
+"deformed" look of a settled disk is two patterns beating. What the particles hold once the
+painted wave has gone is not arms at all: within 60 to 160 Myr the spectrum is flat from m = 1
+to m = 8 at 0.2 to 0.5, the signature of compact knots, and it scales with the cooling, which
+pulls the thin-disk stars themselves towards circular orbits (late lumpiness 0.05 with no
+dissipation, 0.38 at 600 Myr, 1.0 at the default 306, and fragmentation at 150). Three or four painted arms (`m3`,
 `m4`) peak lower (a2 0.40 and 0.37) and end as many-armed disks of a2 0.23, no calmer. A
 heavier disk (`dmf-0.30`, `dmf-0.40`) starts hotter by construction (0.17 and 0.21), bars
 harder (a2 in the inner zone 0.51 to 0.54 for 0.40) and breathes more (18 and 23 %).
@@ -132,7 +136,11 @@ the literature expects at a few hundred parsecs and a rotation period. The centr
 camera follows (`updateHaloCenters`: the centre of mass of every visible particle, outskirts
 and thrown-off material included) sits 0.3 to 1.1 kpc from that nucleus late in the baselines of both galaxies,
 3 to 5 kpc in a third of the runs (clumpiness 0.12, 0.35 and 0.44, disk mass fraction 0.40,
-431 000 stars), and drifts at 0.02 to 0.04 kpc a frame. In the two-pane clips the galaxy sits still in its own frame while
+431 000 stars), and drifts at 0.02 to 0.04 kpc a frame. On Première it grows with the count,
+0.45, 0.91, 2.1, 4.3 and 5.6 kpc late from 54 000 to a million stars, because the centre of
+mass follows the stars thrown past six scale lengths and more particles reach there. The
+motion of either centre from frame to frame is smooth, 10 to 25 km/s with periods of 100 to
+450 Myr, not a shimmer: nothing to filter, only the wrong point to follow. In the two-pane clips the galaxy sits still in its own frame while
 the app's framing slides a few hundred pixels over 500 Myr. The outer zone's centroid sits
 0.3 to 1.3 scale lengths from the nucleus: the outskirts are lopsided, as real ones are, and a
 camera on the nucleus is what makes that read as natural.
