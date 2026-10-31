@@ -232,7 +232,9 @@ Implemented in the same pull request as the probe, for every galaxy drawn after 
   (0.9) of the circular frequency at two scale lengths, the one expression the paint, the
   streaming and the probe read; it used to be half the analytic sphere's.
 - The centre the solver reports, which the camera and the cooling follow, is the nucleus:
-  the disk material and the bulge inside one and a half scale lengths of where it was.
+  the disk material and the bulge inside one and a half scale lengths of where it was. A rigid
+  analytic halo stays on the centre of mass: put on the nucleus, it pulls on its own lopsided
+  stars with nothing pulling back and the galaxy pushes itself along (found in review).
 - The generators draw the old stars' clumpiness in 0.02 to 0.08, the young population's in
   0.4 to 0.6, the mass contrast in 0.3 to 0.45 and Toomre Q in 1.25 to 1.45; lenticulars and
   dwarfs in proportion.
