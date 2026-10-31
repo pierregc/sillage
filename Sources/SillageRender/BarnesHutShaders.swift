@@ -106,6 +106,65 @@ enum BarnesHutShaders {
         // Only material still in the disk is touched. A tidal tail is gas and stars thrown
         // clear, on no circular orbit at all, and cooling it would quietly erase the very
         // thing an encounter is watched for.
+        struct SpiralDrive {
+            // xyz the disk's centre, w the amplitude 4 pi G H rho0, zero for no drive.
+            float4 center;
+            // xyz the axis the disk turns about, w the pattern angle now.
+            float4 axis;
+            // xyz the in-plane reference axis, w the scale length.
+            float4 u;
+            // xyz the second in-plane axis, right-handed about the axis, w cot(pitch).
+            float4 v;
+            // arms, the vertical scale, the inner Lindblad radius, the corotation radius.
+            float4 window;
+            // x the ramp, y sin(pitch), z the reference radius, w unused.
+            float4 ramp;
+        };
+
+        // Cox & Gomez 2002, one harmonic: a logarithmic spiral's potential with an
+        // exponential radial envelope and the sech-power vertical fall-off.
+        static float spiralPotential(float x, float y, float z, SpiralDrive d) {
+            float r = max(sqrt(x * x + y * y), 1e-3);
+            float phi = atan2(y, x);
+            float m = d.window.x;
+            float H = d.window.y;
+            float K = m / (r * d.ramp.y);
+            float KH = K * H;
+            float beta = KH * (1.0 + 0.4 * KH);
+            float D = (1.0 + KH + 0.3 * KH * KH) / (1.0 + 0.3 * KH);
+            float gamma = m * (phi + d.v.w * log(r / d.u.w) - d.axis.w);
+            float vertical = pow(1.0 / cosh(K * z / max(beta, 1e-3)), beta);
+            return -d.center.w * exp(-(r - d.ramp.z) / d.u.w) / (K * D) * cos(gamma) * vertical;
+        }
+
+        // A rigid spiral potential turning at the painted pattern speed, acting on the disk
+        // material between the inner Lindblad resonance and the corotation of that speed.
+        kernel void bhDrive(device const float3 *positions [[buffer(0)]],
+                            device float3 *velocities [[buffer(1)]],
+                            device const uint *component [[buffer(2)]],
+                            device const uint *galaxy [[buffer(3)]],
+                            constant SpiralDrive *drives [[buffer(4)]],
+                            constant BHParams &p [[buffer(5)]],
+                            uint i [[thread_position_in_grid]]) {
+            if (i >= p.particleCount) { return; }
+            if (component[i] >= 3u) { return; }
+            SpiralDrive d = drives[galaxy[i]];
+            if (d.center.w <= 0.0 || d.ramp.x <= 0.0) { return; }
+            float3 offset = positions[i] - d.center.xyz;
+            float x = dot(offset, d.u.xyz);
+            float y = dot(offset, d.v.xyz);
+            float z = dot(offset, d.axis.xyz);
+            float r = sqrt(x * x + y * y);
+            float weight = d.ramp.x * smoothstep(d.window.z, 1.3 * d.window.z, r)
+                * (1.0 - smoothstep(0.9 * d.window.w, 1.1 * d.window.w, r));
+            if (weight <= 0.0) { return; }
+            float h = 0.02;
+            float ax = -(spiralPotential(x + h, y, z, d) - spiralPotential(x - h, y, z, d)) / (2.0 * h);
+            float ay = -(spiralPotential(x, y + h, z, d) - spiralPotential(x, y - h, z, d)) / (2.0 * h);
+            float az = -(spiralPotential(x, y, z + h, d) - spiralPotential(x, y, z - h, d)) / (2.0 * h);
+            velocities[i] += (d.u.xyz * ax + d.v.xyz * ay + d.axis.xyz * az) * (weight * p.timeStep);
+        }
+
         kernel void bhDissipate(device const float3 *positions [[buffer(0)]],
                                 device float3 *velocities [[buffer(1)]],
                                 device const float3 *accelerations [[buffer(2)]],

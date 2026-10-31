@@ -31,6 +31,8 @@ extension DiskProbe {
         /// Prototype knobs of the spike branches, handed to the sampler before it draws.
         public var armStreaming: Float?
         public var youngAttachment: Float?
+        public var driveStrength: Float?
+        public var driveRampMyr: Float?
         /// Where the files go. Absent, `probe/g<index>` in the scene folder, or under `out/`.
         public var output: String?
         /// Size of each pane of the clip: the disk's own frame on the left, the frame the app
@@ -201,6 +203,14 @@ extension DiskProbe {
         if let value = options.youngAttachment {
             DiskSampler.youngAttachment = value
             overrides["youngAttachment"] = Double(value)
+        }
+        if let value = options.driveStrength {
+            MetalBarnesHutSolver.driveStrength = value
+            overrides["driveStrength"] = Double(value)
+        }
+        if let value = options.driveRampMyr {
+            MetalBarnesHutSolver.driveRampMyr = value
+            overrides["driveRampMyr"] = Double(value)
         }
         // The whole scene is sampled and the galaxy's particles kept, so the probe's disk is
         // the scene's disk star for star, pattern seed included; then it is set at rest at

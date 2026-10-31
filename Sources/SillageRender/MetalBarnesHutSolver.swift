@@ -37,6 +37,15 @@ struct DiskCoolingGPU {
     var reach: SIMD4<Float>
 }
 
+struct SpiralDriveGPU {
+    var center: SIMD4<Float>
+    var axis: SIMD4<Float>
+    var u: SIMD4<Float>
+    var v: SIMD4<Float>
+    var window: SIMD4<Float>
+    var ramp: SIMD4<Float>
+}
+
 struct BHParams {
     var particleCount: UInt32
     var haloCount: UInt32
@@ -94,6 +103,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let force: MTLComputePipelineState
     private let gather: MTLComputePipelineState
     private let dissipate: MTLComputePipelineState?
+    private let drive: MTLComputePipelineState?
     private let formStars: MTLComputePipelineState
 
     private let positionBuffer: MTLBuffer
@@ -258,6 +268,7 @@ public final class MetalBarnesHutSolver: Solver {
         dissipate =
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
+        drive = Self.driveStrength > 0 ? try pipeline("bhDrive") : nil
         formStars = try pipeline("bhFormStars")
         holePull = holes.isEmpty ? nil : try pipeline("bhHolePull")
         holeSettle = holes.isEmpty ? nil : try pipeline("bhHoleSettle")
@@ -372,6 +383,7 @@ public final class MetalBarnesHutSolver: Solver {
                 if !holes.isEmpty { profiledPass("black holes") { encodeHoles(into: $0) } }
                 profiledPass("kick") { encodeKick(into: $0) }
                 profiledPass("dissipation") { encodeShedRandomMotion(into: $0) }
+                profiledPass("drive") { encodeDrive(into: $0) }
             } else {
                 submitForces()
             }
@@ -405,6 +417,7 @@ public final class MetalBarnesHutSolver: Solver {
                 encodeHoles(into: buffer)
                 encodeKick(into: buffer)
                 encodeShedRandomMotion(into: buffer)
+                encodeDrive(into: buffer)
             }
             submit(buffer)
         } while start < count
@@ -640,6 +653,122 @@ public final class MetalBarnesHutSolver: Solver {
     /// undisturbed; past the ceiling the companion is cutting into the disk itself.
     nonisolated(unsafe) public static var tidalFloor: Float = 0.7
     nonisolated(unsafe) public static var tidalCeiling: Float = 1.4
+
+    /// Prototype of a steady spiral drive (#171): a rigid Cox & Gomez spiral potential turning
+    /// at the painted pattern speed, this fraction of the axisymmetric radial force at two
+    /// scale lengths, ramped in over `driveRampMyr` with a quintic. Zero is no drive.
+    nonisolated(unsafe) public static var driveStrength: Float = 0
+    nonisolated(unsafe) public static var driveRampMyr: Float = 400
+
+    /// Pulls the disk material along a rigid spiral potential, phased on the sampled ridge at
+    /// t = 0 and turning with the painted pattern, between the resonances of that speed.
+    private func encodeDrive(into buffer: MTLCommandBuffer) {
+        guard let drive else { return }
+        centersLock.lock()
+        let frames = (haloCenters, diskStates)
+        centersLock.unlock()
+        let myr = Float(Physics.megayearsPerTimeUnit)
+        let progress = min(max(time * myr / max(Self.driveRampMyr, 1), 0), 1)
+        let ramp = progress * progress * progress * (10 - 15 * progress + 6 * progress * progress)
+        var drives = scene.galaxies.enumerated().map { index, galaxy -> SpiralDriveGPU in
+            let none = SpiralDriveGPU(
+                center: .zero, axis: .zero, u: .zero, v: .zero, window: .zero, ramp: .zero)
+            guard galaxy.kind == .spiral, galaxy.armCount > 0, index < frames.0.count else { return none }
+            let state = index < frames.1.count ? frames.1[index] : DiskState.natal(galaxy)
+            let natal = galaxy.orientation.columns.2 * galaxy.spin.sign
+            let axis = simd_length_squared(state.axis) > 1e-12 ? simd_normalize(state.axis) : natal
+            let (u0, _) = DiskFrame.planeAxes(natal: galaxy.orientation, normal: natal, axis: axis)
+            let u = simd_normalize(u0)
+            let v = simd_cross(axis, u)
+            let h = max(galaxy.diskScaleLength, 0.1)
+            let pitch = max(galaxy.armPitch, 0.02)
+            let reference = max(2 * h, 0.5)
+            let patternSpeed = galaxy.potential.circularSpeed(atRadius: reference) / reference * 0.5
+            let facts = driveFacts(for: galaxy)
+            let disturbed = Self.smoothstep(
+                Self.tidalFloor, Self.tidalCeiling, tidalStress(on: index, centers: frames.0))
+            let quiet = max((1 - disturbed) * (1 - state.disruption), 0)
+            let centre = frames.0[index]
+            return SpiralDriveGPU(
+                center: SIMD4<Float>(centre.x, centre.y, centre.z, facts.amplitude),
+                axis: SIMD4<Float>(axis.x, axis.y, axis.z, patternSpeed * time),
+                u: SIMD4<Float>(u.x, u.y, u.z, h),
+                v: SIMD4<Float>(v.x, v.y, v.z, 1 / tan(pitch)),
+                window: SIMD4<Float>(
+                    Float(galaxy.armCount), max(galaxy.diskThickness, 0.05), facts.lindblad,
+                    facts.corotation),
+                ramp: SIMD4<Float>(ramp * quiet, sin(pitch), reference, 0))
+        }
+        guard drives.contains(where: { $0.center.w > 0 }) else { return }
+        var p = params
+        encode(into: buffer, drive) { encoder in
+            encoder.setBuffer(positionBuffer, offset: 0, index: 0)
+            encoder.setBuffer(velocityBuffer, offset: 0, index: 1)
+            encoder.setBuffer(componentBuffer, offset: 0, index: 2)
+            encoder.setBuffer(galaxyBuffer, offset: 0, index: 3)
+            encoder.setBytes(
+                &drives, length: drives.count * MemoryLayout<SpiralDriveGPU>.stride, index: 4)
+            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 5)
+        }
+    }
+
+    /// The drive's amplitude and the radii it acts between, from the galaxy's equilibrium:
+    /// the amplitude is set so the spiral's strongest in-plane pull at two scale lengths is
+    /// `driveStrength` of the axisymmetric one there.
+    private func driveFacts(
+        for galaxy: GalaxyConfig
+    ) -> (amplitude: Float, lindblad: Float, corotation: Float) {
+        let equilibrium = DiskEquilibrium(config: galaxy, selfGravitating: true)
+        let h = max(galaxy.diskScaleLength, 0.1)
+        let reference = max(2 * h, 0.5)
+        let patternSpeed = galaxy.potential.circularSpeed(atRadius: reference) / reference * 0.5
+        func rate(_ r: Float) -> Float { equilibrium.circularSpeed(atRadius: r) / max(r, 1e-3) }
+        var lindblad: Float = 0
+        var corotation: Float = 12 * h
+        var previous: Float?
+        for step in 1...240 {
+            let r = Float(step) * 0.05 * h
+            let value = rate(r) - equilibrium.epicyclicFrequency(atRadius: r) / 2 - patternSpeed
+            if let p = previous, p > 0, value <= 0 {
+                lindblad = r - 0.025 * h
+                break
+            }
+            previous = value
+        }
+        for step in 1...240 {
+            let r = Float(step) * 0.05 * h
+            if rate(r) < patternSpeed {
+                corotation = r
+                break
+            }
+        }
+        // The unit potential's strongest in-plane pull at the reference radius, over the
+        // angles of one pattern period, by the same differences the kernel takes.
+        let m = Float(galaxy.armCount)
+        let pitch = max(galaxy.armPitch, 0.02)
+        func unit(_ x: Float, _ y: Float) -> Float {
+            let r = max((x * x + y * y).squareRoot(), 1e-3)
+            let k = m / (r * sin(pitch))
+            let kh = k * max(galaxy.diskThickness, 0.05)
+            let d = (1 + kh + 0.3 * kh * kh) / (1 + 0.3 * kh)
+            let gamma = m * (atan2(y, x) + log(r / h) / tan(pitch))
+            return -exp(-(r - reference) / h) / (k * d) * cos(gamma)
+        }
+        var strongest: Float = 0
+        for sample in 0..<32 {
+            let angle = Float(sample) / 32 * 2 * .pi / m
+            let x = reference * cos(angle)
+            let y = reference * sin(angle)
+            let step: Float = 0.02
+            let fx = (unit(x + step, y) - unit(x - step, y)) / (2 * step)
+            let fy = (unit(x, y + step) - unit(x, y - step)) / (2 * step)
+            strongest = max(strongest, (fx * fx + fy * fy).squareRoot())
+        }
+        let circular = equilibrium.circularSpeed(atRadius: reference)
+        let axisymmetric = circular * circular / reference
+        let amplitude = strongest > 0 ? Self.driveStrength * axisymmetric / strongest : 0
+        return (amplitude, lindblad, corotation)
+    }
 
     private func encodeIntegrate(into buffer: MTLCommandBuffer) {
         var p = params
