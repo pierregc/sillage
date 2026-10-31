@@ -800,11 +800,13 @@ public enum DiskSampler {
                             let theta = spin * m * wound
                             let k = m * abs(windRate) / max(radius, 1e-3)
                             let forcing = m * (patternSpeed - omega)
-                            let radialStream = forcing * delta / k * cos(theta)
-                            let azimuthalStream = kappa * kappa * delta / (2 * omega * k) * sin(theta)
-                            localVelocity +=
-                                (outward * radialStream + along * (spin * azimuthalStream))
-                                * (streamingScale * window)
+                            let gain: Float = streamingScale * window
+                            let radialStream: Float = forcing * delta / k * cos(theta) * gain
+                            let azimuthalStream: Float =
+                                kappa * kappa * delta / (2 * omega * k) * sin(theta) * gain * spin
+                            let streamOut: SIMD3<Float> = outward * radialStream
+                            let streamAlong: SIMD3<Float> = along * azimuthalStream
+                            localVelocity += streamOut + streamAlong
                         }
                     }
                 }
