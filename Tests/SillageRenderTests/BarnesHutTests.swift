@@ -659,7 +659,9 @@ struct BarnesHutTests {
 
     /// Summed in blocks on every core, and in double precision because the float running sum
     /// it replaced was 23 pc off here. Enough particles for several blocks, and two galaxies
-    /// so a block writing into the other one's slot would show.
+    /// so a block writing into the other one's slot would show. The centre is the nucleus:
+    /// the disk material and the bulge inside one and a half scale lengths of where the
+    /// galaxy was, not the centre of mass of everything visible (#167).
     @Test func haloCentresSummedInBlocksAreTheCentresOfMass() throws {
         var scene = SceneConfig.merger(particleCount: 120_000)
         scene.solver = .barnesHut
@@ -671,9 +673,12 @@ struct BarnesHutTests {
 
         var weighted = [SIMD3<Double>](repeating: .zero, count: scene.galaxies.count)
         var totals = [Double](repeating: 0, count: scene.galaxies.count)
-        for index in particles.positions.indices
-        where particles.component[index] != ParticleComponent.halo.rawValue {
+        let outside = [ParticleComponent.halo.rawValue, ParticleComponent.outskirt.rawValue]
+        for index in particles.positions.indices where !outside.contains(particles.component[index]) {
             let galaxy = Int(particles.galaxyIndex[index])
+            let home = scene.galaxies[galaxy]
+            let reach = home.diskScaleLength * 1.5
+            guard simd_length_squared(positions[index] - home.position) < reach * reach else { continue }
             let m = Double(max(particles.mass[index], 1e-20))
             weighted[galaxy] += SIMD3<Double>(positions[index]) * m
             totals[galaxy] += m
