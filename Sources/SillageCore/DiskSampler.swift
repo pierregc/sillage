@@ -738,7 +738,7 @@ public enum DiskSampler {
 
             let outward = SIMD3<Float>(cos(phi), sin(phi), 0)
             let along = SIMD3<Float>(-sin(phi), cos(phi), 0)
-            let localVelocity: SIMD3<Float>
+            var localVelocity: SIMD3<Float>
             if selfGravitating {
                 // Anisotropic by construction: the epicyclic ratio fixes how the radial and
                 // azimuthal dispersions relate, and the streaming speed lags the circular
