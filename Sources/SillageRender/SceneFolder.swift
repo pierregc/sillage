@@ -18,7 +18,9 @@ public struct SceneFolder: Sendable, Equatable {
         public var frames = 900
         public var fps = 30
         public var steps = 900
-        public var settle = 400
+        /// Steps run before the first frame: 150 Myr at the explore count's step, where the
+        /// first radial excursion of a sampled disk has peaked (docs/notes/disk-settling.md).
+        public var settle = 750
         /// Where the story runs in the captured frames, once `explore` has followed it to its end.
         public var story: Story.Span?
 

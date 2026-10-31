@@ -473,7 +473,8 @@ a different seed or size given to a batch already started is refused. Scenes in 
 stops are started again.
 
 **The clip shows the encounter.** A step three and a half times the recommended one
-(`--dt-scale 3.5`, measured in #13), 400 steps to settle, which is the first 80 Myr, and then
+(`--dt-scale 3.5`, measured in #13), 750 steps to settle, which is the first 150 Myr, where a
+sampled disk's first radial excursion has peaked (#167), and then
 as many steps as cover `--span`, 700 Myr by default: a step is shorter the more particles a disk
 holds, so the step count is worked out per scene. The generator puts the first pericentre at
 least 150 Myr into the clip, and `explore` runs on past the span while the story goes on, so the
