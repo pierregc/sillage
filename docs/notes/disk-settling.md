@@ -124,11 +124,10 @@ clumps are a fourth thing only the first frame shows. Of the candidates:
 - **Start smooth** gives 6.6 % and a first frame judged airbrushed; its own arms come at 300 to
   500 Myr, flocculent, which is the first candidate again.
 
-So: the sampler tickets first (the contrast in the mass at 0.3 with the light keeping its
-contrast, the streaming, the lopsided term out of the mass; `old-stars-smooth`,
-`arm-streaming` under #167), then a settle of about 150 Myr before the clip at explore and at
-hires (one rotation at two scale lengths is 160 to 217 Myr; the arms-off excursion peaks at
-99 to 237 Myr), measured again with the probe on the night's draws before the settle is set.
+So: the sampler first (the contrast in the mass at 0.3 with the light keeping its contrast,
+the streaming, the lopsided term out of the mass), then a settle of about 150 Myr before the
+clip at explore and at hires (one rotation at two scale lengths is 160 to 217 Myr; the
+arms-off excursion peaks at 99 to 237 Myr). Both were done; see below.
 
 ## What was done
 
@@ -137,7 +136,9 @@ the lopsided term at a tenth, the clumps moved to the young population), and the
 clip's settle raised from 400 steps to 750, 150 Myr at the explore count, which hires converts
 to the same megayears; scenes explored before keep their 400 steps in `clip.json`. Measured
 again with the probe on the galaxies of scene-0031 moved onto the calm disk (`--calm`):
-Première's first excursion 9.8 % at 123 Myr against 15.1 % at 289, its heating at 300 Myr
-0.146 against 0.213 and its contraction over the gigayear 10 % against 29 %; Deuxième 6.2 %
-against 8.8, 0.125 against 0.150. A settle of 150 Myr now covers the first dip on both. The
-twenty generated spirals: TBD_GENERATED
+Première's first excursion 12.0 % at 241 Myr against 15.1 % at 289, its heating at 300 Myr
+0.159 against 0.213 and its contraction over the gigayear 10 % against 29 %; Deuxième 7.0 %
+against 8.8, 0.140 against 0.150, 9 % against 11 %. Twelve generated spirals drawn with the new
+ranges: first excursion 2.9 to 7.3 %, median 5.0, peaking anywhere from 50 to 300 Myr; the
+median radius ends 1 to 10 % smaller. A settle of 150 Myr covers the first dip of most of them;
+the disks that peak later than that are within a few per cent of their start anyway.

@@ -200,20 +200,21 @@ The levers, measured:
 - **The painted pattern speed follows the particles** (0.8 to 1.0 of the material's rate at
   two scale lengths, corotation at 2 to 2.5 scale lengths, where real spirals have it) or the
   paint fades once the particles carry a wave; today's half rate is what beats.
-- **Toomre Q 1.5 to 1.8**: 1.25 bars hard (a2 0.41, lumpiness 1.3), 2.0 is the calmest run
-  (a2 0.15, lumpiness 0.13) but starts hot at 0.20; the cooling brings it back to 0.14.
+- **Toomre Q**: with the old sampling 1.25 bars hard (a2 0.41, lumpiness 1.3) and 2.0 is the
+  calmest run (a2 0.15, lumpiness 0.13) but starts hot at 0.20. With the calm disk the answer
+  turned out the other way, see "What was done": 1.25 to 1.45.
 - **Dissipation 300 to 600 Myr**: 600 keeps a2 0.24 with lumpiness 0.38; 150 fragments the
   disk; none cooks it.
-- **The camera and the cooling on the nucleus**, smoothed over a rotation
-  (`camera-nucleus`).
+- **The camera and the cooling on the nucleus**.
 - **Clumps**: stars at 0.05 or under, the young population at 0.5.
 - The drive at a few per cent, the arm count, a heavier disk and the particle count are not
   levers.
 
-For #172: clumpiness of the stars 0.02 to 0.08 (default 0.05), of the young population 0.4 to
-0.6, Toomre Q 1.4 to 1.8, the mass contrast 0.2 to 0.35 with `armStrength` 0.6 to 1.0 kept
-for the light, dissipation 300 to 600 Myr, lopsidedness a tenth of what it is, two to four
-painted arms, disk mass fraction left at 0.22.
+For #172, as first proposed: clumpiness of the stars 0.02 to 0.08 (default 0.05), of the
+young population 0.4 to 0.6, the mass contrast 0.2 to 0.35 with `armStrength` 0.6 to 1.0 kept
+for the light, lopsidedness a tenth of what it is, two to four painted arms, disk mass fraction
+left at 0.22. What was applied after the pictures is in "What was done": the mass contrast
+0.3 to 0.45 and Toomre Q 1.25 to 1.45, the dissipation left as drawn.
 
 ## What was done
 
@@ -255,14 +256,30 @@ their clumpiness stays what the file says, 0.25 and 0.22, their Q 1.33 and 1.34)
 
 | | Première before | after | Deuxième before | after |
 | --- | --- | --- | --- | --- |
-| first excursion | 15.1 % at 289 Myr | 9.8 % at 123 | 8.8 % at 91 | 6.2 % at 269 |
-| r50, 0 to 1000 Myr | 8.52 to 6.04 kpc (-29 %) | 8.40 to 7.56 (-10 %) | 6.99 to 6.25 (-11 %) | 6.86 to 6.00 (-13 %) |
-| sigma_R / v_c at 300 Myr, worst | 0.213, 0.239 | 0.146, 0.175 | 0.150, 0.155 | 0.125, 0.166 |
-| a2 mid, peak and late | 0.61 at 475 Myr, 0.49 | 0.41 at 107, 0.24 | 0.56 at 55, 0.21 | 0.45 at 977, 0.20 |
-| a2 inner, worst | 0.37 (a bar from 300 Myr) | 0.39 for one frame, 0.12 to 0.3 otherwise | 0.25 | 0.32 at the end |
-| a1 mid, t = 0 and late | 0.21, 0.38 | 0.09, 0.20 | 0.10, 0.17 | 0.05, 0.14 |
-| nucleus to the reported centre, late | 0.91 kpc | 0.07 | 0.27 | 0.08 |
+| first excursion | 15.1 % at 289 Myr | 12.0 % at 241 | 8.8 % at 91 | 7.0 % at 273 |
+| r50, 0 to 1000 Myr | 8.52 to 6.04 kpc (-29 %) | 8.40 to 7.57 (-10 %) | 6.99 to 6.25 (-11 %) | 7.00 to 6.37 (-9 %) |
+| sigma_R / v_c at 300 Myr, worst | 0.213, 0.258 | 0.159, 0.208 | 0.150, 0.172 | 0.140, 0.143 |
+| a2 mid, peak and late | 0.61 at 475 Myr, 0.49 | 0.42 at 111, 0.22 | 0.56 at 55, 0.21 | 0.32 at 408, 0.15 |
+| a2 inner, worst; frames over 0.3 | 0.57 at 510 Myr; 56 of 254 | 0.46 at 625; 55 of 254 | 0.34 at 32; 10 of 254 | 0.22 at 388; 0 of 254 |
+| a1 mid, t = 0 and late | 0.21, 0.38 | 0.09, 0.30 | 0.10, 0.17 | 0.08, 0.13 |
+| nucleus to the reported centre, late | 0.91 kpc | 0.13 | 0.27 | 0.09 |
 
-On the sheets Première no longer bars: the painted arms soften into a flocculent pattern of
-three to four arms that holds through the gigayear, the outskirts stay with the disk, and the
-app's framing sits on the nucleus. The twenty generated spirals: TBD_GENERATED
+On the sheets Première no longer turns into a bar with a dislocated outer disk: the painted
+arms soften into a pattern of three to four arms that holds through the gigayear, with a weak
+inner oval (a2 0.30 to 0.32 for a fifth of the frames, 0.46 at worst, against the old bar's
+0.57), the outskirts stay with the disk and the app's framing sits on the nucleus. Deuxième
+keeps two clean arms through the whole gigayear.
+
+**Twelve generated spirals** of batch 20261031 (the first spiral of each scene drawn with the
+new ranges, at the explore count, 1 Gyr): first excursion 2.9 to 7.3 % (median 5.0), heating
+at 300 Myr 0.08 to 0.13 (median 0.105), late a2 0.06 to 0.26, the median radius 1 to 10 %
+smaller after the gigayear (median 4), the reported centre within 0.14 kpc of the nucleus
+(median 0.06); eleven of twelve stay under an inner a2 of 0.3 on every frame, the twelfth at
+0.32. Six of them run again after the last two fixes to the streaming (its phase on the
+wandering crest, no net radial flow) moved by 2 to 3 points of excursion either way, the
+chaotic spread. On the sheets the six larger ones (mass 46 to 64, scale length 4.3 to 5.5 kpc)
+keep clear spiral arms through the gigayear; **the six smaller ones fade to a nearly smooth
+disk** after 100 to 300 Myr (late amplitude 0.11 to 0.18 against 0.19 to 0.33), which a Toomre
+Q of 1.2 improved only a little. That is the airbrushed look the epic warns against, left for
+#181 with its suspects: the softening, set by the scene's sparsest disk, the particle count, the
+faint paint of three to five arms, the cooling.
