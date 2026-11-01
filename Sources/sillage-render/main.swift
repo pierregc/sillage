@@ -180,11 +180,15 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 
     let clip = try folder.storedClip()
     let hires = folder.storedHires()
-    let renderWidth = hires?.width ?? clip.width
-    let renderHeight = hires?.height ?? clip.height
     // `--stills <dir>` writes every look at every key frame at full size, one PNG each, and
     // leaves the scene's looks folder alone: it is for looking closely, not for choosing.
+    // `--width` sets that size, for the one an export draws; the take's own by default.
     let stillsDirectory = option("stills").map { URL(fileURLWithPath: $0) }
+    let takeWidth = hires?.width ?? clip.width
+    let takeHeight = hires?.height ?? clip.height
+    let stillsWidth = stillsDirectory == nil ? nil : option("width").flatMap { Int($0) }
+    let renderWidth = stillsWidth ?? takeWidth
+    let renderHeight = stillsWidth.map { $0 * takeHeight / takeWidth } ?? takeHeight
     let cellWidth = stillsDirectory != nil ? renderWidth : Int(option("width").flatMap(Double.init) ?? 480)
     let cellHeight = max(
         Int((Double(cellWidth) * Double(renderHeight) / Double(renderWidth)).rounded()), 1)

@@ -5,7 +5,7 @@
     grain.py sheet <out.jpg> [--crop X,Y,W,H | --crop auto] [--label-from name] <image>...
 
 The score works on display luminance, which is what the eye judges. Over the body of the
-galaxies (where the blurred luminance is above a floor, and short of white):
+galaxies (where the blurred luminance is a floor above the sky, and short of white):
 
   grain       rms of what is finer than two pixels, relative to the local level
   structure   rms of what lies between four and sixteen pixels, relative to the local level
@@ -19,7 +19,7 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 BODY_FLOOR = 0.05
 BODY_CEILING = 0.92
@@ -32,12 +32,36 @@ def luminance(path):
 
 
 def blur(field, radius):
-    return np.asarray(Image.fromarray(field, mode="F").filter(ImageFilter.GaussianBlur(radius)))
+    """Gaussian of standard deviation `radius` as three box passes per axis, Pillow's own
+    method: its GaussianBlur refuses float images."""
+    out = field.astype(np.float32)
+    ideal = np.sqrt(4 * radius * radius + 1)
+    lower = int(np.floor(ideal))
+    lower -= 1 - lower % 2
+    passes = round((12 * radius * radius - 3 * lower * lower - 12 * lower - 9) / (-4 * lower - 4))
+    for axis in (0, 1):
+        for index in range(3):
+            out = box(out, lower if index < passes else lower + 2, axis)
+    return out
+
+
+def box(field, width, axis):
+    r = width // 2
+    pad = [(0, 0), (0, 0)]
+    pad[axis] = (r + 1, r)
+    total = np.cumsum(np.pad(field, pad, mode="edge"), axis=axis, dtype=np.float64)
+    n = field.shape[axis]
+    upper = np.take(total, np.arange(width, width + n), axis=axis)
+    lower = np.take(total, np.arange(n), axis=axis)
+    return ((upper - lower) / width).astype(np.float32)
 
 
 def body_mask(y):
+    """The floor stands above the sky, read from the frame's darker pixels: a look's sky is
+    not black, and in a wide frame it is most of the pixels."""
     broad = blur(y, 6)
-    return (broad > BODY_FLOOR) & (broad < BODY_CEILING)
+    sky = np.percentile(broad, 10)
+    return (broad > sky + BODY_FLOOR) & (broad < BODY_CEILING)
 
 
 def score(path):
