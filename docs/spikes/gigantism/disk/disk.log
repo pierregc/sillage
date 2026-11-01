@@ -1,0 +1,96 @@
+-- baseline 250000
+frame 0000  t=0.1 Myr  sim     3.6 ms (3.552 ms/step)  smoothing    3.8 ms  render  39.7 ms (gpu 18.21)
+frame 0001  t=0.2 Myr  sim     0.6 ms (0.591 ms/step)  smoothing    2.8 ms  render  25.1 ms (gpu 19.46)
+done in 0.7 s
+-- col40 250000
+frame 0000  t=0.1 Myr  sim     4.0 ms (4.011 ms/step)  smoothing    4.1 ms  render  39.5 ms (gpu 28.26)
+frame 0001  t=0.2 Myr  sim     0.7 ms (0.733 ms/step)  smoothing    2.9 ms  render  27.3 ms (gpu 21.94)
+done in 0.7 s
+-- glint0 250000
+frame 0000  t=0.1 Myr  sim     3.6 ms (3.608 ms/step)  smoothing    4.0 ms  render  40.7 ms (gpu 18.77)
+frame 0001  t=0.2 Myr  sim     0.8 ms (0.847 ms/step)  smoothing    2.8 ms  render  22.0 ms (gpu 16.74)
+done in 0.7 s
+-- col40-glint0.3 250000
+frame 0000  t=0.1 Myr  sim     3.6 ms (3.588 ms/step)  smoothing    3.9 ms  render  40.2 ms (gpu 29.08)
+frame 0001  t=0.2 Myr  sim     0.7 ms (0.713 ms/step)  smoothing    2.8 ms  render  26.9 ms (gpu 21.49)
+done in 0.7 s
+-- col80-glint0 250000
+frame 0000  t=0.1 Myr  sim     3.6 ms (3.564 ms/step)  smoothing    3.7 ms  render  40.7 ms (gpu 29.16)
+frame 0001  t=0.2 Myr  sim     0.8 ms (0.762 ms/step)  smoothing    2.8 ms  render  26.9 ms (gpu 21.64)
+done in 0.7 s
+-- col40-glint0-haze0.3 250000
+frame 0000  t=0.1 Myr  sim     3.3 ms (3.292 ms/step)  smoothing    3.8 ms  render  47.8 ms (gpu 36.25)
+frame 0001  t=0.2 Myr  sim     0.9 ms (0.862 ms/step)  smoothing    2.7 ms  render  26.1 ms (gpu 20.75)
+done in 0.7 s
+-- baseline 1000000
+frame 0000  t=0.1 Myr  sim     4.2 ms (4.152 ms/step)  smoothing    6.5 ms  render  58.3 ms (gpu 36.93)
+frame 0001  t=0.2 Myr  sim     1.2 ms (1.181 ms/step)  smoothing    4.8 ms  render  34.3 ms (gpu 26.36)
+done in 0.8 s
+-- col40 1000000
+frame 0000  t=0.1 Myr  sim     4.1 ms (4.096 ms/step)  smoothing    6.5 ms  render  64.2 ms (gpu 53.01)
+frame 0001  t=0.2 Myr  sim     0.9 ms (0.893 ms/step)  smoothing    4.6 ms  render  34.7 ms (gpu 26.79)
+done in 0.8 s
+-- glint0 1000000
+frame 0000  t=0.1 Myr  sim     4.0 ms (4.040 ms/step)  smoothing    6.8 ms  render  63.4 ms (gpu 41.39)
+frame 0001  t=0.2 Myr  sim     0.9 ms (0.887 ms/step)  smoothing    5.1 ms  render  30.7 ms (gpu 22.51)
+done in 0.8 s
+-- col40-glint0.3 1000000
+frame 0000  t=0.1 Myr  sim     4.1 ms (4.084 ms/step)  smoothing    6.7 ms  render  59.3 ms (gpu 47.60)
+frame 0001  t=0.2 Myr  sim     0.8 ms (0.843 ms/step)  smoothing    4.5 ms  render  36.1 ms (gpu 28.19)
+done in 0.8 s
+-- col80-glint0 1000000
+frame 0000  t=0.1 Myr  sim     4.0 ms (4.014 ms/step)  smoothing    6.6 ms  render  63.9 ms (gpu 52.31)
+frame 0001  t=0.2 Myr  sim     1.2 ms (1.180 ms/step)  smoothing    4.7 ms  render  36.8 ms (gpu 28.30)
+done in 0.8 s
+-- col40-glint0-haze0.3 1000000
+frame 0000  t=0.1 Myr  sim     4.0 ms (4.018 ms/step)  smoothing    6.3 ms  render  72.8 ms (gpu 61.44)
+frame 0001  t=0.2 Myr  sim     0.9 ms (0.907 ms/step)  smoothing    4.3 ms  render  39.2 ms (gpu 31.17)
+done in 0.8 s
+-- baseline 4000000
+frame 0000  t=0.1 Myr  sim     5.4 ms (5.381 ms/step)  smoothing   17.5 ms  render 106.9 ms (gpu 86.85)
+frame 0001  t=0.2 Myr  sim     2.2 ms (2.194 ms/step)  smoothing   10.3 ms  render  50.5 ms (gpu 33.04)
+done in 1.1 s
+-- col40 4000000
+frame 0000  t=0.1 Myr  sim     5.7 ms (5.698 ms/step)  smoothing   15.4 ms  render  74.3 ms (gpu 64.85)
+frame 0001  t=0.2 Myr  sim     2.0 ms (2.049 ms/step)  smoothing   11.3 ms  render  51.6 ms (gpu 38.38)
+done in 1.0 s
+-- glint0 4000000
+frame 0000  t=0.1 Myr  sim     6.0 ms (5.958 ms/step)  smoothing   16.6 ms  render 105.6 ms (gpu 84.64)
+frame 0001  t=0.2 Myr  sim     2.0 ms (1.982 ms/step)  smoothing   13.7 ms  render  50.3 ms (gpu 32.91)
+done in 1.1 s
+-- col40-glint0.3 4000000
+frame 0000  t=0.1 Myr  sim     5.0 ms (4.956 ms/step)  smoothing   16.0 ms  render  69.2 ms (gpu 59.78)
+frame 0001  t=0.2 Myr  sim     2.0 ms (1.999 ms/step)  smoothing   12.5 ms  render  51.8 ms (gpu 38.47)
+done in 1.1 s
+-- col80-glint0 4000000
+frame 0000  t=0.1 Myr  sim     5.6 ms (5.603 ms/step)  smoothing   14.1 ms  render  76.3 ms (gpu 66.82)
+frame 0001  t=0.2 Myr  sim     1.6 ms (1.634 ms/step)  smoothing    9.4 ms  render  56.2 ms (gpu 42.23)
+done in 1.0 s
+-- col40-glint0-haze0.3 4000000
+frame 0000  t=0.1 Myr  sim     5.7 ms (5.665 ms/step)  smoothing   17.6 ms  render 114.9 ms (gpu 105.16)
+frame 0001  t=0.2 Myr  sim     2.3 ms (2.254 ms/step)  smoothing   13.0 ms  render  67.4 ms (gpu 54.22)
+done in 1.1 s
+-- baseline 8000000
+frame 0000  t=0.1 Myr  sim     8.8 ms (8.809 ms/step)  smoothing   24.2 ms  render 206.0 ms (gpu 182.77)
+frame 0001  t=0.2 Myr  sim     3.0 ms (2.966 ms/step)  smoothing   16.5 ms  render  73.7 ms (gpu 54.62)
+done in 1.5 s
+-- col40 8000000
+frame 0000  t=0.1 Myr  sim     8.5 ms (8.487 ms/step)  smoothing   22.9 ms  render 215.5 ms (gpu 203.67)
+frame 0001  t=0.2 Myr  sim     2.7 ms (2.746 ms/step)  smoothing   17.0 ms  render  83.6 ms (gpu 64.97)
+done in 1.5 s
+-- glint0 8000000
+frame 0000  t=0.1 Myr  sim     8.7 ms (8.725 ms/step)  smoothing   25.3 ms  render 232.0 ms (gpu 208.99)
+frame 0001  t=0.2 Myr  sim     2.9 ms (2.889 ms/step)  smoothing   16.1 ms  render  73.3 ms (gpu 54.68)
+done in 1.5 s
+-- col40-glint0.3 8000000
+frame 0000  t=0.1 Myr  sim     7.9 ms (7.927 ms/step)  smoothing   22.4 ms  render 215.7 ms (gpu 203.63)
+frame 0001  t=0.2 Myr  sim     3.0 ms (3.023 ms/step)  smoothing   17.2 ms  render  83.7 ms (gpu 65.05)
+done in 1.5 s
+-- col80-glint0 8000000
+frame 0000  t=0.1 Myr  sim     8.4 ms (8.381 ms/step)  smoothing   24.2 ms  render 221.6 ms (gpu 210.22)
+frame 0001  t=0.2 Myr  sim     3.0 ms (2.967 ms/step)  smoothing   18.4 ms  render  87.1 ms (gpu 68.36)
+done in 1.5 s
+-- col40-glint0-haze0.3 8000000
+frame 0000  t=0.1 Myr  sim     8.0 ms (8.035 ms/step)  smoothing   25.6 ms  render 288.3 ms (gpu 276.17)
+frame 0001  t=0.2 Myr  sim     2.8 ms (2.766 ms/step)  smoothing   16.7 ms  render 110.1 ms (gpu 90.92)
+done in 1.6 s
