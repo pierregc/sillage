@@ -47,8 +47,13 @@ as gigantic, however it is drawn. Hubble fills the frame with the galaxy.
 
 ## What was tried
 
-Three look fields, all behind defaults that leave every existing frame bit for bit as it was,
-plus the two things a look could already do. Two of the three are kept; the third was
+Three look fields, all behind neutral defaults, plus the two things a look could already do.
+Neutral is not quite bit for bit: the default path against main differs by one level on
+0.04 % of the pixels (915 of 2 073 600 on the disk preset at 300 k). The shader is compiled
+with fast math, and the mere presence of the column code in `splatVertex` changes how the
+compiler rounds the path that does not run it; each build is deterministic against itself.
+Strict identity would take a function constant to compile the new code out of the default
+pipeline. Two of the three are kept; the third was
 measured and taken out again.
 
 - `columnSmoothing` (slider "Étoiles sous le noyau (projection)"): before the splat pass a
