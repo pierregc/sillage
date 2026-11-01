@@ -1,0 +1,10 @@
+# sillage-render costs, run on a mirror of ~/claude-workspace/sillage/library (symlinked files) so the library itself is not written
+costs      library/.sillage/costs.json
+explore    17.7 s + 46.3 ns a particle step, per scene slot, fitted on 103 runs, 3 left out
+           200 000 particles over 4 000 steps, 4 at once: 3.6 min a scene
+hires      1415 s + 57.2 ns a visible particle step, fitted on 9 runs
+           2 M over 10 000 steps: 43 min
+export     1080p/hevc 0.0 s + 27.1 ms a frame, fallback, no runs yet: 900 frames in 24 s
+export     4k/hevc 0.0 s + 78.0 ms a frame, fallback scaled on 2 runs: 900 frames in 70 s
+export     vertical/hevc 0.0 s + 59.2 ms a frame, fallback scaled on 2 runs: 900 frames in 53 s
+export     whatsapp/h264 0.0 s + 13.7 ms a frame, fallback scaled on 1 runs: 900 frames in 12 s

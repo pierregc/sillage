@@ -1,0 +1,56 @@
+key frame  start · 0 · 157 Myr · stored
+key frame  approach · 100 · 237 Myr · stored
+key frame  pericentre · 190 · 308 Myr · blend
+key frame  tails · 606 · 637 Myr · blend
+key frame  end · 922 · 887 Myr · stored
+still      baseline-0.png  1.40 s
+still      smooth-0.png  0.04 s
+still      glint0-0.png  0.03 s
+still      col20-0.png  0.03 s
+still      col40-0.png  0.03 s
+still      col80-0.png  0.03 s
+still      col40-glint0.3-0.png  0.03 s
+still      haze0.5-0.png  0.05 s
+still      col40-haze0.3-0.png  0.04 s
+still      bloom-low-0.png  0.03 s
+still      baseline-100.png  0.08 s
+still      smooth-100.png  0.03 s
+still      glint0-100.png  0.02 s
+still      col20-100.png  0.03 s
+still      col40-100.png  0.03 s
+still      col80-100.png  0.03 s
+still      col40-glint0.3-100.png  0.03 s
+still      haze0.5-100.png  0.04 s
+still      col40-haze0.3-100.png  0.04 s
+still      bloom-low-100.png  0.02 s
+still      baseline-190.png  0.08 s
+still      smooth-190.png  0.03 s
+still      glint0-190.png  0.03 s
+still      col20-190.png  0.03 s
+still      col40-190.png  0.03 s
+still      col80-190.png  0.03 s
+still      col40-glint0.3-190.png  0.03 s
+still      haze0.5-190.png  0.04 s
+still      col40-haze0.3-190.png  0.05 s
+still      bloom-low-190.png  0.02 s
+still      baseline-606.png  0.09 s
+still      smooth-606.png  0.05 s
+still      glint0-606.png  0.04 s
+still      col20-606.png  0.04 s
+still      col40-606.png  0.04 s
+still      col80-606.png  0.04 s
+still      col40-glint0.3-606.png  0.04 s
+still      haze0.5-606.png  0.06 s
+still      col40-haze0.3-606.png  0.06 s
+still      bloom-low-606.png  0.03 s
+still      baseline-922.png  0.08 s
+still      smooth-922.png  0.05 s
+still      glint0-922.png  0.04 s
+still      col20-922.png  0.05 s
+still      col40-922.png  0.04 s
+still      col80-922.png  0.04 s
+still      col40-glint0.3-922.png  0.04 s
+still      haze0.5-922.png  0.05 s
+still      col40-haze0.3-922.png  0.06 s
+still      bloom-low-922.png  0.04 s
+look       10 looks x 5 frames from take.sillage, 19.0 s

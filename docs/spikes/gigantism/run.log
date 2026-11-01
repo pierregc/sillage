@@ -1,0 +1,278 @@
+== stills from the hires take
+key frame  start · 0 · 157 Myr · stored
+key frame  approach · 100 · 237 Myr · stored
+key frame  pericentre · 190 · 308 Myr · blend
+key frame  tails · 606 · 637 Myr · blend
+key frame  end · 922 · 887 Myr · stored
+still      baseline-0.png  1.40 s
+still      smooth-0.png  0.04 s
+still      glint0-0.png  0.03 s
+still      col20-0.png  0.03 s
+still      col40-0.png  0.03 s
+still      col80-0.png  0.03 s
+still      col40-glint0.3-0.png  0.03 s
+still      haze0.5-0.png  0.05 s
+still      col40-haze0.3-0.png  0.04 s
+still      bloom-low-0.png  0.03 s
+still      baseline-100.png  0.08 s
+still      smooth-100.png  0.03 s
+still      glint0-100.png  0.02 s
+still      col20-100.png  0.03 s
+still      col40-100.png  0.03 s
+still      col80-100.png  0.03 s
+still      col40-glint0.3-100.png  0.03 s
+still      haze0.5-100.png  0.04 s
+still      col40-haze0.3-100.png  0.04 s
+still      bloom-low-100.png  0.02 s
+still      baseline-190.png  0.08 s
+still      smooth-190.png  0.03 s
+still      glint0-190.png  0.03 s
+still      col20-190.png  0.03 s
+still      col40-190.png  0.03 s
+still      col80-190.png  0.03 s
+still      col40-glint0.3-190.png  0.03 s
+still      haze0.5-190.png  0.04 s
+still      col40-haze0.3-190.png  0.05 s
+still      bloom-low-190.png  0.02 s
+still      baseline-606.png  0.09 s
+still      smooth-606.png  0.05 s
+still      glint0-606.png  0.04 s
+still      col20-606.png  0.04 s
+still      col40-606.png  0.04 s
+still      col80-606.png  0.04 s
+still      col40-glint0.3-606.png  0.04 s
+still      haze0.5-606.png  0.06 s
+still      col40-haze0.3-606.png  0.06 s
+still      bloom-low-606.png  0.03 s
+still      baseline-922.png  0.08 s
+still      smooth-922.png  0.05 s
+still      glint0-922.png  0.04 s
+still      col20-922.png  0.05 s
+still      col40-922.png  0.04 s
+still      col80-922.png  0.04 s
+still      col40-glint0.3-922.png  0.04 s
+still      haze0.5-922.png  0.05 s
+still      col40-haze0.3-922.png  0.06 s
+still      bloom-low-922.png  0.04 s
+look       10 looks x 5 frames from take.sillage, 19.0 s
+== grain against particle count, t = 0, 4K
+-- baseline 250000
+frame 0000  t=0.2 Myr  sim    13.1 ms (13.098 ms/step)  smoothing    1.0 ms  render  28.0 ms (gpu  3.94)
+frame 0001  t=0.4 Myr  sim    21.6 ms (21.585 ms/step)  smoothing    0.2 ms  render   6.6 ms (gpu  2.61)
+done in 0.7 s
+-- baseline 500000
+frame 0000  t=0.2 Myr  sim    33.6 ms (33.573 ms/step)  smoothing    0.7 ms  render  37.4 ms (gpu 13.31)
+frame 0001  t=0.4 Myr  sim    33.3 ms (33.305 ms/step)  smoothing    0.2 ms  render   7.4 ms (gpu  2.98)
+done in 0.8 s
+-- baseline 1000000
+frame 0000  t=0.1 Myr  sim    61.6 ms (61.635 ms/step)  smoothing    1.1 ms  render  34.6 ms (gpu 12.49)
+frame 0001  t=0.3 Myr  sim    59.7 ms (59.661 ms/step)  smoothing    0.3 ms  render   9.5 ms (gpu  4.04)
+done in 1.0 s
+-- baseline 2000000
+frame 0000  t=0.1 Myr  sim   111.8 ms (111.786 ms/step)  smoothing    1.7 ms  render  52.0 ms (gpu 20.93)
+frame 0001  t=0.2 Myr  sim   107.1 ms (107.111 ms/step)  smoothing    0.4 ms  render  20.6 ms (gpu  9.98)
+done in 1.3 s
+-- baseline 4000000
+frame 0000  t=0.1 Myr  sim   218.7 ms (218.743 ms/step)  smoothing    2.5 ms  render  59.6 ms (gpu 25.81)
+frame 0001  t=0.1 Myr  sim   220.8 ms (220.832 ms/step)  smoothing    0.7 ms  render  29.0 ms (gpu 13.57)
+done in 1.9 s
+-- baseline 8000000
+frame 0000  t=0.1 Myr  sim   448.3 ms (448.348 ms/step)  smoothing   10.5 ms  render  71.3 ms (gpu 38.00)
+frame 0001  t=0.1 Myr  sim   457.4 ms (457.417 ms/step)  smoothing    2.1 ms  render  55.6 ms (gpu 28.32)
+done in 3.2 s
+-- col40 250000
+frame 0000  t=0.2 Myr  sim    13.4 ms (13.433 ms/step)  smoothing    1.0 ms  render  25.5 ms (gpu 13.94)
+frame 0001  t=0.4 Myr  sim    25.3 ms (25.272 ms/step)  smoothing    0.2 ms  render   7.7 ms (gpu  3.41)
+done in 0.7 s
+-- col40 500000
+frame 0000  t=0.2 Myr  sim    26.3 ms (26.304 ms/step)  smoothing    0.8 ms  render  31.6 ms (gpu 19.84)
+frame 0001  t=0.4 Myr  sim    34.4 ms (34.389 ms/step)  smoothing    0.2 ms  render   9.3 ms (gpu  5.07)
+done in 0.8 s
+-- col40 1000000
+frame 0000  t=0.1 Myr  sim    60.7 ms (60.684 ms/step)  smoothing    1.1 ms  render  33.8 ms (gpu 23.73)
+frame 0001  t=0.3 Myr  sim    57.7 ms (57.732 ms/step)  smoothing    0.3 ms  render  13.6 ms (gpu  8.41)
+done in 0.9 s
+-- col40 2000000
+frame 0000  t=0.1 Myr  sim   108.4 ms (108.409 ms/step)  smoothing    1.8 ms  render  38.0 ms (gpu 27.39)
+frame 0001  t=0.2 Myr  sim   109.4 ms (109.373 ms/step)  smoothing    0.4 ms  render  22.0 ms (gpu 14.66)
+done in 1.2 s
+-- col40 4000000
+frame 0000  t=0.1 Myr  sim   218.2 ms (218.225 ms/step)  smoothing    2.8 ms  render  52.1 ms (gpu 41.21)
+frame 0001  t=0.1 Myr  sim   218.0 ms (217.967 ms/step)  smoothing    0.8 ms  render  37.6 ms (gpu 27.97)
+done in 1.8 s
+-- col40 8000000
+frame 0000  t=0.1 Myr  sim   445.8 ms (445.758 ms/step)  smoothing    9.0 ms  render  87.1 ms (gpu 72.49)
+frame 0001  t=0.1 Myr  sim   455.2 ms (455.209 ms/step)  smoothing    2.1 ms  render  80.4 ms (gpu 52.39)
+done in 3.1 s
+== scores
+Traceback (most recent call last):
+  File "/Users/pierregc/claude-workspace/sillage-wt-gigantism/scripts/grain.py", line 158, in <module>
+image	grain	structure	points	body	mean
+    sys.exit(main(sys.argv))
+             ^^^^^^^^^^^^^^
+  File "/Users/pierregc/claude-workspace/sillage-wt-gigantism/scripts/grain.py", line 129, in main
+    metrics = score(path)
+              ^^^^^^^^^^^
+  File "/Users/pierregc/claude-workspace/sillage-wt-gigantism/scripts/grain.py", line 45, in score
+    mask = body_mask(y)
+           ^^^^^^^^^^^^
+  File "/Users/pierregc/claude-workspace/sillage-wt-gigantism/scripts/grain.py", line 39, in body_mask
+    broad = blur(y, 6)
+            ^^^^^^^^^^
+  File "/Users/pierregc/claude-workspace/sillage-wt-gigantism/scripts/grain.py", line 35, in blur
+    return np.asarray(Image.fromarray(field, mode="F").filter(ImageFilter.GaussianBlur(radius)))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/pierregc/.pyenv/versions/3.12.0/lib/python3.12/site-packages/PIL/Image.py", line 1463, in filter
+    return self._new(filter.filter(self.im))
+                     ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/pierregc/.pyenv/versions/3.12.0/lib/python3.12/site-packages/PIL/ImageFilter.py", line 196, in filter
+    return image.gaussian_blur(xy)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: image has wrong mode
+exit 
+== scores (rerun after the grain.py blur fix)
+image	grain	structure	points	body	mean
+baseline-0.png	0.5798	0.0540	0.4391	1.000	0.063
+baseline-100.png	0.6103	0.0555	0.4476	1.000	0.062
+baseline-190.png	0.6382	0.0552	0.4548	1.000	0.060
+baseline-606.png	0.7006	0.0712	0.4456	0.733	0.063
+baseline-922.png	0.4801	0.1620	0.3093	0.114	0.100
+bloom-low-0.png	0.5653	0.0567	0.4235	1.000	0.067
+bloom-low-100.png	0.5964	0.0582	0.4339	1.000	0.067
+bloom-low-190.png	0.6264	0.0596	0.4443	1.000	0.064
+bloom-low-606.png	0.6944	0.0758	0.4401	0.750	0.065
+bloom-low-922.png	0.4699	0.1695	0.2995	0.131	0.103
+col20-0.png	0.5799	0.0540	0.4391	1.000	0.063
+col20-100.png	0.6100	0.0555	0.4476	1.000	0.062
+col20-190.png	0.6382	0.0552	0.4546	1.000	0.060
+col20-606.png	0.6997	0.0719	0.4453	0.733	0.063
+col20-922.png	0.4706	0.1653	0.3068	0.114	0.100
+col40-0.png	0.5795	0.0541	0.4390	1.000	0.063
+col40-100.png	0.6099	0.0554	0.4474	1.000	0.062
+col40-190.png	0.6382	0.0553	0.4547	1.000	0.060
+col40-606.png	0.6993	0.0722	0.4440	0.733	0.063
+col40-922.png	0.4662	0.1641	0.3019	0.115	0.101
+col40-glint0.3-0.png	0.5797	0.0540	0.4391	1.000	0.062
+col40-glint0.3-100.png	0.6099	0.0555	0.4474	1.000	0.062
+col40-glint0.3-190.png	0.6384	0.0553	0.4547	1.000	0.060
+col40-glint0.3-606.png	0.7006	0.0681	0.4445	0.732	0.062
+col40-glint0.3-922.png	0.4664	0.1431	0.2958	0.107	0.100
+col40-haze0.3-0.png	0.5795	0.0539	0.4388	1.000	0.063
+col40-haze0.3-100.png	0.6098	0.0551	0.4470	1.000	0.062
+col40-haze0.3-190.png	0.6379	0.0550	0.4543	1.000	0.060
+col40-haze0.3-606.png	0.6984	0.0694	0.4421	0.733	0.063
+col40-haze0.3-922.png	0.4618	0.1515	0.2892	0.114	0.102
+col80-0.png	0.5797	0.0541	0.4389	1.000	0.063
+col80-100.png	0.6100	0.0554	0.4474	1.000	0.062
+col80-190.png	0.6378	0.0552	0.4543	1.000	0.060
+col80-606.png	0.6986	0.0723	0.4422	0.731	0.063
+col80-922.png	0.4631	0.1593	0.2922	0.116	0.101
+glint0-0.png	0.5799	0.0540	0.4392	1.000	0.062
+glint0-100.png	0.6102	0.0555	0.4477	1.000	0.062
+glint0-190.png	0.6382	0.0552	0.4547	1.000	0.060
+glint0-606.png	0.7017	0.0672	0.4464	0.733	0.062
+glint0-922.png	0.4708	0.1385	0.3005	0.103	0.099
+haze0.5-0.png	0.5795	0.0537	0.4386	1.000	0.063
+haze0.5-100.png	0.6102	0.0548	0.4472	1.000	0.062
+haze0.5-190.png	0.6378	0.0550	0.4542	1.000	0.060
+haze0.5-606.png	0.6988	0.0689	0.4419	0.734	0.063
+haze0.5-922.png	0.4654	0.1501	0.2875	0.114	0.102
+smooth-0.png	0.5797	0.0541	0.4391	1.000	0.063
+smooth-100.png	0.6099	0.0555	0.4474	1.000	0.062
+smooth-190.png	0.6380	0.0552	0.4545	1.000	0.060
+smooth-606.png	0.6995	0.0710	0.4434	0.737	0.063
+smooth-922.png	0.4683	0.1611	0.2960	0.115	0.101
+image	grain	structure	points	body	mean
+baseline-1000000.0001.png	0.5802	0.0486	0.4394	1.000	0.062
+baseline-2000000.0001.png	0.5803	0.0486	0.4395	1.000	0.062
+baseline-250000.0001.png	0.5802	0.0484	0.4393	1.000	0.062
+baseline-4000000.0001.png	0.5804	0.0487	0.4396	1.000	0.062
+baseline-500000.0001.png	0.5802	0.0485	0.4393	1.000	0.062
+baseline-8000000.0001.png	0.5804	0.0487	0.4395	1.000	0.062
+col40-1000000.0001.png	0.5802	0.0486	0.4394	1.000	0.062
+col40-2000000.0001.png	0.5803	0.0486	0.4395	1.000	0.062
+col40-250000.0001.png	0.5802	0.0485	0.4393	1.000	0.062
+col40-4000000.0001.png	0.5804	0.0487	0.4396	1.000	0.062
+col40-500000.0001.png	0.5802	0.0485	0.4393	1.000	0.062
+col40-8000000.0001.png	0.5804	0.0487	0.4395	1.000	0.062
+== sheets
+/Users/pierregc/claude-workspace/gigantism-out/sheet-0.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-100.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-190.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-606.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-922.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-count.jpg
+done: /Users/pierregc/claude-workspace/gigantism-out
+== scores (rerun: body floor measured above the sky)
+image	grain	structure	points	body	mean
+baseline-0.png	0.1778	0.3068	0.0770	0.009	0.280
+baseline-100.png	0.1656	0.2844	0.0702	0.011	0.276
+baseline-190.png	0.1807	0.2814	0.0784	0.010	0.275
+baseline-606.png	0.1943	0.1610	0.1019	0.049	0.176
+baseline-922.png	0.2018	0.1876	0.1073	0.039	0.169
+bloom-low-0.png	0.0851	0.2155	0.0088	0.029	0.262
+bloom-low-100.png	0.0895	0.2146	0.0112	0.030	0.280
+bloom-low-190.png	0.1051	0.2417	0.0204	0.023	0.273
+bloom-low-606.png	0.1751	0.1807	0.0846	0.056	0.189
+bloom-low-922.png	0.1864	0.2147	0.0937	0.047	0.175
+col20-0.png	0.1655	0.3069	0.0743	0.009	0.281
+col20-100.png	0.1516	0.2845	0.0673	0.011	0.276
+col20-190.png	0.1624	0.2804	0.0752	0.010	0.275
+col20-606.png	0.1806	0.1637	0.1021	0.049	0.176
+col20-922.png	0.1889	0.1910	0.1090	0.040	0.168
+col40-0.png	0.1500	0.3066	0.0678	0.009	0.282
+col40-100.png	0.1358	0.2843	0.0597	0.011	0.277
+col40-190.png	0.1456	0.2805	0.0682	0.010	0.275
+col40-606.png	0.1647	0.1653	0.0933	0.050	0.175
+col40-922.png	0.1696	0.1933	0.1029	0.041	0.168
+col40-glint0.3-0.png	0.1351	0.3100	0.0569	0.009	0.276
+col40-glint0.3-100.png	0.1238	0.2890	0.0492	0.011	0.271
+col40-glint0.3-190.png	0.1334	0.2839	0.0575	0.010	0.271
+col40-glint0.3-606.png	0.1558	0.1560	0.0741	0.047	0.173
+col40-glint0.3-922.png	0.1563	0.1778	0.0783	0.038	0.168
+col40-haze0.3-0.png	0.1243	0.3037	0.0474	0.009	0.285
+col40-haze0.3-100.png	0.1108	0.2741	0.0380	0.011	0.282
+col40-haze0.3-190.png	0.1228	0.2755	0.0454	0.010	0.278
+col40-haze0.3-606.png	0.1507	0.1577	0.0713	0.051	0.175
+col40-haze0.3-922.png	0.1524	0.1824	0.0768	0.042	0.168
+col80-0.png	0.1316	0.3067	0.0572	0.009	0.283
+col80-100.png	0.1178	0.2844	0.0487	0.011	0.279
+col80-190.png	0.1273	0.2802	0.0547	0.010	0.276
+col80-606.png	0.1506	0.1665	0.0753	0.051	0.176
+col80-922.png	0.1514	0.1918	0.0836	0.042	0.168
+glint0-0.png	0.1451	0.3116	0.0644	0.009	0.272
+glint0-100.png	0.1378	0.2913	0.0598	0.011	0.267
+glint0-190.png	0.1505	0.2868	0.0676	0.009	0.270
+glint0-606.png	0.1655	0.1558	0.0807	0.045	0.173
+glint0-922.png	0.1652	0.1789	0.0825	0.036	0.168
+haze0.5-0.png	0.1264	0.3006	0.0443	0.009	0.285
+haze0.5-100.png	0.1127	0.2702	0.0367	0.012	0.284
+haze0.5-190.png	0.1282	0.2749	0.0445	0.010	0.279
+haze0.5-606.png	0.1559	0.1571	0.0650	0.051	0.175
+haze0.5-922.png	0.1571	0.1821	0.0682	0.042	0.169
+smooth-0.png	0.1485	0.3076	0.0617	0.009	0.283
+smooth-100.png	0.1381	0.2859	0.0560	0.011	0.277
+smooth-190.png	0.1483	0.2802	0.0620	0.010	0.275
+smooth-606.png	0.1598	0.1631	0.0795	0.050	0.176
+smooth-922.png	0.1631	0.1897	0.0846	0.041	0.169
+image	grain	structure	points	body	mean
+baseline-1000000.0001.png	0.1105	0.2784	0.0166	0.007	0.260
+baseline-2000000.0001.png	0.1087	0.2815	0.0151	0.007	0.260
+baseline-250000.0001.png	0.1094	0.2691	0.0156	0.007	0.256
+baseline-4000000.0001.png	0.1110	0.2903	0.0156	0.007	0.260
+baseline-500000.0001.png	0.1080	0.2733	0.0159	0.007	0.258
+baseline-8000000.0001.png	0.1073	0.2883	0.0143	0.007	0.261
+col40-1000000.0001.png	0.1077	0.2789	0.0146	0.007	0.261
+col40-2000000.0001.png	0.1069	0.2817	0.0142	0.007	0.261
+col40-250000.0001.png	0.1060	0.2732	0.0130	0.007	0.258
+col40-4000000.0001.png	0.1101	0.2903	0.0150	0.007	0.260
+col40-500000.0001.png	0.1046	0.2754	0.0142	0.007	0.260
+col40-8000000.0001.png	0.1069	0.2883	0.0142	0.007	0.261
+== sheets
+/Users/pierregc/claude-workspace/gigantism-out/sheet-0.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-100.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-190.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-606.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-922.jpg
+/Users/pierregc/claude-workspace/gigantism-out/sheet-count.jpg
+done: /Users/pierregc/claude-workspace/gigantism-out
