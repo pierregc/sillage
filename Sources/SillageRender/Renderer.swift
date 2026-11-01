@@ -31,6 +31,12 @@ struct SplatUniforms {
     var pass: UInt32
     var mapped: UInt32 = 0
     var holeShadow: Float = 0
+    var columnSmoothing: Float = 0
+    var columnCell: Float = 8
+    var columnToPixels: Float = 1
+    var glint: Float = 1
+    var haze: Float = 0
+    var hazeScale: Float = 4
 }
 
 struct BackgroundStar {
@@ -121,6 +127,13 @@ public struct RenderSettings: Sendable {
     public var galaxyTint: Float
     /// Radius in kpc of a black hole's dark dot, zero for none.
     public var holeShadow: Float = 0
+    /// Stars a kernel covers in projection, 0 to size kernels from the 3D spacing alone.
+    public var columnSmoothing: Float = 0
+    /// Light kept by the compact bright minority, 1 as sampled.
+    public var glint: Float = 1
+    /// Share of the starlight drawn as a wide unresolved layer, and how much wider.
+    public var haze: Float = 0
+    public var hazeScale: Float = 4
     /// Draws the raw look: plain points and one pass, instead of the splat, dust and post
     /// stages. Fixed for the renderer's life, since it decides which pipelines get built.
     public var plain: Bool
@@ -221,9 +234,17 @@ public final class Renderer {
     private let compositePipeline: MTLComputePipelineState
     private let spikePipeline: MTLComputePipelineState
     private let compactPipeline: MTLComputePipelineState
+    private let countPipeline: MTLRenderPipelineState
+    private let hazePipeline: MTLRenderPipelineState
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
+    /// Emitting particles per cell of `columnCell` accumulation pixels, for the projected
+    /// kernel; and the unresolved layer, at a quarter of the accumulation on each axis.
+    private let columnDensity: MTLTexture
+    private let hazeAccumulation: MTLTexture
+    static let columnCell = 8
+    static let hazeDivisor = 4
     private let resolved: MTLTexture
     private let bloomDown: [MTLTexture]
     private let bloomUp: [MTLTexture]
@@ -345,14 +366,12 @@ public final class Renderer {
 
         func additive(
             _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
-            attachments: Int = 2
+            attachments: Int = 2, format: MTLPixelFormat = .rgba16Float
         ) throws -> MTLRenderPipelineState {
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
             descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
-            for (index, format) in [MTLPixelFormat.rgba16Float, .rgba16Float].prefix(attachments)
-                .enumerated()
-            {
+            for (index, format) in [format, format].prefix(attachments).enumerated() {
                 guard let attachment = descriptor.colorAttachments[index] else { continue }
                 attachment.pixelFormat = format
                 attachment.writeMask = index == target ? .all : []
@@ -376,6 +395,9 @@ public final class Renderer {
         plainPipeline = try additive(
             "plainVertex", "plainFragment", writing: 0, attachments: 1)
         plainCompositePipeline = try compute("plainComposite")
+        countPipeline = try additive(
+            "countVertex", "countFragment", writing: 0, attachments: 1, format: .r32Float)
+        hazePipeline = try additive("splatVertex", "hazeFragment", writing: 0, attachments: 1)
 
         resolvePipeline = try compute("resolve")
         brightPassPipeline = try compute("brightPass")
@@ -415,6 +437,14 @@ public final class Renderer {
             .rgba16Float, [.renderTarget, .shaderRead])
         resolved = try texture(
             settings.width, settings.height, .rgba16Float, [.shaderRead, .shaderWrite])
+        columnDensity = try texture(
+            settings.plain ? 1 : settings.width * scale / Self.columnCell,
+            settings.plain ? 1 : settings.height * scale / Self.columnCell,
+            .r32Float, [.renderTarget, .shaderRead])
+        hazeAccumulation = try texture(
+            settings.plain ? 1 : settings.width * scale / Self.hazeDivisor,
+            settings.plain ? 1 : settings.height * scale / Self.hazeDivisor,
+            .rgba16Float, [.renderTarget, .shaderRead])
 
         var down: [MTLTexture] = []
         var up: [MTLTexture] = []
@@ -618,6 +648,10 @@ public final class Renderer {
         settings.noiseLevel = look.noiseLevel
         settings.galaxyTint = look.galaxyTint
         settings.holeShadow = look.holeShadow
+        settings.columnSmoothing = look.columnSmoothing
+        settings.glint = look.glint
+        settings.haze = look.haze
+        settings.hazeScale = look.hazeScale
         settings.starSize = look.starSize
         armPersistence = look.armPersistence
     }
@@ -790,7 +824,29 @@ public final class Renderer {
             galaxyTint: settings.galaxyTint,
             slabNear: slabNear,
             slabScale: 1 / max(2 * halfExtent, 1e-3),
-            pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow)
+            pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow,
+            columnSmoothing: settings.columnSmoothing, columnCell: Float(Self.columnCell),
+            columnToPixels: 1, glint: settings.glint, haze: settings.haze,
+            hazeScale: settings.hazeScale)
+
+        // The column pass, once per frame over every drawn particle: counts into coarse
+        // cells, which the splat vertex reads back to size its kernel in projection.
+        if first, settings.columnSmoothing > 0 {
+            let count = MTLRenderPassDescriptor()
+            count.colorAttachments[0].texture = columnDensity
+            count.colorAttachments[0].loadAction = .clear
+            count.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+            count.colorAttachments[0].storeAction = .store
+            if let encoder = buffer.makeRenderCommandEncoder(descriptor: count) {
+                encoder.setRenderPipelineState(countPipeline)
+                encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+                encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
+                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
+                encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+                encoder.endEncoding()
+            }
+        }
 
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {
@@ -823,6 +879,7 @@ public final class Renderer {
             encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
             encoder.setVertexBuffer(rampKeyBuffer, offset: 0, index: 11)
             encoder.setVertexBuffer(rampBuffer, offset: 0, index: 12)
+            encoder.setVertexTexture(columnDensity, index: 0)
             // Twice over the same buffer: the dust first, so that its opacity is standing in
             // the attachment when the stars are drawn and read it back. Each draw throws away
             // the particles belonging to the other one in the vertex stage, before any
@@ -839,6 +896,41 @@ public final class Renderer {
             }
             encoder.endEncoding()
         }
+
+        // The unresolved layer: the stars a third time, wider, into a target a quarter the
+        // size on each axis, where a kernel four times as wide costs what it did before.
+        guard settings.haze > 0, stages.contains(1) else { return }
+        let divisor = Float(Self.hazeDivisor)
+        var wide = splat
+        wide.pass = 2
+        wide.projectionScale = splat.projectionScale / divisor
+        wide.minimumSize = max(splat.minimumSize / divisor, 1)
+        wide.maximumSize = splat.maximumSize * settings.hazeScale / divisor
+        wide.columnToPixels = 1 / divisor
+        let layer = MTLRenderPassDescriptor()
+        layer.colorAttachments[0].texture = hazeAccumulation
+        layer.colorAttachments[0].loadAction = particles.lowerBound == 0 ? .clear : .load
+        layer.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        layer.colorAttachments[0].storeAction = .store
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: layer) else { return }
+        encoder.setRenderPipelineState(hazePipeline)
+        encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+        encoder.setVertexBuffer(populationBuffer, offset: 0, index: 1)
+        encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
+        encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
+        encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+        encoder.setVertexBytes(&wide, length: MemoryLayout<SplatUniforms>.stride, index: 4)
+        encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
+        encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
+        encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
+        encoder.setVertexBuffer(stellarBuffer, offset: 0, index: 9)
+        encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
+        encoder.setVertexBuffer(rampKeyBuffer, offset: 0, index: 11)
+        encoder.setVertexBuffer(rampBuffer, offset: 0, index: 12)
+        encoder.setVertexTexture(columnDensity, index: 0)
+        encoder.drawPrimitives(
+            type: .point, vertexStart: particles.lowerBound, vertexCount: particles.count)
+        encoder.endEncoding()
     }
 
     private func encodePost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
@@ -846,8 +938,11 @@ public final class Renderer {
         guard let compute = buffer.makeComputeCommandEncoder() else { return }
 
         var factor = UInt32(settings.supersample)
+        var hazeOn: Float = settings.haze > 0 ? 1 : 0
         dispatch(compute, resolvePipeline, into: resolved) { encoder in
             encoder.setTexture(accumulation, index: 0)
+            encoder.setTexture(hazeAccumulation, index: 1)
+            encoder.setBytes(&hazeOn, length: MemoryLayout<Float>.stride, index: 1)
             encoder.setTexture(resolved, index: 2)
             encoder.setBytes(&factor, length: 4, index: 0)
         }

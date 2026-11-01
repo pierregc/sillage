@@ -54,6 +54,17 @@ public struct RenderLook: Sendable, Equatable {
     /// Radius in kpc of the dark dot a black hole is drawn as. Zero, the default, draws
     /// nothing there: the hole shows only by the stars it drags.
     public var holeShadow: Float
+    /// How many stars a kernel covers in projection. Zero, the default, sizes every kernel
+    /// from the three-dimensional spacing alone, which is what resolves the particles of a
+    /// thin disk seen face-on. Spike on the grain of a render, docs/notes/gigantism.md.
+    public var columnSmoothing: Float
+    /// Light kept by the compact bright minority the sampler draws: 1 as sampled, 0 gives
+    /// them back the light and the width of an ordinary star.
+    public var glint: Float
+    /// Share of the starlight drawn as a wide unresolved layer, and how many times wider
+    /// than the star's own kernel that layer is.
+    public var haze: Float
+    public var hazeScale: Float
 
     public init(
         brightness: Float = 0.15,
@@ -79,7 +90,11 @@ public struct RenderLook: Sendable, Equatable {
         starSize: Float = 1.15,
         armPersistence: Float = 1,
         fieldOfView: Float = 0.6,
-        holeShadow: Float = 0
+        holeShadow: Float = 0,
+        columnSmoothing: Float = 0,
+        glint: Float = 1,
+        haze: Float = 0,
+        hazeScale: Float = 4
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -105,6 +120,10 @@ public struct RenderLook: Sendable, Equatable {
         self.armPersistence = armPersistence
         self.fieldOfView = fieldOfView
         self.holeShadow = holeShadow
+        self.columnSmoothing = columnSmoothing
+        self.glint = glint
+        self.haze = haze
+        self.hazeScale = hazeScale
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -140,6 +159,10 @@ public struct RenderLook: Sendable, Equatable {
         out.armPersistence = f(a.armPersistence, b.armPersistence)
         out.fieldOfView = f(a.fieldOfView, b.fieldOfView)
         out.holeShadow = f(a.holeShadow, b.holeShadow)
+        out.columnSmoothing = f(a.columnSmoothing, b.columnSmoothing)
+        out.glint = f(a.glint, b.glint)
+        out.haze = f(a.haze, b.haze)
+        out.hazeScale = f(a.hazeScale, b.hazeScale)
         return out
     }
 
@@ -245,6 +268,10 @@ extension RenderLook: Codable {
             starSize: try c.value(.starSize, or: d.starSize),
             armPersistence: try c.value(.armPersistence, or: d.armPersistence),
             fieldOfView: try c.value(.fieldOfView, or: d.fieldOfView),
-            holeShadow: try c.value(.holeShadow, or: d.holeShadow))
+            holeShadow: try c.value(.holeShadow, or: d.holeShadow),
+            columnSmoothing: try c.value(.columnSmoothing, or: d.columnSmoothing),
+            glint: try c.value(.glint, or: d.glint),
+            haze: try c.value(.haze, or: d.haze),
+            hazeScale: try c.value(.hazeScale, or: d.hazeScale))
     }
 }
