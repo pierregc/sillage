@@ -30,9 +30,8 @@ variant("col40", columnSmoothing=40)
 variant("glint0", glint=0)
 variant("col40-glint0.3", columnSmoothing=40, glint=0.3)
 variant("col80-glint0", columnSmoothing=80, glint=0)
-variant("col40-glint0-haze0.3", columnSmoothing=40, glint=0, haze=0.3, hazeScale=4)
 EOF
-VARIANTS="baseline col40 glint0 col40-glint0.3 col80-glint0 col40-glint0-haze0.3"
+VARIANTS="baseline col40 glint0 col40-glint0.3 col80-glint0"
 
 echo "== one disk, t = 0, 4K"
 : > "$OUT/disk.log"

@@ -48,7 +48,8 @@ as gigantic, however it is drawn. Hubble fills the frame with the galaxy.
 ## What was tried
 
 Three look fields, all behind defaults that leave every existing frame bit for bit as it was,
-plus the two things a look could already do.
+plus the two things a look could already do. Two of the three are kept; the third was
+measured and taken out again.
 
 - `columnSmoothing` (slider "Étoiles sous le noyau (projection)"): before the splat pass a
   count pass draws one point per emitting particle into cells eight accumulation pixels wide.
@@ -58,9 +59,9 @@ plus the two things a look could already do.
 - `glint` (slider "Sources compactes"): the compact minority's extra light and narrowness,
   dialled from as sampled (1) to an ordinary star (0). Nothing is resampled; the shader knows
   them by their kernel scale.
-- `haze` and `hazeScale` (sliders "Voile de lumière", "Largeur du voile"): a share of every
-  star's light drawn `hazeScale` times wider into a target a quarter the size on each axis,
-  added back at resolve. The exposure does not move: the main pass keeps `1 - haze`.
+- `haze` and `hazeScale`, not kept: a share of every star's light drawn `hazeScale` times
+  wider into a target a quarter the size on each axis, added back at resolve, the main pass
+  keeping `1 - haze` so the exposure did not move. Measured below and removed afterwards.
 - For comparison, the two hammers a look already had: `smoothingScale` up 1.6x with the
   kernel floor at 2 px (the direction of the Onirique look), and bloom with its threshold at
   0.05 and intensity 1.
@@ -105,8 +106,8 @@ the numbers say the same thing with less nuance.
   this scene (-23 %, points from 10.2 to 7.4 % on frame 606). Cost: +5 ms GPU a frame at 2 M
   in 4K, +24 ms at 8 M.
 - **Haze reads as a halo under the stars, not as fog.** It softens edges and makes the
-  fewest points of all, but the shape is kept rather than dissolved. Not what the brief asked
-  for; kept as a dial.
+  fewest points of all here; on the single disk below it washes the dust lanes out and costs
+  36 ms a frame at 8 M. Removed.
 - **Bloom at the floor is not a track.** It lifts everything and burns the core; its low
   grain score is an artefact of the mask growing into the glow, and it is the only variant
   that loses structure.
@@ -129,7 +130,38 @@ with the count pass 3.4, 15 and 52 ms. The solver in the same runs: 13 ms a step
 
 ## One disk filling the frame
 
-TODO disk run.
+The isolated disk preset at t = 0, seed 7, a fixed camera at 1.35 rad of elevation framed on
+the disk: 1460 px across in 4K, two thirds of the height. Six looks at four counts
+(`disk/sheet-disk-*.jpg`, `disk/crop-*.jpg`), the GPU time per frame in `disk.log`.
+
+The grain score cannot rank the counts here, and it is worth saying why: at 250 000 a
+particle is a soft blot of 5 to 15 px, which the 4 to 16 px band counts as structure, and at
+8 M it is 1 to 2 px and lands in the grain band. The columns swap places as the count grows
+(baseline grain 0.046 to 0.103, structure 0.108 to 0.057). The images are the measurement.
+
+| at 1:1 | 250 k | 1 M | 4 M | 8 M |
+| --- | --- | --- | --- | --- |
+| baseline | soft blots, bokeh, plus bright points | smaller blots, a seeding of bright points with spikes | fine grain, still much sparkle | sand at the pixel, sharp dust filaments, sparkle |
+| glint 0 | blots, no sparkle | blotchy, no sparkle | fine grain, no sparkle | continuous texture, sharp filaments, no points |
+| column 80, glint 0 | frankly out of focus | smooth, no points, soft; lanes become dotted | smooth and nearly sharp | smooth and sharp, close to glint 0 |
+
+- **Only 8 M makes a disk that reads as matter**, and 8 M with glint 0 is the best frame of
+  the lot: a fine continuous texture, no scintillation, dust filaments drawn as lines. The
+  blots go somewhere between 4 and 8 M.
+- **Glint removes the sparkle at every count and changes nothing else.** It does not turn
+  blots into a surface; it takes the points off whatever surface there is.
+- **The projected kernel smooths by blurring.** At 1 M with column 80 the disk is smooth and
+  reads as a soft focus, not as a resolved galaxy; the fine filaments 8 M draws are not there
+  to be smoothed into view. And the dust lanes come out as strings of dots: the grains keep
+  the three-dimensional kernel while the stars around them widen, which is a fixable detail,
+  but the blur is the method's. At 8 M it costs nothing to the eye and 10 to 14 ms a frame.
+- **Haze** lays a milky veil that hides the grain at 1 M and erases the lanes with it; at 8 M
+  it makes the disk misty. Removed.
+
+GPU per 4K frame with the disk filling it, where the cost is the pixels written: baseline
+19 ms at 250 k, 26 at 1 M, 33 at 4 M, 55 at 8 M; glint 0 a little under that; the count pass
+adds 2 to 14 ms. The disk preset's solver is the cheap one, so nothing here says what a step
+costs: that is the next section.
 
 ## The other track: more particles
 
@@ -163,4 +195,31 @@ live halo at 1.5x, opening angle 0.9), 20 steps:
 
 ## Recommendations
 
-TODO after the disk run.
+In the order they pay.
+
+1. **Frame tighter.** Nothing 250 px wide reads as gigantic, and the nights' shots keep the
+   galaxies at 1 to 5 % of the frame. Shots that fill the frame with a disk, or with the
+   pericentre, are the first thing that gives size, and they are also where the particle
+   count becomes worth paying for. This is the director's and the camera plan's business, not
+   the renderer's: a ticket on the Cinematographer's framing.
+2. **Turn the glint down in the shipped and generated styles**, 0 to 0.3. It takes the
+   scintillation off every frame at every count for nothing, and it is the one change in
+   this spike that reads the way the brief asked. The field exists and has a slider; the
+   catalogue and `StyleAuto` still write 1. Whether the sampler should stop drawing the
+   minority at all is a separate question: as a dial it is reversible per style.
+3. **Hires at 8 M for the scenes that will be looked at closely.** It is the count at which a
+   frame-filling disk stops being blots. The price is measured: about 4 h a scene against
+   43 min at 2 M, 14 GB of take against 2.8, 8 GB of memory, one scene a night instead of
+   four. 5 M is a middle (about 2 h) that was not rendered at this framing; if the budget
+   allows one scene a night, 8 M; if it must stay at two or three, 5 M and look.
+4. **Keep the projected kernel as a dial at 0.** It is cheap and it does what it says
+   (-17 to -26 % grain, structure untouched) on wide shots where a galaxy is small, and it
+   is honest about what it cannot do: it blurs a 1 M disk rather than resolving it. If it
+   is ever turned on by default, the dust should widen with the stars.
+5. **Not worth pursuing:** the haze layer (removed), bloom at the floor (burns the core),
+   and a general smoothing increase (modest, and it blurs everything alike).
+
+What was not tried and might be: light tracers, massless particles integrated in the field
+of the massive ones, to multiply what is drawn without shrinking the softening and the step
+(the force pass scales with the walkers, so perhaps half the cost of real particles); and
+drawing the dust from the same column count. Both are tickets, not spikes.

@@ -780,9 +780,6 @@ struct InstrumentControls: View {
             title: "Étoiles sous le noyau (projection)", value: session.binding(\.look.columnSmoothing),
             range: 0...120, format: "%.0f")
         ParameterSlider(title: "Sources compactes", value: session.binding(\.look.glint), range: 0...1)
-        ParameterSlider(title: "Voile de lumière", value: session.binding(\.look.haze), range: 0...1)
-        ParameterSlider(
-            title: "Largeur du voile", value: session.binding(\.look.hazeScale), range: 1.5...8)
         ParameterSlider(title: "Halo lumineux", value: session.binding(\.look.bloomIntensity), range: 0...2)
         ParameterSlider(
             title: "Seuil du halo", value: session.binding(\.look.bloomThreshold), range: 0.05...1.5)

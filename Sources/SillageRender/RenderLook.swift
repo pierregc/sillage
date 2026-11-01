@@ -61,10 +61,6 @@ public struct RenderLook: Sendable, Equatable {
     /// Light kept by the compact bright minority the sampler draws: 1 as sampled, 0 gives
     /// them back the light and the width of an ordinary star.
     public var glint: Float
-    /// Share of the starlight drawn as a wide unresolved layer, and how many times wider
-    /// than the star's own kernel that layer is.
-    public var haze: Float
-    public var hazeScale: Float
 
     public init(
         brightness: Float = 0.15,
@@ -92,9 +88,7 @@ public struct RenderLook: Sendable, Equatable {
         fieldOfView: Float = 0.6,
         holeShadow: Float = 0,
         columnSmoothing: Float = 0,
-        glint: Float = 1,
-        haze: Float = 0,
-        hazeScale: Float = 4
+        glint: Float = 1
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -122,8 +116,6 @@ public struct RenderLook: Sendable, Equatable {
         self.holeShadow = holeShadow
         self.columnSmoothing = columnSmoothing
         self.glint = glint
-        self.haze = haze
-        self.hazeScale = hazeScale
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -161,8 +153,6 @@ public struct RenderLook: Sendable, Equatable {
         out.holeShadow = f(a.holeShadow, b.holeShadow)
         out.columnSmoothing = f(a.columnSmoothing, b.columnSmoothing)
         out.glint = f(a.glint, b.glint)
-        out.haze = f(a.haze, b.haze)
-        out.hazeScale = f(a.hazeScale, b.hazeScale)
         return out
     }
 
@@ -270,8 +260,6 @@ extension RenderLook: Codable {
             fieldOfView: try c.value(.fieldOfView, or: d.fieldOfView),
             holeShadow: try c.value(.holeShadow, or: d.holeShadow),
             columnSmoothing: try c.value(.columnSmoothing, or: d.columnSmoothing),
-            glint: try c.value(.glint, or: d.glint),
-            haze: try c.value(.haze, or: d.haze),
-            hazeScale: try c.value(.hazeScale, or: d.hazeScale))
+            glint: try c.value(.glint, or: d.glint))
     }
 }

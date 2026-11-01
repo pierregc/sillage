@@ -1269,8 +1269,6 @@ flag("tint", \.look.galaxyTint)
 flag("fov", \.look.fieldOfView)
 flag("column", \.look.columnSmoothing)
 flag("glint", \.look.glint)
-flag("haze", \.look.haze)
-flag("haze-scale", \.look.hazeScale)
 flag("stars", \.starCount)
 if arguments.contains("--plain") { look.plain = true }
 flag("supersample", \.supersample)

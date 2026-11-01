@@ -43,13 +43,8 @@ enum Shaders {
             float columnSmoothing;
             /// Accumulation pixels per column-density cell, per axis.
             float columnCell;
-            /// This pass's pixels per accumulation pixel.
-            float columnToPixels;
             /// Light kept by the compact bright minority: 1 as sampled, 0 as ordinary stars.
             float glint;
-            /// Share of a star's light drawn as a wide unresolved layer, and how much wider.
-            float haze;
-            float hazeScale;
         };
 
         struct GalaxyRamp {
@@ -447,11 +442,9 @@ enum Shaders {
                 float2 uv = float2(0.5, 0.5) + float2(0.5, -0.5) * out.position.xy / depth;
                 float count = max(column.sample(bilinear, uv).r, 0.25);
                 float density = count / (u.columnCell * u.columnCell);
-                float projected = 2.0 * sqrt(u.columnSmoothing / (M_PI_F * density))
-                                * u.columnToPixels;
+                float projected = 2.0 * sqrt(u.columnSmoothing / (M_PI_F * density));
                 raw = max(raw, projected);
             }
-            if (u.pass == 2u) { raw *= u.hazeScale; }
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             // Take the length back from the clamped span. Dividing by the unclamped one would
             // brighten every particle the floor caught, which made the softness control shift
@@ -554,10 +547,7 @@ enum Shaders {
                     }
                 }
                 out.pointSize = span * (alive > 0.15 ? 1.3 : 1.0);
-                // The haze pass draws the share of each star's light the eye should not
-                // resolve, and the main pass keeps the rest, so the exposure does not move.
-                float share = u.pass == 2u ? u.haze : 1.0 - u.haze;
-                out.color = half3(emitted * (u.brightness * weight * gain * spread * share));
+                out.color = half3(emitted * (u.brightness * weight * gain * spread));
                 out.opticalDepth = 0.0h;
             }
             return out;
@@ -614,20 +604,6 @@ enum Shaders {
             float3 extinction = exp(-column * reddening);
             LightTarget out;
             out.light = half4(in.color * half3(extinction) * half(falloff), half(falloff));
-            return out;
-        }
-
-        // The unresolved layer: the same star, wider, into its own low-resolution target.
-        // Not extinguished by dust, since it stands for light scattered over a region far
-        // wider than a lane.
-        fragment LightTarget hazeFragment(SplatOut in [[stage_in]],
-                                          float2 coord [[point_coord]]) {
-            float2 d = coord - 0.5;
-            float r2 = dot(d, d) * 4.0;
-            if (r2 > 1.0) { discard_fragment(); }
-            float falloff = exp(-4.5 * r2);
-            LightTarget out;
-            out.light = half4(in.color * half(falloff), half(falloff));
             return out;
         }
 
@@ -718,10 +694,8 @@ enum Shaders {
         // extinction applied on the way. Interstellar dust removes blue far more than red, so a
         // lane crossing a bright disk reads brown rather than grey.
         kernel void resolve(texture2d<float, access::read> light [[texture(0)]],
-                            texture2d<float, access::sample> haze [[texture(1)]],
                             texture2d<float, access::write> dst [[texture(2)]],
                             constant uint &factor [[buffer(0)]],
-                            constant float &hazeOn [[buffer(1)]],
                             uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
             float3 emitted = float3(0.0);
@@ -731,12 +705,6 @@ enum Shaders {
                 }
             }
             float3 averaged = emitted / float(factor * factor);
-            // The pixel values are surface brightness whatever the resolution, so the
-            // low-resolution haze adds straight in, sampled up.
-            if (hazeOn > 0.0) {
-                float2 uv = (float2(gid) + 0.5) / float2(dst.get_width(), dst.get_height());
-                averaged += haze.sample(bilinear, uv).rgb;
-            }
             // Nothing is extinguished here any more. Each star was dimmed by the dust actually
             // in front of it while it was drawn, in the slab pass, so all that is left to do
             // is the box average. What used to happen instead was that the whole dust column

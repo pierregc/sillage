@@ -33,11 +33,9 @@ variant("col20", columnSmoothing=20)
 variant("col40", columnSmoothing=40)
 variant("col80", columnSmoothing=80)
 variant("col40-glint0.3", columnSmoothing=40, glint=0.3)
-variant("haze0.5", haze=0.5, hazeScale=4)
-variant("col40-haze0.3", columnSmoothing=40, haze=0.3, hazeScale=4)
 variant("bloom-low", bloomThreshold=0.05, bloomIntensity=1.0)
 EOF
-VARIANTS="smooth glint0 col20 col40 col80 col40-glint0.3 haze0.5 col40-haze0.3 bloom-low"
+VARIANTS="smooth glint0 col20 col40 col80 col40-glint0.3 bloom-low"
 HAND=()
 for v in $VARIANTS; do HAND+=("$OUT/looks/$v.look.json"); done
 
