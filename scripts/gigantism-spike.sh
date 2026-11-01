@@ -42,7 +42,7 @@ HAND=()
 for v in $VARIANTS; do HAND+=("$OUT/looks/$v.look.json"); done
 
 echo "== stills from the hires take"
-"$R" look "$SCENE" --stills "$OUT/stills" --no-variants --no-catalogue \
+"$R" look "$SCENE" --grid --stills "$OUT/stills" --width 3840 --no-variants --no-catalogue \
     --base "$OUT/looks/baseline.look.json" ${FRAMES:+--frames "$FRAMES"} "${HAND[@]}" | tee "$OUT/look.log"
 
 echo "== grain against particle count, t = 0, 4K"
