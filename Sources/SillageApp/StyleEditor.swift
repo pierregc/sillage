@@ -776,6 +776,10 @@ struct InstrumentControls: View {
         ParameterSlider(
             title: "Noyau maximal (px)", value: session.binding(\.look.maximumKernel), range: 4...160,
             format: "%.0f")
+        ParameterSlider(
+            title: "Étoiles sous le noyau (projection)", value: session.binding(\.look.columnSmoothing),
+            range: 0...120, format: "%.0f")
+        ParameterSlider(title: "Sources compactes", value: session.binding(\.look.glint), range: 0...1)
         ParameterSlider(title: "Halo lumineux", value: session.binding(\.look.bloomIntensity), range: 0...2)
         ParameterSlider(
             title: "Seuil du halo", value: session.binding(\.look.bloomThreshold), range: 0.05...1.5)

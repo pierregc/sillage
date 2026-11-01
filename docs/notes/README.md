@@ -62,6 +62,7 @@ session. Read the note for an area before changing it.
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first
 - [The style editor](style-editor.md): renderings, palettes and locks, Auto, Avant/Après
 - [Making a galaxy read as matter rather than as a graphic](galaxy-as-matter.md)
+- [Gigantism](gigantism.md): why a render reads as sand, the compact minority, the kernel in projection, what more particles cost
 
 ## State
 

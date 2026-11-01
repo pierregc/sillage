@@ -34,6 +34,8 @@ extension LookFile {
             galaxyTint: look.galaxyTint,
             plain: plain)
         settings.holeShadow = look.holeShadow
+        settings.columnSmoothing = look.columnSmoothing
+        settings.glint = look.glint
         return settings
     }
 

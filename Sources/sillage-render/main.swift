@@ -180,9 +180,16 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 
     let clip = try folder.storedClip()
     let hires = folder.storedHires()
-    let renderWidth = hires?.width ?? clip.width
-    let renderHeight = hires?.height ?? clip.height
-    let cellWidth = Int(option("width").flatMap(Double.init) ?? 480)
+    // `--stills <dir>` writes every look at every key frame at full size, one PNG each, and
+    // leaves the scene's looks folder alone: it is for looking closely, not for choosing.
+    // `--width` sets that size, for the one an export draws; the take's own by default.
+    let stillsDirectory = option("stills").map { URL(fileURLWithPath: $0) }
+    let takeWidth = hires?.width ?? clip.width
+    let takeHeight = hires?.height ?? clip.height
+    let stillsWidth = stillsDirectory == nil ? nil : option("width").flatMap { Int($0) }
+    let renderWidth = stillsWidth ?? takeWidth
+    let renderHeight = stillsWidth.map { $0 * takeHeight / takeWidth } ?? takeHeight
+    let cellWidth = stillsDirectory != nil ? renderWidth : Int(option("width").flatMap(Double.init) ?? 480)
     let cellHeight = max(
         Int((Double(cellWidth) * Double(renderHeight) / Double(renderWidth)).rounded()), 1)
     let columnLabels = keys.map { key in
@@ -195,6 +202,26 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
 
     let started = Date()
+    if let stillsDirectory {
+        try FileManager.default.createDirectory(at: stillsDirectory, withIntermediateDirectories: true)
+        var last = Date()
+        try sheet.draw(
+            looks: looks, frames: keys.map(\.frame), width: renderWidth, height: renderHeight,
+            cellWidth: cellWidth, cellHeight: cellHeight, framesPerSecond: hires?.fps ?? clip.fps
+        ) { row, column, cell in
+            let drawn = Date().timeIntervalSince(last)
+            let url = stillsDirectory.appendingPathComponent(
+                "\(looks[row].name)-\(keys[column].frame).png")
+            try PNGWriter.write(cell.pixels, width: cellWidth, height: cellHeight, to: url)
+            print(String(format: "still      %@  %.2f s", url.lastPathComponent, drawn))
+            last = Date()
+        }
+        print(
+            String(
+                format: "look       %d looks x %d frames from %@, %.1f s", looks.count, keys.count,
+                takeURL.lastPathComponent, Date().timeIntervalSince(started)))
+        return 0
+    }
     let cells = try sheet.render(
         looks: looks, frames: keys.map(\.frame), width: renderWidth, height: renderHeight,
         cellWidth: cellWidth, cellHeight: cellHeight, framesPerSecond: hires?.fps ?? clip.fps)
@@ -1240,6 +1267,8 @@ flag("sky", \.look.skyLevel)
 flag("noise", \.look.noiseLevel)
 flag("tint", \.look.galaxyTint)
 flag("fov", \.look.fieldOfView)
+flag("column", \.look.columnSmoothing)
+flag("glint", \.look.glint)
 flag("stars", \.starCount)
 if arguments.contains("--plain") { look.plain = true }
 flag("supersample", \.supersample)

@@ -38,6 +38,13 @@ enum Shaders {
             uint mapped;
             /// Radius in kpc of a black hole's dark dot, zero for none.
             float holeShadow;
+            /// Stars a kernel should cover in projection, 0 to size it from the 3D spacing
+            /// alone. Spike on the grain of a render (docs/notes/gigantism.md).
+            float columnSmoothing;
+            /// Accumulation pixels per column-density cell, per axis.
+            float columnCell;
+            /// Light kept by the compact bright minority: 1 as sampled, 0 as ordinary stars.
+            float glint;
         };
 
         struct GalaxyRamp {
@@ -345,7 +352,8 @@ enum Shaders {
                                     device const float2 *stellar [[buffer(9)]],
                                     device const float2 *traits [[buffer(10)]],
                                     device const float *rampKeys [[buffer(11)]],
-                                    constant GalaxyRamp *ramps [[buffer(12)]]) {
+                                    constant GalaxyRamp *ramps [[buffer(12)]],
+                                    texture2d<float, access::sample> column [[texture(0)]]) {
             SplatOut out;
             float3 position = positions[vid];
             DiskFrame frame = frames[galaxy[vid]];
@@ -354,6 +362,14 @@ enum Shaders {
             out.slab = half4(0.0h);
             uint kind = component[vid];
             float weight = luminosity[vid];
+            // The compact bright minority the sampler drew (DiskSampler, kernelScale 0.75):
+            // two per cent of the stars carrying a quarter of the light as point sources. At
+            // glint 0 they are given back the light and the width of an ordinary star.
+            float kernelScale = traits[vid].y;
+            if (kernelScale < 0.8) {
+                weight *= mix(0.07, 1.0, u.glint);
+                kernelScale = mix(0.9, kernelScale, u.glint);
+            }
 
             // Age of this particle's stars, in megayears. Two sentinels sit outside any real
             // time: material sampled as already old reads as infinitely old, and gas that has
@@ -415,9 +431,21 @@ enum Shaders {
             // kernel conserves its flux that is the same light spread thinner: enough of them
             // overlapping make a continuum instead of a stipple. A small minority are compact
             // and much brighter, and those are the sources the eye picks out one at a time.
-            float span = clamp(
-                max(smoothing[vid] * u.smoothingScale * traits[vid].y, 1e-4) * perPixel,
-                u.minimumSize, u.maximumSize);
+            float raw = max(smoothing[vid] * u.smoothingScale * kernelScale, 1e-4) * perPixel;
+            // The spacing above is the three-dimensional one, read off the solver's tree. A
+            // thin disk seen face-on stacks many of those spacings along a line of sight, so
+            // a kernel sized to one of them still resolves the particles. Sized instead so
+            // that it covers `columnSmoothing` stars in projection, from the count the
+            // column pass drew into coarse cells, it is wide where the picture is sparse and
+            // narrow where it is dense, and never narrower than the tree's own answer.
+            if (!absorbing && u.columnSmoothing > 0.0) {
+                float2 uv = float2(0.5, 0.5) + float2(0.5, -0.5) * out.position.xy / depth;
+                float count = max(column.sample(bilinear, uv).r, 0.25);
+                float density = count / (u.columnCell * u.columnCell);
+                float projected = 2.0 * sqrt(u.columnSmoothing / (M_PI_F * density));
+                raw = max(raw, projected);
+            }
+            float span = clamp(raw, u.minimumSize, u.maximumSize);
             // Take the length back from the clamped span. Dividing by the unclamped one would
             // brighten every particle the floor caught, which made the softness control shift
             // the exposure as a side effect.
@@ -579,6 +607,39 @@ enum Shaders {
             return out;
         }
 
+        // The column pass: one count per emitting particle into coarse cells, which the
+        // splat vertex reads back to size a kernel by how many stars share its patch of sky.
+        struct CountOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+        };
+
+        vertex CountOut countVertex(uint vid [[vertex_id]],
+                                    device const float3 *positions [[buffer(0)]],
+                                    device const uint *component [[buffer(3)]],
+                                    constant SplatUniforms &u [[buffer(4)]],
+                                    device const float *formation [[buffer(8)]]) {
+            CountOut out;
+            out.position = u.viewProjection * float4(positions[vid], 1.0);
+            out.pointSize = 1.0;
+            uint kind = component[vid];
+            float born = formation[vid];
+            bool nursery = kind == 1u || kind == 2u;
+            float ageMyr = (nursery || born >= 0.0)
+                ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
+            bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
+            bool absorbing = (kind == 2u && !knot) || kind == 6u;
+            if (kind == 3u || absorbing) {
+                out.position = float4(2.0, 2.0, 2.0, 1.0);
+                out.pointSize = 0.0;
+            }
+            return out;
+        }
+
+        fragment float4 countFragment(CountOut in [[stage_in]]) {
+            return float4(1.0, 0.0, 0.0, 0.0);
+        }
+
         // The raw look: one fixed-size point per particle in its galaxy's tint, none of the
         // per-particle state the full splat reads. Dark matter is pushed out of the clip volume.
         struct PlainOut {
@@ -643,14 +704,14 @@ enum Shaders {
                     emitted += light.read(gid * factor + uint2(x, y)).rgb;
                 }
             }
-            float inverse = 1.0 / float(factor * factor);
+            float3 averaged = emitted / float(factor * factor);
             // Nothing is extinguished here any more. Each star was dimmed by the dust actually
             // in front of it while it was drawn, in the slab pass, so all that is left to do
             // is the box average. What used to happen instead was that the whole dust column
             // of a pixel — in front of the stars and behind them alike — was halved and
             // applied to the total, which cannot make a lane pass in front of anything and
             // only ever pulled the whole galaxy down towards brown.
-            dst.write(float4(emitted * inverse, 1.0), gid);
+            dst.write(float4(averaged, 1.0), gid);
         }
 
         // Box average of the accumulation and an exponential exposure curve, which keeps a

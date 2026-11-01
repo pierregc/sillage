@@ -31,6 +31,9 @@ struct SplatUniforms {
     var pass: UInt32
     var mapped: UInt32 = 0
     var holeShadow: Float = 0
+    var columnSmoothing: Float = 0
+    var columnCell: Float = 8
+    var glint: Float = 1
 }
 
 struct BackgroundStar {
@@ -121,6 +124,10 @@ public struct RenderSettings: Sendable {
     public var galaxyTint: Float
     /// Radius in kpc of a black hole's dark dot, zero for none.
     public var holeShadow: Float = 0
+    /// Stars a kernel covers in projection, 0 to size kernels from the 3D spacing alone.
+    public var columnSmoothing: Float = 0
+    /// Light kept by the compact bright minority, 1 as sampled.
+    public var glint: Float = 1
     /// Draws the raw look: plain points and one pass, instead of the splat, dust and post
     /// stages. Fixed for the renderer's life, since it decides which pipelines get built.
     public var plain: Bool
@@ -221,9 +228,14 @@ public final class Renderer {
     private let compositePipeline: MTLComputePipelineState
     private let spikePipeline: MTLComputePipelineState
     private let compactPipeline: MTLComputePipelineState
+    private let countPipeline: MTLRenderPipelineState
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
+    /// Emitting particles per cell of `columnCell` accumulation pixels, for the projected
+    /// kernel.
+    private let columnDensity: MTLTexture
+    static let columnCell = 8
     private let resolved: MTLTexture
     private let bloomDown: [MTLTexture]
     private let bloomUp: [MTLTexture]
@@ -345,14 +357,12 @@ public final class Renderer {
 
         func additive(
             _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
-            attachments: Int = 2
+            attachments: Int = 2, format: MTLPixelFormat = .rgba16Float
         ) throws -> MTLRenderPipelineState {
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
             descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
-            for (index, format) in [MTLPixelFormat.rgba16Float, .rgba16Float].prefix(attachments)
-                .enumerated()
-            {
+            for (index, format) in [format, format].prefix(attachments).enumerated() {
                 guard let attachment = descriptor.colorAttachments[index] else { continue }
                 attachment.pixelFormat = format
                 attachment.writeMask = index == target ? .all : []
@@ -376,6 +386,8 @@ public final class Renderer {
         plainPipeline = try additive(
             "plainVertex", "plainFragment", writing: 0, attachments: 1)
         plainCompositePipeline = try compute("plainComposite")
+        countPipeline = try additive(
+            "countVertex", "countFragment", writing: 0, attachments: 1, format: .r32Float)
 
         resolvePipeline = try compute("resolve")
         brightPassPipeline = try compute("brightPass")
@@ -415,6 +427,10 @@ public final class Renderer {
             .rgba16Float, [.renderTarget, .shaderRead])
         resolved = try texture(
             settings.width, settings.height, .rgba16Float, [.shaderRead, .shaderWrite])
+        columnDensity = try texture(
+            settings.plain ? 1 : settings.width * scale / Self.columnCell,
+            settings.plain ? 1 : settings.height * scale / Self.columnCell,
+            .r32Float, [.renderTarget, .shaderRead])
 
         var down: [MTLTexture] = []
         var up: [MTLTexture] = []
@@ -618,6 +634,8 @@ public final class Renderer {
         settings.noiseLevel = look.noiseLevel
         settings.galaxyTint = look.galaxyTint
         settings.holeShadow = look.holeShadow
+        settings.columnSmoothing = look.columnSmoothing
+        settings.glint = look.glint
         settings.starSize = look.starSize
         armPersistence = look.armPersistence
     }
@@ -790,7 +808,28 @@ public final class Renderer {
             galaxyTint: settings.galaxyTint,
             slabNear: slabNear,
             slabScale: 1 / max(2 * halfExtent, 1e-3),
-            pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow)
+            pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow,
+            columnSmoothing: settings.columnSmoothing, columnCell: Float(Self.columnCell),
+            glint: settings.glint)
+
+        // The column pass, once per frame over every drawn particle: counts into coarse
+        // cells, which the splat vertex reads back to size its kernel in projection.
+        if first, settings.columnSmoothing > 0 {
+            let count = MTLRenderPassDescriptor()
+            count.colorAttachments[0].texture = columnDensity
+            count.colorAttachments[0].loadAction = .clear
+            count.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+            count.colorAttachments[0].storeAction = .store
+            if let encoder = buffer.makeRenderCommandEncoder(descriptor: count) {
+                encoder.setRenderPipelineState(countPipeline)
+                encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+                encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
+                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
+                encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+                encoder.endEncoding()
+            }
+        }
 
         let pass = MTLRenderPassDescriptor()
         for (index, target) in [accumulation, dustAccumulation].enumerated() {
@@ -823,6 +862,7 @@ public final class Renderer {
             encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
             encoder.setVertexBuffer(rampKeyBuffer, offset: 0, index: 11)
             encoder.setVertexBuffer(rampBuffer, offset: 0, index: 12)
+            encoder.setVertexTexture(columnDensity, index: 0)
             // Twice over the same buffer: the dust first, so that its opacity is standing in
             // the attachment when the stars are drawn and read it back. Each draw throws away
             // the particles belonging to the other one in the vertex stage, before any

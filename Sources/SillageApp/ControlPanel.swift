@@ -324,6 +324,10 @@ struct ControlPanelContent: View {
             ParameterSlider(
                 title: "Noyau maximal (px)", value: $model.look.maximumKernel, range: 4...160,
                 format: "%.0f")
+            ParameterSlider(
+                title: "Étoiles sous le noyau (projection)", value: $model.look.columnSmoothing,
+                range: 0...120, format: "%.0f")
+            ParameterSlider(title: "Sources compactes", value: $model.look.glint, range: 0...1)
             ParameterSlider(title: "Halo lumineux", value: $model.look.bloomIntensity, range: 0...2)
             ParameterSlider(
                 title: "Aigrettes de diffraction", value: $model.look.spikeIntensity, range: 0...1.5)
