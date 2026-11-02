@@ -184,6 +184,19 @@ enum BarnesHutShaders {
             return float(h) * (1.0 / 4294967296.0);
         }
 
+        // Light tracers (#187) are not in the tree, so their gas reads the chance of a massive
+        // gas particle's leaf: each leaf writes its chance into its gas slots, and -1 into the
+        // others.
+        constant bool bhLeafChances [[function_constant(2)]];
+
+        static void bhWriteChances(device float *slotChances, device const uint *order,
+                                   device const uint *component, uint start, uint count,
+                                   float chance) {
+            for (uint k = 0u; k < count; ++k) {
+                slotChances[start + k] = component[order[start + k]] == 2u ? chance : -1.0;
+            }
+        }
+
         // Turns gas into stars where it has been compressed, one thread per tree node.
         //
         // The tree already holds the only thing this needs. A leaf is a cell of known width
@@ -209,6 +222,7 @@ enum BarnesHutShaders {
                                 constant SFParams &s [[buffer(5)]],
                                 device const float3 *positions [[buffer(6)]],
                                 device const float3 *velocities [[buffer(7)]],
+                                device float *slotChances [[buffer(8)]],
                                 uint n [[thread_position_in_grid]]) {
             if (n >= s.nodeCount) { return; }
             BHNode node = nodes[n];
@@ -217,6 +231,7 @@ enum BarnesHutShaders {
             uint count = uint(-bhSignedCount(node));
             if (count == 0u) { return; }
             uint start = uint(bhRange(node));
+            if (bhLeafChances) { bhWriteChances(slotChances, order, component, start, count, 0.0); }
             float width = sqrt(max(node.packed.x, 1e-12));
 
             float baryons = 0.0;
@@ -278,6 +293,9 @@ enum BarnesHutShaders {
                 * sqrt(32.0 * s.gravitationalConstant * density / (3.0 * M_PI_F))
                 * (1.0 + s.compressionBoost * compression);
             float chance = 1.0 - exp(-rate * s.timeStep);
+            if (bhLeafChances) {
+                bhWriteChances(slotChances, order, component, start, count, max(chance, 0.0));
+            }
             if (chance <= 0.0) { return; }
 
             for (uint k = 0u; k < count; ++k) {
@@ -290,6 +308,56 @@ enum BarnesHutShaders {
                 if (hashUnit(i, s.seed) >= chance) { continue; }
                 formation[i] = s.time;
             }
+        }
+
+        inline ulong bhSpread(uint value) {
+            ulong x = ulong(value) & 0x1FFFFFul;
+            x = (x | (x << 32)) & 0x001F00000000FFFFul;
+            x = (x | (x << 16)) & 0x001F0000FF0000FFul;
+            x = (x | (x << 8)) & 0x100F00F00F00F00Ful;
+            x = (x | (x << 4)) & 0x10C30C30C30C30C3ul;
+            x = (x | (x << 2)) & 0x1249249249249249ul;
+            return x;
+        }
+
+        // A tracer's gas forms its stars at the chance of the massive gas particle just before
+        // it in Morton order, almost always in its own cell or the next one. Drawn from the
+        // same distribution, tracer gas is equally likely to follow any massive gas particle,
+        // so the chances it reads are distributed as theirs are.
+        kernel void bhTracerFormStars(device float *formation [[buffer(0)]],
+                                      device const uint *component [[buffer(1)]],
+                                      device const float3 *positions [[buffer(2)]],
+                                      device const ulong *codes [[buffer(3)]],
+                                      device const float *frame [[buffer(4)]],
+                                      device const float *slotChances [[buffer(5)]],
+                                      constant SFParams &s [[buffer(6)]],
+                                      constant uint2 &counts [[buffer(7)]],
+                                      uint i [[thread_position_in_grid]]) {
+            if (i >= counts.x || counts.y == 0u || s.nodeCount == 0u) { return; }
+            if (component[i] != 2u || formation[i] < 1e8) { return; }
+            const float resolution = 2097151.0;
+            float3 local = (positions[i] - float3(frame[0], frame[1], frame[2])) * frame[3];
+            local = clamp(local, 0.0, resolution);
+            ulong code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
+                       | bhSpread(uint(local.z));
+            uint low = 0u;
+            uint high = counts.y;
+            while (low < high) {
+                uint middle = (low + high) / 2u;
+                if (codes[middle] < code) { low = middle + 1u; } else { high = middle; }
+            }
+            // Gas is a minority of the tree, dark matter included, so it may be a few slots
+            // back. Far from any, there is none to read.
+            float chance = -1.0;
+            for (uint back = 0u; back < 256u && back < low && chance < 0.0; ++back) {
+                chance = slotChances[low - 1u - back];
+            }
+            for (uint ahead = low; ahead < min(low + 256u, counts.y) && chance < 0.0; ++ahead) {
+                chance = slotChances[ahead];
+            }
+            if (chance <= 0.0) { return; }
+            if (hashUnit(i | 0x80000000u, s.seed) >= chance) { return; }
+            formation[i] = s.time;
         }
 
         // The particles in Morton order with their mass beside them, so a leaf's direct sum
@@ -390,6 +458,9 @@ enum BarnesHutShaders {
         }
 
         constant bool bhQuadrupole [[function_constant(0)]];
+        // A light tracer (#187) walks the tree without being in it: it reads its position from
+        // its own buffer in the order its own sort left, and no leaf ever holds it.
+        constant bool bhTracer [[function_constant(1)]];
 
         // One traversal per particle. A cell is accepted whole when its width subtends less than
         // the opening angle, and opened otherwise; leaves fall back to direct summation. The
@@ -402,6 +473,8 @@ enum BarnesHutShaders {
                                    constant BHParams &p [[buffer(5)]],
                                    device uint *cost [[buffer(6)]],
                                    device const float4 *moments [[buffer(7)]],
+                                   device const float3 *tracers [[buffer(8)]],
+                                   device const uint *tracerOrder [[buffer(9)]],
                                    uint gid [[thread_position_in_grid]]) {
             // Dispatched in pieces, so the display has somewhere to get in. One kernel over
             // seven million particles keeps the GPU to itself for the best part of a second
@@ -411,8 +484,8 @@ enum BarnesHutShaders {
             // Threads walk the tree in Morton order, so neighbours in a SIMD group are also
             // neighbours in space and take almost the same path. Traversing in sampling order
             // leaves every lane on a different branch and the divergence dominates the cost.
-            uint i = order[slot];
-            float3 position = sorted[slot].xyz;
+            uint i = bhTracer ? tracerOrder[slot] : order[slot];
+            float3 position = bhTracer ? tracers[i] : sorted[slot].xyz;
             float3 total = float3(0.0);
             // What this lane actually does. Divergence inside a SIMD group is the whole
             // question for a cooperative traversal, and it cannot be reasoned about: the
@@ -447,7 +520,7 @@ enum BarnesHutShaders {
                 // Whether this leaf is the one holding the particle. Leaves address a
                 // contiguous run of the Morton order and slot is this particle's place in
                 // it, so the test is exact: a node may never stand in for itself.
-                bool holdsMe = leaf && slot >= uint(start) && slot < uint(start + span);
+                bool holdsMe = !bhTracer && leaf && slot >= uint(start) && slot < uint(start + span);
 
                 if (!holdsMe && node.packed.x <= p.openingAngleSquared * distanceSquared) {
                     // Far enough that the centre of mass stands in — for a leaf as much as
@@ -474,7 +547,7 @@ enum BarnesHutShaders {
                 } else if (leaf) {
                     work += uint(span);
                     for (int k = start; k < start + span; ++k) {
-                        if (uint(k) == slot) { continue; }
+                        if (!bhTracer && uint(k) == slot) { continue; }
                         float4 other = sorted[k];
                         float3 d = other.xyz - position;
                         float r2 = dot(d, d) + p.softeningSquared;
@@ -488,7 +561,7 @@ enum BarnesHutShaders {
             }
 
             accelerations[i] = total + halos(position, haloList, p.haloCount, true);
-            cost[slot] = work;
+            if (!bhTracer) { cost[slot] = work; }
         }
         """
 }
