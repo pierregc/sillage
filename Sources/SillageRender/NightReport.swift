@@ -15,11 +15,34 @@ struct NightEvents {
         picks = of(RunEvent.Kind.pick).filter { $0.chosen != false }
         hires = of(RunEvent.Kind.hiresDone)
         videos = of(RunEvent.Kind.exportDone)
-        skipped = of(RunEvent.Kind.skip)
+        skipped = Self.standingSkips(events)
         errors = of(RunEvent.Kind.error)
     }
 
     func explored(_ status: String) -> Int { explored.filter { $0.status == status }.count }
+
+    /// The skips that still hold. A night resumed in the same folder tries again what an earlier
+    /// run left out, and a stage run by hand may do it: a skip holds in its own run, until a
+    /// later done of the same scene and stage.
+    static func standingSkips(_ events: [RunEvent]) -> [RunEvent] {
+        let run = events.lastIndex { $0.kind == RunEvent.Kind.nightStart } ?? events.startIndex
+        return events.indices.filter { index in
+            let skip = events[index]
+            guard index >= run, skip.kind == RunEvent.Kind.skip else { return false }
+            let done = doneKind(skip.stage)
+            return !events[(index + 1)...].contains { $0.kind == done && $0.scene == skip.scene }
+        }.map { events[$0] }
+    }
+
+    /// The event that says a stage of a scene is done.
+    static func doneKind(_ stage: String?) -> String? {
+        switch stage {
+        case "hires": RunEvent.Kind.hiresDone
+        case "style": RunEvent.Kind.style
+        case "export": RunEvent.Kind.exportDone
+        default: nil
+        }
+    }
 
     /// "scene-0023 (0,91)", or "scene-0023 (à la main)" for a scene picked by hand.
     static func pick(_ event: RunEvent) -> String {
