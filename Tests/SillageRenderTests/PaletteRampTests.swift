@@ -196,13 +196,16 @@ struct MulticolourNightTests {
         let catalogue = LookCatalogue.repository
         let references = PaletteRampTests.sets
         var style = NightRecipe.Style()
-        let auto = try NightStyle.resolve(style, pick: 1, catalogue: catalogue, references: references)
+        let auto = try NightStyle.resolve(
+            style, pick: 1, seed: 1, catalogue: catalogue, references: references)
         #expect(auto.multicolour && !auto.arguments(scene: "s").contains("--single"))
         style.multicolour = .value(false)
-        let single = try NightStyle.resolve(style, pick: 1, catalogue: catalogue, references: references)
+        let single = try NightStyle.resolve(
+            style, pick: 1, seed: 1, catalogue: catalogue, references: references)
         #expect(!single.multicolour && single.arguments(scene: "s").contains("--single"))
         style.style = .value("aurora")
-        let named = try NightStyle.resolve(style, pick: 0, catalogue: catalogue, references: references)
+        let named = try NightStyle.resolve(
+            style, pick: 0, seed: 1, catalogue: catalogue, references: references)
         #expect(named.arguments(scene: "s").contains("--single"))
     }
 }

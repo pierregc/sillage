@@ -179,14 +179,15 @@ struct NightRunnerTests {
         #expect(kinds.first == RunEvent.Kind.nightStart && kinds.last == RunEvent.Kind.nightDone)
         #expect(kinds.filter { $0 == RunEvent.Kind.pick }.count == 2)
         #expect(kinds.filter { $0 == RunEvent.Kind.style }.count == 2)
-        // Auto alternates the worlds across the picks, best first, and says which it chose.
+        // Auto draws each pick's world from the batch seed, best first, and says which it chose.
+        let worlds = (0..<2).map { NightStyle.drawnWorld(pick: $0, seed: 1, share: 0.2).rawValue }
         let looks = calls.filter { $0.hasPrefix("look ") }
         #expect(looks.count == 2)
-        #expect(looks[0].contains("scene-0002 --style auto --world telescope"))
-        #expect(looks[1].contains("scene-0003 --style auto --world free"))
+        #expect(looks[0].contains("scene-0002 --style auto --world \(worlds[0])"))
+        #expect(looks[1].contains("scene-0003 --style auto --world \(worlds[1])"))
         let styled = events.filter { $0.kind == RunEvent.Kind.style }
-        #expect(styled.map(\.world) == ["telescope", "free"])
-        #expect(styled.map(\.family) == ["hubble-visible", "aurora"])
+        #expect(styled.map(\.world) == worlds)
+        #expect(styled.map(\.family) == worlds.map { $0 == "free" ? "aurora" : "hubble-visible" })
         #expect(styled.allSatisfy { $0.harmony == "analogous" && $0.seed == 7 })
         #expect(
             events.filter { $0.kind == RunEvent.Kind.phaseDone }.compactMap(\.phase) == ["explore", "pick"])
@@ -200,6 +201,63 @@ struct NightRunnerTests {
         // The same night again: everything is there, nothing runs.
         #expect(runner(recipe()).run() == 0)
         #expect(logged() == calls)
+    }
+
+    @Test func aResumedNightGivesEachPickTheWorldItWasDrawn() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var recipe = recipe()
+        // Seed 1 draws 0.76 for the first pick and 0.56 for the second.
+        recipe.style.freeShare = .value(0.6)
+        let worlds = (0..<2).map { NightStyle.drawnWorld(pick: $0, seed: 1, share: 0.6) }
+        try #require(worlds == [.telescope, .free])
+        let store = try queueJob()
+        try Data("2".utf8).write(to: root.appendingPathComponent("hires-seconds"))
+        // Stopped once the first pick has its style, before the second pick's.
+        let calls = calls
+        Thread.detachNewThread {
+            while !((try? String(contentsOf: calls, encoding: .utf8)) ?? "").contains("look ") {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            try? store.change { queue in
+                if let id = queue.running?.id { try queue.stopAfterStep(id, at: Date()) }
+            }
+        }
+        #expect(runner(recipe).run() == 3)
+        var looks = logged().filter { $0.hasPrefix("look ") }
+        #expect(
+            looks.count == 1 && looks.first?.contains("scene-0002 --style auto --world telescope") == true)
+
+        // The plan the folder makes in between has the second pick in the world it was drawn.
+        let folder = NightFolder(batch: batch, recipe: recipe, maximumParticles: 10_000_000)
+        let plan = folder.planner(now: Date(), draws: { _ in [] }).plan(
+            now: Date(), deliverBy: Date().addingTimeInterval(3600))
+        let style = try #require(plan.steps.first { $0.phase == .style && $0.scene == "scene-0003" })
+        #expect(!style.done && style.seconds == NightPlanner.freeStyleSeconds)
+
+        // Resumed by a runner of its own, as the queue starts one.
+        try store.change { $0.jobs.removeAll() }
+        #expect(runner(recipe).run() == 0)
+        looks = logged().filter { $0.hasPrefix("look ") }
+        #expect(looks.count == 2 && looks.last?.contains("scene-0003 --style auto --world free") == true)
+        #expect(events.filter { $0.kind == RunEvent.Kind.style }.map(\.world) == ["telescope", "free"])
+        #expect(NightFile.read(from: RunStatusFiles.night(batch: batch))?.recipe["freeShare"] == "0.6")
+    }
+
+    @Test func theFolderPlansWithTheNightsSeedAndTheNamedPalettesWorld() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: batch, withIntermediateDirectories: true)
+        var recipe = recipe()
+        recipe.explore.seed = .value(5)
+        func planner(_ recipe: NightRecipe, seed: UInt64? = nil) -> NightPlanner {
+            NightFolder(batch: batch, recipe: recipe, maximumParticles: 10_000_000)
+                .planner(now: Date(), seed: seed, draws: { _ in [] })
+        }
+        #expect(planner(recipe).seed == 5)
+        try Data("seed=7\nper_galaxy=20000\n".utf8).write(to: batch.appendingPathComponent("batch.conf"))
+        #expect(planner(recipe).seed == 7 && planner(recipe, seed: 9).seed == 9)
+        #expect(planner(recipe).paletteWorld == nil)
+        recipe.style.palette = .value("ember")
+        #expect(planner(recipe).paletteWorld == .free)
     }
 
     @Test func aSkipLeavesTheCurrentSceneOutAndTheNightGoesOn() throws {
