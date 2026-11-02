@@ -215,6 +215,10 @@ In the order they pay.
    this spike that reads the way the brief asked. The field exists and has a slider; the
    catalogue and `StyleAuto` still write 1. Whether the sampler should stop drawing the
    minority at all is a separate question: as a dial it is reversible per style.
+   Done in #184 at 0.3 (`RenderLook.styleGlint`): the catalogue, the built in five and the
+   standard look name it, so every style a night or the editor writes carries it. A file
+   that leaves the field out was written before it existed and reads as 1
+   (`LookFile.omittedLook`), so the scenes already in the library keep their picture.
 3. **Hires at 8 M for the scenes that will be looked at closely.** It is the count at which a
    frame-filling disk stops being blots. The price is measured: about 4 h a scene against
    25 min at 2 M, 14 GB of take against 2.8, 15 GB of memory, one or two scenes a night instead of

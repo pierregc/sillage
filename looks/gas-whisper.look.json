@@ -8,6 +8,7 @@
     "brightness": 0.17,
     "dustStrength": 0.12,
     "galaxyTint": 0.8,
+    "glint": 0.3,
     "noiseLevel": 0.001,
     "saturation": 2.4,
     "skyLevel": 0.0004,

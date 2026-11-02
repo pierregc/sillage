@@ -18,6 +18,7 @@
     "dustStrength" : 0.06,
     "fieldOfView" : 0.75,
     "galaxyTint" : 0.85,
+    "glint" : 0.3,
     "maximumKernel" : 96,
     "minimumKernel" : 1.9,
     "noiseLevel" : 0.0008,
