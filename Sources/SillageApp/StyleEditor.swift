@@ -677,7 +677,7 @@ struct CameraSection: View {
     private var caption: String {
         switch session.current.camera.mode {
         case .auto: "Suit les galaxies, qui s'éloignent et se rapprochent."
-        case .director: "Le réalisateur choisit ses plans en jouant la scène."
+        case .director: "Plans larges et plans serrés sur un disque et sur la rencontre."
         case .fixed: "Cadré une fois sur toute la scène."
         case .immersed: "Le réalisateur, depuis l'intérieur d'un disque."
         }

@@ -13,6 +13,9 @@ public final class LookSheet {
     private let positions: MTLBuffer
     private let smoothing: SmoothingField
     private var cameras: [String: [Camera]] = [:]
+    /// The director's plans, one for each camera, field of view and frame rate: the style
+    /// stage draws dozens of looks that share a camera, and a plan reads the take.
+    private var plans: [String: ShotPlan] = [:]
     private var renderers: [(file: LookFile, renderer: Renderer)] = []
 
     public init(take: RecordingFile.Loaded, device: MTLDevice? = nil) throws {
@@ -95,7 +98,11 @@ public final class LookSheet {
     ) throws {
         let recording = take.recording
         let shots = looks.map { file -> [ShotReplay.Shot] in
-            guard let camera else { return self.shots(of: file, at: frames, fps: framesPerSecond) }
+            guard let camera else {
+                return self.shots(
+                    of: file, at: frames, fps: framesPerSecond,
+                    aspect: Float(width) / Float(max(height, 1)))
+            }
             return frames.map { _ in (camera, file.look) }
         }
         for (column, frame) in frames.enumerated() {
@@ -237,12 +244,21 @@ public final class LookSheet {
 
     /// Replayed once per camera: outside the director's modes the shot's look is the file's
     /// own and only the camera plan and the field of view place the camera.
-    private func shots(of file: LookFile, at frames: [Int], fps: Int) -> [ShotReplay.Shot] {
+    private func shots(of file: LookFile, at frames: [Int], fps: Int, aspect: Float)
+        -> [ShotReplay.Shot]
+    {
         let directed = file.camera.mode == .director || file.camera.mode == .immersed
         let key = "\(file.camera) \(file.look.fieldOfView) \(frames) \(fps)"
         if !directed, let cameras = cameras[key] { return cameras.map { ($0, file.look) } }
+        var plan: ShotPlan?
+        if file.camera.mode == .director {
+            let key = "\(file.camera) \(file.look.fieldOfView) \(fps)"
+            plan = plans[key] ?? ShotPlan(take: take, file: file, framesPerSecond: fps)
+            plans[key] = plan
+        }
         let replay = ShotReplay(
-            file: file, take: take, capturedFrames: capturedFrames, framesPerSecond: fps)
+            file: file, take: take, capturedFrames: capturedFrames, framesPerSecond: fps,
+            aspect: aspect, plan: plan)
         var shots: [Int: ShotReplay.Shot] = [:]
         for frame in Set(frames).sorted() { shots[frame] = replay.shot(atCaptured: frame) }
         let out = frames.map { shots[$0]! }

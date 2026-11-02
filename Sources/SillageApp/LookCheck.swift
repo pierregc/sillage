@@ -78,7 +78,7 @@ enum LookCheck {
             "la palette du fichier colore la scène",
             loaded.palette.isEmpty || model.scene.galaxies[0].color == loaded.palette[0].colour)
         check(
-            "le plan de caméra est suivi", model.followsPlan == [.fixed, .auto].contains(loaded.camera.mode))
+            "le plan de caméra est suivi", model.followsPlan == loaded.camera.mode.isPlanned)
 
         let resaved = folder.url.appendingPathComponent("resaved.look.json")
         model.saveLook(to: resaved)
@@ -312,6 +312,15 @@ enum LookCheck {
                 "")
             session.setMulticolour(true, waiting: true)
         }
+
+        // The director plans from the whole take, so the playhead can jump onto any of its shots.
+        session.setCameraMode(.director)
+        model.playbackPosition = Double(model.capturedFrames - 1) / 3
+        _ = model.playbackSnapshot()
+        let directed = model.planCamera
+        check(
+            "le réalisateur se suit au curseur",
+            model.followsPlan && directed != nil && model.activeCamera.eye == directed?.eye, "")
 
         session.setCameraMode(.fixed)
         session.binding(\.camera.rotation).wrappedValue = .pi / 2
