@@ -1707,7 +1707,8 @@ while frame < frames || storyGoesOn() {
             take.offer(
                 positions: gpuSolver.positions.contents().bindMemory(
                     to: SIMD3<Float>.self, capacity: seeded.count),
-                time: solver.time, centers: solver.centers, budget: takeBudget)
+                time: solver.time, centers: solver.centers,
+                disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: takeBudget)
         } else {
             solver.particles.positions.withUnsafeBufferPointer { buffer in
                 guard let base = buffer.baseAddress else { return }
