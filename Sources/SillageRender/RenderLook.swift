@@ -62,6 +62,10 @@ public struct RenderLook: Sendable, Equatable {
     /// them back the light and the width of an ordinary star.
     public var glint: Float
 
+    /// The glint every shipped and generated style draws with: the sparkle gone, the knots
+    /// kept (#184, docs/notes/gigantism.md).
+    public static let styleGlint: Float = 0.3
+
     public init(
         brightness: Float = 0.15,
         dustStrength: Float = 0.12,
@@ -160,7 +164,7 @@ public struct RenderLook: Sendable, Equatable {
 
     /// What the telescope would actually record: modest bloom, honest colour, the diffraction
     /// pattern of a segmented mirror.
-    public static let observatory = RenderLook()
+    public static let observatory = RenderLook(glint: styleGlint)
 
     /// Everything soft and enormous. Kernels wide enough that the particles stop being
     /// particles and the disk reads as luminous cloud.
@@ -169,7 +173,7 @@ public struct RenderLook: Sendable, Equatable {
         maximumKernel: 96, bloomThreshold: 0.28, bloomSoftKnee: 0.9, bloomIntensity: 0.62,
         stretch: 26, saturation: 3.0, spikeArms: 0, spikeLength: 40, spikeIntensity: 0,
         skyLevel: 0.004, noiseLevel: 0.0008, galaxyTint: 0.85, starSize: 1.5,
-        armPersistence: 1.6, fieldOfView: 0.75)
+        armPersistence: 1.6, fieldOfView: 0.75, glint: styleGlint)
 
     /// Hard and bright: small kernels, a long stretch and a wide diffraction pattern, so the
     /// disk reads as a field of individual glints.
@@ -178,7 +182,7 @@ public struct RenderLook: Sendable, Equatable {
         maximumKernel: 24, bloomThreshold: 0.72, bloomSoftKnee: 0.25, bloomIntensity: 0.5,
         stretch: 8, saturation: 2.0, spikeArms: 4, spikeLength: 130, spikeIntensity: 0.72,
         skyLevel: 0.0016, noiseLevel: 0.0022, galaxyTint: 0.42, starSize: 1.5,
-        armPersistence: 0.7, fieldOfView: 0.5)
+        armPersistence: 0.7, fieldOfView: 0.5, glint: styleGlint)
 
     /// Deep and nearly monochrome, the sky pulled almost to black. For the wide shots, where
     /// what is being looked at is mostly the emptiness around the thing.
@@ -187,7 +191,7 @@ public struct RenderLook: Sendable, Equatable {
         maximumKernel: 58, bloomThreshold: 0.6, bloomSoftKnee: 0.4, bloomIntensity: 0.3,
         stretch: 20, saturation: 1.15, spikeArms: 6, spikeLength: 90, spikeIntensity: 0.3,
         skyLevel: 0.0009, noiseLevel: 0.0011, galaxyTint: 0.3, starSize: 1.0,
-        armPersistence: 1.0, fieldOfView: 0.62)
+        armPersistence: 1.0, fieldOfView: 0.62, glint: styleGlint)
 
     /// Warm and heavy, dust doing most of the drawing.
     public static let ember = RenderLook(
@@ -195,7 +199,7 @@ public struct RenderLook: Sendable, Equatable {
         maximumKernel: 80, bloomThreshold: 0.4, bloomSoftKnee: 0.75, bloomIntensity: 0.46,
         stretch: 23, saturation: 2.6, spikeArms: 0, spikeLength: 60, spikeIntensity: 0,
         skyLevel: 0.0026, noiseLevel: 0.0014, galaxyTint: 0.7, starSize: 1.25,
-        armPersistence: 1.3, fieldOfView: 0.68)
+        armPersistence: 1.3, fieldOfView: 0.68, glint: styleGlint)
 
     /// Toned down for an unattended full screen. Long spikes are gathered from the already
     /// blurred bloom source, so at a hundred and thirty pixels they stop being spikes and
@@ -228,12 +232,12 @@ public struct RenderLook: Sendable, Equatable {
 }
 
 extension RenderLook: Codable {
-    /// Missing fields take the standard look's values, so that a look file can name only
+    /// Missing fields take `LookFile.omittedLook`'s values, so that a look file can name only
     /// what it changes.
     public init(from decoder: any Decoder) throws {
         try rejectUnknownFields(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let d = LookFile.standardLook
+        let d = LookFile.omittedLook
         self.init(
             brightness: try c.value(.brightness, or: d.brightness),
             dustStrength: try c.value(.dustStrength, or: d.dustStrength),
