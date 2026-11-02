@@ -48,6 +48,7 @@ struct NightRecipeTests {
             #"{"deliver": "7h"}"#, #"{"export": ["8k"]}"#, #"{"style": {"world": "hubble"}}"#,
             #"{"explore": {"galaxies": [4, 2]}}"#, #"{"explore": {"archetypes": ["kite"]}}"#,
             #"{"explore": {"scenes": "many"}}"#, #"{"hours": 0}"#,
+            #"{"style": {"camera": "drone"}}"#,
         ] {
             #expect(throws: NightRecipe.Failure.self) { try recipe(bad) }
         }

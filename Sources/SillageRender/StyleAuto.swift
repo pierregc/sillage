@@ -133,18 +133,22 @@ public enum StyleAuto {
     /// The pairs of a scene with a take, in `world` or else its look's world. `catalogue` is
     /// the repository's looks, `references` #125's sets. `family` keeps the palettes to one
     /// family, `fixed` to the one palette given; `favourites` join the palettes tried. The
-    /// palettes come as ramps of colours unless `multicolour` is off. Nothing is written.
+    /// palettes come as ramps of colours unless `multicolour` is off. A `camera` given films
+    /// the pairs with that mode instead of the scene's. Nothing is written.
     public static func choose(
         _ folder: SceneFolder, world: Palette.World? = nil, family: String? = nil,
         fixed: Palette? = nil, catalogue: [LookFile], references: [TelescopeReference],
-        favourites: [Palette] = [], multicolour: Bool = true
+        favourites: [Palette] = [], multicolour: Bool = true,
+        camera: LookFile.CameraPlan.Mode? = nil
     ) throws -> Outcome {
         guard FileManager.default.fileExists(atPath: folder.take.path) else {
             throw SceneFolder.LookError.noTake(folder.url)
         }
-        let base =
+        var base =
             (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }
             ?? .standard
+        // Before scoring, so the frames judged are the frames the camera will film.
+        if let camera { base.camera.mode = camera }
         let world = world ?? base.world
         let renderings = LookCatalogue.renderings(world, in: catalogue)
         let scene = try SceneFile.decoded(from: Data(contentsOf: folder.scene))
