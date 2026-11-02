@@ -224,6 +224,8 @@ In the order they pay.
    25 min at 2 M, 14 GB of take against 2.8, 15 GB of memory, one or two scenes a night instead of
    four. 5 M is a middle (about 2 h) that was not rendered at this framing; if the budget
    allows one scene a night, 8 M; if it must stay at two or three, 5 M and look.
+   Done in #185: 8 M is Auto's hires count, and Auto picks one to four scenes, so a night
+   plans one or two ([night manager](../night-manager.md)).
 4. **Keep the projected kernel as a dial at 0.** It is cheap and it does what it says
    (-17 to -26 % grain, structure untouched) on wide shots where a galaxy is small, and it
    is honest about what it cannot do: it blurs a 1 M disk rather than resolving it. If it
