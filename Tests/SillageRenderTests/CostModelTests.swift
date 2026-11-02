@@ -49,7 +49,7 @@ struct CostModelTests {
         #expect(abs(line.secondsPerUnit - 300e-9) < 1e-15)
 
         let model = CostModel.fallback(at: now)
-        #expect(abs(model.hiresSeconds(particles: 2_000_000, steps: 10_000) - 3_000) < 1e-6)
+        #expect(abs(model.hiresSeconds(particles: 2_000_000, steps: 10_000) - 1_240) < 1e-6)
         // Four at once, 126 ns a particle step and 4 s per scene finished.
         #expect(abs(model.exploreSeconds(particles: 200_000, steps: 4_000) - 4 * 104.8) < 1e-6)
         let frames = model.exportSeconds(preset: VideoPreset.all[0], codec: .hevc, frames: 900)

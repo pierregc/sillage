@@ -10,7 +10,7 @@ public struct NightSheet: Codable, Sendable, Equatable {
     /// The clock time of the delivery, in minutes after midnight.
     public var deliverMinutes = 7 * 60
     public var hours = 8.0
-    /// Scenes taken to high resolution, 2 to 4; nil is Auto.
+    /// Scenes taken to high resolution, 1 to 4; nil is Auto.
     public var hiresScenes: Int?
     /// `telescope` or `free`; nil is Auto.
     public var world: String?
