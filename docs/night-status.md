@@ -66,6 +66,11 @@ Every line has `t` (when) and `kind`; `scene` when it concerns one scene.
 | `phase.done` | a phase is over | `phase`, `count` |
 | `night.done` | the night is over | `status` (`done`, `stopped`, `failed`), `seconds`, `message` |
 
+A night started again in the same folder has a second `night.start` and tries again what the
+first run left out. So a `skip` counts only after the last `night.start`, and only while no
+later line does that step for the same scene (`hires.done` for `hires`, `style` for `style`,
+`export.done` for `export`).
+
 ## What "stuck" looks like
 
 `activity.json` says `"state": "running"` and `updated` is **15 minutes or more** older than now.
@@ -92,9 +97,9 @@ The status command's own five lines are fine too; to write them yourself from th
 
 If a video exists, add `Dernière vidéo : <path> · <Mo> · <h mm since the start>`.
 
-## Five states, to compare with
+## Six states, to compare with
 
-`Tests/Fixtures/night-status/` holds five complete `library/` folders with the answer
+`Tests/Fixtures/night-status/` holds six complete `library/` folders with the answer
 `sillage-render status` gives for each (`expected.txt`).
 
 | state | how to recognise it | what to say |
@@ -104,6 +109,7 @@ If a video exists, add `Dernière vidéo : <path> · <Mo> · <h mm since the sta
 | mid hires | `night.phase` is `hires`, `job.kind` is `hires`, some phases done | the scene and its frame, the ETA, the margin |
 | failed | `night.json` is `failed`, `error` events, `night.done` with `status: failed` | the count of errors, the first with its log |
 | done | `night.json` is `done`, a `night.done` event | `terminée` with the hour, the deadline, the number of videos |
+| resumed | two `night.start` and two `night.done`, `skip` lines before the second start | as done; what the second run did is not left out |
 
 ## The hourly routine
 
