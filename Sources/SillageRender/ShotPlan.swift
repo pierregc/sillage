@@ -106,11 +106,11 @@ public struct ShotPlan: Sendable {
     public let shots: [Shot]
     private let track: Track
     private let wide: [(centre: SIMD3<Float>, radius: Float)]
-    private let camera: LookFile.CameraPlan
-    private let fieldOfView: Float
+    private var camera: LookFile.CameraPlan
+    private var fieldOfView: Float
     private let framesPerSecond: Double
     /// Per shot, the view chosen for it, so a shot is the same at any frame asked.
-    private let views: [View]
+    private var views: [View]
 
     private struct View: Sendable {
         /// The axis the eye sits above, and two directions across it.
@@ -119,6 +119,8 @@ public struct ShotPlan: Sendable {
         var along = SIMD3<Float>(0, 1, 0)
         var elevation: Float = 1.2
         var phase: Float = 0
+        /// The phase faces the way the wide shots look, so it follows the plan's angles.
+        var facesWide = false
         /// Radians a second about `axis`.
         var turn: Float = 0
         /// Distance at the start and the end of the shot, as multiples of the framing one.
@@ -156,6 +158,22 @@ public struct ShotPlan: Sendable {
                     measure: measure, generator: &generator))
         }
         self.views = views
+    }
+
+    /// The same shots for another camera plan and lens, without reading the take again: the
+    /// plan's angles and zoom frame the wide shots and turn the close ones to face them, the
+    /// lens frames both, and nothing else in a plan depends on them. The style editor's canvas
+    /// replans this way while the plan is dragged (#177).
+    public func replanned(camera: LookFile.CameraPlan, fieldOfView: Float) -> ShotPlan {
+        var plan = self
+        plan.camera = camera
+        plan.fieldOfView = fieldOfView
+        let span = Float(max(track.frames - 1, 1))
+        for index in plan.views.indices where plan.views[index].facesWide {
+            plan.views[index].phase = Self.phase(
+                of: plan.views[index], from: shots[index].start, span: span, camera: camera)
+        }
+        return plan
     }
 
     /// The shot playing at a captured frame.
@@ -451,7 +469,16 @@ public struct ShotPlan: Sendable {
         let reference = abs(view.axis.z) > 0.95 ? SIMD3<Float>(1, 0, 0) : SIMD3<Float>(0, 0, 1)
         view.across = simd_normalize(simd_cross(reference, view.axis))
         view.along = simd_cross(view.axis, view.across)
-        let t = Float(shot.start) / span
+        view.facesWide = true
+        view.phase = phase(of: view, from: shot.start, span: span, camera: camera)
+        return view
+    }
+
+    /// Where a close shot starting at `start` turns from: facing the way the wide shots look.
+    private static func phase(
+        of view: View, from start: Int, span: Float, camera: LookFile.CameraPlan
+    ) -> Float {
+        let t = Float(start) / span
         let eased = t * t * (3 - 2 * t)
         let azimuth =
             camera.azimuth + ((camera.azimuthEnd ?? camera.azimuth) - camera.azimuth) * eased
@@ -460,9 +487,7 @@ public struct ShotPlan: Sendable {
             * eased
         let wideDirection = SIMD3<Float>(
             sin(azimuth) * cos(elevation), -cos(azimuth) * cos(elevation), sin(elevation))
-        view.phase = atan2(
-            simd_dot(wideDirection, view.along), simd_dot(wideDirection, view.across))
-        return view
+        return atan2(simd_dot(wideDirection, view.along), simd_dot(wideDirection, view.across))
     }
 }
 

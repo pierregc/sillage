@@ -27,17 +27,18 @@ public final class ShotReplay {
 
     /// `aspect` is the width of the frames drawn over their height, which a close shot is
     /// framed for. A `plan` already made for the take and the file is used rather than made
-    /// again: it reads the take's particles.
+    /// again: it reads the take's particles. `radius` is what the plan frames when the caller
+    /// has measured it already, as a canvas replaying the plan after every edit does.
     public init(
         file: LookFile, take: RecordingFile.Loaded, capturedFrames: Int, framesPerSecond: Int,
-        aspect: Float = 16.0 / 9.0, plan: ShotPlan? = nil
+        aspect: Float = 16.0 / 9.0, plan: ShotPlan? = nil, radius: Float? = nil
     ) {
         self.file = file
         recording = take.recording
         let scene = take.scene
         self.scene = scene
         span = Float(max(capturedFrames - 1, 1))
-        radius = file.camera.framedRadius(positions: take.particles.positions)
+        self.radius = radius ?? file.camera.framedRadius(positions: take.particles.positions)
         reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
         let mode = file.camera.mode
         director = mode == .immersed ? Cinematographer(seed: scene.seed) : nil

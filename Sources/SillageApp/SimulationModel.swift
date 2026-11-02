@@ -339,13 +339,15 @@ final class SimulationModel: ObservableObject {
     /// exports, through the queue.
     @Published private(set) var takeFolder: SceneFolder?
     /// On playback, draw through the file's camera plan rather than the orbit rig, so the
-    /// picture is the one the render will make.
+    /// picture is the one the render will make, in every mode.
     @Published var followsPlan = false
     /// The scene before the look's palette, so taking a colour out of the palette gives the
     /// galaxy its own back.
     private var unpaintedScene: SceneConfig?
-    /// A subsample of the take's first frame, which a fixed plan is framed on.
-    private var planSample: [SIMD3<Float>] = []
+    /// The export's replay of the plan, for the take on the canvas.
+    private var planPlayhead: PlanPlayhead?
+    /// The renderer holds the light the director chose for the frame rather than the file's.
+    private var drawsShotLook = false
     private var installingLook = false
 
     /// The number of diffraction arms, as a slider can hold it. `RenderLook` counts them as an
@@ -428,7 +430,7 @@ final class SimulationModel: ObservableObject {
     func adopt(_ file: LookFile, from url: URL?) {
         let old = lookFile
         take(file, from: url)
-        followsPlan = mode == .playback && file.camera.mode.isPlanned
+        followsPlan = mode == .playback
         lookFileChanged(from: old)
     }
 
@@ -473,53 +475,43 @@ final class SimulationModel: ObservableObject {
     }
 
     /// The playhead counted in the run's captured frames, as `LookSheet` counts them.
-    var playheadCapturedFrame: Int {
-        guard let recording else { return 0 }
-        let frame = Int((playbackPosition * Double(recording.interval)).rounded())
-        return min(max(frame, 0), max(recording.capturedFrames - 1, 0))
+    var playheadCapturedFrame: Int { Int(capturedPlayhead.rounded()) }
+
+    /// The playhead in captured frames, between them as the canvas plays, as an export counts.
+    var capturedPlayhead: Double {
+        recording?.capturedPosition(atStored: playbackPosition) ?? 0
     }
 
-    /// The director's plan for the take on the canvas, kept while the camera and the field of
-    /// view it was made for stay: making one reads the take.
-    private var directorPlan: (key: String, plan: ShotPlan)?
-
-    /// The file's camera plan at the playhead, or nil where the plan has no picture to give
-    /// here: the immersed director moves on as a clip plays, and cannot be scrubbed.
-    var planCamera: Camera? {
+    /// The shot the export draws at the playhead, in every mode (#177): the auto camera eased
+    /// and the immersed director played from the first frame as the export replays them, the
+    /// director's planned shots, and the light the immersed one modulates.
+    var planShot: ShotReplay.Shot? {
         guard mode == .playback, let recording, recording.count >= 2 else { return nil }
-        let plan = lookFile.camera
-        let progress = Float(playbackPosition / Double(recording.count - 1))
-        switch plan.mode {
-        case .fixed:
-            return plan.camera(
-                progress: progress, radius: plan.framedRadius(positions: planSample),
-                fieldOfView: look.fieldOfView)
-        case .auto:
-            // Framed afresh on this frame rather than eased from the first one, which is what
-            // lets the playhead jump anywhere.
-            var auto = AutoCamera()
-            let reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
-            let centres =
-                playbackCenters.isEmpty ? scene.galaxies.map(\.position) : playbackCenters
-            let framed = auto.frame(centres: scene.framedCentres(centres), margins: reach)
-            return plan.camera(
-                progress: progress, radius: framed.radius / plan.zoom, center: framed.center,
-                fieldOfView: look.fieldOfView)
-        case .director:
+        if planPlayhead?.take.recording !== recording {
             guard let take = playedTake else { return nil }
-            let key = "\(ObjectIdentifier(recording)) \(plan) \(look.fieldOfView)"
-            var file = lookFile
-            file.look.fieldOfView = look.fieldOfView
-            let directed =
-                directorPlan?.key == key
-                ? directorPlan?.plan
-                : ShotPlan(take: take, file: file, framesPerSecond: SceneFolder.Clip().fps)
-            directorPlan = directed.map { (key, $0) }
-            let aspect = Float(drawableSize.width / max(drawableSize.height, 1))
-            return directed?.camera(
-                atCaptured: playbackPosition * Double(recording.interval), aspect: aspect)
-        case .immersed:
-            return nil
+            planPlayhead = PlanPlayhead(take: take, capturedRate: capturedRate)
+        }
+        return planPlayhead?.shot(
+            lookFile, atCaptured: capturedPlayhead,
+            aspect: Float(drawableSize.width / max(drawableSize.height, 1)))
+    }
+
+    var planCamera: Camera? { planShot?.camera }
+
+    /// The rate the take on the canvas was captured at, which an export replays the plan at.
+    private var capturedRate: Int {
+        ((takeFolder ?? sceneFolder).flatMap { try? $0.capturedRate() }) ?? SceneFolder.Clip().fps
+    }
+
+    /// The immersed director modulates the light as it plays, and the export draws what it
+    /// chose.
+    private func applyShotLook() {
+        if followsPlan, !isFlying, let shot = planShot, shot.look != look {
+            renderer?.apply(shot.look)
+            drawsShotLook = true
+        } else if drawsShotLook {
+            renderer?.apply(look)
+            drawsShotLook = false
         }
     }
 
@@ -527,6 +519,7 @@ final class SimulationModel: ObservableObject {
     /// it draws on demand, and every field here changes what it shows.
     private func applyLook() {
         renderer?.apply(look)
+        drawsShotLook = false
         previewRenderer?.apply(look)
         redrawPreview()
     }
@@ -966,6 +959,7 @@ final class SimulationModel: ObservableObject {
         preparation &+= 1
         fileActivity = "Ouverture de la prise…"
         let device = self.device
+        let directing = file?.camera.mode == .director ? file : nil
         simulationQueue.async { [weak self] in
             let loaded: RecordingFile.Loaded?
             var failure: String?
@@ -979,6 +973,15 @@ final class SimulationModel: ObservableObject {
                 loaded.flatMap {
                     try? SnapshotExpander(device: device, particleCount: $0.recording.particleCount)
                 }
+            // Measured here: at a few million particles they would hold the window a moment, the
+            // director's plan most of a second.
+            let radii = loaded.map(PlanPlayhead.firstFrameRadii)
+            let rate =
+                (folder ?? SceneFolder.holding(take: url)).flatMap { try? $0.capturedRate() }
+                ?? SceneFolder.Clip().fps
+            let directed = loaded.flatMap { take in
+                directing.map { ShotPlan(take: take, file: $0, framesPerSecond: rate) }
+            }
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.fileActivity = nil
@@ -990,7 +993,9 @@ final class SimulationModel: ObservableObject {
                 self.installTake(loaded, expander: expander)
                 self.sceneFolder = folder
                 self.takeFolder = folder ?? SceneFolder.holding(take: url)
-                if let file { self.followsPlan = file.camera.mode.isPlanned }
+                self.planPlayhead = PlanPlayhead(
+                    take: loaded, capturedRate: rate, radii: radii, directed: directed)
+                if file != nil { self.followsPlan = true }
             }
         }
     }
@@ -1019,9 +1024,6 @@ final class SimulationModel: ObservableObject {
             options: .storageModeShared)
         playbackPosition = 0
         playbackCenters = loaded.recording.centers(at: 0)
-        let first = loaded.recording.positions(at: 0)
-        planSample = Swift.stride(from: 0, to: first.count, by: max(first.count / 200_000, 1))
-            .map { first[$0] }
         elapsedMyr = Double(loaded.recording.frames.first?.time ?? 0) * Physics.megayearsPerTimeUnit
         mode = .playback
         isPlaying = true
@@ -1214,6 +1216,7 @@ final class SimulationModel: ObservableObject {
             renderer?.setSmoothing(smoothing?.buffer)
             renderer?.pacer = canvasPacer
             renderer?.apply(look)
+            drawsShotLook = false
             renderer?.setGalaxyColours(lookFile.palette)
             // Due on the next frame rather than now: a replay's positions buffer is still empty
             // here, and lengths taken from it would hold until the next refresh.
@@ -1280,6 +1283,7 @@ final class SimulationModel: ObservableObject {
     func playbackSnapshot() -> [UInt8]? {
         guard mode == .playback, let renderer else { return nil }
         advancePlayback()
+        applyShotLook()
         tickSmoothing()
         let centers =
             playbackCenters.isEmpty ? scene.galaxies.map(\.position) : playbackCenters
@@ -1346,6 +1350,7 @@ final class SimulationModel: ObservableObject {
             break
         case .playback:
             advancePlayback()
+            applyShotLook()
         }
         tickSmoothing()
         // Where the galaxies were on the frame being shown, so the spiral pattern is painted
