@@ -180,7 +180,9 @@ struct NightRunnerTests {
         #expect(kinds.filter { $0 == RunEvent.Kind.pick }.count == 2)
         #expect(kinds.filter { $0 == RunEvent.Kind.style }.count == 2)
         // Auto draws each pick's world from the batch seed, best first, and says which it chose.
-        let worlds = (0..<2).map { NightStyle.drawnWorld(pick: $0, seed: 1, share: 0.2).rawValue }
+        let worlds = (0..<2).map {
+            NightStyle.drawnWorld(pick: $0, seed: 1, share: NightRecipe.defaultFreeShare).rawValue
+        }
         let looks = calls.filter { $0.hasPrefix("look ") }
         #expect(looks.count == 2)
         #expect(looks[0].contains("scene-0002 --style auto --world \(worlds[0])"))

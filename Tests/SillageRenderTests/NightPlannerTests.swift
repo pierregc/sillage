@@ -277,7 +277,9 @@ struct NightPlannerTests {
         }
         var free = 0
         for seed in UInt64(20_261_101)...20_261_130 {
-            let drawn = (0..<4).map { NightStyle.drawnWorld(pick: $0, seed: seed, share: 0.2) }
+            let drawn = (0..<4).map {
+                NightStyle.drawnWorld(pick: $0, seed: seed, share: NightRecipe.defaultFreeShare)
+            }
             free += drawn.filter { $0 == .free }.count
             #expect(styles(auto, seed: seed) == drawn.map(seconds), "seed \(seed)")
         }
