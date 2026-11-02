@@ -31,6 +31,30 @@ struct StyleEditTests {
         #expect(LookCatalogue.renderings(.free, in: LookCatalogue.repository).count == 40)
     }
 
+    /// Every shipped style draws the compact sources at the style glint, the raw look aside.
+    @Test func theShippedStylesTurnTheGlintDown() {
+        #expect(LookCatalogue.repository.allSatisfy { $0.look.glint == RenderLook.styleGlint })
+        #expect(RenderLook.all.allSatisfy { $0.glint == RenderLook.styleGlint })
+        #expect(LookFile.standard.look.glint == RenderLook.styleGlint && LookFile.raw.look.glint == 1)
+    }
+
+    /// A scene's look written before the glint existed keeps its sparkle; a style chosen for
+    /// it, by hand or by Auto, brings the catalogue's.
+    @Test func onlyANewStyleTurnsTheGlintDown() throws {
+        let written = String(decoding: try base.encoded(), as: UTF8.self)
+        let older = written.replacingOccurrences(of: #""glint" : 0.3,"#, with: "")
+        #expect(older != written)
+        let old = try LookFile.decoded(from: Data(older.utf8))
+        var expected = base
+        expected.look.glint = 1
+        #expect(old == expected)
+        let palette = try PaletteGenerator.palette(galaxies: 2, world: .telescope, seed: 9)
+        for rendering in LookCatalogue.repository {
+            #expect(old.withRendering(rendering).look.glint == RenderLook.styleGlint)
+            #expect(StyleAuto.apply(rendering, palette: palette, to: old).look.glint == RenderLook.styleGlint)
+        }
+    }
+
     @Test func aRenderingKeepsThePaletteTheCameraAndTheFieldOfView() {
         let file = base.withRendering(rendering)
         #expect(file.palette == base.palette && file.world == .free)

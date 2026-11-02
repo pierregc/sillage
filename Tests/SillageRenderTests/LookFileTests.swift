@@ -11,13 +11,19 @@ struct LookFileTests {
         try LookFile.decoded(from: Data(json.utf8))
     }
 
+    /// The standard look, but with the glint every file drew with before it was a field.
+    private var standardAsSampled: LookFile { LookFile(look: LookFile.omittedLook) }
+
     @Test func anEmptyFileIsTheStandardLook() throws {
-        #expect(try decoded(#"{"version": 1}"#) == .standard)
-        #expect(try decoded(#"{"version": 1, "look": {}, "camera": {}}"#) == .standard)
+        #expect(try decoded(#"{"version": 1}"#) == standardAsSampled)
+        #expect(try decoded(#"{"version": 1, "look": {}, "camera": {}}"#) == standardAsSampled)
+        var standard = LookFile.standard
+        standard.look.glint = 1
+        #expect(standardAsSampled == standard)
     }
 
     @Test func aFileChangesOnlyWhatItNames() throws {
-        var expected = LookFile.standard
+        var expected = standardAsSampled
         expected.look.brightness = 0.3
         expected.camera.azimuthEnd = 2
         #expect(
@@ -147,7 +153,8 @@ struct LookFileTests {
                 spikeSharpness: s.spikeSharpness,
                 skyLevel: s.skyLevel, skyColour: s.skyColour, noiseLevel: s.noiseLevel,
                 galaxyTint: s.galaxyTint, starSize: s.starSize,
-                armPersistence: look.armPersistence, fieldOfView: look.fieldOfView) == look)
+                armPersistence: look.armPersistence, fieldOfView: look.fieldOfView,
+                holeShadow: s.holeShadow, columnSmoothing: s.columnSmoothing, glint: s.glint) == look)
     }
 
     @Test func onlyTheFieldsThatOwnBuffersRebuildTheRenderer() {

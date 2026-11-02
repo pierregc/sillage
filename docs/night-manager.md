@@ -57,7 +57,7 @@ every change (about 75 ms once the batch's draws are sized, which the app does a
 sheet shares): one line a phase with what it computes, how long it takes and when it ends, then
 the delivery and the margin. Disk too small, a hires that does not fit, fewer hires scenes than
 asked for, a night that ends late: it warns and does not block. "Personnaliser" is closed and
-holds four settings, each Auto: hires scenes (2 to 4), colour world, formats (4K, vertical),
+holds four settings, each Auto: hires scenes (1 to 4), colour world, formats (4K, vertical),
 exploration only. **Lancer la nuit** writes the recipe to `library/.sillage/recipes/` (a file
 a night, as a queued night reads it when its turn comes), adds the job to the queue and keeps
 the settings in `library/.sillage/night-sheet.json` for the next sheet. `Sillage.app --nightcheck`
@@ -177,8 +177,8 @@ name is an error.
 | `explore.archetypes` | archetypes allowed, `["antennae", "mice"]`; a place drawn for another is skipped | all |
 | `explore.galaxies` | `[least, most]` galaxies a scene has; others are skipped | any |
 | `explore.seed` | the batch seed | the day, `20261028` |
-| `pick` | `2` to `4`, or `"none"` to stop after exploring | 2 to 4 by score, as many as fit |
-| `hires.particles` | particles in all | 2 000 000 (or the machine's maximum) |
+| `pick` | `1` to `4`, or `"none"` to stop after exploring | 1 to 4 by score, as many as fit |
+| `hires.particles` | particles in all | 8 000 000 (or the machine's maximum) |
 | `hires.frames` | the first frames of the story only | the whole story |
 | `style.world` | `telescope` or `free` | Auto: the two worlds in turn across the picks, best first, telescope then free |
 | `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |
@@ -198,10 +198,22 @@ How it plans. `NightPlanner` turns the recipe and the cost model into steps, eac
 duration, start and end, and the delivery of the whole night. Before exploring, it sizes the
 first 16 draws of the batch from the generator alone (`ExploreProbe`, the same particles and
 steps `explore-batch.sh` gives them, a quarter more for the story); after, it uses each scene's
-own story. Auto keeps time for four picks, then three, then two, and explores fifty scenes at
+own story. Auto keeps time for four picks, then three, two, one, and explores fifty scenes at
 the largest count a galaxy that fits in what is left, less a margin (5 %, 5 to 20 minutes).
 The pick takes scenes marked yes by hand first, then the best scores, never one marked no;
 score picks go to `ratings.json` as `picked`.
+
+At 8 M, Auto's count since #185 (the count at which a disk filling the frame reads as matter,
+see [gigantism](notes/gigantism.md)), a hires is most of the night. The two 8 M hires of
+2026-10-30 took 237 and 239 minutes for 28 681 and 28 084 steps with the settle, peaked at
+15.4 GB of memory and wrote takes of 12.7 and 18.5 GB for 1 030 and 1 514 frames: the 1.53
+bytes a particle a frame the plan counts. Their 4K exports took one and two and a half
+minutes. The cost model refitted that morning, 108 s + 62.4 ns a visible particle step, puts
+both within 2 %. Planned from the draws, Auto keeps room for two scenes in a night of nine
+hours, after fifty previews at 75 000 a galaxy, and for one in a night of eight or seven, the
+previews at 150 000 or 200 000; `--plan` and the sheet say which before the night starts. The
+draws come out about a tenth under those two runs (3 h 31 a scene against 4 h), so once the real
+scenes are known a nine-hour night may finish only one, and the pick takes one.
 
 How it runs. Explore (through `explore-batch.sh`, stopped at its share of the night), pick, then
 for each pick, best first: hires, style, exports. Before each step it plans again from the

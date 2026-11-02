@@ -126,6 +126,7 @@ public struct NightFolder: Sendable {
         let conf = batchConf
         probe.archetypeShare =
             recipe.explore.archetypeShare.value ?? Double(BatchDraw.defaultArchetypeShare)
+        if let settle = conf["settle"].flatMap(Int.init) { probe.settle = settle }
         if let range = conf["galaxy_range"] {
             let ends = range.split(separator: "-").compactMap { Int($0) }
             if ends.count == 2 { probe.galaxies = ends[0]...ends[1] }

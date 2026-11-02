@@ -6,8 +6,9 @@ import simd
 /// each galaxy and the camera.
 ///
 /// Every field may be left out and takes its value from `standard`, which is what
-/// `sillage-render` draws with when given no flags, so a file names only what it changes. A
-/// field this build does not know is an error rather than silently ignored.
+/// `sillage-render` draws with when given no flags, so a file names only what it changes;
+/// the glint is the one exception (`omittedLook`). A field this build does not know is an
+/// error rather than silently ignored.
 public struct LookFile: Codable, Sendable, Equatable {
     public static let currentVersion = 1
 
@@ -115,7 +116,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         let d = LookFile.standard
         self.init(
             name: try c.value(.name, or: d.name),
-            look: try c.value(.look, or: d.look),
+            look: try c.value(.look, or: LookFile.omittedLook),
             starCount: try c.value(.starCount, or: d.starCount),
             supersample: try c.value(.supersample, or: d.supersample),
             bloomLevels: try c.value(.bloomLevels, or: d.bloomLevels),
@@ -136,7 +137,16 @@ public struct LookFile: Codable, Sendable, Equatable {
         maximumKernel: 64, bloomThreshold: 0.55, bloomSoftKnee: 0.6, bloomIntensity: 0.22,
         stretch: 18, saturation: 2.8, whitePoint: 4.5, spikeArms: 6, spikeLength: 40,
         spikeIntensity: 0.14, skyLevel: 0.0008, noiseLevel: 0.0016, galaxyTint: 0.35,
-        starSize: 1.6, armPersistence: 1, fieldOfView: 0.6)
+        starSize: 1.6, armPersistence: 1, fieldOfView: 0.6, glint: RenderLook.styleGlint)
+
+    /// What a file means by the look fields it leaves out: the standard look, but the glint as
+    /// sampled, which is what every file written before the field existed drew with. A scene's
+    /// `look.json` keeps its picture; only new styles name `styleGlint`.
+    public static let omittedLook: RenderLook = {
+        var look = standardLook
+        look.glint = 1
+        return look
+    }()
 
     public static let standard = LookFile()
 
