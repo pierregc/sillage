@@ -128,7 +128,8 @@ What changed:
   `columnSmoothing` existed fails "ouvert puis enregistré sans changement": saving adds them.
 - `--navcheck` opens the editor from the library, leaves it for the queue and comes back, then
   closes it.
-- `--uishot` writes `out/ui-style-bar.png`, `out/ui-style.png` and `out/ui-style-fine.png`.
+- `--uishot` writes `out/ui-style-bar.png`, `out/ui-style.png`, `out/ui-style-fine.png` and
+  `out/ui-style-director.png`, the camera section and the canvas's legend in Réalisateur.
 - `--thumbcheck <take>` opens the take headless with a 1920×1080 canvas paced at 60 Hz, opens
   the editor and reports every pass: how long, and the canvas's frames alone and during. It
   checks the cache, that a rendering applied draws nothing, the tenth-of-a-take rule, a palette,
