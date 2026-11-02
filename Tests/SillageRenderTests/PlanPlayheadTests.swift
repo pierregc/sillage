@@ -163,7 +163,8 @@ struct PlanPlayheadTests {
         // Auto frames its own radius, which only the zoom reaches.
         let auto = LookFile.CameraPlan(mode: .auto, radius: 60).zoomed(by: 2)
         #expect(auto.radius == 60 && auto.zoom == 2)
-        #expect(!LookFile.CameraPlan(mode: .director).placesCamera)
-        #expect(LookFile.CameraPlan(mode: .auto).placesCamera)
+        // The director's wide shots follow the plan's angles; the immersed one chooses its own.
+        #expect(LookFile.CameraPlan(mode: .director).placesCamera)
+        #expect(!LookFile.CameraPlan(mode: .immersed).placesCamera)
     }
 }
