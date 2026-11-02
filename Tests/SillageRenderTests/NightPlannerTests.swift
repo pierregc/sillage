@@ -16,6 +16,7 @@ struct NightRecipeTests {
         #expect(night.hiresParticles(maximum: 10_000_000) == 8_000_000)
         #expect(night.hiresParticles(maximum: 1_000_000) == 1_000_000)
         #expect(night.exports == ["4k", "vertical"])
+        #expect(night.style.freeShare == .auto && night.freeShare == 0.2)
     }
 
     @Test func everySettingTakesAutoOrAValue() throws {
@@ -25,13 +26,14 @@ struct NightRecipeTests {
              "explore": {"scenes": 6, "particlesPerGalaxy": 50000, "archetypeShare": 0.5,
                          "archetypes": ["antennae", "mice"], "galaxies": [2, 3], "seed": "auto"},
              "pick": 2, "hires": {"particles": 150000, "frames": 300},
-             "style": {"world": "telescope", "style": "auto", "palette": "auto"},
+             "style": {"world": "telescope", "style": "auto", "palette": "auto", "freeShare": 0.35},
              "export": ["1080p", "webp"]}
             """)
         #expect(night.explore.scenes == .value(6) && night.explore.seed == .auto)
         #expect(night.galaxyRange == 2...3 && night.explore.archetypes.value == ["antennae", "mice"])
         #expect(night.pick == .count(2) && night.hires.frames == .value(300))
         #expect(night.style.world == .value("telescope") && night.style.palette == .auto)
+        #expect(night.style.freeShare == .value(0.35) && night.freeShare == 0.35)
         #expect(night.exports == ["1080p", "webp"])
         #expect(try NightRecipe.decoded(from: night.encoded()) == night)
         #expect(try recipe(#"{"pick": "none"}"#).pick == NightRecipe.Selection.none)
@@ -48,7 +50,8 @@ struct NightRecipeTests {
             #"{"deliver": "7h"}"#, #"{"export": ["8k"]}"#, #"{"style": {"world": "hubble"}}"#,
             #"{"explore": {"galaxies": [4, 2]}}"#, #"{"explore": {"archetypes": ["kite"]}}"#,
             #"{"explore": {"scenes": "many"}}"#, #"{"hours": 0}"#,
-            #"{"style": {"camera": "drone"}}"#,
+            #"{"style": {"camera": "drone"}}"#, #"{"style": {"freeShare": 1.5}}"#,
+            #"{"style": {"freeShare": -0.1}}"#, #"{"style": {"freeShare": "half"}}"#,
         ] {
             #expect(throws: NightRecipe.Failure.self) { try recipe(bad) }
         }
@@ -190,12 +193,12 @@ struct NightPlannerTests {
         let planner = planner(recipe(), progress: progress)
         let ranked = NightPlanner.ranked(progress.explored)
         #expect(ranked.first?.name == "scene-34")
-        let one = planner.finishSeconds(ranked[0])
+        let one = planner.finishSeconds(ranked[0], pick: 0)
         for (hours, expected) in [(12.0, 4), (1.0, 1), (0.1, 1)] {
             let end = start.addingTimeInterval(hours * 3600)
             #expect(planner.autoPicks(ranked, from: start, deliverBy: end) == expected, "\(hours) h")
         }
-        let three = ranked.prefix(3).reduce(0) { $0 + planner.finishSeconds($1) }
+        let three = planner.finishSeconds(picks: Array(ranked.prefix(3)))
         #expect(planner.autoPicks(ranked, from: start, deliverBy: start.addingTimeInterval(three + 1)) == 3)
         #expect(one > 0)
         #expect(planner.autoPicks(Array(ranked.prefix(1)), from: start, deliverBy: start) == 1)
@@ -212,7 +215,7 @@ struct NightPlannerTests {
         ]
         progress.picks = ["long", "short"]
         let planner = planner(recipe(), progress: progress)
-        let short = planner.finishSeconds(progress.explored[1])
+        let short = planner.finishSeconds(progress.explored[1], pick: 1)
         let plan = planner.plan(now: start, deliverBy: start.addingTimeInterval(short + 60))
         let steps = Dictionary(grouping: plan.steps.filter { $0.scene != nil }, by: { $0.scene! })
         #expect(steps["long"]?.allSatisfy { !$0.fits } == true)
@@ -248,8 +251,53 @@ struct NightPlannerTests {
             now: start, deliverBy: start.addingTimeInterval(3_600))
         #expect(plan.steps.map(\.done) == [true, true, true, false, true])
         #expect(plan.steps.filter(\.done).allSatisfy { $0.seconds == 0 })
-        #expect(plan.end.timeIntervalSince(start) == planner(recipe()).styleSeconds)
+        #expect(plan.end.timeIntervalSince(start) == planner(recipe()).styleSeconds(pick: 0))
         #expect(plan.diskBytes == 0)
+    }
+
+    @Test func eachStyleIsPlannedInTheWorldItsPickIsDrawn() {
+        var progress = NightProgress()
+        progress.exploreDone = true
+        progress.explored = Self.picks.map {
+            NightScene(
+                name: $0.name, score: $0.score, exploreUnits: 0, hiresUnits: 2e6 * Double($0.steps),
+                frames: 900)
+        }
+        progress.picks = Self.picks.map(\.name)
+        let auto = recipe()
+        func styles(_ recipe: NightRecipe, seed: UInt64, paletteWorld: Palette.World? = nil) -> [Double] {
+            var planner = NightPlanner(
+                recipe: recipe, seed: seed, model: model, maximumParticles: 10_000_000, progress: progress
+            ) { _ in [] }
+            planner.paletteWorld = paletteWorld
+            return planner.plan(now: start, deliverBy: start.addingTimeInterval(24 * 3600)).steps
+                .filter { $0.phase == .style }.map(\.seconds)
+        }
+        func seconds(_ world: Palette.World) -> Double {
+            world == .free ? NightPlanner.freeStyleSeconds : NightPlanner.telescopeStyleSeconds
+        }
+        var free = 0
+        for seed in UInt64(20_261_101)...20_261_130 {
+            let drawn = (0..<4).map {
+                NightStyle.drawnWorld(pick: $0, seed: seed, share: NightRecipe.defaultFreeShare)
+            }
+            free += drawn.filter { $0 == .free }.count
+            #expect(styles(auto, seed: seed) == drawn.map(seconds), "seed \(seed)")
+        }
+        #expect(free > 0 && free < 120)
+        // A world asked for, or the named palette's, whatever the share; a named rendering costs
+        // its palette alone.
+        var asked = auto
+        asked.style.world = .value("telescope")
+        asked.style.freeShare = .value(1)
+        #expect(styles(asked, seed: 1) == Array(repeating: seconds(.telescope), count: 4))
+        var palette = auto
+        palette.style.palette = .value("ember")
+        palette.style.freeShare = .value(0)
+        #expect(styles(palette, seed: 1, paletteWorld: .free) == Array(repeating: seconds(.free), count: 4))
+        var rendering = auto
+        rendering.style.style = .value("hubble")
+        #expect(styles(rendering, seed: 1) == Array(repeating: NightPlanner.paletteSeconds, count: 4))
     }
 
     @Test func autoExploresFiftyScenesAtTheLargestCountThatLeavesRoomForFourPicks() throws {

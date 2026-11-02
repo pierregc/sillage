@@ -106,11 +106,11 @@ struct FavouritePalettesTests {
         var style = NightRecipe.Style()
         style.palette = .value("soir")
         let resolved = try NightStyle.resolve(
-            style, pick: 0, catalogue: [], references: [], favourites: [kept])
+            style, pick: 0, seed: 1, catalogue: [], references: [], favourites: [kept])
         #expect(resolved.world == .free && resolved.palette == "soir")
         style.world = .value("telescope")
         #expect(throws: NightRecipe.Failure.self) {
-            try NightStyle.resolve(style, pick: 0, catalogue: [], references: [], favourites: [kept])
+            try NightStyle.resolve(style, pick: 0, seed: 1, catalogue: [], references: [], favourites: [kept])
         }
     }
 }

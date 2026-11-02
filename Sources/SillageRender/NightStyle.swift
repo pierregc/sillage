@@ -18,11 +18,15 @@ public struct NightStyle: Equatable, Sendable {
     /// auto framing explore judged the dynamics with, keeps every galaxy a few per cent of it.
     public static let cameras = ["director", "fixed", "immersed", "scene"]
 
-    /// The world Auto gives the pick at `index`, best first: the two worlds in turn, so each
-    /// morning shows both.
-    public static func alternate(_ index: Int) -> Palette.World {
-        index.isMultiple(of: 2) ? .telescope : .free
+    /// The world Auto gives the pick at `index`, best first: free with probability `share`,
+    /// drawn from the batch seed, so a resumed night gives each pick the world it had. A draw
+    /// rather than every fifth pick, which a night of four picks at most would never reach.
+    public static func drawnWorld(pick index: Int, seed: UInt64, share: Double) -> Palette.World {
+        NightRecipe.pickDraw(index, seed: seed, stream: worldStream) < share ? .free : .telescope
     }
+
+    /// The stream of the world's draws, "FREEWRLD".
+    static let worldStream: UInt64 = 0x4652_4545_5752_4C44
 
     /// The world a family or a stored palette belongs to; nil for `auto` or bare colours.
     public static func world(
@@ -43,10 +47,11 @@ public struct NightStyle: Equatable, Sendable {
         }
     }
 
-    /// The style of the pick at `index`: a world asked for wins, then the named rendering's
-    /// and the palette's, then the turn of the picks. A recipe whose parts disagree is refused.
+    /// The style of the pick at `index` of the batch `seed`: a world asked for wins, then the
+    /// named rendering's and the palette's, then Auto's draw. A recipe whose parts disagree is
+    /// refused.
     public static func resolve(
-        _ style: NightRecipe.Style, pick index: Int, catalogue: [LookFile],
+        _ style: NightRecipe.Style, pick index: Int, seed: UInt64, catalogue: [LookFile],
         references: [TelescopeReference],
         favourites: [FavouritePalettes.Favourite] = FavouritePalettes.load()
     ) throws -> NightStyle {
@@ -86,7 +91,9 @@ public struct NightStyle: Equatable, Sendable {
                 "style.palette", "belongs to the \(b.rawValue) world, style.style to the \(a.rawValue) one")
         }
         return NightStyle(
-            world: asked ?? rendering?.world ?? palette ?? alternate(index),
+            world: asked ?? rendering?.world ?? palette
+                ?? drawnWorld(
+                    pick: index, seed: seed, share: style.freeShare.value ?? NightRecipe.defaultFreeShare),
             rendering: rendering?.name, palette: choice,
             multicolour: style.multicolour.value ?? true, camera: style.camera.value ?? "director")
     }
