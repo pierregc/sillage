@@ -35,7 +35,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         }
     }
 
-    /// How many explored scenes go on to high resolution: Auto picks 2 to 4 by score, as many
+    /// How many explored scenes go on to high resolution: Auto picks 1 to 4 by score, as many
     /// as fit; `none` stops after exploring.
     public enum Selection: Codable, Sendable, Equatable {
         case auto
@@ -51,7 +51,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             switch try container.decode(String.self) {
             case "auto": self = .auto
             case "none": self = .none
-            case let word: throw Failure.badValue("pick", "\(word) is not auto, none or 2 to 4")
+            case let word: throw Failure.badValue("pick", "\(word) is not auto, none or 1 to 4")
             }
         }
 
@@ -167,10 +167,11 @@ extension NightRecipe {
     /// What Auto sizes an exploration among. Past 200 000 a galaxy, a preview keeps no more of
     /// the pericentres and tails a hires shows (#21).
     public static let perGalaxyLadder = [50_000, 75_000, 100_000, 150_000, 200_000]
-    /// The size of the 2026-10-25 night, which leaves room for four scenes in a night.
-    public static let defaultHiresParticles = 2_000_000
+    /// The count at which a disk filling the frame reads as matter rather than grains (#185,
+    /// docs/notes/gigantism.md). About four hours a scene, so one or two a night.
+    public static let defaultHiresParticles = 8_000_000
     public static let defaultExports = ["4k", "vertical"]
-    public static let pickRange = 2...4
+    public static let pickRange = 1...4
     /// The animated previews `export` writes besides video presets.
     public static let previewFormats = ["webp", "gif"]
 
@@ -306,7 +307,7 @@ extension NightRecipe {
             }
         }
         if case .count(let count) = pick, !Self.pickRange.contains(count) {
-            throw Failure.badValue("pick", "auto, none or 2 to 4")
+            throw Failure.badValue("pick", "auto, none or 1 to 4")
         }
         if let particles = hires.particles.value, particles < 1_000 {
             throw Failure.badValue("hires.particles", "at least 1000")

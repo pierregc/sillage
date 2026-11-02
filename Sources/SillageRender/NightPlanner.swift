@@ -259,8 +259,8 @@ public struct NightPlanner: Sendable {
         }
     }
 
-    /// Auto: between two and four scenes, as many of the best as can be finished from `start`
-    /// before the delivery time, and never fewer than two when two were explored.
+    /// Auto: between one and four scenes, as many of the best as can be finished from `start`
+    /// before the delivery time. At 8 M a hires takes about four hours, so one or two.
     public func autoPicks(_ ranked: [NightScene], from start: Date, deliverBy: Date) -> Int {
         let available = deliverBy.timeIntervalSince(start)
         for count in NightRecipe.pickRange.reversed() where count <= ranked.count {
@@ -281,7 +281,7 @@ public struct NightPlanner: Sendable {
     }
 
     /// The exploration's size and the picks it leaves room for. Auto keeps time for four
-    /// picks, then three, then two, and within that explores fifty scenes at the largest
+    /// picks, then three, two, one, and within that explores fifty scenes at the largest
     /// count a galaxy that fits; failing that, fewer scenes at the smallest count.
     func sizing(now: Date, deliverBy: Date) -> Sizing {
         let explored = progress.explored.count

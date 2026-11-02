@@ -298,7 +298,7 @@ struct NightRunnerTests {
 
     @Test func aHiresThatCannotEndBeforeTheDeliveryIsNotStarted() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        // Ten million particles at the fallback's 150 ns a step: minutes, in a night of seconds.
+        // Ten million particles at the fallback's 62 ns a step: minutes, in a night of seconds.
         #expect(runner(recipe(hours: 0.005, particles: 10_000_000)).run() == 0)
         #expect(!logged().contains { $0.hasPrefix("hires ") })
         let skips = events.filter { $0.kind == RunEvent.Kind.skip }

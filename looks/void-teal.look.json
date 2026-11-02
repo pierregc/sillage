@@ -9,6 +9,7 @@
     "brightness": 0.18,
     "dustStrength": 0,
     "galaxyTint": 0.95,
+    "glint": 0.3,
     "noiseLevel": 0,
     "saturation": 2.6,
     "skyLevel": 0,

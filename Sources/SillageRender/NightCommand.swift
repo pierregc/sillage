@@ -130,6 +130,7 @@ public enum NightCommand {
             formatter.groupingSeparator = " "
             return formatter.string(from: NSNumber(value: value)) ?? String(value)
         }
+        func scenes(_ count: Int) -> String { count == 1 ? "1 scene" : "\(count) scenes" }
         var lines = [
             "plan       deliver by \(time(plan.deliverBy)), \(duration(plan.deliverBy.timeIntervalSince(plan.start))) from now"
         ]
@@ -143,10 +144,10 @@ public enum NightCommand {
             switch step.phase {
             case .explore:
                 line =
-                    "explore    \(step.count ?? 0) scenes at \(thousands(step.particles ?? 0)) a galaxy · \(state)"
+                    "explore    \(scenes(step.count ?? 0)) at \(thousands(step.particles ?? 0)) a galaxy · \(state)"
             case .pick:
                 line =
-                    "pick       \(step.count ?? 0) scenes"
+                    "pick       \(scenes(step.count ?? 0))"
                     + (step.done ? " · done" : " · at \(time(step.start))")
             case .hires:
                 line =

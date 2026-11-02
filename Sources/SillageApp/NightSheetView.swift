@@ -236,7 +236,7 @@ struct NightSheetView: View {
                             }
                             .labelsHidden()
                             .pickerStyle(.segmented)
-                            .frame(width: 190)
+                            .frame(width: 230)
                         }
                     }
                     .disabled(model.sheet.exploreOnly)

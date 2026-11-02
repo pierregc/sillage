@@ -185,10 +185,13 @@ live halo at 1.5x, opening angle 0.9), 20 steps:
   softening ([state note](state-and-known-limitations.md)): in these runs 20 steps covered
   2.1 Myr at 2 M, 1.3 at 5 M and 1.1 at 10 M. So a megayear costs about 1 s at 2 M, 4 s at
   5 M and 10 s at 10 M.
-- **A hires, then.** `costs` fits a hires at 1415 s + 57.2 ns a visible particle step: 43 min
-  for 2 M over 10 000 steps. The one 8 M hires in the library (scene-0030) took 21 196 steps
-  and 4 h. A 10 M hires is five to six hours: one scene a night, against four at 2 M; 5 M is
-  about two hours, two scenes a night.
+- **A hires, then.** `costs` fits a hires at 108 s + 62.4 ns a visible particle step: 23 min
+  for 2 M over 10 000 steps. The two 8 M hires in the library (`2026-10-30-b`, scenes 0044 and
+  0030) took 28 681 and 28 084 steps with the settle and 4 h each, and the fit puts both within
+  2 %. A 10 M hires is five to six hours: one scene a night, against four at 2 M; 5 M is about
+  two hours, two scenes a night. (A first fit written here, 1415 s + 57.2 ns, was run on a
+  mirror of the library made of symbolic links: a link has its own date, so every run weighed
+  the same and the explore runs lost their durations. Mirror with `cp -p`.)
 - **Memory and disk.** A take costs six bytes a particle a frame: 2.8 GB for the 2 M hires of
   a night at the take interval of four, 7 GB at 5 M, 14 GB at 10 M. The Mac has 36 GB and
   1.3 TB free; the 10 M run peaked at 8.3 GB. The tree's float ranges were fixed past sixteen
@@ -212,11 +215,17 @@ In the order they pay.
    this spike that reads the way the brief asked. The field exists and has a slider; the
    catalogue and `StyleAuto` still write 1. Whether the sampler should stop drawing the
    minority at all is a separate question: as a dial it is reversible per style.
+   Done in #184 at 0.3 (`RenderLook.styleGlint`): the catalogue, the built in five and the
+   standard look name it, so every style a night or the editor writes carries it. A file
+   that leaves the field out was written before it existed and reads as 1
+   (`LookFile.omittedLook`), so the scenes already in the library keep their picture.
 3. **Hires at 8 M for the scenes that will be looked at closely.** It is the count at which a
    frame-filling disk stops being blots. The price is measured: about 4 h a scene against
-   43 min at 2 M, 14 GB of take against 2.8, 8 GB of memory, one scene a night instead of
+   25 min at 2 M, 14 GB of take against 2.8, 15 GB of memory, one or two scenes a night instead of
    four. 5 M is a middle (about 2 h) that was not rendered at this framing; if the budget
    allows one scene a night, 8 M; if it must stay at two or three, 5 M and look.
+   Done in #185: 8 M is Auto's hires count, and Auto picks one to four scenes, so a night
+   plans one or two ([night manager](../night-manager.md)).
 4. **Keep the projected kernel as a dial at 0.** It is cheap and it does what it says
    (-17 to -26 % grain, structure untouched) on wide shots where a galaxy is small, and it
    is honest about what it cannot do: it blurs a 1 M disk rather than resolving it. If it

@@ -9,6 +9,7 @@
     "brightness": 0.2,
     "dustStrength": 0,
     "galaxyTint": 0.9,
+    "glint": 0.3,
     "maximumKernel": 70,
     "minimumKernel": 1.6,
     "noiseLevel": 0.0004,

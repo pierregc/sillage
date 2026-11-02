@@ -13,7 +13,7 @@ struct NightRecipeTests {
         let night = try recipe(#"{"version": 1}"#)
         #expect(night == NightRecipe())
         #expect(night.explore.scenes == .auto && night.pick == .auto && night.export == .auto)
-        #expect(night.hiresParticles(maximum: 10_000_000) == 2_000_000)
+        #expect(night.hiresParticles(maximum: 10_000_000) == 8_000_000)
         #expect(night.hiresParticles(maximum: 1_000_000) == 1_000_000)
         #expect(night.exports == ["4k", "vertical"])
         #expect(night.style.freeShare == .auto && night.freeShare == 0.2)
@@ -46,7 +46,7 @@ struct NightRecipeTests {
         #expect(throws: NightRecipe.Failure.unknownKey("picks")) { try recipe(#"{"picks": 2}"#) }
         #expect(throws: NightRecipe.Failure.version(2)) { try recipe(#"{"version": 2}"#) }
         for bad in [
-            #"{"pick": 5}"#, #"{"pick": "some"}"#, #"{"deliver": "07:00", "hours": 8}"#,
+            #"{"pick": 5}"#, #"{"pick": 0}"#, #"{"pick": "some"}"#, #"{"deliver": "07:00", "hours": 8}"#,
             #"{"deliver": "7h"}"#, #"{"export": ["8k"]}"#, #"{"style": {"world": "hubble"}}"#,
             #"{"explore": {"galaxies": [4, 2]}}"#, #"{"explore": {"archetypes": ["kite"]}}"#,
             #"{"explore": {"scenes": "many"}}"#, #"{"hours": 0}"#, #"{"style": {"freeShare": 1.5}}"#,
@@ -122,6 +122,7 @@ struct NightPlannerTests {
         recipe.explore.scenes = scenes.map { .value($0) } ?? .auto
         recipe.explore.particlesPerGalaxy = perGalaxy.map { .value($0) } ?? .auto
         recipe.export = .value(["4k"])
+        recipe.hires.particles = .value(2_000_000)
         return recipe
     }
 
@@ -182,7 +183,7 @@ struct NightPlannerTests {
         #expect(summary.count == 4 && summary.start == now)
     }
 
-    @Test func autoPicksAsManyOfTheBestAsFitAndNeverFewerThanTwo() {
+    @Test func autoPicksAsManyOfTheBestAsFitAndAtLeastOne() {
         var progress = NightProgress()
         progress.exploreDone = true
         progress.explored = Self.night.enumerated().map { index, scene in
@@ -192,7 +193,7 @@ struct NightPlannerTests {
         let ranked = NightPlanner.ranked(progress.explored)
         #expect(ranked.first?.name == "scene-34")
         let one = planner.finishSeconds(ranked[0], pick: 0)
-        for (hours, expected) in [(12.0, 4), (1.0, 2), (0.1, 2)] {
+        for (hours, expected) in [(12.0, 4), (1.0, 1), (0.1, 1)] {
             let end = start.addingTimeInterval(hours * 3600)
             #expect(planner.autoPicks(ranked, from: start, deliverBy: end) == expected, "\(hours) h")
         }
@@ -309,12 +310,12 @@ struct NightPlannerTests {
 
         let short = planner.plan(now: start, deliverBy: start.addingTimeInterval(4 * 3600))
         #expect(short.particlesPerGalaxy <= long.particlesPerGalaxy)
-        #expect(short.picks >= 2 && short.picks <= long.picks)
+        #expect(short.picks >= 1 && short.picks <= long.picks)
         #expect(short.end <= short.deliverBy)
 
         // Too short for anything: the smallest night, and the plan says it is late.
         let none = planner.plan(now: start, deliverBy: start.addingTimeInterval(1_800))
-        #expect(none.particlesPerGalaxy == 50_000 && none.picks == 2)
+        #expect(none.particlesPerGalaxy == 50_000 && none.picks == 1)
         #expect(!none.warnings.isEmpty)
     }
 
@@ -347,5 +348,52 @@ struct NightPlannerTests {
         #expect(plan.warnings.contains { $0.kind == "disk" })
         #expect(abs(NightPlanner.videoBytes("4k", frames: 900) / 187e6 - 1) < 0.01)
         #expect(NightPlanner.videoBytes("whatsapp", frames: 1_800) <= 15e6)
+    }
+
+    /// The library's model after the night of 2026-10-30, refitted on its two 8 M hires.
+    private let fitted = CostModel(
+        updated: RunStatus.date("2026-10-31T07:46:40Z")!,
+        explore: .init(fixedSeconds: 17.676, secondsPerUnit: 4.6264e-8, source: .fitted, samples: 103),
+        hires: .init(fixedSeconds: 108.30, secondsPerUnit: 6.2425e-8, source: .fitted, samples: 9))
+
+    /// Those two hires: steps with the settle, frames, minutes and the take they wrote.
+    private static let eightMillion:
+        [(name: String, steps: Int, frames: Int, minutes: Double, takeGB: Double)] = [
+            ("scene-0044", 28_681, 1_030, 236.9, 12.656), ("scene-0030", 28_084, 1_514, 238.7, 18.464),
+        ]
+
+    @Test func theFitAndTheDiskEstimateHoldAtEightMillion() {
+        for scene in Self.eightMillion {
+            let minutes = fitted.hiresSeconds(particles: 8_000_000, steps: scene.steps) / 60
+            #expect(abs(minutes / scene.minutes - 1) < 0.02, "\(scene.name)")
+            let take = NightPlanner.takeBytesPerParticleFrame * 8e6 * Double(scene.frames) / 1e9
+            #expect(abs(take / scene.takeGB - 1) < 0.01, "\(scene.name)")
+        }
+    }
+
+    @Test func anAutoNightAtEightMillionTakesOneOrTwoScenes() throws {
+        let planner = NightPlanner(
+            recipe: NightRecipe(), model: fitted, maximumParticles: 10_000_000, freeBytes: 500e9
+        ) { perGalaxy in
+            Self.scaled(perGalaxy).enumerated().map { index, drawn in
+                let hires = Self.eightMillion[index % 2]
+                var scene = drawn
+                scene.hiresUnits = 8e6 * Double(hires.steps)
+                scene.frames = hires.frames
+                return scene
+            }
+        }
+        #expect(planner.hiresParticles == 8_000_000)
+        let nine = planner.plan(now: start, deliverBy: start.addingTimeInterval(9 * 3600))
+        #expect(nine.scenes == 50 && nine.picks == 2 && nine.warnings.isEmpty)
+        #expect(nine.steps.filter { $0.phase == .hires }.allSatisfy { $0.fits && $0.particles == 8_000_000 })
+        #expect(nine.end <= nine.deliverBy)
+        // Two hours less: one scene, and the exploration keeps its fifty.
+        let seven = planner.plan(now: start, deliverBy: start.addingTimeInterval(7 * 3600))
+        #expect(seven.scenes == 50 && seven.picks == 1 && seven.warnings.isEmpty)
+        #expect(seven.particlesPerGalaxy >= nine.particlesPerGalaxy && seven.end <= seven.deliverBy)
+        // A 4K export of an 8 M take is minutes, not hours.
+        let exports = try #require(nine.steps.first { $0.phase == .export && $0.format == "4k" })
+        #expect(exports.seconds < 300)
     }
 }
