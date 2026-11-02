@@ -123,7 +123,7 @@ public final class TakeExport {
         let renderer = try makeRenderer(width: width, height: height)
         let replay = ShotReplay(
             file: look, take: take, capturedFrames: capturedFrames,
-            framesPerSecond: capturedRate)
+            framesPerSecond: capturedRate, aspect: Float(width) / Float(max(height, 1)))
         let writer = try VideoWriter(
             width: width, height: height, framesPerSecond: Int32(framesPerSecond), codec: codec,
             bitsPerSecond: bitsPerSecond, quality: quality, metadata: metadata, to: url)
@@ -151,7 +151,7 @@ public final class TakeExport {
         let renderer = try makeRenderer(width: width, height: height)
         let replay = ShotReplay(
             file: look, take: take, capturedFrames: capturedFrames,
-            framesPerSecond: capturedRate)
+            framesPerSecond: capturedRate, aspect: Float(width) / Float(max(height, 1)))
         return try wanted.enumerated().map { index, position in
             let shot = try prepare(renderer, at: position, replay: replay)
             defer { progress(index + 1, wanted.count) }
@@ -229,7 +229,7 @@ public final class TakeExport {
         let renderer = try makeRenderer(width: width, height: height)
         let replay = ShotReplay(
             file: look, take: take, capturedFrames: capturedFrames,
-            framesPerSecond: capturedRate)
+            framesPerSecond: capturedRate, aspect: Float(width) / Float(max(height, 1)))
         let shot = try prepare(renderer, at: Double(frame), replay: replay)
         return renderer.render(camera: shot.camera)
     }

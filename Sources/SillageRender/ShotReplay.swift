@@ -2,9 +2,11 @@ import SillageCore
 import simd
 
 /// The camera and the look a look file gives each captured frame of a take, the camera moved
-/// through every frame before it: the auto camera eases and the director moves on, so neither
-/// can be placed on a frame without the ones that led there. The look grid and the export both
-/// draw through this, so a still of the grid and the same frame of a video are framed alike.
+/// through every frame before it: the auto camera eases and the immersed director moves on, so
+/// neither can be placed on a frame without the ones that led there. The director follows a
+/// `ShotPlan` of the whole take instead, which any frame can be asked of. The look grid and the
+/// export both draw through this, so a still of the grid and the same frame of a video are
+/// framed alike.
 public final class ShotReplay {
     public typealias Shot = (camera: Camera, look: RenderLook)
 
@@ -15,14 +17,20 @@ public final class ShotReplay {
     private let reach: [Float]
     private let scene: SceneConfig
     private let director: Cinematographer?
+    public let plan: ShotPlan?
+    private let aspect: Float
     private let secondsPerFrame: Double
     private var auto = AutoCamera()
     private var next = 0
     /// The last two frames replayed, enough to draw anywhere between them.
     private var recent: [(frame: Int, shot: Shot)] = []
 
+    /// `aspect` is the width of the frames drawn over their height, which a close shot is
+    /// framed for. A `plan` already made for the take and the file is used rather than made
+    /// again: it reads the take's particles.
     public init(
-        file: LookFile, take: RecordingFile.Loaded, capturedFrames: Int, framesPerSecond: Int
+        file: LookFile, take: RecordingFile.Loaded, capturedFrames: Int, framesPerSecond: Int,
+        aspect: Float = 16.0 / 9.0, plan: ShotPlan? = nil
     ) {
         self.file = file
         recording = take.recording
@@ -32,13 +40,18 @@ public final class ShotReplay {
         radius = file.camera.framedRadius(positions: take.particles.positions)
         reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
         let mode = file.camera.mode
-        director = mode == .director || mode == .immersed ? Cinematographer(seed: scene.seed) : nil
-        director?.beginScene(seed: scene.seed, base: file.look, immersed: mode == .immersed)
+        director = mode == .immersed ? Cinematographer(seed: scene.seed) : nil
+        director?.beginScene(seed: scene.seed, base: file.look, immersed: true)
+        self.plan =
+            mode == .director
+            ? plan ?? ShotPlan(take: take, file: file, framesPerSecond: framesPerSecond) : nil
+        self.aspect = aspect
         secondsPerFrame = 1 / Double(max(framesPerSecond, 1))
     }
 
     /// Frames are asked for in order; one already left behind is replayed no more.
     public func shot(atCaptured frame: Int) -> Shot {
+        if let plan { return (plan.camera(atCaptured: Double(frame), aspect: aspect), file.look) }
         while next <= frame {
             recent = Array((recent + [(next, advance(to: next))]).suffix(2))
             next += 1
@@ -49,6 +62,7 @@ public final class ShotReplay {
     /// Between two captured frames the camera and the look are mixed, so a frame rate above the
     /// take's glides rather than holding each shot twice.
     public func shot(atCaptured position: Double) -> Shot {
+        if let plan { return (plan.camera(atCaptured: position, aspect: aspect), file.look) }
         let lower = Int(max(position, 0).rounded(.down))
         let t = Float(max(position, 0) - Double(lower))
         guard t > 0 else { return shot(atCaptured: lower) }

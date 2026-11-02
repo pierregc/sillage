@@ -148,12 +148,30 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
 
     let sheet = try LookSheet(take: loaded)
+    let clip = try folder.storedClip()
+    let hires = folder.storedHires()
+    // The director's shots, printed, and `--frames shots` draws the middle of each.
+    let planned = Date()
+    let plan = looks.first { $0.camera.mode == .director }.map {
+        ShotPlan(take: loaded, file: $0, framesPerSecond: hires?.fps ?? clip.fps)
+    }
+    for line in plan?.summary ?? [] { print("shot       \(line)") }
+    if let plan {
+        print(
+            String(
+                format: "shots      %.0f %% of the clip close, planned in %.1f s",
+                plan.closeShare * 100, Date().timeIntervalSince(planned)))
+    }
     let samples =
         (try? String(contentsOf: folder.hiresCurves, encoding: .utf8))
         .map(KeyFrames.samples) ?? []
     let lastFrame = sheet.capturedFrames - 1
     var keys: [KeyFrame]
-    if let list = option("frames") {
+    if option("frames") == "shots", let plan {
+        keys = plan.shots.map {
+            KeyFrame(frame: ($0.start + $0.end - 1) / 2, role: .chosen, timeMyr: 0)
+        }
+    } else if let list = option("frames") {
         keys = list.split(separator: ",").compactMap { Int($0) }.map {
             KeyFrame(frame: min(max($0, 0), lastFrame), role: .chosen, timeMyr: 0)
         }
@@ -178,8 +196,6 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
     guard !keys.isEmpty else { fail("look: no key frame to draw") }
 
-    let clip = try folder.storedClip()
-    let hires = folder.storedHires()
     // `--stills <dir>` writes every look at every key frame at full size, one PNG each, and
     // leaves the scene's looks folder alone: it is for looking closely, not for choosing.
     // `--width` sets that size, for the one an export draws; the take's own by default.
