@@ -240,13 +240,22 @@ struct NightRunnerTests {
 
     @Test func aHiresThatCannotEndBeforeTheDeliveryIsNotStarted() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        // Ten million particles at the fallback's 150 ns a step: minutes, in a night of seconds.
+        // Ten million particles at the fallback's 62 ns a step: minutes, in a night of seconds.
         #expect(runner(recipe(hours: 0.005, particles: 10_000_000)).run() == 0)
         #expect(!logged().contains { $0.hasPrefix("hires ") })
         let skips = events.filter { $0.kind == RunEvent.Kind.skip }
         #expect(skips.map(\.scene) == ["scene-0002", "scene-0003"])
         #expect(skips.allSatisfy { $0.message == "would end after the delivery time" })
         #expect(NightFile.read(from: RunStatusFiles.night(batch: batch))?.state == .done)
+        let report = batch.appendingPathComponent("report.md")
+        #expect(
+            try String(contentsOf: report, encoding: .utf8).contains("- Laissées de côté : 2 · erreurs : 0"))
+
+        // Resumed with the time it lacked, as 2026-10-30-b was.
+        #expect(runner(recipe()).run() == 0)
+        #expect(logged().filter { $0.hasPrefix("hires ") }.count == 2)
+        let resumed = try String(contentsOf: report, encoding: .utf8)
+        #expect(resumed.contains("- Laissées de côté : 0 · erreurs : 0") && !resumed.contains("would end"))
     }
 
     @Test func theQueueMarksANightItHadToStop() throws {

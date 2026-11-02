@@ -1,0 +1,64 @@
+{
+  "deliverBy" : "2026-10-31T08:30:00.000+01:00",
+  "endedAt" : "2026-10-31T07:51:55.274+01:00",
+  "estimatedEnd" : "2026-10-31T07:51:55.274+01:00",
+  "id" : "2026-10-30-b",
+  "phases" : [
+    {
+      "done" : 50,
+      "estimatedEnd" : "2026-10-31T07:51:55.269+01:00",
+      "estimatedStart" : "2026-10-31T07:51:55.269+01:00",
+      "failed" : 0,
+      "name" : "explore",
+      "planned" : 50
+    },
+    {
+      "done" : 2,
+      "estimatedEnd" : "2026-10-31T07:51:55.269+01:00",
+      "estimatedStart" : "2026-10-31T07:51:55.269+01:00",
+      "failed" : 0,
+      "name" : "pick",
+      "planned" : 2
+    },
+    {
+      "done" : 2,
+      "estimatedEnd" : "2026-10-31T07:51:55.269+01:00",
+      "estimatedStart" : "2026-10-31T07:51:55.269+01:00",
+      "failed" : 0,
+      "name" : "hires",
+      "planned" : 2
+    },
+    {
+      "done" : 2,
+      "estimatedEnd" : "2026-10-31T07:51:55.269+01:00",
+      "estimatedStart" : "2026-10-31T07:51:55.269+01:00",
+      "failed" : 0,
+      "name" : "style",
+      "planned" : 2
+    },
+    {
+      "done" : 4,
+      "estimatedEnd" : "2026-10-31T07:51:55.269+01:00",
+      "estimatedStart" : "2026-10-31T07:51:55.269+01:00",
+      "failed" : 0,
+      "name" : "export",
+      "planned" : 4
+    }
+  ],
+  "recipe" : {
+    "deliverBy" : "2026-10-31T08:30:00.000+01:00",
+    "exports" : "4k,vertical",
+    "hiresParticles" : "8000000",
+    "multicolour" : "true",
+    "palette" : "scene",
+    "particlesPerGalaxy" : "100000",
+    "pick" : "auto",
+    "scenes" : "50",
+    "seed" : "20261030",
+    "style" : "standard",
+    "world" : "auto"
+  },
+  "startedAt" : "2026-10-30T22:15:34.300+01:00",
+  "state" : "done",
+  "version" : 1
+}

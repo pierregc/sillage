@@ -403,6 +403,7 @@ extension NightPage {
         }
         var seen: [String: Seen] = [:]
         var order = 0
+        let standing = NightEvents.standingSkips(events)
         for event in events {
             guard let name = event.scene.map({ $0.hasPrefix(".") ? String($0.dropFirst()) : $0 })
             else { continue }
@@ -423,7 +424,7 @@ extension NightPage {
                 seen[name]?.minutes = event.minutes ?? 0
             case RunEvent.Kind.style: seen[name]?.styled = true
             case RunEvent.Kind.exportDone: seen[name]?.videos += 1
-            case RunEvent.Kind.skip: seen[name]?.leftOut = event.message ?? ""
+            case RunEvent.Kind.skip where standing.contains(event): seen[name]?.leftOut = event.message ?? ""
             default: break
             }
         }

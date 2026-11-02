@@ -95,7 +95,7 @@ struct NightSheetTests {
         #expect(explore.detail.hasPrefix("environ ") && explore.detail.hasSuffix("scènes"))
         #expect(explore.until.hasPrefix("jusqu'à ") && explore.duration.contains("h"))
         #expect(explore.text == "Aperçus · \(explore.detail) · \(explore.duration) · \(explore.until)")
-        #expect(plan.lines[1].detail.hasSuffix("à 2 M de particules"))
+        #expect(plan.lines[1].detail.hasSuffix("à 8 M de particules"))
         #expect(plan.delivery == "Prêt demain à 7 h 00")
         #expect(plan.margin.hasPrefix("Fin prévue à ") && plan.margin.hasSuffix("de marge"))
         #expect(plan.warnings.isEmpty)
@@ -141,6 +141,7 @@ struct NightSheetTests {
         var sheet = NightSheet()
         sheet.timing = .hours
         sheet.hours = 2
+        sheet.hiresScenes = 2
         let plan = planner(try library(), free: 1e9).plan(sheet, now: Self.evening)
         let kinds = plan.warnings.map(\.kind)
         #expect(kinds.contains("disk"))

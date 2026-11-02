@@ -230,8 +230,9 @@ extension SceneFolder {
     /// peaks at 16 GB, and a full clip takes a night.
     public static let defaultMaximumParticles = 10_000_000
     /// Wall clock per visible particle per step on the same machine, flat from one to ten
-    /// million.
-    public static let nanosecondsPerParticleStep = 150.0
+    /// million: 150 at #19, 62 since the opening angle of 0.9 (#166), within 3 % of the two
+    /// 8 M hires of 2026-10-30.
+    public static let nanosecondsPerParticleStep = 62.0
     /// The take keeps one frame in this many, and drawing it again interpolates the rest. At
     /// the cadence `hires` captures, under a megayear a frame, four cannot be told apart from
     /// one on screen, and ten million particles over nine hundred frames come to 13.5 GB

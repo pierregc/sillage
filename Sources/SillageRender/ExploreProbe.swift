@@ -11,7 +11,7 @@ public struct ExploreProbe: Sendable {
     public var dtScale = 3.5
     public var spanMyr = 700.0
     public var frames = 900
-    public var settle = 400
+    public var settle = 750
     /// Draws outside these are skipped, as `--galaxies` and `--only-archetypes` skip them.
     public var galaxies: ClosedRange<Int>?
     public var archetypes: [String]?
