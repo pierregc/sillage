@@ -117,6 +117,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         /// The camera the style is filmed with (#186): `director`, `fixed`, `immersed`, or
         /// `scene` for the one the scene already has. Auto is the director.
         public var camera: Setting<String> = .auto
+        /// The share of picks Auto draws in the free world; the others take the telescope one.
+        public var freeShare: Setting<Double> = .auto
 
         public init() {}
 
@@ -128,6 +130,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             multicolour =
                 try c.decodeIfPresent(Setting<Bool>.self, forKey: .multicolour) ?? .auto
             camera = try c.decodeIfPresent(Setting<String>.self, forKey: .camera) ?? .auto
+            freeShare = try c.decodeIfPresent(Setting<Double>.self, forKey: .freeShare) ?? .auto
         }
     }
 
@@ -182,6 +185,20 @@ extension NightRecipe {
 
     public var exports: [String] { export.value ?? Self.defaultExports }
 
+    /// One pick in five in the free world, whose palettes run louder than the telescope's (#175).
+    public static let defaultFreeShare = 0.2
+
+    public var freeShare: Double { style.freeShare.value ?? Self.defaultFreeShare }
+
+    /// Auto's draw for the pick at `index`, in [0, 1): the same for the same batch seed, pick
+    /// and `stream`, so a resumed night draws what it drew before. Each setting drawn a pick
+    /// has a stream of its own, so its draws do not follow another's.
+    public static func pickDraw(_ index: Int, seed: UInt64, stream: UInt64) -> Double {
+        var generator = SeededGenerator(
+            seed: seed ^ stream ^ (UInt64(truncatingIfNeeded: index) &* 0x9E37_79B9_7F4A_7C15))
+        return Double(generator.next() >> 11) * 0x1p-53
+    }
+
     /// The night's seed when the recipe gives none: the day it starts, as `explore-batch.sh`.
     public static func daySeed(_ date: Date, calendar: Calendar = .current) -> UInt64 {
         let day = calendar.dateComponents([.year, .month, .day], from: date)
@@ -228,7 +245,7 @@ extension NightRecipe {
         "": ["version", "deliver", "hours", "explore", "pick", "hires", "style", "export"],
         "explore": ["scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "galaxies", "seed"],
         "hires": ["particles", "frames"],
-        "style": ["world", "style", "palette", "multicolour", "camera"],
+        "style": ["world", "style", "palette", "multicolour", "camera", "freeShare"],
     ]
 
     /// Reads a recipe and checks it: a misspelt setting is an error rather than a silent Auto.
@@ -307,6 +324,9 @@ extension NightRecipe {
         }
         if let camera = style.camera.value, NightStyle.cameras.contains(camera) == false {
             throw Failure.badValue("style.camera", NightStyle.cameras.joined(separator: ", "))
+        }
+        if let share = style.freeShare.value, !(0...1).contains(share) {
+            throw Failure.badValue("style.freeShare", "from 0 to 1")
         }
         if let names = export.value {
             for name in names
