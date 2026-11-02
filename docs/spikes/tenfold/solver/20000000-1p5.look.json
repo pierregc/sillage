@@ -1,0 +1,62 @@
+{
+  "armStrength" : 1,
+  "bloomLevels" : 6,
+  "camera" : {
+    "azimuth" : 0,
+    "elevation" : 1.15,
+    "mode" : "fixed",
+    "percentile" : 0.98,
+    "radius" : 0,
+    "zoom" : 1
+  },
+  "look" : {
+    "armPersistence" : 1,
+    "bloomIntensity" : 0.22,
+    "bloomSoftKnee" : 0.6,
+    "bloomThreshold" : 0.55,
+    "brightness" : 0.15,
+    "columnSmoothing" : 0,
+    "dustStrength" : 0.35,
+    "fieldOfView" : 0.6,
+    "galaxyTint" : 0.35,
+    "glint" : 1,
+    "holeShadow" : 0,
+    "maximumKernel" : 64,
+    "minimumKernel" : 1.1,
+    "noiseLevel" : 0.0016,
+    "saturation" : 2.8,
+    "skyColour" : [
+      0.36,
+      0.42,
+      0.6
+    ],
+    "skyLevel" : 0.0008,
+    "smoothingScale" : 1.9,
+    "spikeArms" : 6,
+    "spikeIntensity" : 0.14,
+    "spikeLength" : 40,
+    "spikePattern" : "even",
+    "spikeSharpness" : 0,
+    "starSize" : 1.6,
+    "stretch" : 18,
+    "whitePoint" : 4.5
+  },
+  "name" : "standard",
+  "palette" : [
+    [
+      1,
+      0.9,
+      0.74
+    ],
+    [
+      1,
+      0.9,
+      0.74
+    ]
+  ],
+  "plain" : false,
+  "starCount" : 2500,
+  "supersample" : 2,
+  "version" : 1,
+  "world" : "free"
+}

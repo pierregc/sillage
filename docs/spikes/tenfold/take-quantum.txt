@@ -1,0 +1,12 @@
+scene-0030/take.sillage: 8000000 particles, 380 frames (interval 4), extent 667 to 2153 kpc, quantum 10.17 to 32.85 pc
+  frame    0     390 Myr  quantum  10.17 pc  sharing a cell  5.59 %  emitting distinct  96.56 %  most in one cell 24  central 99.9 %: quantum  4.14 pc, 0.27 % outside
+  frame  190     991 Myr  quantum  20.76 pc  sharing a cell 15.26 %  emitting distinct  88.43 %  most in one cell 200  central 99.9 %: quantum  6.15 pc, 0.26 % outside
+  frame  379    1587 Myr  quantum  32.85 pc  sharing a cell 18.15 %  emitting distinct  85.23 %  most in one cell 948  central 99.9 %: quantum 13.23 pc, 0.28 % outside
+scene-0044/take.sillage: 8000000 particles, 259 frames (interval 4), extent 400 to 1272 kpc, quantum 6.11 to 19.41 pc
+  frame    0     175 Myr  quantum   6.11 pc  sharing a cell  1.59 %  emitting distinct  99.12 %  most in one cell 7  central 99.9 %: quantum  4.22 pc, 0.29 % outside
+  frame  129     590 Myr  quantum   9.65 pc  sharing a cell  4.64 %  emitting distinct  97.19 %  most in one cell 19  central 99.9 %: quantum  4.18 pc, 0.29 % outside
+  frame  258    1002 Myr  quantum  19.41 pc  sharing a cell 13.42 %  emitting distinct  90.42 %  most in one cell 70  central 99.9 %: quantum 10.28 pc, 0.30 % outside
+scene-0031/take.sillage: 2000000 particles, 232 frames (interval 4), extent 230 to 958 kpc, quantum 3.52 to 14.62 pc
+  frame    0     157 Myr  quantum   3.52 pc  sharing a cell  0.07 %  emitting distinct  99.97 %  most in one cell 3  central 99.9 %: quantum  2.03 pc, 0.28 % outside
+  frame  116     525 Myr  quantum   9.17 pc  sharing a cell  1.20 %  emitting distinct  99.32 %  most in one cell 8  central 99.9 %: quantum  2.90 pc, 0.26 % outside
+  frame  231     887 Myr  quantum  14.62 pc  sharing a cell  2.98 %  emitting distinct  98.15 %  most in one cell 19  central 99.9 %: quantum  5.49 pc, 0.28 % outside

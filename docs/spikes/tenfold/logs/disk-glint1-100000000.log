@@ -1,0 +1,30 @@
+# 2026-11-02 22:34:07
+# cmd: .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint1.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint1-100000000.png --no-sidecars
+# before: gpu device utilization 0 %, other sillage processes: []
+     0.3 scene      Isolated disk, 100000000 visible
+    58.7 solver     restricted (restricted)
+    58.7 gpu        Apple M4 Max
+    71.6 frame 0000  t=0.1 Myr  sim    42.9 ms (42.890 ms/step)  smoothing 1294.0 ms  render 2170.8 ms (gpu 1712.25)
+    73.2 frame 0001  t=0.2 Myr  sim   173.8 ms (173.791 ms/step)  smoothing  205.7 ms  render 822.8 ms (gpu 687.77)
+    73.2 done in 14.5 s
+    73.5        73.48 real        67.05 user         2.32 sys
+    73.5          18123440128  maximum resident set size
+    73.5                    0  average shared memory size
+    73.5                    0  average unshared data size
+    73.5                    0  average unshared stack size
+    73.5              1113378  page reclaims
+    73.5                   14  page faults
+    73.5                    0  swaps
+    73.5                    0  block input operations
+    73.5                    0  block output operations
+    73.5                    0  messages sent
+    73.5                    0  messages received
+    73.5                    0  signals received
+    73.5                    5  voluntary context switches
+    73.5                30553  involuntary context switches
+    73.5         664203507108  instructions retired
+    73.5         275103546490  cycles elapsed
+    73.5          21743269208  peak memory footprint
+# after: 2026-11-02 22:35:21, gpu device utilization 97 %, other sillage processes: []
+# vm before: compressions 286269050. decompressions 169745920. swapins 38819565. swapouts 47983657. pageouts 731900. stored 1627758.
+# vm after:  compressions 287240766. decompressions 170111194. swapins 38819737. swapouts 47983657. pageouts 731929. stored 1681427.

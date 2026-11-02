@@ -1,0 +1,80 @@
+{
+  "armStrength": 1,
+  "bloomLevels": 6,
+  "camera": {
+    "mode": "fixed",
+    "elevation": 1.35,
+    "azimuth": 0.4,
+    "zoom": 1.0,
+    "percentile": 0.98,
+    "radius": 0
+  },
+  "look": {
+    "armPersistence": 1,
+    "bloomIntensity": 0.2,
+    "bloomSoftKnee": 0.5,
+    "bloomThreshold": 0.6,
+    "brightness": 0.15,
+    "dustStrength": 0.08,
+    "fieldOfView": 0.6,
+    "galaxyTint": 0.55,
+    "holeShadow": 0,
+    "maximumKernel": 56,
+    "minimumKernel": 0.8,
+    "noiseLevel": 0.0014,
+    "saturation": 2.2,
+    "skyColour": [
+      0.44,
+      0.42,
+      0.39
+    ],
+    "skyLevel": 0.0012,
+    "smoothingScale": 1.2,
+    "spikeArms": 6,
+    "spikeIntensity": 0.35,
+    "spikeLength": 110,
+    "spikePattern": "webb",
+    "spikeSharpness": 1,
+    "starSize": 0.9,
+    "stretch": 18,
+    "whitePoint": 3.5,
+    "glint": 0.3
+  },
+  "name": "glint03",
+  "palette": [
+    [
+      0.37463737,
+      0.5865372,
+      0.99999267
+    ],
+    [
+      0.9999973,
+      0.5983003,
+      0.17478217
+    ]
+  ],
+  "paletteRecipe": {
+    "colours": [
+      [
+        0.37463737,
+        0.5865372,
+        0.99999267
+      ],
+      [
+        0.9999973,
+        0.5983003,
+        0.17478217
+      ]
+    ],
+    "family": "webb-nircam",
+    "harmony": "complementary",
+    "multicolour": false,
+    "seed": 9920663580126514942,
+    "world": "telescope"
+  },
+  "plain": false,
+  "starCount": 6000,
+  "supersample": 2,
+  "version": 1,
+  "world": "telescope"
+}

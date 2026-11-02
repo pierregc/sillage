@@ -1,0 +1,35 @@
+# 2026-11-02 22:40:48
+# cmd: .build/dev/sillage-render --scene /Users/pierregc/claude-workspace/tenfold-out/scene-0031.scene.json --particles 20000000 --halo 1.5 --steps 30 --frames 3 --width 1280 --height 720 --out /Users/pierregc/claude-workspace/tenfold-out/solver/20000000-1p5.png
+# before: gpu device utilization 0 %, other sillage processes: []
+     0.3 draw       antennae, batch 20261030 scene 31 (point 1): spiral, spiral
+     0.3 encounter  0-1, pericentre 10.5 kpc at 305 Myr, e 0.89 (bound), mass ratio 0.85
+     0.3 scene      Archétype, 20000000 visible, 30000000 halo
+    38.3 solver     barnes-hut (barnesHut)
+    38.3 gpu        Apple M4 Max
+    38.3 scene file /Users/pierregc/claude-workspace/tenfold-out/solver/20000000-1p5.scene.json
+    38.3 look file  /Users/pierregc/claude-workspace/tenfold-out/solver/20000000-1p5.look.json
+    57.0 frame 0000  t=0.6 Myr  sim 14194.0 ms (1419.403 ms/step)  smoothing   21.4 ms  render 131.9 ms (gpu 103.43)
+    71.2 frame 0001  t=1.1 Myr  sim 14038.1 ms (1403.811 ms/step)  smoothing    8.3 ms  render 144.8 ms (gpu 103.55)
+    86.0 frame 0002  t=1.7 Myr  sim 14554.4 ms (1455.443 ms/step)  smoothing    8.2 ms  render 149.1 ms (gpu 106.00)
+    86.0 done in 47.7 s
+    86.1        86.03 real        47.82 user         2.10 sys
+    86.1           9589932032  maximum resident set size
+    86.1                    0  average shared memory size
+    86.1                    0  average unshared data size
+    86.1                    0  average unshared stack size
+    86.1               585902  page reclaims
+    86.1                   14  page faults
+    86.1                    0  swaps
+    86.1                    0  block input operations
+    86.1                    0  block output operations
+    86.1                    0  messages sent
+    86.1                    0  messages received
+    86.1                    0  signals received
+    86.1                    5  voluntary context switches
+    86.1                17447  involuntary context switches
+    86.1         820006830901  instructions retired
+    86.1         192407890714  cycles elapsed
+    86.1          15276973568  peak memory footprint
+# after: 2026-11-02 22:42:15, gpu device utilization 98 %, other sillage processes: []
+# vm before: compressions 288342715. decompressions 170710813. swapins 38833470. swapouts 48027405. pageouts 731989. stored 1468991.
+# vm after:  compressions 288342715. decompressions 170717299. swapins 38835269. swapouts 48027405. pageouts 732108. stored 1462455.

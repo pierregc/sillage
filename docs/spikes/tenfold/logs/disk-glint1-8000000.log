@@ -1,0 +1,28 @@
+# 2026-11-02 22:27:58
+# cmd: .build/dev/sillage-render --preset disk --particles 8000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint1.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint1-8000000.png --no-sidecars
+# before: gpu device utilization 0 %, other sillage processes: []
+     0.7 scene      Isolated disk, 8000000 visible
+     5.6 solver     restricted (restricted)
+     5.6 gpu        Apple M4 Max
+     6.9 frame 0000  t=0.1 Myr  sim     7.7 ms (7.652 ms/step)  smoothing   77.2 ms  render 226.5 ms (gpu 203.42)
+     7.3 frame 0001  t=0.2 Myr  sim     2.7 ms (2.696 ms/step)  smoothing   13.2 ms  render  80.9 ms (gpu 58.80)
+     7.3 done in 1.7 s
+     7.3         7.31 real         5.85 user         0.16 sys
+     7.3           1541750784  maximum resident set size
+     7.3                    0  average shared memory size
+     7.3                    0  average unshared data size
+     7.3                    0  average unshared stack size
+     7.3                94475  page reclaims
+     7.3                   29  page faults
+     7.3                    0  swaps
+     7.3                    0  block input operations
+     7.3                    0  block output operations
+     7.3                    0  messages sent
+     7.3                    0  messages received
+     7.3                    0  signals received
+     7.3                    6  voluntary context switches
+     7.3                 1213  involuntary context switches
+     7.3          65761132912  instructions retired
+     7.3          24027313541  cycles elapsed
+     7.3           3465807624  peak memory footprint
+# after: 2026-11-02 22:28:06, gpu device utilization 91 %, other sillage processes: []

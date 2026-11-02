@@ -1,0 +1,80 @@
+22:28:03 [84484 .build/dev/sillage-render;]
+22:28:08 []
+22:28:18 [84737 .build/dev/sillage-render;]
+22:28:23 []
+22:28:28 [84895 .build/dev/sillage-render;]
+22:28:33 [85036 .build/dev/sillage-render;]
+22:28:48 [85224 .build/dev/sillage-render;]
+22:29:03 [85485 .build/dev/sillage-render;]
+22:29:18 []
+watch stopped 22:29:43
+22:29:50 watch restarted at 1 s
+22:29:57 [86263 ]
+    new: 86263 .build/dev/sillage-render --preset disk --particles 50000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint1.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint1-50000000.png --no-sidecars
+22:30:32 []
+22:30:33 [86884 ]
+    new: 86884 .build/dev/sillage-render --preset disk --particles 50000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint03.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint03-50000000.png --no-sidecars
+22:31:10 [87470 ]
+    new: 87470 .build/dev/sillage-render --preset disk --particles 50000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/close.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/close-50000000.png --no-sidecars
+22:31:25 [87470 87708 ]
+    new: 87708 .build/dev/sillage-render look /Users/pierregc/claude-workspace/sillage/library/2026-10-30-b/scene-0031 --grid --stills /private/tmp/claude-502/-Users-pierregc-claude-workspace/8ed3135c-fff2-474e-9c20-437a8e300f6e/scratchpad/s31 --base /Users/pierregc/claude-workspace/sillage/library/2026-10-3
+    new: 87470 .build/dev/sillage-render --preset disk --particles 50000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/close.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/close-50000000.png --no-sidecars
+22:31:27 [87470 ]
+    new: 87470 .build/dev/sillage-render --preset disk --particles 50000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/close.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/close-50000000.png --no-sidecars
+22:31:48 []
+22:32:13 [88392 ]
+    new: 88392 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint03.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint03-100000000.png --no-sidecars
+22:32:56 [88392 89030 ]
+    new: 89030 .build/dev/sillage-render look /Users/pierregc/claude-workspace/sillage/library/2026-10-30-b/scene-0031 --grid --stills /private/tmp/claude-502/-Users-pierregc-claude-workspace/8ed3135c-fff2-474e-9c20-437a8e300f6e/scratchpad/s31 --base /Users/pierregc/claude-workspace/sillage/library/2026-10-3
+    new: 88392 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint03.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint03-100000000.png --no-sidecars
+22:32:57 [88392 ]
+    new: 88392 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint03.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint03-100000000.png --no-sidecars
+22:33:13 [88392 89275 ]
+    new: 89275 .build/dev/Sillage.app/Contents/MacOS/Sillage --nightcheck
+    new: 88392 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint03.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint03-100000000.png --no-sidecars
+22:33:27 [88392 ]
+    new: 88392 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint03.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint03-100000000.png --no-sidecars
+22:33:31 []
+22:34:07 [89943 ]
+    new: 89943 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint1.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint1-100000000.png --no-sidecars
+22:34:23 [89943 90126 ]
+    new: 90126 .build/dev/sillage-render look /Users/pierregc/claude-workspace/sillage/library/2026-10-30-b/scene-0031 --grid --stills /private/tmp/claude-502/-Users-pierregc-claude-workspace/8ed3135c-fff2-474e-9c20-437a8e300f6e/scratchpad/s31 --base /Users/pierregc/claude-workspace/sillage/library/2026-10-3
+    new: 89943 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint1.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint1-100000000.png --no-sidecars
+22:34:25 [89943 ]
+    new: 89943 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/glint1.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/glint1-100000000.png --no-sidecars
+22:35:21 []
+22:35:22 [90870 ]
+    new: 90870 .build/dev/sillage-render --preset disk --particles 100000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/close.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/close-100000000.png --no-sidecars
+22:36:37 []
+22:36:45 [92095 ]
+    new: 92095 .build/dev/sillage-render look /Users/pierregc/claude-workspace/sillage/library/2026-10-30-b/scene-0031 --grid --stills /private/tmp/claude-502/-Users-pierregc-claude-workspace/8ed3135c-fff2-474e-9c20-437a8e300f6e/scratchpad/s31 --base /Users/pierregc/claude-workspace/sillage/library/2026-10-3
+22:36:47 []
+22:37:55 [93211 ]
+    new: 93211 /Users/pierregc/claude-workspace/sillage-wt-186/.build/dev/sillage-render look /Users/pierregc/claude-workspace/sillage/library/2026-10-30-b/scene-0031 --grid --stills e830 --base auto1.look.json --no-variants --no-catalogue --frames 830 --width 1920 auto25.look.json
+22:37:56 []
+22:38:11 [93474 ]
+    new: 93474 /Users/pierregc/claude-workspace/sillage-wt-186/.build/dev/sillage-render look /Users/pierregc/claude-workspace/sillage/library/2026-10-30-b/scene-0030 --grid --stills s30 --base dir30.look.json --no-variants --no-catalogue --frames shots --width 1920
+22:38:15 []
+22:38:54 [94195 ]
+    new: 94195 .build/dev/sillage-render --scene /Users/pierregc/claude-workspace/tenfold-out/scene-0031.scene.json --particles 10000000 --steps 30 --frames 3 --width 1280 --height 720 --out /Users/pierregc/claude-workspace/tenfold-out/solver/10000000-1p5.png
+22:39:32 []
+22:40:13 [95331 ]
+    new: 95331 .build/dev/sillage-render look /Users/pierregc/claude-workspace/sillage/library/2026-10-30-b/scene-0030 --grid --stills /private/tmp/claude-502/-Users-pierregc-claude-workspace/8ed3135c-fff2-474e-9c20-437a8e300f6e/scratchpad/tmp --base /private/tmp/claude-502/-Users-pierregc-claude-workspace/8
+22:40:16 [95393 ]
+    new: 95393 .build/dev/sillage-render look /Users/pierregc/claude-workspace/sillage/library/2026-10-30-b/scene-0031 --grid --stills /private/tmp/claude-502/-Users-pierregc-claude-workspace/8ed3135c-fff2-474e-9c20-437a8e300f6e/scratchpad/tmp --base /private/tmp/claude-502/-Users-pierregc-claude-workspace/8
+22:40:17 []
+22:40:49 [95884 ]
+    new: 95884 .build/dev/sillage-render --scene /Users/pierregc/claude-workspace/tenfold-out/scene-0031.scene.json --particles 20000000 --halo 1.5 --steps 30 --frames 3 --width 1280 --height 720 --out /Users/pierregc/claude-workspace/tenfold-out/solver/20000000-1p5.png
+22:42:15 []
+22:42:24 [97261 ]
+    new: 97261 .build/dev/sillage-render --scene /Users/pierregc/claude-workspace/tenfold-out/scene-0031.scene.json --particles 20000000 --halo 0.6 --steps 30 --frames 3 --width 1280 --height 720 --out /Users/pierregc/claude-workspace/tenfold-out/solver/20000000-0p6.png
+22:42:29 [97261 97372 ]
+    new: 97372 .build/dev/Sillage.app/Contents/MacOS/Sillage --nightcheck
+    new: 97261 .build/dev/sillage-render --scene /Users/pierregc/claude-workspace/tenfold-out/scene-0031.scene.json --particles 20000000 --halo 0.6 --steps 30 --frames 3 --width 1280 --height 720 --out /Users/pierregc/claude-workspace/tenfold-out/solver/20000000-0p6.png
+22:42:33 [97261 ]
+    new: 97261 .build/dev/sillage-render --scene /Users/pierregc/claude-workspace/tenfold-out/scene-0031.scene.json --particles 20000000 --halo 0.6 --steps 30 --frames 3 --width 1280 --height 720 --out /Users/pierregc/claude-workspace/tenfold-out/solver/20000000-0p6.png
+22:43:27 []
+22:43:51 [98564 ]
+    new: 98564 .build/dev/sillage-render --scene /Users/pierregc/claude-workspace/tenfold-out/scene-0031.scene.json --particles 40000000 --halo 0.3 --steps 30 --frames 3 --width 1280 --height 720 --out /Users/pierregc/claude-workspace/tenfold-out/solver/40000000-0p3.png
+22:45:47 []
+watch stopped 22:45:59

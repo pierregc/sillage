@@ -1,0 +1,1 @@
+import Metal; let d = MTLCreateSystemDefaultDevice()!; print(d.name, "maxBufferLength", d.maxBufferLength, "recommendedMaxWorkingSetSize", d.recommendedMaxWorkingSetSize, "unified", d.hasUnifiedMemory)

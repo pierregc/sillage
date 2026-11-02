@@ -1,0 +1,140 @@
+{
+  "centerSoftening" : 1.2,
+  "draw" : {
+    "batchSeed" : 20261030,
+    "families" : [
+      "spiral",
+      "spiral"
+    ],
+    "generator" : "antennae",
+    "index" : 31,
+    "point" : 1
+  },
+  "encounters" : [
+    {
+      "eccentricity" : 0.8903715,
+      "massRatio" : 0.85401964,
+      "pericentre" : 10.492133,
+      "pericentreAngle" : 2.188765,
+      "pericentreTime" : 304.51715,
+      "planeTilt" : -0.44044298,
+      "planeTurn" : 2.2250745,
+      "primary" : 0,
+      "primaryDisk" : {
+        "argument" : 3.5325053,
+        "inclination" : 0.8370233,
+        "spin" : "prograde"
+      },
+      "secondary" : 1,
+      "secondaryDisk" : {
+        "argument" : 1.4579821,
+        "inclination" : 0.7195251,
+        "spin" : "prograde"
+      }
+    }
+  ],
+  "galaxies" : [
+    {
+      "armCount" : 2,
+      "armIrregularity" : 0.55015427,
+      "armMassContrast" : 0.9555581,
+      "armPitch" : 0.2604859,
+      "armStreaming" : 0,
+      "armStrength" : 0.9555581,
+      "bulgeExtent" : 0.0786418,
+      "bulgeFlattening" : 0.50424993,
+      "bulgeFraction" : 0.006065345,
+      "clumpiness" : 0.24568936,
+      "diskMassFraction" : 0.22,
+      "diskScaleLength" : 5.5507283,
+      "diskThickness" : 0.3216279,
+      "diskTruncation" : 3.5522416,
+      "dissipationTime" : 306.35654,
+      "dustFraction" : 0.3425251,
+      "haloExtent" : 12,
+      "haloParticleRatio" : 0.6,
+      "inclination" : 0.50803477,
+      "kind" : "spiral",
+      "massLopsidedness" : 0.3,
+      "name" : "Première",
+      "outskirtFraction" : 0.12,
+      "particleShare" : 0.5393686,
+      "patternShare" : 0,
+      "position" : [
+        27.57169,
+        -37.496563,
+        -0.44404095
+      ],
+      "positionAngle" : 1.275088,
+      "potential" : {
+        "mass" : 59.187096,
+        "profile" : "hernquist",
+        "scaleRadius" : 9.16404
+      },
+      "spin" : "prograde",
+      "starFormingFraction" : 0.043052245,
+      "toomreQ" : 1.3333074,
+      "velocity" : [
+        -0.12797959,
+        0.44123194,
+        0.07870022
+      ],
+      "velocityDispersion" : 0.05,
+      "youngClumpiness" : 0.54568934
+    },
+    {
+      "armCount" : 2,
+      "armIrregularity" : 0.38907635,
+      "armMassContrast" : 0.7415507,
+      "armPitch" : 0.40684587,
+      "armStreaming" : 0,
+      "armStrength" : 0.7415507,
+      "bulgeExtent" : 0.087668456,
+      "bulgeFlattening" : 0.80396235,
+      "bulgeFraction" : 0.07683661,
+      "clumpiness" : 0.21649389,
+      "diskMassFraction" : 0.22,
+      "diskScaleLength" : 4.329183,
+      "diskThickness" : 0.17507863,
+      "diskTruncation" : 4.5553627,
+      "dissipationTime" : 263.33615,
+      "dustFraction" : 0.1435408,
+      "haloExtent" : 12,
+      "haloParticleRatio" : 0.6,
+      "inclination" : 1.1213554,
+      "kind" : "spiral",
+      "massLopsidedness" : 0.3,
+      "name" : "Deuxième",
+      "outskirtFraction" : 0.12,
+      "particleShare" : 0.4606314,
+      "patternShare" : 0,
+      "position" : [
+        -32.284607,
+        43.90597,
+        0.5199423
+      ],
+      "positionAngle" : -0.55457,
+      "potential" : {
+        "mass" : 50.546944,
+        "profile" : "hernquist",
+        "scaleRadius" : 7.1365986
+      },
+      "spin" : "prograde",
+      "starFormingFraction" : 0.008977404,
+      "toomreQ" : 1.3412347,
+      "velocity" : [
+        0.14985555,
+        -0.5166531,
+        -0.09215271
+      ],
+      "velocityDispersion" : 0.05,
+      "youngClumpiness" : 0.5164939
+    }
+  ],
+  "name" : "Archétype",
+  "openingAngle" : 0.9,
+  "seed" : 2759063863313860739,
+  "solver" : "barnesHut",
+  "timeStepScale" : 3.5,
+  "version" : 1
+}

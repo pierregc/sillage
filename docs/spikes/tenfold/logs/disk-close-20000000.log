@@ -1,0 +1,28 @@
+# 2026-11-02 22:29:01
+# cmd: .build/dev/sillage-render --preset disk --particles 20000000 --steps 2 --frames 2 --seed 7 --width 3840 --height 2160 --look /Users/pierregc/claude-workspace/tenfold-out/looks/close.look.json --out /Users/pierregc/claude-workspace/tenfold-out/disk/close-20000000.png --no-sidecars
+# before: gpu device utilization 0 %, other sillage processes: []
+     0.3 scene      Isolated disk, 20000000 visible
+    11.7 solver     restricted (restricted)
+    11.7 gpu        Apple M4 Max
+    14.5 frame 0000  t=0.1 Myr  sim    12.1 ms (12.092 ms/step)  smoothing   53.3 ms  render 741.4 ms (gpu 715.23)
+    15.1 frame 0001  t=0.2 Myr  sim     8.7 ms (8.728 ms/step)  smoothing   42.0 ms  render 202.7 ms (gpu 180.22)
+    15.1 done in 3.4 s
+    15.1        15.12 real        13.77 user         0.33 sys
+    15.1           3781214208  maximum resident set size
+    15.1                    0  average shared memory size
+    15.1                    0  average unshared data size
+    15.1                    0  average unshared stack size
+    15.1               231152  page reclaims
+    15.1                   14  page faults
+    15.1                    0  swaps
+    15.1                    0  block input operations
+    15.1                    0  block output operations
+    15.1                    0  messages sent
+    15.1                    0  messages received
+    15.1                    0  signals received
+    15.1                    9  voluntary context switches
+    15.1                 2407  involuntary context switches
+    15.1         142781599277  instructions retired
+    15.1          55909393816  cycles elapsed
+    15.1           6096342376  peak memory footprint
+# after: 2026-11-02 22:29:16, gpu device utilization 97 %, other sillage processes: []
