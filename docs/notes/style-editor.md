@@ -95,13 +95,14 @@ What changed:
 - **The canvas draws the export's own `ShotReplay`**, in every mode, through `PlanPlayhead`, at
   the canvas's aspect and the rate the take was captured (`SceneFolder.capturedRate`, the one
   the export uses). Auto and Immergé are replayed from the first frame, again whenever the
-  playhead goes back or the file changes: REPLAY_COST. The director plans its shots from the
-  whole take since #186 (`ShotPlan`), which any frame can be asked of; the plan reads the
-  take once, off the main actor when the take opens in Réalisateur, and `replanned` gives it
-  another camera plan or lens without reading it again, so an edit costs EDIT_COST rather
-  than 0.8 s. The radius a plan measures is sorted once per take, since sorting two million
-  radii on every edit would stall the sliders. Where the immersed director modulates the
-  light, the canvas draws it as the export does (calmed spikes included).
+  playhead goes back or the file changes: 0.7 ms for the 921 frames of scene-0031. The
+  director plans its shots from the whole take since #186 (`ShotPlan`), which any frame can be
+  asked of; the plan reads the take once, off the main actor when the take opens in
+  Réalisateur, and `replanned` gives it another camera plan or lens without reading it again,
+  so an edit costs 0.1 ms rather than 0.8 s. The radius a plan measures is sorted once per
+  take, since sorting two million radii on every edit would stall the sliders. Where the
+  immersed director modulates the light, the canvas draws it as the export does (calmed
+  spikes included).
 - **The mouse edits the plan rather than a rig beside it** (chosen over a "Garder ce cadrage"
   button, which would need a free view turned back into a plan): a drag turns the start and
   end angles together, so the move over the clip is kept, and the wheel scales the zoom, or
