@@ -288,10 +288,14 @@ couleurs** takes its palette too. **Palette** has a Télescope
 through any new palette), six proposals from the generator with their score, **Autres
 palettes**, and **Auto**, which draws three key frames with every rendering of the world and
 applies the best rendering and palette (`--style auto` below). **Caméra** sets the plan's mode,
-zoom and rotation over the clip. **Réglages fins**, folded, hold Lumière, Instrument, Rendu
-détaillé (starfield, bloom levels, supersampling, plain points, which rebuild the renderer) and
-the whole camera plan, each with **Réinitialiser**; **Voir à travers le plan** draws through
-the plan at the playhead, so scrubbing shows the render's own framing. The top bar says
+zoom and rotation over the clip. The canvas draws through the plan in every mode, in the clip's
+shape, exactly as the export frames it at the playhead: the auto camera eased from the first
+frame, the director's shots and the light it modulates. Dragging on it turns the plan and the
+wheel zooms it, so a framing made there is the one saved and exported; the director chooses
+its own angles, and the wheel only brings its shots closer or further. **Réglages fins**,
+folded, hold Lumière, Instrument, Rendu détaillé (starfield, bloom levels, supersampling, plain
+points, which rebuild the renderer) and the whole camera plan, each with **Réinitialiser**;
+**Voir à travers le plan**, unticked, gives a free view the export does not keep. The top bar says
 **Modifié** when the style differs from `look.json`, holding ⌥ or **Avant / Après** shows the
 saved style for as long as it is held, **Annuler** puts it back, and **Utiliser pour la scène**
 (⌘S) promotes it as `--promote` does, after which **Exporter…** opens the export sheet. File > Open

@@ -2,12 +2,15 @@ import AppKit
 import Foundation
 import SillageCore
 import SillageRender
+import simd
 
 /// Opens a take with a look file the way the library does, and checks what tuning promises:
 /// the file comes back byte for byte, every kind of edit lands where it should and survives a
 /// save, and the playhead can be thrown backwards and forwards at the take's full size. Then
 /// the style editor's session on it: renderings, palettes and locks, Avant/Après, Annuler,
-/// Utiliser pour la scène, and Auto when the take sits in a scene folder.
+/// Utiliser pour la scène, the canvas framing what the export frames in every camera mode and
+/// a framing made with the mouse kept through a save (#177), and Auto when the take sits in a
+/// scene folder.
 ///
 /// `--lookcheck <take> [look]`. Headless, for the same reason as `--replay`.
 enum LookCheck {
@@ -77,8 +80,7 @@ enum LookCheck {
         check(
             "la palette du fichier colore la scène",
             loaded.palette.isEmpty || model.scene.galaxies[0].color == loaded.palette[0].colour)
-        check(
-            "le plan de caméra est suivi", model.followsPlan == [.fixed, .auto].contains(loaded.camera.mode))
+        check("le plan de caméra est suivi", model.followsPlan, "\(loaded.camera.mode)")
 
         let resaved = folder.url.appendingPathComponent("resaved.look.json")
         model.saveLook(to: resaved)
@@ -186,6 +188,8 @@ enum LookCheck {
         check(
             "l'ancien look reste dans look-raw.json", (try? Data(contentsOf: folder.rawLook)) == savedBefore)
         check("le look de l'atelier pointe sur la scène", model.lookURL == folder.look)
+
+        exerciseFraming(session, model, folder, take, check)
 
         if FileManager.default.fileExists(atPath: folder.scene.path) {
             exerciseAuto(session, model, check)
@@ -339,6 +343,137 @@ enum LookCheck {
         session.showSaved(false)
         check("après : la retouche revient", model.lookFile == edited && session.covered == nil, "")
         check("rien d'écrit pendant les essais", (try? Data(contentsOf: folder.look)) == onDisk, "")
+    }
+
+    /// The canvas against the export (#177): in each mode, the camera of a frame exported from
+    /// the playhead is the canvas's, scrubbed forwards and back; the director's light reaches
+    /// the canvas; a drag and the wheel move the plan, which `look.json` keeps and the export
+    /// frames.
+    @MainActor
+    private static func exerciseFraming(
+        _ session: StyleSession, _ model: SimulationModel, _ folder: SceneFolder, _ takeURL: URL,
+        _ check: (String, Bool, String) -> Void
+    ) {
+        // What `sillage-render export` reads: the take off disk, at the folder's rate.
+        guard let take = try? RecordingFile.read(from: takeURL),
+            let rate = try? folder.capturedRate()
+        else { return check("la prise se relit pour l'export", false, "") }
+        let last = Double(model.capturedFrames - 1)
+        model.isPlaying = false
+
+        /// The shot of the first frame of an export of `file` started at the playhead.
+        func exported(_ file: LookFile, through export: TakeExport? = nil) -> ShotReplay.Shot? {
+            guard let export = export ?? (try? TakeExport(take: take, look: file, capturedRate: rate))
+            else { return nil }
+            let start = model.capturedPlayhead / Double(rate)
+            let positions = export.positions(framesPerSecond: rate, start: start, duration: 1 / Double(rate))
+            return export.shots(atCaptured: positions).first
+        }
+        func gap(_ canvas: Camera, _ export: Camera) -> Float {
+            let scale = max(simd_distance(export.eye, export.target), 1)
+            let moved = max(
+                simd_distance(canvas.eye, export.eye), simd_distance(canvas.target, export.target))
+            return max(moved / scale, abs(canvas.fieldOfView - export.fieldOfView))
+        }
+        func near(_ a: Float?, _ b: Float?) -> Bool {
+            guard let a, let b else { return false }
+            return abs(a - b) <= 1e-5 * max(abs(a), abs(b), 1e-3)
+        }
+
+        let modes: [(LookFile.CameraPlan.Mode, String)] = [
+            (.auto, "Auto"), (.director, "Réalisateur"), (.fixed, "Fixe"), (.immersed, "Immergé"),
+        ]
+        // Forwards, back past where it was, back to the start, forwards again; between frames.
+        let playheads = [0.61, 0.97, 0.23, 0, 0.42].map { min($0 * last + 0.37, last) }
+        for (mode, name) in modes {
+            session.setCameraMode(mode)
+            let export = try? TakeExport(take: take, look: model.lookFile, capturedRate: rate)
+            var worst: Float = 0
+            var seen = 0
+            for playhead in playheads {
+                model.playbackPosition = playhead
+                _ = model.playbackSnapshot()
+                guard let shot = exported(model.lookFile, through: export) else { continue }
+                worst = max(worst, gap(model.activeCamera, shot.camera))
+                seen += 1
+            }
+            check(
+                "\(name) : l'image cadre comme l'export, en avançant et en reculant",
+                seen == playheads.count && worst < 1e-4 && model.followsPlan,
+                String(format: "écart %.1e sur %d têtes de lecture", worst, seen))
+        }
+
+        session.setCameraMode(.director)
+        model.playbackPosition = last * 0.5
+        _ = model.playbackSnapshot()
+        let directed = exported(model.lookFile)?.look
+        let drawn = model.renderer?.settings
+        check(
+            "Réalisateur : l'image prend la lumière qu'il module à l'export",
+            near(drawn?.brightness, directed?.brightness) && near(drawn?.stretch, directed?.stretch)
+                && near(drawn?.bloomIntensity, directed?.bloomIntensity),
+            String(
+                format: "luminosité %.3f, celle du fichier %.3f", drawn?.brightness ?? 0,
+                model.look.brightness))
+        let plan = model.lookFile.camera
+        let away = simd_distance(model.activeCamera.eye, model.activeCamera.target)
+        model.drag(60, 30)
+        check("Réalisateur : glisser ne touche pas à ses plans", model.lookFile.camera == plan, "")
+        model.scroll(-30)
+        _ = model.playbackSnapshot()
+        let further = simd_distance(model.activeCamera.eye, model.activeCamera.target)
+        check(
+            "Réalisateur : la molette éloigne ses plans",
+            model.lookFile.camera.zoom < plan.zoom && further > away * 1.2,
+            String(format: "zoom %.2f, %.0f puis %.0f kpc", model.lookFile.camera.zoom, away, further))
+
+        session.setCameraMode(.fixed)
+        _ = model.playbackSnapshot()
+        check(
+            "Fixe : la lumière du fichier revient",
+            model.renderer?.settings.brightness == model.look.brightness, "")
+        let before = model.lookFile.camera
+        let eye = model.activeCamera.eye
+        model.drag(40, -25)
+        model.scroll(12)
+        _ = model.playbackSnapshot()
+        let steered = model.lookFile.camera
+        check(
+            "Fixe : glisser tourne le plan, la molette le rapproche, l'image suit",
+            model.steersPlan && steered.azimuth != before.azimuth && steered.elevation < before.elevation
+                && steered.zoom > before.zoom && abs(steered.rotation - before.rotation) < 1e-5
+                && simd_distance(model.activeCamera.eye, eye) > 1,
+            String(
+                format: "azimut %.2f, élévation %.2f, zoom %.2f", steered.azimuth, steered.elevation,
+                steered.zoom))
+        let canvas = model.activeCamera
+        check("le cadrage fait à la souris s'enregistre", session.promote(), "")
+        let onDisk = try? folder.exportLook(nil, catalogue: [])
+        let fromDisk = onDisk.flatMap { exported($0) }
+        check(
+            "look.json garde ce cadrage et l'export le cadre",
+            onDisk?.camera == steered && fromDisk.map { gap(canvas, $0.camera) < 1e-4 } == true,
+            String(format: "écart %.1e", fromDisk.map { gap(canvas, $0.camera) } ?? -1))
+
+        model.followsPlan = false
+        model.drag(30, 10)
+        check(
+            "vue libre : la souris ne touche plus au plan",
+            !model.steersPlan && model.lookFile.camera == steered
+                && model.activeCamera.eye == model.camera.camera.eye, "")
+        model.followsPlan = true
+
+        // A step back replays the director from the first frame; so does any edit of the plan.
+        session.setCameraMode(.director)
+        model.playbackPosition = last
+        _ = model.planShot
+        model.playbackPosition = last - 0.5
+        let started = CACurrentMediaTime()
+        _ = model.planShot
+        let milliseconds = (CACurrentMediaTime() - started) * 1000
+        check(
+            "rejouer le réalisateur jusqu'à la fin de la prise reste vif", milliseconds < 100,
+            String(format: "%.1f ms pour %d images", milliseconds, model.playheadCapturedFrame))
     }
 
     /// Auto on the telescope world, with a lock: a rendering and a palette from the catalogue,

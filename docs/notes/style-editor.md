@@ -16,6 +16,8 @@ fins; the top bar says Modifié and saves.
 | The Rendu thumbnails: when they are drawn, on which queue | `StyleThumbnails.swift` |
 | Drawing them: the cache, the renderers built side by side, the sliced splat | `RenderingThumbnails.swift`, `LookSheet.build`, `Renderer.render(camera:slice:pacer:)` |
 | Where the canvas leaves the GPU free | `CanvasPacer.swift` |
+| The export's camera at the playhead, scrubbed both ways | `PlanPlayhead.swift` (`SillageRender`), tested in `PlanPlayheadTests`; `planShot` in `SimulationModel` |
+| What the mouse does to the plan | `CameraPlan.turned` and `zoomed` in `StyleEdit.swift`; `drag` and `scroll` in `CameraControl.swift` |
 
 The picture and the look file stay the model's (`SimulationModel.lookFile`); the session edits
 them and adds what the editor needs. It forwards the few model changes the inspector reads and
@@ -70,13 +72,60 @@ nothing else, because the model publishes on every played frame.
 - **The workshop's running panel has no look file section any more**; it keeps its live sliders.
   File > Ouvrir un look and Enregistrer le look sous stay in the menu.
 
+## The canvas frames what the export frames (#177)
+
+Pierre styled `2026-10-30-b/scene-0031` in Réalisateur, placed the camera well on the canvas,
+and the WhatsApp export came out far too wide. Replayed headless, the export's camera stood 1.7
+to 2.8 times further than the canvas's over the clip, median 2.4, and frame 552 of his video
+sits 1.3 levels of 255 from the export's replay drawn again (means of 8 × 8 blocks), the canvas
+10.4. Three things together:
+
+- **In Réalisateur and Immergé the canvas could not show the plan.** `planCamera` gave nil for
+  the director, which "cannot be scrubbed", so the canvas showed the orbit rig and "Voir à
+  travers le plan" was only for Auto and Fixe.
+- **The zoom acted on the export unseen.** `framedRadius` divides the measured radius by the
+  zoom and the director frames that radius: his 0.445 made every shot 2.25 times wider.
+- **The mouse never reached the file.** Dragging and scrolling moved the rig, which nothing
+  copies into `LookFile.camera`.
+
+Auto was off too, in a quieter way: the canvas framed each frame afresh, the export eases.
+
+What changed:
+
+- **The canvas draws the export's own `ShotReplay`**, in every mode, through `PlanPlayhead`:
+  the take's frames are replayed from the first at the rate it was captured
+  (`SceneFolder.capturedRate`, the one the export uses), again from the first whenever the
+  playhead goes back or the file changes. That costs 0.8 ms for the 921 frames of scene-0031.
+  The radius a plan measures is sorted once per take, off the main actor, since sorting two
+  million radii on every edit would stall the sliders. Where the director plays, its
+  modulated light goes on the canvas as it goes on the export (it calms the spikes, too).
+- **The mouse edits the plan rather than a rig beside it** (chosen over a "Garder ce cadrage"
+  button, which would need a free view turned back into a plan): a drag turns the start and
+  end angles together, so the move over the clip is kept, and the wheel scales the zoom, or
+  the named radius outside Auto, which the zoom does not reach. What is framed is what
+  `look.json` holds. The director chooses its own angles and lens, so in its modes a drag
+  does nothing, the lens and angle sliders and the rotation are greyed, the wheel scales its
+  shots, and the legend under the canvas offers Passer en Fixe.
+- **The zoom reads as distance**: the slider runs in octaves around one, and says "× 0,44 · 2,2
+  fois plus loin".
+- **The canvas keeps the clip's shape**, 16:9 for every night scene, so it frames the
+  rectangle of 1080p, 4K and WhatsApp; Vertical and Carré show less on the sides.
+- Unticking Voir à travers le plan gives the old free view, and the legend says the export
+  does not keep it.
+
 ## Checks
 
 - `--lookcheck <take>` drives the session on the opened take: rendering alone and with its
   colours, six proposals and another round, a lock through a new palette, camera mode and
   rotation, two resets, Avant/Après, Annuler (nothing written), Utiliser pour la scène
   (`look.json` is the style on screen, the explored look kept in `look-raw.json`), and Auto when
-  the take sits in a scene folder.
+  the take sits in a scene folder. Then the framing (#177): in each of the four modes the
+  canvas's camera against the first frame of an export started at the playhead, read off disk
+  as `sillage-render export` reads it, at five playheads visited forwards and back; the
+  director's light on the renderer; a drag and the wheel in Réalisateur and in Fixe, saved
+  with Utiliser pour la scène and framed alike by the export of `look.json`; the free view;
+  and the cost of a replay to the end of the take. A look file written before `glint` and
+  `columnSmoothing` existed fails "ouvert puis enregistré sans changement": saving adds them.
 - `--navcheck` opens the editor from the library, leaves it for the queue and comes back, then
   closes it.
 - `--uishot` writes `out/ui-style-bar.png`, `out/ui-style.png` and `out/ui-style-fine.png`.

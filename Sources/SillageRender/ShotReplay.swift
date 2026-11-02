@@ -21,15 +21,18 @@ public final class ShotReplay {
     /// The last two frames replayed, enough to draw anywhere between them.
     private var recent: [(frame: Int, shot: Shot)] = []
 
+    /// `radius` is what the plan frames when the caller has measured it already, as a canvas
+    /// replaying the plan after every edit does.
     public init(
-        file: LookFile, take: RecordingFile.Loaded, capturedFrames: Int, framesPerSecond: Int
+        file: LookFile, take: RecordingFile.Loaded, capturedFrames: Int, framesPerSecond: Int,
+        radius: Float? = nil
     ) {
         self.file = file
         recording = take.recording
         let scene = take.scene
         self.scene = scene
         span = Float(max(capturedFrames - 1, 1))
-        radius = file.camera.framedRadius(positions: take.particles.positions)
+        self.radius = radius ?? file.camera.framedRadius(positions: take.particles.positions)
         reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
         let mode = file.camera.mode
         director = mode == .director || mode == .immersed ? Cinematographer(seed: scene.seed) : nil
