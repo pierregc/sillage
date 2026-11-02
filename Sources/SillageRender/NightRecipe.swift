@@ -114,6 +114,9 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         public var palette: Setting<String> = .auto
         /// Several colours per galaxy (#120). Auto is on; `false` gives each galaxy one colour.
         public var multicolour: Setting<Bool> = .auto
+        /// The camera the style is filmed with (#186): `director`, `fixed`, `immersed`, or
+        /// `scene` for the one the scene already has. Auto is the director.
+        public var camera: Setting<String> = .auto
         /// The share of picks Auto draws in the free world; the others take the telescope one.
         public var freeShare: Setting<Double> = .auto
 
@@ -126,6 +129,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             palette = try c.decodeIfPresent(Setting<String>.self, forKey: .palette) ?? .auto
             multicolour =
                 try c.decodeIfPresent(Setting<Bool>.self, forKey: .multicolour) ?? .auto
+            camera = try c.decodeIfPresent(Setting<String>.self, forKey: .camera) ?? .auto
             freeShare = try c.decodeIfPresent(Setting<Double>.self, forKey: .freeShare) ?? .auto
         }
     }
@@ -241,7 +245,7 @@ extension NightRecipe {
         "": ["version", "deliver", "hours", "explore", "pick", "hires", "style", "export"],
         "explore": ["scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "galaxies", "seed"],
         "hires": ["particles", "frames"],
-        "style": ["world", "style", "palette", "multicolour", "freeShare"],
+        "style": ["world", "style", "palette", "multicolour", "camera", "freeShare"],
     ]
 
     /// Reads a recipe and checks it: a misspelt setting is an error rather than a silent Auto.
@@ -317,6 +321,9 @@ extension NightRecipe {
         }
         if let world = style.world.value, Palette.World(rawValue: world) == nil {
             throw Failure.badValue("style.world", "telescope or free")
+        }
+        if let camera = style.camera.value, NightStyle.cameras.contains(camera) == false {
+            throw Failure.badValue("style.camera", NightStyle.cameras.joined(separator: ", "))
         }
         if let share = style.freeShare.value, !(0...1).contains(share) {
             throw Failure.badValue("style.freeShare", "from 0 to 1")

@@ -10,6 +10,13 @@ public struct NightStyle: Equatable, Sendable {
     public var palette: String
     /// False gives each galaxy one colour instead of a ramp.
     public var multicolour = true
+    /// The camera mode the look is filmed with, or `scene` to keep the one the scene has.
+    public var camera = "director"
+
+    /// What `style.camera` may name. The director by default: its plan fills the frame with a
+    /// disk and with the pericentre for part of the clip, where the scene's own camera, the
+    /// auto framing explore judged the dynamics with, keeps every galaxy a few per cent of it.
+    public static let cameras = ["director", "fixed", "immersed", "scene"]
 
     /// The world Auto gives the pick at `index`, best first: free with probability `share`,
     /// drawn from the batch seed, so a resumed night gives each pick the world it had. A draw
@@ -88,12 +95,12 @@ public struct NightStyle: Equatable, Sendable {
                 ?? drawnWorld(
                     pick: index, seed: seed, share: style.freeShare.value ?? NightRecipe.defaultFreeShare),
             rendering: rendering?.name, palette: choice,
-            multicolour: style.multicolour.value ?? true)
+            multicolour: style.multicolour.value ?? true, camera: style.camera.value ?? "director")
     }
 
     /// The `look` command that carries it out.
     public func arguments(scene: String) -> [String] {
-        let single = multicolour ? [] : ["--single"]
+        let single = (multicolour ? [] : ["--single"]) + (camera == "scene" ? [] : ["--camera", camera])
         if let rendering {
             return ["look", scene, "--palette", palette, "--world", world.rawValue, "--base", rendering]
                 + single

@@ -63,6 +63,8 @@ session. Read the note for an area before changing it.
 - [The style editor](style-editor.md): renderings, palettes and locks, Auto, Avant/Après
 - [Making a galaxy read as matter rather than as a graphic](galaxy-as-matter.md)
 - [Gigantism](gigantism.md): why a render reads as sand, the compact minority, the kernel in projection, what more particles cost
+- [Ten times the particles](ten-times-the-particles.md): fifty million a galaxy, what it looks like, the softening floor, the halo, the take's grid, tracers
+- [Director shots that fill the frame](director-shots.md): `ShotPlan`, the cuts, the core and plane measured on the take, the disk states takes never carried
 
 ## State
 

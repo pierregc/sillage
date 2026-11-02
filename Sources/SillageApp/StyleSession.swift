@@ -331,7 +331,7 @@ final class StyleSession: ObservableObject {
             file.camera.mode = mode
             return file
         }
-        if changed { model.followsPlan = [.fixed, .auto].contains(mode) }
+        if changed { model.followsPlan = mode.isPlanned }
     }
 
     /// Where a group's Réinitialiser goes: the camera to the saved style, the rest to the last
@@ -343,7 +343,7 @@ final class StyleSession: ObservableObject {
     func reset(_ group: LookFile.Group) {
         guard let baseline = baseline(for: group) else { return }
         guard edit({ $0.resetting(group, to: baseline) }) else { return }
-        if group == .camera { model.followsPlan = [.fixed, .auto].contains(model.lookFile.camera.mode) }
+        if group == .camera { model.followsPlan = model.lookFile.camera.mode.isPlanned }
     }
 
     // MARK: Before and after, cancel, promote
@@ -355,7 +355,7 @@ final class StyleSession: ObservableObject {
             covered = model.lookFile
             coveredFollows = model.followsPlan
             model.lookFile = saved
-            model.followsPlan = [.fixed, .auto].contains(saved.camera.mode)
+            model.followsPlan = saved.camera.mode.isPlanned
         } else if let covered {
             model.lookFile = covered
             model.followsPlan = coveredFollows

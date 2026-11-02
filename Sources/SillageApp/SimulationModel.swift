@@ -428,7 +428,7 @@ final class SimulationModel: ObservableObject {
     func adopt(_ file: LookFile, from url: URL?) {
         let old = lookFile
         take(file, from: url)
-        followsPlan = mode == .playback && [.fixed, .auto].contains(file.camera.mode)
+        followsPlan = mode == .playback && file.camera.mode.isPlanned
         lookFileChanged(from: old)
     }
 
@@ -479,8 +479,12 @@ final class SimulationModel: ObservableObject {
         return min(max(frame, 0), max(recording.capturedFrames - 1, 0))
     }
 
+    /// The director's plan for the take on the canvas, kept while the camera and the field of
+    /// view it was made for stay: making one reads the take.
+    private var directorPlan: (key: String, plan: ShotPlan)?
+
     /// The file's camera plan at the playhead, or nil where the plan has no picture to give
-    /// here: the director decides its shots as a clip plays, and cannot be scrubbed.
+    /// here: the immersed director moves on as a clip plays, and cannot be scrubbed.
     var planCamera: Camera? {
         guard mode == .playback, let recording, recording.count >= 2 else { return nil }
         let plan = lookFile.camera
@@ -501,7 +505,20 @@ final class SimulationModel: ObservableObject {
             return plan.camera(
                 progress: progress, radius: framed.radius / plan.zoom, center: framed.center,
                 fieldOfView: look.fieldOfView)
-        case .director, .immersed:
+        case .director:
+            guard let take = playedTake else { return nil }
+            let key = "\(ObjectIdentifier(recording)) \(plan) \(look.fieldOfView)"
+            var file = lookFile
+            file.look.fieldOfView = look.fieldOfView
+            let directed =
+                directorPlan?.key == key
+                ? directorPlan?.plan
+                : ShotPlan(take: take, file: file, framesPerSecond: SceneFolder.Clip().fps)
+            directorPlan = directed.map { (key, $0) }
+            let aspect = Float(drawableSize.width / max(drawableSize.height, 1))
+            return directed?.camera(
+                atCaptured: playbackPosition * Double(recording.interval), aspect: aspect)
+        case .immersed:
             return nil
         }
     }
@@ -973,7 +990,7 @@ final class SimulationModel: ObservableObject {
                 self.installTake(loaded, expander: expander)
                 self.sceneFolder = folder
                 self.takeFolder = folder ?? SceneFolder.holding(take: url)
-                if let file { self.followsPlan = [.fixed, .auto].contains(file.camera.mode) }
+                if let file { self.followsPlan = file.camera.mode.isPlanned }
             }
         }
     }

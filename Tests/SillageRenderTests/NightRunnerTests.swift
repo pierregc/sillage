@@ -307,6 +307,15 @@ struct NightRunnerTests {
         #expect(skips.map(\.scene) == ["scene-0002", "scene-0003"])
         #expect(skips.allSatisfy { $0.message == "would end after the delivery time" })
         #expect(NightFile.read(from: RunStatusFiles.night(batch: batch))?.state == .done)
+        let report = batch.appendingPathComponent("report.md")
+        #expect(
+            try String(contentsOf: report, encoding: .utf8).contains("- Laissées de côté : 2 · erreurs : 0"))
+
+        // Resumed with the time it lacked, as 2026-10-30-b was.
+        #expect(runner(recipe()).run() == 0)
+        #expect(logged().filter { $0.hasPrefix("hires ") }.count == 2)
+        let resumed = try String(contentsOf: report, encoding: .utf8)
+        #expect(resumed.contains("- Laissées de côté : 0 · erreurs : 0") && !resumed.contains("would end"))
     }
 
     @Test func theQueueMarksANightItHadToStop() throws {

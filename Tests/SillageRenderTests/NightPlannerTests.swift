@@ -49,7 +49,8 @@ struct NightRecipeTests {
             #"{"pick": 5}"#, #"{"pick": 0}"#, #"{"pick": "some"}"#, #"{"deliver": "07:00", "hours": 8}"#,
             #"{"deliver": "7h"}"#, #"{"export": ["8k"]}"#, #"{"style": {"world": "hubble"}}"#,
             #"{"explore": {"galaxies": [4, 2]}}"#, #"{"explore": {"archetypes": ["kite"]}}"#,
-            #"{"explore": {"scenes": "many"}}"#, #"{"hours": 0}"#, #"{"style": {"freeShare": 1.5}}"#,
+            #"{"explore": {"scenes": "many"}}"#, #"{"hours": 0}"#,
+            #"{"style": {"camera": "drone"}}"#, #"{"style": {"freeShare": 1.5}}"#,
             #"{"style": {"freeShare": -0.1}}"#, #"{"style": {"freeShare": "half"}}"#,
         ] {
             #expect(throws: NightRecipe.Failure.self) { try recipe(bad) }

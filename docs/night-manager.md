@@ -185,6 +185,7 @@ name is an error.
 | `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |
 | `style.palette` | a family, the name of a favourite in `palettes/` or a `.palette.json` (its world is the pick's) | Auto: the best of the scene's seed in the pick's world, the favourites that fit among the candidates |
 | `style.multicolour` | `false` for one colour per galaxy | Auto: on, each galaxy gets a ramp of colours (#120) |
+| `style.camera` | `director`, `fixed`, `immersed`, or `scene` for the camera explore wrote | Auto: `director`, wide shots and shots that fill the frame with a disk and the pericentre (#186) |
 | `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
 
 The style step. A world asked for holds for every pick; else a named `style.style` or a
@@ -193,13 +194,13 @@ The style step. A world asked for holds for every pick; else a named `style.styl
 The draw comes from the batch seed and the pick's place, best first, so a night resumed gives
 each pick the world it had. A night of one pick has it free one time in five, of two picks a
 free one 36 % of the time, of four 59 %; every fifth pick instead would never come round in a
-night of four picks at most. A recipe whose
-parts disagree (a free family in the telescope world) is refused before the night starts. A
-named style gets a palette of its world (Auto's or the one given); no style is
-`look --style auto`, which scores every rendering of the world with the scene's best palettes
-(or the one given) on key frames of the take. Planned at 20 s in the telescope world and 400 s
-in the free one (52 pairs at 2 M particles), 20 s for a named style; the plan draws each pick's
-world as the night will.
+night of four picks at most. A recipe whose parts disagree (a free family in the telescope
+world) is refused before the night starts. A named style gets a palette of its world (Auto's or
+the one given); no style is `look --style auto`, which scores every rendering of the world with
+the scene's best palettes (or the one given) on key frames of the take, filmed with
+`style.camera` (the director by default, [the note](notes/director-shots.md)). Planned at 20 s
+in the telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named
+style; the plan draws each pick's world as the night will.
 
 How it plans. `NightPlanner` turns the recipe and the cost model into steps, each with its
 duration, start and end, and the delivery of the whole night. Before exploring, it sizes the
@@ -243,7 +244,9 @@ Exit status: 0 done, 3 stopped on request, 1 failed.
 and `events.jsonl` alone: seven lines (state and duration, delivery against the deadline, scenes
 explored, rejected and failed, picks with their score, hires done, videos with their weight,
 scenes left out and errors), then the list of hires with particles and minutes, of videos with
-their path from the night's folder, and of failures with the path of their log.
+their path from the night's folder, and of failures with the path of their log. A scene counts
+as left out only by the night's last run, and only until that step is done for it; the night
+page's cards and `sillage-render status --json` count alike.
 
 ### Queue
 
