@@ -483,15 +483,17 @@ final class SimulationModel: ObservableObject {
     }
 
     /// The shot the export draws at the playhead, in every mode (#177): the auto camera eased
-    /// and the director's shots played from the first frame, as the export replays them, and in
-    /// the director's modes the light it chose.
+    /// and the immersed director played from the first frame as the export replays them, the
+    /// director's planned shots, and the light the immersed one modulates.
     var planShot: ShotReplay.Shot? {
         guard mode == .playback, let recording, recording.count >= 2 else { return nil }
         if planPlayhead?.take.recording !== recording {
             guard let take = playedTake else { return nil }
             planPlayhead = PlanPlayhead(take: take, capturedRate: capturedRate)
         }
-        return planPlayhead?.shot(lookFile, atCaptured: capturedPlayhead)
+        return planPlayhead?.shot(
+            lookFile, atCaptured: capturedPlayhead,
+            aspect: Float(drawableSize.width / max(drawableSize.height, 1)))
     }
 
     var planCamera: Camera? { planShot?.camera }
@@ -501,10 +503,10 @@ final class SimulationModel: ObservableObject {
         ((takeFolder ?? sceneFolder).flatMap { try? $0.capturedRate() }) ?? SceneFolder.Clip().fps
     }
 
-    /// The director modulates the light as it plays, and the export draws what it chose.
+    /// The immersed director modulates the light as it plays, and the export draws what it
+    /// chose.
     private func applyShotLook() {
-        let directed = lookFile.camera.mode == .director || lookFile.camera.mode == .immersed
-        if followsPlan, !isFlying, directed, let shot = planShot {
+        if followsPlan, !isFlying, let shot = planShot, shot.look != look {
             renderer?.apply(shot.look)
             drawsShotLook = true
         } else if drawsShotLook {
@@ -957,6 +959,7 @@ final class SimulationModel: ObservableObject {
         preparation &+= 1
         fileActivity = "Ouverture de la prise…"
         let device = self.device
+        let directing = file?.camera.mode == .director ? file : nil
         simulationQueue.async { [weak self] in
             let loaded: RecordingFile.Loaded?
             var failure: String?
@@ -970,8 +973,15 @@ final class SimulationModel: ObservableObject {
                 loaded.flatMap {
                     try? SnapshotExpander(device: device, particleCount: $0.recording.particleCount)
                 }
-            // Sorted here: at a few million particles it would hold the window a moment.
+            // Measured here: at a few million particles they would hold the window a moment, the
+            // director's plan most of a second.
             let radii = loaded.map(PlanPlayhead.firstFrameRadii)
+            let rate =
+                (folder ?? SceneFolder.holding(take: url)).flatMap { try? $0.capturedRate() }
+                ?? SceneFolder.Clip().fps
+            let directed = loaded.flatMap { take in
+                directing.map { ShotPlan(take: take, file: $0, framesPerSecond: rate) }
+            }
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.fileActivity = nil
@@ -984,7 +994,7 @@ final class SimulationModel: ObservableObject {
                 self.sceneFolder = folder
                 self.takeFolder = folder ?? SceneFolder.holding(take: url)
                 self.planPlayhead = PlanPlayhead(
-                    take: loaded, capturedRate: self.capturedRate, radii: radii)
+                    take: loaded, capturedRate: rate, radii: radii, directed: directed)
                 if file != nil { self.followsPlan = true }
             }
         }

@@ -65,7 +65,7 @@ public struct SceneCheck: Sendable, Equatable {
     }
 
     /// The radius holding nine tenths of an exponential disk's light: where it visibly ends.
-    static func brightReach(_ galaxy: GalaxyConfig) -> Float {
+    public static func brightReach(_ galaxy: GalaxyConfig) -> Float {
         max(galaxy.diskScaleLength * min(galaxy.diskTruncation, 3.9), 0.1)
     }
 

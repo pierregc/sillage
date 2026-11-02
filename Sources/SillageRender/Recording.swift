@@ -396,16 +396,24 @@ public final class Recording: @unchecked Sendable {
 
     /// Decodes one frame back to positions, for framing a camera or reseeding a renderer.
     public func positions(at index: Int) -> [SIMD3<Float>] {
-        locked {
+        positions(at: index, every: 1)
+    }
+
+    /// One particle in `stride` of a stored frame, the first one included: enough to measure
+    /// how far a galaxy's light reaches without decoding millions of positions.
+    public func positions(at index: Int, every stride: Int) -> [SIMD3<Float>] {
+        let stride = max(stride, 1)
+        return locked {
             guard !storedFrames.isEmpty else { return [] }
             let frame = min(max(index, 0), storedFrames.count - 1)
             let box = storedFrames[frame]
             let scale = box.extent / 65535
-            var decoded = [SIMD3<Float>](repeating: .zero, count: particleCount)
+            let kept = (particleCount + stride - 1) / stride
+            var decoded = [SIMD3<Float>](repeating: .zero, count: kept)
             let filled: Void? = withFrameStorage(frame) { source in
-                for particle in 0..<particleCount {
-                    let slot = particle * 3
-                    decoded[particle] =
+                for sample in 0..<kept {
+                    let slot = sample * stride * 3
+                    decoded[sample] =
                         box.origin
                         + SIMD3<Float>(
                             Float(source[slot]) * scale,

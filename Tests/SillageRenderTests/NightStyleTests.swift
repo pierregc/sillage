@@ -58,10 +58,27 @@ struct NightStyleTests {
     @Test func theCommandIsAutoOrTheNamedRendering() throws {
         #expect(
             try resolve(style(nil, nil, "ember")).arguments(scene: "s")
-                == ["look", "s", "--style", "auto", "--world", "free", "--palette", "ember"])
+                == [
+                    "look", "s", "--style", "auto", "--world", "free", "--palette", "ember",
+                    "--camera", "director",
+                ])
         #expect(
             try resolve(style(nil, "aurora")).arguments(scene: "s")
-                == ["look", "s", "--palette", "auto", "--world", "free", "--base", "aurora"])
+                == [
+                    "look", "s", "--palette", "auto", "--world", "free", "--base", "aurora",
+                    "--camera", "director",
+                ])
+    }
+
+    /// The director films the night's styles unless the recipe asks otherwise; `scene` keeps the
+    /// camera explore wrote.
+    @Test func theCameraIsTheDirectorUnlessAskedOtherwise() throws {
+        var kept = style(nil, nil, "ember")
+        kept.camera = .value("scene")
+        #expect(!(try resolve(kept).arguments(scene: "s").contains("--camera")))
+        var fixed = style()
+        fixed.camera = .value("fixed")
+        #expect(try resolve(fixed).arguments(scene: "s").suffix(2) == ["--camera", "fixed"])
     }
 
     @Test func aPaletteFileGivesItsWorld() throws {

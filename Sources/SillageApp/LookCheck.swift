@@ -317,6 +317,15 @@ enum LookCheck {
             session.setMulticolour(true, waiting: true)
         }
 
+        // The director plans from the whole take, so the playhead can jump onto any of its shots.
+        session.setCameraMode(.director)
+        model.playbackPosition = Double(model.capturedFrames - 1) / 3
+        _ = model.playbackSnapshot()
+        let directed = model.planCamera
+        check(
+            "le réalisateur se suit au curseur",
+            model.followsPlan && directed != nil && model.activeCamera.eye == directed?.eye, "")
+
         session.setCameraMode(.fixed)
         session.binding(\.camera.rotation).wrappedValue = .pi / 2
         check(
@@ -346,9 +355,9 @@ enum LookCheck {
     }
 
     /// The canvas against the export (#177): in each mode, the camera of a frame exported from
-    /// the playhead is the canvas's, scrubbed forwards and back; the director's light reaches
-    /// the canvas; a drag and the wheel move the plan, which `look.json` keeps and the export
-    /// frames.
+    /// the playhead is the canvas's, scrubbed forwards and back; the immersed director's light
+    /// reaches the canvas; a drag and the wheel move the plan, cheaply in Réalisateur, and
+    /// `look.json` keeps what they framed for the export.
     @MainActor
     private static func exerciseFraming(
         _ session: StyleSession, _ model: SimulationModel, _ folder: SceneFolder, _ takeURL: URL,
@@ -359,15 +368,17 @@ enum LookCheck {
             let rate = try? folder.capturedRate()
         else { return check("la prise se relit pour l'export", false, "") }
         let last = Double(model.capturedFrames - 1)
+        let (width, height) = (Int(model.drawableSize.width), Int(model.drawableSize.height))
         model.isPlaying = false
 
-        /// The shot of the first frame of an export of `file` started at the playhead.
+        /// The shot of the first frame of an export of `file` started at the playhead, at the
+        /// canvas's size.
         func exported(_ file: LookFile, through export: TakeExport? = nil) -> ShotReplay.Shot? {
             guard let export = export ?? (try? TakeExport(take: take, look: file, capturedRate: rate))
             else { return nil }
             let start = model.capturedPlayhead / Double(rate)
             let positions = export.positions(framesPerSecond: rate, start: start, duration: 1 / Double(rate))
-            return export.shots(atCaptured: positions).first
+            return export.shots(atCaptured: positions, width: width, height: height).first
         }
         func gap(_ canvas: Camera, _ export: Camera) -> Float {
             let scale = max(simd_distance(export.eye, export.target), 1)
@@ -378,6 +389,11 @@ enum LookCheck {
         func near(_ a: Float?, _ b: Float?) -> Bool {
             guard let a, let b else { return false }
             return abs(a - b) <= 1e-5 * max(abs(a), abs(b), 1e-3)
+        }
+        /// The canvas at the playhead against the export of the file as it stands.
+        func framedAlike() -> Float? {
+            _ = model.playbackSnapshot()
+            return exported(model.lookFile).map { gap(model.activeCamera, $0.camera) }
         }
 
         let modes: [(LookFile.CameraPlan.Mode, String)] = [
@@ -403,29 +419,43 @@ enum LookCheck {
                 String(format: "écart %.1e sur %d têtes de lecture", worst, seen))
         }
 
-        session.setCameraMode(.director)
+        session.setCameraMode(.immersed)
         model.playbackPosition = last * 0.5
         _ = model.playbackSnapshot()
-        let directed = exported(model.lookFile)?.look
+        let modulated = exported(model.lookFile)?.look
         let drawn = model.renderer?.settings
         check(
-            "Réalisateur : l'image prend la lumière qu'il module à l'export",
-            near(drawn?.brightness, directed?.brightness) && near(drawn?.stretch, directed?.stretch)
-                && near(drawn?.bloomIntensity, directed?.bloomIntensity),
+            "Immergé : l'image prend la lumière que le réalisateur module à l'export",
+            near(drawn?.brightness, modulated?.brightness) && near(drawn?.stretch, modulated?.stretch)
+                && near(drawn?.bloomIntensity, modulated?.bloomIntensity),
             String(
                 format: "luminosité %.3f, celle du fichier %.3f", drawn?.brightness ?? 0,
                 model.look.brightness))
-        let plan = model.lookFile.camera
-        let away = simd_distance(model.activeCamera.eye, model.activeCamera.target)
+        let immersed = model.lookFile.camera
         model.drag(60, 30)
-        check("Réalisateur : glisser ne touche pas à ses plans", model.lookFile.camera == plan, "")
+        check("Immergé : glisser ne touche pas au plan", model.lookFile.camera == immersed, "")
         model.scroll(-30)
-        _ = model.playbackSnapshot()
-        let further = simd_distance(model.activeCamera.eye, model.activeCamera.target)
+        let scrolled = framedAlike()
         check(
-            "Réalisateur : la molette éloigne ses plans",
-            model.lookFile.camera.zoom < plan.zoom && further > away * 1.2,
-            String(format: "zoom %.2f, %.0f puis %.0f kpc", model.lookFile.camera.zoom, away, further))
+            "Immergé : la molette éloigne, et l'image suit l'export",
+            model.lookFile.camera.zoom < immersed.zoom && scrolled.map { $0 < 1e-4 } == true,
+            String(format: "zoom %.2f, écart %.1e", model.lookFile.camera.zoom, scrolled ?? -1))
+
+        // The director's plan reads the take once; an edit only turns and scales it.
+        session.setCameraMode(.director)
+        _ = model.playbackSnapshot()
+        let planned = model.lookFile.camera
+        let started = CACurrentMediaTime()
+        model.drag(-50, 20)
+        model.scroll(15)
+        _ = model.planShot
+        let milliseconds = (CACurrentMediaTime() - started) * 1000
+        let directed = framedAlike()
+        check(
+            "Réalisateur : glisser et la molette règlent ses plans larges, vite, comme à l'export",
+            model.lookFile.camera.azimuth != planned.azimuth && model.lookFile.camera.zoom > planned.zoom
+                && directed.map { $0 < 1e-4 } == true && milliseconds < 100,
+            String(format: "%.1f ms, écart %.1e", milliseconds, directed ?? -1))
 
         session.setCameraMode(.fixed)
         _ = model.playbackSnapshot()
@@ -463,17 +493,17 @@ enum LookCheck {
                 && model.activeCamera.eye == model.camera.camera.eye, "")
         model.followsPlan = true
 
-        // A step back replays the director from the first frame; so does any edit of the plan.
-        session.setCameraMode(.director)
+        // A step back replays the immersed director from the first frame.
+        session.setCameraMode(.immersed)
         model.playbackPosition = last
         _ = model.planShot
         model.playbackPosition = last - 0.5
-        let started = CACurrentMediaTime()
+        let replaying = CACurrentMediaTime()
         _ = model.planShot
-        let milliseconds = (CACurrentMediaTime() - started) * 1000
+        let replayed = (CACurrentMediaTime() - replaying) * 1000
         check(
-            "rejouer le réalisateur jusqu'à la fin de la prise reste vif", milliseconds < 100,
-            String(format: "%.1f ms pour %d images", milliseconds, model.playheadCapturedFrame))
+            "Immergé : le rejouer jusqu'à la fin de la prise reste vif", replayed < 100,
+            String(format: "%.1f ms pour %d images", replayed, model.playheadCapturedFrame))
     }
 
     /// Auto on the telescope world, with a lock: a rendering and a palette from the catalogue,

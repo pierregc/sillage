@@ -131,9 +131,10 @@ extension LookFile.CameraPlan {
         set { azimuthEnd = abs(newValue) < 1e-4 ? nil : azimuth + newValue }
     }
 
-    /// Whether the plan's angles place the camera. The director chooses its own, and only the
-    /// radius the plan frames reaches it.
-    public var placesCamera: Bool { mode == .fixed || mode == .auto }
+    /// Whether the plan's angles and lens place the camera: in Fixe and Auto, and for the
+    /// director's wide shots, which its close ones turn to face. The immersed director chooses
+    /// its own, and only the radius the plan frames reaches it.
+    public var placesCamera: Bool { mode != .immersed }
 
     /// The zoom the editor offers, and the elevation it keeps clear of the pole.
     public static let zoomRange: ClosedRange<Float> = 0.2...5

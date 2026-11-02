@@ -58,14 +58,16 @@ struct PlanPlayheadTests {
         LookFile.CameraPlan.Mode.auto, .director, .fixed, .immersed,
     ])
     func theCanvasDrawsTheShotTheExportDraws(_ mode: LookFile.CameraPlan.Mode) throws {
-        let loaded = try take(frames: 61, interval: 4)
+        // At ten frames a second the director has room for its close shots.
+        let loaded = try take(frames: 121, interval: 4)
         let look = file(mode)
-        let export = try TakeExport(take: loaded, look: look, capturedRate: 30)
-        let playhead = PlanPlayhead(take: loaded, capturedRate: 30)
+        let export = try TakeExport(take: loaded, look: look, capturedRate: 10)
+        let playhead = PlanPlayhead(take: loaded, capturedRate: 10)
         // Forwards between frames, back past where it was, to the start, to the end.
-        for position in [7.5, 7.5, 31.25, 12, 12.75, 0, 44.6, 60] {
-            let canvas = playhead.shot(look, atCaptured: position)
-            let exported = try #require(export.shots(atCaptured: [position]).first)
+        for position in [17.5, 17.5, 61.25, 22, 22.75, 0, 94.6, 120] {
+            let canvas = playhead.shot(look, atCaptured: position, aspect: 16.0 / 9.0)
+            let exported = try #require(
+                export.shots(atCaptured: [position], width: 1280, height: 720).first)
             #expect(canvas.camera.eye == exported.camera.eye)
             #expect(canvas.camera.target == exported.camera.target)
             #expect(canvas.camera.fieldOfView == exported.camera.fieldOfView)
@@ -78,13 +80,34 @@ struct PlanPlayheadTests {
         let loaded = try take(frames: 41, interval: 2)
         let playhead = PlanPlayhead(take: loaded, capturedRate: 30)
         var look = file(.director, zoom: 1)
-        let near = playhead.shot(look, atCaptured: 30.5).camera
+        let near = playhead.shot(look, atCaptured: 30.5, aspect: 1).camera
         look.camera.zoom = 0.5
-        let far = playhead.shot(look, atCaptured: 30.5).camera
+        let far = playhead.shot(look, atCaptured: 30.5, aspect: 1).camera
         let exported = try #require(
-            try TakeExport(take: loaded, look: look, capturedRate: 30).shots(atCaptured: [30.5]).first)
+            try TakeExport(take: loaded, look: look, capturedRate: 30)
+                .shots(atCaptured: [30.5], width: 1080, height: 1080).first)
         #expect(far.eye == exported.camera.eye)
         #expect(simd_distance(far.eye, far.target) > simd_distance(near.eye, near.target) * 1.5)
+    }
+
+    /// The director's plan takes another camera plan and lens without reading the take again,
+    /// and frames every shot as a plan made afresh with them would.
+    @Test func aReplannedDirectorIsThePlanMadeAfresh() throws {
+        let loaded = try take(frames: 121, interval: 4)
+        let first = file(.director)
+        var second = file(.director, zoom: 1.7)
+        second.camera = second.camera.turned(azimuth: 1.1, elevation: -0.4)
+        second.look.fieldOfView = 0.8
+        let plan = ShotPlan(take: loaded, file: first, framesPerSecond: 10)
+        #expect(plan.closeShare > 0)
+        let replanned = plan.replanned(camera: second.camera, fieldOfView: second.look.fieldOfView)
+        let afresh = ShotPlan(take: loaded, file: second, framesPerSecond: 10)
+        #expect(replanned.shots == afresh.shots)
+        for position in stride(from: 0.0, through: 120, by: 2.5) {
+            let a = replanned.camera(atCaptured: position, aspect: 16.0 / 9.0)
+            let b = afresh.camera(atCaptured: position, aspect: 16.0 / 9.0)
+            #expect(a.eye == b.eye && a.target == b.target && a.up == b.up && a.fieldOfView == b.fieldOfView)
+        }
     }
 
     @Test func aRadiusSortedOnceIsTheOneMeasuredEachTime() {

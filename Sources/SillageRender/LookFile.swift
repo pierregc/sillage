@@ -44,6 +44,11 @@ public struct LookFile: Codable, Sendable, Equatable {
             case director
             /// The director, from inside a disk.
             case immersed
+
+            /// A camera any frame of a take can be asked of, so the playhead can jump: the
+            /// director plans its shots from the whole take, the immersed one moves on frame
+            /// by frame.
+            public var isPlanned: Bool { self != .immersed }
         }
 
         public var mode: Mode

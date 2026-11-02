@@ -199,10 +199,10 @@ struct CanvasLegend: View {
             if !session.model.followsPlan {
                 Button("Revenir au plan") { session.model.followsPlan = true }
                     .controlSize(.small)
-            } else if !session.current.camera.placesCamera {
+            } else if ![.fixed, .auto].contains(session.current.camera.mode) {
                 Button("Passer en Fixe") { session.setCameraMode(.fixed) }
                     .controlSize(.small)
-                    .help("Pour placer la caméra soi-même : glisser la tourne, la molette règle le zoom")
+                    .help("Un seul cadrage sur tout le clip, placé à la souris")
             }
         }
         .font(.caption)
@@ -217,11 +217,17 @@ struct CanvasLegend: View {
             return "Vue libre : l'export ne la garde pas, il suit le plan de caméra."
         }
         let shape = session.frameShape
-        return session.current.camera.placesCamera
-            ? "Cadrage de l'export (\(shape)) : glisser tourne la caméra, la molette règle le zoom, "
-                + "et c'est ce cadrage qui est enregistré."
-            : "Plans du réalisateur, comme à l'export (\(shape)) : il choisit les angles, "
-                + "la molette règle le zoom."
+        switch session.current.camera.mode {
+        case .fixed, .auto:
+            return "Cadrage de l'export (\(shape)) : glisser tourne la caméra, la molette règle le "
+                + "zoom, et c'est ce cadrage qui est enregistré."
+        case .director:
+            return "Plans du réalisateur, comme à l'export (\(shape)) : glisser tourne ses plans "
+                + "larges, la molette les rapproche ; il cadre lui-même les plans serrés."
+        case .immersed:
+            return "Plans du réalisateur depuis un disque, comme à l'export (\(shape)) : il choisit "
+                + "où regarder, la molette règle le zoom."
+        }
     }
 }
 
@@ -729,9 +735,9 @@ struct CameraSection: View {
             "Suit les galaxies, qui s'éloignent et se rapprochent. Sur l'image, glisser tourne la "
                 + "caméra et la molette règle le zoom."
         case .director:
-            "Le réalisateur choisit ses plans et leurs angles en jouant la scène ; l'image les "
-                + "montre comme l'export. Le zoom les éloigne ou les rapproche tous, la rotation n'y "
-                + "fait rien : pour placer la caméra soi-même, passer en Fixe."
+            "Plans larges et plans serrés sur un disque et sur la rencontre, choisis par le "
+                + "réalisateur. Sur l'image, glisser tourne ses plans larges et la molette les "
+                + "rapproche ; les plans serrés, il les cadre lui-même."
         case .fixed:
             "Cadré une fois sur toute la scène. Sur l'image, glisser tourne la caméra et la "
                 + "molette règle le zoom."
@@ -951,7 +957,7 @@ struct PlanControls: View {
         .help(
             "Dessine l'image comme l'export la cadrera, dans tous les modes. Décoché, la souris "
                 + "déplace une vue libre que l'export ne garde pas.")
-        // The director chooses its own lens and angles.
+        // The immersed director chooses its own lens and angles.
         Group {
             ParameterSlider(
                 title: "Ouverture de l'objectif", value: session.binding(\.look.fieldOfView),

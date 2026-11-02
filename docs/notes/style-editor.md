@@ -92,20 +92,24 @@ Auto was off too, in a quieter way: the canvas framed each frame afresh, the exp
 
 What changed:
 
-- **The canvas draws the export's own `ShotReplay`**, in every mode, through `PlanPlayhead`:
-  the take's frames are replayed from the first at the rate it was captured
-  (`SceneFolder.capturedRate`, the one the export uses), again from the first whenever the
-  playhead goes back or the file changes. That costs 0.8 ms for the 921 frames of scene-0031.
-  The radius a plan measures is sorted once per take, off the main actor, since sorting two
-  million radii on every edit would stall the sliders. Where the director plays, its
-  modulated light goes on the canvas as it goes on the export (it calms the spikes, too).
+- **The canvas draws the export's own `ShotReplay`**, in every mode, through `PlanPlayhead`, at
+  the canvas's aspect and the rate the take was captured (`SceneFolder.capturedRate`, the one
+  the export uses). Auto and Immergé are replayed from the first frame, again whenever the
+  playhead goes back or the file changes: REPLAY_COST. The director plans its shots from the
+  whole take since #186 (`ShotPlan`), which any frame can be asked of; the plan reads the
+  take once, off the main actor when the take opens in Réalisateur, and `replanned` gives it
+  another camera plan or lens without reading it again, so an edit costs EDIT_COST rather
+  than 0.8 s. The radius a plan measures is sorted once per take, since sorting two million
+  radii on every edit would stall the sliders. Where the immersed director modulates the
+  light, the canvas draws it as the export does (calmed spikes included).
 - **The mouse edits the plan rather than a rig beside it** (chosen over a "Garder ce cadrage"
   button, which would need a free view turned back into a plan): a drag turns the start and
   end angles together, so the move over the clip is kept, and the wheel scales the zoom, or
   the named radius outside Auto, which the zoom does not reach. What is framed is what
-  `look.json` holds. The director chooses its own angles and lens, so in its modes a drag
-  does nothing, the lens and angle sliders and the rotation are greyed, the wheel scales its
-  shots, and the legend under the canvas offers Passer en Fixe.
+  `look.json` holds. The director's wide shots follow the plan's angles, zoom and lens and its
+  close shots turn to face them, so the mouse steers it too; the immersed director chooses its
+  own angles and lens, so there a drag does nothing and those sliders are greyed. In both the
+  legend under the canvas offers Passer en Fixe.
 - **The zoom reads as distance**: the slider runs in octaves around one, and says "× 0,44 · 2,2
   fois plus loin".
 - **The canvas keeps the clip's shape**, 16:9 for every night scene, so it frames the
@@ -122,9 +126,10 @@ What changed:
   the take sits in a scene folder. Then the framing (#177): in each of the four modes the
   canvas's camera against the first frame of an export started at the playhead, read off disk
   as `sillage-render export` reads it, at five playheads visited forwards and back; the
-  director's light on the renderer; a drag and the wheel in Réalisateur and in Fixe, saved
-  with Utiliser pour la scène and framed alike by the export of `look.json`; the free view;
-  and the cost of a replay to the end of the take. A look file written before `glint` and
+  immersed director's light on the renderer; a drag and the wheel in Immergé, in Réalisateur
+  (and what an edit costs there) and in Fixe, saved with Utiliser pour la scène and framed
+  alike by the export of `look.json`; the free view; and the cost of an immersed replay to
+  the end of the take. A look file written before `glint` and
   `columnSmoothing` existed fails "ouvert puis enregistré sans changement": saving adds them.
 - `--navcheck` opens the editor from the library, leaves it for the queue and comes back, then
   closes it.

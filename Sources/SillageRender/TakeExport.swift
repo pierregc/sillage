@@ -121,7 +121,7 @@ public final class TakeExport {
     ) throws -> Report {
         let wanted = positions(framesPerSecond: framesPerSecond, start: start, duration: duration)
         let renderer = try makeRenderer(width: width, height: height)
-        let replay = makeReplay()
+        let replay = makeReplay(width: width, height: height)
         let writer = try VideoWriter(
             width: width, height: height, framesPerSecond: Int32(framesPerSecond), codec: codec,
             bitsPerSecond: bitsPerSecond, quality: quality, metadata: metadata, to: url)
@@ -147,7 +147,7 @@ public final class TakeExport {
     ) throws -> [[UInt8]] {
         let wanted = positions(framesPerSecond: framesPerSecond, start: start, duration: duration)
         let renderer = try makeRenderer(width: width, height: height)
-        let replay = makeReplay()
+        let replay = makeReplay(width: width, height: height)
         return try wanted.enumerated().map { index, position in
             let shot = try prepare(renderer, at: position, replay: replay)
             defer { progress(index + 1, wanted.count) }
@@ -223,20 +223,22 @@ public final class TakeExport {
     /// One frame as the export draws it, read back as RGBA.
     func still(atCaptured frame: Int, width: Int, height: Int) throws -> [UInt8] {
         let renderer = try makeRenderer(width: width, height: height)
-        let shot = try prepare(renderer, at: Double(frame), replay: makeReplay())
+        let shot = try prepare(
+            renderer, at: Double(frame), replay: makeReplay(width: width, height: height))
         return renderer.render(camera: shot.camera)
     }
 
-    /// The shot each of `positions`, in the order a video plays them, is drawn through: what a
-    /// canvas showing the export's framing is checked against.
-    public func shots(atCaptured positions: [Double]) -> [ShotReplay.Shot] {
-        let replay = makeReplay()
+    /// The shot each of `positions`, in the order a video plays them, is drawn through at
+    /// `width` by `height`: what a canvas showing the export's framing is checked against.
+    public func shots(atCaptured positions: [Double], width: Int, height: Int) -> [ShotReplay.Shot] {
+        let replay = makeReplay(width: width, height: height)
         return positions.map { replay.shot(atCaptured: $0) }
     }
 
-    private func makeReplay() -> ShotReplay {
+    private func makeReplay(width: Int, height: Int) -> ShotReplay {
         ShotReplay(
-            file: look, take: take, capturedFrames: capturedFrames, framesPerSecond: capturedRate)
+            file: look, take: take, capturedFrames: capturedFrames, framesPerSecond: capturedRate,
+            aspect: Float(width) / Float(max(height, 1)))
     }
 
     private func makeRenderer(width: Int, height: Int) throws -> Renderer {
