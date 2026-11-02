@@ -108,12 +108,12 @@ continuous texture at 1:1, and the outskirts, where a particle stands alone, are
 
 ## Left open
 
-- The 4K measurement the issue asks for is on scene-0030, the one 8 M hires: #185 sets the
-  count for the nights.
+- The 4K measurement is on scene-0030, the one 8 M hires of the library; the nights hire at
+  8 M since #185.
 - A take quantises its positions to sixteen bits over the frame's bounding box, which ejected
   particles inflate late in a long take (scene-0030: 10 to 33 pc a step). A frame-filling disk in
   4K is about 20 pc a pixel, so the survivor shot, the latest and closest, may show the grid. Not
   seen on the frames above. A box robust to outliers only gains two or three times; more bits a
-  axis is the fix (#192).
+  axis is the fix ([ten times the particles](ten-times-the-particles.md)).
 - Eased transitions, or a dissolve, in place of the cuts: a dissolve draws two frames for each
   one it shows.
