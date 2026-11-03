@@ -26,6 +26,17 @@ public struct DiskState: Sendable {
     public var thicknessReference: Float
     /// Zero while the disk is a disk, one once it is not, and it never comes back down.
     public var disruption: Float
+    /// The thinnest the material's layer has been: its rms height about its ring's plane
+    /// (`DiskLayer`), in kpc.
+    public var thinnest: Float = 0
+    /// The most of the material the layer has held: inside the edge, within `layerHeight`.
+    public var fullest: Float = 0
+    /// What the layer holds now, over `fullest`.
+    public var layered: Float = 1
+    /// Zero while the material lies in its layer, one once it has left it; never comes back
+    /// down. The painted arms and the dust web fade with this rather than with `disruption`,
+    /// which reads a warp as a torn disk (#210, docs/notes/painted-arms-fade.md).
+    public var torn: Float = 0
 
     /// Below this share of its initial order, a disk is no longer painted at all.
     static let disruptedBelow: Float = 0.30
@@ -37,10 +48,17 @@ public struct DiskState: Sendable {
     /// disk reaches 3.9, and the two halves of a merger reach 6.8 and 16.9.
     static let thickenedBy: Float = 3
     static let spheroidBy: Float = 6
+    /// Material standing further than this many times the thinnest spread from its ring's
+    /// plane is out of the layer.
+    public static let layerSpreads: Float = 2
+    /// The arms start to fade when the layer holds this share of what it held, and are gone
+    /// at this one.
+    static let layeredAbove: Float = 0.7
+    static let tornBelow: Float = 0.45
 
     public init(
         axis: SIMD3<Float>, coherence: Float = 0, reference: Float = 0, thickness: Float = 0,
-        thicknessReference: Float = 0, disruption: Float = 0
+        thicknessReference: Float = 0, disruption: Float = 0, torn: Float = 0
     ) {
         self.axis = axis
         self.coherence = coherence
@@ -48,6 +66,7 @@ public struct DiskState: Sendable {
         self.thickness = thickness
         self.thicknessReference = thicknessReference
         self.disruption = disruption
+        self.torn = torn
     }
 
     /// The state a galaxy is configured to begin in: its natal plane, nothing lost yet.
@@ -108,6 +127,25 @@ public struct DiskState: Sendable {
             DiskState.smoothstep(DiskState.disruptedBelow, DiskState.orderedAbove, ordered),
             1 - DiskState.smoothstep(DiskState.thickenedBy, DiskState.spheroidBy, swollen))
         disruption = max(disruption, min(max(1 - kept, 0), 1))
+    }
+
+    /// How far from its ring's plane material may stand and still be in the layer, given this
+    /// reading's spread.
+    public func layerHeight(spread: Float) -> Float {
+        DiskState.layerSpreads * (thinnest > 0 ? min(thinnest, spread) : spread)
+    }
+
+    /// Folds one reading of the layer: `spread` from `DiskLayer.Fit`, `held` the share of the
+    /// disk material inside the edge and within `layerHeight(spread:)`. Against the thinnest
+    /// and fullest it has been, so a take read from after the settle agrees with its run.
+    public mutating func foldLayer(spread: Float, held: Float) {
+        guard spread.isFinite, spread > 0, held.isFinite else { return }
+        thinnest = thinnest > 0 ? min(thinnest, spread) : spread
+        fullest = max(fullest, held)
+        layered = fullest > 0 ? min(max(held / fullest, 0), 1) : 1
+        torn = max(
+            torn,
+            1 - DiskState.smoothstep(DiskState.tornBelow, DiskState.layeredAbove, layered))
     }
 
     static func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {

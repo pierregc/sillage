@@ -119,7 +119,7 @@ extension NightDigest {
         let events =
             (try? String(contentsOf: RunStatusFiles.events(batch: batch), encoding: .utf8))
             .map(RunEvent.decodeLines) ?? []
-        let found = NightEvents(events)
+        let found = NightEvents(events, end: file.endedAt)
         let failures = found.errors.map {
             Failure(stage: $0.stage, scene: $0.scene, message: $0.message, log: $0.log)
         }

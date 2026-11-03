@@ -1628,7 +1628,8 @@ let massiveTake: Recording? = argument("take-massive").map { _ in
 let curvesHeader =
     "frame,time_myr,separation_kpc,extent_kpc,formed,closest_kpc,tidal_fraction"
     + scene.galaxies.indices.map { ",disruption_\($0)" }.joined()
-    + scene.galaxies.indices.map { ",x_\($0),y_\($0),z_\($0)" }.joined() + "\n"
+    + scene.galaxies.indices.map { ",x_\($0),y_\($0),z_\($0)" }.joined()
+    + scene.galaxies.indices.map { ",torn_\($0)" }.joined() + "\n"
 let curves: FileHandle? = try argument("curves").map { path in
     let url = try prepared(path)
     FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -1912,9 +1913,12 @@ while frame < frames || storyGoesOn() {
         }
         let extent = counted > 0 ? (sum / Float(counted)).squareRoot() : 0
         let tidalFraction = counted > 0 ? Float(tidal) / Float(counted) : 0
-        let disruption = (gpuSolver as? MetalBarnesHutSolver)?.diskFrames.map(\.disruption) ?? []
+        let states = (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? []
         let disks = scene.galaxies.indices.map {
-            String(format: ",%.3f", $0 < disruption.count ? disruption[$0] : 0)
+            String(format: ",%.3f", $0 < states.count ? states[$0].disruption : 0)
+        }.joined()
+        let torn = scene.galaxies.indices.map {
+            String(format: ",%.3f", $0 < states.count ? states[$0].torn : 0)
         }.joined()
         var formed = 0
         if let gpuSolver {
@@ -1930,7 +1934,7 @@ while frame < frames || storyGoesOn() {
         let line =
             String(
                 format: "%d,%.3f,%.4f,%.4f,%d,%.4f,%.4f", frame, myr, separation, extent, formed,
-                closest, tidalFraction) + disks + track + "\n"
+                closest, tidalFraction) + disks + track + torn + "\n"
         try curves.write(contentsOf: Data(line.utf8))
         if let sample = Story.samples(csv: curvesHeader + line).first { story?.append(sample) }
         curvesSeconds += Date().timeIntervalSince(curvesStart)

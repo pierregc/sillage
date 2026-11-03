@@ -49,6 +49,25 @@ struct DiskFrameTests {
         #expect(abs(abs(phase(at: 1)) - equilibrium.patternSpeed()) < 1e-5)
     }
 
+    /// The paint fades with the disk's layer, not with the disruption the cooling and the story
+    /// read, which takes a bent disk for a torn one (#210).
+    @Test func thePaintFadesWithTheLayer() {
+        let scene = spiral(.barnesHut)
+        func painted(_ state: DiskState) -> (arms: Float, web: Float) {
+            let frame = DiskFrame.make(
+                scene: scene, centers: scene.galaxies.map(\.position), time: 0, strength: 1,
+                disks: [state])[0]
+            return (frame.axisV.w, frame.web.x)
+        }
+        let natal = DiskState.natal(scene.galaxies[0])
+        var bent = natal
+        bent.disruption = 1
+        #expect(painted(bent) == painted(natal))
+        var torn = natal
+        torn.torn = 1
+        #expect(painted(torn) == (0, 0))
+    }
+
     /// Turning the arms off has to leave a smooth disk rather than a faint pattern.
     @Test func noArmsMeansNoWave() {
         var scene = spiral(.barnesHut)
