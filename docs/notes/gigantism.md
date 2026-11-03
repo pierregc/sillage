@@ -209,7 +209,8 @@ In the order they pay.
    galaxies at 1 to 5 % of the frame. Shots that fill the frame with a disk, or with the
    pericentre, are the first thing that gives size, and they are also where the particle
    count becomes worth paying for. This is the director's and the camera plan's business, not
-   the renderer's: a ticket on the Cinematographer's framing.
+   the renderer's: a ticket on the Cinematographer's framing. Done in #186,
+   [director shots](director-shots.md).
 2. **Turn the glint down in the shipped and generated styles**, 0 to 0.3. It takes the
    scintillation off every frame at every count for nothing, and it is the one change in
    this spike that reads the way the brief asked. The field exists and has a slider; the

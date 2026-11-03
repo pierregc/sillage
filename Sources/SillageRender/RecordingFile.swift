@@ -275,6 +275,12 @@ public enum RecordingFile {
                         axis: SIMD3<Float>(fields[base], fields[base + 1], fields[base + 2]),
                         disruption: fields[base + 3]))
             }
+            // `sillage-render` wrote no measurement before #186, only a placeholder for every
+            // galaxy on every frame, which paints every disk's arms in the xy plane and never
+            // fades them. Left out, the natal plane is painted, as for a take before version 3.
+            if disks.allSatisfy({ $0.axis == SIMD3<Float>(0, 0, 1) && $0.disruption == 0 }) {
+                disks = []
+            }
         }
 
         // The positions stay in the mapping rather than being copied into an array: a take of

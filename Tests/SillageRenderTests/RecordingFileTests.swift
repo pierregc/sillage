@@ -68,6 +68,36 @@ struct RecordingFileTests {
         }
     }
 
+    /// A take written without measuring its disks held a placeholder for every galaxy on every
+    /// frame, which painted the arms in the xy plane: read back, it paints the natal planes.
+    @Test func aTakeWithoutMeasuredDisksPaintsTheNatalPlanes() throws {
+        let (recording, system) = take(particles: 200, frames: 3, galaxies: 2)
+        let scene = SceneConfig.merger(particleCount: 200)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("no-disks.\(RecordingFile.fileExtension)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try RecordingFile.write(recording, scene: scene, particles: system, to: url)
+        #expect(try RecordingFile.read(from: url).recording.disks(at: 0).isEmpty)
+
+        let measured = Recording(particleCount: 200, galaxyCount: 2)
+        let disks = [
+            DiskState(axis: SIMD3(1, 0, 0), disruption: 0.25),
+            DiskState(axis: SIMD3(0, 1, 0), disruption: 0),
+        ]
+        let positions = [SIMD3<Float>](repeating: SIMD3(1, 2, 3), count: 200)
+        for frame in 0..<3 {
+            positions.withUnsafeBufferPointer {
+                measured.append(
+                    positions: $0.baseAddress!, time: Float(frame), centers: [.zero, .zero],
+                    disks: disks)
+            }
+        }
+        try RecordingFile.write(measured, scene: scene, particles: system, to: url)
+        let back = try RecordingFile.read(from: url).recording.disks(at: 1)
+        #expect(back.map(\.axis) == disks.map(\.axis))
+        #expect(back.map(\.disruption) == disks.map(\.disruption))
+    }
+
     /// A run that outlasts its budget has to come back *whole*, at the cadence it was taken
     /// at. It used to come back at half of it, then a quarter, then an eighth — which keeps
     /// the duration and loses the run, since nothing between two snapshots ever happened.

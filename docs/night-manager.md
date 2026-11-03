@@ -162,7 +162,7 @@ name is an error.
                "archetypes": "auto", "galaxies": "auto", "seed": "auto" },
   "pick": "auto",
   "hires": { "particles": "auto", "frames": "auto" },
-  "style": { "world": "auto", "style": "auto", "palette": "auto" },
+  "style": { "world": "auto", "freeShare": "auto", "style": "auto", "palette": "auto" },
   "export": "auto"
 }
 ```
@@ -180,19 +180,39 @@ name is an error.
 | `pick` | `1` to `4`, or `"none"` to stop after exploring | 1 to 4 by score, as many as fit |
 | `hires.particles` | particles in all | 8 000 000 (or the machine's maximum) |
 | `hires.frames` | the first frames of the story only | the whole story |
-| `style.world` | `telescope` or `free` | Auto: the two worlds in turn across the picks, best first, telescope then free |
+| `style.world` | `telescope` or `free` | Auto: drawn for each pick, free as often as `style.freeShare` says |
+| `style.freeShare` | share of the picks Auto puts in the free world, 0 to 1 | 0.2 |
 | `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |
 | `style.palette` | a family, the name of a favourite in `palettes/` or a `.palette.json` (its world is the pick's) | Auto: the best of the scene's seed in the pick's world, the favourites that fit among the candidates |
 | `style.multicolour` | `false` for one colour per galaxy | Auto: on, each galaxy gets a ramp of colours (#120) |
+| `style.camera` | `director`, `fixed`, `immersed`, or `scene` for the camera explore wrote | Auto: `director`, wide shots and shots that fill the frame with a disk and the pericentre (#186) |
 | `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
 
 The style step. A world asked for holds for every pick; else a named `style.style` or a
-`style.palette` family or file gives it; else Auto takes the two worlds in turn, so a night of
-two picks shows one of each. A recipe whose parts disagree (a free family in the telescope world)
-is refused before the night starts. A named style gets a palette of its world (Auto's or the one
-given); no style is `look --style auto`, which scores every rendering of the world with the
-scene's best palettes (or the one given) on key frames of the take. Planned at 20 s in the
-telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named style.
+`style.palette` family or file gives it; else Auto draws it for each pick: free with the chance
+`style.freeShare` gives, 0.2 since the free palettes came out loud (#175), telescope otherwise.
+The draw comes from the batch seed and the pick's place, best first, so a night resumed gives
+each pick the world it had. A night of one pick has it free one time in five, of two picks a
+free one 36 % of the time, of four 59 %; every fifth pick instead would never come round in a
+night of four picks at most. A recipe whose parts disagree (a free family in the telescope
+world) is refused before the night starts. A named style gets a palette of its world (Auto's or
+the one given); no style is `look --style auto`, which scores every rendering of the world with
+the scene's best palettes (or the one given) on key frames of the take, filmed with
+`style.camera` (the director by default, [the note](notes/director-shots.md)). Planned at 20 s
+in the telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named
+style; the plan draws each pick's world as the night will.
+
+No dust in generated styles, for now (#174). The dust of the 2026-10-30-b night read as coarse
+blobs rather than lanes (#168). Until it is drawn as a web of filaments (#173), a style nobody
+picked by hand carries none: `look --style auto`, the night's style step and the style editor's
+Auto draw every rendering with its dust held to `StyleAuto.dustCap`, 0, and score it that way,
+and a named `style.style` goes to `look` with `--generated`, which holds it the same. The looks
+of `looks/` keep their dust, a rendering clicked in the editor brings its own, and Opacité des
+poussières still sets it. Dust particles emit nothing, so 14 to 38 % of a spiral's disk
+particles (its `dustFraction`) do not show at all, which a stopgap can live with. Side by side
+on two takes, face-on and inclined disks read no flatter without dust, only cleaner; an edge-on
+one loses its lane, and the knots the dust covered shine. The web brings dust back by setting
+`dustCap` to nil, each rendering's own.
 
 How it plans. `NightPlanner` turns the recipe and the cost model into steps, each with its
 duration, start and end, and the delivery of the whole night. Before exploring, it sizes the

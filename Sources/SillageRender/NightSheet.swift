@@ -329,8 +329,8 @@ public final class NightSheetPlanner: @unchecked Sendable {
         lock.unlock()
         let particles = folder.hiresParticles
         let planner = NightPlanner(
-            recipe: recipe, model: model, maximumParticles: maximumParticles, progress: kept,
-            freeBytes: freeBytes ?? NightFolder.freeBytes(batch)
+            recipe: recipe, seed: folder.seed(now: now), model: model, maximumParticles: maximumParticles,
+            progress: kept, freeBytes: freeBytes ?? NightFolder.freeBytes(batch)
         ) { [self] perGalaxy in
             lock.lock()
             let known = drawn[perGalaxy]

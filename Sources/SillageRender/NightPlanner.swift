@@ -140,13 +140,17 @@ public struct NightPlanner: Sendable {
     /// Drawing palettes from the scene's seed and scoring them, for a rendering the recipe names.
     public static let paletteSeconds = 20.0
     /// Auto's choice of rendering and palette (#124) in a world, from the cost at a clip's
-    /// size (about 8 pairs at 1.5 s, or 52 at 7.5 s); with both worlds in turn, the mean.
+    /// size (about 8 pairs at 1.5 s, or 52 at 7.5 s).
     public static let telescopeStyleSeconds = 20.0
     public static let freeStyleSeconds = 400.0
     /// An animated WebP or GIF of eight seconds.
     public static let previewSeconds = 30.0
 
     public var recipe: NightRecipe
+    /// The batch's seed, which draws each pick's world as the night will.
+    public var seed: UInt64
+    /// The world of the palette the recipe names, read by the folder: the planner reads no file.
+    public var paletteWorld: Palette.World?
     public var model: CostModel
     public var maximumParticles: Int
     /// The first draws of the batch at a count a galaxy, sized for this night's hires.
@@ -155,11 +159,13 @@ public struct NightPlanner: Sendable {
     public var freeBytes: Double?
 
     public init(
-        recipe: NightRecipe, model: CostModel, maximumParticles: Int = SceneFolder.maximumParticles(),
+        recipe: NightRecipe, seed: UInt64 = 0, model: CostModel,
+        maximumParticles: Int = SceneFolder.maximumParticles(),
         progress: NightProgress = NightProgress(), freeBytes: Double? = nil,
         draws: @escaping @Sendable (_ perGalaxy: Int) -> [NightScene]
     ) {
         self.recipe = recipe
+        self.seed = seed
         self.model = model
         self.maximumParticles = maximumParticles
         self.progress = progress
@@ -178,13 +184,17 @@ public struct NightPlanner: Sendable {
 
     public func hiresSeconds(_ scene: NightScene) -> Double { model.hires.seconds(scene.hiresUnits) }
 
-    public var styleSeconds: Double {
+    /// The style step of the pick at `index`, best first.
+    public func styleSeconds(pick index: Int) -> Double {
         if recipe.style.style.value != nil { return Self.paletteSeconds }
-        switch recipe.style.world.value.flatMap(Palette.World.init(rawValue:)) {
-        case .telescope: return Self.telescopeStyleSeconds
-        case .free: return Self.freeStyleSeconds
-        case nil: return (Self.telescopeStyleSeconds + Self.freeStyleSeconds) / 2
-        }
+        return styleWorld(pick: index) == .free ? Self.freeStyleSeconds : Self.telescopeStyleSeconds
+    }
+
+    /// The world the style step gives the pick at `index` when no rendering is named, as
+    /// `NightStyle.resolve` does.
+    func styleWorld(pick index: Int) -> Palette.World {
+        recipe.style.world.value.flatMap(Palette.World.init(rawValue:)) ?? paletteWorld
+            ?? NightStyle.drawnWorld(pick: index, seed: seed, share: recipe.freeShare)
     }
 
     public func exportSeconds(_ format: String, frames: Int) -> Double {
@@ -192,10 +202,15 @@ public struct NightPlanner: Sendable {
         return model.exportSeconds(preset: preset, codec: preset.defaultCodec, frames: frames)
     }
 
-    /// Everything after the pick for one scene.
-    public func finishSeconds(_ scene: NightScene) -> Double {
-        hiresSeconds(scene) + styleSeconds
+    /// Everything after the pick for one scene, the pick at `index`.
+    public func finishSeconds(_ scene: NightScene, pick index: Int) -> Double {
+        hiresSeconds(scene) + styleSeconds(pick: index)
             + recipe.exports.reduce(0) { $0 + exportSeconds($1, frames: scene.frames) }
+    }
+
+    /// Everything after the pick for scenes picked in this order.
+    public func finishSeconds(picks scenes: [NightScene]) -> Double {
+        scenes.enumerated().reduce(0) { $0 + finishSeconds($1.element, pick: $1.offset) }
     }
 
     public static func videoBytes(_ format: String, frames: Int, fps: Int = 30) -> Double {
@@ -249,7 +264,7 @@ public struct NightPlanner: Sendable {
     public func autoPicks(_ ranked: [NightScene], from start: Date, deliverBy: Date) -> Int {
         let available = deliverBy.timeIntervalSince(start)
         for count in NightRecipe.pickRange.reversed() where count <= ranked.count {
-            if ranked.prefix(count).reduce(0, { $0 + finishSeconds($1) }) <= available {
+            if finishSeconds(picks: Array(ranked.prefix(count))) <= available {
                 return count
             }
         }
@@ -292,10 +307,11 @@ public struct NightPlanner: Sendable {
             return Sizing(
                 scenes: explored, perGalaxy: fixedCount ?? ladder[0], picks: counts[0], budget: 0)
         }
-        let finish = finishSeconds(typical(perGalaxy: fixedCount ?? ladder[0]))
+        let picked = typical(perGalaxy: fixedCount ?? ladder[0])
+        func finish(_ picks: Int) -> Double { finishSeconds(picks: Array(repeating: picked, count: picks)) }
         // Fifty scenes, or the number asked, with room for as many picks as can be had.
         for picks in counts {
-            let budget = available - Double(picks) * finish
+            let budget = available - finish(picks)
             func fits(_ scenes: Int, _ perGalaxy: Int) -> Bool {
                 Double(max(scenes - explored, 0)) * slot(perGalaxy) <= budget
             }
@@ -308,7 +324,7 @@ public struct NightPlanner: Sendable {
         }
         // Then fewer scenes at the smallest count, keeping room for the fewest picks.
         let picks = counts.last ?? 0
-        let budget = available - Double(picks) * finish
+        let budget = available - finish(picks)
         let perGalaxy = fixedCount ?? ladder[0]
         if fixedScenes == nil {
             let scenes = explored + Int(max(budget, 0) / slot(perGalaxy))
@@ -394,7 +410,7 @@ public struct NightPlanner: Sendable {
             let hiresDone = progress.hiresDone.contains(name)
             let styled = progress.styled.contains(name)
             let hiresTime = hiresDone ? 0 : hiresSeconds(scene)
-            let styleTime = styled ? 0 : styleSeconds
+            let styleTime = styled ? 0 : styleSeconds(pick: index)
             let exportTimes = exports.map {
                 progress.exported.contains("\(name)/\($0)") ? 0 : exportSeconds($0, frames: scene.frames)
             }

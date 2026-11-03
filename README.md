@@ -33,7 +33,12 @@ same scene at any size; flags given alongside it override the file.
 
 A look file sits beside it, `x.look.json` (`--look-out` for another path), holding everything
 that decides the image and nothing that decides the physics: the render settings, the colour
-of each galaxy, and the camera, fixed or left to the director. `--look x.look.json` draws with
+of each galaxy, and the camera, fixed or left to the director. On a take the director plans its
+shots from the whole story: the calmer disk filling the frame, a wide shot of the approach, the
+pericentre with the two cores across the frame, the tails wide, and the survivor; about two
+fifths of the clip close, joined by cuts ([the note](docs/notes/director-shots.md)).
+`look <scene> --grid --stills <dir> --base <look> --frames shots` prints the plan and draws the
+middle of each shot. `--look x.look.json` draws with
 it, and every look flag given alongside overrides its field. A field left out takes the value
 `sillage-render` uses with no flags, so a file names only what it changes. The two files
 together replay a render exactly. `looks/raw.look.json` is plain points with no effects: one fixed-size point per particle in its
@@ -252,8 +257,10 @@ above, so the same scene always gets the same palette. `--palette <family>` does
 one family, `--palette <file.palette.json>` takes a palette as it is (a `Palette` as `look.json`
 records it, or just `{"colours": [[r, g, b], ...]}` in linear sRGB), and `--world telescope|free`
 picks the colour world (free by default). `--base` starts from another look instead of the
-scene's. `palettes <scene> --best 3` draws the three best-scored palettes of the scene on a
-frame of its take, the score under each; see [the note](docs/notes/palette-score.md).
+scene's, and `--generated` holds its dust back as Auto does (below), which is how the night
+promotes a style it is given by name. `palettes <scene> --best 3` draws the three best-scored
+palettes of the scene on a frame of its take, the score under each; see
+[the note](docs/notes/palette-score.md).
 
 Palettes worth keeping live in `palettes/<name>.palette.json`, saved by the heart in the style
 editor; `--palette <name>` takes one by its name and Auto adds the ones that fit to its
@@ -264,10 +271,13 @@ every rendering of the world (`--world`, else the world of the scene's look) is 
 scene's best palette on three key frames at the clip's size, then the four best renderings with
 the next three palettes, and each frame is scored on its pixels (clipped highlights, exposure,
 colourfulness, how far apart the galaxies are drawn, sky noise and, in the telescope world, the
-reference colours). The best pair is promoted, keeping the scene's camera; `--keep` only writes
+reference colours). The best pair is promoted, keeping the scene's camera unless `--camera
+<mode>` names one (the night names `director`); `--keep` only writes
 `looks/auto-<world>.png` (the best three) and `looks/auto-<world>.json` (every pair's score). It
 takes about 2 s in the telescope world and 8 s in the free one at 2 M particles; see
-[the note](docs/notes/frame-score.md).
+[the note](docs/notes/frame-score.md). Every rendering is drawn and scored with its dust held to
+`StyleAuto.dustCap`, none until dust is redrawn (#173), so a generated style ships without it;
+see [the night manager](docs/night-manager.md#the-night-recipe).
 
 Palettes give each galaxy a ramp of colours (core, disk, outskirts, young stars, knots) unless
 `--single` asks for one colour per galaxy, on `look`, `export` and `palettes`; the style editor's
@@ -289,10 +299,15 @@ couleurs** takes its palette too. **Palette** has a Télescope
 through any new palette), six proposals from the generator with their score, **Autres
 palettes**, and **Auto**, which draws three key frames with every rendering of the world and
 applies the best rendering and palette (`--style auto` below). **Caméra** sets the plan's mode,
-zoom and rotation over the clip. **Réglages fins**, folded, hold Lumière, Instrument, Rendu
-détaillé (starfield, bloom levels, supersampling, plain points, which rebuild the renderer) and
-the whole camera plan, each with **Réinitialiser**; **Voir à travers le plan** draws through
-the plan at the playhead, so scrubbing shows the render's own framing. The top bar says
+zoom and rotation over the clip. The canvas draws through the plan in every mode, in the clip's
+shape, exactly as the export frames it at the playhead: the auto camera eased from the first
+frame, the director's planned shots, the immersed director and the light it modulates.
+Dragging on it turns the plan and the wheel zooms it, so a framing made there is the one saved
+and exported; the director's wide shots follow it and its close ones turn to face them, and the
+immersed director only takes the zoom. **Réglages fins**,
+folded, hold Lumière, Instrument, Rendu détaillé (starfield, bloom levels, supersampling, plain
+points, which rebuild the renderer) and the whole camera plan, each with **Réinitialiser**;
+**Voir à travers le plan**, unticked, gives a free view the export does not keep. The top bar says
 **Modifié** when the style differs from `look.json`, holding ⌥ or **Avant / Après** shows the
 saved style for as long as it is held, **Annuler** puts it back, and **Utiliser pour la scène**
 (⌘S) promotes it as `--promote` does, after which **Exporter…** opens the export sheet. File > Open

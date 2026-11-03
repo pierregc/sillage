@@ -26,18 +26,77 @@ struct NightStyleTests {
         return style
     }
 
-    private func resolve(_ style: NightRecipe.Style, pick: Int = 0) throws -> NightStyle {
-        try NightStyle.resolve(style, pick: pick, catalogue: catalogue, references: references)
+    private func resolve(_ style: NightRecipe.Style, pick: Int = 0, seed: UInt64 = 20_261_102) throws
+        -> NightStyle
+    {
+        try NightStyle.resolve(
+            style, pick: pick, seed: seed, catalogue: catalogue, references: references, favourites: [])
     }
 
-    @Test func autoWorldAlternatesAcrossThePicks() throws {
-        let worlds = try (0..<4).map { try resolve(style(), pick: $0).world }
-        #expect(worlds == [.telescope, .free, .telescope, .free])
+    private func style(share: Double) -> NightRecipe.Style {
+        var style = style()
+        style.freeShare = .value(share)
+        return style
+    }
+
+    /// The seeds of `count` nights from 2026-11-01, as Auto gives them.
+    private func nights(_ count: Int) throws -> [UInt64] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Paris")!
+        let first = try #require(calendar.date(from: DateComponents(year: 2026, month: 11, day: 1)))
+        return try (0..<count).map { day in
+            NightRecipe.daySeed(
+                try #require(calendar.date(byAdding: .day, value: day, to: first)), calendar: calendar)
+        }
+    }
+
+    @Test func autoGivesTheFreeWorldToAFifthOfThePicks() throws {
+        // Four picks a night over 250 nights.
+        var free = 0
+        for seed in try nights(250) {
+            for pick in 0..<4 where try resolve(style(), pick: pick, seed: seed).world == .free {
+                free += 1
+            }
+        }
+        #expect((180...220).contains(free), "\(free) free picks in 1000")
         #expect(try resolve(style()).rendering == nil && resolve(style()).palette == "auto")
+        let seeds = try nights(50)
+        for share in [0.0, 1.0] {
+            let worlds = try seeds.flatMap { seed in
+                try (0..<4).map { try resolve(style(share: share), pick: $0, seed: seed).world }
+            }
+            #expect(Set(worlds) == [share == 0 ? .telescope : .free], "share \(share)")
+        }
+    }
+
+    @Test func aPickIsDrawnTheSameWorldEveryTime() throws {
+        let seeds = try nights(20)
+        func worlds() throws -> [[Palette.World]] {
+            try seeds.map { seed in try (0..<4).map { try resolve(style(), pick: $0, seed: seed).world } }
+        }
+        let first = try worlds()
+        #expect(try worlds() == first)
+        // The draw the planner predicts the night with.
+        let drawn = seeds.map { seed in
+            (0..<4).map { NightStyle.drawnWorld(pick: $0, seed: seed, share: NightRecipe.defaultFreeShare) }
+        }
+        #expect(first == drawn)
+        // Each night draws its own.
+        #expect(Set(first).count > 1 && Set(first.flatMap { $0 }) == [.telescope, .free])
     }
 
     @Test func aWorldAskedForHoldsForEveryPick() throws {
         #expect(try (0..<3).map { try resolve(style("free"), pick: $0).world } == [.free, .free, .free])
+        for (world, share) in [("telescope", 1.0), ("free", 0.0)] {
+            var asked = style(share: share)
+            asked.world = .value(world)
+            for seed in try nights(10) {
+                #expect(
+                    try (0..<4).allSatisfy {
+                        try resolve(asked, pick: $0, seed: seed).world.rawValue == world
+                    })
+            }
+        }
     }
 
     @Test func aFamilyOrARenderingFixesTheWorld() throws {
@@ -45,6 +104,13 @@ struct NightStyleTests {
         #expect(try resolve(style(nil, nil, telescope), pick: 1).world == .telescope)
         #expect(try resolve(style(nil, nil, "ember"), pick: 0).world == .free)
         #expect(try resolve(style(nil, "aurora"), pick: 0).world == .free)
+        // Whatever the share would draw.
+        var named = style(nil, nil, telescope)
+        named.freeShare = .value(1)
+        #expect(try (0..<4).allSatisfy { try resolve(named, pick: $0).world == .telescope })
+        named = style(nil, "aurora")
+        named.freeShare = .value(0)
+        #expect(try (0..<4).allSatisfy { try resolve(named, pick: $0).world == .free })
     }
 
     @Test func partsThatDisagreeAreRefused() throws {
@@ -58,10 +124,27 @@ struct NightStyleTests {
     @Test func theCommandIsAutoOrTheNamedRendering() throws {
         #expect(
             try resolve(style(nil, nil, "ember")).arguments(scene: "s")
-                == ["look", "s", "--style", "auto", "--world", "free", "--palette", "ember"])
+                == [
+                    "look", "s", "--style", "auto", "--world", "free", "--palette", "ember",
+                    "--camera", "director",
+                ])
         #expect(
             try resolve(style(nil, "aurora")).arguments(scene: "s")
-                == ["look", "s", "--palette", "auto", "--world", "free", "--base", "aurora"])
+                == [
+                    "look", "s", "--palette", "auto", "--world", "free", "--base", "aurora",
+                    "--generated", "--camera", "director",
+                ])
+    }
+
+    /// The director films the night's styles unless the recipe asks otherwise; `scene` keeps the
+    /// camera explore wrote.
+    @Test func theCameraIsTheDirectorUnlessAskedOtherwise() throws {
+        var kept = style(nil, nil, "ember")
+        kept.camera = .value("scene")
+        #expect(!(try resolve(kept).arguments(scene: "s").contains("--camera")))
+        var fixed = style()
+        fixed.camera = .value("fixed")
+        #expect(try resolve(fixed).arguments(scene: "s").suffix(2) == ["--camera", "fixed"])
     }
 
     @Test func aPaletteFileGivesItsWorld() throws {

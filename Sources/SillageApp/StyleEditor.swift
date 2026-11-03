@@ -22,6 +22,7 @@ struct StyleEditor: View {
                     StyleCanvas(session: session, reopen: reopen)
                         .frame(minWidth: 560, minHeight: 360)
                     Divider()
+                    CanvasLegend(session: session)
                     TransportBar(model: session.model)
                         .disabled(!session.isOpen)
                 }
@@ -156,8 +157,10 @@ struct StyleCanvas: View {
         ZStack {
             Palette.canvas
             if session.isOpen {
-                // Left out of the hierarchy rather than hidden, as in the workshop.
+                // Left out of the hierarchy rather than hidden, as in the workshop. In the clip's
+                // shape, so the canvas frames the rectangle a 16:9 export does.
                 MetalCanvas(model: session.model).background(.black)
+                    .aspectRatio(session.thumbnails.aspectRatio, contentMode: .fit)
             } else if session.model.fileActivity != nil {
                 VStack(spacing: 10) {
                     ProgressView()
@@ -179,6 +182,51 @@ struct StyleCanvas: View {
                 }
                 .padding(30)
             }
+        }
+    }
+}
+
+/// What the canvas shows and what the mouse does there: the export keeps the plan, so a view
+/// the plan does not hold is said to be lost.
+struct CanvasLegend: View {
+    @ObservedObject var session: StyleSession
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: session.model.followsPlan ? "video" : "eye")
+            Text(text).lineLimit(2)
+            Spacer(minLength: 8)
+            if !session.model.followsPlan {
+                Button("Revenir au plan") { session.model.followsPlan = true }
+                    .controlSize(.small)
+            } else if ![.fixed, .auto].contains(session.current.camera.mode) {
+                Button("Passer en Fixe") { session.setCameraMode(.fixed) }
+                    .controlSize(.small)
+                    .help("Un seul cadrage sur tout le clip, placé à la souris")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(Palette.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .disabled(!session.isOpen)
+    }
+
+    private var text: String {
+        guard session.model.followsPlan else {
+            return "Vue libre : l'export ne la garde pas, il suit le plan de caméra."
+        }
+        let shape = session.frameShape
+        switch session.current.camera.mode {
+        case .fixed, .auto:
+            return "Cadrage de l'export (\(shape)) : glisser tourne la caméra, la molette règle le "
+                + "zoom, et c'est ce cadrage qui est enregistré."
+        case .director:
+            return "Plans du réalisateur, comme à l'export (\(shape)) : glisser tourne ses plans "
+                + "larges, la molette les rapproche ; il cadre lui-même les plans serrés."
+        case .immersed:
+            return "Plans du réalisateur depuis un disque, comme à l'export (\(shape)) : il choisit "
+                + "où regarder, la molette règle le zoom."
         }
     }
 }
@@ -664,23 +712,54 @@ struct CameraSection: View {
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            ParameterSlider(title: "Zoom", value: session.binding(\.camera.zoom), range: 0.2...5)
+            ParameterSlider(
+                title: "Zoom",
+                value: Binding(
+                    get: { log2(session.current.camera.zoom) },
+                    set: { session.binding(\.camera.zoom).wrappedValue = exp2($0) }),
+                range: Self.octaves, reading: { Self.reading(zoom: exp2($0)) })
             ParameterSlider(
                 title: "Rotation sur le clip (degrés)",
                 value: Binding(
                     get: { session.current.camera.rotation * 180 / .pi },
                     set: { session.binding(\.camera.rotation).wrappedValue = $0 * .pi / 180 }),
-                range: -360...360, format: "%.0f")
+                range: -360...360, format: "%.0f"
+            )
+            .disabled(!session.current.camera.placesCamera)
         }
     }
 
     private var caption: String {
         switch session.current.camera.mode {
-        case .auto: "Suit les galaxies, qui s'éloignent et se rapprochent."
-        case .director: "Le réalisateur choisit ses plans en jouant la scène."
-        case .fixed: "Cadré une fois sur toute la scène."
-        case .immersed: "Le réalisateur, depuis l'intérieur d'un disque."
+        case .auto:
+            "Suit les galaxies, qui s'éloignent et se rapprochent. Sur l'image, glisser tourne la "
+                + "caméra et la molette règle le zoom."
+        case .director:
+            "Plans larges et plans serrés sur un disque et sur la rencontre, choisis par le "
+                + "réalisateur. Sur l'image, glisser tourne ses plans larges et la molette les "
+                + "rapproche ; les plans serrés, il les cadre lui-même."
+        case .fixed:
+            "Cadré une fois sur toute la scène. Sur l'image, glisser tourne la caméra et la "
+                + "molette règle le zoom."
+        case .immersed:
+            "Le réalisateur, depuis l'intérieur d'un disque : il choisit où regarder, le zoom "
+                + "l'écarte ou le rapproche du centre du disque."
         }
+    }
+
+    /// The zoom in octaves, so one sits in the middle and twice as far is as far as twice as close.
+    private static let octaves: ClosedRange<Float> = {
+        let zoom = LookFile.CameraPlan.zoomRange
+        return log2(zoom.lowerBound)...log2(zoom.upperBound)
+    }()
+
+    /// The zoom said as distance, since below one the camera stands further back.
+    static func reading(zoom: Float) -> String {
+        let times = StyleNames.oneDecimal
+        if abs(zoom - 1) < 0.005 { return "× 1 · le cadrage mesuré" }
+        return zoom < 1
+            ? "× \(StyleNames.number(zoom)) · \(times(1 / zoom)) fois plus loin"
+            : "× \(StyleNames.number(zoom)) · \(times(zoom)) fois plus près"
     }
 }
 
@@ -877,19 +956,26 @@ struct PlanControls: View {
                 get: { session.model.followsPlan },
                 set: { session.model.followsPlan = $0 })
         )
-        .help("Dessine l'image comme le rendu la cadrera, pour les plans Auto et Fixe")
-        ParameterSlider(
-            title: "Ouverture de l'objectif", value: session.binding(\.look.fieldOfView), range: 0.2...1.4)
-        ParameterSlider(
-            title: "Élévation (rad)", value: session.binding(\.camera.elevation), range: -1.5...1.5)
-        PlanEndSlider(
-            title: "Élévation de fin", start: session.current.camera.elevation,
-            end: session.binding(\.camera.elevationEnd), range: -1.5...1.5)
-        ParameterSlider(
-            title: "Azimut (rad)", value: session.binding(\.camera.azimuth), range: -6.3...6.3)
-        PlanEndSlider(
-            title: "Azimut de fin", start: session.current.camera.azimuth,
-            end: session.binding(\.camera.azimuthEnd), range: -12.6...12.6)
+        .help(
+            "Dessine l'image comme l'export la cadrera, dans tous les modes. Décoché, la souris "
+                + "déplace une vue libre que l'export ne garde pas.")
+        // The immersed director chooses its own lens and angles.
+        Group {
+            ParameterSlider(
+                title: "Ouverture de l'objectif", value: session.binding(\.look.fieldOfView),
+                range: 0.2...1.4)
+            ParameterSlider(
+                title: "Élévation (rad)", value: session.binding(\.camera.elevation), range: -1.5...1.5)
+            PlanEndSlider(
+                title: "Élévation de fin", start: session.current.camera.elevation,
+                end: session.binding(\.camera.elevationEnd), range: -1.5...1.5)
+            ParameterSlider(
+                title: "Azimut (rad)", value: session.binding(\.camera.azimuth), range: -6.3...6.3)
+            PlanEndSlider(
+                title: "Azimut de fin", start: session.current.camera.azimuth,
+                end: session.binding(\.camera.azimuthEnd), range: -12.6...12.6)
+        }
+        .disabled(!session.current.camera.placesCamera)
         ParameterSlider(
             title: "Part des particules cadrées", value: session.binding(\.camera.percentile),
             range: 0.5...1, format: "%.3f")

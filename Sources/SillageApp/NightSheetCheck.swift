@@ -88,6 +88,9 @@ enum NightSheetCheck {
             ("sans la vidéo verticale", { model.sheet.vertical = false }),
             ("exploration seulement", { model.sheet.exploreOnly = true }),
         ]
+        // Auto may draw every pick tonight in the telescope world: from the free one, the change
+        // of world always shows.
+        _ = replanned(model) { model.sheet.world = "free" }
         var slowest = 0.0
         var before = model.plan
         for (name, change) in changes {

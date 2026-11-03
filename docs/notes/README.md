@@ -65,6 +65,7 @@ session. Read the note for an area before changing it.
 - [Gigantism](gigantism.md): why a render reads as sand, the compact minority, the kernel in projection, what more particles cost
 - [A web of dust that turns without tearing](dust-web.md): spike #173, the web carried round and renewed, finer grains, the web where the disk is intact
 - [Ten times the particles](ten-times-the-particles.md): fifty million a galaxy, what it looks like, the softening floor, the halo, the take's grid, tracers
+- [Director shots that fill the frame](director-shots.md): `ShotPlan`, the cuts, the core and plane measured on the take, the disk states takes never carried
 
 ## State
 

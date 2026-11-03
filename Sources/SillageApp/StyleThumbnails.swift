@@ -27,7 +27,8 @@ final class StyleThumbnails: ObservableObject {
     weak var session: StyleSession?
     private let model: SimulationModel
     private let catalogue: [LookFile]
-    private let clip: (width: Int, height: Int)
+    /// The size the clip was drawn at, whose shape the canvas keeps.
+    let clip: (width: Int, height: Int)
     private let worker = Worker()
     private var target: Target?
     private var running: Flag?
