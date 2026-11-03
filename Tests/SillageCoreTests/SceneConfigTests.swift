@@ -128,8 +128,9 @@ struct SceneFileTests {
         #expect(hires.softening < explore.softening)
         #expect(hires.galaxies[0].toomreQ > explore.galaxies[0].toomreQ)
         for run in [explore, hires] {
+            let effective = DiskResponse.effectiveToomreQ(run.galaxies[0], softening: run.softening)
             #expect(run.galaxies[0].toomreQ > DiskResponse.lowestToomreQ)
-            #expect(abs(DiskResponse.effectiveToomreQ(run.galaxies[0], softening: run.softening) - 1.85) < 1e-3)
+            #expect(abs(effective - 1.85) < 1e-3)
             #expect(run.galaxies[1].toomreQ == scene.galaxies[1].toomreQ)
         }
         file.softening = 0.15
