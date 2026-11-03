@@ -66,10 +66,15 @@ Every line has `t` (when) and `kind`; `scene` when it concerns one scene.
 | `phase.done` | a phase is over | `phase`, `count` |
 | `night.done` | the night is over | `status` (`done`, `stopped`, `failed`), `seconds`, `message` |
 
+Only the night's own runs count. A line after a `night.done` and before the next
+`night.start`, or after `endedAt`, is work run in the folder by hand or from the queue: it
+belongs to its scene, not to the night. An `error` with `stage: night` is the queue saying why
+the night ended, and counts.
+
 A night started again in the same folder has a second `night.start` and tries again what the
 first run left out. So a `skip` counts only after the last `night.start`, and only while no
-later line does that step for the same scene (`hires.done` for `hires`, `style` for `style`,
-`export.done` for `export`).
+later line of the night does that step for the same scene (`hires.done` for `hires`, `style`
+for `style`, `export.done` for `export`).
 
 ## What "stuck" looks like
 
@@ -97,9 +102,9 @@ The status command's own five lines are fine too; to write them yourself from th
 
 If a video exists, add `Dernière vidéo : <path> · <Mo> · <h mm since the start>`.
 
-## Six states, to compare with
+## Seven states, to compare with
 
-`Tests/Fixtures/night-status/` holds six complete `library/` folders with the answer
+`Tests/Fixtures/night-status/` holds seven complete `library/` folders with the answer
 `sillage-render status` gives for each (`expected.txt`).
 
 | state | how to recognise it | what to say |
@@ -110,6 +115,7 @@ If a video exists, add `Dernière vidéo : <path> · <Mo> · <h mm since the sta
 | failed | `night.json` is `failed`, `error` events, `night.done` with `status: failed` | the count of errors, the first with its log |
 | done | `night.json` is `done`, a `night.done` event | `terminée` with the hour, the deadline, the number of videos |
 | resumed | two `night.start` and two `night.done`, `skip` lines before the second start | as done; what the second run did is not left out |
+| after the end | `hires.done` and `export.done` lines after the last `night.done` | as done; what was run after the end is not counted |
 
 ## The hourly routine
 

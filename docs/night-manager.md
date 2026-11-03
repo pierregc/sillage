@@ -267,9 +267,11 @@ Exit status: 0 done, 3 stopped on request, 1 failed.
 and `events.jsonl` alone: seven lines (state and duration, delivery against the deadline, scenes
 explored, rejected and failed, picks with their score, hires done, videos with their weight,
 scenes left out and errors), then the list of hires with particles and minutes, of videos with
-their path from the night's folder, and of failures with the path of their log. A scene counts
-as left out only by the night's last run, and only until that step is done for it; the night
-page's cards and `sillage-render status --json` count alike.
+their path from the night's folder, and of failures with the path of their log. Only what the
+night's runs wrote counts: a hires or a video run in the folder after the night's end, by hand
+or from the queue, shows on its scene page and in the export list, not in the night's numbers.
+A scene counts as left out only by the night's last run, and only until the night does that
+step for it; the night page and `sillage-render status` count alike.
 
 ### Queue
 
