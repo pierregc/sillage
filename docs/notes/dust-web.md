@@ -261,12 +261,15 @@ spike and 11.85 with the web off. With `dustWeb` at 0 none of this runs: stills 
 are the same bytes as main's.
 
 **What it costs now**, measured as above, alone on the GPU over whole takes, two interleaved
-rounds that agreed within 0.1 ms; the spike's column is #173's:
+rounds that agreed within 0.1 ms. scene-0031 now reads its disk states from its curves (#198), so
+the web fades out as its disks tear; the spike was measured again on it the same way, and the calm
+disk's spike figure is #173's:
 
 | | web off | spike | baked |
 | --- | --- | --- | --- |
-| scene-0031 at 2 M, its own Webb look and director shots | 12.8 (20.7) | 19.7 (104) | 13.2 (21.6) |
-| scene-0031, Hubble, both galaxies in frame | 22.3 (32.0) | 77.4 (89.7) | 22.9 (32.9) |
-| the calm disk, Hubble, face-on, filling the frame | 23.4 (26.3) | 179.6 (192.6) | 23.5 (24.1) |
+| scene-0031 at 2 M, its own Webb look and director shots | 12.8 (20.7) | 17.0 (104) | 13.0 (21.0) |
+| scene-0031, Hubble, both galaxies in frame | 22.3 (32.0) | 30.9 (85.9) | 22.6 (32.3) |
+| the calm disk, Hubble, face-on, filling the frame | 23.4 (26.0) | 179.6 (192.6) | 23.5 (23.7) |
 
-The web is now cheap enough for the canvas and the styles; turning it on in them is #197.
+Read as intact throughout, as before #198, scene-0031 cost 13.2 (21.6) and 22.9 (32.9) with the
+baked web. It is now cheap enough for the canvas and the styles; turning it on there is #197.
