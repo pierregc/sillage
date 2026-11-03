@@ -26,21 +26,16 @@ public struct DiskState: Sendable {
     public var thicknessReference: Float
     /// Zero while the disk is a disk, one once it is not, and it never comes back down.
     public var disruption: Float
-    /// The thinnest the material's layer has been: its root mean square height about the plane
-    /// of its own ring of the disk (`DiskLayer`), in kpc.
+    /// The thinnest the material's layer has been: its rms height about its ring's plane
+    /// (`DiskLayer`), in kpc.
     public var thinnest: Float = 0
-    /// The most of the material its layer has held, as a share of all of it: inside the edge
-    /// and within `layerHeight` of its ring's plane.
+    /// The most of the material the layer has held: inside the edge, within `layerHeight`.
     public var fullest: Float = 0
     /// What the layer holds now, over `fullest`.
     public var layered: Float = 1
-    /// Zero while the material lies in its layer, one once it has left it, and it never comes
-    /// back down: what the painted arms and the dust web fade with.
-    ///
-    /// Apart from `disruption`, which reads a warp as a thick disk. The large disks of
-    /// 2026-10-30-b/scene-0031 warped from 30 kpc apart and were written off 25 to 35 Myr
-    /// before the pericentre, while their stars still held their arms and lay within a ring's
-    /// thickness of their layer (#210). The cooling and the story keep `disruption`.
+    /// Zero while the material lies in its layer, one once it has left it; never comes back
+    /// down. The painted arms and the dust web fade with this rather than with `disruption`,
+    /// which reads a warp as a torn disk (#210, docs/notes/painted-arms-fade.md).
     public var torn: Float = 0
 
     /// Below this share of its initial order, a disk is no longer painted at all.
@@ -53,14 +48,13 @@ public struct DiskState: Sendable {
     /// disk reaches 3.9, and the two halves of a merger reach 6.8 and 16.9.
     static let thickenedBy: Float = 3
     static let spheroidBy: Float = 6
-    /// Material standing further than this many times the layer's thinnest spread from its
-    /// ring's plane has left the layer.
-    static let layerSpreads: Float = 2
-    /// The layer holding this share of what it held, the arms begin to fade; this, they are
-    /// gone. Measured on seven takes: the stars' own arms fall to half their strength as the
-    /// layer drops through these (#210).
-    static let layeredAbove: Float = 0.75
-    static let tornBelow: Float = 0.5
+    /// Material standing further than this many times the thinnest spread from its ring's
+    /// plane is out of the layer.
+    public static let layerSpreads: Float = 2
+    /// The arms start to fade when the layer holds this share of what it held, and are gone
+    /// at this one.
+    static let layeredAbove: Float = 0.7
+    static let tornBelow: Float = 0.45
 
     public init(
         axis: SIMD3<Float>, coherence: Float = 0, reference: Float = 0, thickness: Float = 0,
@@ -135,18 +129,15 @@ public struct DiskState: Sendable {
         disruption = max(disruption, min(max(1 - kept, 0), 1))
     }
 
-    /// How far from its ring's plane material may stand and still be in the layer, once this
-    /// measurement's spread is known.
+    /// How far from its ring's plane material may stand and still be in the layer, given this
+    /// reading's spread.
     public func layerHeight(spread: Float) -> Float {
         DiskState.layerSpreads * (thinnest > 0 ? min(thinnest, spread) : spread)
     }
 
-    /// Folds one reading of the layer: `spread` from `DiskLayer.Fit`, and `held` the share of
-    /// the disk material inside the edge and within `layerHeight(spread:)` of its ring's plane.
-    ///
-    /// Judged against the thinnest and fullest the layer has been rather than against its first
-    /// reading, so a take read from a clip that starts after the disk settled and a run measured
-    /// from its first step agree.
+    /// Folds one reading of the layer: `spread` from `DiskLayer.Fit`, `held` the share of the
+    /// disk material inside the edge and within `layerHeight(spread:)`. Against the thinnest
+    /// and fullest it has been, so a take read from after the settle agrees with its run.
     public mutating func foldLayer(spread: Float, held: Float) {
         guard spread.isFinite, spread > 0, held.isFinite else { return }
         thinnest = thinnest > 0 ? min(thinnest, spread) : spread

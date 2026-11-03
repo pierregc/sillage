@@ -540,6 +540,8 @@ struct BarnesHutTests {
         // it was laid down.
         #expect(solver.diskFrames[0].coherence > solver.diskFrames[0].reference * 0.9)
         #expect(solver.diskFrames[0].disruption == 0)
+        #expect(solver.diskFrames[0].layered > 0.9)
+        #expect(solver.diskFrames[0].torn == 0)
     }
 
     /// A disk a merger has taken apart must stay taken apart.
@@ -627,6 +629,7 @@ struct BarnesHutTests {
         #expect(final > hottest * 0.93)
         // Because the companion's disk was written off rather than rebuilt.
         #expect(solver.diskFrames[1].disruption > 0.9)
+        #expect(solver.diskFrames[1].torn > 0.9)
     }
 
     /// The force pass is dispatched in pieces so a very large scene does not hold the GPU

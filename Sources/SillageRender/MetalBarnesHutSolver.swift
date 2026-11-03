@@ -1007,7 +1007,7 @@ public final class MetalBarnesHutSolver: Solver {
         centersLock.unlock()
         var held = [Double](repeating: 0, count: galaxies)
         var material = [Double](repeating: 0, count: galaxies)
-        for index in Swift.stride(from: 0, to: limit, by: step)
+        for index in Swift.stride(from: first, to: limit, by: step)
         where componentOf[index] < ParticleComponent.halo.rawValue {
             let galaxy = Int(galaxyOf[index])
             guard galaxy < galaxies else { continue }

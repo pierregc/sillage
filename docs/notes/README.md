@@ -39,6 +39,7 @@ session. Read the note for an area before changing it.
 - [Why a generated disk takes several turns to settle](disk-settling.md): spike #170
 - [Why settled arms stay lumpy and wobbly](lumpy-arms.md): spike #171, the small spirals and the response drawn for them (#181), and a steady spiral drive (#180)
 - [Why a merged disk stays merged](merged-disk.md)
+- [When the painted arms fade](painted-arms-fade.md): the disk's layer rather than its thickness, measured on seven takes (#210)
 - [A breathing core, and a bulge with no edge](breathing-core.md)
 - [Old stars seen edge-on and face-on](old-stars-by-angle.md): the outskirts' light, no young stars in the bulge
 - [Why the red went out](red-population.md): and what a constant population costs

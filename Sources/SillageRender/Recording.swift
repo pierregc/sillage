@@ -426,25 +426,23 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
-    /// A run of particles on a stored frame, decoded without touching the rest of it.
+    /// A run of particles on a stored frame, decoded without touching the rest of it. Only the
+    /// copy out of the take holds the lock, so several frames decode at once.
     func positions(at index: Int, in range: Range<Int>) -> [SIMD3<Float>] {
-        locked {
+        let copied: (box: Frame, cells: [UInt16])? = locked {
             guard !storedFrames.isEmpty, range.lowerBound >= 0, range.upperBound <= particleCount
-            else { return [] }
-            let box = storedFrames[min(max(index, 0), storedFrames.count - 1)]
-            let scale = box.extent / 65535
-            var decoded = [SIMD3<Float>](repeating: .zero, count: range.count)
-            let filled: Void? = withFrameStorage(min(max(index, 0), storedFrames.count - 1)) {
-                source in
-                for (slot, particle) in range.enumerated() {
-                    let at = particle * 3
-                    decoded[slot] =
-                        box.origin
-                        + SIMD3<Float>(Float(source[at]), Float(source[at + 1]), Float(source[at + 2]))
-                        * scale
-                }
-            }
-            return filled == nil ? [] : decoded
+            else { return nil }
+            let frame = min(max(index, 0), storedFrames.count - 1)
+            let cells = withFrameStorage(frame) { Array($0[(range.lowerBound * 3)..<(range.upperBound * 3)]) }
+            return cells.map { (storedFrames[frame], $0) }
+        }
+        guard let copied else { return [] }
+        let scale = copied.box.extent / 65535
+        return (0..<range.count).map { slot in
+            copied.box.origin
+                + SIMD3<Float>(
+                    Float(copied.cells[slot * 3]), Float(copied.cells[slot * 3 + 1]),
+                    Float(copied.cells[slot * 3 + 2])) * scale
         }
     }
 
