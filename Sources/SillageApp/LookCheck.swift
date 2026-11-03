@@ -345,6 +345,13 @@ enum LookCheck {
         check(
             "réinitialiser la lumière revient au rendu",
             model.lookFile.look.brightness == webb.look.brightness, "")
+        session.binding(\.look.glint).wrappedValue = 0.9
+        session.binding(\.look.columnSmoothing).wrappedValue = 40
+        session.reset(.instrument)
+        check(
+            "réinitialiser l'instrument revient au rendu, sources compactes et projection comprises",
+            model.lookFile.look.glint == webb.look.glint
+                && model.lookFile.look.columnSmoothing == webb.look.columnSmoothing, "")
         session.reset(.camera)
         check("réinitialiser le plan revient au style enregistré", model.lookFile.camera == before.camera, "")
 

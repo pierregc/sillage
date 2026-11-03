@@ -157,6 +157,85 @@ struct StyleEditTests {
         #expect(camera.camera == base.camera && camera.look.fieldOfView == 0.9 && camera.starCount == 7)
     }
 
+    /// Every field a group's controls edit goes back with that group's reset (#209), and the
+    /// four together give back every field but the palette, its world and the name. The
+    /// controls are the app's, which no test can build: what they bind is read from the
+    /// editor's source, the `binding(\.…)` calls of the view each `FineGroup` shows.
+    @Test func aResetPutsBackEveryFieldItsGroupsControlsEdit() throws {
+        let source = try String(contentsOf: Self.editor, encoding: .utf8)
+        var baseline = base
+        baseline.camera.elevationEnd = 0.2
+        baseline.camera.azimuthEnd = 0.1
+        let edited = try Self.moved(baseline)
+        var all = edited
+        for group in LookFile.Group.allCases {
+            let paths = try #require(Self.bound(group, in: source), "the controls of \(group)")
+            #expect(paths.count >= 5, "\(group): \(paths)")
+            let reset = edited.resetting(group, to: baseline)
+            for path in paths {
+                let value = Self.value(path, in: baseline)
+                #expect(value != nil && Self.value(path, in: edited) != value, "\(path) is moved")
+                #expect(Self.value(path, in: reset) == value, "\(group) puts back \(path)")
+            }
+            all = all.resetting(group, to: baseline)
+        }
+        var expected = baseline
+        expected.name = edited.name
+        expected.palette = edited.palette
+        expected.world = edited.world
+        #expect(all == expected)
+    }
+
+    static let editor = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Sources/SillageApp/StyleEditor.swift")
+
+    /// The key paths the controls of `group` bind, as "look.glint".
+    static func bound(_ group: LookFile.Group, in source: String) -> [String]? {
+        guard let opening = source.range(of: "group: .\(group.rawValue)) {") else { return nil }
+        let view = source[opening.upperBound...].drop { $0.isWhitespace }.prefix { $0.isLetter }
+        guard !view.isEmpty, let start = source.range(of: "struct \(view): View {") else { return nil }
+        let end = source.range(of: "\n}\n", range: start.upperBound..<source.endIndex)
+        return source[start.upperBound..<(end?.lowerBound ?? source.endIndex)]
+            .components(separatedBy: "binding(\\.").dropFirst()
+            .map { String($0.prefix { $0.isLetter || $0 == "." }) }
+    }
+
+    /// The value at a path such as "look.glint", read through the file's mirror.
+    static func value(_ path: String, in file: LookFile) -> String? {
+        var value: Any = file
+        for label in path.split(separator: ".").map(String.init) {
+            guard let child = Mirror(reflecting: value).children.first(where: { $0.label == label })
+            else { return nil }
+            value = child.value
+        }
+        return String(describing: value)
+    }
+
+    /// `file` with every number one higher, every switch flipped and the spike pattern swapped:
+    /// no field keeps its value but the version, the name and the world.
+    static func moved(_ file: LookFile) throws -> LookFile {
+        func move(_ value: Any) -> Any {
+            switch value {
+            case let object as [String: Any]: return object.mapValues(move)
+            case let array as [Any]: return array.map(move)
+            case let flag as NSNumber where CFGetTypeID(flag) == CFBooleanGetTypeID():
+                return !flag.boolValue
+            case let number as NSNumber:
+                let double = number.doubleValue
+                if double == double.rounded() { return Int(double) + 1 }
+                return double + 1
+            case let name as String:
+                return RenderLook.SpikePattern(rawValue: name).map { $0 == .even ? "webb" : "even" } ?? name
+            default: return value
+            }
+        }
+        let object = try #require(JSONSerialization.jsonObject(with: file.encoded()) as? [String: Any])
+        var moved = try #require(move(object) as? [String: Any])
+        moved["version"] = object["version"]
+        return try LookFile.decoded(from: JSONSerialization.data(withJSONObject: moved))
+    }
+
     @Test func rotationIsTheTurnBetweenTheStartAndEndAzimuths() {
         var plan = LookFile.CameraPlan(azimuth: 0.5)
         #expect(plan.rotation == 0)
