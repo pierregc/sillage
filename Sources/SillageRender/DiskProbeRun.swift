@@ -26,6 +26,7 @@ extension DiskProbe {
         public var armCount: Int?
         public var armIrregularity: Float?
         public var diskMassFraction: Float?
+        public var diskThickness: Float?
         public var dissipationTime: Float?
         public var armMassContrast: Float?
         public var armStreaming: Float?
@@ -33,6 +34,9 @@ extension DiskProbe {
         /// Move a galaxy described before the calm disk onto it before the overrides apply.
         public var calm = false
         public var timeStepScale: Float?
+        /// In kpc, instead of the whole scene's; the time step stays the scene's, as with
+        /// `sillage-render --softening`.
+        public var softening: Float?
         /// Where the files go. Absent, `probe/g<index>` in the scene folder, or under `out/`.
         public var output: String?
         /// Size of each pane of the clip: the disk's own frame on the left, the frame the app
@@ -199,6 +203,7 @@ extension DiskProbe {
         override(options.armStrength, "armStrength", \.armStrength)
         override(options.armIrregularity, "armIrregularity", \.armIrregularity)
         override(options.diskMassFraction, "diskMassFraction", \.diskMassFraction)
+        override(options.diskThickness, "diskThickness", \.diskThickness)
         override(options.dissipationTime, "dissipationTime", \.dissipationTime)
         override(options.armMassContrast, "armMassContrast", \.armMassContrast)
         override(options.armStreaming, "armStreaming", \.armStreaming)
@@ -221,8 +226,9 @@ extension DiskProbe {
         alone.timeStepScale = full.timeStepScale
         // The whole scene's, not what one galaxy alone would derive: the probe measures the
         // disk as the scene runs it.
-        alone.softening = full.softening
+        alone.softening = options.softening ?? full.softening
         alone.timeStep = full.timeStep
+        if let softening = options.softening { overrides["softening"] = Double(softening) }
 
         let myr = Physics.megayearsPerTimeUnit
         let stepMyr = Double(alone.timeStep) * myr

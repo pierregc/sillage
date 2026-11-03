@@ -985,9 +985,9 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
     let usage =
         "usage: sillage-render probe-disk <scene.json | scene folder> <galaxy index> [--particles N]"
         + " [--myr T] [--frame-myr T] [--seed S] [--out DIR] [--width W] [--height H] [--no-clip]"
-        + " [--painted] [--lag-myr T] [--stills 0,300,...] [--dt-scale X]"
+        + " [--painted] [--lag-myr T] [--stills 0,300,...] [--dt-scale X] [--softening KPC]"
         + " [--clumpiness X] [--toomre-q X] [--arm-strength X] [--arm-count N]"
-        + " [--arm-irregularity X] [--disk-mass-fraction X] [--dissipation T]"
+        + " [--arm-irregularity X] [--disk-mass-fraction X] [--disk-thickness KPC] [--dissipation T]"
         + " [--mass-contrast X] [--streaming X] [--young-clumpiness X] [--calm]"
     guard arguments.count >= 2, !arguments[0].hasPrefix("--"), let galaxy = Int(arguments[1]) else {
         fail(usage)
@@ -1003,8 +1003,8 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
         let known = [
             "particles", "myr", "frame-myr", "seed", "out", "width", "height", "no-clip", "painted",
             "lag-myr", "stills", "dt-scale", "clumpiness", "toomre-q", "arm-strength", "arm-count",
-            "arm-irregularity", "disk-mass-fraction", "dissipation", "mass-contrast", "streaming",
-            "young-clumpiness", "calm",
+            "arm-irregularity", "disk-mass-fraction", "disk-thickness", "dissipation", "mass-contrast",
+            "streaming", "young-clumpiness", "calm", "softening",
         ]
         guard known.contains(String(word.dropFirst(2))) else {
             fail("probe-disk: unknown option \(word)\n" + usage)
@@ -1022,12 +1022,14 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
     if let lag = value("lag-myr").flatMap(Double.init) { options.lagMyr = lag }
     options.stillsMyr = value("stills")?.split(separator: ",").compactMap { Double($0) } ?? []
     options.timeStepScale = float("dt-scale")
+    options.softening = float("softening")
     options.clumpiness = float("clumpiness")
     options.toomreQ = float("toomre-q")
     options.armStrength = float("arm-strength")
     options.armCount = value("arm-count").flatMap(Int.init)
     options.armIrregularity = float("arm-irregularity")
     options.diskMassFraction = float("disk-mass-fraction")
+    options.diskThickness = float("disk-thickness")
     options.dissipationTime = float("dissipation")
     options.armMassContrast = float("mass-contrast")
     options.armStreaming = float("streaming")

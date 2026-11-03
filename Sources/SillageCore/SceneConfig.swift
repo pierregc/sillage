@@ -99,7 +99,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
             : totalParticleCount
     }
 
-    /// Softening scaled to the mean interparticle spacing of the densest disk. Too small and
+    /// Softening scaled to the mean interparticle spacing of the sparsest disk. Too small and
     /// two-body encounters heat the disk artificially; too large and real structure is washed
     /// out. Derived rather than exposed, because nobody can guess it.
     public var recommendedSoftening: Float {
