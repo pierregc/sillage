@@ -522,6 +522,21 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
+    /// The captured frame a position along the stored frames stands at, where
+    /// `blend(atCaptured:)` finds it again: what a playhead counted in stored frames is in the
+    /// frames an export counts.
+    public func capturedPosition(atStored position: Double) -> Double {
+        locked {
+            guard !storedFrames.isEmpty else { return 0 }
+            let last = storedFrames.count - 1
+            let clamped = min(max(position, 0), Double(last))
+            let index = min(Int(clamped), max(last - 1, 0))
+            let start = index * interval
+            let end = index + 1 == last ? max(offered - 1, start + 1) : start + interval
+            return Double(start) + (clamped - Double(index)) * Double(end - start)
+        }
+    }
+
     /// Frames the run captured, of which the take keeps one in `interval`. A file too old to
     /// say is taken to end on the interval.
     public var capturedFrames: Int {

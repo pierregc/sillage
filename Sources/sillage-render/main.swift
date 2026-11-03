@@ -741,8 +741,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
                 command: "export", single: options.contains("--single")), to: &look)
     }
 
-    let clip = try folder.storedClip()
-    let capturedRate = folder.storedHires()?.fps ?? clip.fps
+    let capturedRate = try folder.capturedRate()
     let export = try TakeExport(take: loaded, look: look, capturedRate: capturedRate)
     let start = try value("start") ?? 0
     if let name = option("format") {

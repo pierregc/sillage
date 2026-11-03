@@ -419,6 +419,20 @@ struct SillageApp: App {
                 StyleInspector(session: session, snapshot: true, fineShown: true).padding(14)
                     .frame(width: 340)),
             to: "out/ui-style-fine.png")
+        // Réalisateur at the zoom of #177: the legend under the canvas, the caption, the zoom
+        // read as distance and the rotation greyed.
+        model.lookFile.camera.mode = .director
+        model.lookFile.camera.zoom = 0.445
+        write(
+            AnyView(
+                VStack(alignment: .leading, spacing: 12) {
+                    CanvasLegend(session: session).frame(width: 700)
+                    Divider()
+                    CameraSection(session: session).padding(.horizontal, 14).frame(width: 340)
+                }
+                .padding(.vertical, 12)
+                .environment(\.offscreen, true)),
+            to: "out/ui-style-director.png")
     }
 
     @MainActor

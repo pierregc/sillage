@@ -64,9 +64,14 @@ extension LookFile.CameraPlan {
     /// The radius a fixed plan frames, from the first frame drawn.
     public func framedRadius(positions: [SIMD3<Float>]) -> Float {
         if radius > 0 { return radius }
-        guard !positions.isEmpty else { return 1 }
-        var radii = positions.map { simd_length($0) }
-        radii.sort()
+        return framedRadius(sortedRadii: positions.map { simd_length($0) }.sorted())
+    }
+
+    /// The same from the first frame's radii already sorted, which a plan edited again and
+    /// again need not sort each time.
+    public func framedRadius(sortedRadii radii: [Float]) -> Float {
+        if radius > 0 { return radius }
+        guard !radii.isEmpty else { return 1 }
         return radii[min(Int(Float(radii.count) * percentile), radii.count - 1)] / zoom
     }
 

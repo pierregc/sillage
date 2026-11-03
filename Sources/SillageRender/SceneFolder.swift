@@ -262,6 +262,10 @@ extension SceneFolder {
         (try? Data(contentsOf: hires)).flatMap { try? JSONDecoder().decode(Hires.self, from: $0) }
     }
 
+    /// The rate the take here was captured at, which an export plays it and replays its camera
+    /// at: the hires run's, else the explored clip's.
+    public func capturedRate() throws -> Int { try storedHires()?.fps ?? storedClip().fps }
+
     /// The `sillage-render` command line `hires` runs, and what it will record. The scene and
     /// the look are the preview's, the particle count is the one asked for, and the steps are
     /// worked out again so the run spans the same megayears as the preview's story. `--frames`
