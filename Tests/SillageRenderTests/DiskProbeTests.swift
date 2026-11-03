@@ -279,6 +279,7 @@ struct DiskProbeTests {
         // Two galaxies, so the probe has to pick one out of the scene's sample.
         var scene = SceneConfig.encounter(particleCount: 24_000)
         scene.galaxies[1].kind = .spiral
+        scene.galaxies[1].effectiveToomreQ = 2.5
         let sceneURL = folder.appendingPathComponent("pair.scene.json")
         try SceneFile(scene).encoded().write(to: sceneURL)
 
@@ -304,7 +305,8 @@ struct DiskProbeTests {
         #expect(report.summary.medianStartKpc > 2 && report.summary.medianStartKpc < 12)
         #expect(report.facts.x2[1] > 0.5 && report.facts.x2[1] < 20)
         #expect(report.facts.paintedPatternSpeed > 0)
-        // Solved for the response at the softening the run uses, after the thickness.
+        // Solved for the response asked for in place of the file's, at the softening the run
+        // uses, after the thickness.
         #expect(abs(report.facts.effectiveToomreQ - 3) < 1e-3)
         #expect(abs((report.overrides["toomreQ"] ?? 0) - report.facts.gravityLeft * 3) < 1e-3)
 

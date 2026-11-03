@@ -30,6 +30,15 @@ public enum DiskResponse {
         galaxy.toomreQ / max(gravityLeft(galaxy, softening: softening), 1e-3)
     }
 
+    /// The response a disk drawn for `drawn` keeps at every count from the reference one up:
+    /// `drawn`, or the stiffer one the floor of Q leaves it at `referenceSoftening`. Kept so, a
+    /// softer run never finds the floor and a hires disk answers as the explore preview did.
+    public static func response(drawn: Float, of galaxy: GalaxyConfig, referenceSoftening: Float)
+        -> Float
+    {
+        max(drawn, lowestToomreQ / max(gravityLeft(galaxy, softening: referenceSoftening), 1e-3))
+    }
+
     /// The share of the disk's own pull on the wave that grows left by the softening and by its
     /// late thickness.
     public static func gravityLeft(_ galaxy: GalaxyConfig, softening: Float) -> Float {
@@ -71,5 +80,17 @@ public enum DiskResponse {
         var scene = SceneConfig(name: "", galaxies: galaxies)
         for index in scene.galaxies.indices { scene.galaxies[index].particleCount = counts[index] }
         return scene.recommendedSoftening
+    }
+}
+
+extension SceneConfig {
+    /// Gives every disk drawn for its response (`GalaxyConfig.effectiveToomreQ`) the Toomre Q
+    /// that holds it at `softening`, the one the scene runs at.
+    public mutating func solveToomreQ(softening: Float) {
+        for index in galaxies.indices {
+            guard let effective = galaxies[index].effectiveToomreQ else { continue }
+            galaxies[index].toomreQ = DiskResponse.toomreQ(
+                effective: effective, of: galaxies[index], softening: softening)
+        }
     }
 }

@@ -128,10 +128,10 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// Rotation of the tilted disk about the view axis, in radians.
     public var positionAngle: Float
     public var spin: Spin
-    /// The effective Toomre Q a batch generator drew this spiral for (`DiskResponse`), until
-    /// `finishGenerated` has solved `toomreQ` for it among the galaxies of its scene. Never
-    /// written to a scene file: only `toomreQ` reaches the solver.
-    public var drawnEffectiveQ: Float?
+    /// The effective Toomre Q a batch generator drew this disk for (`DiskResponse`). Set,
+    /// `toomreQ` is solved for it at the softening each run uses, so a hires disk answers as its
+    /// explore preview did; absent, `toomreQ` runs as written.
+    public var effectiveToomreQ: Float?
 
     public init(
         name: String,
@@ -214,7 +214,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armMassContrast, armStreaming, massLopsidedness, patternShare, outskirtFraction
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
-        case inclination, positionAngle, spin
+        case inclination, positionAngle, spin, effectiveToomreQ
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -262,6 +262,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         inclination = try values.decode(Float.self, forKey: .inclination)
         positionAngle = try values.decode(Float.self, forKey: .positionAngle)
         spin = try values.decode(Spin.self, forKey: .spin)
+        effectiveToomreQ = try values.decodeIfPresent(Float.self, forKey: .effectiveToomreQ)
     }
 
     /// What a galaxy described before the calm disk carried, for the fields it lacks.
