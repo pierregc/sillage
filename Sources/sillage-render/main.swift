@@ -98,7 +98,8 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     if let choice = option("palette") {
         return try palettePromotion(
             folder, choice: choice, world: option("world"), base: option("base"),
-            single: options.contains("--single"), camera: askedCamera(options))
+            single: options.contains("--single"), camera: askedCamera(options),
+            generated: options.contains("--generated"))
     }
     if let name = option("promote") {
         let file = try folder.promote(look: name)
@@ -379,11 +380,12 @@ func apply(_ choice: PaletteChoice, to look: inout LookFile) {
 }
 
 /// `look <scene folder> --palette auto|<family>|<file.palette.json> [--world telescope|free]
-/// [--single] [--camera <mode>]`: puts a palette in the scene's look, promoted as `--promote`
-/// does with the old look kept. `--single` gives each galaxy one colour instead of a ramp.
+/// [--base <look>] [--single] [--camera <mode>] [--generated]`: puts a palette in the scene's
+/// look, promoted as `--promote` does with the old look kept. `--single` gives each galaxy one
+/// colour instead of a ramp; `--generated` holds the dust back as Auto does, for the night.
 func palettePromotion(
     _ folder: SceneFolder, choice: String, world: String?, base: String?, single: Bool,
-    camera: LookFile.CameraPlan.Mode? = nil
+    camera: LookFile.CameraPlan.Mode? = nil, generated: Bool = false
 ) throws -> Int32 {
     var look =
         (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }
@@ -395,6 +397,7 @@ func palettePromotion(
         else { fail("look: no look \(base)") }
         look = found
     }
+    if generated { look = StyleAuto.generated(look) }
     let picked = try resolvePalette(
         folder, choice: choice, world: askedWorld(world, command: "look"), command: "look",
         single: single)
