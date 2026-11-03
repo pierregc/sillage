@@ -14,6 +14,17 @@ public struct DiskFrame {
     public var axisV: SIMD4<Float>
     public var pattern: SIMD4<Float>
     public var tint: SIMD4<Float>
+    /// The material's angular rate at `diskScaleLength * 2^(-2 + 0.75 i)`, eight radii, in
+    /// radians per time unit and signed with the turn in the frame's own axes: what carries
+    /// the dust web round (#173).
+    public var omegaInner: SIMD4<Float> = .zero
+    public var omegaOuter: SIMD4<Float> = .zero
+    /// How intact the disk is (0 with no disk), the web's renewal period in time units and
+    /// its phase.
+    public var web: SIMD4<Float> = .zero
+
+    /// The web's renewal period, as a share of a turn at two scale lengths.
+    static let webPeriodShare: Float = 0.25
 
     /// Carries a galaxy's natal in-plane axes onto the plane its disk actually turns in now,
     /// by the shortest rotation that takes one normal onto the other.
@@ -86,9 +97,18 @@ public struct DiskFrame {
             // scale lengths (docs/notes/lumpy-arms.md); the paint used to turn at half the
             // analytic sphere's, 0.42 of that, and the two beat. One expression now, shared
             // with the sampler's streaming and the probe.
-            let patternSpeed =
-                DiskEquilibrium(config: galaxy, selfGravitating: scene.solver.isSelfGravitating)
-                .patternSpeed() * galaxy.spin.sign
+            let equilibrium = DiskEquilibrium(
+                config: galaxy, selfGravitating: scene.solver.isSelfGravitating)
+            let patternSpeed = equilibrium.patternSpeed() * galaxy.spin.sign
+            // The frame's axes are the natal pair carried along, so the material turns the
+            // way the galaxy spins in them.
+            let scale = max(galaxy.diskScaleLength, 1e-3)
+            let omega = (0..<8).map { step in
+                let radius = scale * exp2(-2 + 0.75 * Float(step))
+                return equilibrium.circularSpeed(atRadius: radius) / radius * galaxy.spin.sign
+            }
+            let turn = abs(equilibrium.circularSpeed(atRadius: 2 * scale) / (2 * scale))
+            let period = turn > 0 ? webPeriodShare * 2 * .pi / turn : 0
 
             return DiskFrame(
                 center: SIMD4<Float>(center.x, center.y, center.z, galaxy.diskScaleLength),
@@ -97,7 +117,12 @@ public struct DiskFrame {
                 pattern: SIMD4<Float>(
                     galaxy.armWindRate, patternSpeed * time,
                     galaxy.armIrregularity, Float(index) * 37.4 + 5.1),
-                tint: SIMD4<Float>(galaxy.color.x, galaxy.color.y, galaxy.color.z, 0))
+                tint: SIMD4<Float>(galaxy.color.x, galaxy.color.y, galaxy.color.z, 0),
+                omegaInner: SIMD4<Float>(omega[0], omega[1], omega[2], omega[3]),
+                omegaOuter: SIMD4<Float>(omega[4], omega[5], omega[6], omega[7]),
+                web: SIMD4<Float>(
+                    galaxy.kind.isRotating ? intact : 0, period,
+                    (Float(index) * 0.618).truncatingRemainder(dividingBy: 1), 0))
         }
     }
 }

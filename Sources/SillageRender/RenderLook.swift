@@ -61,6 +61,10 @@ public struct RenderLook: Sendable, Equatable {
     /// Light kept by the compact bright minority the sampler draws: 1 as sampled, 0 gives
     /// them back the light and the width of an ordinary star.
     public var glint: Float
+    /// How much of the dust is drawn as a web of filaments in each disk's plane, carried round
+    /// by its rotation and renewed before the shear winds it up (#173, docs/notes/dust-web.md).
+    /// Zero, the default, draws the dust as its grains and the painted strands give it.
+    public var dustWeb: Float
 
     /// The glint every shipped and generated style draws with: the sparkle gone, the knots
     /// kept (#184, docs/notes/gigantism.md).
@@ -92,7 +96,8 @@ public struct RenderLook: Sendable, Equatable {
         fieldOfView: Float = 0.6,
         holeShadow: Float = 0,
         columnSmoothing: Float = 0,
-        glint: Float = 1
+        glint: Float = 1,
+        dustWeb: Float = 0
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -120,6 +125,7 @@ public struct RenderLook: Sendable, Equatable {
         self.holeShadow = holeShadow
         self.columnSmoothing = columnSmoothing
         self.glint = glint
+        self.dustWeb = dustWeb
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -157,6 +163,7 @@ public struct RenderLook: Sendable, Equatable {
         out.holeShadow = f(a.holeShadow, b.holeShadow)
         out.columnSmoothing = f(a.columnSmoothing, b.columnSmoothing)
         out.glint = f(a.glint, b.glint)
+        out.dustWeb = f(a.dustWeb, b.dustWeb)
         return out
     }
 
@@ -264,6 +271,7 @@ extension RenderLook: Codable {
             fieldOfView: try c.value(.fieldOfView, or: d.fieldOfView),
             holeShadow: try c.value(.holeShadow, or: d.holeShadow),
             columnSmoothing: try c.value(.columnSmoothing, or: d.columnSmoothing),
-            glint: try c.value(.glint, or: d.glint))
+            glint: try c.value(.glint, or: d.glint),
+            dustWeb: try c.value(.dustWeb, or: d.dustWeb))
     }
 }

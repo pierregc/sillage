@@ -55,6 +55,25 @@ struct PlainRenderTests {
         #expect(sliced == whole)
     }
 
+    /// The dust web changes how the dust is drawn and nothing else: with no dust, no web.
+    @Test func theDustWebMovesOnlyTheDust() throws {
+        let scene = SceneConfig.isolatedDisk(particleCount: 20_000)
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        func draw(dust: Float, web: Float) throws -> [UInt8] {
+            var settings = RenderSettings(
+                width: 320, height: 180, supersample: 2, brightness: 0.12, dustStrength: dust,
+                starCount: 0, noiseLevel: 0)
+            settings.dustWeb = web
+            let renderer = try Renderer(particles: particles, settings: settings)
+            renderer.time = 3
+            renderer.setDiskFrames(
+                DiskFrame.make(scene: scene, centers: [.zero], time: 3, strength: 1))
+            return renderer.render(camera: Camera.framing(radius: 20, elevation: 1.2))
+        }
+        #expect(try draw(dust: 0.6, web: 1) != draw(dust: 0.6, web: 0))
+        #expect(try draw(dust: 0, web: 1) == draw(dust: 0, web: 0))
+    }
+
     @Test func theAutoCameraHoldsEveryGalaxyAtEveryFrame() {
         var camera = AutoCamera()
         let margins: [Float] = [10, 6, 8]

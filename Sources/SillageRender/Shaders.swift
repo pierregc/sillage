@@ -157,6 +157,11 @@ enum Shaders {
             float4 axisV;
             float4 pattern;
             float4 tint;
+            /// The material's angular rate at eight radii, for the dust web.
+            float4 omegaInner;
+            float4 omegaOuter;
+            /// Intact, renewal period, phase.
+            float4 web;
         };
 
         // Integer mixing rather than the usual fract(sin(x) * 43758.5453), and that is not a
@@ -586,6 +591,286 @@ enum Shaders {
 
             DustTarget out;
             out.dust = half4(in.opticalDepth * half(exp(-4.5 * r2)) * in.slab);
+            return out;
+        }
+
+        // The dust web (#173, docs/notes/dust-web.md): a field of filaments in each disk's own
+        // plane, carried round by the disk's rotation curve and renewed before the shear can
+        // wind it up, two copies half a period apart cross-faded so that no moment shows a
+        // renewal (Max and Becker 1995, Neyret 2003). Read per fragment inside the dust
+        // splats, so a filament can be thinner than the grain that carries it. Its own
+        // pipeline, so a look without it draws exactly what it drew before.
+        struct WebUniforms {
+            /// The eye, and how much of the web is drawn.
+            float4 eye;
+            /// The camera's right, and how much wider a grain is drawn under the web.
+            float4 right;
+            /// The camera's up, and the simulated time.
+            float4 up;
+            /// Rest phase, cell in scale lengths, smallest and largest cell in kpc.
+            float4 params;
+        };
+
+        struct DustWebOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            float opticalDepth;
+            /// The lane factor as the painted strands give it, and the one the web multiplies.
+            float lane;
+            float webbed;
+            float amount;
+            /// Where the grain's own ray meets the disk's mid-plane, in kpc, and how that
+            /// point moves per unit of point coordinate along x, then y.
+            float2 plane;
+            float4 jacobian;
+            /// Kpc of the plane under one accumulation pixel.
+            float pixel;
+            half4 slab;
+            uint galaxy [[flat]];
+        };
+
+        static float2 webRandom(int2 cell) {
+            uint2 v = uint2(cell) * 1664525u + 1013904223u;
+            v.x += v.y * 1664525u;
+            v.y += v.x * 1664525u;
+            v = v ^ (v >> 16u);
+            v.x += v.y * 1664525u;
+            v.y += v.x * 1664525u;
+            v = v ^ (v >> 16u);
+            return float2(v) * (1.0 / 4294967296.0);
+        }
+
+        static float webValue(float2 p) {
+            float2 i = floor(p);
+            float2 f = p - i;
+            float2 s = f * f * (3.0 - 2.0 * f);
+            int2 c = int2(i);
+            float a = webRandom(c).x;
+            float b = webRandom(c + int2(1, 0)).x;
+            float d = webRandom(c + int2(0, 1)).x;
+            float e = webRandom(c + int2(1, 1)).x;
+            return mix(mix(a, b, s.x), mix(d, e, s.x), s.y);
+        }
+
+        static float webFbm(float2 p) {
+            return (0.5 * webValue(p) + 0.25 * webValue(p * 2.03 + float2(17.1, -9.7))) / 0.75;
+        }
+
+        // Threads that branch: ridged noise, each octave weighted by the ridge above it.
+        static float webRidged(float2 p) {
+            float total = 0.0;
+            float amplitude = 0.6;
+            float weight = 1.0;
+            for (int octave = 0; octave < 3; ++octave) {
+                float ridge = 1.0 - abs(2.0 * webValue(p) - 1.0);
+                ridge = ridge * ridge * ridge * ridge * ridge;
+                total += amplitude * ridge * weight;
+                weight = saturate(ridge * 1.5);
+                p = p * 2.1 + float2(5.3, 1.9);
+                amplitude *= 0.55;
+            }
+            return total;
+        }
+
+        // Cell walls, each wall drawn at its own strength so the web stays open.
+        static float webWalls(float2 p) {
+            int2 base = int2(floor(p));
+            float first = 9.0;
+            float second = 9.0;
+            int2 near = base;
+            int2 next = base;
+            for (int y = -1; y <= 1; ++y) {
+                for (int x = -1; x <= 1; ++x) {
+                    int2 c = base + int2(x, y);
+                    float d = distance(float2(c) + 0.1 + 0.8 * webRandom(c), p);
+                    if (d < first) {
+                        second = first;
+                        next = near;
+                        first = d;
+                        near = c;
+                    } else if (d < second) {
+                        second = d;
+                        next = c;
+                    }
+                }
+            }
+            float wall = webRandom(min(near, next) * int2(73, 37) + max(near, next) * int2(151, 197)).x;
+            float gap = (second - first) / 0.1;
+            return exp(-gap * gap) * (0.25 + 0.75 * wall);
+        }
+
+        constant float laceInverseMean = 1.8366;
+
+        // Threads and walls on a warped plane, with clear holes, divided by its own mean.
+        static float webLace(float2 p) {
+            p += 2.2 * (float2(webFbm(p * 0.5 + float2(11.3, 2.9)),
+                               webFbm(p * 0.5 + float2(-7.1, 17.7))) - 0.5);
+            float threads = webRidged(p * 1.3);
+            float walls = webWalls(p * 0.8);
+            float holes = saturate((webFbm(p * 0.9 + float2(4.4, 6.6)) - 0.58) * 6.0);
+            return (0.15 + 2.0 * threads + 0.8 * walls) * (1.0 - 0.9 * holes) * laceInverseMean;
+        }
+
+        // The disk's angular rate at a radius, from eight samples a factor 1.68 apart; inside
+        // the first it turns as a solid body, past the last its curve is flat.
+        static float webOmega(DiskFrame frame, float radius) {
+            float h = max(frame.center.w, 1e-3);
+            float x = (log2(max(radius / h, 1e-4)) + 2.0) / 0.75;
+            if (x >= 7.0) { return frame.omegaOuter.w * 9.5137 * h / max(radius, 1e-4); }
+            x = max(x, 0.0);
+            int i = min(int(x), 6);
+            float a = i < 4 ? frame.omegaInner[i] : frame.omegaOuter[i - 4];
+            float b = i < 3 ? frame.omegaInner[i + 1] : frame.omegaOuter[i - 3];
+            return mix(a, b, x - float(i));
+        }
+
+        // A quarter of the dust stays even under the web: with none, a dense clump opens onto
+        // whatever bright knot it holds and the core burns white.
+        constant float webDepth = 0.75;
+
+        // Each copy is carried round from where it rests, a share of its life in, and fades in
+        // and out with sin squared; the two weights always sum to one, and dividing by their
+        // root sum of squares keeps the contrast through the cross-fade.
+        static float dustWeb(float2 p, DiskFrame frame, constant WebUniforms &w, float pixel) {
+            float h = max(frame.center.w, 1e-3);
+            float cell = clamp(w.params.y * h, w.params.z, w.params.w);
+            // The thinnest wall is a tenth of a cell: under a pixel it would only shimmer.
+            float detail = smoothstep(0.6, 2.0, 0.1 * cell / max(pixel, 1e-6));
+            float period = frame.web.y;
+            if (detail <= 0.0 || period <= 0.0) { return 1.0; }
+            float omega = webOmega(frame, length(p));
+            float total = 0.0;
+            float norm = 0.0;
+            for (int k = 0; k < 2; ++k) {
+                float s = w.up.w / period + frame.web.z + 0.5 * float(k);
+                float cycle = floor(s);
+                float phase = s - cycle;
+                float weight = sinpi(phase);
+                weight *= weight;
+                float angle = omega * (phase - w.params.x) * period;
+                float c = cos(angle);
+                float n = sin(angle);
+                float2 q = float2(c * p.x + n * p.y, n * -p.x + c * p.y) / cell;
+                float2 offset = webRandom(int2(int(cycle) * 2 + k, int(frame.pattern.w * 10.0))) * 400.0;
+                total += weight * (webLace(q + offset) - 1.0);
+                norm += weight * weight;
+            }
+            return max(1.0 + webDepth * detail * total * rsqrt(max(norm, 1e-4)), 0.0);
+        }
+
+        vertex DustWebOut dustWebVertex(uint vid [[vertex_id]],
+                                        device const float3 *positions [[buffer(0)]],
+                                        device const float *formation [[buffer(8)]],
+                                        device const float *luminosity [[buffer(2)]],
+                                        device const uint *component [[buffer(3)]],
+                                        constant SplatUniforms &u [[buffer(4)]],
+                                        device const uint *galaxy [[buffer(5)]],
+                                        constant DiskFrame *frames [[buffer(6)]],
+                                        device const float *smoothing [[buffer(7)]],
+                                        device const float2 *traits [[buffer(10)]],
+                                        constant WebUniforms &w [[buffer(13)]]) {
+            DustWebOut out;
+            float3 position = positions[vid];
+            uint g = galaxy[vid];
+            DiskFrame frame = frames[g];
+            out.position = u.viewProjection * float4(position, 1.0);
+            out.galaxy = g;
+            out.slab = half4(0.0h);
+            out.lane = 1.0;
+            out.webbed = 1.0;
+            out.amount = 0.0;
+            out.plane = float2(0.0);
+            out.jacobian = float4(0.0);
+            out.pixel = 1.0;
+            uint kind = component[vid];
+            float weight = luminosity[vid];
+            float kernelScale = traits[vid].y;
+            if (kernelScale < 0.8) {
+                weight *= mix(0.07, 1.0, u.glint);
+                kernelScale = mix(0.9, kernelScale, u.glint);
+            }
+            float born = formation[vid];
+            bool nursery = kind == 1u || kind == 2u;
+            float ageMyr = (nursery || born >= 0.0)
+                ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
+            bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
+            bool hole = kind == 6u;
+            bool absorbing = (kind == 2u && !knot) || hole;
+            if (kind == 3u || (hole && u.holeShadow <= 0.0) || !absorbing) {
+                out.position = float4(2.0, 2.0, 2.0, 1.0);
+                out.pointSize = 0.0;
+                out.opticalDepth = 0.0;
+                return out;
+            }
+            float slabAt = clamp((out.position.w - u.slabNear) * u.slabScale, 0.0, 0.999) * 4.0;
+            uint slabIndex = uint(slabAt);
+            out.slab = half4(slabIndex == 0u, slabIndex == 1u, slabIndex == 2u, slabIndex == 3u);
+            float depth = max(out.position.w, 1e-3);
+            float perPixel = u.projectionScale / depth;
+            if (hole) {
+                out.pointSize = max(4.0 * u.holeShadow * perPixel, 2.0);
+                out.opticalDepth = 8.0;
+                return out;
+            }
+            // Only inside an intact disk, near its plane and inside its edge: a tail or a
+            // bridge keeps the dust its particles carry. Near rather than in, since a disk an
+            // encounter has started to warp is still a disk. Seen edge on there is no web.
+            float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
+            float3 rel = position - frame.center.xyz;
+            float height = dot(rel, axis);
+            float scale = max(frame.center.w, 1e-3);
+            float3 ray = normalize(position - w.eye.xyz);
+            float facing = dot(ray, axis);
+            float amount = w.eye.w * frame.web.x
+                * (1.0 - smoothstep(0.3 * scale, 0.8 * scale, abs(height)))
+                * (1.0 - smoothstep(5.0 * scale, 7.0 * scale, length(rel - axis * height)))
+                * smoothstep(0.12, 0.35, abs(facing));
+
+            float2 pattern = armWave(position, frame);
+            float raw = max(smoothing[vid] * u.smoothingScale * kernelScale
+                                * mix(1.0, w.right.w, amount), 1e-4) * perPixel;
+            float span = clamp(raw, u.minimumSize, u.maximumSize);
+            float reach = span / perPixel;
+            float spread = u.referenceArea / (reach * reach);
+            float arm = 7.0 * pow(pattern.x, 2.0) * pattern.y;
+            out.lane = 1.0 + arm * laneDetail(position, frame);
+            // The painted strands' own mean, so the web moves no exposure.
+            out.webbed = 1.0 + arm * 0.855;
+            out.pointSize = span * 1.3;
+            out.opticalDepth = weight * u.dustStrength * spread * 1.3;
+
+            if (amount > 0.0) {
+                // The ray through each pixel of the splat meets the mid-plane at one point,
+                // whichever grain it belongs to, so overlapping grains read the same web.
+                float along = facing < 0.0 ? min(facing, -0.25) : max(facing, 0.25);
+                float3 meet = rel - ray * (height / along);
+                out.plane = float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz));
+                float across = out.pointSize / perPixel;
+                float3 x = (w.right.xyz - ray * (dot(w.right.xyz, axis) / along)) * across;
+                float3 y = (w.up.xyz - ray * (dot(w.up.xyz, axis) / along)) * -across;
+                out.jacobian = float4(dot(x, frame.axisU.xyz), dot(x, frame.axisV.xyz),
+                                      dot(y, frame.axisU.xyz), dot(y, frame.axisV.xyz));
+                out.pixel = max(length(out.jacobian.xy), length(out.jacobian.zw))
+                    / max(out.pointSize, 1e-3);
+            }
+            out.amount = amount;
+            return out;
+        }
+
+        fragment DustTarget dustWebFragment(DustWebOut in [[stage_in]],
+                                            float2 coord [[point_coord]],
+                                            constant DiskFrame *frames [[buffer(0)]],
+                                            constant WebUniforms &w [[buffer(1)]]) {
+            float2 d = coord - 0.5;
+            float r2 = dot(d, d) * 4.0;
+            if (r2 > 1.0) { discard_fragment(); }
+            float lane = in.lane;
+            if (in.amount > 0.0) {
+                float2 p = in.plane + in.jacobian.xy * d.x + in.jacobian.zw * d.y;
+                lane = mix(lane, in.webbed * dustWeb(p, frames[in.galaxy], w, in.pixel), in.amount);
+            }
+            DustTarget out;
+            out.dust = half4(half(in.opticalDepth * lane * exp(-4.5 * r2)) * in.slab);
             return out;
         }
 

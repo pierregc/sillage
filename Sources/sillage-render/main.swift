@@ -1300,6 +1300,7 @@ flag("tint", \.look.galaxyTint)
 flag("fov", \.look.fieldOfView)
 flag("column", \.look.columnSmoothing)
 flag("glint", \.look.glint)
+flag("dust-web", \.look.dustWeb)
 flag("stars", \.starCount)
 if arguments.contains("--plain") { look.plain = true }
 flag("supersample", \.supersample)
