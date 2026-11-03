@@ -161,9 +161,10 @@ one galaxy out of a scene, star for star, runs it alone for `--myr` (1000) at th
 softening and step for `--particles`, and writes one line a frame of what its disk is doing:
 radii, dispersions, Fourier amplitudes by zone, pattern speed, coherence, lumpiness, where its
 nucleus and the solver's centre are, next to a two-pane clip in the disk's own frame and in the
-app's. `--clumpiness`, `--toomre-q`, `--arm-strength`, `--arm-count`, `--disk-mass-fraction` and
-`--dissipation` override the galaxy for a sweep, and `scripts/probe-report.py` lays runs side
-by side. The columns and how to read them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
+app's. `--clumpiness`, `--toomre-q`, `--arm-strength`, `--arm-count`, `--disk-mass-fraction`,
+`--disk-thickness` and `--dissipation` override the galaxy for a sweep, `--softening` the
+scene's, and `scripts/probe-report.py` lays runs side by side. The columns and how to read
+them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
 
 ### High resolution
 
@@ -576,7 +577,7 @@ use Barnes-Hut.
 
 **Integrator.** Kick drift kick leapfrog in both solvers, at a fixed step. The step and the
 force softening are derived from the scene rather than exposed: softening is 1.5 times the mean
-interparticle spacing of the densest disk, capped at 1 kpc, and the step is short enough that a
+interparticle spacing of the sparsest disk, capped at 1 kpc, and the step is short enough that a
 particle crosses well under one softening length per step.
 
 **Units.** Lengths in kpc, masses in 10^10 solar masses, G = 1. The derived velocity unit is

@@ -273,11 +273,15 @@ struct DiskProbeTests {
         options.stillsMyr = [0]
         options.output = folder.appendingPathComponent("probe").path
         options.clumpiness = 0.05
+        options.diskThickness = 0.25
+        options.softening = 0.2
         let report = try DiskProbe.run(options) { _ in }
         #expect(report.frames == 3)
         #expect(report.galaxyParticles == scene.galaxies[1].particleCount)
         #expect(report.simulatedParticles > report.galaxyParticles)
         #expect(abs((report.overrides["clumpiness"] ?? 0) - 0.05) < 1e-6)
+        #expect(abs((report.overrides["diskThickness"] ?? 0) - 0.25) < 1e-6)
+        #expect(abs(report.softening - 0.2) < 1e-6)
         #expect(report.summary.medianStartKpc > 2 && report.summary.medianStartKpc < 12)
         #expect(report.facts.x2[1] > 0.5 && report.facts.x2[1] < 20)
         #expect(report.facts.paintedPatternSpeed > 0)
