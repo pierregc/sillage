@@ -24,6 +24,7 @@ session. Read the note for an area before changing it.
 - [Whole stories](whole-stories.md): when a scene's story is over, and how long clips run
 - [A black hole outside the tree](black-holes.md): its own softening, the step, energy across the mass range
 - [Another language would not make a step faster](solver-language.md): GPU against CPU, Swift against C, the opening angle explore and hires run at
+- [Light tracers](light-tracers.md): drawing 8 M for the price of 2 M, what stays on the mass, star formation without a leaf
 
 ## Physics and galaxies
 
@@ -64,7 +65,7 @@ session. Read the note for an area before changing it.
 - [The style editor](style-editor.md): renderings, palettes and locks, Auto, Avant/Après
 - [Making a galaxy read as matter rather than as a graphic](galaxy-as-matter.md)
 - [Gigantism](gigantism.md): why a render reads as sand, the compact minority, the kernel in projection, what more particles cost
-- [A web of dust that turns without tearing](dust-web.md): spike #173, the web carried round and renewed, finer grains, the web where the disk is intact; #200, the lace baked and paid once per pixel
+- [A web of dust that turns without tearing](dust-web.md): spike #173, the web carried round and renewed, finer grains, the web where the disk is intact; #200, the lace baked and paid once per pixel; #197, on in the shipped and generated styles
 - [Ten times the particles](ten-times-the-particles.md): fifty million a galaxy, what it looks like, the softening floor, the halo, the take's grid, tracers
 - [Director shots that fill the frame](director-shots.md): `ShotPlan`, the cuts, the core and plane measured on the take, the disk states takes never carried
 

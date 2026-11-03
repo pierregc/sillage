@@ -116,8 +116,9 @@ struct LookStageTests {
         let webb = try #require(telescope.first { $0.name == "webb" })
         #expect(hubble.look.spikeArms == 4 && hubble.look.spikePattern == .even)
         #expect(webb.look.spikeArms == 6 && webb.look.spikePattern == .webb)
-        // Hubble's dust is shadow and its bulge a broad glow; Webb's dust glows instead.
-        #expect(hubble.look.dustStrength > 3 * webb.look.dustStrength)
+        // Hubble's dust is deep shadow and its bulge a broad glow; Webb's dust glows instead,
+        // which this renderer cannot draw, so it keeps a light web of filaments (#197).
+        #expect(hubble.look.dustStrength > 2 * webb.look.dustStrength)
         #expect(hubble.look.bloomIntensity > webb.look.bloomIntensity)
         for file in telescope {
             #expect(file.palette.count == 5)

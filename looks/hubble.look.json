@@ -9,6 +9,7 @@
     "bloomThreshold": 0.4,
     "brightness": 0.15,
     "dustStrength": 0.45,
+    "dustWeb": 1,
     "galaxyTint": 0.4,
     "glint": 0.3,
     "maximumKernel": 64,

@@ -91,6 +91,7 @@ extension LookFile {
             file.look.saturation = from.saturation
             file.look.galaxyTint = from.galaxyTint
             file.look.dustStrength = from.dustStrength
+            file.look.dustWeb = from.dustWeb
             file.look.armPersistence = from.armPersistence
         case .instrument:
             file.look.smoothingScale = from.smoothingScale

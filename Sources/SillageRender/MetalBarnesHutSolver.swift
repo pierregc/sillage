@@ -92,6 +92,9 @@ public final class MetalBarnesHutSolver: Solver {
     private let kickDrift: MTLComputePipelineState
     private let kick: MTLComputePipelineState
     private let force: MTLComputePipelineState
+    /// The force pass again, specialised for light tracers.
+    private let tracerForce: MTLComputePipelineState?
+    private let tracerFormStars: MTLComputePipelineState?
     private let gather: MTLComputePipelineState
     private let dissipate: MTLComputePipelineState?
     private let formStars: MTLComputePipelineState
@@ -128,6 +131,18 @@ public final class MetalBarnesHutSolver: Solver {
     private static let holeGroupWidth = 256
     private let template: ParticleSystem
     private let count: Int
+    /// Light tracers (#187): the first `tracerCount` particles carry no mass and stay out of
+    /// the tree. They are drawn, kicked, drifted and cooled like the rest, in the field of the
+    /// massive ones, so the softening and the step stay those of the massive count.
+    public let tracerCount: Int
+    /// The particles the tree is built over: everything after the tracers.
+    private var massive: Int { count - tracerCount }
+    /// The opening angle of the tracers' walk alone. Their force error does not feed back.
+    public var tracerOpeningAngle: Float
+    /// Sorts the tracers into Morton order, so that neighbours in a SIMD group walk alike.
+    private let tracerSorter: GPUTreeBuilder?
+    /// The chance each massive gas particle had of forming stars this step, by Morton slot.
+    private let slotChances: MTLBuffer?
     private let galaxyOf: [UInt32]
     private let componentOf: [UInt32]
     private let liveHalos: Bool
@@ -185,7 +200,7 @@ public final class MetalBarnesHutSolver: Solver {
 
     public init(
         device: MTLDevice? = nil, scene: SceneConfig, particles: ParticleSystem,
-        quadrupole: Bool = MetalBarnesHutSolver.quadrupole
+        quadrupole: Bool = MetalBarnesHutSolver.quadrupole, tracers: Int = 0
     ) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
@@ -193,6 +208,8 @@ public final class MetalBarnesHutSolver: Solver {
         self.device = device
         self.scene = scene
         self.count = max(particles.count, 1)
+        self.tracerCount = min(max(tracers, 0), max(particles.visibleCount, 0))
+        self.tracerOpeningAngle = scene.openingAngle
         self.openingAngle = scene.openingAngle
         self.softening = scene.softening
         self.galaxyOf = particles.galaxyIndex
@@ -207,6 +224,7 @@ public final class MetalBarnesHutSolver: Solver {
         if masses.count != self.count {
             masses = [Float](repeating: 0, count: self.count)
         }
+        for index in 0..<tracerCount { masses[index] = 0 }
         self.particleMass = masses
         // Never softer than the stars, whatever the scene says.
         var holes: [HoleGPU] = []
@@ -250,20 +268,30 @@ public final class MetalBarnesHutSolver: Solver {
         }
         kickDrift = try pipeline("bhKickDrift")
         kick = try pipeline("bhKick")
-        let constants = MTLFunctionConstantValues()
-        var specialised = quadrupole
-        constants.setConstantValue(&specialised, type: .bool, index: 0)
-        do {
-            force = try device.makeComputePipelineState(
-                function: library.makeFunction(name: "bhAcceleration", constantValues: constants))
-        } catch {
-            throw RenderError.pipelineCreation("bhAcceleration: \(error)")
+        func specialised(_ name: String, _ values: [(index: Int, value: Bool)]) throws
+            -> MTLComputePipelineState
+        {
+            let constants = MTLFunctionConstantValues()
+            for (index, value) in values {
+                var flag = value
+                constants.setConstantValue(&flag, type: .bool, index: index)
+            }
+            do {
+                return try device.makeComputePipelineState(
+                    function: library.makeFunction(name: name, constantValues: constants))
+            } catch {
+                throw RenderError.pipelineCreation("\(name): \(error)")
+            }
         }
+        let tracing = tracerCount > 0
+        force = try specialised("bhAcceleration", [(0, quadrupole), (1, false)])
+        tracerForce = tracing ? try specialised("bhAcceleration", [(0, quadrupole), (1, true)]) : nil
         gather = try pipeline("bhGather")
         dissipate =
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
-        formStars = try pipeline("bhFormStars")
+        formStars = try specialised("bhFormStars", [(2, tracing)])
+        tracerFormStars = tracing ? try pipeline("bhTracerFormStars") : nil
         holePull = holes.isEmpty ? nil : try pipeline("bhHolePull")
         holeSettle = holes.isEmpty ? nil : try pipeline("bhHoleSettle")
 
@@ -306,10 +334,16 @@ public final class MetalBarnesHutSolver: Solver {
                 length: ((count + Self.holeGroupWidth - 1) / Self.holeGroupWidth) * Self.holeLimit
                     * MemoryLayout<SIMD4<Float>>.stride,
                 options: .storageModePrivate)
+        let massive = count - tracerCount
         builder = try GPUTreeBuilder(
-            device: device, count: count, leafCapacity: Self.leafCapacity,
+            device: device, count: massive, leafCapacity: Self.leafCapacity,
             maximumDepth: Self.maximumTreeDepth, quadrupole: quadrupole,
-            nodeCapacity: count / 2 + 1024)
+            nodeCapacity: massive / 2 + 1024, first: tracerCount)
+        tracerSorter =
+            tracing
+            ? try GPUTreeBuilder(device: device, count: tracerCount, nodeCapacity: 1) : nil
+        slotChances =
+            tracing ? device.makeBuffer(length: massive * 4, options: .storageModePrivate) : nil
 
         func attribute(_ values: [UInt32], _ fallback: UInt32) -> [UInt32] {
             values.count == count ? values : [UInt32](repeating: fallback, count: count)
@@ -337,6 +371,7 @@ public final class MetalBarnesHutSolver: Solver {
         rebuildTree()
         if let buffer = queue.makeCommandBuffer() {
             encodeAccelerations(into: buffer)
+            encodeTracerAccelerations(into: buffer)
             encodeHoles(into: buffer)
             submit(buffer)
         }
@@ -357,9 +392,13 @@ public final class MetalBarnesHutSolver: Solver {
             // 110, 68, 46, 42. Here the tree was built from exactly these positions.
             if profiling {
                 profiledPass("star formation") { encodeStarFormation(into: $0) }
+                if tracerCount > 0 {
+                    profiledPass("tracer formation") { encodeTracerStarFormation(into: $0) }
+                }
                 profiledPass("drift") { encodeIntegrate(into: $0) }
             } else if let opening = queue.makeCommandBuffer() {
                 encodeStarFormation(into: opening)
+                encodeTracerStarFormation(into: opening)
                 encodeIntegrate(into: opening)
                 submit(opening)
             }
@@ -374,6 +413,9 @@ public final class MetalBarnesHutSolver: Solver {
             clock = Date()
             if profiling {
                 profiledPass("force") { encodeAccelerations(into: $0) }
+                if tracerCount > 0 {
+                    profiledPass("tracer force") { encodeTracerAccelerations(into: $0) }
+                }
                 if !holes.isEmpty { profiledPass("black holes") { encodeHoles(into: $0) } }
                 profiledPass("kick") { encodeKick(into: $0) }
                 profiledPass("dissipation") { encodeShedRandomMotion(into: $0) }
@@ -400,19 +442,28 @@ public final class MetalBarnesHutSolver: Solver {
     /// at two million visible particles. In pieces it was 17.5, and with nothing drawn the
     /// pieces cost nothing (#38).
     private func submitForces() {
-        var start = 0
-        repeat {
+        let chunk = max(Self.forceChunk, 1)
+        var pieces: [(tracers: Bool, slots: Range<Int>)] = []
+        for start in stride(from: 0, to: massive, by: chunk) {
+            pieces.append((false, start..<min(start + chunk, massive)))
+        }
+        for start in stride(from: 0, to: tracerCount, by: chunk) {
+            pieces.append((true, start..<min(start + chunk, tracerCount)))
+        }
+        for (index, piece) in pieces.enumerated() {
             guard let buffer = queue.makeCommandBuffer() else { return }
-            let span = min(max(Self.forceChunk, 1), count - start)
-            encodeAccelerations(into: buffer, pieces: start..<(start + span))
-            start += span
-            if start >= count {
+            if piece.tracers {
+                encodeTracerAccelerations(into: buffer, pieces: piece.slots)
+            } else {
+                encodeAccelerations(into: buffer, pieces: piece.slots)
+            }
+            if index == pieces.count - 1 {
                 encodeHoles(into: buffer)
                 encodeKick(into: buffer)
                 encodeShedRandomMotion(into: buffer)
             }
             submit(buffer)
-        } while start < count
+        }
     }
 
     /// Turns gas into stars where the tree says it has been compressed.
@@ -424,7 +475,44 @@ public final class MetalBarnesHutSolver: Solver {
     private func encodeStarFormation(into buffer: MTLCommandBuffer) {
         guard nodeCount > 0, componentBuffer != nil else { return }
         stepsSinceFormation &+= 1
-        var params = StarFormationGPU(
+        var params = formationParams
+        let first = tracerCount
+        encode(into: buffer, formStars, threads: nodeCount) { encoder in
+            encoder.setBuffer(formationBuffer, offset: first * 4, index: 0)
+            encoder.setBuffer(componentBuffer, offset: first * 4, index: 1)
+            encoder.setBuffer(massBuffer, offset: first * 4, index: 2)
+            encoder.setBuffer(builder.nodes, offset: 0, index: 3)
+            encoder.setBuffer(builder.order, offset: 0, index: 4)
+            encoder.setBytes(
+                &params, length: MemoryLayout<StarFormationGPU>.stride, index: 5)
+            encoder.setBuffer(positionBuffer, offset: first * 16, index: 6)
+            encoder.setBuffer(velocityBuffer, offset: first * 16, index: 7)
+            encoder.setBuffer(slotChances ?? massBuffer, offset: 0, index: 8)
+        }
+    }
+
+    /// The tracers' gas, at the chances the massive pass just wrote from the same tree and
+    /// the same positions.
+    private func encodeTracerStarFormation(into buffer: MTLCommandBuffer) {
+        guard let tracerFormStars, let slotChances, let componentBuffer, nodeCount > 0 else {
+            return
+        }
+        var params = formationParams
+        var counts = SIMD2<UInt32>(UInt32(tracerCount), UInt32(massive))
+        encode(into: buffer, tracerFormStars, threads: tracerCount) { encoder in
+            encoder.setBuffer(formationBuffer, offset: 0, index: 0)
+            encoder.setBuffer(componentBuffer, offset: 0, index: 1)
+            encoder.setBuffer(positionBuffer, offset: 0, index: 2)
+            encoder.setBuffer(builder.codes, offset: 0, index: 3)
+            encoder.setBuffer(builder.frame, offset: 0, index: 4)
+            encoder.setBuffer(slotChances, offset: 0, index: 5)
+            encoder.setBytes(&params, length: MemoryLayout<StarFormationGPU>.stride, index: 6)
+            encoder.setBytes(&counts, length: MemoryLayout<SIMD2<UInt32>>.stride, index: 7)
+        }
+    }
+
+    private var formationParams: StarFormationGPU {
+        StarFormationGPU(
             efficiency: StarFormation.efficiency,
             threshold: StarFormation.thresholdDensity,
             timeStep: scene.timeStep,
@@ -434,23 +522,15 @@ public final class MetalBarnesHutSolver: Solver {
             compressionFloor: StarFormation.compressionFloor,
             seed: UInt32(truncatingIfNeeded: stepsSinceFormation),
             nodeCount: UInt32(nodeCount))
-        encode(into: buffer, formStars, threads: nodeCount) { encoder in
-            encoder.setBuffer(formationBuffer, offset: 0, index: 0)
-            encoder.setBuffer(componentBuffer, offset: 0, index: 1)
-            encoder.setBuffer(massBuffer, offset: 0, index: 2)
-            encoder.setBuffer(builder.nodes, offset: 0, index: 3)
-            encoder.setBuffer(builder.order, offset: 0, index: 4)
-            encoder.setBytes(
-                &params, length: MemoryLayout<StarFormationGPU>.stride, index: 5)
-            encoder.setBuffer(positionBuffer, offset: 0, index: 6)
-            encoder.setBuffer(velocityBuffer, offset: 0, index: 7)
-        }
     }
 
     /// Writes the smoothing lengths of the first `drawn` particles from the live tree, so the
     /// renderer needs no tree of its own. False before there is one.
     public func writeSmoothing(into lengths: MTLBuffer, drawn: Int) -> Bool {
-        guard nodeCount > 0, let buffer = queue.makeCommandBuffer() else { return false }
+        // The tree holds none of the tracers, which are most of what is drawn.
+        guard tracerCount == 0, nodeCount > 0, let buffer = queue.makeCommandBuffer() else {
+            return false
+        }
         builder.encodeSmoothing(into: buffer, lengths: lengths, drawn: drawn)
         buffer.commit()
         buffer.waitUntilCompleted()
@@ -528,9 +608,11 @@ public final class MetalBarnesHutSolver: Solver {
         }
     }
 
-    private var params: BHParams {
+    private var params: BHParams { params(over: count) }
+
+    private func params(over particles: Int) -> BHParams {
         BHParams(
-            particleCount: UInt32(count),
+            particleCount: UInt32(particles),
             // With a live halo the dark matter is already in the tree; adding the analytic
             // potential on top would double its mass, and a rigid potential that follows the
             // disk does work on the system, which is why the old one leaked energy.
@@ -688,10 +770,12 @@ public final class MetalBarnesHutSolver: Solver {
                     }
                 }
             } while grewAfterOverflow()
+            if tracerSorter != nil { profiledPass("tracer sort") { encodeTracerSort(into: $0) } }
             profiler.update { $0.treeBuilds += 1 }
         } else if let buffer = queue.makeCommandBuffer() {
             builder.encode(
                 into: buffer, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
+            encodeTracerSort(into: buffer)
             buffer.commit()
             // The centres read the positions the build is reading, so they are taken meanwhile.
             updateHaloCenters()
@@ -745,6 +829,8 @@ public final class MetalBarnesHutSolver: Solver {
         var partial = [SIMD3<Double>](repeating: .zero, count: blocks * galaxies * 6)
         let halo = ParticleComponent.halo.rawValue
         let outskirt = ParticleComponent.outskirt.rawValue
+        // Massless, so they weigh nothing, and walking them would cost the most.
+        let tracers = tracerCount
         // The nucleus: the disk material and the bulge inside one and a half scale lengths of
         // where the centre was. The centre of mass of every visible particle, which this used
         // to be, sat 0.3 to 5 kpc off it once the outskirts went lopsided, and the camera and
@@ -767,7 +853,9 @@ public final class MetalBarnesHutSolver: Solver {
                             var innerWeighted = weighted
                             var innerDrift = weighted
                             var innerTotals = totals
-                            for particle in index * block..<min((index + 1) * block, limit) {
+                            let lower = max(index * block, tracers)
+                            let upper = min((index + 1) * block, limit)
+                            for particle in lower..<max(lower, upper) {
                                 let galaxy = Int(galaxyOf[particle])
                                 guard galaxy < galaxies else { continue }
                                 // Halo particles outnumber the disk, so including them would
@@ -877,8 +965,9 @@ public final class MetalBarnesHutSolver: Solver {
         let plane = diskStates.map(\.axis)
         centersLock.unlock()
         let limit = min(count, min(galaxyOf.count, componentOf.count))
-        let step = max(limit / (Self.frameSample * galaxies), 1)
-        for index in Swift.stride(from: 0, to: limit, by: step) {
+        let first = min(tracerCount, limit)
+        let step = max((limit - first) / (Self.frameSample * galaxies), 1)
+        for index in Swift.stride(from: first, to: limit, by: step) {
             let kind = componentOf[index]
             // The same material the cooling touches, so the frame is the frame of the thing
             // being cooled: no dark matter, no bulge, which has no plane to speak of, and no
@@ -1002,29 +1091,30 @@ public final class MetalBarnesHutSolver: Solver {
     }
 
     private func encodeAccelerations(into buffer: MTLCommandBuffer, pieces: Range<Int>? = nil) {
-        var p = params
+        var p = params(over: massive)
         let list = haloList
+        let first = tracerCount
 
         // A reused tree still needs this step's positions in its order.
         if !gathered {
-            encode(into: buffer, gather) { encoder in
+            encode(into: buffer, gather, threads: massive) { encoder in
                 encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
-                encoder.setBuffer(positionBuffer, offset: 0, index: 1)
-                encoder.setBuffer(massBuffer, offset: 0, index: 2)
+                encoder.setBuffer(positionBuffer, offset: first * 16, index: 1)
+                encoder.setBuffer(massBuffer, offset: first * 4, index: 2)
                 encoder.setBuffer(builder.order, offset: 0, index: 3)
                 encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 4)
             }
             gathered = true
         }
-        let slots = pieces ?? 0..<count
-        if slots.upperBound >= count { gathered = false }
+        let slots = pieces ?? 0..<massive
+        if slots.upperBound >= massive { gathered = false }
         var start = slots.lowerBound
         while start < slots.upperBound {
             let span = min(max(Self.forceChunk, 1), slots.upperBound - start)
             p.chunkStart = UInt32(start)
             encode(into: buffer, force, threads: span, width: Self.forceThreadgroupWidth) { encoder in
                 encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
-                encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
+                encoder.setBuffer(accelerationBuffer, offset: first * 16, index: 1)
                 encoder.setBuffer(builder.nodes, offset: 0, index: 2)
                 encoder.setBuffer(builder.order, offset: 0, index: 3)
                 encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 4)
@@ -1032,8 +1122,51 @@ public final class MetalBarnesHutSolver: Solver {
                 encoder.setBuffer(costBuffer, offset: 0, index: 6)
                 // A placeholder when the pipeline is the monopole's, which never reads it.
                 encoder.setBuffer(builder.moments, offset: 0, index: 7)
+                // Placeholders: only the tracers' specialisation reads these.
+                encoder.setBuffer(positionBuffer, offset: 0, index: 8)
+                encoder.setBuffer(builder.order, offset: 0, index: 9)
             }
             start += span
+        }
+    }
+
+    /// The tracers' walk through the massive tree. It reads the gathered massive particles
+    /// the last massive pass left, so it runs after it and before anything moves.
+    private func encodeTracerAccelerations(
+        into buffer: MTLCommandBuffer, pieces: Range<Int>? = nil
+    ) {
+        guard let tracerForce, let tracerSorter else { return }
+        var p = params(over: tracerCount)
+        p.openingAngleSquared = tracerOpeningAngle * tracerOpeningAngle
+        let list = haloList
+        let slots = pieces ?? 0..<tracerCount
+        var start = slots.lowerBound
+        while start < slots.upperBound {
+            let span = min(max(Self.forceChunk, 1), slots.upperBound - start)
+            p.chunkStart = UInt32(start)
+            encode(into: buffer, tracerForce, threads: span, width: Self.forceThreadgroupWidth) {
+                encoder in
+                encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
+                encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
+                encoder.setBuffer(builder.nodes, offset: 0, index: 2)
+                encoder.setBuffer(builder.order, offset: 0, index: 3)
+                encoder.setBytes(list, length: list.count * MemoryLayout<HaloGPU>.stride, index: 4)
+                encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 5)
+                encoder.setBuffer(costBuffer, offset: 0, index: 6)
+                encoder.setBuffer(builder.moments, offset: 0, index: 7)
+                encoder.setBuffer(positionBuffer, offset: 0, index: 8)
+                encoder.setBuffer(tracerSorter.order, offset: 0, index: 9)
+            }
+            start += span
+        }
+    }
+
+    /// The tracers in Morton order, which only decides how alike neighbouring walks are.
+    private func encodeTracerSort(into buffer: MTLCommandBuffer) {
+        guard let tracerSorter else { return }
+        for phase in [GPUTreeBuilder.Phase.bounds, .morton, .sort] {
+            tracerSorter.encode(
+                phase, into: buffer, positions: positionBuffer, mass: nil, sorted: nil)
         }
     }
 

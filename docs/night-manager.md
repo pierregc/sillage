@@ -204,17 +204,22 @@ the scene's best palettes (or the one given) on key frames of the take, filmed w
 in the telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named
 style; the plan draws each pick's world as the night will.
 
-No dust in generated styles, for now (#174). The dust of the 2026-10-30-b night read as coarse
-blobs rather than lanes (#168). Until it is drawn as a web of filaments (#173), a style nobody
-picked by hand carries none: `look --style auto`, the night's style step and the style editor's
-Auto draw every rendering with its dust held to `StyleAuto.dustCap`, 0, and score it that way,
-and a named `style.style` goes to `look` with `--generated`, which holds it the same. The looks
-of `looks/` keep their dust, a rendering clicked in the editor brings its own, and Opacité des
-poussières still sets it. Dust particles emit nothing, so 14 to 38 % of a spiral's disk
-particles (its `dustFraction`) do not show at all, which a stopgap can live with. Side by side
-on two takes, face-on and inclined disks read no flatter without dust, only cleaner; an edge-on
-one loses its lane, and the knots the dust covered shine. The web brings dust back by setting
-`dustCap` to nil, each rendering's own.
+Dust as a web of filaments (#197). The dust of the 2026-10-30-b night read as coarse blobs
+(#168), so #174 held it back from every generated style. It is drawn now as a web of filaments
+in each disk's plane, carried round by the disk and renewed before it winds up (#173, #200,
+[the note](notes/dust-web.md)), and it is back: the styles of `looks/` that carry dust, the
+five built in and the standard look draw it as the web (`dustWeb` at `RenderLook.styleDustWeb`,
+1), and `look --style auto`, the night's style step and the style editor's Auto draw and score
+each rendering with its own dust (`StyleAuto.dustCap` is nil; set to 0 it would hold the dust
+back again, a named `style.style` included, since it still goes to `look` with `--generated`).
+Where the solver reads a disk as torn the web fades out and the grains carry the dust as they
+always did, so tails and bridges keep theirs. Webb's dust went from 0.08 to 0.2, chosen side by
+side on three takes: at 0.08 its web does not show even in a 4K export, at 0.2 it reads as fine
+rust filaments over the blue-white disk, and Webb is Auto's usual telescope pick. Hubble keeps
+0.45, which shows the web best. On the same takes the web keeps as much light as the grains
+did, or up to 2.3 % less, and reddens as much, so no style needed its brightness or white point
+back. A scene's `look.json` written before keeps its picture: a file that leaves `dustWeb` out
+reads as 0.
 
 How it plans. `NightPlanner` turns the recipe and the cost model into steps, each with its
 duration, start and end, and the delivery of the whole night. Before exploring, it sizes the

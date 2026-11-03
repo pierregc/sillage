@@ -99,7 +99,7 @@ public struct NightStyle: Equatable, Sendable {
     }
 
     /// The `look` command that carries it out. A named rendering is promoted as a generated
-    /// style, its dust held back as Auto's is (#174).
+    /// style, its dust held to `StyleAuto.dustCap` as Auto's is (#174).
     public func arguments(scene: String) -> [String] {
         let single = (multicolour ? [] : ["--single"]) + (camera == "scene" ? [] : ["--camera", camera])
         if let rendering {
