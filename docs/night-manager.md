@@ -106,6 +106,7 @@ scripts/explore-batch.sh --scenes 50 --hours 8        # particle count chosen to
 scripts/explore-batch.sh --scenes 20 --per-galaxy 50000   # quick
 scripts/explore-batch.sh --out library/2026-10-24     # resume a stopped batch
 scripts/explore-batch.sh --scenes 20 --galaxies 2-3 --only-archetypes antennae,mice  # skip other draws
+scripts/explore-batch.sh --scenes 20 --pair-share 0.5  # half pairs instead of four in five; off for none
 ```
 
 **2. Rate** – in the app (**Bibliothèque**), or by editing `<batch>/ratings.json`.
@@ -159,7 +160,7 @@ name is an error.
   "version": 1,
   "deliver": "07:00",
   "explore": { "scenes": "auto", "particlesPerGalaxy": "auto", "archetypeShare": "auto",
-               "archetypes": "auto", "galaxies": "auto", "seed": "auto" },
+               "archetypes": "auto", "pairShare": "auto", "galaxies": "auto", "seed": "auto" },
   "pick": "auto",
   "hires": { "particles": "auto", "frames": "auto" },
   "style": { "world": "auto", "freeShare": "auto", "style": "auto", "palette": "auto" },
@@ -175,9 +176,10 @@ name is an error.
 | `explore.particlesPerGalaxy` | particles a galaxy in the previews | largest of 50 000 to 200 000 that fits |
 | `explore.archetypeShare` | share of archetype scenes, 0 to 1 | 0.25 |
 | `explore.archetypes` | archetypes allowed, `["antennae", "mice"]`; a place drawn for another is skipped | all |
+| `explore.pairShare` | share of scenes with exactly two galaxies, 0 to 1, in the batch and in the picks | 0.8; `explore.galaxies` wins over it |
 | `explore.galaxies` | `[least, most]` galaxies a scene has; others are skipped | any |
 | `explore.seed` | the batch seed | the day, `20261028` |
-| `pick` | `1` to `4`, or `"none"` to stop after exploring | 1 to 4 by score, as many as fit |
+| `pick` | `1` to `4`, or `"none"` to stop after exploring | 1 to 4 by score, as many as fit; a slot goes to a pair as often as `explore.pairShare` says |
 | `hires.particles` | particles in all | 8 000 000 (or the machine's maximum) |
 | `hires.frames` | the first frames of the story only | the whole story |
 | `style.world` | `telescope` or `free` | Auto: drawn for each pick, free as often as `style.freeShare` says |
@@ -208,8 +210,12 @@ first 16 draws of the batch from the generator alone (`ExploreProbe`, the same p
 steps `explore-batch.sh` gives them, a quarter more for the story); after, it uses each scene's
 own story. Auto keeps time for four picks, then three, two, one, and explores fifty scenes at
 the largest count a galaxy that fits in what is left, less a margin (5 %, 5 to 20 minutes).
-The pick takes scenes marked yes by hand first, then the best scores, never one marked no;
-score picks go to `ratings.json` as `picked`.
+The pick takes scenes marked yes by hand first, never one marked no; then each slot goes to a
+pair with the chance `explore.pairShare` gives, drawn from the batch seed as the worlds are, and
+takes the best pair by score, or else the best of the others, or the best scene left once its
+kind runs out. The score leans to groups (0.70 for pairs, 0.81 for groups of four on
+2026-10-30-b), so the best alone would undo the batch's share. Score picks go to `ratings.json`
+as `picked`.
 
 At 8 M, Auto's count since #185 (the count at which a disk filling the frame reads as matter,
 see [gigantism](notes/gigantism.md)), a hires is most of the night. The two 8 M hires of
@@ -297,6 +303,9 @@ showing them, for checks.
 - A scene is `--seed S --index N` of a generator: same two numbers, same scene.
 - `explore-batch.sh` runs 4 scenes at once, each at a low particle count with a plain look.
   Batches are resumable; settings are kept in `batch.conf`.
+- Four scenes in five have exactly two galaxies, a globular or a dwarf companion counting as one
+  and a black hole as none, in every stretch of ten (`--pair-share`, `pair_share` in
+  `batch.conf`). A batch started before the share (#176) goes on with the draw it started with.
 - A preview runs until the scene's **story** is over: from 150 Myr before the first collision
   until nothing moves, up to 2 Gyr. Clips differ in length; `clip.json` says where the story is.
 - Each scene gets an interest **score** (0-1) from its curves (closest approach, tidal tails,

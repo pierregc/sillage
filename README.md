@@ -87,6 +87,13 @@ through a disk along its axis. One scene in four is an archetype, `--archetypes 
 another share and `0` for free draws only. Which places are archetypes follows from the share,
 so every stretch of a batch holds it, each archetype comes once in every eight archetype places
 in an order shuffled each time, and the free places take the free draws in order.
+Four scenes in five have exactly two galaxies, a globular or a dwarf companion counting as one
+and a black hole as none (`--pair-share 0.8`, `off` for the draw before it, #176). Which places
+hold a pair follows from that share the same way, so every ten places hold eight pairs, and the
+rounds come in two: an archetype place that holds a pair takes the six archetypes of two
+galaxies in turn, any other the compact group and the black hole's pass, and the free places of
+each kind take the free draws of two galaxies, or of another count, in order
+([the note](docs/notes/pairs.md)).
 `--preset antennae --seed S --index K` draws the Antennae alone: their scene `K` of batch `S`,
 the same one the batch draws when they come round for the `K`-th time. `draw.generator` in the
 scene file names the archetype, or `free`, and the library's archetype filter reads it there. One
@@ -482,7 +489,8 @@ next index. The scene log is in `.logs/`.
 nothing else goes into it: the order scenes finish in does not matter. The batch's settings go
 to `batch.conf` on its first run and are read back on the next, so `--out` alone resumes it;
 a different seed or size given to a batch already started is refused. Scenes in flight when it
-stops are started again.
+stops are started again. A batch started before the pair share has none recorded and goes on
+with the draw it started with.
 
 **The clip shows the encounter.** A step three and a half times the recommended one
 (`--dt-scale 3.5`, measured in #13), 750 steps to settle, which is the first 150 Myr, where a

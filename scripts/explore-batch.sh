@@ -32,7 +32,7 @@ usage() {
     echo "usage: ${BASH_SOURCE[0]} [--scenes N] [--hours H] [--jobs N] [--seed S] [--out DIR]"
     echo "       [--per-galaxy N] [--span MYR | --steps N] [--dt-scale X] [--width W] [--height H]"
     echo "       [--frames N] [--fps N] [--settle N] [--galaxies MIN-MAX] [--only-archetypes A,B]"
-    echo "       [--plan] [-- explore options...]"
+    echo "       [--pair-share X|off] [--plan] [-- explore options...]"
     echo "       ${BASH_SOURCE[0]} --benchmark [--scenes N] [--seed S] [--per-galaxy N] [--span MYR]"
 }
 
@@ -46,10 +46,12 @@ build=1
 quiet=0
 # The batch's own settings, recorded in batch.conf on the first run and read back on the next,
 # so a resumed batch draws and renders exactly as it started.
-keys="seed per_galaxy span steps dt_scale width height frames fps settle extra galaxy_range only_archetypes"
+keys="seed per_galaxy span steps dt_scale width height frames fps settle extra galaxy_range only_archetypes pair_share"
 seed="" per_galaxy="" span="" steps="" dt_scale="" width="" height="" frames="" fps="" settle="" extra=""
 # Draws outside these are skipped: a galaxy count, and for an archetype, its name.
 galaxy_range="" only_archetypes=""
+# The share of places held to exactly two galaxies (#176), or off for the counts as drawn.
+pair_share=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -69,6 +71,7 @@ while [ $# -gt 0 ]; do
         --settle)     settle="$2"; shift 2 ;;
         --galaxies)   galaxy_range="$2"; shift 2 ;;
         --only-archetypes) only_archetypes="$2"; shift 2 ;;
+        --pair-share) pair_share="$2"; shift 2 ;;
         --benchmark)  benchmark=1; shift ;;
         --no-build)   build=0; shift ;;
         --quiet)      quiet=1; shift ;;
@@ -87,7 +90,7 @@ render() { DYLD_LIBRARY_PATH="$BIN" "$BIN/sillage-render" "$@"; }
 probe() {
     # shellcheck disable=SC2086
     render --preset free --seed "$seed" --index "$1" --solver barnes-hut --particles "$2" \
-        --dt-scale "$dt_scale" --check-only $extra 2>&1 | awk '
+        --dt-scale "$dt_scale" --pair-share "$pair_share" --check-only $extra 2>&1 | awk '
             /^draw / { generator = $2; sub(/,$/, "", generator); sub(/^[^:]*: /, "")
                        galaxies = split($0, f, ", ")
                        # A black hole has no stars to share: the host keeps the count.
@@ -146,6 +149,10 @@ budget() {
 
 defaults() {
     [ -n "$seed" ] || seed="$(date +%Y%m%d)"
+    # Four scenes in five are pairs, unless a galaxy range says which counts to keep.
+    if [ -z "$pair_share" ]; then
+        if [ -n "$galaxy_range" ]; then pair_share=off; else pair_share=0.8; fi
+    fi
     [ -n "$width" ] || width=960
     [ -n "$height" ] || height=540
     [ -n "$frames" ] || frames=900
@@ -208,6 +215,11 @@ conf="$out/batch.conf"
 if [ -f "$conf" ]; then
     for key in $keys; do
         recorded="$(awk -v k="$key" 'index($0, k "=") == 1 { print substr($0, length(k) + 2) }' "$conf")"
+        # A batch started before the pair share keeps the draw it started with.
+        if [ "$key" = pair_share ] && [ -z "$recorded" ]; then
+            recorded=off
+            say "$out was started before the pair share: its scenes are drawn as they were"
+        fi
         given="${!key}"
         if [ -n "$given" ] && [ "$given" != "$recorded" ]; then
             echo "$out was started with $key=$recorded; a batch keeps its settings" >&2
@@ -281,7 +293,8 @@ explore_scene() {
         # shellcheck disable=SC2086
         render explore "$stage" --seed "$seed" --index "$n" --particles "$particles" \
             --width "$width" --height "$height" --frames "$frames" --fps "$fps" \
-            --steps "$clip" --settle "$settle" --dt-scale "$dt_scale" --look "$LOOK" $extra \
+            --steps "$clip" --settle "$settle" --dt-scale "$dt_scale" --pair-share "$pair_share" \
+            --look "$LOOK" $extra \
             >"$scene_log" 2>&1 || rc=$?
         if [ "$rc" -eq 0 ] && [ -s "$stage/preview.mov" ] && [ -s "$stage/thumbnail.png" ]; then
             score="$(python3 "$ROOT/scripts/interest.py" "$stage" 2>>"$scene_log" | awk 'NR == 1 { print $1 }')" || true

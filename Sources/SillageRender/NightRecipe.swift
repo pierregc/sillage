@@ -72,6 +72,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         public var archetypeShare: Setting<Double> = .auto
         /// The archetypes allowed; a place drawn for another one is skipped.
         public var archetypes: Setting<[String]> = .auto
+        /// The share of scenes with exactly two galaxies, in the batch and in the picks.
+        public var pairShare: Setting<Double> = .auto
         /// `[least, most]` galaxies a scene may have.
         public var galaxies: Setting<[Int]> = .auto
         public var seed: Setting<UInt64> = .auto
@@ -86,6 +88,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             archetypeShare =
                 try c.decodeIfPresent(Setting<Double>.self, forKey: .archetypeShare) ?? .auto
             archetypes = try c.decodeIfPresent(Setting<[String]>.self, forKey: .archetypes) ?? .auto
+            pairShare = try c.decodeIfPresent(Setting<Double>.self, forKey: .pairShare) ?? .auto
             galaxies = try c.decodeIfPresent(Setting<[Int]>.self, forKey: .galaxies) ?? .auto
             seed = try c.decodeIfPresent(Setting<UInt64>.self, forKey: .seed) ?? .auto
         }
@@ -190,6 +193,15 @@ extension NightRecipe {
 
     public var freeShare: Double { style.freeShare.value ?? Self.defaultFreeShare }
 
+    /// Four scenes in five with exactly two galaxies, Pierre's ask (#176).
+    public static let defaultPairShare = 0.8
+
+    /// The share of pairs in the batch and the picks; nil when `explore.galaxies` names the
+    /// counts instead.
+    public var pairShare: Double? {
+        galaxyRange == nil ? explore.pairShare.value ?? Self.defaultPairShare : nil
+    }
+
     /// Auto's draw for the pick at `index`, in [0, 1): the same for the same batch seed, pick
     /// and `stream`, so a resumed night draws what it drew before. Each setting drawn a pick
     /// has a stream of its own, so its draws do not follow another's.
@@ -243,7 +255,9 @@ extension NightRecipe {
 
     static let keys: [String: Set<String>] = [
         "": ["version", "deliver", "hours", "explore", "pick", "hires", "style", "export"],
-        "explore": ["scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "galaxies", "seed"],
+        "explore": [
+            "scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "pairShare", "galaxies", "seed",
+        ],
         "hires": ["particles", "frames"],
         "style": ["world", "style", "palette", "multicolour", "camera", "freeShare"],
     ]
@@ -304,6 +318,9 @@ extension NightRecipe {
                 throw Failure.badValue(
                     "explore.archetypes", "\(name) is not one of \(known.joined(separator: ", "))")
             }
+        }
+        if let share = explore.pairShare.value, !(0...1).contains(share) {
+            throw Failure.badValue("explore.pairShare", "from 0 to 1")
         }
         if let range = explore.galaxies.value {
             guard range.count == 2, range[0] >= 1, range[0] <= range[1] else {
