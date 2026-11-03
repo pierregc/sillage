@@ -282,6 +282,15 @@ public enum RecordingFile {
                 disks = []
             }
         }
+        // The run that wrote such a take wrote its disruption correctly in the curves beside it
+        // (#198).
+        if disks.isEmpty, header.scene.galaxies.count == galaxies,
+            let curves = try? String(
+                contentsOf: SceneFolder(url.deletingLastPathComponent()).hiresCurves,
+                encoding: .utf8)
+        {
+            disks = Self.disks(curves: curves, frames: frames, scene: header.scene)
+        }
 
         // The positions stay in the mapping rather than being copied into an array: a take of
         // several gigabytes should cost the pages that are actually looked at.
@@ -315,6 +324,42 @@ public enum RecordingFile {
         // Everything in a take is visible; there is no dark matter in the file.
         particles.setVisibleCount(count)
         return Loaded(scene: header.scene, recording: recording, particles: particles)
+    }
+
+    /// Each disk on each stored frame as `curves-hires.csv` has it: the natal plane, disrupted
+    /// as its `disruption_<galaxy>` column says, which is all the painted arms fade with. A
+    /// frame takes the row of its own time, whichever captured frames the take kept. One with
+    /// no row within 0.01 Myr means another run's curves, and nothing is read: the curves
+    /// print the time to a thousandth, and their rows lie a captured frame apart.
+    static func disks(curves: String, frames: [Recording.Frame], scene: SceneConfig) -> [DiskState] {
+        let lines = curves.split(whereSeparator: \.isNewline)
+        guard let header = lines.first?.split(separator: ",").map(String.init),
+            let time = header.firstIndex(of: "time_myr")
+        else { return [] }
+        let columns = scene.galaxies.indices.compactMap { header.firstIndex(of: "disruption_\($0)") }
+        guard columns.count == scene.galaxies.count else { return [] }
+        let rows = lines.dropFirst().compactMap { line -> (myr: Double, disruption: [Float])? in
+            let fields = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard fields.count == header.count, let myr = Double(fields[time]) else { return nil }
+            let disruption = columns.compactMap { Float(fields[$0]) }.filter(\.isFinite)
+            return disruption.count == columns.count ? (myr, disruption) : nil
+        }
+        let natal = DiskState.natal(scene)
+        var disks: [DiskState] = []
+        disks.reserveCapacity(frames.count * natal.count)
+        var row = 0
+        for frame in frames {
+            let myr = Double(frame.time) * Physics.megayearsPerTimeUnit
+            while row + 1 < rows.count, abs(rows[row + 1].myr - myr) <= abs(rows[row].myr - myr) {
+                row += 1
+            }
+            guard row < rows.count, abs(rows[row].myr - myr) < 0.01 else { return [] }
+            for (galaxy, state) in natal.enumerated() {
+                disks.append(
+                    DiskState(axis: state.axis, disruption: min(max(rows[row].disruption[galaxy], 0), 1)))
+            }
+        }
+        return disks
     }
 
     private static func bytes<T>(of values: [T]) -> Data {
