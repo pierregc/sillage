@@ -60,7 +60,8 @@ nothing else, because the model publishes on every played frame.
   it is nil since #197, so Auto brings the rendering's own dust, drawn as a web.
 - **Réinitialiser goes back to the last rendering applied** for Lumière, Instrument and Rendu
   détaillé, since resetting the light of a new rendering to the old one's would mix two looks;
-  and to the saved plan for the camera.
+  and to the saved plan for the camera. It puts back every field its group's controls edit:
+  a test reads what they bind in the editor's source, since no test can build the app (#209).
 - **Avant/Après is ⌥ held, or the button held.** A modifier works on any keyboard layout and
   whatever has the focus. While held, the saved style is on the picture and nothing in the
   inspector can change.
@@ -124,7 +125,7 @@ What changed:
 
 - `--lookcheck <take>` drives the session on the opened take: rendering alone and with its
   colours, six proposals and another round, a lock through a new palette, camera mode and
-  rotation, two resets, Avant/Après, Annuler (nothing written), Utiliser pour la scène
+  rotation, three resets, Avant/Après, Annuler (nothing written), Utiliser pour la scène
   (`look.json` is the style on screen, the explored look kept in `look-raw.json`), and Auto when
   the take sits in a scene folder. Then the framing (#177): in each of the four modes the
   canvas's camera against the first frame of an export started at the playhead, read off disk
