@@ -204,6 +204,18 @@ the scene's best palettes (or the one given) on key frames of the take, filmed w
 in the telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named
 style; the plan draws each pick's world as the night will.
 
+No dust in generated styles, for now (#174). The dust of the 2026-10-30-b night read as coarse
+blobs rather than lanes (#168). Until it is drawn as a web of filaments (#173), a style nobody
+picked by hand carries none: `look --style auto`, the night's style step and the style editor's
+Auto draw every rendering with its dust held to `StyleAuto.dustCap`, 0, and score it that way,
+and a named `style.style` goes to `look` with `--generated`, which holds it the same. The looks
+of `looks/` keep their dust, a rendering clicked in the editor brings its own, and Opacité des
+poussières still sets it. Dust particles emit nothing, so 14 to 38 % of a spiral's disk
+particles (its `dustFraction`) do not show at all, which a stopgap can live with. Side by side
+on two takes, face-on and inclined disks read no flatter without dust, only cleaner; an edge-on
+one loses its lane, and the knots the dust covered shine. The web brings dust back by setting
+`dustCap` to nil, each rendering's own.
+
 How it plans. `NightPlanner` turns the recipe and the cost model into steps, each with its
 duration, start and end, and the delivery of the whole night. Before exploring, it sizes the
 first 16 draws of the batch from the generator alone (`ExploreProbe`, the same particles and

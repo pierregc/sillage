@@ -39,6 +39,14 @@ total is 0.8 × the mean frame score + 0.2 × the palette's own score, since har
 show on a frame. `StyleAuto.apply` puts the rendering and the palette on the scene's look and
 keeps its camera and field of view, so the framing does not change with the style.
 
+It also holds the dust to `StyleAuto.dustCap` (none since #174) before the frames are drawn, so
+a pair is judged as it ships rather than with dust it will not have. That costs no time, the
+dust pass runs either way, and it can change the pick: on 2026-10-30-b, scene-0031's telescope
+pair was Hubble at 0.705 with its dust, ahead of Webb at 0.695, and drawn without it Hubble
+falls to 0.675 behind Webb at 0.687, its detail part from 0.97 to 0.83. Scenes 0030 and 0044
+kept Webb, the first with another palette; the free world kept red-vs-cyan and gold-leaf, which
+have no dust.
+
 ## Cost
 
 Measured on the M4 Max, whole process, clips of 960 × 540:
