@@ -398,14 +398,15 @@ public enum RecordingFile {
         let axes = states.map(\.axis)
         let sampled = picked
         let bins = heightBins
-        let tops = DiskState.layerSpreads
+        let widest = DiskState.layerSpreads
         let jobs = frames * rotating.count
         var spreads = [Float](repeating: 0, count: jobs)
         var counts = [Int32](repeating: 0, count: jobs * bins)
         spreads.withUnsafeMutableBufferPointer { spread in
             counts.withUnsafeMutableBufferPointer { count in
-                let spreadBase = spread.baseAddress!
-                let countBase = count.baseAddress!
+                // Each job writes its own slots only.
+                nonisolated(unsafe) let spreadBase = spread.baseAddress!
+                nonisolated(unsafe) let countBase = count.baseAddress!
                 DispatchQueue.concurrentPerform(iterations: jobs) { job in
                     let frame = job / rotating.count
                     let index = rotating[job % rotating.count]
@@ -426,7 +427,7 @@ public enum RecordingFile {
                     spreadBase[job] = fit.spread
                     for offset in offsets {
                         guard let height = fit.height(of: offset) else { continue }
-                        let bin = Int(abs(height) / fit.spread / tops * Float(bins))
+                        let bin = Int(abs(height) / fit.spread / widest * Float(bins))
                         if bin < bins { countBase[job * bins + bin] += 1 }
                     }
                 }
@@ -443,7 +444,7 @@ public enum RecordingFile {
                     continue
                 }
                 // The cut in bins, the last one counted in part.
-                let reach = reading.layerHeight(spread: spread) / spread / tops * Float(bins)
+                let reach = reading.layerHeight(spread: spread) / spread / widest * Float(bins)
                 let whole = min(Int(reach), bins)
                 var held: Float = 0
                 for bin in 0..<whole { held += Float(counts[job * bins + bin]) }

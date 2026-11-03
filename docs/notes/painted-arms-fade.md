@@ -17,11 +17,12 @@ their stars still held their arms.
 
 ## What the stars do
 
-Measured on the takes' own positions, per stored frame (scripts in the #210 thread):
+Measured on the takes' own positions, per stored frame:
 
-- the stars' own arms: the log-spiral amplitude, m = 2 to 6 at the best pitch, of the stars still
-  in the disk, in the natal plane between 0.5 and 4.5 scale lengths, over all the stars there,
-  shot noise taken out, as a share of its level 40 to 100 Myr before the pericentre;
+- the stars' own arms: the log-spiral amplitudes of m = 2 to 6, each at its best pitch and summed
+  in quadrature, of the stars still in the disk, in the natal plane between 0.5 and 4.5 scale
+  lengths, over all the stars there, shot noise taken out, as a share of the level 40 to 100 Myr
+  before the pericentre;
 - the share of the disk still in its layer: the disk material inside the edge and within twice
   the layer's thinnest rms height of a plane fitted to its own ring, half a scale length wide.
 
