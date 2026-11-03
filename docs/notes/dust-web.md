@@ -40,8 +40,8 @@ time and cross-faded with a fresh one (Max and Becker 1995, Neyret 2003).
   (elevation 1.52), at 60 degrees and edge-on, framed 22 kpc.
 - **The encounter** `2026-10-30-b/scene-0031` at 2 M, and `scene-0030` at 8 M for what more
   grains buy. Both are scenes from before the calm disk.
-- **Hand-made looks**: Hubble (dust 0.45), Webb (0.08) and Braise poussière (`ember-dust`,
-  0.35), drawn at 4K. #174 keeps dust out of the generated styles meanwhile.
+- **Hand-made looks**: `hubble` (dust 0.45), `webb` (0.08) and `ember-dust` (0.35), drawn at
+  4K. #174 keeps dust out of the generated styles meanwhile.
 
 `scripts/dust-web-sheet.py` lays the stills out, `scripts/dust-web-metrics.py` splits a still's
 dust structure by scale against the same still drawn with no dust.
@@ -87,7 +87,9 @@ disruption`, the measure that already fades the painted arms), by how near the p
 (full within 0.3 scale lengths, none past 0.8: a disk an encounter has begun to warp keeps it), by
 being inside 5 to 7 scale lengths, and by the view: it fades out between 70 and 83 degrees of
 inclination, so edge-on draws what it always drew. Its own pipeline (`dustWebVertex`,
-`dustWebFragment`), chosen only when `dustWeb` is above zero.
+`dustWebFragment`), chosen only when `dustWeb` is above zero, so a look without it draws the
+same bytes as before: checked against main on the disk preset with three looks and on two frames
+of scene-0031's take. (`--selftest` could not prove it: two runs of main itself differ tonight.)
 
 ## Candidate 2: finer particle dust
 
@@ -104,9 +106,9 @@ changes (`enc8.jpg`).
 
 Candidate 1 as built is already this: the web is weighted by intactness and the envelopes, and
 where they fall to zero the grains are back to their own width and their painted lane, which is
-today's dust. In scene-0031 the solver flags the two disks disrupted from 270 and 280 Myr, fully
-by 285 and 292 Myr, before the pericentre at 304 Myr, and the web fades out over those 15 Myr
-with the painted arms. Drawn on the torn disks anyway (candidate 1 strictly, a spike-only switch),
+today's dust. In scene-0031 the solver starts flagging the two disks disrupted at 258 and 280 Myr
+and reads them fully torn at 284 and 290 Myr, before the pericentre at 304 Myr, so the web fades
+out over 26 and 10 Myr, with the painted arms. Drawn on the torn disks anyway (candidate 1 strictly, a spike-only switch),
 at the pericentre the web lays a clean swirl over the collision, a rotation the torn material no
 longer has; by 400 Myr the envelopes alone drop most of the torn dust and it changes little.
 
@@ -121,16 +123,20 @@ spike read the disruption back from `curves-hires.csv`, which the same run wrote
 
 - **Face-on and at 60 degrees** (`disk-angles.jpg`, `disk-crops.jpg`): the web turns the blots
   and specks into dark filaments with tendrils, a fine brown lace over the inner disk and loops
-  round clear holes; the lanes along the arms become filamentary. The inner disk is brighter
-  and less orange than today, since uniform dust reddens everything a little and a web leaves
-  gaps. At 60 degrees the inner filaments are stretched along the major axis by the shear and the
-  foreshortening together, which is how inclined real disks show their lanes.
+  round clear holes; the lanes along the arms become filamentary. Measured against the same frame
+  drawn with no dust, the mean dimming is unchanged (0.16 in log luminance face-on either way,
+  0.23 against 0.24 at 60 degrees), but where it lives moves: 63 % of today's dust structure is
+  finer than 3 px, the specks, against 45 % with the web, which puts 35 % between 12 and 48 px
+  (filaments and lanes) against 19 %. Finer grains go the other way, 80 % under 3 px. The inner
+  disk is brighter and less orange, since even dust reddens everything a little and a web leaves
+  gaps; the lanes darker. At 60 degrees the inner filaments are stretched along the major axis by
+  the shear and the foreshortening together, which is how inclined disks show their lanes.
 - **Edge-on**: the same as today by construction.
 - **Depth slabs**: the web writes into the same four slabs, so a star behind a filament is dimmed
   and one behind a hole is not, at the pixel; nothing else changes.
 - **Télescope renderings** (`disk-looks.jpg`): Hubble shows the web best, its dust being the
-  strongest; Webb's dust (0.08) is faint either way, and its glowing dust is still not drawn
-  (dust here only absorbs). Braise poussière takes it as Hubble does.
+  strongest; Webb's dust (0.08) is faint either way, and the glowing dust of Webb's own pictures
+  is still not drawn (dust here only absorbs). `ember-dust` takes it as Hubble does.
 - **Over a rotation** (`disk-rotation.jpg`, the camera turning at the material's rate at two
   scale lengths, 8 frames 16 Myr apart): today's dust holds where the paint holds it and its
   grains shear into arcs between; the web keeps the same character through the turn, gathered in
@@ -163,4 +169,6 @@ brighter inner disk is a real effect of clumpy dust (the same column lets more l
 in filaments than spread evenly), which a style that turns the web on may want to take back with
 its brightness or white point.
 
-Follow-ups, opened under #168: TODO
+Follow-ups, under #168: #197 turns the web on in the shipped and the generated styles, which is
+also where `StyleAuto.dustCap` goes back to nil (the #174 stopgap); #198 gives the takes already
+in the library their disk state back, without which the web stays on through their encounters.
