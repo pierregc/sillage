@@ -55,6 +55,23 @@ struct StyleEditTests {
         }
     }
 
+    /// Auto's pair is scored and promoted with the dust held back (#174); everything else is the
+    /// rendering's, and a rendering chosen by hand keeps its own dust.
+    @Test func aGeneratedStyleHoldsTheDustBack() throws {
+        let palette = try PaletteGenerator.palette(galaxies: 2, world: .telescope, seed: 9)
+        let cap = StyleAuto.dustCap ?? .infinity
+        for rendering in LookCatalogue.repository {
+            let auto = StyleAuto.apply(rendering, palette: palette, to: base)
+            #expect(auto.look.dustStrength == min(rendering.look.dustStrength, cap))
+            var look = auto.look
+            look.dustStrength = rendering.look.dustStrength
+            look.fieldOfView = rendering.look.fieldOfView
+            #expect(look == rendering.look)
+            #expect(base.withRendering(rendering).look.dustStrength == rendering.look.dustStrength)
+            #expect(StyleAuto.generated(rendering).look.dustStrength == auto.look.dustStrength)
+        }
+    }
+
     @Test func aRenderingKeepsThePaletteTheCameraAndTheFieldOfView() {
         let file = base.withRendering(rendering)
         #expect(file.palette == base.palette && file.world == .free)

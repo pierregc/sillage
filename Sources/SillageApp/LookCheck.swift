@@ -230,6 +230,10 @@ enum LookCheck {
             "un rendu garde la palette et le plan",
             session.rendering?.name == "webb" && model.lookFile.palette == before.palette
                 && model.lookFile.camera == before.camera && session.isModified, "")
+        check(
+            "un rendu choisi à la main garde ses poussières",
+            model.lookFile.look.dustStrength == webb.look.dustStrength,
+            StyleNames.number(model.lookFile.look.dustStrength))
         session.apply(webb, colours: true)
         check(
             "avec ses couleurs prend aussi sa palette",
@@ -351,7 +355,7 @@ enum LookCheck {
     }
 
     /// Auto on the telescope world, with a lock: a rendering and a palette from the catalogue,
-    /// the locked colour kept, the camera left alone.
+    /// the locked colour kept, the camera left alone, the dust held back.
     @MainActor
     private static func exerciseAuto(
         _ session: StyleSession, _ model: SimulationModel, _ check: (String, Bool, String) -> Void
@@ -382,5 +386,9 @@ enum LookCheck {
             "auto respecte le cadenas et le plan",
             model.lookFile.colour(ofGalaxy: 0, in: model.scene) == kept && model.lookFile.camera == camera,
             "")
+        check(
+            "auto retient les poussières",
+            model.lookFile.look.dustStrength <= StyleAuto.dustCap ?? .infinity,
+            StyleNames.number(model.lookFile.look.dustStrength))
     }
 }

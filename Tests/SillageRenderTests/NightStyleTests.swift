@@ -132,7 +132,7 @@ struct NightStyleTests {
             try resolve(style(nil, "aurora")).arguments(scene: "s")
                 == [
                     "look", "s", "--palette", "auto", "--world", "free", "--base", "aurora",
-                    "--camera", "director",
+                    "--generated", "--camera", "director",
                 ])
     }
 

@@ -112,8 +112,10 @@ final class StyleSession: ObservableObject {
 
     var isModified: Bool { saved.map { current != $0 } ?? false }
 
-    /// The catalogue's rendering the style draws with, untouched.
-    var rendering: LookFile? { catalogue.first { current.uses(rendering: $0) } }
+    /// The catalogue's rendering the style draws with, untouched or as Auto applies it.
+    var rendering: LookFile? {
+        catalogue.lazy.flatMap { [$0, StyleAuto.generated($0)] }.first { current.uses(rendering: $0) }
+    }
 
     var galaxyCount: Int { sceneFile?.galaxies.count ?? model.scene.galaxies.count }
 
@@ -308,7 +310,7 @@ final class StyleSession: ObservableObject {
             let scene = model.scene
             guard
                 edit({
-                    $0.withRendering(pick.rendering).withPalette(
+                    $0.withRendering(StyleAuto.generated(pick.rendering)).withPalette(
                         pick.palette, keeping: locked, in: scene, references: references)
                 })
             else { return }

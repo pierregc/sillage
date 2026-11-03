@@ -111,10 +111,10 @@ struct NightRunnerTests {
         return recipe
     }
 
-    private func runner(_ recipe: NightRecipe) -> NightRunner {
+    private func runner(_ recipe: NightRecipe, catalogue: [LookFile] = []) -> NightRunner {
         NightRunner(
             folder: NightFolder(batch: batch, recipe: recipe, maximumParticles: 10_000_000),
-            executable: stage, exploreScript: explore, catalogue: [], poll: 0.05,
+            executable: stage, exploreScript: explore, catalogue: catalogue, poll: 0.05,
             handlesSignals: false,
             draws: { perGalaxy in
                 [
@@ -243,6 +243,21 @@ struct NightRunnerTests {
         #expect(looks.count == 2 && looks.last?.contains("scene-0003 --style auto --world free") == true)
         #expect(events.filter { $0.kind == RunEvent.Kind.style }.map(\.world) == ["telescope", "free"])
         #expect(NightFile.read(from: RunStatusFiles.night(batch: batch))?.recipe["freeShare"] == "0.6")
+    }
+
+    /// Auto's styles hold the dust back by themselves; a named one is promoted as generated so
+    /// it does too (#174).
+    @Test func aNamedStyleIsPromotedAsAGeneratedOne() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var recipe = recipe()
+        recipe.style.style = .value("hubble")
+        var hubble = LookFile.standard
+        hubble.name = "hubble"
+        hubble.world = .telescope
+        #expect(runner(recipe, catalogue: [hubble]).run() == 0)
+        let looks = logged().filter { $0.hasPrefix("look ") }
+        #expect(looks.count == 2)
+        #expect(looks.allSatisfy { $0.contains("--world telescope --base hubble --generated") })
     }
 
     @Test func theFolderPlansWithTheNightsSeedAndTheNamedPalettesWorld() throws {

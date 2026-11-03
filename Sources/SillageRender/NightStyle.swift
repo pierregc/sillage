@@ -98,12 +98,15 @@ public struct NightStyle: Equatable, Sendable {
             multicolour: style.multicolour.value ?? true, camera: style.camera.value ?? "director")
     }
 
-    /// The `look` command that carries it out.
+    /// The `look` command that carries it out. A named rendering is promoted as a generated
+    /// style, its dust held back as Auto's is (#174).
     public func arguments(scene: String) -> [String] {
         let single = (multicolour ? [] : ["--single"]) + (camera == "scene" ? [] : ["--camera", camera])
         if let rendering {
-            return ["look", scene, "--palette", palette, "--world", world.rawValue, "--base", rendering]
-                + single
+            return [
+                "look", scene, "--palette", palette, "--world", world.rawValue, "--base", rendering,
+                "--generated",
+            ] + single
         }
         return ["look", scene, "--style", "auto", "--world", world.rawValue]
             + (palette == "auto" ? [] : ["--palette", palette]) + single
