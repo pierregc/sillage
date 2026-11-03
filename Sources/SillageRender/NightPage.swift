@@ -229,10 +229,12 @@ extension NightPage {
                 problems: [], report: nil, controls: controls)
         }
         let (folder, file) = found
-        let events =
+        let written =
             (try? String(contentsOf: RunStatusFiles.events(batch: folder), encoding: .utf8))
             .map(RunEvent.decodeLines) ?? []
-        let night = NightEvents(events)
+        // Its phases, cards and report from the night's own lines only.
+        let night = NightEvents(written, end: file.endedAt)
+        let events = night.events
         let shown = live ? activity?.job.flatMap { $0.batch == id ? $0 : nil } : nil
         let paused = live && status.isPaused
 

@@ -1,7 +1,10 @@
 import Foundation
 
-/// The events of a night sorted by what they say, shared by the report and the status digest.
+/// The events of a night sorted by what they say, shared by the report, the status digest and
+/// the night page. Only what the night's own runs wrote counts.
 struct NightEvents {
+    /// The night's own events, in order.
+    let events: [RunEvent]
     let explored: [RunEvent]
     let picks: [RunEvent]
     let hires: [RunEvent]
@@ -9,8 +12,11 @@ struct NightEvents {
     let skipped: [RunEvent]
     let errors: [RunEvent]
 
-    init(_ events: [RunEvent]) {
+    /// `end` is the night's `endedAt`.
+    init(_ all: [RunEvent], end: Date?) {
+        let events = Self.own(all, end: end)
         func of(_ kind: String) -> [RunEvent] { events.filter { $0.kind == kind } }
+        self.events = events
         explored = of(RunEvent.Kind.exploreScene)
         picks = of(RunEvent.Kind.pick).filter { $0.chosen != false }
         hires = of(RunEvent.Kind.hiresDone)
@@ -21,9 +27,28 @@ struct NightEvents {
 
     func explored(_ status: String) -> Int { explored.filter { $0.status == status }.count }
 
+    /// What the night's runs wrote. A stage run in the folder after a run's `night.done`, by
+    /// hand or from the queue, is the scene's and not the night's, until the night starts
+    /// again; so is one after `end`, for a last run killed before it could write its
+    /// `night.done`. The queue's error about the night itself comes after its end and is the
+    /// night's.
+    static func own(_ events: [RunEvent], end: Date?) -> [RunEvent] {
+        var over = false
+        return events.filter { event in
+            switch event.kind {
+            case RunEvent.Kind.nightStart: over = false
+            case RunEvent.Kind.nightDone: over = true
+            default:
+                let after = over || end.map { event.t > $0 } == true
+                return !after || event.stage == "night"
+            }
+            return true
+        }
+    }
+
     /// The skips that still hold. A night resumed in the same folder tries again what an earlier
-    /// run left out, and a stage run by hand may do it: a skip holds in its own run, until a
-    /// later done of the same scene and stage.
+    /// run left out, and a stage run by hand while it runs may do it: a skip holds in its own
+    /// run, until a later done of the same scene and stage.
     static func standingSkips(_ events: [RunEvent]) -> [RunEvent] {
         let run = events.lastIndex { $0.kind == RunEvent.Kind.nightStart } ?? events.startIndex
         return events.indices.filter { index in
@@ -79,7 +104,7 @@ public enum NightReport {
             case .stopped: "arrêtée"
             }
         let end = night.endedAt ?? now
-        let found = NightEvents(events)
+        let found = NightEvents(events, end: night.endedAt)
         let phases = Dictionary(uniqueKeysWithValues: night.phases.map { ($0.name, $0) })
         let planned = phases["hires"].map { " sur \($0.planned) prévues" } ?? ""
         let weight = found.videos.reduce(0) { $0 + ($1.megabytes ?? 0) }
