@@ -119,9 +119,12 @@ dust and it changes little.
 **Takes written by `hires` carried no disk state.** The command line handed the take its
 positions and centres but not the solver's `diskFrames`, so every take of the library reads as
 intact on every frame (the app's own takes were fine). The painted arms never faded in a look,
-an export or the editor, and the web would not either. Fixed here for every take written from
-now on; the takes already in the library still read as intact, and the encounter sheets of this
-spike read the disruption back from `curves-hires.csv`, which the same run wrote correctly.
+an export or the editor, and the web would not either. #186 found the same while this spike ran
+and fixed it in PR #193 ([director shots](director-shots.md)), so takes written from now on carry
+their disk states; the takes already in the library still read as intact (#198). The encounter
+sheets of this spike read the disruption back from `curves-hires.csv`, which the same run wrote
+correctly (`SILLAGE_DISRUPTION_CSV`, on the branch `spike/173-prototypes` with the spike's other
+knobs: finer grains, the web on torn disks, the period and the rest phase).
 
 ## What they look like
 
