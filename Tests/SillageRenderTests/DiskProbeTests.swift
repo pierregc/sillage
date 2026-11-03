@@ -293,7 +293,7 @@ struct DiskProbeTests {
         options.clumpiness = 0.05
         options.diskThickness = 0.25
         options.softening = 0.2
-        options.effectiveToomreQ = 2.4
+        options.effectiveToomreQ = 3
         let report = try DiskProbe.run(options) { _ in }
         #expect(report.frames == 3)
         #expect(report.galaxyParticles == scene.galaxies[1].particleCount)
@@ -305,8 +305,8 @@ struct DiskProbeTests {
         #expect(report.facts.x2[1] > 0.5 && report.facts.x2[1] < 20)
         #expect(report.facts.paintedPatternSpeed > 0)
         // Solved for the response at the softening the run uses, after the thickness.
-        #expect(abs(report.facts.effectiveToomreQ - 2.4) < 1e-3)
-        #expect(abs((report.overrides["toomreQ"] ?? 0) - report.facts.gravityLeft * 2.4) < 1e-3)
+        #expect(abs(report.facts.effectiveToomreQ - 3) < 1e-3)
+        #expect(abs((report.overrides["toomreQ"] ?? 0) - report.facts.gravityLeft * 3) < 1e-3)
 
         let output = URL(fileURLWithPath: options.output!)
         let csv = try String(contentsOf: output.appendingPathComponent("probe.csv"), encoding: .utf8)
