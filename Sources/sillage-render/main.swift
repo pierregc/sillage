@@ -988,7 +988,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
         + " [--painted] [--lag-myr T] [--stills 0,300,...] [--dt-scale X] [--softening KPC]"
         + " [--clumpiness X] [--toomre-q X] [--arm-strength X] [--arm-count N]"
         + " [--arm-irregularity X] [--disk-mass-fraction X] [--disk-thickness KPC] [--dissipation T]"
-        + " [--mass-contrast X] [--streaming X] [--young-clumpiness X] [--calm]"
+        + " [--mass-contrast X] [--streaming X] [--young-clumpiness X] [--effective-q X] [--calm]"
     guard arguments.count >= 2, !arguments[0].hasPrefix("--"), let galaxy = Int(arguments[1]) else {
         fail(usage)
     }
@@ -1004,7 +1004,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
             "particles", "myr", "frame-myr", "seed", "out", "width", "height", "no-clip", "painted",
             "lag-myr", "stills", "dt-scale", "clumpiness", "toomre-q", "arm-strength", "arm-count",
             "arm-irregularity", "disk-mass-fraction", "disk-thickness", "dissipation", "mass-contrast",
-            "streaming", "young-clumpiness", "calm", "softening",
+            "streaming", "young-clumpiness", "calm", "softening", "effective-q",
         ]
         guard known.contains(String(word.dropFirst(2))) else {
             fail("probe-disk: unknown option \(word)\n" + usage)
@@ -1025,6 +1025,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
     options.softening = float("softening")
     options.clumpiness = float("clumpiness")
     options.toomreQ = float("toomre-q")
+    options.effectiveToomreQ = float("effective-q")
     options.armStrength = float("arm-strength")
     options.armCount = value("arm-count").flatMap(Int.init)
     options.armIrregularity = float("arm-irregularity")

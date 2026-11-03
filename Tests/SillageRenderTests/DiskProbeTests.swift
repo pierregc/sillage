@@ -253,6 +253,24 @@ struct DiskProbeTests {
         #expect(reading.mapSignalToNoise < 0.5)
     }
 
+    /// The generators' response is read at the wave the probe's `facts` name, and asks a softer
+    /// or thicker disk for a lower Q.
+    @Test func theResponseIsReadAtTheProbesWavenumber() {
+        var galaxy = Self.galaxy()
+        galaxy.diskThickness = 0.2
+        let facts = DiskProbe.facts(
+            of: galaxy, equilibrium: DiskEquilibrium(config: galaxy, selfGravitating: true))
+        let k = DiskResponse.wavenumber(galaxy)
+        #expect(abs(k * Self.scaleLength / Float(facts.x2[1]) - 2 / 1.44) < 1e-3)
+        let q = DiskResponse.toomreQ(effective: 1.85, of: galaxy, softening: 0.12)
+        galaxy.toomreQ = q
+        #expect(abs(DiskResponse.effectiveToomreQ(galaxy, softening: 0.12) - 1.85) < 1e-4)
+        #expect(DiskResponse.toomreQ(effective: 1.85, of: galaxy, softening: 0.24) < q)
+        galaxy.diskThickness = 0.4
+        #expect(DiskResponse.toomreQ(effective: 1.85, of: galaxy, softening: 0.12) < q)
+        #expect(DiskResponse.toomreQ(effective: 1.85, of: galaxy, softening: 5) == DiskResponse.lowestToomreQ)
+    }
+
     @Test func aRunWritesItsFiles() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(
             "probe-\(UUID().uuidString)", isDirectory: true)
@@ -275,6 +293,7 @@ struct DiskProbeTests {
         options.clumpiness = 0.05
         options.diskThickness = 0.25
         options.softening = 0.2
+        options.effectiveToomreQ = 2.4
         let report = try DiskProbe.run(options) { _ in }
         #expect(report.frames == 3)
         #expect(report.galaxyParticles == scene.galaxies[1].particleCount)
@@ -285,6 +304,9 @@ struct DiskProbeTests {
         #expect(report.summary.medianStartKpc > 2 && report.summary.medianStartKpc < 12)
         #expect(report.facts.x2[1] > 0.5 && report.facts.x2[1] < 20)
         #expect(report.facts.paintedPatternSpeed > 0)
+        // Solved for the response at the softening the run uses, after the thickness.
+        #expect(abs(report.facts.effectiveToomreQ - 2.4) < 1e-3)
+        #expect(abs((report.overrides["toomreQ"] ?? 0) - report.facts.gravityLeft * 2.4) < 1e-3)
 
         let output = URL(fileURLWithPath: options.output!)
         let csv = try String(contentsOf: output.appendingPathComponent("probe.csv"), encoding: .utf8)

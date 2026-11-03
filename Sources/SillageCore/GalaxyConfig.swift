@@ -128,6 +128,10 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// Rotation of the tilted disk about the view axis, in radians.
     public var positionAngle: Float
     public var spin: Spin
+    /// The effective Toomre Q a batch generator drew this spiral for (`DiskResponse`), until
+    /// `finishGenerated` has solved `toomreQ` for it among the galaxies of its scene. Never
+    /// written to a scene file: only `toomreQ` reaches the solver.
+    public var drawnEffectiveQ: Float?
 
     public init(
         name: String,
