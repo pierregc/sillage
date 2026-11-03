@@ -235,9 +235,11 @@ enum LookCheck {
             session.rendering?.name == "webb" && model.lookFile.palette == before.palette
                 && model.lookFile.camera == before.camera && session.isModified, "")
         check(
-            "un rendu choisi à la main garde ses poussières",
-            model.lookFile.look.dustStrength == webb.look.dustStrength,
-            StyleNames.number(model.lookFile.look.dustStrength))
+            "un rendu choisi à la main garde ses poussières et leur toile",
+            model.lookFile.look.dustStrength == webb.look.dustStrength
+                && model.lookFile.look.dustWeb == webb.look.dustWeb && webb.look.dustWeb > 0,
+            "poussières \(StyleNames.number(model.lookFile.look.dustStrength)), toile "
+                + StyleNames.number(model.lookFile.look.dustWeb))
         session.apply(webb, colours: true)
         check(
             "avec ses couleurs prend aussi sa palette",
@@ -511,7 +513,7 @@ enum LookCheck {
     }
 
     /// Auto on the telescope world, with a lock: a rendering and a palette from the catalogue,
-    /// the locked colour kept, the camera left alone, the dust held back.
+    /// the locked colour kept, the camera left alone, the rendering's dust drawn as a web.
     @MainActor
     private static func exerciseAuto(
         _ session: StyleSession, _ model: SimulationModel, _ check: (String, Bool, String) -> Void
@@ -542,9 +544,12 @@ enum LookCheck {
             "auto respecte le cadenas et le plan",
             model.lookFile.colour(ofGalaxy: 0, in: model.scene) == kept && model.lookFile.camera == camera,
             "")
+        let dust = session.rendering.map { min($0.look.dustStrength, StyleAuto.dustCap ?? .infinity) }
         check(
-            "auto retient les poussières",
-            model.lookFile.look.dustStrength <= StyleAuto.dustCap ?? .infinity,
-            StyleNames.number(model.lookFile.look.dustStrength))
+            "auto garde les poussières du rendu et leur toile",
+            model.lookFile.look.dustStrength == dust
+                && model.lookFile.look.dustWeb == RenderLook.styleDustWeb,
+            "poussières \(StyleNames.number(model.lookFile.look.dustStrength)), toile "
+                + StyleNames.number(model.lookFile.look.dustWeb))
     }
 }

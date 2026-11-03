@@ -382,7 +382,8 @@ func apply(_ choice: PaletteChoice, to look: inout LookFile) {
 /// `look <scene folder> --palette auto|<family>|<file.palette.json> [--world telescope|free]
 /// [--base <look>] [--single] [--camera <mode>] [--generated]`: puts a palette in the scene's
 /// look, promoted as `--promote` does with the old look kept. `--single` gives each galaxy one
-/// colour instead of a ramp; `--generated` holds the dust back as Auto does, for the night.
+/// colour instead of a ramp; `--generated` holds the dust to `StyleAuto.dustCap` as Auto does,
+/// for the night.
 func palettePromotion(
     _ folder: SceneFolder, choice: String, world: String?, base: String?, single: Bool,
     camera: LookFile.CameraPlan.Mode? = nil, generated: Bool = false
