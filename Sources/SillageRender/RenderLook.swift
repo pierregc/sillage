@@ -65,6 +65,7 @@ public struct RenderLook: Sendable, Equatable {
     /// by its rotation and renewed before the shear winds it up (#173, docs/notes/dust-web.md).
     /// Zero, the default, draws the dust as its grains and the painted strands give it.
     public var dustWeb: Float
+    public var dustKernel: Float
 
     /// The glint every shipped and generated style draws with: the sparkle gone, the knots
     /// kept (#184, docs/notes/gigantism.md).
@@ -97,7 +98,8 @@ public struct RenderLook: Sendable, Equatable {
         holeShadow: Float = 0,
         columnSmoothing: Float = 0,
         glint: Float = 1,
-        dustWeb: Float = 0
+        dustWeb: Float = 0,
+        dustKernel: Float = 1
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -126,6 +128,7 @@ public struct RenderLook: Sendable, Equatable {
         self.columnSmoothing = columnSmoothing
         self.glint = glint
         self.dustWeb = dustWeb
+        self.dustKernel = dustKernel
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -164,6 +167,7 @@ public struct RenderLook: Sendable, Equatable {
         out.columnSmoothing = f(a.columnSmoothing, b.columnSmoothing)
         out.glint = f(a.glint, b.glint)
         out.dustWeb = f(a.dustWeb, b.dustWeb)
+        out.dustKernel = f(a.dustKernel, b.dustKernel)
         return out
     }
 
@@ -272,6 +276,7 @@ extension RenderLook: Codable {
             holeShadow: try c.value(.holeShadow, or: d.holeShadow),
             columnSmoothing: try c.value(.columnSmoothing, or: d.columnSmoothing),
             glint: try c.value(.glint, or: d.glint),
-            dustWeb: try c.value(.dustWeb, or: d.dustWeb))
+            dustWeb: try c.value(.dustWeb, or: d.dustWeb),
+            dustKernel: try c.value(.dustKernel, or: d.dustKernel))
     }
 }

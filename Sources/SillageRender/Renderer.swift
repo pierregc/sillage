@@ -46,13 +46,14 @@ struct WebUniforms {
     var right: SIMD4<Float>
     var up: SIMD4<Float>
     var params: SIMD4<Float>
+    var spike: SIMD4<Float>
 }
 
 /// The dust web's tuning (#173, docs/notes/dust-web.md).
 enum DustWeb {
     /// Where in its life a copy of the web rests unsheared: at a quarter, the two copies of a
     /// cross-fade lean the same way and never cross-hatch.
-    static let rest: Float = 0.25
+    static let rest: Float = Float(ProcessInfo.processInfo.environment["SILLAGE_WEB_REST"] ?? "") ?? 0.25
     /// A cell of the web in scale lengths, and the smallest and largest it may be in kpc.
     static let cellShare: Float = 0.18
     static let smallestCell: Float = 0.4
@@ -151,6 +152,7 @@ public struct RenderSettings: Sendable {
     public var glint: Float = 1
     /// Share of the dust drawn as a web of filaments.
     public var dustWeb: Float = 0
+    public var dustKernel: Float = 1
     /// Draws the raw look: plain points and one pass, instead of the splat, dust and post
     /// stages. Fixed for the renderer's life, since it decides which pipelines get built.
     public var plain: Bool
@@ -662,6 +664,7 @@ public final class Renderer {
         settings.columnSmoothing = look.columnSmoothing
         settings.glint = look.glint
         settings.dustWeb = look.dustWeb
+        settings.dustKernel = look.dustKernel
         settings.starSize = look.starSize
         armPersistence = look.armPersistence
     }
@@ -839,7 +842,7 @@ public final class Renderer {
             glint: settings.glint)
 
         // Its own pipeline, so a look without the web draws what it always drew.
-        let webbed = settings.dustWeb > 0
+        let webbed = settings.dustWeb > 0 || settings.dustKernel != 1
         let forward = simd_normalize(camera.target - camera.eye)
         let right = simd_normalize(simd_cross(forward, camera.up))
         let up = simd_cross(right, forward)
@@ -848,7 +851,8 @@ public final class Renderer {
             right: SIMD4(right, DustWeb.carrier),
             up: SIMD4(up, time),
             params: SIMD4(
-                DustWeb.rest, DustWeb.cellShare, DustWeb.smallestCell, DustWeb.largestCell))
+                DustWeb.rest, DustWeb.cellShare, DustWeb.smallestCell, DustWeb.largestCell),
+            spike: SIMD4(settings.dustKernel, 0, 0, 0))
 
         // The column pass, once per frame over every drawn particle: counts into coarse
         // cells, which the splat vertex reads back to size its kernel in projection.

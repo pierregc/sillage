@@ -1,3 +1,4 @@
+import Foundation
 import SillageCore
 import simd
 
@@ -24,7 +25,7 @@ public struct DiskFrame {
     public var web: SIMD4<Float> = .zero
 
     /// The web's renewal period, as a share of a turn at two scale lengths.
-    static let webPeriodShare: Float = 0.25
+    static let webPeriodShare: Float = Float(ProcessInfo.processInfo.environment["SILLAGE_WEB_PERIOD"] ?? "") ?? 0.25
 
     /// Carries a galaxy's natal in-plane axes onto the plane its disk actually turns in now,
     /// by the shortest rotation that takes one normal onto the other.
@@ -121,7 +122,7 @@ public struct DiskFrame {
                 omegaInner: SIMD4<Float>(omega[0], omega[1], omega[2], omega[3]),
                 omegaOuter: SIMD4<Float>(omega[4], omega[5], omega[6], omega[7]),
                 web: SIMD4<Float>(
-                    galaxy.kind.isRotating ? intact : 0, period,
+                    galaxy.kind.isRotating ? (ProcessInfo.processInfo.environment["SILLAGE_WEB_TORN"] != nil ? 1 : intact) : 0, period,
                     (Float(index) * 0.618).truncatingRemainder(dividingBy: 1), 0))
         }
     }

@@ -609,6 +609,7 @@ enum Shaders {
             float4 up;
             /// Rest phase, cell in scale lengths, smallest and largest cell in kpc.
             float4 params;
+            float4 spike;
         };
 
         struct DustWebOut {
@@ -827,7 +828,7 @@ enum Shaders {
                 * smoothstep(0.12, 0.35, abs(facing));
 
             float2 pattern = armWave(position, frame);
-            float raw = max(smoothing[vid] * u.smoothingScale * kernelScale
+            float raw = max(smoothing[vid] * u.smoothingScale * kernelScale * w.spike.x
                                 * mix(1.0, w.right.w, amount), 1e-4) * perPixel;
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             float reach = span / perPixel;

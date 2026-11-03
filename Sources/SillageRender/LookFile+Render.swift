@@ -1,5 +1,23 @@
+import Foundation
 import SillageCore
 import simd
+
+/// Spike #173 only: `SILLAGE_DISRUPTION_CSV` names a `curves-hires.csv` whose disruption columns
+/// replace what a take written before the fix stores (nothing), for its encounter sheets.
+nonisolated(unsafe) let spikeDisruption: [(Double, [Float])] = {
+    guard let path = ProcessInfo.processInfo.environment["SILLAGE_DISRUPTION_CSV"],
+        let text = try? String(contentsOfFile: path, encoding: .utf8)
+    else { return [] }
+    let lines = text.split(separator: "\n")
+    guard let header = lines.first?.split(separator: ",").map(String.init) else { return [] }
+    let time = header.firstIndex(of: "time_myr") ?? 1
+    let columns = header.indices.filter { header[$0].hasPrefix("disruption_") }
+    return lines.dropFirst().compactMap { line in
+        let fields = line.split(separator: ",").map(String.init)
+        guard fields.count == header.count, let t = Double(fields[time]) else { return nil }
+        return (t, columns.map { Float(fields[$0]) ?? 0 })
+    }
+}()
 
 /// Drawing with a look file, in one place, so the command line, the look grid and the app
 /// draw the same file the same way.
@@ -108,10 +126,20 @@ extension Renderer {
         time = blend.time
         var scene = take.scene
         file.paint(&scene)
+        // Spike only: the disruption read back from a curves file, for takes written without it.
+        var disks = take.recording.disks(at: blend)
+        if !spikeDisruption.isEmpty {
+            let myr = Double(blend.time) * Physics.megayearsPerTimeUnit
+            if let row = spikeDisruption.min(by: { abs($0.0 - myr) < abs($1.0 - myr) }) {
+                for index in disks.indices where index < row.1.count {
+                    disks[index].disruption = row.1[index]
+                }
+            }
+        }
         setDiskFrames(
             DiskFrame.make(
                 scene: scene, centers: take.recording.centers(at: blend), time: blend.time,
                 strength: LookFile.diskStrength(file.armStrength, shot.look),
-                disks: take.recording.disks(at: blend)))
+                disks: disks))
     }
 }
