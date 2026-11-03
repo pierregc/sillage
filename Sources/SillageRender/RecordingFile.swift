@@ -302,6 +302,10 @@ public enum RecordingFile {
             particleCount: count, galaxyCount: galaxies, frames: frames, centers: centers,
             disks: disks, interval: header.interval ?? 1, capturedCount: header.capturedFrames,
             mapped: positions)
+        recording.setDisks(
+            Self.layered(
+                recording, scene: header.scene, galaxy: particles.galaxyIndex,
+                component: particles.component, disks: disks))
         // The renderer wants somewhere to start; the first frame is as good as it gets and
         // costs one decode.
         particles.positions = recording.positions(at: 0)
@@ -360,6 +364,55 @@ public enum RecordingFile {
             }
         }
         return disks
+    }
+
+    /// Disk material read per galaxy on each stored frame, the first so many of its own.
+    static let layerSample = 20_000
+
+    /// `disks` with each rotating disk's layer read off the take's own positions, frame by frame:
+    /// what the painted arms fade with, which no take stores (#210). A take holds no
+    /// velocities, and the layer needs none. Without disk states, every frame gets the natal ones.
+    static func layered(
+        _ recording: Recording, scene: SceneConfig, galaxy: [UInt32], component: [UInt32],
+        disks: [DiskState]
+    ) -> [DiskState] {
+        let galaxies = recording.galaxyCount
+        let frames = recording.count
+        var states = disks
+        if states.count != frames * galaxies {
+            guard scene.galaxies.count == galaxies else { return disks }
+            states = Array((0..<frames).map { _ in DiskState.natal(scene) }.joined())
+        }
+        var picked = [[Int]](repeating: [], count: galaxies)
+        for index in 0..<min(galaxy.count, component.count, recording.particleCount)
+        where component[index] < ParticleComponent.halo.rawValue {
+            let owner = Int(galaxy[index])
+            if owner < galaxies, picked[owner].count < layerSample { picked[owner].append(index) }
+        }
+        for (index, config) in scene.galaxies.enumerated()
+        where index < galaxies && config.kind.isRotating {
+            guard let first = picked[index].first, let last = picked[index].last else { continue }
+            var reading = DiskState.natal(config)
+            for frame in 0..<frames {
+                let positions = recording.positions(at: frame, in: first..<(last + 1))
+                let centres = recording.centers(at: frame)
+                guard positions.count == last + 1 - first, index < centres.count else { continue }
+                let offsets = picked[index].map { positions[$0 - first] - centres[index] }
+                var layer = DiskLayer(
+                    axis: states[frame * galaxies + index].axis,
+                    scaleLength: config.diskScaleLength,
+                    edge: config.diskScaleLength * config.diskTruncation)
+                for offset in offsets { layer.add(offset) }
+                let fit = layer.fitted()
+                let cut = reading.layerHeight(spread: fit.spread)
+                let held = offsets.filter { offset in
+                    fit.height(of: offset).map { abs($0) < cut } ?? false
+                }.count
+                reading.foldLayer(spread: fit.spread, held: Float(held) / Float(offsets.count))
+                states[frame * galaxies + index].torn = reading.torn
+            }
+        }
+        return states
     }
 
     private static func bytes<T>(of values: [T]) -> Data {

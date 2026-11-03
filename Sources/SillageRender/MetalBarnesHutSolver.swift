@@ -876,6 +876,11 @@ public final class MetalBarnesHutSolver: Solver {
         centersLock.lock()
         let plane = diskStates.map(\.axis)
         centersLock.unlock()
+        var layers = scene.galaxies.enumerated().map { index, galaxy in
+            DiskLayer(
+                axis: plane[index], scaleLength: galaxy.diskScaleLength,
+                edge: galaxy.diskScaleLength * galaxy.diskTruncation)
+        }
         let limit = min(count, min(galaxyOf.count, componentOf.count))
         let step = max(limit / (Self.frameSample * galaxies), 1)
         for index in Swift.stride(from: 0, to: limit, by: step) {
@@ -903,6 +908,26 @@ public final class MetalBarnesHutSolver: Solver {
             let z = simd_dot(offset, SIMD3<Double>(plane[galaxy]))
             height[galaxy] += z * z * weight
             across[galaxy] += simd_length_squared(offset) * weight
+            layers[galaxy].add(positions[index] - haloCenters[galaxy])
+        }
+
+        // The same particles again, now that each ring's plane is known.
+        let fits = layers.map { $0.fitted() }
+        centersLock.lock()
+        let cut = (0..<galaxies).map { diskStates[$0].layerHeight(spread: fits[$0].spread) }
+        centersLock.unlock()
+        var held = [Double](repeating: 0, count: galaxies)
+        var material = [Double](repeating: 0, count: galaxies)
+        for index in Swift.stride(from: 0, to: limit, by: step)
+        where componentOf[index] < ParticleComponent.halo.rawValue {
+            let galaxy = Int(galaxyOf[index])
+            guard galaxy < galaxies else { continue }
+            material[galaxy] += 1
+            if let standing = fits[galaxy].height(of: positions[index] - haloCenters[galaxy]),
+                abs(standing) < cut[galaxy]
+            {
+                held[galaxy] += 1
+            }
         }
 
         centersLock.lock()
@@ -913,6 +938,10 @@ public final class MetalBarnesHutSolver: Solver {
             diskStates[galaxy].fold(
                 momentum: angular[galaxy], scalar: scalar[galaxy],
                 height: height[galaxy], across: across[galaxy])
+            if material[galaxy] > 0 {
+                diskStates[galaxy].foldLayer(
+                    spread: fits[galaxy].spread, held: Float(held[galaxy] / material[galaxy]))
+            }
         }
         centersLock.unlock()
     }

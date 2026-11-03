@@ -426,6 +426,33 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
+    /// A run of particles on a stored frame, decoded without touching the rest of it.
+    func positions(at index: Int, in range: Range<Int>) -> [SIMD3<Float>] {
+        locked {
+            guard !storedFrames.isEmpty, range.lowerBound >= 0, range.upperBound <= particleCount
+            else { return [] }
+            let box = storedFrames[min(max(index, 0), storedFrames.count - 1)]
+            let scale = box.extent / 65535
+            var decoded = [SIMD3<Float>](repeating: .zero, count: range.count)
+            let filled: Void? = withFrameStorage(min(max(index, 0), storedFrames.count - 1)) {
+                source in
+                for (slot, particle) in range.enumerated() {
+                    let at = particle * 3
+                    decoded[slot] =
+                        box.origin
+                        + SIMD3<Float>(Float(source[at]), Float(source[at + 1]), Float(source[at + 2]))
+                        * scale
+                }
+            }
+            return filled == nil ? [] : decoded
+        }
+    }
+
+    /// The disks of every stored frame, replaced: a take's layers are measured after it is read.
+    func setDisks(_ disks: [DiskState]) {
+        locked { storedDisks = disks }
+    }
+
     /// A moment between stored frames, and how the four around it are weighed into it.
     ///
     /// A cubic Hermite through the two either side, its tangents taken from the frames
@@ -573,7 +600,8 @@ public final class Recording: @unchecked Sendable {
             let axis = simd_mix(a.axis, b.axis, SIMD3(repeating: blend.fraction))
             return DiskState(
                 axis: simd_length(axis) > 0 ? simd_normalize(axis) : a.axis,
-                disruption: a.disruption + (b.disruption - a.disruption) * blend.fraction)
+                disruption: a.disruption + (b.disruption - a.disruption) * blend.fraction,
+                torn: a.torn + (b.torn - a.torn) * blend.fraction)
         }
     }
 

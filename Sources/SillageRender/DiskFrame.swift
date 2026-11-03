@@ -78,7 +78,7 @@ public struct DiskFrame {
             let axis =
                 simd_length_squared(live.axis) > 1e-12 ? simd_normalize(live.axis) : natal
             let (u, v) = planeAxes(natal: orientation, normal: natal, axis: axis)
-            let intact = 1 - min(max(live.disruption, 0), 1)
+            let intact = 1 - min(max(live.torn, 0), 1)
             // The wave is painted whichever solver is running, and that is the physical answer
             // rather than a shortcut.
             //
