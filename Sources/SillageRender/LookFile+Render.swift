@@ -36,6 +36,7 @@ extension LookFile {
         settings.holeShadow = look.holeShadow
         settings.columnSmoothing = look.columnSmoothing
         settings.glint = look.glint
+        settings.dustWeb = look.dustWeb
         return settings
     }
 

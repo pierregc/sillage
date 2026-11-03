@@ -41,6 +41,27 @@ struct BackgroundStar {
     var color: SIMD4<Float>
 }
 
+struct WebUniforms {
+    var eye: SIMD4<Float>
+    var right: SIMD4<Float>
+    var up: SIMD4<Float>
+    var params: SIMD4<Float>
+}
+
+/// The dust web's tuning (#173, docs/notes/dust-web.md).
+enum DustWeb {
+    /// Where in its life a copy of the web rests unsheared: at a quarter, the two copies of a
+    /// cross-fade lean the same way and never cross-hatch.
+    static let rest: Float = 0.25
+    /// A cell of the web in scale lengths, and the smallest and largest it may be in kpc.
+    static let cellShare: Float = 0.18
+    static let smallestCell: Float = 0.4
+    static let largestCell: Float = 1.6
+    /// How much wider a grain is drawn under the web: wide enough for the grains to merge into
+    /// one even layer, so the web and not the grains says where the dust is thin.
+    static let carrier: Float = 2
+}
+
 struct BloomParams {
     var threshold: Float
     var softKnee: Float
@@ -128,6 +149,8 @@ public struct RenderSettings: Sendable {
     public var columnSmoothing: Float = 0
     /// Light kept by the compact bright minority, 1 as sampled.
     public var glint: Float = 1
+    /// Share of the dust drawn as a web of filaments.
+    public var dustWeb: Float = 0
     /// Draws the raw look: plain points and one pass, instead of the splat, dust and post
     /// stages. Fixed for the renderer's life, since it decides which pipelines get built.
     public var plain: Bool
@@ -229,6 +252,7 @@ public final class Renderer {
     private let spikePipeline: MTLComputePipelineState
     private let compactPipeline: MTLComputePipelineState
     private let countPipeline: MTLRenderPipelineState
+    private let dustWebPipeline: MTLRenderPipelineState
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
@@ -381,6 +405,7 @@ public final class Renderer {
             }
         }
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
+        dustWebPipeline = try additive("dustWebVertex", "dustWebFragment", writing: 1)
         splatPipeline = try additive("splatVertex", "splatFragment", writing: 0)
         starfieldPipeline = try additive("starfieldVertex", "starfieldFragment", writing: 0)
         plainPipeline = try additive(
@@ -636,6 +661,7 @@ public final class Renderer {
         settings.holeShadow = look.holeShadow
         settings.columnSmoothing = look.columnSmoothing
         settings.glint = look.glint
+        settings.dustWeb = look.dustWeb
         settings.starSize = look.starSize
         armPersistence = look.armPersistence
     }
@@ -812,6 +838,18 @@ public final class Renderer {
             columnSmoothing: settings.columnSmoothing, columnCell: Float(Self.columnCell),
             glint: settings.glint)
 
+        // Its own pipeline, so a look without the web draws what it always drew.
+        let webbed = settings.dustWeb > 0
+        let forward = simd_normalize(camera.target - camera.eye)
+        let right = simd_normalize(simd_cross(forward, camera.up))
+        let up = simd_cross(right, forward)
+        var web = WebUniforms(
+            eye: SIMD4(camera.eye, min(max(settings.dustWeb, 0), 1)),
+            right: SIMD4(right, DustWeb.carrier),
+            up: SIMD4(up, time),
+            params: SIMD4(
+                DustWeb.rest, DustWeb.cellShare, DustWeb.smallestCell, DustWeb.largestCell))
+
         // The column pass, once per frame over every drawn particle: counts into coarse
         // cells, which the splat vertex reads back to size its kernel in projection.
         if first, settings.columnSmoothing > 0 {
@@ -872,6 +910,12 @@ public final class Renderer {
             for stage in stages {
                 splat.pass = stage
                 encoder.setRenderPipelineState(stage == 0 ? dustPipeline : splatPipeline)
+                if stage == 0, webbed {
+                    encoder.setRenderPipelineState(dustWebPipeline)
+                    encoder.setVertexBytes(&web, length: MemoryLayout<WebUniforms>.stride, index: 13)
+                    encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
+                    encoder.setFragmentBytes(&web, length: MemoryLayout<WebUniforms>.stride, index: 1)
+                }
                 encoder.setVertexBytes(
                     &splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
                 encoder.drawPrimitives(

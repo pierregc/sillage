@@ -136,6 +136,7 @@ struct LookFileTests {
         file.look.spikePattern = .webb
         file.look.spikeSharpness = 0.8
         file.look.skyColour = SIMD3(0.5, 0.45, 0.4)
+        file.look.dustWeb = 0.7
         let s = file.renderSettings(width: 320, height: 200)
         let look = file.look
         #expect(s.width == 320 && s.height == 200)
@@ -154,7 +155,8 @@ struct LookFileTests {
                 skyLevel: s.skyLevel, skyColour: s.skyColour, noiseLevel: s.noiseLevel,
                 galaxyTint: s.galaxyTint, starSize: s.starSize,
                 armPersistence: look.armPersistence, fieldOfView: look.fieldOfView,
-                holeShadow: s.holeShadow, columnSmoothing: s.columnSmoothing, glint: s.glint) == look)
+                holeShadow: s.holeShadow, columnSmoothing: s.columnSmoothing, glint: s.glint,
+                dustWeb: s.dustWeb) == look)
     }
 
     @Test func onlyTheFieldsThatOwnBuffersRebuildTheRenderer() {

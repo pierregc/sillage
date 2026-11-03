@@ -300,6 +300,7 @@ struct ControlPanelContent: View {
             ParameterSlider(
                 title: "Opacité des poussières", value: $model.look.dustStrength, range: 0...1.2,
                 format: "%.3f")
+            ParameterSlider(title: "Toile des poussières", value: $model.look.dustWeb, range: 0...1)
             ParameterSlider(
                 title: "Force des bras peints", value: $model.look.armPersistence, range: 0...2)
             Text(

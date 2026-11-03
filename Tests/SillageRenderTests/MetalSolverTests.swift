@@ -52,7 +52,8 @@ struct MetalSolverTests {
         for name in [
             "splatVertex", "dustFragment", "splatFragment", "starfieldVertex",
             "starfieldFragment", "resolve", "brightPass",
-            "downsample", "upsampleAdd", "diffractionSpikes", "composite",
+            "downsample", "upsampleAdd", "diffractionSpikes", "composite", "dustWebVertex",
+            "dustWebFragment",
         ] {
             #expect(render.makeFunction(name: name) != nil, "missing \(name)")
         }
@@ -99,6 +100,12 @@ struct MetalSolverTests {
         #expect(
             Self.shaderStride(of: "GalaxyRamp", in: Shaders.source)
                 == MemoryLayout<GalaxyRamp>.stride)
+        #expect(
+            Self.shaderStride(of: "DiskFrame", in: Shaders.source)
+                == MemoryLayout<DiskFrame>.stride)
+        #expect(
+            Self.shaderStride(of: "WebUniforms", in: Shaders.source)
+                == MemoryLayout<WebUniforms>.stride)
         #expect(
             Self.shaderStride(of: "BloomParams", in: Shaders.source)
                 == MemoryLayout<BloomParams>.stride)

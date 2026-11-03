@@ -761,6 +761,8 @@ struct LightControls: View {
             title: "Opacité des poussières", value: session.binding(\.look.dustStrength),
             range: 0...1.2, format: "%.3f")
         ParameterSlider(
+            title: "Toile des poussières", value: session.binding(\.look.dustWeb), range: 0...1)
+        ParameterSlider(
             title: "Force des bras peints", value: session.binding(\.look.armPersistence), range: 0...2)
     }
 }

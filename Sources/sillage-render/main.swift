@@ -1269,6 +1269,7 @@ flag("tint", \.look.galaxyTint)
 flag("fov", \.look.fieldOfView)
 flag("column", \.look.columnSmoothing)
 flag("glint", \.look.glint)
+flag("dust-web", \.look.dustWeb)
 flag("stars", \.starCount)
 if arguments.contains("--plain") { look.plain = true }
 flag("supersample", \.supersample)
@@ -1707,7 +1708,8 @@ while frame < frames || storyGoesOn() {
             take.offer(
                 positions: gpuSolver.positions.contents().bindMemory(
                     to: SIMD3<Float>.self, capacity: seeded.count),
-                time: solver.time, centers: solver.centers, budget: takeBudget)
+                time: solver.time, centers: solver.centers,
+                disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: takeBudget)
         } else {
             solver.particles.positions.withUnsafeBufferPointer { buffer in
                 guard let base = buffer.baseAddress else { return }
