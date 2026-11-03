@@ -18,8 +18,10 @@ Options: `--particles N` (the scene's visible count; the galaxy takes its share)
 otherwise; the step stays the scene's), the overrides `--clumpiness`, `--toomre-q`,
 `--arm-strength`, `--arm-count`, `--arm-irregularity`, `--disk-mass-fraction`,
 `--disk-thickness`, `--dissipation`, `--mass-contrast`, `--streaming`, `--young-clumpiness`,
-and for the picture `--width`, `--height` (one pane, 720), `--no-clip`,
-`--painted` (paint the density wave as the app does), `--stills 0,300,...`, `--lag-myr T` (50).
+`--effective-q` (Toomre Q solved for that response at the run's softening, after the other
+overrides, the way the generators draw a spiral: `DiskResponse`, #181), and for the picture
+`--width`, `--height` (one pane, 720), `--no-clip`, `--painted` (paint the density wave as the
+app does), `--stills 0,300,...`, `--lag-myr T` (50).
 
 ## What runs
 
@@ -128,7 +130,9 @@ to the next. `facts` holds what the galaxy's equilibrium says before anything mo
 swing-amplification parameter for two arms at one, two and three scale lengths
 (X = kappa^2 R / (4 pi G Sigma); strong amplification needs X between about 1 and 3, and the disk
 prefers the arm count that puts X near 2), the painted pattern speed with its corotation and
-inner Lindblad radii, the rotation and epicyclic periods at two scale lengths.
+inner Lindblad radii, the rotation and epicyclic periods at two scale lengths, and the
+effective Q, Toomre Q over the share of the disk's pull its softening and late thickness leave
+at the wave that grows (`effectiveToomreQ`, `gravityLeft`), at the run's softening.
 
 `probe-report.py table` adds two columns read from `probe.csv`: `armsL`, the late mean of each
 frame's largest of `a2_mid` to `a6_mid`, the arms whatever their count (#181), and `a2in`, the

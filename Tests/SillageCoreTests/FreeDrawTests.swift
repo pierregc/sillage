@@ -89,7 +89,7 @@ struct FreeDrawTests {
                 if galaxy.kind.isRotating {
                     #expect(galaxy.diskThickness / galaxy.diskScaleLength < 0.31)
                     #expect(galaxy.bulgeFraction <= 0.42)
-                    #expect((1.2...2.0).contains(galaxy.toomreQ))
+                    #expect((DiskResponse.lowestToomreQ...2.0).contains(galaxy.toomreQ))
                 }
             }
             for encounter in scene.encounters {
@@ -140,6 +140,40 @@ struct FreeDrawTests {
         #expect(json.contains("\"generator\" : \"free\""))
         // A scene drawn by hand or before this has none, and reads as it did.
         #expect(SceneFile(.merger(particleCount: 1_000)).draw == nil)
+    }
+
+    /// A spiral of three to five arms is drawn for how its disk answers (#181): at the softening
+    /// its scene explores at, its effective Q is in the drawn range unless its Q stopped at the
+    /// floor, archetypes included. A two-armed one keeps the draw of Q, and nothing of the draw
+    /// is left on a finished galaxy.
+    @Test func aSpiralIsDrawnForItsResponse() {
+        let batch = BatchDraw(batchSeed: 20_261_031)
+        var drawn = 0
+        var floored = 0
+        var twoArmed = 0
+        for index in 0..<40 {
+            let scene = batch.scene(at: index, particleCount: 300_000)
+            let softening = DiskResponse.referenceSoftening(scene.galaxies)
+            for (galaxy, family) in zip(scene.galaxies, scene.draw!.families) {
+                #expect(galaxy.drawnEffectiveQ == nil)
+                guard family == .spiral else { continue }
+                guard galaxy.armCount > 2 else {
+                    twoArmed += 1
+                    #expect((1.25...1.45).contains(galaxy.toomreQ))
+                    continue
+                }
+                drawn += 1
+                let effective = DiskResponse.effectiveToomreQ(galaxy, softening: softening)
+                let range = DiskResponse.drawnRange
+                if galaxy.toomreQ > DiskResponse.lowestToomreQ {
+                    #expect(effective >= range.lowerBound - 1e-3 && effective <= range.upperBound + 1e-3)
+                } else {
+                    floored += 1
+                    #expect(effective >= range.lowerBound)
+                }
+            }
+        }
+        #expect(drawn >= 15 && twoArmed >= 5 && floored * 4 < drawn)
     }
 
     @Test func freeScenesArePlaced() {

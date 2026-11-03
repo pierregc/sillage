@@ -66,7 +66,11 @@ pericentres inside the clip it is rendered for, between `--settle` and `--steps`
 spreads a batch evenly over everything a scene can physically be: one to five galaxies, each a
 spiral, a lenticular disk, an elliptical, a dwarf, a compact globular or, for 4 % of the scenes
 with a companion, a lone black hole in place of the first one, with their arm count,
-arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. What changes
+arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. A spiral of
+three to five arms is drawn for its response rather than its Toomre Q: Q is solved for an
+effective Q of 1.75 to 1.95, Q over what the softening at 100 000 particles a galaxy and the
+disk's late thickness leave of its own pull, so a small, soft or thick disk is drawn colder
+([the note](docs/notes/lumpy-arms.md)). What changes
 a scene most is drawn from a Sobol sequence shifted by the batch seed, so a batch covers the
 space instead of clumping; the rest comes from a stream seeded by the scene. A candidate whose
 signature (galaxy count, the first two galaxies, the first encounter) sits closer than
@@ -174,8 +178,9 @@ softening and step for `--particles`, and writes one line a frame of what its di
 radii, dispersions, Fourier amplitudes by zone, pattern speed, coherence, lumpiness, where its
 nucleus and the solver's centre are, next to a two-pane clip in the disk's own frame and in the
 app's. `--clumpiness`, `--toomre-q`, `--arm-strength`, `--arm-count`, `--disk-mass-fraction`,
-`--disk-thickness` and `--dissipation` override the galaxy for a sweep, `--softening` the
-scene's, and `scripts/probe-report.py` lays runs side by side. The columns and how to read
+`--disk-thickness` and `--dissipation` override the galaxy for a sweep, `--effective-q` solves
+its Toomre Q for a response as the generators do, `--softening` overrides the scene's, and
+`scripts/probe-report.py` lays runs side by side. The columns and how to read
 them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
 
 ### High resolution
