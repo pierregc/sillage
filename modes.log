@@ -1,0 +1,529 @@
+# headless modes, 2026-11-03 22:27:40, take /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage (1500011607 bytes)
+
+=== --selftest
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app/Contents/MacOS/Sillage --selftest
+selftest stage       running
+selftest particles   1000000
+selftest lit samples 2744712
+selftest preview     350000 particules
+selftest preview lit 2408854
+selftest failure     none
+=== --selftest: exit 0, about 2 s (started 22:27:40, out/selftest.png written 22:27:42; the 165 s first logged here was a wait in the audit's own timeout helper)
+
+=== --uishot
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app/Contents/MacOS/Sillage --uishot
+uishot wrote out/ui-setup.png
+uishot wrote out/ui-panel.png
+uishot wrote out/ui-oscillators.png
+uishot wrote out/ui-settings.png
+uishot wrote out/ui-style-bar.png
+uishot wrote out/ui-style.png
+uishot wrote out/ui-style-fine.png
+uishot wrote out/ui-style-director.png
+uishot wrote out/ui-menubar.png
+uishot wrote out/ui-night-sheet.png
+uishot wrote out/ui-night-sheet-warning.png
+=== --uishot: exit 0, 2 s
+
+=== --replayswitch
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app/Contents/MacOS/Sillage --replayswitch
+mode             playback
+pas avant l'arrêt 149
+pas au bascule    149
+pas 6 s plus tard 149
+solveur arrêté    OUI
+=== --replayswitch: exit 0, 12 s
+
+=== --librarycheck
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app/Contents/MacOS/Sillage --librarycheck
+OUI  les deux formes de lot sont lues  (4 scènes)
+OUI  chaque vidéo est jouable  (4)
+OUI  le lot le plus récent vient en premier  (2026-10-24/scene-0001 2026-10-24/scene-0002 2026-10-24/scene-0003 2026-09-21/scene-0001)
+OUI  une vignette par scène, tirée de la vidéo sans thumbnail  (4)
+OUI  la première flèche choisit la première scène
+OUI  Y puis 1 0 : oui et 10 dans ratings.json  (Optional(SillageRender.SceneRatings.Entry(choice: Optional(SillageRender.SceneRatings.Choice.yes), rating: Optional(10), updated: Optional(2026-11-03 21:30:40 +0000), picked: nil)))
+OUI  un 0 qui ne suit pas un 1 vaut 0  (Optional(0))
+OUI  N sur la scène suivante
+OUI  une ligne plus bas, deux colonnes plus loin
+OUI  un lot à plat a son propre ratings.json
+OUI  effacer retire la scène du fichier
+OUI  un clic enregistre, un second l'annule
+OUI  les compteurs suivent les choix  ([SillageRender.LibraryCollection.chosen: 1, SillageRender.LibraryCollection.toSort: 2, SillageRender.LibraryCollection.all: 4])
+OUI  Choisies ne montre que les oui
+OUI  À trier ne montre ni les oui ni les non  (2026-10-24/scene-0003 2026-09-21/scene-0001)
+OUI  la recherche porte sur le nom
+OUI  Toutes garde les écartées
+OUI  filtre oui
+OUI  filtre par archétype
+OUI  les scènes sans archétype sont libres
+OUI  filtre par lot
+OUI  tri par note  (2026-10-24/scene-0003 2026-10-24/scene-0001 2026-09-21/scene-0001 2026-10-24/scene-0002)
+OUI  une scène qui sort du filtre laisse la sélection à la suivante  (2026-09-21/scene-0001)
+OUI  un ratings.json changé ailleurs est relu
+OUI  une scène qui arrive apparaît sans rien relancer
+OUI  tant qu'elle s'écrit elle ne joue pas
+OUI  finie, elle joue
+OUI  la sélection joue
+OUI  le survol joue
+OUI  la scène ouverte passe avant le survol
+OUI  le lecteur lit vraiment  (1)
+OUI  échap referme
+OUI  un seul lecteur  (0 éléments en file)
+OUI  la grille se rend  (/Users/pierregc/claude-workspace/audit-out/app/out/ui-library.png)
+OUI  pas de vidéo, pas de compteur
+OUI  le compteur de vidéos
+OUI  chaque étape a une pastille
+OUI  100 scènes à toutes les étapes lues en moins de 50 ms  (20.3 ms, 6 étapes)
+OUI  405 scènes lues en moins d'une demi-seconde  (85.5 ms)
+OUI  le lot entier arrive dans la fenêtre  (1527.9 ms)
+OUI  chaque vidéo sondée une fois  (405 en 180.6 ms)
+OUI  trier et filtrer 405 scènes tient dans une image  (1.0 ms)
+OUI  un choix dans un lot de 400 est immédiat  (3.1 ms)
+OUI  un scan qui ne trouve rien de neuf ne change rien  (dernier scan 83.4 ms)
+OUI  cinq scènes à trier  (5)
+OUI  trier ouvre la première scène de la nuit, dans l'ordre du tri  (2026-10-26/scene-0001)
+OUI  0 / 4 triées
+OUI  un chiffre note sans changer de scène
+OUI  oui s'écrit tout de suite et passe à la suivante
+OUI  1 / 4 triées
+OUI  1 puis 0 vaut 10
+OUI  non écarte et passe à la suivante
+OUI  la scène décidée a quitté À trier mais reste dans la séance
+OUI  ← revient sur la scène décidée
+OUI  → s'arrête à la dernière
+OUI  effacer vide la scène et la rend à trier
+OUI  oui sur la 3 va à la prochaine à trier, la 4
+OUI  out/ui-triage.png se rend
+OUI  une scène qui arrive en cours de séance la rejoint  (5)
+OUI  la prochaine à trier fait le tour du début
+OUI  il reste la première, que l'on a effacée
+OUI  tout est trié : 5 / 5 et la séance le dit
+OUI  rien ne se décide quand tout est trié
+OUI  out/ui-triage-finished.png se rend
+OUI  ← sort de la fin
+OUI  échap quitte la séance
+OUI  à trier ne garde que la scène de l'autre nuit
+OUI  une séance sur À trier tout entier
+OUI  quitter la bibliothèque ferme la séance
+OUI  trois scènes pour la page
+OUI  un clic ouvre la page de la scène
+OUI  ce que la page lit arrive
+OUI  versions : aperçu, haute résolution, puis chaque vidéo  (Aperçu, Haute résolution, Vidéo 1080p, Vidéo whatsapp)
+OUI  la page joue d'abord la vidéo exportée
+OUI  choisir une version la joue à la place
+OUI  un seul décodeur
+OUI  tout est fait, rien n'est la suite
+OUI  la page lit l'histoire, le calcul et le style  (dream)
+OUI  graine et index du lot
+OUI  chaque fichier de exports/ a sa ligne, la légende reste à sa vidéo  (1080p-dream.gif, whatsapp.mp4, 1080p.mp4)
+OUI  préréglage, codec, taille, durée et poids lus  (Préréglage 1080p · H.264 · 160×90 · 0.7 s · 0.0 Mo · 3 nov. 2026 à 22:30)
+OUI  un GIF est une image avec son style, pas une vidéo
+OUI  les noms de fichiers disent préréglage et style
+OUI  copier la légende met son texte dans le presse-papiers
+OUI  lire un GIF ne lance pas le lecteur
+OUI  un export qui arrive s'ajoute à la liste
+OUI  out/ui-scene-page.png se rend
+OUI  chaque taille de haute résolution a sa durée  (1 M 1 h, 2 M 2 h 50, 5 M 8 h, 10 M 16 h)
+OUI  Calculer dit quand ce sera prêt  (Commence tout de suite · prêt vers 23 h 55)
+OUI  out/ui-scene-page-hires.png se rend
+OUI  Calculer ajoute une haute résolution
+OUI  la tâche vise la scène et la taille  (hires 2026-10-26/scene-0003 --particles 2000000)
+OUI  la même demande n'est pas ajoutée deux fois
+OUI  la scène passe en Haute résolution le temps du calcul  (highResolution, [SillageRender.LibraryCollection.exported: 1, SillageRender.LibraryCollection.toSort: 1, SillageRender.LibraryCollection.highResolution: 1, SillageRender.LibraryCollection.all: 3])
+OUI  le même export après la même prise remplace son fichier  (1080p.mp4)
+OUI  un autre style va dans un fichier à lui  (--preset 1080p --look /var/folders/nl/5464_0cn63ncv358jdm9p0tc0000gp/T/sillage-scenepage-55F55F38-57C6-48A8-ADA1-6ECCCFCF5452/2026-10-26/scene-0001/look-raw.json --out /var/folders/nl/5464_0cn63ncv358jdm9p0tc0000gp/T/sillage-scenepage-55F55F38-57C6-48A8-ADA1-6ECCCFCF5452/2026-10-26/scene-0001/exports/1080p-raw.mp4)
+OUI  ProRes écrit un .mov à côté
+OUI  chaque case cochée est une tâche, avec sa durée
+OUI  out/ui-export-sheet.png se rend
+OUI  Exporter ajoute une tâche par case
+OUI  les exports attendent avec leur fichier  (4K · 4k.mp4, Aperçu animé WebP · preview.webp)
+OUI  chaque tâche en attente a sa ligne dans la file
+OUI  out/ui-scene-page-jobs.png se rend
+OUI  Annuler retire la tâche de la file
+OUI  revenir au style brut garde l'autre dans looks/
+OUI  → passe à la voisine et revient à sa version par défaut
+OUI  oui sur la page : la scène quitte À trier mais la page reste
+OUI  la suite est la haute résolution
+OUI  out/ui-scene-page-next.png se rend
+OUI  ← passe à la voisine de Choisies  (2026-10-26/scene-0002)
+OUI  un chiffre note la scène de la page
+OUI  échap revient à la grille sur la même scène
+OUI  espace rouvre la page
+OUI  quitter la bibliothèque ferme la page
+=== --librarycheck: exit 0, 16 s
+--- /tmp/sillage-library.log written by this run (same report as above)
+
+=== --lookcheck /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app/Contents/MacOS/Sillage --lookcheck /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage
+prise            2000000 particules, 121 images gardées (une sur 4), ouverte en 0.5 s
+sauts au hasard  médiane   30.1 ms, pire  161.6
+en arrière       médiane   26.1 ms, pire   34.2
+en avant         médiane   21.1 ms, pire   24.7
+OUI  le look ouvert est celui du fichier
+OUI  une seule construction du rendu à l'ouverture  1
+OUI  la palette du fichier colore la scène
+OUI  le plan de caméra est suivi  fixed
+OUI  ouvert puis enregistré sans changement : même fichier
+OUI  les réglages vifs ne reconstruisent rien
+OUI  la couleur d'une galaxie arrive à la scène
+OUI  chaque réglage de tampon reconstruit une fois
+OUI  la caméra affichée est celle du plan
+OUI  un look nommé ne touche ni palette ni plan
+OUI  enregistré puis rouvert : le même look
+OUI  l'éditeur trouve la prise ouverte
+OUI  les retouches faites avant se voient
+OUI  annuler remet le style enregistré
+OUI  un rendu garde la palette et le plan
+OUI  un rendu choisi à la main garde ses poussières  0,08
+OUI  avec ses couleurs prend aussi sa palette
+OUI  six propositions dans le monde choisi  6
+OUI  autres palettes en propose d'autres
+OUI  aucun favori au départ
+OUI  le cœur demande un nom
+OUI  le favori est écrit et reconnu
+OUI  le favori passe en tête des propositions  6
+OUI  un favori d'un autre monde ne s'y propose pas
+OUI  un second clic retire le favori
+OUI  un cadenas garde sa couleur, les autres changent
+OUI  la palette arrive à la scène
+OUI  multicolore éteint sur un look sans rampes : propositions et palette unies
+OUI  allumé : une rampe par galaxie libre, la couleur choisie et le cadenas gardés
+OUI  allumé : les propositions ont des rampes et leurs notes
+OUI  éteint : une couleur par galaxie, les propositions sans notes de rampe
+OUI  le réalisateur se suit au curseur
+OUI  caméra fixe et rotation
+OUI  réinitialiser la lumière revient au rendu
+OUI  réinitialiser le plan revient au style enregistré
+OUI  avant : le style enregistré à l'écran
+OUI  rien ne bouge pendant l'avant
+OUI  après : la retouche revient
+OUI  rien d'écrit pendant les essais
+OUI  annuler après les essais
+OUI  annuler n'écrit rien
+OUI  une retouche se voit
+OUI  utiliser pour la scène écrit look.json
+OUI  look.json est le style à l'écran
+OUI  l'ancien look reste dans look-raw.json
+OUI  le look de l'atelier pointe sur la scène
+OUI  Auto : l'image cadre comme l'export, en avançant et en reculant  écart 0.0e+00 sur 5 têtes de lecture
+OUI  Réalisateur : l'image cadre comme l'export, en avançant et en reculant  écart 0.0e+00 sur 5 têtes de lecture
+OUI  Fixe : l'image cadre comme l'export, en avançant et en reculant  écart 0.0e+00 sur 5 têtes de lecture
+OUI  Immergé : l'image cadre comme l'export, en avançant et en reculant  écart 0.0e+00 sur 5 têtes de lecture
+OUI  Immergé : l'image prend la lumière que le réalisateur module à l'export  luminosité 0.086, celle du fichier 0.150
+OUI  Immergé : glisser ne touche pas au plan
+OUI  Immergé : la molette éloigne, et l'image suit l'export  zoom 0.96, écart 0.0e+00
+OUI  Réalisateur : glisser et la molette règlent ses plans larges, vite, comme à l'export  0.1 ms, écart 0.0e+00
+OUI  Fixe : la lumière du fichier revient
+OUI  Fixe : glisser tourne le plan, la molette le rapproche, l'image suit  azimut 0.08, élévation 0.46, zoom 1.26
+OUI  le cadrage fait à la souris s'enregistre
+OUI  look.json garde ce cadrage et l'export le cadre  écart 0.0e+00
+OUI  vue libre : la souris ne touche plus au plan
+OUI  Immergé : le rejouer jusqu'à la fin de la prise reste vif  0.4 ms pour 478 images
+OUI  auto choisit un rendu et une palette du télescope  1.6 s · Auto : rendu Webb, palette hubble-visible complémentaire, note 0,73, la meilleure de 8 essais
+OUI  auto donne des rampes quand multicolore est allumé
+OUI  auto respecte le cadenas et le plan
+OUI  auto retient les poussières  0,00
+=== --lookcheck /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage: exit 0, 21 s
+--- /tmp/sillage-lookcheck.log written by this run (same report as above)
+
+=== --thumbcheck /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app/Contents/MacOS/Sillage --thumbcheck /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage
+uishot wrote out/ui-style-thumbnails.png
+prise            2000000 particules, 121 images gardées, ouverte en 0.4 s
+clip             1.778 de rapport, vignettes de 192 px
+premier dessin   1.76 s, canvas 7.1 ms (GPU 5.0, 0 % > 16,7 ms) seul, 6.1 ms (GPU 4.0, 0 % > 16,7 ms) pendant
+autre palette    0.96 s, canvas 6.8 ms (GPU 4.7, 0 % > 16,7 ms) seul, 4.8 ms (GPU 3.5, 2 % > 16,7 ms) pendant
+autre image      1.07 s, canvas 6.1 ms (GPU 4.1, 0 % > 16,7 ms) seul, 4.9 ms (GPU 3.5, 0 % > 16,7 ms) pendant
+canvas chargé    15.05 s, canvas 20.7 ms (GPU 19.2, 100 % > 16,7 ms) seul, 20.6 ms (GPU 19.2, 100 % > 16,7 ms) pendant
+mémoire          3558 Mo au plus
+OUI  l'éditeur trouve la prise ouverte
+OUI  les vignettes partent seules à l'ouverture
+OUI  une vignette par rendu  42 sur 42
+OUI  toutes en moins de 3 s  1.76 s, 42 ms la vignette
+OUI  les vignettes montrent la scène  42 éclairées
+OUI  les rendus se distinguent  42 différentes
+OUI  le canvas garde sa cadence pendant le premier dessin  0 % en retard contre 0 % seul, médiane 6.1 ms contre 7.1
+OUI  dessinées à la taille du clip puis réduites  192×108
+OUI  la même image redemandée ne redessine rien  0 dessinées, 1 ms
+OUI  appliquer un rendu ne redessine pas
+OUI  une autre palette les redessine  0.96 s
+OUI  le canvas garde sa cadence pendant le dessin d'une palette  2 % en retard contre 0 % seul, médiane 4.8 ms contre 6.8
+OUI  un petit déplacement les garde
+OUI  au-delà d'un dixième de la prise, redessinées  1.07 s, image 232
+OUI  le canvas garde sa cadence pendant le redessin  0 % en retard contre 0 % seul, médiane 4.9 ms contre 6.1
+OUI  à l'image de la tête de lecture
+OUI  le canvas sans marge, redessinées  15.05 s
+OUI  le canvas garde sa cadence quand il n'a pas de marge  100 % en retard contre 100 % seul, médiane 20.6 ms contre 20.7
+OUI  fermer arrête le dessin
+=== --thumbcheck /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage: exit 0, 30 s
+--- /tmp/sillage-thumbcheck.log written by this run (same report as above)
+
+=== --replay /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage 60
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app/Contents/MacOS/Sillage --replay /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage 60
+prise            2000000 particules, 121 images, 1.4 Go
+surface          2560 x 1440 à 1x
+vitesse          30.0 images de prise par seconde affichée
+image entière    médiane    9.4 ms, 99e   12.5, pire   12.5
+attente snapshot médiane    0.0 ms, 99e    0.0, pire    0.0
+entêtes + centres médiane    0.0 ms, 99e    0.0, pire    0.0
+mélange GPU      médiane    0.5 ms, 99e    0.9, pire    0.9
+rendu GPU        médiane    7.2 ms, 99e    7.5, pire    7.5
+lissage          médiane    3.0 ms, 99e   28.6, pire   28.6
+snapshot en retard 0 images sur 60
+=== --replay /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage 60: exit 0, 2 s
+--- /tmp/sillage-replay.log written by this run (same report as above)
+
+=== --flicker /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app/Contents/MacOS/Sillage --flicker /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage
+tel quel                           rms  6.321 niveaux, pire écart 158, 99.3 % de pixels allumés
+sans bruit de détecteur            rms  0.000 niveaux, pire écart   0, 99.6 % de pixels allumés
+sans fond de ciel (bruit remis)    rms 11.526 niveaux, pire écart  36, 62.0 % de pixels allumés
+sans bruit ni fond de ciel         rms  0.000 niveaux, pire écart   0, 59.7 % de pixels allumés
+
+en lecture à 0,5 image de prise par seconde, sans bruit :
+  noyau minimal 1.1 px   rms  0.226 niveaux, pire écart  39
+  noyau minimal 1.6 px   rms  0.208 niveaux, pire écart  48
+  noyau minimal 2.4 px   rms  0.178 niveaux, pire écart  27
+  noyau minimal 3.5 px   rms  0.137 niveaux, pire écart  25
+=== --flicker /Users/pierregc/claude-workspace/sillage/library/2026-10-25-4k/scene-0001/take.sillage: exit 0, 1 s
+--- /tmp/sillage-flicker.log written by this run (same report as above)
+# headless modes done 22:31:49
+# window modes, 2026-11-03 22:32:08
+
+=== --verify (window)
+$ open -n -W --stdout /Users/pierregc/claude-workspace/audit-out/app/window--verify.out --stderr /Users/pierregc/claude-workspace/audit-out/app/window--verify.out /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app --args --verify
+--- app stdout/stderr:
+frames drawn   90
+frame time     0.1 ms
+particles      1000000
+stage          running
+draw attempts  90
+solver         restricted
+renderer       ready
+failure        none
+onscreen       true
+gpu            Apple M4 Max
+--- /tmp/sillage-verify.log (written by this run):
+frames drawn   90
+frame time     0.1 ms
+particles      1000000
+stage          running
+draw attempts  90
+solver         restricted
+renderer       ready
+failure        none
+onscreen       true
+gpu            Apple M4 Max
+=== --verify: open exit 0 (open does not pass the app's status on), 6 s
+
+=== --presets (window)
+$ open -n -W --stdout /Users/pierregc/claude-workspace/audit-out/app/window--presets.out --stderr /Users/pierregc/claude-workspace/audit-out/app/window--presets.out /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app --args --presets
+--- app stdout/stderr:
+flyby      Flyby · 2 galaxies · 250000 particules d'aperçu
+isolated   Isolated disk · 1 galaxies · 250000 particules d'aperçu
+merger     Merger · 2 galaxies · 250000 particules d'aperçu
+encounter  Encounter · 2 galaxies · 250000 particules d'aperçu
+remove     1 galaxies
+add        2 galaxies
+preview canvas
+  attempts   8
+  presented  7
+  no drawable0
+  no renderer1
+  size       (2158.0, 1772.0)
+  pane       (1079.0, 886.0)
+  lit        11313997
+failure      none
+
+--- /tmp/sillage-presets.log (written by this run):
+flyby      Flyby · 2 galaxies · 250000 particules d'aperçu
+isolated   Isolated disk · 1 galaxies · 250000 particules d'aperçu
+merger     Merger · 2 galaxies · 250000 particules d'aperçu
+encounter  Encounter · 2 galaxies · 250000 particules d'aperçu
+remove     1 galaxies
+add        2 galaxies
+preview canvas
+  attempts   8
+  presented  7
+  no drawable0
+  no renderer1
+  size       (2158.0, 1772.0)
+  pane       (1079.0, 886.0)
+  lit        11313997
+failure      none
+=== --presets: open exit 0 (open does not pass the app's status on), 10 s
+
+=== --qa (window)
+$ open -n -W --stdout /Users/pierregc/claude-workspace/audit-out/app/window--qa.out --stderr /Users/pierregc/claude-workspace/audit-out/app/window--qa.out /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/Sillage.app --args --qa
+--- app stdout/stderr:
+ok   l'aperçu de réglage dessine                 15154701 échantillons
+ok   ajouter une galaxie                         3 galaxies
+ok   l'aperçu suit l'ajout                       
+ok   retirer une galaxie                         
+ok   le nombre d'étoiles se règle                120000
+ok   changer de gravité recale le pas            0.0480 puis 0.0800
+ok   la vitesse d'exploration multiplie le pas   x8.0
+ok   le lancement bascule tout de suite          
+ok   le lancement annonce sa préparation         
+ok   la préparation se termine                   
+ok   le lancement passe en simulation            
+ok   le lancement démarre en lecture             
+ok   la toile dessine                            47 images
+ok   le temps avance                             38.8 Myr
+ok   la prise démarre seule                      104 images
+ok   la prise occupe de la mémoire               119.0 Mo
+ok   aucune erreur                               
+ok   la pause arrête le calcul                   
+ok   la reprise repart                           
+ok   la relecture est offerte                    
+ok   l'arrêt bascule en relecture                
+ok   la relecture avance                         position 16.0
+ok   la relecture ne calcule plus                130 images
+ok   le défilement tient les bornes              
+ok   la reprise revient en simulation            
+ok   la prise reprend où elle en était           130 puis 160
+ok   une nouvelle prise repart de zéro           1 image
+ok   une nouvelle prise garde le calcul          60.3 puis 60.3 Myr
+ok   la nouvelle prise se remplit                
+ok   relancer remet le temps à zéro              70 puis 4 Myr
+ok   relancer repart d'une prise neuve           
+ok   le budget borne la mémoire de la prise      513 Mo en mémoire, 7 Mo sur disque
+ok   le calcul continue après le budget          79 images au moment du plein
+ok   la prise pleine couvre toujours toute la durée30 puis 171 Myr
+ok   la prise ne s'éclaircit pas                 0.382 puis 0.378 Myr entre images
+ok   les images passées au disque sont relisiblesdernière image relue depuis le fichier de débord
+ok   le suréchantillonnage tient en simulation   
+ok   le suréchantillonnage tient en relecture    
+ok   le retour au réglage quitte la simulation   
+ok   le retour au réglage vide la prise          
+ok   l'aperçu revient                            
+ok   un second lancement repart                  20.7 Myr
+ok   un second lancement capture                 
+ok   rien n'a échoué en chemin                   
+ok   l'arrêt bascule en relecture (2)            
+ok   relancer depuis la relecture repart en simulation
+ok   couper l'affichage arrête le dessin         0 images
+ok   le calcul continue sans affichage           
+ok   réafficher redessine                        
+ok   la fin est armée                            
+ok   la course s'arrête d'elle-même              31 Myr pour une fin à 66
+ok   l'arrêt bascule en relecture                
+ok   elle s'écrit toute seule                    119.8 Mo
+ok   la destination est consommée                
+ok   plus rien ne calcule après la fin           100 images
+ok   la prise s'écrit sur disque                 146.1 Mo
+ok   la prise se rouvre en relecture             
+ok   la prise rouverte a ses images              123 puis 123
+ok   la prise rouverte a ses particules          
+ok   la prise rouverte se sait sans solveur      
+ok   la prise rouverte dessine                   
+ok   la prise rouverte défile                    position 29.0
+ok   les réglages d'image restent vifs           
+ok   reprendre le calcul est refusé sur une prise ouverte
+ok   une prise hors d'une scène n'offre pas Vidéo…
+ok   la prise d'une scène offre Vidéo… sur sa scèneqa-49463610-5F70-4E71-B849-74CCF9FE30AE/scene-0001
+ok   un gros lancement prépare en fond           
+ok   quitter pendant la préparation l'annule     
+ok   la préparation annulée ne revient pas       
+ok   l'auto-gravité avance                       27.36 Myr
+ok   l'auto-gravité capture                      122 images
+ok   l'auto-gravité dessine encore               
+ok   le vol libre s'enclenche                    
+ok   passer en vol libre ne déplace pas l'oeil   
+ok   une touche tenue fait avancer la caméra     45 kpc
+ok   elle avance là où la caméra regarde         
+ok   relâcher laisse la caméra s'arrêter en douceur
+ok   puis elle s'immobilise                      
+ok   revenir en orbite est sans à-coup           
+ok   l'auto-gravité annonce son débit            12.86 Myr/s
+ok   l'auto-gravité se rejoue                    
+ok   aucune erreur en auto-gravité               
+
+82 / 82 vérifications passées
+--- /tmp/sillage-qa.log (written by this run):
+ok   l'aperçu de réglage dessine                 15154701 échantillons
+ok   ajouter une galaxie                         3 galaxies
+ok   l'aperçu suit l'ajout                       
+ok   retirer une galaxie                         
+ok   le nombre d'étoiles se règle                120000
+ok   changer de gravité recale le pas            0.0480 puis 0.0800
+ok   la vitesse d'exploration multiplie le pas   x8.0
+ok   le lancement bascule tout de suite          
+ok   le lancement annonce sa préparation         
+ok   la préparation se termine                   
+ok   le lancement passe en simulation            
+ok   le lancement démarre en lecture             
+ok   la toile dessine                            47 images
+ok   le temps avance                             38.8 Myr
+ok   la prise démarre seule                      104 images
+ok   la prise occupe de la mémoire               119.0 Mo
+ok   aucune erreur                               
+ok   la pause arrête le calcul                   
+ok   la reprise repart                           
+ok   la relecture est offerte                    
+ok   l'arrêt bascule en relecture                
+ok   la relecture avance                         position 16.0
+ok   la relecture ne calcule plus                130 images
+ok   le défilement tient les bornes              
+ok   la reprise revient en simulation            
+ok   la prise reprend où elle en était           130 puis 160
+ok   une nouvelle prise repart de zéro           1 image
+ok   une nouvelle prise garde le calcul          60.3 puis 60.3 Myr
+ok   la nouvelle prise se remplit                
+ok   relancer remet le temps à zéro              70 puis 4 Myr
+ok   relancer repart d'une prise neuve           
+ok   le budget borne la mémoire de la prise      513 Mo en mémoire, 7 Mo sur disque
+ok   le calcul continue après le budget          79 images au moment du plein
+ok   la prise pleine couvre toujours toute la durée30 puis 171 Myr
+ok   la prise ne s'éclaircit pas                 0.382 puis 0.378 Myr entre images
+ok   les images passées au disque sont relisiblesdernière image relue depuis le fichier de débord
+ok   le suréchantillonnage tient en simulation   
+ok   le suréchantillonnage tient en relecture    
+ok   le retour au réglage quitte la simulation   
+ok   le retour au réglage vide la prise          
+ok   l'aperçu revient                            
+ok   un second lancement repart                  20.7 Myr
+ok   un second lancement capture                 
+ok   rien n'a échoué en chemin                   
+ok   l'arrêt bascule en relecture (2)            
+ok   relancer depuis la relecture repart en simulation
+ok   couper l'affichage arrête le dessin         0 images
+ok   le calcul continue sans affichage           
+ok   réafficher redessine                        
+ok   la fin est armée                            
+ok   la course s'arrête d'elle-même              31 Myr pour une fin à 66
+ok   l'arrêt bascule en relecture                
+ok   elle s'écrit toute seule                    119.8 Mo
+ok   la destination est consommée                
+ok   plus rien ne calcule après la fin           100 images
+ok   la prise s'écrit sur disque                 146.1 Mo
+ok   la prise se rouvre en relecture             
+ok   la prise rouverte a ses images              123 puis 123
+ok   la prise rouverte a ses particules          
+ok   la prise rouverte se sait sans solveur      
+ok   la prise rouverte dessine                   
+ok   la prise rouverte défile                    position 29.0
+ok   les réglages d'image restent vifs           
+ok   reprendre le calcul est refusé sur une prise ouverte
+ok   une prise hors d'une scène n'offre pas Vidéo…
+ok   la prise d'une scène offre Vidéo… sur sa scèneqa-49463610-5F70-4E71-B849-74CCF9FE30AE/scene-0001
+ok   un gros lancement prépare en fond           
+ok   quitter pendant la préparation l'annule     
+ok   la préparation annulée ne revient pas       
+ok   l'auto-gravité avance                       27.36 Myr
+ok   l'auto-gravité capture                      122 images
+ok   l'auto-gravité dessine encore               
+ok   le vol libre s'enclenche                    
+ok   passer en vol libre ne déplace pas l'oeil   
+ok   une touche tenue fait avancer la caméra     45 kpc
+ok   elle avance là où la caméra regarde         
+ok   relâcher laisse la caméra s'arrêter en douceur
+ok   puis elle s'immobilise                      
+ok   revenir en orbite est sans à-coup           
+ok   l'auto-gravité annonce son débit            12.86 Myr/s
+ok   l'auto-gravité se rejoue                    
+ok   aucune erreur en auto-gravité               
+
+82 / 82 vérifications passées
+=== --qa: open exit 0 (open does not pass the app's status on), 56 s
+# window modes done 22:33:20

@@ -1,0 +1,279 @@
+# per-frame progress lines folded: the first and last 3 of each run are kept
+# smoke, 2026-11-03 22:33:42, worktree ea41524
+
+=== usage: unknown command word
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render bogus
+sillage-render: no command "bogus"
+=== usage: unknown command word: exit 2, 2 s
+
+=== usage: stage without a folder
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render explore
+usage: sillage-render explore <scene folder> [options]
+=== usage: stage without a folder: exit 2, 0 s
+
+=== usage: night without a recipe
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render night
+usage: sillage-render night <recipe.json> [--out DIR] [--plan [--json]]
+Queues the night (library/<date> unless --out says otherwise); --plan prints what it
+would compute, how long each step takes and when it would be done.
+=== usage: night without a recipe: exit 2, 0 s
+
+=== usage: queue without a command
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render queue --library /Users/pierregc/claude-workspace/audit-out/smoke/usage-lib
+usage: sillage-render queue run
+       sillage-render queue add hires <scene or batch> [--particles N] [hires options]
+       sillage-render queue add export <scene> --preset NAME [export options]
+       sillage-render queue add explore [explore-batch.sh options]
+       sillage-render queue add night <recipe.json> [--out DIR]
+       sillage-render queue list [--json]
+       sillage-render queue cancel <id> | first <id> | pause | resume
+       sillage-render queue stop [<id>] [--now] | skip [<id>]
+stop ends a night after its current step (--now at once, as cancel); skip leaves out the
+scene it works on. Without an id, they act on the night running.
+Each takes --library DIR, by default $SILLAGE_LIBRARY or the repository's library/;
+add hires and add export use the scene's own library.
+=== usage: queue without a command: exit 2, 0 s
+
+=== usage: --help (killed after 20 s if it renders)
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render --help
+scene      Merger, 1000000 visible
+solver     restricted (restricted)
+gpu        Apple M4 Max
+scene file /Users/pierregc/claude-workspace/audit-out/smoke/out/sillage.scene.json
+look file  /Users/pierregc/claude-workspace/audit-out/smoke/out/sillage.look.json
+frame 0000  t=282.6 Myr  sim   270.9 ms (0.090 ms/step)  smoothing    7.7 ms  render  38.6 ms (gpu 27.79)
+done in 0.5 s
+=== usage: --help (killed after 20 s if it renders): exit 0, 1 s
+# smoke done 22:33:45
+# smoke, 2026-11-03 22:33:54, worktree ea41524
+
+=== explore one generated scene
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render explore /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 --seed 7 --index 1 --particles 20000 --width 480 --height 270
+draw       free, batch 7 scene 1 (point 3): spiral, dwarf
+encounter  0-1, pericentre 9.5 kpc at 73 Myr, e 2.04 (hyperbolic), mass ratio 0.05
+scene      Libre, 20000 visible, 29999 halo
+solver     barnes-hut (barnesHut)
+gpu        Apple M4 Max
+scene file /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/scene.json
+look file  /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/look.json
+settle     750 steps, t=33.2 Myr, 1.7 s
+frame 0000  t=33.2 Myr  sim     2.3 ms (2.257 ms/step)  smoothing    0.5 ms  render   8.7 ms (gpu  0.45)
+frame 0001  t=33.3 Myr  sim     2.3 ms (2.270 ms/step)  smoothing    0.1 ms  render   2.9 ms (gpu  0.42)
+frame 0002  t=33.3 Myr  sim     2.2 ms (2.245 ms/step)  smoothing    0.2 ms  render   0.6 ms (gpu  0.42)
+[... 444 progress lines folded ...]
+frame 0447  t=53.0 Myr  sim     2.7 ms (2.732 ms/step)  smoothing    0.1 ms  render   0.7 ms (gpu  0.53)
+frame 0448  t=53.1 Myr  sim     2.6 ms (2.616 ms/step)  smoothing    0.1 ms  render   0.7 ms (gpu  0.54)
+frame 0449  t=53.1 Myr  sim     2.9 ms (2.907 ms/step)  smoothing    0.1 ms  render   0.7 ms (gpu  0.54)
+thumbnail  /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/thumbnail.png
+frame 0450  t=53.2 Myr  sim     2.6 ms (2.615 ms/step)  smoothing    0.1 ms  render   0.8 ms (gpu  0.53)
+frame 0451  t=53.2 Myr  sim     3.1 ms (3.080 ms/step)  smoothing    0.1 ms  render   0.8 ms (gpu  0.60)
+frame 0452  t=53.3 Myr  sim     2.7 ms (2.743 ms/step)  smoothing    0.1 ms  render   0.7 ms (gpu  0.54)
+[... 8581 progress lines folded ...]
+frame 9034  t=433.2 Myr  sim     3.7 ms (3.709 ms/step)  smoothing    0.2 ms  render   0.8 ms (gpu  0.61)
+frame 9035  t=433.2 Myr  sim     3.5 ms (3.478 ms/step)  smoothing    0.2 ms  render   0.9 ms (gpu  0.70)
+frame 9036  t=433.3 Myr  sim     3.6 ms (3.559 ms/step)  smoothing    0.2 ms  render   0.8 ms (gpu  0.61)
+story      33 to 433 Myr (frames 0 to 9036 of 9037), over
+curves     1265.0 ms in all, 1.406 ms a frame
+done in 41.4 s
+=== explore one generated scene: exit 0, 42 s
+
+=== story
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render story /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001
+scene-0001  2 galaxies  curves 33-433 Myr  collision 72 Myr (9.7 kpc, 38 after the start)  story 33-433 Myr  over
+story      1 of 1 over
+=== story: exit 0, 0 s
+
+=== hires 40000 x 30 frames
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render hires /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 --particles 40000 --frames 30
+hires      40000 particles (preview 20000), step 0.04427 Myr (preview 0.04427), settle 750, 30 steps, clip 33.2 to 34.5 Myr, about 0.0 h
+draw       free, batch 7 scene 1 (point 3): spiral, dwarf
+encounter  0-1, pericentre 9.5 kpc at 73 Myr, e 2.04 (hyperbolic), mass ratio 0.05
+scene      Libre, 40000 visible, 60000 halo
+solver     barnes-hut (barnesHut)
+gpu        Apple M4 Max
+settle     750 steps, t=33.2 Myr, 2.3 s
+frame 0000  t=33.2 Myr  sim     3.1 ms (3.053 ms/step)  smoothing    0.6 ms  render  21.5 ms (gpu  0.69)
+frame 0001  t=33.3 Myr  sim     3.1 ms (3.128 ms/step)  smoothing    0.2 ms  render   3.5 ms (gpu  0.66)
+frame 0002  t=33.3 Myr  sim     3.2 ms (3.153 ms/step)  smoothing    0.2 ms  render   0.9 ms (gpu  0.65)
+[... 24 progress lines folded ...]
+frame 0027  t=34.4 Myr  sim     3.1 ms (3.063 ms/step)  smoothing    0.1 ms  render   0.8 ms (gpu  0.65)
+frame 0028  t=34.5 Myr  sim     3.1 ms (3.054 ms/step)  smoothing    0.2 ms  render   0.9 ms (gpu  0.66)
+frame 0029  t=34.5 Myr  sim     3.0 ms (3.046 ms/step)  smoothing    0.2 ms  render   0.8 ms (gpu  0.66)
+curves     5.2 ms in all, 0.173 ms a frame
+hires      3 s, peak 0.42 GB, take 0.00 GB
+done in 2.6 s
+=== hires 40000 x 30 frames: exit 0, 3 s
+
+=== look --style auto
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render look /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 --style auto
+style      1. 0.869 gloss · spectrum-complementary-2759007099521523232: clipping 0.96 exposure 0.85 colour 1.00 separation 1.00 noise 0.00 detail 0.93 reference - variety 0.81 palette 0.98
+style      2. 0.866 gloss · spectrum-split-complementary-15740919791995438441: clipping 0.90 exposure 0.76 colour 1.00 separation 1.00 noise 0.00 detail 1.00 reference - variety 0.95 palette 0.97
+style      3. 0.861 dream · spectrum-split-complementary-15740919791995438441: clipping 0.89 exposure 0.52 colour 1.00 separation 1.00 noise 1.00 detail 0.29 reference - variety 0.98 palette 0.97
+style      4. 0.860 dream · spectrum-complementary-2759007099521523232: clipping 0.97 exposure 0.60 colour 1.00 separation 1.00 noise 1.00 detail 0.24 reference - variety 0.74 palette 0.98
+style      5. 0.855 gloss · spectrum-triadic-1875613694122851101: clipping 0.87 exposure 0.75 colour 1.00 separation 1.00 noise 0.00 detail 1.00 reference - variety 0.91 palette 0.94
+style      52 pairs (40 renderings, 4 palettes) on 3 frames at 480x270: 1.8 s
+grid       /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/looks/auto-free.png
+scores     /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/looks/auto-free.json
+look       0.869 gloss · spectrum-complementary-2759007099521523232 is now /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/look.json
+=== look --style auto: exit 0, 2 s
+
+=== palettes --best 3
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render palettes /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 --best 3
+palettes   spectrum-complementary-2759007099521523232 0.98: separation 1.00 harmony 0.94 range 1.00 balance 0.97 reference - inside 1.00 between 1.00
+palettes   spectrum-split-complementary-15740919791995438441 0.97: separation 1.00 harmony 0.97 range 1.00 balance 0.73 reference - inside 1.00 between 1.00
+palettes   spectrum-split-complementary-3920976989238990984 0.96: separation 1.00 harmony 0.96 range 0.94 balance 0.80 reference - inside 1.00 between 1.00
+palettes   on the look gloss
+palettes   3 free palettes for 2 galaxies on frame 29 (35 Myr)
+palettes   drawn in 0.1 s
+sheet      /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/palettes/sheet.png
+swatches   /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/palettes/swatches.png
+=== palettes --best 3: exit 0, 0 s
+
+=== export --preset whatsapp
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render export /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 --preset whatsapp
+export     whatsapp h264 1280x720 at 30 fps, 30 frames (1.0 s from 0.0 s of a 1.0 s take), look gloss, 4.0 Mbit/s, about 0 MB
+export     3/30
+export     6/30
+export     9/30
+[... 4 progress lines folded ...]
+export     24/30
+export     27/30
+export     30/30
+export     30 frames in 0.1 s, 229.4 frames a second, 7.65x real time, 0.6 MB
+video      /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/exports/whatsapp.mp4
+caption    /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/exports/whatsapp.txt
+=== export --preset whatsapp: exit 0, 0 s
+
+=== export --format gif --max-size 1MB
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render export /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 --format gif --max-size 1MB
+export     gif 960x540 at 16 fps, 8.0 s from 0.0 s of a 1.0 s take, look gloss, at most 1.0 MB
+export     960 wide at 16 fps: 7.3 MB, too big
+export     337x190, 16 frames at 16.7 fps, 0.9 MB in 0.7 s
+preview    /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/exports/preview.gif
+=== export --format gif --max-size 1MB: exit 0, 1 s
+
+=== export --codec prores --duration 2
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render export /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 --codec prores --duration 2
+export     1080p prores 1920x1080 at 30 fps, 30 frames (1.0 s from 0.0 s of a 1.0 s take), look gloss, ProRes 422 HQ
+export     3/30
+export     6/30
+export     9/30
+[... 4 progress lines folded ...]
+export     24/30
+export     27/30
+export     30/30
+export     30 frames in 0.1 s, 201.5 frames a second, 6.72x real time, 26.1 MB
+video      /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/exports/1080p-prores.mov
+=== export --codec prores --duration 2: exit 0, 1 s
+
+=== probe-disk galaxy 0, 50 Myr
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render probe-disk /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 0 --myr 50
+probe      /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001 galaxy 0 (Première), 19125 of 20000 visible, 47812 simulated, step 0.0443 Myr, 90 steps a frame, 13 frames of 3.98 Myr
+facts      X_2 2.84 / 3.62 / 5.18 at 1, 2, 3 h (prefers 3.6 arms at 2 h), painted pattern 0.0594 rad/Myr: corotation 2.25 h, inner Lindblad 0.38 h; v_c(2h) 357 km/s, rotation 95 Myr, epicycle 68 Myr; Q 1.320, effective 2.87 (0.46 of the pull left)
+frame 0000  t=   0.0 Myr  r50 4.25  a2 0.000  a1 0.056  s/vc 0.131  lump 0.000  coh nan/nan  tilt 0.05  sim 0.00 ms/step  measure 1.6 ms
+frame 0001  t=   4.0 Myr  r50 4.27  a2 0.000  a1 0.034  s/vc 0.131  lump 0.075  coh nan/nan  tilt 0.03  sim 2.58 ms/step  measure 1.6 ms
+frame 0002  t=   8.0 Myr  r50 4.32  a2 0.000  a1 0.058  s/vc 0.133  lump 0.000  coh nan/nan  tilt 0.00  sim 2.23 ms/step  measure 1.5 ms
+[... 8 progress lines folded ...]
+frame 0011  t=  43.8 Myr  r50 4.21  a2 0.000  a1 0.035  s/vc 0.126  lump 0.000  coh nan/nan  tilt 0.38  sim 2.25 ms/step  measure 1.5 ms
+frame 0012  t=  47.8 Myr  r50 4.16  a2 0.028  a1 0.037  s/vc 0.127  lump 0.000  coh nan/nan  tilt 0.42  sim 2.28 ms/step  measure 1.6 ms
+frame 0013  t=  51.8 Myr  r50 4.13  a2 0.039  a1 0.056  s/vc 0.127  lump 0.073  coh 0.03/0.03  tilt 0.44  sim 2.25 ms/step  measure 1.6 ms
+probe      1170 steps in 3 s (2.3 ms a step), r50 4.25 -> 4.13 kpc, first excursion 4.2 % at 20 Myr, settled from nan Myr
+           sigma_R/v_c 0.131 -> 0.127 (300 Myr) -> 0.127, a2 peak 0.039 at 52 Myr, late a2 0.021 a1 0.035, lumpiness 0.000 -> 0.065, coherence pattern 0.03 material 0.03 static -0.03
+           axis tilt up to 0.44 deg, nucleus jitter 0.048 kpc a frame, solver centre 0.045, offset 0.04 kpc, outer offset 0.230 h
+clip       /Users/pierregc/claude-workspace/audit-out/smoke/scenes/scene-0001/probe/g0/probe.mov
+=== probe-disk galaxy 0, 50 Myr: exit 0, 3 s
+# smoke done 22:34:46
+# smoke, 2026-11-03 22:35:16, worktree ea41524
+
+=== explore-batch.sh 2 scenes x 5000 a galaxy
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/scripts/explore-batch.sh --scenes 2 --per-galaxy 5000 --out /Users/pierregc/claude-workspace/audit-out/smoke/batch
+batch 20261103 into /Users/pierregc/claude-workspace/audit-out/smoke/batch, 4 at once, 5000 particles a galaxy, 700 Myr, 960x540
+scene-0002 ok 14s, 2 galaxies, 10000 particles, 5140 steps
+scene-0001 ok 17s, 2 galaxies, 10000 particles, 6248 steps
+2 done, 0 rejected, 0 failed in 18 s: 9.0 s per scene, each 15.5 s on average, 4 at once
+=== explore-batch.sh 2 scenes x 5000 a galaxy: exit 0, 101 s
+
+=== interest.py on the batch
+$ python3 /Users/pierregc/claude-workspace/sillage-wt-audit/scripts/interest.py /Users/pierregc/claude-workspace/audit-out/smoke/batch
+   1  0.932  scene-0001
+   2  0.777  scene-0002
+=== interest.py on the batch: exit 0, 0 s
+# smoke done 22:36:57
+# smoke, 2026-11-03 22:36:57, worktree ea41524
+
+=== night --plan
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render night /Users/pierregc/claude-workspace/audit-out/smoke/tiny.night.json --out /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/2026-11-03-tiny --plan
+plan       deliver by 23:36, 1 h 00 from now
+explore    2 scenes at 5 000 a galaxy · 0 min · 22:36 to 22:37
+pick       1 scene · at 22:37
+hires      pick 1 · 20 000 particles · 0 min · 22:37 to 22:37
+style      pick 1 · 0 min · 22:37 to 22:37
+export     pick 1 gif · 1 min · 22:37 to 22:38
+end        22:38, 59 min before the delivery
+disk       0.1 GB needed, 1387.9 GB free
+=== night --plan: exit 0, 4 s
+
+=== night (queues it and starts a runner)
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render night /Users/pierregc/claude-workspace/audit-out/smoke/tiny.night.json --out /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/2026-11-03-tiny
+queue      job 1 added: night 2026-11-03-tiny /Users/pierregc/claude-workspace/audit-out/smoke/tiny.night.json, 0 before it
+runner     started, pid 89881, log /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/.queue/runner.log
+=== night (queues it and starts a runner): exit 0, 0 s
+=== night queue jobs: done after 31 s
+
+=== status --night
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render status --night /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/2026-11-03-tiny --library /Users/pierregc/claude-workspace/audit-out/smoke/nightlib
+Nuit du 3 nov. · terminée 22 h 37, avant 23 h 37 · 0 erreur
+Aperçus 2/2 · choix 1/1 · haute résolution 1/1 · 1 vidéo
+Dernière vidéo : scene-0002/exports/preview.gif · 2,6 Mo · 22 h 37
+=== status --night: exit 0, 0 s
+
+=== queue list
+$ /Users/pierregc/claude-workspace/sillage-wt-audit/.build/dev/sillage-render queue --library /Users/pierregc/claude-workspace/audit-out/smoke/nightlib list
+queue      /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/.queue · no runner
+    1  done       night 2026-11-03-tiny /Users/pierregc/claude-workspace/audit-out/smoke/tiny.night.json · 22:37 to 22:37
+=== queue list: exit 0, 0 s
+--- /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/2026-11-03-tiny/report.md
+# Nuit du 3 nov.
+
+- État : terminée, de 3 nov. 22 h 37 à 3 nov. 22 h 37 (26 s)
+- Livraison : avant 23 h 37, terminée 59 min avant
+- Aperçus : 2 explorés, 0 rejetés, 0 en échec
+- Choisies : scene-0002 (0,88)
+- Haute résolution : 1 faite sur 1 prévues
+- Vidéos : 1 (2,6 Mo)
+- Laissées de côté : 0 · erreurs : 0
+
+## Haute résolution
+
+- scene-0002 : 20 000 particules en 0 min
+
+## Vidéos
+
+- scene-0002/exports/preview.gif (2,6 Mo)
+--- /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/.queue/runner.log
+2026-11-03 22:37:01 runner     pid 89881, /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/.queue
+2026-11-03 22:37:01 job 1      night 2026-11-03-tiny /Users/pierregc/claude-workspace/audit-out/smoke/tiny.night.json started, pid 89883
+2026-11-03 22:37:28 job 1      done
+2026-11-03 22:37:28 runner     the queue is empty
+--- /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/.queue/logs/job-1.log
+night      2026-11-03-tiny into /Users/pierregc/claude-workspace/audit-out/smoke/nightlib/2026-11-03-tiny, deliver by 23:37
+plan       deliver by 23:37, 1 h 00 from now
+explore    2 scenes at 5 000 a galaxy · 0 min · 22:37 to 22:37
+pick       1 scene · at 22:37
+hires      pick 1 · 20 000 particles · 0 min · 22:37 to 22:37
+style      pick 1 · 0 min · 22:37 to 22:37
+export     pick 1 gif · 1 min · 22:37 to 22:38
+end        22:38, 59 min before the delivery
+disk       0.1 GB needed, 1387.9 GB free
+night      explore 2 scenes at 5000 a galaxy
+night      picked scene-0002, score 0.883
+night      hires scene-0002, 20000 particles
+night      style scene-0002: auto in the telescope world, palette auto
+night      export scene-0002 gif
+night      done
+--- /Users/pierregc/claude-workspace/audit-out/smoke/notices.log
+Nuit du 3 nov.	Aperçus : fini · 2 scènes
+Nuit du 3 nov.	Pick : fini · 1 scène
+Nuit du 3 nov. terminée	2 scènes explorées · 1 en haute résolution · 1 vidéo · aucune erreur
+File d'attente vide	1 travail terminé
+# smoke done 22:37:32
