@@ -11,7 +11,8 @@ struct LookFileTests {
         try LookFile.decoded(from: Data(json.utf8))
     }
 
-    /// The standard look, but with the glint every file drew with before it was a field.
+    /// The standard look, but with the glint and the dust every file drew with before they were
+    /// fields.
     private var standardAsSampled: LookFile { LookFile(look: LookFile.omittedLook) }
 
     @Test func anEmptyFileIsTheStandardLook() throws {
@@ -19,6 +20,7 @@ struct LookFileTests {
         #expect(try decoded(#"{"version": 1, "look": {}, "camera": {}}"#) == standardAsSampled)
         var standard = LookFile.standard
         standard.look.glint = 1
+        standard.look.dustWeb = 0
         #expect(standardAsSampled == standard)
     }
 

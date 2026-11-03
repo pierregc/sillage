@@ -273,3 +273,59 @@ disk's spike figure is #173's:
 
 Read as intact throughout, as before #198, scene-0031 cost 13.2 (21.6) and 22.9 (32.9) with the
 baked web. It is now cheap enough for the canvas and the styles; turning it on there is #197.
+
+## In the shipped and generated styles (#197)
+
+**On wherever there is dust.** `RenderLook.styleDustWeb`, 1, is the web every shipped style that
+carries dust draws: the twelve looks of `looks/` above zero (Hubble, Webb, ember, ember-dust,
+amber-lanes, ink, dusk, indigo-veil, gloss, gas-whisper, observatory, dream), the five built in
+and the standard look. The thirty without dust stay at 0, since the web has nothing to draw
+there and its passes would still run. As with the glint (#184), a file that leaves `dustWeb` out
+was written before it existed and reads as 0 (`LookFile.omittedLook`), so the scenes already in
+the library keep their picture. Réinitialiser on Lumière, where the slider sits, now puts the
+web back too.
+
+**Generated styles get their dust back.** `StyleAuto.dustCap` is nil: `look --style auto`, the
+night's style step and the editor's Auto draw and score each rendering with its own dust, as a
+web. The cap and `--generated` stay as the lever that held it back, should the web not hold up
+on a night's stills.
+
+**Webb's dust, 0.08 to 0.2.** Auto draws what the renderings carry, so choosing the strength the
+night draws meant choosing Webb's, its usual telescope pick (three takes in four below). On a
+ladder of 0.08, 0.12, 0.16, 0.2, 0.25 and 0.3 with the web, face-on at the clip's size and 1:1
+in a 4K still: at 0.08 the web does not show at any size, and the disk looks as it does without
+dust; 0.16 shows a few threads at 1:1; 0.2 shows fine rust filaments over the blue-white disk,
+which is nearer Webb's own glowing filaments than nothing; 0.3 turns the inner disk orange.
+Hubble's 0.45 shows the web best and stays; at 0.2 its filaments are faint, at 0.7 heavy. Webb
+at 0.2 changes none of Auto's telescope picks below. What it costs: where the solver reads a
+disk as torn the web hands the dust back to the grains, as designed, and at 0.2 those grains
+show more than they did at 0.08, as orange specks and a blot on a torn core.
+
+**No exposure to take back.** Measured on the three takes' face-on frames drawn at 1920 (Hubble
+and the standard look again at 3840), eight styles at their own dust, the grains against the
+web, as the share of the dustless still's display luminance kept over the galaxy's body, its
+brightest third and its brightest tenth:
+
+| | body | inner third | core tenth |
+| --- | --- | --- | --- |
+| Hubble, scene-0031 | 0.847 / 0.839 | 0.795 / 0.782 | 0.751 / 0.728 |
+| standard, scene-0031 | 0.900 / 0.893 | 0.858 / 0.846 | 0.809 / 0.786 |
+| Hubble, 2026-10-25-night/scene-0023 | 0.921 / 0.918 | 0.896 / 0.890 | 0.891 / 0.883 |
+| ember-dust, scene-0031 | 0.869 / 0.865 | 0.831 / 0.823 | 0.796 / 0.781 |
+| the other 20 pairs | within 0.005 | within 0.008 | within 0.016 |
+
+The web keeps from 0.1 % more to 2.3 % less light than the grains, and its mean colour is as
+red (red over blue within 0.04, a little redder if anything). The spike's brighter, less orange
+inner disk is a local impression: the disk is clearer between the filaments and darker in them,
+and the mean does not move. So no style took its brightness or white point back.
+
+**Auto, before and after.** On four takes filmed by the director as the night films them, main
+(the cap at 0, no web) against this (the cap nil, the web on, Webb at 0.2): scene-0031 stays
+Hubble (0.677 to 0.707) and void-teal; scene-0030 Webb and red-vs-cyan; scene-0044 Webb and
+gold-leaf; 2026-10-25-night/scene-0023 Webb and gloss, gloss with another palette. No rendering
+changed.
+
+**What it does not fix.** Dust gathered in dense clumps on the knots stays a dark blot, web or
+not, and stands out more once the orange haze around it has gone into filaments; torn disks draw
+the grains' dust, coarse as before; on scene-0030's disk at 8 M the web stays faint at every
+strength tried. Sheets on the branch `assets/197-dust-web-on`.

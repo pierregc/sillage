@@ -56,7 +56,8 @@ nothing else, because the model publishes on every played frame.
 - **Auto picks the pair**, as the plan says: `StyleAuto.choose` in the switch's world, then the
   best rendering and palette go on the current file with the locks and the camera kept. It says
   what it chose and its score. The rendering goes on as `StyleAuto.generated` gives it, its dust
-  held back (#174), and Rendu still names it; a click on its tile brings its dust back.
+  held to `StyleAuto.dustCap`, and Rendu still names it. The cap held the dust back under #174;
+  it is nil since #197, so Auto brings the rendering's own dust, drawn as a web.
 - **Réinitialiser goes back to the last rendering applied** for Lumière, Instrument and Rendu
   détaillé, since resetting the light of a new rendering to the old one's would mix two looks;
   and to the saved plan for the camera.

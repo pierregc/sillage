@@ -7,8 +7,8 @@ import simd
 ///
 /// Every field may be left out and takes its value from `standard`, which is what
 /// `sillage-render` draws with when given no flags, so a file names only what it changes;
-/// the glint is the one exception (`omittedLook`). A field this build does not know is an
-/// error rather than silently ignored.
+/// the glint and the dust web are the exceptions (`omittedLook`). A field this build does not
+/// know is an error rather than silently ignored.
 public struct LookFile: Codable, Sendable, Equatable {
     public static let currentVersion = 1
 
@@ -142,14 +142,17 @@ public struct LookFile: Codable, Sendable, Equatable {
         maximumKernel: 64, bloomThreshold: 0.55, bloomSoftKnee: 0.6, bloomIntensity: 0.22,
         stretch: 18, saturation: 2.8, whitePoint: 4.5, spikeArms: 6, spikeLength: 40,
         spikeIntensity: 0.14, skyLevel: 0.0008, noiseLevel: 0.0016, galaxyTint: 0.35,
-        starSize: 1.6, armPersistence: 1, fieldOfView: 0.6, glint: RenderLook.styleGlint)
+        starSize: 1.6, armPersistence: 1, fieldOfView: 0.6, glint: RenderLook.styleGlint,
+        dustWeb: RenderLook.styleDustWeb)
 
     /// What a file means by the look fields it leaves out: the standard look, but the glint as
-    /// sampled, which is what every file written before the field existed drew with. A scene's
-    /// `look.json` keeps its picture; only new styles name `styleGlint`.
+    /// sampled and no dust web, which is what every file written before those fields existed
+    /// drew with. A scene's `look.json` keeps its picture; only new styles name `styleGlint`
+    /// and `styleDustWeb`.
     public static let omittedLook: RenderLook = {
         var look = standardLook
         look.glint = 1
+        look.dustWeb = 0
         return look
     }()
 

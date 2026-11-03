@@ -16,6 +16,7 @@
     "bloomThreshold" : 0.55,
     "brightness" : 0.15,
     "dustStrength" : 0.12,
+    "dustWeb" : 1,
     "fieldOfView" : 0.6,
     "galaxyTint" : 0.5,
     "glint" : 0.3,

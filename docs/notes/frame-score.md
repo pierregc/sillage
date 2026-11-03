@@ -39,13 +39,20 @@ total is 0.8 × the mean frame score + 0.2 × the palette's own score, since har
 show on a frame. `StyleAuto.apply` puts the rendering and the palette on the scene's look and
 keeps its camera and field of view, so the framing does not change with the style.
 
-It also holds the dust to `StyleAuto.dustCap` (none since #174) before the frames are drawn, so
-a pair is judged as it ships rather than with dust it will not have. That costs no time, the
-dust pass runs either way, and it can change the pick: on 2026-10-30-b, scene-0031's telescope
-pair was Hubble at 0.705 with its dust, ahead of Webb at 0.695, and drawn without it Hubble
+It also holds the dust to `StyleAuto.dustCap` before the frames are drawn, so a pair is judged
+as it ships rather than with dust it will not have. That costs no time, the dust pass runs
+either way, and it can change the pick: on 2026-10-30-b, scene-0031's telescope pair was Hubble
+at 0.705 with its dust, ahead of Webb at 0.695, and drawn without it (#174, the cap at 0) Hubble
 falls to 0.675 behind Webb at 0.687, its detail part from 0.97 to 0.83. Scenes 0030 and 0044
 kept Webb, the first with another palette; the free world kept red-vs-cyan and gold-leaf, which
 have no dust.
+
+The cap is nil since #197: every rendering draws its own dust, as a web, Webb's raised to 0.2.
+Filmed by the director as the night films (`--camera director`), no rendering changed on four
+takes: scene-0031 stays Hubble (0.677 without dust, 0.707 with its web, separation 0.86 to
+0.98), scenes 0030 and 0044 and 2026-10-25-night/scene-0023 stay Webb with the same palettes,
+and the free world keeps void-teal, red-vs-cyan, gold-leaf and gloss, the last, which carries
+dust, with another palette.
 
 ## Cost
 
