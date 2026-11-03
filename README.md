@@ -252,6 +252,11 @@ frame alone saves another 29 %, and predicting each frame from the two before it
 second decodes only in order, and both would give up the memory-mapped random access playback
 and export rely on, for a smaller saving than the interval already makes.
 
+The take also carries what each disk is doing, the plane it turns in and how much of it an
+encounter has torn, which is what fades its painted arms. Takes `hires` wrote before #186 hold
+none: whatever draws one reads each disk's disruption, frame by frame, from the
+`curves-hires.csv` the same run wrote beside it, in the plane the disk was laid down in (#198).
+
 ### Looks
 
 ```bash

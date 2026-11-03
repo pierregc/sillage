@@ -98,6 +98,124 @@ struct RecordingFileTests {
         #expect(back.map(\.disruption) == disks.map(\.disruption))
     }
 
+    /// A scene folder holding a take as `hires` writes one: two galaxies over eleven captured
+    /// frames, one in four kept and the last (0, 4, 8 and 10), with the disk states given or,
+    /// as before #186, none.
+    private func hiresTake(disks: [DiskState] = []) throws -> (SceneFolder, SceneConfig) {
+        let folder = SceneFolder(
+            FileManager.default.temporaryDirectory.appendingPathComponent(
+                "old-take-\(UUID().uuidString)/scene-0001"))
+        try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+        let scene = SceneConfig.merger(particleCount: 200)
+        let recording = Recording(particleCount: 200, galaxyCount: 2, interval: 4)
+        var system = ParticleSystem()
+        for index in 0..<200 {
+            system.append(
+                position: .zero, velocity: .zero, galaxy: UInt32(index % 2), radius: 1,
+                population: 0.5, luminosity: 1, component: .star)
+        }
+        for frame in 0..<11 {
+            let y = Float(frame)
+            let positions = (0..<200).map { SIMD3<Float>(Float($0 % 2) * 20 - 10, y, 0) }
+            positions.withUnsafeBufferPointer {
+                recording.append(
+                    positions: $0.baseAddress!, time: 30 + y * 0.25,
+                    centers: [SIMD3(-10, y, 0), SIMD3(10, y, 0)], disks: disks)
+            }
+        }
+        try RecordingFile.write(recording, scene: scene, particles: system, to: folder.take)
+        return (folder, scene)
+    }
+
+    /// `curves-hires.csv` for that take as the run writes it: a row per captured frame, the time
+    /// to a thousandth of a megayear, each disk's disruption.
+    private func hiresCurves(_ disruption: (Int) -> [Float], shift: Double = 0) -> String {
+        var csv =
+            "frame,time_myr,separation_kpc,extent_kpc,formed,closest_kpc,tidal_fraction,"
+            + "disruption_0,disruption_1,x_0,y_0,z_0,x_1,y_1,z_1\n"
+        for frame in 0..<11 {
+            let myr = Double(30 + Float(frame) * 0.25) * Physics.megayearsPerTimeUnit + shift
+            csv +=
+                String(format: "%d,%.3f,20.0000,12.0000,0,20.0000,0.0000", frame, myr)
+                + disruption(frame).map { String(format: ",%.3f", $0) }.joined()
+                + String(format: ",-10.0000,%d.0000,0.0000,10.0000,%d.0000,0.0000\n", frame, frame)
+        }
+        return csv
+    }
+
+    /// A take `hires` wrote before #186 holds no disk state, but the same run wrote each disk's
+    /// disruption beside it in `curves-hires.csv`: read from there, the take tears its disks
+    /// where the curves say, and the painted arms fade with them (#198).
+    @Test func aTakeWithoutDiskStatesReadsTheirDisruptionFromItsCurves() throws {
+        let (folder, scene) = try hiresTake()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        // The first disk tears from captured frame 3 to 7, the second never does.
+        let torn = { (frame: Int) -> [Float] in [min(max(Float(frame - 3) / 4, 0), 1), 0] }
+        try hiresCurves(torn).write(to: folder.hiresCurves, atomically: true, encoding: .utf8)
+
+        let loaded = try RecordingFile.read(from: folder.take)
+        let recording = loaded.recording
+        #expect(recording.count == 4)
+        let natal = DiskState.natal(scene).map(\.axis)
+        for (stored, captured) in [(0, 0), (1, 4), (2, 8), (3, 10)] {
+            let disks = recording.disks(at: stored)
+            #expect(disks.map(\.disruption) == torn(captured), "image \(captured)")
+            #expect(disks.map(\.axis) == natal, "image \(captured)")
+        }
+
+        // Every captured frame as the look stage, the export and the canvas draw it.
+        let arms = try (0..<11).map { frame in
+            let blend = try #require(recording.blend(atCaptured: frame))
+            return DiskFrame.make(
+                scene: loaded.scene, centers: recording.centers(at: blend), time: blend.time,
+                strength: 1, disks: recording.disks(at: blend)
+            ).map(\.axisV.w)
+        }
+        #expect(arms[0] == scene.galaxies.map(\.armStrength))
+        #expect(arms[3][0] < arms[0][0] && arms[8][0] == 0 && arms[10][0] == 0)
+        #expect(zip(arms, arms.dropFirst()).allSatisfy { $1[0] <= $0[0] })
+        #expect(arms.allSatisfy { $0[1] == scene.galaxies[1].armStrength })
+        // And the director's plan, which films the least torn disk at the end.
+        #expect(ShotPlan.Track(take: loaded).disruption.last == [1, 0])
+    }
+
+    /// A take written since #186 reads its own disk states, whatever curves sit beside it.
+    @Test func aTakeWithItsOwnDiskStatesKeepsThem() throws {
+        let measured = [
+            DiskState(axis: simd_normalize(SIMD3(0.2, 0, 1)), disruption: 0.4),
+            DiskState(axis: SIMD3(0, 1, 0), disruption: 0),
+        ]
+        let (folder, _) = try hiresTake(disks: measured)
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        try hiresCurves { _ in [1, 1] }.write(
+            to: folder.hiresCurves, atomically: true, encoding: .utf8)
+
+        let recording = try RecordingFile.read(from: folder.take).recording
+        #expect(recording.count == 4)
+        for stored in 0..<recording.count {
+            let disks = recording.disks(at: stored)
+            #expect(disks.map(\.axis) == measured.map(\.axis))
+            #expect(disks.map(\.disruption) == measured.map(\.disruption))
+        }
+    }
+
+    /// Curves that are not the take's own are not read: another run's, whose frames fall
+    /// elsewhere, ones without a disk's disruption, or ones that stop short of the take.
+    @Test func curvesThatAreNotTheTakesAreLeftAlone() throws {
+        let (folder, _) = try hiresTake()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        let torn = { (_: Int) -> [Float] in [1, 1] }
+        let short = hiresCurves(torn).split(separator: "\n").dropLast(2).joined(separator: "\n")
+        for csv in [
+            hiresCurves(torn, shift: 0.4),
+            hiresCurves(torn).replacingOccurrences(of: "disruption_1", with: "spread_1"),
+            short,
+        ] {
+            try csv.write(to: folder.hiresCurves, atomically: true, encoding: .utf8)
+            #expect(try RecordingFile.read(from: folder.take).recording.disks(at: 0).isEmpty)
+        }
+    }
+
     /// A run that outlasts its budget has to come back *whole*, at the cadence it was taken
     /// at. It used to come back at half of it, then a quarter, then an eighth — which keeps
     /// the duration and loses the run, since nothing between two snapshots ever happened.
