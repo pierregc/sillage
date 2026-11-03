@@ -160,7 +160,8 @@ the drive (a2 0.21 late, coherence 0.07), and on a calm start (contrast 0.3, clu
 likewise. The disk's own swing-amplified modes, corotating at 2.1 to 2.3 scale lengths, win
 against a few per cent of forcing at a speed whose resonances lie elsewhere. Whether a drive
 at the disk's own rate, or a far stronger one, takes over is a measurement not made; it is
-not an implementation ticket.
+not an implementation ticket. Measured since (#180, "A steady drive at the disk's own rate"):
+neither does.
 
 **Clumps in the young population only change the first frame, which is the point.** With the
 stars at clumpiness 0.05 or 0 and the young population at 0.5 to 0.55 (`stars-0.05-young-0.55`,
@@ -406,3 +407,180 @@ paint; and measure it on the twelve with the larger ones watched for bars. Multi
 explore at 100 000 a galaxy, more than the 200 000 a scene used here, so free-1, free-9 and
 free-12 run there at 0.7 to 0.8 of the softening measured; the twelve are the #179 sample, two
 samplings were run only for free-10 and free-12.
+
+## A steady drive at the disk's own rate (#180)
+
+The question the drive above left: does a drive turning at the disk's own preferred rate (0.8
+to 1.0 of the material's at two scale lengths, corotation at 2 to 2.5 scale lengths), or a far
+stronger one, lock the particles' pattern (coherence in the pattern frame above 0.6 at a 50 Myr
+lag, pattern speed within 10 % of the drive's) at a heating the cooling holds (sigma_R / v_c
+under 0.18 late), and does it still read as real. Measured on both galaxies of scene-0031 moved
+onto the calm disk (`--calm`), at the explore count and step (200 000 a scene, 0.198 Myr) for
+1 Gyr, with a second sampling (`--seed 2`) of everything that looked like a gain: 52 runs of
+33 to 55 s, written outside the library and not kept.
+
+**The port** is on branch `spike/180-prototypes`, not on main: the prototype on the calm disk,
+with a speed of its own. Three `GalaxyConfig` fields whose absence reads as no drive,
+`driveStrength` (zero), `driveShare` (the speed as a share of the circular frequency at two
+scale lengths, like `patternShare`; zero turns it with the paint) and `driveRampMyr` (400, on
+Dehnen's quintic); `SpiralDrive`, the kernel in a library of its own, dispatched after the
+cooling and gated by the same tide and disruption; probe options `--drive`, `--drive-share`,
+`--drive-ramp`, `--drive-olr` (the window out to the outer Lindblad resonance instead of
+corotation) and `--pattern-share`. One step with the drive and one without, from the same
+particles, put its kick within 0.1 % of a CPU evaluation of the same potential, the strongest
+in-plane pull at two scale lengths at 5.2 % of the axisymmetric one for 5 % asked, nothing but
+disk material touched, and the stars between one and three scale lengths on its crest at
+t = 0 (mean cosine of its phase 0.16, what a mass contrast of 0.3 gives). With no drive the
+probe reproduces #179's runs to the printed digits (first excursion 12.0 % at 241 Myr, 7.0 % at
+273). As in the prototype the drive is a clean logarithmic spiral: the ridge's wander, up to a
+radian of arm phase with short leading stretches, is left to the paint.
+
+Where the speeds put the resonances, in scale lengths (inner Lindblad, corotation, outer
+Lindblad): Première 0.68, 3.75, 5.35 at 0.5; 0.28, 2.50, 3.80 at 0.8; 0.18, 2.05, 3.20 at 1.0.
+Deuxième 0.92, 3.70, 5.25; 0.47, 2.50, 3.75; 0.38, 2.05, 3.15. The drive's pull over the
+axisymmetric one, set at two scale lengths, is 1.4 times that near one scale length and 0.6
+times at three. Every run drives between the inner Lindblad resonance and corotation, as the
+prototype did, but those marked "to the OLR", and the sampler's streaming stays at the painted
+0.9 in all of them, so the drive's speed moves alone. In the tables the speed and the strength
+are the drive's (0.8 x 10 %: 0.8 of the material's rate, 10 % of the pull); the pattern speed
+is the measured m = 2's over the drive's or, with no drive, in brackets, over the material's;
+late is the last 500 Myr; late arms is `armsL` and inner a2 `a2in` of `probe-report.py`.
+
+Première:
+
+| drive | coherence, pattern frame | pattern speed / drive's | sigma_R / v_c late | late arms | inner a2, worst | r50, 1 Gyr |
+| --- | --- | --- | --- | --- | --- | --- |
+| none | 0.05 | (0.90) | 0.153 | 0.268 | 0.46 | -10 % |
+| none, seed 2 | 0.02 | (0.90) | 0.173 | 0.371 | 0.44 | -19 % |
+| 0.5 x 2 % | 0.04 | 1.53 | 0.154 | 0.290 | 0.33 | -11 % |
+| 0.5 x 5 % | 0.01 | 1.75 | 0.157 | 0.274 | 0.38 | -15 % |
+| 0.5 x 10 % | 0.17 | 1.38 | 0.170 | 0.338 | 0.43 | -25 % |
+| 0.5 x 20 % | 0.13 | 1.26 | 0.182 | 0.398 | 0.40 | -37 % |
+| 0.8 x 2 % | 0.11 | 0.92 | 0.167 | 0.361 | 0.32 | -17 % |
+| 0.8 x 5 % | 0.11 (2 % over 0.6) | 0.91 | 0.178 | 0.380 | 0.34 | -18 % |
+| 0.8 x 10 % | 0.08 | 1.02 | 0.163 | 0.393 | 0.36 | -22 % |
+| 0.8 x 20 % | 0.11 | 1.00 | 0.168 | 0.455 | 0.47 | -36 % |
+| 1.0 x 2 % | 0.16 | 0.94 | 0.172 | 0.354 | 0.41 | -13 % |
+| 1.0 x 5 % | 0.07 | 0.93 | 0.168 | 0.313 | 0.63 | -10 % |
+| 1.0 x 10 % | 0.18 | 0.77 | 0.197 | 0.495 | 0.43 | -28 % |
+| 1.0 x 20 % | 0.37 (6 % over 0.6) | 0.85 | 0.270 | 0.654 | 0.49 | -26 % |
+
+Deuxième:
+
+| drive | coherence, pattern frame | pattern speed / drive's | sigma_R / v_c late | late arms | inner a2, worst | r50, 1 Gyr |
+| --- | --- | --- | --- | --- | --- | --- |
+| none | 0.04 | (1.03) | 0.121 | 0.216 | 0.22 | -9 % |
+| none, seed 2 | 0.06 | (0.95) | 0.124 | 0.257 | 0.21 | -8 % |
+| 0.5 x 2 % | 0.06 | 1.54 | 0.127 | 0.227 | 0.23 | -11 % |
+| 0.5 x 5 % | 0.19 | 1.22 | 0.145 | 0.315 | 0.28 | -21 % |
+| 0.5 x 10 % | 0.34 | 1.08 | 0.176 | 0.412 | 0.38 | -38 % |
+| 0.5 x 20 % | 0.54 (26 % over 0.6) | 1.07 | 0.234 | 0.509 | 0.45 | -47 % |
+| 0.8 x 2 % | 0.04 | 1.22 | 0.122 | 0.202 | 0.36 | -10 % |
+| 0.8 x 5 % | 0.08 | 1.09 | 0.137 | 0.321 | 0.40 | -22 % |
+| 0.8 x 10 % | 0.17 | 1.01 | 0.137 | 0.405 | 0.55 | -29 % |
+| 0.8 x 20 % | 0.14 | 1.05 | 0.145 | 0.489 | 0.63 | -59 % |
+| 1.0 x 2 % | 0.04 | 0.90 | 0.125 | 0.240 | 0.27 | -12 % |
+| 1.0 x 5 % | 0.07 | 0.87 | 0.136 | 0.282 | 0.42 | -19 % |
+| 1.0 x 10 % | 0.14 | 0.94 | 0.145 | 0.358 | 0.55 | -29 % |
+| 1.0 x 20 % | 0.11 | 0.98 | 0.138 | 0.355 | 0.58 | -51 % |
+
+Second samplings, the window out to the outer Lindblad resonance (OLR), the painted speed, no
+cooling (`--dissipation 0`) and a drive ramped in over 100 Myr:
+
+| drive | coherence, pattern frame | pattern speed / drive's | sigma_R / v_c late | late arms | inner a2, worst | r50, 1 Gyr |
+| --- | --- | --- | --- | --- | --- | --- |
+| Première 0.8 x 5 %, seed 2 | 0.03 | 1.07 | 0.164 | 0.357 | 0.33 | -17 % |
+| Première 0.8 x 10 %, seed 2 | 0.05 | 0.99 | 0.161 | 0.389 | 0.38 | -26 % |
+| Deuxième 0.8 x 5 %, seed 2 | 0.25 | 1.04 | 0.122 | 0.261 | 0.38 | -20 % |
+| Deuxième 0.8 x 10 %, seed 2 | 0.25 | 1.01 | 0.133 | 0.422 | 0.48 | -32 % |
+| Deuxième 0.5 x 10 %, seed 2 | 0.34 | 1.08 | 0.177 | 0.410 | 0.36 | -37 % |
+| Deuxième 0.5 x 20 %, seed 2 | 0.56 (46 % over 0.6) | 1.14 | 0.241 | 0.472 | 0.55 | -47 % |
+| Première 0.8 x 5 %, to the OLR | 0.16 | 0.95 | 0.189 | 0.462 | 0.32 | -20 % |
+| Première 0.8 x 10 %, to the OLR | 0.05 | 1.09 | 0.168 | 0.373 | 0.48 | -17 % |
+| Première 1.0 x 10 %, to the OLR | 0.08 | 0.92 | 0.161 | 0.373 | 0.43 | -23 % |
+| Deuxième 0.8 x 5 %, to the OLR | 0.18 | 1.01 | 0.132 | 0.296 | 0.44 | -22 % |
+| Deuxième 0.8 x 10 %, to the OLR | 0.27 | 0.99 | 0.156 | 0.509 | 0.51 | -38 % |
+| Deuxième 1.0 x 10 %, to the OLR | 0.21 | 0.96 | 0.139 | 0.462 | 0.49 | -30 % |
+| Première 0.9 x 5 % | 0.19 (5 % over 0.6) | 0.90 | 0.187 | 0.465 | 0.35 | -22 % |
+| Première 0.9 x 10 % | 0.15 | 1.01 | 0.197 | 0.481 | 0.61 | -25 % |
+| Deuxième 0.9 x 5 % | 0.15 | 1.01 | 0.130 | 0.294 | 0.39 | -18 % |
+| Deuxième 0.9 x 10 % | 0.15 | 0.95 | 0.147 | 0.448 | 0.51 | -28 % |
+| Première, no cooling | 0.30 | (0.55) | 0.200 | 0.141 | 0.27 | -6 % |
+| Première 0.8 x 10 %, no cooling | 0.34 (6 % over 0.6) | 0.91 | 0.204 | 0.160 | 0.34 | -8 % |
+| Deuxième, no cooling | 0.03 | (0.78) | 0.171 | 0.077 | 0.17 | -3 % |
+| Deuxième 0.8 x 10 %, no cooling | 0.57 (55 % over 0.6) | 0.92 | 0.196 | 0.189 | 0.39 | -9 % |
+| Première 0.8 x 10 %, ramp 100 Myr | 0.07 | 0.92 | 0.158 | 0.398 | 0.39 | -26 % |
+| Première 0.9 x 5 %, ramp 100 Myr | 0.13 | 1.05 | 0.189 | 0.424 | 0.50 | -25 % |
+| Deuxième 0.8 x 10 %, ramp 100 Myr | 0.25 | 1.01 | 0.131 | 0.440 | 0.52 | -37 % |
+| Deuxième 0.9 x 5 %, ramp 100 Myr | 0.12 | 0.98 | 0.137 | 0.305 | 0.44 | -19 % |
+
+- **Nothing locks the whole disk.** With the cooling on, the coherence in the pattern frame
+  stays at 0.01 to 0.37 late on Première and 0.04 to 0.56 on Deuxième, against 0.02 to 0.06
+  with no drive. Past a stray frame (6 % of them at most), it reaches 0.6 only at 20 % and half
+  the material's rate on Deuxième (a quarter and nearly half of the late frames on two
+  samplings), at a heating of 0.23 and 0.24, with a bar (inner a2 0.45 and 0.55) and the disk's
+  half-mass radius down by 47 %. The m = 2 the drive raises carries at most two thirds of the
+  middle zone's non-axisymmetric power late (13 to 18 % with no drive); the rest is the disk's
+  own pattern, which turns with the material.
+- **The m = 2's speed follows a strong drive, not a weak one.** At half the material's rate,
+  far from the disk's own 0.90 to 1.03, Première's pattern does not follow even at 20 % (1.26
+  to 1.75 times the drive's speed: pulled from 0.90 of the material's rate to 0.63 at most),
+  and Deuxième's comes within 7 to 14 % of the drive's from 10 % up. At 0.8 and 1.0 a match
+  within 10 % is partly the disk's own speed, which sits there already; on Deuxième it holds on
+  most late frames from 10 % (on all of them at 0.8 x 10 %), on Première on 0 to 74 % of them
+  at any strength.
+- **A lock costs the disk its size.** From 5 % the half-mass radius shrinks beyond what two
+  samplings of the undriven disk give over the gigayear (-8 to -19 %): -19 to -22 % at 5 % on
+  Deuxième (Première's -10 to -18 % at 5 % is inside its own spread), -22 to -38 % at 10 % on
+  either galaxy, -26 to -59 % at 20 %, once the drive is in full, after 300 Myr. Deuxième bars
+  (worst inner a2 0.48 to 0.63 at 0.8 and 1.0 from 10 %, 0.36 to 0.55 at 0.5, against 0.21 and
+  0.22); Première goes lopsided at 1.0 (late a1 0.38 and 0.55 against 0.23 and 0.30). The
+  heating stays under 0.18 on Deuxième except at 0.5 x 20 % (0.23 and 0.24); on Première it
+  passes 0.18 at 1.0 from 10 % (0.20 and 0.27), at 0.5 x 20 % and at the painted 0.9 (0.19 and
+  0.20), and stays under at 0.8.
+- **It is the cooling.** Without it the same 0.8 x 10 % drive shrinks the disk by -8 and -9 %,
+  as little as the cooled disks do with no drive and close to the uncooled ones (-6 and -3 %),
+  and Deuxième's pattern holds (coherence 0.57, 55 % of the late frames over 0.6, the speed
+  within 8 %), in a disk that is hot (0.20) and all but featureless (late arms 0.16 to 0.19):
+  the cooked disk the cooling was put in against. A
+  disk the cooling pulls back towards circular orbits every turn answers a rigid spiral the way
+  gas does: its stars lose angular momentum to the pattern inside corotation and fall in, while
+  the cooling keeps feeding the disk's own flocculent pattern.
+- **Neither the window, the painted speed nor a quick ramp changes it.** Out to the outer
+  Lindblad resonance the coherence is 0.05 to 0.27 and the radius -17 to -38 %; at the painted
+  0.9, the drive that would ship with the paint, 0.15 to 0.19 and -18 to -28 %. Ramped in over
+  100 Myr instead of 400, a 10 % drive raises two arms by 150 Myr (coherence 0.33 and 0.45 then,
+  against 0.09 to 0.27 with no drive) and the shrinking starts with them: -9 % at 150 Myr, -12
+  to -14 % at 300 and -20 to -21 % at 450, against -2 to -8, -5 to -10 and -2 to -16 % with no
+  drive. A drive before a scene's first passage buys a few hundred megayears of two arms on a
+  shrinking galaxy.
+- **At 2 % nothing moves outside the seed spread**, at any speed on either galaxy (coherence
+  0.04 to 0.16, late arms between or next to the two undriven samplings', the radius -10 to
+  -17 %), as #171 found at the old painted speed.
+
+**On the sheets** (the disk's own frame from 0 to 1000 Myr, and the last 250 Myr turned back
+with the drive so that a pattern turning at its speed stands still), against what "What a real
+spiral looks like at this scale" gathered (the reference frames are not in the repository, only
+their colours in `references/telescope/`):
+
+- Deuxième driven at 10 to 20 % holds a clean two-armed grand design for the whole gigayear,
+  its arms standing still in the drive's frame where the undriven disk's re-form from frame to
+  frame: the one look a drive buys, and from a distance an M51 or an M81 without the companion.
+  Up close it is neither: its old stars carry arms of 0.36 to 0.51 late, above the 0.15 to 0.3
+  of a real grand design, two of them continuous over a whole turn out to the edge where a real
+  one breaks into segments past two scale lengths, wound around a core that swells as the disk
+  shrinks by a third to a half. At 0.5 x 20 % it reads as a machined early type.
+- Première at 10 to 20 % keeps two arms for a few hundred megayears, then goes compact and
+  lopsided, with the kiloparsec clumps its second undriven sampling also forms.
+- At 5 % and under both read as their undriven selves, Deuxième a little more two-armed.
+
+**Decision: the drive is dropped, and the painted pattern speed stays where #179 put it.** No
+speed or strength locks the disk's pattern in the probe's sense. What follows a drive, from
+10 % up and on Deuxième, is the m = 2's speed, and at that strength a cooled disk loses a fifth
+to a half of its half-mass radius in a gigayear, bars, and carries arms stronger than a real
+old disk's. The paint needs no move: the undriven disks turn their own pattern at 0.90 of
+the material's rate (Première, both samplings) and 0.95 to 1.03 (Deuxième), within 10 % of the
+paint's 0.9. A drive holds a pattern only in a disk nothing cools, which is not the disk
+the scenes show; the port stays on its branch should one be wanted there. Whether the driven
+grand design would be worth its shrinking for the look alone is Pierre's call, on the sheets of
+the pull request.

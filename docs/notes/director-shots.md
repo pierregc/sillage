@@ -86,7 +86,9 @@ that paints every disk's arms in the xy plane and never fades them, whatever the
 very thing the live run had stopped doing (`DiskFrame`). The take now gets them, and a file that
 holds only the placeholder is read as holding none, which paints the natal planes as a take
 before version 3 did. That changes the picture of every export from an existing take, for the
-better.
+better. Since #198 such a take reads each disk's disruption from the curves its run wrote beside
+it, so the plan's survivor and the arms of an old take follow the tear too
+([takes on disk](takes-on-disk.md)).
 
 ## What the frames show
 
