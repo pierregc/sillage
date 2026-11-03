@@ -439,10 +439,12 @@ Where the speeds put the resonances, in scale lengths (inner Lindblad, corotatio
 Lindblad): Première 0.68, 3.75, 5.35 at 0.5; 0.28, 2.50, 3.80 at 0.8; 0.18, 2.05, 3.20 at 1.0.
 Deuxième 0.92, 3.70, 5.25; 0.47, 2.50, 3.75; 0.38, 2.05, 3.15. The drive's pull over the
 axisymmetric one, set at two scale lengths, is 1.4 times that near one scale length and 0.6
-times at three. In the tables the speed and the strength are the drive's (0.8 x 10 %:
-0.8 of the material's rate, 10 % of the pull); the pattern speed is the measured m = 2's over
-the drive's or, with no drive, in brackets, over the material's; late is the last 500 Myr;
-late arms is `armsL` and inner a2 `a2in` of `probe-report.py`.
+times at three. Every run drives between the inner Lindblad resonance and corotation, as the
+prototype did, but those marked "to the OLR", and the sampler's streaming stays at the painted
+0.9 in all of them, so the drive's speed moves alone. In the tables the speed and the strength
+are the drive's (0.8 x 10 %: 0.8 of the material's rate, 10 % of the pull); the pattern speed
+is the measured m = 2's over the drive's or, with no drive, in brackets, over the material's;
+late is the last 500 Myr; late arms is `armsL` and inner a2 `a2in` of `probe-report.py`.
 
 Première:
 
