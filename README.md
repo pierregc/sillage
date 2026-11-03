@@ -257,8 +257,10 @@ above, so the same scene always gets the same palette. `--palette <family>` does
 one family, `--palette <file.palette.json>` takes a palette as it is (a `Palette` as `look.json`
 records it, or just `{"colours": [[r, g, b], ...]}` in linear sRGB), and `--world telescope|free`
 picks the colour world (free by default). `--base` starts from another look instead of the
-scene's. `palettes <scene> --best 3` draws the three best-scored palettes of the scene on a
-frame of its take, the score under each; see [the note](docs/notes/palette-score.md).
+scene's, and `--generated` holds its dust back as Auto does (below), which is how the night
+promotes a style it is given by name. `palettes <scene> --best 3` draws the three best-scored
+palettes of the scene on a frame of its take, the score under each; see
+[the note](docs/notes/palette-score.md).
 
 Palettes worth keeping live in `palettes/<name>.palette.json`, saved by the heart in the style
 editor; `--palette <name>` takes one by its name and Auto adds the ones that fit to its
@@ -273,7 +275,9 @@ reference colours). The best pair is promoted, keeping the scene's camera unless
 <mode>` names one (the night names `director`); `--keep` only writes
 `looks/auto-<world>.png` (the best three) and `looks/auto-<world>.json` (every pair's score). It
 takes about 2 s in the telescope world and 8 s in the free one at 2 M particles; see
-[the note](docs/notes/frame-score.md).
+[the note](docs/notes/frame-score.md). Every rendering is drawn and scored with its dust held to
+`StyleAuto.dustCap`, none until dust is redrawn (#173), so a generated style ships without it;
+see [the night manager](docs/night-manager.md#the-night-recipe).
 
 Palettes give each galaxy a ramp of colours (core, disk, outskirts, young stars, knots) unless
 `--single` asks for one colour per galaxy, on `look`, `export` and `palettes`; the style editor's
