@@ -48,7 +48,7 @@ session. Read the note for an area before changing it.
 ## Capture and playback
 
 - [A long capture keeps every frame](long-capture.md): spilling to disk instead of thinning
-- [Takes on disk](takes-on-disk.md): `RecordingFile` format and memory peaks
+- [Takes on disk](takes-on-disk.md): `RecordingFile` format and memory peaks, the curves a take without disk states reads them from
 - [What a played-back frame costs](playback-frame-cost.md): `SnapshotStream`
 - [Two things that made a replay a slideshow](replay-slideshow.md): `--replayswitch`, `--replay`
 

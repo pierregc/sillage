@@ -201,8 +201,9 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
-    /// What each galaxy's disk was doing on a given frame. Empty for a take written before
-    /// the field existed, which the renderer reads as "fall back to the natal plane".
+    /// What each galaxy's disk was doing on a given frame. Empty for a take that holds none and
+    /// has no curves beside it to read them from, which the renderer reads as "fall back to the
+    /// natal plane".
     public func disks(at index: Int) -> [DiskState] {
         locked {
             guard !storedFrames.isEmpty else { return [] }
