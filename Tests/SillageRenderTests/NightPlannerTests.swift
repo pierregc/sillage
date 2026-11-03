@@ -17,6 +17,7 @@ struct NightRecipeTests {
         #expect(night.hiresParticles(maximum: 1_000_000) == 1_000_000)
         #expect(night.exports == ["4k", "vertical"])
         #expect(night.style.freeShare == .auto && night.freeShare == 0.2)
+        #expect(night.explore.pairShare == .auto && night.pairShare == 0.8)
     }
 
     @Test func everySettingTakesAutoOrAValue() throws {
@@ -24,13 +25,16 @@ struct NightRecipeTests {
             """
             {"version": 1, "hours": 1,
              "explore": {"scenes": 6, "particlesPerGalaxy": 50000, "archetypeShare": 0.5,
-                         "archetypes": ["antennae", "mice"], "galaxies": [2, 3], "seed": "auto"},
+                         "archetypes": ["antennae", "mice"], "pairShare": 0.6, "galaxies": [2, 3],
+                         "seed": "auto"},
              "pick": 2, "hires": {"particles": 150000, "frames": 300},
              "style": {"world": "telescope", "style": "auto", "palette": "auto", "freeShare": 0.35},
              "export": ["1080p", "webp"]}
             """)
         #expect(night.explore.scenes == .value(6) && night.explore.seed == .auto)
         #expect(night.galaxyRange == 2...3 && night.explore.archetypes.value == ["antennae", "mice"])
+        // A galaxy range names the counts itself, and wins over the pair share.
+        #expect(night.explore.pairShare == .value(0.6) && night.pairShare == nil)
         #expect(night.pick == .count(2) && night.hires.frames == .value(300))
         #expect(night.style.world == .value("telescope") && night.style.palette == .auto)
         #expect(night.style.freeShare == .value(0.35) && night.freeShare == 0.35)
@@ -52,6 +56,7 @@ struct NightRecipeTests {
             #"{"explore": {"scenes": "many"}}"#, #"{"hours": 0}"#,
             #"{"style": {"camera": "drone"}}"#, #"{"style": {"freeShare": 1.5}}"#,
             #"{"style": {"freeShare": -0.1}}"#, #"{"style": {"freeShare": "half"}}"#,
+            #"{"explore": {"pairShare": 1.5}}"#, #"{"explore": {"pairs": 0.8}}"#,
         ] {
             #expect(throws: NightRecipe.Failure.self) { try recipe(bad) }
         }
@@ -204,6 +209,82 @@ struct NightPlannerTests {
         #expect(planner.autoPicks(Array(ranked.prefix(1)), from: start, deliverBy: start) == 1)
         let plan = planner.plan(now: start, deliverBy: start.addingTimeInterval(three + 1))
         #expect(plan.picks == 3 && plan.steps.filter { $0.phase == .hires }.allSatisfy(\.fits))
+    }
+
+    /// Pairs scoring under every other scene, as the score leans on 2026-10-30-b.
+    private static func pool(pairs: Int, others: Int) -> [NightScene] {
+        (0..<(pairs + others)).map { index in
+            let pair = index < pairs
+            var scene = drawn(
+                200_000, 3_600, score: (pair ? 0.5 : 0.7) + Double(index) / 100,
+                name: pair ? "pair-\(index)" : "other-\(index)")
+            scene.galaxies = pair ? 2 : 3 + index % 3
+            return scene
+        }
+    }
+
+    @Test func eachPickSlotTakesAPairAsItsDrawSays() {
+        let ranked = NightPlanner.ranked(Self.pool(pairs: 6, others: 6))
+        var pairSlots = 0
+        for seed in UInt64(1)...250 {
+            var planner = planner(recipe())
+            planner.seed = seed
+            var earlier: [NightScene] = []
+            for count in 1...4 {
+                let picks = planner.picks(ranked, count: count)
+                #expect(picks == NightPlanner.ranked(picks))
+                // The slot adds one scene, a pair when its draw says so, the best of its kind.
+                let added = picks.filter { !earlier.contains($0) }
+                let pair = NightPlanner.pairSlot(count - 1, seed: seed, share: 0.8)
+                let best = ranked.first { !earlier.contains($0) && ($0.galaxies == 2) == pair }
+                #expect(added.count == 1 && added.first == best, "seed \(seed), slot \(count)")
+                if pair { pairSlots += 1 }
+                earlier = picks
+            }
+        }
+        #expect(abs(Double(pairSlots) / 1_000 - 0.8) < 0.04, "\(pairSlots) pair slots of 1000")
+    }
+
+    @Test func aPickTakesWhatIsLeftOnceItsKindRunsOutAndAHandChoiceFirst() {
+        var recipe = recipe()
+        recipe.explore.pairShare = .value(1)
+        let few = NightPlanner.ranked(Self.pool(pairs: 1, others: 4))
+        let picks = planner(recipe).picks(few, count: 4).map(\.name)
+        #expect(picks == ["other-4", "other-3", "other-2", "pair-0"])
+        recipe.explore.pairShare = .value(0)
+        let many = NightPlanner.ranked(Self.pool(pairs: 3, others: 2))
+        #expect(
+            planner(recipe).picks(many, count: 4).map(\.name) == ["other-4", "other-3", "pair-2", "pair-1"])
+        // Marked yes by hand, a pair is taken first in a night that wants no pair.
+        var chosen = Self.pool(pairs: 3, others: 2)
+        chosen[0].chosenByHand = true
+        #expect(
+            planner(recipe).picks(NightPlanner.ranked(chosen), count: 2).map(\.name) == ["pair-0", "other-4"])
+        // A galaxy range leaves the pick to the score.
+        recipe.explore.galaxies = .value([2, 5])
+        #expect(planner(recipe).picks(many, count: 3) == Array(many.prefix(3)))
+        // And so does a scene whose galaxies are unknown.
+        let unknown = many.map {
+            var scene = $0
+            scene.galaxies = nil
+            return scene
+        }
+        recipe.explore.galaxies = .auto
+        #expect(planner(recipe).picks(unknown, count: 3) == Array(unknown.prefix(3)))
+    }
+
+    @Test func thePlannedPicksAreTheSlotsPicks() {
+        var progress = NightProgress()
+        progress.exploreDone = true
+        progress.explored = Self.pool(pairs: 6, others: 6)
+        var recipe = recipe()
+        recipe.pick = .count(4)
+        var planner = planner(recipe, progress: progress)
+        planner.seed = 20_261_030
+        let plan = planner.plan(now: start, deliverBy: start.addingTimeInterval(24 * 3600))
+        let expected = planner.picks(NightPlanner.ranked(progress.explored), count: 4)
+        #expect(plan.steps.filter { $0.phase == .hires }.map(\.scene) == expected.map(\.name))
+        #expect(expected.contains { $0.galaxies == 2 })
     }
 
     @Test func aHiresThatCannotBeFinishedBeforeTheDeliveryDoesNotStart() throws {

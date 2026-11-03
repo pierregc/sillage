@@ -57,6 +57,30 @@ struct FreeDrawTests {
             })
     }
 
+    /// Held to two galaxies or to the others, each kind keeps the spacing among its own scenes,
+    /// and a black hole counts as no galaxy: a triple that meets one is a pair.
+    @Test func aPairingTakesOnlyItsCountsAndKeepsTheSpacing() throws {
+        let draw = FreeDraw(batchSeed: 11)
+        let pairs = draw.drafts(80, particleCount: 100_000, taking: .pairs)
+        let others = draw.drafts(80, particleCount: 100_000, taking: .others)
+        #expect(pairs.allSatisfy { $0.galaxyCount == 2 } && others.allSatisfy { $0.galaxyCount != 2 })
+        #expect(Set(others.map(\.galaxyCount)) == [1, 3, 4, 5])
+        for kind in [pairs, others] {
+            let signatures = kind.map(\.signature)
+            let gaps = signatures.indices.flatMap { i in
+                signatures.indices.filter { $0 > i }.map { FreeDraw.distance(signatures[i], signatures[$0]) }
+            }
+            #expect(gaps.min()! >= draw.spacing)
+        }
+        // No point is drawn twice, and the scene at an index is the draft there, placed.
+        #expect(Set(pairs.map(\.draw!.point)).isDisjoint(with: others.map(\.draw!.point)))
+        let placed = draw.scene(at: 7, particleCount: 100_000, taking: .pairs)
+        #expect(placed.draw == pairs[7].draw && placed.galaxyCount == 2)
+        var triple = try #require(draw.drafts(20, particleCount: 100_000).first { $0.galaxies.count == 3 })
+        triple.galaxies[1].kind = .blackHole
+        #expect(triple.galaxyCount == 2)
+    }
+
     @Test func everyGalaxyIsPlausible() {
         for scene in FreeDraw(batchSeed: 5).drafts(200, particleCount: 100_000) {
             for galaxy in scene.galaxies where galaxy.kind != .blackHole {

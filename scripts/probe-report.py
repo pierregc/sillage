@@ -30,7 +30,8 @@ TOLERANCES = {
 COLUMNS = [
     ("run", "{:<22}"), ("n", "{:>8}"), ("exc%", "{:>5}"), ("breath%", "{:>7}"), ("settle", "{:>6}"),
     ("s/vc0", "{:>6}"), ("s/vc300", "{:>7}"), ("s/vcE", "{:>6}"), ("a2max", "{:>6}"), ("@", "{:>4}"),
-    ("a2late", "{:>6}"), ("a1late", "{:>6}"), ("lump0", "{:>6}"), ("lumpL", "{:>6}"), ("polar", "{:>6}"),
+    ("a2late", "{:>6}"), ("armsL", "{:>6}"), ("a2in", "{:>5}"), ("a1late", "{:>6}"), ("lump0", "{:>6}"),
+    ("lumpL", "{:>6}"), ("polar", "{:>6}"),
     ("cohP", "{:>5}"), ("cohM", "{:>5}"), ("cohS", "{:>5}"), ("w_p/w", "{:>6}"), ("spread", "{:>6}"),
     ("tilt", "{:>5}"), ("jit", "{:>5}"), ("sjit", "{:>5}"), ("off", "{:>5}"), ("outer", "{:>5}"),
     ("knots300", "{:>8}"), ("knots/100", "{:>9}"), ("ms/st", "{:>6}"), ("min", "{:>5}"),
@@ -65,6 +66,16 @@ def fmt(value, digits=3):
     return f"{value:.{digits}f}"
 
 
+def arms(run):
+    """Over the summary's late stretch, the mean of each frame's largest of a2 to a6 in the
+    middle zone, whatever the arm count (#181); and the run's largest inner a2, the bar."""
+    data = rows(run)
+    first, last = number(data[0]["time_myr"]), number(data[-1]["time_myr"])
+    late = [r for r in data if number(r["time_myr"]) >= max(last - 500, (first + last) / 2)]
+    strongest = [max(number(r[f"a{m}_mid"]) for m in range(2, 7)) for r in late]
+    return sum(strongest) / len(strongest), max(number(r["a2_inner"]) for r in data)
+
+
 def table(runs):
     print(" ".join(f.format(name) for name, f in COLUMNS))
     for run in runs:
@@ -74,6 +85,7 @@ def table(runs):
             print(f"{os.path.basename(run.rstrip('/')):<22} (no probe.json)")
             continue
         s = report["summary"]
+        late_arms, bar = arms(run)
         reference = number(s.get("referenceRate"))
         pattern = number(s.get("patternSpeedLate"))
         values = [
@@ -81,7 +93,8 @@ def table(runs):
             fmt(100 * s["firstExcursion"], 1), fmt(100 * s.get("breathing", math.nan), 1),
             fmt(s["settledMyr"], 0), fmt(s["sigmaRatioStart"]), fmt(s["sigmaRatio300"]),
             fmt(s["sigmaRatioEnd"]), fmt(s["amplitude2Peak"]), fmt(s["amplitude2PeakMyr"], 0),
-            fmt(s["amplitude2Late"]), fmt(s["amplitude1Late"]), fmt(s["lumpinessStart"]),
+            fmt(s["amplitude2Late"]), fmt(late_arms), fmt(bar, 2), fmt(s["amplitude1Late"]),
+            fmt(s["lumpinessStart"]),
             fmt(s["lumpinessLate"]), fmt(s.get("polarLumpinessLate", math.nan)),
             fmt(s["coherencePatternLate"], 2), fmt(s["coherenceMaterialLate"], 2),
             fmt(s["coherenceStaticLate"], 2),

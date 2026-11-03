@@ -285,3 +285,124 @@ disk** after 100 to 300 Myr (late amplitude 0.11 to 0.18 against 0.19 to 0.33), 
 Q of 1.2 improved only a little. That is the airbrushed look the epic warns against, left for
 #181 with its suspects: the softening, set by the scene's sparsest disk, the particle count, the
 faint paint of three to five arms, the cooling.
+
+## The small spirals (#181)
+
+The six smaller spirals of that batch (mass under 50, scale length under 4.2 kpc: the first
+spiral of scenes 0, 1, 2, 9, 10 and 12, written `free-0` and so on, from the scene files the
+#179 acceptance drew; the batch draws other scenes since #176) through the probe again, each
+alone for 1 Gyr at 200 000 a scene as that acceptance ran them. The figure is `armsL`
+of `probe-report.py table`: over the last 500 Myr, the mean of each frame's largest of a2 to a6
+in the middle zone, whatever the arm count, the figure the 0.11 to 0.18 against 0.19 to 0.33
+above was. Its own noise over one run is 0.007 to 0.02, the late frames being correlated over
+30 to 150 Myr; another sampling of the same galaxy moves it by 0.01 to 0.02. Run at the
+explore step (`--dt-scale 3.5`, 0.198 Myr) and at the scene's own (0.04 to 0.06 Myr) every
+galaxy tried read the same within 0.012, so most runs here are at the explore step, which is
+what a night runs and four to five times cheaper.
+
+| | late arms | first excursion | inner a2, worst | stars | eps / h | z0 / h, drawn | Q | turn at 2 h |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| free-0 | 0.168 | 6.3 % | 0.18 | 162 k | 0.045 | 0.100 | 1.33 | 119 Myr |
+| free-1 | 0.108 | 4.0 % | 0.11 | 154 k | 0.038 | 0.128 | 1.43 | 130 Myr |
+| free-2 | 0.154 | 5.2 % | 0.11 | 51 k | 0.059 | 0.102 | 1.42 | 198 Myr |
+| free-9 | 0.111 | 5.1 % | 0.11 | 108 k | 0.065 | 0.135 | 1.35 | 110 Myr |
+| free-10 | 0.129 | 3.6 % | 0.10 | 47 k | 0.067 | 0.040 | 1.29 | 184 Myr |
+| free-12 | 0.191 | 7.1 % | 0.16 | 40 k | 0.073 | 0.042 | 1.27 | 104 Myr |
+| larger six (#179 runs) | 0.185 to 0.274 | 4.5 to 6.2 % | 0.15 to 0.30 | 87 k to 200 k | 0.028 to 0.043 | 0.037 to 0.114 | 1.26 to 1.40 | 149 to 202 Myr |
+
+**No suspect explains the fading alone, and each moves a small disk by less than the gap.**
+On the galaxy each suits best:
+
+| suspect | run | late arms | first excursion | inner a2, worst |
+| --- | --- | --- | --- | --- |
+| softening, half the scene's | free-10, eps 0.258 to 0.129 kpc | 0.129 to 0.172 (scene step: 0.123 to 0.175) | 3.6 to 4.7 % | 0.10 to 0.11 |
+| | free-2, 0.241 to 0.120 | 0.166 to 0.144 | 5.3 to 6.0 % | 0.12 to 0.13 |
+| softening, the galaxy's own spacing | free-9, 0.222 to 0.130 | 0.111 to 0.123 | 5.1 to 5.7 % | 0.11 |
+| | free-12, 0.193 to 0.128 | 0.184 to 0.181 | 7.2 to 9.4 % | 0.19 to 0.20 |
+| particles, four times | free-10, 47 000 to 189 000 stars at eps 0.129 | 0.172 to 0.151 | 4.7 to 3.8 % | 0.11 to 0.09 |
+| paint, `armStrength` 0.53 to 0.85 | free-10 | 0.129 to 0.159 | 3.6 to 3.3 % | 0.10 |
+| cooling, 1.4 turns | free-12, 258 to 150 Myr | 0.191 to 0.228 | 7.1 to 10.7 % | 0.16 to 0.31 |
+| | free-9, 222 to 154 Myr | 0.111 to 0.130 | 5.1 to 5.6 % | 0.11 to 0.12 |
+| Toomre Q (not a suspect) | free-1, 1.43 to 1.20 | 0.108 to 0.149 | 4.0 to 3.9 % | 0.11 |
+| | free-2, 1.42 to 1.25 | 0.154 to 0.179 | 5.2 to 5.1 % | 0.11 to 0.13 |
+| | free-9, 1.35 to 1.20 | 0.111 to 0.131 | 5.1 to 5.4 % | 0.11 to 0.09 |
+| thickness (not a suspect) | free-9, own eps and z0 0.135 to 0.04 h | 0.111 to 0.133 | 5.1 to 6.2 % | 0.11 to 0.12 |
+
+- **The softening another galaxy sets**, the suspect as the ticket put it, is worth 0.01 at
+  most: free-9 and free-12 run at 1.7 and 1.5 times their own spacing and gain nothing that
+  shows when given it. The softening of a sparse disk at its own spacing matters on the
+  thinnest one, free-10 (0.067 h against a thickness of 0.04 h), whose disk grows four arms
+  late once it is halved; not on free-2, which is thicker. With the step shortened along with
+  the softening, as a cap in the scene would do it, free-10 gained 0.027 and, on a second
+  sampling, 0.005.
+- **Particles**: free-1 (154 000 stars) and free-9 (108 000) fade with more stars than free-7
+  (88 000) keeps its arms with, and four times free-10's count at the halved softening reads
+  0.151 against 0.172: more particles seed less, and the lumps they make go from 0.25 to 0.15
+  (the metric's own noise accounts for under 0.01 of it). Not a lever.
+- **The paint is not what makes the pictures smooth.** On the stills, the late light contrast
+  of the small disks (the azimuthal amplitude of the face-on luminance at 1.5 to 3 scale
+  lengths, 0.03 to 0.10, a 90th to 10th percentile ratio of 1.4 to 2.0) is what their particles
+  hold, against 0.08 to 0.15 and 2.0 to 3.2 for the larger ones; lifting free-10's
+  `armStrength` from 0.53 to 0.85 moved it from 0.053 to 0.057 (its particles gained 0.03, the
+  young population being placed at that contrast). A floor on the painted contrast would not
+  change the look.
+- **The cooling** is drawn in megayears (180 to 320) and the small primaries turn in 104 to
+  130 Myr against 150 to 200 for the larger ones, so they cool less for each turn. At 1.4 turns
+  free-12 holds 0.27 to 0.32 from 150 to 600 Myr, but contracts 15 % and passes the excursion
+  and the bar limits; at its turn-scaled 189 Myr it gains nothing and still passes the
+  excursion (10.1 %).
+
+**Together they move a disk a long way, and tip a compact one into a bar.** free-1 with Q 1.25,
+a disk of 0.04 h, 182 Myr of cooling and a softening of 0.035 h reads 0.216 (first excursion
+4.8 %, inner a2 0.13), twice its baseline, with clear arms through the gigayear on the stills;
+free-9 the same way reads 0.158. A patch that capped every generated scene's softening at
+0.035 of its smallest spiral's scale length (never under half the spacing's, the step
+following) and shortened a spiral's cooling in proportion to its turn below 150 Myr gave, on
+the six: free-0 0.168 to 0.226, free-1 0.108 to 0.130, free-2 0.154 to 0.151, free-9 0.111 to
+0.141, free-10 0.129 to 0.156, free-12 0.191 to 0.255 with a bar (inner a2 0.37 and 0.39 on two
+samplings, five and six frames over 0.3, the excursion 11.0 and 9.8 %). One of six reaches
+0.18 within the limits, compact free-12 bars, and the softening cap costs a night 14 % more
+explore steps on average (up to twice for a scene with a small companion), so it was not
+merged.
+
+**What the twelve share is how much of their own gravity is left where arms grow.** Plummer
+softening on a thin disk weakens the pull of a wave of wavenumber k by exp(-k eps), the way a
+sech^2 layer of height z0 does by about 1 / (1 + k z0), and a disk answers as an unsoftened
+razor-thin one would at Q over that factor. At the wavenumber that grows fastest near Q 1.2,
+k = 1.39 X_2 / h (X_2 of the probe's `facts`), with the thickness a disk has over its last
+500 Myr (the cooling thins a thick one to about half of what it was drawn at), Q over the
+factor sorts the twelve:
+
+| | eps / h | z0 / h, late | gravity left, softening x thickness | Q / left | late arms |
+| --- | --- | --- | --- | --- | --- |
+| free-9 | 0.065 | 0.070 | 0.70 x 0.72 = 0.50 | 2.70 | 0.111 |
+| free-2 | 0.059 | 0.064 | 0.75 x 0.76 = 0.57 | 2.51 | 0.154 |
+| free-1 | 0.038 | 0.069 | 0.81 x 0.72 = 0.58 | 2.47 | 0.108 |
+| free-10 | 0.067 | 0.041 | 0.69 x 0.82 = 0.56 | 2.30 | 0.129 |
+| free-12 | 0.073 | 0.041 | 0.68 x 0.82 = 0.56 | 2.27 | 0.191 |
+| free-0 | 0.045 | 0.053 | 0.80 x 0.79 = 0.64 | 2.09 | 0.168 |
+| free-13 | 0.028 | 0.045 | 0.86 x 0.80 = 0.69 | 2.04 | 0.263 |
+| free-8 | 0.030 | 0.053 | 0.86 x 0.79 = 0.67 | 2.01 | 0.220 |
+| free-4 | 0.039 | 0.047 | 0.80 x 0.79 = 0.63 | 2.00 | 0.185 |
+| free-3 | 0.035 | 0.027 | 0.81 x 0.86 = 0.70 | 1.89 | 0.230 |
+| free-7 | 0.043 | 0.029 | 0.80 x 0.87 = 0.69 | 1.84 | 0.224 |
+| free-11 | 0.038 | 0.031 | 0.82 x 0.86 = 0.71 | 1.78 | 0.274 |
+
+Over 2 the disks fade, under it they keep arms (free-8 and free-13 are two-armed, carried by a
+painted wave the streaming holds); the combined runs above sit at 1.77 and 1.78. It is not the
+whole story: free-9, at 1.77 when combined, still reads 0.158, its inner disk stiffened by the
+largest bulge of the twelve (0.20 of its stars) and a concentrated halo (X_2 3.64 at one scale
+length against 3.0 for free-11), and free-12, bulgeless, bars at 1.87 once it also cools
+faster. Size enters twice: through the softening, since the particles go by mass and a small
+disk gets few of them, and through the turn, since a small primary is denser; the thickness and
+Q enter with any size, and the small six happen to hold the two thickest disks and the two
+highest Q of the twelve.
+
+**What to try next.** Draw the response rather than Q: give a spiral the effective Q the keepers
+have, 1.75 to 1.95, from its drawn thickness, with the softening held to about 0.035 of the
+smallest spiral's scale length so that the factor does not depend on the count; count the bulge
+and the halo's concentration in, or leave a stiff disk to read as an early type carried by its
+paint; and measure it on the twelve with the larger ones watched for bars. Multi-galaxy scenes
+explore at 100 000 a galaxy, more than the 200 000 a scene used here, so free-1, free-9 and
+free-12 run there at 0.7 to 0.8 of the softening measured; the twelve are the #179 sample, two
+samplings were run only for free-10 and free-12.

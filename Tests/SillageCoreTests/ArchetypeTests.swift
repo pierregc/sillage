@@ -6,9 +6,10 @@ import Testing
 @Suite("Archetypes")
 struct ArchetypeTests {
     @Test func everyRoundOfABatchHoldsEachArchetypeOnce() {
-        let batch = BatchDraw(batchSeed: 4)
+        let batch = BatchDraw(batchSeed: 4, pairShare: nil)
         let length = Archetype.allCases.count * 4
         let places = (0..<(length * 10)).map(batch.place)
+        #expect(batch.places(length * 10) == places)
         for round in 0..<10 {
             var drawn: [Archetype] = []
             for place in places[(round * length)..<((round + 1) * length)] {
@@ -21,9 +22,78 @@ struct ArchetypeTests {
         }
         // The free places take the free draws in order, none skipped.
         let free = places.compactMap { place -> Int? in
-            if case .free(let index) = place { index } else { nil }
+            if case .free(let index, .any) = place { index } else { nil }
         }
         #expect(free == Array(0..<(length * 10 * 3 / 4)))
+    }
+
+    /// Places 1 to 32 of 2026-10-30-b as that night drew them, before the pair share: an
+    /// archetype, or a free draw's galaxies. A batch started then resumes with this draw.
+    @Test func aBatchStartedBeforeThePairShareIsDrawnAsItWas() {
+        let drawn =
+            "4 2 black-hole-pass 3 2 5 minor-merger 2 3 2 compact-group 4 2 3 mice 2 5 2 polar-ring 3 1 4 "
+            + "tadpole 2 3 2 ring 4 2 3 antennae 1"
+        let scenes = BatchDraw(batchSeed: 20_261_030, pairShare: nil).drafts(33, particleCount: 100_000)
+        let read = scenes.dropFirst().map {
+            $0.draw?.generator == FreeDraw.generator ? String($0.galaxyCount) : $0.draw?.generator ?? ""
+        }
+        #expect(read.joined(separator: " ") == drawn)
+    }
+
+    /// The done-when of #176: drafts of 50 and 100 scenes over ten seeds hold 8 pairs in every
+    /// stretch of 10 places.
+    @Test(arguments: Array(UInt64(1)...10))
+    func fourScenesInFiveArePairsInEveryStretch(seed: UInt64) {
+        let scenes = BatchDraw(batchSeed: seed).drafts(101, particleCount: 100_000)
+        for count in [50, 100] {
+            let pairs = scenes[1...count].map { $0.galaxyCount == 2 ? 1 : 0 }
+            for start in 0...(count - 10) {
+                #expect(pairs[start..<(start + 10)].reduce(0, +) == 8, "seed \(seed), places \(start + 1)+")
+            }
+        }
+        // The others keep every kind a scene can be among themselves.
+        let others = scenes.filter { $0.galaxyCount != 2 }
+        #expect(Set(others.map(\.galaxyCount)).isSuperset(of: [1, 3, 4, 5]))
+        #expect(others.contains { $0.hasBlackHole })
+    }
+
+    @Test func pairsAndArchetypesComposeByPlace() {
+        let batch = BatchDraw(batchSeed: 4)
+        let places = batch.places(400)
+        #expect((0..<400).map(batch.place) == places)
+        let pairs = Archetype.allCases.filter(\.isPair)
+        #expect(Set(Archetype.allCases).subtracting(pairs) == [.compactGroup, .blackHolePass])
+        var archetypes: [Bool: [(Archetype, Int)]] = [:]
+        var free: [FreeDraw.Pairing: [Int]] = [:]
+        for (index, place) in places.enumerated() {
+            let pairPlace = (index + 1) * 4 / 5 > index * 4 / 5
+            switch place {
+            case .archetype(let archetype, let occurrence):
+                #expect(archetype.isPair == pairPlace, "place \(index)")
+                archetypes[pairPlace, default: []].append((archetype, occurrence))
+            case .free(let at, let pairing):
+                #expect(pairing == (pairPlace ? .pairs : .others), "place \(index)")
+                free[pairing, default: []].append(at)
+            }
+        }
+        // A quarter of the places are archetypes; each kind comes round once in its own rounds.
+        #expect(archetypes.values.map(\.count).reduce(0, +) == 100)
+        for (pairPlace, drawn) in archetypes {
+            let members = pairPlace ? pairs : [.compactGroup, .blackHolePass]
+            for round in 0..<(drawn.count / members.count) {
+                let these = drawn[(round * members.count)..<((round + 1) * members.count)]
+                #expect(Set(these.map(\.0)) == Set(members) && these.allSatisfy { $0.1 == round })
+            }
+        }
+        // Each kind of free place takes its own draws in order, none skipped.
+        for (_, indices) in free { #expect(indices == Array(0..<indices.count)) }
+        // And the scene at a place is the draft at that place, placed.
+        let drafts = batch.drafts(12, particleCount: 100_000)
+        for index in [0, 3, 5, 11] {
+            let scene = batch.scene(at: index, particleCount: 100_000)
+            #expect(scene.draw == drafts[index].draw && scene.seed == drafts[index].seed)
+            #expect(scene.galaxyCount == drafts[index].galaxyCount)
+        }
     }
 
     @Test(arguments: [Float(0.1), 0.3, 0.5])
@@ -37,12 +107,18 @@ struct ArchetypeTests {
     }
 
     @Test func aBatchWithoutArchetypesIsTheFreeOne() {
-        let none = BatchDraw(batchSeed: 6, archetypeShare: 0)
+        let none = BatchDraw(batchSeed: 6, archetypeShare: 0, pairShare: nil)
         #expect(
             none.scene(at: 3, particleCount: 100_000)
                 == FreeDraw(batchSeed: 6).scene(at: 3, particleCount: 100_000))
         let all = BatchDraw(batchSeed: 6, archetypeShare: 1)
         #expect((0..<14).allSatisfy { if case .archetype = all.place($0) { true } else { false } })
+        // With pairs, place 6 is the fifth pair place and place 5 the second of the others.
+        let paired = BatchDraw(batchSeed: 6, archetypeShare: 0)
+        #expect(paired.place(6) == .free(4, .pairs) && paired.place(5) == .free(1, .others))
+        #expect(
+            paired.scene(at: 6, particleCount: 100_000).seed
+                == FreeDraw(batchSeed: 6).scene(at: 4, particleCount: 100_000, taking: .pairs).seed)
     }
 
     @Test func anArchetypeIsTheSameSceneWhereverItIsDrawn() throws {

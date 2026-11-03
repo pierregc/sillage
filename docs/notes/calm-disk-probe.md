@@ -14,9 +14,11 @@ python3 scripts/probe-report.py compare <run a> <run b>
 ```
 
 Options: `--particles N` (the scene's visible count; the galaxy takes its share), `--myr T`
-(1000), `--frame-myr T` (4), `--seed S`, `--dt-scale X`, the overrides `--clumpiness`,
-`--toomre-q`, `--arm-strength`, `--arm-count`, `--arm-irregularity`, `--disk-mass-fraction`,
-`--dissipation`, `--mass-contrast`, `--streaming`, `--young-clumpiness`, and for the picture `--width`, `--height` (one pane, 720), `--no-clip`,
+(1000), `--frame-myr T` (4), `--seed S`, `--dt-scale X`, `--softening KPC` (the scene's
+otherwise; the step stays the scene's), the overrides `--clumpiness`, `--toomre-q`,
+`--arm-strength`, `--arm-count`, `--arm-irregularity`, `--disk-mass-fraction`,
+`--disk-thickness`, `--dissipation`, `--mass-contrast`, `--streaming`, `--young-clumpiness`,
+and for the picture `--width`, `--height` (one pane, 720), `--no-clip`,
 `--painted` (paint the density wave as the app does), `--stills 0,300,...`, `--lag-myr T` (50).
 
 ## What runs
@@ -127,6 +129,10 @@ swing-amplification parameter for two arms at one, two and three scale lengths
 (X = kappa^2 R / (4 pi G Sigma); strong amplification needs X between about 1 and 3, and the disk
 prefers the arm count that puts X near 2), the painted pattern speed with its corotation and
 inner Lindblad radii, the rotation and epicyclic periods at two scale lengths.
+
+`probe-report.py table` adds two columns read from `probe.csv`: `armsL`, the late mean of each
+frame's largest of `a2_mid` to `a6_mid`, the arms whatever their count (#181), and `a2in`, the
+run's largest `a2_inner`, the bar.
 
 ## Reading the numbers against real galaxies
 
