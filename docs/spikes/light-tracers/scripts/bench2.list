@@ -1,0 +1,7 @@
+c2m --particles 2000000 --dt 0.021
+c8m-real --particles 8000000 --dt 0.0105
+c8m-tr0.9 --particles 8000000 --massive 2000000 --dt 0.021 --theta-tracers 0.9
+c8m-tr1.1 --particles 8000000 --massive 2000000 --dt 0.021 --theta-tracers 1.1
+c8m-tr1.3 --particles 8000000 --massive 2000000 --dt 0.021 --theta-tracers 1.3
+c2m-prof --particles 2000000 --dt 0.021 --profile
+c8m-real-prof --particles 8000000 --dt 0.0105 --profile

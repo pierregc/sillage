@@ -1,0 +1,62 @@
+== 2m 22:51:24
+frame 0000  t=2.4 Myr  sim  2192.5 ms (109.623 ms/step)  smoothing    0.9 ms  render  38.9 ms (gpu 32.92)
+frame 0001  t=4.4 Myr  sim  2183.8 ms (109.188 ms/step)  smoothing    0.5 ms  render  25.8 ms (gpu 19.88)
+frame 0002  t=6.3 Myr  sim  2225.8 ms (111.291 ms/step)  smoothing    0.5 ms  render  25.7 ms (gpu 20.01)
+== 2m-prof 22:51:35
+profile    star formation 1.80, drift 1.15, halo centres 2.64, disk frames 1.11, bounds 0.24, morton 0.36, sort 4.82, nodes 0.90, masses 3.38, force 90.20, kick 0.72, dissipation 0.46, step 110.00
+frame 0001  t=4.4 Myr  sim  2200.0 ms (109.998 ms/step)  smoothing    0.8 ms  render  25.8 ms (gpu 19.13)
+profile    star formation 1.95, drift 1.35, halo centres 2.41, disk frames 1.54, bounds 0.39, morton 0.51, sort 5.50, nodes 1.03, masses 3.55, force 101.63, kick 0.83, dissipation 0.62, step 123.41
+frame 0002  t=6.3 Myr  sim  2468.1 ms (123.407 ms/step)  smoothing    1.4 ms  render  28.5 ms (gpu 19.94)
+FOREIGN GPU work during 2m-prof: 4738 
+== 8m-real 22:51:47
+frame 0000  t=1.2 Myr  sim  8963.6 ms (448.180 ms/step)  smoothing    8.5 ms  render 149.5 ms (gpu 137.40)
+frame 0001  t=2.2 Myr  sim  8995.3 ms (449.766 ms/step)  smoothing    3.0 ms  render  93.3 ms (gpu 74.01)
+frame 0002  t=3.2 Myr  sim  8963.0 ms (448.150 ms/step)  smoothing    3.0 ms  render  88.4 ms (gpu 74.52)
+== 8m-real-prof 22:52:33
+profile    star formation 12.57, drift 6.57, halo centres 8.16, disk frames 1.34, bounds 1.46, morton 2.15, sort 33.87, nodes 4.71, masses 20.18, force 430.71, kick 3.64, dissipation 2.30, step 542.53
+frame 0001  t=2.2 Myr  sim 10850.6 ms (542.529 ms/step)  smoothing    4.0 ms  render  96.6 ms (gpu 74.24)
+profile    star formation 12.45, drift 5.83, halo centres 8.99, disk frames 1.32, bounds 1.61, morton 2.13, sort 32.96, nodes 4.82, masses 20.29, force 421.95, kick 3.27, dissipation 2.28, step 529.07
+frame 0002  t=3.2 Myr  sim 10581.4 ms (529.069 ms/step)  smoothing    2.8 ms  render  89.8 ms (gpu 70.59)
+FOREIGN GPU work during 8m-real-prof: 5391 
+== 8m-tr0.9 22:53:24
+tracers    5998959 light, 2001041 massive visible, 2999899 halo, softening 0.0546, step 0.02100, 0.5 s
+frame 0000  t=2.4 Myr  sim  5151.8 ms (257.588 ms/step)  smoothing   22.6 ms  render 183.0 ms (gpu 171.56)
+frame 0001  t=4.4 Myr  sim  4985.7 ms (249.285 ms/step)  smoothing   19.6 ms  render  76.7 ms (gpu 59.52)
+frame 0002  t=6.3 Myr  sim  4981.7 ms (249.087 ms/step)  smoothing   20.7 ms  render  69.3 ms (gpu 57.63)
+FOREIGN GPU work during 8m-tr0.9: 5391 
+== 8m-tr0.9-prof 22:53:57
+profile    star formation 2.31, tracer formation 0.80, drift 2.54, halo centres 2.46, disk frames 1.08, bounds 0.25, morton 0.35, sort 4.77, nodes 0.92, masses 3.30, tracer sort 6.77, force 90.10, tracer force 110.85, kick 1.54, dissipation 1.66, step 232.79
+frame 0001  t=4.4 Myr  sim  4655.9 ms (232.794 ms/step)  smoothing   15.6 ms  render  74.1 ms (gpu 57.54)
+profile    star formation 2.29, tracer formation 0.80, drift 2.58, halo centres 2.45, disk frames 1.09, bounds 0.24, morton 0.35, sort 4.79, nodes 0.90, masses 3.31, tracer sort 6.80, force 90.03, tracer force 110.69, kick 1.54, dissipation 1.65, step 232.44
+frame 0002  t=6.3 Myr  sim  4648.8 ms (232.438 ms/step)  smoothing   15.5 ms  render  68.1 ms (gpu 57.23)
+== 8m-tr1.1 22:54:28
+tracers    5998959 light, 2001041 massive visible, 2999899 halo, softening 0.0546, step 0.02100, 0.5 s
+frame 0000  t=2.4 Myr  sim  3793.3 ms (189.663 ms/step)  smoothing   22.6 ms  render 118.7 ms (gpu 109.23)
+frame 0001  t=4.4 Myr  sim  3806.0 ms (190.302 ms/step)  smoothing   15.3 ms  render  75.0 ms (gpu 57.43)
+frame 0002  t=6.3 Myr  sim  3798.8 ms (189.942 ms/step)  smoothing   16.8 ms  render  69.1 ms (gpu 57.35)
+== 8m-tr1.1-prof 22:54:57
+profile    star formation 2.28, tracer formation 0.81, drift 2.59, halo centres 2.68, disk frames 1.08, bounds 0.27, morton 0.36, sort 4.77, nodes 0.89, masses 3.32, tracer sort 6.76, force 90.05, tracer force 69.76, kick 1.55, dissipation 1.66, step 191.73
+frame 0001  t=4.4 Myr  sim  3834.6 ms (191.730 ms/step)  smoothing   15.7 ms  render  74.5 ms (gpu 57.46)
+profile    star formation 2.26, tracer formation 0.80, drift 2.54, halo centres 2.16, disk frames 1.07, bounds 0.24, morton 0.36, sort 4.75, nodes 0.95, masses 3.29, tracer sort 6.81, force 90.14, tracer force 69.77, kick 1.55, dissipation 1.67, step 191.21
+frame 0002  t=6.3 Myr  sim  3824.3 ms (191.214 ms/step)  smoothing   16.1 ms  render  67.5 ms (gpu 57.21)
+== 8m-tr1.3 22:55:26
+tracers    5998959 light, 2001041 massive visible, 2999899 halo, softening 0.0546, step 0.02100, 0.5 s
+frame 0000  t=2.4 Myr  sim  3369.3 ms (168.466 ms/step)  smoothing   21.6 ms  render 113.3 ms (gpu 105.70)
+frame 0001  t=4.4 Myr  sim  3377.1 ms (168.855 ms/step)  smoothing   15.6 ms  render  73.7 ms (gpu 57.27)
+frame 0002  t=6.3 Myr  sim  3371.5 ms (168.575 ms/step)  smoothing   15.3 ms  render  67.5 ms (gpu 57.24)
+== 8m-tr1.3-prof 22:55:53
+profile    star formation 2.31, tracer formation 0.83, drift 2.54, halo centres 2.28, disk frames 1.08, bounds 0.24, morton 0.36, sort 4.76, nodes 0.91, masses 3.32, tracer sort 6.76, force 89.98, tracer force 48.39, kick 1.52, dissipation 1.67, step 169.98
+frame 0001  t=4.4 Myr  sim  3399.7 ms (169.985 ms/step)  smoothing   15.8 ms  render  73.8 ms (gpu 57.32)
+profile    star formation 2.27, tracer formation 0.80, drift 2.52, halo centres 2.28, disk frames 1.08, bounds 0.24, morton 0.36, sort 4.76, nodes 0.91, masses 3.30, tracer sort 6.76, force 90.07, tracer force 48.49, kick 1.55, dissipation 1.67, step 169.95
+frame 0002  t=6.3 Myr  sim  3398.9 ms (169.947 ms/step)  smoothing   15.2 ms  render  67.5 ms (gpu 57.36)
+== 4m-tr0.9 22:56:21
+tracers    2000082 light, 1999918 massive visible, 2999350 halo, softening 0.0546, step 0.02100, 0.4 s
+frame 0000  t=2.4 Myr  sim  2997.4 ms (149.869 ms/step)  smoothing    9.1 ms  render  64.4 ms (gpu 57.53)
+frame 0001  t=4.4 Myr  sim  2994.6 ms (149.732 ms/step)  smoothing    8.2 ms  render  42.5 ms (gpu 32.50)
+frame 0002  t=6.3 Myr  sim  2998.7 ms (149.936 ms/step)  smoothing    8.2 ms  render  40.2 ms (gpu 32.87)
+== 16m-tr0.9 22:56:39
+tracers    14000436 light, 1999564 massive visible, 3000791 halo, softening 0.0546, step 0.02100, 0.9 s
+frame 0000  t=2.4 Myr  sim  7797.9 ms (389.896 ms/step)  smoothing   45.6 ms  render 201.6 ms (gpu 192.34)
+frame 0001  t=4.4 Myr  sim  7812.0 ms (390.601 ms/step)  smoothing   33.9 ms  render 137.6 ms (gpu 108.66)
+frame 0002  t=6.3 Myr  sim  7822.2 ms (391.112 ms/step)  smoothing   35.6 ms  render 129.1 ms (gpu 109.54)
+== done 22:57:37
