@@ -22,6 +22,9 @@ extension DiskProbe {
         public var seed: UInt64?
         public var clumpiness: Float?
         public var toomreQ: Float?
+        /// Sets Toomre Q to what gives the disk this effective Q at the softening it runs at
+        /// (`DiskResponse`), after the other overrides.
+        public var effectiveToomreQ: Float?
         public var armStrength: Float?
         public var armCount: Int?
         public var armIrregularity: Float?
@@ -88,6 +91,10 @@ extension DiskProbe {
         public var rotationPeriodAt2hMyr = 0.0
         public var epicyclicPeriodAt2hMyr = 0.0
         public var circularSpeedAt2hKms = 0.0
+        /// Toomre Q over the share of the disk's pull its softening and late thickness leave at
+        /// the wave that grows (`DiskResponse`), at the run's softening; the generators draw it.
+        public var effectiveToomreQ = 0.0
+        public var gravityLeft = 0.0
 
         public init() {}
     }
@@ -212,6 +219,14 @@ extension DiskProbe {
             full.galaxies[options.galaxy].armCount = count
             overrides["armCount"] = Double(count)
         }
+        if let effective = options.effectiveToomreQ {
+            let q = DiskResponse.toomreQ(
+                effective: effective, of: full.galaxies[options.galaxy],
+                softening: options.softening ?? full.softening)
+            full.galaxies[options.galaxy].toomreQ = q
+            overrides["effectiveToomreQ"] = Double(effective)
+            overrides["toomreQ"] = Double(q)
+        }
         // The whole scene is sampled and the galaxy's particles kept, so the probe's disk is
         // the scene's disk star for star, pattern seed included; then it is set at rest at
         // the origin and the solver sees one galaxy.
@@ -249,7 +264,9 @@ extension DiskProbe {
         let solver = try MetalBarnesHutSolver(scene: alone, particles: seeded)
         let drawn = seeded.visibleCount > 0 ? seeded.visibleCount : seeded.count
         let equilibrium = DiskEquilibrium(config: galaxy, selfGravitating: true)
-        let facts = facts(of: galaxy, equilibrium: equilibrium)
+        var facts = facts(of: galaxy, equilibrium: equilibrium)
+        facts.gravityLeft = Double(DiskResponse.gravityLeft(galaxy, softening: alone.softening))
+        facts.effectiveToomreQ = Double(galaxy.toomreQ) / max(facts.gravityLeft, 1e-3)
         log(
             String(
                 format: "probe      %@ galaxy %d (%@), %d of %d visible, %d simulated, step %.4f Myr, "
@@ -260,10 +277,12 @@ extension DiskProbe {
             String(
                 format: "facts      X_2 %.2f / %.2f / %.2f at 1, 2, 3 h (prefers %.1f arms at 2 h), "
                     + "painted pattern %.4f rad/Myr: corotation %.2f h, inner Lindblad %.2f h; "
-                    + "v_c(2h) %.0f km/s, rotation %.0f Myr, epicycle %.0f Myr",
+                    + "v_c(2h) %.0f km/s, rotation %.0f Myr, epicycle %.0f Myr; "
+                    + "Q %.3f, effective %.2f (%.2f of the pull left)",
                 facts.x2[0], facts.x2[1], facts.x2[2], facts.preferredArmsAt2h,
                 facts.paintedPatternSpeed, facts.paintedCorotation, facts.paintedInnerLindblad,
-                facts.circularSpeedAt2hKms, facts.rotationPeriodAt2hMyr, facts.epicyclicPeriodAt2hMyr))
+                facts.circularSpeedAt2hKms, facts.rotationPeriodAt2hMyr, facts.epicyclicPeriodAt2hMyr,
+                Double(galaxy.toomreQ), facts.effectiveToomreQ, facts.gravityLeft))
 
         var look = LookFile.standard
         look.starCount = 0

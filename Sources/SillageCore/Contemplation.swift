@@ -105,6 +105,15 @@ extension SceneConfig {
         openingAngle = 1.0
         retune()
         placeEncountersGivingWay()
+        // Once a companion has taken its mass from its ratio, and its share of the particles
+        // with it, the softening its disk runs at is known.
+        let softening = DiskResponse.referenceSoftening(galaxies)
+        for index in galaxies.indices {
+            guard let effective = galaxies[index].drawnEffectiveQ else { continue }
+            galaxies[index].toomreQ = DiskResponse.toomreQ(
+                effective: effective, of: galaxies[index], softening: softening)
+            galaxies[index].drawnEffectiveQ = nil
+        }
     }
 
     /// Where a generated scene's pericentres fall when nothing says which clip it is for, in Myr.

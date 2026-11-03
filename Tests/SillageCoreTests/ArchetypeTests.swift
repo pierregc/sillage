@@ -203,7 +203,9 @@ struct ArchetypeTests {
                 #expect(galaxy.potential.mass > 0 && galaxy.potential.scaleRadius > 0)
                 if galaxy.kind == .blackHole { continue }
                 #expect(galaxy.diskScaleLength > 0 && galaxy.diskTruncation >= 3)
-                if galaxy.kind.isRotating { #expect((1.2...2.0).contains(galaxy.toomreQ)) }
+                if galaxy.kind.isRotating {
+                    #expect((DiskResponse.lowestToomreQ...2.0).contains(galaxy.toomreQ))
+                }
             }
             for encounter in scene.encounters {
                 #expect(encounter.massRatio > 0 && encounter.massRatio <= 1)

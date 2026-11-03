@@ -408,6 +408,117 @@ explore at 100 000 a galaxy, more than the 200 000 a scene used here, so free-1,
 free-12 run there at 0.7 to 0.8 of the softening measured; the twelve are the #179 sample, two
 samplings were run only for free-10 and free-12.
 
+## The response drawn instead of Q (#181, second round)
+
+**What changed.** A spiral of three to five arms is now drawn for its response rather than its
+Toomre Q: the generators (free and archetypes, through `FreeDraw.galaxy`) draw an effective Q of
+1.75 to 1.95 and solve Q for it (`DiskResponse`, the one place the figure is computed). The
+effective Q is the first round's: Q over `exp(-k eps) / (1 + k z)` at `k = 2 / 1.2^2 kappa^2 /
+(2 pi G Sigma)` at two scale lengths, under the live halo the runs give a generated scene. The
+softening is the one the scene explores at with 100 000 visible particles a galaxy, shared by
+mass, a black hole counting for none: a pair's 200 000, as the first round probed, and the
+middle of what Auto sizes a night at. The thickness is the one a disk keeps late, modelled from
+the drawn one as `0.023 h + 0.32 z0` (31 runs of the first round, 0.005 h rms; the drawn
+thickness alone does not sort the twelve). Q is solved once alone in the draw and again in
+`finishGenerated`, once a companion has its mass from its ratio and its share of the particles,
+and never goes under 1.05, since a scene is refused under 1. The draw takes the old draw's place
+in the stream, so nothing else of any scene moves and a batch gives the same scenes: scenes 0 to
+19 of batch 20261031, drawn by main and by the branch, differ in `toomreQ` and nothing else. A
+stored scene reads as written (scene-0031, 0 to 40 Myr, 847 of 847 cells identical). Two-armed
+spirals, lenticulars and dwarfs keep their draw of Q, and `contemplation`, which never drew Q,
+keeps its 1.4. The probe reports the effective Q at the run's softening in `facts`, and
+`--effective-q` solves a galaxy's Q for one the same way.
+
+**How it was measured.** The twelve of the first round, from its scene files, and fresh draws of
+the current batch, at 100 000 a galaxy (pairs at 200 000; free-1, free-9, free-12 and free-4 at
+300 000 to 500 000, more particles than the first round gave them; free-13, alone, at 100 000)
+and the explore step, 1 Gyr. The old draw put Q at 1.25 + 0.2 u and the new one puts the
+effective Q at 1.75 + 0.2 u for the same u, so a galaxy's new draw is its old Q plus 0.5, applied
+with `--effective-q`; a second sampling (`--seed 2`) for anything near a limit. 86 runs at the
+explore count and 10 at 2 M, kept in `sillage-wt-181/out/181b/runs`.
+
+**The keepers' range in the code's own terms.** With the modelled thickness, at 100 000 a
+galaxy, the old draw already sorted the twelve: the keepers at 1.83 to 2.07, the faders at 2.08
+to 2.43 (the first round's 1.77 to 2.04 and 2.09 to 2.70 used each run's measured late thickness,
+at 200 000 a scene). Under it, the measured Q of every small disk settles at 1.0 to 1.2, drawn at
+1.05 or at 1.43: the cooling pulls each star's random motion down to the drawn equilibrium's and
+no further, so a disk that grows only weak arms sits there, cold and smooth.
+
+**At equal response a large disk answers more than a small one**, by more than the chaotic
+spread. Drawn at 1.75 to 1.95 for every spiral, the small six gained 0.01 to 0.06 while the
+large ones gained up to 0.17 and three of them left the limits: free-8's first excursion 10.0
+and 10.3 % on two samplings (8.3 and 9.6 % at its old draw), free-7 an inner a2 of 0.31 on both
+(0.30), free-13 0.31 and 0.26 (0.18 and 0.19). Lower still, 1.70 to 1.75, the large three-armed
+free-11 barred (0.29 and 0.42) and the four-armed free-3 once (0.31 and 0.22), while the small
+ones kept their arms with no bar down to 1.71 (free-1 at the floor 0.212, free-12 0.232 and
+0.188). Whatever separates them is not in the effective Q: the shear at two scale lengths is
+1.02 to 1.13 for all of them, the two-armed paint does not (free-4 is two-armed and never bars),
+and the cooling per turn sorts most of them, a disk that cools in 1.1 to 1.6 of its turns
+answering at 1.9 to 2.1 and one that cools in 2.2 to 2.5 only under 1.75, but not free-13, which
+bars at 2.06 where free-2, cooling faster still, keeps clean arms at 1.79. A range that keeps
+every large disk off its limits gives the small ones what they had; one that lifts free-1 bars
+free-11.
+
+**Two-armed spirals keep the old draw.** They sit in a narrow window: lower they bar, higher
+they fade. Drawn at 1.85 to 2.30 (their old spread in the new terms), the large two-armed four
+were where they had been, but the small fresh scene-12 lost its arms (0.209 at its old draw,
+0.149). At their own old draw, six of the eleven two-armed spirals measured reach an inner a2 of
+0.30 or more (fresh scene-5 g1 0.38, scene-14 g1 0.33, scene-16 g1 0.37, scene-19 g0 0.48 with a
+first excursion of 14.4 %): a bar the generator draws with the two-armed paint, before #181 and
+not changed by it.
+
+The twelve and the fresh spirals the rule changes, before and after, each line one or two
+samplings:
+
+| | arms | h, bulge, halo / h | effective Q | late arms | inner a2, worst | first excursion |
+| --- | --- | --- | --- | --- | --- | --- |
+| free-0 | 4 | 3.20, 0.06, 1.65 | 2.10 to 1.83 | 0.168 to 0.225, 0.219 | 0.18 to 0.20, 0.19 | 6.3 to 5.5, 5.7 % |
+| free-1 | 5 | 4.10, 0.11, 1.01 | 2.32 to 1.93 | 0.129 to 0.145 | 0.10 to 0.10 | 3.8 to 3.6 % |
+| free-2 | 3 | 4.10, 0.15, 1.57 | 2.43 to 1.92 | 0.154 to 0.198, 0.185 | 0.11 to 0.14, 0.17 | 5.2 to 4.8, 5.0 % |
+| free-12 | 3 | 2.66, 0.02, 1.50 | 2.08 to 1.77 | 0.167 to 0.179, 0.181 | 0.15 to 0.20, 0.17 | 7.5 to 6.7, 9.2 % |
+| free-9 | 3 | 3.43, 0.20, 1.11 | 2.39 to 1.86, floor | 0.117 to 0.152 | 0.11 to 0.13 | 5.4 to 6.0 % |
+| free-10 | 3 | 3.87, 0.16, 1.12 | 2.25 to 1.82, floor | 0.129 to 0.172 | 0.10 to 0.13 | 3.6 to 3.2 % |
+| scene-15 g0 | 3 | 4.18, 0.06, 0.94 | 2.12 to 1.81 | 0.191 to 0.311 | 0.17 to 0.28 | 7.8 to 8.6 % |
+| free-3 | 4 | 5.40, 0.06, 0.95 | 1.98 to 1.83 | 0.266, 0.269 to 0.328, 0.325 | 0.20, 0.18 to 0.20, 0.25 | 5.8, 4.0 to 6.1, 3.8 % |
+| free-11 | 3 | 5.36, 0.03, 1.43 | 1.83 to 1.76 | 0.263 to 0.262, 0.262 | 0.20 to 0.20, 0.27 | 6.0 to 5.6, 7.9 % |
+| scene-9 g0 | 4 | 5.68, 0.02, 1.12 | 2.26 to 1.90 | 0.165 to 0.222 | 0.13 to 0.16 | 6.4 to 6.4 % |
+| scene-14 g0 | 3 | 4.89, 0.18, 1.34 | 2.07 to 1.91 | 0.218 to 0.237 | 0.21 to 0.19 | 6.7 to 7.8 % |
+
+**The disks let smooth.** free-9 and free-10 hold the largest bulges of the small ones (0.20 and
+0.16 of their stars) inside the most concentrated halos (scale radius 1.1 scale lengths), soft and,
+for free-9, thick: their Q stops at the floor and they read 0.15 and 0.17, an early-type disk
+carried by its paint. For #181 a spiral is small when its scale length is under 4.2 kpc (the
+first round's six, free-1 at a mass of 51 included, and the fresh small ones), and is let smooth
+when its bulge holds 0.15 of its stars or more inside a halo of scale radius under 1.2 scale
+lengths; no other small spiral of the twelve or the fresh draws meets both.
+
+**Explore against 2 M.** The draw solves Q at the explore count, and a run with more particles
+is softened less: at 2 M the four measured run at a third of explore's softening, their
+effective Q 0.22 to 0.34 lower (free-12 1.77 to 1.46, free-2 1.92 to 1.58, free-0 1.83 to 1.57,
+free-11 1.76 to 1.54). With the same Q they carry 0.03 to 0.16 more late arms (free-12 0.18 to
+0.248, free-2 0.19 to 0.357, free-0 0.22 to 0.258, free-11 0.262 to 0.321), an inner a2 of 0.27
+to 0.29 and a hotter disk (sigma_R / v_c 0.13 to 0.19 late, 0.10 to 0.13 at explore), and free-2
+tears into knots by 1 Gyr. Hires answering more is not new: at their old draw free-12, free-11
+and free-0 went from 0.167, 0.263 and 0.168 at explore to 0.274, 0.334 and 0.213 at 2 M, the
+first two barred there (inner a2 0.37 and 0.38, against 0.29 and 0.27 with the new draw); free-2
+alone looked alike at both counts (0.154 and 0.145), and the new draw parts it. Solving Q at
+each count for the same response would hold the look: free-2 at 2 M with the Q its explore
+response asks there (1.38) reads 0.177, a clean disk of soft arms, against 0.198 at explore.
+free-12 bars at 2 M at every Q but the lowest (0.37 at its old 1.27, 0.38 at 1.31, 0.29 at
+1.08). Storing the response in the scene file instead of Q changes what a scene file holds, so
+it is left for Pierre with the softening cap.
+
+**What is left.** Of the small spirals the rule draws, free-0, free-2 and fresh scene-15 keep
+0.18 or more on every sampling with no bar and under 10 %; free-12 sits on the line (0.179 and
+0.181) and free-1 under it (0.145): free-1 reached 0.212 at an effective 1.71, the floor, where
+the large free-11 bars. The small two-armed ones are where they were, fresh scene-12 keeping its
+arms (0.209), scene-1 g1 at 0.175, scene-17 at 0.145 with an inner a2 of 0.30 and scene-5 g1
+barred. So the done-when is not met. What would separate a small disk from a large one is the
+second channel the first round named, the cooling drawn in megayears against turns of 104 to 210
+Myr, or the softening cap it measured (14 % more explore steps a night); both are Pierre's call,
+as is solving the response at each count so that explore and hires agree, and the two-armed bar
+is a ticket of its own.
+
 ## A steady drive at the disk's own rate (#180)
 
 The question the drive above left: does a drive turning at the disk's own preferred rate (0.8

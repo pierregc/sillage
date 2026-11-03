@@ -291,7 +291,7 @@ public struct FreeDraw: Sendable {
         case .spiral:
             let scale = 2.6 + 3.6 * size
             let armCount = pick(arms, armShares)
-            return GalaxyConfig(
+            var galaxy = GalaxyConfig(
                 name: "", particleCount: 0, kind: .spiral,
                 potential: GalaxyPotential(
                     profile: .hernquist, mass: (32 + 38 * size) * stream.uniform(in: 0.9...1.1),
@@ -313,17 +313,28 @@ public struct FreeDraw: Sendable {
                 bulgeFlattening: stream.uniform(in: 0.45...0.95),
                 // The old disk of a real spiral carries no clumps and a wave of 0.15 to 0.2;
                 // the knots and the painted contrast are the young population's. With the
-                // streaming the disk holds that wave, and a Toomre Q of 1.25 to 1.45 keeps it
-                // responsive enough to grow arms of its own: at 1.6 and over a generated disk
-                // went featureless within a hundred megayears (docs/notes/lumpy-arms.md).
+                // streaming the disk holds that wave, and its response keeps it growing arms of
+                // its own (docs/notes/lumpy-arms.md).
                 clumpiness: stream.uniform(in: 0.02...0.08),
                 youngClumpiness: stream.uniform(in: 0.4...0.6),
                 armMassContrast: stream.uniform(in: 0.3...0.45),
                 armIrregularity: stream.uniform(in: 0.3...0.78),
-                toomreQ: stream.uniform(in: 1.25...1.45),
+                // Three to five arms are the disk's own: drawn at Q 1.25 to 1.45, a small, soft
+                // or thick disk faded to a smooth one, so its response is drawn instead and Q
+                // solved for it, here and among the scene's galaxies in `finishGenerated`. Two
+                // arms ride the painted wave the streaming holds and keep the draw of Q: a
+                // stronger response barred them, a weaker one faded them (#181).
+                toomreQ: stream.uniform(in: armCount <= 2 ? 1.25...1.45 : DiskResponse.drawnRange),
                 inclination: stream.uniform(in: -1.2...1.2),
                 positionAngle: stream.uniform(in: 0...(2 * .pi)),
                 spin: stream.uniform() < 0.5 ? .prograde : .retrograde)
+            if armCount > 2 {
+                galaxy.drawnEffectiveQ = galaxy.toomreQ
+                galaxy.toomreQ = DiskResponse.toomreQ(
+                    effective: galaxy.toomreQ, of: galaxy,
+                    softening: DiskResponse.referenceSoftening([galaxy]))
+            }
+            return galaxy
         case .disk:
             // A lenticular: no arms, little dust and no young stars, a heavier bulge and a
             // hotter, thicker disk.
