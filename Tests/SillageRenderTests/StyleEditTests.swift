@@ -38,6 +38,38 @@ struct StyleEditTests {
         #expect(LookFile.standard.look.glint == RenderLook.styleGlint && LookFile.raw.look.glint == 1)
     }
 
+    /// Every shipped style that carries dust draws it as the web (#197); one with none has
+    /// nothing to draw it with, nor has the raw look.
+    @Test func theShippedStylesDrawTheirDustAsAWeb() {
+        let web = RenderLook.styleDustWeb
+        #expect(web > 0)
+        let dusty = LookCatalogue.repository.filter { $0.look.dustStrength > 0 }.map(\.name)
+        #expect(dusty.count >= 12 && dusty.contains("hubble") && dusty.contains("webb"))
+        for file in LookCatalogue.repository {
+            #expect(file.look.dustWeb == (file.look.dustStrength > 0 ? web : 0), "\(file.name)")
+        }
+        #expect(RenderLook.all.allSatisfy { $0.dustStrength > 0 && $0.dustWeb == web })
+        #expect(LookFile.standard.look.dustWeb == web && LookFile.raw.look.dustWeb == 0)
+    }
+
+    /// A scene's look written before the dust web existed keeps its grains; a style chosen for
+    /// it, by hand or by Auto, brings the catalogue's web.
+    @Test func onlyANewStyleDrawsTheWeb() throws {
+        let written = String(decoding: try base.encoded(), as: UTF8.self)
+        let older = written.replacingOccurrences(of: #""dustWeb" : 1,"#, with: "")
+        #expect(older != written)
+        let old = try LookFile.decoded(from: Data(older.utf8))
+        var expected = base
+        expected.look.dustWeb = 0
+        #expect(old == expected)
+        let palette = try PaletteGenerator.palette(galaxies: 2, world: .telescope, seed: 9)
+        for rendering in LookCatalogue.repository {
+            let web = rendering.look.dustWeb
+            #expect(old.withRendering(rendering).look.dustWeb == web)
+            #expect(StyleAuto.apply(rendering, palette: palette, to: old).look.dustWeb == web)
+        }
+    }
+
     /// A scene's look written before the glint existed keeps its sparkle; a style chosen for
     /// it, by hand or by Auto, brings the catalogue's.
     @Test func onlyANewStyleTurnsTheGlintDown() throws {
@@ -55,20 +87,20 @@ struct StyleEditTests {
         }
     }
 
-    /// Auto's pair is scored and promoted with the dust held back (#174); everything else is the
-    /// rendering's, and a rendering chosen by hand keeps its own dust.
-    @Test func aGeneratedStyleHoldsTheDustBack() throws {
+    /// Auto's pair is scored and promoted with its rendering's own dust and web: #174 held the
+    /// dust back, the web brought it back (#197). Everything else is the rendering's too, and a
+    /// rendering chosen by hand draws the same.
+    @Test func aGeneratedStyleDrawsItsRenderingsDust() throws {
         let palette = try PaletteGenerator.palette(galaxies: 2, world: .telescope, seed: 9)
-        let cap = StyleAuto.dustCap ?? .infinity
         for rendering in LookCatalogue.repository {
             let auto = StyleAuto.apply(rendering, palette: palette, to: base)
-            #expect(auto.look.dustStrength == min(rendering.look.dustStrength, cap))
+            #expect(auto.look.dustStrength == rendering.look.dustStrength)
+            #expect(auto.look.dustWeb == rendering.look.dustWeb)
             var look = auto.look
-            look.dustStrength = rendering.look.dustStrength
             look.fieldOfView = rendering.look.fieldOfView
             #expect(look == rendering.look)
-            #expect(base.withRendering(rendering).look.dustStrength == rendering.look.dustStrength)
-            #expect(StyleAuto.generated(rendering).look.dustStrength == auto.look.dustStrength)
+            #expect(base.withRendering(rendering).look == auto.look)
+            #expect(StyleAuto.generated(rendering) == rendering)
         }
     }
 
@@ -108,6 +140,7 @@ struct StyleEditTests {
     @Test func everyGroupPutBackGivesTheBaselineBack() {
         var edited = base.withRendering(rendering)
         edited.look.brightness = 0.9
+        edited.look.dustWeb = 0.2
         edited.look.spikeLength = 3
         edited.starCount = 7
         edited.camera.zoom = 3

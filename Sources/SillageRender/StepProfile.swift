@@ -8,9 +8,9 @@ import Foundation
 public struct StepProfile: Sendable {
     /// In the order a step runs them. The tree phases are those of `GPUTreeBuilder`.
     public static let phases = [
-        "star formation", "drift", "halo centres", "disk frames",
-        "bounds", "morton", "sort", "nodes", "masses",
-        "force", "kick", "dissipation", "step",
+        "star formation", "tracer formation", "drift", "halo centres", "disk frames",
+        "bounds", "morton", "sort", "nodes", "masses", "tracer sort",
+        "force", "tracer force", "kick", "dissipation", "step",
     ]
 
     public var steps = 0

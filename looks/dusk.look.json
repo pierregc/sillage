@@ -8,6 +8,7 @@
     "bloomIntensity": 0.38,
     "brightness": 0.17,
     "dustStrength": 0.18,
+    "dustWeb": 1,
     "galaxyTint": 0.8,
     "glint": 0.3,
     "maximumKernel": 64,
