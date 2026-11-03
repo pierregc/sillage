@@ -97,6 +97,9 @@ extension LookFile {
             file.look.smoothingScale = from.smoothingScale
             file.look.minimumKernel = from.minimumKernel
             file.look.maximumKernel = from.maximumKernel
+            file.look.columnSmoothing = from.columnSmoothing
+            file.look.glint = from.glint
+            file.look.holeShadow = from.holeShadow
             file.look.bloomIntensity = from.bloomIntensity
             file.look.bloomThreshold = from.bloomThreshold
             file.look.bloomSoftKnee = from.bloomSoftKnee
