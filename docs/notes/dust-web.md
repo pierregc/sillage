@@ -7,8 +7,8 @@ still follow the material where an encounter tears a disk, at a frame cost worth
 Three candidates were built and compared: a web of filaments carried by the rotation curve and
 renewed before it shears (1), finer particle dust (2), and the web where the disk is intact with
 particle dust where it is torn (3). Answer: (3), merged behind the look field `dustWeb`, off by
-default; the look holds, but as built it costs far too much to ship, and #200 is how to make it
-cheap. The sheets and 1:1 crops are on the branch `assets/173-dust-web`.
+default; the look holds, but as built it cost far too much to ship, and #200 made it cheap (the
+last section). The sheets and 1:1 crops are on the branch `assets/173-dust-web`.
 
 ## What the dust is made of now, and why it reads as blobs
 
@@ -202,3 +202,70 @@ Follow-ups, under #168: #200 makes the web cheap enough to ship (the lace baked,
 pixel); #197 then turns it on in the shipped and the generated styles, which is also where
 `StyleAuto.dustCap` goes back to nil (the #174 stopgap); #198 gives the takes already in the
 library their disk state back, without which the web stays on through their encounters.
+
+## Baked, and paid once per pixel (#200)
+
+As merged, the web evaluated its lace, about ninety hashes twice over, in every fragment of every
+grain under it, and drew those grains twice as wide. Neither is the look's, and both are gone; the
+look is the same.
+
+**The lace is baked.** It is static in each copy's own frame (only the rotation and the offset
+move), so it is drawn once per device (`bakeLace`, about 30 ms on the first frame drawn with the
+web) into a tile of 4096 texels a side in half floats (45 MB with its mipmaps), four samples a
+texel, and a pixel reads it in two filtered samples. To tile, every lattice the lace is read off
+holds a whole number of its own cells in a tile of 64 cells, so the frequencies move by 0.7 % at
+most (the threads' 1.3 cycles a cell become 83/64) and the mean does not move (0.5449, against
+the spike's 1/1.8366 = 0.5445). A disk's web spans about 56 cells at five scale lengths, so no
+repeat shows. 64 texels a cell is about one accumulation pixel a texel on the calm disk filling a
+2560 x 1440 canvas; drawn at 4K from three times closer, the threads stay as sharp as the spike's
+(`disk-close.jpg`). The samples are trilinear and anisotropic over the pixel's footprint on the
+plane, turned with the copy and sheared by how its rate falls with radius, so a lace finer than
+a pixel fades to its mean rather than shimmer; the spike's own fade (`detail`) is kept on top.
+
+**Paid once per pixel.** Before the frame's pass, the grains under the web draw the dust they
+hand to it into a carrier of the four slabs, each slab tagged with the galaxy that filled it
+(blended by maximum), at half the frame's resolution: those grains are still drawn twice as wide
+so that they merge into one even layer, and a layer that smooth loses nothing at a quarter of the
+pixels (0.03 levels of mean difference from the same carrier at full resolution). The frame's
+pass then draws the rest of the dust as the painted strands lay it (a grain the web takes whole
+draws nothing there), and one full-frame pass multiplies each slab's carrier by the web of its
+disk where the pixel's ray meets that disk's mid-plane, adding it to the slab, before the stars
+read the slabs back as they always did. Where two disks carry dust into the same slab of the
+same pixel, the later galaxy's web serves both; on scene-0031's two disks, overlapping before the
+passage, it does not show (`encounter.jpg`). Past 75 degrees the spike capped the stretch of the
+web per grain; read per pixel, it is the true foreshortened plane, faded by the same envelope.
+
+**Widening stays.** With the carrier at half resolution, the grains twice as wide cost nothing
+measurable, so widening only where the grains are too sparse to merge was not needed. Drawn at
+full resolution, the same carrier cost 5.5 ms on the calm disk, 4.4 of them for the widening.
+
+**The same look.** The structure by scale of `scripts/dust-web-metrics.py`, over the frames 0,
+150 and 299 of the calm disk drawn at 3840 (`disk.jpg`, `disk-crops.jpg` on the branch
+`assets/200-baked-dust-web`):
+
+| | depth | fine | mid | coarse |
+| --- | --- | --- | --- | --- |
+| face-on, web off | 0.152 | 0.65 | 0.18 | 0.16 |
+| face-on, spike | 0.158 | 0.47 | 0.20 | 0.33 |
+| face-on, baked | 0.156 | 0.48 | 0.20 | 0.32 |
+| 60 degrees, web off | 0.236 | 0.55 | 0.15 | 0.31 |
+| 60 degrees, spike | 0.228 | 0.40 | 0.22 | 0.39 |
+| 60 degrees, baked | 0.228 | 0.41 | 0.21 | 0.37 |
+
+The lace itself is another instance of the same field, so a given frame shows other filaments in
+other places, of the same kind. Nor does the bake flicker: over 80 consecutive frames face-on with
+no film noise, the mean change from one frame to the next is 11.96 levels, against 12.01 for the
+spike and 11.85 with the web off. With `dustWeb` at 0 none of this runs: stills of the calm disk
+(three frames, six looks) and of scene-0031 (three frames, its own director look among three)
+are the same bytes as main's.
+
+**What it costs now**, measured as above, alone on the GPU over whole takes, two interleaved
+rounds that agreed within 0.1 ms; the spike's column is #173's:
+
+| | web off | spike | baked |
+| --- | --- | --- | --- |
+| scene-0031 at 2 M, its own Webb look and director shots | 12.8 (20.7) | 19.7 (104) | 13.2 (21.6) |
+| scene-0031, Hubble, both galaxies in frame | 22.3 (32.0) | 77.4 (89.7) | 22.9 (32.9) |
+| the calm disk, Hubble, face-on, filling the frame | 23.4 (26.3) | 179.6 (192.6) | 23.5 (24.1) |
+
+The web is now cheap enough for the canvas and the styles; turning it on in them is #197.

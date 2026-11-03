@@ -1,4 +1,5 @@
 import Foundation
+import Metal
 import SillageCore
 import Testing
 import simd
@@ -72,6 +73,59 @@ struct PlainRenderTests {
         }
         #expect(try draw(dust: 0.6, web: 1) != draw(dust: 0.6, web: 0))
         #expect(try draw(dust: 0, web: 1) == draw(dust: 0, web: 0))
+    }
+
+    /// Cut into slices, each pass of dust hands its own carrier to the web, and the sum is the
+    /// same web up to the rounding of the attachments in between.
+    @Test func aSlicedSplatDrawsTheSameWeb() throws {
+        let scene = SceneConfig.isolatedDisk(particleCount: 20_000)
+        let particles = RestrictedSolver.sampleParticles(for: scene)
+        var settings = RenderSettings(
+            width: 320, height: 180, supersample: 2, brightness: 0.12, dustStrength: 0.8,
+            starCount: 0, noiseLevel: 0)
+        settings.dustWeb = 1
+        let renderer = try Renderer(particles: particles, settings: settings)
+        renderer.time = 3
+        renderer.setDiskFrames(DiskFrame.make(scene: scene, centers: [.zero], time: 3, strength: 1))
+        let camera = Camera.framing(radius: 20, elevation: 1.2)
+        let whole = renderer.render(camera: camera)
+        let sliced = renderer.render(camera: camera, slice: 3_000)
+        let gaps = zip(whole, sliced).map { abs(Int($0) - Int($1)) }
+        #expect(whole.contains { $0 > 0 })
+        #expect(gaps.max() ?? 0 <= 3)
+        #expect(Double(gaps.reduce(0, +)) / Double(max(gaps.count, 1)) < 0.05)
+    }
+
+    /// The baked lace tiles: across its edges it changes no more than between neighbours inside
+    /// it. And its mean is the spike's lace's, so the bake moved no exposure.
+    @Test func theBakedLaceTilesAndKeepsTheSpikesMean() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let library = try ShaderCache.library(Shaders.source, on: device)
+        let (texture, mean) = try DustWeb.lace(library: library, device: device)
+        #expect(abs(mean * 1.8366 - 1) < 0.01)
+        let side = texture.width
+        let bytes = side * side * 2
+        let buffer = try #require(device.makeBuffer(length: bytes, options: .storageModeShared))
+        let commands = try #require(device.makeCommandQueue()?.makeCommandBuffer())
+        let blit = try #require(commands.makeBlitCommandEncoder())
+        blit.copy(
+            from: texture, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+            sourceSize: MTLSize(width: side, height: side, depth: 1), to: buffer,
+            destinationOffset: 0, destinationBytesPerRow: side * 2, destinationBytesPerImage: bytes)
+        blit.endEncoding()
+        commands.commit()
+        commands.waitUntilCompleted()
+        let texels = buffer.contents().bindMemory(to: Float16.self, capacity: side * side)
+        func at(_ x: Int, _ y: Int) -> Double { Double(texels[y * side + x]) }
+        var inside = 0.0
+        var across = 0.0
+        for line in stride(from: 0, to: side, by: 16) {
+            for step in 0..<(side - 1) {
+                inside += abs(at(step + 1, line) - at(step, line)) + abs(at(line, step + 1) - at(line, step))
+            }
+            across += abs(at(0, line) - at(side - 1, line)) + abs(at(line, 0) - at(line, side - 1))
+        }
+        #expect(across / Double(side / 16) < 2 * inside / Double(side / 16 * (side - 1)))
     }
 
     @Test func theAutoCameraHoldsEveryGalaxyAtEveryFrame() {

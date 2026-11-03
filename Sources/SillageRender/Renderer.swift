@@ -41,27 +41,6 @@ struct BackgroundStar {
     var color: SIMD4<Float>
 }
 
-struct WebUniforms {
-    var eye: SIMD4<Float>
-    var right: SIMD4<Float>
-    var up: SIMD4<Float>
-    var params: SIMD4<Float>
-}
-
-/// The dust web's tuning (#173, docs/notes/dust-web.md).
-enum DustWeb {
-    /// Where in its life a copy of the web rests unsheared: at a quarter, the two copies of a
-    /// cross-fade lean the same way and never cross-hatch.
-    static let rest: Float = 0.25
-    /// A cell of the web in scale lengths, and the smallest and largest it may be in kpc.
-    static let cellShare: Float = 0.18
-    static let smallestCell: Float = 0.4
-    static let largestCell: Float = 1.6
-    /// How much wider a grain is drawn under the web: wide enough for the grains to merge into
-    /// one even layer, so the web and not the grains says where the dust is thin.
-    static let carrier: Float = 2
-}
-
 struct BloomParams {
     var threshold: Float
     var softKnee: Float
@@ -252,7 +231,10 @@ public final class Renderer {
     private let spikePipeline: MTLComputePipelineState
     private let compactPipeline: MTLComputePipelineState
     private let countPipeline: MTLRenderPipelineState
-    private let dustWebPipeline: MTLRenderPipelineState
+    private let library: MTLLibrary
+    /// What a frame with the dust web draws with, built the first time one is drawn.
+    private var webPass: DustWeb.Pass?
+    private var webUnavailable = false
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
@@ -367,6 +349,7 @@ public final class Renderer {
         } catch {
             throw RenderError.shaderCompilation("\(error)")
         }
+        self.library = library
 
         func compute(_ name: String) throws -> MTLComputePipelineState {
             guard let function = library.makeFunction(name: name) else {
@@ -405,7 +388,6 @@ public final class Renderer {
             }
         }
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
-        dustWebPipeline = try additive("dustWebVertex", "dustWebFragment", writing: 1)
         splatPipeline = try additive("splatVertex", "splatFragment", writing: 0)
         starfieldPipeline = try additive("starfieldVertex", "starfieldFragment", writing: 0)
         plainPipeline = try additive(
@@ -838,17 +820,22 @@ public final class Renderer {
             columnSmoothing: settings.columnSmoothing, columnCell: Float(Self.columnCell),
             glint: settings.glint)
 
-        // Its own pipeline, so a look without the web draws what it always drew.
-        let webbed = settings.dustWeb > 0
+        // Its own pipelines, so a look without the web draws what it always drew.
+        let web = settings.dustWeb > 0 && stages.contains(0) ? webResources() : nil
         let forward = simd_normalize(camera.target - camera.eye)
         let right = simd_normalize(simd_cross(forward, camera.up))
         let up = simd_cross(right, forward)
-        var web = WebUniforms(
+        var webUniforms = WebUniforms(
             eye: SIMD4(camera.eye, min(max(settings.dustWeb, 0), 1)),
             right: SIMD4(right, DustWeb.carrier),
             up: SIMD4(up, time),
             params: SIMD4(
-                DustWeb.rest, DustWeb.cellShare, DustWeb.smallestCell, DustWeb.largestCell))
+                DustWeb.rest, DustWeb.cellShare, DustWeb.smallestCell, DustWeb.largestCell),
+            forward: SIMD4(forward, tan(camera.fieldOfView / 2)),
+            target: SIMD4(
+                Float(settings.width * scale), Float(settings.height * scale), aspect,
+                web?.scale ?? 1),
+            carrier: SIMD4(Float(DustWeb.carrierCoarse), DustWeb.carrierSmallest, 0, 0))
 
         // The column pass, once per frame over every drawn particle: counts into coarse
         // cells, which the splat vertex reads back to size its kernel in projection.
@@ -865,6 +852,35 @@ public final class Renderer {
                 encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
                 encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
                 encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+                encoder.endEncoding()
+            }
+        }
+
+        // The dust the web multiplies, coarse, before the pass that multiplies it.
+        if let web {
+            let coarse = MTLRenderPassDescriptor()
+            for (index, target) in [web.carrier, web.tags].enumerated() {
+                coarse.colorAttachments[index].texture = target
+                coarse.colorAttachments[index].loadAction = .clear
+                coarse.colorAttachments[index].clearColor = MTLClearColor(
+                    red: 0, green: 0, blue: 0, alpha: 0)
+                coarse.colorAttachments[index].storeAction = .store
+            }
+            if let encoder = buffer.makeRenderCommandEncoder(descriptor: coarse) {
+                encoder.setRenderPipelineState(web.carrierPipeline)
+                encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
+                encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
+                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+                encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
+                encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
+                encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
+                encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
+                encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
+                encoder.setVertexBytes(
+                    &webUniforms, length: MemoryLayout<WebUniforms>.stride, index: 13)
+                encoder.drawPrimitives(
+                    type: .point, vertexStart: particles.lowerBound, vertexCount: particles.count)
                 encoder.endEncoding()
             }
         }
@@ -910,19 +926,44 @@ public final class Renderer {
             for stage in stages {
                 splat.pass = stage
                 encoder.setRenderPipelineState(stage == 0 ? dustPipeline : splatPipeline)
-                if stage == 0, webbed {
-                    encoder.setRenderPipelineState(dustWebPipeline)
-                    encoder.setVertexBytes(&web, length: MemoryLayout<WebUniforms>.stride, index: 13)
-                    encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
-                    encoder.setFragmentBytes(&web, length: MemoryLayout<WebUniforms>.stride, index: 1)
+                if stage == 0, let web {
+                    encoder.setRenderPipelineState(web.painted)
+                    encoder.setVertexBytes(
+                        &webUniforms, length: MemoryLayout<WebUniforms>.stride, index: 13)
                 }
                 encoder.setVertexBytes(
                     &splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
                 encoder.drawPrimitives(
                     type: .point, vertexStart: particles.lowerBound, vertexCount: particles.count)
+                if stage == 0, let web {
+                    // Once per pixel, before any star reads the dust back.
+                    encoder.setRenderPipelineState(web.resolve)
+                    encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
+                    encoder.setFragmentBytes(
+                        &webUniforms, length: MemoryLayout<WebUniforms>.stride, index: 1)
+                    encoder.setFragmentTexture(web.lace, index: 0)
+                    encoder.setFragmentTexture(web.carrier, index: 1)
+                    encoder.setFragmentTexture(web.tags, index: 2)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                }
             }
             encoder.endEncoding()
         }
+    }
+
+    /// Nil when the web could not be built, and the dust is then drawn as it always was.
+    private func webResources() -> DustWeb.Pass? {
+        if webPass == nil, !webUnavailable {
+            do {
+                webPass = try DustWeb.Pass(
+                    library: library, device: device,
+                    width: settings.width * settings.supersample,
+                    height: settings.height * settings.supersample)
+            } catch {
+                webUnavailable = true
+            }
+        }
+        return webPass
     }
 
     private func encodePost(into buffer: MTLCommandBuffer, present: MTLTexture?) {

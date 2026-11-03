@@ -53,7 +53,7 @@ struct MetalSolverTests {
             "splatVertex", "dustFragment", "splatFragment", "starfieldVertex",
             "starfieldFragment", "resolve", "brightPass",
             "downsample", "upsampleAdd", "diffractionSpikes", "composite", "dustWebVertex",
-            "dustWebFragment",
+            "webCarrierVertex", "webCarrierFragment", "webResolveVertex", "webResolveFragment", "bakeLace",
         ] {
             #expect(render.makeFunction(name: name) != nil, "missing \(name)")
         }
