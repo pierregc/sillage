@@ -69,7 +69,16 @@ func catalogueLooks() -> [LookFile] {
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("looks"))
 }
 
-/// `look <scene folder>`: `--style`, `--palette` and `--promote <name>` choose the scene's style;
+/// The mode `--camera` names, for the style it promotes; nil when not given.
+func askedCamera(_ options: [String]) -> LookFile.CameraPlan.Mode? {
+    guard let index = options.firstIndex(of: "--camera") else { return nil }
+    guard index + 1 < options.count, let mode = LookFile.CameraPlan.Mode(rawValue: options[index + 1])
+    else { fail("look: --camera is auto, fixed, director or immersed") }
+    return mode
+}
+
+/// `look <scene folder>`: `--style`, `--palette` and `--promote <name>` choose the scene's style,
+/// `--camera <mode>` the camera it is filmed with;
 /// `--grid` draws a grid of looks against key frames of the take (options: `--base <look|file>`,
 /// `--no-variants`, `--no-catalogue`, `--width`, `--take`, `--frames`, `--times`, and any
 /// `.look.json`; every row is kept as `looks/<name>.look.json`).
@@ -89,7 +98,8 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     if let choice = option("palette") {
         return try palettePromotion(
             folder, choice: choice, world: option("world"), base: option("base"),
-            single: options.contains("--single"))
+            single: options.contains("--single"), camera: askedCamera(options),
+            generated: options.contains("--generated"))
     }
     if let name = option("promote") {
         let file = try folder.promote(look: name)
@@ -148,12 +158,30 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
 
     let sheet = try LookSheet(take: loaded)
+    let clip = try folder.storedClip()
+    let hires = folder.storedHires()
+    // The director's shots, printed, and `--frames shots` draws the middle of each.
+    let planned = Date()
+    let plan = looks.first { $0.camera.mode == .director }.map {
+        ShotPlan(take: loaded, file: $0, framesPerSecond: hires?.fps ?? clip.fps)
+    }
+    for line in plan?.summary ?? [] { print("shot       \(line)") }
+    if let plan {
+        print(
+            String(
+                format: "shots      %.0f %% of the clip close, planned in %.1f s",
+                plan.closeShare * 100, Date().timeIntervalSince(planned)))
+    }
     let samples =
         (try? String(contentsOf: folder.hiresCurves, encoding: .utf8))
         .map(KeyFrames.samples) ?? []
     let lastFrame = sheet.capturedFrames - 1
     var keys: [KeyFrame]
-    if let list = option("frames") {
+    if option("frames") == "shots", let plan {
+        keys = plan.shots.map {
+            KeyFrame(frame: ($0.start + $0.end - 1) / 2, role: .chosen, timeMyr: 0)
+        }
+    } else if let list = option("frames") {
         keys = list.split(separator: ",").compactMap { Int($0) }.map {
             KeyFrame(frame: min(max($0, 0), lastFrame), role: .chosen, timeMyr: 0)
         }
@@ -178,8 +206,6 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     }
     guard !keys.isEmpty else { fail("look: no key frame to draw") }
 
-    let clip = try folder.storedClip()
-    let hires = folder.storedHires()
     // `--stills <dir>` writes every look at every key frame at full size, one PNG each, and
     // leaves the scene's looks folder alone: it is for looking closely, not for choosing.
     // `--width` sets that size, for the one an export draws; the take's own by default.
@@ -354,10 +380,12 @@ func apply(_ choice: PaletteChoice, to look: inout LookFile) {
 }
 
 /// `look <scene folder> --palette auto|<family>|<file.palette.json> [--world telescope|free]
-/// [--single]`: puts a palette in the scene's look, promoted as `--promote` does with the old
-/// look kept. `--single` gives each galaxy one colour instead of a ramp.
+/// [--base <look>] [--single] [--camera <mode>] [--generated]`: puts a palette in the scene's
+/// look, promoted as `--promote` does with the old look kept. `--single` gives each galaxy one
+/// colour instead of a ramp; `--generated` holds the dust back as Auto does, for the night.
 func palettePromotion(
-    _ folder: SceneFolder, choice: String, world: String?, base: String?, single: Bool
+    _ folder: SceneFolder, choice: String, world: String?, base: String?, single: Bool,
+    camera: LookFile.CameraPlan.Mode? = nil, generated: Bool = false
 ) throws -> Int32 {
     var look =
         (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }
@@ -369,10 +397,12 @@ func palettePromotion(
         else { fail("look: no look \(base)") }
         look = found
     }
+    if generated { look = StyleAuto.generated(look) }
     let picked = try resolvePalette(
         folder, choice: choice, world: askedWorld(world, command: "look"), command: "look",
         single: single)
     apply(picked, to: &look)
+    if let camera { look.camera.mode = camera }
     try folder.promote(look)
     switch picked {
     case .recipe(let palette, let score):
@@ -386,7 +416,7 @@ func palettePromotion(
     return 0
 }
 
-/// `look <scene folder> --style auto [--world telescope|free] [--palette <family>|<file>] [--single] [--keep]`:
+/// `look <scene folder> --style auto [--world telescope|free] [--palette <family>|<file>] [--single] [--camera <mode>] [--keep]`:
 /// every rendering of the world with the scene's best palettes (or the one palette asked for), drawn on three key frames and scored; the best
 /// pair is promoted unless `--keep`. Writes `looks/auto-<world>.png` (the best three) and
 /// `looks/auto-<world>.json` (every pair's score).
@@ -435,7 +465,7 @@ func styleAuto(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     let outcome = try StyleAuto.choose(
         folder, world: world, family: family, fixed: fixed, catalogue: catalogueLooks(),
         references: telescopeReferences(), favourites: favourites.map(\.palette),
-        multicolour: !single)
+        multicolour: !single, camera: askedCamera(options))
     let scoredAt = Date()
     let (sheet, keys, ranked) = (outcome.sheet, outcome.keys, outcome.ranked)
     let (width, height, fps) = (outcome.width, outcome.height, outcome.fps)
@@ -711,8 +741,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
                 command: "export", single: options.contains("--single")), to: &look)
     }
 
-    let clip = try folder.storedClip()
-    let capturedRate = folder.storedHires()?.fps ?? clip.fps
+    let capturedRate = try folder.capturedRate()
     let export = try TakeExport(take: loaded, look: look, capturedRate: capturedRate)
     let start = try value("start") ?? 0
     if let name = option("format") {
@@ -1321,12 +1350,15 @@ if let scenePath {
             galaxies: argument("galaxies").flatMap(Int.init),
             lookSeed: argument("look-seed").flatMap(UInt64.init))
         generatedHaste = Float(number("haste", 0))
-    // The scene at `--index` in the batch `--seed` draws, archetypes mixed in at `--archetypes`.
-    // The seed is the batch's here, and the scene's own follows from it and the index.
+    // The scene at `--index` in the batch `--seed` draws, archetypes mixed in at `--archetypes`
+    // and pairs at `--pair-share`, `off` for a batch drawn before the share (#176). The seed is
+    // the batch's here, and the scene's own follows from it and the index.
     case "free":
         preset = BatchDraw(
             batchSeed: seed ?? 1,
             archetypeShare: Float(number("archetypes", Double(BatchDraw.defaultArchetypeShare))),
+            pairShare: argument("pair-share") == "off"
+                ? nil : Float(number("pair-share", Double(BatchDraw.defaultPairShare))),
             spacing: Float(number("spacing", Double(FreeDraw.defaultSpacing))),
             haste: Float(number("haste", 0))
         ).scene(at: Int(number("index", 0)), particleCount: particles)
@@ -1709,7 +1741,8 @@ while frame < frames || storyGoesOn() {
             take.offer(
                 positions: gpuSolver.positions.contents().bindMemory(
                     to: SIMD3<Float>.self, capacity: seeded.count),
-                time: solver.time, centers: solver.centers, budget: takeBudget)
+                time: solver.time, centers: solver.centers,
+                disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: takeBudget)
         } else {
             solver.particles.positions.withUnsafeBufferPointer { buffer in
                 guard let base = buffer.baseAddress else { return }

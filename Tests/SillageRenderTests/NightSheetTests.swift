@@ -95,7 +95,7 @@ struct NightSheetTests {
         #expect(explore.detail.hasPrefix("environ ") && explore.detail.hasSuffix("scènes"))
         #expect(explore.until.hasPrefix("jusqu'à ") && explore.duration.contains("h"))
         #expect(explore.text == "Aperçus · \(explore.detail) · \(explore.duration) · \(explore.until)")
-        #expect(plan.lines[1].detail.hasSuffix("à 2 M de particules"))
+        #expect(plan.lines[1].detail.hasSuffix("à 8 M de particules"))
         #expect(plan.delivery == "Prêt demain à 7 h 00")
         #expect(plan.margin.hasPrefix("Fin prévue à ") && plan.margin.hasSuffix("de marge"))
         #expect(plan.warnings.isEmpty)
@@ -122,6 +122,26 @@ struct NightSheetTests {
         #expect(short.deliverBy == Self.evening.addingTimeInterval(3 * 3600))
     }
 
+    @Test func eachStyleIsPlannedInTheWorldItsPickWillBeDrawn() throws {
+        let planner = planner(try library())
+        var sheet = NightSheet()
+        sheet.timing = .hours
+        sheet.hours = 24
+        sheet.hiresScenes = 4
+        // No batch yet: the night will be drawn from the day's seed.
+        let seed = NightRecipe.daySeed(Self.evening)
+        let styles = planner.nightPlan(sheet, now: Self.evening).steps.filter { $0.phase == .style }
+        #expect(
+            styles.map(\.seconds)
+                == (0..<4).map {
+                    NightStyle.drawnWorld(pick: $0, seed: seed, share: NightRecipe.defaultFreeShare) == .free
+                        ? NightPlanner.freeStyleSeconds : NightPlanner.telescopeStyleSeconds
+                })
+        sheet.world = "free"
+        let free = planner.nightPlan(sheet, now: Self.evening).steps.filter { $0.phase == .style }
+        #expect(free.count == 4 && free.allSatisfy { $0.seconds == NightPlanner.freeStyleSeconds })
+    }
+
     @Test func aPlanTakesLessThanHalfASecondOnceTheDrawsAreSized() throws {
         let planner = planner(try library())
         planner.warm(now: Self.evening)
@@ -141,6 +161,7 @@ struct NightSheetTests {
         var sheet = NightSheet()
         sheet.timing = .hours
         sheet.hours = 2
+        sheet.hiresScenes = 2
         let plan = planner(try library(), free: 1e9).plan(sheet, now: Self.evening)
         let kinds = plan.warnings.map(\.kind)
         #expect(kinds.contains("disk"))

@@ -39,7 +39,7 @@ struct NightStatusTests {
 
     @Test func everyFixtureSaysWhatItsFilesSay() throws {
         let names = try Self.cases()
-        #expect(names == ["done", "exploring", "failed", "hires", "idle"])
+        #expect(names == ["done", "exploring", "failed", "hires", "idle", "resumed"])
         for name in names {
             let expected = try #require(Self.text(name, "expected.txt")).split(separator: "\n").map(
                 String.init)
@@ -123,6 +123,58 @@ struct NightStatusTests {
                 && failures[0]["log"] as? String == "/library/2026-10-26/.logs/scene-0007.hires.log")
     }
 
+    /// 2026-10-30-b: both hires left out for time at 23:25, then done by the night resumed at
+    /// 23:49 in the same folder.
+    @Test func aResumedNightDoesNotLeaveOutWhatItDidAfterAll() throws {
+        let batch = Self.fixtures.appendingPathComponent("resumed/library/2026-10-30-b")
+        let events = RunEvent.decodeLines(
+            try String(contentsOf: RunStatusFiles.events(batch: batch), encoding: .utf8))
+        #expect(events.filter { $0.kind == RunEvent.Kind.skip }.map(\.scene) == ["scene-0044", "scene-0030"])
+        #expect(NightEvents(events).skipped.isEmpty)
+        let report = try String(contentsOf: batch.appendingPathComponent("report.md"), encoding: .utf8)
+        #expect(report.contains("- Laissées de côté : 0 · erreurs : 0") && !report.contains("would end"))
+        func skipped(_ name: String) throws -> Int? {
+            let printed = Self.run(name, extra: ["--json"]).lines.joined()
+            let object = try #require(
+                JSONSerialization.jsonObject(with: Data(printed.utf8)) as? [String: Any])
+            return (object["night"] as? [String: Any])?["skipped"] as? Int
+        }
+        #expect(try skipped("resumed") == 0)
+        // A skip nothing undid still counts.
+        #expect(try skipped("failed") == 1)
+    }
+
+    @Test func aSkipHoldsInItsRunUntilTheSameStageIsDone() {
+        typealias Kind = RunEvent.Kind
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        func event(_ kind: String, _ scene: String? = nil, stage: String? = nil) -> RunEvent {
+            clock += 60
+            var event = RunEvent(kind, scene: scene, at: clock)
+            event.stage = stage
+            return event
+        }
+        func standing(_ events: [RunEvent]) -> [String?] { NightEvents.standingSkips(events).map(\.scene) }
+        let start = event(Kind.nightStart)
+        let skip = event(Kind.skip, "scene-0001", stage: "hires")
+        #expect(standing([start, skip]) == ["scene-0001"])
+        // Done by hand since.
+        #expect(standing([start, skip, event(Kind.hiresDone, "scene-0001")]).isEmpty)
+        // Another scene's hires, the scene's style, or a hires done before do not undo it.
+        #expect(standing([start, skip, event(Kind.hiresDone, "scene-0002")]) == ["scene-0001"])
+        #expect(standing([start, skip, event(Kind.style, "scene-0001")]) == ["scene-0001"])
+        #expect(standing([start, event(Kind.hiresDone, "scene-0001"), skip]) == ["scene-0001"])
+        #expect(
+            standing([start, event(Kind.skip, "scene-0001", stage: "style"), event(Kind.style, "scene-0001")])
+                .isEmpty)
+        #expect(
+            standing([
+                start, event(Kind.skip, "scene-0001", stage: "export"), event(Kind.exportDone, "scene-0001"),
+            ]).isEmpty)
+        // A resumed night tries the scene again, even when it stops before getting to it.
+        #expect(standing([start, skip, event(Kind.nightDone), event(Kind.nightStart)]).isEmpty)
+        #expect(standing([skip]) == ["scene-0001"])
+    }
+
     @Test func theNightStatusPageNamesWhatTheCodeWrites() throws {
         let page = try String(
             contentsOf: Self.fixtures.deletingLastPathComponent().deletingLastPathComponent()
@@ -137,7 +189,7 @@ struct NightStatusTests {
         for kind in kinds { #expect(page.contains("`\(kind)`"), "\(kind)") }
         #expect(page.contains("\(Int(QueueStatus.stuckAfter / 60)) minutes or more"))
         #expect(page.contains("sillage-render status"))
-        for name in ["idle", "exploring", "mid hires", "failed", "done"] {
+        for name in ["idle", "exploring", "mid hires", "failed", "done", "resumed"] {
             #expect(page.contains("| \(name) |"), "\(name)")
         }
         #expect(page.contains(try #require(Self.text("hires", "expected.txt")).split(separator: "\n")[0]))

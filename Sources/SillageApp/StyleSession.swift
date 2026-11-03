@@ -98,6 +98,8 @@ final class StyleSession: ObservableObject {
             MainActor.assumeIsolated { self?.objectWillChange.send() }
         }
         thumbnails.session = self
+        // The canvas shows what the export frames, whatever the mode (#177).
+        model.followsPlan = true
         propose()
     }
 
@@ -112,10 +114,20 @@ final class StyleSession: ObservableObject {
 
     var isModified: Bool { saved.map { current != $0 } ?? false }
 
-    /// The catalogue's rendering the style draws with, untouched.
-    var rendering: LookFile? { catalogue.first { current.uses(rendering: $0) } }
+    /// The catalogue's rendering the style draws with, untouched or as Auto applies it.
+    var rendering: LookFile? {
+        catalogue.lazy.flatMap { [$0, StyleAuto.generated($0)] }.first { current.uses(rendering: $0) }
+    }
 
     var galaxyCount: Int { sceneFile?.galaxies.count ?? model.scene.galaxies.count }
+
+    /// The clip's shape, which the canvas keeps: 16:9 for every scene the night draws.
+    var frameShape: String {
+        let (width, height) = thumbnails.clip
+        var (a, b) = (width, height)
+        while b != 0 { (a, b) = (b, a % b) }
+        return a > 0 ? "\(width / a):\(height / a)" : "16:9"
+    }
 
     // MARK: Rendering
 
@@ -308,7 +320,7 @@ final class StyleSession: ObservableObject {
             let scene = model.scene
             guard
                 edit({
-                    $0.withRendering(pick.rendering).withPalette(
+                    $0.withRendering(StyleAuto.generated(pick.rendering)).withPalette(
                         pick.palette, keeping: locked, in: scene, references: references)
                 })
             else { return }
@@ -324,14 +336,14 @@ final class StyleSession: ObservableObject {
 
     // MARK: Camera and fine settings
 
-    /// The plan's mode, drawn through on the canvas when it has a picture to give.
+    /// The plan's mode, drawn through on the canvas.
     func setCameraMode(_ mode: LookFile.CameraPlan.Mode) {
         let changed = edit { file in
             var file = file
             file.camera.mode = mode
             return file
         }
-        if changed { model.followsPlan = [.fixed, .auto].contains(mode) }
+        if changed { model.followsPlan = true }
     }
 
     /// Where a group's Réinitialiser goes: the camera to the saved style, the rest to the last
@@ -343,7 +355,7 @@ final class StyleSession: ObservableObject {
     func reset(_ group: LookFile.Group) {
         guard let baseline = baseline(for: group) else { return }
         guard edit({ $0.resetting(group, to: baseline) }) else { return }
-        if group == .camera { model.followsPlan = [.fixed, .auto].contains(model.lookFile.camera.mode) }
+        if group == .camera { model.followsPlan = true }
     }
 
     // MARK: Before and after, cancel, promote
@@ -355,7 +367,7 @@ final class StyleSession: ObservableObject {
             covered = model.lookFile
             coveredFollows = model.followsPlan
             model.lookFile = saved
-            model.followsPlan = [.fixed, .auto].contains(saved.camera.mode)
+            model.followsPlan = true
         } else if let covered {
             model.lookFile = covered
             model.followsPlan = coveredFollows
@@ -444,6 +456,10 @@ enum StyleNames {
 
     static func number(_ value: Float) -> String {
         String(format: "%.2f", value).replacingOccurrences(of: ".", with: ",")
+    }
+
+    static func oneDecimal(_ value: Float) -> String {
+        String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
     }
 
     /// Halo, aigrettes, poussières, étoiles de champ and luminosité, the five things a

@@ -57,7 +57,7 @@ every change (about 75 ms once the batch's draws are sized, which the app does a
 sheet shares): one line a phase with what it computes, how long it takes and when it ends, then
 the delivery and the margin. Disk too small, a hires that does not fit, fewer hires scenes than
 asked for, a night that ends late: it warns and does not block. "Personnaliser" is closed and
-holds four settings, each Auto: hires scenes (2 to 4), colour world, formats (4K, vertical),
+holds four settings, each Auto: hires scenes (1 to 4), colour world, formats (4K, vertical),
 exploration only. **Lancer la nuit** writes the recipe to `library/.sillage/recipes/` (a file
 a night, as a queued night reads it when its turn comes), adds the job to the queue and keeps
 the settings in `library/.sillage/night-sheet.json` for the next sheet. `Sillage.app --nightcheck`
@@ -106,6 +106,7 @@ scripts/explore-batch.sh --scenes 50 --hours 8        # particle count chosen to
 scripts/explore-batch.sh --scenes 20 --per-galaxy 50000   # quick
 scripts/explore-batch.sh --out library/2026-10-24     # resume a stopped batch
 scripts/explore-batch.sh --scenes 20 --galaxies 2-3 --only-archetypes antennae,mice  # skip other draws
+scripts/explore-batch.sh --scenes 20 --pair-share 0.5  # half pairs instead of four in five; off for none
 ```
 
 **2. Rate** – in the app (**Bibliothèque**), or by editing `<batch>/ratings.json`.
@@ -159,10 +160,10 @@ name is an error.
   "version": 1,
   "deliver": "07:00",
   "explore": { "scenes": "auto", "particlesPerGalaxy": "auto", "archetypeShare": "auto",
-               "archetypes": "auto", "galaxies": "auto", "seed": "auto" },
+               "archetypes": "auto", "pairShare": "auto", "galaxies": "auto", "seed": "auto" },
   "pick": "auto",
   "hires": { "particles": "auto", "frames": "auto" },
-  "style": { "world": "auto", "style": "auto", "palette": "auto" },
+  "style": { "world": "auto", "freeShare": "auto", "style": "auto", "palette": "auto" },
   "export": "auto"
 }
 ```
@@ -175,33 +176,70 @@ name is an error.
 | `explore.particlesPerGalaxy` | particles a galaxy in the previews | largest of 50 000 to 200 000 that fits |
 | `explore.archetypeShare` | share of archetype scenes, 0 to 1 | 0.25 |
 | `explore.archetypes` | archetypes allowed, `["antennae", "mice"]`; a place drawn for another is skipped | all |
+| `explore.pairShare` | share of scenes with exactly two galaxies, 0 to 1, in the batch and in the picks | 0.8; `explore.galaxies` wins over it |
 | `explore.galaxies` | `[least, most]` galaxies a scene has; others are skipped | any |
 | `explore.seed` | the batch seed | the day, `20261028` |
-| `pick` | `2` to `4`, or `"none"` to stop after exploring | 2 to 4 by score, as many as fit |
-| `hires.particles` | particles in all | 2 000 000 (or the machine's maximum) |
+| `pick` | `1` to `4`, or `"none"` to stop after exploring | 1 to 4 by score, as many as fit; a slot goes to a pair as often as `explore.pairShare` says |
+| `hires.particles` | particles in all | 8 000 000 (or the machine's maximum) |
 | `hires.frames` | the first frames of the story only | the whole story |
-| `style.world` | `telescope` or `free` | Auto: the two worlds in turn across the picks, best first, telescope then free |
+| `style.world` | `telescope` or `free` | Auto: drawn for each pick, free as often as `style.freeShare` says |
+| `style.freeShare` | share of the picks Auto puts in the free world, 0 to 1 | 0.2 |
 | `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |
 | `style.palette` | a family, the name of a favourite in `palettes/` or a `.palette.json` (its world is the pick's) | Auto: the best of the scene's seed in the pick's world, the favourites that fit among the candidates |
 | `style.multicolour` | `false` for one colour per galaxy | Auto: on, each galaxy gets a ramp of colours (#120) |
+| `style.camera` | `director`, `fixed`, `immersed`, or `scene` for the camera explore wrote | Auto: `director`, wide shots and shots that fill the frame with a disk and the pericentre (#186) |
 | `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
 
 The style step. A world asked for holds for every pick; else a named `style.style` or a
-`style.palette` family or file gives it; else Auto takes the two worlds in turn, so a night of
-two picks shows one of each. A recipe whose parts disagree (a free family in the telescope world)
-is refused before the night starts. A named style gets a palette of its world (Auto's or the one
-given); no style is `look --style auto`, which scores every rendering of the world with the
-scene's best palettes (or the one given) on key frames of the take. Planned at 20 s in the
-telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named style.
+`style.palette` family or file gives it; else Auto draws it for each pick: free with the chance
+`style.freeShare` gives, 0.2 since the free palettes came out loud (#175), telescope otherwise.
+The draw comes from the batch seed and the pick's place, best first, so a night resumed gives
+each pick the world it had. A night of one pick has it free one time in five, of two picks a
+free one 36 % of the time, of four 59 %; every fifth pick instead would never come round in a
+night of four picks at most. A recipe whose parts disagree (a free family in the telescope
+world) is refused before the night starts. A named style gets a palette of its world (Auto's or
+the one given); no style is `look --style auto`, which scores every rendering of the world with
+the scene's best palettes (or the one given) on key frames of the take, filmed with
+`style.camera` (the director by default, [the note](notes/director-shots.md)). Planned at 20 s
+in the telescope world and 400 s in the free one (52 pairs at 2 M particles), 20 s for a named
+style; the plan draws each pick's world as the night will.
+
+No dust in generated styles, for now (#174). The dust of the 2026-10-30-b night read as coarse
+blobs rather than lanes (#168). Until it is drawn as a web of filaments (#173), a style nobody
+picked by hand carries none: `look --style auto`, the night's style step and the style editor's
+Auto draw every rendering with its dust held to `StyleAuto.dustCap`, 0, and score it that way,
+and a named `style.style` goes to `look` with `--generated`, which holds it the same. The looks
+of `looks/` keep their dust, a rendering clicked in the editor brings its own, and Opacité des
+poussières still sets it. Dust particles emit nothing, so 14 to 38 % of a spiral's disk
+particles (its `dustFraction`) do not show at all, which a stopgap can live with. Side by side
+on two takes, face-on and inclined disks read no flatter without dust, only cleaner; an edge-on
+one loses its lane, and the knots the dust covered shine. The web brings dust back by setting
+`dustCap` to nil, each rendering's own.
 
 How it plans. `NightPlanner` turns the recipe and the cost model into steps, each with its
 duration, start and end, and the delivery of the whole night. Before exploring, it sizes the
 first 16 draws of the batch from the generator alone (`ExploreProbe`, the same particles and
 steps `explore-batch.sh` gives them, a quarter more for the story); after, it uses each scene's
-own story. Auto keeps time for four picks, then three, then two, and explores fifty scenes at
+own story. Auto keeps time for four picks, then three, two, one, and explores fifty scenes at
 the largest count a galaxy that fits in what is left, less a margin (5 %, 5 to 20 minutes).
-The pick takes scenes marked yes by hand first, then the best scores, never one marked no;
-score picks go to `ratings.json` as `picked`.
+The pick takes scenes marked yes by hand first, never one marked no; then each slot goes to a
+pair with the chance `explore.pairShare` gives, drawn from the batch seed as the worlds are, and
+takes the best pair by score, or else the best of the others, or the best scene left once its
+kind runs out. The score leans to groups (0.70 for pairs, 0.81 for groups of four on
+2026-10-30-b), so the best alone would undo the batch's share. Score picks go to `ratings.json`
+as `picked`.
+
+At 8 M, Auto's count since #185 (the count at which a disk filling the frame reads as matter,
+see [gigantism](notes/gigantism.md)), a hires is most of the night. The two 8 M hires of
+2026-10-30 took 237 and 239 minutes for 28 681 and 28 084 steps with the settle, peaked at
+15.4 GB of memory and wrote takes of 12.7 and 18.5 GB for 1 030 and 1 514 frames: the 1.53
+bytes a particle a frame the plan counts. Their 4K exports took one and two and a half
+minutes. The cost model refitted that morning, 108 s + 62.4 ns a visible particle step, puts
+both within 2 %. Planned from the draws, Auto keeps room for two scenes in a night of nine
+hours, after fifty previews at 75 000 a galaxy, and for one in a night of eight or seven, the
+previews at 150 000 or 200 000; `--plan` and the sheet say which before the night starts. The
+draws come out about a tenth under those two runs (3 h 31 a scene against 4 h), so once the real
+scenes are known a nine-hour night may finish only one, and the pick takes one.
 
 How it runs. Explore (through `explore-batch.sh`, stopped at its share of the night), pick, then
 for each pick, best first: hires, style, exports. Before each step it plans again from the
@@ -224,7 +262,9 @@ Exit status: 0 done, 3 stopped on request, 1 failed.
 and `events.jsonl` alone: seven lines (state and duration, delivery against the deadline, scenes
 explored, rejected and failed, picks with their score, hires done, videos with their weight,
 scenes left out and errors), then the list of hires with particles and minutes, of videos with
-their path from the night's folder, and of failures with the path of their log.
+their path from the night's folder, and of failures with the path of their log. A scene counts
+as left out only by the night's last run, and only until that step is done for it; the night
+page's cards and `sillage-render status --json` count alike.
 
 ### Queue
 
@@ -275,6 +315,9 @@ showing them, for checks.
 - A scene is `--seed S --index N` of a generator: same two numbers, same scene.
 - `explore-batch.sh` runs 4 scenes at once, each at a low particle count with a plain look.
   Batches are resumable; settings are kept in `batch.conf`.
+- Four scenes in five have exactly two galaxies, a globular or a dwarf companion counting as one
+  and a black hole as none, in every stretch of ten (`--pair-share`, `pair_share` in
+  `batch.conf`). A batch started before the share (#176) goes on with the draw it started with.
 - A preview runs until the scene's **story** is over: from 150 Myr before the first collision
   until nothing moves, up to 2 Gyr. Clips differ in length; `clip.json` says where the story is.
 - Each scene gets an interest **score** (0-1) from its curves (closest approach, tidal tails,

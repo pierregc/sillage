@@ -8,6 +8,8 @@ struct ParameterSlider: View {
     let range: ClosedRange<Float>
     var format = "%.2f"
     var onCommit: (() -> Void)?
+    /// What the value says, when the number alone would not.
+    var reading: ((Float) -> String)?
     @Environment(\.offscreen) private var offscreen
 
     var body: some View {
@@ -15,7 +17,7 @@ struct ParameterSlider: View {
             HStack {
                 Text(title).font(.caption)
                 Spacer()
-                Text(String(format: format, value))
+                Text(reading?(value) ?? String(format: format, value))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Palette.secondary)
             }

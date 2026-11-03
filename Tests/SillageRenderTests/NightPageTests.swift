@@ -92,6 +92,14 @@ struct NightPageTests {
         #expect(page.phases[2].state == .done || page.phases[2].state == .left)
     }
 
+    @Test func aSceneTheResumedNightDidIsNotLeftOut() throws {
+        let page = try #require(Self.read("resumed", selected: "2026-10-30-b").page)
+        let picks = Array(page.scenes.prefix(2))
+        #expect(picks.map(\.name) == ["scene-0044", "scene-0030"])
+        #expect(picks.allSatisfy { $0.stage == "Terminée" && !$0.detail.contains("would end") })
+        #expect(!page.scenes.contains { $0.stage == "Laissée de côté" })
+    }
+
     @Test func aNightWhoseRunnerIsGoneIsInterruptedNotRunning() throws {
         // The file says running, nothing computes.
         let library = Self.fixtures.appendingPathComponent("hires/library")

@@ -66,24 +66,49 @@ public struct FreeDraw: Sendable {
         sequence = Sobol(dimensions: Axis.allCases.count, seed: batchSeed)
     }
 
-    /// The scene at a place in the batch, ready to run.
-    public func scene(at index: Int, particleCount: Int) -> SceneConfig {
-        var scene = drafts(index + 1, particleCount: particleCount)[index]
+    /// Which scenes a run of places takes: any, those of exactly two galaxies, or the others.
+    public enum Pairing: Sendable, Hashable {
+        case any, pairs, others
+
+        public func takes(galaxies: Int) -> Bool {
+            switch self {
+            case .any: true
+            case .pairs: galaxies == 2
+            case .others: galaxies != 2
+            }
+        }
+    }
+
+    /// The scene at a place in the batch, ready to run: among the scenes `pairing` takes, the
+    /// one at `index`.
+    public func scene(at index: Int, particleCount: Int, taking pairing: Pairing = .any) -> SceneConfig {
+        var scene = drafts(index + 1, particleCount: particleCount, taking: pairing)[index]
         var finish = SeededGenerator(seed: scene.seed ^ 0x4649_4E49_5348_4544)
         scene.finishGenerated(using: &finish)
         return scene
     }
 
     /// The batch's first scenes as drawn, before anything is placed: what `signature` reads.
-    public func drafts(_ count: Int, particleCount: Int) -> [SceneConfig] {
+    /// The points `pairing` does not take are passed over as if they were not in the sequence,
+    /// so each kind keeps the spacing and the patience of a batch of its own.
+    public func drafts(_ count: Int, particleCount: Int, taking pairing: Pairing = .any) -> [SceneConfig] {
         var kept: [SceneConfig] = []
         var signatures: [[Float]] = []
         var point = 1
         while kept.count < count {
             var best: (scene: SceneConfig, signature: [Float], gap: Float)?
-            for _ in 0..<Self.patience {
+            var tried = 0
+            while tried < Self.patience {
                 let candidate = draft(point: point, particleCount: particleCount)
                 point += 1
+                // The hole is decided by the candidate's own stream, so its count is known
+                // before the choice.
+                if pairing != .any,
+                    !pairing.takes(galaxies: (Self.withBlackHole(candidate) ?? candidate).galaxyCount)
+                {
+                    continue
+                }
+                tried += 1
                 let signature = candidate.signature
                 let gap = signatures.map { Self.distance($0, signature) }.min() ?? .infinity
                 if best == nil || gap > best!.gap { best = (candidate, signature, gap) }
@@ -400,6 +425,10 @@ extension ClosedRange where Bound == Float {
 }
 
 extension SceneConfig {
+    /// The galaxies as a batch counts them, for its pairs and `--galaxies`: a globular or a
+    /// dwarf companion is one, a black hole is none.
+    public var galaxyCount: Int { galaxies.filter { $0.kind != .blackHole }.count }
+
     /// Where a scene sits among the scenes the generators draw, as coordinates running over
     /// about [0, 1]: how many galaxies, what the first two are, and the geometry of the first
     /// encounter. Two scenes close here look alike. Nothing about how they are drawn, lit or

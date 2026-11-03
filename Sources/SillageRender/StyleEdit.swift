@@ -130,6 +130,42 @@ extension LookFile.CameraPlan {
         get { (azimuthEnd ?? azimuth) - azimuth }
         set { azimuthEnd = abs(newValue) < 1e-4 ? nil : azimuth + newValue }
     }
+
+    /// Whether the plan's angles and lens place the camera: in Fixe and Auto, and for the
+    /// director's wide shots, which its close ones turn to face. The immersed director chooses
+    /// its own, and only the radius the plan frames reaches it.
+    public var placesCamera: Bool { mode != .immersed }
+
+    /// The zoom the editor offers, and the elevation it keeps clear of the pole.
+    public static let zoomRange: ClosedRange<Float> = 0.2...5
+    public static let steepest: Float = 1.5
+
+    /// Turned as the orbit rig turns under a drag (#177). The end angles follow the start, so
+    /// the move over the clip is kept and the view at every playhead turns alike.
+    public func turned(azimuth: Float, elevation: Float) -> Self {
+        var plan = self
+        let climb = (elevationEnd ?? self.elevation) - self.elevation
+        let rotation = self.rotation
+        plan.elevation = min(max(self.elevation + elevation, -Self.steepest), Self.steepest)
+        plan.azimuth = (self.azimuth + azimuth).remainder(dividingBy: 2 * .pi)
+        if elevationEnd != nil {
+            plan.elevationEnd = min(max(plan.elevation + climb, -Self.steepest), Self.steepest)
+        }
+        if azimuthEnd != nil { plan.azimuthEnd = plan.azimuth + rotation }
+        return plan
+    }
+
+    /// Closer by `factor`, as the wheel moves the orbit rig: the zoom, or outside Auto the
+    /// radius the plan names, which the zoom does not reach.
+    public func zoomed(by factor: Float) -> Self {
+        var plan = self
+        if radius > 0, mode != .auto {
+            plan.radius = max(radius / factor, 0.5)
+        } else {
+            plan.zoom = min(max(zoom * factor, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+        }
+        return plan
+    }
 }
 
 extension LookCatalogue {

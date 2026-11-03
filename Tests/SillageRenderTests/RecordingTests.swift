@@ -27,6 +27,18 @@ struct RecordingTests {
         return (recording, originals, count)
     }
 
+    /// One particle in several, exactly as the whole frame decodes them.
+    @Test func aStrideOfAFrameIsTheFrameStrided() {
+        let recording = Recording(particleCount: 10, galaxyCount: 1)
+        let positions = (0..<10).map { SIMD3<Float>(Float($0), -Float($0), 0.5 * Float($0)) }
+        positions.withUnsafeBufferPointer {
+            recording.append(positions: $0.baseAddress!, time: 0, centers: [.zero])
+        }
+        let all = recording.positions(at: 0)
+        #expect(recording.positions(at: 0, every: 3) == [all[0], all[3], all[6], all[9]])
+        #expect(recording.positions(at: 0, every: 1) == all)
+    }
+
     /// A capture that runs past its memory budget keeps every frame, on disk.
     ///
     /// It used to throw away every other one and capture half as often from then on, which

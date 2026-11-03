@@ -89,11 +89,13 @@ public struct NightFolder: Sendable {
             let record = try? scene.hiresArguments(
                 hiresOptions, maximumParticles: max(particles, maximumParticles)
             ).record
+            let file = (try? Data(contentsOf: scene.scene)).flatMap { try? SceneFile.decoded(from: $0) }
             progress.explored.append(
                 NightScene(
                     name: name, score: Self.score(scene, index: index), exploreUnits: 0,
                     hiresUnits: Double(particles) * Double((record?.settle ?? 0) + (record?.steps ?? 0)),
-                    frames: record?.frames ?? 0, chosenByHand: entry?.choice == .yes))
+                    frames: record?.frames ?? 0, chosenByHand: entry?.choice == .yes,
+                    galaxies: file?.galaxies.filter { $0.kind != .blackHole }.count))
             if hiresDone(scene) { progress.hiresDone.insert(name) }
             if FileManager.default.fileExists(atPath: scene.rawLook.path) { progress.styled.insert(name) }
             for format in recipe.exports
@@ -126,6 +128,13 @@ public struct NightFolder: Sendable {
         let conf = batchConf
         probe.archetypeShare =
             recipe.explore.archetypeShare.value ?? Double(BatchDraw.defaultArchetypeShare)
+        // A batch keeps the pair share it started with; one started before the share has none.
+        if let share = conf["pair_share"] {
+            probe.pairShare = Double(share)
+        } else {
+            probe.pairShare = conf.isEmpty ? recipe.pairShare : nil
+        }
+        if let settle = conf["settle"].flatMap(Int.init) { probe.settle = settle }
         if let range = conf["galaxy_range"] {
             let ends = range.split(separator: "-").compactMap { Int($0) }
             if ends.count == 2 { probe.galaxies = ends[0]...ends[1] }
@@ -139,16 +148,16 @@ public struct NightFolder: Sendable {
     }
 
     /// The planner for this folder now. `probe` keeps the draws it has sized between plans;
-    /// `draws` stands in for it.
+    /// `draws` stands in for it. `seed` is the night's, which a night started keeps.
     public func planner(
-        now: Date, progress: NightProgress? = nil, probe: ExploreProbe? = nil,
+        now: Date, progress: NightProgress? = nil, probe: ExploreProbe? = nil, seed: UInt64? = nil,
         draws: (@Sendable (Int) -> [NightScene])? = nil
     ) -> NightPlanner {
         let particles = hiresParticles
         let frames = recipe.hires.frames.value
         let sizer = probe ?? self.probe(now: now)
-        return NightPlanner(
-            recipe: recipe, model: CostModel.current(library: library),
+        var planner = NightPlanner(
+            recipe: recipe, seed: seed ?? self.seed(now: now), model: CostModel.current(library: library),
             maximumParticles: maximumParticles, progress: progress ?? self.progress(),
             freeBytes: Self.freeBytes(batch)
         ) { perGalaxy in
@@ -157,6 +166,11 @@ public struct NightFolder: Sendable {
                     sizer.scene($0, hiresParticles: particles, frames: frames)
                 }
         }
+        if let palette = recipe.style.palette.value, palette != "auto" {
+            planner.paletteWorld = NightStyle.world(
+                ofPalette: palette, references: TelescopeReference.repository)
+        }
+        return planner
     }
 }
 
@@ -228,6 +242,8 @@ public final class NightRunner: @unchecked Sendable {
 
     private var batch: URL { folder.batch }
     private var recipe: NightRecipe { folder.recipe }
+    /// The night's seed, `batch.conf`'s once explored: it draws the picks' worlds.
+    private var seed: UInt64 { folder.seed(now: night.startedAt) }
     private var nightURL: URL { RunStatusFiles.night(batch: batch) }
     private var logs: URL { batch.appendingPathComponent(".logs", isDirectory: true) }
 
@@ -356,13 +372,17 @@ public final class NightRunner: @unchecked Sendable {
         ]
         if !FileManager.default.fileExists(atPath: batch.appendingPathComponent("batch.conf").path) {
             arguments += [
-                "--seed", String(folder.seed(now: Date())), "--per-galaxy", String(plan.particlesPerGalaxy),
+                "--seed", String(seed), "--per-galaxy", String(plan.particlesPerGalaxy),
             ]
             if let range = recipe.galaxyRange {
                 arguments += ["--galaxies", "\(range.lowerBound)-\(range.upperBound)"]
             }
             if let names = recipe.explore.archetypes.value {
                 arguments += ["--only-archetypes", names.joined(separator: ",")]
+            }
+            // The script's own default is Auto's, and a galaxy range turns it off.
+            if let share = recipe.explore.pairShare.value, recipe.galaxyRange == nil {
+                arguments += ["--pair-share", String(share)]
             }
             if let share = recipe.explore.archetypeShare.value {
                 arguments += ["--", "--archetypes", String(share)]
@@ -379,7 +399,7 @@ public final class NightRunner: @unchecked Sendable {
     /// The best scenes by score, as many as the recipe or the time allows, written as picks:
     /// a scene marked yes by hand stays a choice and is not written over.
     private func pick() {
-        let plan = folder.planner(now: Date(), probe: probe, draws: draws).plan(
+        let plan = folder.planner(now: Date(), probe: probe, seed: seed, draws: draws).plan(
             now: Date(), deliverBy: deliverBy)
         let names = plan.steps.filter { $0.phase == .hires }.compactMap(\.scene)
         let progress = folder.progress()
@@ -419,7 +439,8 @@ public final class NightRunner: @unchecked Sendable {
         let name = scene.url.lastPathComponent
         do {
             let chosen = try NightStyle.resolve(
-                recipe.style, pick: pick, catalogue: catalogue, references: TelescopeReference.repository)
+                recipe.style, pick: pick, seed: seed, catalogue: catalogue,
+                references: TelescopeReference.repository)
             say(
                 "night      style \(name): \(chosen.rendering ?? "auto") in the \(chosen.world.rawValue) world, palette \(chosen.palette)"
             )
@@ -556,8 +577,8 @@ public final class NightRunner: @unchecked Sendable {
     private func update(phase: String, quiet: Bool = false) -> NightPlan {
         var progress = folder.progress()
         progress.skipped = leftOut
-        let plan = folder.planner(now: Date(), progress: progress, probe: probe, draws: draws).plan(
-            now: Date(), deliverBy: deliverBy)
+        let plan = folder.planner(now: Date(), progress: progress, probe: probe, seed: seed, draws: draws)
+            .plan(now: Date(), deliverBy: deliverBy)
         let explored = progress.explored.count
         let picks = progress.picks ?? []
         let index = SceneLibrary.indexRows(batch.appendingPathComponent("index.csv"))
@@ -597,7 +618,7 @@ public final class NightRunner: @unchecked Sendable {
         var values = [
             "deliverBy": RunStatus.string(deliverBy), "scenes": String(plan.scenes),
             "particlesPerGalaxy": String(plan.particlesPerGalaxy),
-            "seed": String(folder.seed(now: night.startedAt)),
+            "seed": String(seed),
             "pick": {
                 switch recipe.pick {
                 case .auto: "auto"
@@ -610,11 +631,14 @@ public final class NightRunner: @unchecked Sendable {
             "palette": recipe.style.palette.value ?? (recipe.style.world.value == nil ? "scene" : "auto"),
             "world": recipe.style.world.value ?? "auto",
             "multicolour": String(recipe.style.multicolour.value ?? true),
+            "camera": recipe.style.camera.value ?? "director",
         ]
         if let frames = recipe.hires.frames.value { values["hiresFrames"] = String(frames) }
         if let range = recipe.galaxyRange { values["galaxies"] = "\(range.lowerBound)-\(range.upperBound)" }
         if let names = recipe.explore.archetypes.value { values["archetypes"] = names.joined(separator: ",") }
         if let share = recipe.explore.archetypeShare.value { values["archetypeShare"] = String(share) }
+        if let share = recipe.explore.pairShare.value { values["pairShare"] = String(share) }
+        if let share = recipe.style.freeShare.value { values["freeShare"] = String(share) }
         return values
     }
 

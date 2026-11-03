@@ -17,6 +17,39 @@ extension SimulationModel {
         return isFlying ? flight.camera : camera.camera
     }
 
+    /// Whether the mouse moves the plan rather than the orbit rig: the canvas shows what the
+    /// export frames, so a framing made there is the one saved and exported (#177).
+    var steersPlan: Bool { followsPlan && mode == .playback && !isFlying && !contemplating }
+
+    /// A drag on the canvas: the flight's aim, the plan's angles, or the orbit rig. The
+    /// director chooses its own angles, so a drag leaves its plan alone.
+    func drag(_ dx: CGFloat, _ dy: CGFloat) {
+        takeCamera()
+        if isFlying {
+            flight.look(deltaYaw: Float(dx) * 0.005, deltaPitch: Float(-dy) * 0.005)
+        } else if steersPlan {
+            guard lookFile.camera.placesCamera else { return }
+            lookFile.camera = lookFile.camera.turned(
+                azimuth: Float(-dx) * 0.008, elevation: Float(dy) * 0.008)
+        } else {
+            camera.orbit(deltaAzimuth: Float(-dx) * 0.008, deltaElevation: Float(dy) * 0.008)
+        }
+    }
+
+    /// The wheel: the flight's throttle, the plan's zoom, the director's shots included, or the
+    /// rig's distance.
+    func scroll(_ dy: CGFloat) {
+        takeCamera()
+        // In flight the wheel is the throttle: there is no distance to a target to change.
+        if isFlying {
+            flight.changeSpeed(factor: Float(1 - dy * 0.02))
+        } else if steersPlan {
+            lookFile.camera = lookFile.camera.zoomed(by: exp(Float(dy) * 0.01))
+        } else {
+            camera.zoom(factor: Float(1 - dy * 0.01))
+        }
+    }
+
     /// True while a hand is on the camera. Contemplation hands control over on any input and
     /// takes it back after a pause, so touching the view never means losing the film.
     var cameraIsManual: Bool {

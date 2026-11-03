@@ -35,7 +35,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         }
     }
 
-    /// How many explored scenes go on to high resolution: Auto picks 2 to 4 by score, as many
+    /// How many explored scenes go on to high resolution: Auto picks 1 to 4 by score, as many
     /// as fit; `none` stops after exploring.
     public enum Selection: Codable, Sendable, Equatable {
         case auto
@@ -51,7 +51,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             switch try container.decode(String.self) {
             case "auto": self = .auto
             case "none": self = .none
-            case let word: throw Failure.badValue("pick", "\(word) is not auto, none or 2 to 4")
+            case let word: throw Failure.badValue("pick", "\(word) is not auto, none or 1 to 4")
             }
         }
 
@@ -72,6 +72,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         public var archetypeShare: Setting<Double> = .auto
         /// The archetypes allowed; a place drawn for another one is skipped.
         public var archetypes: Setting<[String]> = .auto
+        /// The share of scenes with exactly two galaxies, in the batch and in the picks.
+        public var pairShare: Setting<Double> = .auto
         /// `[least, most]` galaxies a scene may have.
         public var galaxies: Setting<[Int]> = .auto
         public var seed: Setting<UInt64> = .auto
@@ -86,6 +88,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             archetypeShare =
                 try c.decodeIfPresent(Setting<Double>.self, forKey: .archetypeShare) ?? .auto
             archetypes = try c.decodeIfPresent(Setting<[String]>.self, forKey: .archetypes) ?? .auto
+            pairShare = try c.decodeIfPresent(Setting<Double>.self, forKey: .pairShare) ?? .auto
             galaxies = try c.decodeIfPresent(Setting<[Int]>.self, forKey: .galaxies) ?? .auto
             seed = try c.decodeIfPresent(Setting<UInt64>.self, forKey: .seed) ?? .auto
         }
@@ -114,6 +117,11 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         public var palette: Setting<String> = .auto
         /// Several colours per galaxy (#120). Auto is on; `false` gives each galaxy one colour.
         public var multicolour: Setting<Bool> = .auto
+        /// The camera the style is filmed with (#186): `director`, `fixed`, `immersed`, or
+        /// `scene` for the one the scene already has. Auto is the director.
+        public var camera: Setting<String> = .auto
+        /// The share of picks Auto draws in the free world; the others take the telescope one.
+        public var freeShare: Setting<Double> = .auto
 
         public init() {}
 
@@ -124,6 +132,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             palette = try c.decodeIfPresent(Setting<String>.self, forKey: .palette) ?? .auto
             multicolour =
                 try c.decodeIfPresent(Setting<Bool>.self, forKey: .multicolour) ?? .auto
+            camera = try c.decodeIfPresent(Setting<String>.self, forKey: .camera) ?? .auto
+            freeShare = try c.decodeIfPresent(Setting<Double>.self, forKey: .freeShare) ?? .auto
         }
     }
 
@@ -164,10 +174,11 @@ extension NightRecipe {
     /// What Auto sizes an exploration among. Past 200 000 a galaxy, a preview keeps no more of
     /// the pericentres and tails a hires shows (#21).
     public static let perGalaxyLadder = [50_000, 75_000, 100_000, 150_000, 200_000]
-    /// The size of the 2026-10-25 night, which leaves room for four scenes in a night.
-    public static let defaultHiresParticles = 2_000_000
+    /// The count at which a disk filling the frame reads as matter rather than grains (#185,
+    /// docs/notes/gigantism.md). About four hours a scene, so one or two a night.
+    public static let defaultHiresParticles = 8_000_000
     public static let defaultExports = ["4k", "vertical"]
-    public static let pickRange = 2...4
+    public static let pickRange = 1...4
     /// The animated previews `export` writes besides video presets.
     public static let previewFormats = ["webp", "gif"]
 
@@ -176,6 +187,29 @@ extension NightRecipe {
     }
 
     public var exports: [String] { export.value ?? Self.defaultExports }
+
+    /// One pick in five in the free world, whose palettes run louder than the telescope's (#175).
+    public static let defaultFreeShare = 0.2
+
+    public var freeShare: Double { style.freeShare.value ?? Self.defaultFreeShare }
+
+    /// Four scenes in five with exactly two galaxies, Pierre's ask (#176).
+    public static let defaultPairShare = 0.8
+
+    /// The share of pairs in the batch and the picks; nil when `explore.galaxies` names the
+    /// counts instead.
+    public var pairShare: Double? {
+        galaxyRange == nil ? explore.pairShare.value ?? Self.defaultPairShare : nil
+    }
+
+    /// Auto's draw for the pick at `index`, in [0, 1): the same for the same batch seed, pick
+    /// and `stream`, so a resumed night draws what it drew before. Each setting drawn a pick
+    /// has a stream of its own, so its draws do not follow another's.
+    public static func pickDraw(_ index: Int, seed: UInt64, stream: UInt64) -> Double {
+        var generator = SeededGenerator(
+            seed: seed ^ stream ^ (UInt64(truncatingIfNeeded: index) &* 0x9E37_79B9_7F4A_7C15))
+        return Double(generator.next() >> 11) * 0x1p-53
+    }
 
     /// The night's seed when the recipe gives none: the day it starts, as `explore-batch.sh`.
     public static func daySeed(_ date: Date, calendar: Calendar = .current) -> UInt64 {
@@ -221,9 +255,11 @@ extension NightRecipe {
 
     static let keys: [String: Set<String>] = [
         "": ["version", "deliver", "hours", "explore", "pick", "hires", "style", "export"],
-        "explore": ["scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "galaxies", "seed"],
+        "explore": [
+            "scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "pairShare", "galaxies", "seed",
+        ],
         "hires": ["particles", "frames"],
-        "style": ["world", "style", "palette", "multicolour"],
+        "style": ["world", "style", "palette", "multicolour", "camera", "freeShare"],
     ]
 
     /// Reads a recipe and checks it: a misspelt setting is an error rather than a silent Auto.
@@ -283,13 +319,16 @@ extension NightRecipe {
                     "explore.archetypes", "\(name) is not one of \(known.joined(separator: ", "))")
             }
         }
+        if let share = explore.pairShare.value, !(0...1).contains(share) {
+            throw Failure.badValue("explore.pairShare", "from 0 to 1")
+        }
         if let range = explore.galaxies.value {
             guard range.count == 2, range[0] >= 1, range[0] <= range[1] else {
                 throw Failure.badValue("explore.galaxies", "[least, most], such as [2, 4]")
             }
         }
         if case .count(let count) = pick, !Self.pickRange.contains(count) {
-            throw Failure.badValue("pick", "auto, none or 2 to 4")
+            throw Failure.badValue("pick", "auto, none or 1 to 4")
         }
         if let particles = hires.particles.value, particles < 1_000 {
             throw Failure.badValue("hires.particles", "at least 1000")
@@ -299,6 +338,12 @@ extension NightRecipe {
         }
         if let world = style.world.value, Palette.World(rawValue: world) == nil {
             throw Failure.badValue("style.world", "telescope or free")
+        }
+        if let camera = style.camera.value, NightStyle.cameras.contains(camera) == false {
+            throw Failure.badValue("style.camera", NightStyle.cameras.joined(separator: ", "))
+        }
+        if let share = style.freeShare.value, !(0...1).contains(share) {
+            throw Failure.badValue("style.freeShare", "from 0 to 1")
         }
         if let names = export.value {
             for name in names

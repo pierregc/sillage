@@ -13,9 +13,11 @@ struct NightRecipeTests {
         let night = try recipe(#"{"version": 1}"#)
         #expect(night == NightRecipe())
         #expect(night.explore.scenes == .auto && night.pick == .auto && night.export == .auto)
-        #expect(night.hiresParticles(maximum: 10_000_000) == 2_000_000)
+        #expect(night.hiresParticles(maximum: 10_000_000) == 8_000_000)
         #expect(night.hiresParticles(maximum: 1_000_000) == 1_000_000)
         #expect(night.exports == ["4k", "vertical"])
+        #expect(night.style.freeShare == .auto && night.freeShare == 0.2)
+        #expect(night.explore.pairShare == .auto && night.pairShare == 0.8)
     }
 
     @Test func everySettingTakesAutoOrAValue() throws {
@@ -23,15 +25,19 @@ struct NightRecipeTests {
             """
             {"version": 1, "hours": 1,
              "explore": {"scenes": 6, "particlesPerGalaxy": 50000, "archetypeShare": 0.5,
-                         "archetypes": ["antennae", "mice"], "galaxies": [2, 3], "seed": "auto"},
+                         "archetypes": ["antennae", "mice"], "pairShare": 0.6, "galaxies": [2, 3],
+                         "seed": "auto"},
              "pick": 2, "hires": {"particles": 150000, "frames": 300},
-             "style": {"world": "telescope", "style": "auto", "palette": "auto"},
+             "style": {"world": "telescope", "style": "auto", "palette": "auto", "freeShare": 0.35},
              "export": ["1080p", "webp"]}
             """)
         #expect(night.explore.scenes == .value(6) && night.explore.seed == .auto)
         #expect(night.galaxyRange == 2...3 && night.explore.archetypes.value == ["antennae", "mice"])
+        // A galaxy range names the counts itself, and wins over the pair share.
+        #expect(night.explore.pairShare == .value(0.6) && night.pairShare == nil)
         #expect(night.pick == .count(2) && night.hires.frames == .value(300))
         #expect(night.style.world == .value("telescope") && night.style.palette == .auto)
+        #expect(night.style.freeShare == .value(0.35) && night.freeShare == 0.35)
         #expect(night.exports == ["1080p", "webp"])
         #expect(try NightRecipe.decoded(from: night.encoded()) == night)
         #expect(try recipe(#"{"pick": "none"}"#).pick == NightRecipe.Selection.none)
@@ -44,10 +50,13 @@ struct NightRecipeTests {
         #expect(throws: NightRecipe.Failure.unknownKey("picks")) { try recipe(#"{"picks": 2}"#) }
         #expect(throws: NightRecipe.Failure.version(2)) { try recipe(#"{"version": 2}"#) }
         for bad in [
-            #"{"pick": 5}"#, #"{"pick": "some"}"#, #"{"deliver": "07:00", "hours": 8}"#,
+            #"{"pick": 5}"#, #"{"pick": 0}"#, #"{"pick": "some"}"#, #"{"deliver": "07:00", "hours": 8}"#,
             #"{"deliver": "7h"}"#, #"{"export": ["8k"]}"#, #"{"style": {"world": "hubble"}}"#,
             #"{"explore": {"galaxies": [4, 2]}}"#, #"{"explore": {"archetypes": ["kite"]}}"#,
             #"{"explore": {"scenes": "many"}}"#, #"{"hours": 0}"#,
+            #"{"style": {"camera": "drone"}}"#, #"{"style": {"freeShare": 1.5}}"#,
+            #"{"style": {"freeShare": -0.1}}"#, #"{"style": {"freeShare": "half"}}"#,
+            #"{"explore": {"pairShare": 1.5}}"#, #"{"explore": {"pairs": 0.8}}"#,
         ] {
             #expect(throws: NightRecipe.Failure.self) { try recipe(bad) }
         }
@@ -119,6 +128,7 @@ struct NightPlannerTests {
         recipe.explore.scenes = scenes.map { .value($0) } ?? .auto
         recipe.explore.particlesPerGalaxy = perGalaxy.map { .value($0) } ?? .auto
         recipe.export = .value(["4k"])
+        recipe.hires.particles = .value(2_000_000)
         return recipe
     }
 
@@ -179,7 +189,7 @@ struct NightPlannerTests {
         #expect(summary.count == 4 && summary.start == now)
     }
 
-    @Test func autoPicksAsManyOfTheBestAsFitAndNeverFewerThanTwo() {
+    @Test func autoPicksAsManyOfTheBestAsFitAndAtLeastOne() {
         var progress = NightProgress()
         progress.exploreDone = true
         progress.explored = Self.night.enumerated().map { index, scene in
@@ -188,17 +198,93 @@ struct NightPlannerTests {
         let planner = planner(recipe(), progress: progress)
         let ranked = NightPlanner.ranked(progress.explored)
         #expect(ranked.first?.name == "scene-34")
-        let one = planner.finishSeconds(ranked[0])
-        for (hours, expected) in [(12.0, 4), (1.0, 2), (0.1, 2)] {
+        let one = planner.finishSeconds(ranked[0], pick: 0)
+        for (hours, expected) in [(12.0, 4), (1.0, 1), (0.1, 1)] {
             let end = start.addingTimeInterval(hours * 3600)
             #expect(planner.autoPicks(ranked, from: start, deliverBy: end) == expected, "\(hours) h")
         }
-        let three = ranked.prefix(3).reduce(0) { $0 + planner.finishSeconds($1) }
+        let three = planner.finishSeconds(picks: Array(ranked.prefix(3)))
         #expect(planner.autoPicks(ranked, from: start, deliverBy: start.addingTimeInterval(three + 1)) == 3)
         #expect(one > 0)
         #expect(planner.autoPicks(Array(ranked.prefix(1)), from: start, deliverBy: start) == 1)
         let plan = planner.plan(now: start, deliverBy: start.addingTimeInterval(three + 1))
         #expect(plan.picks == 3 && plan.steps.filter { $0.phase == .hires }.allSatisfy(\.fits))
+    }
+
+    /// Pairs scoring under every other scene, as the score leans on 2026-10-30-b.
+    private static func pool(pairs: Int, others: Int) -> [NightScene] {
+        (0..<(pairs + others)).map { index in
+            let pair = index < pairs
+            var scene = drawn(
+                200_000, 3_600, score: (pair ? 0.5 : 0.7) + Double(index) / 100,
+                name: pair ? "pair-\(index)" : "other-\(index)")
+            scene.galaxies = pair ? 2 : 3 + index % 3
+            return scene
+        }
+    }
+
+    @Test func eachPickSlotTakesAPairAsItsDrawSays() {
+        let ranked = NightPlanner.ranked(Self.pool(pairs: 6, others: 6))
+        var pairSlots = 0
+        for seed in UInt64(1)...250 {
+            var planner = planner(recipe())
+            planner.seed = seed
+            var earlier: [NightScene] = []
+            for count in 1...4 {
+                let picks = planner.picks(ranked, count: count)
+                #expect(picks == NightPlanner.ranked(picks))
+                // The slot adds one scene, a pair when its draw says so, the best of its kind.
+                let added = picks.filter { !earlier.contains($0) }
+                let pair = NightPlanner.pairSlot(count - 1, seed: seed, share: 0.8)
+                let best = ranked.first { !earlier.contains($0) && ($0.galaxies == 2) == pair }
+                #expect(added.count == 1 && added.first == best, "seed \(seed), slot \(count)")
+                if pair { pairSlots += 1 }
+                earlier = picks
+            }
+        }
+        #expect(abs(Double(pairSlots) / 1_000 - 0.8) < 0.04, "\(pairSlots) pair slots of 1000")
+    }
+
+    @Test func aPickTakesWhatIsLeftOnceItsKindRunsOutAndAHandChoiceFirst() {
+        var recipe = recipe()
+        recipe.explore.pairShare = .value(1)
+        let few = NightPlanner.ranked(Self.pool(pairs: 1, others: 4))
+        let picks = planner(recipe).picks(few, count: 4).map(\.name)
+        #expect(picks == ["other-4", "other-3", "other-2", "pair-0"])
+        recipe.explore.pairShare = .value(0)
+        let many = NightPlanner.ranked(Self.pool(pairs: 3, others: 2))
+        #expect(
+            planner(recipe).picks(many, count: 4).map(\.name) == ["other-4", "other-3", "pair-2", "pair-1"])
+        // Marked yes by hand, a pair is taken first in a night that wants no pair.
+        var chosen = Self.pool(pairs: 3, others: 2)
+        chosen[0].chosenByHand = true
+        #expect(
+            planner(recipe).picks(NightPlanner.ranked(chosen), count: 2).map(\.name) == ["pair-0", "other-4"])
+        // A galaxy range leaves the pick to the score.
+        recipe.explore.galaxies = .value([2, 5])
+        #expect(planner(recipe).picks(many, count: 3) == Array(many.prefix(3)))
+        // And so does a scene whose galaxies are unknown.
+        let unknown = many.map {
+            var scene = $0
+            scene.galaxies = nil
+            return scene
+        }
+        recipe.explore.galaxies = .auto
+        #expect(planner(recipe).picks(unknown, count: 3) == Array(unknown.prefix(3)))
+    }
+
+    @Test func thePlannedPicksAreTheSlotsPicks() {
+        var progress = NightProgress()
+        progress.exploreDone = true
+        progress.explored = Self.pool(pairs: 6, others: 6)
+        var recipe = recipe()
+        recipe.pick = .count(4)
+        var planner = planner(recipe, progress: progress)
+        planner.seed = 20_261_030
+        let plan = planner.plan(now: start, deliverBy: start.addingTimeInterval(24 * 3600))
+        let expected = planner.picks(NightPlanner.ranked(progress.explored), count: 4)
+        #expect(plan.steps.filter { $0.phase == .hires }.map(\.scene) == expected.map(\.name))
+        #expect(expected.contains { $0.galaxies == 2 })
     }
 
     @Test func aHiresThatCannotBeFinishedBeforeTheDeliveryDoesNotStart() throws {
@@ -210,7 +296,7 @@ struct NightPlannerTests {
         ]
         progress.picks = ["long", "short"]
         let planner = planner(recipe(), progress: progress)
-        let short = planner.finishSeconds(progress.explored[1])
+        let short = planner.finishSeconds(progress.explored[1], pick: 1)
         let plan = planner.plan(now: start, deliverBy: start.addingTimeInterval(short + 60))
         let steps = Dictionary(grouping: plan.steps.filter { $0.scene != nil }, by: { $0.scene! })
         #expect(steps["long"]?.allSatisfy { !$0.fits } == true)
@@ -246,8 +332,53 @@ struct NightPlannerTests {
             now: start, deliverBy: start.addingTimeInterval(3_600))
         #expect(plan.steps.map(\.done) == [true, true, true, false, true])
         #expect(plan.steps.filter(\.done).allSatisfy { $0.seconds == 0 })
-        #expect(plan.end.timeIntervalSince(start) == planner(recipe()).styleSeconds)
+        #expect(plan.end.timeIntervalSince(start) == planner(recipe()).styleSeconds(pick: 0))
         #expect(plan.diskBytes == 0)
+    }
+
+    @Test func eachStyleIsPlannedInTheWorldItsPickIsDrawn() {
+        var progress = NightProgress()
+        progress.exploreDone = true
+        progress.explored = Self.picks.map {
+            NightScene(
+                name: $0.name, score: $0.score, exploreUnits: 0, hiresUnits: 2e6 * Double($0.steps),
+                frames: 900)
+        }
+        progress.picks = Self.picks.map(\.name)
+        let auto = recipe()
+        func styles(_ recipe: NightRecipe, seed: UInt64, paletteWorld: Palette.World? = nil) -> [Double] {
+            var planner = NightPlanner(
+                recipe: recipe, seed: seed, model: model, maximumParticles: 10_000_000, progress: progress
+            ) { _ in [] }
+            planner.paletteWorld = paletteWorld
+            return planner.plan(now: start, deliverBy: start.addingTimeInterval(24 * 3600)).steps
+                .filter { $0.phase == .style }.map(\.seconds)
+        }
+        func seconds(_ world: Palette.World) -> Double {
+            world == .free ? NightPlanner.freeStyleSeconds : NightPlanner.telescopeStyleSeconds
+        }
+        var free = 0
+        for seed in UInt64(20_261_101)...20_261_130 {
+            let drawn = (0..<4).map {
+                NightStyle.drawnWorld(pick: $0, seed: seed, share: NightRecipe.defaultFreeShare)
+            }
+            free += drawn.filter { $0 == .free }.count
+            #expect(styles(auto, seed: seed) == drawn.map(seconds), "seed \(seed)")
+        }
+        #expect(free > 0 && free < 120)
+        // A world asked for, or the named palette's, whatever the share; a named rendering costs
+        // its palette alone.
+        var asked = auto
+        asked.style.world = .value("telescope")
+        asked.style.freeShare = .value(1)
+        #expect(styles(asked, seed: 1) == Array(repeating: seconds(.telescope), count: 4))
+        var palette = auto
+        palette.style.palette = .value("ember")
+        palette.style.freeShare = .value(0)
+        #expect(styles(palette, seed: 1, paletteWorld: .free) == Array(repeating: seconds(.free), count: 4))
+        var rendering = auto
+        rendering.style.style = .value("hubble")
+        #expect(styles(rendering, seed: 1) == Array(repeating: NightPlanner.paletteSeconds, count: 4))
     }
 
     @Test func autoExploresFiftyScenesAtTheLargestCountThatLeavesRoomForFourPicks() throws {
@@ -263,12 +394,12 @@ struct NightPlannerTests {
 
         let short = planner.plan(now: start, deliverBy: start.addingTimeInterval(4 * 3600))
         #expect(short.particlesPerGalaxy <= long.particlesPerGalaxy)
-        #expect(short.picks >= 2 && short.picks <= long.picks)
+        #expect(short.picks >= 1 && short.picks <= long.picks)
         #expect(short.end <= short.deliverBy)
 
         // Too short for anything: the smallest night, and the plan says it is late.
         let none = planner.plan(now: start, deliverBy: start.addingTimeInterval(1_800))
-        #expect(none.particlesPerGalaxy == 50_000 && none.picks == 2)
+        #expect(none.particlesPerGalaxy == 50_000 && none.picks == 1)
         #expect(!none.warnings.isEmpty)
     }
 
@@ -301,5 +432,52 @@ struct NightPlannerTests {
         #expect(plan.warnings.contains { $0.kind == "disk" })
         #expect(abs(NightPlanner.videoBytes("4k", frames: 900) / 187e6 - 1) < 0.01)
         #expect(NightPlanner.videoBytes("whatsapp", frames: 1_800) <= 15e6)
+    }
+
+    /// The library's model after the night of 2026-10-30, refitted on its two 8 M hires.
+    private let fitted = CostModel(
+        updated: RunStatus.date("2026-10-31T07:46:40Z")!,
+        explore: .init(fixedSeconds: 17.676, secondsPerUnit: 4.6264e-8, source: .fitted, samples: 103),
+        hires: .init(fixedSeconds: 108.30, secondsPerUnit: 6.2425e-8, source: .fitted, samples: 9))
+
+    /// Those two hires: steps with the settle, frames, minutes and the take they wrote.
+    private static let eightMillion:
+        [(name: String, steps: Int, frames: Int, minutes: Double, takeGB: Double)] = [
+            ("scene-0044", 28_681, 1_030, 236.9, 12.656), ("scene-0030", 28_084, 1_514, 238.7, 18.464),
+        ]
+
+    @Test func theFitAndTheDiskEstimateHoldAtEightMillion() {
+        for scene in Self.eightMillion {
+            let minutes = fitted.hiresSeconds(particles: 8_000_000, steps: scene.steps) / 60
+            #expect(abs(minutes / scene.minutes - 1) < 0.02, "\(scene.name)")
+            let take = NightPlanner.takeBytesPerParticleFrame * 8e6 * Double(scene.frames) / 1e9
+            #expect(abs(take / scene.takeGB - 1) < 0.01, "\(scene.name)")
+        }
+    }
+
+    @Test func anAutoNightAtEightMillionTakesOneOrTwoScenes() throws {
+        let planner = NightPlanner(
+            recipe: NightRecipe(), model: fitted, maximumParticles: 10_000_000, freeBytes: 500e9
+        ) { perGalaxy in
+            Self.scaled(perGalaxy).enumerated().map { index, drawn in
+                let hires = Self.eightMillion[index % 2]
+                var scene = drawn
+                scene.hiresUnits = 8e6 * Double(hires.steps)
+                scene.frames = hires.frames
+                return scene
+            }
+        }
+        #expect(planner.hiresParticles == 8_000_000)
+        let nine = planner.plan(now: start, deliverBy: start.addingTimeInterval(9 * 3600))
+        #expect(nine.scenes == 50 && nine.picks == 2 && nine.warnings.isEmpty)
+        #expect(nine.steps.filter { $0.phase == .hires }.allSatisfy { $0.fits && $0.particles == 8_000_000 })
+        #expect(nine.end <= nine.deliverBy)
+        // Two hours less: one scene, and the exploration keeps its fifty.
+        let seven = planner.plan(now: start, deliverBy: start.addingTimeInterval(7 * 3600))
+        #expect(seven.scenes == 50 && seven.picks == 1 && seven.warnings.isEmpty)
+        #expect(seven.particlesPerGalaxy >= nine.particlesPerGalaxy && seven.end <= seven.deliverBy)
+        // A 4K export of an 8 M take is minutes, not hours.
+        let exports = try #require(nine.steps.first { $0.phase == .export && $0.format == "4k" })
+        #expect(exports.seconds < 300)
     }
 }

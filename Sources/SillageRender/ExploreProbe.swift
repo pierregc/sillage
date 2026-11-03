@@ -8,10 +8,12 @@ public struct ExploreProbe: Sendable {
     /// What the batch passes to `explore`, as `explore-batch.sh` does by default.
     public var seed: UInt64
     public var archetypeShare = Double(BatchDraw.defaultArchetypeShare)
+    /// Nil draws the counts as a batch started before the pair share does.
+    public var pairShare: Double? = NightRecipe.defaultPairShare
     public var dtScale = 3.5
     public var spanMyr = 700.0
     public var frames = 900
-    public var settle = 400
+    public var settle = 750
     /// Draws outside these are skipped, as `--galaxies` and `--only-archetypes` skip them.
     public var galaxies: ClosedRange<Int>?
     public var archetypes: [String]?
@@ -28,13 +30,14 @@ public struct ExploreProbe: Sendable {
 
     /// The scene at a place, with the solver and step scale `explore` gives it.
     func file(_ index: Int) -> (generator: String, file: SceneFile) {
-        let key = "\(seed)/\(archetypeShare)/\(index)"
+        let key = "\(seed)/\(archetypeShare)/\(pairShare.map { "\($0)" } ?? "off")/\(index)"
         cache.lock.lock()
         let known = cache.files[key]
         cache.lock.unlock()
         if let known { return known }
-        let preset = BatchDraw(batchSeed: seed, archetypeShare: Float(archetypeShare))
-            .scene(at: index, particleCount: 100_000)
+        let preset = BatchDraw(
+            batchSeed: seed, archetypeShare: Float(archetypeShare), pairShare: pairShare.map(Float.init)
+        ).scene(at: index, particleCount: 100_000)
         var file = SceneFile(preset)
         file.solver = .barnesHut
         file.timeStepScale = Float(dtScale)

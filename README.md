@@ -33,7 +33,12 @@ same scene at any size; flags given alongside it override the file.
 
 A look file sits beside it, `x.look.json` (`--look-out` for another path), holding everything
 that decides the image and nothing that decides the physics: the render settings, the colour
-of each galaxy, and the camera, fixed or left to the director. `--look x.look.json` draws with
+of each galaxy, and the camera, fixed or left to the director. On a take the director plans its
+shots from the whole story: the calmer disk filling the frame, a wide shot of the approach, the
+pericentre with the two cores across the frame, the tails wide, and the survivor; about two
+fifths of the clip close, joined by cuts ([the note](docs/notes/director-shots.md)).
+`look <scene> --grid --stills <dir> --base <look> --frames shots` prints the plan and draws the
+middle of each shot. `--look x.look.json` draws with
 it, and every look flag given alongside overrides its field. A field left out takes the value
 `sillage-render` uses with no flags, so a file names only what it changes. The two files
 together replay a render exactly. `looks/raw.look.json` is plain points with no effects: one fixed-size point per particle in its
@@ -82,6 +87,13 @@ through a disk along its axis. One scene in four is an archetype, `--archetypes 
 another share and `0` for free draws only. Which places are archetypes follows from the share,
 so every stretch of a batch holds it, each archetype comes once in every eight archetype places
 in an order shuffled each time, and the free places take the free draws in order.
+Four scenes in five have exactly two galaxies, a globular or a dwarf companion counting as one
+and a black hole as none (`--pair-share 0.8`, `off` for the draw before it, #176). Which places
+hold a pair follows from that share the same way, so every ten places hold eight pairs, and the
+rounds come in two: an archetype place that holds a pair takes the six archetypes of two
+galaxies in turn, any other the compact group and the black hole's pass, and the free places of
+each kind take the free draws of two galaxies, or of another count, in order
+([the note](docs/notes/pairs.md)).
 `--preset antennae --seed S --index K` draws the Antennae alone: their scene `K` of batch `S`,
 the same one the batch draws when they come round for the `K`-th time. `draw.generator` in the
 scene file names the archetype, or `free`, and the library's archetype filter reads it there. One
@@ -185,8 +197,9 @@ for a quick look.
 
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
-`hires` prints how long a run should take before it starts, at 150 ns per visible particle per
-step.
+`hires` prints how long a run should take before it starts, from the cost model (`costs`), or
+at 62 ns per visible particle per step before any run (150 ns before the opening angle of 0.9,
+#166).
 
 Measured on a two-disk flyby explored at 400 000 particles (batch 20261024, scene 1, 700 Myr
 over 900 frames at `--dt-scale 3.5`). Live halos add one and a half times the visible count to
@@ -252,8 +265,10 @@ above, so the same scene always gets the same palette. `--palette <family>` does
 one family, `--palette <file.palette.json>` takes a palette as it is (a `Palette` as `look.json`
 records it, or just `{"colours": [[r, g, b], ...]}` in linear sRGB), and `--world telescope|free`
 picks the colour world (free by default). `--base` starts from another look instead of the
-scene's. `palettes <scene> --best 3` draws the three best-scored palettes of the scene on a
-frame of its take, the score under each; see [the note](docs/notes/palette-score.md).
+scene's, and `--generated` holds its dust back as Auto does (below), which is how the night
+promotes a style it is given by name. `palettes <scene> --best 3` draws the three best-scored
+palettes of the scene on a frame of its take, the score under each; see
+[the note](docs/notes/palette-score.md).
 
 Palettes worth keeping live in `palettes/<name>.palette.json`, saved by the heart in the style
 editor; `--palette <name>` takes one by its name and Auto adds the ones that fit to its
@@ -264,10 +279,13 @@ every rendering of the world (`--world`, else the world of the scene's look) is 
 scene's best palette on three key frames at the clip's size, then the four best renderings with
 the next three palettes, and each frame is scored on its pixels (clipped highlights, exposure,
 colourfulness, how far apart the galaxies are drawn, sky noise and, in the telescope world, the
-reference colours). The best pair is promoted, keeping the scene's camera; `--keep` only writes
+reference colours). The best pair is promoted, keeping the scene's camera unless `--camera
+<mode>` names one (the night names `director`); `--keep` only writes
 `looks/auto-<world>.png` (the best three) and `looks/auto-<world>.json` (every pair's score). It
 takes about 2 s in the telescope world and 8 s in the free one at 2 M particles; see
-[the note](docs/notes/frame-score.md).
+[the note](docs/notes/frame-score.md). Every rendering is drawn and scored with its dust held to
+`StyleAuto.dustCap`, none until dust is redrawn (#173), so a generated style ships without it;
+see [the night manager](docs/night-manager.md#the-night-recipe).
 
 Palettes give each galaxy a ramp of colours (core, disk, outskirts, young stars, knots) unless
 `--single` asks for one colour per galaxy, on `look`, `export` and `palettes`; the style editor's
@@ -289,10 +307,15 @@ couleurs** takes its palette too. **Palette** has a Télescope
 through any new palette), six proposals from the generator with their score, **Autres
 palettes**, and **Auto**, which draws three key frames with every rendering of the world and
 applies the best rendering and palette (`--style auto` below). **Caméra** sets the plan's mode,
-zoom and rotation over the clip. **Réglages fins**, folded, hold Lumière, Instrument, Rendu
-détaillé (starfield, bloom levels, supersampling, plain points, which rebuild the renderer) and
-the whole camera plan, each with **Réinitialiser**; **Voir à travers le plan** draws through
-the plan at the playhead, so scrubbing shows the render's own framing. The top bar says
+zoom and rotation over the clip. The canvas draws through the plan in every mode, in the clip's
+shape, exactly as the export frames it at the playhead: the auto camera eased from the first
+frame, the director's planned shots, the immersed director and the light it modulates.
+Dragging on it turns the plan and the wheel zooms it, so a framing made there is the one saved
+and exported; the director's wide shots follow it and its close ones turn to face them, and the
+immersed director only takes the zoom. **Réglages fins**,
+folded, hold Lumière, Instrument, Rendu détaillé (starfield, bloom levels, supersampling, plain
+points, which rebuild the renderer) and the whole camera plan, each with **Réinitialiser**;
+**Voir à travers le plan**, unticked, gives a free view the export does not keep. The top bar says
 **Modifié** when the style differs from `look.json`, holding ⌥ or **Avant / Après** shows the
 saved style for as long as it is held, **Annuler** puts it back, and **Utiliser pour la scène**
 (⌘S) promotes it as `--promote` does, after which **Exporter…** opens the export sheet. File > Open
@@ -471,7 +494,8 @@ next index. The scene log is in `.logs/`.
 nothing else goes into it: the order scenes finish in does not matter. The batch's settings go
 to `batch.conf` on its first run and are read back on the next, so `--out` alone resumes it;
 a different seed or size given to a batch already started is refused. Scenes in flight when it
-stops are started again.
+stops are started again. A batch started before the pair share has none recorded and goes on
+with the draw it started with.
 
 **The clip shows the encounter.** A step three and a half times the recommended one
 (`--dt-scale 3.5`, measured in #13), 750 steps to settle, which is the first 150 Myr, where a

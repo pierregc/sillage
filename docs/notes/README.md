@@ -20,6 +20,7 @@ session. Read the note for an area before changing it.
 - [Quadrupoles, and why the orbit chose the angle](quadrupoles.md)
 - [The tree on the GPU](gpu-tree.md): and the gap the frames were using
 - [Encounters placed from their pericentre](encounters.md)
+- [Four scenes in five are pairs](pairs.md): the pair share by place, the pick slots, batches started before
 - [Whole stories](whole-stories.md): when a scene's story is over, and how long clips run
 - [A black hole outside the tree](black-holes.md): its own softening, the step, energy across the mass range
 - [Another language would not make a step faster](solver-language.md): GPU against CPU, Swift against C, the opening angle explore and hires run at
@@ -63,6 +64,8 @@ session. Read the note for an area before changing it.
 - [The style editor](style-editor.md): renderings, palettes and locks, Auto, Avant/Après
 - [Making a galaxy read as matter rather than as a graphic](galaxy-as-matter.md)
 - [Gigantism](gigantism.md): why a render reads as sand, the compact minority, the kernel in projection, what more particles cost
+- [Ten times the particles](ten-times-the-particles.md): fifty million a galaxy, what it looks like, the softening floor, the halo, the take's grid, tracers
+- [Director shots that fill the frame](director-shots.md): `ShotPlan`, the cuts, the core and plane measured on the take, the disk states takes never carried
 
 ## State
 

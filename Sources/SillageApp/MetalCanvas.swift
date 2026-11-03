@@ -143,24 +143,8 @@ struct MetalCanvas: NSViewRepresentable {
         view.pixelBudget = model.contemplating ? SimulationModel.contemplationPixels : 0
         view.delegate = context.coordinator
         model.attach(canvas: view)
-        view.onDrag = { dx, dy in
-            model.takeCamera()
-            if model.isFlying {
-                model.flight.look(deltaYaw: Float(dx) * 0.005, deltaPitch: Float(-dy) * 0.005)
-            } else {
-                model.camera.orbit(
-                    deltaAzimuth: Float(-dx) * 0.008, deltaElevation: Float(dy) * 0.008)
-            }
-        }
-        view.onScroll = { dy in
-            model.takeCamera()
-            // In flight the wheel is the throttle: there is no distance to a target to change.
-            if model.isFlying {
-                model.flight.changeSpeed(factor: Float(1 - dy * 0.02))
-            } else {
-                model.camera.zoom(factor: Float(1 - dy * 0.01))
-            }
-        }
+        view.onDrag = { dx, dy in model.drag(dx, dy) }
+        view.onScroll = { dy in model.scroll(dy) }
         view.onToggleFlight = { model.toggleFlight() }
         view.onEscape = {
             guard model.contemplating else { return }
