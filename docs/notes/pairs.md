@@ -32,9 +32,14 @@ the others:
 | after | 80 % | 12 % | 14 % | 30 % | 24 % | 19 % |
 
 The first 50 places of 2026-10-30-b went from 25 pairs, 3 single galaxies, 2 with a hole, 9
-triples, 6 groups of four and 5 of five to 40 pairs, 1 galaxy with a hole, 4, 2 and 3. The
-library's own 50 (places 1 to 52, two groups of five rejected) were 25, 3, 2, 10, 7 and 3. Every
+triples, 6 groups of four and 5 of five to 40 pairs, no single galaxy, 1 with a hole, 4 triples,
+2 groups of four and 3 of five. The library's own 50 (places 1 to 52, two groups of five rejected) were 25, 3, 2, 10, 7 and 3. Every
 ten places in a row hold eight pairs, at 50 and 100 places, on all 11 batches.
+
+Judged as `explore` judges them (the sanity check at 100 000 a galaxy, 750 steps of settle and
+700 Myr), 100 places of three batches (2026-10-30-b's seed, 1 and 2) lost 2 scenes of the new
+draw and 4 of the old, and kept 238 pairs of 298, 80 %, against 147 of 296: the check turns
+away no more pairs than the others, so the library keeps the share.
 
 ## A batch started before
 
@@ -43,8 +48,8 @@ batch whose file has none was started before the share, and resumes with `--pair
 the draw it started with: with the share off, 1 111 drafts of 11 batches give scene files equal
 to the byte to those of the code before. The draw had drifted before this change, though: the
 counts and archetypes of 2026-10-30-b come out as that night drew them, but 14 of its 50 scenes
-have other families past their first two galaxies, which come from a stream other changes have
-since drawn differently.
+have some other families, drawn from a stream that other changes have since consumed
+differently.
 
 ## The picks
 
