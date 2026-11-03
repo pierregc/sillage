@@ -94,6 +94,7 @@ public final class MetalBarnesHutSolver: Solver {
     private let force: MTLComputePipelineState
     private let gather: MTLComputePipelineState
     private let dissipate: MTLComputePipelineState?
+    private let spiralDrive: SpiralDrive?
     private let formStars: MTLComputePipelineState
 
     private let positionBuffer: MTLBuffer
@@ -263,6 +264,7 @@ public final class MetalBarnesHutSolver: Solver {
         dissipate =
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
+        spiralDrive = try SpiralDrive(device: device, scene: scene)
         formStars = try pipeline("bhFormStars")
         holePull = holes.isEmpty ? nil : try pipeline("bhHolePull")
         holeSettle = holes.isEmpty ? nil : try pipeline("bhHoleSettle")
@@ -318,7 +320,7 @@ public final class MetalBarnesHutSolver: Solver {
         componentBuffer = device.makeBuffer(
             bytes: attribute(particles.component, 0), length: count * 4,
             options: .storageModeShared)
-        if dissipate != nil {
+        if tracksDisks {
             galaxyBuffer = device.makeBuffer(
                 bytes: attribute(particles.galaxyIndex, 0), length: count * 4,
                 options: .storageModeShared)
@@ -377,6 +379,7 @@ public final class MetalBarnesHutSolver: Solver {
                 if !holes.isEmpty { profiledPass("black holes") { encodeHoles(into: $0) } }
                 profiledPass("kick") { encodeKick(into: $0) }
                 profiledPass("dissipation") { encodeShedRandomMotion(into: $0) }
+                if spiralDrive != nil { profiledPass("drive") { encodeDrive(into: $0) } }
             } else {
                 submitForces()
             }
@@ -410,6 +413,7 @@ public final class MetalBarnesHutSolver: Solver {
                 encodeHoles(into: buffer)
                 encodeKick(into: buffer)
                 encodeShedRandomMotion(into: buffer)
+                encodeDrive(into: buffer)
             }
             submit(buffer)
         } while start < count
@@ -526,6 +530,28 @@ public final class MetalBarnesHutSolver: Solver {
                 &disks, length: disks.count * MemoryLayout<DiskCoolingGPU>.stride, index: 5)
             encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
         }
+    }
+
+    /// The cooling and the drive both act in each disk's measured frame.
+    private var tracksDisks: Bool { dissipate != nil || spiralDrive != nil }
+
+    /// Kicks the disk material along its galaxy's spiral drive, after the cooling, where the
+    /// positions are at the end of this step's drift.
+    private func encodeDrive(into buffer: MTLCommandBuffer) {
+        guard let spiralDrive, let componentBuffer, let galaxyBuffer else { return }
+        centersLock.lock()
+        let frames = (haloCenters, diskStates)
+        centersLock.unlock()
+        let quiet = scene.galaxies.indices.map { index -> Float in
+            let disturbed = Self.smoothstep(
+                Self.tidalFloor, Self.tidalCeiling, tidalStress(on: index, centers: frames.0))
+            let wrecked = index < frames.1.count ? frames.1[index].disruption : 0
+            return max((1 - disturbed) * (1 - wrecked), 0)
+        }
+        spiralDrive.encode(
+            into: buffer, scene: scene, time: time + scene.timeStep, centres: frames.0,
+            disks: frames.1, quiet: quiet, positions: positionBuffer, velocities: velocityBuffer,
+            component: componentBuffer, galaxy: galaxyBuffer, count: count, timeStep: scene.timeStep)
     }
 
     private var params: BHParams {
@@ -678,7 +704,7 @@ public final class MetalBarnesHutSolver: Solver {
     private func rebuildTree() {
         if profiling {
             timed("halo centres") { updateHaloCenters() }
-            if dissipate != nil { timed("disk frames") { updateDiskFrames() } }
+            if tracksDisks { timed("disk frames") { updateDiskFrames() } }
             repeat {
                 for phase in GPUTreeBuilder.Phase.allCases {
                     profiledPass(phase.rawValue) {
@@ -695,7 +721,7 @@ public final class MetalBarnesHutSolver: Solver {
             buffer.commit()
             // The centres read the positions the build is reading, so they are taken meanwhile.
             updateHaloCenters()
-            if dissipate != nil { updateDiskFrames() }
+            if tracksDisks { updateDiskFrames() }
             buffer.waitUntilCompleted()
             var spent = max(buffer.gpuEndTime - buffer.gpuStartTime, 0) * 1000
             longestDispatchMilliseconds = max(longestDispatchMilliseconds, spent)
@@ -734,7 +760,7 @@ public final class MetalBarnesHutSolver: Solver {
         guard galaxies > 0 else { return }
         let positions = currentPositions
         let velocities =
-            dissipate == nil
+            !tracksDisks
             ? nil
             : velocityBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
         let limit = min(count, galaxyOf.count)

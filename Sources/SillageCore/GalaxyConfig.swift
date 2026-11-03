@@ -86,6 +86,16 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// it; zero keeps the speed files written before this field used, half the analytic
     /// potential's, which beat against the matter.
     public var patternShare: Float
+    /// A steady spiral potential the disk is driven with, one harmonic of Cox & Gómez (2002)
+    /// in the disk's measured frame: the share of the axisymmetric pull at two scale lengths
+    /// its strongest in-plane pull reaches. Zero, what files written before it read as, is no
+    /// drive (docs/notes/lumpy-arms.md).
+    public var driveStrength: Float
+    /// What the drive turns at, as a share of the circular frequency at two scale lengths;
+    /// zero turns it with the painted pattern (`DiskEquilibrium.driveSpeed`).
+    public var driveShare: Float
+    /// How long the drive takes to reach its strength, in Myr, on Dehnen's quintic.
+    public var driveRampMyr: Float
 
     /// Share of a disk's stars belonging to the thick disk and inner halo rather than to the
     /// thin disk: old, metal-poor, spread wider and standing well off the plane.
@@ -153,6 +163,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         armStreaming: Float = 1,
         massLopsidedness: Float = 0.03,
         patternShare: Float = 0.9,
+        driveStrength: Float = 0,
+        driveShare: Float = 0,
+        driveRampMyr: Float = 400,
         outskirtFraction: Float = 0.12,
         armIrregularity: Float = 0.55,
         diskMassFraction: Float = 0.22,
@@ -189,6 +202,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         self.armStreaming = armStreaming
         self.massLopsidedness = massLopsidedness
         self.patternShare = patternShare
+        self.driveStrength = driveStrength
+        self.driveShare = driveShare
+        self.driveRampMyr = driveRampMyr
         self.outskirtFraction = outskirtFraction
         self.armIrregularity = armIrregularity
         self.diskMassFraction = diskMassFraction
@@ -208,6 +224,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case velocityDispersion, armCount, armStrength, armPitch, dustFraction, starFormingFraction
         case bulgeExtent, bulgeFraction, bulgeFlattening, color, clumpiness, youngClumpiness
         case armMassContrast, armStreaming, massLopsidedness, patternShare, outskirtFraction
+        case driveStrength, driveShare, driveRampMyr
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
         case inclination, positionAngle, spin
@@ -246,6 +263,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         massLopsidedness =
             try values.decodeIfPresent(Float.self, forKey: .massLopsidedness) ?? legacy.massLopsidedness
         patternShare = try values.decodeIfPresent(Float.self, forKey: .patternShare) ?? 0
+        driveStrength = try values.decodeIfPresent(Float.self, forKey: .driveStrength) ?? 0
+        driveShare = try values.decodeIfPresent(Float.self, forKey: .driveShare) ?? 0
+        driveRampMyr = try values.decodeIfPresent(Float.self, forKey: .driveRampMyr) ?? 400
         outskirtFraction = try values.decode(Float.self, forKey: .outskirtFraction)
         armIrregularity = try values.decode(Float.self, forKey: .armIrregularity)
         diskMassFraction = try values.decode(Float.self, forKey: .diskMassFraction)

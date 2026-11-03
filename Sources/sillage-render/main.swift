@@ -989,6 +989,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
         + " [--clumpiness X] [--toomre-q X] [--arm-strength X] [--arm-count N]"
         + " [--arm-irregularity X] [--disk-mass-fraction X] [--disk-thickness KPC] [--dissipation T]"
         + " [--mass-contrast X] [--streaming X] [--young-clumpiness X] [--calm]"
+        + " [--pattern-share X] [--drive X] [--drive-share X] [--drive-ramp T] [--drive-olr]"
     guard arguments.count >= 2, !arguments[0].hasPrefix("--"), let galaxy = Int(arguments[1]) else {
         fail(usage)
     }
@@ -1004,7 +1005,8 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
             "particles", "myr", "frame-myr", "seed", "out", "width", "height", "no-clip", "painted",
             "lag-myr", "stills", "dt-scale", "clumpiness", "toomre-q", "arm-strength", "arm-count",
             "arm-irregularity", "disk-mass-fraction", "disk-thickness", "dissipation", "mass-contrast",
-            "streaming", "young-clumpiness", "calm", "softening",
+            "streaming", "young-clumpiness", "calm", "softening", "pattern-share", "drive",
+            "drive-share", "drive-ramp", "drive-olr",
         ]
         guard known.contains(String(word.dropFirst(2))) else {
             fail("probe-disk: unknown option \(word)\n" + usage)
@@ -1035,6 +1037,11 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
     options.armStreaming = float("streaming")
     options.youngClumpiness = float("young-clumpiness")
     options.calm = rest.contains("--calm")
+    options.patternShare = float("pattern-share")
+    options.driveStrength = float("drive")
+    options.driveShare = float("drive-share")
+    options.driveRampMyr = float("drive-ramp")
+    options.driveToOuterLindblad = rest.contains("--drive-olr")
     do {
         let report = try DiskProbe.run(options)
         let summary = report.summary

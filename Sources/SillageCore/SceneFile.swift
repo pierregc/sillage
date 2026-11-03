@@ -52,6 +52,10 @@ public struct SceneFile: Codable, Sendable, Equatable {
         public var armStreaming: Float?
         public var massLopsidedness: Float?
         public var patternShare: Float?
+        /// Written only for a driven disk, so a scene without a drive reads and writes as before.
+        public var driveStrength: Float?
+        public var driveShare: Float?
+        public var driveRampMyr: Float?
         public var outskirtFraction: Float
         public var diskMassFraction: Float
         public var toomreQ: Float
@@ -88,6 +92,11 @@ public struct SceneFile: Codable, Sendable, Equatable {
             armStreaming = galaxy.armStreaming
             massLopsidedness = galaxy.massLopsidedness
             patternShare = galaxy.patternShare
+            if galaxy.driveStrength > 0 {
+                driveStrength = galaxy.driveStrength
+                driveShare = galaxy.driveShare
+                driveRampMyr = galaxy.driveRampMyr
+            }
             outskirtFraction = galaxy.outskirtFraction
             diskMassFraction = galaxy.diskMassFraction
             toomreQ = galaxy.toomreQ
@@ -152,6 +161,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.armStreaming = armStreaming ?? 0
             galaxy.massLopsidedness = massLopsidedness ?? legacy.massLopsidedness
             galaxy.patternShare = patternShare ?? 0
+            galaxy.driveStrength = driveStrength ?? 0
+            galaxy.driveShare = driveShare ?? 0
+            galaxy.driveRampMyr = driveRampMyr ?? 400
             return galaxy
         }
     }

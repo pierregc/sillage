@@ -191,6 +191,27 @@ public struct DiskEquilibrium {
         return circularSpeed(atRadius: reference) / reference * config.patternShare
     }
 
+    /// The rate the spiral drive turns at, unsigned: `driveShare` of the circular frequency at
+    /// two scale lengths, the painted pattern's when the share is zero.
+    public func driveSpeed() -> Float {
+        guard config.driveShare > 0 else { return patternSpeed() }
+        let reference = max(config.diskScaleLength * 2, 0.5)
+        return circularSpeed(atRadius: reference) / reference * config.driveShare
+    }
+
+    /// Where a pattern at `patternSpeed` meets the outer Lindblad resonance, past which the
+    /// stars answer a spiral out of phase; infinite when the curve never crosses.
+    public func outerLindblad(of patternSpeed: Float) -> Float {
+        let scale = max(config.diskScaleLength, 1e-3)
+        for step in 1...240 {
+            let r = Float(step) * 0.05 * scale
+            if circularSpeed(atRadius: r) / r + epicyclicFrequency(atRadius: r) / 2 < patternSpeed {
+                return r
+            }
+        }
+        return .infinity
+    }
+
     /// Where a pattern at `patternSpeed` resonates with the disk: the inner Lindblad radius,
     /// inside which a density wave at that speed cannot exist, and the corotation radius,
     /// outside which the streaming reverses. Read on a grid of a twentieth of a scale length;

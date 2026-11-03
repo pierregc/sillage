@@ -31,6 +31,14 @@ extension DiskProbe {
         public var armMassContrast: Float?
         public var armStreaming: Float?
         public var youngClumpiness: Float?
+        public var patternShare: Float?
+        /// The spiral drive (#180): its strength, its speed as a share of the material's rate
+        /// at two scale lengths, its ramp in Myr, and whether it reaches the outer Lindblad
+        /// resonance rather than stopping at corotation.
+        public var driveStrength: Float?
+        public var driveShare: Float?
+        public var driveRampMyr: Float?
+        public var driveToOuterLindblad = false
         /// Move a galaxy described before the calm disk onto it before the overrides apply.
         public var calm = false
         public var timeStepScale: Float?
@@ -85,6 +93,12 @@ extension DiskProbe {
         public var paintedPatternSpeed = 0.0
         public var paintedCorotation = Double.nan
         public var paintedInnerLindblad = Double.nan
+        /// The drive's speed and resonances, as the painted pattern's; zero speed for none.
+        public var driveSpeed = 0.0
+        public var driveCorotation = Double.nan
+        public var driveInnerLindblad = Double.nan
+        public var driveOuterLindblad = Double.nan
+        public var driveReach = Double.nan
         public var rotationPeriodAt2hMyr = 0.0
         public var epicyclicPeriodAt2hMyr = 0.0
         public var circularSpeedAt2hKms = 0.0
@@ -208,6 +222,12 @@ extension DiskProbe {
         override(options.armMassContrast, "armMassContrast", \.armMassContrast)
         override(options.armStreaming, "armStreaming", \.armStreaming)
         override(options.youngClumpiness, "youngClumpiness", \.youngClumpiness)
+        override(options.patternShare, "patternShare", \.patternShare)
+        override(options.driveStrength, "driveStrength", \.driveStrength)
+        override(options.driveShare, "driveShare", \.driveShare)
+        override(options.driveRampMyr, "driveRampMyr", \.driveRampMyr)
+        SpiralDrive.reachesOuterLindblad = options.driveToOuterLindblad
+        if options.driveToOuterLindblad { overrides["driveToOuterLindblad"] = 1 }
         if let count = options.armCount {
             full.galaxies[options.galaxy].armCount = count
             overrides["armCount"] = Double(count)
@@ -264,6 +284,15 @@ extension DiskProbe {
                 facts.x2[0], facts.x2[1], facts.x2[2], facts.preferredArmsAt2h,
                 facts.paintedPatternSpeed, facts.paintedCorotation, facts.paintedInnerLindblad,
                 facts.circularSpeedAt2hKms, facts.rotationPeriodAt2hMyr, facts.epicyclicPeriodAt2hMyr))
+        if facts.driveSpeed > 0 {
+            log(
+                String(
+                    format: "drive      %.1f %% of the pull at 2 h, %.4f rad/Myr (%.2f of the material's): "
+                        + "inner Lindblad %.2f h, corotation %.2f h, outer Lindblad %.2f h, acting to %.2f h",
+                    galaxy.driveStrength * 100, facts.driveSpeed,
+                    facts.driveSpeed * facts.rotationPeriodAt2hMyr / (2 * .pi), facts.driveInnerLindblad,
+                    facts.driveCorotation, facts.driveOuterLindblad, facts.driveReach))
+        }
 
         var look = LookFile.standard
         look.starCount = 0
@@ -570,6 +599,15 @@ extension DiskProbe {
         facts.paintedCorotation =
             resonances.corotation.isFinite ? Double(resonances.corotation / h) : .nan
         facts.paintedInnerLindblad = resonances.lindblad > 0 ? Double(resonances.lindblad / h) : .nan
+        if let drive = SpiralDrive.facts(for: galaxy) {
+            facts.driveSpeed = Double(drive.speed) / myr
+            let own = equilibrium.resonances(of: drive.speed)
+            facts.driveCorotation = own.corotation.isFinite ? Double(own.corotation / h) : .nan
+            facts.driveInnerLindblad = own.lindblad > 0 ? Double(own.lindblad / h) : .nan
+            let outer = equilibrium.outerLindblad(of: drive.speed)
+            facts.driveOuterLindblad = outer.isFinite ? Double(outer / h) : .nan
+            facts.driveReach = Double(drive.outer / h)
+        }
         return facts
     }
 
