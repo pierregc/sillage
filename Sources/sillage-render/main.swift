@@ -1495,10 +1495,12 @@ print(
 // particles, with the same share of the dark matter, carry the mass. The softening and the
 // step are the massive count's; the others are light tracers in their field.
 let massiveCount = argument("massive").flatMap(Int.init).map { min(max($0, 1), particles) }
-let drawnScene = scene
+var drawnScene = scene
 if let massiveCount {
     guard backend == "barnes-hut" else { fail("--massive needs the Barnes-Hut solver") }
     scene = file.scene(particleCount: massiveCount, palette: palette)
+    // A disk drawn for its response answers at the massive particles' softening (#181).
+    drawnScene.solveToomreQ(softening: scene.softening)
 }
 var seeded = RestrictedSolver.sampleParticles(for: drawnScene)
 var tracerCount = 0

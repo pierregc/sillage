@@ -132,9 +132,10 @@ struct SceneFileTests {
             #expect(abs(DiskResponse.effectiveToomreQ(run.galaxies[0], softening: run.softening) - 1.85) < 1e-3)
             #expect(run.galaxies[1].toomreQ == scene.galaxies[1].toomreQ)
         }
-        file.softening = 0.3
+        file.softening = 0.15
         let pinned = file.scene(particleCount: 2_000_000).galaxies[0]
-        #expect(abs(DiskResponse.effectiveToomreQ(pinned, softening: 0.3) - 1.85) < 1e-3)
+        #expect(pinned.toomreQ > DiskResponse.lowestToomreQ && pinned.toomreQ != hires.galaxies[0].toomreQ)
+        #expect(abs(DiskResponse.effectiveToomreQ(pinned, softening: 0.15) - 1.85) < 1e-3)
         file.softening = nil
         file.galaxies[0].effectiveToomreQ = nil
         for particles in [200_000, 2_000_000] {

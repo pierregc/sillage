@@ -105,14 +105,15 @@ extension SceneConfig {
         openingAngle = 1.0
         retune()
         placeEncountersGivingWay()
-        // Once a companion has taken its mass from its ratio, and its share of the particles
-        // with it, the softening its disk explores at is known: the response is kept where the
-        // floor of Q leaves it there, and Q solved for it at the count the scene is drawn at.
+        // Once a companion has taken its mass from its ratio, and its size and its share of
+        // the particles with it, the response a batch generator's disk is given and the
+        // softening it explores at are known: the response is kept where the floor of Q leaves
+        // it there, and Q solved for it at the count the scene is drawn at.
         let reference = DiskResponse.referenceSoftening(galaxies)
         for index in galaxies.indices {
-            guard let drawn = galaxies[index].effectiveToomreQ else { continue }
+            guard draw != nil, let target = DiskResponse.target(of: galaxies[index]) else { continue }
             galaxies[index].effectiveToomreQ = DiskResponse.response(
-                drawn: drawn, of: galaxies[index], referenceSoftening: reference)
+                drawn: target, of: galaxies[index], referenceSoftening: reference)
         }
         solveToomreQ(softening: recommendedSoftening)
     }

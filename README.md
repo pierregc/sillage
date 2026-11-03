@@ -179,7 +179,8 @@ radii, dispersions, Fourier amplitudes by zone, pattern speed, coherence, lumpin
 nucleus and the solver's centre are, next to a two-pane clip in the disk's own frame and in the
 app's. `--clumpiness`, `--toomre-q`, `--arm-strength`, `--arm-count`, `--disk-mass-fraction`,
 `--disk-thickness` and `--dissipation` override the galaxy for a sweep, `--effective-q` solves
-its Toomre Q for a response as the generators do, `--softening` overrides the scene's, and
+its Toomre Q for a response as the generators do (a disk whose scene file holds one is solved for
+it at the run's softening), `--softening` overrides the scene's, and
 `scripts/probe-report.py` lays runs side by side. The columns and how to read
 them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
 
@@ -192,7 +193,9 @@ yes in `ratings.json`, one after another, skipping those already done at that si
 
 Only the particle count and what follows from it change. The geometry is the scene file's, and
 so is `timeStepScale` (3.5 for a night batch) unless `--dt-scale` overrides it. Softening follows
-the interparticle spacing, so the step shrinks as the count grows, and `clip.json`'s `steps` and
+the interparticle spacing, so the step shrinks as the count grows, and a disk drawn for its
+response (`effectiveToomreQ` in the scene file) is given the Toomre Q that keeps that response at
+the new softening, so it answers as in the preview (#181). `clip.json`'s `steps` and
 `settle` are step counts at the preview's size: run as they are, they would show a shorter stretch
 of the encounter. They are turned into megayears and back, with a whole number of steps per
 frame, so every frame lands at the time the preview showed it and only the settle is rounded to
