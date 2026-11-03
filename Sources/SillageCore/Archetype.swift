@@ -52,6 +52,10 @@ public enum Archetype: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// Whether its scenes hold exactly two galaxies, as a batch counts them: all but the
+    /// compact group and the black hole's pass.
+    public var isPair: Bool { self != .compactGroup && self != .blackHolePass }
+
     /// Coordinates of the sequence an archetype draws its first parameters from.
     static let dimensions = 10
 
@@ -440,57 +444,103 @@ private struct Draft {
     }
 }
 
-/// A batch as the generators draw it: archetypes and free draws mixed in a set proportion.
+/// A batch as the generators draw it: archetypes and free draws mixed in a set proportion, and
+/// pairs, scenes of exactly two galaxies, in another.
 ///
 /// Which places are archetypes follows from the share alone, so every stretch of a batch holds
-/// its share, and the archetypes come round in a shuffled order, each once a round. The free
-/// places take `FreeDraw`'s scenes in order, so a batch with no archetypes is the free one.
+/// its share, and the archetypes come round in a shuffled order, each once a round. Which places
+/// hold a pair follows from the pair share the same way, which is exact where a share of the
+/// free counts would not be: the spacing passes over more pairs as their corner fills. A pair
+/// place takes a pair archetype or a free draw of two galaxies, any other place the compact
+/// group, the black hole's pass or a free draw of another count, so those keep their shares
+/// among themselves. The free places of each kind take `FreeDraw`'s scenes of that kind in
+/// order, so a batch with no archetypes and no pair share is the free one.
 public struct BatchDraw: Sendable {
     /// One scene in four: each archetype once in every 32 scenes.
     public static let defaultArchetypeShare: Float = 0.25
+    /// Four scenes in five (#176).
+    public static let defaultPairShare: Float = 0.8
 
     public var free: FreeDraw
     public var archetypeShare: Float
+    /// Nil leaves the counts to `FreeDraw`, as batches were drawn before the share.
+    public var pairShare: Float?
 
     public enum Place: Equatable, Sendable {
-        /// The free draw at this place among the free ones.
-        case free(Int)
+        /// The free draw at this place among the free ones its pairing takes.
+        case free(Int, FreeDraw.Pairing)
         case archetype(Archetype, occurrence: Int)
     }
 
     public init(
         batchSeed: UInt64, archetypeShare: Float = BatchDraw.defaultArchetypeShare,
-        spacing: Float = FreeDraw.defaultSpacing, haste: Float = 0
+        pairShare: Float? = BatchDraw.defaultPairShare, spacing: Float = FreeDraw.defaultSpacing,
+        haste: Float = 0
     ) {
         free = FreeDraw(batchSeed: batchSeed, spacing: spacing, haste: haste)
         self.archetypeShare = min(max(archetypeShare, 0), 1)
+        self.pairShare = pairShare.map { min(max($0, 0), 1) }
     }
 
-    /// Archetypes among the first `count` places.
-    private func archetypes(before count: Int) -> Int {
-        Int((Double(count) * Double(archetypeShare)).rounded(.down))
+    /// The places of one kind, each counting its own: archetypes or free draws, and with a pair
+    /// share, pairs or the others.
+    private struct Kind: Hashable {
+        var archetype: Bool
+        var pairing: FreeDraw.Pairing
     }
 
-    public func place(_ index: Int) -> Place {
-        let before = archetypes(before: index)
-        guard archetypes(before: index + 1) > before else { return .free(index - before) }
-        let all = Archetype.allCases
-        let round = before / all.count
+    /// Places among the first `count` that a share holds.
+    private static func held(_ count: Int, _ share: Float) -> Int {
+        Int((Double(count) * Double(share)).rounded(.down))
+    }
+
+    private func kind(_ index: Int) -> Kind {
+        let archetype = Self.held(index + 1, archetypeShare) > Self.held(index, archetypeShare)
+        guard let pairShare else { return Kind(archetype: archetype, pairing: .any) }
+        let pair = Self.held(index + 1, pairShare) > Self.held(index, pairShare)
+        return Kind(archetype: archetype, pairing: pair ? .pairs : .others)
+    }
+
+    /// The place that is the `before`-th of its kind.
+    private func place(_ kind: Kind, _ before: Int) -> Place {
+        guard kind.archetype else { return .free(before, kind.pairing) }
+        let (members, salt): ([Archetype], UInt64) =
+            switch kind.pairing {
+            case .any: (Archetype.allCases, 0x4152_4348_4554_5950)
+            case .pairs: (Archetype.allCases.filter(\.isPair), 0x5041_4952_4152_4348)
+            case .others: (Archetype.allCases.filter { !$0.isPair }, 0x4F54_4852_4152_4348)
+            }
+        let round = before / members.count
         // Fisher-Yates by hand: the standard shuffle is free to change between releases.
-        var order = all
-        var generator = SeededGenerator(seed: free.batchSeed ^ 0x4152_4348_4554_5950 ^ UInt64(round))
+        var order = members
+        var generator = SeededGenerator(seed: free.batchSeed ^ salt ^ UInt64(round))
         for index in stride(from: order.count - 1, to: 0, by: -1) {
             order.swapAt(index, Int(generator.next() % UInt64(index + 1)))
         }
-        return .archetype(order[before % all.count], occurrence: round)
+        return .archetype(order[before % members.count], occurrence: round)
+    }
+
+    public func place(_ index: Int) -> Place {
+        let mine = kind(index)
+        return place(mine, (0..<index).reduce(0) { $0 + (kind($1) == mine ? 1 : 0) })
+    }
+
+    /// The first `count` places, in one pass.
+    public func places(_ count: Int) -> [Place] {
+        var counted: [Kind: Int] = [:]
+        return (0..<count).map { index in
+            let mine = kind(index)
+            defer { counted[mine, default: 0] += 1 }
+            return place(mine, counted[mine, default: 0])
+        }
     }
 
     /// The scene at a place in the batch, ready to run.
     public func scene(at index: Int, particleCount: Int) -> SceneConfig {
         var scene: SceneConfig
         switch place(index) {
-        case .free(let index):
-            scene = free.scene(at: index, particleCount: particleCount)
+        case .free(let index, let pairing):
+            scene = free.scene(at: index, particleCount: particleCount, taking: pairing)
         case .archetype(let archetype, let occurrence):
             scene = archetype.scene(
                 batchSeed: free.batchSeed, occurrence: occurrence, particleCount: particleCount,
@@ -498,5 +548,28 @@ public struct BatchDraw: Sendable {
         }
         scene.draw?.index = index
         return scene
+    }
+
+    /// The batch's first `count` scenes as drawn, before anything is placed: the scene at each
+    /// place is `scene(at:)` without its encounters placed.
+    public func drafts(_ count: Int, particleCount: Int) -> [SceneConfig] {
+        let places = places(count)
+        var drawn: [FreeDraw.Pairing: [SceneConfig]] = [:]
+        for case .free(let index, let pairing) in places.reversed() where drawn[pairing] == nil {
+            drawn[pairing] = free.drafts(index + 1, particleCount: particleCount, taking: pairing)
+        }
+        return places.enumerated().map { index, place in
+            var scene: SceneConfig
+            switch place {
+            case .free(let at, let pairing):
+                scene = drawn[pairing]![at]
+            case .archetype(let archetype, let occurrence):
+                scene = archetype.draft(
+                    batchSeed: free.batchSeed, occurrence: occurrence, particleCount: particleCount,
+                    haste: free.haste)
+            }
+            scene.draw?.index = index
+            return scene
+        }
     }
 }

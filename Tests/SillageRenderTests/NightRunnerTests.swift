@@ -333,6 +333,53 @@ struct NightRunnerTests {
         #expect(resumed.contains("- Laissées de côté : 0 · erreurs : 0") && !resumed.contains("would end"))
     }
 
+    @Test func theFolderReadsEachScenesGalaxiesAndTheBatchsPairShare() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let drafts = BatchDraw(batchSeed: 1).drafts(2, particleCount: 40_000)
+        try #require(drafts[0].galaxyCount != 2 && drafts[1].galaxyCount == 2)
+        for (index, draft) in drafts.enumerated() {
+            let folder = SceneFolder(batch.appendingPathComponent(String(format: "scene-%04d", index + 1)))
+            try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+            try SceneFile(draft).encoded().write(to: folder.scene)
+            try SceneFolder.Clip().encoded().write(to: folder.clip)
+        }
+        let folder = NightFolder(batch: batch, recipe: recipe(), maximumParticles: 10_000_000)
+        #expect(folder.progress().explored.map(\.galaxies) == drafts.map(\.galaxyCount))
+        // The recipe's share until the batch has a batch.conf, then the batch's own, and none
+        // for a batch started before the share.
+        #expect(folder.probe(now: Date()).pairShare == 0.8)
+        let conf = batch.appendingPathComponent("batch.conf")
+        for (line, share) in [("pair_share=0.5\n", 0.5), ("pair_share=off\n", nil), ("", nil)]
+            as [(String, Double?)]
+        {
+            try Data("seed=1\nper_galaxy=20000\n\(line)".utf8).write(to: conf)
+            #expect(folder.probe(now: Date()).pairShare == share, "\(line)")
+        }
+        try FileManager.default.removeItem(at: conf)
+        var ranged = recipe()
+        ranged.explore.galaxies = .value([2, 4])
+        #expect(NightFolder(batch: batch, recipe: ranged).probe(now: Date()).pairShare == nil)
+    }
+
+    @Test func theExplorationIsGivenThePairShareTheRecipeNames() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var recipe = recipe()
+        recipe.pick = .none
+        var asked: [String] = []
+        for share in [nil, 0.5] as [Double?] {
+            for galaxies in [nil, [2, 4]] as [[Int]?] {
+                try? FileManager.default.removeItem(at: batch)
+                recipe.explore.pairShare = share.map { .value($0) } ?? .auto
+                recipe.explore.galaxies = galaxies.map { .value($0) } ?? .auto
+                #expect(runner(recipe).run() == 0)
+                asked.append(logged().last { $0.hasPrefix("explore ") } ?? "")
+            }
+        }
+        // Auto is the script's own default, and a galaxy range turns the share off there.
+        #expect(asked.map { $0.contains("--pair-share 0.5") } == [false, false, true, false])
+        #expect(asked.filter { $0.contains("--pair-share") }.count == 1)
+    }
+
     @Test func theQueueMarksANightItHadToStop() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: batch, withIntermediateDirectories: true)

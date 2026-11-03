@@ -89,11 +89,13 @@ public struct NightFolder: Sendable {
             let record = try? scene.hiresArguments(
                 hiresOptions, maximumParticles: max(particles, maximumParticles)
             ).record
+            let file = (try? Data(contentsOf: scene.scene)).flatMap { try? SceneFile.decoded(from: $0) }
             progress.explored.append(
                 NightScene(
                     name: name, score: Self.score(scene, index: index), exploreUnits: 0,
                     hiresUnits: Double(particles) * Double((record?.settle ?? 0) + (record?.steps ?? 0)),
-                    frames: record?.frames ?? 0, chosenByHand: entry?.choice == .yes))
+                    frames: record?.frames ?? 0, chosenByHand: entry?.choice == .yes,
+                    galaxies: file?.galaxies.filter { $0.kind != .blackHole }.count))
             if hiresDone(scene) { progress.hiresDone.insert(name) }
             if FileManager.default.fileExists(atPath: scene.rawLook.path) { progress.styled.insert(name) }
             for format in recipe.exports
@@ -126,6 +128,12 @@ public struct NightFolder: Sendable {
         let conf = batchConf
         probe.archetypeShare =
             recipe.explore.archetypeShare.value ?? Double(BatchDraw.defaultArchetypeShare)
+        // A batch keeps the pair share it started with; one started before the share has none.
+        if let share = conf["pair_share"] {
+            probe.pairShare = Double(share)
+        } else {
+            probe.pairShare = conf.isEmpty ? recipe.pairShare : nil
+        }
         if let settle = conf["settle"].flatMap(Int.init) { probe.settle = settle }
         if let range = conf["galaxy_range"] {
             let ends = range.split(separator: "-").compactMap { Int($0) }
@@ -371,6 +379,10 @@ public final class NightRunner: @unchecked Sendable {
             }
             if let names = recipe.explore.archetypes.value {
                 arguments += ["--only-archetypes", names.joined(separator: ",")]
+            }
+            // The script's own default is Auto's, and a galaxy range turns it off.
+            if let share = recipe.explore.pairShare.value, recipe.galaxyRange == nil {
+                arguments += ["--pair-share", String(share)]
             }
             if let share = recipe.explore.archetypeShare.value {
                 arguments += ["--", "--archetypes", String(share)]
@@ -625,6 +637,7 @@ public final class NightRunner: @unchecked Sendable {
         if let range = recipe.galaxyRange { values["galaxies"] = "\(range.lowerBound)-\(range.upperBound)" }
         if let names = recipe.explore.archetypes.value { values["archetypes"] = names.joined(separator: ",") }
         if let share = recipe.explore.archetypeShare.value { values["archetypeShare"] = String(share) }
+        if let share = recipe.explore.pairShare.value { values["pairShare"] = String(share) }
         if let share = recipe.style.freeShare.value { values["freeShare"] = String(share) }
         return values
     }

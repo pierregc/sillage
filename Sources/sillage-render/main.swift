@@ -1348,12 +1348,15 @@ if let scenePath {
             galaxies: argument("galaxies").flatMap(Int.init),
             lookSeed: argument("look-seed").flatMap(UInt64.init))
         generatedHaste = Float(number("haste", 0))
-    // The scene at `--index` in the batch `--seed` draws, archetypes mixed in at `--archetypes`.
-    // The seed is the batch's here, and the scene's own follows from it and the index.
+    // The scene at `--index` in the batch `--seed` draws, archetypes mixed in at `--archetypes`
+    // and pairs at `--pair-share`, `off` for a batch drawn before the share (#176). The seed is
+    // the batch's here, and the scene's own follows from it and the index.
     case "free":
         preset = BatchDraw(
             batchSeed: seed ?? 1,
             archetypeShare: Float(number("archetypes", Double(BatchDraw.defaultArchetypeShare))),
+            pairShare: argument("pair-share") == "off"
+                ? nil : Float(number("pair-share", Double(BatchDraw.defaultPairShare))),
             spacing: Float(number("spacing", Double(FreeDraw.defaultSpacing))),
             haste: Float(number("haste", 0))
         ).scene(at: Int(number("index", 0)), particleCount: particles)

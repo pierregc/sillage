@@ -13,10 +13,12 @@ public struct NightScene: Sendable, Equatable {
     public var frames: Int
     /// Marked yes by hand: a pick takes it before any scene the score alone puts forward.
     public var chosenByHand = false
+    /// Its galaxies as a batch counts them, which tells a pair from the others; nil when unknown.
+    public var galaxies: Int?
 
     public init(
         name: String?, score: Double?, exploreUnits: Double, hiresUnits: Double, frames: Int,
-        chosenByHand: Bool = false
+        chosenByHand: Bool = false, galaxies: Int? = nil
     ) {
         self.name = name
         self.score = score
@@ -24,6 +26,7 @@ public struct NightScene: Sendable, Equatable {
         self.hiresUnits = hiresUnits
         self.frames = frames
         self.chosenByHand = chosenByHand
+        self.galaxies = galaxies
     }
 }
 
@@ -259,12 +262,40 @@ public struct NightPlanner: Sendable {
         }
     }
 
+    /// The stream of the pick slots' draws, "PAIRSLOT".
+    static let pairStream: UInt64 = 0x5041_4952_534C_4F54
+
+    /// Whether the pick at `slot` goes to a pair: with probability `share`, drawn from the batch
+    /// seed as the worlds are, so a resumed night draws what it drew before.
+    public static func pairSlot(_ slot: Int, seed: UInt64, share: Double) -> Bool {
+        NightRecipe.pickDraw(slot, seed: seed, stream: pairStream) < share
+    }
+
+    /// The `count` scenes a pick takes from `ranked`, in its order. Those marked yes by hand
+    /// come first; then each slot takes the best pair or the best of the others, as its draw
+    /// says, or the best scene left once its kind runs out. The score favours groups (0.70 for
+    /// pairs, 0.81 for fours on 2026-10-30-b): the best alone would undo the batch's share.
+    public func picks(_ ranked: [NightScene], count: Int) -> [NightScene] {
+        guard let share = recipe.pairShare else { return Array(ranked.prefix(count)) }
+        var left = ranked
+        var taken: [NightScene] = []
+        for slot in 0..<min(count, ranked.count) {
+            var index = 0
+            if !left[0].chosenByHand {
+                let pair = Self.pairSlot(slot, seed: seed, share: share)
+                index = left.firstIndex { $0.galaxies.map { ($0 == 2) == pair } ?? false } ?? 0
+            }
+            taken.append(left.remove(at: index))
+        }
+        return Self.ranked(taken)
+    }
+
     /// Auto: between one and four scenes, as many of the best as can be finished from `start`
     /// before the delivery time. At 8 M a hires takes about four hours, so one or two.
     public func autoPicks(_ ranked: [NightScene], from start: Date, deliverBy: Date) -> Int {
         let available = deliverBy.timeIntervalSince(start)
         for count in NightRecipe.pickRange.reversed() where count <= ranked.count {
-            if finishSeconds(picks: Array(ranked.prefix(count))) <= available {
+            if finishSeconds(picks: picks(ranked, count: count)) <= available {
                 return count
             }
         }
@@ -388,7 +419,7 @@ public struct NightPlanner: Sendable {
             } else {
                 count = autoPicks(ranked, from: clock, deliverBy: deliverBy)
             }
-            finishing = Array(ranked.prefix(count))
+            finishing = picks(ranked, count: count)
         } else {
             let typical = typical(perGalaxy: sized.perGalaxy)
             finishing = (0..<min(sized.picks, max(scenes, 0))).map { index in
