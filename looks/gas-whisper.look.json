@@ -7,6 +7,7 @@
     "bloomIntensity": 0.25,
     "brightness": 0.17,
     "dustStrength": 0.12,
+    "dustWeb": 1,
     "galaxyTint": 0.8,
     "glint": 0.3,
     "noiseLevel": 0.001,

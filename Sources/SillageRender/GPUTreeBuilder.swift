@@ -25,6 +25,9 @@ public final class GPUTreeBuilder {
     }
 
     public let count: Int
+    /// The first particle of the buffers the tree is built over: the ones before it are left
+    /// out, and `order` counts from it.
+    public let first: Int
     public let maximumDepth: Int
     public let quadrupole: Bool
     public private(set) var nodeCapacity: Int
@@ -40,7 +43,9 @@ public final class GPUTreeBuilder {
     private let sums: MTLBuffer
     private let counters: MTLBuffer
     private let levels: MTLBuffer
-    private let frame: MTLBuffer
+    /// The origin and scale the codes are taken in, which a point outside the tree needs to
+    /// find its cell.
+    let frame: MTLBuffer
     private var params: Params
     private let device: MTLDevice
     private let tiles: Int
@@ -54,10 +59,11 @@ public final class GPUTreeBuilder {
 
     public init(
         device: MTLDevice, count: Int, leafCapacity: Int = 16, maximumDepth: Int = 20,
-        quadrupole: Bool = false, nodeCapacity: Int? = nil
+        quadrupole: Bool = false, nodeCapacity: Int? = nil, first: Int = 0
     ) throws {
         self.device = device
         self.count = max(count, 1)
+        self.first = max(first, 0)
         self.maximumDepth = min(max(maximumDepth, 1), 21)
         self.quadrupole = quadrupole
         self.nodeCapacity = max(nodeCapacity ?? self.count, 1)
@@ -183,7 +189,7 @@ public final class GPUTreeBuilder {
                 $0.setBuffer(levels, offset: 0, index: 1)
             }
             dispatch(encoder, "gtBounds", groups: 512, width: 256, params: 2) {
-                $0.setBuffer(positions, offset: 0, index: 0)
+                $0.setBuffer(positions, offset: first * 16, index: 0)
                 $0.setBuffer(counters, offset: 0, index: 1)
             }
             dispatch(encoder, "gtRoot", groups: 1, width: 32, params: 4) {
@@ -194,7 +200,7 @@ public final class GPUTreeBuilder {
             }
         case .morton:
             encoder.setComputePipelineState(pipelines["gtMorton"]!)
-            encoder.setBuffer(positions, offset: 0, index: 0)
+            encoder.setBuffer(positions, offset: first * 16, index: 0)
             encoder.setBuffer(codes, offset: 0, index: 1)
             encoder.setBuffer(order, offset: 0, index: 2)
             encoder.setBuffer(frame, offset: 0, index: 3)
@@ -255,8 +261,8 @@ public final class GPUTreeBuilder {
         case .masses:
             encoder.setComputePipelineState(pipelines["gtGather"]!)
             encoder.setBuffer(sorted, offset: 0, index: 0)
-            encoder.setBuffer(positions, offset: 0, index: 1)
-            encoder.setBuffer(mass, offset: 0, index: 2)
+            encoder.setBuffer(positions, offset: first * 16, index: 1)
+            encoder.setBuffer(mass, offset: first * 4, index: 2)
             encoder.setBuffer(order, offset: 0, index: 3)
             var p = params
             encoder.setBytes(&p, length: MemoryLayout<Params>.stride, index: 4)

@@ -39,7 +39,7 @@ struct NightStatusTests {
 
     @Test func everyFixtureSaysWhatItsFilesSay() throws {
         let names = try Self.cases()
-        #expect(names == ["done", "exploring", "failed", "hires", "idle", "resumed"])
+        #expect(names == ["after-end", "done", "exploring", "failed", "hires", "idle", "resumed"])
         for name in names {
             let expected = try #require(Self.text(name, "expected.txt")).split(separator: "\n").map(
                 String.init)
@@ -130,7 +130,7 @@ struct NightStatusTests {
         let events = RunEvent.decodeLines(
             try String(contentsOf: RunStatusFiles.events(batch: batch), encoding: .utf8))
         #expect(events.filter { $0.kind == RunEvent.Kind.skip }.map(\.scene) == ["scene-0044", "scene-0030"])
-        #expect(NightEvents(events).skipped.isEmpty)
+        #expect(NightEvents(events, end: nil).skipped.isEmpty)
         let report = try String(contentsOf: batch.appendingPathComponent("report.md"), encoding: .utf8)
         #expect(report.contains("- Laissées de côté : 0 · erreurs : 0") && !report.contains("would end"))
         func skipped(_ name: String) throws -> Int? {
@@ -175,6 +175,64 @@ struct NightStatusTests {
         #expect(standing([skip]) == ["scene-0001"])
     }
 
+    /// 2026-10-30-b again: a hires of scene-0031 at 08:20 and its whatsapp export at 08:46, run
+    /// by hand after the night ended at 07:51.
+    @Test func workRunInTheFolderAfterTheEndIsNotTheNights() throws {
+        let batch = Self.fixtures.appendingPathComponent("after-end/library/2026-10-30-b")
+        let events = RunEvent.decodeLines(
+            try String(contentsOf: RunStatusFiles.events(batch: batch), encoding: .utf8))
+        #expect(events.filter { $0.kind == RunEvent.Kind.hiresDone }.count == 3)
+        let night = try #require(NightFile.read(from: RunStatusFiles.night(batch: batch)))
+        let report = NightReport.markdown(
+            night, events: events, batch: batch,
+            now: RunStatus.date(Self.text("after-end", "now.txt")!)!, timeZone: Self.paris)
+        #expect(report.contains("- Haute résolution : 2 faites sur 2 prévues"))
+        #expect(report.contains("- Vidéos : 4 (672,8 Mo)") && !report.contains("whatsapp"))
+        let printed = Self.run("after-end", extra: ["--json"]).lines.joined()
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(printed.utf8)) as? [String: Any])
+        let digest = try #require(object["night"] as? [String: Any])
+        #expect(digest["hiresDone"] as? Int == 2 && digest["videos"] as? Int == 4)
+        #expect(
+            (digest["lastVideo"] as? [String: Any])?["path"] as? String
+                == "scene-0030/exports/vertical.mp4")
+    }
+
+    @Test func onlyWhatTheNightsRunsWroteCounts() {
+        typealias Kind = RunEvent.Kind
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        func event(_ kind: String, _ scene: String? = nil, stage: String? = nil) -> RunEvent {
+            clock += 60
+            var event = RunEvent(kind, scene: scene, at: clock)
+            event.stage = stage
+            return event
+        }
+        func own(_ events: [RunEvent], end: Date? = nil) -> [RunEvent] {
+            NightEvents.own(events, end: end)
+        }
+        let start = event(Kind.nightStart)
+        let skip = event(Kind.skip, "scene-0003", stage: "hires")
+        let hires = event(Kind.hiresDone, "scene-0001")
+        let done = event(Kind.nightDone)
+        let byHand = event(Kind.hiresDone, "scene-0003")
+        let failed = event(Kind.error, "scene-0002", stage: "hires")
+        let why = event(Kind.error, stage: "night")
+        let again = event(Kind.nightStart)
+        let video = event(Kind.exportDone, "scene-0001")
+        // Run by hand, then failed in the queue, once the night is over. The queue's word on the
+        // night itself is the night's.
+        #expect(own([start, hires, done, byHand, failed, why]) == [start, hires, done, why])
+        // Between two runs.
+        #expect(own([start, done, byHand, again, video]) == [start, done, again, video])
+        // A run killed before its night.done ends at the night's end.
+        #expect(own([start, hires, byHand, why], end: hires.t) == [start, hires, why])
+        // Lines before any night.start, as a night that wrote none.
+        #expect(own([hires, byHand]) == [hires, byHand])
+        // What the night left out stays left out when it is done by hand after the end.
+        #expect(NightEvents([start, skip, done, byHand], end: nil).skipped == [skip])
+        #expect(NightEvents([start, skip, byHand, done], end: nil).skipped.isEmpty)
+    }
+
     @Test func theNightStatusPageNamesWhatTheCodeWrites() throws {
         let page = try String(
             contentsOf: Self.fixtures.deletingLastPathComponent().deletingLastPathComponent()
@@ -189,7 +247,7 @@ struct NightStatusTests {
         for kind in kinds { #expect(page.contains("`\(kind)`"), "\(kind)") }
         #expect(page.contains("\(Int(QueueStatus.stuckAfter / 60)) minutes or more"))
         #expect(page.contains("sillage-render status"))
-        for name in ["idle", "exploring", "mid hires", "failed", "done", "resumed"] {
+        for name in ["idle", "exploring", "mid hires", "failed", "done", "resumed", "after the end"] {
             #expect(page.contains("| \(name) |"), "\(name)")
         }
         #expect(page.contains(try #require(Self.text("hires", "expected.txt")).split(separator: "\n")[0]))

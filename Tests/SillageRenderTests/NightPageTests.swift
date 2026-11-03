@@ -100,6 +100,19 @@ struct NightPageTests {
         #expect(!page.scenes.contains { $0.stage == "Laissée de côté" })
     }
 
+    @Test func workRunAfterTheEndStaysOffTheNightsPage() throws {
+        let page = try #require(Self.read("after-end", selected: "2026-10-30-b").page)
+        #expect(
+            page.phases.map(\.time) == [
+                "fini 30 oct. 23 h 25", "fini 30 oct. 23 h 25", "fini 7 h 47", "fini 7 h 47",
+                "fini 7 h 51",
+            ])
+        // Its hires and its video by hand are on the scene's page.
+        for name in ["scene-0031", "scene-0019"] {
+            #expect(page.scenes.first { $0.name == name }?.stage == "Aperçu", "\(name)")
+        }
+    }
+
     @Test func aNightWhoseRunnerIsGoneIsInterruptedNotRunning() throws {
         // The file says running, nothing computes.
         let library = Self.fixtures.appendingPathComponent("hires/library")

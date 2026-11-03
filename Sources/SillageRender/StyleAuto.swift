@@ -14,10 +14,10 @@ public enum StyleAuto {
     /// Share of the total the palette's own score holds: harmony does not show on a frame.
     static let paletteWeight: Float = 0.2
 
-    /// The most dust a generated style draws with, whatever its rendering's: none while dust
-    /// reads as coarse blobs (#174). The dust web (#173) sets it back to nil, each rendering's
-    /// own.
-    public static let dustCap: Float? = 0
+    /// The most dust a generated style draws with, whatever its rendering's; nil draws each
+    /// rendering's own. It held the dust back while it read as coarse blobs (#174), and nil
+    /// since the dust is drawn as a web (#197); 0 would hold it back again.
+    public static let dustCap: Float? = nil
 
     /// `rendering` as a generated style draws it, its dust held to `dustCap`.
     public static func generated(_ rendering: LookFile) -> LookFile {
@@ -37,8 +37,8 @@ public enum StyleAuto {
     }
 
     /// `base` with `rendering`'s settings and `palette`: the camera and the field of view stay
-    /// the scene's, so the framing does not change with the style. The dust is held back
-    /// before the pair is scored, so the frames judged are the ones the style ships.
+    /// the scene's, so the framing does not change with the style. The dust is held to
+    /// `dustCap` before the pair is scored, so the frames judged are the ones the style ships.
     public static func apply(
         _ rendering: LookFile, palette: Palette, to base: LookFile,
         references: [TelescopeReference] = TelescopeReference.repository
