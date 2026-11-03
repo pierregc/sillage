@@ -426,6 +426,31 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
+    /// A run of particles on a stored frame, decoded without touching the rest of it. Only the
+    /// copy out of the take holds the lock, so several frames decode at once.
+    func positions(at index: Int, in range: Range<Int>) -> [SIMD3<Float>] {
+        let copied: (box: Frame, cells: [UInt16])? = locked {
+            guard !storedFrames.isEmpty, range.lowerBound >= 0, range.upperBound <= particleCount
+            else { return nil }
+            let frame = min(max(index, 0), storedFrames.count - 1)
+            let cells = withFrameStorage(frame) { Array($0[(range.lowerBound * 3)..<(range.upperBound * 3)]) }
+            return cells.map { (storedFrames[frame], $0) }
+        }
+        guard let copied else { return [] }
+        let scale = copied.box.extent / 65535
+        return (0..<range.count).map { slot in
+            copied.box.origin
+                + SIMD3<Float>(
+                    Float(copied.cells[slot * 3]), Float(copied.cells[slot * 3 + 1]),
+                    Float(copied.cells[slot * 3 + 2])) * scale
+        }
+    }
+
+    /// The disks of every stored frame, replaced: a take's layers are measured after it is read.
+    func setDisks(_ disks: [DiskState]) {
+        locked { storedDisks = disks }
+    }
+
     /// A moment between stored frames, and how the four around it are weighed into it.
     ///
     /// A cubic Hermite through the two either side, its tangents taken from the frames
@@ -573,7 +598,8 @@ public final class Recording: @unchecked Sendable {
             let axis = simd_mix(a.axis, b.axis, SIMD3(repeating: blend.fraction))
             return DiskState(
                 axis: simd_length(axis) > 0 ? simd_normalize(axis) : a.axis,
-                disruption: a.disruption + (b.disruption - a.disruption) * blend.fraction)
+                disruption: a.disruption + (b.disruption - a.disruption) * blend.fraction,
+                torn: a.torn + (b.torn - a.torn) * blend.fraction)
         }
     }
 

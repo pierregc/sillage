@@ -145,7 +145,7 @@ struct RecordingFileTests {
 
     /// A take `hires` wrote before #186 holds no disk state, but the same run wrote each disk's
     /// disruption beside it in `curves-hires.csv`: read from there, the take tears its disks
-    /// where the curves say, and the painted arms fade with them (#198).
+    /// where the curves say (#198). The painted arms read the take's own layers instead (#210).
     @Test func aTakeWithoutDiskStatesReadsTheirDisruptionFromItsCurves() throws {
         let (folder, scene) = try hiresTake()
         defer { try? FileManager.default.removeItem(at: folder.batch) }
@@ -171,12 +171,73 @@ struct RecordingFileTests {
                 strength: 1, disks: recording.disks(at: blend)
             ).map(\.axisV.w)
         }
-        #expect(arms[0] == scene.galaxies.map(\.armStrength))
-        #expect(arms[3][0] < arms[0][0] && arms[8][0] == 0 && arms[10][0] == 0)
-        #expect(zip(arms, arms.dropFirst()).allSatisfy { $1[0] <= $0[0] })
-        #expect(arms.allSatisfy { $0[1] == scene.galaxies[1].armStrength })
+        // These disks never leave their layer, so their arms stay whatever the curves say.
+        #expect(arms.allSatisfy { $0 == scene.galaxies.map(\.armStrength) })
         // And the director's plan, which films the least torn disk at the end.
         #expect(ShotPlan.Track(take: loaded).disruption.last == [1, 0])
+    }
+
+    /// The painted arms fade as a disk's material leaves its layer, measured on the take's own
+    /// positions, and stay on a disk that is only bent (#210).
+    @Test func aTakeFadesTheArmsOfADiskThatLeavesItsLayer() throws {
+        let scene = SceneConfig.merger(particleCount: 6_000)
+        let galaxies = scene.galaxies
+        var system = ParticleSystem()
+        for index in 0..<6_000 {
+            system.append(
+                position: .zero, velocity: .zero, galaxy: UInt32(index / 3_000), radius: 1,
+                population: 0.5, luminosity: 1, component: .star)
+        }
+        var generator = SeededGenerator(seed: 210)
+        let local = (0..<3_000).map { _ -> SIMD3<Float> in
+            let radius = min(-4 * log(max(generator.uniform() * generator.uniform(), 1e-6)), 19)
+            let angle = 2 * Float.pi * generator.uniform()
+            return SIMD3(radius * cos(angle), radius * sin(angle), 0.2 * generator.normal())
+        }
+        let directions = (0..<3_000).map { _ -> SIMD3<Float> in
+            let z = 2 * generator.uniform() - 1
+            let angle = 2 * Float.pi * generator.uniform()
+            return SIMD3((1 - z * z).squareRoot() * cos(angle), (1 - z * z).squareRoot() * sin(angle), z)
+        }
+        // The first disk is stirred into a spheroid from frame 5 to 7, the second only bent.
+        let recording = Recording(particleCount: 6_000, galaxyCount: 2)
+        for frame in 0..<9 {
+            let stirred = Int(Float(3_000) * min(max(Float(frame - 4) / 3, 0), 1))
+            let bend = min(Float(frame) / 8, 1)
+            let first = local.indices.map { index in
+                index < stirred ? simd_length(local[index]) * directions[index] : local[index]
+            }
+            let second = local.map { point -> SIMD3<Float> in
+                let radius = (point.x * point.x + point.y * point.y).squareRoot()
+                return point + SIMD3(0, 0, bend * max(radius - 8, 0) * 0.35 * sin(atan2(point.y, point.x)))
+            }
+            let positions =
+                first.map { galaxies[0].position + galaxies[0].orientation * $0 }
+                + second.map { galaxies[1].position + galaxies[1].orientation * $0 }
+            positions.withUnsafeBufferPointer {
+                recording.append(
+                    positions: $0.baseAddress!, time: Float(frame), centers: galaxies.map(\.position),
+                    disks: DiskState.natal(scene))
+            }
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("layers-\(UUID().uuidString).\(RecordingFile.fileExtension)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try RecordingFile.write(recording, scene: scene, particles: system, to: url)
+
+        let back = try RecordingFile.read(from: url).recording
+        let torn = (0..<9).map { back.disks(at: $0).map(\.torn) }
+        #expect(torn[0...4].allSatisfy { $0 == [0, 0] })
+        #expect(torn[6][0] == 1 && torn[8][0] == 1)
+        #expect(torn.allSatisfy { $0[1] == 0 })
+        let arms = (0..<9).map { frame in
+            DiskFrame.make(
+                scene: scene, centers: galaxies.map(\.position), time: 0, strength: 1,
+                disks: back.disks(at: frame)
+            ).map(\.axisV.w)
+        }
+        #expect(arms[0] == galaxies.map(\.armStrength))
+        #expect(arms[8] == [0, galaxies[1].armStrength])
     }
 
     /// A take written since #186 reads its own disk states, whatever curves sit beside it.

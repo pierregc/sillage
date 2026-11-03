@@ -302,6 +302,10 @@ public enum RecordingFile {
             particleCount: count, galaxyCount: galaxies, frames: frames, centers: centers,
             disks: disks, interval: header.interval ?? 1, capturedCount: header.capturedFrames,
             mapped: positions)
+        recording.setDisks(
+            Self.layered(
+                recording, scene: header.scene, galaxy: particles.galaxyIndex,
+                component: particles.component, disks: disks))
         // The renderer wants somewhere to start; the first frame is as good as it gets and
         // costs one decode.
         particles.positions = recording.positions(at: 0)
@@ -360,6 +364,96 @@ public enum RecordingFile {
             }
         }
         return disks
+    }
+
+    /// Disk material read per galaxy on each stored frame, the first so many of its own.
+    static let layerSample = 10_000
+    /// Heights kept per reading, in bins of a spread: as fine as any cut needs, since a cut is
+    /// never above `DiskState.layerSpreads` spreads.
+    static let heightBins = 400
+
+    /// `disks` with each rotating disk's layer read off the take's own positions, frame by frame:
+    /// what the painted arms fade with, which no take stores (#210). The layer needs no
+    /// velocities, which a take does not hold.
+    static func layered(
+        _ recording: Recording, scene: SceneConfig, galaxy: [UInt32], component: [UInt32],
+        disks: [DiskState]
+    ) -> [DiskState] {
+        let galaxies = recording.galaxyCount
+        let frames = recording.count
+        guard disks.count == frames * galaxies, scene.galaxies.count == galaxies else { return disks }
+        var states = disks
+        var picked = [[Int]](repeating: [], count: galaxies)
+        for index in 0..<min(galaxy.count, component.count, recording.particleCount)
+        where component[index] < ParticleComponent.halo.rawValue {
+            let owner = Int(galaxy[index])
+            if owner < galaxies, picked[owner].count < layerSample { picked[owner].append(index) }
+        }
+        let rotating = scene.galaxies.indices.filter {
+            $0 < galaxies && scene.galaxies[$0].kind.isRotating && !picked[$0].isEmpty
+        }
+        guard !rotating.isEmpty else { return states }
+
+        // Each frame on its own first, in parallel; the running state needs them in order.
+        let axes = states.map(\.axis)
+        let sampled = picked
+        let bins = heightBins
+        let widest = DiskState.layerSpreads
+        let jobs = frames * rotating.count
+        var spreads = [Float](repeating: 0, count: jobs)
+        var counts = [Int32](repeating: 0, count: jobs * bins)
+        spreads.withUnsafeMutableBufferPointer { spread in
+            counts.withUnsafeMutableBufferPointer { count in
+                // Each job writes its own slots only.
+                nonisolated(unsafe) let spreadBase = spread.baseAddress!
+                nonisolated(unsafe) let countBase = count.baseAddress!
+                DispatchQueue.concurrentPerform(iterations: jobs) { job in
+                    let frame = job / rotating.count
+                    let index = rotating[job % rotating.count]
+                    let config = scene.galaxies[index]
+                    let sample = sampled[index]
+                    let first = sample[0]
+                    let positions = recording.positions(at: frame, in: first..<(sample[sample.count - 1] + 1))
+                    let centres = recording.centers(at: frame)
+                    guard !positions.isEmpty, index < centres.count else { return }
+                    let offsets = sample.map { positions[$0 - first] - centres[index] }
+                    var layer = DiskLayer(
+                        axis: axes[frame * galaxies + index],
+                        scaleLength: config.diskScaleLength,
+                        edge: config.diskScaleLength * config.diskTruncation)
+                    for offset in offsets { layer.add(offset) }
+                    let fit = layer.fitted()
+                    guard fit.spread > 0 else { return }
+                    spreadBase[job] = fit.spread
+                    for offset in offsets {
+                        guard let height = fit.height(of: offset) else { continue }
+                        let bin = Int(abs(height) / fit.spread / widest * Float(bins))
+                        if bin < bins { countBase[job * bins + bin] += 1 }
+                    }
+                }
+            }
+        }
+        for (slot, index) in rotating.enumerated() {
+            var reading = DiskState.natal(scene.galaxies[index])
+            let material = Float(picked[index].count)
+            for frame in 0..<frames {
+                let job = frame * rotating.count + slot
+                let spread = spreads[job]
+                guard spread > 0 else {
+                    states[frame * galaxies + index].torn = reading.torn
+                    continue
+                }
+                // The cut in bins, the last one counted in part.
+                let reach = reading.layerHeight(spread: spread) / spread / widest * Float(bins)
+                let whole = min(Int(reach), bins)
+                var held: Float = 0
+                for bin in 0..<whole { held += Float(counts[job * bins + bin]) }
+                if whole < bins { held += Float(counts[job * bins + whole]) * (reach - Float(whole)) }
+                reading.foldLayer(spread: spread, held: held / material)
+                states[frame * galaxies + index].torn = reading.torn
+            }
+        }
+        return states
     }
 
     private static func bytes<T>(of values: [T]) -> Data {
