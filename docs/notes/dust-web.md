@@ -7,7 +7,8 @@ still follow the material where an encounter tears a disk, at a frame cost worth
 Three candidates were built and compared: a web of filaments carried by the rotation curve and
 renewed before it shears (1), finer particle dust (2), and the web where the disk is intact with
 particle dust where it is torn (3). Answer: (3), merged behind the look field `dustWeb`, off by
-default. The sheets and 1:1 crops are on the branch `assets/173-dust-web`.
+default; the look holds, but as built it costs far too much to ship, and #200 is how to make it
+cheap. The sheets and 1:1 crops are on the branch `assets/173-dust-web`.
 
 ## What the dust is made of now, and why it reads as blobs
 
@@ -43,6 +44,7 @@ time and cross-faded with a fresh one (Max and Becker 1995, Neyret 2003).
 - **Hand-made looks**: `hubble` (dust 0.45), `webb` (0.08) and `ember-dust` (0.35), drawn at
   4K. #174 keeps dust out of the generated styles meanwhile.
 
+`scripts/dust-web-spike.sh` runs the disk and draws it today and with the web,
 `scripts/dust-web-sheet.py` lays the stills out, `scripts/dust-web-metrics.py` splits a still's
 dust structure by scale against the same still drawn with no dust.
 
@@ -77,8 +79,9 @@ disk, where the shear is strongest, and a fifth made the web boil.
 **Per fragment, thinner than a grain.** Each grain's splat reads the lace at the point where the
 ray through each of its pixels meets the disk's mid-plane, which is the same point whichever
 grain the pixel belongs to, so overlapping grains draw one web and an inclined disk shows it
-foreshortened. Past 75 degrees the stretch is capped. Where a wall would be under two
-accumulation pixels the lace fades to its mean rather than shimmer. Sparse grains would show the
+foreshortened. Past 75 degrees the stretch is capped. As a wall (a tenth of a cell) shrinks from
+two accumulation pixels to half of one, the lace fades to its mean rather than shimmer, so a
+galaxy small in the frame gets smooth dust rather than aliased threads. Sparse grains would show the
 web only inside their own blots, so a grain under the web is drawn twice as wide (its column
 kept): the grains merge into one layer and the lace, not the grains, says where the dust is thin.
 
@@ -106,11 +109,12 @@ changes (`enc8.jpg`).
 
 Candidate 1 as built is already this: the web is weighted by intactness and the envelopes, and
 where they fall to zero the grains are back to their own width and their painted lane, which is
-today's dust. In scene-0031 the solver starts flagging the two disks disrupted at 258 and 280 Myr
-and reads them fully torn at 284 and 290 Myr, before the pericentre at 304 Myr, so the web fades
-out over 26 and 10 Myr, with the painted arms. Drawn on the torn disks anyway (candidate 1 strictly, a spike-only switch),
-at the pericentre the web lays a clean swirl over the collision, a rotation the torn material no
-longer has; by 400 Myr the envelopes alone drop most of the torn dust and it changes little.
+today's dust. In scene-0031 the solver starts flagging the two disks disrupted at 258 and 280
+Myr and reads them fully torn at 284 and 290 Myr, before the pericentre at 304 Myr, so the web
+fades out over 26 and 10 Myr, with the painted arms. Drawn on the torn disks anyway (candidate 1
+strictly, a spike-only switch), at the pericentre the web lays a clean swirl over the collision,
+a rotation the torn material no longer has; by 400 Myr the envelopes alone drop most of the torn
+dust and it changes little.
 
 **Takes written by `hires` carried no disk state.** The command line handed the take its
 positions and centres but not the solver's `diskFrames`, so every take of the library reads as
@@ -137,21 +141,42 @@ spike read the disruption back from `curves-hires.csv`, which the same run wrote
 - **Télescope renderings** (`disk-looks.jpg`): Hubble shows the web best, its dust being the
   strongest; Webb's dust (0.08) is faint either way, and the glowing dust of Webb's own pictures
   is still not drawn (dust here only absorbs). `ember-dust` takes it as Hubble does.
-- **Over a rotation** (`disk-rotation.jpg`, the camera turning at the material's rate at two
-  scale lengths, 8 frames 16 Myr apart): today's dust holds where the paint holds it and its
-  grains shear into arcs between; the web keeps the same character through the turn, gathered in
-  the arms, its filaments fading and coming back every 27 Myr, never stretched past a quarter turn
-  of shear.
+- **Over a rotation** (`disk-rotation.jpg` and its 1:1 crops `disk-rotation-crops.jpg`, the
+  camera turning at the material's rate at two scale lengths, 8 frames 16 Myr apart): today the
+  dust is smooth orange arcs along the arms, where the paint lays it; the web keeps one character
+  through the turn, dark filaments and tendrils gathered on the same arcs, fading and coming back
+  every 27 Myr, never stretched past a quarter turn of shear.
 - **The cross-fade does not show**: over 80 consecutive frames (83 Myr, three renewals), face-on
   with no film noise, the frame-to-frame change is 13.3 levels with the web against 13.1 today
   (the particles' own motion), and its largest step from one frame to the next 0.12 either way.
 - **The encounter** (`enc.jpg`, `enc-crops.jpg`): before the passage the approaching disks show
-  the web where today shows orange speckle; from 285 Myr the hybrid draws exactly today's dust,
-  and the web on the torn disks a swirl that does not belong there.
+  the web where today shows orange speckle; once both disks read as torn, from 290 Myr, the
+  hybrid draws exactly today's dust, and the web left on draws a swirl that does not belong there.
 
 ## What it costs
 
-TODO
+Measured alone on the GPU (the lock taken, no other job running, each run redone had one
+started), `Sillage.app --replay` over the whole take at 2560 x 1440 at supersample 2, the size
+of the canvas: the renderer's GPU time per frame, median and 99th percentile, in milliseconds.
+The last column reads the lace without widening the grains (`dustWeb` 0.001: the lace is
+evaluated in full, the grains keep their width).
+
+| | today | web | lace only |
+| --- | --- | --- | --- |
+| scene-0031 at 2 M, its own Webb look and director shots | 12.8 (20.7) | 19.7 (104) | |
+| scene-0031, Hubble, both galaxies in frame | 22.4 (32.0) | 77.4 (89.7) | 43.4 (49.6) |
+| the calm disk, Hubble, face-on, filling the frame | 23.4 (25.7) | 179.6 (192.6) | 69.2 (72.3) |
+
+The first pair, run twice, came out within 0.1 ms. As built the web is far too dear for anything
+but stills, exports and judging: the lace is about ninety hashes evaluated twice per fragment,
+and the dust is dozens of grains deep on a pixel, so a face-on disk pays it dozens of times per
+pixel; widening the grains so they merge then multiplies those fragments by four. In the nights'
+director shots, where the galaxies are small, it is +7 ms at the median, and the 99th percentile
+goes from 21 to 104 ms, on the shots that come close. Neither half is the look's: the lace is
+static in each copy's own frame, so it can be baked once into a tileable, mipmapped texture and
+read in two filtered samples, and it only needs paying once per pixel, not once per overlapping
+grain. That is #200, and the web goes into no style before it (#197). With `dustWeb` at 0
+nothing of this runs.
 
 ## Recommendation
 
@@ -160,8 +185,9 @@ editor's and the panel's "Toile des poussières", `sillage-render --dust-web`). 
 that draws dust as a web, it holds its structure over a turn because nothing it draws lives
 longer than a quarter of one, and it gives the torn material back to the particles, which follow
 the tear. Finer grains alone make sand; more grains (8 M, now the night's hires) make finer
-grains, not a web. Whether the look is right is Pierre's call on the sheets, or in the editor on
-any take.
+grains, not a web. Its cost as built rules it out of the styles until #200; the look is Pierre's
+call on the sheets, or in the editor on any take, where the canvas slows to a few frames a second
+on a close disk with the slider up.
 
 What it does not do: the web is not the material, so it does not tear with an encounter; it
 fades out instead, as the painted arms do, and torn dust stays as coarse as the grains. And the
@@ -169,6 +195,7 @@ brighter inner disk is a real effect of clumpy dust (the same column lets more l
 in filaments than spread evenly), which a style that turns the web on may want to take back with
 its brightness or white point.
 
-Follow-ups, under #168: #197 turns the web on in the shipped and the generated styles, which is
-also where `StyleAuto.dustCap` goes back to nil (the #174 stopgap); #198 gives the takes already
-in the library their disk state back, without which the web stays on through their encounters.
+Follow-ups, under #168: #200 makes the web cheap enough to ship (the lace baked, paid once per
+pixel); #197 then turns it on in the shipped and the generated styles, which is also where
+`StyleAuto.dustCap` goes back to nil (the #174 stopgap); #198 gives the takes already in the
+library their disk state back, without which the web stays on through their encounters.
