@@ -289,8 +289,9 @@ faint paint of three to five arms, the cooling.
 ## The small spirals (#181)
 
 The six smaller spirals of that batch (mass under 50, scale length under 4.2 kpc: the first
-spiral of scenes 0, 1, 2, 9, 10 and 12, written `free-0` and so on) through the probe again,
-each alone for 1 Gyr at 200 000 a scene as the #179 acceptance ran them. The figure is `armsL`
+spiral of scenes 0, 1, 2, 9, 10 and 12, written `free-0` and so on, from the scene files the
+#179 acceptance drew; the batch draws other scenes since #176) through the probe again, each
+alone for 1 Gyr at 200 000 a scene as that acceptance ran them. The figure is `armsL`
 of `probe-report.py table`: over the last 500 Myr, the mean of each frame's largest of a2 to a6
 in the middle zone, whatever the arm count, the figure the 0.11 to 0.18 against 0.19 to 0.33
 above was. Its own noise over one run is 0.007 to 0.02, the late frames being correlated over
