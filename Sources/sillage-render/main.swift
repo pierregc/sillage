@@ -27,15 +27,11 @@ func hiresBatch(_ batch: URL, options: [String]) -> Int32 {
     guard !scenes.isEmpty else {
         fail("hires: \(batch.path) is neither a scene folder nor a batch with scenes marked yes")
     }
-    let (asked, _) = SceneFolder.Clip().updated(with: options)
-    let particles =
-        options.contains("--particles") ? asked.particles : SceneFolder.maximumParticles()
-    let massive = SceneFolder.massive(in: options)
-    let frames = options.contains("--frames") ? asked.frames : nil
+    let maximum = SceneFolder.maximumParticles()
     var failed = 0
     for (index, scene) in scenes.enumerated() {
         let name = scene.url.lastPathComponent
-        if scene.storedHires()?.covers(particles: particles, massive: massive, frames: frames) == true {
+        if scene.hiresDone(options, maximumParticles: maximum) {
             print("hires      \(index + 1)/\(scenes.count) \(name): done already")
             continue
         }

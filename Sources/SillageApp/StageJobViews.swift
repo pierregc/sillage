@@ -79,7 +79,8 @@ struct HiresForm: View {
                 .fixedSize()
                 .help(
                     "Comme une nuit : au-delà de 2 M, seules 2 M de particules portent la masse, les autres "
-                        + "sont des traceurs légers. Toutes massives : en ligne de commande, sans --massive.")
+                        + "sont des traceurs légers. Toutes massives : en ligne de commande, --particles sans "
+                        + "--massive.")
             }
             Text(quotes == nil ? "Estimation de la durée…" : forecast.summary)
                 .font(.caption.monospacedDigit())

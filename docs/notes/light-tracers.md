@@ -240,4 +240,13 @@ its tracers. Auto stops at a night's 8 M, the most that ends before seven otherw
 asked from the app is one a night finds done (same count drawn, as many massive); at the
 machine's maximum it queued a real 10 M of about eight hours. The menu offers 8 M besides 1, 2,
 5 and 10 M. A real count, every particle massive, is left to the command line (`hires` or
-`queue add hires` without `--massive`).
+`queue add hires` with `--particles` and without `--massive`).
+
+## On the command line (#243)
+
+`hires` and `queue add hires` without `--particles` drew a real count at the machine's maximum,
+10 M, so `hires <batch>`, which the night manager's guide gives for every yes scene, queued runs
+of several hours each. They now draw what a night draws, its 8 M (the maximum below that) from
+2 M massive, `--massive` aside, through one rule (`SceneFolder.hiresDraw`) that the batch's skip
+(`hiresDone`), a queued job's price and its title read too. A scene a night finished, or one
+done at a real 8 M, is skipped. `--particles N` alone stays a real N.
