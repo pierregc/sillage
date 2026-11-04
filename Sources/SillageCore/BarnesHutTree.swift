@@ -18,9 +18,9 @@ import simd
 public struct BHNode: Sendable {
     /// Centre of mass in xyz, total mass in w.
     public var comMass: SIMD4<Float>
-    /// Width squared, then the range start and the signed count as bit patterns, then unused.
-    /// A positive count means that many children; a negative one means a leaf holding that
-    /// many particles.
+    /// Width squared, then the range start and the signed count as bit patterns, then the
+    /// cell's own digit as a bit pattern (`digit`). A positive count means that many children;
+    /// a negative one means a leaf holding that many particles.
     public var packed: SIMD4<Float>
 
     public init() {
@@ -38,6 +38,14 @@ public struct BHNode: Sendable {
     public var signedCount: Int32 {
         get { Int32(bitPattern: packed.z.bitPattern) }
         set { packed.z = Float(bitPattern: UInt32(bitPattern: newValue)) }
+    }
+
+    /// The cell's own octant in the low three bits and, above them, the shift that reads that
+    /// digit out of a Morton code: a particle is in the cell when it is in the parent and its
+    /// code has that digit there (#221). The root's shift of 63 reads zero from every code.
+    public var digit: UInt32 {
+        get { packed.w.bitPattern }
+        set { packed.w = Float(bitPattern: newValue) }
     }
 
     public var isLeaf: Bool { signedCount <= 0 }
@@ -332,12 +340,15 @@ public final class BarnesHutTree {
         var rootChildren: Int32 = 0
     }
 
-    private static func makeNode(half: Float, start: Int, count: Int) -> BHNode {
+    private static func makeNode(half: Float, start: Int, count: Int, depth: Int, octant: Int)
+        -> BHNode
+    {
         var node = BHNode()
         let width = half * 2
         node.packed.x = width * width
         node.range = Int32(start)
         node.signedCount = Int32(clamping: -count)
+        node.digit = UInt32(63 - 3 * depth) << 3 | UInt32(octant)
         return node
     }
 
@@ -402,7 +413,10 @@ public final class BarnesHutTree {
                     let start = offsets[octant]
                     let size = offsets[octant + 1] - start
                     if size <= 0 { continue }
-                    out.append(makeNode(half: childHalf, start: start, count: size))
+                    out.append(
+                        makeNode(
+                            half: childHalf, start: start, count: size, depth: work.depth + 1,
+                            octant: octant))
                     stack.append(
                         Work(
                             start: start, count: size, depth: work.depth + 1, half: childHalf,
@@ -434,7 +448,7 @@ public final class BarnesHutTree {
             subtreeParticles ?? max(count / (ProcessInfo.processInfo.activeProcessorCount * 8), 4096)
         top.removeAll(keepingCapacity: true)
         subtrees.removeAll(keepingCapacity: true)
-        top.append(Self.makeNode(half: half, start: 0, count: count))
+        top.append(Self.makeNode(half: half, start: 0, count: count, depth: 0, octant: 0))
         sortedCodes.withUnsafeBufferPointer { keys in
             _ = Self.split(
                 Work(start: 0, count: count, depth: 0, half: half, node: 0), keys: keys,

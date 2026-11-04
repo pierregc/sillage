@@ -461,10 +461,19 @@ enum BarnesHutShaders {
         // A light tracer (#187) walks the tree without being in it: it reads its position from
         // its own buffer in the order its own sort left, and no leaf ever holds it.
         constant bool bhTracer [[function_constant(1)]];
+        // Off only to measure the walk that took a branch around the particle whole (#221).
+        constant bool bhOpensHoldingCells [[function_constant(3)]];
 
         // One traversal per particle. A cell is accepted whole when its width subtends less than
         // the opening angle, and opened otherwise; leaves fall back to direct summation. The
         // stack cannot exceed seven entries per level of the tree.
+        //
+        // A cell that holds the particle is always opened. Inside a cube the centre of mass can
+        // be up to 1.7 widths away, past the 1.11 the angle asks at 0.9, and a particle in the
+        // far corner of a lopsided cell took it as one point: a dwarf took the whole root, its
+        // own stars with it, and lost its own gravity (#221). A cell holds the particle when its
+        // parent does and the particle's Morton code has the cell's digit at the cell's level;
+        // the stack carries the first half down with each range of siblings.
         kernel void bhAcceleration(device const float4 *sorted [[buffer(0)]],
                                    device float3 *accelerations [[buffer(1)]],
                                    device const BHNode *nodes [[buffer(2)]],
@@ -475,6 +484,8 @@ enum BarnesHutShaders {
                                    device const float4 *moments [[buffer(7)]],
                                    device const float3 *tracers [[buffer(8)]],
                                    device const uint *tracerOrder [[buffer(9)]],
+                                   device const ulong *codes [[buffer(10)]],
+                                   device const float *frame [[buffer(11)]],
                                    uint gid [[thread_position_in_grid]]) {
             // Dispatched in pieces, so the display has somewhere to get in. One kernel over
             // seven million particles keeps the GPU to itself for the best part of a second
@@ -486,6 +497,20 @@ enum BarnesHutShaders {
             // leaves every lane on a different branch and the divergence dominates the cost.
             uint i = bhTracer ? tracerOrder[slot] : order[slot];
             float3 position = bhTracer ? tracers[i] : sorted[slot].xyz;
+            // The code the tree sorted this particle by. A tracer is placed by the same rule, and
+            // outside the root it is in no cell at all.
+            ulong code = 0ul;
+            bool inRoot = true;
+            if (bhOpensHoldingCells && bhTracer) {
+                const float resolution = 2097151.0;
+                float3 local = (position - float3(frame[0], frame[1], frame[2])) * frame[3];
+                inRoot = all(local >= 0.0) && all(local <= resolution);
+                local = clamp(local, 0.0, resolution);
+                code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
+                     | bhSpread(uint(local.z));
+            } else if (bhOpensHoldingCells) {
+                code = codes[slot];
+            }
             float3 total = float3(0.0);
             // What this lane actually does. Divergence inside a SIMD group is the whole
             // question for a cooperative traversal, and it cannot be reasoned about: the
@@ -498,16 +523,18 @@ enum BarnesHutShaders {
             // The old form could hold seven entries per level, so sixty-four slots were
             // already not enough at ten levels — and running out meant silently dropping
             // whole cells, and their mass, out of the sum. An entry packs the next node of
-            // the range in the high bits and how many siblings follow it in the low three.
+            // the range in the high bits, which leaves room for 2^27 nodes, then whether their
+            // parent holds the particle, then how many siblings follow it in the low three.
             int stack[32];
             int top = 0;
-            stack[top++] = 0;
+            stack[top++] = inRoot ? 8 : 0;
 
             while (top > 0) {
                 int entry = stack[--top];
-                int index = entry >> 3;
+                int index = entry >> 4;
+                int around = entry & 8;
                 int following = entry & 7;
-                if (following > 0) { stack[top++] = ((index + 1) << 3) | (following - 1); }
+                if (following > 0) { stack[top++] = ((index + 1) << 4) | around | (following - 1); }
                 BHNode node = nodes[index];
                 if (node.comMass.w <= 0.0) { continue; }
                 work += 1;
@@ -517,10 +544,13 @@ enum BarnesHutShaders {
                 bool leaf = bhSignedCount(node) <= 0;
                 int start = bhRange(node);
                 int span = -bhSignedCount(node);
-                // Whether this leaf is the one holding the particle. Leaves address a
-                // contiguous run of the Morton order and slot is this particle's place in
-                // it, so the test is exact: a node may never stand in for itself.
-                bool holdsMe = !bhTracer && leaf && slot >= uint(start) && slot < uint(start + span);
+                // Whether this node holds the particle. For a leaf of massive particles it is
+                // the leaf whose run of the Morton order holds this slot, so a node may never
+                // stand in for itself.
+                uint digit = as_type<uint>(node.packed.w);
+                bool holdsMe = bhOpensHoldingCells
+                    ? around != 0 && uint((code >> (digit >> 3)) & 7ul) == (digit & 7u)
+                    : !bhTracer && leaf && slot >= uint(start) && slot < uint(start + span);
 
                 if (!holdsMe && node.packed.x <= p.openingAngleSquared * distanceSquared) {
                     // Far enough that the centre of mass stands in — for a leaf as much as
@@ -556,7 +586,9 @@ enum BarnesHutShaders {
                 } else {
                     int first = bhRange(node);
                     int children = bhSignedCount(node);
-                    if (children > 0) { stack[top++] = (first << 3) | (children - 1); }
+                    if (children > 0) {
+                        stack[top++] = (first << 4) | (holdsMe ? 8 : 0) | (children - 1);
+                    }
                 }
             }
 

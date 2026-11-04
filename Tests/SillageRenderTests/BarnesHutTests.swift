@@ -282,6 +282,94 @@ struct BarnesHutTests {
         #expect(current.squareRoot() < 0.8 * monopole.squareRoot())
     }
 
+    /// A light cluster far out on a diagonal from a heavy one sits in the corner of the root
+    /// opposite the mass, farther from the root's centre of mass than the angle asks, and its
+    /// particles took the whole root as one point: none of their own cluster's pull (#221).
+    /// Tracers took it too, having no guard at all.
+    @Test func aLightClusterFarOnADiagonalKeepsItsOwnPull() throws {
+        var generator = SeededGenerator(seed: 21)
+        func blob(_ centre: SIMD3<Float>, _ spread: Float) -> SIMD3<Float> {
+            centre + SIMD3<Float>(generator.normal(), generator.normal(), generator.normal()) * spread
+        }
+        let far = SIMD3<Float>(repeating: 120)
+        var particles = ParticleSystem(capacity: 5_500)
+        // Tracers first, in the light cluster.
+        for _ in 0..<500 {
+            particles.append(position: blob(far, 1.5), velocity: .zero, galaxy: 1, radius: 1, mass: 0)
+        }
+        for _ in 0..<4_000 {
+            particles.append(position: blob(.zero, 3), velocity: .zero, galaxy: 0, radius: 1, mass: 0.0025)
+        }
+        for _ in 0..<1_000 {
+            particles.append(position: blob(far, 1.5), velocity: .zero, galaxy: 1, radius: 1, mass: 0.0005)
+        }
+        particles.setVisibleCount(particles.count)
+        func galaxy(_ name: String, _ count: Int, _ mass: Float) -> GalaxyConfig {
+            GalaxyConfig(
+                name: name, particleCount: count,
+                potential: GalaxyPotential(profile: .plummer, mass: mass, scaleRadius: 3),
+                diskScaleLength: 3, diskMassFraction: 1)
+        }
+        let scene = SceneConfig(
+            name: "far pair", galaxies: [galaxy("heavy", 4_000, 10), galaxy("light", 1_500, 0.5)],
+            solver: .barnesHut, openingAngle: 0.9, softening: 0.1)
+        let massive = Array(particles.positions[500...])
+        let mass = Array(particles.mass[500...])
+
+        func meanErrors(opensHoldingCells: Bool) throws -> (light: Float, tracers: Float) {
+            let solver = try MetalBarnesHutSolver(
+                scene: scene, particles: particles, tracers: 500, opensHoldingCells: opensHoldingCells)
+            let computed = solver.accelerations
+            func error(_ index: Int) -> Float {
+                let reference = BarnesHutTree.directAcceleration(
+                    at: particles.positions[index], positions: massive, mass: mass, softening: 0.1,
+                    skipping: index - 500)
+                return simd_length(computed[index] - reference) / simd_length(reference)
+            }
+            let light = stride(from: 4_500, to: 5_500, by: 7).map(error)
+            let tracers = stride(from: 0, to: 500, by: 7).map(error)
+            return (
+                light.reduce(0, +) / Float(light.count), tracers.reduce(0, +) / Float(tracers.count)
+            )
+        }
+        let before = try meanErrors(opensHoldingCells: false)
+        #expect(before.light > 0.9 && before.tracers > 0.9, "otherwise this tests nothing")
+        // The usual error at this angle, as `accelerationMatchesDirectSummation` bounds it.
+        let after = try meanErrors(opensHoldingCells: true)
+        #expect(after.light < 0.02)
+        #expect(after.tracers < 0.02)
+    }
+
+    /// Where no cell around a particle was ever taken whole, nothing changes, to the bit: the
+    /// test is a branch away from the arithmetic, and fast math moves nothing.
+    @Test func aWalkThatNeverTookACellAroundAParticleIsUnchanged() throws {
+        let count = 3_000
+        let (positions, mass) = cluster(count: count)
+        var particles = ParticleSystem(capacity: count)
+        for index in 0..<count {
+            particles.append(
+                position: positions[index], velocity: .zero, galaxy: 0, radius: 1, mass: mass[index])
+        }
+        let scene = SceneConfig(
+            name: "cluster",
+            galaxies: [
+                GalaxyConfig(
+                    name: "cluster", particleCount: count,
+                    potential: GalaxyPotential(profile: .plummer, mass: 10, scaleRadius: 3),
+                    diskScaleLength: 3, diskMassFraction: 1)
+            ],
+            solver: .barnesHut, openingAngle: 0.9, softening: 0.25)
+        let current = try MetalBarnesHutSolver(scene: scene, particles: particles).accelerations
+        let before = try MetalBarnesHutSolver(
+            scene: scene, particles: particles, opensHoldingCells: false
+        ).accelerations
+        #expect(current.count == count)
+        #expect(
+            zip(current, before).allSatisfy { a, b in
+                (0..<3).allSatisfy { a[$0].bitPattern == b[$0].bitPattern }
+            })
+    }
+
     @Test func tighterOpeningAngleReducesError() throws {
         let count = 2_000
         let (positions, mass) = cluster(count: count, seed: 9)
@@ -1084,17 +1172,21 @@ struct BarnesHutTests {
         let codes = tree.sortedCodes
         var nodes: [BHNode] = []
         var parents: [Int] = []
-        func make(_ half: Float, _ start: Int, _ count: Int, _ parent: Int) -> Int {
+        func make(_ half: Float, _ start: Int, _ count: Int, _ parent: Int, _ digit: UInt32) -> Int {
             var node = BHNode()
             node.packed.x = (half * 2) * (half * 2)
             node.range = Int32(start)
             node.signedCount = Int32(-count)
+            node.digit = digit
             nodes.append(node)
             parents.append(parent)
             return nodes.count - 1
         }
         var stack = [
-            (start: 0, count: codes.count, depth: 0, half: half, node: make(half, 0, codes.count, -1))
+            (
+                start: 0, count: codes.count, depth: 0, half: half,
+                node: make(half, 0, codes.count, -1, 63 << 3)
+            )
         ]
         while let work = stack.popLast() {
             if work.count <= tree.leafCapacity || work.depth >= tree.maximumDepth { continue }
@@ -1113,7 +1205,8 @@ struct BarnesHutTests {
             var children: Int32 = 0
             for octant in 0..<8 where offsets[octant + 1] > offsets[octant] {
                 let size = offsets[octant + 1] - offsets[octant]
-                let index = make(work.half * 0.5, offsets[octant], size, work.node)
+                let digit = UInt32(60 - 3 * work.depth) << 3 | UInt32(octant)
+                let index = make(work.half * 0.5, offsets[octant], size, work.node, digit)
                 if first < 0 { first = index }
                 children += 1
                 stack.append((offsets[octant], size, work.depth + 1, work.half * 0.5, index))
