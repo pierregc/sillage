@@ -3,8 +3,9 @@ import Testing
 
 @testable import SillageRender
 
+/// A class, so that each test's libraries go when Swift Testing drops the instance it ran on.
 @Suite("Night sheet")
-struct NightSheetTests {
+final class NightSheetTests {
     private static let paris = TimeZone(identifier: "Europe/Paris")!
     private static let evening = RunStatus.date("2026-10-27T21:40:00+01:00")!
 
@@ -26,9 +27,13 @@ struct NightSheetTests {
         }
     }
 
+    private let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("sillage-nightsheet-\(UUID().uuidString)", isDirectory: true)
+
+    deinit { try? FileManager.default.removeItem(at: root) }
+
     private func library() throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("sillage-nightsheet-\(UUID().uuidString)", isDirectory: true)
+        let url = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
