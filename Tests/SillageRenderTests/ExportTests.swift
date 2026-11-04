@@ -125,6 +125,24 @@ struct ExportTests {
         #expect(again.shot(atCaptured: 5.0).camera.eye == after.camera.eye)
     }
 
+    /// A fixed camera looks at the origin unless its plan names another point, and keeps that
+    /// point through the turn (#254).
+    @Test func aFixedCameraLooksWhereThePlanAims() throws {
+        let loaded = try take(frames: 12)
+        var file = autoLook
+        file.camera = LookFile.CameraPlan(mode: .fixed, azimuth: 0, azimuthEnd: 1, radius: 30)
+        let origin = ShotReplay(file: file, take: loaded, capturedFrames: 12, framesPerSecond: 10)
+        #expect(origin.shot(atCaptured: 0).camera.target == .zero)
+        file.camera.center = SIMD3(4, -2, 1)
+        let aimed = ShotReplay(file: file, take: loaded, capturedFrames: 12, framesPerSecond: 10)
+        for frame in [0, 6, 11] {
+            let camera = aimed.shot(atCaptured: frame).camera
+            #expect(camera.target == SIMD3(4, -2, 1))
+            let reference = simd_distance(origin.shot(atCaptured: frame).camera.eye, .zero)
+            #expect(abs(simd_distance(camera.eye, camera.target) - reference) < 1e-3)
+        }
+    }
+
     /// The grid and the export replay the camera the same way, so a still of one and the same
     /// frame of the other are the same picture, to the byte.
     @Test func aFrameOfTheExportIsTheSameAsTheGridsStill() throws {
