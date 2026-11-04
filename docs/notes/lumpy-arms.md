@@ -927,10 +927,10 @@ companion has its size:
 Nothing moves in the stream: places 1 to 16 of seed 20261030 and scenes 0 to 39 of batch
 20261031 differ from main's draw by the cooling of the disks held to their turns (18 and 38 of
 them), the gas share of the large spirals (10 and 20) and, through the curve, the Q of those
-drawn for a response solved 0.2 to 0.6 % lower, nothing else. A scene file written before runs as written:
-its gas weighs what its dust does and its cooling is the one stored (library scene-0031, a copy:
-the probe 847 of 847 cells on both galaxies, a six-frame render's curves, frames, look and scene
-file byte for byte as main's).
+drawn for a response solved 0.2 to 0.6 % lower, nothing else. A scene file written before runs
+as written: its gas weighs what its dust does and its cooling is the one stored (library
+scene-0031, a copy: the probe 847 of 847 cells on both galaxies, a six-frame render's curves,
+frames, look and scene file byte for byte as main's).
 
 **At the explore count**, the large spirals of places 1 to 16 and free-3 (batch 20261031 scene
 23 g0) and free-11 (scene 11 g0), main's draw against the rule (knots; late arms):
@@ -959,10 +959,34 @@ smooth. The three two-armed ones lose 0.02 to 0.08 to the slower cooling and sit
 place 16): on the stills they keep two clean arms around an inner oval, what an isolated
 two-armed disk shows, but under the done-when's 0.18 on four samplings of six.
 
-**At 2 M** (one sampling; the explore preview's softening a third, Q solved there for the same
-response):
+**At 2 M**, one sampling each (the galaxy's share of 2 million, the softening a third of the
+explore preview's and Q solved there for the same response; late arms over the last 500 Myr of a
+1 Gyr run, or over 400 to 800 Myr for those run only through the clip):
 
-TABLE-2M
+| | stars | knots within 800 Myr (at 800) | late arms | run to |
+| --- | --- | --- | --- | --- |
+| place 11 g0 | 0.80 M | 0.21 % (0.01 %) | 0.226 | 800 Myr |
+| place 11 g0, cooled only | 0.80 M | 0.88 % (0.88 %) | 0.197 | 1 Gyr |
+| place 11 g4 | 0.44 M | 0.17 % (0.00 %) | 0.214 | 1 Gyr |
+| place 3 g0 | 2.00 M | 1.01 % (1.01 %) | 0.234 | 800 Myr |
+| place 4 g2 | 0.91 M | 1.2 % (0.81 %) | 0.204 | 1 Gyr |
+| place 7 g0 | 1.90 M | 0.14 % (0.07 %) | 0.238 | 1 Gyr |
+| free-3 | 1.77 M | 0.36 % (0.33 %) | 0.215 | 1 Gyr |
+| free-11 | 1.41 M | 0.12 % (0.12 %) | 0.223 | 1 Gyr |
+| free-11, cooled only | 1.41 M | 2.1 % (2.1 %) | 0.237 | 1 Gyr |
+| place 16 g0 | 1.45 M | 0.05 % (0.01 %) | 0.204 | 800 Myr |
+| place 16 g0, cooled only | 1.45 M | 1.2 % (1.2 %) | 0.199 | 800 Myr |
+TWO-M-MORE
+
+More particles knot more readily, as the cooling-time line moves with resolution in gas disks:
+cooled over 1.8 turns alone, free-11 keeps 2.1 % at 2 M against 1.3 % at explore, and place 16's
+primary 1.2 % against 0.35 % (main's free-11 at 2 M read a late lumpiness of 0.62 and 0.65 in
+#181, against 0.14 here). With the gas weighed apart the large spirals keep 0.05 to 0.36 % and late
+arms of 0.20 to 0.24, a little stronger than at explore; place 3's primary and place 4's third
+galaxy, the two lowest in Q (1.10 and 1.19 at explore) with much gas (0.31 and 0.37 of their
+particles), reach 1.0 and 1.2 %: four to six small clumps on the outermost arms from 450 Myr on
+for place 3, from 600 for place 4, next to the dozens of bright knots main's place 11 carries at
+explore.
 
 **The small spirals of #181** the cooling floor reaches (the gas rule does not), main against the
 rule, one sampling each:
@@ -983,9 +1007,8 @@ Some of #181's arms were knots: scene-35 g1, counted there with arms of 0.32, ho
 disk in knots as main draws it, and scene-5 g1, which #181 left barred, 17 %. Cooled over 1.8
 turns they keep 3 % and spiral arms of 0.21; free-2 and scene-1 g1 keep clean arms over 0.18,
 scene-37 g1 sits on the line, and scene-20 g3 falls from 0.218 (with 1.9 % in knots) to 0.163, a
-flocculent disk on the sheet.
-Place 8's second spiral, small by #181's line (3.94 kpc) but light enough to turn in 181 Myr,
-keeps 3.4 %.
+flocculent disk on the sheet. Place 8's second spiral, small by #181's line (3.94 kpc) but light
+enough to turn in 181 Myr, keeps 3.4 %.
 
 **What is left.**
 
@@ -997,7 +1020,11 @@ keeps 3.4 %.
   scene-35 g1 3 %, scene-35 g3 2.4 %, place 8's second spiral 3.4 %): the gas rule stops at 4.2
   kpc, and weighing their gas apart too is the next lever, to be measured against their arms.
   scene-20 g3 fades to 0.163.
-- `Contemplation` draws no `draw` and keeps its cooling in megayears and its Q at 1.4.
+- A `Contemplation` scene has no `draw`: it keeps its cooling in megayears, as it keeps its Q
+  at 1.4.
 - The probe's knots are those that hold half their members within 0.5 kpc for 50 Myr, from 24
   members; a looser clump or a shorter-lived one is lumpiness, not a knot.
-- TWO-M
+- At 2 M place 3's primary and place 4's third galaxy reach 1.0 and 1.2 % in knots, a few small
+  clumps on their outermost arms through the second half of the clip; the gas range's top (0.20)
+  or the response of the large disks are the levers left for them, both measured only at explore
+  here.
