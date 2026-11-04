@@ -18,17 +18,20 @@ final class NightSheetModel: ObservableObject {
     let library: URL
     private let planner: NightSheetPlanner
     private let debounce: Duration
+    private let clock: () -> Date
     private var generation = 0
     private var task: Task<Void, Never>?
 
     nonisolated static let debounce = Duration.milliseconds(60)
 
     init(
-        library: URL, planner: NightSheetPlanner? = nil, debounce: Duration = NightSheetModel.debounce
+        library: URL, planner: NightSheetPlanner? = nil, debounce: Duration = NightSheetModel.debounce,
+        clock: @escaping () -> Date = Date.init
     ) {
         self.library = library
-        self.planner = planner ?? NightSheetPlanner.shared(library: library)
+        self.planner = planner ?? NightSheetPlanner.shared(library: library, now: clock())
         self.debounce = debounce
+        self.clock = clock
         sheet = NightSheet.last(library: library)
         replan(immediately: true)
     }
@@ -44,8 +47,9 @@ final class NightSheetModel: ObservableObject {
         task = Task {
             try? await Task.sleep(for: wait)
             guard !Task.isCancelled else { return }
+            let now = clock()
             let plan = await Task.detached(priority: .userInitiated) {
-                planner.plan(sheet, now: Date())
+                planner.plan(sheet, now: now)
             }.value
             guard mine == generation else { return }
             self.plan = plan
