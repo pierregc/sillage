@@ -1459,7 +1459,8 @@ for encounter in scene.encounters {
         * Float(Physics.kilometersPerSecondPerVelocityUnit)
     print(
         String(
-            format: "encounter  %d-%d, pericentre %.1f kpc at %.0f Myr, e %.2f (%@, %@ %.0f km/s), mass ratio %.2f",
+            format:
+                "encounter  %d-%d, pericentre %.1f kpc at %.0f Myr, e %.2f (%@, %@ %.0f km/s), mass ratio %.2f",
             encounter.primary, encounter.secondary, encounter.pericentre,
             encounter.pericentreTime, encounter.eccentricity, encounter.orbit.rawValue,
             encounter.eccentricity < 1 ? "binding" : "far out", speed, encounter.massRatio))

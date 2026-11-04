@@ -288,7 +288,8 @@ struct FreeDrawTests {
             let mass = scene.galaxies[0].potential.mass * (1 + encounter.massRatio)
             if encounter.eccentricity < 1 {
                 captured += 1
-                let along = (encounter.pericentreTime - window.lowerBound) / (window.upperBound - window.lowerBound)
+                let along =
+                    (encounter.pericentreTime - window.lowerBound) / (window.upperBound - window.lowerBound)
                 #expect(along <= 0.22 + 1e-4)
                 continue
             }
@@ -303,7 +304,9 @@ struct FreeDrawTests {
             fast += 1
             fastest = max(fastest, speed)
             let lowest: Float = minor ? 1.5 : 2
-            #expect(encounter.pericentre * speed <= FreeDraw.fastReach * 1.001 || encounter.pericentre <= 2 * lowest + 1e-3)
+            #expect(
+                encounter.pericentre * speed <= FreeDraw.fastReach * 1.001
+                    || encounter.pericentre <= 2 * lowest + 1e-3)
         }
         let total = Float(captured + slow + fast)
         #expect(total > 150)
@@ -319,7 +322,8 @@ struct FreeDrawTests {
                 let orbit = FreeDraw.orbit(approach: u, pericentre: pericentre, in: 2...30, totalMass: 90)
                 #expect(orbit.captured == (u < FreeDraw.capturedShare))
                 #expect(orbit.pericentre >= 2 && orbit.pericentre <= 30)
-                guard !orbit.captured || orbit.pericentre * 1.5 < FreeDraw.capturedApocentres.lowerBound else {
+                guard !orbit.captured || orbit.pericentre * 1.5 < FreeDraw.capturedApocentres.lowerBound
+                else {
                     continue
                 }
                 let read = FreeDraw.approach(

@@ -319,7 +319,8 @@ public struct FreeDraw: Sendable {
             fast
             ? logarithmic((u - capturedShare - slowShare) / (1 - capturedShare - slowShare), in: fastSpeeds)
             : slowSpeeds.at((u - capturedShare) / slowShare)
-        let upper = fast ? min(range.upperBound, max(fastReach / speed, 2 * range.lowerBound)) : range.upperBound
+        let upper =
+            fast ? min(range.upperBound, max(fastReach / speed, 2 * range.lowerBound)) : range.upperBound
         let q = logarithmic(p, in: range.lowerBound...upper)
         let v = speed / Float(Physics.kilometersPerSecondPerVelocityUnit)
         return Orbit(pericentre: q, eccentricity: 1 + q * v * v / totalMass, captured: false)
@@ -332,7 +333,8 @@ public struct FreeDraw: Sendable {
         if e < 1 {
             let apocentre = q * (1 + e) / max(1 - e, 1e-6)
             let swing = capturedApocentres
-            return capturedShare * clamped(log(apocentre / swing.lowerBound) / log(swing.upperBound / swing.lowerBound))
+            return capturedShare
+                * clamped(log(apocentre / swing.lowerBound) / log(swing.upperBound / swing.lowerBound))
         }
         let speed = ((e - 1) * totalMass / q).squareRoot() * Float(Physics.kilometersPerSecondPerVelocityUnit)
         if speed < slowSpeeds.upperBound { return capturedShare + slowShare * speed / slowSpeeds.upperBound }
