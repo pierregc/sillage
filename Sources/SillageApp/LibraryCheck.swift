@@ -317,9 +317,10 @@ enum LibraryCheck {
         try writeVideo(to: done.hiresVideo, tint: 9)
         try Data(
             """
-            {"particles":2000000,"previewParticles":200000,"width":1920,"height":1080,"frames":660,
-            "fps":30,"settle":300,"steps":1980,"timeStepScale":1,"timeStep":0.05,"timeStepMyr":0.2,
-            "previewTimeStepMyr":0.2,"softening":0.08,"clipStartMyr":82,"clipEndMyr":461,"seconds":5100}
+            {"particles":8000000,"massive":2000000,"previewParticles":200000,"width":1920,"height":1080,
+            "frames":660,"fps":30,"settle":300,"steps":1980,"timeStepScale":1,"timeStep":0.05,
+            "timeStepMyr":0.2,"previewTimeStepMyr":0.2,"softening":0.08,"clipStartMyr":82,"clipEndMyr":461,
+            "seconds":5100}
             """.utf8
         ).write(to: done.hires)
         try LookFile(name: "raw", palette: [GalaxyColours([1, 0.62, 0.25]), GalaxyColours([0.3, 0.7, 1])])
@@ -379,10 +380,15 @@ enum LibraryCheck {
         let facts = model.facts
         check(
             "la page lit l'histoire, le calcul et le style",
-            facts?.story?.endMyr == 461 && facts?.hires?.particles == 2_000_000
+            facts?.story?.endMyr == 461 && facts?.hires?.particles == 8_000_000
                 && facts?.styleName == "dream" && facts?.palette.count == 2 && facts?.rawStyle == false
                 && facts?.otherLooks.map(\.name) == ["raw"],
             facts?.styleName ?? "pas de style")
+        let drawn = facts?.hires.map { Format.particles($0.particles, massive: $0.massive) }
+        check(
+            "la haute résolution dit ses particules massives",
+            drawn == "8\u{A0}M particules dont 2\u{A0}M massives" && scene.hires?.massive == 2_000_000,
+            drawn ?? "pas de calcul")
         check("graine et index du lot", scene.seed == "20261026" && scene.index == 1)
         let files = model.facts?.exports ?? []
         check(
@@ -491,10 +497,60 @@ enum LibraryCheck {
         check(
             "chaque taille de haute résolution a sa durée",
             StageJobs.hiresSizes.filter { $0 <= quotes.maximum }.allSatisfy { quotes.hires[$0] != nil },
-            quotes.sizes.map { "\(StageJobs.particles($0)) \(Format.duration(quotes.hires[$0] ?? 0))" }
-                .joined(separator: ", "))
+            quotes.sizes.map {
+                "\(StageJobs.particles($0, massive: StageJobs.massive(drawing: $0))) "
+                    + Format.duration(quotes.hires[$0] ?? 0)
+            }
+            .joined(separator: ", "))
 
-        let hires = StageJobs.hires(chosen, particles: 2_000_000, cost: quotes.cost, queue: queue.queue)
+        // Calculer draws as a night does: Auto is its 8 M from 2 M massive while the evening leaves
+        // room, and every size past 2 M has light tracers.
+        let alone = StageQuotes.read([chosen], library: queue.store.library)
+        // The Mac idle at a fixed evening, whatever else runs on it, so the picture says when.
+        let evening = NightSheetCheck.evening
+        let idle = QueueModel(library: queue.store.library, watch: false) {
+            QueueStatus.read(library: $0, now: evening, processes: [])
+        }
+        idle.runnerURL = nil
+        let form = HiresForm(queue: idle, folders: [chosen], quotes: alone, clock: { evening })
+        let menu = form.choices
+        check(
+            "Auto tire 8 M dont 2 M massives, comme une nuit",
+            menu.first?.hasPrefix("Auto · 8\u{A0}M dont 2\u{A0}M massives, environ ") == true
+                && form.planned.map(\.options) == [["--particles", "8000000", "--massive", "2000000"]],
+            menu.first ?? "pas de menu")
+        let sizes = [
+            (1_000_000, "1\u{A0}M, environ "), (2_000_000, "2\u{A0}M, environ "),
+            (5_000_000, "5\u{A0}M dont 2\u{A0}M massives, environ "),
+            (8_000_000, "8\u{A0}M dont 2\u{A0}M massives, environ "),
+            (10_000_000, "10\u{A0}M dont 2\u{A0}M massives, environ "),
+        ].filter { $0.0 <= alone.maximum }
+        check(
+            "chaque taille dit ses massives et sa durée",
+            menu.count == sizes.count + 1 && zip(menu.dropFirst(), sizes).allSatisfy { $0.hasPrefix($1.1) },
+            menu.joined(separator: " | "))
+        let real = StageJobs.hiresSeconds(chosen, particles: 8_000_000, cost: alone.cost) ?? 0
+        check(
+            "8 M dont 2 M massives se paie moins qu'un vrai 8 M",
+            (alone.hires[8_000_000] ?? .infinity) < real * 0.6,
+            "\(Format.duration(alone.hires[8_000_000] ?? 0)) contre \(Format.duration(real))")
+        write(
+            VStack(alignment: .leading, spacing: 12) {
+                form
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(menu.enumerated()), id: \.offset) { index, label in
+                        Text((index == 0 ? "✓ " : "    ") + label).font(.callout.monospacedDigit())
+                    }
+                }
+                .padding(10)
+                .background(Palette.card, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(16)
+            .frame(width: 400, alignment: .leading)
+            .environment(\.offscreen, true),
+            to: "out/ui-hires-form.png")
+
+        let hires = try found(form.planned.first)
         let forecast = StageForecast(jobs: [hires], status: queue.status, now: Date())
         check(
             "Calculer dit quand ce sera prêt",
@@ -506,15 +562,19 @@ enum LibraryCheck {
         check("Calculer ajoute une haute résolution", queue.submit([hires]) == 1)
         let queued = queue.queue.unfinished(at: chosen)
         check(
-            "la tâche vise la scène et la taille",
+            "la tâche vise la scène, la taille et ses massives",
             queued.count == 1 && queued.first?.kind == .hires
-                && queued.first?.options == ["--particles", "2000000"]
+                && queued.first?.options == ["--particles", "8000000", "--massive", "2000000"]
                 && SceneFolder(path: queued.first?.path ?? "").url.path == chosen.url.path,
             queued.first?.summary ?? "rien")
+        let waiting = queued.first.map { StageJobs.title(of: $0) }
+        check("en attente, elle le dit", waiting == "8\u{A0}M dont 2\u{A0}M massives", waiting ?? "rien")
         check(
             "la même demande n'est pas ajoutée deux fois",
             queue.submit([
-                StageJobs.hires(chosen, particles: 5_000_000, cost: quotes.cost, queue: queue.queue)
+                StageJobs.hires(
+                    chosen, particles: 5_000_000, massive: StageJobs.massive(drawing: 5_000_000),
+                    cost: quotes.cost, queue: queue.queue)
             ])
                 == 0)
         model.activeHires = queue.activeHires

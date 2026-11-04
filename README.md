@@ -604,8 +604,11 @@ rating, batch and archetype.
 The scenes kept for the next stage are
 `jq -r '.scenes | to_entries[] | select(.value.choice == "yes") | .key' ratings.json`.
 A scene's page moves it on without a terminal. **Calculer** on Haute résolution queues a
-`hires` job at a size (Auto is the most particles that end before seven in the morning behind
-the queue, else the machine's maximum); **Exporter…** opens a sheet of presets to tick
+`hires` job at a size, drawn as a night draws it: past 2 M, 2 M carry the mass and the others
+are light tracers (`--massive`, #222). Auto is a night's 8 M, or the most particles that end
+before seven in the morning behind the queue, and each size says how many carry the mass. A real
+count, every particle massive, stays on the command line: `sillage-render queue add hires
+<scene> --particles N`, without `--massive`. **Exporter…** opens a sheet of presets to tick
 (1080p, 4K, Vertical, Carré, WhatsApp, animated WebP, GIF, with codec, range, frame rate and
 style under Avancé), each ticked card one `export` job. Both say how long each job takes and
 when it will be ready, queue ahead included. A job waiting or running shows on its stage with

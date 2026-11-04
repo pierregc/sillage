@@ -231,3 +231,13 @@ scene's opening angle, and `hires` refuses `--theta-tracers`.
   2 h 32 by the model. Its take of 6.1 GB drew and exported like any other: the style step in
   11 s, the 4K export in 32 s. Refitted on it, a tracer step costs 22 ns over the library's
   massive line, 23.5 over the fallback's.
+
+## In the app (#222)
+
+Calculer en haute résolution, on a scene page and on Choisies, draws as a night does: past 2 M,
+2 M carry the mass and the others are light tracers, and every size of the menu is priced with
+its tracers. Auto stops at a night's 8 M, the most that ends before seven otherwise, so a hires
+asked from the app is one a night finds done (same count drawn, as many massive); at the
+machine's maximum it queued a real 10 M of about eight hours. The menu offers 8 M besides 1, 2,
+5 and 10 M. A real count, every particle massive, is left to the command line (`hires` or
+`queue add hires` without `--massive`).

@@ -41,7 +41,7 @@ groups its scenes by the stage they wait at (**À trier**, **Choisies**, **En ha
 2. **Choix.** Open **À trier**. Each scene shows its Aperçu and its Score; press **Y** or **N**
    (buttons **Oui** / **Non**) to choose or discard it, and a digit 0 to 9 to rate it. The
    night picks the best by Score when you have not.
-3. **Haute résolution.** Open a scene and click **Recalculer en haute résolution…**, or open **Choisies** and click **Calculer en haute résolution (n)** for the whole collection. The job goes to the **File d'attente**.
+3. **Haute résolution.** Open a scene and click **Recalculer en haute résolution…**, or open **Choisies** and click **Calculer en haute résolution (n)** for the whole collection. The job goes to the **File d'attente**. It is drawn as a night draws it: Auto is 8 M from 2 M massive, and every size past 2 M keeps 2 M massive, the others light tracers. A real count is a command line away (step 3 of the appendix, without `--massive`).
 4. **Style.** Click **Choisir le style** on a scene computed in high resolution. The style
    editor plays the scene; pick a **Rendu** and a **Palette**, then **Utiliser pour la scène**
    (⌘S).
@@ -123,6 +123,8 @@ scripts/explore-batch.sh --scenes 20 --pair-share 0.5  # half pairs instead of f
 tracers in their field ([the note](notes/light-tracers.md)): the run looks like its count drawn
 and is stepped like M, whose softening, step and settle it takes. The tracers walk at the
 scene's opening angle (`--theta-tracers` is refused), and `hires.json` keeps both counts.
+Without `--massive` every particle carries the mass: that is how to get a real count, which the
+app's form does not offer since it draws as a night does (#222).
 
 **4. Look** – choose the scene's style:
 

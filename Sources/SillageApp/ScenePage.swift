@@ -317,12 +317,10 @@ struct StageTracker: View {
         case .done:
             VStack(alignment: .leading, spacing: 3) {
                 if let hires = facts?.hires {
-                    fact(
-                        "\(Format.particles(hires.particles)) particules"
-                            + (hires.massive.map { ", \(Format.particles($0)) massives" } ?? ""))
+                    fact(Format.particles(hires.particles, massive: hires.massive))
                     if let seconds = hires.seconds { fact("\(Format.duration(seconds)) de calcul") }
                 } else if let hires = scene.hires {
-                    fact("\(Format.particles(hires.particles)) particules")
+                    fact(Format.particles(hires.particles, massive: hires.massive))
                 }
                 if let date = facts?.hiresDate { fact(Format.date(date)) }
             }
@@ -598,6 +596,12 @@ struct ScenePageFacts: Sendable, Equatable {
 
 enum Format {
     static func particles(_ count: Int) -> String { StageJobs.particles(count) }
+
+    /// A hires: "8 M particules dont 2 M massives", "2 M particules".
+    static func particles(_ count: Int, massive: Int?) -> String {
+        let traced = massive.flatMap { $0 < count ? $0 : nil }
+        return "\(particles(count)) particules" + (traced.map { " dont \(particles($0)) massives" } ?? "")
+    }
 
     static func duration(_ seconds: Double) -> String {
         let minutes = Int((seconds / 60).rounded())
