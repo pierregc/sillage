@@ -18,7 +18,9 @@ Options: `--particles N` (the scene's visible count; the galaxy takes its share)
 otherwise; the step stays the scene's), the overrides `--clumpiness`, `--toomre-q`,
 `--arm-strength`, `--arm-count`, `--arm-irregularity`, `--disk-mass-fraction`,
 `--disk-thickness`, `--dissipation`, `--mass-contrast`, `--streaming`, `--young-clumpiness`,
-`--dust-fraction` (the gas, which carries mass and is laid down wider than the stars, #218),
+`--dust-fraction` (the dust particles, which carry the gas's mass and are laid down wider than
+the stars), `--dust-mass` (the gas's share of the disk's mass alone, the dust particles kept for
+the light, `GalaxyConfig.dustMassFraction`, #218),
 `--effective-q` (Toomre Q solved for that response at the run's softening, after the other
 overrides, the way the generators draw a spiral: `DiskResponse`, #181; a galaxy whose scene file
 holds a response, `effectiveToomreQ`, is solved for it the same way without the flag, which takes
