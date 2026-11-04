@@ -1451,12 +1451,19 @@ if let draw = scene.draw {
             + draw.families.map(\.rawValue).joined(separator: ", "))
 }
 for encounter in scene.encounters {
+    // How fast the pair would be far apart, or for a bound one, the speed its binding is worth.
+    let mass =
+        scene.galaxies[encounter.primary].potential.mass + scene.galaxies[encounter.secondary].potential.mass
+    let speed =
+        (abs(encounter.eccentricity - 1) * mass / encounter.pericentre).squareRoot()
+        * Float(Physics.kilometersPerSecondPerVelocityUnit)
     print(
         String(
-            format: "encounter  %d-%d, pericentre %.1f kpc at %.0f Myr, e %.2f (%@), mass ratio %.2f",
+            format:
+                "encounter  %d-%d, pericentre %.1f kpc at %.0f Myr, e %.2f (%@, %@ %.0f km/s), mass ratio %.2f",
             encounter.primary, encounter.secondary, encounter.pericentre,
             encounter.pericentreTime, encounter.eccentricity, encounter.orbit.rawValue,
-            encounter.massRatio))
+            encounter.eccentricity < 1 ? "binding" : "far out", speed, encounter.massRatio))
 }
 // A generated scene is judged from its centres before any particle is drawn, so one that would
 // show nothing costs a moment rather than a night's slot. A scene read from a file was judged

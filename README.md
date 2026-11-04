@@ -60,13 +60,18 @@ backwards: each secondary is set at its pericentre beside where its primary actu
 moment, then stepped back to the start through the galaxies already placed, every galaxy
 pulling with the mass it holds inside the separation. The centres are then run forward together
 and the passages asked for are corrected until they land. A generated scene puts its
-pericentres inside the clip it is rendered for, between `--settle` and `--steps`.
+pericentres inside the clip it is rendered for, between `--settle` and `--steps`. A bound orbit
+that cannot fall in for as long as its pericentre waits is widened until it can, so the pair
+still comes back, and opened to parabolic only past eight widenings each time it is placed.
 
 `--preset free --seed S --index N` is scene `N` of batch `S` from the free generator, which
 spreads a batch evenly over everything a scene can physically be: one to five galaxies, each a
 spiral, a lenticular disk, an elliptical, a dwarf, a compact globular or, for 4 % of the scenes
 with a companion, a lone black hole in place of the first one, with their arm count,
-arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. A spiral of
+arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. How fast a
+companion comes in is drawn for itself: two in five are captured on a bound orbit and pass early
+so they come back round, three in ten fall in from rest or nearly, the rest pass at 120 to
+900 km/s far out, the faster the closer ([the note](docs/notes/approach.md)). A spiral of
 three to five arms is drawn for its response rather than its Toomre Q: Q is solved for an
 effective Q of 1.75 to 1.95, 1.72 to 1.76 under a scale length of 4.2 kpc, Q over what the
 softening at 100 000 particles a galaxy and the disk's late thickness leave of its own pull, so a

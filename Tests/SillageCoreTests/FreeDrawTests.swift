@@ -271,6 +271,68 @@ struct FreeDrawTests {
         }
     }
 
+    /// How fast a companion comes in is drawn for itself (#252): two in five captured on a
+    /// bound orbit and passing early, three in ten falling in from rest or nearly, the rest
+    /// fast, up to 900 km/s far out, and the faster the closer.
+    @Test func theApproachRunsFromCapturedToFast() {
+        let window = SceneConfig.contemplationWindow(haste: 0)
+        var captured = 0
+        var slow = 0
+        var fast = 0
+        var fastest: Float = 0
+        for scene in FreeDraw(batchSeed: 3, spacing: 0).drafts(256, particleCount: 100_000) {
+            guard let encounter = scene.encounters.first, scene.draw!.families[1] != .blackHole else {
+                continue
+            }
+            let minor = [.dwarf, .globular].contains(scene.draw!.families[1])
+            let mass = scene.galaxies[0].potential.mass * (1 + encounter.massRatio)
+            if encounter.eccentricity < 1 {
+                captured += 1
+                let along =
+                    (encounter.pericentreTime - window.lowerBound) / (window.upperBound - window.lowerBound)
+                #expect(along <= 0.22 + 1e-4)
+                continue
+            }
+            let speed =
+                ((encounter.eccentricity - 1) * mass / encounter.pericentre).squareRoot()
+                * Float(Physics.kilometersPerSecondPerVelocityUnit)
+            #expect(speed <= 900 * 1.001)
+            guard speed > 120 * 1.001 else {
+                slow += 1
+                continue
+            }
+            fast += 1
+            fastest = max(fastest, speed)
+            let lowest: Float = minor ? 1.5 : 2
+            #expect(
+                encounter.pericentre * speed <= FreeDraw.fastReach * 1.001
+                    || encounter.pericentre <= 2 * lowest + 1e-3)
+        }
+        let total = Float(captured + slow + fast)
+        #expect(total > 150)
+        #expect(abs(Float(captured) / total - FreeDraw.capturedShare) < 0.08)
+        #expect(abs(Float(slow) / total - FreeDraw.slowShare) < 0.08)
+        #expect(fastest > 600)
+    }
+
+    /// The signature reads the approach where the draw put it.
+    @Test func theSignatureReadsTheApproachAsDrawn() {
+        for u in stride(from: Float(0.01), to: 1, by: 0.03) {
+            for pericentre in [0.1, 0.5, 0.9] as [Float] {
+                let orbit = FreeDraw.orbit(approach: u, pericentre: pericentre, in: 2...30, totalMass: 90)
+                #expect(orbit.captured == (u < FreeDraw.capturedShare))
+                #expect(orbit.pericentre >= 2 && orbit.pericentre <= 30)
+                guard !orbit.captured || orbit.pericentre * 1.5 < FreeDraw.capturedApocentres.lowerBound
+                else {
+                    continue
+                }
+                let read = FreeDraw.approach(
+                    pericentre: orbit.pericentre, eccentricity: orbit.eccentricity, totalMass: 90)
+                #expect(abs(read - u) < 2e-3, "\(u) \(pericentre)")
+            }
+        }
+    }
+
     @Test func freeScenesArePlaced() {
         let draw = FreeDraw(batchSeed: 2_026)
         for index in 0..<12 {
