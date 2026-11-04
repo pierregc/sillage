@@ -46,3 +46,43 @@ within 11 % but for one close pair of disks at 22 %, where the disks are already
 centre of mass is not a point. A Chandrasekhar drag was written and taken out again: the
 residual is late, not early, and a drag only brings a passage earlier. Scenes 7 and 16 show
 e 1.00 because their bound draws could not fall in for that long and were opened to parabolic.
+
+**A fit is held to where it starts (#217).** The fit moves the pericentre it asks the backward
+construction for while it holds the drawn eccentricity, and a hyperbolic orbit through a
+pericentre q at eccentricity e carries an energy of (e - 1) M / 2q: asked for less, it gains
+energy without limit. Passages the others' pull kept wide, out of the orbital plane where no
+pericentre in it can bring them in, drove it to ask 5 pc and 0.005 pc. Place 12 of batch
+20261030 (`--pair-share off`) started three galaxies 61 000 kpc out at 100 000 km/s and the
+fourth 355 000 kpc out at 600 000 km/s, its preview black; place 1 brought its dwarf from
+4 700 kpc at 8 200 km/s.
+
+Every centre now starts within 1000 kpc of the centre of mass and 1500 km/s of its rest
+(`Encounter.startDistanceLimit`, `startSpeedLimit`): a group's extent, and a rich cluster's
+fastest galaxy, where pairs and groups meet at a few hundred km/s. Of 1 061 scenes as `explore`
+places them (40 batches of 16 places without the pair share, 30 with it), 22 started beyond,
+14 of them farther than 2 000 kpc and up to 584 000 kpc at 850 000 km/s: groups of three to
+five, never a pair, which the construction places exactly. Left to the construction alone, one
+orbit of the 1 061 started faster than 1 300 km/s and none farther than 913 kpc. A fit that
+starts beyond is taken again holding the drawn orbit's energy instead: the speed at an asked
+pericentre is then the one that energy gives, asking less only aims the pair more nearly head
+on, and the refit tries no start beyond the limits and no pericentre under a hundredth of the
+one drawn. Its passages land within a few times the distance asked: 5.5, 11.6 and 3.1 kpc for
+the 6.2, 5.2 and 4.4 of place 12, 27.1, 2.7 and 3.2 kpc for the 28.3, 2.3 and 3.1 of place 1.
+An orbit the draw itself makes too fast or too far is slowed, its excess over parabolic halved
+up to three times and then taken away. None of the 22 needed it, the refit cost 77 s over the
+1 061, and the other fourteen places of the batch place to the bit as they did.
+
+**The dwarf's ring was the tree, not its speed.** A light galaxy far out on a diagonal from
+where the mass is can take the root cell whole: the opening test compares the cell's width
+with the distance to its centre of mass, not with the particle's place in it, and the root's
+centre of mass sat with the group 4 700 kpc away while the cell was 4 070 kpc wide. Every one of
+the dwarf's stars counted the whole scene, itself included, as a point at the group, felt no
+pull of its own galaxy and flew off along its orbit: an expanding ring, its median radius
+1.5 to 4.1 kpc in the first 20 Myr and 53 kpc by 300 Myr, measured in the whole scene. Alone,
+at the same distance and speed, the dwarf keeps its radii; it does too with one far, light
+particle stretching the root as wide. The cell shrank with the distance, so by the centres it
+lasted until about 370 Myr, most of the way in, and came back on the way out after 820. Within
+the start limits no scene of the review batch takes the root whole at the start, but a light
+galaxy far out on a diagonal still can, at the start or on its way out after a fly-by: the
+opening test wants the particle outside the cell too, which changes every force, so it is left
+for a ticket of its own.
