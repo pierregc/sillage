@@ -531,6 +531,51 @@ struct CalmDiskSamplingTests {
         #expect(GalaxyConfig.legacy(clumpiness: 1.4, armStrength: 0.8).youngClumpiness == 0.97)
     }
 
+    /// Given a share of the disk's mass, the gas weighs that while its dust particles stay as
+    /// many, and the disk launched on the curve that mass makes (#218); without one a grain
+    /// weighs what a star does, and a file written before reads without the field.
+    @Test func theGasWeighsItsOwnShare() throws {
+        func weighed(_ scene: SceneConfig) -> (gas: Double, disk: Double, grains: Int) {
+            let system = RestrictedSolver.sampleParticles(for: scene)
+            var gas = 0.0
+            var disk = 0.0
+            var grains = 0
+            for index in 0..<system.count
+            where system.component[index] < ParticleComponent.halo.rawValue
+                || system.component[index] == ParticleComponent.outskirt.rawValue
+            {
+                disk += Double(system.mass[index])
+                if system.component[index] == ParticleComponent.dust.rawValue {
+                    gas += Double(system.mass[index])
+                    grains += 1
+                }
+            }
+            return (gas, disk, grains)
+        }
+        let drawn = scene()
+        let before = weighed(drawn)
+        #expect(abs(before.gas / before.disk - Double(drawn.galaxies[0].dustFraction)) < 0.01)
+        let light = scene { $0.dustMassFraction = 0.12 }
+        let after = weighed(light)
+        #expect(after.grains == before.grains)
+        #expect(abs(after.gas / after.disk - 0.12) < 0.01)
+        #expect(abs(after.disk / before.disk - 1) < 0.005)
+        let inner = drawn.galaxies[0].diskScaleLength
+        let curve = { (galaxy: GalaxyConfig) in
+            DiskEquilibrium(config: galaxy, selfGravitating: true).circularSpeed(atRadius: inner)
+        }
+        #expect(curve(light.galaxies[0]) > curve(drawn.galaxies[0]))
+        var same = drawn.galaxies[0]
+        same.dustMassFraction = same.dustFraction
+        #expect(abs(curve(same) / curve(drawn.galaxies[0]) - 1) < 1e-5)
+
+        let file = try SceneFile(light).encoded()
+        #expect(
+            try SceneFile.decoded(from: file).scene(particleCount: 1_000).galaxies[0].dustMassFraction == 0.12
+        )
+        #expect(!String(decoding: try SceneFile(drawn).encoded(), as: UTF8.self).contains("dustMassFraction"))
+    }
+
     /// A galaxy read as it was written samples exactly as before the calm disk: the stars at
     /// the painted contrast, nothing added to their velocities.
     @Test func theOldModelSamplesTheStarsAtThePaintedContrast() {

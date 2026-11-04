@@ -110,8 +110,13 @@ extension SceneConfig {
         // softening it explores at are known: the response is kept where the floor of Q leaves
         // it there, and Q solved for it at the count the scene is drawn at.
         let reference = DiskResponse.referenceSoftening(galaxies)
-        for index in galaxies.indices {
-            guard draw != nil, let target = DiskResponse.target(of: galaxies[index]) else { continue }
+        for index in galaxies.indices where draw != nil {
+            // Now that the size is known: the gas of a large disk weighed apart from its dust,
+            // and the cooling drawn above held to a number of turns.
+            galaxies[index].dustMassFraction = DiskResponse.dustMassFraction(of: galaxies[index])
+            galaxies[index].dissipationTime = DiskResponse.dissipationTime(
+                drawn: galaxies[index].dissipationTime, of: galaxies[index])
+            guard let target = DiskResponse.target(of: galaxies[index]) else { continue }
             galaxies[index].effectiveToomreQ = DiskResponse.response(
                 drawn: target, of: galaxies[index], referenceSoftening: reference)
         }

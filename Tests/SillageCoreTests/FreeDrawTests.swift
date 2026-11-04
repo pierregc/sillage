@@ -188,11 +188,78 @@ struct FreeDrawTests {
         #expect(drawn >= 20 && small >= 8 && twoArmed >= 5 && floored * 2 < drawn)
     }
 
-    /// A scene a generator did not draw keeps its Toomre Q, small two-armed spirals included.
+    /// A generated disk sheds its random motion over the time drawn, but never in fewer than
+    /// `DiskResponse.coolingTurns` of its turns (#218): a large disk keeps a longer cooling, a
+    /// small one the draw.
+    @Test func aGeneratedDiskCoolsOverTurnsOfItsOwn() {
+        let batch = BatchDraw(batchSeed: 20_261_030, pairShare: nil)
+        var held = 0
+        var kept = 0
+        for index in 0..<40 {
+            let scene = batch.scene(at: index, particleCount: 300_000)
+            for galaxy in scene.galaxies where galaxy.kind.isRotating {
+                let turns = galaxy.dissipationTime / DiskResponse.turn(of: galaxy)
+                #expect(turns >= DiskResponse.coolingTurns - 1e-3)
+                if turns < DiskResponse.coolingTurns + 1e-3 {
+                    held += 1
+                } else {
+                    kept += 1
+                    #expect((180...320).contains(galaxy.dissipationTime))
+                }
+            }
+        }
+        #expect(held >= 5 && kept >= 5)
+        var large = GalaxyConfig(
+            name: "", particleCount: 100_000,
+            potential: GalaxyPotential(profile: .hernquist, mass: 68, scaleRadius: 7.7),
+            diskScaleLength: 6.1)
+        #expect(DiskResponse.turn(of: large) > 150)
+        #expect(DiskResponse.dissipationTime(drawn: 185, of: large) > 185)
+        large.diskScaleLength = 2.6
+        #expect(DiskResponse.dissipationTime(drawn: 185, of: large) == 185)
+        large.kind = .globular
+        #expect(DiskResponse.dissipationTime(drawn: 185, of: large) == 185)
+    }
+
+    /// The gas of a large generated spiral of three to five arms weighs a tenth to a fifth of
+    /// its disk, at the place of its dust draw, and its dust particles stay as drawn for the
+    /// light (#218); a small or two-armed one, or any other kind, keeps its gas as heavy as its
+    /// dust.
+    @Test func aLargeSpiralsGasWeighsApartFromItsDust() {
+        let batch = BatchDraw(batchSeed: 20_261_030, pairShare: nil)
+        var large = 0
+        var other = 0
+        for index in 0..<40 {
+            let scene = batch.scene(at: index, particleCount: 300_000)
+            for galaxy in scene.galaxies {
+                guard galaxy.kind == .spiral, galaxy.armCount > 2,
+                    galaxy.diskScaleLength >= DiskResponse.smallScaleLength
+                else {
+                    #expect(galaxy.dustMassFraction == nil)
+                    other += 1
+                    continue
+                }
+                large += 1
+                #expect(DiskResponse.drawnDust.contains(galaxy.dustFraction))
+                let place = (galaxy.dustFraction - 0.14) / 0.24
+                #expect(abs((galaxy.dustMassFraction ?? 0) - (0.10 + 0.10 * place)) < 1e-5)
+            }
+        }
+        #expect(large >= 6 && other >= 20)
+        let contemplation = SceneConfig.contemplation(particleCount: 300_000, seed: 7)
+        #expect(contemplation.galaxies.allSatisfy { $0.dustMassFraction == nil })
+    }
+
+    /// A scene a generator did not draw keeps its Toomre Q, small two-armed spirals included,
+    /// and its cooling as drawn.
     @Test func aContemplationSceneKeepsItsToomreQ() {
         for seed in [1, 7, 42, 2_026] as [UInt64] {
             let scene = SceneConfig.contemplation(particleCount: 300_000, seed: seed)
             #expect(scene.galaxies.allSatisfy { $0.effectiveToomreQ == nil })
+            #expect(
+                scene.galaxies.allSatisfy {
+                    $0.dissipationTime == 0 || (180...320).contains($0.dissipationTime)
+                })
         }
     }
 

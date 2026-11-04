@@ -94,9 +94,16 @@ public struct DiskEquilibrium {
     /// what this exists to remove; the same sum now sits within one per cent.
     static func diskSpeedSquared(_ config: GalaxyConfig, mass: Float, radius: Float) -> Float {
         let scale = max(config.diskScaleLength, 1e-3)
-        let dust = min(max(config.dustFraction, 0), 0.8)
-        let ionised = min(max(config.starFormingFraction, 0), 0.3)
-        let outskirt = min(max(config.outskirtFraction, 0), 0.5)
+        var dust = min(max(config.dustFraction, 0), 0.8)
+        var ionised = min(max(config.starFormingFraction, 0), 0.3)
+        var outskirt = min(max(config.outskirtFraction, 0), 0.5)
+        // Shares of the mass: the gas's own when it has one, the rest in proportion.
+        if let gas = config.dustMassFraction, dust > 0, config.dustFraction < 0.8 {
+            let rest = (1 - min(max(gas, 0), 0.8)) / (1 - dust)
+            dust = min(max(gas, 0), 0.8)
+            ionised *= rest
+            outskirt *= rest
+        }
         let thin = max(1 - dust - ionised - outskirt, 0)
         let truncation = max(config.diskTruncation, 0.5)
         let held = mass / max(1 - (1 + truncation) * exp(-truncation), 1e-3)

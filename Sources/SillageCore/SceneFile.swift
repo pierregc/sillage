@@ -60,6 +60,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
         /// softening of whatever count the scene is read at; absent, as in every file written
         /// before, `toomreQ` runs as written.
         public var effectiveToomreQ: Float?
+        /// The gas's share of the disk's mass (`GalaxyConfig.dustMassFraction`, #218); absent,
+        /// as in every file written before, it is the dust's share of the particles.
+        public var dustMassFraction: Float?
         public var haloParticleRatio: Float
         public var haloExtent: Float
         public var dissipationTime: Float
@@ -97,6 +100,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             diskMassFraction = galaxy.diskMassFraction
             toomreQ = galaxy.toomreQ
             effectiveToomreQ = galaxy.effectiveToomreQ
+            dustMassFraction = galaxy.dustMassFraction
             haloParticleRatio = galaxy.haloParticleRatio
             haloExtent = galaxy.haloExtent
             dissipationTime = galaxy.dissipationTime
@@ -159,6 +163,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.massLopsidedness = massLopsidedness ?? legacy.massLopsidedness
             galaxy.patternShare = patternShare ?? 0
             galaxy.effectiveToomreQ = effectiveToomreQ
+            galaxy.dustMassFraction = dustMassFraction
             return galaxy
         }
     }

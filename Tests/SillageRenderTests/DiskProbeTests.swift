@@ -253,6 +253,49 @@ struct DiskProbeTests {
         #expect(reading.mapSignalToNoise < 0.5)
     }
 
+    /// A knot is a clump that holds together over the lag: counted with its share of the disk
+    /// when its members stay with it, not when they spread as an arm crest's would, and a
+    /// smooth disk holds none.
+    @Test func aBoundKnotIsAClumpThatHoldsTogether() {
+        var generator = SeededGenerator(seed: 14)
+        let disk = Disk(count: 100_000, seed: 13)
+        let knot = (0..<2_000).map { _ in
+            SIMD3<Float>(8, 0, 0) + SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
+                * 0.15
+        }
+        // A lag later the disk has spread by its own motion and the knot moved on whole, or
+        // spread too.
+        let spread = disk.positions.map { p -> SIMD3<Float> in
+            let angle = generator.uniform() * 2 * .pi
+            return SIMD3<Float>(p.x * cos(angle) - p.y * sin(angle), p.x * sin(angle) + p.y * cos(angle), p.z)
+        }
+        let held = knot.map { $0 + SIMD3<Float>(0.4, 1.2, 0) }
+        let torn = knot.map {
+            $0 + SIMD3<Float>(generator.normal(), generator.normal(), generator.normal() * 0.2) * 2
+        }
+        let galaxy = Self.galaxy()
+        func fold(_ frames: [[SIMD3<Float>]]) -> (count: Int, share: Double) {
+            var tracker = DiskProbe.KnotTracker(lagMyr: 50, softening: 0.1)
+            var last = (count: 0, share: 0.0)
+            for (index, positions) in frames.enumerated() {
+                let velocities = [SIMD3<Float>](repeating: .zero, count: positions.count)
+                let component = [UInt32](repeating: ParticleComponent.star.rawValue, count: positions.count)
+                last = DiskProbe.withParticles(
+                    positions: positions, velocities: velocities, component: component
+                ) { particles in
+                    tracker.fold(
+                        particles, frame: .natal(galaxy), galaxy: galaxy, timeMyr: Double(index) * 50)
+                }
+            }
+            return last
+        }
+        let found = fold([disk.positions + knot, spread + held])
+        #expect(found.count == 1)
+        #expect(abs(found.share - 2_000.0 / 102_000) < 0.002)
+        #expect(fold([disk.positions + knot, spread + torn]).count == 0)
+        #expect(fold([disk.positions, spread]).count == 0)
+    }
+
     /// The generators' response is read at the wave the probe's `facts` name, and asks a softer
     /// or thicker disk for a lower Q.
     @Test func theResponseIsReadAtTheProbesWavenumber() {

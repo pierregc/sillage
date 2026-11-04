@@ -18,6 +18,7 @@ Options: `--particles N` (the scene's visible count; the galaxy takes its share)
 otherwise; the step stays the scene's), the overrides `--clumpiness`, `--toomre-q`,
 `--arm-strength`, `--arm-count`, `--arm-irregularity`, `--disk-mass-fraction`,
 `--disk-thickness`, `--dissipation`, `--mass-contrast`, `--streaming`, `--young-clumpiness`,
+`--dust-fraction` (the gas, which carries mass and is laid down wider than the stars, #218),
 `--effective-q` (Toomre Q solved for that response at the run's softening, after the other
 overrides, the way the generators draw a spiral: `DiskResponse`, #181; a galaxy whose scene file
 holds a response, `effectiveToomreQ`, is solved for it the same way without the flag, which takes
@@ -107,6 +108,15 @@ inner 0.5 to 1.5, mid 1.5 to 3 and outer 3 to 4.5 scale lengths.
   `lump_polar` reads a coarser thing on the polar map: the power of the azimuthal orders
   shorter than half a scale length on each ring that can resolve it, so spurs and sharpened
   arms count there.
+- `knots`, `knot_share`: bound knots (#218) and the share of the disk material (stars, young
+  stars and gas) they hold. Each frame the peaks of a face-on map of the disk material (cells of
+  0.05 scale lengths, outside half a scale length) that hold three times what their ring holds
+  per cell are candidates, the strongest 96, each with what lies within the knot radius of its
+  centre (0.5 kpc, never under 2.5 softening lengths) and at least 24 members; a lag later a
+  candidate is a knot if half its members are still within that radius of their own centre,
+  and the share is what those knots keep. An arm crest or a clump the shear takes apart
+  spreads over kiloparsecs in a lag; a bound knot does not. Noise, the seeded clumps and a
+  smooth or armed disk read 0 to 0.6 %.
 - `outer_offset_h`: how far the outer zone's centroid sits from the nucleus, in scale lengths;
   the lopsidedness as a displacement.
 - `axis_tilt_deg`: the angle between the measured axis and the natal one.
@@ -135,10 +145,14 @@ prefers the arm count that puts X near 2), the painted pattern speed with its co
 inner Lindblad radii, the rotation and epicyclic periods at two scale lengths, and the
 effective Q, Toomre Q over the share of the disk's pull its softening and late thickness leave
 at the wave that grows (`effectiveToomreQ`, `gravityLeft`), at the run's softening.
+`knotShareClip` is the largest `knot_share` within the 800 Myr an explore clip covers,
+`knotShareLate` its late mean and `firstKnotMyr` the first frame whose knots hold
+`KnotTracker.visibleShare` of the disk.
 
 `probe-report.py table` adds two columns read from `probe.csv`: `armsL`, the late mean of each
 frame's largest of `a2_mid` to `a6_mid`, the arms whatever their count (#181), and `a2in`, the
-run's largest `a2_inner`, the bar.
+run's largest `a2_inner`, the bar; `bound%` is `knotShareClip` in per cent. `armsL` counts the
+power of knots as arms: a knotted disk reads strong arms there.
 
 ## Reading the numbers against real galaxies
 

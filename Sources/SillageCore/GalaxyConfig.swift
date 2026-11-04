@@ -132,6 +132,10 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// `toomreQ` is solved for it at the softening each run uses, so a hires disk answers as its
     /// explore preview did; absent, `toomreQ` runs as written.
     public var effectiveToomreQ: Float?
+    /// Share of the disk's mass the gas carries, laid down by the dust particles, which stay
+    /// `dustFraction` of the particles for the light. Absent, as in every file written before
+    /// #218, a dust particle weighs what a star does and the gas carries `dustFraction`.
+    public var dustMassFraction: Float?
 
     public init(
         name: String,
@@ -214,7 +218,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armMassContrast, armStreaming, massLopsidedness, patternShare, outskirtFraction
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
-        case inclination, positionAngle, spin, effectiveToomreQ
+        case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -263,6 +267,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         positionAngle = try values.decode(Float.self, forKey: .positionAngle)
         spin = try values.decode(Spin.self, forKey: .spin)
         effectiveToomreQ = try values.decodeIfPresent(Float.self, forKey: .effectiveToomreQ)
+        dustMassFraction = try values.decodeIfPresent(Float.self, forKey: .dustMassFraction)
     }
 
     /// What a galaxy described before the calm disk carried, for the fields it lacks.

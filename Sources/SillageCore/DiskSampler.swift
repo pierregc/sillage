@@ -498,6 +498,15 @@ public enum DiskSampler {
             selfGravitating
             ? config.potential.mass * config.diskMassFraction / Float(max(config.particleCount, 1))
             : 0
+        // The gas weighs its own share of the disk when it is given one; the dust particles
+        // that carry it stay as many, for the light.
+        var dustMass = particleMass
+        var otherMass = particleMass
+        if let gas = config.dustMassFraction, config.dustFraction > 0, config.dustFraction < 0.8 {
+            let share = min(max(gas, 0), 0.8)
+            dustMass = particleMass * share / config.dustFraction
+            otherMass = particleMass * (1 - share) / (1 - config.dustFraction)
+        }
         let rotation = config.orientation
         let spin = config.spin.sign
         let arms = config.kind == .spiral ? max(config.armCount, 0) : 0
@@ -925,7 +934,7 @@ public enum DiskSampler {
                 luminosity: brightness,
                 formation: formation,
                 component: kind,
-                mass: particleMass,
+                mass: component == .dust ? dustMass : otherMass,
                 kernelScale: kernelScale
             )
         }

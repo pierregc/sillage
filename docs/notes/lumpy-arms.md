@@ -849,3 +849,101 @@ paint's 0.9. A drive holds a pattern only in a disk nothing cools, which is not 
 the scenes show; the port stays on its branch should one be wanted there. Whether the driven
 grand design would be worth its shrinking for the look alone is Pierre's call, on the sheets of
 the pull request.
+
+## Large cool disks break into knots (#218)
+
+The #172 review found the primary of place 11 (seed 20261030, `--pair-share off`: three arms,
+scale length 6.15 kpc, response 1.80, Q 1.34 at the explore count) breaking into kiloparsec
+knots from 300 Myr, place 3's primary and place 8's second spiral turning flocculent late, and
+free-11 knotted at 2 M. The probe now counts the knots (`knots`, `knot_share`,
+`calm-disk-probe.md`): peaks of the disk material three times over their ring that still hold
+half their members within 0.5 kpc a lag later. A smooth or armed disk keeps 0 to 0.6 % of its
+material in them, place 11's primary 12 to 14 %; from about 1 % they show on the stills as
+fuzzy kiloparsec blobs strung on the outer arms, and from 5 % as the bright knots of the #172
+sheet. Below, knots is the largest share within the 800 Myr of an explore clip and late arms is
+`armsL`, which counts a knotted disk's lumps as arms.
+
+**What fragments them is the cooling, drawn in megayears against a turn that grows with size.**
+The generators draw a disk's cooling in 180 to 320 Myr whatever its size, and a large disk turns
+in 155 to 220 Myr at two scale lengths: place 11's primary sheds its random motion in 185 Myr,
+0.85 of its turn. A disk that cools about as fast as it turns behaves as a gas disk that does,
+and fragments the way one does: Gammie (2001) puts the line at a cooling time of three over the
+angular speed, which for the random velocity this cooling damps is 0.95 of a turn, and later
+work found it moving to slower cooling as the resolution grows. The swing-amplified arms are
+cooled while they are dense, go unstable along their length and collapse into bound knots the
+cooling then binds tighter. #181 had seen the other face of it, a large disk answering more than
+a small one at equal response. Place 11's primary, main's draw, one lever at a time:
+
+| place 11 g0 | knots | late arms | lumpiness late |
+| --- | --- | --- | --- |
+| as drawn, two samplings | 12.2, 14.2 % | 0.467, 0.440 | 1.52, 1.50 |
+| arm mass contrast 0.41 to 0.2 | 12.0 % | 0.375 | 1.36 |
+| young clumpiness 0.41 to 0.1 | 12.3 % | 0.394 | 1.36 |
+| gas 0.29 to 0.15 of the particles | 12.6 % | 0.421 | 1.47 |
+| response 2.0 (Q 1.34 to 1.49) | 7.5 % | 0.406 | 1.20 |
+| cooling 390 Myr (1.8 turns) | 0.2 % | 0.210 | 0.17 |
+| cooling 550 Myr (2.5 turns) | 0.15 % | 0.180 | 0.13 |
+
+The contrast in the mass, the young population's clumps and the gas leave its knots where they
+are and a stiffer disk halves them; cooled over 1.8 turns it keeps a multi-armed spiral through
+the gigayear with no knot, and over 2.5 turns its arms start to fade.
+
+**Cooled over 1.8 turns, the gas-rich ones still knot in their outskirts.** The gas is 14 to 38 %
+of a spiral's particles, each weighing what a star does, laid down 1.4 times wider than the stars,
+and the sampler sets every particle's dispersion from one exponential of the stellar scale
+length holding the whole disk: by its own profiles, a disk with 0.3 of its particles in gas is
+denser at four scale lengths and at its edge than its dispersion was drawn for, its Toomre Q
+there 10 to 30 % under the one drawn. Without cooling place 3's primary keeps no knot and no arm
+either (late arms 0.08); cooled, its outskirts fragment. Per galaxy, cooled over 1.8 turns
+(knots; late arms):
+
+| | gas | as cooled, two samplings | gas 0.15 to 0.2 | response 1.95 to 2.0 | cooled 2.5 turns |
+| --- | --- | --- | --- | --- | --- |
+| place 3 g0, 5 arms | 0.31 | 4.6, 2.7 %; 0.256, 0.210 | 0.8 %; 0.209 | 2.9 %; 0.250 | |
+| place 7 g0, 3 arms | 0.31 | 3.0, 2.4 %; 0.222, 0.289 | 0.16 %; 0.211 | 1.6 %; 0.256 | 1.2 %; 0.209 |
+| place 11 g4, 4 arms | 0.35 | 2.3, 2.6 %; 0.236, 0.257 | 0.2 %; 0.207 | 2.2 %; 0.216 | |
+| place 4 g2, 4 arms | 0.37 | 2.7, 3.0 %; 0.205, 0.221 | 1.4 %; 0.216 | 0.97 %; 0.184 | 1.8 %; 0.201 |
+
+Lighter gas takes the knots out where a stiffer disk or a slower cooling only thins them, at no
+cost to the arms. Drawing less dust would do it too and change the light; the gas is weighed
+apart instead.
+
+**What changed**, for the scenes the batch generators draw (`finishGenerated`, `draw` set), once a
+companion has its size:
+
+- The cooling drawn in 180 to 320 Myr is held to at least 1.8 turns at two scale lengths
+  (`DiskResponse.coolingTurns`, `turn(of:)`, `dissipationTime(drawn:of:)`), with the live halo the
+  runs give. A disk turning faster keeps its draw, as half of #181's small spirals do (turns of
+  94 to 139 Myr); the light ones among them turn in 175 to 220 Myr and are cooled more slowly too.
+- A large spiral of three to five arms (scale length 4.2 kpc or more, #181's line) carries 0.10 to
+  0.20 of its disk mass in gas, at the place of its dust draw in 0.14 to 0.38
+  (`GalaxyConfig.dustMassFraction`, `DiskResponse.dustMassFraction(of:)`): its dust particles stay
+  as many for the light and weigh that share between them, the stars the rest, and the rotation
+  curve counts the gas where it lies (`DiskEquilibrium`, `DiskSampler`). A large spiral holds a
+  tenth to a fifth of its disk in gas. Two-armed ones keep their gas: weighed apart, the late
+  arms of place 10's primary fell from 0.218 to 0.174 and 0.198 and place 16's from 0.168 to 0.146
+  and 0.178, the gas carrying the painted wave their arms ride, and none of them knotted once
+  cooled over 1.8 turns.
+
+Nothing moves in the stream: places 1 to 16 of seed 20261030 and scenes 0 to 39 of batch
+20261031 differ from main's draw by the cooling of the disks held to their turns, the gas share
+of the large spirals and, through the curve, a Q solved 0.3 to 0.6 % lower for those of them
+drawn for a response. A scene file written before has neither, its gas weighs what its dust does
+and it runs its cooling as written.
+
+**At the explore count**, the large spirals of places 1 to 16 and free-3 (batch 20261031 scene
+23 g0) and free-11 (scene 11 g0), main's draw against the rule (knots; late arms):
+
+TABLE-EXPLORE
+
+**At 2 M** (one sampling; the explore preview's softening a third, Q solved there for the same
+response):
+
+TABLE-2M
+
+**The small spirals of #181** the cooling floor reaches (the gas rule does not), main against the
+rule, one sampling each:
+
+TABLE-SMALL
+
+**What is left.** TODO

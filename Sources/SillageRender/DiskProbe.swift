@@ -258,6 +258,9 @@ public enum DiskProbe {
         public var youngCount = 0
         /// Knots the star formation rule lit since the last frame.
         public var formed = 0
+        /// Bound knots (`KnotTracker`) and the share of the disk material they hold.
+        public var knots = 0
+        public var knotShare = 0.0
         /// Phase of the pattern mode in the middle zone, as a pattern angle in radians,
         /// weighted over its rings by their pattern power.
         public var patternAngle = 0.0
@@ -323,6 +326,7 @@ public enum DiskProbe {
             columns += (1...DiskProbe.youngModes).map { "young_a\($0)_mid" }
             columns += ["n_young_mid", "formed", "outer_offset_h", "axis_tilt_deg", "centre_offset_kpc"]
             columns += ["cx", "cy", "cz", "sx", "sy", "sz"]
+            columns += ["knots", "knot_share"]
             return columns.joined(separator: ",")
         }()
 
@@ -355,6 +359,7 @@ public enum DiskProbe {
             fields += [String(youngCount), String(formed), f(outerOffset), f(axisTilt, 3), f(centreOffset)]
             fields += [centre.x, centre.y, centre.z, solverCentre.x, solverCentre.y, solverCentre.z]
                 .map { f(Double($0)) }
+            fields += [String(knots), f(knotShare, 5)]
             return fields.joined(separator: ",")
         }
     }
