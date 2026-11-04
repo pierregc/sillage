@@ -897,16 +897,17 @@ there 10 to 30 % under the one drawn. Without cooling place 3's primary keeps no
 either (late arms 0.08); cooled, its outskirts fragment. Per galaxy, cooled over 1.8 turns
 (knots; late arms):
 
-| | gas | as cooled, two samplings | gas 0.15 to 0.2 | response 1.95 to 2.0 | cooled 2.5 turns |
+| | gas | as cooled, two samplings | gas 0.15 to 0.2 of the particles | response 1.95 to 2.0 | cooled 2.5 turns |
 | --- | --- | --- | --- | --- | --- |
 | place 3 g0, 5 arms | 0.31 | 4.6, 2.7 %; 0.256, 0.210 | 0.8 %; 0.209 | 2.9 %; 0.250 | |
 | place 7 g0, 3 arms | 0.31 | 3.0, 2.4 %; 0.222, 0.289 | 0.16 %; 0.211 | 1.6 %; 0.256 | 1.2 %; 0.209 |
 | place 11 g4, 4 arms | 0.35 | 2.3, 2.6 %; 0.236, 0.257 | 0.2 %; 0.207 | 2.2 %; 0.216 | |
 | place 4 g2, 4 arms | 0.37 | 2.7, 3.0 %; 0.205, 0.221 | 1.4 %; 0.216 | 0.97 %; 0.184 | 1.8 %; 0.201 |
 
-Lighter gas takes the knots out where a stiffer disk or a slower cooling only thins them, at no
-cost to the arms. Drawing less dust would do it too and change the light; the gas is weighed
-apart instead.
+Lighter gas takes the knots out of three of the four, where a stiffer disk or a slower cooling
+thins them, at no cost to the arms; place 4's third galaxy, the richest in gas, keeps 1.4 %
+lighter and 0.97 % stiffer. Drawing less dust would do it and change the light; the gas is
+weighed apart instead.
 
 **What changed**, for the scenes the batch generators draw (`finishGenerated`, `draw` set), once a
 companion has its size:
@@ -976,7 +977,11 @@ explore preview's and Q solved there for the same response; late arms over the l
 | free-11, cooled only | 1.41 M | 2.1 % (2.1 %) | 0.237 | 1 Gyr |
 | place 16 g0 | 1.45 M | 0.05 % (0.01 %) | 0.204 | 800 Myr |
 | place 16 g0, cooled only | 1.45 M | 1.2 % (1.2 %) | 0.199 | 800 Myr |
-TWO-M-MORE
+| place 10 g0 | 1.77 M | 0.01 % (0.00 %) | 0.248 | 800 Myr |
+| place 15 g0 | 1.20 M | 2.4 % (2.3 %) | 0.230 | 800 Myr |
+
+Places 4 g0 and 8 g0, which kept no knot at explore as main draws them or with the rule, were
+not run at 2 M.
 
 More particles knot more readily, as the cooling-time line moves with resolution in gas disks:
 cooled over 1.8 turns alone, free-11 keeps 2.1 % at 2 M against 1.3 % at explore, and place 16's
@@ -986,7 +991,11 @@ arms of 0.20 to 0.24, a little stronger than at explore; place 3's primary and p
 galaxy, the two lowest in Q (1.10 and 1.19 at explore) with much gas (0.31 and 0.37 of their
 particles), reach 1.0 and 1.2 %: four to six small clumps on the outermost arms from 450 Myr on
 for place 3, from 600 for place 4, next to the dozens of bright knots main's place 11 carries at
-explore.
+explore. Place 15's primary knots from 450 Myr (2.4 %, five knots). A large two-armed spiral
+keeps its draw of Q at every count, so its effective Q falls with the softening, from 1.86 at
+explore to 1.62 at 2 M for place 15, the lowest of all (a spiral drawn for a response keeps its
+own at every count); places 10 and 16, two-armed too but drawn at a Q 0.1 higher, fall to 1.78
+and 1.73 and stay clean.
 
 **The small spirals of #181** the cooling floor reaches (the gas rule does not), main against the
 rule, one sampling each:
@@ -1028,3 +1037,6 @@ enough to turn in 181 Myr, keeps 3.4 %.
   clumps on their outermost arms through the second half of the clip; the gas range's top (0.20)
   or the response of the large disks are the levers left for them, both measured only at explore
   here.
+- At 2 M place 15's primary, two-armed, knots (2.4 %): a large two-armed spiral keeps its Q at
+  every count and so answers more at 2 M than at explore. Storing the response its Q gives at the
+  explore count, as #181 does for the other spirals, would hold it there; not tried here.
