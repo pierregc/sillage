@@ -71,15 +71,16 @@ three to five arms is drawn for its response rather than its Toomre Q: Q is solv
 effective Q of 1.75 to 1.95, 1.72 to 1.76 under a scale length of 4.2 kpc, Q over what the
 softening at 100 000 particles a galaxy and the disk's late thickness leave of its own pull, so a
 small, soft or thick disk is drawn colder; a small two-armed spiral is drawn at 1.80 to 1.86, a
-large one keeps its draw of Q. The scene file keeps that response (`effectiveToomreQ`) and every
-run solves Q for it at its own softening ([the note](docs/notes/lumpy-arms.md)). What changes
-a scene most is drawn from a Sobol sequence shifted by the batch seed, so a batch covers the
-space instead of clumping; the rest comes from a stream seeded by the scene. A candidate whose
-signature (galaxy count, the first two galaxies, the first encounter) sits closer than
-`--spacing`, 0.3 by default, to a scene already in the batch is passed over, and the scene file
-records how it was drawn under `draw`: the generator, the batch seed, the index, the point of
-the sequence and each galaxy's family. The batch is replayed up to the index, without a
-particle, so a scene is found again from those two numbers alone.
+large one at the response its draw of Q gives at that softening, 1.90 at least. The scene file
+keeps that response (`effectiveToomreQ`) and every run solves Q for it at its own softening
+([the note](docs/notes/lumpy-arms.md)). What changes a scene most is drawn from a Sobol sequence
+shifted by the batch seed, so a batch covers the space instead of clumping; the rest comes from
+a stream seeded by the scene. A candidate whose signature (galaxy count, the first two galaxies,
+the first encounter) sits closer than `--spacing`, 0.3 by default, to a scene already in the
+batch is passed over, and the scene file records how it was drawn under `draw`: the generator,
+the batch seed, the index, the point of the sequence and each galaxy's family. The batch is
+replayed up to the index, without a particle, so a scene is found again from those two numbers
+alone.
 
 A batch also holds archetypes, known interacting systems as starting points: `antennae`
 (NGC 4038/9), `mice` (NGC 4676), `ring` (a head-on collision, as in the Cartwheel), `tadpole`

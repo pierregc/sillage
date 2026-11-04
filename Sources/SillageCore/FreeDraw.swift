@@ -324,7 +324,8 @@ public struct FreeDraw: Sendable {
                 // solved for it, here and among the scene's galaxies in `finishGenerated`, then
                 // at every count it runs at. Two arms ride the painted wave the streaming holds
                 // and keep the draw of Q unless the disk is small: a stronger response barred
-                // them, a weaker one faded them (#181).
+                // them, a weaker one faded them (#181). A large one keeps the response it gives
+                // at the reference count, 1.90 at least, at every count (#249).
                 toomreQ: stream.uniform(
                     in: armCount <= 2 ? DiskResponse.twoArmedToomreQ : DiskResponse.drawnRange),
                 inclination: stream.uniform(in: -1.2...1.2),

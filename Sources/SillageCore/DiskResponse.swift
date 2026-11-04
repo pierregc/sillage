@@ -18,8 +18,12 @@ public enum DiskResponse {
     /// from 1.77 (docs/notes/lumpy-arms.md).
     public static let smallRange: ClosedRange<Float> = 1.72...1.76
     /// The Toomre Q a two-armed spiral is drawn at: two arms ride the painted wave the streaming
-    /// holds, and a large disk keeps this draw.
+    /// holds. A large disk keeps the response this draw gives it at the reference count, at
+    /// every count, `largeTwoArmedFloor` at least (#249).
     public static let twoArmedToomreQ: ClosedRange<Float> = 1.25...1.45
+    /// The least response a large two-armed one keeps. Under it a thin, gas-rich disk broke into
+    /// knots in its outskirts by the end of the clip, at explore and more so at 2 M (#249).
+    public static let largeTwoArmedFloor: Float = 1.90
     /// The response a small two-armed one is given instead, at the place of its draw of Q:
     /// drawn at its Q, a small two-armed disk faded where a large one kept its arms.
     public static let smallTwoArmedRange: ClosedRange<Float> = 1.80...1.86
@@ -45,13 +49,18 @@ public enum DiskResponse {
 
     /// The response a generated spiral is given once its size is known: its drawn one, at the
     /// same place in `smallRange` when it is small, or for a small two-armed one the place of
-    /// its draw of Q in `smallTwoArmedRange`. Nil for a large two-armed one, which keeps its Q.
-    public static func target(of galaxy: GalaxyConfig) -> Float? {
+    /// its draw of Q in `smallTwoArmedRange`. A large two-armed one gets the response its draw
+    /// of Q gives it at `referenceSoftening`, `largeTwoArmedFloor` at least: kept at its Q, it
+    /// answered more at 2 M, a third of the softening, and broke into knots (#249).
+    public static func target(of galaxy: GalaxyConfig, referenceSoftening: Float) -> Float? {
         let small = galaxy.diskScaleLength < smallScaleLength
         if let drawn = galaxy.effectiveToomreQ {
             return small ? moved(drawn, from: drawnRange, to: smallRange) : drawn
         }
-        guard small, galaxy.kind == .spiral, galaxy.armCount <= 2 else { return nil }
+        guard galaxy.kind == .spiral, galaxy.armCount <= 2 else { return nil }
+        guard small else {
+            return max(effectiveToomreQ(galaxy, softening: referenceSoftening), largeTwoArmedFloor)
+        }
         return moved(galaxy.toomreQ, from: twoArmedToomreQ, to: smallTwoArmedRange)
     }
 
