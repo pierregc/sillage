@@ -116,6 +116,80 @@ struct EncounterTests {
         }
     }
 
+    static func expectWithinLimits(_ scene: SceneConfig, _ label: String = "") {
+        for galaxy in scene.galaxies {
+            #expect(simd_length(galaxy.position) <= Encounter.startDistanceLimit, "\(label) \(galaxy.name)")
+            #expect(simd_length(galaxy.velocity) <= Encounter.startSpeedLimit, "\(label) \(galaxy.name)")
+        }
+    }
+
+    /// A drawn scene as `explore` places it: live halos at a step scale of 3.5, its passages
+    /// moved into a clip of 700 Myr after 750 steps of settling.
+    static func explored(_ drawn: SceneConfig, particleCount: Int) -> SceneConfig {
+        var file = SceneFile(drawn)
+        file.solver = .barnesHut
+        for index in file.galaxies.indices where file.galaxies[index].kind != .blackHole {
+            file.galaxies[index].haloParticleRatio = 1.5
+        }
+        file.timeStepScale = 3.5
+        var scene = file.scene(particleCount: particleCount)
+        guard !scene.encounters.isEmpty else { return scene }
+        scene.retimeEncounters(
+            from: SceneConfig.contemplationWindow(haste: 0),
+            to: scene.encounterWindow(settleSteps: 750, steps: exploredSteps(scene)))
+        scene.placeEncountersGivingWay()
+        return scene
+    }
+
+    static func exploredSteps(_ scene: SceneConfig) -> Int {
+        Int((700 / (Double(scene.timeStep) * Physics.megayearsPerTimeUnit) / 900).rounded(.up)) * 900
+    }
+
+    /// Batches whose fits ran away before #217, starting galaxies 4700 to 355 000 kpc out at
+    /// up to 600 000 km/s; the first is the batch the review found it in. Each place at the
+    /// count `explore-batch.sh` gives it, a hundred thousand particles a galaxy.
+    @Test(arguments: [(20_261_030, nil), (117, 0.8), (129, 0.8)] as [(UInt64, Float?)])
+    func generatedScenesStartWithinTheLimits(batchSeed: UInt64, pairShare: Float?) {
+        let draw = BatchDraw(batchSeed: batchSeed, pairShare: pairShare)
+        let drafts = draw.drafts(17, particleCount: 100_000)
+        for index in 1...16 {
+            let particles = max(drafts[index].galaxyCount, 1) * 100_000
+            let drawn = draw.scene(at: index, particleCount: particles)
+            Self.expectWithinLimits(drawn, "\(batchSeed) \(index) drawn")
+            Self.expectWithinLimits(
+                Self.explored(drawn, particleCount: particles), "\(batchSeed) \(index) explored")
+        }
+    }
+
+    /// The two scenes of the review: placed again holding the drawn energy, every passage
+    /// still comes inside the clip, within a few times the distance asked.
+    @Test(arguments: [1, 12])
+    func aFitThatRanAwayIsTakenAgainHoldingTheEnergy(index: Int) {
+        let drawn = BatchDraw(batchSeed: 20_261_030, pairShare: nil).scene(at: index, particleCount: 400_000)
+        let scene = Self.explored(drawn, particleCount: 400_000)
+        Self.expectWithinLimits(scene)
+        let clip = scene.clipWindow(settleSteps: 750, steps: Self.exploredSteps(scene))
+        for (encounter, passage) in zip(scene.encounters, Self.passages(scene)) {
+            guard let passage else {
+                Issue.record("no passage for \(encounter.primary)-\(encounter.secondary)")
+                continue
+            }
+            #expect(clip.contains(passage.time))
+            #expect(passage.distance < 3 * encounter.pericentre)
+        }
+    }
+
+    /// A pair drawn faster than any galaxy starts is slowed towards parabolic, and still
+    /// passes where and when it was asked.
+    @Test func aPairDrawnTooFastIsSlowed() throws {
+        var scene = Self.pair(.live)
+        scene.encounters = [Encounter(pericentre: 1, eccentricity: 4, massRatio: 1, pericentreTime: 400)]
+        try scene.placeEncounters()
+        #expect(scene.encounters[0].eccentricity > 1 && scene.encounters[0].eccentricity < 4)
+        Self.expectWithinLimits(scene)
+        Self.expectLanded(scene, within: 0.01)
+    }
+
     /// Stepping back past apocentre would make the asked-for passage a second one.
     @Test func aBoundOrbitTooShortForItsTimeIsRefused() {
         var scene = Self.pair(.rigid)

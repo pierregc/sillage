@@ -72,6 +72,14 @@ public struct Encounter: Codable, Sendable, Equatable {
         abs(eccentricity - 1) < 1e-3 ? .parabolic : eccentricity < 1 ? .bound : .hyperbolic
     }
 
+    /// How far from the centre of mass a placed galaxy may start, in kpc: about the whole
+    /// extent of a group, which is what a scene of a few galaxies is.
+    public static let startDistanceLimit: Float = 1000
+    /// How fast a placed galaxy may start against the centre of mass: 1500 km/s. Galaxies in
+    /// pairs and groups meet at a few hundred, the intruder of Stephan's Quintet at 900, and
+    /// 1500 is a rich cluster's fastest; one orbit in a thousand drawn starts faster.
+    public static let startSpeedLimit = Float(1500 / Physics.kilometersPerSecondPerVelocityUnit)
+
     /// Orbit frame to scene: the orbit turns about z, its pericentre lies along x.
     var plane: simd_double3x3 {
         func aboutZ(_ angle: Float) -> simd_double3x3 {
@@ -325,12 +333,69 @@ extension SceneConfig {
     ///
     /// With `firstPassage` off, a passage that is not the pair's first is accepted and placed
     /// as the backward construction gives it, without correcting the others' pull.
+    ///
+    /// Every centre starts within `Encounter.startDistanceLimit` and `startSpeedLimit` of
+    /// the centre of mass. The fit holds each drawn eccentricity while it moves the pericentre
+    /// it asks for, and a hyperbolic orbit asked for a smaller pericentre at the same
+    /// eccentricity carries more energy: passages the others' pull kept wide drove it to 5 pc
+    /// and 100 000 km/s, thousands of kpc out (#217). Such a fit is taken again holding the
+    /// drawn orbit's energy instead, and orbits that start beyond the limits even so are
+    /// slowed towards parabolic, which is what the scene then keeps.
     public mutating func placeEncounters(firstPassage: Bool = true) throws {
         guard !encounters.isEmpty else { return }
         try validateEncounters()
         applyMassRatios()
         orientDisks()
 
+        func fitted() throws -> (positions: [SIMD3<Double>], velocities: [SIMD3<Double>]) {
+            let held = try fittedStart(firstPassage: firstPassage, holdingEnergy: false)
+            return Self.startsWithinLimits(held)
+                ? held : try fittedStart(firstPassage: firstPassage, holdingEnergy: true)
+        }
+        var placed = try fitted()
+        var slowed = 0
+        while !Self.startsWithinLimits(placed), slowed < Self.slowings {
+            slowed += 1
+            // The orbits bringing in a galaxy that starts beyond, or all of them when only a
+            // primary does.
+            let beyond = Set(galaxies.indices.filter { !Self.startsWithinLimits(placed, galaxy: $0) })
+            let hyperbolic = encounters.indices.filter { encounters[$0].eccentricity > 1 }
+            let culprits = hyperbolic.filter { beyond.contains(encounters[$0].secondary) }
+            for index in culprits.isEmpty ? hyperbolic : culprits {
+                let excess = encounters[index].eccentricity - 1
+                encounters[index].eccentricity = slowed == Self.slowings ? 1 : 1 + excess / 2
+            }
+            placed = try fitted()
+        }
+        for index in galaxies.indices {
+            galaxies[index].position = SIMD3<Float>(placed.positions[index])
+            galaxies[index].velocity = SIMD3<Float>(placed.velocities[index])
+        }
+    }
+
+    /// Halvings of the hyperbolic excess before every orbit is made parabolic, which always
+    /// starts close: a parabolic fall of 850 Myr between two of the heaviest galaxies drawn
+    /// starts about 300 kpc out.
+    static let slowings = 4
+
+    /// Judged on the single precision the scene keeps.
+    static func startsWithinLimits(
+        _ state: (positions: [SIMD3<Double>], velocities: [SIMD3<Double>]), galaxy: Int? = nil
+    ) -> Bool {
+        (galaxy.map { [$0] } ?? Array(state.positions.indices)).allSatisfy {
+            simd_length(SIMD3<Float>(state.positions[$0])) <= Encounter.startDistanceLimit
+                && simd_length(SIMD3<Float>(state.velocities[$0])) <= Encounter.startSpeedLimit
+        }
+    }
+
+    /// The start that brings every pair through its pericentre, by Levenberg-Marquardt over
+    /// the passages the backward construction is asked for. Holding the energy, the speed at
+    /// the asked pericentre is the drawn orbit's rather than the drawn eccentricity's, no
+    /// pericentre under a hundredth of the drawn one is asked for, and no start beyond the
+    /// limits is tried.
+    private func fittedStart(firstPassage: Bool, holdingEnergy: Bool) throws -> (
+        positions: [SIMD3<Double>], velocities: [SIMD3<Double>]
+    ) {
         let pairs = encounters.map { ($0.primary, $0.secondary) }
         let wanted = encounters.map { (Double($0.pericentre), Double($0.pericentreTime)) }
         let horizon = Float(wanted.map(\.1).max() ?? 0) * 1.5 + 200
@@ -341,7 +406,12 @@ extension SceneConfig {
         typealias Trial = (residual: [Double], positions: [SIMD3<Double>], velocities: [SIMD3<Double>])
         func trial(_ x: [Double]) -> Trial? {
             let asked = wanted.indices.map { (exp(x[2 * $0]), max(x[2 * $0 + 1], 1)) }
-            guard let (positions, velocities) = try? startingState(asking: asked) else { return nil }
+            if holdingEnergy, zip(asked, wanted).contains(where: { $0.0 < 0.01 * $1.0 }) { return nil }
+            guard
+                let (positions, velocities) = try? startingState(
+                    asking: asked, holdingEnergy: holdingEnergy)
+            else { return nil }
+            if holdingEnergy, !Self.startsWithinLimits((positions, velocities)) { return nil }
             var model = EncounterCentres(scene: self)
             model.positions = positions
             model.velocities = velocities
@@ -358,13 +428,7 @@ extension SceneConfig {
         var x = wanted.flatMap { [log($0.0), $0.1] }
         // A first passage the centres never make leaves the backward construction as it is.
         let first = try startingState(asking: wanted, firstPassage: firstPassage)
-        guard firstPassage else {
-            for index in galaxies.indices {
-                galaxies[index].position = SIMD3<Float>(first.0[index])
-                galaxies[index].velocity = SIMD3<Float>(first.1[index])
-            }
-            return
-        }
+        guard firstPassage else { return first }
         var best =
             trial(x)
             ?? (Array(repeating: Double.infinity, count: x.count), first.0, first.1)
@@ -421,10 +485,7 @@ extension SceneConfig {
             }
             if !improved { break }
         }
-        for index in galaxies.indices {
-            galaxies[index].position = SIMD3<Float>(best.positions[index])
-            galaxies[index].velocity = SIMD3<Float>(best.velocities[index])
-        }
+        return (best.positions, best.velocities)
     }
 
     /// Gaussian elimination with partial pivoting, for the handful of unknowns above.
@@ -526,9 +587,12 @@ extension SceneConfig {
     /// Each secondary is set at its pericentre beside where its primary actually is at that
     /// moment, with the galaxies already placed run forward to it, then stepped back through
     /// them to the start. The whole is then moved to rest at the origin.
-    private func startingState(asking asked: [(Double, Double)], firstPassage: Bool = true) throws -> (
-        [SIMD3<Double>], [SIMD3<Double>]
-    ) {
+    ///
+    /// The orbit through an asked pericentre has the drawn eccentricity, or with
+    /// `holdingEnergy` the energy the drawn orbit has through the drawn pericentre.
+    private func startingState(
+        asking asked: [(Double, Double)], firstPassage: Bool = true, holdingEnergy: Bool = false
+    ) throws -> ([SIMD3<Double>], [SIMD3<Double>]) {
         let full = EncounterCentres(scene: self)
         let profiles = full.profiles
         let coupling = full.coupling
@@ -541,8 +605,9 @@ extension SceneConfig {
             let s = encounter.secondary
             let q = asked[index].0
             let e = Double(encounter.eccentricity)
+            let drawn = holdingEnergy ? Double(encounter.pericentre) : q
             let speed = max(
-                -2 * full.pairPotential(p, s, at: q) + (e - 1) * (masses[p] + masses[s]) / q, 1e-8
+                -2 * full.pairPotential(p, s, at: q) + (e - 1) * (masses[p] + masses[s]) / drawn, 1e-8
             ).squareRoot()
             let back = asked[index].1 / Physics.megayearsPerTimeUnit
             let steps = max(Int((back / EncounterCentres.timeStep).rounded(.up)), 1)

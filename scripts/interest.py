@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Interest score: which scenes of a batch to look at first, from their curves alone.
+"""Interest score: which scenes of a batch to look at first, from their curves and how much of
+their preview shows them.
 
     interest.py <scene folder>       features and score into <scene>/interest.json
     interest.py <batch folder>       every scene, then score and rank columns in index.csv
@@ -34,6 +35,12 @@ MINIMUM_RATED = 12
 # A story still going when explore reached its cap (#123) counts this share of its score, so
 # night picks prefer the scenes they can show whole.
 UNFINISHED = 0.5
+# The preview frames every galaxy at once, so one far out leaves the others specks (#217). A
+# frame shows something when the largest bright disk is at least this many pixels in radius,
+# and a scene that shows something for less than this share of its clip keeps its score in
+# proportion: a black preview keeps none.
+VISIBLE_PIXELS = 8.0
+VISIBLE_SHARE = 0.5
 
 
 def number(value, default=0.0):
@@ -107,6 +114,59 @@ def story_complete(folder):
     return None if story is None else bool(story.get("complete"))
 
 
+def read_json(path):
+    try:
+        with open(path) as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+
+def visible_share(folder):
+    """The share of the clip whose largest bright disk is VISIBLE_PIXELS in radius or more, as
+    the auto camera of the preview frames it. None when the folder cannot say."""
+    scene = read_json(os.path.join(folder, "scene.json"))
+    clip = read_json(os.path.join(folder, "clip.json"))
+    look = read_json(os.path.join(folder, "look.json")) or {}
+    camera = look.get("camera", {})
+    if not scene or not clip or camera.get("mode") != "auto":
+        return None
+    galaxies = scene.get("galaxies", [])
+    with open(os.path.join(folder, "curves.csv"), newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    if not galaxies or not rows or "x_%d" % (len(galaxies) - 1) not in rows[0]:
+        return None
+    holes = [g["kind"] == "black-hole" for g in galaxies]
+    # SceneCheck.reach and brightReach: where a disk ends, and the radius of nine tenths of
+    # its light.
+    reach = [max(g["diskScaleLength"] * g["diskTruncation"], 0.1) for g in galaxies]
+    bright = max(0 if hole else max(g["diskScaleLength"] * min(g["diskTruncation"], 3.9), 0.1)
+                 for g, hole in zip(galaxies, holes))
+    hosts = [i for i, hole in enumerate(holes) if not hole]
+    # Pixels per kpc at the target is the half height over 1.05 times the framed radius
+    # (Camera.framing), and the zoom divides the radius.
+    scale = clip["height"] / 2 / 1.05 * camera.get("zoom", 1)
+    centre, radius, shown = None, 0.0, 0
+    for row in rows:
+        points = [[number(row["%s_%d" % (axis, i)]) for axis in "xyz"]
+                  for i in range(len(galaxies))]
+        # SceneConfig.framedCentres: a black hole counts only near the galaxy it passes.
+        for i in [i for i, hole in enumerate(holes) if hole and hosts]:
+            host = min(hosts, key=lambda h: math.dist(points[h], points[i]))
+            t = min(max((math.dist(points[i], points[host]) - reach[host]) / reach[host], 0), 1)
+            near = 1 - t * t * (3 - 2 * t)
+            points[i] = [h + (p - h) * near for h, p in zip(points[host], points[i])]
+        # AutoCamera: the centre follows a tenth of the way, the frame opens at once and
+        # closes by four hundredths.
+        middle = [(min(p[k] for p in points) + max(p[k] for p in points)) / 2 for k in range(3)]
+        centre = middle if centre is None else [c + (m - c) * 0.1 for c, m in zip(centre, middle)]
+        needed = max(math.dist(p, centre) + r for p, r in zip(points, reach))
+        radius = needed if radius == 0 or needed > radius else radius + (needed - radius) * 0.04
+        if bright / max(radius, 1) * scale >= VISIBLE_PIXELS:
+            shown += 1
+    return shown / len(rows)
+
+
 def score_scene(folder):
     curves = os.path.join(folder, "curves.csv")
     if not os.path.exists(curves):
@@ -115,7 +175,11 @@ def score_scene(folder):
     if found is None:
         return None
     found["story_complete"] = story_complete(folder)
+    share = visible_share(folder)
+    found["visible_share"] = None if share is None else round(share, 3)
     value = score(found) * (UNFINISHED if found["story_complete"] is False else 1.0)
+    if share is not None:
+        value *= min(share / VISIBLE_SHARE, 1.0)
     result = {"version": 1, "score": round(value, 4), "features": found}
     with open(os.path.join(folder, "interest.json"), "w") as handle:
         json.dump(result, handle, indent=2, sort_keys=True)
