@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 import Testing
 
 @testable import SillageRender
@@ -82,34 +83,108 @@ struct StageJobsTests {
         #expect(plan(.hd, range, queue: queue).output?.lastPathComponent == "1080p-2.mp4")
 
         queue.add(.hires, path: folder.url.path + "/", options: ["--particles", "2000000"], at: made)
-        #expect(StageJobs.hires(folder, particles: 5_000_000, cost: cost, queue: queue).queued)
+        #expect(
+            StageJobs.hires(folder, particles: 5_000_000, massive: 2_000_000, cost: cost, queue: queue).queued
+        )
     }
 
     @Test func autoTakesTheMostThatEndsBeforeTheMorning() {
         let now = at("2026-10-27T22:00:00.000+01:00")
-        // An hour for each million: nine hours to seven.
+        // An hour for each million: nine hours to seven, and Auto stops at a night's 8 M.
         let hourPerMillion = { (particles: Int) -> Double? in Double(particles) / 1_000_000 * 3600 }
         #expect(
             StageJobs.autoParticles(
                 seconds: hourPerMillion, start: now, now: now, calendar: calendar, maximum: 10_000_000)
-                == 9_000_000)
+                == 8_000_000)
         // Two hours ahead in the queue leave seven.
         #expect(
             StageJobs.autoParticles(
                 seconds: hourPerMillion, start: now.addingTimeInterval(7200), now: now,
                 calendar: calendar, maximum: 10_000_000) == 7_000_000)
-        // In the morning everything fits: the machine's maximum.
+        // In the morning everything fits: a night's 8 M, or the machine's maximum below it.
         let morning = at("2026-10-28T08:00:00.000+01:00")
         #expect(
             StageJobs.autoParticles(
                 seconds: hourPerMillion, start: morning, now: morning, calendar: calendar,
-                maximum: 8_200_000) == 8_200_000)
+                maximum: 10_000_000) == 8_000_000)
+        #expect(
+            StageJobs.autoParticles(
+                seconds: hourPerMillion, start: morning, now: morning, calendar: calendar,
+                maximum: 6_200_000) == 6_200_000)
         // Nothing fits: the least offered.
         let late = at("2026-10-28T06:30:00.000+01:00")
         #expect(
             StageJobs.autoParticles(
                 seconds: hourPerMillion, start: late, now: late, calendar: calendar,
                 maximum: 10_000_000) == 1_000_000)
+    }
+
+    /// A merger explored at 400 000 particles, as a night's batch writes it.
+    private func explored() throws -> SceneFolder {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stagejobs-\(UUID().uuidString)").appendingPathComponent("scene-0001")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        let folder = SceneFolder(url)
+        var scene = SceneConfig.merger(particleCount: 400_000)
+        scene.solver = .barnesHut
+        scene.timeStepScale = 3.5
+        try SceneFile(scene).encoded().write(to: folder.scene)
+        var clip = SceneFolder.Clip()
+        clip.particles = 400_000
+        clip.frames = 900
+        clip.steps = 7_200
+        clip.settle = 400
+        try clip.encoded().write(to: folder.clip)
+        return folder
+    }
+
+    /// Calculer draws as a night does: past 2 M, 2 M carry the mass and the others are light
+    /// tracers, priced as such. A real count is asked with no massive count.
+    @Test func aHiresIsDrawnAsANightDrawsIt() throws {
+        #expect(StageJobs.massive(drawing: 8_000_000) == 2_000_000)
+        #expect(StageJobs.massive(drawing: 1_000_000) == 1_000_000)
+        #expect(StageJobs.autoCeiling(maximum: 10_000_000) == 8_000_000)
+        #expect(StageJobs.autoCeiling(maximum: 5_000_000) == 5_000_000)
+
+        let scene = try explored()
+        defer { try? FileManager.default.removeItem(at: scene.batch) }
+        let queue = JobQueue()
+        let traced = StageJobs.hires(
+            scene, particles: 8_000_000, massive: 2_000_000, cost: cost, queue: queue)
+        #expect(traced.options == ["--particles", "8000000", "--massive", "2000000"])
+        #expect(traced.title == "8\u{A0}M dont 2\u{A0}M massives")
+        let real = StageJobs.hires(scene, particles: 8_000_000, massive: nil, cost: cost, queue: queue)
+        #expect(real.options == ["--particles", "8000000"] && real.title == "8\u{A0}M")
+        let all = StageJobs.hires(scene, particles: 2_000_000, massive: 2_000_000, cost: cost, queue: queue)
+        #expect(all.options == ["--particles", "2000000"] && all.title == "2\u{A0}M")
+        #expect(traced.seconds == (try cost.hiresSeconds(scene, particles: 8_000_000, massive: 2_000_000)))
+        #expect((traced.seconds ?? .infinity) < (real.seconds ?? 0) * 0.6)
+
+        let job = QueueJob(
+            id: 1, kind: .hires, path: scene.url.path, options: traced.options, added: made)
+        #expect(StageJobs.title(of: job) == "8\u{A0}M dont 2\u{A0}M massives")
+        #expect(JobEstimate.seconds(job, cost: cost) == traced.seconds)
+    }
+
+    /// A scene explored before its clip was written is priced from the runs measured at #19,
+    /// which had no tracers: the massive count's run, and each tracer at a tracer step's cost.
+    @Test func theMeasuredFallbackPricesTracersApart() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stagejobs-\(UUID().uuidString)").appendingPathComponent("scene-0001")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let old = SceneFolder(url)
+        let twoMillion = try #require(StageJobs.hiresSeconds(old, particles: 2_000_000, cost: cost))
+        #expect(twoMillion == 5_100)
+        #expect(
+            StageJobs.hiresSeconds(old, particles: 2_000_000, massive: 2_000_000, cost: cost) == twoMillion)
+        let traced = try #require(
+            StageJobs.hiresSeconds(old, particles: 8_000_000, massive: 2_000_000, cost: cost))
+        let tracer = cost.tracers.secondsPerUnit / cost.hires.secondsPerUnit
+        #expect(abs(traced - twoMillion * (1 + 3 * tracer)) < 1e-6)
+        #expect(traced < (StageJobs.hiresSeconds(old, particles: 8_000_000, cost: cost) ?? 0) * 0.6)
+        // A folder that is not there has no estimate.
+        #expect(StageJobs.hiresSeconds(folder, particles: 8_000_000, massive: 2_000_000, cost: cost) == nil)
     }
 
     @Test func theForecastCountsTheQueueAhead() {

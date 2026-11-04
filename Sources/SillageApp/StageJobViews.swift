@@ -16,7 +16,7 @@ extension EnvironmentValues {
 }
 
 /// What the forms read once, off the main actor: the cost model, what every scene's hires takes
-/// at each size Auto may pick, and what each `exports/` holds.
+/// at each size Auto may pick, drawn as the form draws it, and what each `exports/` holds.
 struct StageQuotes: Sendable, Equatable {
     var cost: CostModel
     /// Particles to the seconds all the scenes would take together, when each can be told.
@@ -30,11 +30,15 @@ struct StageQuotes: Sendable, Equatable {
         let cost = CostModel.current(library: library)
         let maximum = SceneFolder.maximumParticles()
         var quotes = StageQuotes(cost: cost, maximum: maximum)
-        var sizes = Set(stride(from: StageJobs.hiresSizes[0], through: maximum, by: StageJobs.autoStep))
+        let ceiling = StageJobs.autoCeiling(maximum: maximum)
+        var sizes = Set(stride(from: StageJobs.hiresSizes[0], through: ceiling, by: StageJobs.autoStep))
         sizes.formUnion(StageJobs.hiresSizes.filter { $0 <= maximum })
-        sizes.insert(maximum)
+        sizes.insert(ceiling)
         for size in sizes {
-            let each = folders.map { StageJobs.hiresSeconds($0, particles: size, cost: cost) }
+            let massive = StageJobs.massive(drawing: size)
+            let each = folders.map {
+                StageJobs.hiresSeconds($0, particles: size, massive: massive, cost: cost)
+            }
             if !each.contains(where: { $0 == nil }) {
                 quotes.hires[size] = each.compactMap { $0 }.reduce(0, +)
             }
@@ -45,7 +49,8 @@ struct StageQuotes: Sendable, Equatable {
 }
 
 /// Calculer: a size, Auto by default, what it will take and when it will be ready behind the
-/// queue, and the button that queues one hires job a scene.
+/// queue, and the button that queues one hires job a scene. Drawn as a night draws it: past
+/// 2 M, 2 M carry the mass and the others are light tracers (#222).
 struct HiresForm: View {
     @ObservedObject var queue: QueueModel
     let folders: [SceneFolder]
@@ -55,11 +60,13 @@ struct HiresForm: View {
     @State private var size = 0
     /// Read when the form appears; the checks give it.
     @State var quotes: StageQuotes?
+    /// Auto shrinks as the morning nears: the checks give a fixed evening.
+    var clock: () -> Date = Date.init
     @Environment(\.offscreen) private var offscreen
 
     var body: some View {
         let jobs = planned
-        let forecast = StageForecast(jobs: jobs, status: queue.status, now: Date())
+        let forecast = StageForecast(jobs: jobs, status: queue.status, now: clock())
         VStack(alignment: .leading, spacing: 6) {
             if offscreen {
                 Text("Taille : \(label(size))").font(.callout)
@@ -70,6 +77,10 @@ struct HiresForm: View {
                 }
                 .labelsHidden()
                 .fixedSize()
+                .help(
+                    "Comme une nuit : au-delà de 2 M, seules 2 M de particules portent la masse, les autres "
+                        + "sont des traceurs légers. Toutes massives : en ligne de commande, --particles sans "
+                        + "--massive.")
             }
             Text(quotes == nil ? "Estimation de la durée…" : forecast.summary)
                 .font(.caption.monospacedDigit())
@@ -92,23 +103,29 @@ struct HiresForm: View {
     var particles: Int { size == 0 ? auto : size }
 
     private var auto: Int {
-        guard let quotes else { return SceneFolder.maximumParticles() }
+        guard let quotes else { return StageJobs.autoCeiling(maximum: SceneFolder.maximumParticles()) }
+        let now = clock()
         return StageJobs.autoParticles(
-            seconds: { quotes.hires[$0] }, start: queue.status.freeAt ?? Date(), now: Date(),
+            seconds: { quotes.hires[$0] }, start: queue.status.freeAt ?? now, now: now,
             maximum: quotes.maximum)
     }
 
-    private var planned: [PlannedJob] {
+    var planned: [PlannedJob] {
         guard let quotes else { return [] }
         return folders.map {
-            StageJobs.hires($0, particles: particles, cost: quotes.cost, queue: queue.queue)
+            StageJobs.hires(
+                $0, particles: particles, massive: StageJobs.massive(drawing: particles),
+                cost: quotes.cost, queue: queue.queue)
         }
     }
 
-    /// "Auto · 5 M, environ 4 h", "2 M, environ 1 h 25".
+    /// The menu as it reads: Auto, then every size.
+    var choices: [String] { ([0] + (quotes?.sizes ?? StageJobs.hiresSizes)).map(label) }
+
+    /// "Auto · 8 M dont 2 M massives, environ 1 h", "2 M, environ 35 min".
     private func label(_ size: Int) -> String {
         let particles = size == 0 ? auto : size
-        var text = StageJobs.particles(particles)
+        var text = StageJobs.particles(particles, massive: StageJobs.massive(drawing: particles))
         if let seconds = quotes?.hires[particles] { text += ", " + Format.about(seconds) }
         return size == 0 ? "Auto · " + text : text
     }

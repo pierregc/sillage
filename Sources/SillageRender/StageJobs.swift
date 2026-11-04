@@ -118,18 +118,34 @@ public struct ExportFolderState: Sendable, Equatable {
 /// another range writes a file of its own; the same export after a new take replaces its file.
 public enum StageJobs {
     /// The sizes the menu offers besides Auto.
-    public static let hiresSizes = [1_000_000, 2_000_000, 5_000_000, 10_000_000]
-    /// Auto looks between the smallest size and the machine's maximum by this much.
+    public static let hiresSizes = [1_000_000, 2_000_000, 5_000_000, 8_000_000, 10_000_000]
+    /// Auto looks between the smallest size and its ceiling by this much.
     public static let autoStep = 500_000
 
+    /// A hires drawn at `particles`, `massive` of them carrying the mass and the others light
+    /// tracers; every one of them when nil or as many.
     public static func hires(
-        _ folder: SceneFolder, particles: Int, cost: CostModel, queue: JobQueue
+        _ folder: SceneFolder, particles: Int, massive: Int?, cost: CostModel, queue: JobQueue
     ) -> PlannedJob {
-        PlannedJob(
-            kind: .hires, folder: folder, options: ["--particles", String(particles)],
-            title: Self.particles(particles),
-            seconds: hiresSeconds(folder, particles: particles, cost: cost),
+        let massive = massive.flatMap { $0 < particles ? $0 : nil }
+        return PlannedJob(
+            kind: .hires, folder: folder,
+            options: ["--particles", String(particles)] + (massive.map { ["--massive", String($0)] } ?? []),
+            title: Self.particles(particles, massive: massive),
+            seconds: hiresSeconds(folder, particles: particles, massive: massive, cost: cost),
             queued: queue.unfinished(at: folder).contains { $0.kind == .hires })
+    }
+
+    /// The particles that carry the mass in a hires drawn at `particles`, by a night's rule: 2 M,
+    /// all of them below that (#211). A real count is left to the command line.
+    public static func massive(drawing particles: Int) -> Int {
+        min(NightRecipe.defaultHiresMassive, particles)
+    }
+
+    /// The most Auto draws: a night's count, 8 M, or the machine's maximum below it, so that a
+    /// night finds the hires done (`SceneFolder.Hires.covers`).
+    public static func autoCeiling(maximum: Int) -> Int {
+        NightRecipe().hiresParticles(maximum: maximum)
     }
 
     /// Measured on this Mac (#19) for a 700 Myr story, for a scene whose own files cannot say:
@@ -143,10 +159,20 @@ public enum StageJobs {
     public static func hiresSeconds(
         _ folder: SceneFolder, particles: Int, massive: Int? = nil, cost: CostModel
     ) -> Double? {
+        let massive = massive.flatMap { $0 < particles ? $0 : nil }
         if let seconds = try? cost.hiresSeconds(folder, particles: particles, massive: massive) {
             return seconds
         }
         guard FileManager.default.fileExists(atPath: folder.url.path) else { return nil }
+        // The measured runs had no tracers: the massive count's, and each tracer at what a
+        // tracer step costs against a massive one.
+        let carrying = massive ?? particles
+        let tracer =
+            cost.hires.secondsPerUnit > 0 ? cost.tracers.secondsPerUnit / cost.hires.secondsPerUnit : 1
+        return measuredSeconds(carrying) * (1 + Double(particles - carrying) / Double(carrying) * tracer)
+    }
+
+    private static func measuredSeconds(_ particles: Int) -> Double {
         let wanted = Double(particles)
         let points = measuredHires
         guard wanted > points[0].particles else { return points[0].seconds * wanted / points[0].particles }
@@ -156,15 +182,16 @@ public enum StageJobs {
     }
 
     /// The most particles whose runs end before the next morning, as a night delivers, once the
-    /// queue ahead is done: the machine's maximum when all of it fits, the least offered when
-    /// nothing does. `seconds` is the cost of every scene asked at one size.
+    /// queue ahead is done: Auto's ceiling when all of it fits, the least offered when nothing
+    /// does. `seconds` is the cost of every scene asked at one size.
     public static func autoParticles(
         seconds: (Int) -> Double?, start: Date, now: Date, calendar: Calendar = .current,
         maximum: Int = SceneFolder.maximumParticles()
     ) -> Int {
         let morning = (try? NightRecipe().deliverBy(now: now, calendar: calendar)) ?? now
-        var sizes = Array(stride(from: hiresSizes[0], through: maximum, by: autoStep))
-        if sizes.last != maximum { sizes.append(maximum) }
+        let ceiling = autoCeiling(maximum: maximum)
+        var sizes = Array(stride(from: hiresSizes[0], through: ceiling, by: autoStep))
+        if sizes.last != ceiling { sizes.append(ceiling) }
         var best = sizes[0]
         for size in sizes {
             guard let cost = seconds(size), start.addingTimeInterval(cost) <= morning else { continue }
@@ -239,7 +266,7 @@ public enum StageJobs {
         return job
     }
 
-    /// What a queued job of a scene makes: "5 M", "4K · 4k-2.mp4".
+    /// What a queued job of a scene makes: "8 M dont 2 M massives", "4K · 4k-2.mp4".
     public static func title(of job: QueueJob) -> String {
         func option(_ name: String) -> String? {
             job.options.firstIndex(of: name).flatMap {
@@ -248,8 +275,8 @@ public enum StageJobs {
         }
         switch job.kind {
         case .hires:
-            return option("--particles").flatMap(Double.init).map { particles(Int($0)) }
-                ?? "Le plus que la machine tient"
+            let draw = SceneFolder.hiresDraw(job.options, maximumParticles: SceneFolder.maximumParticles())
+            return particles(draw.particles, massive: draw.massive)
         case .export:
             let card = ExportChoice(rawValue: option("--format") ?? option("--preset") ?? "1080p")
             var parts = [card?.title ?? option("--preset") ?? "Vidéo"]
@@ -260,15 +287,22 @@ public enum StageJobs {
         }
     }
 
-    /// "5 M", "3,5 M", "800 k".
+    /// "5 M", "3,5 M", "800 k", the unit held to its number by a no-break space so that a
+    /// narrow card never ends a line on "2".
     public static func particles(_ count: Int) -> String {
         if count >= 1_000_000 {
             let millions = Double(count) / 1_000_000
             return millions == millions.rounded()
-                ? "\(Int(millions)) M"
-                : String(format: "%.1f M", millions).replacingOccurrences(of: ".", with: ",")
+                ? "\(Int(millions))\u{A0}M"
+                : String(format: "%.1f\u{A0}M", millions).replacingOccurrences(of: ".", with: ",")
         }
-        return count >= 1_000 ? "\(count / 1_000) k" : "\(count)"
+        return count >= 1_000 ? "\(count / 1_000)\u{A0}k" : "\(count)"
+    }
+
+    /// "8 M dont 2 M massives", or "2 M" when every particle carries the mass.
+    public static func particles(_ count: Int, massive: Int?) -> String {
+        guard let massive, massive < count else { return particles(count) }
+        return "\(particles(count)) dont \(particles(massive)) massives"
     }
 
     /// A queued export's options without its `--out`, to tell the same request asked twice.

@@ -263,8 +263,7 @@ extension SceneFolder {
     /// instead of 54. `--take-interval` overrides it.
     public static let hiresTakeInterval = 4
 
-    /// The most particles `hires` runs, and what it runs when not told: a setting of the
-    /// machine rather than of the scene.
+    /// The most particles `hires` runs: a setting of the machine rather than of the scene.
     public static func maximumParticles(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Int {
@@ -278,6 +277,35 @@ extension SceneFolder {
             let count = Double(options[index + 1]), count >= 1, count < 1e15
         else { return nil }
         return Int(count)
+    }
+
+    /// What a hires asked with `options` draws, and how many of those carry the mass (nil for
+    /// all). `--particles N` alone is a real N. Without it, what a night draws (#243): its
+    /// count, at most `maximumParticles`, from its massive count unless `--massive` is given.
+    public static func hiresDraw(_ options: [String], maximumParticles: Int) -> (
+        particles: Int, massive: Int?
+    ) {
+        hiresDraw(
+            particles: options.contains("--particles") ? Clip().updated(with: options).clip.particles : nil,
+            massive: massive(in: options), maximumParticles: maximumParticles)
+    }
+
+    static func hiresDraw(particles: Int?, massive: Int?, maximumParticles: Int) -> (
+        particles: Int, massive: Int?
+    ) {
+        let night = NightRecipe()
+        let drawn = particles ?? night.hiresParticles(maximum: maximumParticles)
+        let carrying = massive ?? (particles == nil ? night.hiresMassive(maximum: maximumParticles) : drawn)
+        // As many as are drawn, or more: every particle carries mass, as without `--massive`.
+        return (drawn, carrying < drawn ? carrying : nil)
+    }
+
+    /// Whether the hires run here stands for one asked with `options`, which a batch then skips.
+    public func hiresDone(_ options: [String], maximumParticles: Int) -> Bool {
+        let draw = Self.hiresDraw(options, maximumParticles: maximumParticles)
+        let frames = options.contains("--frames") ? Clip().updated(with: options).clip.frames : nil
+        return storedHires()?.covers(particles: draw.particles, massive: draw.massive, frames: frames)
+            ?? false
     }
 
     /// The scenes of a batch folder marked yes in its ratings.
@@ -299,7 +327,7 @@ extension SceneFolder {
     public func capturedRate() throws -> Int { try storedHires()?.fps ?? storedClip().fps }
 
     /// The `sillage-render` command line `hires` runs, and what it will record. The scene and
-    /// the look are the preview's, the particle count is the one asked for, and the steps are
+    /// the look are the preview's, the particles are drawn as `hiresDraw` says, and the steps are
     /// worked out again so the run spans the same megayears as the preview's story. `--frames`
     /// takes the first frames of it at the same cadence, for a shorter run. `--massive M` gives
     /// the mass to about M of the particles and makes the others light tracers (#187): the
@@ -315,19 +343,22 @@ extension SceneFolder {
         if options.contains("--theta-tracers") { throw HiresError.tracerAngle }
         let preview = try storedClip()
         var (asked, rest) = preview.updated(with: options)
-        if !options.contains("--particles") { asked.particles = maximumParticles }
         if !options.contains("--frames") { asked.frames = preview.storyFrames }
-        guard asked.particles <= maximumParticles else {
-            throw HiresError.aboveMaximum(asked.particles, maximumParticles)
-        }
-        var massive: Int?
+        var massiveAsked: Int?
         if let index = rest.firstIndex(of: "--massive") {
             guard let count = Self.massive(in: rest) else {
                 throw HiresError.badMassive(index + 1 < rest.count ? rest[index + 1] : "")
             }
             rest.removeSubrange(index...index + 1)
-            // As many as are drawn, or more: every particle carries mass, as without the option.
-            if count < asked.particles { massive = count }
+            massiveAsked = count
+        }
+        let draw = Self.hiresDraw(
+            particles: options.contains("--particles") ? asked.particles : nil, massive: massiveAsked,
+            maximumParticles: maximumParticles)
+        asked.particles = draw.particles
+        let massive = draw.massive
+        guard asked.particles <= maximumParticles else {
+            throw HiresError.aboveMaximum(asked.particles, maximumParticles)
         }
 
         let file = try SceneFile.decoded(from: Data(contentsOf: scene))

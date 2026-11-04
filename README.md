@@ -188,10 +188,12 @@ them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
 
 ### High resolution
 
-`hires` runs the scene again from its `scene.json` at `--particles`, by default this Mac's
-maximum, and writes `take.sillage`, `hires.mov`, `curves-hires.csv` and `hires.json` beside the
-preview without touching it. Given a batch folder instead of a scene, it runs every scene marked
-yes in `ratings.json`, one after another, skipping those already done at that size.
+`hires` runs the scene again from its `scene.json` at `--particles` and writes `take.sillage`,
+`hires.mov`, `curves-hires.csv` and `hires.json` beside the preview without touching it. Without
+`--particles` it draws what a night draws (#243): 8 M of which 2 M carry the mass (`--massive`,
+below), or this Mac's maximum when that is lower. Given a batch folder instead of a scene, it
+runs every scene marked yes in `ratings.json`, one after another, skipping those already done at
+that size.
 
 Only the particle count and what follows from it change. The geometry is the scene file's, and
 so is `timeStepScale` (3.5 for a night batch) unless `--dt-scale` overrides it. Softening follows
@@ -212,7 +214,7 @@ and the Toomre Q a disk is solved for are M's, and the dark matter is sampled at
 tracers walk at the scene's opening angle, so `--theta-tracers` is refused. `hires.json` keeps
 `massive` beside `particles`, and a record without it is a run in which every particle carried
 mass. A night draws 8 M from 2 M (#211): the texture of 8 M for about a third of a real 8 M's
-time.
+time. `--particles N` without `--massive` is a real N, every particle carrying mass.
 
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
@@ -604,8 +606,11 @@ rating, batch and archetype.
 The scenes kept for the next stage are
 `jq -r '.scenes | to_entries[] | select(.value.choice == "yes") | .key' ratings.json`.
 A scene's page moves it on without a terminal. **Calculer** on Haute résolution queues a
-`hires` job at a size (Auto is the most particles that end before seven in the morning behind
-the queue, else the machine's maximum); **Exporter…** opens a sheet of presets to tick
+`hires` job at a size, drawn as a night draws it: past 2 M, 2 M carry the mass and the others
+are light tracers (`--massive`, #222). Auto is a night's 8 M, or the most particles that end
+before seven in the morning behind the queue, and each size says how many carry the mass. A real
+count, every particle massive, stays on the command line: `sillage-render queue add hires
+<scene> --particles N`, without `--massive`. **Exporter…** opens a sheet of presets to tick
 (1080p, 4K, Vertical, Carré, WhatsApp, animated WebP, GIF, with codec, range, frame rate and
 style under Avancé), each ticked card one `export` job. Both say how long each job takes and
 when it will be ready, queue ahead included. A job waiting or running shows on its stage with
