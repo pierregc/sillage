@@ -240,6 +240,8 @@ public struct RunEvent: Codable, Sendable, Equatable {
     public var seconds: Double?
     /// hires.start and hires.done.
     public var particles: Int?
+    /// Those of `particles` that carry the mass, when the others are light tracers.
+    public var massive: Int?
     public var steps: Int?
     public var minutes: Double?
     public var takeGB: Double?
@@ -303,6 +305,7 @@ public struct RunEvent: Codable, Sendable, Equatable {
             case "score": score = try number()
             case "seconds": seconds = try number()
             case "particles": particles = Int(try number())
+            case "massive": massive = Int(try number())
             case "steps": steps = Int(try number())
             case "minutes": minutes = try number()
             case "take-gb": takeGB = try number()

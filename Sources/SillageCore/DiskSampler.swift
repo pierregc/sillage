@@ -156,11 +156,13 @@ public enum DiskSampler {
     }
 
     /// `selfGravitating` switches the velocity structure from near-circular tracer orbits to
-    /// a Toomre-stable disk and gives every particle a mass.
+    /// a Toomre-stable disk and gives every particle a mass. `haloCount` draws the dark matter
+    /// at another count than the galaxy's own: the massive count of a run with light tracers.
     public static func sample(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
         selfGravitating: Bool = false,
+        haloCount: Int? = nil,
         into system: inout ParticleSystem,
         using generator: inout SeededGenerator
     ) {
@@ -186,7 +188,8 @@ public enum DiskSampler {
                 mass: selfGravitating ? config.potential.mass : 0)
         }
         if selfGravitating {
-            sampleHalo(config, galaxyIndex: galaxyIndex, into: &system, using: &generator)
+            let count = config.haloParticleCount > 0 ? haloCount ?? config.haloParticleCount : 0
+            sampleHalo(config, count: count, galaxyIndex: galaxyIndex, into: &system, using: &generator)
         }
     }
 
@@ -330,11 +333,11 @@ public enum DiskSampler {
     /// friction and nothing ever merges.
     private static func sampleHalo(
         _ config: GalaxyConfig,
+        count: Int,
         galaxyIndex: UInt32,
         into system: inout ParticleSystem,
         using generator: inout SeededGenerator
     ) {
-        let count = config.haloParticleCount
         guard count > 0 else { return }
         let potential = config.potential
         let edge = max(config.haloExtent, 1) * potential.scaleRadius

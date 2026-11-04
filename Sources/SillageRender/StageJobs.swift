@@ -139,9 +139,13 @@ public enum StageJobs {
     ]
 
     /// From the cost model and the scene's story, else from the measured sizes; nil for a folder
-    /// that is not there.
-    public static func hiresSeconds(_ folder: SceneFolder, particles: Int, cost: CostModel) -> Double? {
-        if let seconds = try? cost.hiresSeconds(folder, particles: particles) { return seconds }
+    /// that is not there. `massive` prices a run whose other particles are light tracers.
+    public static func hiresSeconds(
+        _ folder: SceneFolder, particles: Int, massive: Int? = nil, cost: CostModel
+    ) -> Double? {
+        if let seconds = try? cost.hiresSeconds(folder, particles: particles, massive: massive) {
+            return seconds
+        }
         guard FileManager.default.fileExists(atPath: folder.url.path) else { return nil }
         let wanted = Double(particles)
         let points = measuredHires

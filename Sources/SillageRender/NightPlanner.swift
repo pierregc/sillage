@@ -7,8 +7,11 @@ public struct NightScene: Sendable, Equatable {
     public var score: Double?
     /// Particle steps of its exploration, settle included.
     public var exploreUnits: Double
-    /// Visible particle steps of its hires at the night's size, settle included.
+    /// Steps of the visible particles that carry the mass in its hires at the night's size,
+    /// settle included.
     public var hiresUnits: Double
+    /// Steps of the light tracers of that hires, settle included.
+    public var hiresTracerUnits: Double
     /// Frames its hires captures, which each export draws.
     public var frames: Int
     /// Marked yes by hand: a pick takes it before any scene the score alone puts forward.
@@ -17,13 +20,14 @@ public struct NightScene: Sendable, Equatable {
     public var galaxies: Int?
 
     public init(
-        name: String?, score: Double?, exploreUnits: Double, hiresUnits: Double, frames: Int,
-        chosenByHand: Bool = false, galaxies: Int? = nil
+        name: String?, score: Double?, exploreUnits: Double, hiresUnits: Double,
+        hiresTracerUnits: Double = 0, frames: Int, chosenByHand: Bool = false, galaxies: Int? = nil
     ) {
         self.name = name
         self.score = score
         self.exploreUnits = exploreUnits
         self.hiresUnits = hiresUnits
+        self.hiresTracerUnits = hiresTracerUnits
         self.frames = frames
         self.chosenByHand = chosenByHand
         self.galaxies = galaxies
@@ -62,6 +66,8 @@ public struct NightPlan: Codable, Sendable, Equatable {
         public var count: Int?
         /// Explore: a galaxy. Hires: in all.
         public var particles: Int?
+        /// Hires: those that carry the mass, when the others are light tracers.
+        public var massive: Int?
         /// Export: the preset, `webp` or `gif`.
         public var format: String?
         public var seconds: Double
@@ -99,6 +105,8 @@ public struct NightPlan: Codable, Sendable, Equatable {
     public var exploreBudget: Double
     public var picks: Int
     public var hiresParticles: Int
+    /// The hires particles that carry the mass, when the others are light tracers.
+    public var hiresMassive: Int?
     public var exports: [String]
     public var steps: [Step]
     /// What the steps left will write, previews, takes and videos.
@@ -177,6 +185,7 @@ public struct NightPlanner: Sendable {
     }
 
     public var hiresParticles: Int { recipe.hiresParticles(maximum: maximumParticles) }
+    public var hiresMassive: Int { recipe.hiresMassive(maximum: maximumParticles) }
 
     // MARK: Costs
 
@@ -185,7 +194,9 @@ public struct NightPlanner: Sendable {
         model.explore.seconds(scene.exploreUnits)
     }
 
-    public func hiresSeconds(_ scene: NightScene) -> Double { model.hires.seconds(scene.hiresUnits) }
+    public func hiresSeconds(_ scene: NightScene) -> Double {
+        model.hiresSeconds(units: scene.hiresUnits, tracerUnits: scene.hiresTracerUnits)
+    }
 
     /// The style step of the pick at `index`, best first.
     public func styleSeconds(pick index: Int) -> Double {
@@ -231,16 +242,18 @@ public struct NightPlanner: Sendable {
         let found = draws(perGalaxy)
         guard !found.isEmpty else {
             let particles = 2.5 * Double(perGalaxy)
-            let hires = Double(hiresParticles)
+            let massive = Double(hiresMassive)
+            let steps = 12_000 * (massive / 2e6).squareRoot()
             return NightScene(
-                name: nil, score: nil, exploreUnits: particles * 6_000,
-                hiresUnits: hires * 12_000 * (hires / 2e6).squareRoot(), frames: 1_125)
+                name: nil, score: nil, exploreUnits: particles * 6_000, hiresUnits: massive * steps,
+                hiresTracerUnits: (Double(hiresParticles) - massive) * steps, frames: 1_125)
         }
         let count = Double(found.count)
         return NightScene(
             name: nil, score: nil,
             exploreUnits: found.reduce(0) { $0 + $1.exploreUnits } / count,
             hiresUnits: found.reduce(0) { $0 + $1.hiresUnits } / count,
+            hiresTracerUnits: found.reduce(0) { $0 + $1.hiresTracerUnits } / count,
             frames: Int((Double(found.reduce(0) { $0 + $1.frames }) / count).rounded()))
     }
 
@@ -291,7 +304,7 @@ public struct NightPlanner: Sendable {
     }
 
     /// Auto: between one and four scenes, as many of the best as can be finished from `start`
-    /// before the delivery time. At 8 M a hires takes about four hours, so one or two.
+    /// before the delivery time.
     public func autoPicks(_ ranked: [NightScene], from start: Date, deliverBy: Date) -> Int {
         let available = deliverBy.timeIntervalSince(start)
         for count in NightRecipe.pickRange.reversed() where count <= ranked.count {
@@ -374,6 +387,7 @@ public struct NightPlanner: Sendable {
     public func plan(now: Date, deliverBy: Date) -> NightPlan {
         let sized = sizing(now: now, deliverBy: deliverBy)
         let hires = hiresParticles
+        let massive = hiresMassive < hires ? hiresMassive : nil
         let exports = recipe.exports
         var warnings: [NightPlan.Warning] = []
         var steps: [NightPlan.Step] = []
@@ -461,8 +475,8 @@ public struct NightPlanner: Sendable {
                 steps.append(
                     NightPlan.Step(
                         phase: phase, scene: name, particles: phase == .hires ? hires : nil,
-                        format: format, seconds: seconds, start: clock,
-                        end: clock.addingTimeInterval(seconds), done: done, fits: starts))
+                        massive: phase == .hires ? massive : nil, format: format, seconds: seconds,
+                        start: clock, end: clock.addingTimeInterval(seconds), done: done, fits: starts))
                 if starts { clock = clock.addingTimeInterval(seconds) }
             }
             add(.hires, hiresTime, done: hiresDone)
@@ -487,7 +501,7 @@ public struct NightPlanner: Sendable {
         return NightPlan(
             start: now, deliverBy: deliverBy, end: clock, scenes: scenes,
             particlesPerGalaxy: sized.perGalaxy, exploreBudget: max(sized.budget, 0),
-            picks: finishing.count, hiresParticles: hires, exports: exports, steps: steps,
-            diskBytes: disk, freeBytes: freeBytes, warnings: warnings)
+            picks: finishing.count, hiresParticles: hires, hiresMassive: massive, exports: exports,
+            steps: steps, diskBytes: disk, freeBytes: freeBytes, warnings: warnings)
     }
 }

@@ -19,7 +19,9 @@ sheets, crops, logs and scripts are on the branch `assets/light-tracers-187` und
 particles, and the same share of the dark matter, as the massive set, scaled so each galaxy's
 kept particles carry all of its visible and of its dark mass. Black holes stay massive as they
 are. The rest of the visible ones are tracers with no mass. The softening and the step are the
-massive count's (`file.scene(particleCount: massive)`).
+massive count's (`file.scene(particleCount: massive)`). Since #211 the dark matter is sampled
+at the massive count to begin with (`ParticleSystem.lightTracers(drawn:massive:)`, 3 M for 2 M)
+and kept whole, rather than drawn at 12 M for a quarter of it to be kept.
 
 In the solver (`MetalBarnesHutSolver(..., tracers:)`) the tracers come first in the buffers,
 `[tracers | massive visible | massive halo]`, so the visible particles stay one run for the
@@ -202,3 +204,30 @@ Pierre left the calls to the thread on 2026-11-03.
    and was not measured in full.
 3. **More than 8 M drawn costs linearly:** 16 M drawn from 2 M is still 2.3 times cheaper than a
    real 8 M. Worth it only where the frame is filled at 4K and beyond.
+
+## In the nights (#211)
+
+Done on 2026-11-04. A night's hires is drawn at 8 M with the mass on 2 M (`hires.massive`,
+Auto), and `hires --massive M` takes its softening, its step and its settle from M, so the steps
+halve before a tracer costs anything: the two stories of the 2026-10-30 night take 14 964 and
+14 042 steps from 2 M against 28 681 and 28 084 as real 8 M. `hires.json` keeps `massive`
+beside `particles`; a record without it was a run in which every particle carried mass, and a
+real 8 M already done stands for 8 M from 2 M when a night resumes. The tracers walk at the
+scene's opening angle, and `hires` refuses `--theta-tracers`.
+
+- **The dark matter is drawn at the massive count**: 3 M for 2 M, kept whole, where the halo
+  was drawn at 12 M for a quarter of it to be kept. The sample of scene-0031 is 11 M particles
+  instead of 20 M, and sampling and splitting it peak at 1.8 GB instead of 2.5; it is hardly
+  faster (13.3 s against 14.4, the disks are most of it), and the run's own peak is the take's.
+- **`costs` prices the tracers apart.** The massive steps are fitted as before, on the runs
+  without tracers, and the tracer steps on what the runs with tracers took past that, as a line
+  through zero (20 ns a step before any run). Every night draws 8 M from 2 M, so its runs alone
+  could not tell the two terms apart. On the library's history the massive line comes out as it
+  was, 108 s + 62.4 ns a step, and `costs --check` gives the same rows as before.
+- **The first night with tracer hires**, in a library of its own (four previews at 50 000 a
+  galaxy, one pick: scene-0002 of seed 20261104, a spiral and a globular), ran its hires of 487
+  frames over 8 071 + 6 818 steps in 66 minutes, 63 planned. A real 8 M of the same story would
+  be 18 080 steps (its softening is near the floor already, so the step gains less than usual),
+  2 h 32 by the model. Its take of 6.1 GB drew and exported like any other: the style step in
+  11 s, the 4K export in 32 s. Refitted on it, a tracer step costs 22 ns over the library's
+  massive line, 23.5 over the fallback's.

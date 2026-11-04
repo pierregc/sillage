@@ -181,7 +181,11 @@ extension SceneFolder.Clip {
 extension SceneFolder {
     /// What a `hires` run used, and what it cost, kept beside the preview.
     public struct Hires: Codable, Sendable, Equatable {
+        /// Drawn, light tracers included.
         public var particles: Int
+        /// The particles that carry the mass when the others are light tracers (#211); absent
+        /// when all of them do, as in every record written before.
+        public var massive: Int?
         public var previewParticles: Int
         public var width: Int
         public var height: Int
@@ -206,12 +210,26 @@ extension SceneFolder {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             return try encoder.encode(self)
         }
+
+        /// Every particle drawn, unless the others were light tracers.
+        public var massiveParticles: Int { massive ?? particles }
+        public var tracers: Int { particles - massiveParticles }
+
+        /// Whether this run stands for one asked at `particles` drawn, `massive` of them carrying
+        /// the mass (all when nil), and `frames` when given: drawn alike, with at least as many
+        /// massive, so a real 8 M stands for 8 M drawn from 2 M.
+        public func covers(particles: Int, massive: Int?, frames: Int?) -> Bool {
+            self.particles == particles && massiveParticles >= min(massive ?? particles, particles)
+                && frames.map { self.frames == $0 } ?? true
+        }
     }
 
     public enum HiresError: Error, CustomStringConvertible {
         case notExplored(URL)
         case derived(String)
         case aboveMaximum(Int, Int)
+        case badMassive(String)
+        case tracerAngle
 
         public var description: String {
             switch self {
@@ -221,6 +239,10 @@ extension SceneFolder {
             case .aboveMaximum(let asked, let maximum):
                 "\(asked) particles is above this Mac's maximum of \(maximum);"
                     + " raise it with \(SceneFolder.maximumParticlesVariable)"
+            case .badMassive(let value): "--massive \(value) is not a count of particles"
+            case .tracerAngle:
+                "--theta-tracers: light tracers walk at the scene's opening angle, a looser one"
+                    + " drifts them off the mass (docs/notes/light-tracers.md)"
             }
         }
     }
@@ -233,6 +255,8 @@ extension SceneFolder {
     /// million: 150 at #19, 62 since the opening angle of 0.9 (#166), within 3 % of the two
     /// 8 M hires of 2026-10-30.
     public static let nanosecondsPerParticleStep = 62.0
+    /// What a light tracer adds to a step on the same machine (#187), linear in their count.
+    public static let nanosecondsPerTracerStep = 20.0
     /// The take keeps one frame in this many, and drawing it again interpolates the rest. At
     /// the cadence `hires` captures, under a megayear a frame, four cannot be told apart from
     /// one on screen, and ten million particles over nine hundred frames come to 13.5 GB
@@ -246,6 +270,14 @@ extension SceneFolder {
     ) -> Int {
         environment[maximumParticlesVariable].flatMap { Double($0) }.map { Int($0) }
             ?? defaultMaximumParticles
+    }
+
+    /// The count `--massive` gives in a hires command line, if any.
+    public static func massive(in options: [String]) -> Int? {
+        guard let index = options.firstIndex(of: "--massive"), index + 1 < options.count,
+            let count = Double(options[index + 1]), count >= 1, count < 1e15
+        else { return nil }
+        return Int(count)
     }
 
     /// The scenes of a batch folder marked yes in its ratings.
@@ -269,9 +301,10 @@ extension SceneFolder {
     /// The `sillage-render` command line `hires` runs, and what it will record. The scene and
     /// the look are the preview's, the particle count is the one asked for, and the steps are
     /// worked out again so the run spans the same megayears as the preview's story. `--frames`
-    /// takes the first frames of it at the same cadence, for a shorter run. Nothing the preview
-    /// wrote is touched. The take, the video and the curves go to their partial paths, for
-    /// `commitHires`.
+    /// takes the first frames of it at the same cadence, for a shorter run. `--massive M` gives
+    /// the mass to about M of the particles and makes the others light tracers (#187): the
+    /// softening, the step and the settle are then M's. Nothing the preview wrote is touched.
+    /// The take, the video and the curves go to their partial paths, for `commitHires`.
     public func hiresArguments(_ options: [String], maximumParticles: Int) throws -> (
         arguments: [String], record: Hires
     ) {
@@ -279,12 +312,22 @@ extension SceneFolder {
         for option in ["steps", "settle", "dt"] where options.contains("--\(option)") {
             throw HiresError.derived(option)
         }
+        if options.contains("--theta-tracers") { throw HiresError.tracerAngle }
         let preview = try storedClip()
         var (asked, rest) = preview.updated(with: options)
         if !options.contains("--particles") { asked.particles = maximumParticles }
         if !options.contains("--frames") { asked.frames = preview.storyFrames }
         guard asked.particles <= maximumParticles else {
             throw HiresError.aboveMaximum(asked.particles, maximumParticles)
+        }
+        var massive: Int?
+        if let index = rest.firstIndex(of: "--massive") {
+            guard let count = Self.massive(in: rest) else {
+                throw HiresError.badMassive(index + 1 < rest.count ? rest[index + 1] : "")
+            }
+            rest.removeSubrange(index...index + 1)
+            // As many as are drawn, or more: every particle carries mass, as without the option.
+            if count < asked.particles { massive = count }
         }
 
         let file = try SceneFile.decoded(from: Data(contentsOf: scene))
@@ -295,24 +338,27 @@ extension SceneFolder {
             hiresFile.timeStepScale = scale
         }
         let previewStep = Double(file.scene(particleCount: preview.particles).timeStep)
-        let target = hiresFile.scene(particleCount: asked.particles)
+        let target = hiresFile.scene(particleCount: massive ?? asked.particles)
         let span = preview.spanning(
             previewStep: previewStep, maximumStep: Double(target.timeStep), frames: asked.frames)
         let myr = Physics.megayearsPerTimeUnit
         let record = Hires(
-            particles: asked.particles, previewParticles: preview.particles, width: asked.width,
-            height: asked.height, frames: asked.frames, fps: asked.fps, settle: span.settle,
-            steps: span.steps, timeStepScale: hiresFile.timeStepScale, timeStep: span.timeStep,
-            timeStepMyr: span.timeStep * myr, previewTimeStepMyr: previewStep * myr,
-            softening: target.softening, clipStartMyr: Double(span.settle) * span.timeStep * myr,
+            particles: asked.particles, massive: massive, previewParticles: preview.particles,
+            width: asked.width, height: asked.height, frames: asked.frames, fps: asked.fps,
+            settle: span.settle, steps: span.steps, timeStepScale: hiresFile.timeStepScale,
+            timeStep: span.timeStep, timeStepMyr: span.timeStep * myr,
+            previewTimeStepMyr: previewStep * myr, softening: target.softening,
+            clipStartMyr: Double(span.settle) * span.timeStep * myr,
             clipEndMyr: Double(span.settle + span.steps) * span.timeStep * myr)
 
         var arguments = [
             "--video", Self.partial(hiresVideo).path, "--curves", Self.partial(hiresCurves).path,
             "--take", Self.partial(take).path, "--no-sidecars",
         ]
+        arguments += ["--particles", String(asked.particles)]
+        if let massive { arguments += ["--massive", String(massive)] }
         arguments += [
-            "--particles", String(asked.particles), "--width", String(asked.width), "--height",
+            "--width", String(asked.width), "--height",
             String(asked.height), "--frames", String(asked.frames), "--fps", String(asked.fps),
             "--steps", String(span.steps), "--settle", String(span.settle),
             "--dt", String(format: "%.9g", span.timeStep),

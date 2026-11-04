@@ -317,7 +317,9 @@ struct StageTracker: View {
         case .done:
             VStack(alignment: .leading, spacing: 3) {
                 if let hires = facts?.hires {
-                    fact("\(Format.particles(hires.particles)) particules")
+                    fact(
+                        "\(Format.particles(hires.particles)) particules"
+                            + (hires.massive.map { ", \(Format.particles($0)) massives" } ?? ""))
                     if let seconds = hires.seconds { fact("\(Format.duration(seconds)) de calcul") }
                 } else if let hires = scene.hires {
                     fact("\(Format.particles(hires.particles)) particules")
