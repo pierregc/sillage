@@ -40,10 +40,13 @@ public struct LibraryScene: Sendable, Equatable, Identifiable {
     /// What the scene page shows of a `hires.json`.
     public struct HiresSummary: Sendable, Equatable {
         public var particles: Int
+        /// Those that carried the mass when the others were light tracers.
+        public var massive: Int?
         public var seconds: Double?
 
-        public init(particles: Int, seconds: Double? = nil) {
+        public init(particles: Int, massive: Int? = nil, seconds: Double? = nil) {
             self.particles = particles
+            self.massive = massive
             self.seconds = seconds
         }
     }
@@ -285,7 +288,8 @@ public enum SceneLibrary {
             let particles = (object["particles"] as? NSNumber)?.intValue
         else { return nil }
         return LibraryScene.HiresSummary(
-            particles: particles, seconds: (object["seconds"] as? NSNumber)?.doubleValue)
+            particles: particles, massive: (object["massive"] as? NSNumber)?.intValue,
+            seconds: (object["seconds"] as? NSNumber)?.doubleValue)
     }
 
     private static func files(in url: URL) -> [URL] {

@@ -52,8 +52,12 @@ enum NightSheetCheck {
         return Date().timeIntervalSince(clock)
     }
 
+    /// The check and its pictures plan at this evening: before 07:00, the real clock leaves the
+    /// night under two hours and its plan no hires line.
+    static let evening = Calendar.current.date(bySettingHour: 21, minute: 40, second: 0, of: Date()) ?? Date()
+
     private static func exercise(_ root: URL) {
-        let model = NightSheetModel(library: root)
+        let model = NightSheetModel(library: root, clock: { evening })
         let started = Date()
         check("le plan vient (les tirages réels de la nuit)", wait(60) { model.plan != nil })
         let first = Date().timeIntervalSince(started)
@@ -127,7 +131,7 @@ enum NightSheetCheck {
         // A night too big for the disk or the time warns and can still be launched.
         let small = NightSheetModel(
             library: root,
-            planner: NightSheetPlanner(library: root, freeBytes: 1e9, draws: fixedDraws))
+            planner: NightSheetPlanner(library: root, freeBytes: 1e9, draws: fixedDraws), clock: { evening })
         small.sheet.timing = .hours
         small.sheet.hours = 8
         check("un plan trop gros prévient", wait(5) { small.plan?.warnings.isEmpty == false })
@@ -174,7 +178,6 @@ enum NightSheetCheck {
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let queue = QueueModel(library: root, watch: false)
-        let evening = Calendar.current.date(bySettingHour: 21, minute: 40, second: 0, of: Date()) ?? Date()
         func planner(free: Double) -> NightSheetPlanner {
             NightSheetPlanner(
                 library: root, now: evening, model: costs, maximumParticles: 10_000_000,
@@ -194,7 +197,8 @@ enum NightSheetCheck {
             ),
         ]
         for (name, free, change) in pictures {
-            let model = NightSheetModel(library: root, planner: planner(free: free), debounce: .zero)
+            let model = NightSheetModel(
+                library: root, planner: planner(free: free), debounce: .zero, clock: { evening })
             _ = wait(10) { model.lastLatency != nil }
             let before = model.lastLatency
             var sheet = NightSheet()

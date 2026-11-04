@@ -219,7 +219,7 @@ struct LibraryPrimaryButton: View {
                 .popover(isPresented: $computing, arrowEdge: .bottom) {
                     HiresForm(queue: queue, folders: folders) { computing = false }
                         .padding(16)
-                        .frame(width: 340, alignment: .leading)
+                        .frame(width: 380, alignment: .leading)
                 }
             }
         case .toStyle:

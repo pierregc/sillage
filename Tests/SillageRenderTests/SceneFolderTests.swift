@@ -315,10 +315,53 @@ struct SceneFolderTests {
         #expect(value("--story-cap", in: capped) == "0" && capped.filter { $0 == "--story-cap" }.count == 1)
     }
 
-    @Test func hiresRunsAtTheMaximumUnlessToldAndNeverAboveIt() throws {
+    /// Without `--particles` a hires draws what a night draws (#243): 8 M from 2 M massive, or
+    /// the machine's maximum below that. `--particles N` alone is a real N.
+    @Test func hiresDrawsAsANightUnlessGivenACount() throws {
         let folder = try explored()
         defer { try? FileManager.default.removeItem(at: folder.batch) }
-        #expect(try folder.hiresArguments([], maximumParticles: 1_500_000).record.particles == 1_500_000)
+        func hires(_ options: [String], maximum: Int = 10_000_000) throws -> (
+            arguments: [String], record: SceneFolder.Hires
+        ) {
+            try folder.hiresArguments(options, maximumParticles: maximum)
+        }
+        let drawn = try hires([])
+        #expect(drawn.record.particles == 8_000_000 && drawn.record.massive == 2_000_000)
+        #expect(value("--particles", in: drawn.arguments) == "8000000")
+        #expect(value("--massive", in: drawn.arguments) == "2000000")
+        let night = NightFolder(batch: folder.batch, recipe: NightRecipe(), maximumParticles: 10_000_000)
+        #expect(try hires(night.hiresOptions).arguments == drawn.arguments)
+        let fewer = try hires(["--massive", "1e6"]).record
+        #expect(fewer.particles == 8_000_000 && fewer.massive == 1_000_000)
+        let small = try hires([], maximum: 1_500_000)
+        #expect(small.record.particles == 1_500_000 && small.record.massive == nil)
+        #expect(!small.arguments.contains("--massive"))
+        let real = try hires(["--particles", "8e6"])
+        #expect(real.record.particles == 8_000_000 && real.record.massive == nil)
+        #expect(!real.arguments.contains("--massive"))
+
+        // A batch asked again skips a scene done so, or done at a real 8 M.
+        #expect(!folder.hiresDone([], maximumParticles: 10_000_000))
+        try drawn.record.encoded().write(to: folder.hires)
+        #expect(folder.hiresDone([], maximumParticles: 10_000_000))
+        #expect(!folder.hiresDone(["--particles", "8e6"], maximumParticles: 10_000_000))
+        try real.record.encoded().write(to: folder.hires)
+        #expect(folder.hiresDone([], maximumParticles: 10_000_000))
+        #expect(!folder.hiresDone(["--frames", "30"], maximumParticles: 10_000_000))
+
+        // A job queued without a count is priced and named as it will run.
+        let job = QueueJob(id: 0, kind: .hires, path: folder.url.path, added: Date())
+        let planned = try hires([], maximum: SceneFolder.maximumParticles()).record
+        let model = CostModel.fallback()
+        #expect(
+            JobEstimate.seconds(job, cost: model)
+                == (try model.hiresSeconds(folder, particles: planned.particles, massive: planned.massive)))
+        #expect(StageJobs.title(of: job) == StageJobs.particles(planned.particles, massive: planned.massive))
+    }
+
+    @Test func hiresNeverRunsAboveTheMaximum() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
         #expect(throws: SceneFolder.HiresError.self) {
             try folder.hiresArguments(["--particles", "3e6"], maximumParticles: 2_000_000)
         }
@@ -363,6 +406,7 @@ struct SceneFolderTests {
 
     @Test func promotingALookKeepsTheFirstOneAside() throws {
         let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
         try LookFile.raw.encoded().write(to: folder.look)
         var first = LookFile.standard
         first.name = "first"

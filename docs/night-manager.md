@@ -41,7 +41,7 @@ groups its scenes by the stage they wait at (**À trier**, **Choisies**, **En ha
 2. **Choix.** Open **À trier**. Each scene shows its Aperçu and its Score; press **Y** or **N**
    (buttons **Oui** / **Non**) to choose or discard it, and a digit 0 to 9 to rate it. The
    night picks the best by Score when you have not.
-3. **Haute résolution.** Open a scene and click **Recalculer en haute résolution…**, or open **Choisies** and click **Calculer en haute résolution (n)** for the whole collection. The job goes to the **File d'attente**.
+3. **Haute résolution.** Open a scene and click **Recalculer en haute résolution…**, or open **Choisies** and click **Calculer en haute résolution (n)** for the whole collection. The job goes to the **File d'attente**. It is drawn as a night draws it: Auto is 8 M from 2 M massive, and every size past 2 M keeps 2 M massive, the others light tracers. A real count is a command line away (step 3 of the appendix, without `--massive`).
 4. **Style.** Click **Choisir le style** on a scene computed in high resolution. The style
    editor plays the scene; pick a **Rendu** and a **Palette**, then **Utiliser pour la scène**
    (⌘S).
@@ -114,15 +114,19 @@ scripts/explore-batch.sh --scenes 20 --pair-share 0.5  # half pairs instead of f
 **3. Hires** – re-run the scenes at high resolution:
 
 ```bash
-./scripts/dev.sh hires library/2026-10-24                      # every "yes" scene
+./scripts/dev.sh hires library/2026-10-24                      # every "yes" scene, as a night
 ./scripts/dev.sh hires library/2026-10-24/scene-0001 --particles 2000000
 ./scripts/dev.sh hires library/2026-10-24/scene-0001 --particles 8000000 --massive 2000000
 ```
 
-`--massive M` gives the mass to about M of the particles drawn and makes the others light
-tracers in their field ([the note](notes/light-tracers.md)): the run looks like its count drawn
-and is stepped like M, whose softening, step and settle it takes. The tracers walk at the
-scene's opening angle (`--theta-tracers` is refused), and `hires.json` keeps both counts.
+Without `--particles`, `hires` draws what a night draws (#243): 8 M, or the machine's maximum
+below that, of which 2 M carry the mass. `--massive M` gives the mass to about M of the
+particles drawn and makes the others light tracers in their field
+([the note](notes/light-tracers.md)): the run looks like its count drawn and is stepped like M,
+whose softening, step and settle it takes. The tracers walk at the scene's opening angle
+(`--theta-tracers` is refused), and `hires.json` keeps both counts. `--particles N` without
+`--massive` is a real N, every particle carrying the mass: that is how to get a real count,
+which the app's form does not offer since it draws as a night does (#222).
 
 **4. Look** – choose the scene's style:
 
@@ -297,7 +301,7 @@ own that outlives the terminal or the app that started it and keeps the Mac awak
 ```bash
 R=".build/dev/sillage-render"   # with DYLD_LIBRARY_PATH=.build/dev, as dev.sh does
 $R queue add hires library/2026-10-24/scene-0001 --particles 2000000
-$R queue add hires library/2026-10-24                 # every chosen scene not done at that size
+$R queue add hires library/2026-10-24                 # every chosen scene not done, as a night
 $R queue add export library/2026-10-24/scene-0001 --preset 4k
 $R queue add explore --scenes 50 --hours 8            # explore-batch.sh options
 $R queue add night tonight.night.json                 # as night <recipe>
@@ -348,11 +352,11 @@ showing them, for checks.
   8 pixels in radius for more than half the clip is scored down in proportion, so a black one
   scores zero and a night picks it last (#217).
 - `hires` replays the same physics with more particles, over the story only, and saves the run
-  as `take.sillage`. Its default is the machine's maximum (`SILLAGE_MAX_PARTICLES`); cost grows
-  with the count and the story's length (about 30 min at 1 M, 8 h at 10 M for 700 Myr). With
-  `--massive M`, as a night runs it (8 M drawn from 2 M), only M carry the mass and set the
-  step; the others are light tracers, which cost a third of a massive particle a step and
-  nothing in the step.
+  as `take.sillage`. Its default is a night's draw, 8 M from 2 M, never above the machine's
+  maximum (`SILLAGE_MAX_PARTICLES`); cost grows with the count and the story's length (about
+  30 min at 1 M, 8 h at a real 10 M for 700 Myr). With `--massive M`, as a night runs it, only
+  M carry the mass and set the step; the others are light tracers, which cost a third of a
+  massive particle a step and nothing in the step. `--particles N` alone is a real N.
 - `look` and `export` only draw the take; no simulation. The chosen look is `look.json`.
 - Estimates come from `library/.sillage/costs.json`, fitted on past runs and refreshed after
   each one. `sillage-render costs` prints it; `--check <batch>` compares it with a batch. A
