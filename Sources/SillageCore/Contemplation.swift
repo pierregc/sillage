@@ -116,7 +116,8 @@ extension SceneConfig {
             galaxies[index].dustMassFraction = DiskResponse.dustMassFraction(of: galaxies[index])
             galaxies[index].dissipationTime = DiskResponse.dissipationTime(
                 drawn: galaxies[index].dissipationTime, of: galaxies[index])
-            guard let target = DiskResponse.target(of: galaxies[index]) else { continue }
+            guard let target = DiskResponse.target(of: galaxies[index], referenceSoftening: reference)
+            else { continue }
             galaxies[index].effectiveToomreQ = DiskResponse.response(
                 drawn: target, of: galaxies[index], referenceSoftening: reference)
         }

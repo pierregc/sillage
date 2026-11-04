@@ -1040,3 +1040,93 @@ enough to turn in 181 Myr, keeps 3.4 %.
 - At 2 M place 15's primary, two-armed, knots (2.4 %): a large two-armed spiral keeps its Q at
   every count and so answers more at 2 M than at explore. Storing the response its Q gives at the
   explore count, as #181 does for the other spirals, would hold it there; not tried here.
+
+## The large two-armed spirals keep their response (#249)
+
+**What changed.** Since #216 a generated spiral keeps the response it was drawn for and every
+count solves its Q for it, but a large two-armed one (scale length 4.2 kpc or more once a
+companion has its size) kept its draw of Q at every count. A night's hires runs the dynamics of
+2 M massive particles (#211), at about a third of explore's softening, where that Q left the
+fourteen of places 1 to 16 of 20261030 and scenes 0 to 39 of 20261031 0.13 to 0.41 less response
+than at explore (1.60 to 2.00 against 1.79 to 2.40), and the softest broke into knots: place 15's
+primary, 1.86 at explore and 1.62 at 2 M, held 2.4 % of its disk in them there (#218). Such a
+spiral now keeps the response its draw of Q gives it at the reference softening (100 000
+particles a galaxy, shared by mass), 1.90 at least (`DiskResponse.largeTwoArmedFloor`,
+`target(of:referenceSoftening:)`), written to the scene file as the others' are, and every count
+solves its Q for it: place 15's is 1.279 at explore and 1.468 at 2 M. A file without the field
+runs as written.
+
+**Why a floor.** Kept at its own response, scene-31 g0 of 20261031 (1.79, the lowest of the
+fourteen: a thin disk, a bulge of 0.03 of the stars, gas 0.175 of the disk) holds 1.35 % of its
+disk in knots at explore as main draws it, from 500 Myr on its outer arms, and 1.87 % at 2 M.
+At explore 1.85 leaves it 0.40 % and 1.90 0.14 %, and at 2 M 1.90 leaves it 0.74 %; place 15 at
+1.90 keeps no knot and late arms of 0.177 (0.161 at 1.857, the same sampling). The floor lifts
+five of the fourteen: scene-31 g0 by 0.11, place 15 and scenes 3 g1, 5 g0 and 19 g0 by 0.01 to
+0.04. The nine above it keep their Q at explore to the bit and explore as main does, cell for
+cell (869 of 869 over 40 Myr: place 16, and place 15 and scene-31 g0 kept with no floor); the
+probe's `--effective-q 1.90` runs the lifted ones as their stored response does (869 of 869). No
+ceiling: #207 found the large two-armed spirals alike at explore from 1.85 to 2.30, and the four
+here above 2.1 keep late arms of 0.14 to 0.17 and no knot at explore as main draws them.
+
+**Checked.** Places 1 to 16 of 20261030 and scenes 0 to 39 of 20261031 drawn by main and the
+branch differ by the fourteen responses written and the Q of the five lifted (place 15 1.250 to
+1.279, scene-31 g0 1.265 to 1.342, scene-3 g1 1.271 to 1.277, scene-5 g0 1.257 to 1.270,
+scene-19 g0 1.362 to 1.368), nothing else. Library scene-0031, whose two spirals are large and
+two-armed and whose file holds no response, a copy read by main and the branch: the probe of
+both galaxies over 40 Myr 869 of 869 cells, a six-frame render's curves, frames, look and scene
+file byte for byte, the file it writes the stored one.
+
+**At 2 M**, the galaxy's share of 2 million over 800 Myr, one sampling (knots at worst within the
+clip; late arms over 400 to 800 Myr; inner a2 at worst, and when; first excursion). Main's runs
+of places 15, 16 and 10 are #218's, with the walk before #221, which moves a disk less than a
+second sampling does (`cells-around-the-particle.md`):
+
+| | response, main to branch | Q at 2 M | main | branch |
+| --- | --- | --- | --- | --- |
+| place 15 g0 | 1.62 to 1.90 | 1.250 to 1.468 | 2.4 %; 0.230; 0.35 at 88 Myr; 8.2 % | 0.00 %; 0.193; 0.32 at 88; 7.9 % |
+| scene-31 g0 | 1.60 to 1.90 | 1.265 to 1.500 | 4.0 %; 0.289; 0.28 at 553; 5.7 % | 0.74 %; 0.244; 0.28 at 582; 6.2 % |
+| scene-3 g1 | 1.62 to 1.90 | 1.271 to 1.493 | not run | 0.12 %; 0.206; 0.29 at 48; 5.5 % |
+| place 16 g0 | 1.72 to 1.95 | 1.348 to 1.527 | 0.05 %; 0.204; 0.34 at 194; 6.2 % | 0.01 %; 0.180; 0.33 at 182; 6.1 % |
+| place 10 g0 | 1.78 to 1.95 | 1.355 to 1.481 | 0.01 %; 0.248; 0.29 at 713; 8.2 % | 0.00 %; 0.229; 0.25 at 80; 7.7 % |
+
+Kept at 1.857 with no floor, place 15 read 0.00 %, 0.196, 0.32 at 88 and 8.2 %, and scene-31 g0
+at 1.79 1.87 %, 0.265, 0.25 and 5.9 %.
+
+**At explore**, the fourteen as main draws them, one sampling (two for places 10 and 16, from
+#218), and the five the floor lifts as the branch does (knots; late arms over the last 500 Myr
+of 1 Gyr; inner a2 at worst, and when):
+
+| | response | main | branch |
+| --- | --- | --- | --- |
+| scene-31 g0 | 1.79 to 1.90 | 1.35 %; 0.255; 0.19 | 0.14 %; 0.219; 0.20 |
+| place 15 g0 | 1.857 to 1.90 | 0.20 %; 0.161; 0.35 at 83 Myr (#218: 0.00, 0.40 %; 0.161, 0.188) | 0.00 %; 0.177; 0.35 at 83 |
+| scene-5 g0 | 1.881 to 1.90 | 0.01 %; 0.188; 0.15 | 0.01 %; 0.215; 0.15 |
+| scene-3 g1 | 1.890 to 1.90 | 0.21 %; 0.199; 0.30 at 51 | 0.55 %; 0.186; 0.30 at 51 |
+| scene-19 g0 | 1.892 to 1.90 | 3.8 %; 0.313; 0.36 at 753 | 3.9 %; 0.274; 0.29 at 36 |
+| place 10 g0 | 1.949 | 0.00, 0.00 %; 0.174, 0.198; 0.27 at 79 | as main |
+| place 16 g0 | 1.954 | 0.03, 0.05 %; 0.146, 0.178; 0.33, 0.35 at 190 | as main |
+| scene-14 g1 | 1.972 | 0.19 %; 0.173; 0.32 at 55 | as main |
+| scene-34 g0 | 1.980 | 0.04 %; 0.133; 0.27 | as main |
+| scene-6 g0 | 2.074 | 0.04 %; 0.226; 0.28 at 75 | as main |
+| scene-24 g0 | 2.146 | 0.03 %; 0.173; 0.16 | as main |
+| scene-27 g1 | 2.258 | 0.10 %; 0.171; 0.14 | as main |
+| scene-30 g0 | 2.296 | 0.04 %; 0.142; 0.16 | as main |
+| scene-16 g1 | 2.401 | 0.05 %; 0.158; 0.37 at 44, 0.31 at 218 | as main |
+
+The lifted ones keep their arms within what a second sampling moves them (scene-3 g1 0.199 to
+0.186 for a Q 0.5 % higher); scene-31 g0's fall from 0.255 is the knots its late arms counted.
+
+**What is left.**
+
+- Scene-19 g0 (a bulge of 0.03 of the stars, gas 0.17 of the disk, a thin disk at 1.892) holds
+  3.8 % of its disk in knots at explore as main draws it, from 300 Myr in its wide outer disk, and
+  the response does not reach them: 3.9 % at 1.90, 2.1 % at 2.0, 1.8 % at 2.1 with its late arms
+  down to 0.194. It is the gas-rich kind of #218 that knots once cooled, and the lever left is
+  its gas (0.10 to 0.20 of a large disk), not tried here; at 2 M it would knot more.
+- The inner a2 of several passes 0.3 early, the painted two-armed wave winding into an oval while
+  the disk settles: place 15 0.35 at 83 Myr (0.32 at 88 at 2 M), place 16 0.33 and 0.35 at 190,
+  scene-16 g1 0.37 at 44 and 0.31 at 218, scene-14 g1 0.32 at 55, scene-3 g1 0.30 at 51, the same
+  on main; late they read 0.05 to 0.2, two arms around an oval. No response measured moves it
+  (place 15 0.35 at 1.857 and 1.90, 0.34 at 2.0), so the floor neither causes nor cures it.
+- Scenes 5 g0, 6 g0, 14 g1, 16 g1, 24 g0, 27 g1, 30 g0 and 34 g0 were run at explore only; held
+  at their explore response at 2 M, as places 10, 15 and 16 are.

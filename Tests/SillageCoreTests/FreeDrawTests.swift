@@ -145,47 +145,58 @@ struct FreeDrawTests {
     /// A spiral is drawn for how its disk answers (#181), archetypes included: at the softening
     /// its scene explores at with 100 000 particles a galaxy, its response is in the range for
     /// its arms and its size unless the floor of Q left it higher, and its Q holds it at the
-    /// count the scene is drawn at. A large two-armed one keeps the draw of Q and no response.
+    /// count the scene is drawn at. A large two-armed one keeps the response its draw of Q gives
+    /// at that softening, `largeTwoArmedFloor` at least (#249).
     @Test func aSpiralIsDrawnForItsResponse() throws {
         let batch = BatchDraw(batchSeed: 20_261_031)
         var drawn = 0
         var floored = 0
         var twoArmed = 0
+        var lifted = 0
         var small = 0
         for index in 0..<40 {
             let scene = batch.scene(at: index, particleCount: 300_000)
             let reference = DiskResponse.referenceSoftening(scene.galaxies)
             for (galaxy, family) in zip(scene.galaxies, scene.draw!.families) {
-                let isSmall = galaxy.diskScaleLength < DiskResponse.smallScaleLength
-                guard family == .spiral, galaxy.armCount > 2 || isSmall else {
+                guard family == .spiral else {
                     #expect(galaxy.effectiveToomreQ == nil)
-                    if family == .spiral {
-                        twoArmed += 1
-                        #expect(DiskResponse.twoArmedToomreQ.contains(galaxy.toomreQ))
+                    continue
+                }
+                let isSmall = galaxy.diskScaleLength < DiskResponse.smallScaleLength
+                let response = try #require(galaxy.effectiveToomreQ)
+                #expect(
+                    galaxy.toomreQ
+                        == DiskResponse.toomreQ(
+                            effective: response, of: galaxy, softening: scene.recommendedSoftening))
+                let atReference = DiskResponse.toomreQ(effective: response, of: galaxy, softening: reference)
+                guard galaxy.armCount > 2 || isSmall else {
+                    twoArmed += 1
+                    let drawnQ = DiskResponse.twoArmedToomreQ
+                    #expect(response >= DiskResponse.largeTwoArmedFloor - 1e-5)
+                    #expect(atReference > drawnQ.lowerBound - 1e-5)
+                    if response > DiskResponse.largeTwoArmedFloor + 1e-5 {
+                        #expect(atReference < drawnQ.upperBound + 1e-5)
+                    } else {
+                        lifted += 1
                     }
                     continue
                 }
                 drawn += 1
                 if isSmall { small += 1 }
-                let response = try #require(galaxy.effectiveToomreQ)
                 let range =
                     galaxy.armCount <= 2
                     ? DiskResponse.smallTwoArmedRange
                     : isSmall ? DiskResponse.smallRange : DiskResponse.drawnRange
                 #expect(response >= range.lowerBound - 1e-4)
-                let atReference = DiskResponse.toomreQ(effective: response, of: galaxy, softening: reference)
                 if atReference <= DiskResponse.lowestToomreQ + 1e-4 {
                     floored += 1
                 } else {
                     #expect(response <= range.upperBound + 1e-4)
                 }
-                #expect(
-                    galaxy.toomreQ
-                        == DiskResponse.toomreQ(
-                            effective: response, of: galaxy, softening: scene.recommendedSoftening))
             }
         }
         #expect(drawn >= 20 && small >= 8 && twoArmed >= 5 && floored * 2 < drawn)
+        #expect(lifted >= 1 && lifted * 2 < twoArmed)
     }
 
     /// A generated disk sheds its random motion over the time drawn, but never in fewer than
