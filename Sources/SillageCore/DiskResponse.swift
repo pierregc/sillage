@@ -118,15 +118,12 @@ public enum DiskResponse {
     /// The share of a large spiral's disk mass its gas carries, at the place of its dust draw.
     /// As heavy as its dust, the gas of a large disk, laid down wider than the stars, broke the
     /// outskirts into bound knots cooled over 1.8 to 2.5 turns; a large spiral holds a tenth to a
-    /// fifth of its disk in gas (#218). A two-armed one keeps its gas: it carries the painted
-    /// wave its arms ride, and none of them knotted once the cooling was held.
+    /// fifth of its disk in gas (#218).
     public static let largeDustMass: ClosedRange<Float> = 0.10...0.20
 
-    /// The gas's share of a generated disk's mass: set for a large spiral of three to five
-    /// arms, nil otherwise.
+    /// The gas's share of a generated disk's mass: set for a large spiral, nil otherwise.
     public static func dustMassFraction(of galaxy: GalaxyConfig) -> Float? {
-        guard galaxy.kind == .spiral, galaxy.armCount > 2, galaxy.diskScaleLength >= smallScaleLength
-        else { return nil }
+        guard galaxy.kind == .spiral, galaxy.diskScaleLength >= smallScaleLength else { return nil }
         return moved(galaxy.dustFraction, from: drawnDust, to: largeDustMass)
     }
 

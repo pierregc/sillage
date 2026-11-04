@@ -118,7 +118,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// spheroid with no arms left. Measured here exactly that way. Real disks do not do this
     /// because their gas radiates the motion away and forms new stars on circular orbits,
     /// which resets the disk faster than the spirals heat it. Nothing in this simulation is
-    /// gas, so the effect is put back directly.
+    /// gas, so the effect is put back directly. The batch generators hold it to at least
+    /// `DiskResponse.coolingTurns` of the disk's turns: faster, a disk breaks into knots (#218).
     public var dissipationTime: Float
 
     public var position: SIMD3<Float>

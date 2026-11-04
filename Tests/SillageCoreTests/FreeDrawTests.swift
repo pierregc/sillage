@@ -221,10 +221,9 @@ struct FreeDrawTests {
         #expect(DiskResponse.dissipationTime(drawn: 185, of: large) == 185)
     }
 
-    /// The gas of a large generated spiral of three to five arms weighs a tenth to a fifth of
-    /// its disk, at the place of its dust draw, and its dust particles stay as drawn for the
-    /// light (#218); a small or two-armed one, or any other kind, keeps its gas as heavy as its
-    /// dust.
+    /// The gas of a large generated spiral weighs a tenth to a fifth of its disk, at the place
+    /// of its dust draw, and its dust particles stay as drawn for the light (#218); a small one,
+    /// or any other kind, keeps its gas as heavy as its dust.
     @Test func aLargeSpiralsGasWeighsApartFromItsDust() {
         let batch = BatchDraw(batchSeed: 20_261_030, pairShare: nil)
         var large = 0
@@ -232,9 +231,7 @@ struct FreeDrawTests {
         for index in 0..<40 {
             let scene = batch.scene(at: index, particleCount: 300_000)
             for galaxy in scene.galaxies {
-                guard galaxy.kind == .spiral, galaxy.armCount > 2,
-                    galaxy.diskScaleLength >= DiskResponse.smallScaleLength
-                else {
+                guard galaxy.kind == .spiral, galaxy.diskScaleLength >= DiskResponse.smallScaleLength else {
                     #expect(galaxy.dustMassFraction == nil)
                     other += 1
                     continue
@@ -245,7 +242,7 @@ struct FreeDrawTests {
                 #expect(abs((galaxy.dustMassFraction ?? 0) - (0.10 + 0.10 * place)) < 1e-5)
             }
         }
-        #expect(large >= 6 && other >= 20)
+        #expect(large >= 8 && other >= 20)
         let contemplation = SceneConfig.contemplation(particleCount: 300_000, seed: 7)
         #expect(contemplation.galaxies.allSatisfy { $0.dustMassFraction == nil })
     }
