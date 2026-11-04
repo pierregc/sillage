@@ -205,6 +205,15 @@ the nearest step. Only the story is captured: what comes before it is settled th
 nothing after its end is run. `--frames N` runs the first N frames of it at the same cadence,
 for a quick look.
 
+`--massive M` draws the scene at `--particles` and gives the mass to about M of them, the others
+light tracers that follow the same orbits in the field of the massive ones (#187,
+[docs/notes/light-tracers.md](docs/notes/light-tracers.md)). The softening, the step, the settle
+and the Toomre Q a disk is solved for are M's, and the dark matter is sampled at M's count; the
+tracers walk at the scene's opening angle, so `--theta-tracers` is refused. `hires.json` keeps
+`massive` beside `particles`, and a record without it is a run in which every particle carried
+mass. A night draws 8 M from 2 M (#211): the texture of 8 M for about a third of a real 8 M's
+time.
+
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
 `hires` prints how long a run should take before it starts, from the cost model (`costs`), or

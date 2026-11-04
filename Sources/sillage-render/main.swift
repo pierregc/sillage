@@ -1488,11 +1488,6 @@ look.palette = scene.galaxies.enumerated().map { index, galaxy in
 
 let settings = look.renderSettings(width: width, height: height)
 
-print(
-    "scene      \(scene.name), \(scene.totalParticleCount) visible"
-        + (scene.hasLiveHalos
-            ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
-
 // `--massive M` (#187): the scene is drawn at `--particles`, and only about M of the visible
 // particles carry the mass, with dark matter drawn for M (#211). The softening and the step are
 // the massive count's; the others are light tracers in their field.
@@ -1504,6 +1499,11 @@ if let massiveCount {
     // A disk drawn for its response answers at the massive particles' softening (#181).
     drawnScene.solveToomreQ(softening: scene.softening)
 }
+// With tracers, the halo is the massive count's.
+print(
+    "scene      \(scene.name), \(drawnScene.totalParticleCount) visible"
+        + (scene.hasLiveHalos
+            ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
 var seeded: ParticleSystem
 var tracerCount = 0
 if let massiveCount {

@@ -57,8 +57,8 @@ Every line has `t` (when) and `kind`; `scene` when it concerns one scene.
 | `night.start` | the night began | `night` |
 | `explore.scene` | one preview finished | `status` (`ok`, `rejected`, `failed`), `score`, `seconds` |
 | `pick` | a scene was chosen for hires | `chosen`, `rating`, `score` |
-| `hires.start` | a high-resolution run began | `particles`, `steps` |
-| `hires.done` | it finished | `particles`, `steps`, `minutes`, `takeGB` |
+| `hires.start` | a high-resolution run began | `particles`, `massive` (those that carry the mass, when the others are light tracers), `steps` |
+| `hires.done` | it finished | `particles`, `massive`, `steps`, `minutes`, `takeGB` |
 | `style` | the scene got its look | `style`, `world`, `path` |
 | `export.done` | a video is ready | `preset`, `megabytes`, `seconds`, `path` |
 | `error` | a step failed, its scene is out for the night | `stage`, `message`, `log` |
@@ -84,7 +84,8 @@ then adds "semble bloqué, rien écrit depuis …". A night `paused` on purpose 
 Also not stuck: `state: idle`, whatever `updated` says.
 
 The state of the Mac is `idle` only when nothing runs; `running` with a recent `updated` is
-fine, even when the progress looks slow (a hires of 2 million particles takes about 30 minutes).
+fine, even when the progress looks slow (a hires of 2 million particles takes about 30 minutes,
+one of 8 million drawn from 2 million, as a night runs it, about an hour).
 
 ## The answer in three lines
 
