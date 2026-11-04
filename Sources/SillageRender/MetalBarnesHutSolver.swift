@@ -198,9 +198,12 @@ public final class MetalBarnesHutSolver: Solver {
             particles: RestrictedSolver.sampleParticles(for: scene))
     }
 
+    /// `opensHoldingCells: false` walks the tree as before #221, when only the leaf holding a
+    /// massive particle was kept from standing in for it; kept to measure against.
     public init(
         device: MTLDevice? = nil, scene: SceneConfig, particles: ParticleSystem,
-        quadrupole: Bool = MetalBarnesHutSolver.quadrupole, tracers: Int = 0
+        quadrupole: Bool = MetalBarnesHutSolver.quadrupole, tracers: Int = 0,
+        opensHoldingCells: Bool = true
     ) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
@@ -284,8 +287,12 @@ public final class MetalBarnesHutSolver: Solver {
             }
         }
         let tracing = tracerCount > 0
-        force = try specialised("bhAcceleration", [(0, quadrupole), (1, false)])
-        tracerForce = tracing ? try specialised("bhAcceleration", [(0, quadrupole), (1, true)]) : nil
+        force = try specialised(
+            "bhAcceleration", [(0, quadrupole), (1, false), (3, opensHoldingCells)])
+        tracerForce =
+            tracing
+            ? try specialised(
+                "bhAcceleration", [(0, quadrupole), (1, true), (3, opensHoldingCells)]) : nil
         gather = try pipeline("bhGather")
         dissipate =
             scene.galaxies.contains { $0.dissipationTime > 0 }
@@ -1151,9 +1158,11 @@ public final class MetalBarnesHutSolver: Solver {
                 encoder.setBuffer(costBuffer, offset: 0, index: 6)
                 // A placeholder when the pipeline is the monopole's, which never reads it.
                 encoder.setBuffer(builder.moments, offset: 0, index: 7)
+                encoder.setBuffer(builder.codes, offset: 0, index: 10)
                 // Placeholders: only the tracers' specialisation reads these.
                 encoder.setBuffer(positionBuffer, offset: 0, index: 8)
                 encoder.setBuffer(builder.order, offset: 0, index: 9)
+                encoder.setBuffer(builder.frame, offset: 0, index: 11)
             }
             start += span
         }
@@ -1185,6 +1194,8 @@ public final class MetalBarnesHutSolver: Solver {
                 encoder.setBuffer(builder.moments, offset: 0, index: 7)
                 encoder.setBuffer(positionBuffer, offset: 0, index: 8)
                 encoder.setBuffer(tracerSorter.order, offset: 0, index: 9)
+                encoder.setBuffer(builder.codes, offset: 0, index: 10)
+                encoder.setBuffer(builder.frame, offset: 0, index: 11)
             }
             start += span
         }

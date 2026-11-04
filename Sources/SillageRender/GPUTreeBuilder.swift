@@ -360,11 +360,11 @@ public final class GPUTreeBuilder {
             let a = gpuNodes[g]
             let b = cpuNodes[c]
             if a.packed.x.bitPattern != b.packed.x.bitPattern || a.signedCount != b.signedCount
-                || (a.isLeaf && a.range != b.range)
+                || a.digit != b.digit || (a.isLeaf && a.range != b.range)
             {
                 result.firstDifference =
-                    "gpu node \(g) (\(a.packed.x), \(a.range), \(a.signedCount)) against"
-                    + " cpu node \(c) (\(b.packed.x), \(b.range), \(b.signedCount))"
+                    "gpu node \(g) (\(a.packed.x), \(a.range), \(a.signedCount), \(a.digit)) against"
+                    + " cpu node \(c) (\(b.packed.x), \(b.range), \(b.signedCount), \(b.digit))"
                 return result
             }
             result.massesCompared += 1

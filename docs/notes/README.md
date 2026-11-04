@@ -25,6 +25,7 @@ session. Read the note for an area before changing it.
 - [A black hole outside the tree](black-holes.md): its own softening, the step, energy across the mass range
 - [Another language would not make a step faster](solver-language.md): GPU against CPU, Swift against C, the opening angle explore and hires run at
 - [Light tracers](light-tracers.md): drawing 8 M for the price of 2 M, what stays on the mass, star formation without a leaf
+- [A cell around the particle](cells-around-the-particle.md): the walk opens every cell that holds the particle, how often the old one did not and what it cost (#221)
 
 ## Physics and galaxies
 
