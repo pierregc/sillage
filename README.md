@@ -188,10 +188,12 @@ them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
 
 ### High resolution
 
-`hires` runs the scene again from its `scene.json` at `--particles`, by default this Mac's
-maximum, and writes `take.sillage`, `hires.mov`, `curves-hires.csv` and `hires.json` beside the
-preview without touching it. Given a batch folder instead of a scene, it runs every scene marked
-yes in `ratings.json`, one after another, skipping those already done at that size.
+`hires` runs the scene again from its `scene.json` at `--particles` and writes `take.sillage`,
+`hires.mov`, `curves-hires.csv` and `hires.json` beside the preview without touching it. Without
+`--particles` it draws what a night draws (#243): 8 M of which 2 M carry the mass (`--massive`,
+below), or this Mac's maximum when that is lower. Given a batch folder instead of a scene, it
+runs every scene marked yes in `ratings.json`, one after another, skipping those already done at
+that size.
 
 Only the particle count and what follows from it change. The geometry is the scene file's, and
 so is `timeStepScale` (3.5 for a night batch) unless `--dt-scale` overrides it. Softening follows
@@ -212,7 +214,7 @@ and the Toomre Q a disk is solved for are M's, and the dark matter is sampled at
 tracers walk at the scene's opening angle, so `--theta-tracers` is refused. `hires.json` keeps
 `massive` beside `particles`, and a record without it is a run in which every particle carried
 mass. A night draws 8 M from 2 M (#211): the texture of 8 M for about a third of a real 8 M's
-time.
+time. `--particles N` without `--massive` is a real N, every particle carrying mass.
 
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and

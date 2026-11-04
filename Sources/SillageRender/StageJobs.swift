@@ -275,9 +275,8 @@ public enum StageJobs {
         }
         switch job.kind {
         case .hires:
-            return option("--particles").flatMap(Double.init).map {
-                particles(Int($0), massive: SceneFolder.massive(in: job.options))
-            } ?? "Le plus que la machine tient"
+            let draw = SceneFolder.hiresDraw(job.options, maximumParticles: SceneFolder.maximumParticles())
+            return particles(draw.particles, massive: draw.massive)
         case .export:
             let card = ExportChoice(rawValue: option("--format") ?? option("--preset") ?? "1080p")
             var parts = [card?.title ?? option("--preset") ?? "Vidéo"]

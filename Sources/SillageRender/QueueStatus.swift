@@ -201,11 +201,9 @@ public enum JobEstimate {
         let folder = SceneFolder(path: job.path)
         switch job.kind {
         case .hires:
-            let particles =
-                option("--particles", in: job.options).flatMap { Double($0) }.map { Int($0) }
-                ?? SceneFolder.maximumParticles()
+            let draw = SceneFolder.hiresDraw(job.options, maximumParticles: SceneFolder.maximumParticles())
             return StageJobs.hiresSeconds(
-                folder, particles: particles, massive: SceneFolder.massive(in: job.options), cost: cost)
+                folder, particles: draw.particles, massive: draw.massive, cost: cost)
         case .export:
             let number = { option($0, in: job.options).flatMap(Double.init) }
             let clip = try? folder.storedClip()
