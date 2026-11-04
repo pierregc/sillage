@@ -519,6 +519,160 @@ Myr, or the softening cap it measured (14 % more explore steps a night); both ar
 as is solving the response at each count so that explore and hires agree, and the two-armed bar
 is a ticket of its own.
 
+## The response kept at every count (#181, third round)
+
+**What changed.** The scene file keeps the response a disk was drawn for, `effectiveToomreQ`
+beside `toomreQ`, and every run that reads it, explore, hires and the probe, gives the disk the
+Toomre Q that holds that response at the softening it runs at (`SceneFile.scene`,
+`SceneConfig.solveToomreQ`; a `--massive` run at its massive count's). A hires disk is softened
+less and gets more Q: free-12 1.08 at explore, 1.31 at 2 M and 1.40 at 8 M. The response kept is
+the drawn one or, where the floor of Q stops a soft disk at 100 000 particles a galaxy, the
+stiffer one the floor leaves there, so no run at that count or above finds the floor and all of
+them give the disk the same response. A generated scene solves Q at the count it is drawn at,
+and the `toomreQ` a scene file holds is the one it last ran at. A file without the field, every
+scene in the library, runs Q as written.
+
+**Checked.** Library scene-0031 (a copy), read by main and by the branch: the probe of both
+galaxies over 40 Myr, 847 of 847 cells identical each, and a six-frame render, curves 102 of 102,
+the six frames and the scene file it writes identical byte for byte (the file also to the stored
+one). Scenes 0 to 19 of batch 20261031 drawn at 100 000 a galaxy differ from main's by the
+twelve responses now written and by the Q of eight small spirals (the rules below), nothing
+else. Read at the explore count, a file holding round 2's response
+for free-12 reproduces round 2's run cell for cell (18 865 of 18 865), so the second round's
+explore runs stand for this one's.
+
+**Explore against 2 M**, the response kept, two samplings each (late arms; inner a2 at worst;
+first excursion):
+
+| | Q at explore, 2 M | explore | 2 M |
+| --- | --- | --- | --- |
+| free-0 | 1.15, 1.34 | 0.225, 0.219; 0.20, 0.19; 5.5, 5.7 % | 0.195, 0.226; 0.17, 0.22; 6.8, 6.6 % |
+| free-2 | 1.13, 1.38 | 0.198, 0.185; 0.14, 0.17; 4.8, 5.0 % | 0.177, 0.197; 0.14, 0.18; 6.7, 6.9 % |
+| free-11 | 1.21, 1.38 | 0.262, 0.262; 0.20, 0.27; 5.6, 7.9 % | 0.303, 0.248; 0.45, 0.29; 6.1, 7.6 % |
+| free-12 | 1.08, 1.31 | 0.179, 0.181; 0.20, 0.17; 6.7, 9.2 % | 0.238, 0.208; 0.38, 0.20; 9.2, 9.1 % |
+
+Where the softening was what parted the two counts, the response kept holds the look: free-0
+and free-2 read at 2 M as at explore, within what two samplings of either spread, and on the
+sheet with the same arms. free-12 and free-11 still answer more at 2 M, and one sampling of each
+bars late (free-12 from 500 Myr, free-11 from 900). free-12 at 8 M (Q 1.40, one sampling) reads
+0.233 with an inner a2 of 0.23 and 7.6 %, like its second sampling at 2 M. Taken apart on
+free-12, one change at a time from its explore run (one sampling each):
+
+| from explore: 61 000 stars, 0.157 kpc, Q 1.08, 0.195 Myr | late arms | inner a2 | first excursion |
+| --- | --- | --- | --- |
+| none | 0.179 | 0.20 | 6.7 % |
+| the step of 2 M, 0.0755 Myr | 0.181 | 0.23 | 6.4 % |
+| the softening of 2 M, 0.061 kpc, Q solved there (1.31), that step | 0.193 | 0.23 | 7.1 % |
+| the stars of 2 M, 407 000 | 0.190 | 0.30 at 240 Myr | 10.3 % |
+| the stars and the step | 0.202 | 0.30 | 10.3 % |
+| all of them (2 M) | 0.238, 0.208 | 0.38, 0.20 | 9.2, 9.1 % |
+
+The step does nothing and the softening, with Q solved for it, 0.014: the response does what it
+was built for. What is left is the particle count itself: sampled by 6.7 times the stars at the
+same softening, Q and step, the disk answers its painted wave harder over its first 300 Myr (the
+first excursion 6.7 to 10.3 %, the inner a2 0.30 at 240 Myr against 0.20) and keeps a little
+more late. No Q per count holds that, since it is not the disk's response that differs but what
+it is seeded with. free-11, large, still tears into kiloparsec knots by 1 Gyr at 2 M with Q 1.38,
+as it did in round 2 at 1.21 and 1.26.
+
+**The small spirals get a window of their own.** At equal response a small disk answers less
+than a large one (second round), and the small ones sit in a narrow window between a bar and a
+smooth disk. Measured at 100 000 a galaxy on the five small spirals of three to five arms the
+rule draws, late arms of each sampling, all with an inner a2 under 0.3 and an excursion under
+10 % but where said:
+
+| response | free-0, 4 arms | free-1, 5 | free-2, 3 | free-12, 3 | scene-15 g0, 3 |
+| --- | --- | --- | --- | --- | --- |
+| 1.68 | 0.308 (a bar from 985 Myr, 0.33), 0.201 | | | | 0.230, 0.250 |
+| 1.71 to 1.72 | 0.221, 0.200 | 0.212 (the floor, 1.711); 0.172, 0.153 | | 0.232, 0.188 (the floor, 1.716) | 0.261, 0.215 |
+| 1.73 to 1.745 | 0.227, 0.194 (1.739) | 0.183 (1.73); 0.185, 0.170 | | 0.259, 0.213 (1.74) | |
+| 1.76 to 1.79 | | 0.170, 0.175 (1.788) | 0.248, 0.245 (the floor, 1.788) | 0.179, 0.181 (1.77) | 0.268 (1.76) |
+| as main draws it | 0.225, 0.219 (1.827) | 0.145 (1.926) | 0.198, 0.185 (1.925) | 0.179, 0.181 (1.770) | 0.221 (1.940) |
+
+free-0 bars under 1.70 on one sampling of two, free-12 has its arms back from its floor up to
+1.74, and free-1 reads 0.15 to 0.21 anywhere from its floor to 1.79, 0.17 on average. Hence a
+spiral of three to five arms whose scale length is under 4.2 kpc, the done-when's category, once
+its companion has its size, is given the place of its draw in 1.72 to 1.76 instead of 1.75 to
+1.95 (`DiskResponse.smallRange`): free-0 1.735, free-1 1.755, free-12 1.724, scene-15 1.758 and
+free-2 its floor, 1.788, as before.
+
+**Small two-armed spirals are drawn for a response too.** Drawn at their Q they sit at 1.92 to
+2.03 at the explore count, and three of the four fade or bar. Given the place of their draw of Q
+in 1.80 to 1.86 (`DiskResponse.smallTwoArmedRange`; large two-armed spirals keep their Q):
+
+| | as main draws it | 1.80 to 1.86 | 1.87 to 1.89 |
+| --- | --- | --- | --- |
+| scene-1 g1 | 0.173, 0.151 (2.03) | 0.216, 0.198 (1.807); 0.190, 0.203 (1.847) | 0.182, 0.178 (1.88) |
+| scene-12 g0 | 0.209 (1.915) | 0.219, 0.184 (1.831); 0.239 (1.85) | 0.187, 0.175 (1.871) |
+| scene-17 g0 | 0.145, inner a2 0.30 (2.02) | 0.162, 0.220, inner a2 0.31 both (1.847) | 0.181, 0.172, 0.31 (1.887, 1.88) |
+| scene-5 g1 | 0.359, a bar of 0.38 (2.01) | 0.426, a bar of 0.38 (1.831) | 0.402, a bar of 0.48 (1.871); 0.278 and 0.63 at 2.2 |
+
+scene-17's inner a2 passes 0.3 only between 55 and 111 Myr, in the settle the clip never shows:
+the painted arms' first wind-up at a pitch of 40 degrees, at any response; from 150 Myr on it is
+0.26 at most. scene-5 g1 bars at every response from 1.83 to 2.2. It cools in 0.92 of its turns
+(193 Myr against 210), the fastest of all: at its own Q with the cooling at two turns, 420 Myr,
+it keeps arms of 0.242 and an inner a2 of 0.17. The cooling paced to the turn is what it needs,
+not the response.
+
+**The rule as the branch draws it**, read from the scene files (late arms; inner a2; first
+excursion, two samplings):
+
+| | before | after |
+| --- | --- | --- |
+| free-0 | 0.225, 0.219; 0.20, 0.19; 5.5, 5.7 % | 0.220, 0.199; 0.28, 0.19; 6.6, 5.7 % |
+| free-1 | 0.145; 0.10; 3.6 % | 0.174, 0.150; 0.13, 0.11; 4.5, 4.2 % |
+| free-2 | 0.198, 0.185; 0.14, 0.17; 4.8, 5.0 % | 0.234, 0.210; 0.17, 0.16; 4.9, 4.7 % |
+| free-12 | 0.179, 0.181; 0.20, 0.17; 6.7, 9.2 % | 0.276, 0.203, 0.200; 0.34 (from 770 Myr), 0.18, 0.18; 8.2, 9.9, 9.1 % |
+| scene-15 g0 | 0.221; 0.16; 8.1 % | 0.293, 0.232; 0.18, 0.17; 8.9, 8.5 % |
+| scene-1 g1 | 0.173, 0.151; 0.13, 0.12; 7.1, 5.2 % | 0.216, 0.198; 0.15, 0.15; 6.8, 5.3 % |
+| scene-12 g0 | 0.209; 0.19; 6.8 % | 0.219, 0.184; 0.20, 0.18; 6.9, 6.1 % |
+| scene-17 g0 | 0.145; 0.30; 5.2 % | 0.162, 0.220; 0.31, 0.31; 5.8, 6.9 % |
+| scene-5 g1 | 0.359; 0.38; 6.9 % | 0.426; 0.38; 6.3 % |
+
+**Out of sample**, the small spirals of scenes 20 to 39 of the same batch, which no range here
+was tuned on, at 100 000 a galaxy, one sampling each (the response before and after; late arms
+before and after; inner a2 and excursion after):
+
+| | arms, scale length | response, main to branch | late arms, main to branch | inner a2, excursion |
+| --- | --- | --- | --- | --- |
+| scene-22 g1 | 4, 3.83 kpc | 1.794 to 1.729 | 0.278 with a bar of 0.43, to 0.262 | 0.26, 3.0 % |
+| scene-33 g0 | 3, 3.60 | 1.947 to 1.759 | 0.162 to 0.194, 0.184 | 0.15, 7.4 % |
+| scene-20 g3 | 3, 3.11 | 1.909 to its floor, 1.754 | 0.163 to 0.217 | 0.16, 5.3 % |
+| scene-35 g3 | 5, 4.16 | 1.912 to 1.752 | 0.240 to 0.218 | 0.21, 3.9 % |
+| scene-36 g1 | 4, 3.02 | its floor, 1.867, both | 0.219 | 0.17, 6.6 % |
+| scene-37 g1 | 3, 2.99 | 1.897 to its floor, 1.794 | 0.225 to 0.218 | 0.22, 6.9 % |
+| scene-26 g0 | 5, 2.92 | 1.904 to 1.751 | 0.164 to 0.164, 0.167 | 0.16, 6.0 % |
+| scene-37 g0 | 5, 3.49 | 1.802 to 1.730 | 0.143 to 0.169, 0.170 | 0.14, 7.6 % |
+| scene-31 g1 | 4, 1.98, mass 9.8 | its floor, 1.925, both | 0.165 | 0.14, 4.8 % |
+| scene-35 g1 | 2, 3.68 | its Q (2.26) to its floor, 1.860 | 0.284 to 0.324 | 0.29, 7.1 % |
+| scene-20 g2 | 2, 2.11, mass 13.1 | its Q (2.58) to its floor, 2.022 | 0.136 to 0.143 | 0.29, 4.2 % |
+
+Seven of the eleven keep their arms against four before; scene-21 g1 and scene-20 g0 (free-9)
+are let smooth (a bulge of 0.15 of the stars or more in a halo under 1.2 scale lengths).
+
+**What is left.** Of the small spirals measured, the rule keeps free-0, free-2, scene-15 g0,
+scene-1 g1 and scene-12 g0 over 0.18 with no bar on every sampling, free-12 on two of three, and
+seven of the eleven drawn out of sample. What still fails is of three kinds, none of them the
+response:
+
+- Five-armed small disks stay at 0.15 to 0.18 at every response from their floor up: free-1
+  (0.174, 0.150), scene-26 g0 (0.164, 0.167), scene-37 g0 (0.169, 0.170), while scene-35 g3,
+  five-armed and as small, keeps 0.218. They stay cold (a late measured Q of 1.1 to 1.3) with
+  their power spread over three to five arms. A third of the particles at the same softening
+  gives free-1 less, not more (0.156).
+- Small companions held stiff by the floor: scene-31 g1 (mass 9.8, 31 000 stars, floor 1.925)
+  0.165, scene-20 g2 (13.1, two arms, floor 2.022) 0.143. At 100 000 a galaxy shared by mass the
+  softening of so few stars leaves their Q at 1.05 however low the response drawn; the softening
+  cap of the first round is what would reach them.
+- Two-armed disks the response does not reach: scene-5 g1 bars from 500 Myr at every response
+  from 1.83 to 2.2, and keeps its arms without a bar at its own Q with its cooling at two turns;
+  scene-17 g0 passes an inner a2 of 0.3 only in the settle, the painted arms of a 40 degree pitch
+  winding up, and keeps late arms of 0.162 and 0.220.
+
+free-12, compact and bulgeless, bars late on one sampling of three at the window, as on one of
+two at 2 M. The done-when is not met: the cooling paced to the turn and the softening cap are
+the levers these point at, and nothing measured here moves the five-armed ones.
+
 ## A steady drive at the disk's own rate (#180)
 
 The question the drive above left: does a drive turning at the disk's own preferred rate (0.8

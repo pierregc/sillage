@@ -68,9 +68,11 @@ spiral, a lenticular disk, an elliptical, a dwarf, a compact globular or, for 4 
 with a companion, a lone black hole in place of the first one, with their arm count,
 arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. A spiral of
 three to five arms is drawn for its response rather than its Toomre Q: Q is solved for an
-effective Q of 1.75 to 1.95, Q over what the softening at 100 000 particles a galaxy and the
-disk's late thickness leave of its own pull, so a small, soft or thick disk is drawn colder
-([the note](docs/notes/lumpy-arms.md)). What changes
+effective Q of 1.75 to 1.95, 1.72 to 1.76 under a scale length of 4.2 kpc, Q over what the
+softening at 100 000 particles a galaxy and the disk's late thickness leave of its own pull, so a
+small, soft or thick disk is drawn colder; a small two-armed spiral is drawn at 1.80 to 1.86, a
+large one keeps its draw of Q. The scene file keeps that response (`effectiveToomreQ`) and every
+run solves Q for it at its own softening ([the note](docs/notes/lumpy-arms.md)). What changes
 a scene most is drawn from a Sobol sequence shifted by the batch seed, so a batch covers the
 space instead of clumping; the rest comes from a stream seeded by the scene. A candidate whose
 signature (galaxy count, the first two galaxies, the first encounter) sits closer than
