@@ -19,7 +19,8 @@ struct LightTracerTests {
     @Test func splittingKeepsEachGalaxysMassAndPutsTheTracersFirst() {
         let scene = selfGravitatingDisk(20_000)
         let sampled = RestrictedSolver.sampleParticles(for: scene)
-        let (split, tracers) = sampled.splittingLightTracers(massive: 5_000, seed: 9)
+        let (split, tracers) = ParticleSystem.lightTracers(
+            drawn: scene, massive: selfGravitatingDisk(5_000))
 
         #expect(split.visibleCount == sampled.visibleCount)
         #expect(abs(split.visibleCount - tracers - 5_000) < 400)
@@ -39,17 +40,49 @@ struct LightTracerTests {
             let before = mass(sampled, halo: halo)
             #expect(abs(mass(split, halo: halo) - before) / before < 1e-4)
         }
-        // A quarter of the dark matter too, so the halo's graininess is the massive count's.
-        let halo = split.count - split.visibleCount
-        let sampledHalo = sampled.count - sampled.visibleCount
-        #expect(abs(Double(halo) / Double(sampledHalo) - 0.25) < 0.02)
+        // The dark matter is drawn at the massive count, 1.5 a massive particle, and none of it
+        // was drawn only to be thrown away.
+        #expect(split.count - split.visibleCount == 7_500)
+        #expect(sampled.count - sampled.visibleCount == 30_000)
+    }
+
+    /// Split alone, a sample keeps all of its dark matter: the halo is drawn at the massive
+    /// count before, and nothing else moves.
+    @Test func theDarkMatterIsDrawnAtTheMassiveCount() {
+        let drawn = selfGravitatingDisk(20_000)
+        let massive = selfGravitatingDisk(5_000)
+        let sampled = RestrictedSolver.sampleParticles(
+            for: drawn, haloCounts: massive.galaxies.map(\.haloParticleCount))
+        #expect(sampled.visibleCount == 20_000 && sampled.count == 27_500)
+        let haloMass = (sampled.visibleCount..<sampled.count).map { Double(sampled.mass[$0]) }
+        let expected = Double(drawn.galaxies[0].potential.mass * (1 - drawn.galaxies[0].diskMassFraction))
+        #expect(abs(haloMass.reduce(0, +) / expected - 1) < 1e-4)
+        let (split, _) = sampled.splittingLightTracers(massive: 5_000, seed: 3)
+        #expect(split.count - split.visibleCount == 7_500)
+        // Without halo counts, the sample is the one every run without tracers has always had.
+        let plain = RestrictedSolver.sampleParticles(for: drawn)
+        let again = RestrictedSolver.sampleParticles(for: drawn, haloCounts: nil)
+        #expect(plain.positions == again.positions && plain.mass == again.mass)
+    }
+
+    /// A tracer walks at the scene's opening angle: at 1.3 the tracers were pulled short and
+    /// drifted 4 % off the mass over a merger (docs/notes/light-tracers.md).
+    @Test func theTracersWalkAtTheScenesOpeningAngle() throws {
+        for angle: Float in [0.9, 0.7] {
+            var scene = selfGravitatingDisk(4_000)
+            scene.openingAngle = angle
+            let (split, tracers) = ParticleSystem.lightTracers(
+                drawn: scene, massive: selfGravitatingDisk(1_000))
+            let solver = try MetalBarnesHutSolver(scene: scene, particles: split, tracers: tracers)
+            #expect(solver.tracerOpeningAngle == angle)
+        }
     }
 
     /// The tree is the massive particles' alone, so adding tracers moves none of them.
     @Test func theMassiveParticlesIgnoreTheirTracers() throws {
         let scene = selfGravitatingDisk(12_000)
-        let sampled = RestrictedSolver.sampleParticles(for: scene)
-        let (split, tracers) = sampled.splittingLightTracers(massive: 3_000, seed: 4)
+        let (split, tracers) = ParticleSystem.lightTracers(
+            drawn: scene, massive: selfGravitatingDisk(3_000))
         let alone = split.slice(tracers..<split.count)
 
         let reference = try MetalBarnesHutSolver(scene: scene, particles: alone)
@@ -121,8 +154,8 @@ struct LightTracerTests {
     /// softening is the massive count's: softened for twice as many, the massive particles
     /// cluster among themselves, which the tracers cannot, and tracer gas formed a third less.
     @Test func tracerGasFormsStarsLikeTheMassiveGas() throws {
-        let sampled = RestrictedSolver.sampleParticles(for: selfGravitatingDisk(80_000))
-        let (split, tracers) = sampled.splittingLightTracers(massive: 40_000, seed: 2)
+        let (split, tracers) = ParticleSystem.lightTracers(
+            drawn: selfGravitatingDisk(80_000), massive: selfGravitatingDisk(40_000))
         let solver = try MetalBarnesHutSolver(
             scene: selfGravitatingDisk(40_000), particles: split, tracers: tracers)
         solver.step(count: 400)

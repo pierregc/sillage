@@ -174,6 +174,64 @@ struct SceneFolderTests {
         #expect(!arguments.contains(folder.preview.path) && !arguments.contains(folder.curves.path))
     }
 
+    /// With light tracers the run is drawn at `--particles` and stepped at `--massive`: the
+    /// step, the settle and the softening are those of a hires of the massive count alone.
+    @Test func hiresWithTracersStepsAtTheMassiveCount() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        func hires(_ options: [String]) throws -> (arguments: [String], record: SceneFolder.Hires) {
+            try folder.hiresArguments(options, maximumParticles: 10_000_000)
+        }
+        let traced = try hires(["--particles", "8e6", "--massive", "2e6"])
+        let massive = try hires(["--particles", "2e6"])
+        let real = try hires(["--particles", "8e6"])
+        #expect(traced.record.particles == 8_000_000 && traced.record.massive == 2_000_000)
+        #expect(traced.record.massiveParticles == 2_000_000 && traced.record.tracers == 6_000_000)
+        #expect(traced.record.timeStep == massive.record.timeStep)
+        #expect(traced.record.settle == massive.record.settle && traced.record.steps == massive.record.steps)
+        #expect(traced.record.softening == massive.record.softening)
+        #expect(real.record.timeStep < traced.record.timeStep && real.record.massive == nil)
+        #expect(value("--particles", in: traced.arguments) == "8000000")
+        #expect(value("--massive", in: traced.arguments) == "2000000")
+        #expect(traced.arguments.filter { $0 == "--massive" }.count == 1)
+        #expect(value("--dt", in: traced.arguments) == value("--dt", in: massive.arguments))
+        #expect(!real.arguments.contains("--massive"))
+        // As many massive as are drawn, or more, is a run without tracers.
+        let all = try hires(["--particles", "2e6", "--massive", "8e6"])
+        #expect(all.record == massive.record && all.arguments == massive.arguments)
+        #expect(throws: SceneFolder.HiresError.self) { try hires(["--massive", "many"]) }
+        #expect(throws: SceneFolder.HiresError.self) { try hires(["--massive"]) }
+        // The tracers walk at the scene's angle: a looser one drifts them off the mass.
+        #expect(throws: SceneFolder.HiresError.self) {
+            try hires(["--massive", "2e6", "--theta-tracers", "1.3"])
+        }
+
+        // The record keeps both counts, and one written before tracers reads as all massive.
+        let read = try JSONDecoder().decode(SceneFolder.Hires.self, from: traced.record.encoded())
+        #expect(read == traced.record)
+        let plain = try massive.record.encoded()
+        #expect(!String(decoding: plain, as: UTF8.self).contains("massive"))
+        let old = try JSONDecoder().decode(SceneFolder.Hires.self, from: plain)
+        #expect(old.massive == nil && old.massiveParticles == 2_000_000 && old.tracers == 0)
+        // A real run stands for one with tracers, not the other way round.
+        #expect(real.record.covers(particles: 8_000_000, massive: 2_000_000, frames: nil))
+        #expect(traced.record.covers(particles: 8_000_000, massive: 2_000_000, frames: nil))
+        #expect(!traced.record.covers(particles: 8_000_000, massive: nil, frames: nil))
+        #expect(!traced.record.covers(particles: 4_000_000, massive: 2_000_000, frames: nil))
+        #expect(!traced.record.covers(particles: 8_000_000, massive: 2_000_000, frames: 30))
+        #expect(SceneFolder.massive(in: ["--particles", "8e6", "--massive", "2e6"]) == 2_000_000)
+        #expect(SceneFolder.massive(in: ["--massive", "inf"]) == nil)
+
+        // A hires queued with tracers is priced with them.
+        let model = CostModel.fallback()
+        let job = QueueJob(
+            id: 0, kind: .hires, path: folder.url.path,
+            options: ["--particles", "8000000", "--massive", "2000000"], added: Date())
+        let priced = try model.hiresSeconds(folder, particles: 8_000_000, massive: 2_000_000)
+        #expect(JobEstimate.seconds(job, cost: model) == priced)
+        #expect(priced < (try model.hiresSeconds(folder, particles: 8_000_000)) * 0.6)
+    }
+
     @Test func anOutputIsWrittenHiddenAndPutInPlaceWhole() throws {
         let folder = try temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder.batch) }

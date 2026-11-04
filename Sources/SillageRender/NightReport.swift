@@ -124,7 +124,10 @@ public enum NightReport {
         if !found.hires.isEmpty {
             lines += ["", "## Haute résolution", ""]
             lines += found.hires.map {
-                "- \($0.scene ?? "") : \(Words.thousands($0.particles ?? 0)) particules en \(Int(($0.minutes ?? 0).rounded())) min"
+                let particles = Words.thousands($0.particles ?? 0) + " particules"
+                let massive = $0.massive.map { " (\(Words.thousands($0)) massives)" } ?? ""
+                let minutes = Int(($0.minutes ?? 0).rounded())
+                return "- \($0.scene ?? "") : \(particles)\(massive) en \(minutes) min"
             }
         }
         if !found.videos.isEmpty {

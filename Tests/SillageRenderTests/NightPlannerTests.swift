@@ -15,6 +15,9 @@ struct NightRecipeTests {
         #expect(night.explore.scenes == .auto && night.pick == .auto && night.export == .auto)
         #expect(night.hiresParticles(maximum: 10_000_000) == 8_000_000)
         #expect(night.hiresParticles(maximum: 1_000_000) == 1_000_000)
+        // Drawn at 8 M, the mass carried by 2 M of them (#211); every particle below that.
+        #expect(night.hires.massive == .auto && night.hiresMassive(maximum: 10_000_000) == 2_000_000)
+        #expect(night.hiresMassive(maximum: 1_000_000) == 1_000_000)
         #expect(night.exports == ["4k", "vertical"])
         #expect(night.style.freeShare == .auto && night.freeShare == 0.2)
         #expect(night.explore.pairShare == .auto && night.pairShare == 0.8)
@@ -27,7 +30,7 @@ struct NightRecipeTests {
              "explore": {"scenes": 6, "particlesPerGalaxy": 50000, "archetypeShare": 0.5,
                          "archetypes": ["antennae", "mice"], "pairShare": 0.6, "galaxies": [2, 3],
                          "seed": "auto"},
-             "pick": 2, "hires": {"particles": 150000, "frames": 300},
+             "pick": 2, "hires": {"particles": 150000, "massive": 100000, "frames": 300},
              "style": {"world": "telescope", "style": "auto", "palette": "auto", "freeShare": 0.35},
              "export": ["1080p", "webp"]}
             """)
@@ -36,6 +39,7 @@ struct NightRecipeTests {
         // A galaxy range names the counts itself, and wins over the pair share.
         #expect(night.explore.pairShare == .value(0.6) && night.pairShare == nil)
         #expect(night.pick == .count(2) && night.hires.frames == .value(300))
+        #expect(night.hires.massive == .value(100_000) && night.hiresMassive(maximum: 10_000_000) == 100_000)
         #expect(night.style.world == .value("telescope") && night.style.palette == .auto)
         #expect(night.style.freeShare == .value(0.35) && night.freeShare == 0.35)
         #expect(night.exports == ["1080p", "webp"])
@@ -57,6 +61,8 @@ struct NightRecipeTests {
             #"{"style": {"camera": "drone"}}"#, #"{"style": {"freeShare": 1.5}}"#,
             #"{"style": {"freeShare": -0.1}}"#, #"{"style": {"freeShare": "half"}}"#,
             #"{"explore": {"pairShare": 1.5}}"#, #"{"explore": {"pairs": 0.8}}"#,
+            #"{"hires": {"massive": 500}}"#, #"{"hires": {"particles": 1000000, "massive": 2000000}}"#,
+            #"{"hires": {"tracers": 6000000}}"#,
         ] {
             #expect(throws: NightRecipe.Failure.self) { try recipe(bad) }
         }
@@ -455,9 +461,11 @@ struct NightPlannerTests {
         }
     }
 
-    @Test func anAutoNightAtEightMillionTakesOneOrTwoScenes() throws {
+    @Test func anAutoNightAtARealEightMillionTakesOneOrTwoScenes() throws {
+        var recipe = NightRecipe()
+        recipe.hires.massive = .value(8_000_000)
         let planner = NightPlanner(
-            recipe: NightRecipe(), model: fitted, maximumParticles: 10_000_000, freeBytes: 500e9
+            recipe: recipe, model: fitted, maximumParticles: 10_000_000, freeBytes: 500e9
         ) { perGalaxy in
             Self.scaled(perGalaxy).enumerated().map { index, drawn in
                 let hires = Self.eightMillion[index % 2]
@@ -467,10 +475,14 @@ struct NightPlannerTests {
                 return scene
             }
         }
-        #expect(planner.hiresParticles == 8_000_000)
+        #expect(planner.hiresParticles == 8_000_000 && planner.hiresMassive == 8_000_000)
         let nine = planner.plan(now: start, deliverBy: start.addingTimeInterval(9 * 3600))
         #expect(nine.scenes == 50 && nine.picks == 2 && nine.warnings.isEmpty)
-        #expect(nine.steps.filter { $0.phase == .hires }.allSatisfy { $0.fits && $0.particles == 8_000_000 })
+        #expect(nine.hiresMassive == nil)
+        #expect(
+            nine.steps.filter { $0.phase == .hires }.allSatisfy {
+                $0.fits && $0.particles == 8_000_000 && $0.massive == nil
+            })
         #expect(nine.end <= nine.deliverBy)
         // Two hours less: one scene, and the exploration keeps its fifty.
         let seven = planner.plan(now: start, deliverBy: start.addingTimeInterval(7 * 3600))
@@ -479,5 +491,38 @@ struct NightPlannerTests {
         // A 4K export of an 8 M take is minutes, not hours.
         let exports = try #require(nine.steps.first { $0.phase == .export && $0.format == "4k" })
         #expect(exports.seconds < 300)
+    }
+
+    /// The same two scenes drawn at 8 M from 2 M massive (#211): settle and steps at the 2 M
+    /// step, worked out from their folders, against 28 681 and 28 084 for the real 8 M.
+    private static let tracerSteps = [14_964, 14_042]
+
+    @Test func anAutoNightDrawsEightMillionFromTwoAndFinishesMoreScenes() throws {
+        let planner = NightPlanner(
+            recipe: NightRecipe(), model: fitted, maximumParticles: 10_000_000, freeBytes: 500e9
+        ) { perGalaxy in
+            Self.scaled(perGalaxy).enumerated().map { index, drawn in
+                let steps = Double(Self.tracerSteps[index % 2])
+                var scene = drawn
+                scene.hiresUnits = 2e6 * steps
+                scene.hiresTracerUnits = 6e6 * steps
+                scene.frames = Self.eightMillion[index % 2].frames
+                return scene
+            }
+        }
+        #expect(planner.hiresParticles == 8_000_000 && planner.hiresMassive == 2_000_000)
+        let nine = planner.plan(now: start, deliverBy: start.addingTimeInterval(9 * 3600))
+        #expect(nine.hiresMassive == 2_000_000)
+        let hires = nine.steps.filter { $0.phase == .hires }
+        #expect(hires.allSatisfy { $0.particles == 8_000_000 && $0.massive == 2_000_000 })
+        let printed = NightCommand.lines(nine)
+        #expect(printed.contains { $0.contains("8 000 000 particles from 2 000 000 massive") })
+        // An hour a scene against four: the fallback's 20 ns a tracer step on the fitted 2 M.
+        #expect(hires.allSatisfy { $0.seconds > 50 * 60 && $0.seconds < 70 * 60 })
+        #expect(nine.scenes == 50 && nine.picks == 4 && nine.warnings.isEmpty && nine.end <= nine.deliverBy)
+        let seven = planner.plan(now: start, deliverBy: start.addingTimeInterval(7 * 3600))
+        #expect(seven.scenes == 50 && seven.picks >= 2 && seven.end <= seven.deliverBy)
+        // The takes hold every particle drawn.
+        #expect(nine.diskBytes > 4 * NightPlanner.takeBytesPerParticleFrame * 8e6 * 1_030)
     }
 }

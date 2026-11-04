@@ -3,14 +3,27 @@
 /// since in a collisionless system a massless particle drawn from the same distribution moves
 /// as a massive one does, and they do not shrink the softening or the step.
 extension ParticleSystem {
-    /// Keeps about `massive` of the visible particles, and the same share of the dark matter,
-    /// as the massive set, and makes every other visible particle a massless tracer. Laid out
-    /// tracers first, `[tracers | massive visible | massive halo]`, so the tree can be built
-    /// over everything after them while the visible ones stay one run.
+    /// A run drawn at `drawn` whose mass `massive` carries, the same scene at fewer particles
+    /// (#211): the visible particles sampled at the drawn count, the dark matter at the massive
+    /// one, then split. Drawn at the drawn count, three quarters of the halo of an 8 M run from
+    /// 2 M were sampled only to be thrown away.
+    public static func lightTracers(drawn: SceneConfig, massive: SceneConfig) -> (
+        system: ParticleSystem, tracers: Int
+    ) {
+        RestrictedSolver.sampleParticles(
+            for: drawn, haloCounts: massive.galaxies.map(\.haloParticleCount)
+        ).splittingLightTracers(massive: massive.totalParticleCount, seed: massive.seed)
+    }
+
+    /// Keeps about `massive` of the visible particles as the massive set, and makes every other
+    /// visible particle a massless tracer. The dark matter is all kept: it is drawn at the
+    /// massive count (`lightTracers(drawn:massive:)`). Laid out tracers first,
+    /// `[tracers | massive visible | massive halo]`, so the tree can be built over everything
+    /// after them while the visible ones stay one run.
     ///
-    /// The kept particles of each galaxy carry all of its visible mass, and of its dark mass,
-    /// between them. Black holes are always kept, with their own mass. Which particles are
-    /// kept depends on the seed and the index only.
+    /// The kept particles of each galaxy carry all of its visible mass between them. Black holes
+    /// are always kept, with their own mass. Which particles are kept depends on the seed and
+    /// the index only.
     public func splittingLightTracers(massive: Int, seed: UInt64) -> (
         system: ParticleSystem, tracers: Int
     ) {
@@ -24,7 +37,7 @@ extension ParticleSystem {
         tracers.reserveCapacity(Int(Double(visible) * (1 - share)) + 1024)
         for index in 0..<count {
             let kind = index < component.count ? component[index] : 0
-            let kept = kind == hole || Self.unit(index, seed) < share
+            let kept = kind == hole || kind == halo || Self.unit(index, seed) < share
             if kind == halo {
                 if kept { keptHalo.append(index) }
             } else if kept {
@@ -34,7 +47,7 @@ extension ParticleSystem {
             }
         }
 
-        // What each galaxy's kept particles must weigh: all of its visible, or dark, mass.
+        // What each galaxy's kept particles must weigh: all of its visible mass.
         let galaxies = Int(galaxyIndex.max() ?? 0) + 1
         var total = [Double](repeating: 0, count: galaxies * 2)
         var held = total

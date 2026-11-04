@@ -116,7 +116,13 @@ scripts/explore-batch.sh --scenes 20 --pair-share 0.5  # half pairs instead of f
 ```bash
 ./scripts/dev.sh hires library/2026-10-24                      # every "yes" scene
 ./scripts/dev.sh hires library/2026-10-24/scene-0001 --particles 2000000
+./scripts/dev.sh hires library/2026-10-24/scene-0001 --particles 8000000 --massive 2000000
 ```
+
+`--massive M` gives the mass to about M of the particles drawn and makes the others light
+tracers in their field ([the note](notes/light-tracers.md)): the run looks like its count drawn
+and is stepped like M, whose softening, step and settle it takes. The tracers walk at the
+scene's opening angle (`--theta-tracers` is refused), and `hires.json` keeps both counts.
 
 **4. Look** – choose the scene's style:
 
@@ -162,7 +168,7 @@ name is an error.
   "explore": { "scenes": "auto", "particlesPerGalaxy": "auto", "archetypeShare": "auto",
                "archetypes": "auto", "pairShare": "auto", "galaxies": "auto", "seed": "auto" },
   "pick": "auto",
-  "hires": { "particles": "auto", "frames": "auto" },
+  "hires": { "particles": "auto", "massive": "auto", "frames": "auto" },
   "style": { "world": "auto", "freeShare": "auto", "style": "auto", "palette": "auto" },
   "export": "auto"
 }
@@ -180,7 +186,8 @@ name is an error.
 | `explore.galaxies` | `[least, most]` galaxies a scene has; others are skipped | any |
 | `explore.seed` | the batch seed | the day, `20261028` |
 | `pick` | `1` to `4`, or `"none"` to stop after exploring | 1 to 4 by score, as many as fit; a slot goes to a pair as often as `explore.pairShare` says |
-| `hires.particles` | particles in all | 8 000 000 (or the machine's maximum) |
+| `hires.particles` | particles drawn, light tracers included | 8 000 000 (or the machine's maximum) |
+| `hires.massive` | the particles that carry the mass, the others light tracers; as many as `hires.particles` for none | 2 000 000 (all of them below that) |
 | `hires.frames` | the first frames of the story only | the whole story |
 | `style.world` | `telescope` or `free` | Auto: drawn for each pick, free as often as `style.freeShare` says |
 | `style.freeShare` | share of the picks Auto puts in the free world, 0 to 1 | 0.2 |
@@ -234,17 +241,26 @@ kind runs out. The score leans to groups (0.70 for pairs, 0.81 for groups of fou
 2026-10-30-b), so the best alone would undo the batch's share. Score picks go to `ratings.json`
 as `picked`.
 
-At 8 M, Auto's count since #185 (the count at which a disk filling the frame reads as matter,
-see [gigantism](notes/gigantism.md)), a hires is most of the night. The two 8 M hires of
-2026-10-30 took 237 and 239 minutes for 28 681 and 28 084 steps with the settle, peaked at
-15.4 GB of memory and wrote takes of 12.7 and 18.5 GB for 1 030 and 1 514 frames: the 1.53
-bytes a particle a frame the plan counts. Their 4K exports took one and two and a half
-minutes. The cost model refitted that morning, 108 s + 62.4 ns a visible particle step, puts
-both within 2 %. Planned from the draws, Auto keeps room for two scenes in a night of nine
-hours, after fifty previews at 75 000 a galaxy, and for one in a night of eight or seven, the
-previews at 150 000 or 200 000; `--plan` and the sheet say which before the night starts. The
-draws come out about a tenth under those two runs (3 h 31 a scene against 4 h), so once the real
-scenes are known a nine-hour night may finish only one, and the pick takes one.
+A hires is drawn at 8 M, Auto's count since #185 (the count at which a disk filling the frame
+reads as matter, see [gigantism](notes/gigantism.md)), and since #211 the mass is carried by 2 M
+of them, the other 6 M light tracers in their field ([the note](notes/light-tracers.md)): the
+texture of 8 M, the dynamics and the step of 2 M. The two real 8 M hires of 2026-10-30 took 237
+and 239 minutes for 28 681 and 28 084 steps with the settle, peaked at 15.4 GB of memory and
+wrote takes of 12.7 and 18.5 GB for 1 030 and 1 514 frames: the 1.53 bytes a particle a frame
+the plan counts, which still holds since a take keeps every particle drawn. Their 4K exports
+took one and two and a half minutes. Drawn from 2 M, the same stories take 14 964 and 14 042
+steps, and the model puts them at 63 and 59 minutes: 108 s + 62.4 ns a massive particle step,
+fitted on the library's 2 M and real 8 M runs as before, and 20 ns a tracer step until runs with
+tracers refit it. The first night with tracer hires (2026-11-04, in a library of its own: four
+previews at 50 000 a galaxy, one pick, a spiral and a globular) ran its hires, 487 frames over
+8 071 + 6 818 steps, in 66 minutes against 63 planned with the library's model, which puts a
+real 8 M of it at 2 h 32. It peaked at 14.8 GB with its 6.1 GB take held in memory, and its
+style and 4K export took 11 and 32 s. Refitted on it, a tracer step costs 22 ns. Planned from
+the draws (seed 20261104) with the library's model, Auto now keeps room for four scenes in a
+night of seven, eight or nine hours, after fifty previews at 150 000, 200 000 and 200 000 a
+galaxy, where a real 8 M left room for one, two and two; `--plan` and the sheet say which before
+the night starts. A real 8 M is still one setting away (`hires.massive` as large as
+`hires.particles`), and a night resumed on a scene already done at a real 8 M keeps it.
 
 How it runs. Explore (through `explore-batch.sh`, stopped at its share of the night), pick, then
 for each pick, best first: hires, style, exports. Before each step it plans again from the
@@ -266,12 +282,12 @@ Exit status: 0 done, 3 stopped on request, 1 failed.
 `report.md` is rewritten at the end of each phase and at the end, in French, from `night.json`
 and `events.jsonl` alone: seven lines (state and duration, delivery against the deadline, scenes
 explored, rejected and failed, picks with their score, hires done, videos with their weight,
-scenes left out and errors), then the list of hires with particles and minutes, of videos with
-their path from the night's folder, and of failures with the path of their log. Only what the
-night's runs wrote counts: a hires or a video run in the folder after the night's end, by hand
-or from the queue, shows on its scene page and in the export list, not in the night's numbers.
-A scene counts as left out only by the night's last run, and only until the night does that
-step for it; the night page and `sillage-render status` count alike.
+scenes left out and errors), then the list of hires with particles (and how many carry the mass)
+and minutes, of videos with their path from the night's folder, and of failures with the path of
+their log. Only what the night's runs wrote counts: a hires or a video run in the folder after
+the night's end, by hand or from the queue, shows on its scene page and in the export list, not
+in the night's numbers. A scene counts as left out only by the night's last run, and only until
+the night does that step for it; the night page and `sillage-render status` count alike.
 
 ### Queue
 
@@ -333,10 +349,18 @@ showing them, for checks.
   scores zero and a night picks it last (#217).
 - `hires` replays the same physics with more particles, over the story only, and saves the run
   as `take.sillage`. Its default is the machine's maximum (`SILLAGE_MAX_PARTICLES`); cost grows
-  with the count and the story's length (about 30 min at 1 M, 8 h at 10 M for 700 Myr).
+  with the count and the story's length (about 30 min at 1 M, 8 h at 10 M for 700 Myr). With
+  `--massive M`, as a night runs it (8 M drawn from 2 M), only M carry the mass and set the
+  step; the others are light tracers, which cost a third of a massive particle a step and
+  nothing in the step.
 - `look` and `export` only draw the take; no simulation. The chosen look is `look.json`.
 - Estimates come from `library/.sillage/costs.json`, fitted on past runs and refreshed after
-  each one. `sillage-render costs` prints it; `--check <batch>` compares it with a batch.
+  each one. `sillage-render costs` prints it; `--check <batch>` compares it with a batch. A
+  hires is priced as the steps of its massive particles (`hires`, fitted on the runs without
+  tracers as it always was) plus those of its light tracers (`tracers`, a line through zero
+  fitted on what the runs with tracers took past the first, 20 ns a step before any). Every
+  night draws 8 M from 2 M, so its runs alone could not tell the two apart. A `costs.json`
+  written before has no `tracers` and reads with the 20 ns.
 
 ### Status files
 
@@ -364,8 +388,8 @@ applies, and these by kind.
 | `night.start`, `night.done` | `night`, `seconds`; `status` (done, stopped, failed) at the end |
 | `explore.scene` | `status` (ok, rejected, failed), `score`, `seconds` |
 | `pick` | `chosen`, `rating`; `score` for a pick by the night |
-| `hires.start` | `particles`, `steps` |
-| `hires.done` | `particles`, `steps`, `minutes`, `takeGB` |
+| `hires.start` | `particles`, `massive` (with light tracers), `steps` |
+| `hires.done` | `particles`, `massive`, `steps`, `minutes`, `takeGB` |
 | `export.done` | `preset`, `style`, `world`, `family`, `harmony`, `seed`, `codec`, `frames`, `megabytes`, `seconds`, `path` |
 | `error` | `stage`, `message`, `log` |
 | `style` | `style`, `world`, `family`, `harmony`, `seed` (the palette's, as in `look.json`), `path` (the promoted `look.json`) |

@@ -197,10 +197,10 @@ public enum QueueCommand {
         let batch = folder.url
         let (asked, _) = SceneFolder.Clip().updated(with: options)
         let particles = options.contains("--particles") ? asked.particles : maximum
+        let massive = SceneFolder.massive(in: options)
+        let frames = options.contains("--frames") ? asked.frames : nil
         let scenes = SceneFolder.chosen(inBatch: batch).filter { scene in
-            guard let done = scene.storedHires() else { return true }
-            return done.particles != particles
-                || (options.contains("--frames") && done.frames != asked.frames)
+            !(scene.storedHires()?.covers(particles: particles, massive: massive, frames: frames) ?? false)
         }
         guard !scenes.isEmpty else {
             throw Failure.invalid(

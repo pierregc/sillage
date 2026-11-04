@@ -175,6 +175,21 @@ struct NightStatusTests {
         #expect(standing([skip]) == ["scene-0001"])
     }
 
+    @Test func aHiresWithTracersSaysHowManyCarryTheMass() throws {
+        let start = RunStatus.date("2026-11-04T21:00:00+01:00")!
+        let night = NightFile(id: "2026-11-04", phases: [], state: .done, startedAt: start)
+        var hires = RunEvent(
+            RunEvent.Kind.hiresDone, scene: "scene-0031", at: start.addingTimeInterval(3_600))
+        hires.particles = 8_000_000
+        hires.massive = 2_000_000
+        hires.minutes = 38
+        let report = NightReport.markdown(
+            night, events: [RunEvent(RunEvent.Kind.nightStart, at: start), hires],
+            now: start.addingTimeInterval(7_200), timeZone: Self.paris)
+        #expect(report.contains("- scene-0031 : 8 000 000 particules (2 000 000 massives) en 38 min"))
+        #expect(try RunEvent(RunEvent.Kind.hiresStart, options: ["--massive", "2e6"]).massive == 2_000_000)
+    }
+
     /// 2026-10-30-b again: a hires of scene-0031 at 08:20 and its whatsapp export at 08:46, run
     /// by hand after the night ended at 07:51.
     @Test func workRunInTheFolderAfterTheEndIsNotTheNights() throws {

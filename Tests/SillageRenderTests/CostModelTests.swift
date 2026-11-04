@@ -119,6 +119,79 @@ struct CostModelTests {
         #expect(rows.count == 4 && rows.filter { $0.kind == "hires" }.count == 1)
     }
 
+    /// The massive steps fitted as before on the runs without tracers, the tracers on what the
+    /// runs with tracers took past that, through zero: every night draws 8 M from 2 M, so its
+    /// runs alone could not tell the two apart.
+    @Test func fitsTheTracersApartFromTheMassiveSteps() {
+        var history = samples([1e10, 2e10, 3e10, 5e10], fixed: 100, rate: 60e-9)
+        for (index, steps) in [9_000.0, 15_000, 28_000].enumerated() {
+            history.append(
+                CostModel.Sample(
+                    units: 2e6 * steps, tracerUnits: 6e6 * steps,
+                    seconds: 100 + 60e-9 * 2e6 * steps + 22e-9 * 6e6 * steps,
+                    date: now.addingTimeInterval(600 + Double(index) * 60)))
+        }
+        let (massive, tracers) = CostModel.fitHires(history)
+        #expect(massive.source == .fitted && massive.samples == 4)
+        #expect(abs(massive.fixedSeconds - 100) < 1e-6 && abs(massive.secondsPerUnit - 60e-9) < 1e-15)
+        #expect(tracers.source == .scaled && tracers.samples == 3 && tracers.fixedSeconds == 0)
+        #expect(abs(tracers.secondsPerUnit - 22e-9) < 1e-15)
+
+        let model = CostModel(
+            updated: now, explore: CostModel.fallbackExplore, hires: massive, tracers: tracers)
+        #expect(
+            abs(model.hiresSeconds(particles: 8_000_000, massive: 2_000_000, steps: 10_000) - 2_620) < 1e-6)
+        // Without tracers a run is priced as it always was.
+        #expect(model.hiresSeconds(particles: 2_000_000, steps: 10_000) == massive.seconds(2e10))
+        #expect(
+            model.hiresSeconds(particles: 2_000_000, massive: 8_000_000, steps: 10_000)
+                == massive.seconds(2e10))
+        // No run with tracers yet: 20 ns a tracer step (#187).
+        #expect(CostModel.fitHires(Array(history.prefix(4))).tracers == CostModel.fallbackTracers)
+        #expect(model.lines.contains { $0.hasPrefix("tracers    22.0 ns a light tracer step") })
+    }
+
+    /// scene-0031 drawn at 8 M from 2 M in 38 min (#187): its steps read apart, and with no
+    /// run without tracers the massive part is the fallback's.
+    @Test func aHiresWithTracersCountsItsMassiveAndTracerStepsApart() throws {
+        let root = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let batch = root.appendingPathComponent("2026-11-04")
+        try write(
+            batch.appendingPathComponent("scene-0031/hires.json"),
+            #"{"particles": 8000000, "massive": 2000000, "previewParticles": 200000, "width": 1600, "#
+                + #""height": 900, "frames": 923, "fps": 30, "settle": 1584, "steps": 7384, "#
+                + #""timeStepScale": 3.5, "timeStep": 0.0021, "timeStepMyr": 0.0989, "#
+                + #""previewTimeStepMyr": 0.2, "softening": 0.0546, "clipStartMyr": 157, "#
+                + #""clipEndMyr": 887, "seconds": 2280}"#, modified: now)
+        let history = CostHistory.read(library: root)
+        let sample = try #require(history.hires.first)
+        #expect(sample.units == 2e6 * 8_968 && sample.tracerUnits == 6e6 * 8_968)
+        let model = try CostModel.refresh(library: root, at: now)
+        #expect(model.hires == CostModel.fallbackHires && model.tracers.source == .scaled)
+        #expect(
+            abs(model.hiresSeconds(particles: 8_000_000, massive: 2_000_000, steps: 8_968) - 2_280) < 1e-6)
+        #expect(CostModel.stored(library: root) == model)
+        let rows = CostModel.check(history, batch: "2026-11-04")
+        #expect(rows.count == 1 && rows[0].kind == "hires" && rows[0].took == 2_280)
+    }
+
+    /// A `costs.json` written before light tracers has no line for them, and reads with theirs.
+    @Test func aCostsFileWrittenBeforeTracersReadsWithTheirFallback() throws {
+        let root = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let line =
+            #""fixedSeconds": 108.3, "rejected": 0, "samples": 9, "#
+            + #""secondsPerUnit": 6.24e-08, "source": "fitted""#
+        try write(
+            CostModel.url(library: root),
+            #"{"explore": {\#(line)}, "exports": {}, "hires": {\#(line)}, "#
+                + #""updated": "2026-10-31T07:46:40Z", "version": 1}"#)
+        let model = try #require(CostModel.stored(library: root))
+        #expect(model.hires.secondsPerUnit == 6.24e-8 && model.tracers == CostModel.fallbackTracers)
+        #expect(abs(model.hiresSeconds(particles: 2_000_000, steps: 10_000) - (108.3 + 1_248)) < 1e-6)
+    }
+
     @Test func aFolderWithNoRunsGetsNoFile() throws {
         let root = try temporaryLibrary()
         defer { try? FileManager.default.removeItem(at: root) }
