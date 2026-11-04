@@ -25,13 +25,17 @@ public final class RestrictedSolver: Solver {
         self.particles = particles
     }
 
-    public static func sampleParticles(for scene: SceneConfig) -> ParticleSystem {
-        var system = ParticleSystem(capacity: scene.simulatedParticleCount)
+    /// `haloCounts`, one a galaxy, draws the dark matter at other counts than the scene's own.
+    public static func sampleParticles(for scene: SceneConfig, haloCounts: [Int]? = nil) -> ParticleSystem {
+        var system = ParticleSystem(
+            capacity: haloCounts.map { scene.totalParticleCount + $0.reduce(0, +) }
+                ?? scene.simulatedParticleCount)
         var generator = SeededGenerator(seed: scene.seed)
         let selfGravitating = scene.solver == .barnesHut
         for (index, galaxy) in scene.galaxies.enumerated() {
             DiskSampler.sample(
                 galaxy, galaxyIndex: UInt32(index), selfGravitating: selfGravitating,
+                haloCount: haloCounts.flatMap { index < $0.count ? $0[index] : nil },
                 into: &system, using: &generator)
         }
         // Visible first, so everything downstream can stop early. A self-gravitating scene

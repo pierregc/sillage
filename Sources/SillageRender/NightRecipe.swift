@@ -95,7 +95,11 @@ public struct NightRecipe: Codable, Sendable, Equatable {
     }
 
     public struct Hires: Codable, Sendable, Equatable {
+        /// Drawn, light tracers included.
         public var particles: Setting<Int> = .auto
+        /// The particles that carry the mass, the others being light tracers in their field
+        /// (#211). Auto is 2 M, or every particle below that; as many as `particles` for none.
+        public var massive: Setting<Int> = .auto
         /// The first frames of the story only, for a short run; Auto is the whole story.
         public var frames: Setting<Int> = .auto
 
@@ -104,6 +108,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             particles = try c.decodeIfPresent(Setting<Int>.self, forKey: .particles) ?? .auto
+            massive = try c.decodeIfPresent(Setting<Int>.self, forKey: .massive) ?? .auto
             frames = try c.decodeIfPresent(Setting<Int>.self, forKey: .frames) ?? .auto
         }
     }
@@ -175,8 +180,12 @@ extension NightRecipe {
     /// the pericentres and tails a hires shows (#21).
     public static let perGalaxyLadder = [50_000, 75_000, 100_000, 150_000, 200_000]
     /// The count at which a disk filling the frame reads as matter rather than grains (#185,
-    /// docs/notes/gigantism.md). About four hours a scene, so one or two a night.
+    /// docs/notes/gigantism.md).
     public static let defaultHiresParticles = 8_000_000
+    /// The mass of 8 M drawn carried by 2 M, the others light tracers: the texture of 8 M and
+    /// the light on the mass through a whole merger, for about a third of a real 8 M's time
+    /// (#187, docs/notes/light-tracers.md).
+    public static let defaultHiresMassive = 2_000_000
     public static let defaultExports = ["4k", "vertical"]
     public static let pickRange = 1...4
     /// The animated previews `export` writes besides video presets.
@@ -184,6 +193,11 @@ extension NightRecipe {
 
     public func hiresParticles(maximum: Int) -> Int {
         hires.particles.value ?? min(Self.defaultHiresParticles, maximum)
+    }
+
+    /// The particles of the hires that carry the mass, at most all of them.
+    public func hiresMassive(maximum: Int) -> Int {
+        min(hires.massive.value ?? Self.defaultHiresMassive, hiresParticles(maximum: maximum))
     }
 
     public var exports: [String] { export.value ?? Self.defaultExports }
@@ -258,7 +272,7 @@ extension NightRecipe {
         "explore": [
             "scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "pairShare", "galaxies", "seed",
         ],
-        "hires": ["particles", "frames"],
+        "hires": ["particles", "massive", "frames"],
         "style": ["world", "style", "palette", "multicolour", "camera", "freeShare"],
     ]
 
@@ -332,6 +346,12 @@ extension NightRecipe {
         }
         if let particles = hires.particles.value, particles < 1_000 {
             throw Failure.badValue("hires.particles", "at least 1000")
+        }
+        if let massive = hires.massive.value {
+            guard massive >= 1_000 else { throw Failure.badValue("hires.massive", "at least 1000") }
+            if let particles = hires.particles.value, massive > particles {
+                throw Failure.badValue("hires.massive", "at most hires.particles")
+            }
         }
         if let frames = hires.frames.value, frames < 2 {
             throw Failure.badValue("hires.frames", "at least 2")

@@ -302,6 +302,38 @@ struct NightRunnerTests {
         #expect(file.state == .done && file.phases.first { $0.name == "hires" }?.skipped == 1)
     }
 
+    /// Auto draws 8 M from 2 M massive (#211): the hires is asked with both counts, and a real
+    /// 8 M already done stands for it.
+    @Test func theNightAsksForEightMillionFromTwoAndTakesARealEightAsDone() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var recipe = NightRecipe()
+        let folder = NightFolder(batch: batch, recipe: recipe, maximumParticles: 10_000_000)
+        #expect(folder.hiresOptions == ["--particles", "8000000", "--massive", "2000000"])
+        let scene = SceneFolder(batch.appendingPathComponent("scene-0001"))
+        try FileManager.default.createDirectory(at: scene.url, withIntermediateDirectories: true)
+        func record(_ particles: Int, massive: Int?) throws {
+            try SceneFolder.Hires(
+                particles: particles, massive: massive, previewParticles: 40_000, width: 960,
+                height: 540, frames: 30, fps: 30, settle: 1, steps: 1, timeStepScale: 3.5,
+                timeStep: 0.01, timeStepMyr: 0.05, previewTimeStepMyr: 0.1, softening: 0.1,
+                clipStartMyr: 0, clipEndMyr: 100
+            ).encoded().write(to: scene.hires)
+        }
+        try record(8_000_000, massive: 2_000_000)
+        #expect(folder.hiresDone(scene))
+        try record(8_000_000, massive: nil)
+        #expect(folder.hiresDone(scene))
+        try record(8_000_000, massive: 1_000_000)
+        #expect(!folder.hiresDone(scene))
+        try record(2_000_000, massive: nil)
+        #expect(!folder.hiresDone(scene))
+        recipe.hires.massive = .value(8_000_000)
+        let real = NightFolder(batch: batch, recipe: recipe, maximumParticles: 10_000_000)
+        #expect(real.hiresOptions == ["--particles", "8000000"])
+        try record(8_000_000, massive: 2_000_000)
+        #expect(!real.hiresDone(scene))
+    }
+
     @Test func stopAfterTheStepEndsTheNightStopped() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         _ = try queueJob { $0.stopAfterStep = true }

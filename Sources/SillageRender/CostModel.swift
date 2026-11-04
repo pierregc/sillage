@@ -41,6 +41,8 @@ public struct CostModel: Codable, Sendable, Equatable {
     /// `seconds` are per slot, its wall clock divided by `alongside`.
     public struct Sample: Sendable, Equatable {
         public var units: Double
+        /// A hires's light tracer steps, settle included; 0 for any other run.
+        public var tracerUnits: Double
         public var seconds: Double
         public var date: Date
         /// `<batch>/<scene>`, or `<batch>` for an export.
@@ -48,9 +50,11 @@ public struct CostModel: Codable, Sendable, Equatable {
         public var alongside: Double
 
         public init(
-            units: Double, seconds: Double, date: Date, id: String = "", alongside: Double = 1
+            units: Double, tracerUnits: Double = 0, seconds: Double, date: Date, id: String = "",
+            alongside: Double = 1
         ) {
             self.units = units
+            self.tracerUnits = tracerUnits
             self.seconds = seconds
             self.date = date
             self.id = id
@@ -63,16 +67,35 @@ public struct CostModel: Codable, Sendable, Equatable {
     /// Per explored scene and per scene slot: a scene's own wall clock divided by how many
     /// ran at once. Units are particle steps, settle included.
     public var explore: Line
-    /// Per hires run. Units are visible particle steps, settle included.
+    /// Per hires run. Units are the steps of the visible particles that carry the mass, settle
+    /// included: all of them in a run without light tracers.
     public var hires: Line
+    /// What a hires's light tracers add to it (#211), fitted apart on what the runs with
+    /// tracers took past `hires`. Units are tracer steps, settle included; no fixed part.
+    public var tracers: Line
     /// Per export, keyed `<preset>/<codec>`. Units are frames.
     public var exports: [String: Line]
 
-    public init(updated: Date, explore: Line, hires: Line, exports: [String: Line] = [:]) {
+    public init(
+        updated: Date, explore: Line, hires: Line, tracers: Line = CostModel.fallbackTracers,
+        exports: [String: Line] = [:]
+    ) {
         self.updated = updated
         self.explore = explore
         self.hires = hires
+        self.tracers = tracers
         self.exports = exports
+    }
+
+    /// A file written before light tracers has no line for them.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        updated = try c.decode(Date.self, forKey: .updated)
+        explore = try c.decode(Line.self, forKey: .explore)
+        hires = try c.decode(Line.self, forKey: .hires)
+        tracers = try c.decodeIfPresent(Line.self, forKey: .tracers) ?? Self.fallbackTracers
+        exports = try c.decodeIfPresent([String: Line].self, forKey: .exports) ?? [:]
     }
 
     /// One explored scene's own wall clock with `jobs` running at once.
@@ -85,17 +108,30 @@ public struct CostModel: Codable, Sendable, Equatable {
         scenes.reduce(0) { $0 + explore.seconds(Double($1.particles) * Double($1.steps)) }
     }
 
-    public func hiresSeconds(particles: Int, steps: Int) -> Double {
-        hires.seconds(Double(particles) * Double(steps))
+    /// `units` steps of the particles that carry the mass, `tracerUnits` of light tracers.
+    public func hiresSeconds(units: Double, tracerUnits: Double = 0) -> Double {
+        hires.seconds(units) + (tracerUnits > 0 ? tracers.seconds(tracerUnits) : 0)
     }
 
-    /// A scene's own hires at `particles`: its story's steps, settle included, so a short story
-    /// costs less than the clip it was explored in.
-    public func hiresSeconds(_ folder: SceneFolder, particles: Int) throws -> Double {
+    /// `particles` drawn over `steps`, settle included, `massive` of them carrying the mass
+    /// (all when nil) and the others light tracers.
+    public func hiresSeconds(particles: Int, massive: Int? = nil, steps: Int) -> Double {
+        let carrying = min(massive ?? particles, particles)
+        return hiresSeconds(
+            units: Double(carrying) * Double(steps),
+            tracerUnits: Double(particles - carrying) * Double(steps))
+    }
+
+    /// A scene's own hires at `particles`, from `massive` when given: its story's steps at the
+    /// step the massive count takes, settle included, so a short story costs less than the
+    /// clip it was explored in.
+    public func hiresSeconds(_ folder: SceneFolder, particles: Int, massive: Int? = nil) throws -> Double {
         let record = try folder.hiresArguments(
-            ["--particles", String(particles)], maximumParticles: particles
+            ["--particles", String(particles)] + (massive.map { ["--massive", String($0)] } ?? []),
+            maximumParticles: particles
         ).record
-        return hiresSeconds(particles: particles, steps: record.settle + record.steps)
+        return hiresSeconds(
+            particles: particles, massive: record.massive, steps: record.settle + record.steps)
     }
 
     public func exportSeconds(preset: VideoPreset, codec: VideoCodec, frames: Int) -> Double {
@@ -122,6 +158,10 @@ extension CostModel {
     /// minute, so it is left at zero until runs say otherwise.
     public static let fallbackHires = Line(
         fixedSeconds: 0, secondsPerUnit: SceneFolder.nanosecondsPerParticleStep / 1e9)
+    /// #187: a tracer walks the massive tree as a massive particle does, 20 ns a step at the
+    /// opening angle of 0.9 (8 M drawn from 2 M against 2 M, scene-0031).
+    public static let fallbackTracers = Line(
+        fixedSeconds: 0, secondsPerUnit: SceneFolder.nanosecondsPerTracerStep / 1e9)
     /// #24, on a 2 M take at 30 fps: 1080p at 1.23x real time, 4K at 0.64x. Other sizes
     /// follow 1080p by their pixel count.
     public static let fallbackSpeed1080p = 1.23
@@ -138,7 +178,7 @@ extension CostModel {
     }
 
     public static func fallback(at date: Date = Date()) -> CostModel {
-        CostModel(updated: date, explore: fallbackExplore, hires: fallbackHires)
+        CostModel(updated: date, explore: fallbackExplore, hires: fallbackHires, tracers: fallbackTracers)
     }
 }
 
@@ -155,7 +195,9 @@ extension CostModel {
     public static let minimumFitSamples = 3
     public static let minimumSpread = 1.3
 
-    public static func fit(_ samples: [Sample], fallback: Line) -> Line {
+    /// `proportional` keeps the fallback's shape however many runs there are: a line through
+    /// zero, scaled to what they took.
+    public static func fit(_ samples: [Sample], fallback: Line, proportional: Bool = false) -> Line {
         let usable = samples.filter { $0.units > 0 && $0.seconds > 0 }
         guard let newest = usable.map(\.date).max() else { return fallback }
         // Against the fallback, so runs of different sizes compare.
@@ -166,7 +208,7 @@ extension CostModel {
         let rejected = usable.count - kept.count
 
         let units = kept.map(\.units)
-        if kept.count >= minimumFitSamples, let low = units.min(), let high = units.max(),
+        if !proportional, kept.count >= minimumFitSamples, let low = units.min(), let high = units.max(),
             high >= low * minimumSpread
         {
             let total = weights.reduce(0, +)
@@ -195,10 +237,24 @@ extension CostModel {
             samples: kept.count, rejected: rejected)
     }
 
+    /// The two terms of a hires apart: the massive particles' as before light tracers, on the
+    /// runs without any, and the tracers' on what the runs with tracers took past that. Every
+    /// night draws 8 M from 2 M, so its runs alone could not tell the two apart.
+    public static func fitHires(_ samples: [Sample]) -> (massive: Line, tracers: Line) {
+        let massive = fit(samples.filter { $0.tracerUnits == 0 }, fallback: fallbackHires)
+        let beyond = samples.filter { $0.tracerUnits > 0 }.map {
+            Sample(
+                units: $0.tracerUnits, seconds: $0.seconds - massive.seconds($0.units), date: $0.date,
+                id: $0.id, alongside: $0.alongside)
+        }
+        return (massive, fit(beyond, fallback: fallbackTracers, proportional: true))
+    }
+
     public static func fit(_ history: CostHistory, at date: Date = Date()) -> CostModel {
+        let hires = fitHires(history.hires)
         var model = CostModel(
             updated: date, explore: fit(history.explore, fallback: fallbackExplore),
-            hires: fit(history.hires, fallback: fallbackHires))
+            hires: hires.massive, tracers: hires.tracers)
         for (key, samples) in history.exports {
             let name = String(key.prefix { $0 != "/" })
             let preset =
@@ -357,9 +413,11 @@ public struct CostHistory: Sendable, Equatable {
     static func hiresSample(_ folder: SceneFolder) -> CostModel.Sample? {
         guard let record = folder.storedHires(), let seconds = record.seconds, seconds > 0
         else { return nil }
+        let steps = Double(record.settle + record.steps)
         return CostModel.Sample(
-            units: Double(record.particles) * Double(record.settle + record.steps),
-            seconds: seconds, date: modified(folder.hires) ?? .distantPast, id: folder.sceneID)
+            units: Double(record.massiveParticles) * steps,
+            tracerUnits: Double(record.tracers) * steps, seconds: seconds,
+            date: modified(folder.hires) ?? .distantPast, id: folder.sceneID)
     }
 
     /// #101's `export.done` lines: `t`, `preset`, `codec`, `frames`, `seconds`. Lines of any
@@ -423,11 +481,17 @@ extension CostModel {
                 format: "           200 000 particles over 4 000 steps, %d at once: %.1f min a scene",
                 Self.exploreJobs, exploreSeconds(particles: 200_000, steps: 4_000) / 60),
             String(
-                format: "hires      %.0f s + %.1f ns a visible particle step, %@",
+                format: "hires      %.0f s + %.1f ns a massive particle step, %@",
                 hires.fixedSeconds, hires.secondsPerUnit * 1e9, Self.origin(hires)),
             String(
                 format: "           2 M over 10 000 steps: %.0f min",
                 hiresSeconds(particles: 2_000_000, steps: 10_000) / 60),
+            String(
+                format: "tracers    %.1f ns a light tracer step, %@", tracers.secondsPerUnit * 1e9,
+                Self.origin(tracers)),
+            String(
+                format: "           8 M drawn from 2 M over 10 000 steps: %.0f min",
+                hiresSeconds(particles: 8_000_000, massive: 2_000_000, steps: 10_000) / 60),
         ]
         var keys = Set(exports.keys)
         keys.formUnion(["1080p/hevc", "4k/hevc"])
@@ -477,22 +541,33 @@ extension CostModel {
     /// Each explored scene and hires run of `batch`, predicted with it left out of the fit.
     /// Explored scenes are compared at the number of scenes that really ran alongside them.
     public static func check(_ history: CostHistory, batch: String) -> [CheckRow] {
-        func rows(_ kind: String, _ samples: [Sample], fallback: Line) -> [CheckRow] {
+        typealias Prediction = (Sample) -> Double
+        func rows(_ kind: String, _ samples: [Sample], fitted: ([Sample]) -> Prediction) -> [CheckRow] {
             let mine = samples.filter { $0.id.hasPrefix(batch + "/") }
             guard
                 let start = mine.map({ $0.date.addingTimeInterval(-$0.seconds * $0.alongside) })
                     .min()
             else { return [] }
-            let earlier = fit(samples.filter { $0.date < start }, fallback: fallback)
+            let earlier = fitted(samples.filter { $0.date < start })
             return mine.map { sample in
-                let others = fit(samples.filter { $0 != sample }, fallback: fallback)
+                let others = fitted(samples.filter { $0 != sample })
                 return CheckRow(
                     kind: kind, id: sample.id, took: sample.seconds * sample.alongside,
-                    predicted: others.seconds(sample.units) * sample.alongside,
-                    before: earlier.seconds(sample.units) * sample.alongside)
+                    predicted: others(sample) * sample.alongside,
+                    before: earlier(sample) * sample.alongside)
             }
         }
-        return rows("explore", history.explore, fallback: fallbackExplore)
-            + rows("hires", history.hires, fallback: fallbackHires)
+        let explore = { (samples: [Sample]) -> Prediction in
+            let line = fit(samples, fallback: fallbackExplore)
+            return { line.seconds($0.units) }
+        }
+        let hires = { (samples: [Sample]) -> Prediction in
+            let (massive, tracers) = fitHires(samples)
+            let model = CostModel(
+                updated: Date(), explore: fallbackExplore, hires: massive, tracers: tracers)
+            return { model.hiresSeconds(units: $0.units, tracerUnits: $0.tracerUnits) }
+        }
+        return rows("explore", history.explore, fitted: explore)
+            + rows("hires", history.hires, fitted: hires)
     }
 }

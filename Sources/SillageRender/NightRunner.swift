@@ -17,6 +17,8 @@ public struct NightFolder: Sendable {
     public var library: URL { batch.deletingLastPathComponent() }
     public var id: String { batch.lastPathComponent }
     public var hiresParticles: Int { recipe.hiresParticles(maximum: maximumParticles) }
+    /// The hires particles that carry the mass; as many as are drawn when none are tracers.
+    public var hiresMassive: Int { recipe.hiresMassive(maximum: maximumParticles) }
 
     /// `batch.conf`, which `explore-batch.sh` writes on its first run and keeps to.
     public var batchConf: [String: String] {
@@ -51,12 +53,14 @@ public struct NightFolder: Sendable {
     /// The hires options the night runs with.
     public var hiresOptions: [String] {
         ["--particles", String(hiresParticles)]
+            + (hiresMassive < hiresParticles ? ["--massive", String(hiresMassive)] : [])
             + (recipe.hires.frames.value.map { ["--frames", String($0)] } ?? [])
     }
 
+    /// Done at the night's size: a real run of as many particles counts for one with tracers.
     public func hiresDone(_ scene: SceneFolder) -> Bool {
-        guard let done = scene.storedHires(), done.particles == hiresParticles else { return false }
-        return recipe.hires.frames.value.map { done.frames == $0 } ?? true
+        scene.storedHires()?.covers(
+            particles: hiresParticles, massive: hiresMassive, frames: recipe.hires.frames.value) ?? false
     }
 
     /// Where an export of the recipe lands: a preset's video in its own codec, or a preview.
@@ -89,11 +93,13 @@ public struct NightFolder: Sendable {
             let record = try? scene.hiresArguments(
                 hiresOptions, maximumParticles: max(particles, maximumParticles)
             ).record
+            let steps = Double((record?.settle ?? 0) + (record?.steps ?? 0))
             let file = (try? Data(contentsOf: scene.scene)).flatMap { try? SceneFile.decoded(from: $0) }
             progress.explored.append(
                 NightScene(
                     name: name, score: Self.score(scene, index: index), exploreUnits: 0,
-                    hiresUnits: Double(particles) * Double((record?.settle ?? 0) + (record?.steps ?? 0)),
+                    hiresUnits: Double(record?.massiveParticles ?? particles) * steps,
+                    hiresTracerUnits: Double(record?.tracers ?? 0) * steps,
                     frames: record?.frames ?? 0, chosenByHand: entry?.choice == .yes,
                     galaxies: file?.galaxies.filter { $0.kind != .blackHole }.count))
             if hiresDone(scene) { progress.hiresDone.insert(name) }
@@ -154,6 +160,7 @@ public struct NightFolder: Sendable {
         draws: (@Sendable (Int) -> [NightScene])? = nil
     ) -> NightPlanner {
         let particles = hiresParticles
+        let massive = hiresMassive
         let frames = recipe.hires.frames.value
         let sizer = probe ?? self.probe(now: now)
         var planner = NightPlanner(
@@ -163,7 +170,7 @@ public struct NightFolder: Sendable {
         ) { perGalaxy in
             draws?(perGalaxy)
                 ?? sizer.draws(perGalaxy: perGalaxy, count: NightPlanner.sample).map {
-                    sizer.scene($0, hiresParticles: particles, frames: frames)
+                    sizer.scene($0, hiresParticles: particles, massive: massive, frames: frames)
                 }
         }
         if let palette = recipe.style.palette.value, palette != "auto" {
@@ -422,7 +429,10 @@ public final class NightRunner: @unchecked Sendable {
 
     private func hires(_ scene: SceneFolder) -> Outcome {
         let name = scene.url.lastPathComponent
-        say("night      hires \(name), \(folder.hiresParticles) particles")
+        let (particles, massive) = (folder.hiresParticles, folder.hiresMassive)
+        say(
+            "night      hires \(name), \(particles) particles"
+                + (massive < particles ? " from \(massive) massive" : ""))
         let outcome = runChild(
             executable.path, ["hires", scene.url.path] + folder.hiresOptions,
             log: logs.appendingPathComponent("\(name).hires.log")
@@ -633,6 +643,7 @@ public final class NightRunner: @unchecked Sendable {
             "multicolour": String(recipe.style.multicolour.value ?? true),
             "camera": recipe.style.camera.value ?? "director",
         ]
+        if let massive = plan.hiresMassive { values["hiresMassive"] = String(massive) }
         if let frames = recipe.hires.frames.value { values["hiresFrames"] = String(frames) }
         if let range = recipe.galaxyRange { values["galaxies"] = "\(range.lowerBound)-\(range.upperBound)" }
         if let names = recipe.explore.archetypes.value { values["archetypes"] = names.joined(separator: ",") }

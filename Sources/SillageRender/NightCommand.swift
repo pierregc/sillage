@@ -150,8 +150,9 @@ public enum NightCommand {
                     "pick       \(scenes(step.count ?? 0))"
                     + (step.done ? " · done" : " · at \(time(step.start))")
             case .hires:
+                let massive = step.massive.map { " from \(thousands($0)) massive" } ?? ""
                 line =
-                    "hires      \(step.scene ?? "") · \(thousands(step.particles ?? 0)) particles · \(state)"
+                    "hires      \(step.scene ?? "") · \(thousands(step.particles ?? 0)) particles\(massive) · \(state)"
             case .style:
                 line = "style      \(step.scene ?? "") · \(state)"
             case .export:

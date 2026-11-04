@@ -30,12 +30,12 @@ func hiresBatch(_ batch: URL, options: [String]) -> Int32 {
     let (asked, _) = SceneFolder.Clip().updated(with: options)
     let particles =
         options.contains("--particles") ? asked.particles : SceneFolder.maximumParticles()
+    let massive = SceneFolder.massive(in: options)
+    let frames = options.contains("--frames") ? asked.frames : nil
     var failed = 0
     for (index, scene) in scenes.enumerated() {
         let name = scene.url.lastPathComponent
-        if let done = scene.storedHires(), done.particles == particles,
-            !options.contains("--frames") || done.frames == asked.frames
-        {
+        if scene.storedHires()?.covers(particles: particles, massive: massive, frames: frames) == true {
             print("hires      \(index + 1)/\(scenes.count) \(name): done already")
             continue
         }
@@ -1207,17 +1207,19 @@ if CommandLine.arguments.count > 1,
             run.start(detail: "starting")
             var begun = RunEvent(RunEvent.Kind.hiresStart)
             begun.particles = record.particles
+            begun.massive = record.massive
             begun.steps = record.steps
             run.record(begun)
             print(
                 String(
-                    format: "hires      %d particles (preview %d), step %.5f Myr (preview %.5f),"
+                    format: "hires      %d particles%@ (preview %d), step %.5f Myr (preview %.5f),"
                         + " settle %d, %d steps, clip %.1f to %.1f Myr, about %.1f h",
-                    record.particles, record.previewParticles, record.timeStepMyr,
-                    record.previewTimeStepMyr, record.settle, record.steps, record.clipStartMyr,
-                    record.clipEndMyr,
+                    record.particles, record.massive.map { " from \($0) massive" } ?? "",
+                    record.previewParticles, record.timeStepMyr, record.previewTimeStepMyr,
+                    record.settle, record.steps, record.clipStartMyr, record.clipEndMyr,
                     CostModel.current(library: folder.library).hiresSeconds(
-                        particles: record.particles, steps: record.settle + record.steps) / 3600))
+                        particles: record.particles, massive: record.massive,
+                        steps: record.settle + record.steps) / 3600))
         } catch {
             fail("hires: \(error)")
         }
@@ -1492,9 +1494,9 @@ print(
             ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
 
 // `--massive M` (#187): the scene is drawn at `--particles`, and only about M of the visible
-// particles, with the same share of the dark matter, carry the mass. The softening and the
-// step are the massive count's; the others are light tracers in their field.
-let massiveCount = argument("massive").flatMap(Int.init).map { min(max($0, 1), particles) }
+// particles carry the mass, with dark matter drawn for M (#211). The softening and the step are
+// the massive count's; the others are light tracers in their field.
+let massiveCount = SceneFolder.massive(in: arguments).map { min($0, particles) }
 var drawnScene = scene
 if let massiveCount {
     guard backend == "barnes-hut" else { fail("--massive needs the Barnes-Hut solver") }
@@ -1502,16 +1504,21 @@ if let massiveCount {
     // A disk drawn for its response answers at the massive particles' softening (#181).
     drawnScene.solveToomreQ(softening: scene.softening)
 }
-var seeded = RestrictedSolver.sampleParticles(for: drawnScene)
+var seeded: ParticleSystem
 var tracerCount = 0
 if let massiveCount {
     let splitStart = Date()
-    (seeded, tracerCount) = seeded.splittingLightTracers(massive: massiveCount, seed: scene.seed)
+    (seeded, tracerCount) = ParticleSystem.lightTracers(drawn: drawnScene, massive: scene)
     print(
         String(
-            format: "tracers    %d light, %d massive visible, %d halo, softening %.4f, step %.5f, %.1f s",
+            format: "tracers    %d light, %d massive visible, %d halo, softening %.4f, step %.5f,"
+                + " angle %.2f, %.1f s",
             tracerCount, seeded.visibleCount - tracerCount, seeded.count - seeded.visibleCount,
-            scene.softening, scene.timeStep, Date().timeIntervalSince(splitStart)))
+            scene.softening, scene.timeStep,
+            argument("theta-tracers").flatMap(Float.init) ?? scene.openingAngle,
+            Date().timeIntervalSince(splitStart)))
+} else {
+    seeded = RestrictedSolver.sampleParticles(for: drawnScene)
 }
 let gpuSolver: (any GPUSolver)? =
     backend == "cpu"
@@ -2041,6 +2048,7 @@ if let (folder, done) = hiresRun {
             Double(record.peakMemoryBytes ?? 0) / 1e9, Double(record.takeBytes ?? 0) / 1e9))
     var finished = RunEvent(RunEvent.Kind.hiresDone)
     finished.particles = record.particles
+    finished.massive = record.massive
     finished.steps = record.steps
     finished.minutes = (record.seconds ?? 0) / 60
     finished.takeGB = Double(record.takeBytes ?? 0) / 1e9

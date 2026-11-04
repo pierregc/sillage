@@ -88,11 +88,13 @@ public struct ExploreProbe: Sendable {
     }
 
     /// The draw as a night plans it: its exploration with the story's usual extra, and its
-    /// hires at `hiresParticles` over the same span, `frames` of it when given.
-    public func scene(_ draw: Draw, hiresParticles: Int, frames hiresFrames: Int? = nil)
-        -> NightScene
-    {
-        let target = Double(file(draw.index).file.scene(particleCount: hiresParticles).timeStep)
+    /// hires at `hiresParticles` over the same span, `frames` of it when given. With `massive`,
+    /// that many carry the mass and set the step, the others are light tracers.
+    public func scene(
+        _ draw: Draw, hiresParticles: Int, massive: Int? = nil, frames hiresFrames: Int? = nil
+    ) -> NightScene {
+        let carrying = min(massive ?? hiresParticles, hiresParticles)
+        let target = Double(file(draw.index).file.scene(particleCount: carrying).timeStep)
         var clip = SceneFolder.Clip()
         clip.frames = frames
         clip.steps = draw.steps
@@ -100,11 +102,13 @@ public struct ExploreProbe: Sendable {
         let storyFrames = Int((Double(frames) * (1 + Story.extraShare)).rounded())
         let span = clip.spanning(
             previewStep: draw.timeStep, maximumStep: target, frames: hiresFrames ?? storyFrames)
+        let steps = Double(span.settle + span.steps)
         return NightScene(
             name: nil, score: nil,
             exploreUnits: Double(draw.particles)
                 * (Double(settle) + Double(draw.steps) * (1 + Story.extraShare)),
-            hiresUnits: Double(hiresParticles) * Double(span.settle + span.steps),
+            hiresUnits: Double(carrying) * steps,
+            hiresTracerUnits: Double(hiresParticles - carrying) * steps,
             frames: hiresFrames ?? storyFrames)
     }
 }

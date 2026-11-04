@@ -328,6 +328,7 @@ public final class NightSheetPlanner: @unchecked Sendable {
         progress[key] = kept
         lock.unlock()
         let particles = folder.hiresParticles
+        let massive = folder.hiresMassive
         let planner = NightPlanner(
             recipe: recipe, seed: folder.seed(now: now), model: model, maximumParticles: maximumParticles,
             progress: kept, freeBytes: freeBytes ?? NightFolder.freeBytes(batch)
@@ -339,7 +340,7 @@ public final class NightSheetPlanner: @unchecked Sendable {
             let scenes =
                 standIn?(perGalaxy)
                 ?? sizer.draws(perGalaxy: perGalaxy, count: NightPlanner.sample).map {
-                    sizer.scene($0, hiresParticles: particles, frames: nil)
+                    sizer.scene($0, hiresParticles: particles, massive: massive, frames: nil)
                 }
             lock.lock()
             drawn[perGalaxy] = scenes
