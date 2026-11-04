@@ -37,9 +37,10 @@ public struct SceneDraw: Codable, Sendable, Equatable {
 ///
 /// What most changes a scene comes from a Sobol sequence: how many galaxies, what the first
 /// two are, their arms, bulges and thickness, the mass ratio and the geometry of the first
-/// encounter. What only shades it comes from a stream seeded by the point: dust, clumps, the
-/// orbital plane, and every galaxy past the second. A candidate too close to a scene already
-/// in the batch, by `SceneConfig.signature`, is passed over.
+/// encounter, how fast the companion comes in among it. What only shades it comes from a
+/// stream seeded by the point: dust, clumps, the orbital plane, and every galaxy past the
+/// second. A candidate too close to a scene already in the batch, by `SceneConfig.signature`,
+/// is passed over.
 ///
 /// A scene is found again from the batch seed and its index alone. The batch is replayed up to
 /// it as drafts, galaxies and encounters with nothing placed, which is a few microseconds each.
@@ -132,7 +133,7 @@ public struct FreeDraw: Sendable {
     enum Axis: Int, CaseIterable {
         case count, primaryFamily, primarySize, primaryArms, primaryPitch, primaryBulge
         case primaryThickness, secondaryFamily, massRatio, secondaryArms, secondaryPitch
-        case secondaryBulge, secondaryThickness, pericentre, eccentricity, primaryInclination
+        case secondaryBulge, secondaryThickness, pericentre, approach, primaryInclination
         case secondaryInclination, primarySpin, secondarySpin, pericentreTime
     }
 
@@ -171,6 +172,8 @@ public struct FreeDraw: Sendable {
         let window = SceneConfig.contemplationWindow(haste: haste)
         let span = window.upperBound - window.lowerBound
         var encounters: [Encounter] = []
+        // As the placement will weigh them: a companion takes its mass from its primary's.
+        var masses = [galaxies[0].potential.mass]
         for index in 1..<max(count, 1) {
             let first = index == 1
             let family = Self.pick(first ? at(.secondaryFamily) : stream.uniform(), Self.companionShares)
@@ -190,18 +193,29 @@ public struct FreeDraw: Sendable {
                 if [.spiral, .disk, .elliptical].contains(families[earlier]) { primary = earlier }
             }
             let minor = family == .dwarf || family == .globular
-            let along =
+            // Drawn in the order they always were, so the stream gives every later galaxy and
+            // disk the numbers it did.
+            let later =
                 first
-                ? 0.15 + 0.45 * at(.pericentreTime)
-                : 0.15 + 0.7 * (Float(index - 1) + stream.uniform(in: 0.2...0.8)) / Float(count - 1)
+                ? 0 : 0.15 + 0.7 * (Float(index - 1) + stream.uniform(in: 0.2...0.8)) / Float(count - 1)
+            let pericentre = first ? at(.pericentre) : stream.uniform()
+            let approach = first ? at(.approach) : stream.uniform()
+            let ratio = Self.logarithmic(
+                first ? at(.massRatio) : stream.uniform(), in: Self.massRatios(family))
+            masses.append(masses[primary] * ratio)
+            let orbit = Self.orbit(
+                approach: approach, pericentre: pericentre, in: minor ? 1.5...20 : 2...30,
+                totalMass: masses[primary] + masses[index])
+            // A captured pair passes early, so the clip has room for it to come back.
+            var along = later
+            if first {
+                along = orbit.captured ? 0.02 + 0.2 * at(.pericentreTime) : 0.15 + 0.45 * at(.pericentreTime)
+            }
             var meeting = Encounter(
                 primary: primary, secondary: index,
-                pericentre: Self.logarithmic(
-                    first ? at(.pericentre) : stream.uniform(), in: minor ? 1.5...20 : 2...30),
-                eccentricity: (minor ? 0.8...2.2 : 0.7...1.6).at(
-                    first ? at(.eccentricity) : stream.uniform()),
-                massRatio: Self.logarithmic(
-                    first ? at(.massRatio) : stream.uniform(), in: Self.massRatios(family)),
+                pericentre: orbit.pericentre,
+                eccentricity: orbit.eccentricity,
+                massRatio: ratio,
                 pericentreTime: window.lowerBound + along * span,
                 primaryDisk: Encounter.Disk(
                     inclination: (first ? at(.primaryInclination) : stream.uniform()) * .pi / 2,
@@ -264,6 +278,66 @@ public struct FreeDraw: Sendable {
         hole.encounters[0] = meeting
         hole.draw?.families[1] = .blackHole
         return hole
+    }
+
+    /// How fast a companion comes in, drawn for itself rather than as an eccentricity, which
+    /// gave one pass in two over 300 km/s far out and one in five bound (#252): two in five are
+    /// captured on a bound orbit and come back round, three in ten fall in from rest or nearly
+    /// and, held by the live halos, come back too, and the rest pass fast and close.
+    static let capturedShare: Float = 0.4
+    static let slowShare: Float = 0.3
+    /// Where a captured companion swings out to, in kpc, by Kepler. The placement widens an
+    /// orbit that cannot fall in for as long as its pericentre waits.
+    static let capturedApocentres: ClosedRange<Float> = 25...60
+    /// How fast a companion that is not captured would be far away, in km/s: a pair or a group
+    /// meets at a few hundred, the intruder of Stephan's Quintet at 900.
+    static let slowSpeeds: ClosedRange<Float> = 0...120
+    static let fastSpeeds: ClosedRange<Float> = 120...900
+    /// Pericentre times speed of a fast pass at most, in kpc km/s: 30 kpc at 150 km/s, 5 kpc at
+    /// 900. A fast pass far out barely touches either disk.
+    static let fastReach: Float = 4_500
+
+    struct Orbit: Equatable {
+        var pericentre: Float
+        var eccentricity: Float
+        var captured: Bool
+    }
+
+    /// A companion's orbit from two coordinates in [0, 1): where its pericentre lies in `range`,
+    /// and its approach. The eccentricity is what the placement reads, its energy over the pair
+    /// at pericentre being (e - 1) M / 2q.
+    static func orbit(
+        approach u: Float, pericentre p: Float, in range: ClosedRange<Float>, totalMass: Float
+    ) -> Orbit {
+        if u < capturedShare {
+            let q = logarithmic(p, in: range)
+            let apocentre = max(logarithmic(u / capturedShare, in: capturedApocentres), 1.5 * q)
+            return Orbit(pericentre: q, eccentricity: (apocentre - q) / (apocentre + q), captured: true)
+        }
+        let fast = u >= capturedShare + slowShare
+        let speed =
+            fast
+            ? logarithmic((u - capturedShare - slowShare) / (1 - capturedShare - slowShare), in: fastSpeeds)
+            : slowSpeeds.at((u - capturedShare) / slowShare)
+        let upper = fast ? min(range.upperBound, max(fastReach / speed, 2 * range.lowerBound)) : range.upperBound
+        let q = logarithmic(p, in: range.lowerBound...upper)
+        let v = speed / Float(Physics.kilometersPerSecondPerVelocityUnit)
+        return Orbit(pericentre: q, eccentricity: 1 + q * v * v / totalMass, captured: false)
+    }
+
+    /// Where an orbit sits on the approach as `orbit` lays it out, from 0 for the tightest
+    /// capture to 1 for the fastest pass.
+    static func approach(pericentre q: Float, eccentricity e: Float, totalMass: Float) -> Float {
+        func clamped(_ x: Float) -> Float { min(max(x, 0), 1) }
+        if e < 1 {
+            let apocentre = q * (1 + e) / max(1 - e, 1e-6)
+            let swing = capturedApocentres
+            return capturedShare * clamped(log(apocentre / swing.lowerBound) / log(swing.upperBound / swing.lowerBound))
+        }
+        let speed = ((e - 1) * totalMass / q).squareRoot() * Float(Physics.kilometersPerSecondPerVelocityUnit)
+        if speed < slowSpeeds.upperBound { return capturedShare + slowShare * speed / slowSpeeds.upperBound }
+        return capturedShare + slowShare + (1 - capturedShare - slowShare)
+            * clamped(log(speed / fastSpeeds.lowerBound) / log(fastSpeeds.upperBound / fastSpeeds.lowerBound))
     }
 
     /// The range of mass ratios a companion of a family is drawn from, against the galaxy it
@@ -477,10 +551,13 @@ extension SceneConfig {
             guard galaxies[index].kind.isRotating else { return [0, 0] }
             return [disk.inclination / (.pi / 2), disk.spin == .retrograde ? 0.5 : 0]
         }
+        // The pair as the placement weighs it, the companion taking its mass from the primary.
+        let mass = galaxies[encounter.primary].potential.mass * (1 + encounter.massRatio)
         return [
             log(min(max(encounter.massRatio, 0.03), 1) / 0.03) / log(1 / 0.03),
             log(min(max(encounter.pericentre, 1.5), 30) / 1.5) / log(20),
-            (min(max(encounter.eccentricity, 0.7), 2.2) - 0.7) / 1.5,
+            FreeDraw.approach(
+                pericentre: encounter.pericentre, eccentricity: encounter.eccentricity, totalMass: mass),
         ]
             + attitude(encounter.primaryDisk, encounter.primary)
             + attitude(encounter.secondaryDisk, encounter.secondary)

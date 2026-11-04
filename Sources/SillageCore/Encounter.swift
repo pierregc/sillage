@@ -693,16 +693,33 @@ extension SceneConfig {
     }
 
     /// Places the encounters, giving way on what cannot be built rather than failing: a bound
-    /// orbit that cannot fall in for long enough is opened to parabolic, then a chain hung off
-    /// a secondary is hung off the first galaxy instead, then the passages are brought earlier.
-    /// What was finally placed is what the scene keeps.
+    /// orbit that cannot fall in for long enough is widened, so the pair still comes back
+    /// (#252), and past `widenings` opened to parabolic, then a chain hung off a secondary is
+    /// hung off the first galaxy instead, then the passages are brought earlier. What was
+    /// finally placed is what the scene keeps.
     public mutating func placeEncountersGivingWay() {
-        for attempt in 0..<12 {
+        var widened = self
+        var times = [Int](repeating: 0, count: encounters.count)
+        while true {
+            var trial = widened
+            do {
+                try trial.placeEncounters()
+                self = trial
+                return
+            } catch Encounter.Failure.tooLateForBoundOrbit(encounter: let index, halfPeriodMyr: _)
+                where times[index] < Self.widenings && widened.encounters[index].eccentricity < 1
+            {
+                times[index] += 1
+                let gap = 1 - widened.encounters[index].eccentricity
+                widened.encounters[index].eccentricity = 1 - gap * Self.widening
+            } catch {
+                break
+            }
+        }
+        for attempt in 1..<12 {
             var trial = self
-            if attempt >= 1 {
-                for index in trial.encounters.indices {
-                    trial.encounters[index].eccentricity = max(trial.encounters[index].eccentricity, 1)
-                }
+            for index in trial.encounters.indices {
+                trial.encounters[index].eccentricity = max(trial.encounters[index].eccentricity, 1)
             }
             if attempt >= 2 {
                 let root = trial.encounters[0].primary
@@ -723,4 +740,10 @@ extension SceneConfig {
         // to aim at; it still gets the passages asked for, if not as the first ones.
         try? placeEncounters(firstPassage: false)
     }
+
+    /// Times a bound orbit is widened before it is opened, and the share of its distance to
+    /// parabolic each one keeps: 0.6 comes to 0.96 at the last. A widening costs one backward
+    /// construction, a millisecond for a pair.
+    static let widenings = 8
+    static let widening: Float = 0.75
 }

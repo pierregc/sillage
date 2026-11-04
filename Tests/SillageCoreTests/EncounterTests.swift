@@ -190,14 +190,39 @@ struct EncounterTests {
         Self.expectLanded(scene, within: 0.01)
     }
 
-    /// Stepping back past apocentre would make the asked-for passage a second one.
-    @Test func aBoundOrbitTooShortForItsTimeIsRefused() {
-        var scene = Self.pair(.rigid)
-        scene.encounters = [Encounter(pericentre: 3, eccentricity: 0.6, massRatio: 1, pericentreTime: 300)]
+    /// Stepping back past apocentre would make the asked-for passage a second one. Giving way
+    /// widens the orbit as little as it can rather than opening it (#252), so the pair is still
+    /// bound and comes back.
+    @Test(arguments: [Halos.rigid, .live])
+    func aBoundOrbitTooShortForItsTimeIsWidened(halos: Halos) throws {
+        func pair(_ eccentricity: Float) -> SceneConfig {
+            var scene = Self.pair(halos)
+            scene.encounters = [
+                Encounter(pericentre: 3, eccentricity: eccentricity, massRatio: 1, pericentreTime: 300)
+            ]
+            return scene
+        }
+        var scene = pair(0.6)
         #expect(throws: Encounter.Failure.self) { try scene.placeEncounters() }
         scene.placeEncountersGivingWay()
-        #expect(scene.encounters[0].eccentricity >= 1)
+        let widened = scene.encounters[0].eccentricity
+        #expect(widened > 0.6 && widened < 1)
         Self.expectLanded(scene, within: 0.01)
+        let centres = EncounterCentres(scene: scene)
+        let speed = simd_length(centres.velocities[1] - centres.velocities[0])
+        let apart = simd_distance(centres.positions[1], centres.positions[0])
+        #expect(0.5 * speed * speed + centres.pairPotential(0, 1, at: apart) < 0)
+        var narrower = pair(1 - (1 - widened) / SceneConfig.widening)
+        #expect(throws: Encounter.Failure.self) { try narrower.placeEncounters() }
+    }
+
+    /// An orbit too short for its time even at the last widening is opened to parabolic, as
+    /// before.
+    @Test func aBoundOrbitBeyondWideningIsOpened() {
+        var scene = Self.pair(.rigid)
+        scene.encounters = [Encounter(pericentre: 3, eccentricity: 0.6, massRatio: 1, pericentreTime: 2_000)]
+        scene.placeEncountersGivingWay()
+        #expect(scene.encounters[0].eccentricity >= 1)
     }
 
     @Test func encountersMustFormATree() {

@@ -21,6 +21,7 @@ session. Read the note for an area before changing it.
 - [The tree on the GPU](gpu-tree.md): and the gap the frames were using
 - [Encounters placed from their pericentre](encounters.md)
 - [Four scenes in five are pairs](pairs.md): the pair share by place, the pick slots, batches started before
+- [How fast a companion comes in](approach.md): the approach drawn for itself, captured pairs kept bound, what the eccentricity draw gave (#252)
 - [Whole stories](whole-stories.md): when a scene's story is over, and how long clips run
 - [A black hole outside the tree](black-holes.md): its own softening, the step, energy across the mass range
 - [Another language would not make a step faster](solver-language.md): GPU against CPU, Swift against C, the opening angle explore and hires run at
