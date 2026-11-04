@@ -1326,6 +1326,14 @@ if let orbit = argument("orbit").flatMap(Double.init) {
     look.camera.azimuthEnd = look.camera.azimuth + Float(orbit)
 }
 flag("azimuth-end", \.camera.azimuthEnd)
+if let aim = argument("center") {
+    let parts = aim.split(separator: ",").compactMap { Float($0) }
+    guard parts.count == 3 else {
+        FileHandle.standardError.write(Data("--center is x,y,z in kiloparsecs\n".utf8))
+        exit(2)
+    }
+    look.camera.center = SIMD3(parts[0], parts[1], parts[2])
+}
 if arguments.contains("--director") {
     look.camera.mode = arguments.contains("--immersed") ? .immersed : .director
 }
@@ -1765,7 +1773,7 @@ while frame < frames || storyGoesOn() {
         renderer.apply(director.look)
         camera = director.camera
     } else {
-        var framed = (center: SIMD3<Float>.zero, radius: frozenRadius)
+        var framed = (center: look.camera.center ?? .zero, radius: frozenRadius)
         if look.camera.mode == .auto {
             framed = autoCamera.frame(centres: scene.framedCentres(solver.centers), margins: reach)
             framed.radius /= zoom

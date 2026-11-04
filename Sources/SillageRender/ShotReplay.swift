@@ -85,7 +85,7 @@ public final class ShotReplay {
             return (director.camera, director.look)
         }
         let plan = file.camera
-        var framed = (center: SIMD3<Float>.zero, radius: radius)
+        var framed = (center: plan.center ?? .zero, radius: radius)
         if plan.mode == .auto {
             framed = auto.frame(centres: around, margins: reach)
             framed.radius /= plan.zoom

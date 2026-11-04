@@ -204,6 +204,20 @@ struct LookFileTests {
         #expect(LookFile.CameraPlan(zoom: 2, radius: 40).framedRadius(positions: points) == 40)
     }
 
+    /// The aim point is written only when set, so a look file from before reads and writes
+    /// the same bytes (#254).
+    @Test func aCameraAimIsKeptOnlyWhenSet() throws {
+        let plain = try JSONEncoder().encode(LookFile.CameraPlan(mode: .fixed))
+        #expect(!String(decoding: plain, as: UTF8.self).contains("center"))
+        let aimed = LookFile.CameraPlan(mode: .fixed, radius: 40, center: SIMD3(1, 2, 3))
+        let read = try JSONDecoder().decode(
+            LookFile.CameraPlan.self, from: JSONEncoder().encode(aimed))
+        #expect(read == aimed)
+        let written = try JSONDecoder().decode(
+            LookFile.CameraPlan.self, from: Data(#"{"mode": "fixed", "center": [1, 2, 3]}"#.utf8))
+        #expect(written.center == SIMD3(1, 2, 3))
+    }
+
     private func threeGalaxies() -> SceneConfig {
         var scene = SceneConfig.merger(particleCount: 2000)
         scene.galaxies.append(scene.galaxies[0])

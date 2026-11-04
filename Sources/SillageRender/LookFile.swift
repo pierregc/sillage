@@ -63,11 +63,14 @@ public struct LookFile: Codable, Sendable, Equatable {
         public var percentile: Float
         /// Radius framed, in kiloparsecs. Zero measures it on the first frame.
         public var radius: Float
+        /// Where a fixed camera looks, in kiloparsecs. Absent, the origin: the centre of mass,
+        /// which a pair of unequal halos or a steep elevation can leave off the interaction.
+        public var center: SIMD3<Float>?
 
         public init(
             mode: Mode = .fixed, elevation: Float = 1.15, elevationEnd: Float? = nil,
             azimuth: Float = 0, azimuthEnd: Float? = nil, zoom: Float = 1,
-            percentile: Float = 0.98, radius: Float = 0
+            percentile: Float = 0.98, radius: Float = 0, center: SIMD3<Float>? = nil
         ) {
             self.mode = mode
             self.elevation = elevation
@@ -77,6 +80,7 @@ public struct LookFile: Codable, Sendable, Equatable {
             self.zoom = zoom
             self.percentile = percentile
             self.radius = radius
+            self.center = center
         }
 
         public init(from decoder: any Decoder) throws {
@@ -91,7 +95,8 @@ public struct LookFile: Codable, Sendable, Equatable {
                 azimuthEnd: try c.decodeIfPresent(Float.self, forKey: .azimuthEnd),
                 zoom: try c.value(.zoom, or: d.zoom),
                 percentile: try c.value(.percentile, or: d.percentile),
-                radius: try c.value(.radius, or: d.radius))
+                radius: try c.value(.radius, or: d.radius),
+                center: try c.decodeIfPresent(SIMD3<Float>.self, forKey: .center))
         }
     }
 
