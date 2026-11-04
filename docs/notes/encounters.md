@@ -83,6 +83,6 @@ at the same distance and speed, the dwarf keeps its radii; it does too with one 
 particle stretching the root as wide. The cell shrank with the distance, so by the centres it
 lasted until about 370 Myr, most of the way in, and came back on the way out after 820. Within
 the start limits no scene of the review batch takes the root whole at the start, but a light
-galaxy far out on a diagonal still can, at the start or on its way out after a fly-by: the
-opening test wants the particle outside the cell too, which changes every force, so it is left
-for a ticket of its own.
+galaxy far out on a diagonal still could, at the start or on its way out after a fly-by, until
+the walk opened every cell that holds the particle (#221, [a cell around the
+particle](cells-around-the-particle.md)).

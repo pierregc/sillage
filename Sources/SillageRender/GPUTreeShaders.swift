@@ -125,7 +125,8 @@ enum GPUTreeShaders {
             float width = radius * 2.0f;
             BHNode root;
             root.comMass = float4(0.0f);
-            root.packed = float4(width * width, as_type<float>(0), as_type<float>(-int(p.count)), 0.0f);
+            root.packed = float4(
+                width * width, as_type<float>(0), as_type<float>(-int(p.count)), as_type<float>(63u << 3));
             nodes[0] = root;
             atomic_store_explicit(&counters[counterNodes], 1u, memory_order_relaxed);
         }
@@ -438,7 +439,7 @@ enum GPUTreeShaders {
                     BHNode child;
                     child.comMass = float4(0.0f);
                     child.packed = float4(widthSquared, as_type<float>(int(offsets[o])),
-                                          as_type<float>(-int(size)), 0.0f);
+                                          as_type<float>(-int(size)), as_type<float>((shift << 3) | o));
                     nodes[at] = child;
                     at += 1u;
                 }
