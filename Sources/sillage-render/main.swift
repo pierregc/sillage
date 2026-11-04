@@ -1512,7 +1512,7 @@ print(
             ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
 var seeded: ParticleSystem
 var tracerCount = 0
-if let massiveCount {
+if massiveCount != nil {
     let splitStart = Date()
     (seeded, tracerCount) = ParticleSystem.lightTracers(drawn: drawnScene, massive: scene)
     print(
