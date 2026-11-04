@@ -65,9 +65,61 @@ pairs back far sooner, 140 to 300 Myr after the first passage at 7 to 17 kpc.
 The archetypes drawn bound gain from it too: the polar ring rated 10 on 2026-10-30-b had been
 opened to parabolic.
 
+A generated scene is placed twice, once when it is drawn and again for the clip it is explored
+in, and the eight widenings hold for each placement: place 20 of batch 20261105 was widened ten
+times in all, 0.90 to 0.994.
+
+## Measured
+
+Batch 20261105, places 0 to 59 as `explore` draws them (`--check-only`, 200 000 particles,
+`--dt-scale 3.5 --settle 400 --steps 3600`), main against this change:
+
+| | main | approach |
+| --- | --- | --- |
+| first passage bound / parabolic / hyperbolic, 58 places | 11 / 6 / 41 | 25 / 3 / 30 |
+| free scenes bound, of 43 | 5 | 18 |
+| speed far out, unbound: Q1 / median / Q3 / max, km/s | 140 / 279 / 516 / 1 144 | 71 / 135 / 359 / 809 |
+| under 120 / 120 to 300 / 300 to 500 / over 500 km/s | 9 / 16 / 10 / 12 | 15 / 7 / 4 / 7 |
+| drawn bound: kept / widened / opened to e = 1 | 11 / 0 / 6 | 13 / 12 / 1 |
+| refused by the sanity check | 0 | 0 |
+
+The three parabolic first passages of the change are slow falls, under 10 km/s far out. The
+polar ring of place 47, drawn at e 0.56, was opened on main and stays bound at 0.67. Ten fast
+passes of 43 free scenes where the share is three in ten: a batch's worth of noise.
+
+The one bound orbit still opened is in a group of four, place 25: its captured pair 0-1 is
+not too short for its time, but the pair turns galaxy 0 round their common centre, so galaxy 2,
+hyperbolic and stepped back from that moving primary, seems to make a second passage. Widening
+only touches bound orbits, and the fallback then opens them all. Opening only the failing orbit
+changed nothing over the 60 places. Only groups meet it.
+
+Explored on the GPU, the first 12 places at 50 000 particles a galaxy, `explore-batch.sh`'s
+own settle of 750 steps, none refused:
+
+| place | drawn | first encounter | approach, km/s | passes, Myr | apart at the end | score |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | free, disk and spiral | 3.3 kpc, e 1.002 | slow, 46 | 456, 609, 640 | merged | 0.84 |
+| 2 | free, spiral and disk | 4.6 kpc, e 1.012 | slow, 96 | 553, 845, 913 | merged | 0.62 |
+| 3 | minor-merger | 10.7 kpc, e 0.66 | bound, 311 | 336, 544, 637 and five more | merged | 0.76 |
+| 4 | free, two spirals | 7.6 kpc, e 0.75, widened once | captured, 365 | 335, 451 | merged | 0.72 |
+| 5 | free, group of five | 8.8 kpc, e 0.72, widened twice | captured, 231 | 387, 760 | 251 kpc | 0.58 |
+| 6 | free, spiral and disk | 15.0 kpc, e 1.002 | slow, 21 | 631, 1 396, 1 532 | merged | 0.72 |
+| 7 | ring | 1.5 kpc, e 1.14 | fast, 534 | 441 | 126 kpc | 0.66 |
+| 8 | free, elliptical and dwarf | 14.3 kpc, e 0.56 | captured, 262 | 312, 827 | 24 kpc | 0.56 |
+| 9 | free, elliptical and globular | 13.2 kpc, e 1.000 | slow, 8 | 458 | 9.9 kpc | 0.09 |
+| 10 | free, one disk | | | | | 0.14 |
+| 11 | mice | 8.5 kpc, e 1.037 | 135 | 473, 746, 793, 820 | merged | 0.99 |
+| 12 | free, spiral and dwarf | 1.9 kpc, e 0.945, widened twice | captured, 260 | 407, 525, 597 | merged | 0.66 |
+
+Every captured free pair came back: three merged, the dwarf of place 8 passed again 515 Myr
+later, and the dwarf of place 5 came back to 13 kpc before, torn apart, it left while galaxy 4
+merged with the primary. Three slow pairs of four came back and merged, place 6 765 Myr after
+its first passage, its story running to 1 890 Myr; the globular of place 9 swung out to 92 kpc
+and was back at 9.9 when the run ended. None of these twelve was a fast free pass; the ring
+stood for them.
+
 ## Open
 
-- Measured on the centres and on past runs only. A batch drawn with it has yet to be explored.
 - Stories run longer when more pairs come back, so `STORY_EXTRA` in `explore-batch.sh` and
   `Story.extraShare` may want measuring again on the first night drawn with it.
 - A batch started before resumes with the new orbits for the places it has not explored.

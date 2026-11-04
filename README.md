@@ -62,7 +62,7 @@ pulling with the mass it holds inside the separation. The centres are then run f
 and the passages asked for are corrected until they land. A generated scene puts its
 pericentres inside the clip it is rendered for, between `--settle` and `--steps`. A bound orbit
 that cannot fall in for as long as its pericentre waits is widened until it can, so the pair
-still comes back, and opened to parabolic only past eight widenings.
+still comes back, and opened to parabolic only past eight widenings each time it is placed.
 
 `--preset free --seed S --index N` is scene `N` of batch `S` from the free generator, which
 spreads a batch evenly over everything a scene can physically be: one to five galaxies, each a
