@@ -22,7 +22,7 @@ public enum DiskResponse {
     public static let twoArmedToomreQ: ClosedRange<Float> = 1.25...1.45
     /// The response a small two-armed one is given instead, at the place of its draw of Q:
     /// drawn at its Q, a small two-armed disk faded where a large one kept its arms.
-    public static let smallTwoArmedRange: ClosedRange<Float> = 1.84...1.90
+    public static let smallTwoArmedRange: ClosedRange<Float> = 1.80...1.86
     /// The scale length under which a spiral is small, in kpc: the category of #181.
     public static let smallScaleLength: Float = 4.2
     /// Visible particles a galaxy, shared by mass, for the softening the response is drawn at:
