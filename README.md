@@ -68,9 +68,11 @@ spiral, a lenticular disk, an elliptical, a dwarf, a compact globular or, for 4 
 with a companion, a lone black hole in place of the first one, with their arm count,
 arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. A spiral of
 three to five arms is drawn for its response rather than its Toomre Q: Q is solved for an
-effective Q of 1.75 to 1.95, Q over what the softening at 100 000 particles a galaxy and the
-disk's late thickness leave of its own pull, so a small, soft or thick disk is drawn colder
-([the note](docs/notes/lumpy-arms.md)). What changes
+effective Q of 1.75 to 1.95, 1.72 to 1.76 under a scale length of 4.2 kpc, Q over what the
+softening at 100 000 particles a galaxy and the disk's late thickness leave of its own pull, so a
+small, soft or thick disk is drawn colder; a small two-armed spiral is drawn at 1.80 to 1.86, a
+large one keeps its draw of Q. The scene file keeps that response (`effectiveToomreQ`) and every
+run solves Q for it at its own softening ([the note](docs/notes/lumpy-arms.md)). What changes
 a scene most is drawn from a Sobol sequence shifted by the batch seed, so a batch covers the
 space instead of clumping; the rest comes from a stream seeded by the scene. A candidate whose
 signature (galaxy count, the first two galaxies, the first encounter) sits closer than
@@ -179,7 +181,8 @@ radii, dispersions, Fourier amplitudes by zone, pattern speed, coherence, lumpin
 nucleus and the solver's centre are, next to a two-pane clip in the disk's own frame and in the
 app's. `--clumpiness`, `--toomre-q`, `--arm-strength`, `--arm-count`, `--disk-mass-fraction`,
 `--disk-thickness` and `--dissipation` override the galaxy for a sweep, `--effective-q` solves
-its Toomre Q for a response as the generators do, `--softening` overrides the scene's, and
+its Toomre Q for a response as the generators do (a disk whose scene file holds one is solved for
+it at the run's softening), `--softening` overrides the scene's, and
 `scripts/probe-report.py` lays runs side by side. The columns and how to read
 them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
 
@@ -192,7 +195,9 @@ yes in `ratings.json`, one after another, skipping those already done at that si
 
 Only the particle count and what follows from it change. The geometry is the scene file's, and
 so is `timeStepScale` (3.5 for a night batch) unless `--dt-scale` overrides it. Softening follows
-the interparticle spacing, so the step shrinks as the count grows, and `clip.json`'s `steps` and
+the interparticle spacing, so the step shrinks as the count grows, and a disk drawn for its
+response (`effectiveToomreQ` in the scene file) is given the Toomre Q that keeps that response at
+the new softening, so it answers as in the preview (#181). `clip.json`'s `steps` and
 `settle` are step counts at the preview's size: run as they are, they would show a shorter stretch
 of the encounter. They are turned into megayears and back, with a whole number of steps per
 frame, so every frame lands at the time the preview showed it and only the settle is rounded to

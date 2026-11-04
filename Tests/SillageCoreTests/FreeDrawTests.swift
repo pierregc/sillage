@@ -142,38 +142,58 @@ struct FreeDrawTests {
         #expect(SceneFile(.merger(particleCount: 1_000)).draw == nil)
     }
 
-    /// A spiral of three to five arms is drawn for how its disk answers (#181): at the softening
-    /// its scene explores at, its effective Q is in the drawn range unless its Q stopped at the
-    /// floor, archetypes included. A two-armed one keeps the draw of Q, and nothing of the draw
-    /// is left on a finished galaxy.
-    @Test func aSpiralIsDrawnForItsResponse() {
+    /// A spiral is drawn for how its disk answers (#181), archetypes included: at the softening
+    /// its scene explores at with 100 000 particles a galaxy, its response is in the range for
+    /// its arms and its size unless the floor of Q left it higher, and its Q holds it at the
+    /// count the scene is drawn at. A large two-armed one keeps the draw of Q and no response.
+    @Test func aSpiralIsDrawnForItsResponse() throws {
         let batch = BatchDraw(batchSeed: 20_261_031)
         var drawn = 0
         var floored = 0
         var twoArmed = 0
+        var small = 0
         for index in 0..<40 {
             let scene = batch.scene(at: index, particleCount: 300_000)
-            let softening = DiskResponse.referenceSoftening(scene.galaxies)
+            let reference = DiskResponse.referenceSoftening(scene.galaxies)
             for (galaxy, family) in zip(scene.galaxies, scene.draw!.families) {
-                #expect(galaxy.drawnEffectiveQ == nil)
-                guard family == .spiral else { continue }
-                guard galaxy.armCount > 2 else {
-                    twoArmed += 1
-                    #expect((1.25...1.45).contains(galaxy.toomreQ))
+                let isSmall = galaxy.diskScaleLength < DiskResponse.smallScaleLength
+                guard family == .spiral, galaxy.armCount > 2 || isSmall else {
+                    #expect(galaxy.effectiveToomreQ == nil)
+                    if family == .spiral {
+                        twoArmed += 1
+                        #expect(DiskResponse.twoArmedToomreQ.contains(galaxy.toomreQ))
+                    }
                     continue
                 }
                 drawn += 1
-                let effective = DiskResponse.effectiveToomreQ(galaxy, softening: softening)
-                let range = DiskResponse.drawnRange
-                if galaxy.toomreQ > DiskResponse.lowestToomreQ {
-                    #expect(effective >= range.lowerBound - 1e-3 && effective <= range.upperBound + 1e-3)
-                } else {
+                if isSmall { small += 1 }
+                let response = try #require(galaxy.effectiveToomreQ)
+                let range =
+                    galaxy.armCount <= 2
+                    ? DiskResponse.smallTwoArmedRange
+                    : isSmall ? DiskResponse.smallRange : DiskResponse.drawnRange
+                #expect(response >= range.lowerBound - 1e-4)
+                let atReference = DiskResponse.toomreQ(effective: response, of: galaxy, softening: reference)
+                if atReference <= DiskResponse.lowestToomreQ + 1e-4 {
                     floored += 1
-                    #expect(effective >= range.lowerBound)
+                } else {
+                    #expect(response <= range.upperBound + 1e-4)
                 }
+                #expect(
+                    galaxy.toomreQ
+                        == DiskResponse.toomreQ(
+                            effective: response, of: galaxy, softening: scene.recommendedSoftening))
             }
         }
-        #expect(drawn >= 15 && twoArmed >= 5 && floored * 4 < drawn)
+        #expect(drawn >= 20 && small >= 8 && twoArmed >= 5 && floored * 2 < drawn)
+    }
+
+    /// A scene a generator did not draw keeps its Toomre Q, small two-armed spirals included.
+    @Test func aContemplationSceneKeepsItsToomreQ() {
+        for seed in [1, 7, 42, 2_026] as [UInt64] {
+            let scene = SceneConfig.contemplation(particleCount: 300_000, seed: seed)
+            #expect(scene.galaxies.allSatisfy { $0.effectiveToomreQ == nil })
+        }
     }
 
     @Test func freeScenesArePlaced() {

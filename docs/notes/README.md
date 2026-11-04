@@ -37,7 +37,7 @@ session. Read the note for an area before changing it.
 - [Why a disk keeps its arms](spiral-arms.md)
 - [The calm-disk probe](calm-disk-probe.md): `probe-disk`, one galaxy alone, its own frame, the columns and how to read them
 - [Why a generated disk takes several turns to settle](disk-settling.md): spike #170
-- [Why settled arms stay lumpy and wobbly](lumpy-arms.md): spike #171, the small spirals and the response drawn for them (#181), and a steady spiral drive (#180)
+- [Why settled arms stay lumpy and wobbly](lumpy-arms.md): spike #171, the small spirals and the response drawn for them and kept at every count (#181), and a steady spiral drive (#180)
 - [Why a merged disk stays merged](merged-disk.md)
 - [When the painted arms fade](painted-arms-fade.md): the disk's layer rather than its thickness, measured on seven takes (#210)
 - [A breathing core, and a bulge with no edge](breathing-core.md)

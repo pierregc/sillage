@@ -11,11 +11,24 @@ import Foundation
 /// they faded to a smooth disk, under it they kept their arms (docs/notes/lumpy-arms.md).
 public enum DiskResponse {
     /// The effective Q a spiral of three to five arms is drawn at: where the generated disks
-    /// that kept their arms sat, and where small ones kept theirs without a bar.
+    /// that kept their arms sat, and where large ones kept theirs without a bar.
     public static let drawnRange: ClosedRange<Float> = 1.75...1.95
+    /// Where a small one is drawn instead, at the same place in the range. At equal response a
+    /// small disk answers less than a large one, between a bar under 1.70 and a smooth disk
+    /// from 1.77 (docs/notes/lumpy-arms.md).
+    public static let smallRange: ClosedRange<Float> = 1.72...1.76
+    /// The Toomre Q a two-armed spiral is drawn at: two arms ride the painted wave the streaming
+    /// holds, and a large disk keeps this draw.
+    public static let twoArmedToomreQ: ClosedRange<Float> = 1.25...1.45
+    /// The response a small two-armed one is given instead, at the place of its draw of Q:
+    /// drawn at its Q, a small two-armed disk faded where a large one kept its arms.
+    public static let smallTwoArmedRange: ClosedRange<Float> = 1.80...1.86
+    /// The scale length under which a spiral is small, in kpc: the category of #181.
+    public static let smallScaleLength: Float = 4.2
     /// Visible particles a galaxy, shared by mass, for the softening the response is drawn at:
     /// a night's exploration, which Auto sizes between 50 000 and 200 000. A run with more
-    /// particles is softened less, so its disks answer more.
+    /// particles is softened less, so the scene file keeps the response and each run solves Q
+    /// for it at its own softening (`SceneConfig.solveToomreQ`).
     public static let referenceParticlesPerGalaxy = 100_000
     /// A scene is refused under a Toomre Q of 1, so a soft, thick disk stops here and answers
     /// less than it was drawn for.
@@ -28,6 +41,32 @@ public enum DiskResponse {
 
     public static func effectiveToomreQ(_ galaxy: GalaxyConfig, softening: Float) -> Float {
         galaxy.toomreQ / max(gravityLeft(galaxy, softening: softening), 1e-3)
+    }
+
+    /// The response a generated spiral is given once its size is known: its drawn one, at the
+    /// same place in `smallRange` when it is small, or for a small two-armed one the place of
+    /// its draw of Q in `smallTwoArmedRange`. Nil for a large two-armed one, which keeps its Q.
+    public static func target(of galaxy: GalaxyConfig) -> Float? {
+        let small = galaxy.diskScaleLength < smallScaleLength
+        if let drawn = galaxy.effectiveToomreQ {
+            return small ? moved(drawn, from: drawnRange, to: smallRange) : drawn
+        }
+        guard small, galaxy.kind == .spiral, galaxy.armCount <= 2 else { return nil }
+        return moved(galaxy.toomreQ, from: twoArmedToomreQ, to: smallTwoArmedRange)
+    }
+
+    static func moved(_ value: Float, from: ClosedRange<Float>, to: ClosedRange<Float>) -> Float {
+        let place = (value - from.lowerBound) / (from.upperBound - from.lowerBound)
+        return to.lowerBound + min(max(place, 0), 1) * (to.upperBound - to.lowerBound)
+    }
+
+    /// The response a disk drawn for `drawn` keeps at every count from the reference one up:
+    /// `drawn`, or the stiffer one the floor of Q leaves it at `referenceSoftening`. Kept so, a
+    /// softer run never finds the floor and a hires disk answers as the explore preview did.
+    public static func response(drawn: Float, of galaxy: GalaxyConfig, referenceSoftening: Float)
+        -> Float
+    {
+        max(drawn, lowestToomreQ / max(gravityLeft(galaxy, softening: referenceSoftening), 1e-3))
     }
 
     /// The share of the disk's own pull on the wave that grows left by the softening and by its
@@ -71,5 +110,17 @@ public enum DiskResponse {
         var scene = SceneConfig(name: "", galaxies: galaxies)
         for index in scene.galaxies.indices { scene.galaxies[index].particleCount = counts[index] }
         return scene.recommendedSoftening
+    }
+}
+
+extension SceneConfig {
+    /// Gives every disk drawn for its response (`GalaxyConfig.effectiveToomreQ`) the Toomre Q
+    /// that holds it at `softening`, the one the scene runs at.
+    public mutating func solveToomreQ(softening: Float) {
+        for index in galaxies.indices {
+            guard let effective = galaxies[index].effectiveToomreQ else { continue }
+            galaxies[index].toomreQ = DiskResponse.toomreQ(
+                effective: effective, of: galaxies[index], softening: softening)
+        }
     }
 }

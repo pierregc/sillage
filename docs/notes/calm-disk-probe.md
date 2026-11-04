@@ -19,7 +19,9 @@ otherwise; the step stays the scene's), the overrides `--clumpiness`, `--toomre-
 `--arm-strength`, `--arm-count`, `--arm-irregularity`, `--disk-mass-fraction`,
 `--disk-thickness`, `--dissipation`, `--mass-contrast`, `--streaming`, `--young-clumpiness`,
 `--effective-q` (Toomre Q solved for that response at the run's softening, after the other
-overrides, the way the generators draw a spiral: `DiskResponse`, #181), and for the picture
+overrides, the way the generators draw a spiral: `DiskResponse`, #181; a galaxy whose scene file
+holds a response, `effectiveToomreQ`, is solved for it the same way without the flag, which takes
+its place, and `--toomre-q` drops it), and for the picture
 `--width`, `--height` (one pane, 720), `--no-clip`, `--painted` (paint the density wave as the
 app does), `--stills 0,300,...`, `--lag-myr T` (50).
 

@@ -22,8 +22,9 @@ extension DiskProbe {
         public var seed: UInt64?
         public var clumpiness: Float?
         public var toomreQ: Float?
-        /// Sets Toomre Q to what gives the disk this effective Q at the softening it runs at
-        /// (`DiskResponse`), after the other overrides.
+        /// Draws the disk for this effective Q (`DiskResponse`) in place of its own, if it has
+        /// one, or of its Toomre Q. A disk drawn for a response has its Toomre Q solved for it at
+        /// the softening the run uses, after the other overrides; `toomreQ` sets Q and drops it.
         public var effectiveToomreQ: Float?
         public var armStrength: Float?
         public var armCount: Int?
@@ -207,6 +208,7 @@ extension DiskProbe {
         }
         override(options.clumpiness, "clumpiness", \.clumpiness)
         override(options.toomreQ, "toomreQ", \.toomreQ)
+        if options.toomreQ != nil { full.galaxies[options.galaxy].effectiveToomreQ = nil }
         override(options.armStrength, "armStrength", \.armStrength)
         override(options.armIrregularity, "armIrregularity", \.armIrregularity)
         override(options.diskMassFraction, "diskMassFraction", \.diskMassFraction)
@@ -220,12 +222,15 @@ extension DiskProbe {
             overrides["armCount"] = Double(count)
         }
         if let effective = options.effectiveToomreQ {
+            full.galaxies[options.galaxy].effectiveToomreQ = effective
+            overrides["effectiveToomreQ"] = Double(effective)
+        }
+        if let effective = full.galaxies[options.galaxy].effectiveToomreQ {
             let q = DiskResponse.toomreQ(
                 effective: effective, of: full.galaxies[options.galaxy],
                 softening: options.softening ?? full.softening)
             full.galaxies[options.galaxy].toomreQ = q
-            overrides["effectiveToomreQ"] = Double(effective)
-            overrides["toomreQ"] = Double(q)
+            if options.effectiveToomreQ != nil { overrides["toomreQ"] = Double(q) }
         }
         // The whole scene is sampled and the galaxy's particles kept, so the probe's disk is
         // the scene's disk star for star, pattern seed included; then it is set at rest at

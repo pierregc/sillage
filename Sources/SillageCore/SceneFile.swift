@@ -55,6 +55,11 @@ public struct SceneFile: Codable, Sendable, Equatable {
         public var outskirtFraction: Float
         public var diskMassFraction: Float
         public var toomreQ: Float
+        /// The effective Toomre Q a generator drew the disk for (`DiskResponse`, #181). Present,
+        /// `toomreQ` is the one the file last ran at and is solved again for this at the
+        /// softening of whatever count the scene is read at; absent, as in every file written
+        /// before, `toomreQ` runs as written.
+        public var effectiveToomreQ: Float?
         public var haloParticleRatio: Float
         public var haloExtent: Float
         public var dissipationTime: Float
@@ -91,6 +96,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             outskirtFraction = galaxy.outskirtFraction
             diskMassFraction = galaxy.diskMassFraction
             toomreQ = galaxy.toomreQ
+            effectiveToomreQ = galaxy.effectiveToomreQ
             haloParticleRatio = galaxy.haloParticleRatio
             haloExtent = galaxy.haloExtent
             dissipationTime = galaxy.dissipationTime
@@ -152,6 +158,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.armStreaming = armStreaming ?? 0
             galaxy.massLopsidedness = massLopsidedness ?? legacy.massLopsidedness
             galaxy.patternShare = patternShare ?? 0
+            galaxy.effectiveToomreQ = effectiveToomreQ
             return galaxy
         }
     }
@@ -188,8 +195,10 @@ public struct SceneFile: Codable, Sendable, Equatable {
     }
 
     /// The scene at a given number of visible particles. Read back at the count it was written
-    /// from, every galaxy gets exactly the particles it had. Colours are not part of the file;
-    /// `palette` supplies them by galaxy, and any galaxy past its end keeps the default.
+    /// from, every galaxy gets exactly the particles it had, and a disk drawn for its response
+    /// gets the Toomre Q that gives it that response at this count's softening. Colours are not
+    /// part of the file; `palette` supplies them by galaxy, and any galaxy past its end keeps
+    /// the default.
     public func scene(particleCount: Int, palette: [SIMD3<Float>] = []) -> SceneConfig {
         let counts = SceneConfig.sharedCounts(
             particleCount, weights: galaxies.map(\.particleShare), kinds: galaxies.map(\.kind))
@@ -210,6 +219,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
         scene.retune()
         if let timeStep { scene.timeStep = timeStep }
         if let softening { scene.softening = softening }
+        scene.solveToomreQ(softening: scene.softening)
         return scene
     }
 

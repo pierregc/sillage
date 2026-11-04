@@ -108,6 +108,41 @@ struct SceneFileTests {
             try keys(encoder.encode(scene.galaxies[0])).subtracting(["particleCount", "color"])
                 == keys(encoder.encode(file.galaxies[0])).subtracting(["particleShare"]))
         #expect(!String(decoding: try file.encoded(), as: UTF8.self).contains("color"))
+        var drawn = scene.galaxies[0]
+        drawn.effectiveToomreQ = 1.85
+        #expect(
+            try keys(encoder.encode(drawn)).subtracting(["particleCount", "color"])
+                == keys(encoder.encode(SceneFile.Galaxy(drawn, share: 1))).subtracting(["particleShare"]))
+    }
+
+    /// A disk drawn for its response is solved for it at the count the file is read at (#181):
+    /// more particles soften it less, so it gets more Q and answers the same, a softening set by
+    /// hand included. Without the response, as in every file written before, Q runs as written.
+    @Test func aResponseIsSolvedAtTheCountTheFileIsReadAt() throws {
+        var scene = SceneConfig.encounter(particleCount: 200_000)
+        scene.galaxies[0].effectiveToomreQ = 1.85
+        var file = try SceneFile.decoded(from: SceneFile(scene).encoded())
+        #expect(file.galaxies[0].effectiveToomreQ == 1.85 && file.galaxies[1].effectiveToomreQ == nil)
+        let explore = file.scene(particleCount: 200_000)
+        let hires = file.scene(particleCount: 2_000_000)
+        #expect(hires.softening < explore.softening)
+        #expect(hires.galaxies[0].toomreQ > explore.galaxies[0].toomreQ)
+        for run in [explore, hires] {
+            let effective = DiskResponse.effectiveToomreQ(run.galaxies[0], softening: run.softening)
+            #expect(run.galaxies[0].toomreQ > DiskResponse.lowestToomreQ)
+            #expect(abs(effective - 1.85) < 1e-3)
+            #expect(run.galaxies[1].toomreQ == scene.galaxies[1].toomreQ)
+        }
+        file.softening = 0.15
+        let pinned = file.scene(particleCount: 2_000_000).galaxies[0]
+        #expect(pinned.toomreQ > DiskResponse.lowestToomreQ && pinned.toomreQ != hires.galaxies[0].toomreQ)
+        #expect(abs(DiskResponse.effectiveToomreQ(pinned, softening: 0.15) - 1.85) < 1e-3)
+        file.softening = nil
+        file.galaxies[0].effectiveToomreQ = nil
+        for particles in [200_000, 2_000_000] {
+            #expect(file.scene(particleCount: particles).galaxies[0].toomreQ == scene.galaxies[0].toomreQ)
+        }
+        #expect(!String(decoding: try file.encoded(), as: UTF8.self).contains("effectiveToomreQ"))
     }
 
     @Test(arguments: [1, 7, 42, 2_026] as [UInt64])

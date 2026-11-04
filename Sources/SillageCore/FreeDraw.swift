@@ -321,15 +321,17 @@ public struct FreeDraw: Sendable {
                 armIrregularity: stream.uniform(in: 0.3...0.78),
                 // Three to five arms are the disk's own: drawn at Q 1.25 to 1.45, a small, soft
                 // or thick disk faded to a smooth one, so its response is drawn instead and Q
-                // solved for it, here and among the scene's galaxies in `finishGenerated`. Two
-                // arms ride the painted wave the streaming holds and keep the draw of Q: a
-                // stronger response barred them, a weaker one faded them (#181).
-                toomreQ: stream.uniform(in: armCount <= 2 ? 1.25...1.45 : DiskResponse.drawnRange),
+                // solved for it, here and among the scene's galaxies in `finishGenerated`, then
+                // at every count it runs at. Two arms ride the painted wave the streaming holds
+                // and keep the draw of Q unless the disk is small: a stronger response barred
+                // them, a weaker one faded them (#181).
+                toomreQ: stream.uniform(
+                    in: armCount <= 2 ? DiskResponse.twoArmedToomreQ : DiskResponse.drawnRange),
                 inclination: stream.uniform(in: -1.2...1.2),
                 positionAngle: stream.uniform(in: 0...(2 * .pi)),
                 spin: stream.uniform() < 0.5 ? .prograde : .retrograde)
             if armCount > 2 {
-                galaxy.drawnEffectiveQ = galaxy.toomreQ
+                galaxy.effectiveToomreQ = galaxy.toomreQ
                 galaxy.toomreQ = DiskResponse.toomreQ(
                     effective: galaxy.toomreQ, of: galaxy,
                     softening: DiskResponse.referenceSoftening([galaxy]))
