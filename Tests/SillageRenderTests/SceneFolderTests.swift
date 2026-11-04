@@ -406,6 +406,7 @@ struct SceneFolderTests {
 
     @Test func promotingALookKeepsTheFirstOneAside() throws {
         let folder = try temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
         try LookFile.raw.encoded().write(to: folder.look)
         var first = LookFile.standard
         first.name = "first"
