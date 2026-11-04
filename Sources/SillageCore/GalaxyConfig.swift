@@ -118,7 +118,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// spheroid with no arms left. Measured here exactly that way. Real disks do not do this
     /// because their gas radiates the motion away and forms new stars on circular orbits,
     /// which resets the disk faster than the spirals heat it. Nothing in this simulation is
-    /// gas, so the effect is put back directly.
+    /// gas, so the effect is put back directly. The batch generators hold it to at least
+    /// `DiskResponse.coolingTurns` of the disk's turns: faster, a disk breaks into knots (#218).
     public var dissipationTime: Float
 
     public var position: SIMD3<Float>
@@ -132,6 +133,10 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// `toomreQ` is solved for it at the softening each run uses, so a hires disk answers as its
     /// explore preview did; absent, `toomreQ` runs as written.
     public var effectiveToomreQ: Float?
+    /// Share of the disk's mass the gas carries, laid down by the dust particles, which stay
+    /// `dustFraction` of the particles for the light. Absent, as in every file written before
+    /// #218, a dust particle weighs what a star does and the gas carries `dustFraction`.
+    public var dustMassFraction: Float?
 
     public init(
         name: String,
@@ -214,7 +219,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armMassContrast, armStreaming, massLopsidedness, patternShare, outskirtFraction
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
-        case inclination, positionAngle, spin, effectiveToomreQ
+        case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -263,6 +268,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         positionAngle = try values.decode(Float.self, forKey: .positionAngle)
         spin = try values.decode(Spin.self, forKey: .spin)
         effectiveToomreQ = try values.decodeIfPresent(Float.self, forKey: .effectiveToomreQ)
+        dustMassFraction = try values.decodeIfPresent(Float.self, forKey: .dustMassFraction)
     }
 
     /// What a galaxy described before the calm disk carried, for the fields it lacks.

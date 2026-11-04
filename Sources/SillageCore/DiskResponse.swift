@@ -91,6 +91,42 @@ public enum DiskResponse {
         return 2 / (1.2 * 1.2) * kappa * kappa / (2 * .pi * Physics.gravitationalConstant * density)
     }
 
+    /// The fewest turns at two scale lengths a generated disk sheds its random motion over.
+    /// Drawn in megayears alone, a large disk turning in 200 Myr cooled in under one turn and
+    /// broke into bound knots, as a gas disk does when it cools faster than it turns (#218).
+    public static let coolingTurns: Float = 1.8
+
+    /// The rotation period at two scale lengths, in Myr, under the live halo the runs give.
+    public static func turn(of galaxy: GalaxyConfig) -> Float {
+        var live = galaxy
+        live.particleCount = max(live.particleCount, 1)
+        if live.haloParticleRatio <= 0 { live.haloParticleRatio = 1.5 }
+        let radius = 2 * max(galaxy.diskScaleLength, 1e-3)
+        let speed = max(
+            DiskEquilibrium(config: live, selfGravitating: true).circularSpeed(atRadius: radius), 1e-6)
+        return 2 * .pi * radius / speed * Float(Physics.megayearsPerTimeUnit)
+    }
+
+    /// The cooling a generated disk is given: the time drawn, held to `coolingTurns` turns.
+    public static func dissipationTime(drawn: Float, of galaxy: GalaxyConfig) -> Float {
+        guard drawn > 0, galaxy.kind.isRotating else { return drawn }
+        return max(drawn, coolingTurns * turn(of: galaxy))
+    }
+
+    /// A spiral's dust, as a share of its particles, as the generators draw it.
+    public static let drawnDust: ClosedRange<Float> = 0.14...0.38
+    /// The share of a large spiral's disk mass its gas carries, at the place of its dust draw.
+    /// As heavy as its dust, the gas of a large disk, laid down wider than the stars, broke the
+    /// outskirts into bound knots cooled over 1.8 to 2.5 turns; a large spiral holds a tenth to a
+    /// fifth of its disk in gas (#218).
+    public static let largeDustMass: ClosedRange<Float> = 0.10...0.20
+
+    /// The gas's share of a generated disk's mass: set for a large spiral, nil otherwise.
+    public static func dustMassFraction(of galaxy: GalaxyConfig) -> Float? {
+        guard galaxy.kind == .spiral, galaxy.diskScaleLength >= smallScaleLength else { return nil }
+        return moved(galaxy.dustFraction, from: drawnDust, to: largeDustMass)
+    }
+
     /// The sech^2 height a disk keeps over its last 500 Myr: the cooling thins a thick one to
     /// about half and leaves a thin one near 0.035 scale lengths. Fitted to 31 probe runs of
     /// twelve spirals, 0.005 scale lengths rms.

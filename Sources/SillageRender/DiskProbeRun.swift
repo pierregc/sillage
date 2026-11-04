@@ -35,6 +35,9 @@ extension DiskProbe {
         public var armMassContrast: Float?
         public var armStreaming: Float?
         public var youngClumpiness: Float?
+        public var dustFraction: Float?
+        /// The gas's share of the disk's mass, the dust particles kept for the light.
+        public var dustMassFraction: Float?
         /// Move a galaxy described before the calm disk onto it before the overrides apply.
         public var calm = false
         public var timeStepScale: Float?
@@ -129,6 +132,11 @@ extension DiskProbe {
         /// Knots lit in the first 300 Myr, and per 100 Myr over the late stretch.
         public var formedFirst300 = 0
         public var formedLatePer100Myr = 0.0
+        /// The largest share of the disk material in bound knots within the explore clip, its
+        /// late mean, and the first frame that holds `KnotTracker.visibleShare` in them.
+        public var knotShareClip = 0.0
+        public var knotShareLate = 0.0
+        public var firstKnotMyr = Double.nan
         public var coherencePatternLate = Double.nan
         public var coherenceMaterialLate = Double.nan
         public var coherenceStaticLate = Double.nan
@@ -217,6 +225,11 @@ extension DiskProbe {
         override(options.armMassContrast, "armMassContrast", \.armMassContrast)
         override(options.armStreaming, "armStreaming", \.armStreaming)
         override(options.youngClumpiness, "youngClumpiness", \.youngClumpiness)
+        override(options.dustFraction, "dustFraction", \.dustFraction)
+        if let gas = options.dustMassFraction {
+            full.galaxies[options.galaxy].dustMassFraction = gas
+            overrides["dustMassFraction"] = Double(gas)
+        }
         if let count = options.armCount {
             full.galaxies[options.galaxy].armCount = count
             overrides["armCount"] = Double(count)
@@ -321,6 +334,7 @@ extension DiskProbe {
 
         var frame = Frame.natal(galaxy)
         var tracker = Tracker(lagMyr: options.lagMyr, patternMode: patternMode, equilibrium: equilibrium)
+        var knots = KnotTracker(lagMyr: options.lagMyr, softening: alone.softening)
         var readings: [Measurement] = []
         let component = seeded.component
         var stepSeconds = 0.0
@@ -342,16 +356,19 @@ extension DiskProbe {
                 start: solver.velocities.contents().bindMemory(to: SIMD3<Float>.self, capacity: drawn),
                 count: drawn)
             let solverCentre = solver.centers.first ?? .zero
-            let (measured, map) = component.withUnsafeBufferPointer { components in
+            let (measured, map, bound) = component.withUnsafeBufferPointer { components in
                 let particles = Particles(
                     positions: positions, velocities: velocities,
                     component: UnsafeBufferPointer(rebasing: components[0..<drawn]))
                 frame = DiskProbe.frame(of: particles, galaxy: galaxy, previous: frame)
-                return measure(
+                let (reading, map) = measure(
                     particles, frame: frame, galaxy: galaxy, equilibrium: equilibrium,
                     solverCentre: solverCentre, timeMyr: timeMyr, patternMode: patternMode)
+                return (reading, map, knots.fold(particles, frame: frame, galaxy: galaxy, timeMyr: timeMyr))
             }
             var reading = measured
+            reading.knots = bound.count
+            reading.knotShare = bound.share
             reading.frame = index
             reading.stepMilliseconds = stepMs / Double(stepsPerFrame)
             if index > 0 {
@@ -654,6 +671,11 @@ extension DiskProbe {
             let lit = late.dropFirst().reduce(0) { $0 + $1.formed }
             summary.formedLatePer100Myr = Double(lit) / lateSpan * 100
         }
+        summary.knotShareClip =
+            readings.filter { $0.timeMyr <= KnotTracker.clipMyr }.map(\.knotShare).max() ?? 0
+        summary.knotShareLate = mean(late.map(\.knotShare))
+        summary.firstKnotMyr =
+            readings.first { $0.knotShare >= KnotTracker.visibleShare }?.timeMyr ?? .nan
         summary.coherencePatternLate = mean(late.map(\.coherencePattern))
         summary.coherenceMaterialLate = mean(late.map(\.coherenceMaterial))
         summary.coherenceStaticLate = mean(late.map(\.coherenceStatic))

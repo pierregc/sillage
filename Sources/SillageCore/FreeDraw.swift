@@ -304,7 +304,7 @@ public struct FreeDraw: Sendable {
                 armStrength: stream.uniform(in: 0.6...1.0) * (armCount <= 2 ? 1 : 0.75),
                 // From an Sa wound tight to an Sc thrown wide open, eleven to forty degrees.
                 armPitch: 0.2 + 0.5 * pitch,
-                dustFraction: stream.uniform(in: 0.14...0.38),
+                dustFraction: stream.uniform(in: DiskResponse.drawnDust),
                 starFormingFraction: stream.uniform(in: 0.008...0.045),
                 // Past a fifth of the stars a bulge reads as a swarm of yellow points at any
                 // distance worth watching from.
