@@ -35,7 +35,8 @@ A look file sits beside it, `x.look.json` (`--look-out` for another path), holdi
 that decides the image and nothing that decides the physics: the render settings, the colour
 of each galaxy, and the camera, fixed or left to the director. A fixed camera looks at the
 centre of mass, or at `camera.center`, in kiloparsecs, when the file gives one (`--center x,y,z`
-on a render), and turns from its start angles to its end ones. On a take the director plans its
+on a render), and turns from its start angles to its end ones; `camera.zoomKeys`, pairs of
+progress through the take and a zoom factor, push it in and pull it back, eased from key to key. On a take the director plans its
 shots from the whole story: the calmer disk filling the frame, a wide shot of the approach, the
 pericentre with the two cores across the frame, the tails wide, and the survivor; about two
 fifths of the clip close, joined by cuts ([the note](docs/notes/director-shots.md)).

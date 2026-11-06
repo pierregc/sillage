@@ -218,6 +218,26 @@ struct LookFileTests {
         #expect(written.center == SIMD3(1, 2, 3))
     }
 
+    /// Zoom keys ease from one to the next in log zoom, hold past either end, and are written
+    /// only when set (#256).
+    @Test func zoomKeysEaseAndHold() throws {
+        var plan = LookFile.CameraPlan(mode: .fixed)
+        #expect(plan.keyedZoom(at: 0.3) == 1)
+        let plain = try JSONEncoder().encode(plan)
+        #expect(!String(decoding: plain, as: UTF8.self).contains("zoomKeys"))
+        plan.zoomKeys = [SIMD2(0.5, 2), SIMD2(0, 1), SIMD2(1, 2)]
+        #expect(plan.keyedZoom(at: -1) == 1)
+        #expect(abs(plan.keyedZoom(at: 0.25) - Float(2).squareRoot()) < 1e-5)
+        #expect(abs(plan.keyedZoom(at: 0.75) - 2) < 1e-5)
+        #expect(plan.keyedZoom(at: 2) == 2)
+        let near = plan.camera(progress: 0.5, radius: 10, fieldOfView: 0.6)
+        let far = plan.camera(progress: 0, radius: 10, fieldOfView: 0.6)
+        #expect(abs(simd_length(far.eye) / simd_length(near.eye) - 2) < 1e-4)
+        let read = try JSONDecoder().decode(
+            LookFile.CameraPlan.self, from: JSONEncoder().encode(plan))
+        #expect(read == plan)
+    }
+
     private func threeGalaxies() -> SceneConfig {
         var scene = SceneConfig.merger(particleCount: 2000)
         scene.galaxies.append(scene.galaxies[0])
