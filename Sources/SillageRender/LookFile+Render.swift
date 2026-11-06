@@ -86,9 +86,27 @@ extension LookFile.CameraPlan {
         let elevationEnd = self.elevationEnd ?? elevation
         let azimuthEnd = self.azimuthEnd ?? azimuth
         return Camera.framing(
-            radius: radius, center: center, fieldOfView: fieldOfView,
+            radius: radius / keyedZoom(at: t), center: center, fieldOfView: fieldOfView,
             elevation: elevation + (elevationEnd - elevation) * eased,
             azimuth: azimuth + (azimuthEnd - azimuth) * eased)
+    }
+}
+
+extension LookFile.CameraPlan {
+    /// The factor `zoomKeys` give at `progress`, eased in log zoom so a push in and a pull back
+    /// of the same ratio take the same course.
+    public func keyedZoom(at progress: Float) -> Float {
+        guard let keys = zoomKeys?.sorted(by: { $0.x < $1.x }), let first = keys.first,
+            let last = keys.last
+        else { return 1 }
+        if progress <= first.x { return max(first.y, 1e-3) }
+        if progress >= last.x { return max(last.y, 1e-3) }
+        let after = keys.firstIndex { $0.x > progress } ?? keys.count - 1
+        let (a, b) = (keys[after - 1], keys[after])
+        let u = (progress - a.x) / max(b.x - a.x, 1e-6)
+        let eased = u * u * (3 - 2 * u)
+        let low = log(max(a.y, 1e-3))
+        return exp(low + (log(max(b.y, 1e-3)) - low) * eased)
     }
 }
 

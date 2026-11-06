@@ -66,11 +66,16 @@ public struct LookFile: Codable, Sendable, Equatable {
         /// Where a fixed camera looks, in kiloparsecs. Absent, the origin: the centre of mass,
         /// which a pair of unequal halos or a steep elevation can leave off the interaction.
         public var center: SIMD3<Float>?
+        /// The zoom over the take, as (progress from its first frame to its last, factor) keys
+        /// eased one to the next and held past either end; it multiplies `zoom`. Absent, the
+        /// camera holds its zoom.
+        public var zoomKeys: [SIMD2<Float>]?
 
         public init(
             mode: Mode = .fixed, elevation: Float = 1.15, elevationEnd: Float? = nil,
             azimuth: Float = 0, azimuthEnd: Float? = nil, zoom: Float = 1,
-            percentile: Float = 0.98, radius: Float = 0, center: SIMD3<Float>? = nil
+            percentile: Float = 0.98, radius: Float = 0, center: SIMD3<Float>? = nil,
+            zoomKeys: [SIMD2<Float>]? = nil
         ) {
             self.mode = mode
             self.elevation = elevation
@@ -81,6 +86,7 @@ public struct LookFile: Codable, Sendable, Equatable {
             self.percentile = percentile
             self.radius = radius
             self.center = center
+            self.zoomKeys = zoomKeys
         }
 
         public init(from decoder: any Decoder) throws {
@@ -96,7 +102,8 @@ public struct LookFile: Codable, Sendable, Equatable {
                 zoom: try c.value(.zoom, or: d.zoom),
                 percentile: try c.value(.percentile, or: d.percentile),
                 radius: try c.value(.radius, or: d.radius),
-                center: try c.decodeIfPresent(SIMD3<Float>.self, forKey: .center))
+                center: try c.decodeIfPresent(SIMD3<Float>.self, forKey: .center),
+                zoomKeys: try c.decodeIfPresent([SIMD2<Float>].self, forKey: .zoomKeys))
         }
     }
 
