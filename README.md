@@ -11,12 +11,6 @@ billion years: 32 million particles, 3 million of them carrying the mass.*
 The aim is a beautiful render that stays honest about the physics: the models come from the
 standard literature, and the limits are listed below.
 
-## The app
-
-Set up a scene, watch it run, style it and export it, all in one window.
-
-![The Sillage window](docs/app.png)
-
 ## From a scene to a video
 
 1. **Set up or generate.** Place galaxies by hand on the setup screen, or let the generator
