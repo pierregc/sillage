@@ -15,7 +15,7 @@ physics: the models come from the standard literature, and the limits are listed
 
 - Simulates self-gravitating galaxies on the GPU, dark-matter halos included.
 - Renders them in dozens of looks, filmed by a fixed camera or by a director.
-- Runs nights: random scenes, a preview of each, and the ones you pick at high resolution.
+- Generates scenes, previews them, and renders the ones you pick at high resolution.
 - Exports videos and looping animations, replayable from the scene and look files kept
   beside every render.
 
@@ -73,4 +73,4 @@ so reuse them freely as long as the credit comes along.
 
 ## Small print
 
-AI did a good share of the typing here. Seemed worth saying out loud.
+Built with AI agents.
