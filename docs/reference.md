@@ -1,14 +1,7 @@
-# Sillage
+# Sillage reference
 
-A hobby N-body simulator for galaxy collisions on Apple Silicon. The models are taken from the
-standard literature, and what they are pointed at is a picture worth looking at rather than a
-research result.
-
-https://github.com/user-attachments/assets/325910ab-a244-47e4-a323-6c62412da79a
-
-*Two spiral galaxies meet, fling out two long tidal tails and merge into one over about a
-billion years: 32 million particles, 3 million of them carrying the mass, at constant speed
-with a fixed camera.*
+The complete description of the command line, the files and the formats. The
+[README](../README.md) is the overview.
 
 ## Running it
 
@@ -43,7 +36,7 @@ on a render), and turns from its start angles to its end ones; `camera.zoomKeys`
 progress through the take and a zoom factor, push it in and pull it back, eased from key to key. On a take the director plans its
 shots from the whole story: the calmer disk filling the frame, a wide shot of the approach, the
 pericentre with the two cores across the frame, the tails wide, and the survivor; about two
-fifths of the clip close, joined by cuts ([the note](docs/notes/director-shots.md)).
+fifths of the clip close, joined by cuts ([the note](notes/director-shots.md)).
 `look <scene> --grid --stills <dir> --base <look> --frames shots` prints the plan and draws the
 middle of each shot. `--look x.look.json` draws with
 it, and every look flag given alongside overrides its field. A field left out takes the value
@@ -78,14 +71,14 @@ with a companion, a lone black hole in place of the first one, with their arm co
 arm pitch, bulge and thickness, the mass ratio and the geometry of each encounter. How fast a
 companion comes in is drawn for itself: two in five are captured on a bound orbit and pass early
 so they come back round, three in ten fall in from rest or nearly, the rest pass at 120 to
-900 km/s far out, the faster the closer ([the note](docs/notes/approach.md)). A spiral of
+900 km/s far out, the faster the closer ([the note](notes/approach.md)). A spiral of
 three to five arms is drawn for its response rather than its Toomre Q: Q is solved for an
 effective Q of 1.75 to 1.95, 1.72 to 1.76 under a scale length of 4.2 kpc, Q over what the
 softening at 100 000 particles a galaxy and the disk's late thickness leave of its own pull, so a
 small, soft or thick disk is drawn colder; a small two-armed spiral is drawn at 1.80 to 1.86, a
 large one at the response its draw of Q gives at that softening, 1.90 at least. The scene file
 keeps that response (`effectiveToomreQ`) and every run solves Q for it at its own softening
-([the note](docs/notes/lumpy-arms.md)). What changes a scene most is drawn from a Sobol sequence
+([the note](notes/lumpy-arms.md)). What changes a scene most is drawn from a Sobol sequence
 shifted by the batch seed, so a batch covers the space instead of clumping; the rest comes from
 a stream seeded by the scene. A candidate whose signature (galaxy count, the first two galaxies,
 the first encounter) sits closer than `--spacing`, 0.3 by default, to a scene already in the
@@ -99,7 +92,7 @@ A batch also holds archetypes, known interacting systems as starting points: `an
 (UGC 10214), `polar-ring` (NGC 4650A), `minor-merger`, `compact-group` (in the style of
 Stephan's Quintet) and `black-hole-pass`, a galaxy and a lone black hole of a hundredth to
 three tenths of its mass, passing slowly near the plane, fast over the poles, plunging through
-the centre or bound and sinking ([`docs/notes/black-holes.md`](docs/notes/black-holes.md)). Each is a set of galaxies and encounter geometry with ranges of its own,
+the centre or bound and sinking ([`docs/notes/black-holes.md`](notes/black-holes.md)). Each is a set of galaxies and encounter geometry with ranges of its own,
 narrow enough that it reads as what it is named after: the Antennae are two comparable spirals,
 both prograde and steeply inclined, on a bound orbit; the ring is a compact companion dropped
 through a disk along its axis. One scene in four is an archetype, `--archetypes 0.4` for
@@ -112,12 +105,12 @@ hold a pair follows from that share the same way, so every ten places hold eight
 rounds come in two: an archetype place that holds a pair takes the six archetypes of two
 galaxies in turn, any other the compact group and the black hole's pass, and the free places of
 each kind take the free draws of two galaxies, or of another count, in order
-([the note](docs/notes/pairs.md)).
+([the note](notes/pairs.md)).
 `--preset antennae --seed S --index K` draws the Antennae alone: their scene `K` of batch `S`,
 the same one the batch draws when they come round for the `K`-th time. `draw.generator` in the
 scene file names the archetype, or `free`, and the library's archetype filter reads it there. One
 reference per archetype at exploration settings, five moments of each clip:
-[`docs/archetypes.jpg`](docs/archetypes.jpg).
+[`docs/archetypes.jpg`](archetypes.jpg).
 
 A generated scene is judged before any particle is drawn. The galaxy centres are run alone
 through the clip, in a millisecond, and the scene is refused when none of its pairs comes
@@ -130,9 +123,9 @@ and stops, `--no-check` renders anyway, and `--check` judges a scene read from a
 `scripts/library.sh` drops a rejected seed, logs the reason in `library.log` and draws the
 slot's next seed, and ends by printing how many draws were rejected.
 
-New here? [docs/night-manager.md](docs/night-manager.md) is the short user guide to the whole
+New here? [docs/night-manager.md](night-manager.md) is the short user guide to the whole
 night batch, rating, hires, look and export workflow. To follow a night from the phone, with a
-small model and an hourly routine, see [docs/night-status.md](docs/night-status.md).
+small model and an hourly routine, see [docs/night-status.md](night-status.md).
 
 ## Scene folders
 
@@ -185,7 +178,7 @@ inside its reach. `clip.json` keeps the frames that ran and the story's frames a
 megayears, with `complete` false for a story still going at the cap.
 `sillage-render story <scene or batch folder>` judges curves already written the same way. The
 detector and its measured thresholds are in
-[docs/notes/whole-stories.md](docs/notes/whole-stories.md).
+[docs/notes/whole-stories.md](notes/whole-stories.md).
 
 **One galaxy alone.** `sillage-render probe-disk <scene.json or scene folder> <galaxy index>` takes
 one galaxy out of a scene, star for star, runs it alone for `--myr` (1000) at the scene's own
@@ -197,7 +190,7 @@ app's. `--clumpiness`, `--toomre-q`, `--arm-strength`, `--arm-count`, `--disk-ma
 its Toomre Q for a response as the generators do (a disk whose scene file holds one is solved for
 it at the run's softening), `--softening` overrides the scene's, and
 `scripts/probe-report.py` lays runs side by side. The columns and how to read
-them: [docs/notes/calm-disk-probe.md](docs/notes/calm-disk-probe.md).
+them: [docs/notes/calm-disk-probe.md](notes/calm-disk-probe.md).
 
 ### High resolution
 
@@ -222,7 +215,7 @@ for a quick look.
 
 `--massive M` draws the scene at `--particles` and gives the mass to about M of them, the others
 light tracers that follow the same orbits in the field of the massive ones (#187,
-[docs/notes/light-tracers.md](docs/notes/light-tracers.md)). The softening, the step, the settle
+[docs/notes/light-tracers.md](notes/light-tracers.md)). The softening, the step, the settle
 and the Toomre Q a disk is solved for are M's, and the dark matter is sampled at M's count; the
 tracers walk at the scene's opening angle, so `--theta-tracers` is refused. `hires.json` keeps
 `massive` beside `particles`, and a record without it is a run in which every particle carried
@@ -299,7 +292,7 @@ the scene's `look.json` for the export, moving the raw one explore wrote to `loo
 first time; a later promotion replaces the earlier one, which stays in the scene's `looks/`.
 The looks that carry dust draw it as a web of filaments in each disk's plane, carried round by
 the disk and renewed, and handed back to the grains where an encounter tears the disk (`dustWeb`,
-#197, [the note](docs/notes/dust-web.md)); a `look.json` written before keeps its grains.
+#197, [the note](notes/dust-web.md)); a `look.json` written before keeps its grains.
 
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
@@ -310,11 +303,11 @@ picks the colour world (free by default). `--base` starts from another look inst
 scene's, and `--generated` holds its dust to `StyleAuto.dustCap` as Auto does (below), which is
 how the night promotes a style it is given by name. `palettes <scene> --best 3` draws the three
 best-scored palettes of the scene on a frame of its take, the score under each; see
-[the note](docs/notes/palette-score.md).
+[the note](notes/palette-score.md).
 
 Palettes worth keeping live in `palettes/<name>.palette.json`, saved by the heart in the style
 editor; `--palette <name>` takes one by its name and Auto adds the ones that fit to its
-candidates. See [the note](docs/notes/favourite-palettes.md).
+candidates. See [the note](notes/favourite-palettes.md).
 
 `look <scene> --style auto` chooses the rendering and the palette together, on the picture:
 every rendering of the world (`--world`, else the world of the scene's look) is drawn with the
@@ -325,14 +318,14 @@ reference colours). The best pair is promoted, keeping the scene's camera unless
 <mode>` names one (the night names `director`); `--keep` only writes
 `looks/auto-<world>.png` (the best three) and `looks/auto-<world>.json` (every pair's score). It
 takes about 2 s in the telescope world and 8 s in the free one at 2 M particles; see
-[the note](docs/notes/frame-score.md). Every rendering is drawn and scored with the dust it
+[the note](notes/frame-score.md). Every rendering is drawn and scored with the dust it
 ships with, its own drawn as a web since #197 (`StyleAuto.dustCap`, nil; #174 held it back); see
-[the night manager](docs/night-manager.md#the-night-recipe).
+[the night manager](night-manager.md#the-night-recipe).
 
 Palettes give each galaxy a ramp of colours (core, disk, outskirts, young stars, knots) unless
 `--single` asks for one colour per galaxy, on `look`, `export` and `palettes`; the style editor's
 Multicolore switch and the night's `style.multicolour` do the same. See
-[the note](docs/notes/multicolour-palettes.md).
+[the note](notes/multicolour-palettes.md).
 
 `export <scene> --palette auto|<family>|<file> [--world telescope|free]` draws that one export
 with another palette, as `look --palette` would, and leaves the scene's `look.json` alone.
@@ -363,7 +356,7 @@ saved style for as long as it is held, **Annuler** puts it back, and **Utiliser 
 (⌘S) promotes it as `--promote` does, after which **Exporter…** opens the export sheet. File > Open
 takes any take (⌘O) and any look file (⇧⌘O) over the picture, ⇧⌘S saves the look anywhere, and
 outside the editor ⌘S writes it back where it came from. A file opened and saved untouched is
-the same file; see [the note](docs/notes/style-editor.md).
+the same file; see [the note](notes/style-editor.md).
 `Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing;
 `Sillage.app --thumbcheck <take>` times the thumbnails and the canvas beside them.
 
@@ -678,12 +671,3 @@ Sources/SillageRender/   Metal solver, splat renderer, camera
 Sources/SillageApp/      SwiftUI setup screen and live view
 Sources/sillage-render/  headless PNG renderer
 ```
-
-## Small print
-
-AI did a good share of the typing here. Seemed worth saying out loud.
-
-## License
-
-Code: MIT. Renders and videos: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
-so reuse them freely as long as the credit comes along.
