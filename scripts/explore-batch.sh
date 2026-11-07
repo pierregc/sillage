@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="$ROOT/.build/dev"
 LOOK="$ROOT/looks/raw.look.json"
 
-# Both measured by --benchmark on an M4 Max, see "Exploration batches" in the README; run it
+# Both measured by --benchmark on an M4 Max, see "Exploration batches" in docs/reference.md; run it
 # again on another machine. SILLAGE_JOBS overrides the first for every batch, --jobs for one.
 DEFAULT_JOBS=4
 # Wall clock per particle per step, per scene finished, with DEFAULT_JOBS running at once, at

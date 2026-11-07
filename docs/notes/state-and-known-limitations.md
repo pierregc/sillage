@@ -2,7 +2,7 @@
 
 Both solvers work. Level 1 is tracers in rigid potentials, level 2 is self-gravitating
 Barnes-Hut with live halos, and level 2 is the default. Galaxies merge, and the orbital decay
-is measured in the README.
+is measured in [the reference](../reference.md).
 
 Standing gaps, in the order they matter:
 

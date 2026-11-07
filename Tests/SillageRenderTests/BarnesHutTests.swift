@@ -407,7 +407,7 @@ struct BarnesHutTests {
 
     /// The equilibrium model is what makes level 2 usable, so it is checked directly rather
     /// than through a dynamical run: watching a disk heat up takes several orbits, which does
-    /// not belong in a fast test suite. The measured behaviour over an orbit is in the README.
+    /// not belong in a fast test suite. The measured behaviour over an orbit is in docs/reference.md.
     @Test(arguments: [Float(0.8), 1.4, 2.0])
     func equilibriumRealisesTheRequestedToomreQ(target: Float) {
         var galaxy = SceneConfig.isolatedDisk(particleCount: 1).galaxies[0]
@@ -844,7 +844,7 @@ struct BarnesHutTests {
     /// A rigid halo carries mass but no inertia, so it cannot take momentum from the system:
     /// following its galaxy's centre of mass makes it do work. This is the guard against that
     /// regression. Whether the orbit actually decays takes hundreds of megayears to show and
-    /// is measured separately; the numbers are in the README.
+    /// is measured separately; the numbers are in docs/reference.md.
     ///
     /// Over three realisations, because one is not a measurement here. The rigid halo's leak
     /// depends on the details of the encounter and swings by a factor of four between seeds,
