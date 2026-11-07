@@ -424,4 +424,4 @@ fixtures in `Tests/Fixtures/queue-status/` hold the expected lines.
 
 Following a night from afar, with a small model: [night-status.md](night-status.md).
 
-Details and measurements: [README](../README.md).
+Details and measurements: [the reference](reference.md).
