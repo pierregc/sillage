@@ -838,7 +838,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
 }
 
 /// `export <scene folder> --format webp|gif`: a looping preview, 960 wide at 16 fps for eight
-/// seconds unless told otherwise, the README's own animation.
+/// seconds unless told otherwise.
 func previewStage(
     _ folder: SceneFolder, export: TakeExport, format: AnimatedImage.Format, preset: VideoPreset?,
     start: Double, reporter: StageReporter, option: (String) -> String?,

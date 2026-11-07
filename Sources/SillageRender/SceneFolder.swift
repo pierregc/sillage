@@ -248,7 +248,7 @@ extension SceneFolder {
     }
 
     public static let maximumParticlesVariable = "SILLAGE_MAX_PARTICLES"
-    /// Measured on the M4 Max with 36 GB, see "High resolution" in the README: ten million
+    /// Measured on the M4 Max with 36 GB, see "High resolution" in docs/reference.md: ten million
     /// peaks at 16 GB, and a full clip takes a night.
     public static let defaultMaximumParticles = 10_000_000
     /// Wall clock per visible particle per step on the same machine, flat from one to ten
