@@ -70,7 +70,7 @@ Units: kpc, 10^10 solar masses, G = 1.
 
 One maintainer, no roadmap. Issues are welcome and answered when there is time.
 
-Built by one person with AI agents. The physics follows Toomre and Toomre (1972) for the
+Built with AI agents. The physics follows Toomre and Toomre (1972) for the
 restricted solver, Barnes and Hut (1986) for the tree, Freeman (1970) for the disk and
 Toomre (1964) for its stability.
 
