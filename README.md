@@ -8,18 +8,35 @@ https://github.com/user-attachments/assets/325910ab-a244-47e4-a323-6c62412da79a
 *Two spiral galaxies meet, fling out two long tidal tails and merge into one over about a
 billion years: 32 million particles, 3 million of them carrying the mass.*
 
-A hobby project by one person. The aim is a beautiful render that stays honest about the
-physics: the models come from the standard literature, and the limits are listed below.
+The aim is a beautiful render that stays honest about the physics: the models come from the
+standard literature, and the limits are listed below.
 
-## What it does
+## The app
 
-- Simulates self-gravitating galaxies on the GPU, dark-matter halos included.
-- Renders them in dozens of looks, filmed by a fixed camera or by a director.
-- Generates scenes, previews them, and renders the ones you pick at high resolution.
-- Exports videos and looping animations, replayable from the scene and look files kept
-  beside every render.
+Set up a scene, watch it run, style it and export it, all in one window.
 
-## Try it
+![The Sillage window](docs/app.png)
+
+## From a scene to a video
+
+1. **Set up or generate.** Place galaxies by hand on the setup screen, or let the generator
+   draw encounters, among them archetypes such as the Antennae, the Mice, a ring, a polar
+   ring and a compact group.
+2. **Preview.** Every scene is explored as a short clip, scored, and shown in the library,
+   where you keep it or discard it.
+3. **High resolution.** The scenes you keep run again at millions of particles, overnight if
+   needed.
+4. **Style.** Dozens of looks, from Hubble and Webb palettes to free ones, with a fixed
+   camera or a director.
+5. **Export.** Videos and looping animations, with the scene and look files kept beside each
+   render so any of them can be replayed.
+
+![Seven archetypes at five moments of their clip](docs/archetypes.jpg)
+
+*Seven archetypes at five moments of their clip: the Antennae, the Mice, a ring, a tadpole, a
+polar ring, a minor merger and a compact group.*
+
+## Getting started
 
 macOS 14 or later on an Apple Silicon Mac.
 
@@ -29,16 +46,16 @@ cd sillage
 ./scripts/dev.sh app && open .build/dev/Sillage.app
 ```
 
-Set up the galaxies on the first screen and start the run. The same script runs the tests,
-the headless renderer and the night pipeline; Xcode is not needed.
+The same script runs the tests, the headless renderer and the night pipeline; Xcode is not
+needed.
 
 ## How it works
 
 Two solvers share one scene: a restricted one that moves test particles through rigid
 potentials, after Toomre and Toomre (1972), and a Barnes-Hut one that gives the particles
-mass, with a tree built in Morton order and walked on the GPU. Both integrate with leapfrog,
-and the softening and the step are derived from the scene. Units: kpc, 10^10 solar masses,
-G = 1.
+mass, dark-matter halos included, with a tree built in Morton order and walked on the GPU.
+Both integrate with leapfrog, and the softening and the step are derived from the scene.
+Units: kpc, 10^10 solar masses, G = 1.
 
 ## Known limits
 
@@ -55,22 +72,13 @@ G = 1.
 - [Night Manager](docs/night-manager.md): the user guide.
 - [Working notes](docs/notes/README.md): what was tried, what was measured, and why.
 
-## Layout
-
-```
-Sources/SillageCore/     physics, no rendering dependency
-Sources/SillageRender/   Metal solver, splat renderer, camera
-Sources/SillageApp/      SwiftUI setup screen and live view
-Sources/sillage-render/  headless renderer and the night pipeline
-```
-
-## Status and license
+## About
 
 One maintainer, no roadmap. Issues are welcome and answered when there is time.
 
+Built by one person with AI agents. The physics follows Toomre and Toomre (1972) for the
+restricted solver, Barnes and Hut (1986) for the tree, Freeman (1970) for the disk and
+Toomre (1964) for its stability.
+
 Code: MIT. Renders and videos: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
 so reuse them freely as long as the credit comes along.
-
-## Small print
-
-Built with AI agents.
