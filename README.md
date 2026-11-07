@@ -4,7 +4,11 @@ A hobby N-body simulator for galaxy collisions on Apple Silicon. The models are 
 standard literature, and what they are pointed at is a picture worth looking at rather than a
 research result.
 
-![Two galaxies through a prograde encounter](docs/merger.webp)
+https://github.com/user-attachments/assets/325910ab-a244-47e4-a323-6c62412da79a
+
+*Two spiral galaxies meet, fling out two long tidal tails and merge into one over about a
+billion years: 32 million particles, 3 million of them carrying the mass, at constant speed
+with a fixed camera.*
 
 ## Running it
 
