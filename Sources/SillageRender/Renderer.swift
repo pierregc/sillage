@@ -292,8 +292,9 @@ public final class Renderer {
     /// makes some of them twenty times brighter than others would move the whole frame unless
     /// its mean is held at one. Taken once, from the ages the scene was sampled with; the
     /// drift as a run ages its stars is a part in a thousand over any run worth watching, and
-    /// recomputing it per frame would make the exposure breathe.
-    private let luminosityNormalisation: Float
+    /// recomputing it per frame would make the exposure breathe. Set from another set of
+    /// particles when a run is drawn as a take of it would be (#239).
+    public var luminosityNormalisation: Float
 
     /// Framing at which the brightness and dust settings are calibrated, in kpc per pixel.
     static let referenceKpcPerPixel: Float = 0.0436
@@ -312,14 +313,17 @@ public final class Renderer {
     /// are read off its age, so the renderer has to know when now is.
     public var time: Float = 0
 
+    /// `sharing` reads the particles of another renderer from its own buffers, `particles`
+    /// left empty: see `init(sharing:settings:)`.
     public init(
         device: MTLDevice? = nil,
         particles: ParticleSystem,
         settings: RenderSettings,
         externalPositions: MTLBuffer? = nil,
-        externalFormation: MTLBuffer? = nil
+        externalFormation: MTLBuffer? = nil,
+        sharing other: Renderer? = nil
     ) throws {
-        guard let device = device ?? MTLCreateSystemDefaultDevice() else {
+        guard let device = other?.device ?? device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
         }
         self.device = device
@@ -327,21 +331,11 @@ public final class Renderer {
         // Only what is drawn. Dark matter is discarded in the vertex shader anyway, so the
         // draw call stops before it: at three million stars with live halos that is four and a
         // half million vertices a frame that existed only to be thrown away.
-        self.drawnCount = particles.visibleCount > 0 ? particles.visibleCount : particles.count
-        self.particleCount = particles.count
-        var totalLight: Float = 0
-        var lit = 0
-        let step = max(particles.formation.count / 50_000, 1)
-        for index in stride(from: 0, to: particles.formation.count, by: step) {
-            let born = particles.formation[index]
-            guard born > -1e8, born < 1e8 else { continue }
-            totalLight +=
-                StellarPopulation.sampled(
-                    ageMyr: -born * Float(Physics.megayearsPerTimeUnit)
-                ).lightPerMass
-            lit += 1
-        }
-        self.luminosityNormalisation = lit > 0 ? Float(lit) / max(totalLight, 1e-6) : 1
+        self.drawnCount =
+            other?.drawnCount ?? (particles.visibleCount > 0 ? particles.visibleCount : particles.count)
+        self.particleCount = other?.particleCount ?? particles.count
+        self.luminosityNormalisation =
+            other?.luminosityNormalisation ?? Self.luminosityNormalisation(formation: particles.formation)
 
         let library: MTLLibrary
         do {
@@ -476,39 +470,46 @@ public final class Renderer {
         }
         // Sorting every galaxy's radii is most of what building the two costs, so once.
         let birthScales =
-            particles.birthRadius.count == particles.count
+            other == nil && particles.birthRadius.count == particles.count
             ? Renderer.scaleLengths(particles.birthRadius, of: particles) : [:]
         guard
-            let positionBuffer = externalPositions
+            let positionBuffer = other?.positionBuffer ?? externalPositions
                 ?? device.makeBuffer(length: count * stride, options: .storageModeShared),
-            let populationBuffer = device.makeBuffer(
-                bytes: attribute(particles.population, Float(0.5)),
-                length: count * 4, options: .storageModeShared),
-            let formationBuffer = externalFormation
+            let populationBuffer = other?.populationBuffer
+                ?? device.makeBuffer(
+                    bytes: attribute(particles.population, Float(0.5)),
+                    length: count * 4, options: .storageModeShared),
+            let formationBuffer = other?.formationBuffer ?? externalFormation
                 ?? device.makeBuffer(
                     bytes: attribute(particles.formation, ParticleSystem.ancient),
                     length: count * 4, options: .storageModeShared),
-            let luminosityBuffer = device.makeBuffer(
-                bytes: attribute(particles.luminosity, Float(1)),
-                length: count * 4, options: .storageModeShared),
-            let componentBuffer = device.makeBuffer(
-                bytes: attribute(particles.component, UInt32(0)),
-                length: count * 4, options: .storageModeShared),
-            let traitBuffer = device.makeBuffer(
-                bytes: Renderer.traits(of: particles, scales: birthScales),
-                length: count * MemoryLayout<SIMD2<Float>>.stride,
-                options: .storageModeShared),
-            let rampKeyBuffer = device.makeBuffer(
-                bytes: Renderer.rampKeys(of: particles, birthScales: birthScales),
-                length: count * 4,
-                options: .storageModeShared),
-            let stellarBuffer = device.makeBuffer(
-                bytes: StellarPopulation.table,
-                length: StellarPopulation.samples * MemoryLayout<SIMD2<Float>>.stride,
-                options: .storageModeShared),
-            let galaxyBuffer = device.makeBuffer(
-                bytes: attribute(particles.galaxyIndex, UInt32(0)),
-                length: count * 4, options: .storageModeShared)
+            let luminosityBuffer = other?.luminosityBuffer
+                ?? device.makeBuffer(
+                    bytes: attribute(particles.luminosity, Float(1)),
+                    length: count * 4, options: .storageModeShared),
+            let componentBuffer = other?.componentBuffer
+                ?? device.makeBuffer(
+                    bytes: attribute(particles.component, UInt32(0)),
+                    length: count * 4, options: .storageModeShared),
+            let traitBuffer = other?.traitBuffer
+                ?? device.makeBuffer(
+                    bytes: Renderer.traits(of: particles, scales: birthScales),
+                    length: count * MemoryLayout<SIMD2<Float>>.stride,
+                    options: .storageModeShared),
+            let rampKeyBuffer = other?.rampKeyBuffer
+                ?? device.makeBuffer(
+                    bytes: Renderer.rampKeys(of: particles, birthScales: birthScales),
+                    length: count * 4,
+                    options: .storageModeShared),
+            let stellarBuffer = other?.stellarBuffer
+                ?? device.makeBuffer(
+                    bytes: StellarPopulation.table,
+                    length: StellarPopulation.samples * MemoryLayout<SIMD2<Float>>.stride,
+                    options: .storageModeShared),
+            let galaxyBuffer = other?.galaxyBuffer
+                ?? device.makeBuffer(
+                    bytes: attribute(particles.galaxyIndex, UInt32(0)),
+                    length: count * 4, options: .storageModeShared)
         else {
             throw RenderError.textureAllocation
         }
@@ -521,7 +522,7 @@ public final class Renderer {
         self.stellarBuffer = stellarBuffer
         self.traitBuffer = traitBuffer
         self.rampKeyBuffer = rampKeyBuffer
-        galaxySlots = Int(particles.galaxyIndex.max() ?? 0) + 1
+        galaxySlots = other?.galaxySlots ?? Int(particles.galaxyIndex.max() ?? 0) + 1
         guard
             let rampBuffer = device.makeBuffer(
                 bytes: [GalaxyRamp](repeating: .none, count: galaxySlots),
@@ -530,9 +531,33 @@ public final class Renderer {
         else { throw RenderError.textureAllocation }
         self.rampBuffer = rampBuffer
         self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
-        if externalPositions == nil {
+        if externalPositions == nil, other == nil {
             upload(positions: particles.positions)
         }
+    }
+
+    /// A renderer of its own size and look over the particles `other` draws: the buffers that
+    /// hold a value a particle are `other`'s, so a run drawn in several formats pays for them
+    /// once (#239). Its colours, arms and smoothing are set on it as on any other.
+    public convenience init(sharing other: Renderer, settings: RenderSettings) throws {
+        try self.init(particles: ParticleSystem(), settings: settings, sharing: other)
+    }
+
+    /// One over the mean light per unit mass of particles formed at `formation`, read on about
+    /// fifty thousand of them.
+    public static func luminosityNormalisation(formation: [Float]) -> Float {
+        var totalLight: Float = 0
+        var lit = 0
+        let step = max(formation.count / 50_000, 1)
+        for index in stride(from: 0, to: formation.count, by: step) {
+            let born = formation[index]
+            guard born > -1e8, born < 1e8 else { continue }
+            totalLight +=
+                StellarPopulation.sampled(ageMyr: -born * Float(Physics.megayearsPerTimeUnit))
+                .lightPerMass
+            lit += 1
+        }
+        return lit > 0 ? Float(lit) / max(totalLight, 1e-6) : 1
     }
 
     /// Field stars, placed far enough out that orbiting the galaxy does not parallax them.

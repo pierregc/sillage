@@ -202,8 +202,27 @@ public enum JobEstimate {
         switch job.kind {
         case .hires:
             let draw = SceneFolder.hiresDraw(job.options, maximumParticles: SceneFolder.maximumParticles())
-            return StageJobs.hiresSeconds(
-                folder, particles: draw.particles, massive: draw.massive, cost: cost)
+            switch SceneFolder.pass(in: job.options) {
+            case "massive":
+                // The massive particles alone, at their own step.
+                return StageJobs.hiresSeconds(folder, particles: draw.massive ?? draw.particles, cost: cost)
+            case "full":
+                let presets =
+                    option("--export", in: job.options)?.split(separator: ",").map(String.init)
+                    ?? SceneFolder.fullPassPresets
+                return StageJobs.hiresSeconds(
+                    folder, particles: draw.particles, massive: draw.massive, cost: cost
+                ).map { run in
+                    let frames = folder.storedHires()?.frames ?? (try? folder.storedClip())?.storyFrames ?? 0
+                    return run
+                        + presets.compactMap(VideoPreset.named).reduce(0) {
+                            $0 + cost.drawSeconds(preset: $1, particles: draw.particles, frames: frames)
+                        }
+                }
+            default:
+                return StageJobs.hiresSeconds(
+                    folder, particles: draw.particles, massive: draw.massive, cost: cost)
+            }
         case .export:
             let number = { option($0, in: job.options).flatMap(Double.init) }
             let clip = try? folder.storedClip()

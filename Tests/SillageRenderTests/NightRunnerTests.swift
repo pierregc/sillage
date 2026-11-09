@@ -66,28 +66,41 @@ struct NightRunnerTests {
             #!/bin/bash
             echo "$*" >> '\(calls.path)'
             command="$1"; scene="$2"; shift 2
-            particles=0; frames=0; preset=""; world=""
+            particles=0; frames=0; preset=""; format=""; world=""; extra=""; pass=""; export=""
             while [ $# -gt 0 ]; do
                 case "$1" in
                     --particles) particles="$2"; shift 2 ;;
+                    --massive) extra="$extra\\"massive\\": $2, "; shift 2 ;;
+                    --pass) pass="$2"; shift 2 ;;
+                    --export) export="$2"; shift 2 ;;
                     --frames) frames="$2"; shift 2 ;;
-                    --preset|--format) preset="$2"; shift 2 ;;
+                    --preset) preset="$2"; shift 2 ;;
+                    --format) format="$2"; shift 2 ;;
                     --world) world="$2"; shift 2 ;;
                     *) shift ;;
                 esac
             done
+            [ "$pass" = massive ] && extra="$extra\\"pass\\": \\"massive\\", "
             case "$command" in
                 hires)
                     sleep "$(cat '\(root.path)/hires-seconds' 2>/dev/null || echo 0.2)"
+                    if [ "$pass" = full ]; then
+                        mkdir -p "$scene/exports"
+                        for name in ${export//,/ }; do touch "$scene/exports/$name.mp4"; done
+                        sed -i '' 's/}$/, "full": {"presets": [], "frames": 1, "seconds": 1, "drawSeconds": {}, "keyFrames": [], "drift": 0, "checkedFrames": 0}}/' "$scene/hires.json"
+                        exit 0
+                    fi
                     touch "$scene/take.sillage"
-                    echo "{\\"particles\\": $particles, \\"previewParticles\\": 40000, \\"width\\": 960,
+                    echo "{$extra\\"particles\\": $particles, \\"previewParticles\\": 40000, \\"width\\": 960,
                       \\"height\\": 540, \\"frames\\": $frames, \\"fps\\": 30, \\"settle\\": 1, \\"steps\\": 1,
                       \\"timeStepScale\\": 3.5, \\"timeStep\\": 0.01, \\"timeStepMyr\\": 0.05,
                       \\"previewTimeStepMyr\\": 0.1, \\"softening\\": 0.1, \\"clipStartMyr\\": 0,
                       \\"clipEndMyr\\": 100}" > "$scene/hires.json" ;;
                 look) [ -f "$scene/look-raw.json" ] || cp "$scene/look.json" "$scene/look-raw.json"
                     cp '\(root.path)'/styled-"$world".look.json "$scene/look.json" ;;
-                export) mkdir -p "$scene/exports"; touch "$scene/exports/$preset.mp4" ;;
+                export) mkdir -p "$scene/exports"
+                    if [ -n "$format" ]; then touch "$scene/exports/preview.$format"
+                    else touch "$scene/exports/$preset.mp4"; fi ;;
             esac
             """)
     }
@@ -332,6 +345,41 @@ struct NightRunnerTests {
         #expect(real.hiresOptions == ["--particles", "8000000"])
         try record(8_000_000, massive: 2_000_000)
         #expect(!real.hiresDone(scene))
+    }
+
+    /// `hires.passes: 2` (#239): each pick's massive particles run alone, the style is chosen on
+    /// their take, then one full pass draws every video preset; previews still come from the
+    /// take. A resumed night finds it all done.
+    @Test func aNightInTwoPassesDrawsTheVideosInTheFullPass() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var recipe = recipe()
+        recipe.hires.massive = .value(50_000)
+        recipe.hires.passes = .value(2)
+        recipe.export = .value(["1080p", "square", "webp"])
+        #expect(runner(recipe).run() == 0)
+        let calls = logged()
+        let hires = calls.filter { $0.hasPrefix("hires ") }
+        #expect(hires.count == 4)
+        let massive = "--particles 100000 --massive 50000 --frames 30 --pass massive"
+        #expect(hires.filter { $0.hasSuffix(massive) }.count == 2)
+        #expect(hires.filter { $0.hasSuffix("--pass full --export 1080p,square") }.count == 2)
+        let exports = calls.filter { $0.hasPrefix("export ") }
+        #expect(exports.count == 2 && exports.allSatisfy { $0.hasSuffix("--format webp") })
+        // The massive pass, the style, then the full pass, scene after scene.
+        let order = calls.filter { !$0.hasPrefix("explore ") }.map { $0.split(separator: " ")[0] }
+        #expect(order == ["hires", "look", "hires", "export", "hires", "look", "hires", "export"])
+        for name in ["scene-0002", "scene-0003"] {
+            let scene = SceneFolder(batch.appendingPathComponent(name))
+            for format in ["1080p", "square"] {
+                #expect(FileManager.default.fileExists(atPath: scene.export(preset: format).path))
+            }
+            #expect(scene.storedHires()?.pass == .massive && scene.storedHires()?.full != nil)
+        }
+        let night = try #require(NightFile.read(from: RunStatusFiles.night(batch: batch)))
+        #expect(night.phases.map(\.done) == [3, 2, 2, 2, 6] && night.recipe["hiresPasses"] == "2")
+
+        #expect(runner(recipe).run() == 0)
+        #expect(logged() == calls)
     }
 
     @Test func stopAfterTheStepEndsTheNightStopped() throws {

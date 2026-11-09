@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Metal
 import SillageCore
@@ -66,6 +67,9 @@ public final class TakeExport {
     }
 
     public let take: RecordingFile.Loaded
+    /// Where the camera, the painted arms, the time and the exposure are read: `take` itself,
+    /// or another take of the same run, the massive one a full pass is framed on (#239).
+    public let framing: RecordingFile.Loaded
     public let look: LookFile
     /// The rate the run was captured at, which decides how long the take plays.
     public let capturedRate: Int
@@ -76,12 +80,14 @@ public final class TakeExport {
     private let stream: SnapshotStream
 
     public init(
-        take: RecordingFile.Loaded, look: LookFile, capturedRate: Int, device: MTLDevice? = nil
+        take: RecordingFile.Loaded, look: LookFile, capturedRate: Int, device: MTLDevice? = nil,
+        framing: RecordingFile.Loaded? = nil
     ) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
         }
         self.take = take
+        self.framing = framing ?? take
         self.look = look
         self.capturedRate = max(capturedRate, 1)
         self.device = device
@@ -113,10 +119,13 @@ public final class TakeExport {
         return (0..<min(count ?? fitting, fitting)).map { first + Double($0) * step }
     }
 
+    /// `stills` are frames of the video, counted from its first, handed to `still` exactly as
+    /// the encoder takes them.
     public func write(
         to url: URL, width: Int, height: Int, framesPerSecond: Int, start: Double = 0,
         duration: Double? = nil, codec: VideoCodec = .hevc, bitsPerSecond: Int? = nil,
-        quality: Double? = nil, metadata: VideoMetadata? = nil,
+        quality: Double? = nil, metadata: VideoMetadata? = nil, stills: Set<Int> = [],
+        still: @escaping (_ frame: Int, _ image: CGImage) throws -> Void = { _, _ in },
         progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
     ) throws -> Report {
         let wanted = positions(framesPerSecond: framesPerSecond, start: start, duration: duration)
@@ -128,9 +137,14 @@ public final class TakeExport {
         let started = Date()
         for (index, position) in wanted.enumerated() {
             let shot = try prepare(renderer, at: position, replay: replay)
-            try writer.append(on: device) { target, buffer in
-                renderer.encode(camera: shot.camera, into: buffer, present: target)
-            }
+            try writer.append(
+                on: device,
+                drawing: { target, buffer in
+                    renderer.encode(camera: shot.camera, into: buffer, present: target)
+                },
+                read: stills.contains(index)
+                    ? { pixels in if let image = PNGWriter.image(bgra: pixels) { try still(index, image) } }
+                    : nil)
             progress(index + 1, wanted.count)
         }
         try writer.finish()
@@ -236,9 +250,7 @@ public final class TakeExport {
     }
 
     private func makeReplay(width: Int, height: Int) -> ShotReplay {
-        ShotReplay(
-            file: look, take: take, capturedFrames: capturedFrames, framesPerSecond: capturedRate,
-            aspect: Float(width) / Float(max(height, 1)))
+        Self.replay(look: look, framing: framing, capturedRate: capturedRate, width: width, height: height)
     }
 
     private func makeRenderer(width: Int, height: Int) throws -> Renderer {
@@ -247,6 +259,10 @@ public final class TakeExport {
             settings: look.renderSettings(width: width, height: height),
             externalPositions: positions)
         renderer.setSmoothing(smoothing.buffer)
+        if framing.recording !== take.recording {
+            renderer.luminosityNormalisation = Renderer.luminosityNormalisation(
+                formation: framing.particles.formation)
+        }
         return renderer
     }
 
@@ -260,8 +276,37 @@ public final class TakeExport {
         // Every frame, as the look grid does: a field refreshed every few frames would leave
         // a still of the grid and the same frame here a kernel apart.
         smoothing.update(from: positions)
+        guard
+            let shot = Self.prepare(
+                renderer, look: look, replay: replay, framing: framing, at: position)
+        else { throw RecordingFile.Failure.truncated }
+        return shot
+    }
+}
+
+extension TakeExport {
+    /// The camera an export of `framing` follows at `width` by `height`. `plan`, the director's
+    /// for that take and look, is made once for every format when given.
+    public static func replay(
+        look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int, width: Int, height: Int,
+        plan: ShotPlan? = nil
+    ) -> ShotReplay {
+        ShotReplay(
+            file: look, take: framing, capturedFrames: framing.recording.capturedFrames,
+            framesPerSecond: max(capturedRate, 1), aspect: Float(width) / Float(max(height, 1)),
+            plan: plan)
+    }
+
+    /// Everything of a frame but the positions and the smoothing: the shot at a captured
+    /// position, and the look, the time and the painted arms `framing` holds there. Exports and
+    /// the full pass of a hires (#239) both draw through this. Nil past the take's end.
+    public static func prepare(
+        _ renderer: Renderer, look: LookFile, replay: ShotReplay, framing: RecordingFile.Loaded,
+        at position: Double
+    ) -> ShotReplay.Shot? {
+        guard let blend = framing.recording.blend(atCaptured: position) else { return nil }
         let shot = replay.shot(atCaptured: position)
-        renderer.prepare(look, shot: shot, take: take, at: blend)
+        renderer.prepare(look, shot: shot, take: framing, at: blend)
         return shot
     }
 }

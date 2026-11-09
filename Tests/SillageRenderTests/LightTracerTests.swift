@@ -78,25 +78,36 @@ struct LightTracerTests {
         }
     }
 
-    /// The tree is the massive particles' alone, so adding tracers moves none of them.
-    @Test func theMassiveParticlesIgnoreTheirTracers() throws {
-        let scene = selfGravitatingDisk(12_000)
-        let (split, tracers) = ParticleSystem.lightTracers(
-            drawn: scene, massive: selfGravitatingDisk(3_000))
-        let alone = split.slice(tracers..<split.count)
+    /// The tree is the massive particles' alone, so adding tracers moves none of them: the
+    /// massive part of a run with tracers repeats the run without them to the bit, black hole
+    /// and star formation included, which is what lets a full pass be framed on a massive
+    /// pass (#239).
+    @Test func theMassiveParticlesRepeatTheRunWithoutTracersToTheBit() throws {
+        let hole = Archetype.blackHolePass.scene(batchSeed: 5, occurrence: 1, particleCount: 12_000)
+        let scenes = [
+            (selfGravitatingDisk(12_000), selfGravitatingDisk(3_000)),
+            (hole, Archetype.blackHolePass.scene(batchSeed: 5, occurrence: 1, particleCount: 3_000)),
+        ]
+        for (drawn, massive) in scenes {
+            let (split, tracers) = ParticleSystem.lightTracers(drawn: drawn, massive: massive)
+            let alone = split.slice(tracers..<split.count)
+            #expect(tracers > 0)
 
-        let reference = try MetalBarnesHutSolver(scene: scene, particles: alone)
-        let traced = try MetalBarnesHutSolver(scene: scene, particles: split, tracers: tracers)
-        reference.step(count: 3)
-        traced.step(count: 3)
-        let expected = reference.particles.positions
-        let positions = traced.particles.positions
-        var worst: Float = 0
-        for index in expected.indices {
-            worst = max(worst, simd_length(expected[index] - positions[tracers + index]))
+            let reference = try MetalBarnesHutSolver(scene: massive, particles: alone)
+            let traced = try MetalBarnesHutSolver(scene: massive, particles: split, tracers: tracers)
+            reference.step(count: 40)
+            traced.step(count: 40)
+            let expected = reference.particles
+            let run = traced.particles
+            #expect(Array(run.positions[tracers...]) == expected.positions, "\(drawn.name)")
+            #expect(Array(run.velocities[tracers...]) == expected.velocities, "\(drawn.name)")
+            #expect(Array(run.formation[tracers...]) == expected.formation, "\(drawn.name)")
+            func read(_ disks: [DiskState]) -> [Float] {
+                disks.flatMap { [$0.axis.x, $0.axis.y, $0.axis.z, $0.coherence, $0.disruption, $0.torn] }
+            }
+            #expect(traced.centers == reference.centers)
+            #expect(read(traced.diskFrames) == read(reference.diskFrames))
         }
-        // The halo centres are summed in other blocks, which can move a last bit.
-        #expect(worst < 1e-5)
     }
 
     /// A tracer anywhere feels what direct summation over the massive particles says.

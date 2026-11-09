@@ -102,6 +102,11 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         public var massive: Setting<Int> = .auto
         /// The first frames of the story only, for a short run; Auto is the whole story.
         public var frames: Setting<Int> = .auto
+        /// 1: the run writes a take of every particle and the videos are exported from it after
+        /// the style. 2 (#239): the massive particles run alone first, the style is chosen on
+        /// their take, then every particle runs again and the videos are drawn as it goes, with
+        /// no take of them. Auto is 1 up to `twoPassesAbove` drawn, 2 past it.
+        public var passes: Setting<Int> = .auto
 
         public init() {}
 
@@ -110,6 +115,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             particles = try c.decodeIfPresent(Setting<Int>.self, forKey: .particles) ?? .auto
             massive = try c.decodeIfPresent(Setting<Int>.self, forKey: .massive) ?? .auto
             frames = try c.decodeIfPresent(Setting<Int>.self, forKey: .frames) ?? .auto
+            passes = try c.decodeIfPresent(Setting<Int>.self, forKey: .passes) ?? .auto
         }
     }
 
@@ -202,6 +208,17 @@ extension NightRecipe {
 
     public var exports: [String] { export.value ?? Self.defaultExports }
 
+    /// Past this many drawn, Auto draws the videos in a second pass: the take of every
+    /// particle no longer fits a night's disk (12 to 18 GB a scene at 8 M, 75 at 50 M).
+    public static let twoPassesAbove = 10_000_000
+
+    /// How many passes the hires takes (#239): two only with light tracers to draw.
+    public func hiresPasses(maximum: Int) -> Int {
+        let drawn = hiresParticles(maximum: maximum)
+        guard hiresMassive(maximum: maximum) < drawn else { return 1 }
+        return hires.passes.value ?? (drawn > Self.twoPassesAbove ? 2 : 1)
+    }
+
     /// One pick in five in the free world, whose palettes run louder than the telescope's (#175).
     public static let defaultFreeShare = 0.2
 
@@ -272,7 +289,7 @@ extension NightRecipe {
         "explore": [
             "scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "pairShare", "galaxies", "seed",
         ],
-        "hires": ["particles", "massive", "frames"],
+        "hires": ["particles", "massive", "frames", "passes"],
         "style": ["world", "style", "palette", "multicolour", "camera", "freeShare"],
     ]
 
@@ -355,6 +372,9 @@ extension NightRecipe {
         }
         if let frames = hires.frames.value, frames < 2 {
             throw Failure.badValue("hires.frames", "at least 2")
+        }
+        if let passes = hires.passes.value, !(1...2).contains(passes) {
+            throw Failure.badValue("hires.passes", "1 or 2")
         }
         if let world = style.world.value, Palette.World(rawValue: world) == nil {
             throw Failure.badValue("style.world", "telescope or free")

@@ -75,16 +75,20 @@ public struct CostModel: Codable, Sendable, Equatable {
     public var tracers: Line
     /// Per export, keyed `<preset>/<codec>`. Units are frames.
     public var exports: [String: Line]
+    /// Per frame a full pass draws as it runs (#239), keyed `<preset>/<codec>`: a frame costs
+    /// the fixed part at any count, and the rate for each particle drawn. Units are particles.
+    public var draws: [String: Line]
 
     public init(
         updated: Date, explore: Line, hires: Line, tracers: Line = CostModel.fallbackTracers,
-        exports: [String: Line] = [:]
+        exports: [String: Line] = [:], draws: [String: Line] = [:]
     ) {
         self.updated = updated
         self.explore = explore
         self.hires = hires
         self.tracers = tracers
         self.exports = exports
+        self.draws = draws
     }
 
     /// A file written before light tracers has no line for them.
@@ -96,6 +100,7 @@ public struct CostModel: Codable, Sendable, Equatable {
         hires = try c.decode(Line.self, forKey: .hires)
         tracers = try c.decodeIfPresent(Line.self, forKey: .tracers) ?? Self.fallbackTracers
         exports = try c.decodeIfPresent([String: Line].self, forKey: .exports) ?? [:]
+        draws = try c.decodeIfPresent([String: Line].self, forKey: .draws) ?? [:]
     }
 
     /// One explored scene's own wall clock with `jobs` running at once.
@@ -132,6 +137,26 @@ public struct CostModel: Codable, Sendable, Equatable {
         ).record
         return hiresSeconds(
             particles: particles, massive: record.massive, steps: record.settle + record.steps)
+    }
+
+    /// Drawing `frames` of `preset` over `particles` while a full pass runs.
+    public func drawSeconds(preset: VideoPreset, particles: Int, frames: Int) -> Double {
+        drawLine(preset: preset).seconds(Double(particles)) * Double(frames)
+    }
+
+    public func drawLine(preset: VideoPreset) -> Line {
+        draws[Self.exportKey(preset: preset.name, codec: preset.defaultCodec.rawValue)]
+            ?? Self.fallbackDraw(preset)
+    }
+
+    /// A full pass (#239): the run of every particle again, and `presets` drawn as it goes.
+    public func fullPassSeconds(
+        particles: Int, massive: Int?, steps: Int, frames: Int, presets: [String]
+    ) -> Double {
+        hiresSeconds(particles: particles, massive: massive, steps: steps)
+            + presets.compactMap(VideoPreset.named).reduce(0) {
+                $0 + drawSeconds(preset: $1, particles: particles, frames: frames)
+            }
     }
 
     public func exportSeconds(preset: VideoPreset, codec: VideoCodec, frames: Int) -> Double {
@@ -175,6 +200,23 @@ extension CostModel {
             ? 1 / (fallbackSpeed4K * fallbackExportFramesPerSecond)
             : perFrame1080p * Double(preset.width * preset.height) / (1920 * 1080)
         return Line(fixedSeconds: 0, secondsPerUnit: perFrame)
+    }
+
+    /// Measured alone on the M4 Max (#239, docs/notes/render-during-hires.md): a frame drawn
+    /// during a full pass, at the presets' sizes with the scene's look, against the particles
+    /// drawn. Other sizes follow 1080p by their pixel count, as the exports do.
+    public static let fallbackDrawFixed4K = 0.040
+    public static let fallbackDrawPerParticle4K = 6.0e-9
+    public static let fallbackDrawFixed1080p = 0.012
+    public static let fallbackDrawPerParticle1080p = 3.0e-9
+
+    public static func fallbackDraw(_ preset: VideoPreset) -> Line {
+        if preset.width * preset.height >= 3840 * 2160 {
+            return Line(fixedSeconds: fallbackDrawFixed4K, secondsPerUnit: fallbackDrawPerParticle4K)
+        }
+        let pixels = Double(preset.width * preset.height) / (1920 * 1080)
+        return Line(
+            fixedSeconds: fallbackDrawFixed1080p * pixels, secondsPerUnit: fallbackDrawPerParticle1080p)
     }
 
     public static func fallback(at date: Date = Date()) -> CostModel {
@@ -262,6 +304,13 @@ extension CostModel {
                 ?? VideoPreset(name: name, width: 1920, height: 1080)
             model.exports[key] = fit(samples, fallback: fallbackExport(preset))
         }
+        for (key, samples) in history.draws {
+            let name = String(key.prefix { $0 != "/" })
+            let preset =
+                VideoPreset.all.first { $0.name == name }
+                ?? VideoPreset(name: name, width: 1920, height: 1080)
+            model.draws[key] = fit(samples, fallback: fallbackDraw(preset))
+        }
         return model
     }
 
@@ -329,17 +378,24 @@ public struct CostHistory: Sendable, Equatable {
     public var explore: [CostModel.Sample] = []
     public var hires: [CostModel.Sample] = []
     public var exports: [String: [CostModel.Sample]] = [:]
+    /// A full pass's frames, one sample a preset: the particles drawn and a frame's seconds.
+    public var draws: [String: [CostModel.Sample]] = [:]
 
     public init() {}
 
-    public var isEmpty: Bool { explore.isEmpty && hires.isEmpty && exports.isEmpty }
+    public var isEmpty: Bool { explore.isEmpty && hires.isEmpty && exports.isEmpty && draws.isEmpty }
 
     public static func read(library: URL) -> CostHistory {
         var history = CostHistory()
         for batch in directories(in: library) {
             history.explore += exploreSamples(batch: batch)
             for scene in directories(in: batch) {
-                if let sample = hiresSample(SceneFolder(scene)) { history.hires.append(sample) }
+                let folder = SceneFolder(scene)
+                if let sample = hiresSample(folder) { history.hires.append(sample) }
+                if let full = fullPassSamples(folder) {
+                    history.hires.append(full.run)
+                    for (key, sample) in full.draws { history.draws[key, default: []].append(sample) }
+                }
             }
             for (key, samples) in exportSamples(batch: batch) {
                 history.exports[key, default: []] += samples
@@ -416,8 +472,33 @@ public struct CostHistory: Sendable, Equatable {
         let steps = Double(record.settle + record.steps)
         return CostModel.Sample(
             units: Double(record.massiveParticles) * steps,
-            tracerUnits: Double(record.tracers) * steps, seconds: seconds,
+            tracerUnits: Double(record.simulatedTracers) * steps, seconds: seconds,
             date: modified(folder.hires) ?? .distantPast, id: folder.sceneID)
+    }
+
+    /// A full pass (#239): the run, its drawing left out, as a hires with tracers, and each
+    /// preset's frame against the particles drawn.
+    static func fullPassSamples(_ folder: SceneFolder) -> (
+        run: CostModel.Sample, draws: [String: CostModel.Sample]
+    )? {
+        guard let record = folder.storedHires(), let full = record.full, full.seconds > 0, full.frames > 0
+        else { return nil }
+        let steps = Double(record.settle + record.steps)
+        let date = modified(folder.hires) ?? .distantPast
+        var draws: [String: CostModel.Sample] = [:]
+        for (name, seconds) in full.drawSeconds where seconds > 0 {
+            let codec = (VideoPreset.named(name)?.defaultCodec ?? .hevc).rawValue
+            draws[CostModel.exportKey(preset: name, codec: codec)] = CostModel.Sample(
+                units: Double(record.particles), seconds: seconds / Double(full.frames), date: date,
+                id: folder.sceneID)
+        }
+        return (
+            CostModel.Sample(
+                units: Double(record.massiveParticles) * steps,
+                tracerUnits: Double(record.tracers) * steps,
+                seconds: full.seconds - full.drawingSeconds, date: date, id: folder.sceneID),
+            draws
+        )
     }
 
     /// #101's `export.done` lines: `t`, `preset`, `codec`, `frames`, `seconds`. Lines of any
@@ -436,6 +517,8 @@ public struct CostHistory: Sendable, Equatable {
                 let object = try? JSONSerialization.jsonObject(with: Data(line.utf8))
                     as? [String: Any],
                 object["kind"] as? String == "export.done",
+                // A full pass's videos are priced by `draws`.
+                object["pass"] as? String != "full",
                 let preset = object["preset"] as? String,
                 let frames = (object["frames"] as? NSNumber)?.doubleValue,
                 let seconds = (object["seconds"] as? NSNumber)?.doubleValue, frames > 0, seconds > 0
@@ -507,6 +590,22 @@ extension CostModel {
                     format: "export     %@ %.1f s + %.1f ms a frame, %@: 900 frames in %.0f s",
                     key, line.fixedSeconds, line.secondsPerUnit * 1e3, Self.origin(line),
                     line.seconds(900)))
+        }
+        var drawn = Set(draws.keys)
+        drawn.formUnion(NightRecipe.defaultExports.map { "\($0)/hevc" })
+        for key in drawn.sorted() {
+            let name = String(key.prefix { $0 != "/" })
+            let line =
+                draws[key]
+                ?? Self.fallbackDraw(
+                    VideoPreset.all.first { $0.name == name }
+                        ?? VideoPreset(name: name, width: 1920, height: 1080))
+            lines.append(
+                String(
+                    format: "draw       %@ %.1f ms + %.2f ns a particle drawn, a frame, %@:"
+                        + " %.0f ms at 8 M, %.2f s at 200 M",
+                    key, line.fixedSeconds * 1e3, line.secondsPerUnit * 1e9, Self.origin(line),
+                    line.seconds(8e6) * 1e3, line.seconds(2e8)))
         }
         return lines
     }

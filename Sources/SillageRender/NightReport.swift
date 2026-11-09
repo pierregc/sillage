@@ -7,7 +7,9 @@ struct NightEvents {
     let events: [RunEvent]
     let explored: [RunEvent]
     let picks: [RunEvent]
+    /// One a scene: a full pass's own is in `fullPasses`.
     let hires: [RunEvent]
+    let fullPasses: [RunEvent]
     let videos: [RunEvent]
     let skipped: [RunEvent]
     let errors: [RunEvent]
@@ -19,7 +21,8 @@ struct NightEvents {
         self.events = events
         explored = of(RunEvent.Kind.exploreScene)
         picks = of(RunEvent.Kind.pick).filter { $0.chosen != false }
-        hires = of(RunEvent.Kind.hiresDone)
+        hires = of(RunEvent.Kind.hiresDone).filter { $0.pass != "full" }
+        fullPasses = of(RunEvent.Kind.hiresDone).filter { $0.pass == "full" }
         videos = of(RunEvent.Kind.exportDone)
         skipped = Self.standingSkips(events)
         errors = of(RunEvent.Kind.error)
@@ -123,11 +126,12 @@ public enum NightReport {
         ]
         if !found.hires.isEmpty {
             lines += ["", "## High resolution", ""]
-            lines += found.hires.map {
+            lines += (found.hires + found.fullPasses).map {
                 let particles = Words.thousands($0.particles ?? 0) + " particles"
                 let massive = $0.massive.map { " (\(Words.thousands($0)) massive)" } ?? ""
                 let minutes = Int(($0.minutes ?? 0).rounded())
-                return "- \($0.scene ?? ""): \(particles)\(massive) in \(minutes) min"
+                let pass = $0.pass.map { ", \($0) pass" } ?? ""
+                return "- \($0.scene ?? ""): \(particles)\(massive) in \(minutes) min\(pass)"
             }
         }
         if !found.videos.isEmpty {

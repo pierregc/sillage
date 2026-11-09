@@ -57,10 +57,15 @@ public struct NightFolder: Sendable {
             + (recipe.hires.frames.value.map { ["--frames", String($0)] } ?? [])
     }
 
-    /// Done at the night's size: a real run of as many particles counts for one with tracers.
+    /// How many passes the night's hires take (#239).
+    public var hiresPasses: Int { recipe.hiresPasses(maximum: maximumParticles) }
+
+    /// Done at the night's size: a real run of as many particles counts for one with tracers,
+    /// and a massive pass for the first of two.
     public func hiresDone(_ scene: SceneFolder) -> Bool {
         scene.storedHires()?.covers(
-            particles: hiresParticles, massive: hiresMassive, frames: recipe.hires.frames.value) ?? false
+            particles: hiresParticles, massive: hiresMassive, frames: recipe.hires.frames.value,
+            passes: hiresPasses) ?? false
     }
 
     /// Where an export of the recipe lands: a preset's video in its own codec, or a preview.
@@ -103,6 +108,7 @@ public struct NightFolder: Sendable {
                     frames: record?.frames ?? 0, chosenByHand: entry?.choice == .yes,
                     galaxies: file?.galaxies.filter { $0.kind != .blackHole }.count))
             if hiresDone(scene) { progress.hiresDone.insert(name) }
+            if scene.storedHires()?.pass == .massive { progress.massivePasses.insert(name) }
             if FileManager.default.fileExists(atPath: scene.rawLook.path) { progress.styled.insert(name) }
             for format in recipe.exports
             where FileManager.default.fileExists(atPath: exportFile(scene, format: format).path) {
@@ -337,8 +343,14 @@ public final class NightRunner: @unchecked Sendable {
             }
             let outcome: Outcome
             switch phase {
-            case .hires: outcome = hires(scene)
+            case .hires: outcome = hires(scene, pass: step.pass)
             case .style: outcome = style(scene, pick: pick)
+            case .export where step.pass == "full":
+                outcome = fullPass(
+                    scene,
+                    presets: plan.steps.filter {
+                        $0.phase == .export && $0.scene == name && $0.pass == "full" && !$0.done
+                    }.compactMap(\.format))
             default: outcome = export(scene, format: format ?? "1080p")
             }
             switch outcome {
@@ -427,17 +439,35 @@ public final class NightRunner: @unchecked Sendable {
         phaseDone("pick", count: names.count)
     }
 
-    private func hires(_ scene: SceneFolder) -> Outcome {
+    private func hires(_ scene: SceneFolder, pass: String? = nil) -> Outcome {
         let name = scene.url.lastPathComponent
         let (particles, massive) = (folder.hiresParticles, folder.hiresMassive)
         say(
             "night      hires \(name), \(particles) particles"
-                + (massive < particles ? " from \(massive) massive" : ""))
+                + (massive < particles ? " from \(massive) massive" : "")
+                + (pass == "massive" ? ", the massive pass" : ""))
         let outcome = runChild(
-            executable.path, ["hires", scene.url.path] + folder.hiresOptions,
+            executable.path,
+            ["hires", scene.url.path] + folder.hiresOptions + (pass.map { ["--pass", $0] } ?? []),
             log: logs.appendingPathComponent("\(name).hires.log")
         ) { [self] in
             update(phase: "hires", quiet: true)
+        }
+        if outcome != .finished(0) { scene.removePartialOutputs() }
+        return outcome
+    }
+
+    /// Every particle again, the videos of `presets` drawn as the run goes (#239).
+    private func fullPass(_ scene: SceneFolder, presets: [String]) -> Outcome {
+        let name = scene.url.lastPathComponent
+        say("night      full pass \(name), drawing \(presets.joined(separator: ", "))")
+        let outcome = runChild(
+            executable.path,
+            ["hires", scene.url.path] + folder.hiresOptions
+                + ["--pass", "full", "--export", presets.joined(separator: ",")],
+            log: logs.appendingPathComponent("\(name).full.log")
+        ) { [self] in
+            update(phase: "export", quiet: true)
         }
         if outcome != .finished(0) { scene.removePartialOutputs() }
         return outcome
@@ -644,6 +674,7 @@ public final class NightRunner: @unchecked Sendable {
             "camera": recipe.style.camera.value ?? "director",
         ]
         if let massive = plan.hiresMassive { values["hiresMassive"] = String(massive) }
+        if let passes = plan.hiresPasses { values["hiresPasses"] = String(passes) }
         if let frames = recipe.hires.frames.value { values["hiresFrames"] = String(frames) }
         if let range = recipe.galaxyRange { values["galaxies"] = "\(range.lowerBound)-\(range.upperBound)" }
         if let names = recipe.explore.archetypes.value { values["archetypes"] = names.joined(separator: ",") }

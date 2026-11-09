@@ -245,6 +245,8 @@ public struct RunEvent: Codable, Sendable, Equatable {
     public var steps: Int?
     public var minutes: Double?
     public var takeGB: Double?
+    /// hires.done and export.done of a scene drawn in two passes (#239): `massive` or `full`.
+    public var pass: String?
     /// export.done.
     public var preset: String?
     public var style: String?
@@ -309,6 +311,7 @@ public struct RunEvent: Codable, Sendable, Equatable {
             case "steps": steps = Int(try number())
             case "minutes": minutes = try number()
             case "take-gb": takeGB = try number()
+            case "pass": pass = value
             case "preset": preset = value
             case "style": style = value
             case "world": world = value

@@ -232,6 +232,77 @@ struct SceneFolderTests {
         #expect(priced < (try model.hiresSeconds(folder, particles: 8_000_000)) * 0.6)
     }
 
+    /// Two passes (#239): the massive particles of the draw alone, then the whole draw again,
+    /// drawing the videos as it goes, framed on the first's take.
+    @Test func aHiresInTwoPassesRunsTheMassiveParticlesThenDrawsTheVideos() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        func hires(_ options: [String]) throws -> (arguments: [String], record: SceneFolder.Hires) {
+            try folder.hiresArguments(options, maximumParticles: 10_000_000)
+        }
+        let draw = ["--particles", "8e6", "--massive", "2e6"]
+        let whole = try hires(draw)
+        let massive = try hires(draw + ["--pass", "massive"])
+        #expect(massive.arguments.contains("--massive-only") && !whole.arguments.contains("--massive-only"))
+        #expect(massive.record.pass == .massive && whole.record.pass == nil)
+        #expect(value("--take", in: massive.arguments) == value("--take", in: whole.arguments))
+        #expect(value("--dt", in: massive.arguments) == value("--dt", in: whole.arguments))
+        #expect(!massive.arguments.contains("--pass"))
+        // Without tracers there is nothing to draw in a second pass.
+        #expect(throws: SceneFolder.HiresError.self) {
+            try hires(["--particles", "2e6", "--pass", "massive"])
+        }
+        #expect(throws: SceneFolder.HiresError.self) { try hires(draw + ["--pass", "twice"]) }
+
+        // The full pass follows a massive pass of the same draw and steps, and only that.
+        #expect(throws: SceneFolder.HiresError.self) { try hires(draw + ["--pass", "full"]) }
+        try whole.record.encoded().write(to: folder.hires)
+        try Data().write(to: folder.take)
+        #expect(throws: SceneFolder.HiresError.self) { try hires(draw + ["--pass", "full"]) }
+        try massive.record.encoded().write(to: folder.hires)
+        #expect(throws: SceneFolder.HiresError.self) {
+            try hires(["--particles", "8e6", "--massive", "1e6", "--pass", "full"])
+        }
+        let full = try hires(draw + ["--pass", "full"])
+        #expect(full.record == massive.record)
+        #expect(value("--draw", in: full.arguments) == "4k,vertical")
+        #expect(value("--draw-take", in: full.arguments) == folder.take.path)
+        #expect(value("--draw-out", in: full.arguments) == folder.exports.path)
+        #expect(value("--key-frames", in: full.arguments) == SceneFolder.partial(folder.keyFrames).path)
+        #expect(value("--key-frame-curves", in: full.arguments) == folder.hiresCurves.path)
+        for flag in ["--video", "--curves", "--take", "--massive-only"] {
+            #expect(!full.arguments.contains(flag))
+        }
+        for flag in ["--particles", "--massive", "--dt", "--settle", "--steps", "--frames", "--scene"] {
+            #expect(value(flag, in: full.arguments) == value(flag, in: massive.arguments))
+        }
+        let square = try hires(draw + ["--pass", "full", "--export", "square,4k"])
+        #expect(value("--draw", in: square.arguments) == "square,4k")
+        #expect(throws: SceneFolder.HiresError.self) {
+            try hires(draw + ["--pass", "full", "--export", "webp"])
+        }
+
+        // A massive pass stands for the first of two passes only, and a full pass is done once
+        // it has drawn.
+        #expect(massive.record.covers(particles: 8_000_000, massive: 2_000_000, frames: nil, passes: 2))
+        #expect(!massive.record.covers(particles: 8_000_000, massive: 2_000_000, frames: nil))
+        #expect(whole.record.covers(particles: 8_000_000, massive: 2_000_000, frames: nil, passes: 2))
+        #expect(massive.record.simulatedTracers == 0 && massive.record.tracers == 6_000_000)
+        #expect(folder.hiresDone(draw + ["--pass", "massive"], maximumParticles: 10_000_000))
+        #expect(!folder.hiresDone(draw, maximumParticles: 10_000_000))
+        #expect(!folder.hiresDone(draw + ["--pass", "full"], maximumParticles: 10_000_000))
+        var drawn = massive.record
+        drawn.full = SceneFolder.Hires.FullPass(
+            presets: ["4k"], frames: 900, seconds: 3_000, drawSeconds: ["4k": 90])
+        try drawn.encoded().write(to: folder.hires)
+        #expect(folder.hiresDone(draw + ["--pass", "full"], maximumParticles: 10_000_000))
+        let read = try JSONDecoder().decode(SceneFolder.Hires.self, from: drawn.encoded())
+        #expect(read == drawn && read.full?.drawingSeconds == 90)
+        // A record of one pass writes neither field.
+        let text = String(decoding: try whole.record.encoded(), as: UTF8.self)
+        #expect(!text.contains("\"pass\"") && !text.contains("\"full\""))
+    }
+
     @Test func anOutputIsWrittenHiddenAndPutInPlaceWhole() throws {
         let folder = try temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder.batch) }
