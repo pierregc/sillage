@@ -1594,6 +1594,10 @@ if massiveOnly, tracerCount > 0 {
     drawnScene = scene
     print("massive    \(seeded.visibleCount) visible run alone, without the tracers")
 }
+// `--tracer-sort N`: steps between two sorts of the tracers' walk order, to measure it.
+if let interval = argument("tracer-sort").flatMap(Int.init) {
+    MetalBarnesHutSolver.tracerSortInterval = interval
+}
 let gpuSolver: (any GPUSolver)? =
     backend == "cpu"
     ? nil
