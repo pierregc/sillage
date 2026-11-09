@@ -35,7 +35,9 @@ BURST_SMOOTHING = 15
 
 
 def load_run(folder):
-    run = {"name": os.path.basename(os.path.normpath(folder)), "folder": folder}
+    path = os.path.abspath(folder)
+    run = {"name": os.path.join(os.path.basename(os.path.dirname(path)), os.path.basename(path)),
+           "folder": folder}
     with open(os.path.join(folder, "hires.json")) as handle:
         run["record"] = json.load(handle)
     run["curves"] = curves(os.path.join(folder, "curves-hires.csv"))
