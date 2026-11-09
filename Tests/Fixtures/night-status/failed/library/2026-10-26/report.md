@@ -1,23 +1,23 @@
-# Nuit du 26 oct.
+# Night of 26 Oct
 
-- État : en échec, de 26 oct. 22 h 00 à 27 oct. 3 h 12 (5 h 12)
-- Livraison : avant 7 h 00, arrêtée 3 h 48 avant
-- Aperçus : 47 explorés, 2 rejetés, 1 en échec
-- Choisies : scene-0019 (0,91), scene-0007 (0,88), scene-0023 (0,84), scene-0031 (0,80)
-- Haute résolution : 1 faite sur 4 prévues
-- Vidéos : 1 (212,3 Mo)
-- Laissées de côté : 1 · erreurs : 2
+- State: failed, from 26 Oct 22:00 to 27 Oct 03:12 (5 h 12 min)
+- Delivery: by 07:00, stopped 3 h 48 min early
+- Previews: 47 explored, 2 rejected, 1 failed
+- Kept: scene-0019 (0.91), scene-0007 (0.88), scene-0023 (0.84), scene-0031 (0.80)
+- High resolution: 1 done of 4 planned
+- Videos: 1 (212.3 MB)
+- Left out: 1 · errors: 2
 
-## Haute résolution
+## High resolution
 
-- scene-0019 : 2 000 000 particules en 30 min
+- scene-0019: 2,000,000 particles in 30 min
 
-## Vidéos
+## Videos
 
-- scene-0019/exports/4k.mp4 (212,3 Mo)
+- scene-0019/exports/4k.mp4 (212.3 MB)
 
-## Laissées de côté et échecs
+## Left out and failed
 
-- scene-0031, haute résolution : skipped by hand
-- scene-0007, haute résolution : failed with status 1 (journal : .logs/scene-0007.hires.log)
-- scene-0023, haute résolution : Metal command buffer failed (journal : .logs/scene-0023.hires.log)
+- scene-0031, high resolution: skipped by hand
+- scene-0007, high resolution: failed with status 1 (log: .logs/scene-0007.hires.log)
+- scene-0023, high resolution: Metal command buffer failed (log: .logs/scene-0023.hires.log)

@@ -25,28 +25,29 @@ struct NightPageTests {
     @Test func theSidebarListsNightsNewestFirst() {
         let done = Self.read("done", selected: nil).items
         #expect(done.map(\.id) == ["2026-10-27", "2026-10-26"])
-        #expect(done[1].title == "26 oct. · 50 scènes · 4 vidéos")
+        #expect(done[1].title == "26 Oct · 50 scenes · 4 videos")
         #expect(
             Self.read("hires", selected: nil).items.map(\.title) == [
-                "26 oct. · 50 scènes · 1 vidéo · en cours"
+                "26 Oct · 50 scenes · 1 video · running"
             ])
-        #expect(Self.read("failed", selected: nil).items[0].title.hasSuffix("en échec"))
+        #expect(Self.read("failed", selected: nil).items[0].title.hasSuffix(" · failed"))
     }
 
     @Test func aRunningNightSaysWhereItIs() throws {
         let page = try #require(Self.read("hires").page)
-        #expect(page.title == "Nuit du 26 oct." && page.live && page.status == "En cours")
+        #expect(page.title == "Night of 26 Oct" && page.live && page.status == "Running")
         #expect(
-            page.current?.line == "scene-0023, haute résolution, image 412/900, prêt vers 2 h 20")
+            page.current?.line == "scene-0023, high resolution, frame 412/900, ready around 02:20")
         #expect(page.current?.progress == 0.458)
-        #expect(page.delivery == "Livraison : prête vers 6 h 20, avant 7 h 00, 40 min de marge")
+        #expect(page.delivery == "Delivery: ready around 06:20, by 07:00, 40 min to spare")
         #expect(page.report == nil)
-        #expect(page.phases.map(\.title) == ["Aperçus", "Sélection", "Haute résolution", "Style", "Vidéos"])
+        #expect(
+            page.phases.map(\.title) == ["Previews", "Selection", "High resolution", "Style", "Videos"])
         let counts = page.phases.map(\.counts)
         #expect(counts == ["50/50", "4/4", "1/4", "1/4", "1/4"])
         #expect(page.phases.map(\.state) == [.done, .done, .current, .waiting, .waiting])
-        #expect(page.phases[0].detail == "2 rejetés · 1 en échec")
-        #expect(page.phases[0].time == "fini 0 h 05")
+        #expect(page.phases[0].detail == "2 rejected · 1 failed")
+        #expect(page.phases[0].time == "finished 00:05")
         // Part of the running hires counts towards its bar.
         #expect(page.phases[2].fraction > 0.25 + 0.1 && page.phases[2].fraction < 0.5)
         #expect(page.controls.job == 7 && page.controls.canSteer && page.controls.canSkip)
@@ -60,9 +61,9 @@ struct NightPageTests {
                 "scene-0019", "scene-0007", "scene-0023", "scene-0031",
             ])
         let first = page.scenes[0]
-        #expect(first.stage == "Terminée")
-        #expect(first.detail.contains("score 0,91") && first.detail.contains("haute résolution 30 min"))
-        #expect(page.scenes[2].current && page.scenes[2].stage == "Haute résolution")
+        #expect(first.stage == "Done")
+        #expect(first.detail.contains("score 0.91") && first.detail.contains("high resolution 30 min"))
+        #expect(page.scenes[2].current && page.scenes[2].stage == "High resolution")
         // Then the others, the latest first; rejected and failed ones have no card.
         #expect(page.scenes[4].name == "scene-0047")
         #expect(!page.scenes.contains { $0.name == "scene-0048" || $0.name == "scene-0050" })
@@ -71,24 +72,24 @@ struct NightPageTests {
     @Test func aFinishedNightOpensOnItsReport() throws {
         let page = try #require(Self.read("done").page)
         #expect(!page.live && page.controls.job == nil && page.current == nil)
-        #expect(page.status == "Terminée 6 h 41, avant 7 h 00")
+        #expect(page.status == "Finished 06:41, before 07:00")
         let report = try #require(page.report)
-        #expect(report.hasPrefix("# Nuit du 26 oct."))
+        #expect(report.hasPrefix("# Night of 26 Oct\n"))
         #expect(page.phases.allSatisfy { $0.state == .done })
-        #expect(page.delivery?.hasPrefix("Livraison : avant 7 h 00") == true)
+        #expect(page.delivery?.hasPrefix("Delivery: by 07:00") == true)
     }
 
     @Test func errorsLinkTheirLog() throws {
         let page = try #require(Self.read("failed").page)
-        #expect(page.status.hasPrefix("En échec"))
+        #expect(page.status.hasPrefix("Failed"))
         #expect(page.problems.count == 2)
-        #expect(page.problems[0].text == "scene-0007, haute résolution : failed with status 1")
+        #expect(page.problems[0].text == "scene-0007, high resolution: failed with status 1")
         #expect(page.problems[0].log == ".logs/scene-0007.hires.log")
         #expect(page.problems[0].logURL?.lastPathComponent == "scene-0007.hires.log")
         #expect(
             page.problems[0].logURL?.deletingLastPathComponent().deletingLastPathComponent()
                 .lastPathComponent == "2026-10-26")
-        #expect(page.scenes.first { $0.name == "scene-0031" }?.stage == "Laissée de côté")
+        #expect(page.scenes.first { $0.name == "scene-0031" }?.stage == "Left out")
         #expect(page.phases[2].state == .done || page.phases[2].state == .left)
     }
 
@@ -96,20 +97,20 @@ struct NightPageTests {
         let page = try #require(Self.read("resumed", selected: "2026-10-30-b").page)
         let picks = Array(page.scenes.prefix(2))
         #expect(picks.map(\.name) == ["scene-0044", "scene-0030"])
-        #expect(picks.allSatisfy { $0.stage == "Terminée" && !$0.detail.contains("would end") })
-        #expect(!page.scenes.contains { $0.stage == "Laissée de côté" })
+        #expect(picks.allSatisfy { $0.stage == "Done" && !$0.detail.contains("would end") })
+        #expect(!page.scenes.contains { $0.stage == "Left out" })
     }
 
     @Test func workRunAfterTheEndStaysOffTheNightsPage() throws {
         let page = try #require(Self.read("after-end", selected: "2026-10-30-b").page)
         #expect(
             page.phases.map(\.time) == [
-                "fini 30 oct. 23 h 25", "fini 30 oct. 23 h 25", "fini 7 h 47", "fini 7 h 47",
-                "fini 7 h 51",
+                "finished 30 Oct 23:25", "finished 30 Oct 23:25", "finished 07:47", "finished 07:47",
+                "finished 07:51",
             ])
         // Its hires and its video by hand are on the scene's page.
         for name in ["scene-0031", "scene-0019"] {
-            #expect(page.scenes.first { $0.name == name }?.stage == "Aperçu", "\(name)")
+            #expect(page.scenes.first { $0.name == name }?.stage == "Preview", "\(name)")
         }
     }
 
@@ -122,10 +123,10 @@ struct NightPageTests {
                 now: RunStatus.date("2026-10-27T09:30:00.000+01:00")!, timeZone: Self.paris,
                 processes: [], isAlive: { _ in false }
             ).page)
-        #expect(!page.live && page.status.hasPrefix("Interrompue"))
+        #expect(!page.live && page.status.hasPrefix("Interrupted"))
         #expect(page.controls.job == nil && page.current == nil)
         #expect(page.phases[2].state == .left)
-        #expect(page.report?.hasPrefix("# Nuit du 26 oct.") == true)
+        #expect(page.report?.hasPrefix("# Night of 26 Oct\n") == true)
     }
 
     @Test func aNightWaitingInTheQueueHasAPage() throws {
@@ -140,9 +141,9 @@ struct NightPageTests {
             library: root, selected: "2026-10-28",
             now: RunStatus.date("2026-10-27T21:05:00.000+01:00")!, timeZone: Self.paris,
             processes: [])
-        #expect(snapshot.items.map(\.title) == ["28 oct. · en attente"])
+        #expect(snapshot.items.map(\.title) == ["28 Oct · waiting"])
         let page = try #require(snapshot.page)
-        #expect(page.status == "En attente dans la file d'attente" && page.controls.queuedJob == job.id)
+        #expect(page.status == "Waiting in the queue" && page.controls.queuedJob == job.id)
         #expect(page.scenes.isEmpty && page.phases.count == 5)
         #expect(NightsSnapshot.read(library: root, selected: "2026-10-30", processes: []).page == nil)
     }
@@ -185,7 +186,7 @@ struct NightPageTests {
                 timeZone: Self.paris,
                 processes: [.init(pid: 1, arguments: ["sillage-render", "render"])]
             ).page)
-        #expect(page.live && page.status == "En pause" && page.controls.isPaused)
+        #expect(page.live && page.status == "Paused" && page.controls.isPaused)
         #expect(page.controls.stopAfterAsked && page.controls.job == job.id)
         // Exploring has no scene to leave out.
         #expect(!page.controls.canSkip)

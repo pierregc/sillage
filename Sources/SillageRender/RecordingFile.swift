@@ -80,9 +80,9 @@ public enum RecordingFile {
 
         public var description: String {
             switch self {
-            case .notARecording: "Ce fichier n'est pas une prise Sillage"
-            case .unsupportedVersion(let version): "Prise en version \(version), non reconnue"
-            case .truncated: "Prise incomplète"
+            case .notARecording: "This file is not a Sillage take"
+            case .unsupportedVersion(let version): "Take in version \(version), not recognised"
+            case .truncated: "Incomplete take"
             }
         }
     }

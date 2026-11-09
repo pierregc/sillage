@@ -112,11 +112,11 @@ strict_concurrency() {
 # Everything CI used to run, in one command, and now the only gate there is. Run it before
 # every commit.
 check() {
-    echo "== formatage"
+    echo "== format"
     swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests"
-    echo "== concurrence stricte"
+    echo "== strict concurrency"
     strict_concurrency
-    echo "== application"
+    echo "== app"
     build_app >/dev/null
     echo "== tests"
     run_tests

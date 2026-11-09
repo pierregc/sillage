@@ -53,29 +53,29 @@ struct NightStatusTests {
         let lines = Self.run("hires").lines
         #expect(
             lines.first
-                == "Nuit du 26 oct. · haute résolution 2/4 · scene-0023 image 412/900 · prêt vers 6 h 20 · 0 erreur"
+                == "Night of 26 Oct · high resolution 2/4 · scene-0023 frame 412/900 · ready around 06:20 · 0 errors"
         )
         // The first line is the app's own, with the errors added.
         let status = QueueStatus.read(
             library: Self.fixtures.appendingPathComponent("hires/library"),
             now: RunStatus.date(Self.text("hires", "now.txt")!)!, timeZone: Self.paris,
             processes: [.init(pid: 1, arguments: ["sillage-render", "render"])], isAlive: { _ in true })
-        #expect(lines.first == status.summary + " · 0 erreur")
-        #expect(status.headline == "Nuit du 26 oct. · haute résolution 2/4 · prêt vers 6 h 20")
+        #expect(lines.first == status.summary + " · 0 errors")
+        #expect(status.headline == "Night of 26 Oct · high resolution 2/4 · ready around 06:20")
     }
 
     @Test func anIdleMacNamesTheLastNightAndHowItEnded() {
         let lines = Self.run("idle").lines
-        #expect(lines.first == "Rien en cours · le Mac est libre")
-        #expect(lines[1] == "Nuit du 26 oct. · terminée 6 h 41, avant 7 h 00 · 0 erreur")
-        #expect(Self.run("failed").lines[1].contains("en échec"))
+        #expect(lines.first == "Nothing running · the Mac is free")
+        #expect(lines[1] == "Night of 26 Oct · finished 06:41, before 07:00 · 0 errors")
+        #expect(Self.run("failed").lines[1].contains("· failed 03:12 ·"))
     }
 
     @Test func aNightIsReportedByItsFolder() {
         let lines = Self.run("done").lines
         // The failed night is the latest, and not the one asked for.
-        #expect(lines.first?.hasPrefix("Nuit du 26 oct. · terminée") == true)
-        #expect(!lines.contains("Rien en cours · le Mac est libre"))
+        #expect(lines.first?.hasPrefix("Night of 26 Oct · finished") == true)
+        #expect(!lines.contains("Nothing running · the Mac is free"))
         let library = Self.fixtures.appendingPathComponent("done/library")
         #expect(
             StatusCommand.main([
@@ -93,7 +93,7 @@ struct NightStatusTests {
         var printed: [String] = []
         #expect(StatusCommand.main(["--library", root.path, "--fixture", "0"]) { printed.append($0) } == 0)
         #expect(
-            printed == ["Rien en cours · le Mac est libre", "Aucune nuit encore dans cette bibliothèque"])
+            printed == ["Nothing running · the Mac is free", "No night yet in this library"])
     }
 
     @Test func jsonSaysTheSameAsTheLines() throws {
@@ -132,7 +132,7 @@ struct NightStatusTests {
         #expect(events.filter { $0.kind == RunEvent.Kind.skip }.map(\.scene) == ["scene-0044", "scene-0030"])
         #expect(NightEvents(events, end: nil).skipped.isEmpty)
         let report = try String(contentsOf: batch.appendingPathComponent("report.md"), encoding: .utf8)
-        #expect(report.contains("- Laissées de côté : 0 · erreurs : 0") && !report.contains("would end"))
+        #expect(report.contains("- Left out: 0 · errors: 0") && !report.contains("would end"))
         func skipped(_ name: String) throws -> Int? {
             let printed = Self.run(name, extra: ["--json"]).lines.joined()
             let object = try #require(
@@ -186,7 +186,7 @@ struct NightStatusTests {
         let report = NightReport.markdown(
             night, events: [RunEvent(RunEvent.Kind.nightStart, at: start), hires],
             now: start.addingTimeInterval(7_200), timeZone: Self.paris)
-        #expect(report.contains("- scene-0031 : 8 000 000 particules (2 000 000 massives) en 38 min"))
+        #expect(report.contains("- scene-0031: 8,000,000 particles (2,000,000 massive) in 38 min"))
         #expect(try RunEvent(RunEvent.Kind.hiresStart, options: ["--massive", "2e6"]).massive == 2_000_000)
     }
 
@@ -201,8 +201,8 @@ struct NightStatusTests {
         let report = NightReport.markdown(
             night, events: events, batch: batch,
             now: RunStatus.date(Self.text("after-end", "now.txt")!)!, timeZone: Self.paris)
-        #expect(report.contains("- Haute résolution : 2 faites sur 2 prévues"))
-        #expect(report.contains("- Vidéos : 4 (672,8 Mo)") && !report.contains("whatsapp"))
+        #expect(report.contains("- High resolution: 2 done of 2 planned"))
+        #expect(report.contains("- Videos: 4 (672.8 MB)") && !report.contains("whatsapp"))
         let printed = Self.run("after-end", extra: ["--json"]).lines.joined()
         let object = try #require(
             JSONSerialization.jsonObject(with: Data(printed.utf8)) as? [String: Any])
@@ -277,7 +277,7 @@ struct NightStatusTests {
                 "Europe/Paris", "--fixture", "1",
             ]
         ) { printed.append($0) }
-        #expect(printed.first == "Nuit du 26 oct. · haute résolution 2/4 · prêt vers 6 h 20")
+        #expect(printed.first == "Night of 26 Oct · high resolution 2/4 · ready around 06:20")
     }
 
     @Test func theReportOfEveryNightMatchesItsGoldenFile() throws {

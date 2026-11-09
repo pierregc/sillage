@@ -175,7 +175,7 @@ final class QueueModel: ObservableObject {
         ([status.running].compactMap { $0 } + status.waiting).first { $0.job == id }
     }
 
-    /// The scene folders a hires waits or runs for, which the library lists as Haute résolution.
+    /// The scene folders a hires waits or runs for, which the library lists as High resolution.
     var activeHires: Set<String> {
         Set(
             queue.jobs.filter { !$0.isFinished && $0.kind == .hires }.map {

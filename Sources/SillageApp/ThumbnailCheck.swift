@@ -23,7 +23,7 @@ enum ThumbnailCheck {
         var lines: [String] = []
         var failed = false
         func check(_ label: String, _ passed: Bool, _ detail: String = "") {
-            lines.append("\(passed ? "OUI" : "NON")  \(label)\(detail.isEmpty ? "" : "  \(detail)")")
+            lines.append("\(passed ? "ok  " : "FAIL") \(label)\(detail.isEmpty ? "" : "  \(detail)")")
             if !passed { failed = true }
         }
         func fail(_ why: String) -> Never {
@@ -48,14 +48,14 @@ enum ThumbnailCheck {
             try? LookFile.standard.encoded().write(to: folder.look)
         }
 
-        guard let model = SimulationModel() else { fail("pas de périphérique Metal") }
+        guard let model = SimulationModel() else { fail("no Metal device") }
         let opening = CACurrentMediaTime()
         model.openTake(from: folder.take, look: folder.look, folder: folder)
         let deadline = Date().addingTimeInterval(900)
         while model.mode != .playback || model.capturedFrames < 2 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
             if let failure = model.failure { fail(failure) }
-            if Date() > deadline { fail("la prise n'a pas chargé") }
+            if Date() > deadline { fail("the take did not load") }
         }
         let openSeconds = CACurrentMediaTime() - opening
         model.resize(to: CGSize(width: 1920, height: 1080))
@@ -81,11 +81,11 @@ enum ThumbnailCheck {
         func wait(_ seconds: Double) { RunLoop.current.run(until: Date(timeIntervalSinceNow: seconds)) }
         func keeps(_ label: String, _ during: Frames, _ alone: Frames) {
             check(
-                "le canvas garde sa cadence \(label)",
+                "the canvas keeps its pace \(label)",
                 during.lateShare <= alone.lateShare + 0.03
                     && median(during.wall) <= median(alone.wall) * 1.15 + 1,
                 String(
-                    format: "%.0f %% en retard contre %.0f %% seul, médiane %.1f ms contre %.1f",
+                    format: "%.0f %% late against %.0f %% alone, median %.1f ms against %.1f",
                     during.lateShare * 100, alone.lateShare * 100, median(during.wall),
                     median(alone.wall)))
         }
@@ -97,26 +97,26 @@ enum ThumbnailCheck {
             batch: "thumbcheck", batchURL: folder.batch, name: "scene-0001", folder: folder, take: take)
         let session = StyleSession(scene: scene, model: model)
         let thumbnails = session.thumbnails
-        check("l'éditeur trouve la prise ouverte", session.isOpen)
+        check("the editor finds the open take", session.isOpen)
         let count = thumbnails.renderings.count
         let during = canvas(until: { thumbnails.passes >= 1 }, atMost: 120)
         wait(0.2)
         let seconds = thumbnails.lastSeconds ?? .infinity
-        check("les vignettes partent seules à l'ouverture", thumbnails.passes == 1)
+        check("the thumbnails start by themselves on opening", thumbnails.passes == 1)
         check(
-            "une vignette par rendu", thumbnails.images.count == count && thumbnails.lastDrawn == count,
-            "\(thumbnails.images.count) sur \(count)")
+            "a thumbnail per rendering", thumbnails.images.count == count && thumbnails.lastDrawn == count,
+            "\(thumbnails.images.count) of \(count)")
         check(
-            "toutes en moins de \(Int(budgetSeconds)) s", seconds < budgetSeconds,
-            String(format: "%.2f s, %.0f ms la vignette", seconds, seconds * 1000 / Double(max(count, 1))))
+            "all in under \(Int(budgetSeconds)) s", seconds < budgetSeconds,
+            String(format: "%.2f s, %.0f ms a thumbnail", seconds, seconds * 1000 / Double(max(count, 1))))
         let lit = thumbnails.images.values.filter { meanLuma($0) > 0.01 }.count
-        check("les vignettes montrent la scène", lit == count, "\(lit) éclairées")
+        check("the thumbnails show the scene", lit == count, "\(lit) lit")
         let distinct = Set(thumbnails.images.values.map { fingerprint($0) }).count
-        check("les rendus se distinguent", distinct >= count * 3 / 4, "\(distinct) différentes")
-        keeps("pendant le premier dessin", during, alone)
+        check("the renderings differ", distinct >= count * 3 / 4, "\(distinct) distinct")
+        keeps("during the first drawing", during, alone)
         if let first = thumbnails.images.values.first {
             check(
-                "dessinées à la taille du clip puis réduites",
+                "drawn at the clip's size then scaled down",
                 first.width == RenderingThumbnails.width
                     && abs(Double(first.width) / Double(first.height) - thumbnails.aspectRatio) < 0.02,
                 "\(first.width)×\(first.height)")
@@ -132,15 +132,15 @@ enum ThumbnailCheck {
         thumbnails.refresh()
         _ = canvas(until: { thumbnails.passes >= 2 }, atMost: 30)
         check(
-            "la même image redemandée ne redessine rien", thumbnails.lastDrawn == 0,
+            "the same frame asked again redraws nothing", thumbnails.lastDrawn == 0,
             String(
-                format: "%d dessinées, %.0f ms", thumbnails.lastDrawn, (thumbnails.lastSeconds ?? 0) * 1000))
+                format: "%d drawn, %.0f ms", thumbnails.lastDrawn, (thumbnails.lastSeconds ?? 0) * 1000))
 
         // A rendering applied changes nothing the thumbnails show.
         let other = thumbnails.renderings.first { !session.current.uses(rendering: $0) }
         if let other { session.apply(other) }
         wait(0.8)
-        check("appliquer un rendu ne redessine pas", thumbnails.passes == 2 && !thumbnails.drawing)
+        check("applying a rendering does not redraw", thumbnails.passes == 2 && !thumbnails.drawing)
         // The saved style back, so the canvas costs what it did.
         session.cancel()
         wait(0.8)
@@ -157,12 +157,12 @@ enum ThumbnailCheck {
             repaintedSeconds = thumbnails.lastSeconds ?? 0
             repaintedAlone = canvas(until: { false }, atMost: 1)
             check(
-                "une autre palette les redessine",
+                "another palette redraws them",
                 thumbnails.passes > before && thumbnails.lastDrawn == count,
                 String(format: "%.2f s", repaintedSeconds))
-            keeps("pendant le dessin d'une palette", repainted, repaintedAlone)
+            keeps("while a palette draws", repainted, repaintedAlone)
         } else {
-            lines.append("—    palette non essayée : \(session.proposalNote ?? "aucune proposition")")
+            lines.append("-    palette not tried: \(session.proposalNote ?? "no proposal")")
         }
 
         // A small move of the playhead keeps them; past a tenth of the take, drawn again.
@@ -171,17 +171,17 @@ enum ThumbnailCheck {
         model.playbackPosition += tenth / 2
         _ = model.playbackSnapshot()
         wait(0.8)
-        check("un petit déplacement les garde", thumbnails.passes == kept && !thumbnails.drawing)
+        check("a small move keeps them", thumbnails.passes == kept && !thumbnails.drawing)
         model.playbackPosition += tenth
         _ = model.playbackSnapshot()
         let moved = canvas(until: { thumbnails.passes > kept }, atMost: 120)
         let movedSeconds = thumbnails.lastSeconds ?? 0
         let movedAlone = canvas(until: { false }, atMost: 1)
         check(
-            "au-delà d'un dixième de la prise, redessinées", thumbnails.passes > kept,
-            String(format: "%.2f s, image %d", movedSeconds, thumbnails.frame ?? -1))
-        keeps("pendant le redessin", moved, movedAlone)
-        check("à l'image de la tête de lecture", thumbnails.frame == model.playheadCapturedFrame)
+            "past a tenth of the take, drawn again", thumbnails.passes > kept,
+            String(format: "%.2f s, frame %d", movedSeconds, thumbnails.frame ?? -1))
+        keeps("while they redraw", moved, movedAlone)
+        check("at the playhead's frame", thumbnails.frame == model.playheadCapturedFrame)
 
         // A canvas with no gap left: its own rendering already misses 60 Hz. The thumbnails
         // wait for it, so they take longer and it loses nothing.
@@ -196,24 +196,24 @@ enum ThumbnailCheck {
             crowded = canvas(until: { thumbnails.passes > before }, atMost: 120)
             crowdedSeconds = thumbnails.lastSeconds ?? 0
             check(
-                "le canvas sans marge, redessinées", thumbnails.passes > before,
+                "the canvas with no margin, drawn again", thumbnails.passes > before,
                 String(format: "%.2f s", crowdedSeconds))
-            keeps("quand il n'a pas de marge", crowded, crowdedAlone)
+            keeps("when it has no margin", crowded, crowdedAlone)
         }
 
         // Leaving cancels and lets the engine go.
         thumbnails.close()
-        check("fermer arrête le dessin", !thumbnails.drawing)
+        check("closing stops the drawing", !thumbnails.drawing)
 
         let report =
             """
-            prise            \(model.particleCount) particules, \(model.capturedFrames) images gardées, ouverte en \(String(format: "%.1f", openSeconds)) s
-            clip             \(String(format: "%.3f", thumbnails.aspectRatio)) de rapport, vignettes de \(RenderingThumbnails.width) px
-            premier dessin   \(String(format: "%.2f s", seconds)), canvas \(alone.summary) seul, \(during.summary) pendant
-            autre palette    \(String(format: "%.2f s", repaintedSeconds)), canvas \(repaintedAlone.summary) seul, \(repainted.summary) pendant
-            autre image      \(String(format: "%.2f s", movedSeconds)), canvas \(movedAlone.summary) seul, \(moved.summary) pendant
-            canvas chargé    \(String(format: "%.2f s", crowdedSeconds)), canvas \(crowdedAlone.summary) seul, \(crowded.summary) pendant
-            mémoire          \(footprintMegabytes()) Mo au plus
+            take             \(model.particleCount) particles, \(model.capturedFrames) frames kept, opened in \(String(format: "%.1f", openSeconds)) s
+            clip             \(String(format: "%.3f", thumbnails.aspectRatio)) aspect ratio, thumbnails \(RenderingThumbnails.width) px wide
+            first drawing    \(String(format: "%.2f s", seconds)), canvas \(alone.summary) alone, \(during.summary) during
+            other palette    \(String(format: "%.2f s", repaintedSeconds)), canvas \(repaintedAlone.summary) alone, \(repainted.summary) during
+            other frame      \(String(format: "%.2f s", movedSeconds)), canvas \(movedAlone.summary) alone, \(moved.summary) during
+            busy canvas      \(String(format: "%.2f s", crowdedSeconds)), canvas \(crowdedAlone.summary) alone, \(crowded.summary) during
+            memory           \(footprintMegabytes()) MB at most
             """ + "\n" + lines.joined(separator: "\n")
         try? report.write(
             to: URL(fileURLWithPath: "/tmp/sillage-thumbcheck.log"), atomically: true, encoding: .utf8)
@@ -231,9 +231,9 @@ enum ThumbnailCheck {
         }
 
         var summary: String {
-            guard !wall.isEmpty else { return "sans image" }
+            guard !wall.isEmpty else { return "no frame" }
             return String(
-                format: "%.1f ms (GPU %.1f, %.0f %% > 16,7 ms)", ThumbnailCheck.median(wall),
+                format: "%.1f ms (GPU %.1f, %.0f %% > 16.7 ms)", ThumbnailCheck.median(wall),
                 ThumbnailCheck.median(gpu), lateShare * 100)
         }
     }

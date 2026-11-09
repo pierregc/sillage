@@ -120,7 +120,7 @@ public struct NightSheetPlan: Sendable, Equatable {
         public var duration: String
         public var until: String
 
-        /// "Aperçus · environ 50 scènes · 3 h 40 · jusqu'à 1 h 10".
+        /// "Previews · about 50 scenes · 3 h 40 min · until 01:10".
         public var text: String {
             [title, detail, duration, until].filter { !$0.isEmpty }.joined(separator: " · ")
         }
@@ -133,9 +133,9 @@ public struct NightSheetPlan: Sendable, Equatable {
     }
 
     public var lines: [Line]
-    /// "Prêt à 7 h 00", or "Prêt demain à 7 h 00".
+    /// "Ready by 07:00", or "Ready tomorrow by 07:00".
     public var delivery: String
-    /// "Fin prévue à 6 h 20 · 40 min de marge".
+    /// "Expected to end at 06:20 · 40 min to spare".
     public var margin: String
     public var warnings: [Warning]
 
@@ -150,8 +150,8 @@ public struct NightSheetPlan: Sendable, Equatable {
             lines.append(
                 Line(
                     phase: summary.phase, title: title, detail: detail,
-                    duration: done ? "déjà fait" : Words.duration(summary.seconds),
-                    until: done ? "" : "jusqu'à " + words.clock(summary.end)))
+                    duration: done ? "already done" : Words.duration(summary.seconds),
+                    until: done ? "" : "until " + words.clock(summary.end)))
         }
         self.lines = lines
         let days =
@@ -162,42 +162,42 @@ public struct NightSheetPlan: Sendable, Equatable {
         let clock = words.clock(plan.deliverBy)
         delivery =
             days == 0
-            ? "Prêt à \(clock)"
-            : days == 1 ? "Prêt demain à \(clock)" : "Prêt le \(words.day(plan.deliverBy)) à \(clock)"
+            ? "Ready by \(clock)"
+            : days == 1 ? "Ready tomorrow by \(clock)" : "Ready on \(words.day(plan.deliverBy)) by \(clock)"
         let spare = plan.deliverBy.timeIntervalSince(plan.end)
         margin =
             spare >= 0
-            ? "Fin prévue à \(words.clock(plan.end)) · \(Words.duration(spare)) de marge"
-            : "Fin prévue à \(words.clock(plan.end)) · \(Words.duration(-spare)) de retard"
+            ? "Expected to end at \(words.clock(plan.end)) · \(Words.duration(spare)) to spare"
+            : "Expected to end at \(words.clock(plan.end)) · \(Words.duration(-spare)) late"
         warnings = Self.warnings(plan, words: words, requestedHires: requestedHires)
     }
 
     private static func describe(_ summary: NightPlan.Summary, plan: NightPlan) -> (String, String) {
-        func scenes(_ count: Int) -> String { count == 1 ? "1 scène" : "\(count) scènes" }
+        func scenes(_ count: Int) -> String { count == 1 ? "1 scene" : "\(count) scenes" }
         switch summary.phase {
         case .explore:
-            return ("Aperçus", "environ " + scenes(summary.count))
+            return ("Previews", "about " + scenes(summary.count))
         case .pick:
-            return ("Choix", scenes(summary.count))
+            return ("Selection", scenes(summary.count))
         case .hires:
             return (
-                "Haute résolution", scenes(summary.count) + " à " + millions(plan.hiresParticles)
+                "High resolution", scenes(summary.count) + " at " + millions(plan.hiresParticles)
             )
         case .style:
             return ("Style", scenes(summary.count))
         case .export:
-            return ("Vidéos", summary.count == 1 ? "1 vidéo" : "\(summary.count) vidéos")
+            return ("Videos", summary.count == 1 ? "1 video" : "\(summary.count) videos")
         }
     }
 
-    /// "2 M de particules".
+    /// "2 M particles".
     static func millions(_ particles: Int) -> String {
         let value = Double(particles) / 1e6
         let text =
             value >= 10 || value.rounded() == value
             ? String(format: "%.0f", value)
-            : String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
-        return "\(text) M de particules"
+            : String(format: "%.1f", value)
+        return "\(text) M particles"
     }
 
     private static func warnings(_ plan: NightPlan, words: Words, requestedHires: Int?) -> [Warning] {
@@ -206,22 +206,22 @@ public struct NightSheetPlan: Sendable, Equatable {
             warnings.append(
                 Warning(
                     kind: "disk",
-                    text: "Il faut environ \(gigabytes(plan.diskBytes)), il en reste "
-                        + "\(gigabytes(free)) sur le disque."))
+                    text: "About \(gigabytes(plan.diskBytes)) is needed and "
+                        + "\(gigabytes(free)) is left on the disk."))
         }
         if plan.warnings.contains(where: { $0.kind == "explore" }) {
             warnings.append(
                 Warning(
                     kind: "explore",
-                    text: "Les aperçus sont réduits à environ \(plan.scenes) scènes pour laisser "
-                        + "le temps à la haute résolution."))
+                    text: "Previews are cut to about \(plan.scenes) scenes to leave "
+                        + "time for the high resolution."))
         }
         if let asked = requestedHires, plan.picks < asked {
             warnings.append(
                 Warning(
                     kind: "picks",
-                    text: "Seules \(plan.picks) des \(asked) scènes demandées en haute résolution "
-                        + "tiennent avant \(words.clock(plan.deliverBy))."))
+                    text: "Only \(plan.picks) of the \(asked) scenes asked for in high resolution "
+                        + "fit before \(words.clock(plan.deliverBy))."))
         }
         let left = Set(plan.steps.filter { $0.phase == .hires && !$0.fits && !$0.done }.compactMap(\.scene))
         if !left.isEmpty {
@@ -229,23 +229,23 @@ public struct NightSheetPlan: Sendable, Equatable {
                 Warning(
                     kind: "late",
                     text: (left.count == 1
-                        ? "Une scène en haute résolution ne tient pas"
-                        : "\(left.count) scènes en haute résolution ne tiennent pas")
-                        + " avant \(words.clock(plan.deliverBy)) : "
-                        + (left.count == 1 ? "elle sera laissée de côté." : "elles seront laissées de côté.")
+                        ? "One high-resolution scene does not fit"
+                        : "\(left.count) high-resolution scenes do not fit")
+                        + " before \(words.clock(plan.deliverBy)): "
+                        + (left.count == 1 ? "it will be left out." : "they will be left out.")
                 ))
         }
         if plan.end > plan.deliverBy {
             warnings.append(
                 Warning(
                     kind: "over",
-                    text: "La nuit finirait à \(words.clock(plan.end)), après l'heure de livraison."))
+                    text: "The night would end at \(words.clock(plan.end)), after the delivery time."))
         }
         return warnings
     }
 
     static func gigabytes(_ bytes: Double) -> String {
-        String(format: "%.1f Go", bytes / 1e9).replacingOccurrences(of: ".", with: ",")
+        String(format: "%.1f GB", bytes / 1e9)
     }
 }
 

@@ -42,7 +42,7 @@ struct StageJobsTests {
         #expect(job.output?.lastPathComponent == "1080p-aurora-prores.mov")
         #expect(ExportedFile.names(of: "1080p-aurora-prores").style == "aurora")
         #expect(job.options.contains("--look") && job.options.contains("--codec"))
-        // WhatsApp keeps its codec whatever Avancé says.
+        // WhatsApp keeps its codec whatever Advanced says.
         #expect(plan(.whatsapp, settings).output?.lastPathComponent == "whatsapp-aurora.mp4")
     }
 
@@ -138,7 +138,7 @@ struct StageJobsTests {
         return folder
     }
 
-    /// Calculer draws as a night does: past 2 M, 2 M carry the mass and the others are light
+    /// Compute draws as a night does: past 2 M, 2 M carry the mass and the others are light
     /// tracers, priced as such. A real count is asked with no massive count.
     @Test func aHiresIsDrawnAsANightDrawsIt() throws {
         #expect(StageJobs.massive(drawing: 8_000_000) == 2_000_000)
@@ -152,7 +152,7 @@ struct StageJobsTests {
         let traced = StageJobs.hires(
             scene, particles: 8_000_000, massive: 2_000_000, cost: cost, queue: queue)
         #expect(traced.options == ["--particles", "8000000", "--massive", "2000000"])
-        #expect(traced.title == "8\u{A0}M dont 2\u{A0}M massives")
+        #expect(traced.title == "8\u{A0}M (2\u{A0}M massive)")
         let real = StageJobs.hires(scene, particles: 8_000_000, massive: nil, cost: cost, queue: queue)
         #expect(real.options == ["--particles", "8000000"] && real.title == "8\u{A0}M")
         let all = StageJobs.hires(scene, particles: 2_000_000, massive: 2_000_000, cost: cost, queue: queue)
@@ -162,7 +162,7 @@ struct StageJobsTests {
 
         let job = QueueJob(
             id: 1, kind: .hires, path: scene.url.path, options: traced.options, added: made)
-        #expect(StageJobs.title(of: job) == "8\u{A0}M dont 2\u{A0}M massives")
+        #expect(StageJobs.title(of: job) == "8\u{A0}M (2\u{A0}M massive)")
         #expect(JobEstimate.seconds(job, cost: cost) == traced.seconds)
     }
 
@@ -197,26 +197,26 @@ struct StageJobsTests {
             jobs: [one, two], ahead: 2, paused: false, freeAt: now.addingTimeInterval(3600), now: now,
             timeZone: Self.paris)
         #expect(
-            forecast.summary == "2 calculs avant ceux-ci · environ 30 min en tout · tout prêt vers 23 h 30")
-        #expect(forecast.line(0) == "environ 10 min · prêt vers 23 h 10")
+            forecast.summary == "2 jobs ahead of these · about 30 min in all · all ready around 23:30")
+        #expect(forecast.line(0) == "about 10 min · ready around 23:10")
 
         let alone = StageForecast(
             jobs: [one], ahead: 0, paused: false, freeAt: now, now: now, timeZone: Self.paris)
-        #expect(alone.summary == "Commence tout de suite · prêt vers 22 h 10")
+        #expect(alone.summary == "Starts right away · ready around 22:10")
 
         let unknown = StageForecast(
             jobs: [one], ahead: 1, paused: false, freeAt: nil, now: now, timeZone: Self.paris)
-        #expect(unknown.summary == "1 calcul avant celui-ci · heure de fin inconnue")
+        #expect(unknown.summary == "1 job ahead of this one · end time unknown")
 
         let paused = StageForecast(
             jobs: [one], ahead: 1, paused: true, freeAt: nil, now: now, timeZone: Self.paris)
-        #expect(paused.summary == "File en pause · 1 calcul avant celui-ci")
+        #expect(paused.summary == "Queue paused · 1 job ahead of this one")
 
         var queued = one
         queued.queued = true
         #expect(
             StageForecast(jobs: [queued], ahead: 1, paused: false, freeAt: now, now: now).summary
-                == "Déjà dans la file d'attente")
+                == "Already in the queue")
     }
 
     @Test func theQueueSaysWhenItIsFree() {

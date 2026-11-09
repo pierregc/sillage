@@ -1,5 +1,5 @@
-En pause · Haute résolution · scene-0023 · 1 en attente
-En cours
-  n° 14 · Haute résolution · scene-0023 · image 412/900
-En attente
-  n° 15 · Vidéo · scene-0023
+Paused · High resolution · scene-0023 · 1 waiting
+Running
+  #14 · High resolution · scene-0023 · frame 412/900
+Waiting
+  #15 · Video · scene-0023

@@ -10,7 +10,7 @@ enum LookFiles {
     @MainActor
     static func open(_ model: SimulationModel) {
         let panel = NSOpenPanel()
-        panel.title = "Ouvrir un style"
+        panel.title = "Open a style"
         panel.allowedContentTypes = [contentType]
         panel.directoryURL =
             model.lookURL?.deletingLastPathComponent() ?? model.sceneFolder?.looks
@@ -29,7 +29,7 @@ enum LookFiles {
     @MainActor
     static func saveAs(_ model: SimulationModel) {
         let panel = NSSavePanel()
-        panel.title = "Enregistrer le style"
+        panel.title = "Save style"
         panel.allowedContentTypes = [contentType]
         panel.nameFieldStringValue = "\(model.lookFile.name).look.json"
         panel.directoryURL =
@@ -50,17 +50,17 @@ struct LookCommands: View {
 
     var body: some View {
         Divider()
-        Button("Ouvrir une prise…") { navigation.openTake(model) }
+        Button("Open take…") { navigation.openTake(model) }
             .keyboardShortcut("o", modifiers: .command)
-        Button("Ouvrir un style…") { LookFiles.open(model) }
+        Button("Open style…") { LookFiles.open(model) }
             .keyboardShortcut("o", modifiers: [.command, .shift])
         if let style = navigation.editingStyle {
             PromoteCommand(session: style)
         } else {
-            Button("Enregistrer le style") { LookFiles.save(model) }
+            Button("Save style") { LookFiles.save(model) }
                 .keyboardShortcut("s", modifiers: .command)
         }
-        Button("Enregistrer le style sous…") { LookFiles.saveAs(model) }
+        Button("Save style as…") { LookFiles.saveAs(model) }
             .keyboardShortcut("s", modifiers: [.command, .shift])
     }
 }
@@ -69,7 +69,7 @@ struct PromoteCommand: View {
     @ObservedObject var session: StyleSession
 
     var body: some View {
-        Button("Utiliser pour la scène") { session.promote() }
+        Button("Use for scene") { session.promote() }
             .keyboardShortcut("s", modifiers: .command)
             .disabled(session.scene.folder == nil || !session.isOpen)
     }

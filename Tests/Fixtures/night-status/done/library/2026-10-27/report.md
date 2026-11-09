@@ -1,9 +1,9 @@
-# Nuit du 27 oct.
+# Night of 27 Oct
 
-- État : en échec, de 27 oct. 8 h 00 à 27 oct. 8 h 10 (10 min)
-- Livraison : avant 7 h 00, arrêtée 22 h 50 avant
-- Aperçus : 0 explorés, 0 rejetés, 0 en échec
-- Choisies : aucune
-- Haute résolution : 0 faite
-- Vidéos : 0
-- Laissées de côté : 0 · erreurs : 0
+- State: failed, from 27 Oct 08:00 to 27 Oct 08:10 (10 min)
+- Delivery: by 07:00, stopped 22 h 50 min early
+- Previews: 0 explored, 0 rejected, 0 failed
+- Kept: none
+- High resolution: 0 done
+- Videos: 0
+- Left out: 0 · errors: 0

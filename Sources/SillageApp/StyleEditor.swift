@@ -54,8 +54,8 @@ struct StyleEditor: View {
     }
 }
 
-/// The scene, whether the style differs from `look.json`, Avant/Après, Annuler and the step's
-/// own button: Utiliser pour la scène until the style is the scene's, then Exporter….
+/// The scene, whether the style differs from `look.json`, Before / After, Cancel and the step's
+/// own button: Use for scene until the style is the scene's, then Export….
 struct StyleTopBar: View {
     @ObservedObject var session: StyleSession
     let leave: () -> Void
@@ -71,20 +71,20 @@ struct StyleTopBar: View {
                     .foregroundStyle(Palette.secondary)
             }
             if session.covered != nil {
-                badge("Style enregistré", Color.accentColor)
+                badge("Saved style", Color.accentColor)
             } else if session.isModified {
-                badge("Modifié", Palette.warning)
+                badge("Modified", Palette.warning)
             }
             Spacer()
             BeforeAfterButton(session: session)
-            Button(session.isModified ? "Annuler" : "Fermer") {
+            Button(session.isModified ? "Cancel" : "Close") {
                 session.cancel()
                 leave()
             }
             .help(
                 session.isModified
-                    ? "Abandonne les changements et revient à la page de la scène"
-                    : "Revient à la page de la scène")
+                    ? "Discards the changes and goes back to the scene's page"
+                    : "Goes back to the scene's page")
             primary
         }
         .padding(.horizontal, 16)
@@ -93,19 +93,19 @@ struct StyleTopBar: View {
 
     @ViewBuilder private var primary: some View {
         if session.isModified || !session.promoted {
-            Button("Utiliser pour la scène") { session.promote() }
+            Button("Use for scene") { session.promote() }
                 .buttonStyle(.borderedProminent)
                 .disabled(session.scene.folder == nil || !session.isOpen || session.covered != nil)
                 .help(
                     session.scene.folder == nil
-                        ? "Cette haute résolution n'a pas de dossier de scène"
-                        : "Écrit ce style dans look.json (⌘S). Le premier style remplacé reste dans look-raw.json."
+                        ? "This high resolution has no scene folder"
+                        : "Writes this style to look.json (⌘S). The first style replaced stays in look-raw.json."
                 )
         } else {
-            Button("Exporter…") { exporting = true }
+            Button("Export…") { exporting = true }
                 .buttonStyle(.borderedProminent)
                 .disabled(queue == nil || session.scene.folder == nil)
-                .help("Choisir les formats ; chaque export rejoint la file d'attente")
+                .help("Choose the formats; each export joins the queue")
                 .sheet(isPresented: $exporting) {
                     if let queue, let folder = session.scene.folder {
                         ExportSheet(queue: queue, folders: [folder]) { exporting = false }
@@ -130,7 +130,7 @@ struct BeforeAfterButton: View {
 
     var body: some View {
         let usable = session.saved != nil && session.isOpen && (session.isModified || session.covered != nil)
-        Label("Avant / Après", systemImage: "rectangle.lefthalf.inset.filled")
+        Label("Before / After", systemImage: "rectangle.lefthalf.inset.filled")
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
@@ -144,7 +144,7 @@ struct BeforeAfterButton: View {
                 minimumDuration: 3600, maximumDistance: 10_000, perform: {},
                 onPressingChanged: { pressing in if usable || !pressing { session.showSaved(pressing) } }
             )
-            .help("Maintenir (ou maintenir ⌥) pour voir le style enregistré")
+            .help("Hold (or hold ⌥) to see the saved style")
     }
 }
 
@@ -164,7 +164,7 @@ struct StyleCanvas: View {
             } else if session.model.fileActivity != nil {
                 VStack(spacing: 10) {
                     ProgressView()
-                    Text("Ouverture de la haute résolution…")
+                    Text("Opening the high resolution…")
                         .font(.callout)
                         .foregroundStyle(Palette.secondary)
                 }
@@ -172,12 +172,12 @@ struct StyleCanvas: View {
                 VStack(spacing: 10) {
                     Text(
                         session.model.failure
-                            ?? "La haute résolution de cette scène n'est plus ouverte."
+                            ?? "This scene's high resolution is no longer open."
                     )
                     .font(.callout)
                     .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)
-                    Button("Rouvrir la haute résolution", action: reopen)
+                    Button("Reopen the high resolution", action: reopen)
                         .disabled(session.scene.take == nil)
                 }
                 .padding(30)
@@ -197,12 +197,12 @@ struct CanvasLegend: View {
             Text(text).lineLimit(2)
             Spacer(minLength: 8)
             if !session.model.followsPlan {
-                Button("Revenir au plan") { session.model.followsPlan = true }
+                Button("Back to the camera plan") { session.model.followsPlan = true }
                     .controlSize(.small)
             } else if ![.fixed, .auto].contains(session.current.camera.mode) {
-                Button("Passer en Fixe") { session.setCameraMode(.fixed) }
+                Button("Switch to Fixed") { session.setCameraMode(.fixed) }
                     .controlSize(.small)
-                    .help("Un seul cadrage sur tout le clip, placé à la souris")
+                    .help("One framing for the whole clip, set with the mouse")
             }
         }
         .font(.caption)
@@ -214,19 +214,19 @@ struct CanvasLegend: View {
 
     private var text: String {
         guard session.model.followsPlan else {
-            return "Vue libre : l'export ne la garde pas, il suit le plan de caméra."
+            return "Free view: the export does not keep it, it follows the camera plan."
         }
         let shape = session.frameShape
         switch session.current.camera.mode {
         case .fixed, .auto:
-            return "Cadrage de l'export (\(shape)) : glisser tourne la caméra, la molette règle le "
-                + "zoom, et c'est ce cadrage qui est enregistré."
+            return "Export framing (\(shape)): drag turns the camera, scroll sets the "
+                + "zoom, and this framing is what gets saved."
         case .director:
-            return "Plans du réalisateur, comme à l'export (\(shape)) : glisser tourne ses plans "
-                + "larges, la molette les rapproche ; il cadre lui-même les plans serrés."
+            return "Director's shots, as in the export (\(shape)): drag turns its wide "
+                + "shots, scroll brings them closer; it frames the close-ups itself."
         case .immersed:
-            return "Plans du réalisateur depuis un disque, comme à l'export (\(shape)) : il choisit "
-                + "où regarder, la molette règle le zoom."
+            return "Director's shots from inside a disk, as in the export (\(shape)): it chooses "
+                + "where to look, scroll sets the zoom."
         }
     }
 }
@@ -236,7 +236,7 @@ struct TransportBar: View {
     @ObservedObject var model: SimulationModel
 
     static let speeds: [(label: String, framesPerSecond: Float)] = [
-        ("× 0,25", 7.5), ("× 0,5", 15), ("× 1", 30), ("× 2", 60), ("× 4", 120),
+        ("× 0.25", 7.5), ("× 0.5", 15), ("× 1", 30), ("× 2", 60), ("× 4", 120),
     ]
 
     var body: some View {
@@ -247,19 +247,19 @@ struct TransportBar: View {
                 Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 16)
             }
             .keyboardShortcut(.space, modifiers: [])
-            .help(model.isPlaying ? "Pause (espace)" : "Lecture (espace)")
+            .help(model.isPlaying ? "Pause (space)" : "Play (space)")
             Slider(
                 value: $model.playbackPosition,
                 in: 0...Double(max(model.capturedFrames - 1, 1)))
             Text(String(format: "%.0f Myr", model.elapsedMyr))
                 .font(.callout.monospacedDigit())
                 .frame(minWidth: 70, alignment: .trailing)
-            Picker("Vitesse", selection: speed) {
+            Picker("Speed", selection: speed) {
                 ForEach(Self.speeds, id: \.framesPerSecond) { Text($0.label).tag($0.framesPerSecond) }
             }
             .labelsHidden()
             .fixedSize()
-            .help("Vitesse de lecture, × 1 à 30 images par seconde")
+            .help("Playback speed, × 1 being 30 frames per second")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -279,7 +279,7 @@ struct TransportBar: View {
     }
 }
 
-/// Rendu, Palette, Caméra and the fine settings folded under them.
+/// Rendering, Palette, Camera and the fine settings folded under them.
 struct StyleInspector: View {
     @ObservedObject var session: StyleSession
     /// Drawn offscreen by the checks, which cannot draw pickers, and with every control live.
@@ -292,8 +292,8 @@ struct StyleInspector: View {
                 Text(note)
                     .font(.caption)
                     .foregroundStyle(
-                        note.hasPrefix("Auto :") || note.hasPrefix("Favori gardé")
-                            || note.hasPrefix("Favori retiré") ? Palette.label : Palette.warning
+                        note.hasPrefix("Auto:") || note.hasPrefix("Favourite kept")
+                            || note.hasPrefix("Favourite removed") ? Palette.label : Palette.warning
                     )
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -322,9 +322,9 @@ struct RenderingSection: View {
         let current = session.rendering
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Rendu").font(.headline)
+                Text("Rendering").font(.headline)
                 Spacer()
-                Text(current.map { StyleNames.rendering($0.name) } ?? "retouché")
+                Text(current.map { StyleNames.rendering($0.name) } ?? "tweaked")
                     .font(.callout)
                     .foregroundStyle(Palette.secondary)
                 if offscreen {
@@ -339,23 +339,23 @@ struct RenderingSection: View {
                     .buttonStyle(.borderless)
                     .controlSize(.small)
                     .disabled(thumbnails.drawing)
-                    .help("Redessiner les vignettes sur l'image et le cadrage affichés")
+                    .help("Redraw the thumbnails on the frame and framing shown")
                 }
             }
-            group("Télescope", world: .telescope, current: current)
-            group("Libre", world: .free, current: current)
+            group("Telescope", world: .telescope, current: current)
+            group("Free", world: .free, current: current)
             if let current {
                 Text(StyleNames.traits(current))
                     .font(.caption2)
                     .foregroundStyle(Palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Avec ses couleurs") { session.apply(current, colours: true) }
+                Button("With its colours") { session.apply(current, colours: true) }
                     .controlSize(.small)
                     .disabled(current.palette.isEmpty || session.current.palette == current.palette)
-                    .help("Prend aussi la palette de ce rendu, à la place de la palette actuelle")
+                    .help("Also takes this rendering's palette, in place of the current one")
             } else {
                 Text(
-                    "Retouché dans les réglages fins, d'après « \(StyleNames.rendering(session.current.name)) »."
+                    "Tweaked in the fine settings, from “\(StyleNames.rendering(session.current.name))”."
                 )
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
@@ -412,8 +412,8 @@ struct RenderingSection: View {
         .buttonStyle(.plain)
         .help(StyleNames.traits(file))
         .contextMenu {
-            Button("Appliquer") { session.apply(file) }
-            Button("Appliquer avec ses couleurs") { session.apply(file, colours: true) }
+            Button("Apply") { session.apply(file) }
+            Button("Apply with its colours") { session.apply(file, colours: true) }
                 .disabled(file.palette.isEmpty)
         }
     }
@@ -456,22 +456,22 @@ struct PaletteSection: View {
                 if offscreen {
                     Text(StyleNames.world(session.world)).font(.callout)
                 } else {
-                    Picker("Monde", selection: $session.world) {
-                        Text("Télescope").tag(SillageRender.Palette.World.telescope)
-                        Text("Libre").tag(SillageRender.Palette.World.free)
+                    Picker("World", selection: $session.world) {
+                        Text("Telescope").tag(SillageRender.Palette.World.telescope)
+                        Text("Free").tag(SillageRender.Palette.World.free)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .fixedSize()
-                    .help("Télescope : proche des images de Hubble et Webb. Libre : pour la beauté seule.")
+                    .help("Telescope: close to Hubble and Webb images. Free: for beauty alone.")
                 }
             }
             CheckToggle(
-                title: "Multicolore",
+                title: "Multicolour",
                 isOn: Binding(get: { session.multicolour }, set: { session.setMulticolour($0) })
             )
             .help(
-                "Chaque galaxie prend plusieurs couleurs, du cœur aux bords, aux jeunes étoiles et aux nœuds. Éteint, elle garde une seule couleur."
+                "Each galaxy takes several colours, from core to outskirts, young stars and knots. Off, it keeps a single colour."
             )
             HStack(alignment: .top) {
                 galaxies
@@ -480,8 +480,8 @@ struct PaletteSection: View {
             }
             proposals
             HStack {
-                Button("Autres palettes") { session.moreProposals() }
-                    .help("Six autres propositions, les meilleures d'un nouveau tirage")
+                Button("More palettes") { session.moreProposals() }
+                    .help("Six more proposals, the best of a new draw")
                 Spacer()
                 Button {
                     session.runAuto()
@@ -493,23 +493,23 @@ struct PaletteSection: View {
                 }
                 .disabled(session.autoRunning || session.scene.folder == nil)
                 .help(
-                    "Choisit le rendu et la palette qui notent le mieux sur trois images clés de la haute résolution, dans ce monde. Les cadenas tiennent."
+                    "Picks the rendering and palette that score best on three key frames of the high resolution, in this world. Locks hold."
                 )
             }
             .controlSize(.small)
         }
         .alert(
-            "Nom de la palette",
+            "Palette name",
             isPresented: Binding(
                 get: { session.naming != nil }, set: { if !$0 { session.naming = nil } })
         ) {
-            TextField("Nom", text: $name)
-            Button("Garder") {
+            TextField("Name", text: $name)
+            Button("Keep") {
                 if let palette = session.naming { session.saveFavourite(palette, named: name) }
             }
-            Button("Annuler", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Elle sera gardée dans palettes/ du dépôt, et proposée en premier.")
+            Text("It will be kept in the repository's palettes/ and proposed first.")
         }
         .onChange(of: session.naming) { _, palette in name = palette?.name ?? "" }
     }
@@ -529,8 +529,8 @@ struct PaletteSection: View {
                     .buttonStyle(.plain)
                     .help(
                         session.locked.contains(index)
-                            ? "Galaxie \(index + 1) : sa couleur reste"
-                            : "Garder la couleur de la galaxie \(index + 1) quand la palette change")
+                            ? "Galaxy \(index + 1): its colour stays"
+                            : "Keep galaxy \(index + 1)'s colour when the palette changes")
                     Text("\(index + 1)").font(.caption2).foregroundStyle(Palette.secondary)
                 }
             }
@@ -556,14 +556,14 @@ struct PaletteSection: View {
                 .frame(width: 38, height: 22)
         } else {
             ColorPicker(
-                "Galaxie \(index + 1)",
+                "Galaxy \(index + 1)",
                 selection: Binding(
                     get: { LinearColour.color(colour) },
                     set: { session.setColour(LinearColour.simd($0), ofGalaxy: index) }),
                 supportsOpacity: false
             )
             .labelsHidden()
-            .help("Galaxie \(index + 1) : un clic ouvre le sélecteur de couleur")
+            .help("Galaxy \(index + 1): a click opens the colour picker")
         }
     }
 
@@ -600,7 +600,7 @@ struct PaletteSection: View {
             }
             .buttonStyle(.plain)
             .help(
-                "La note de la palette seule, de 0 à 1. Un clic l'applique, sauf aux couleurs sous cadenas.")
+                "The palette's own score, from 0 to 1. A click applies it, except to locked colours.")
             heart(ranked.palette)
         }
         .padding(.horizontal, 8)
@@ -646,8 +646,8 @@ struct PaletteSection: View {
             .buttonStyle(.plain)
             .help(
                 kept
-                    ? "Favori : un clic la retire de palettes/"
-                    : "Garder cette palette dans palettes/, en tête des propositions")
+                    ? "Favourite: a click removes it from palettes/"
+                    : "Keep this palette in palettes/, at the top of the proposals")
         }
     }
 }
@@ -678,7 +678,7 @@ struct RampSwatch: View {
         .overlay(RoundedRectangle(cornerRadius: height / 3).strokeBorder(Color(white: 0.3), lineWidth: 1))
         .help(
             colours.count == 5
-                ? "Du cœur aux bords, puis les jeunes étoiles et les nœuds" : "Une seule couleur")
+                ? "From core to outskirts, then young stars and knots" : "A single colour")
     }
 }
 
@@ -688,12 +688,12 @@ struct CameraSection: View {
     @Environment(\.offscreen) private var offscreen
 
     static let modes: [(LookFile.CameraPlan.Mode, String)] = [
-        (.auto, "Auto"), (.director, "Réalisateur"), (.fixed, "Fixe"), (.immersed, "Immergé"),
+        (.auto, "Auto"), (.director, "Director"), (.fixed, "Fixed"), (.immersed, "Immersed"),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Caméra").font(.headline)
+            Text("Camera").font(.headline)
             if offscreen {
                 Text(Self.modes.first { $0.0 == session.current.camera.mode }?.1 ?? "").font(.callout)
             } else {
@@ -719,7 +719,7 @@ struct CameraSection: View {
                     set: { session.binding(\.camera.zoom).wrappedValue = exp2($0) }),
                 range: Self.octaves, reading: { Self.reading(zoom: exp2($0)) })
             ParameterSlider(
-                title: "Rotation sur le clip (degrés)",
+                title: "Rotation over the clip (degrees)",
                 value: Binding(
                     get: { session.current.camera.rotation * 180 / .pi },
                     set: { session.binding(\.camera.rotation).wrappedValue = $0 * .pi / 180 }),
@@ -732,18 +732,18 @@ struct CameraSection: View {
     private var caption: String {
         switch session.current.camera.mode {
         case .auto:
-            "Suit les galaxies, qui s'éloignent et se rapprochent. Sur l'image, glisser tourne la "
-                + "caméra et la molette règle le zoom."
+            "Follows the galaxies as they draw apart and close in. On the image, drag turns the "
+                + "camera and scroll sets the zoom."
         case .director:
-            "Plans larges et plans serrés sur un disque et sur la rencontre, choisis par le "
-                + "réalisateur. Sur l'image, glisser tourne ses plans larges et la molette les "
-                + "rapproche ; les plans serrés, il les cadre lui-même."
+            "Wide shots and close-ups of a disk and of the encounter, chosen by the "
+                + "director. On the image, drag turns its wide shots and scroll brings them "
+                + "closer; the close-ups it frames itself."
         case .fixed:
-            "Cadré une fois sur toute la scène. Sur l'image, glisser tourne la caméra et la "
-                + "molette règle le zoom."
+            "Framed once on the whole scene. On the image, drag turns the camera and "
+                + "scroll sets the zoom."
         case .immersed:
-            "Le réalisateur, depuis l'intérieur d'un disque : il choisit où regarder, le zoom "
-                + "l'écarte ou le rapproche du centre du disque."
+            "The director, from inside a disk: it chooses where to look, the zoom "
+                + "moves it away from or towards the disk's centre."
         }
     }
 
@@ -756,31 +756,31 @@ struct CameraSection: View {
     /// The zoom said as distance, since below one the camera stands further back.
     static func reading(zoom: Float) -> String {
         let times = StyleNames.oneDecimal
-        if abs(zoom - 1) < 0.005 { return "× 1 · le cadrage mesuré" }
+        if abs(zoom - 1) < 0.005 { return "× 1 · the measured framing" }
         return zoom < 1
-            ? "× \(StyleNames.number(zoom)) · \(times(1 / zoom)) fois plus loin"
-            : "× \(StyleNames.number(zoom)) · \(times(zoom)) fois plus près"
+            ? "× \(StyleNames.number(zoom)) · \(times(1 / zoom)) times further"
+            : "× \(StyleNames.number(zoom)) · \(times(zoom)) times closer"
     }
 }
 
-/// Lumière, Instrument, Rendu détaillé and Plan de caméra, folded, each with its reset.
+/// Light, Instrument, Detailed rendering and Camera plan, folded, each with its reset.
 struct FineSettings: View {
     @ObservedObject var session: StyleSession
     @Binding var shown: Bool
 
     var body: some View {
-        DisclosureGroup("Réglages fins", isExpanded: $shown) {
+        DisclosureGroup("Fine settings", isExpanded: $shown) {
             VStack(alignment: .leading, spacing: 10) {
-                FineGroup(session: session, title: "Lumière", group: .light) {
+                FineGroup(session: session, title: "Light", group: .light) {
                     LightControls(session: session)
                 }
                 FineGroup(session: session, title: "Instrument", group: .instrument) {
                     InstrumentControls(session: session)
                 }
-                FineGroup(session: session, title: "Rendu détaillé", group: .detail) {
+                FineGroup(session: session, title: "Detailed rendering", group: .detail) {
                     DetailControls(session: session)
                 }
-                FineGroup(session: session, title: "Plan de caméra", group: .camera) {
+                FineGroup(session: session, title: "Camera plan", group: .camera) {
                     PlanControls(session: session)
                 }
             }
@@ -802,13 +802,13 @@ struct FineGroup<Content: View>: View {
         DisclosureGroup(isExpanded: offscreen ? .constant(true) : $shown) {
             VStack(alignment: .leading, spacing: 8) {
                 content
-                Button("Réinitialiser") { session.reset(group) }
+                Button("Reset") { session.reset(group) }
                     .controlSize(.small)
                     .disabled(!changed)
                     .help(
                         group == .camera
-                            ? "Revient au plan du style enregistré"
-                            : "Revient aux valeurs du dernier rendu choisi")
+                            ? "Back to the saved style's camera plan"
+                            : "Back to the values of the last rendering chosen")
             }
             .font(.body)
             .padding(.top, 6)
@@ -828,21 +828,21 @@ struct LightControls: View {
 
     var body: some View {
         ParameterSlider(
-            title: "Luminosité", value: session.binding(\.look.brightness), range: 0.02...2.0,
+            title: "Brightness", value: session.binding(\.look.brightness), range: 0.02...2.0,
             format: "%.2f")
         ParameterSlider(
-            title: "Étirement logarithmique", value: session.binding(\.look.stretch), range: 0...60,
+            title: "Logarithmic stretch", value: session.binding(\.look.stretch), range: 0...60,
             format: "%.0f")
         ParameterSlider(title: "Saturation", value: session.binding(\.look.saturation), range: 0...3)
         ParameterSlider(
-            title: "Teinte par galaxie", value: session.binding(\.look.galaxyTint), range: 0...1)
+            title: "Tint per galaxy", value: session.binding(\.look.galaxyTint), range: 0...1)
         ParameterSlider(
-            title: "Opacité des poussières", value: session.binding(\.look.dustStrength),
+            title: "Dust opacity", value: session.binding(\.look.dustStrength),
             range: 0...1.2, format: "%.3f")
         ParameterSlider(
-            title: "Toile des poussières", value: session.binding(\.look.dustWeb), range: 0...1)
+            title: "Dust web", value: session.binding(\.look.dustWeb), range: 0...1)
         ParameterSlider(
-            title: "Force des bras peints", value: session.binding(\.look.armPersistence), range: 0...2)
+            title: "Painted arm strength", value: session.binding(\.look.armPersistence), range: 0...2)
     }
 }
 
@@ -851,49 +851,49 @@ struct InstrumentControls: View {
 
     var body: some View {
         ParameterSlider(
-            title: "Lissage des étoiles", value: session.binding(\.look.smoothingScale), range: 0.4...5.0)
+            title: "Star smoothing", value: session.binding(\.look.smoothingScale), range: 0.4...5.0)
         ParameterSlider(
-            title: "Noyau minimal (px)", value: session.binding(\.look.minimumKernel), range: 0.5...6)
+            title: "Minimum kernel (px)", value: session.binding(\.look.minimumKernel), range: 0.5...6)
         ParameterSlider(
-            title: "Noyau maximal (px)", value: session.binding(\.look.maximumKernel), range: 4...160,
+            title: "Maximum kernel (px)", value: session.binding(\.look.maximumKernel), range: 4...160,
             format: "%.0f")
         ParameterSlider(
-            title: "Étoiles sous le noyau (projection)", value: session.binding(\.look.columnSmoothing),
+            title: "Stars under the kernel (projection)", value: session.binding(\.look.columnSmoothing),
             range: 0...120, format: "%.0f")
-        ParameterSlider(title: "Sources compactes", value: session.binding(\.look.glint), range: 0...1)
-        ParameterSlider(title: "Halo lumineux", value: session.binding(\.look.bloomIntensity), range: 0...2)
+        ParameterSlider(title: "Compact sources", value: session.binding(\.look.glint), range: 0...1)
+        ParameterSlider(title: "Glow", value: session.binding(\.look.bloomIntensity), range: 0...2)
         ParameterSlider(
-            title: "Seuil du halo", value: session.binding(\.look.bloomThreshold), range: 0.05...1.5)
+            title: "Glow threshold", value: session.binding(\.look.bloomThreshold), range: 0.05...1.5)
         ParameterSlider(
-            title: "Douceur du seuil", value: session.binding(\.look.bloomSoftKnee), range: 0...1)
+            title: "Threshold softness", value: session.binding(\.look.bloomSoftKnee), range: 0...1)
         ParameterSlider(
-            title: "Aigrettes de diffraction", value: session.binding(\.look.spikeIntensity),
+            title: "Diffraction spikes", value: session.binding(\.look.spikeIntensity),
             range: 0...1.5)
         ParameterSlider(
-            title: "Branches des aigrettes",
+            title: "Spike arms",
             value: Binding(
                 get: { Float(session.current.look.spikeArms) },
                 set: { session.binding(\.look.spikeArms).wrappedValue = Int($0.rounded()) }),
             range: 0...8, format: "%.0f")
         ParameterSlider(
-            title: "Longueur des aigrettes", value: session.binding(\.look.spikeLength), range: 0...200,
+            title: "Spike length", value: session.binding(\.look.spikeLength), range: 0...200,
             format: "%.0f")
         ParameterSlider(
-            title: "Netteté des aigrettes", value: session.binding(\.look.spikeSharpness), range: 0...1)
+            title: "Spike sharpness", value: session.binding(\.look.spikeSharpness), range: 0...1)
         CheckToggle(
-            title: "Aigrettes de Webb",
+            title: "Webb spikes",
             isOn: Binding(
                 get: { session.current.look.spikePattern == .webb },
                 set: { session.binding(\.look.spikePattern).wrappedValue = $0 ? .webb : .even }))
         ParameterSlider(
-            title: "Taille des étoiles de champ", value: session.binding(\.look.starSize), range: 0.2...4)
+            title: "Field star size", value: session.binding(\.look.starSize), range: 0.2...4)
         ParameterSlider(
-            title: "Point blanc", value: session.binding(\.look.whitePoint), range: 1...20, format: "%.1f")
+            title: "White point", value: session.binding(\.look.whitePoint), range: 1...20, format: "%.1f")
         ParameterSlider(
-            title: "Fond de ciel", value: session.binding(\.look.skyLevel), range: 0...0.006,
+            title: "Sky background", value: session.binding(\.look.skyLevel), range: 0...0.006,
             format: "%.4f")
         ParameterSlider(
-            title: "Scintillement (bruit du capteur)", value: session.binding(\.look.noiseLevel),
+            title: "Twinkle (sensor noise)", value: session.binding(\.look.noiseLevel),
             range: 0...0.004, format: "%.4f")
     }
 }
@@ -905,11 +905,11 @@ struct DetailControls: View {
     @Environment(\.offscreen) private var offscreen
 
     var body: some View {
-        Text("Ces réglages reconstruisent le rendu, au relâché.")
+        Text("These settings rebuild the renderer on release.")
             .font(.caption2)
             .foregroundStyle(Palette.secondary)
         ParameterSlider(
-            title: "Étoiles de champ",
+            title: "Field stars",
             value: Binding(
                 get: { starCount ?? Float(session.current.starCount) },
                 set: { starCount = $0.rounded() }),
@@ -919,20 +919,20 @@ struct DetailControls: View {
                 starCount = nil
             })
         if offscreen {
-            Text("Niveaux du halo : \(session.current.bloomLevels)").font(.caption)
+            Text("Glow levels: \(session.current.bloomLevels)").font(.caption)
         } else {
             Stepper(
-                "Niveaux du halo : \(session.current.bloomLevels)", value: session.binding(\.bloomLevels),
+                "Glow levels: \(session.current.bloomLevels)", value: session.binding(\.bloomLevels),
                 in: 1...8
             )
             .font(.caption)
         }
         if offscreen {
-            Text("Suréchantillonnage \(session.current.supersample)×").font(.caption)
+            Text("Supersampling \(session.current.supersample)×").font(.caption)
         } else {
             HStack {
-                Text("Suréchantillonnage").font(.caption)
-                Picker("Suréchantillonnage", selection: session.binding(\.supersample)) {
+                Text("Supersampling").font(.caption)
+                Picker("Supersampling", selection: session.binding(\.supersample)) {
                     ForEach(1...4, id: \.self) { Text("\($0)×").tag($0) }
                 }
                 .pickerStyle(.segmented)
@@ -940,8 +940,8 @@ struct DetailControls: View {
             }
         }
         ParameterSlider(
-            title: "Force des bras (fichier)", value: session.binding(\.armStrength), range: 0...2)
-        CheckToggle(title: "Points bruts", isOn: session.binding(\.plain))
+            title: "Arm strength (file)", value: session.binding(\.armStrength), range: 0...2)
+        CheckToggle(title: "Raw points", isOn: session.binding(\.plain))
     }
 }
 
@@ -951,36 +951,36 @@ struct PlanControls: View {
 
     var body: some View {
         CheckToggle(
-            title: "Voir à travers le plan",
+            title: "View through the plan",
             isOn: Binding(
                 get: { session.model.followsPlan },
                 set: { session.model.followsPlan = $0 })
         )
         .help(
-            "Dessine l'image comme l'export la cadrera, dans tous les modes. Décoché, la souris "
-                + "déplace une vue libre que l'export ne garde pas.")
+            "Draws the image as the export will frame it, in every mode. Unticked, the mouse "
+                + "moves a free view the export does not keep.")
         // The immersed director chooses its own lens and angles.
         Group {
             ParameterSlider(
-                title: "Ouverture de l'objectif", value: session.binding(\.look.fieldOfView),
+                title: "Field of view", value: session.binding(\.look.fieldOfView),
                 range: 0.2...1.4)
             ParameterSlider(
-                title: "Élévation (rad)", value: session.binding(\.camera.elevation), range: -1.5...1.5)
+                title: "Elevation (rad)", value: session.binding(\.camera.elevation), range: -1.5...1.5)
             PlanEndSlider(
-                title: "Élévation de fin", start: session.current.camera.elevation,
+                title: "End elevation", start: session.current.camera.elevation,
                 end: session.binding(\.camera.elevationEnd), range: -1.5...1.5)
             ParameterSlider(
-                title: "Azimut (rad)", value: session.binding(\.camera.azimuth), range: -6.3...6.3)
+                title: "Azimuth (rad)", value: session.binding(\.camera.azimuth), range: -6.3...6.3)
             PlanEndSlider(
-                title: "Azimut de fin", start: session.current.camera.azimuth,
+                title: "End azimuth", start: session.current.camera.azimuth,
                 end: session.binding(\.camera.azimuthEnd), range: -12.6...12.6)
         }
         .disabled(!session.current.camera.placesCamera)
         ParameterSlider(
-            title: "Part des particules cadrées", value: session.binding(\.camera.percentile),
+            title: "Share of particles framed", value: session.binding(\.camera.percentile),
             range: 0.5...1, format: "%.3f")
         ParameterSlider(
-            title: "Rayon cadré (kpc, 0 = mesuré)", value: session.binding(\.camera.radius),
+            title: "Framed radius (kpc, 0 = measured)", value: session.binding(\.camera.radius),
             range: 0...300, format: "%.0f")
     }
 }

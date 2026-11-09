@@ -26,7 +26,7 @@ enum ReplayCheck {
             ? Int(CommandLine.arguments[flag + 2]) ?? 300 : 300
         let look = CommandLine.arguments.dropFirst(flag + 2).first { $0.hasSuffix(".look.json") }
         guard let model = SimulationModel() else {
-            FileHandle.standardError.write(Data("replay: pas de périphérique Metal\n".utf8))
+            FileHandle.standardError.write(Data("replay: no Metal device\n".utf8))
             exit(1)
         }
         model.openTake(
@@ -41,7 +41,7 @@ enum ReplayCheck {
                 exit(1)
             }
             if Date() > deadline {
-                FileHandle.standardError.write(Data("replay: la prise n'a pas chargé\n".utf8))
+                FileHandle.standardError.write(Data("replay: the take did not load\n".utf8))
                 exit(1)
             }
         }
@@ -57,7 +57,7 @@ enum ReplayCheck {
         for index in 0..<(frames + warmup) {
             let start = CACurrentMediaTime()
             guard model.playbackSnapshot() != nil else {
-                FileHandle.standardError.write(Data("replay: rien à dessiner\n".utf8))
+                FileHandle.standardError.write(Data("replay: nothing to draw\n".utf8))
                 exit(1)
             }
             guard index >= warmup else {
@@ -74,25 +74,25 @@ enum ReplayCheck {
         }
 
         func split(_ name: String, _ samples: [Double]) -> String {
-            guard !samples.isEmpty else { return "\(name) aucun" }
+            guard !samples.isEmpty else { return "\(name) none" }
             let sorted = samples.sorted()
             return String(
-                format: "%@ médiane %6.1f ms, 99e %6.1f, pire %6.1f", name,
+                format: "%@ median %6.1f ms, 99th %6.1f, worst %6.1f", name,
                 sorted[sorted.count / 2],
                 sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.99))],
                 sorted.last ?? 0)
         }
         let report = """
-            prise            \(model.particleCount) particules, \(model.capturedFrames) images, \(String(format: "%.1f", model.capturedMegabytes / 1024)) Go
-            surface          \(Int(model.drawableSize.width)) x \(Int(model.drawableSize.height)) à \(model.supersample)x
-            vitesse          \(model.playbackSpeed) images de prise par seconde affichée
-            \(split("image entière   ", whole))
-            \(split("attente snapshot", model.playbackFetch))
-            \(split("entêtes + centres", model.playbackMeta))
-            \(split("mélange GPU     ", model.playbackExpand))
-            \(split("rendu GPU       ", gpu))
-            \(split("lissage         ", model.smoothingRefreshes))
-            snapshot en retard \(model.playbackWaits) images sur \(model.playbackFetch.count)
+            take             \(model.particleCount) particles, \(model.capturedFrames) frames, \(String(format: "%.1f", model.capturedMegabytes / 1024)) GB
+            surface          \(Int(model.drawableSize.width)) x \(Int(model.drawableSize.height)) at \(model.supersample)x
+            speed            \(model.playbackSpeed) take frames per second shown
+            \(split("whole frame     ", whole))
+            \(split("snapshot wait   ", model.playbackFetch))
+            \(split("headers + centres", model.playbackMeta))
+            \(split("GPU blend       ", model.playbackExpand))
+            \(split("GPU render      ", gpu))
+            \(split("smoothing       ", model.smoothingRefreshes))
+            snapshot late    \(model.playbackWaits) frames of \(model.playbackFetch.count)
             """
         try? report.write(
             to: URL(fileURLWithPath: "/tmp/sillage-replay.log"), atomically: true, encoding: .utf8)

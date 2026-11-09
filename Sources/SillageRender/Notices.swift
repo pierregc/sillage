@@ -1,7 +1,7 @@
 import Foundation
 
-/// What the runner tells the person at the Mac: a title and a line, in French, with the words
-/// of the app (Haute résolution, Rendu, File d'attente).
+/// What the runner tells the person at the Mac: a title and a line, with the words of the app
+/// (High resolution, Videos, Queue).
 public struct Notice: Sendable, Equatable {
     public var title: String
     public var body: String
@@ -16,42 +16,42 @@ public enum Notices {
     /// A stage as the app names it.
     public static func stage(_ name: String) -> String {
         switch name {
-        case "explore", "exploration": "Aperçus"
-        case "hires": "Haute résolution"
+        case "explore", "exploration": "Previews"
+        case "hires": "High resolution"
         case "look", "style": "Style"
-        case "export": "Vidéos"
-        case "night": "Nuit"
+        case "export": "Videos"
+        case "night": "Night"
         default: name.prefix(1).uppercased() + name.dropFirst()
         }
     }
 
-    /// `Nuit du 25 oct.` from a night named by its date, `Nuit` when it has no name.
+    /// `Night of 25 Oct` from a night named by its date, `Night` when it has no name.
     public static func night(_ name: String?) -> String {
-        guard let name, !name.isEmpty else { return "Nuit" }
+        guard let name, !name.isEmpty else { return "Night" }
         let parser = DateFormatter()
         parser.locale = Locale(identifier: "en_US_POSIX")
         parser.dateFormat = "yyyy-MM-dd"
-        guard let date = parser.date(from: String(name.prefix(10))) else { return "Nuit du \(name)" }
+        guard let date = parser.date(from: String(name.prefix(10))) else { return "Night of \(name)" }
         let writer = DateFormatter()
-        writer.locale = Locale(identifier: "fr_FR")
+        writer.locale = Locale(identifier: "en_US_POSIX")
         writer.dateFormat = "d MMM"
-        return "Nuit du \(writer.string(from: date))"
+        return "Night of \(writer.string(from: date))"
     }
 
     private static func count(_ n: Int, _ one: String, _ many: String) -> String {
-        "\(n) \(n > 1 ? many : one)"
+        "\(n) \(n == 1 ? one : many)"
     }
 
     /// A phase of a night is over.
     public static func phaseDone(_ event: RunEvent) -> Notice {
-        var body = "\(stage(event.phase ?? "")) : fini"
-        if let n = event.count { body += " · \(count(n, "scène", "scènes"))" }
+        var body = "\(stage(event.phase ?? "")): done"
+        if let n = event.count { body += " · \(count(n, "scene", "scenes"))" }
         return Notice(night(event.night), body)
     }
 
     /// The night is over: what it did, from the events of its batch.
     public static func nightDone(_ event: RunEvent, events: [RunEvent]) -> Notice {
-        Notice("\(night(event.night)) terminée", summary(events))
+        Notice("\(night(event.night)) finished", summary(events))
     }
 
     public static func summary(_ events: [RunEvent]) -> String {
@@ -60,30 +60,30 @@ public enum Notices {
         let videos = events.filter { $0.kind == RunEvent.Kind.exportDone }
         let errors = events.filter { $0.kind == RunEvent.Kind.error }
         return [
-            count(explored.count, "scène explorée", "scènes explorées"),
-            "\(hires.count) en haute résolution",
-            count(videos.count, "vidéo", "vidéos"),
-            errors.isEmpty ? "aucune erreur" : count(errors.count, "erreur", "erreurs"),
+            count(explored.count, "scene explored", "scenes explored"),
+            "\(hires.count) in high resolution",
+            count(videos.count, "video", "videos"),
+            errors.isEmpty ? "no errors" : count(errors.count, "error", "errors"),
         ].joined(separator: " · ")
     }
 
     /// A job failed: the stage, the scene and why.
     public static func failed(_ job: QueueJob) -> Notice {
         let what = job.scene ?? job.batch
-        return Notice("Échec · \(stage(job.kind.rawValue))", "\(what) : \(job.message ?? "arrêté")")
+        return Notice("Failed · \(stage(job.kind.rawValue))", "\(what): \(job.message ?? "stopped")")
     }
 
     /// The queue is empty after jobs asked for by hand.
     public static func queueEmpty(finished: Int) -> Notice {
-        Notice("File d'attente vide", "\(count(finished, "travail terminé", "travaux terminés"))")
+        Notice("Queue empty", "\(count(finished, "job finished", "jobs finished"))")
     }
 
     /// The status line of the menu bar item: what runs, on which scene, how far.
     public static func statusLine(_ activity: ActivityFile) -> String {
-        guard activity.state != .idle, let job = activity.job else { return "Rien en cours" }
+        guard activity.state != .idle, let job = activity.job else { return "Nothing running" }
         let parts = [
             stage(job.kind), job.scene ?? job.batch, job.detail,
-            activity.state == .paused ? "en pause" : nil,
+            activity.state == .paused ? "paused" : nil,
         ]
         return parts.compactMap { $0 }.joined(separator: " · ")
     }

@@ -20,7 +20,7 @@ enum NightSheetCheck {
         exercise(root)
         pictures()
         if failures == 0 { try? FileManager.default.removeItem(at: root) }
-        let report = lines.joined(separator: "\n") + "\n\n\(failures) échec(s)"
+        let report = lines.joined(separator: "\n") + "\n\n\(failures) failed"
         try? report.write(
             to: URL(fileURLWithPath: "/tmp/sillage-night.log"), atomically: true, encoding: .utf8)
         print(report)
@@ -59,38 +59,38 @@ enum NightSheetCheck {
     private static func exercise(_ root: URL) {
         let model = NightSheetModel(library: root, clock: { evening })
         let started = Date()
-        check("le plan vient (les tirages réels de la nuit)", wait(60) { model.plan != nil })
+        check("the plan comes (the night's real draws)", wait(60) { model.plan != nil })
         let first = Date().timeIntervalSince(started)
-        check("la feuille s'ouvre sur Prêt à 7 h 00", model.sheet == NightSheet(), "plan en \(ms(first))")
+        check("the sheet opens on Ready by 07:00", model.sheet == NightSheet(), "plan in \(ms(first))")
         guard let plan = model.plan else { return }
         check(
-            "une ligne par étape, puis la livraison",
-            plan.lines.map(\.title) == ["Aperçus", "Haute résolution", "Style", "Vidéos"]
-                && plan.delivery.hasPrefix("Prêt "),
+            "a line per step, then the delivery",
+            plan.lines.map(\.title) == ["Previews", "High resolution", "Style", "Videos"]
+                && plan.delivery.hasPrefix("Ready "),
             plan.lines.map(\.text).joined(separator: " | "))
         check(
-            "chaque ligne dit sa durée et sa fin",
-            plan.lines.allSatisfy { !$0.duration.isEmpty && $0.until.hasPrefix("jusqu'à ") })
+            "each line gives its duration and its end",
+            plan.lines.allSatisfy { !$0.duration.isEmpty && $0.until.hasPrefix("until ") })
 
         let changes: [(String, () -> Void)] = [
             (
-                "Pendant 6 h",
+                "Duration 6 h",
                 {
                     model.sheet.timing = .hours
                     model.sheet.hours = 6
                 }
             ),
             (
-                "Prêt à 6 h 30",
+                "Ready by 06:30",
                 {
                     model.sheet.timing = .deliver
                     model.sheet.deliverMinutes = 390
                 }
             ),
-            ("3 scènes en haute résolution", { model.sheet.hiresScenes = 3 }),
-            ("Monde Télescope", { model.sheet.world = "telescope" }),
-            ("sans la vidéo verticale", { model.sheet.vertical = false }),
-            ("exploration seulement", { model.sheet.exploreOnly = true }),
+            ("3 scenes in high resolution", { model.sheet.hiresScenes = 3 }),
+            ("Telescope world", { model.sheet.world = "telescope" }),
+            ("without the vertical video", { model.sheet.vertical = false }),
+            ("previews only", { model.sheet.exploreOnly = true }),
         ]
         // Auto may draw every pick tonight in the telescope world: from the free one, the change
         // of world always shows.
@@ -100,16 +100,16 @@ enum NightSheetCheck {
         for (name, change) in changes {
             if let seconds = replanned(model, change) {
                 slowest = max(slowest, seconds)
-                check("le plan suit : \(name)", model.plan != before, "en \(ms(seconds))")
+                check("the plan follows: \(name)", model.plan != before, "in \(ms(seconds))")
             } else {
-                check("le plan suit : \(name)", false, "pas de nouveau plan")
+                check("the plan follows: \(name)", false, "no new plan")
             }
             before = model.plan
         }
-        check("chaque plan vient en moins d'une demi-seconde", slowest < 0.5, "au plus \(ms(slowest))")
+        check("each plan comes in under half a second", slowest < 0.5, "at most \(ms(slowest))")
         check(
-            "exploration seulement ne garde que les aperçus",
-            model.plan?.lines.map(\.title) == ["Aperçus"])
+            "previews only keeps the previews alone",
+            model.plan?.lines.map(\.title) == ["Previews"])
 
         // Launching: a night in the queue, its own recipe, the settings kept.
         model.sheet = NightSheet()
@@ -118,15 +118,15 @@ enum NightSheetCheck {
         let queue = QueueStore(library: root)
         let launched = model.launch { _ = try $0.launch(library: root, runner: nil) }
         let waiting = queue.read().waiting
-        check("lancer ajoute la nuit à la file", launched && waiting.count == 1 && waiting[0].kind == .night)
+        check("launching adds the night to the queue", launched && waiting.count == 1 && waiting[0].kind == .night)
         if let file = waiting.first?.options.first,
             let recipe = try? NightRecipe.read(URL(fileURLWithPath: file))
         {
-            check("avec sa recette", recipe.pick == .count(2) && recipe.deliver == .value("07:00"))
+            check("with its recipe", recipe.pick == .count(2) && recipe.deliver == .value("07:00"))
         } else {
-            check("avec sa recette", false)
+            check("with its recipe", false)
         }
-        check("les derniers réglages sont gardés", NightSheetModel(library: root).sheet == model.sheet)
+        check("the last settings are kept", NightSheetModel(library: root).sheet == model.sheet)
 
         // A night too big for the disk or the time warns and can still be launched.
         let small = NightSheetModel(
@@ -134,16 +134,16 @@ enum NightSheetCheck {
             planner: NightSheetPlanner(library: root, freeBytes: 1e9, draws: fixedDraws), clock: { evening })
         small.sheet.timing = .hours
         small.sheet.hours = 8
-        check("un plan trop gros prévient", wait(5) { small.plan?.warnings.isEmpty == false })
+        check("a plan too big warns", wait(5) { small.plan?.warnings.isEmpty == false })
         let kinds = small.plan?.warnings.map(\.kind) ?? []
-        check("le disque est signalé", kinds.contains("disk"), kinds.joined(separator: ", "))
+        check("the disk is flagged", kinds.contains("disk"), kinds.joined(separator: ", "))
         small.sheet.hours = 1
         check(
-            "une nuit trop courte est signalée",
+            "a night too short is flagged",
             wait(5) { small.plan?.warnings.contains { $0.kind != "disk" } == true },
             small.plan?.warnings.map(\.kind).joined(separator: ", ") ?? "")
         check(
-            "sans bloquer le lancement",
+            "without blocking the launch",
             small.launch { _ in } && !small.launching && small.failure == nil)
     }
 

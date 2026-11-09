@@ -36,10 +36,10 @@ struct SettingsForm: View {
 
     var body: some View {
         Form {
-            Toggle("Notifications de la file d'attente", isOn: $settings.enabled)
+            Toggle("Queue notifications", isOn: $settings.enabled)
             Text(
-                "Sillage prévient quand une phase de la nuit se termine, quand la nuit est finie, "
-                    + "quand un travail échoue et quand la file d'attente se vide après des travaux lancés à la main."
+                "Sillage tells you when a phase of the night ends, when the night is over, "
+                    + "when a job fails, and when the queue empties after jobs started by hand."
             )
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -71,7 +71,7 @@ final class MenuBarStatus: ObservableObject {
 
     var isRunning: Bool { activity.map { $0.state != .idle && $0.job != nil } ?? false }
     var progress: Double { activity?.job?.progress ?? 0 }
-    var line: String { activity.map(Notices.statusLine) ?? "Rien en cours" }
+    var line: String { activity.map(Notices.statusLine) ?? "Nothing running" }
 
     func refresh() {
         let read = library().flatMap { ActivityFile.read(from: RunStatusFiles.activity(library: $0)) }
@@ -111,7 +111,7 @@ struct StatusMenu: View {
     var body: some View {
         Text(status.line)
         Divider()
-        Button("Ouvrir Sillage") {
+        Button("Open Sillage") {
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: AppNavigation.windowID)
         }

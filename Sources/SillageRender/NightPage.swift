@@ -1,12 +1,12 @@
 import Foundation
 
-/// A night in the sidebar: "25 oct. · 35 scènes · 4 vidéos".
+/// A night in the sidebar: "25 Oct · 35 scenes · 4 videos".
 public struct NightListItem: Sendable, Equatable, Identifiable {
     /// The night's folder name.
     public var id: String
     /// "25 oct.".
     public var day: String
-    /// "35 scènes · 4 vidéos", with how it stands when it is not over.
+    /// "35 scenes · 4 videos", with how it stands when it is not over.
     public var summary: String
     public var startedAt: Date
     /// Nil for a night that waits in the queue and has written nothing yet.
@@ -30,9 +30,9 @@ public struct NightPage: Sendable, Equatable {
         public var state: State
         /// "12/50".
         public var counts: String
-        /// "2 rejetés · 1 en échec".
+        /// "2 rejected · 1 failed".
         public var detail: String
-        /// "fini 1 h 05", "fin vers 3 h 10" or "début vers 3 h 10".
+        /// "finished 01:05", "ends around 03:10" or "starts around 03:10".
         public var time: String
         public var fraction: Double
     }
@@ -41,10 +41,9 @@ public struct NightPage: Sendable, Equatable {
         public var id: String { name }
         public var name: String
         public var score: Double?
-        /// Where it stands: Aperçu, Choisie, Haute résolution, Style, Vidéos 1/2, Terminée or
-        /// Laissée de côté.
+        /// Where it stands: Preview, Kept, High resolution, Style, Videos 1/2, Done or Left out.
         public var stage: String
-        /// "score 0,91 · haute résolution 40 min".
+        /// "score 0.91 · high resolution 40 min".
         public var detail: String
         public var picked: Bool
         /// The scene the job running now works on.
@@ -55,7 +54,7 @@ public struct NightPage: Sendable, Equatable {
 
     public struct Problem: Sendable, Equatable, Identifiable {
         public var id: Int
-        /// "scene-0023, haute résolution : ended by signal 9".
+        /// "scene-0023, high resolution: ended by signal 9".
         public var text: String
         /// The log from the night's folder.
         public var log: String?
@@ -86,16 +85,16 @@ public struct NightPage: Sendable, Equatable {
 
     public var id: String
     public var folder: URL
-    /// "Nuit du 25 oct.".
+    /// "Night of 25 Oct".
     public var title: String
     public var state: NightFile.State?
     public var live: Bool
     public var queued: Bool
     public var stuck: Bool
-    /// "En cours", "Terminée 6 h 41, avant 7 h 00".
+    /// "Running", "Finished 06:41, before 07:00".
     public var status: String
     public var current: Current?
-    /// "Livraison : prête vers 6 h 20, avant 7 h 00, 40 min de marge".
+    /// "Delivery: ready around 06:20, by 07:00, 40 min to spare".
     public var delivery: String?
     public var phases: [PhaseBar]
     public var scenes: [SceneCard]
@@ -108,11 +107,11 @@ public struct NightPage: Sendable, Equatable {
 
     public static func phaseTitle(_ name: String) -> String {
         switch name {
-        case "explore": "Aperçus"
-        case "pick": "Sélection"
-        case "hires": "Haute résolution"
+        case "explore": "Previews"
+        case "pick": "Selection"
+        case "hires": "High resolution"
         case "style", "look": "Style"
-        case "export": "Vidéos"
+        case "export": "Videos"
         default: name.prefix(1).uppercased() + name.dropFirst()
         }
     }
@@ -171,7 +170,7 @@ public struct NightsSnapshot: Sendable, Equatable {
             let day = words.nightDate(night: job.batch, file: nil) ?? job.batch
             items.append(
                 NightListItem(
-                    id: job.batch, day: day, summary: "en attente", startedAt: job.added, state: nil,
+                    id: job.batch, day: day, summary: "waiting", startedAt: job.added, state: nil,
                     live: false, queued: true))
         }
         items.sort {
@@ -190,17 +189,17 @@ public struct NightsSnapshot: Sendable, Equatable {
         return NightsSnapshot(items: items, page: page)
     }
 
-    /// "35 scènes · 4 vidéos", with how it stands when it is not over.
+    /// "35 scenes · 4 videos", with how it stands when it is not over.
     static func summary(_ night: NightFile, live: Bool) -> String {
         func phase(_ name: String) -> NightFile.Phase? { night.phases.first { $0.name == name } }
         let scenes = phase("explore")?.done ?? 0
         let videos = phase("export")?.done ?? 0
-        var parts = ["\(scenes) scène\(scenes > 1 ? "s" : "")", "\(videos) vidéo\(videos > 1 ? "s" : "")"]
+        var parts = ["\(scenes) scene\(scenes == 1 ? "" : "s")", "\(videos) video\(videos == 1 ? "" : "s")"]
         switch night.state {
-        case _ where live: parts.append(night.state == .paused ? "en pause" : "en cours")
-        case .failed: parts.append("en échec")
-        case .stopped: parts.append("arrêtée")
-        case .running, .paused: parts.append("interrompue")
+        case _ where live: parts.append(night.state == .paused ? "paused" : "running")
+        case .failed: parts.append("failed")
+        case .stopped: parts.append("stopped")
+        case .running, .paused: parts.append("interrupted")
         case .done: break
         }
         return parts.joined(separator: " · ")
@@ -223,8 +222,8 @@ extension NightPage {
             controls.queuedJob = queued.id
             return NightPage(
                 id: id, folder: folder,
-                title: "Nuit du " + (words.nightDate(night: id, file: nil) ?? id), state: nil,
-                live: false, queued: true, stuck: false, status: "En attente dans la file d'attente",
+                title: "Night of " + (words.nightDate(night: id, file: nil) ?? id), state: nil,
+                live: false, queued: true, stuck: false, status: "Waiting in the queue",
                 current: nil, delivery: nil, phases: Self.phaseNames.map(Self.emptyBar), scenes: [],
                 problems: [], report: nil, controls: controls)
         }
@@ -238,13 +237,13 @@ extension NightPage {
         let shown = live ? activity?.job.flatMap { $0.batch == id ? $0 : nil } : nil
         let paused = live && status.isPaused
 
-        let title = "Nuit du " + (words.nightDate(night: id, file: file) ?? id)
+        let title = "Night of " + (words.nightDate(night: id, file: file) ?? id)
         let state = NightPage.state(file, live: live, paused: paused)
         var line = ""
         if live {
-            line = paused ? "En pause" : "En cours"
+            line = paused ? "Paused" : "Running"
             if status.isStuck {
-                line += " · semble bloquée"
+                line += " · seems stuck"
             }
         } else {
             let outcome = NightDigest.outcome(file, words)
@@ -266,7 +265,7 @@ extension NightPage {
             ? NightDigest.readiness(file, paused: paused, activity, words)
             : file.deliverBy == nil
                 ? nil
-                : "Livraison : "
+                : "Delivery: "
                     + NightReport.delivery(
                         file, end: file.endedAt ?? file.estimatedEnd ?? words.now, words: words)
 
@@ -303,22 +302,22 @@ extension NightPage {
 
     // MARK: Current job
 
-    /// "scene-0023, haute résolution, image 412/900, prêt vers 1 h 12".
+    /// "scene-0023, high resolution, frame 412/900, ready around 01:12".
     static func current(
         _ file: NightFile, _ job: ActivityFile.Job?, _ activity: ActivityFile?, paused: Bool,
         _ words: Words
     ) -> Current {
         guard let job else {
             let phase = activity?.night?.phase ?? "explore"
-            let line = paused ? "En pause" : QueueStatus.phase(phase, file: file)
+            let line = paused ? "Paused" : QueueStatus.phase(phase, file: file)
             return Current(line: line.prefix(1).uppercased() + line.dropFirst(), progress: nil)
         }
         var parts = [job.scene.map { $0.hasPrefix(".") ? String($0.dropFirst()) : $0 }]
         parts.append(QueueStatus.phaseLabel(job.kind))
         parts.append(QueueStatus.detail(job.detail))
-        if !paused, let eta = job.eta { parts.append("prêt " + words.about(eta)) }
+        if !paused, let eta = job.eta { parts.append("ready " + words.about(eta)) }
         var line = parts.compactMap { $0 }.joined(separator: ", ")
-        if paused { line = "En pause · " + line }
+        if paused { line = "Paused · " + line }
         return Current(line: line, scene: job.scene, kind: job.kind, progress: job.progress)
     }
 
@@ -358,19 +357,19 @@ extension NightPage {
             var aside: [String] = []
             if name == "explore", found.explored("rejected") > 0 {
                 let rejected = found.explored("rejected")
-                aside.append("\(rejected) rejeté\(rejected > 1 ? "s" : "")")
+                aside.append("\(rejected) rejected")
             }
-            if phase.failed > 0 { aside.append("\(phase.failed) en échec") }
+            if phase.failed > 0 { aside.append("\(phase.failed) failed") }
             if let skipped = phase.skipped, skipped > 0 {
-                aside.append("\(skipped) laissée\(skipped > 1 ? "s" : "") de côté")
+                aside.append("\(skipped) left out")
             }
             let time: String
             switch state {
             case .done:
                 let at = phaseDone[name] ?? lastEvent[name].flatMap { $0 > .distantPast ? $0 : nil }
-                time = at.map { "fini " + words.at($0) } ?? ""
-            case .current: time = phase.estimatedEnd.map { "fin " + words.about($0) } ?? ""
-            case .waiting: time = phase.estimatedStart.map { "début " + words.about($0) } ?? ""
+                time = at.map { "finished " + words.at($0) } ?? ""
+            case .current: time = phase.estimatedEnd.map { "ends " + words.about($0) } ?? ""
+            case .waiting: time = phase.estimatedStart.map { "starts " + words.about($0) } ?? ""
             case .left: time = ""
             }
             return PhaseBar(
@@ -431,25 +430,25 @@ extension NightPage {
             }
         }
         let cards = seen.map { name, scene -> SceneCard in
-            var stage = "Aperçu"
-            if scene.picked { stage = "Choisie" }
-            if scene.hiresStarted { stage = "Haute résolution" }
+            var stage = "Preview"
+            if scene.picked { stage = "Kept" }
+            if scene.hiresStarted { stage = "High resolution" }
             if scene.minutes != nil { stage = "Style" }
-            if scene.styled || scene.videos > 0 { stage = "Vidéos \(scene.videos)/\(exports)" }
-            if scene.videos >= exports { stage = "Terminée" }
+            if scene.styled || scene.videos > 0 { stage = "Videos \(scene.videos)/\(exports)" }
+            if scene.videos >= exports { stage = "Done" }
             if name == current?.scene {
                 switch current?.kind {
-                case "hires": stage = "Haute résolution"
+                case "hires": stage = "High resolution"
                 case "look": stage = "Style"
-                case "export": stage = "Vidéos \(scene.videos)/\(exports)"
+                case "export": stage = "Videos \(scene.videos)/\(exports)"
                 default: break
                 }
             }
-            if scene.leftOut != nil { stage = "Laissée de côté" }
+            if scene.leftOut != nil { stage = "Left out" }
             var detail: [String] = []
             if let score = scene.score { detail.append("score " + Words.decimal(score, digits: 2)) }
             if let minutes = scene.minutes, minutes > 0 {
-                detail.append("haute résolution " + Words.duration(minutes * 60))
+                detail.append("high resolution " + Words.duration(minutes * 60))
             }
             if let why = scene.leftOut, !why.isEmpty { detail.append(why) }
             return SceneCard(
@@ -472,7 +471,7 @@ extension NightPage {
             let who = [event.scene, event.stage.map(QueueStatus.phaseLabel)].compactMap { $0 }
                 .joined(separator: ", ")
             let text = [who, event.message].compactMap { $0 }.filter { !$0.isEmpty }
-                .joined(separator: " : ")
+                .joined(separator: ": ")
             let relative = event.log.map { NightEvents.relative($0, to: folder) }
             // The path the night wrote, or from its folder when the library has moved.
             let url = event.log.flatMap { path -> URL? in
@@ -482,7 +481,7 @@ extension NightPage {
                 return relative.map { folder.appendingPathComponent($0) }
             }
             return Problem(
-                id: index, text: text.isEmpty ? "erreur" : text,
+                id: index, text: text.isEmpty ? "error" : text,
                 log: relative, logURL: url)
         }
     }

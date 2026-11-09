@@ -32,8 +32,8 @@ struct NightPageView: View {
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: "moon").font(.system(size: 34)).foregroundStyle(Palette.secondary)
-                    Text("Cette nuit n'est pas dans la bibliothèque").font(.title3)
-                    Text("Son dossier a été déplacé ou supprimé.").foregroundStyle(Palette.secondary)
+                    Text("This night is not in the library").font(.title3)
+                    Text("Its folder was moved or deleted.").foregroundStyle(Palette.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -65,7 +65,7 @@ struct NightPageView: View {
             }
             Spacer()
             if let job = page.controls.queuedJob, !page.live {
-                Button("Annuler la nuit") { queue.attempt { try queue.cancel(job) } }
+                Button("Cancel the night") { queue.attempt { try queue.cancel(job) } }
             }
             sortButton(page)
         }
@@ -81,10 +81,10 @@ struct NightPageView: View {
     /// Opens the triage view on the scenes of this night still to sort.
     private func sortButton(_ page: NightPage) -> some View {
         let waiting = library.scenes.filter { $0.batch == page.id && $0.stage == .toSort }.count
-        return Button(waiting > 0 ? "Trier (\(waiting))" : "Trier") { sort(page.id) }
+        return Button(waiting > 0 ? "Sort (\(waiting))" : "Sort") { sort(page.id) }
             .buttonStyle(.borderedProminent)
             .disabled(waiting == 0)
-            .help(waiting == 0 ? "Aucune scène de cette nuit à trier" : "Une scène à la fois, au clavier")
+            .help(waiting == 0 ? "No scene of this night to sort" : "One scene at a time, from the keyboard")
     }
 
     // MARK: Content
@@ -106,7 +106,7 @@ struct NightPageView: View {
     private func running(_ page: NightPage) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("En ce moment").font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
+                Text("Now").font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
                 Spacer()
             }
             Text(page.current?.line ?? "").font(.headline.monospacedDigit())
@@ -120,29 +120,29 @@ struct NightPageView: View {
     private func controls(_ page: NightPage) -> some View {
         let controls = page.controls
         return HStack(spacing: 8) {
-            Button(controls.isPaused ? "Reprendre" : "Pause") {
+            Button(controls.isPaused ? "Resume" : "Pause") {
                 queue.attempt { controls.isPaused ? try queue.resume() : try queue.pause() }
             }
-            Button(controls.stopAfterAsked ? "Arrêt demandé" : "Arrêter après cette étape") {
+            Button(controls.stopAfterAsked ? "Stop requested" : "Stop after this step") {
                 if let job = controls.job { queue.attempt { try queue.stopAfterStep(job) } }
             }
             .disabled(controls.job == nil || controls.stopAfterAsked)
-            .help("La nuit s'arrête dès que l'étape en cours est finie")
-            Button("Arrêter maintenant") { confirmingStop = true }
+            .help("The night stops as soon as the current step is done")
+            Button("Stop now") { confirmingStop = true }
                 .disabled(controls.job == nil || controls.stoppingNow)
-                .help("Abandonne le calcul en cours")
+                .help("Abandons the current job")
                 .confirmationDialog(
-                    "Arrêter la nuit maintenant ?", isPresented: $confirmingStop,
+                    "Stop the night now?", isPresented: $confirmingStop,
                     titleVisibility: .visible
                 ) {
-                    Button("Arrêter maintenant", role: .destructive) {
+                    Button("Stop now", role: .destructive) {
                         if let job = controls.job { queue.attempt { try queue.cancel(job) } }
                     }
-                    Button("Annuler", role: .cancel) {}
+                    Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("Le calcul en cours est abandonné. Ce qui est déjà calculé est gardé.")
+                    Text("The current job is abandoned. What is already computed is kept.")
                 }
-            Button("Passer cette scène") {
+            Button("Skip this scene") {
                 guard let job = controls.job else { return }
                 queue.attempt { try queue.skip(job) }
                 nights.skipWasAsked(for: page.current?.scene)
@@ -151,7 +151,7 @@ struct NightPageView: View {
                 !controls.canSkip || controls.job == nil
                     || (page.current?.scene != nil && nights.skipAsked == page.current?.scene)
             )
-            .help("La scène en cours est laissée de côté, la nuit passe à la suivante")
+            .help("The current scene is left out and the night moves on to the next")
             Spacer()
         }
         .controlSize(.small)
@@ -169,7 +169,7 @@ struct NightPageView: View {
 
     private func summary(_ report: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Résumé du matin").font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
+            Text("Morning summary").font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
             ForEach(Array(ReportLine.parse(report).enumerated()), id: \.offset) { _, line in
                 switch line {
                 case .heading(let text):
@@ -194,7 +194,7 @@ struct NightPageView: View {
 
     private func problems(_ page: NightPage) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Erreurs").font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
+            Text("Errors").font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
             ForEach(page.problems) { problem in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(Palette.warning)
@@ -202,7 +202,7 @@ struct NightPageView: View {
                     Spacer()
                     if let url = problem.logURL {
                         let exists = FileManager.default.fileExists(atPath: url.path)
-                        Button("Journal") { NSWorkspace.shared.open(url) }
+                        Button("Log") { NSWorkspace.shared.open(url) }
                             .controlSize(.small)
                             .disabled(!exists)
                             .help(problem.log ?? url.path)
@@ -216,10 +216,10 @@ struct NightPageView: View {
 
     private func scenes(_ page: NightPage) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(page.scenes.isEmpty ? "Scènes" : "Scènes · \(page.scenes.count)")
+            Text(page.scenes.isEmpty ? "Scenes" : "Scenes · \(page.scenes.count)")
                 .font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
             if page.scenes.isEmpty {
-                Text(page.live ? "Les scènes apparaissent ici dès qu'elles sont explorées." : "Aucune scène.")
+                Text(page.live ? "Scenes appear here as soon as they are explored." : "No scene.")
                     .foregroundStyle(Palette.secondary)
             } else if snapshot {
                 let shown = Array(page.scenes.prefix(8))
@@ -331,7 +331,7 @@ struct NightSceneCard: View {
                 if card.videos > 0 {
                     Label("\(card.videos)", systemImage: "film").font(.caption.monospacedDigit())
                         .foregroundStyle(Palette.secondary)
-                        .help("Vidéos")
+                        .help("Videos")
                 }
                 Pill(text: card.stage, tint: card.current ? .accentColor : Color(white: 0.5))
             }
@@ -354,7 +354,8 @@ struct NightSceneCard: View {
     }
 }
 
-/// The lines of `report.md` as the page shows them: headings, and `- label : value` items.
+/// The lines of `report.md` as the page shows them: headings, and `- label: value` items, older
+/// reports spacing the colon as French does.
 enum ReportLine: Equatable {
     case heading(String)
     case item(label: String, value: String)
@@ -368,11 +369,9 @@ enum ReportLine: Equatable {
                 lines.append(.heading(String(line.dropFirst(3))))
             } else if line.hasPrefix("- ") {
                 let body = String(line.dropFirst(2))
-                if let split = body.range(of: " : ") {
-                    lines.append(
-                        .item(
-                            label: String(body[..<split.lowerBound]), value: String(body[split.upperBound...])
-                        ))
+                if let split = body.range(of: ": ") {
+                    let label = body[..<split.lowerBound].trimmingCharacters(in: .whitespaces)
+                    lines.append(.item(label: label, value: String(body[split.upperBound...])))
                 } else {
                     lines.append(.item(label: "", value: body))
                 }

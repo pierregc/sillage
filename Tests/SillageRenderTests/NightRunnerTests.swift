@@ -194,7 +194,7 @@ struct NightRunnerTests {
         #expect(
             events.filter { $0.kind == RunEvent.Kind.phaseDone }.compactMap(\.phase) == ["explore", "pick"])
         let report = try String(contentsOf: batch.appendingPathComponent("report.md"), encoding: .utf8)
-        #expect(report.contains("scene-0002 (0,90)") && report.contains("terminée"))
+        #expect(report.contains("scene-0002 (0.90)") && report.contains("- State: finished"))
         #expect(FileManager.default.fileExists(atPath: batch.appendingPathComponent("recipe.json").path))
         #expect(
             ActivityFile.read(from: RunStatusFiles.activity(library: batch.deletingLastPathComponent()))?
@@ -356,13 +356,13 @@ struct NightRunnerTests {
         #expect(NightFile.read(from: RunStatusFiles.night(batch: batch))?.state == .done)
         let report = batch.appendingPathComponent("report.md")
         #expect(
-            try String(contentsOf: report, encoding: .utf8).contains("- Laissées de côté : 2 · erreurs : 0"))
+            try String(contentsOf: report, encoding: .utf8).contains("- Left out: 2 · errors: 0"))
 
         // Resumed with the time it lacked, as 2026-10-30-b was.
         #expect(runner(recipe()).run() == 0)
         #expect(logged().filter { $0.hasPrefix("hires ") }.count == 2)
         let resumed = try String(contentsOf: report, encoding: .utf8)
-        #expect(resumed.contains("- Laissées de côté : 0 · erreurs : 0") && !resumed.contains("would end"))
+        #expect(resumed.contains("- Left out: 0 · errors: 0") && !resumed.contains("would end"))
     }
 
     @Test func theFolderReadsEachScenesGalaxiesAndTheBatchsPairShare() throws {

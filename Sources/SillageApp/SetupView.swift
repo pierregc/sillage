@@ -32,7 +32,7 @@ struct SetupView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Sillage").font(.largeTitle.bold())
-                Text("Réglage de la collision").foregroundStyle(Palette.secondary)
+                Text("Collision setup").foregroundStyle(Palette.secondary)
             }
             Spacer()
         }
@@ -43,7 +43,7 @@ struct SetupView: View {
     /// The preview never steps, so it is honest about what it shows.
     private var previewCaption: some View {
         Text(
-            "Conditions initiales, figées · \(model.previewParticleCount / 1000) k affichées · glisser pour tourner"
+            "Initial conditions, frozen · \(model.previewParticleCount / 1000) k shown · drag to rotate"
         )
         .font(.caption)
         .foregroundStyle(Palette.secondary)
@@ -54,9 +54,9 @@ struct SetupView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(
-                    "\(model.draft.galaxies.count) galaxies · \(formatted(model.draft.totalParticleCount)) visibles"
+                    "\(model.draft.galaxies.count) galaxies · \(formatted(model.draft.totalParticleCount)) visible"
                         + (model.draft.hasLiveHalos
-                            ? " · \(formatted(model.draft.simulatedParticleCount - model.draft.totalParticleCount)) de halo"
+                            ? " · \(formatted(model.draft.simulatedParticleCount - model.draft.totalParticleCount)) in halos"
                             : "")
                 )
                 .font(.callout.monospacedDigit())
@@ -68,11 +68,11 @@ struct SetupView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Button("Lancer la simulation") { model.start() }
+                Button("Launch simulation") { model.start() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.draft.galaxies.isEmpty)
-                Text("la prise s'enregistre dès le lancement")
+                Text("the take records from launch")
                     .font(.caption2)
                     .foregroundStyle(Palette.secondary)
             }
@@ -95,7 +95,7 @@ struct SetupView: View {
                 ? String(format: "%.0f min", seconds / 60)
                 : String(format: "%.1f h", seconds / 3600))
         return String(
-            format: "environ %.1f Myr par seconde · une rencontre de 500 Myr en %@", rate, reach)
+            format: "about %.1f Myr per second · a 500 Myr encounter in %@", rate, reach)
     }
 
     private func formatted(_ value: Int) -> String {
@@ -120,7 +120,7 @@ struct SetupContent: View {
                 model.addGalaxy()
                 model.commitDraftChange()
             } label: {
-                Label("Ajouter une galaxie", systemImage: "plus.circle")
+                Label("Add a galaxy", systemImage: "plus.circle")
             }
             .buttonStyle(.bordered)
         }
@@ -130,12 +130,12 @@ struct SetupContent: View {
 
     private var presets: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Partir d'un préréglage").font(.headline)
+            Text("Start from a preset").font(.headline)
             HStack {
-                presetButton("Rencontre", .encounter(particleCount: total))
-                presetButton("Fusion", .merger(particleCount: total))
-                presetButton("Passage rapproché", .flyby(particleCount: total))
-                presetButton("Disque isolé", .isolatedDisk(particleCount: total))
+                presetButton("Encounter", .encounter(particleCount: total))
+                presetButton("Merger", .merger(particleCount: total))
+                presetButton("Close flyby", .flyby(particleCount: total))
+                presetButton("Isolated disk", .isolatedDisk(particleCount: total))
             }
         }
     }
@@ -155,28 +155,28 @@ struct SetupContent: View {
 
     private var global: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Gravité").font(.headline)
+            Text("Gravity").font(.headline)
 
             Picker("", selection: solverBinding) {
-                Text("Auto-gravitante").tag(SolverKind.barnesHut)
-                Text("Particules-tests").tag(SolverKind.restricted)
+                Text("Self-gravitating").tag(SolverKind.barnesHut)
+                Text("Test particles").tag(SolverKind.restricted)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
 
             Text(
                 model.draft.solver == .barnesHut
-                    ? "Les particules s'attirent entre elles, halo compris. C'est la friction contre le halo qui fait fusionner les galaxies. Lent, mais la prise s'enregistre toute seule : laisse tourner, puis rejoue."
-                    : "Particules-tests dans des potentiels rigides. Cent fois plus rapide, donne les queues de marée, mais rien ne fusionne."
+                    ? "The particles attract one another, halo included. Friction against the halo is what makes galaxies merge. Slow, but the take records itself: let it run, then replay."
+                    : "Test particles in rigid potentials. A hundred times faster, gives the tidal tails, but nothing merges."
             )
             .font(.caption)
             .foregroundStyle(Palette.secondary)
 
             HStack {
-                Text("Graine aléatoire").font(.caption)
+                Text("Random seed").font(.caption)
                 Spacer()
                 TextField(
-                    "graine",
+                    "seed",
                     value: Binding(
                         get: { model.draft.seed },
                         set: {
@@ -194,12 +194,12 @@ struct SetupContent: View {
             // the same way, but how much accuracy a run needs is the user's call, so that one
             // is a multiplier on the derived value rather than a number to guess at.
             ParameterSlider(
-                title: "Vitesse d'exploration", value: speedBinding, range: 1...32,
+                title: "Time warp", value: speedBinding, range: 1...32,
                 format: "%.0f×", onCommit: { model.commitDraftChange() })
 
             Text(
                 String(
-                    format: "adoucissement %.3f kpc · pas %.4f (%.2f Myr) · %.1f Myr par seconde",
+                    format: "softening %.3f kpc · step %.4f (%.2f Myr) · %.1f Myr per second",
                     model.draft.softening, model.draft.timeStep,
                     Double(model.draft.timeStep) * Physics.megayearsPerTimeUnit,
                     model.estimatedMegayearsPerSecond)
@@ -209,8 +209,8 @@ struct SetupContent: View {
 
             Text(
                 model.draft.timeStepScale > 16
-                    ? "Au-delà de 16× la structure commence à s'écarter : bon pour cadrer une rencontre, pas pour une prise."
-                    : "Multiplie le pas calé automatiquement. Jusqu'à 16×, un disque isolé garde son profil à 0,3 % près."
+                    ? "Beyond 16× the structure starts to drift: fine for framing an encounter, not for a take."
+                    : "Multiplies the automatically set step. Up to 16×, an isolated disk keeps its profile within 0.3%."
             )
             .font(.caption2)
             .foregroundStyle(model.draft.timeStepScale > 16 ? Palette.warning : Palette.secondary)
@@ -243,7 +243,7 @@ struct GalaxyCard: View {
 
     /// A preset can shrink the list while this card is still on screen, and SwiftUI evaluates
     /// the body once more with the stale index before dropping the view. Subscripting the
-    /// draft unguarded there is what used to kill the app on "Disque isolé".
+    /// draft unguarded there is what used to kill the app on "Isolated disk".
     var body: some View {
         if model.draft.galaxies.indices.contains(index) {
             card
@@ -256,7 +256,7 @@ struct GalaxyCard: View {
         return Card {
             Group {
                 HStack {
-                    TextField("nom", text: galaxy.name)
+                    TextField("name", text: galaxy.name)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 150)
                     Spacer()
@@ -282,31 +282,31 @@ struct GalaxyCard: View {
 
                 Group {
                     ParameterSlider(
-                        title: "Masse (10¹⁰ M☉)", value: galaxy.potential.mass, range: 5...200,
+                        title: "Mass (10¹⁰ M☉)", value: galaxy.potential.mass, range: 5...200,
                         format: "%.0f", onCommit: commit)
                     ParameterSlider(
-                        title: "Rayon du disque (kpc)", value: sizeBinding, range: 1...14,
+                        title: "Disk radius (kpc)", value: sizeBinding, range: 1...14,
                         format: "%.1f", onCommit: commit)
                     if kind != .globular {
                         ParameterSlider(
-                            title: "Épaisseur (kpc)", value: galaxy.diskThickness, range: 0.05...2,
+                            title: "Thickness (kpc)", value: galaxy.diskThickness, range: 0.05...2,
                             onCommit: commit)
                     }
                 }
 
                 if kind != .globular {
                     Divider()
-                    Text("Bulbe").font(.caption.bold())
+                    Text("Bulge").font(.caption.bold())
                     ParameterSlider(
-                        title: "Part des étoiles", value: galaxy.bulgeFraction, range: 0...0.6,
+                        title: "Share of stars", value: galaxy.bulgeFraction, range: 0...0.6,
                         onCommit: commit)
                     ParameterSlider(
-                        title: "Rayon (longueurs de disque)", value: galaxy.bulgeExtent,
+                        title: "Radius (disk scale lengths)", value: galaxy.bulgeExtent,
                         range: 0.05...0.6, onCommit: commit)
                     ParameterSlider(
-                        title: "Aplatissement", value: galaxy.bulgeFlattening, range: 0.3...1,
+                        title: "Flattening", value: galaxy.bulgeFlattening, range: 0.3...1,
                         onCommit: commit)
-                    Text("Sphéroïde de Hernquist soutenu par la dispersion. À 0 la galaxie est un disque nu.")
+                    Text("Dispersion-supported Hernquist spheroid. At 0 the galaxy is a bare disk.")
                         .font(.caption2)
                         .foregroundStyle(Palette.secondary)
                 }
@@ -314,14 +314,14 @@ struct GalaxyCard: View {
                 if kind != .globular {
                     Group {
                         ParameterSlider(
-                            title: "Inclinaison (rad)", value: galaxy.inclination,
+                            title: "Inclination (rad)", value: galaxy.inclination,
                             range: -1.57...1.57, onCommit: commit)
                         ParameterSlider(
-                            title: "Orientation (rad)", value: galaxy.positionAngle,
+                            title: "Position angle (rad)", value: galaxy.positionAngle,
                             range: 0...6.28, onCommit: commit)
                         Picker("", selection: galaxy.spin) {
                             Text("Prograde").tag(Spin.prograde)
-                            Text("Rétrograde").tag(Spin.retrograde)
+                            Text("Retrograde").tag(Spin.retrograde)
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
@@ -331,37 +331,37 @@ struct GalaxyCard: View {
 
                 if kind == .spiral {
                     Stepper(
-                        "Bras : \(model.draft.galaxies[index].armCount)", value: galaxy.armCount,
+                        "Arms: \(model.draft.galaxies[index].armCount)", value: galaxy.armCount,
                         in: 1...6
                     )
                     .font(.caption)
                     .onChange(of: model.draft.galaxies[index].armCount) { commit() }
                     ParameterSlider(
-                        title: "Contraste des bras", value: galaxy.armStrength, range: 0...0.95,
+                        title: "Arm contrast", value: galaxy.armStrength, range: 0...0.95,
                         onCommit: commit)
                 }
 
                 if model.draft.solver == .barnesHut {
                     Divider()
-                    Text("Auto-gravité").font(.caption.bold())
+                    Text("Self-gravity").font(.caption.bold())
                     ParameterSlider(
-                        title: "Dissipation du disque (Myr)", value: galaxy.dissipationTime,
+                        title: "Disk dissipation (Myr)", value: galaxy.dissipationTime,
                         range: 0...1500, format: "%.0f", onCommit: commit)
                     Text(
-                        "Un disque d'étoiles seules ne peut que chauffer : ses bras s'éteignent en un milliard d'années. Le gaz d'une vraie galaxie dissipe ce désordre. 0 coupe l'effet."
+                        "A disk of stars alone can only heat up: its arms fade within a billion years. The gas of a real galaxy dissipates that disorder. 0 turns the effect off."
                     )
                     .font(.caption2)
                     .foregroundStyle(Palette.secondary)
                     ParameterSlider(
-                        title: "Halo simulé, particules par étoile",
+                        title: "Live halo, particles per star",
                         value: galaxy.haloParticleRatio, range: 0...4, onCommit: commit)
                     ParameterSlider(
-                        title: "Part de masse dans le disque", value: galaxy.diskMassFraction,
+                        title: "Disk mass fraction", value: galaxy.diskMassFraction,
                         range: 0.05...1.0, onCommit: commit)
                     ParameterSlider(
-                        title: "Stabilité du disque (Toomre Q)", value: galaxy.toomreQ,
+                        title: "Disk stability (Toomre Q)", value: galaxy.toomreQ,
                         range: 0.4...2.5, onCommit: commit)
-                    Text("Sous 1 le disque se fragmente et chauffe. 1,2 à 1,6 est la zone sûre.")
+                    Text("Below 1 the disk fragments and heats up. 1.2 to 1.6 is the safe range.")
                         .font(.caption2)
                         .foregroundStyle(Palette.secondary)
                 }
@@ -370,7 +370,7 @@ struct GalaxyCard: View {
                     title: "Position (kpc)", value: galaxy.position, range: -150...150,
                     onCommit: commit)
                 VectorEditor(
-                    title: "Vitesse (207 km/s par unité)", value: galaxy.velocity, range: -3...3,
+                    title: "Velocity (207 km/s per unit)", value: galaxy.velocity, range: -3...3,
                     onCommit: commit)
             }
         }
@@ -401,7 +401,7 @@ struct GalaxyCard: View {
             })
         VStack(alignment: .leading, spacing: 1) {
             HStack {
-                Text("Étoiles affichées").font(.caption)
+                Text("Stars shown").font(.caption)
                 Spacer()
                 Text(
                     model.draft.galaxies[index].particleCount >= 1_000_000

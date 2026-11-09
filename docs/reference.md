@@ -324,36 +324,36 @@ ships with, its own drawn as a web since #197 (`StyleAuto.dustCap`, nil; #174 he
 
 Palettes give each galaxy a ramp of colours (core, disk, outskirts, young stars, knots) unless
 `--single` asks for one colour per galaxy, on `look`, `export` and `palettes`; the style editor's
-Multicolore switch and the night's `style.multicolour` do the same. See
+Multicolour switch and the night's `style.multicolour` do the same. See
 [the note](notes/multicolour-palettes.md).
 
 `export <scene> --palette auto|<family>|<file> [--world telescope|free]` draws that one export
 with another palette, as `look --palette` would, and leaves the scene's `look.json` alone.
 
-In the library, **Choisir le style** on a scene
+In the library, **Choose style** on a scene
 that has a take opens the style editor: the take plays in the canvas with a transport bar under
-it, and an inspector holds four sections. **Rendu** offers the 42 looks of `looks/` as
+it, and an inspector holds four sections. **Rendering** offers the 42 looks of `looks/` as
 renderings, each a thumbnail of the frame on the canvas drawn with it and the current palette,
 drawn again past a tenth of the take, on a new palette or with the button beside the title,
 and fitted between the canvas's frames so it keeps its frame rate: a click puts a look's light,
-instrument and buffers on the picture and keeps the palette and the camera, **Avec ses
-couleurs** takes its palette too. **Palette** has a Télescope
-/ Libre switch, one swatch per galaxy (a click opens a colour picker, a lock keeps that colour
-through any new palette), six proposals from the generator with their score, **Autres
+instrument and buffers on the picture and keeps the palette and the camera, **Apply with
+its colours** takes its palette too. **Palette** has a Telescope
+/ Free switch, one swatch per galaxy (a click opens a colour picker, a lock keeps that colour
+through any new palette), six proposals from the generator with their score, **More
 palettes**, and **Auto**, which draws three key frames with every rendering of the world and
-applies the best rendering and palette (`--style auto` below). **Caméra** sets the plan's mode,
+applies the best rendering and palette (`--style auto` below). **Camera** sets the plan's mode,
 zoom and rotation over the clip. The canvas draws through the plan in every mode, in the clip's
 shape, exactly as the export frames it at the playhead: the auto camera eased from the first
 frame, the director's planned shots, the immersed director and the light it modulates.
 Dragging on it turns the plan and the wheel zooms it, so a framing made there is the one saved
 and exported; the director's wide shots follow it and its close ones turn to face them, and the
-immersed director only takes the zoom. **Réglages fins**,
-folded, hold Lumière, Instrument, Rendu détaillé (starfield, bloom levels, supersampling, plain
-points, which rebuild the renderer) and the whole camera plan, each with **Réinitialiser**;
-**Voir à travers le plan**, unticked, gives a free view the export does not keep. The top bar says
-**Modifié** when the style differs from `look.json`, holding ⌥ or **Avant / Après** shows the
-saved style for as long as it is held, **Annuler** puts it back, and **Utiliser pour la scène**
-(⌘S) promotes it as `--promote` does, after which **Exporter…** opens the export sheet. File > Open
+immersed director only takes the zoom. **Fine settings**,
+folded, hold Light, Instrument, Detailed rendering (starfield, bloom levels, supersampling, plain
+points, which rebuild the renderer) and the whole camera plan, each with **Reset**;
+**View through the plan**, unticked, gives a free view the export does not keep. The top bar says
+**Modified** when the style differs from `look.json`, holding ⌥ or **Before / After** shows the
+saved style for as long as it is held, **Cancel** puts it back, and **Use for scene**
+(⌘S) promotes it as `--promote` does, after which **Export…** opens the export sheet. File > Open
 takes any take (⌘O) and any look file (⇧⌘O) over the picture, ⇧⌘S saves the look anywhere, and
 outside the editor ⌘S writes it back where it came from. A file opened and saved untouched is
 the same file; see [the note](notes/style-editor.md).
@@ -595,8 +595,8 @@ hand ones only if they rank better.
 
 ### The library
 
-The application opens on its library (⌘L from anywhere; the sidebar also holds Nuits and the
-Atelier, where scenes are set up by hand) and shows every
+The application opens on its library (⌘L from anywhere; the sidebar also holds Nights and the
+Workshop, where scenes are set up by hand) and shows every
 scene under `library/`, both scene folders and the older flat batches, and picks up new
 scenes as they are written. The grid shows stills; only the scene under the pointer, the
 selected one or the enlarged one plays its clip. Under each scene, yes, no and a rating from
@@ -611,18 +611,18 @@ rating, batch and archetype.
 
 The scenes kept for the next stage are
 `jq -r '.scenes | to_entries[] | select(.value.choice == "yes") | .key' ratings.json`.
-A scene's page moves it on without a terminal. **Calculer** on Haute résolution queues a
+A scene's page moves it on without a terminal. **Compute** on High resolution queues a
 `hires` job at a size, drawn as a night draws it: past 2 M, 2 M carry the mass and the others
 are light tracers (`--massive`, #222). Auto is a night's 8 M, or the most particles that end
 before seven in the morning behind the queue, and each size says how many carry the mass. A real
 count, every particle massive, stays on the command line: `sillage-render queue add hires
-<scene> --particles N`, without `--massive`. **Exporter…** opens a sheet of presets to tick
-(1080p, 4K, Vertical, Carré, WhatsApp, animated WebP, GIF, with codec, range, frame rate and
-style under Avancé), each ticked card one `export` job. Both say how long each job takes and
+<scene> --particles N`, without `--massive`. **Export…** opens a sheet of presets to tick
+(1080p, 4K, Vertical, Square, WhatsApp, animated WebP, GIF, with codec, range, frame rate and
+style under Advanced), each ticked card one `export` job. Both say how long each job takes and
 when it will be ready, queue ahead included. A job waiting or running shows on its stage with
-its progress and Annuler. Redoing a stage touches nothing else: another format, style or range
-writes a new file, while the same export after a new take replaces its own. Choisies and
-Prêtes do the same for every scene they list, and the Atelier's Vidéo… opens the sheet for a
+its progress and Cancel. Redoing a stage touches nothing else: another format, style or range
+writes a new file, while the same export after a new take replaces its own. Kept and
+Ready do the same for every scene they list, and the Workshop's Video… opens the sheet for a
 take of a scene folder.
 
 `Sillage.app --librarycheck` drives the whole window model through a library it builds on disk.

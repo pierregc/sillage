@@ -11,12 +11,12 @@ enum TakeFiles {
     @MainActor
     static func save(_ model: SimulationModel) {
         let panel = NSSavePanel()
-        panel.title = "Enregistrer la prise"
+        panel.title = "Save the take"
         panel.allowedContentTypes = [contentType]
         panel.nameFieldStringValue =
             "\(model.scene.name).\(RecordingFile.fileExtension)"
         panel.message =
-            "Tout ce qui décide de l'image — exposition, couleur, instrument, caméra — reste réglable à la relecture."
+            "Everything that decides the image (exposure, colour, instrument, camera) stays adjustable on playback."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.saveTake(to: url)
     }
@@ -26,11 +26,11 @@ enum TakeFiles {
     @MainActor
     static func saveWhenFinished(_ model: SimulationModel) {
         let panel = NSSavePanel()
-        panel.title = "Sauvegarder quand fini"
+        panel.title = "Save when finished"
         panel.allowedContentTypes = [contentType]
         panel.nameFieldStringValue = "\(model.scene.name).\(RecordingFile.fileExtension)"
         panel.message =
-            "La course s'arrêtera au temps choisi et écrira la prise ici, sans rien demander."
+            "The run will stop at the chosen time and write the take here without asking."
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.saveWhenFinished(to: url)
     }
@@ -40,7 +40,7 @@ enum TakeFiles {
     @discardableResult
     static func open(_ model: SimulationModel) -> Bool {
         let panel = NSOpenPanel()
-        panel.title = "Ouvrir une prise"
+        panel.title = "Open a take"
         panel.allowedContentTypes = [contentType]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return false }

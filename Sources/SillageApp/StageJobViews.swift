@@ -48,7 +48,7 @@ struct StageQuotes: Sendable, Equatable {
     }
 }
 
-/// Calculer: a size, Auto by default, what it will take and when it will be ready behind the
+/// Compute: a size, Auto by default, what it will take and when it will be ready behind the
 /// queue, and the button that queues one hires job a scene. Drawn as a night draws it: past
 /// 2 M, 2 M carry the mass and the others are light tracers (#222).
 struct HiresForm: View {
@@ -69,29 +69,29 @@ struct HiresForm: View {
         let forecast = StageForecast(jobs: jobs, status: queue.status, now: clock())
         VStack(alignment: .leading, spacing: 6) {
             if offscreen {
-                Text("Taille : \(label(size))").font(.callout)
+                Text("Size: \(label(size))").font(.callout)
             } else {
-                Picker("Taille", selection: $size) {
+                Picker("Size", selection: $size) {
                     Text(label(0)).tag(0)
                     ForEach(quotes?.sizes ?? StageJobs.hiresSizes, id: \.self) { Text(label($0)).tag($0) }
                 }
                 .labelsHidden()
                 .fixedSize()
                 .help(
-                    "Comme une nuit : au-delà de 2 M, seules 2 M de particules portent la masse, les autres "
-                        + "sont des traceurs légers. Toutes massives : en ligne de commande, --particles sans "
+                    "As a night draws it: past 2 M, only 2 M particles carry the mass, the others "
+                        + "are light tracers. All massive: on the command line, --particles without "
                         + "--massive.")
             }
-            Text(quotes == nil ? "Estimation de la durée…" : forecast.summary)
+            Text(quotes == nil ? "Estimating the duration…" : forecast.summary)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(folders.count == 1 ? "Calculer" : "Calculer (\(forecast.jobs.count))") {
+            Button(folders.count == 1 ? "Compute" : "Compute (\(forecast.jobs.count))") {
                 if queue.submit(jobs) > 0 { queued() }
             }
             .buttonStyle(.borderedProminent)
             .disabled(quotes == nil || forecast.jobs.isEmpty)
-            .help("Ajoute le calcul à la file d'attente")
+            .help("Adds the job to the queue")
         }
         .task(id: folders.map(\.url)) {
             let (folders, library) = (folders, queue.store.library)
@@ -122,7 +122,7 @@ struct HiresForm: View {
     /// The menu as it reads: Auto, then every size.
     var choices: [String] { ([0] + (quotes?.sizes ?? StageJobs.hiresSizes)).map(label) }
 
-    /// "Auto · 8 M dont 2 M massives, environ 1 h", "2 M, environ 35 min".
+    /// "Auto · 8 M (2 M massive), about 1 h", "2 M, about 35 min".
     private func label(_ size: Int) -> String {
         let particles = size == 0 ? auto : size
         var text = StageJobs.particles(particles, massive: StageJobs.massive(drawing: particles))
@@ -131,7 +131,7 @@ struct HiresForm: View {
     }
 }
 
-/// Exporter…: preset cards to tick, Avancé, and what each job takes and when all is ready. Each
+/// Export…: preset cards to tick, Advanced, and what each job takes and when all is ready. Each
 /// ticked card is one job a scene.
 struct ExportSheet: View {
     @ObservedObject var queue: QueueModel
@@ -154,7 +154,7 @@ struct ExportSheet: View {
         let forecast = StageForecast(jobs: jobs, status: queue.status, now: Date())
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Exporter").font(.title2.bold())
+                Text("Export").font(.title2.bold())
                 Text(subject).font(.callout).foregroundStyle(Palette.secondary)
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
@@ -169,10 +169,10 @@ struct ExportSheet: View {
                         .font(.caption.monospacedDigit())
                 }
                 if forecast.jobs.count > Self.linesShown {
-                    Text("et \(forecast.jobs.count - Self.linesShown) autres")
+                    Text("and \(forecast.jobs.count - Self.linesShown) more")
                         .font(.caption).foregroundStyle(Palette.secondary)
                 }
-                Text(quotes == nil ? "Estimation des durées…" : forecast.summary)
+                Text(quotes == nil ? "Estimating the durations…" : forecast.summary)
                     .font(.callout.monospacedDigit())
             }
             HStack {
@@ -180,8 +180,8 @@ struct ExportSheet: View {
                     Text(failure).font(.caption).foregroundStyle(Palette.warning)
                 }
                 Spacer()
-                Button("Annuler", action: close).keyboardShortcut(.cancelAction)
-                Button(forecast.jobs.count == 1 ? "Exporter" : "Exporter (\(forecast.jobs.count))") {
+                Button("Cancel", action: close).keyboardShortcut(.cancelAction)
+                Button(forecast.jobs.count == 1 ? "Export" : "Export (\(forecast.jobs.count))") {
                     if queue.submit(jobs) > 0 { close() }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -201,7 +201,7 @@ struct ExportSheet: View {
     static let linesShown = 8
 
     private var subject: String {
-        folders.count == 1 ? folders[0].sceneID : "\(folders.count) scènes"
+        folders.count == 1 ? folders[0].sceneID : "\(folders.count) scenes"
     }
 
     private func card(_ choice: ExportChoice) -> some View {
@@ -249,7 +249,7 @@ struct ExportSheet: View {
         if offscreen {
             Text(advancedSummary).font(.callout).foregroundStyle(Palette.secondary)
         } else {
-            DisclosureGroup("Avancé", isExpanded: $advanced) {
+            DisclosureGroup("Advanced", isExpanded: $advanced) {
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
                     GridRow {
                         Text("Codec").foregroundStyle(Palette.secondary)
@@ -263,24 +263,24 @@ struct ExportSheet: View {
                         .fixedSize()
                     }
                     GridRow {
-                        Text("Début").foregroundStyle(Palette.secondary)
+                        Text("Start").foregroundStyle(Palette.secondary)
                         field("0 s", $start) { settings.start = $0 }
                     }
                     GridRow {
-                        Text("Durée").foregroundStyle(Palette.secondary)
-                        field("toute la prise", $duration) { settings.duration = $0 }
+                        Text("Duration").foregroundStyle(Palette.secondary)
+                        field("whole take", $duration) { settings.duration = $0 }
                     }
                     GridRow {
-                        Text("Images par seconde").foregroundStyle(Palette.secondary)
-                        field("celles de la prise", $fps) { settings.framesPerSecond = $0.map { Int($0) } }
+                        Text("Frames per second").foregroundStyle(Palette.secondary)
+                        field("the take's", $fps) { settings.framesPerSecond = $0.map { Int($0) } }
                     }
                     if !looks.isEmpty {
                         GridRow {
                             Text("Style").foregroundStyle(Palette.secondary)
                             Picker("Style", selection: $settings.look) {
-                                Text("Celui de la scène").tag(StageLook?.none)
+                                Text("The scene's").tag(StageLook?.none)
                                 ForEach(looks, id: \.self) { look in
-                                    Text(look.name == StageLook.rawName ? "Style brut" : look.name)
+                                    Text(look.name == StageLook.rawName ? "Raw style" : look.name)
                                         .tag(Optional(look))
                                 }
                             }
@@ -294,12 +294,12 @@ struct ExportSheet: View {
         }
     }
 
-    /// Offscreen, Avancé as one line.
+    /// Offscreen, Advanced as one line.
     private var advancedSummary: String {
-        var parts = ["Avancé : \(settings.codec.title)"]
-        if let start = settings.start { parts.append("début \(start) s") }
-        if let duration = settings.duration { parts.append("durée \(duration) s") }
-        if let fps = settings.framesPerSecond { parts.append("\(fps) images/s") }
+        var parts = ["Advanced: \(settings.codec.title)"]
+        if let start = settings.start { parts.append("start \(start) s") }
+        if let duration = settings.duration { parts.append("duration \(duration) s") }
+        if let fps = settings.framesPerSecond { parts.append("\(fps) frames/s") }
         if let look = settings.look { parts.append("style \(look.name)") }
         return parts.joined(separator: " · ")
     }
@@ -327,13 +327,13 @@ struct ExportSheet: View {
         }
     }
 
-    /// "scene-0023 · 4K · 4k.mp4 · environ 12 min · prêt vers 23 h 40".
+    /// "scene-0023 · 4K · 4k.mp4 · about 12 min · ready around 23:40".
     private func line(_ job: PlannedJob, _ timing: String) -> String {
         var parts: [String] = []
         if folders.count > 1 { parts.append(job.folder.url.lastPathComponent) }
         parts.append(job.title)
         if let output = job.output {
-            parts.append(output.lastPathComponent + (job.replaces ? " (remplace l'ancien)" : ""))
+            parts.append(output.lastPathComponent + (job.replaces ? " (replaces the old one)" : ""))
         }
         parts.append(timing)
         return parts.joined(separator: " · ")
@@ -350,7 +350,7 @@ extension VideoCodec {
     }
 }
 
-/// The jobs of one stage of a scene while they wait or run: what, how far, when, and Annuler.
+/// The jobs of one stage of a scene while they wait or run: what, how far, when, and Cancel.
 struct StageJobLines: View {
     @ObservedObject var queue: QueueModel
     let folder: SceneFolder
@@ -369,7 +369,7 @@ struct StageJobLines: View {
         let row = queue.row(job.id)
         let running = job.state == .running
         return VStack(alignment: .leading, spacing: 3) {
-            Text((running ? "En cours · " : "En attente · ") + StageJobs.title(of: job))
+            Text((running ? "Running · " : "Waiting · ") + StageJobs.title(of: job))
                 .font(.callout.weight(.medium))
                 .fixedSize(horizontal: false, vertical: true)
             if running {
@@ -377,12 +377,12 @@ struct StageJobLines: View {
                 if let detail = row?.detail { caption(detail) }
             }
             if let timing = row?.timing { caption(timing) }
-            Button(job.stopping == true ? "Annulation…" : "Annuler") {
+            Button(job.stopping == true ? "Cancelling…" : "Cancel") {
                 queue.attempt { try queue.cancel(job.id) }
             }
             .controlSize(.small)
             .disabled(job.stopping == true)
-            .help(running ? "Arrête le calcul et le retire de la file" : "Le retire de la file d'attente")
+            .help(running ? "Stops the job and removes it from the queue" : "Removes it from the queue")
         }
     }
 
@@ -416,13 +416,13 @@ struct HiresSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recalculer en haute résolution").font(.title2.bold())
-            Text("Les vidéos restent jusqu'à ce qu'un nouvel export les remplace.")
+            Text("Recompute in high resolution").font(.title2.bold())
+            Text("The videos stay until a new export replaces them.")
                 .font(.callout).foregroundStyle(Palette.secondary)
             HiresForm(queue: queue, folders: folders, queued: close)
             HStack {
                 Spacer()
-                Button("Fermer", action: close).keyboardShortcut(.cancelAction)
+                Button("Close", action: close).keyboardShortcut(.cancelAction)
             }
         }
         .padding(20)

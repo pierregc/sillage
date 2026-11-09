@@ -38,10 +38,10 @@ enum ReplaySwitchCheck {
         let quiet = afterwards == atSwitch
         let report = """
             mode             \(model.mode)
-            pas avant l'arrêt \(stepping)
-            pas au bascule    \(atSwitch)
-            pas 6 s plus tard \(afterwards)
-            solveur arrêté    \(quiet ? "OUI" : "NON, +\(afterwards - atSwitch) pas pendant la relecture")
+            steps before stop \(stepping)
+            steps at switch   \(atSwitch)
+            steps 6 s later   \(afterwards)
+            solver stopped    \(quiet ? "yes" : "no, +\(afterwards - atSwitch) steps during playback")
             """
         print(report)
         exit(quiet ? 0 : 1)

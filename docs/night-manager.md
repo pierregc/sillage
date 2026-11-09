@@ -16,49 +16,49 @@ will meet in a command or a path.
 
 | in the app | what it is | in the code and on disk |
 |---|---|---|
-| **Nuit** (**Lot** when started by hand) | a folder of scenes and the run that fills it | batch, `night.json` |
-| **Aperçu** | the 30 s clip a scene is first explored as | `preview.mov` |
-| **Choisie** / **Écartée** (buttons **Oui** / **Non**) | your verdict on a scene | `ratings.json`, yes / no |
+| **Night** (**Batch** when started by hand) | a folder of scenes and the run that fills it | batch, `night.json` |
+| **Preview** | the 30 s clip a scene is first explored as | `preview.mov` |
+| **Kept** / **Discarded** (buttons **Yes** / **No**) | your verdict on a scene | `ratings.json`, yes / no |
 | **Score** | the interest of a scene, 0 to 1, which only sorts | interest score |
-| **Haute résolution** (badge **HD**) | the scene replayed with many more particles | hires, `take.sillage` |
-| **Style** | how the scene is drawn; **Utiliser pour la scène** makes it the scene's | look, `look.json`, promote |
-| **Rendu** | one drawing of the style (halo, spikes, dust) | `RenderLook` |
-| **Palette** | the colours, with a world (**Télescope** or **Libre**) | palette |
-| **Vidéos** | the finished files of a scene | `exports/` |
-| **File d'attente** | the heavy work waiting its turn, one at a time | job queue |
-| **Prise** | a recording opened by hand; only in the **Atelier** | take |
+| **High resolution** (badge **HD**) | the scene replayed with many more particles | hires, `take.sillage` |
+| **Style** | how the scene is drawn; **Use for scene** makes it the scene's | look, `look.json`, promote |
+| **Rendering** | one drawing of the style (halo, spikes, dust) | `RenderLook` |
+| **Palette** | the colours, with a world (**Telescope** or **Free**) | palette |
+| **Videos** | the finished files of a scene | `exports/` |
+| **Queue** | the heavy work waiting its turn, one at a time | job queue |
+| **Take** | a recording opened by hand; only in the **Workshop** | take |
 
 ## In the app
 
-The sidebar has **Bibliothèque** (the landing screen), **Nuits** and **Atelier**, the status
-line and the **File d'attente** at its top. A scene goes through five stages; the library
-groups its scenes by the stage they wait at (**À trier**, **Choisies**, **En haute résolution**,
-**Style à choisir**, **Prêtes**, **Exportées**, **Toutes**).
+The sidebar has **Library** (the landing screen), **Nights** and **Workshop**, the status
+line and the **Queue** at its top. A scene goes through five stages; the library
+groups its scenes by the stage they wait at (**To sort**, **Kept**, **In high resolution**,
+**Style to choose**, **Ready**, **Exported**, **All**).
 
-1. **Aperçus.** Click **Nouvelle nuit** (sidebar or toolbar), leave everything on Auto, and
-   click **Lancer la nuit**: the scenes are explored overnight. By hand, outside a night, the
-   command line is the way (see the appendix); the scenes land in the library as **Lot**.
-2. **Choix.** Open **À trier**. Each scene shows its Aperçu and its Score; press **Y** or **N**
-   (buttons **Oui** / **Non**) to choose or discard it, and a digit 0 to 9 to rate it. The
+1. **Previews.** Click **New night** (sidebar or toolbar), leave everything on Auto, and
+   click **Launch night**: the scenes are explored overnight. By hand, outside a night, the
+   command line is the way (see the appendix); the scenes land in the library as **Batch**.
+2. **Selection.** Open **To sort**. Each scene shows its Preview and its Score; press **Y** or **N**
+   (buttons **Yes** / **No**) to keep or discard it, and a digit 0 to 9 to rate it. The
    night picks the best by Score when you have not.
-3. **Haute résolution.** Open a scene and click **Recalculer en haute résolution…**, or open **Choisies** and click **Calculer en haute résolution (n)** for the whole collection. The job goes to the **File d'attente**. It is drawn as a night draws it: Auto is 8 M from 2 M massive, and every size past 2 M keeps 2 M massive, the others light tracers. A real count is a command line away (step 3 of the appendix, without `--massive`).
-4. **Style.** Click **Choisir le style** on a scene computed in high resolution. The style
-   editor plays the scene; pick a **Rendu** and a **Palette**, then **Utiliser pour la scène**
+3. **High resolution.** Open a scene and click **Recompute in high resolution…**, or open **Kept** and click **Compute in high resolution (n)** for the whole collection. The job goes to the **Queue**. It is drawn as a night draws it: Auto is 8 M from 2 M massive, and every size past 2 M keeps 2 M massive, the others light tracers. A real count is a command line away (step 3 of the appendix, without `--massive`).
+4. **Style.** Click **Choose style** on a scene computed in high resolution. The style
+   editor plays the scene; pick a **Rendering** and a **Palette**, then **Use for scene**
    (⌘S).
-5. **Vidéos.** Click **Exporter…**, choose the formats, and the job joins the queue. The
-   files appear under the scene's **Vidéos**.
+5. **Videos.** Click **Export…**, choose the formats, and the job joins the queue. The
+   files appear under the scene's **Videos**.
 
-## Nuits
+## Nights
 
-"Nouvelle nuit" (the Nuits entry of the sidebar, and the toolbar) opens a sheet whose only
-control in view is the time, **Prêt à** a delivery time (7 h 00 unless changed) or **Pendant** a
+"New night" (the Nights entry of the sidebar, and the toolbar) opens a sheet whose only
+control in view is the time, **Ready by** a delivery time (07:00 unless changed) or **Duration** a
 number of hours. Under it, `NightSheetPlanner` plans the night with `NightPlanner` again after
 every change (about 75 ms once the batch's draws are sized, which the app does at launch and the
 sheet shares): one line a phase with what it computes, how long it takes and when it ends, then
 the delivery and the margin. Disk too small, a hires that does not fit, fewer hires scenes than
-asked for, a night that ends late: it warns and does not block. "Personnaliser" is closed and
+asked for, a night that ends late: it warns and does not block. "Customise" is closed and
 holds four settings, each Auto: hires scenes (1 to 4), colour world, formats (4K, vertical),
-exploration only. **Lancer la nuit** writes the recipe to `library/.sillage/recipes/` (a file
+previews only. **Launch night** writes the recipe to `library/.sillage/recipes/` (a file
 a night, as a queued night reads it when its turn comes), adds the job to the queue and keeps
 the settings in `library/.sillage/night-sheet.json` for the next sheet. `Sillage.app --nightcheck`
 runs the model without a window (plan latency, warnings, launch) and writes
@@ -66,18 +66,18 @@ runs the model without a window (plan latency, warnings, launch) and writes
 
 ### The night page
 
-The Nuits section of the sidebar lists the nights newest first, each a day and "35 scènes · 4
-vidéos" (with "en cours", "en pause", "arrêtée", "en échec", "interrompue" or "en attente" when
+The Nights section of the sidebar lists the nights newest first, each a day and "35 scenes · 4
+videos" (with "running", "paused", "stopped", "failed", "interrupted" or "waiting" when
 it is not over), and a night just launched opens on its page. The page, `NightsSnapshot.read`
 in `NightPage.swift`, shows:
 
-- the five phases (Aperçus, Sélection, Haute résolution, Style, Vidéos) with their counts, what
+- the five phases (Previews, Selection, High resolution, Style, Videos) with their counts, what
   was rejected, failed or left out, when each finished and when the others are expected to;
-- while it runs, the job on one line ("scene-0023, haute résolution, image 412/900, prêt vers
-  1 h 12"), its bar, and the delivery against the deadline;
-- buttons: **Pause** / **Reprendre** (the whole queue), **Arrêter après cette étape**,
-  **Arrêter maintenant** (asks first), **Passer cette scène** (during a scene's own steps; once
-  asked it waits for the next scene) and **Trier**, which opens the triage view on the night's
+- while it runs, the job on one line ("scene-0023, high resolution, frame 412/900, ready around
+  01:12"), its bar, and the delivery against the deadline;
+- buttons: **Pause** / **Resume** (the whole queue), **Stop after this step**,
+  **Stop now** (asks first), **Skip this scene** (during a scene's own steps; once
+  asked it waits for the next scene) and **Sort**, which opens the triage view on the night's
   scenes still to sort;
 - once it is over, the morning summary, `report.md` (written again from the files if it is
   missing);
@@ -88,7 +88,7 @@ in `NightPage.swift`, shows:
 Everything is read from `night.json`, `events.jsonl`, `report.md`, `activity.json` and the
 queue, every second, so a change shows within two and a night that ran while the app was closed
 shows as it ended. A night whose file says running with no process behind it is
-"interrompue". `Sillage.app --nightpagecheck` runs all this on copies of the fixtures of
+"interrupted". `Sillage.app --nightpagecheck` runs all this on copies of the fixtures of
 `Tests/Fixtures/night-status/`, without a window or the GPU, and writes `out/ui-night-page*.png`.
 
 
@@ -109,7 +109,7 @@ scripts/explore-batch.sh --scenes 20 --galaxies 2-3 --only-archetypes antennae,m
 scripts/explore-batch.sh --scenes 20 --pair-share 0.5  # half pairs instead of four in five; off for none
 ```
 
-**2. Rate** – in the app (**Bibliothèque**), or by editing `<batch>/ratings.json`.
+**2. Rate** – in the app (**Library**), or by editing `<batch>/ratings.json`.
 
 **3. Hires** – re-run the scenes at high resolution:
 
@@ -134,8 +134,8 @@ which the app's form does not offer since it draws as a night does (#222).
 ./scripts/dev.sh look library/2026-10-24/scene-0001 --style auto
 ```
 
-Or open the scene in the library and click **Choisir le style**: the style editor plays the
-take, and **Utiliser pour la scène** (⌘S) promotes.
+Or open the scene in the library and click **Choose style**: the style editor plays the
+take, and **Use for scene** (⌘S) promotes.
 
 **5. Export**:
 
@@ -283,7 +283,7 @@ The night writes `recipe.json` (as given), `night.json`, `events.jsonl` and `rep
 folder, and the logs of its steps in `.logs/` (`night-explore.log`, `<scene>.hires.log`, ...).
 Exit status: 0 done, 3 stopped on request, 1 failed.
 
-`report.md` is rewritten at the end of each phase and at the end, in French, from `night.json`
+`report.md` is rewritten at the end of each phase and at the end, from `night.json`
 and `events.jsonl` alone: seven lines (state and duration, delivery against the deadline, scenes
 explored, rejected and failed, picks with their score, hires done, videos with their weight,
 scenes left out and errors), then the list of hires with particles (and how many carry the mass)
@@ -333,7 +333,7 @@ batch's `events.jsonl` while it works, when a job fails (stage and scene), and w
 empties after jobs asked for by hand. It runs without a bundle, which `UNUserNotificationCenter`
 refuses, so it calls `osascript -e 'display notification …'` (0.14 s, exit 0 from a detached
 process). The switch is `notifications` in `library/.queue/settings.json`, written by the app's
-Réglages (⌘,) and read at every notice. While something runs, a menu bar ring shows the
+Settings (⌘,) and read at every notice. While something runs, a menu bar ring shows the
 progress and the status line. `SILLAGE_NOTICE_LOG=<file>` appends notices there instead of
 showing them, for checks.
 
@@ -408,18 +408,18 @@ of its frames once they start, and reaches the last frame, not the writing of th
 queue view (the first comes from the same formatter, `QueueStatus`, then the night's own files):
 
 ```
-Nuit du 25 oct. · haute résolution 2/4 · scene-0023 image 412/900 · prêt vers 6 h 20 · 0 erreur
-Aperçus 50/50 (2 rejetés, 1 en échec) · choix 4/4 · haute résolution 1/4 · 1 vidéo
-Livraison : prête vers 6 h 20, avant 7 h 00, 40 min de marge
-Dernière vidéo : scene-0019/exports/4k.mp4 · 212,3 Mo · 0 h 40
+Night of 26 Oct · high resolution 2/4 · scene-0023 frame 412/900 · ready around 06:20 · 0 errors
+Previews 50/50 (2 rejected, 1 failed) · selection 4/4 · high resolution 1/4 · 1 video
+Delivery: ready around 06:20, by 07:00, 40 min to spare
+Last video: scene-0019/exports/4k.mp4 · 212.3 MB · 00:40
 ```
 
 A line of errors (the first, with its log) comes before the video when there are any. Idle, it
-says "Rien en cours · le Mac est libre" and names the last night with how it ended. `--night
+says "Nothing running · the Mac is free" and names the last night with how it ended. `--night
 <folder>` reports that night instead, `--json` prints the same as one object (the `lines`, and
 the counts, failures and last video apart), and `--full` prints every job of the queue: what
 runs and until when, the jobs waiting with their estimated start and end, the last ten finished. A `sillage-render` process that wrote no status shows as
-"Calcul en cours (sans détail)", so "le Mac est libre" is only said when nothing runs. The
+"Computing (no detail)", so "the Mac is free" is only said when nothing runs. The
 fixtures in `Tests/Fixtures/queue-status/` hold the expected lines.
 
 Following a night from afar, with a small model: [night-status.md](night-status.md).

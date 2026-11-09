@@ -38,16 +38,16 @@ struct ControlPanelContent: View {
 
     private var transport: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(model.mode == .playback ? "Relecture" : "Simulation en cours")
+            Text(model.mode == .playback ? "Playback" : "Simulation running")
                 .font(.headline)
             HStack {
-                Button(model.isPlaying ? "Pause" : "Lecture") { model.isPlaying.toggle() }
+                Button(model.isPlaying ? "Pause" : "Play") { model.isPlaying.toggle() }
                     .keyboardShortcut(.space, modifiers: [])
-                Button("Relancer") { model.restart() }
+                Button("Restart") { model.restart() }
             }
             .buttonStyle(.bordered)
 
-            Button("Modifier la scène") { model.returnToSetup() }
+            Button("Edit scene") { model.returnToSetup() }
                 .buttonStyle(.bordered)
 
             HStack(alignment: .firstTextBaseline) {
@@ -62,7 +62,7 @@ struct ControlPanelContent: View {
             }
             Text(
                 String(
-                    format: "%@ particules · %.1f ms par image affichée",
+                    format: "%@ particles · %.1f ms per frame shown",
                     model.particleCount >= 1_000_000
                         ? String(format: "%.1f M", Double(model.particleCount) / 1_000_000)
                         : "\(model.particleCount / 1000) k",
@@ -90,27 +90,27 @@ struct ControlPanelContent: View {
     @ViewBuilder
     private var capture: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Prise").font(.headline)
+            Text("Take").font(.headline)
 
             switch model.mode {
             case .running:
                 Text(
                     String(
-                        format: "%d images · %.0f Myr · %.1f Go", model.capturedFrames,
+                        format: "%d frames · %.0f Myr · %.1f GB", model.capturedFrames,
                         model.capturedMyr, Double(model.capturedBytes) / 1_073_741_824)
                 )
                 .font(.caption.monospacedDigit())
                 ProgressView(value: model.captureFraction)
 
                 if let why = model.captureSpillFailure {
-                    Text("Débord sur disque impossible, la prise continue en mémoire. \(why)")
+                    Text("Cannot spill to disk, the take carries on in memory. \(why)")
                         .font(.caption2)
                         .foregroundStyle(Palette.warning)
                 } else if model.captureSpilling {
                     Text(
                         String(
                             format:
-                                "Budget mémoire atteint : la prise continue sur disque (%.1f Go). Aucune image n'est perdue.",
+                                "Memory budget reached: the take carries on to disk (%.1f GB). No frame is lost.",
                             Double(model.captureDiskBytes) / 1_073_741_824)
                     )
                     .font(.caption2)
@@ -118,88 +118,88 @@ struct ControlPanelContent: View {
                 }
 
                 HStack {
-                    Button("Arrêter et rejouer") { model.stopAndReplay() }
+                    Button("Stop and replay") { model.stopAndReplay() }
                         .buttonStyle(.borderedProminent)
                         .disabled(!model.canReplay)
-                    Button("Ouvrir…") { TakeFiles.open(model) }
+                    Button("Open…") { TakeFiles.open(model) }
                         .buttonStyle(.bordered)
                 }
 
                 ParameterSlider(
-                    title: "Budget mémoire (Go)",
+                    title: "Memory budget (GB)",
                     value: Binding(
                         get: { Float(model.memoryBudgetGigabytes) },
                         set: { model.memoryBudgetGigabytes = Double($0) }),
                     range: 0.5...24, format: "%.1f")
                 Text(
-                    "Ce que la prise garde en mémoire. Au-delà elle continue sur disque, sans jamais perdre d'image."
+                    "What the take keeps in memory. Beyond that it carries on to disk, never losing a frame."
                 )
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
 
-                Toggle("Afficher pendant le calcul", isOn: $model.showCanvasWhileRunning)
+                Toggle("Show while computing", isOn: $model.showCanvasWhileRunning)
                     .font(.caption)
                 Text(
-                    "Dessiner quelques millions de particules prend une vraie part du même GPU que le calcul."
+                    "Drawing a few million particles takes a real share of the GPU the computation runs on."
                 )
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
 
                 Divider()
-                Text("Fin de course").font(.caption.bold())
+                Text("End of run").font(.caption.bold())
                 ParameterSlider(
-                    title: "Arrêter à (Myr)",
+                    title: "Stop at (Myr)",
                     value: Binding(
                         get: { Float(model.stopAtMyr) },
                         set: { model.stopAtMyr = Double($0) }),
                     range: 0...8000, format: "%.0f")
                 Text(
                     model.stopAtMyr > 0
-                        ? "La course s'arrêtera d'elle-même et passera en relecture."
-                        : "À 0, la course ne s'arrête jamais toute seule."
+                        ? "The run will stop on its own and switch to playback."
+                        : "At 0, the run never stops on its own."
                 )
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
 
                 if let destination = model.finishDestination {
                     HStack {
-                        Text("Sera écrite dans \(destination.lastPathComponent)")
+                        Text("Will be written to \(destination.lastPathComponent)")
                             .font(.caption2)
                             .foregroundStyle(Palette.secondary)
                             .lineLimit(1)
                         Spacer()
-                        Button("Annuler") { model.cancelSaveWhenFinished() }
+                        Button("Cancel") { model.cancelSaveWhenFinished() }
                             .buttonStyle(.borderless)
                             .font(.caption2)
                     }
                 } else {
-                    Button("Sauvegarder quand fini…") { TakeFiles.saveWhenFinished(model) }
+                    Button("Save when finished…") { TakeFiles.saveWhenFinished(model) }
                         .buttonStyle(.bordered)
                 }
 
-                Toggle("Quitter quand c'est fini", isOn: $model.quitWhenFinished)
+                Toggle("Quit when finished", isOn: $model.quitWhenFinished)
                     .font(.caption)
                     .disabled(model.stopAtMyr <= 0)
 
                 Divider()
                 Stepper(
-                    "Pas simulés par image : \(model.stepsPerFrame)",
+                    "Steps per frame: \(model.stepsPerFrame)",
                     value: $model.stepsPerFrame, in: 1...64
                 )
                 .font(.caption)
-                Text("Plus haut, la prise couvre plus de temps pour la même mémoire.")
+                Text("Higher, the take spans more time for the same memory.")
                     .font(.caption2)
                     .foregroundStyle(Palette.secondary)
 
             case .playback:
                 if model.reachedFinish {
-                    Text("Course terminée au temps demandé.")
+                    Text("Run ended at the requested time.")
                         .font(.caption)
                         .foregroundStyle(Palette.label)
                 }
                 Text(
                     String(
-                        format: "%d images · %.0f Myr · %.0f Mo", model.capturedFrames,
+                        format: "%d frames · %.0f Myr · %.0f MB", model.capturedFrames,
                         model.capturedMyr, model.capturedMegabytes)
                 )
                 .font(.caption.monospacedDigit())
@@ -208,15 +208,15 @@ struct ControlPanelContent: View {
                     value: $model.playbackPosition,
                     in: 0...Double(max(model.capturedFrames - 1, 1)))
                 ParameterSlider(
-                    title: "Vitesse (images/s)", value: $model.playbackSpeed, range: 1...120,
+                    title: "Speed (frames/s)", value: $model.playbackSpeed, range: 1...120,
                     format: "%.0f")
                 HStack {
-                    Button("Enregistrer…") { TakeFiles.save(model) }
-                    Button("Ouvrir…") { TakeFiles.open(model) }
+                    Button("Save…") { TakeFiles.save(model) }
+                    Button("Open…") { TakeFiles.open(model) }
                     // A video is made from a scene folder, through the queue and its presets.
                     if queue != nil, exportFolder != nil {
-                        Button("Vidéo…") { exporting = true }
-                            .help("Exporte la scène de cette prise avec les préréglages")
+                        Button("Video…") { exporting = true }
+                            .help("Exports this take's scene with the presets")
                     }
                 }
                 .buttonStyle(.bordered)
@@ -229,14 +229,14 @@ struct ControlPanelContent: View {
 
                 if model.isOpenedTake {
                     Text(
-                        "Prise ouverte depuis un fichier. Tous les réglages d'image restent vifs ; relancer la recalculerait depuis sa scène."
+                        "Take opened from a file. Every image setting stays live; restarting would recompute it from its scene."
                     )
                     .font(.caption2)
                     .foregroundStyle(Palette.secondary)
                 } else {
                     HStack {
-                        Button("Reprendre le calcul") { model.resumeRunning() }
-                        Button("Nouvelle prise") { model.restartCapture() }
+                        Button("Resume computing") { model.resumeRunning() }
+                        Button("New take") { model.restartCapture() }
                     }
                     .buttonStyle(.bordered)
                 }
@@ -255,11 +255,11 @@ struct ControlPanelContent: View {
 
     private var lookDescription: String {
         switch model.lookName {
-        case "dream": "Noyaux larges et floraison généreuse: le disque devient nuage."
-        case "gloss": "Noyaux serrés, longues aigrettes: un champ d'éclats individuels."
-        case "ink": "Ciel presque noir, couleur retenue. Pour les plans larges."
-        case "ember": "Chaud et lourd, la poussière fait l'essentiel du dessin."
-        default: "Ce que l'instrument enregistrerait vraiment."
+        case "dream": "Wide kernels and generous bloom: the disk turns to cloud."
+        case "gloss": "Tight kernels, long spikes: a field of single sparks."
+        case "ink": "Near-black sky, restrained colour. For wide shots."
+        case "ember": "Warm and heavy, the dust does most of the drawing."
+        default: "What the instrument would actually record."
         }
     }
 
@@ -268,7 +268,7 @@ struct ControlPanelContent: View {
     /// knob to reach for.
     private var rendering: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Rendu").font(.headline)
+            Text("Rendering").font(.headline)
             // A whole look in one press, from the honest telescope to the frankly invented.
             // The sliders below stay live afterwards: a look is a place to start, not a mode.
             Picker("", selection: lookBinding) {
@@ -284,27 +284,27 @@ struct ControlPanelContent: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider().padding(.vertical, 2)
-            Text("Lumière").font(.headline)
+            Text("Light").font(.headline)
             ParameterSlider(
-                title: "Luminosité", value: $model.look.brightness, range: 0.02...2.0, format: "%.2f")
+                title: "Brightness", value: $model.look.brightness, range: 0.02...2.0, format: "%.2f")
             ParameterSlider(
-                title: "Étirement logarithmique", value: $model.look.stretch, range: 0...60,
+                title: "Logarithmic stretch", value: $model.look.stretch, range: 0...60,
                 format: "%.0f")
             ParameterSlider(title: "Saturation", value: $model.look.saturation, range: 0...3)
-            ParameterSlider(title: "Teinte par galaxie", value: $model.look.galaxyTint, range: 0...1)
+            ParameterSlider(title: "Tint per galaxy", value: $model.look.galaxyTint, range: 0...1)
             Text(
-                "0 : chaque étoile a la couleur de sa population. 1 : chaque galaxie garde la sienne, ce qui rend lisibles les étoiles qu'elle perd."
+                "0: each star has its population's colour. 1: each galaxy keeps its own, which makes the stars it loses readable."
             )
             .font(.caption2)
             .foregroundStyle(Palette.secondary)
             ParameterSlider(
-                title: "Opacité des poussières", value: $model.look.dustStrength, range: 0...1.2,
+                title: "Dust opacity", value: $model.look.dustStrength, range: 0...1.2,
                 format: "%.3f")
-            ParameterSlider(title: "Toile des poussières", value: $model.look.dustWeb, range: 0...1)
+            ParameterSlider(title: "Dust web", value: $model.look.dustWeb, range: 0...1)
             ParameterSlider(
-                title: "Force des bras peints", value: $model.look.armPersistence, range: 0...2)
+                title: "Painted arm strength", value: $model.look.armPersistence, range: 0...2)
             Text(
-                "Au-dessus de 1 les bras sont une invention franche, ce que les styles les plus doux assument."
+                "Above 1 the arms are plain invention, which the softest styles own up to."
             )
             .font(.caption2)
             .foregroundStyle(Palette.secondary)
@@ -312,7 +312,7 @@ struct ControlPanelContent: View {
             Divider()
             Text("Instrument").font(.headline)
             ParameterSlider(
-                title: "Lissage des étoiles", value: $model.look.smoothingScale,
+                title: "Star smoothing", value: $model.look.smoothingScale,
                 range: 0.4...5.0)
             // How wide a splat is allowed to be. The floor is the one that matters and it was
             // reachable only from a preset: a star drawn thinner than a pixel crosses pixel
@@ -321,53 +321,53 @@ struct ControlPanelContent: View {
             // frame-to-frame jump on a single pixel falls from 81 levels at 1.1 px to 16 at
             // 3.5.
             ParameterSlider(
-                title: "Noyau minimal (px)", value: $model.look.minimumKernel, range: 0.5...6)
+                title: "Minimum kernel (px)", value: $model.look.minimumKernel, range: 0.5...6)
             ParameterSlider(
-                title: "Noyau maximal (px)", value: $model.look.maximumKernel, range: 4...160,
+                title: "Maximum kernel (px)", value: $model.look.maximumKernel, range: 4...160,
                 format: "%.0f")
             ParameterSlider(
-                title: "Étoiles sous le noyau (projection)", value: $model.look.columnSmoothing,
+                title: "Stars under the kernel (projection)", value: $model.look.columnSmoothing,
                 range: 0...120, format: "%.0f")
-            ParameterSlider(title: "Sources compactes", value: $model.look.glint, range: 0...1)
-            ParameterSlider(title: "Halo lumineux", value: $model.look.bloomIntensity, range: 0...2)
+            ParameterSlider(title: "Compact sources", value: $model.look.glint, range: 0...1)
+            ParameterSlider(title: "Glow", value: $model.look.bloomIntensity, range: 0...2)
             ParameterSlider(
-                title: "Aigrettes de diffraction", value: $model.look.spikeIntensity, range: 0...1.5)
+                title: "Diffraction spikes", value: $model.look.spikeIntensity, range: 0...1.5)
             // What makes a bright star sparkle is these three together, and only the first of
             // them had a control: the number of arms and how far they reach were reachable
             // only from a preset.
             ParameterSlider(
-                title: "Branches des aigrettes", value: $model.spikeArms, range: 0...8,
+                title: "Spike arms", value: $model.spikeArms, range: 0...8,
                 format: "%.0f")
             ParameterSlider(
-                title: "Longueur des aigrettes", value: $model.look.spikeLength, range: 0...200,
+                title: "Spike length", value: $model.look.spikeLength, range: 0...200,
                 format: "%.0f")
             Toggle(
-                "Aigrettes de Webb",
+                "Webb spikes",
                 isOn: Binding(
                     get: { model.look.spikePattern == .webb },
                     set: { model.look.spikePattern = $0 ? .webb : .even })
             )
             .font(.caption)
             ParameterSlider(
-                title: "Taille des étoiles de champ", value: $model.look.starSize, range: 0.2...4)
+                title: "Field star size", value: $model.look.starSize, range: 0.2...4)
             ParameterSlider(
-                title: "Seuil du halo", value: $model.look.bloomThreshold, range: 0.05...1.5)
+                title: "Glow threshold", value: $model.look.bloomThreshold, range: 0.05...1.5)
             ParameterSlider(
-                title: "Douceur du seuil", value: $model.look.bloomSoftKnee, range: 0...1)
+                title: "Threshold softness", value: $model.look.bloomSoftKnee, range: 0...1)
             ParameterSlider(
-                title: "Point blanc", value: $model.look.whitePoint, range: 1...20, format: "%.1f")
+                title: "White point", value: $model.look.whitePoint, range: 1...20, format: "%.1f")
             ParameterSlider(
-                title: "Fond de ciel", value: $model.look.skyLevel, range: 0...0.006,
+                title: "Sky background", value: $model.look.skyLevel, range: 0...0.006,
                 format: "%.4f")
             // Named for what it does rather than for what it is. Every look sits between
             // 0.0008 and 0.0022, so a range up to 0.01 put the whole useful part of it in the
             // first sixth of the track: it read as a control that did nothing until it
             // suddenly did everything, and zero was three pixels wide.
             ParameterSlider(
-                title: "Scintillement (bruit du capteur)", value: $model.look.noiseLevel,
+                title: "Twinkle (sensor noise)", value: $model.look.noiseLevel,
                 range: 0...0.004, format: "%.4f")
             Text(
-                "À zéro, deux images d'une scène arrêtée sont identiques au bit près : c'est ce bruit-là qui fait clignoter tout le fond. Pour les étoiles qui scintillent en bougeant, c'est le noyau minimal."
+                "At zero, two frames of a paused scene are identical to the bit: this noise is what makes the whole background flicker. For stars that twinkle as they move, see the minimum kernel."
             )
             .font(.caption2)
             .foregroundStyle(Palette.secondary)
@@ -376,69 +376,69 @@ struct ControlPanelContent: View {
 
     private var view: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Caméra").font(.headline)
+            Text("Camera").font(.headline)
             Picker("", selection: flightBinding) {
-                Text("Orbite").tag(false)
-                Text("Vol libre").tag(true)
+                Text("Orbit").tag(false)
+                Text("Free flight").tag(true)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
 
             if model.isFlying {
-                Text("Glisser pour regarder, molette pour la vitesse")
+                Text("Drag to look, scroll for speed")
                     .font(.caption)
                     .foregroundStyle(Palette.secondary)
                 Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 3) {
                     GridRow {
                         Text("W S").monospaced()
-                        Text("avancer, reculer")
+                        Text("forward, back")
                     }
                     GridRow {
                         Text("A D").monospaced()
-                        Text("gauche, droite")
+                        Text("left, right")
                     }
                     GridRow {
                         Text("␣ C").monospaced()
-                        Text("monter, descendre")
+                        Text("up, down")
                     }
                     GridRow {
                         Text("← →").monospaced()
-                        Text("pivoter")
+                        Text("turn")
                     }
                     GridRow {
                         Text("↑ ↓").monospaced()
-                        Text("lever, baisser les yeux")
+                        Text("look up, look down")
                     }
                     GridRow {
                         Text("⇧ ⌃").monospaced()
-                        Text("plus vite, moins vite")
+                        Text("faster, slower")
                     }
                     GridRow {
                         Text("F").monospaced()
-                        Text("revenir en orbite")
+                        Text("back to orbit")
                     }
                 }
                 .font(.caption)
                 .foregroundStyle(Palette.secondary)
                 // Not bound to the rig: it moves on every frame, and a binding would rebuild
                 // this panel sixty times a second.
-                Text(String(format: "vitesse %.0f kpc/s", model.flight.speed))
+                Text(String(format: "speed %.0f kpc/s", model.flight.speed))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Palette.secondary)
             } else {
-                Text("Glisser pour tourner, molette pour zoomer · F pour voler")
+                Text("Drag to rotate, scroll to zoom · F to fly")
                     .font(.caption)
                     .foregroundStyle(Palette.secondary)
                 ParameterSlider(
                     title: "Distance (kpc)", value: $model.camera.distance,
                     range: OrbitCamera.nearest...OrbitCamera.furthest, format: "%.0f")
                 ParameterSlider(
-                    title: "Élévation (rad)", value: $model.camera.elevation,
+                    title: "Elevation (rad)", value: $model.camera.elevation,
                     range: -OrbitCamera.elevationLimit...OrbitCamera.elevationLimit)
             }
             ParameterSlider(
-                title: "Ouverture de l'objectif", value: $model.look.fieldOfView, range: 0.2...1.4)
-            Button(model.isFlying ? "Revenir sur la scène" : "Recadrer") {
+                title: "Field of view", value: $model.look.fieldOfView, range: 0.2...1.4)
+            Button(model.isFlying ? "Back to the scene" : "Reframe") {
                 if model.isFlying { model.toggleFlight() }
                 model.frameCamera()
             }

@@ -45,27 +45,27 @@ struct QueueStatusTests {
     }
 
     @Test func aFreeMacIsSaidFreeOnlyWhenNothingRuns() throws {
-        #expect(try Self.lines("idle").first == "Rien en cours · le Mac est libre")
+        #expect(try Self.lines("idle").first == "Nothing running · the Mac is free")
         // A file left running by a crash, with no process to write it, is no work.
-        #expect(try Self.lines("stale").first == "Rien en cours · le Mac est libre")
-        #expect(try Self.lines("orphan").first == "Calcul en cours (sans détail)")
+        #expect(try Self.lines("stale").first == "Nothing running · the Mac is free")
+        #expect(try Self.lines("orphan").first == "Computing (no detail)")
     }
 
     @Test func aNightIsSaidWithItsPhaseAndItsEnd() throws {
         let lines = try Self.lines("night-hires")
         #expect(
-            lines.first == "Nuit du 26 oct. · haute résolution 2/4 · prêt vers 6 h 20 · 3 en attente")
+            lines.first == "Night of 26 Oct · high resolution 2/4 · ready around 06:20 · 3 waiting")
     }
 
     @Test func waitingJobsFollowEachOther() throws {
         let lines = try Self.lines("night-hires")
         // The export is estimated, so the next hires starts when it ends; that one has no
         // estimate, so what comes after has no time.
-        let waiting = lines.drop { $0 != "En attente" }.dropFirst().prefix(3)
+        let waiting = lines.drop { $0 != "Waiting" }.dropFirst().prefix(3)
         #expect(waiting.count == 3)
-        #expect(waiting.first?.contains("début vers 2 h 20 · fin vers 2 h 2") == true)
-        #expect(waiting.dropFirst().first?.contains("début vers 2 h 2") == true)
-        #expect(waiting.last?.contains("début") == false)
+        #expect(waiting.first?.contains("starts around 02:20 · ends around 02:2") == true)
+        #expect(waiting.dropFirst().first?.contains("starts around 02:2") == true)
+        #expect(waiting.last?.contains("starts") == false)
     }
 
     @Test func theLastTenFinishedAreListed() {
@@ -81,7 +81,7 @@ struct QueueStatusTests {
         let status = QueueStatus(.init(activity: nil, queue: queue, now: start, timeZone: Self.paris))
         #expect(status.finished.count == 10)
         #expect(status.finished.first?.job == 14)
-        #expect(status.headline == "Rien en cours · le Mac est libre")
+        #expect(status.headline == "Nothing running · the Mac is free")
     }
 
     @Test func theRunnerWaitingForAJobIsNotWork() {
@@ -96,33 +96,35 @@ struct QueueStatusTests {
 
     @Test func aHandStartedStageShowsWithoutTheQueue() throws {
         let lines = try Self.lines("by-hand")
-        #expect(lines.first == "Vidéo · scene-0023 · prêt vers 15 h 12 · 1 en attente")
+        #expect(lines.first == "Video · scene-0023 · ready around 15:12 · 1 waiting")
     }
 
     @Test func aRunWithNothingWrittenForAQuarterHourIsStuck() throws {
         let lines = try Self.lines("stuck")
-        #expect(lines.first?.contains("semble bloqué, rien écrit depuis 25 min") == true)
+        #expect(lines.first?.contains("seems stuck, nothing written for 25 min") == true)
     }
 
     @Test func aPausedQueueGivesNoTime() throws {
         let lines = try Self.lines("paused")
-        #expect(lines.first == "En pause · Haute résolution · scene-0023 · 1 en attente")
+        #expect(lines.first == "Paused · High resolution · scene-0023 · 1 waiting")
     }
 
-    @Test func datesAreWrittenInFrenchWhateverTheMachine() {
+    @Test func datesAreWrittenTheSameWhateverTheMachine() {
         let words = Words(now: Date(timeIntervalSince1970: 1_792_000_000), timeZone: Self.paris)
         let now = Date(timeIntervalSince1970: 1_792_000_000)
-        #expect(words.at(now.addingTimeInterval(60)).contains(" h "))
-        #expect(words.at(now.addingTimeInterval(86_400)).hasPrefix("demain "))
-        #expect(words.at(now.addingTimeInterval(3 * 86_400)).contains("oct.") == true)
+        #expect(words.at(now.addingTimeInterval(60)).count == 5)
+        #expect(words.at(now.addingTimeInterval(86_400)).hasPrefix("tomorrow "))
+        #expect(words.about(now.addingTimeInterval(86_400)).hasPrefix("tomorrow around "))
+        #expect(words.at(now.addingTimeInterval(3 * 86_400)).contains("Oct") == true)
         #expect(Words.duration(45) == "45 s")
         #expect(Words.duration(12 * 60) == "12 min")
-        #expect(Words.duration(8_100) == "2 h 15")
+        #expect(Words.duration(8_100) == "2 h 15 min")
+        #expect(Words.size(megabytes: 672.8) == "672.8 MB" && Words.thousands(8_000_000) == "8,000,000")
     }
 
-    @Test func framesAreImagesInTheApp() {
-        #expect(QueueStatus.detail("frame 412/900") == "image 412/900")
-        #expect(QueueStatus.detail("starting") == "démarrage")
+    @Test func stageDetailsAreShownAsWritten() {
+        #expect(QueueStatus.detail("frame 412/900") == "frame 412/900")
+        #expect(QueueStatus.detail("") == nil)
         #expect(QueueStatus.detail(nil) == nil)
     }
 }

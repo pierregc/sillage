@@ -19,7 +19,7 @@ struct RunningView: View {
                 if model.isPreparing {
                     VStack(spacing: 10) {
                         ProgressView()
-                        Text("Préparation de la scène…")
+                        Text("Preparing the scene…")
                             .font(.callout)
                             .foregroundStyle(Palette.secondary)
                     }
@@ -39,37 +39,37 @@ struct ComputingView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("Calcul en cours, affichage coupé")
+            Text("Computing, display off")
                 .font(.title3)
             Text(String(format: "%.0f Myr", model.elapsedMyr))
                 .font(.system(size: 52, weight: .light).monospacedDigit())
             if model.stopAtMyr > 0 {
                 ProgressView(value: min(model.elapsedMyr / model.stopAtMyr, 1))
                     .frame(width: 320)
-                Text(String(format: "fin à %.0f Myr", model.stopAtMyr))
+                Text(String(format: "ends at %.0f Myr", model.stopAtMyr))
                     .font(.caption)
                     .foregroundStyle(Palette.secondary)
             }
             Text(
                 String(
-                    format: "%.1f Myr par seconde · %d images · %.0f Mo",
+                    format: "%.1f Myr per second · %d frames · %.0f MB",
                     model.megayearsPerSecond, model.capturedFrames, model.capturedMegabytes)
             )
             .font(.callout.monospacedDigit())
             .foregroundStyle(Palette.secondary)
 
             if let destination = model.finishDestination {
-                Text("sera écrite dans \(destination.lastPathComponent)")
+                Text("will be written to \(destination.lastPathComponent)")
                     .font(.caption)
                     .foregroundStyle(Palette.secondary)
             }
             if model.quitWhenFinished {
-                Text("l'application se fermera ensuite")
+                Text("the app will quit afterwards")
                     .font(.caption)
                     .foregroundStyle(Palette.secondary)
             }
 
-            Button("Réafficher") { model.showCanvasWhileRunning = true }
+            Button("Show again") { model.showCanvasWhileRunning = true }
                 .buttonStyle(.bordered)
                 .padding(.top, 8)
         }

@@ -5,7 +5,7 @@ import QuartzCore
 import SillageCore
 import SillageRender
 
-/// The Rendu section's thumbnails: the frame on the canvas drawn with every rendering and the
+/// The Rendering section's thumbnails: the frame on the canvas drawn with every rendering and the
 /// style's palette and camera, off the main actor (#114). Drawn again when the playhead has
 /// moved more than a tenth of the take, when the palette or the camera plan changed, or when
 /// asked.

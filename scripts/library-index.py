@@ -123,10 +123,10 @@ def card(row, directory):
         ("seed", html.escape(str(row.get("seed", "?")))),
         ("tempo", "%s, %s galaxies" % (html.escape(str(row.get("tempo", "?"))),
                                        html.escape(str(row.get("galaxies", "?"))))),
-        ("durée", duration(row)),
-        ("taille", "%s vidéo, %s prise" % (size(whole(row, "video_bytes")),
+        ("duration", duration(row)),
+        ("size", "%s video, %s take" % (size(whole(row, "video_bytes")),
                                            size(whole(row, "take_bytes")))),
-        ("rendu", "%s x %s, %s particules, %s s"
+        ("render", "%s x %s, %s particles, %s s"
                   % (html.escape(str(row.get("width", "?"))),
                      html.escape(str(row.get("height", "?"))),
                      html.escape(str(row.get("particles", "?"))),
@@ -146,11 +146,11 @@ def main(argv):
     if not body:
         body = '<p class="empty">index.csv is empty or unreadable.</p>'
     page = (
-        "<!doctype html>\n<html lang=\"fr\"><head><meta charset=\"utf-8\">"
+        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         "<title>%s</title><style>%s</style></head><body>\n"
-        "<h1>%s</h1>\n<div class=\"sub\">%d scènes, %d en échec. "
-        "Les vidéos sont muettes exprès.</div>\n%s\n</body></html>\n"
+        "<h1>%s</h1>\n<div class=\"sub\">%d scenes, %d failed. "
+        "The videos are silent on purpose.</div>\n%s\n</body></html>\n"
         % (html.escape(os.path.basename(os.path.abspath(directory))), STYLE,
            html.escape(os.path.basename(os.path.abspath(directory))), len(rows), failed, body)
     )

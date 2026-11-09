@@ -116,9 +116,9 @@ struct MainView: View {
                         Button {
                             navigation.newNight()
                         } label: {
-                            Label("Nouvelle nuit", systemImage: "moon.stars")
+                            Label("New night", systemImage: "moon.stars")
                         }
-                        .help("Préparer une nuit de calcul")
+                        .help("Plan an overnight run")
                     }
                 }
                 .sheet(isPresented: $navigation.showsNightSheet) {
@@ -163,7 +163,7 @@ struct MainView: View {
                 })
         case .workshop:
             // Leaving the workshop drops the canvas and nothing else: the run keeps stepping
-            // on its own queue, as with "Afficher pendant le calcul" off.
+            // on its own queue, as with "Show while computing" off.
             switch model.stage {
             case .setup: SetupView(model: model)
             case .running: RunningView(model: model)
@@ -191,22 +191,22 @@ struct Sidebar: View {
         let counts = library.counts
         List(selection: selection) {
             Section {
-                Label("File d'attente", systemImage: "list.bullet.rectangle")
+                Label("Queue", systemImage: "list.bullet.rectangle")
                     .badge(queue.status.waitingCount)
                     .tag(SidebarItem.queue)
             }
-            Section("Bibliothèque") {
+            Section("Library") {
                 ForEach(LibraryCollection.allCases, id: \.self) { collection in
                     Label(collection.title, systemImage: collection.symbol)
                         .badge(counts[collection] ?? 0)
                         .tag(SidebarItem.library(collection))
                 }
                 if let style = navigation.style {
-                    Label("Style de \(style.scene.name)", systemImage: "paintpalette")
+                    Label("Style of \(style.scene.name)", systemImage: "paintpalette")
                         .tag(SidebarItem.style)
                 }
             }
-            Section("Nuits") {
+            Section("Nights") {
                 ForEach(nights.items) { item in
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
@@ -219,24 +219,24 @@ struct Sidebar: View {
                     .tag(SidebarItem.night(item.id))
                 }
                 if nights.items.isEmpty {
-                    Text("Aucune nuit encore").font(.callout).foregroundStyle(Palette.secondary)
+                    Text("No night yet").font(.callout).foregroundStyle(Palette.secondary)
                 }
                 Button {
                     navigation.newNight()
                 } label: {
-                    Label("Nouvelle nuit", systemImage: "plus.circle")
+                    Label("New night", systemImage: "plus.circle")
                 }
             }
-            Section("Atelier") {
-                Label("Nouvelle collision", systemImage: "circle.circle")
+            Section("Workshop") {
+                Label("New collision", systemImage: "circle.circle")
                     .tag(SidebarItem.workshop)
                 Button {
                     navigation.openTake(model)
                 } label: {
-                    Label("Ouvrir une prise…", systemImage: "film")
+                    Label("Open take…", systemImage: "film")
                 }
-                contemplation("Contemplation lente", .slow, "Plein écran, cinq minutes par scène")
-                contemplation("Contemplation rapide", .brisk, "Plein écran, une minute par scène")
+                contemplation("Slow contemplation", .slow, "Full screen, five minutes per scene")
+                contemplation("Brisk contemplation", .brisk, "Full screen, one minute per scene")
             }
         }
         .listStyle(.sidebar)
@@ -268,6 +268,6 @@ struct Sidebar: View {
             Label(title, systemImage: pace == .slow ? "sparkles" : "hare")
         }
         .disabled(model.stage == .running)
-        .help(model.stage == .running ? "Revenir d'abord à « Modifier la scène »" : help)
+        .help(model.stage == .running ? "Go back to “Edit scene” first" : help)
     }
 }

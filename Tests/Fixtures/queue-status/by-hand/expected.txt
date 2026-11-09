@@ -1,10 +1,10 @@
-Vidéo · scene-0023 · prêt vers 15 h 12 · 1 en attente
-En cours
-  Vidéo · scene-0023 · image 270/900 · prêt vers 15 h 12
-En attente
-  n° 20 · Haute résolution · scene-0031 · début vers 15 h 12
-Terminés
-  n° 13 · Haute résolution · scene-0019 · terminé 0 h 39 en 1 h 29
-  n° 12 · Vidéo · scene-0019 · terminé 26 oct. 23 h 09 en 19 min
-  n° 11 · Haute résolution · scene-0017 · échec 26 oct. 22 h 49 · exit status 1
-  n° 10 · Aperçus · 2026-10-26 · annulé 26 oct. 22 h 20
+Video · scene-0023 · ready around 15:12 · 1 waiting
+Running
+  Video · scene-0023 · frame 270/900 · ready around 15:12
+Waiting
+  #20 · High resolution · scene-0031 · starts around 15:12
+Finished
+  #13 · High resolution · scene-0019 · done 00:39 in 1 h 29 min
+  #12 · Video · scene-0019 · done 26 Oct 23:09 in 19 min
+  #11 · High resolution · scene-0017 · failed 26 Oct 22:49 · exit status 1
+  #10 · Previews · 2026-10-26 · cancelled 26 Oct 22:20

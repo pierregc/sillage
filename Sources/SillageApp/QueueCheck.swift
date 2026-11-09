@@ -15,7 +15,7 @@ enum QueueCheck {
         do {
             try exercise(root)
         } catch {
-            check("le parcours va au bout", false, "\(error)")
+            check("the walk runs to the end", false, "\(error)")
         }
         let report = lines.joined(separator: "\n")
         try? report.write(
@@ -26,7 +26,7 @@ enum QueueCheck {
     }
 
     private static func check(_ name: String, _ passed: Bool, _ detail: String = "") {
-        lines.append("\(passed ? "OUI" : "NON")  \(name)\(detail.isEmpty ? "" : "  (\(detail))")")
+        lines.append("\(passed ? "ok  " : "FAIL") \(name)\(detail.isEmpty ? "" : "  (\(detail))")")
         if !passed { failures += 1 }
     }
 
@@ -41,7 +41,7 @@ enum QueueCheck {
 
     private static func exercise(_ root: URL) throws {
         check(
-            "le runner est dans l'app", QueueModel.runnerExecutable != nil,
+            "the runner is in the app", QueueModel.runnerExecutable != nil,
             QueueModel.runnerExecutable?.path ?? "")
         let scene = SceneFolder(
             root.appendingPathComponent("2026-10-26").appendingPathComponent("scene-0001"))
@@ -53,47 +53,47 @@ enum QueueCheck {
 
         let (export, runner) = try model.submit(
             .export, path: scene.url.path, options: ["--preset", "1080p"])
-        check("le travail est dans la file", model.queue.job(export.id)?.state != nil)
-        check("un runner démarre", runner != nil, runner.map { "pid \($0)" } ?? "")
+        check("the job is in the queue", model.queue.job(export.id)?.state != nil)
+        check("a runner starts", runner != nil, runner.map { "pid \($0)" } ?? "")
         if let runner {
             check(
-                "il a sa propre session", getsid(runner) == runner && getsid(runner) != getsid(0),
+                "it has its own session", getsid(runner) == runner && getsid(runner) != getsid(0),
                 "session \(getsid(runner)), app \(getsid(0))")
         }
         check(
-            "l'app le voit au travail",
+            "the app sees it at work",
             wait(10) {
                 model.refresh()
                 return model.runner != nil || model.queue.job(export.id)?.isFinished == true
             })
         check(
-            "le travail se termine",
+            "the job ends",
             wait(30) {
                 model.refresh()
                 return model.queue.job(export.id)?.isFinished == true && model.runner == nil
             })
         let failed = model.queue.job(export.id)
         check(
-            "sans prise, l'export échoue avec la raison",
+            "without a take, the export fails with the reason",
             failed?.state == .failed && failed?.message?.contains("no take.sillage") == true,
             failed?.message ?? "")
         let events =
             (try? String(contentsOf: RunStatusFiles.events(batch: scene.batch), encoding: .utf8))
             .map(RunEvent.decodeLines) ?? []
         check(
-            "l'échec est dans events.jsonl",
+            "the failure is in events.jsonl",
             events.contains { $0.kind == RunEvent.Kind.error && $0.log == failed?.log })
         let notices =
             (try? String(contentsOf: noticeLog, encoding: .utf8))?.split(separator: "\n") ?? []
         check(
-            "l'échec est annoncé : étape, scène, raison",
-            notices.contains { $0.hasPrefix("Échec · Rendu\tscene-0001") },
+            "the failure is announced: stage, scene, reason",
+            notices.contains { $0.hasPrefix("Failed · Videos\tscene-0001") },
             notices.first.map(String.init) ?? "")
         check(
-            "une file qui n'a rien réussi ne se dit pas vide",
-            !notices.contains { $0.hasPrefix("File d'attente vide") })
+            "a queue that finished nothing is not called empty",
+            !notices.contains { $0.hasPrefix("Queue empty") })
         let activity = ActivityFile.read(from: RunStatusFiles.activity(library: root))
-        check("activity.json dit le Mac libre", activity?.state == .idle && activity?.job == nil)
+        check("activity.json says the Mac is free", activity?.state == .idle && activity?.job == nil)
 
         try QueueSettings(notifications: false).write(model.store)
         let before = notices.count
@@ -101,26 +101,26 @@ enum QueueCheck {
         let batch = root.appendingPathComponent("2026-10-27").path
         let (explore, held) = try model.submit(.explore, path: batch, options: ["--scenes", "0"])
         let (extra, _) = try model.submit(.export, path: scene.url.path, options: ["--preset", "4k"])
-        check("en pause, rien ne démarre", held == nil && model.runner == nil)
+        check("paused, nothing starts", held == nil && model.runner == nil)
         try model.moveFirst(extra.id)
-        check("« en premier » passe devant", model.queue.waiting.map(\.id) == [extra.id, explore.id])
+        check("“Move to front” goes first", model.queue.waiting.map(\.id) == [extra.id, explore.id])
         try model.cancel(extra.id)
-        check("annuler retire un travail en attente", model.queue.job(extra.id)?.state == .cancelled)
+        check("cancel removes a waiting job", model.queue.job(extra.id)?.state == .cancelled)
         try model.resume()
         check(
-            "la reprise lance l'exploration",
+            "resuming starts the exploration",
             wait(30) {
                 model.refresh()
                 return model.queue.job(explore.id)?.isFinished == true && model.runner == nil
             })
         check(
-            "elle va au bout", model.queue.job(explore.id)?.state == .done,
+            "it runs to the end", model.queue.job(explore.id)?.state == .done,
             model.queue.job(explore.id)?.message ?? "")
         let after =
             (try? String(contentsOf: noticeLog, encoding: .utf8))?.split(separator: "\n") ?? []
-        check("réglage coupé, le runner se tait", after.count == before, "\(after.count) lignes")
+        check("switched off, the runner stays quiet", after.count == before, "\(after.count) lines")
         check(
-            "le lot est créé",
+            "the batch is created",
             FileManager.default.fileExists(atPath: batch + "/batch.conf"))
     }
 }

@@ -1,12 +1,12 @@
-Nuit du 26 oct. · haute résolution 2/4 · prêt vers 6 h 20 · 3 en attente
-En cours
-  n° 14 · Haute résolution · scene-0023 · image 412/900 · prêt vers 2 h 20
-En attente
-  n° 15 · Vidéo · scene-0023 · début vers 2 h 20 · fin vers 2 h 20
-  n° 16 · Haute résolution · scene-0031 · début vers 2 h 20
-  n° 17 · Vidéo · scene-0031
-Terminés
-  n° 13 · Haute résolution · scene-0019 · terminé 0 h 39 en 1 h 29
-  n° 12 · Vidéo · scene-0019 · terminé 26 oct. 23 h 09 en 19 min
-  n° 11 · Haute résolution · scene-0017 · échec 26 oct. 22 h 49 · exit status 1
-  n° 10 · Aperçus · 2026-10-26 · annulé 26 oct. 22 h 20
+Night of 26 Oct · high resolution 2/4 · ready around 06:20 · 3 waiting
+Running
+  #14 · High resolution · scene-0023 · frame 412/900 · ready around 02:20
+Waiting
+  #15 · Video · scene-0023 · starts around 02:20 · ends around 02:20
+  #16 · High resolution · scene-0031 · starts around 02:20
+  #17 · Video · scene-0031
+Finished
+  #13 · High resolution · scene-0019 · done 00:39 in 1 h 29 min
+  #12 · Video · scene-0019 · done 26 Oct 23:09 in 19 min
+  #11 · High resolution · scene-0017 · failed 26 Oct 22:49 · exit status 1
+  #10 · Previews · 2026-10-26 · cancelled 26 Oct 22:20

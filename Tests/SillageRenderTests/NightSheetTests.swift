@@ -92,17 +92,17 @@ final class NightSheetTests {
         #expect(NightSheet.last(library: library) == NightSheet())
     }
 
-    @Test func thePlanSpeaksFrenchAndGivesEachStepItsDurationAndEnd() throws {
+    @Test func thePlanGivesEachStepItsDurationAndEnd() throws {
         let plan = planner(try library()).plan(NightSheet(), now: Self.evening)
         let titles = plan.lines.map(\.title)
-        #expect(titles == ["Aperçus", "Haute résolution", "Style", "Vidéos"])
+        #expect(titles == ["Previews", "High resolution", "Style", "Videos"])
         let explore = try #require(plan.lines.first)
-        #expect(explore.detail.hasPrefix("environ ") && explore.detail.hasSuffix("scènes"))
-        #expect(explore.until.hasPrefix("jusqu'à ") && explore.duration.contains("h"))
-        #expect(explore.text == "Aperçus · \(explore.detail) · \(explore.duration) · \(explore.until)")
-        #expect(plan.lines[1].detail.hasSuffix("à 8 M de particules"))
-        #expect(plan.delivery == "Prêt demain à 7 h 00")
-        #expect(plan.margin.hasPrefix("Fin prévue à ") && plan.margin.hasSuffix("de marge"))
+        #expect(explore.detail.hasPrefix("about ") && explore.detail.hasSuffix("scenes"))
+        #expect(explore.until.hasPrefix("until ") && explore.duration.contains("h"))
+        #expect(explore.text == "Previews · \(explore.detail) · \(explore.duration) · \(explore.until)")
+        #expect(plan.lines[1].detail.hasSuffix(" at 8 M particles"))
+        #expect(plan.delivery == "Ready tomorrow by 07:00")
+        #expect(plan.margin.hasPrefix("Expected to end at ") && plan.margin.hasSuffix(" to spare"))
         #expect(plan.warnings.isEmpty)
     }
 
@@ -111,7 +111,7 @@ final class NightSheetTests {
         var sheet = NightSheet()
         let base = planner.nightPlan(sheet, now: Self.evening)
         sheet.exploreOnly = true
-        #expect(planner.plan(sheet, now: Self.evening).lines.map(\.title) == ["Aperçus"])
+        #expect(planner.plan(sheet, now: Self.evening).lines.map(\.title) == ["Previews"])
         sheet.exploreOnly = false
         sheet.hiresScenes = 2
         let two = planner.nightPlan(sheet, now: Self.evening)
@@ -120,7 +120,7 @@ final class NightSheetTests {
         sheet.vertical = false
         sheet.fourK = false
         let none = planner.plan(sheet, now: Self.evening)
-        #expect(none.lines.map(\.title) == ["Aperçus", "Haute résolution", "Style"])
+        #expect(none.lines.map(\.title) == ["Previews", "High resolution", "Style"])
         sheet.timing = .hours
         sheet.hours = 3
         let short = planner.nightPlan(sheet, now: Self.evening)
@@ -171,7 +171,7 @@ final class NightSheetTests {
         let kinds = plan.warnings.map(\.kind)
         #expect(kinds.contains("disk"))
         let disk = try #require(plan.warnings.first { $0.kind == "disk" })
-        #expect(disk.text.contains(" Go, il en reste 1,0 Go sur le disque"))
+        #expect(disk.text.contains(" GB is needed and 1.0 GB is left on the disk"))
         #expect(kinds.contains("explore") || kinds.contains("late") || kinds.contains("over"))
         // Still a night that can be launched.
         try sheet.recipe().validate()
@@ -184,7 +184,7 @@ final class NightSheetTests {
         sheet.hiresScenes = 4
         let plan = planner(try library()).plan(sheet, now: Self.evening)
         let picks = try #require(plan.warnings.first { $0.kind == "picks" })
-        #expect(picks.text.hasPrefix("Seules ") && picks.text.contains(" des 4 scènes demandées"))
+        #expect(picks.text.hasPrefix("Only ") && picks.text.contains(" of the 4 scenes asked for"))
         #expect(plan.warnings.allSatisfy { !$0.text.isEmpty })
         // Without a number asked for, there is nothing to fall short of.
         sheet.hiresScenes = nil

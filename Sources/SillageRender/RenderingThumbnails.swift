@@ -3,7 +3,7 @@ import Foundation
 import Metal
 import SillageCore
 
-/// One frame of a take drawn with each rendering, small, for the style editor's Rendu section
+/// One frame of a take drawn with each rendering, small, for the style editor's Rendering section
 /// (#114). Drawn at the clip's size and scaled down as the look stage does (#22), and kept by
 /// frame, camera and look, so coming back to a frame or a palette draws nothing.
 ///

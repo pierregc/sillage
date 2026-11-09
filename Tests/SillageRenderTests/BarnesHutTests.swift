@@ -758,7 +758,7 @@ struct BarnesHutTests {
         scene.solver = .barnesHut
         for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = 1.5 }
         let particles = RestrictedSolver.sampleParticles(for: scene)
-        #expect(particles.count > 3 * 65_536, "sinon il n'y a qu'un bloc")
+        #expect(particles.count > 3 * 65_536, "otherwise there is a single block")
         let solver = try MetalBarnesHutSolver(scene: scene, particles: particles)
         let positions = solver.particles.positions
 
@@ -1091,7 +1091,7 @@ struct BarnesHutTests {
     /// seven million visible with live halos is already past it.
     @Test func aNodeAddressesMoreParticlesThanAFloatCanCount() {
         let past = 18_000_003
-        #expect(Int(Float(past)) != past, "sinon ce test ne teste rien")
+        #expect(Int(Float(past)) != past, "otherwise this test tests nothing")
 
         var node = BHNode()
         node.range = Int32(past)
@@ -1274,7 +1274,7 @@ struct BarnesHutTests {
             tree.build(positions: positions, mass: mass)
             #expect(
                 tree.nodes.contains { $0.particleCount > tree.leafCapacity },
-                "sinon le plafond n'est pas atteint")
+                "otherwise the cap is not reached")
         }
     }
 
