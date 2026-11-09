@@ -301,6 +301,21 @@ struct SceneFolderTests {
         // A record of one pass writes neither field.
         let text = String(decoding: try whole.record.encoded(), as: UTF8.self)
         #expect(!text.contains("\"pass\"") && !text.contains("\"full\""))
+
+        // Queued, the massive pass is priced as its massive particles alone, the full pass as
+        // the whole run and each preset's frames drawn.
+        let model = CostModel.fallback()
+        func job(_ options: [String]) -> QueueJob {
+            QueueJob(id: 0, kind: .hires, path: folder.url.path, options: options, added: Date())
+        }
+        let alone = try model.hiresSeconds(folder, particles: 2_000_000)
+        let run = try model.hiresSeconds(folder, particles: 8_000_000, massive: 2_000_000)
+        #expect(JobEstimate.seconds(job(draw + ["--pass", "massive"]), cost: model) == alone)
+        let uhd = try #require(VideoPreset.named("4k"))
+        let drawing = model.drawSeconds(preset: uhd, particles: 8_000_000, frames: massive.record.frames)
+        let priced = try #require(
+            JobEstimate.seconds(job(draw + ["--pass", "full", "--export", "4k"]), cost: model))
+        #expect(abs(priced - (run + drawing)) < 1e-6)
     }
 
     @Test func anOutputIsWrittenHiddenAndPutInPlaceWhole() throws {

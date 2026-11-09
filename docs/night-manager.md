@@ -128,6 +128,26 @@ whose softening, step and settle it takes. The tracers walk at the scene's openi
 `--massive` is a real N, every particle carrying the mass: that is how to get a real count,
 which the app's form does not offer since it draws as a night does (#222).
 
+Two passes (#239, [the note](notes/render-during-hires.md)), for counts whose take of every
+particle would not fit on the disk:
+
+```bash
+./scripts/dev.sh hires library/2026-10-24/scene-0001 --massive 2000000 --pass massive
+./scripts/dev.sh look library/2026-10-24/scene-0001 --style auto
+./scripts/dev.sh hires library/2026-10-24/scene-0001 --massive 2000000 --pass full --export 4k,vertical
+```
+
+`--pass massive` samples the draw as a run with tracers does and runs its massive particles
+alone: the take, the curves, `hires.mov` and `hires.json` (with `"pass": "massive"`) are theirs,
+and the style is chosen on that take as on any other. `--pass full` runs the same draw again with
+its tracers, which repeats the massive particles to the bit, and draws each frame in each preset
+of `--export` (4k and vertical by default) as soon as the solver has it, framed, painted and
+exposed as an export of the massive take: `exports/<preset>.mp4`, every particle drawn, no take
+of them. It also keeps every particle at the curves' key frames in `keyframes.sillage`
+(`keyframes.json` says which frames), for posters in any style, and adds `full` to `hires.json`.
+It refuses to run without a massive pass of the same draw and steps. A take of the full pass is
+still a flag away for whoever wants one (`--take <path> --take-interval 8`).
+
 **4. Look** – choose the scene's style:
 
 ```bash
@@ -148,7 +168,10 @@ take, and **Use for scene** (⌘S) promotes.
 
 Presets: `1080p` (default), `4k`, `vertical`, `square`, `whatsapp`.
 `--codec hevc|h264|prores` (default `hevc`). `--start` / `--duration` cut the clip,
-`--look` picks a look. WebP needs `brew install webp`.
+`--look` picks a look. WebP needs `brew install webp`. `--take <path> --framing <take>` draws
+another take of the same run framed, painted and exposed on the scene's take, as a full pass is
+(#239); `--stills <dir> --still-frames 12,300` keeps those frames as PNGs, as the encoder took
+them.
 
 ### The night recipe
 
@@ -172,7 +195,7 @@ name is an error.
   "explore": { "scenes": "auto", "particlesPerGalaxy": "auto", "archetypeShare": "auto",
                "archetypes": "auto", "pairShare": "auto", "galaxies": "auto", "seed": "auto" },
   "pick": "auto",
-  "hires": { "particles": "auto", "massive": "auto", "frames": "auto" },
+  "hires": { "particles": "auto", "massive": "auto", "frames": "auto", "passes": "auto" },
   "style": { "world": "auto", "freeShare": "auto", "style": "auto", "palette": "auto" },
   "export": "auto"
 }
@@ -193,6 +216,7 @@ name is an error.
 | `hires.particles` | particles drawn, light tracers included | 8 000 000 (or the machine's maximum) |
 | `hires.massive` | the particles that carry the mass, the others light tracers; as many as `hires.particles` for none | 2 000 000 (all of them below that) |
 | `hires.frames` | the first frames of the story only | the whole story |
+| `hires.passes` | `1`: a take of every particle, the videos exported from it after the style; `2`: the massive particles alone, the style on their take, then every particle again with the videos drawn as it runs (#239) | 1 up to 10 000 000 drawn, 2 past it; always 1 without light tracers |
 | `style.world` | `telescope` or `free` | Auto: drawn for each pick, free as often as `style.freeShare` says |
 | `style.freeShare` | share of the picks Auto puts in the free world, 0 to 1 | 0.2 |
 | `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |
@@ -273,6 +297,15 @@ time; a style or an export may end up to 15 minutes past it; a step still runnin
 stopped. A step that fails or is left out leaves the scene out for the night, and the night goes
 on with the next one. The same command on the same folder resumes: explored scenes, done hires,
 promoted looks and existing exports are skipped; what was left out is tried again.
+
+In two passes (`hires.passes`, #239) the hires step is the massive pass, the style is chosen on
+its take, and the first video preset's export step is the full pass, which draws every video
+preset of the recipe at once (`<scene>.full.log`); the other video presets are then done, and
+`webp` and `gif` are exported from the massive take as before. The plan prices the hires step as
+the massive particles alone and puts the whole full pass on that first preset: the run with its
+tracers and each preset's frames drawn as it goes. The disk it counts is the massive take, the
+key frames of every particle and the videos. A scene whose take of every particle is already
+there is exported from it, in one pass.
 
 Steering it, through the queue: `queue pause` and `resume` suspend the night and its step;
 `queue stop` ends it after the current step; `queue stop --now` (or `cancel`) at once;
@@ -364,7 +397,10 @@ showing them, for checks.
   tracers as it always was) plus those of its light tracers (`tracers`, a line through zero
   fitted on what the runs with tracers took past the first, 20 ns a step before any). Every
   night draws 8 M from 2 M, so its runs alone could not tell the two apart. A `costs.json`
-  written before has no `tracers` and reads with the 20 ns.
+  written before has no `tracers` and reads with the 20 ns. In two passes (#239) a massive pass
+  is a run without tracers, a full pass one with them less its drawing, and `draws` prices a
+  frame drawn during the run for each preset, a fixed part and a part for each particle drawn,
+  fitted on the full passes' `hires.json` (their videos stay out of the `exports` lines).
 
 ### Status files
 
@@ -392,9 +428,9 @@ applies, and these by kind.
 | `night.start`, `night.done` | `night`, `seconds`; `status` (done, stopped, failed) at the end |
 | `explore.scene` | `status` (ok, rejected, failed), `score`, `seconds` |
 | `pick` | `chosen`, `rating`; `score` for a pick by the night |
-| `hires.start` | `particles`, `massive` (with light tracers), `steps` |
-| `hires.done` | `particles`, `massive`, `steps`, `minutes`, `takeGB` |
-| `export.done` | `preset`, `style`, `world`, `family`, `harmony`, `seed`, `codec`, `frames`, `megabytes`, `seconds`, `path` |
+| `hires.start` | `particles`, `massive` (with light tracers), `steps`, `pass` (`massive` or `full`, in two passes) |
+| `hires.done` | `particles`, `massive`, `steps`, `minutes`, `takeGB`, `pass` |
+| `export.done` | `preset`, `style`, `world`, `family`, `harmony`, `seed`, `codec`, `frames`, `megabytes`, `seconds`, `path`, `pass` (`full` for a video a full pass drew) |
 | `error` | `stage`, `message`, `log` |
 | `style` | `style`, `world`, `family`, `harmony`, `seed` (the palette's, as in `look.json`), `path` (the promoted `look.json`) |
 | `skip` | `stage`, `message` (skipped by hand, or for want of time) |

@@ -147,7 +147,10 @@ library/<batch>/
         hires.mov          the same clip at high resolution, raw, at the preview's size
         curves-hires.csv   its curves, in the format of curves.csv
         hires.json         the particle count, steps and settings it ran with, and its cost
-        take.sillage       the run at full size, for the later stages
+        take.sillage       the run at full size, for the later stages (its massive particles
+                           only after a massive pass, #239)
+        keyframes.sillage  every particle of a full pass at a few key frames, listed in
+                           keyframes.json
         looks/             the looks the scene has been through, one .look.json each
         look-raw.json      the look explore wrote, once another is promoted over it
         exports/           the finished videos

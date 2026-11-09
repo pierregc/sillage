@@ -420,7 +420,7 @@ extension NightPage {
                 seen[name]?.pickOrder = order
                 if let score = event.score { seen[name]?.score = score }
             case RunEvent.Kind.hiresStart: seen[name]?.hiresStarted = true
-            case RunEvent.Kind.hiresDone:
+            case RunEvent.Kind.hiresDone where event.pass != "full":
                 seen[name]?.hiresStarted = true
                 seen[name]?.minutes = event.minutes ?? 0
             case RunEvent.Kind.style: seen[name]?.styled = true

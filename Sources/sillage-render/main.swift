@@ -1739,7 +1739,6 @@ let keyFrameTake: KeyFrameTake? = argument("key-frames").map { _ in
     if keys.isEmpty { keys = [KeyFrame(frame: frames / 2, role: .middle, timeMyr: 0)] }
     return KeyFrameTake(keys: keys, particleCount: drawnCount, galaxyCount: scene.galaxies.count)
 }
-var drawSeconds = 0.0
 
 /// Per frame scalars, written for whoever scores the result later: a curve to drive a filter
 /// with is worth more than a picture of one.
@@ -1890,7 +1889,6 @@ while frame < frames || storyGoesOn() {
     }
     let renderMs = Date().timeIntervalSince(renderStart) * 1000
     if let runVideos {
-        let drawStart = Date()
         try runVideos.draw(
             frame: frame, centres: solver.centers,
             still: drawStills.contains(frame) && drawStillsDirectory != nil
@@ -1901,7 +1899,6 @@ while frame < frames || storyGoesOn() {
                         at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try PNGWriter.write(image, maximumWidth: nil, to: url)
                 } : nil)
-        drawSeconds += Date().timeIntervalSince(drawStart)
     }
     if let keyFrameTake, let gpuSolver, keyFrameTake.wants(frame: frame) {
         keyFrameTake.offer(
@@ -1929,7 +1926,8 @@ while frame < frames || storyGoesOn() {
         massiveTake.offer(
             positions: gpuSolver.positions.contents().bindMemory(
                 to: SIMD3<Float>.self, capacity: seeded.count) + tracerCount,
-            time: solver.time, centers: solver.centers, budget: takeBudget)
+            time: solver.time, centers: solver.centers,
+            disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: takeBudget)
     }
     if let take {
         if let gpuSolver {

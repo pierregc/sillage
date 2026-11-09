@@ -56,7 +56,8 @@ public enum Notices {
 
     public static func summary(_ events: [RunEvent]) -> String {
         let explored = events.filter { $0.kind == RunEvent.Kind.exploreScene && $0.status == "ok" }
-        let hires = events.filter { $0.kind == RunEvent.Kind.hiresDone }
+        // One a scene: the full pass of two is not another (#239).
+        let hires = events.filter { $0.kind == RunEvent.Kind.hiresDone && $0.pass != "full" }
         let videos = events.filter { $0.kind == RunEvent.Kind.exportDone }
         let errors = events.filter { $0.kind == RunEvent.Kind.error }
         return [
