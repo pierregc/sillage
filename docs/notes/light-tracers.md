@@ -23,6 +23,9 @@ massive count's (`file.scene(particleCount: massive)`). Since #211 the dark matt
 at the massive count to begin with (`ParticleSystem.lightTracers(drawn:massive:)`, 3 M for 2 M)
 and kept whole, rather than drawn at 12 M for a quarter of it to be kept.
 
+What follows is the spike's solver. Since #238 a tracer is 32 bytes in buffers of its own and
+the passes below are rewritten around that ([compact tracers](#compact-tracers-238)).
+
 In the solver (`MetalBarnesHutSolver(..., tracers:)`) the tracers come first in the buffers,
 `[tracers | massive visible | massive halo]`, so the visible particles stay one run for the
 renderer and the take, and the tree is built over everything after the tracers
@@ -250,3 +253,79 @@ of several hours each. They now draw what a night draws, its 8 M (the maximum be
 2 M massive, `--massive` aside, through one rule (`SceneFolder.hiresDraw`) that the batch's skip
 (`hiresDone`), a queued job's price and its title read too. A scene a night finished, or one
 done at a real 8 M, is skipped. `--particles N` alone stays a real N.
+
+## Compact tracers (#238)
+
+A ticket of the 200 M epic (#236). Until then a tracer held what a massive particle holds. In
+the solver: a position, a velocity and an acceleration, a mass, a formation time, a kind, a
+galaxy, a traversal cost, a slot in the gathered copy and the codes and orders of its own sort,
+about 125 bytes. Around it: the sample it came from kept whole on the CPU, seven attribute
+buffers in the renderer (28 bytes), and a smoothing length and a share of the tree
+`SmoothingField` built over everything drawn. At 100 M that is tens of gigabytes for particles
+that only follow.
+
+### What a tracer holds
+
+Two buffers of 16 bytes a tracer, which are the front of the solver's position and velocity
+buffers, still laid out `[tracers | massive visible | massive halo]`:
+
+| bytes | what |
+| ---: | --- |
+| 16 | position, with the time its stars formed in w |
+| 16 | velocity, with a packed word in w |
+| 4 | its place in the walk order |
+
+The word (`TracerWord`) keeps the galaxy in bits 0 to 3 (16 galaxies at most, which
+`lightTracers` checks), the kind in 4 to 6, the kernel scale in 7 to 9 (one of the five the
+sampler gives), the light in 10 to 17 on a logarithmic scale from 2^-12 to 2^8 (5.6 % between
+steps), and the birth radius in 18 to 31 on a logarithmic scale from 2^-12 to 2^12 kpc (0.1 %
+between steps). The population, which only colours takes older than the ages, is 0.5 for every
+tracer. The mass, the acceleration and the cost are gone: a tracer weighs nothing, is in no
+leaf, and keeps no acceleration between steps.
+
+Every buffer that only massive particles need is sized for them: masses, accelerations,
+formation, kinds, galaxies, costs, the gathered copy, the tree. The massive kernels bind the
+position and velocity buffers past the tracers, so a run without tracers is the same to the bit
+(checked on scene-0031 at 200 k, 120 steps: the take and the curves against the base commit).
+TODO-238 verify.
+
+### What reads it
+
+- **One fused pass a step** (`bhTracerStep`): the walk through the massive tree, the analytic
+  halos and the black holes, then this step's closing half kick, the cooling and the next step's
+  opening half kick. That is what a massive particle gets from the kick, the cooling and the
+  next kick, without an acceleration to keep, so a tracer's stored velocity is half a kick
+  ahead of a massive one's. The drift is a pass of its own (`bhTracerDrift`). The cooling reads
+  the same disks as the massive particles', computed once a step.
+- **Star formation** reads the kind from the word and writes the formation time into the
+  position's w, as before from the chance of the massive gas particle before it in Morton order.
+- **The take, the density maps and the curves** read the buffers in place:
+  `drawnAttributes()` unpacks the attributes once, when the take is written, `formed(after:until:)`
+  counts the stars formed from the positions' w, and `radii` frames the camera.
+
+### The walk order
+
+The tracers are sorted into Morton order a chunk at a time, 4 M (2^22) a chunk, every 25 steps
+(`tracerSortInterval`, `tracerSortChunk`). A chunk's order counts from its start, so the order
+is 4 bytes a tracer whatever the count, and the sort's own codes, spare order and histogram are
+those of one chunk: about 20.5 bytes times 4 M, 86 MB, at any count. TODO-238 interval sweep.
+
+### The kernel without a leaf
+
+A massive particle's kernel is read off the leaf that holds it; no leaf holds a tracer. The
+massive tree now writes, beside the smoothing lengths, one record of 8 bytes a node
+(`encodeSpacing`): the spacing of the drawn particles in that cell, each massive visible
+particle standing for (tracers + massive visible) / massive visible of them, and the node's
+first child with a mask of the octants it has. A tracer's vertex goes down the tree from the
+root, one read a level by the bits of its Morton code, and takes the spacing of the deepest
+cell around it that holds anything drawn; outside the root it takes the root's. The massive
+particles' own lengths take the same ratio, so the two agree where they mix. Nothing is kept
+per tracer for the renderer: the draws read the two buffers through their own vertex
+functions.
+
+### Sampling
+
+`MetalBarnesHutSolver.lightTracers(drawn:massive:)` samples the scene through the same split
+as before, but hands the tracers on as they come, a chunk at a time, packed straight into the
+solver's buffers. Only the massive particles are kept as a `ParticleSystem`.
+

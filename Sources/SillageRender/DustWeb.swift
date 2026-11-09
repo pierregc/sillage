@@ -38,6 +38,9 @@ enum DustWeb {
     struct Pass {
         let carrierPipeline: MTLRenderPipelineState
         let painted: MTLRenderPipelineState
+        /// The same two for light tracers (#238).
+        let tracerCarrier: MTLRenderPipelineState
+        let tracerPainted: MTLRenderPipelineState
         let resolve: MTLRenderPipelineState
         let carrier: MTLTexture
         let tags: MTLTexture
@@ -77,6 +80,10 @@ enum DustWeb {
                 "webCarrierVertex", "webCarrierFragment", [.rgba16Float, .rgba8Unorm],
                 [0: .add, 1: .max])
             painted = try pipeline("dustWebVertex", "dustFragment", frame, [1: .add])
+            tracerCarrier = try pipeline(
+                "webCarrierTracerVertex", "webCarrierFragment", [.rgba16Float, .rgba8Unorm],
+                [0: .add, 1: .max])
+            tracerPainted = try pipeline("dustWebTracerVertex", "dustFragment", frame, [1: .add])
             resolve = try pipeline("webResolveVertex", "webResolveFragment", frame, [1: .add])
 
             func target(_ format: MTLPixelFormat) throws -> MTLTexture {

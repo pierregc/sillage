@@ -25,8 +25,8 @@ public final class GPUTreeBuilder {
     }
 
     public let count: Int
-    /// The first particle of the buffers the tree is built over: the ones before it are left
-    /// out, and `order` counts from it.
+    /// The first position of the buffer the tree is built over: the ones before it are left
+    /// out, and `order` counts from it. The masses start at the buffer's start.
     public let first: Int
     public let maximumDepth: Int
     public let quadrupole: Bool
@@ -46,6 +46,8 @@ public final class GPUTreeBuilder {
     /// The origin and scale the codes are taken in, which a point outside the tree needs to
     /// find its cell.
     let frame: MTLBuffer
+    /// Per node, what a light tracer's kernel reads (#238), made by `encodeSpacing`.
+    public private(set) var spacing: MTLBuffer?
     private var params: Params
     private let device: MTLDevice
     private let tiles: Int
@@ -57,9 +59,11 @@ public final class GPUTreeBuilder {
     /// Threadgroups for the kernels that stride over a level or over every node.
     static let strideGroups = 1024
 
+    /// `ownOrder: false` leaves `order` empty, for a builder that only sorts into another
+    /// buffer (`encodeOrder`).
     public init(
         device: MTLDevice, count: Int, leafCapacity: Int = 16, maximumDepth: Int = 20,
-        quadrupole: Bool = false, nodeCapacity: Int? = nil, first: Int = 0
+        quadrupole: Bool = false, nodeCapacity: Int? = nil, first: Int = 0, ownOrder: Bool = true
     ) throws {
         self.device = device
         self.count = max(count, 1)
@@ -89,6 +93,7 @@ public final class GPUTreeBuilder {
             "gtReset", "gtBounds", "gtRoot", "gtMorton", "gtRadixCount", "gtScanReduce",
             "gtScanTop", "gtScanDown", "gtRadixScatter", "gtCloseLevel", "gtSplit", "gtGather",
             "gtLeafSums", "gtFold", "gtNormalize", "gtFoldMoments", "gtSmoothing",
+            "gtSpacingLeaves", "gtSpacingFold", "gtSpacingLengths",
         ] {
             guard let function = library.makeFunction(name: name) else {
                 throw RenderError.pipelineCreation("missing kernel \(name)")
@@ -108,7 +113,7 @@ public final class GPUTreeBuilder {
         moments = try buffer(quadrupole ? self.nodeCapacity * 2 * MemoryLayout<SIMD4<Float>>.stride : 0)
         codes = try buffer(self.count * 8)
         spareCodes = try buffer(self.count * 8)
-        order = try buffer(self.count * 4)
+        order = try buffer(ownOrder ? self.count * 4 : 0)
         spareOrder = try buffer(self.count * 4)
         table = try buffer(tableLength * 4)
         sums = try buffer(scanBlocks * 4)
@@ -161,10 +166,14 @@ public final class GPUTreeBuilder {
         }
     }
 
-    /// The smoothing lengths of the first `drawn` particles, from the leaves of the last build.
-    public func encodeSmoothing(into buffer: MTLCommandBuffer, lengths: MTLBuffer, drawn: Int) {
+    /// The smoothing lengths of the first `drawn` particles, from the leaves of the last build,
+    /// each standing for `ratio` drawn particles.
+    public func encodeSmoothing(
+        into buffer: MTLCommandBuffer, lengths: MTLBuffer, drawn: Int, ratio: Float = 1
+    ) {
         guard let encoder = buffer.makeComputeCommandEncoder() else { return }
         var drawnCount = UInt32(min(drawn, count, lengths.length / 4))
+        var ratio = ratio
         dispatch(encoder, "gtSmoothing", groups: Self.strideGroups, width: 256, params: 5) {
             $0.setBuffer(lengths, offset: 0, index: 0)
             $0.setBuffer(nodes, offset: 0, index: 1)
@@ -172,27 +181,124 @@ public final class GPUTreeBuilder {
             $0.setBuffer(levels, offset: 0, index: 3)
             $0.setBuffer(counters, offset: 0, index: 4)
             $0.setBytes(&drawnCount, length: 4, index: 6)
+            $0.setBytes(&ratio, length: 4, index: 7)
         }
         encoder.endEncoding()
+    }
+
+    /// The spacing a light tracer reads off this tree for its kernel (#238), cell by cell, from
+    /// the first `drawn` particles each standing for `ratio` drawn ones.
+    public func encodeSpacing(into buffer: MTLCommandBuffer, drawn: Int, ratio: Float) {
+        // A record keeps its first child in 24 bits.
+        guard nodeCapacity <= 1 << 24 else { spacing = nil; return }
+        if (spacing?.length ?? 0) < nodeCapacity * 8 {
+            spacing = try? Self.buffer(nodeCapacity * 8, on: device)
+        }
+        guard let spacing, let encoder = buffer.makeComputeCommandEncoder() else { return }
+        var drawnCount = UInt32(min(drawn, count))
+        var ratio = ratio
+        dispatch(encoder, "gtSpacingLeaves", groups: Self.strideGroups, width: 256, params: 5) {
+            $0.setBuffer(spacing, offset: 0, index: 0)
+            $0.setBuffer(nodes, offset: 0, index: 1)
+            $0.setBuffer(order, offset: 0, index: 2)
+            $0.setBuffer(levels, offset: 0, index: 3)
+            $0.setBuffer(counters, offset: 0, index: 4)
+            $0.setBytes(&drawnCount, length: 4, index: 6)
+        }
+        for level in stride(from: maximumDepth - 1, through: 0, by: -1) {
+            dispatch(
+                encoder, "gtSpacingFold", groups: Self.strideGroups, width: 256, params: 4, level: level
+            ) {
+                $0.setBuffer(spacing, offset: 0, index: 0)
+                $0.setBuffer(nodes, offset: 0, index: 1)
+                $0.setBuffer(levels, offset: 0, index: 2)
+                $0.setBuffer(counters, offset: 0, index: 3)
+            }
+        }
+        dispatch(encoder, "gtSpacingLengths", groups: Self.strideGroups, width: 256, params: 4) {
+            $0.setBuffer(spacing, offset: 0, index: 0)
+            $0.setBuffer(nodes, offset: 0, index: 1)
+            $0.setBuffer(levels, offset: 0, index: 2)
+            $0.setBuffer(counters, offset: 0, index: 3)
+            $0.setBytes(&ratio, length: 4, index: 5)
+        }
+        encoder.endEncoding()
+    }
+
+    /// Sorts `points` positions from `offset` into Morton order, written into `target` from
+    /// `targetOffset` and counted from the first of them: the light tracers' walk order (#238),
+    /// a chunk at a time so the sort never needs more than this builder's own codes.
+    public func encodeOrder(
+        into buffer: MTLCommandBuffer, positions: MTLBuffer, offset: Int, points: Int,
+        order target: MTLBuffer, targetOffset: Int
+    ) {
+        let points = min(max(points, 0), count)
+        guard points > 0 else { return }
+        var run = Run(self)
+        run.params.count = UInt32(points)
+        run.tiles = (points + Self.tileSize - 1) / Self.tileSize
+        run.params.tiles = UInt32(run.tiles)
+        run.params.tableLength = UInt32(run.tiles << Self.radixBits)
+        run.scanBlocks = (Int(run.params.tableLength) + 1023) / 1024
+        run.positionOffset = offset * 16
+        run.order = target
+        run.orderOffset = targetOffset * 4
+        for phase in [Phase.bounds, .morton, .sort] {
+            encode(phase, run: run, into: buffer, positions: positions, mass: nil, sorted: nil)
+        }
     }
 
     public func encode(
         _ phase: Phase, into buffer: MTLCommandBuffer, positions: MTLBuffer, mass: MTLBuffer?,
         sorted: MTLBuffer?
     ) {
+        encode(phase, run: Run(self), into: buffer, positions: positions, mass: mass, sorted: sorted)
+    }
+
+    /// What one build or sort runs over: the whole of `count` into `order`, or a chunk of it
+    /// into another buffer.
+    private struct Run {
+        var params: Params
+        var tiles: Int
+        var scanBlocks: Int
+        var positionOffset: Int
+        var order: MTLBuffer
+        var orderOffset = 0
+
+        init(_ builder: GPUTreeBuilder) {
+            params = builder.params
+            tiles = builder.tiles
+            scanBlocks = builder.scanBlocks
+            positionOffset = builder.first * 16
+            order = builder.order
+        }
+    }
+
+    private func encode(
+        _ phase: Phase, run: Run, into buffer: MTLCommandBuffer, positions: MTLBuffer,
+        mass: MTLBuffer?, sorted: MTLBuffer?
+    ) {
         if phase == .masses, mass == nil || sorted == nil { return }
         guard let encoder = buffer.makeComputeCommandEncoder() else { return }
+        func dispatch(
+            _ name: String, groups: Int, width: Int, params index: Int?, level: Int = 0,
+            shift: Int = 0, _ bind: (MTLComputeCommandEncoder) -> Void
+        ) {
+            self.dispatch(
+                encoder, name, groups: groups, width: width, params: index, level: level,
+                shift: shift, base: run.params, bind)
+        }
         switch phase {
         case .bounds:
-            dispatch(encoder, "gtReset", groups: 1, width: 32, params: nil) {
+            dispatch("gtReset", groups: 1, width: 32, params: nil) {
                 $0.setBuffer(counters, offset: 0, index: 0)
                 $0.setBuffer(levels, offset: 0, index: 1)
             }
-            dispatch(encoder, "gtBounds", groups: 512, width: 256, params: 2) {
-                $0.setBuffer(positions, offset: first * 16, index: 0)
+            dispatch("gtBounds", groups: 512, width: 256, params: 2) {
+                $0.setBuffer(positions, offset: run.positionOffset, index: 0)
                 $0.setBuffer(counters, offset: 0, index: 1)
             }
-            dispatch(encoder, "gtRoot", groups: 1, width: 32, params: 4) {
+            dispatch("gtRoot", groups: 1, width: 32, params: 4) {
                 $0.setBuffer(counters, offset: 0, index: 0)
                 $0.setBuffer(nodes, offset: 0, index: 1)
                 $0.setBuffer(frame, offset: 0, index: 2)
@@ -200,14 +306,14 @@ public final class GPUTreeBuilder {
             }
         case .morton:
             encoder.setComputePipelineState(pipelines["gtMorton"]!)
-            encoder.setBuffer(positions, offset: first * 16, index: 0)
+            encoder.setBuffer(positions, offset: run.positionOffset, index: 0)
             encoder.setBuffer(codes, offset: 0, index: 1)
-            encoder.setBuffer(order, offset: 0, index: 2)
+            encoder.setBuffer(run.order, offset: run.orderOffset, index: 2)
             encoder.setBuffer(frame, offset: 0, index: 3)
-            var p = params
+            var p = run.params
             encoder.setBytes(&p, length: MemoryLayout<Params>.stride, index: 4)
             encoder.dispatchThreads(
-                MTLSize(width: count, height: 1, depth: 1),
+                MTLSize(width: Int(run.params.count), height: 1, depth: 1),
                 threadsPerThreadgroup: MTLSize(width: 256, height: 1, depth: 1))
         case .sort:
             let passes = (64 + Self.radixBits - 1) / Self.radixBits
@@ -215,42 +321,40 @@ public final class GPUTreeBuilder {
                 let even = pass % 2 == 0
                 let keysIn = even ? codes : spareCodes
                 let keysOut = even ? spareCodes : codes
-                let valuesIn = even ? order : spareOrder
-                let valuesOut = even ? spareOrder : order
+                let valuesIn = even ? (run.order, run.orderOffset) : (spareOrder, 0)
+                let valuesOut = even ? (spareOrder, 0) : (run.order, run.orderOffset)
                 let shift = pass * Self.radixBits
-                dispatch(encoder, "gtRadixCount", groups: tiles, width: 256, params: 2, shift: shift) {
+                dispatch("gtRadixCount", groups: run.tiles, width: 256, params: 2, shift: shift) {
                     $0.setBuffer(keysIn, offset: 0, index: 0)
                     $0.setBuffer(table, offset: 0, index: 1)
                 }
-                dispatch(encoder, "gtScanReduce", groups: scanBlocks, width: 256, params: 2) {
+                dispatch("gtScanReduce", groups: run.scanBlocks, width: 256, params: 2) {
                     $0.setBuffer(table, offset: 0, index: 0)
                     $0.setBuffer(sums, offset: 0, index: 1)
                 }
-                dispatch(encoder, "gtScanTop", groups: 1, width: 1024, params: 1) {
+                dispatch("gtScanTop", groups: 1, width: 1024, params: 1) {
                     $0.setBuffer(sums, offset: 0, index: 0)
                 }
-                dispatch(encoder, "gtScanDown", groups: scanBlocks, width: 256, params: 2) {
+                dispatch("gtScanDown", groups: run.scanBlocks, width: 256, params: 2) {
                     $0.setBuffer(table, offset: 0, index: 0)
                     $0.setBuffer(sums, offset: 0, index: 1)
                 }
-                dispatch(encoder, "gtRadixScatter", groups: tiles, width: 256, params: 5, shift: shift) {
+                dispatch("gtRadixScatter", groups: run.tiles, width: 256, params: 5, shift: shift) {
                     $0.setBuffer(keysIn, offset: 0, index: 0)
-                    $0.setBuffer(valuesIn, offset: 0, index: 1)
+                    $0.setBuffer(valuesIn.0, offset: valuesIn.1, index: 1)
                     $0.setBuffer(keysOut, offset: 0, index: 2)
-                    $0.setBuffer(valuesOut, offset: 0, index: 3)
+                    $0.setBuffer(valuesOut.0, offset: valuesOut.1, index: 3)
                     $0.setBuffer(table, offset: 0, index: 4)
                 }
             }
         case .nodes:
             for level in 0...maximumDepth {
-                dispatch(encoder, "gtCloseLevel", groups: 1, width: 32, params: 2, level: level) {
+                dispatch("gtCloseLevel", groups: 1, width: 32, params: 2, level: level) {
                     $0.setBuffer(counters, offset: 0, index: 0)
                     $0.setBuffer(levels, offset: 0, index: 1)
                 }
                 guard level < maximumDepth else { break }
-                dispatch(
-                    encoder, "gtSplit", groups: Self.strideGroups, width: 256, params: 5, level: level
-                ) {
+                dispatch("gtSplit", groups: Self.strideGroups, width: 256, params: 5, level: level) {
                     $0.setBuffer(nodes, offset: 0, index: 0)
                     $0.setBuffer(codes, offset: 0, index: 1)
                     $0.setBuffer(counters, offset: 0, index: 2)
@@ -261,15 +365,15 @@ public final class GPUTreeBuilder {
         case .masses:
             encoder.setComputePipelineState(pipelines["gtGather"]!)
             encoder.setBuffer(sorted, offset: 0, index: 0)
-            encoder.setBuffer(positions, offset: first * 16, index: 1)
-            encoder.setBuffer(mass, offset: first * 4, index: 2)
-            encoder.setBuffer(order, offset: 0, index: 3)
-            var p = params
+            encoder.setBuffer(positions, offset: run.positionOffset, index: 1)
+            encoder.setBuffer(mass, offset: 0, index: 2)
+            encoder.setBuffer(run.order, offset: run.orderOffset, index: 3)
+            var p = run.params
             encoder.setBytes(&p, length: MemoryLayout<Params>.stride, index: 4)
             encoder.dispatchThreads(
-                MTLSize(width: count, height: 1, depth: 1),
+                MTLSize(width: Int(run.params.count), height: 1, depth: 1),
                 threadsPerThreadgroup: MTLSize(width: 256, height: 1, depth: 1))
-            dispatch(encoder, "gtLeafSums", groups: Self.strideGroups, width: 256, params: 3) {
+            dispatch("gtLeafSums", groups: Self.strideGroups, width: 256, params: 3) {
                 $0.setBuffer(nodes, offset: 0, index: 0)
                 $0.setBuffer(sorted, offset: 0, index: 1)
                 $0.setBuffer(levels, offset: 0, index: 2)
@@ -277,13 +381,13 @@ public final class GPUTreeBuilder {
                 $0.setBuffer(counters, offset: 0, index: 5)
             }
             for level in stride(from: maximumDepth - 1, through: 0, by: -1) {
-                dispatch(encoder, "gtFold", groups: Self.strideGroups, width: 256, params: 2, level: level) {
+                dispatch("gtFold", groups: Self.strideGroups, width: 256, params: 2, level: level) {
                     $0.setBuffer(nodes, offset: 0, index: 0)
                     $0.setBuffer(levels, offset: 0, index: 1)
                     $0.setBuffer(counters, offset: 0, index: 3)
                 }
             }
-            dispatch(encoder, "gtNormalize", groups: Self.strideGroups, width: 256, params: 2) {
+            dispatch("gtNormalize", groups: Self.strideGroups, width: 256, params: 2) {
                 $0.setBuffer(nodes, offset: 0, index: 0)
                 $0.setBuffer(levels, offset: 0, index: 1)
                 $0.setBuffer(counters, offset: 0, index: 3)
@@ -291,7 +395,7 @@ public final class GPUTreeBuilder {
             guard quadrupole else { break }
             for level in stride(from: maximumDepth - 1, through: 0, by: -1) {
                 dispatch(
-                    encoder, "gtFoldMoments", groups: Self.strideGroups, width: 256, params: 2, level: level
+                    "gtFoldMoments", groups: Self.strideGroups, width: 256, params: 2, level: level
                 ) {
                     $0.setBuffer(nodes, offset: 0, index: 0)
                     $0.setBuffer(levels, offset: 0, index: 1)
@@ -305,13 +409,13 @@ public final class GPUTreeBuilder {
 
     private func dispatch(
         _ encoder: MTLComputeCommandEncoder, _ name: String, groups: Int, width: Int,
-        params index: Int?, level: Int = 0, shift: Int = 0,
+        params index: Int?, level: Int = 0, shift: Int = 0, base: Params? = nil,
         _ bind: (MTLComputeCommandEncoder) -> Void
     ) {
         encoder.setComputePipelineState(pipelines[name]!)
         bind(encoder)
         if let index {
-            var p = params
+            var p = base ?? params
             p.level = UInt32(level)
             p.shift = UInt32(shift)
             encoder.setBytes(&p, length: MemoryLayout<Params>.stride, index: index)

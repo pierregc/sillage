@@ -79,11 +79,13 @@ public final class SmoothingField {
     /// Reads the lengths off the solver's tree when it keeps one, and builds one otherwise.
     public func update(from solver: any GPUSolver) {
         let clock = Date()
-        if let solver = solver as? MetalBarnesHutSolver,
-            solver.writeSmoothing(into: buffer, drawn: count)
-        {
-            lastMilliseconds = Date().timeIntervalSince(clock) * 1000
-            return
+        if let solver = solver as? MetalBarnesHutSolver {
+            if solver.writeSmoothing(into: buffer, drawn: count) {
+                lastMilliseconds = Date().timeIntervalSince(clock) * 1000
+                return
+            }
+            // Its buffers start with the light tracers, which this field does not draw.
+            if solver.tracerCount > 0 { return }
         }
         update(from: solver.positions)
     }
