@@ -81,7 +81,8 @@ enum LibraryCheck {
             for scene in scenes where await ThumbnailCache.shared.load(scene) != nil { stills += 1 }
         }
         check(
-            "a still per scene, taken from the video when there is no thumbnail", wait(10) { stills == 4 }, "\(stills)")
+            "a still per scene, taken from the video when there is no thumbnail",
+            wait(10) { stills == 4 }, "\(stills)")
 
         // Keys, each one saved as it is pressed.
         let first = SceneFolder(batch.appendingPathComponent("scene-0001"))
@@ -420,7 +421,9 @@ enum LibraryCheck {
             "copying the caption puts its text on the pasteboard",
             model.pasteboard.string(forType: .string) == "caption" && model.copiedNote == "Caption copied")
         model.version = still?.url
-        check("showing a GIF does not start the player", model.playing == nil || model.playingURL != still?.url)
+        check(
+            "showing a GIF does not start the player",
+            model.playing == nil || model.playingURL != still?.url)
         model.version = nil
         // A new export lands and the next scan lists it.
         try writeVideo(to: done.export(preset: "square"), tint: 5)
@@ -619,7 +622,9 @@ enum LibraryCheck {
         let exports = queue.queue.unfinished(at: done).filter { $0.kind == .export }
         check(
             "the exports wait with their file",
-            exports.map { StageJobs.title(of: $0) } == ["4K · 4k.mp4", "Animated WebP preview · preview.webp"],
+            exports.map { StageJobs.title(of: $0) } == [
+                "4K · 4k.mp4", "Animated WebP preview · preview.webp",
+            ],
             exports.map { StageJobs.title(of: $0) }.joined(separator: ", "))
         queue.refresh()
         check(

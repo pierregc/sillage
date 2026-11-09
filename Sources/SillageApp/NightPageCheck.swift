@@ -178,7 +178,8 @@ enum NightPageCheck {
         try line.cancel(job.id)
         later.refresh()
         check(
-            "Cancel the night takes it off the queue", line.store.read().waiting.isEmpty && later.items.isEmpty)
+            "Cancel the night takes it off the queue",
+            line.store.read().waiting.isEmpty && later.items.isEmpty)
         // Pause and resume on a queue with nothing to run start no runner.
         try line.pause()
         check("the queue pauses", line.store.read().paused)

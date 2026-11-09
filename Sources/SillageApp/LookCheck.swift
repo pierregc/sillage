@@ -273,7 +273,9 @@ enum LookCheck {
                     && session.favouriteProposals.count == 1, "\(session.proposals.count)")
             session.world = .telescope
             session.propose(waiting: true)
-            check("a favourite from another world is not proposed there", session.favouriteProposals.isEmpty, "")
+            check(
+                "a favourite from another world is not proposed there",
+                session.favouriteProposals.isEmpty, "")
             session.world = .free
             session.propose(waiting: true)
             session.toggleFavourite(proposal)

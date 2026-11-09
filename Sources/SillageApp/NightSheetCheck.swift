@@ -118,7 +118,9 @@ enum NightSheetCheck {
         let queue = QueueStore(library: root)
         let launched = model.launch { _ = try $0.launch(library: root, runner: nil) }
         let waiting = queue.read().waiting
-        check("launching adds the night to the queue", launched && waiting.count == 1 && waiting[0].kind == .night)
+        check(
+            "launching adds the night to the queue",
+            launched && waiting.count == 1 && waiting[0].kind == .night)
         if let file = waiting.first?.options.first,
             let recipe = try? NightRecipe.read(URL(fileURLWithPath: file))
         {
