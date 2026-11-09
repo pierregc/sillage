@@ -72,6 +72,7 @@ struct RunVideosTests {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("run-videos-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let presets = [
             VideoPreset(name: "wide", width: 96, height: 54),
