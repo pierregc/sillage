@@ -2229,6 +2229,11 @@ if let (folder, done) = hiresRun, fullPass {
         event.pass = "full"
         reporter?.record(event)
         print("video      \(report.format.url.path)")
+        if report.format.preset.caption {
+            try VideoMetadata(sceneID: folder.sceneID).caption.write(
+                to: report.format.url.deletingPathExtension().appendingPathExtension("txt"),
+                atomically: true, encoding: .utf8)
+        }
     }
     var finished = RunEvent(RunEvent.Kind.hiresDone)
     finished.particles = record.particles
