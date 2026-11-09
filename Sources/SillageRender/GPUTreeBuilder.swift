@@ -190,7 +190,10 @@ public final class GPUTreeBuilder {
     /// the first `drawn` particles each standing for `ratio` drawn ones.
     public func encodeSpacing(into buffer: MTLCommandBuffer, drawn: Int, ratio: Float) {
         // A record keeps its first child in 24 bits.
-        guard nodeCapacity <= 1 << 24 else { spacing = nil; return }
+        guard nodeCapacity <= 1 << 24 else {
+            spacing = nil
+            return
+        }
         if (spacing?.length ?? 0) < nodeCapacity * 8 {
             spacing = try? Self.buffer(nodeCapacity * 8, on: device)
         }

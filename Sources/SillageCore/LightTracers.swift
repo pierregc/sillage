@@ -1,3 +1,5 @@
+import Foundation
+
 /// Light tracers (#187): a sample drawn at the count that is wanted on screen, of which only a
 /// share carries the mass. The rest follow the same orbits in the field of the massive ones,
 /// since in a collisionless system a massless particle drawn from the same distribution moves
