@@ -1,0 +1,35 @@
+other  radius px  mean |difference| / mean light  pixels lit in one only
+dt35b/compare-0.png          0                          0.402%                  0.007%
+dt35b/compare-0.png          2                          0.103%                  0.001%
+dt35b/compare-0.png          8                          0.042%                  0.000%
+dt7/compare-0.png          0                          2.058%                  0.061%
+dt7/compare-0.png          2                          0.505%                  0.007%
+dt7/compare-0.png          8                          0.163%                  0.000%
+other  radius px  mean |difference| / mean light  pixels lit in one only
+dt35b/compare-192.png          0                          6.830%                  0.158%
+dt35b/compare-192.png          2                          2.823%                  0.009%
+dt35b/compare-192.png          8                          0.750%                  0.000%
+dt7/compare-192.png          0                          9.547%                  0.500%
+dt7/compare-192.png          2                          4.973%                  0.037%
+dt7/compare-192.png          8                          1.788%                  0.000%
+other  radius px  mean |difference| / mean light  pixels lit in one only
+dt35b/compare-336.png          0                         11.818%                  1.465%
+dt35b/compare-336.png          2                          8.417%                  0.094%
+dt35b/compare-336.png          8                          3.619%                  0.024%
+dt7/compare-336.png          0                         14.676%                  2.029%
+dt7/compare-336.png          2                         11.842%                  0.173%
+dt7/compare-336.png          8                          7.862%                  0.043%
+other  radius px  mean |difference| / mean light  pixels lit in one only
+dt35b/compare-608.png          0                         10.615%                  3.284%
+dt35b/compare-608.png          2                          9.340%                  0.161%
+dt35b/compare-608.png          8                          5.829%                  0.091%
+dt7/compare-608.png          0                         11.699%                  3.767%
+dt7/compare-608.png          2                         10.516%                  0.174%
+dt7/compare-608.png          8                          7.395%                  0.114%
+other  radius px  mean |difference| / mean light  pixels lit in one only
+dt35b/compare-912.png          0                         10.982%                  0.939%
+dt35b/compare-912.png          2                          9.760%                  0.117%
+dt35b/compare-912.png          8                          6.261%                  0.065%
+dt7/compare-912.png          0                         12.532%                  1.206%
+dt7/compare-912.png          2                         11.380%                  0.122%
+dt7/compare-912.png          8                          8.278%                  0.079%

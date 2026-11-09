@@ -1,0 +1,34 @@
+2026-11-09 22:03:07 step hires dt35 dt7 start
+2026-11-09 22:03:07 beat: 24 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:07:06 foreign: 79247 /Users/pierregc/claude-workspace/sillage-wt-237/.build/dev/tests;
+2026-11-09 22:08:17 beat: 21 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:11:14 foreign: none
+2026-11-09 22:12:30 foreign: 81783 /Users/pierregc/claude-workspace/epic-236-out/237/bin/sillage-render hires;
+2026-11-09 22:12:32 foreign: none
+2026-11-09 22:13:25 beat: 20 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:18:34 beat: 21 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:23:42 beat: 19 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:28:51 beat: 20 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:34:00 beat: 19 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:39:08 beat: 17 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:43:40 foreign: 92528 /Users/pierregc/claude-workspace/sillage-wt-239/.build/dev/sillage-render night tiny.night.json --plan --out /Users/pierregc/claude-workspace/epic-236-out;
+2026-11-09 22:43:44 foreign: none
+2026-11-09 22:44:17 beat: 17 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:44:43 run dt35 exit 0 wall 2496 s
+2026-11-09 22:49:25 beat: 19 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:54:34 beat: 19 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 22:59:43 beat: 19 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 23:04:52 beat: 18 GB free, lock 225 hires-dt35+dt7 2026-11-09 22:03:07, mine: 1
+2026-11-09 23:06:08 run dt7 exit 0 wall 1285 s
+2026-11-09 23:06:08 step hires dt35 dt7 end
+2026-11-10 00:12:33 step hires dt35b start
+2026-11-10 00:12:33 beat: 23 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
+2026-11-10 00:17:40 beat: 23 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
+2026-11-10 00:22:48 beat: 23 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
+2026-11-10 00:27:55 beat: 21 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
+2026-11-10 00:33:02 beat: 21 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
+2026-11-10 00:38:09 beat: 22 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
+2026-11-10 00:43:16 beat: 21 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
+2026-11-10 00:48:23 beat: 22 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
+2026-11-10 00:52:05 run dt35b exit 0 wall 2372 s
+2026-11-10 00:52:05 step hires dt35b end
