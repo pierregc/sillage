@@ -1,10 +1,10 @@
 # Takes on disk
 
-A run costs minutes and six bytes a particle a frame, so a quarter of a million particles over
-five hundred frames is three quarters of a gigabyte. `RecordingFile` keeps one: the scene, the
-per-particle attributes, the frames and the quantised positions. Reopening it is not watching a
-video — nothing about how it looks is in the file. Exposure, colour, the telescope and the
-camera are all decided at draw time and stay live, and the take plays with no solver behind it.
+A run costs minutes and eight bytes a particle a frame, so a quarter of a million particles over
+five hundred frames is a gigabyte. `RecordingFile` keeps one: the scene, the per-particle
+attributes, the frames and the quantised positions. Reopening it is not watching a video:
+nothing about how it looks is in the file. Exposure, colour, the telescope and the camera are
+all decided at draw time and stay live, and the take plays with no solver behind it.
 
 A take that outlasts its budget spills to disk rather than thinning or stopping — see "A long
 capture keeps every frame". The budget is what it holds in memory; the take itself is bounded
