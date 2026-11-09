@@ -578,7 +578,7 @@ public final class BarnesHutTree {
                                 // to be told what went wrong with it.
                                 precondition(
                                     start >= 0 && count >= 0 && start + count <= limit,
-                                    "noeud \(index) couvre \(start)..<\(start + count) sur \(limit) particules"
+                                    "node \(index) covers \(start)..<\(start + count) of \(limit) particles"
                                 )
                                 var weighted = SIMD3<Float>.zero
                                 var total: Float = 0

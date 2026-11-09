@@ -106,7 +106,7 @@ public enum Archetype: String, Codable, Sendable, CaseIterable {
                 galaxies[index].kind == .blackHole
                 ? 1 : index == 0 ? shared - shared / count * (count - 1) : shared / count
         }
-        var scene = SceneConfig(name: "Archétype", galaxies: galaxies, centerSoftening: 1.2)
+        var scene = SceneConfig(name: "Archetype", galaxies: galaxies, centerSoftening: 1.2)
         scene.encounters = draft.encounters
         scene.seed = seed
         scene.draw = SceneDraw(

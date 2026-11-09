@@ -335,7 +335,7 @@ final class SimulationModel: ObservableObject {
     @Published var lookURL: URL?
     /// The scene folder the take was opened from, which a look can be promoted into.
     @Published private(set) var sceneFolder: SceneFolder?
-    /// The scene folder the take opened is the take of, by any way it was opened: what Vidéo…
+    /// The scene folder the take opened is the take of, by any way it was opened: what Video…
     /// exports, through the queue.
     @Published private(set) var takeFolder: SceneFolder?
     /// On playback, draw through the file's camera plan rather than the orbit rig, so the
@@ -384,7 +384,7 @@ final class SimulationModel: ObservableObject {
     /// The app's opening file. The starfield and supersampling are the ones the window has
     /// always drawn with, which are not `LookFile.standard`'s.
     static let openingFile = LookFile(
-        name: "sans-titre", look: openingLook, starCount: 46_000, supersample: 1)
+        name: "untitled", look: openingLook, starCount: 46_000, supersample: 1)
 
     /// Owns textures, so changing it means a new renderer.
     var supersample: Int {
@@ -448,7 +448,7 @@ final class SimulationModel: ObservableObject {
         do {
             adopt(try LookFile.decoded(from: Data(contentsOf: url)), from: url)
         } catch {
-            failure = "Style illisible : \(error)"
+            failure = "Unreadable style: \(error)"
         }
     }
 
@@ -457,7 +457,7 @@ final class SimulationModel: ObservableObject {
             try lookFile.encoded().write(to: url, options: .atomic)
             lookURL = url
         } catch {
-            failure = "Style non enregistré : \(error)"
+            failure = "Style not saved: \(error)"
         }
     }
 
@@ -754,7 +754,7 @@ final class SimulationModel: ObservableObject {
         guard mode == .running, isPlaying, let solver else { return }
         if activity == nil {
             activity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiated, reason: "sillage fait avancer une simulation")
+                options: .userInitiated, reason: "sillage is stepping a simulation")
         }
         liveGeneration &+= 1
         pumpLive(
@@ -924,7 +924,7 @@ final class SimulationModel: ObservableObject {
     /// it goes out on the simulation queue like everything else that would hold the window.
     func saveTake(to url: URL) {
         guard let reel = recording, canReplay else { return }
-        fileActivity = "Enregistrement de la prise…"
+        fileActivity = "Saving the take…"
         let scene = self.scene
         let particles = solver?.capturedParticles(from: seeded) ?? seeded
         simulationQueue.async { [weak self] in
@@ -951,13 +951,13 @@ final class SimulationModel: ObservableObject {
             do {
                 file = try LookFile.decoded(from: Data(contentsOf: lookURL))
             } catch {
-                failure = "Style illisible : \(error)"
+                failure = "Unreadable style: \(error)"
                 return
             }
         }
         stopLiveStepping()
         preparation &+= 1
-        fileActivity = "Ouverture de la prise…"
+        fileActivity = "Opening the take…"
         let device = self.device
         let directing = file?.camera.mode == .director ? file : nil
         simulationQueue.async { [weak self] in
@@ -986,7 +986,7 @@ final class SimulationModel: ObservableObject {
                 guard let self else { return }
                 self.fileActivity = nil
                 guard let loaded, let expander else {
-                    self.failure = failure ?? "La prise n'a pas pu être ouverte"
+                    self.failure = failure ?? "The take could not be opened"
                     return
                 }
                 if let file { self.take(file, from: lookURL) }
@@ -1123,7 +1123,7 @@ final class SimulationModel: ObservableObject {
         seeded = sampled
         particleCount = sampled.count
         solver = built
-        if built == nil { failure = "Le solveur n'a pas pu être construit" }
+        if built == nil { failure = "The solver could not be built" }
         elapsedMyr = 0
         megayearsPerSecond = 0
         // A restart invalidates the capture along with the solver it came from.

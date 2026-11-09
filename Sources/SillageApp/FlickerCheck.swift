@@ -70,20 +70,20 @@ enum FlickerCheck {
             let (rms, worst, lit) = scintillation()
             lines.append(
                 String(
-                    format: "%@ rms %6.3f niveaux, pire écart %3d, %.1f %% de pixels allumés",
+                    format: "%@ rms %6.3f levels, worst gap %3d, %.1f %% of pixels lit",
                     name.padding(toLength: 34, withPad: " ", startingAt: 0), rms, worst, lit))
         }
 
         let look = model.look
-        measure("tel quel")
+        measure("as is")
         let noise = model.look.noiseLevel
         model.look.noiseLevel = 0
-        measure("sans bruit de détecteur")
+        measure("without detector noise")
         model.look.noiseLevel = noise
         model.look.skyLevel = 0
-        measure("sans fond de ciel (bruit remis)")
+        measure("without sky background (noise back)")
         model.look.noiseLevel = 0
-        measure("sans bruit ni fond de ciel")
+        measure("without noise or sky background")
 
         // Second question, and the one a frozen playhead cannot answer: a star crossing a
         // pixel boundary is a scintillation too, and no amount of turning the detector noise
@@ -94,14 +94,14 @@ enum FlickerCheck {
         model.isPlaying = true
         model.playbackSpeed = 0.5
         lines.append("")
-        lines.append("en lecture à 0,5 image de prise par seconde, sans bruit :")
+        lines.append("playing at 0.5 take frames a second, without noise:")
         for floor in [Float(1.1), 1.6, 2.4, 3.5] {
             model.look.minimumKernel = floor
             model.playbackPosition = Double(model.capturedFrames / 3)
             let (rms, worst, _) = scintillation()
             lines.append(
                 String(
-                    format: "  noyau minimal %.1f px   rms %6.3f niveaux, pire écart %3d", floor,
+                    format: "  minimum kernel %.1f px   rms %6.3f levels, worst gap %3d", floor,
                     rms, worst))
         }
 

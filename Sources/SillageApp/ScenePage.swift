@@ -53,16 +53,16 @@ struct ScenePage: View {
             Button {
                 model.close()
             } label: {
-                Label("Bibliothèque", systemImage: "chevron.left")
+                Label("Library", systemImage: "chevron.left")
             }
-            .help("Revient à la grille (échap)")
+            .help("Back to the grid (esc)")
             VStack(alignment: .leading, spacing: 2) {
                 Text(scene.name).font(.title2.bold().monospacedDigit())
                 Text(subtitle).font(.caption.monospacedDigit()).foregroundStyle(Palette.secondary)
             }
             Spacer()
             if snapshot {
-                Label("Refaire", systemImage: "arrow.counterclockwise").foregroundStyle(Palette.secondary)
+                Label("Redo", systemImage: "arrow.counterclockwise").foregroundStyle(Palette.secondary)
             } else {
                 RedoMenu(model: model, scene: scene, entry: entry, facts: facts)
             }
@@ -72,13 +72,13 @@ struct ScenePage: View {
                 } label: {
                     Image(systemName: "chevron.left")
                 }
-                .help("La scène d'avant (←)")
+                .help("Previous scene (←)")
                 Button {
                     model.moveOpened(1)
                 } label: {
                     Image(systemName: "chevron.right")
                 }
-                .help("La scène suivante (→)")
+                .help("Next scene (→)")
             }
         }
         .padding(.horizontal, 16)
@@ -88,9 +88,9 @@ struct ScenePage: View {
     private var subtitle: String {
         var parts = [scene.batch]
         if let at = model.visible.firstIndex(where: { $0.id == scene.id }) {
-            parts.append("\(at + 1) sur \(model.visible.count) · \(model.query.collection.title)")
+            parts.append("\(at + 1) of \(model.visible.count) · \(model.query.collection.title)")
         } else {
-            parts.append("n'est plus dans \(model.query.collection.title)")
+            parts.append("no longer in \(model.query.collection.title)")
         }
         return parts.joined(separator: " · ")
     }
@@ -130,20 +130,20 @@ struct ScenePage: View {
     }
 
     private var technicalDetails: some View {
-        DisclosureGroup("Détails techniques", isExpanded: $detailsShown) {
+        DisclosureGroup("Technical details", isExpanded: $detailsShown) {
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
-                row("Graine", scene.seed ?? "inconnue")
-                row("Index", scene.index.map(String.init) ?? "inconnu")
-                row(isNight ? "Nuit" : "Lot", scene.batch)
+                row("Seed", scene.seed ?? "unknown")
+                row("Index", scene.index.map(String.init) ?? "unknown")
+                row(isNight ? "Night" : "Batch", scene.batch)
                 GridRow {
-                    Text("Dossier").foregroundStyle(Palette.secondary)
+                    Text("Folder").foregroundStyle(Palette.secondary)
                     HStack(spacing: 10) {
                         Text(location.path)
                             .font(.callout.monospaced())
                             .textSelection(.enabled)
                             .lineLimit(2)
                             .truncationMode(.middle)
-                        Button("Montrer dans le Finder") {
+                        Button("Show in Finder") {
                             NSWorkspace.shared.activateFileViewerSelecting([location])
                         }
                         .controlSize(.small)
@@ -168,7 +168,7 @@ struct ScenePage: View {
     private var footer: some View {
         HStack {
             Text(
-                "← → scène précédente, suivante · Y oui · N non · 0 à 9 la note, 1 puis 0 pour 10 · ⌫ effacer · échap la grille"
+                "← → previous, next scene · Y yes · N no · 0 to 9 rating, 1 then 0 for 10 · ⌫ clear · esc grid"
             )
             .font(.caption)
             .foregroundStyle(Palette.secondary)
@@ -186,7 +186,7 @@ struct ScenePage: View {
     }
 }
 
-/// Aperçu, Haute résolution, then one entry per video. One decoder: picking one replaces
+/// Preview, High resolution, then one entry per video. One decoder: picking one replaces
 /// whatever played.
 struct VersionPicker: View {
     @ObservedObject var model: LibraryModel
@@ -208,11 +208,11 @@ struct VersionPicker: View {
             } else if let only = versions.first {
                 Text(only.title).font(.callout).foregroundStyle(Palette.secondary)
             } else {
-                Text("Aucune vidéo").font(.callout).foregroundStyle(Palette.secondary)
+                Text("No video").font(.callout).foregroundStyle(Palette.secondary)
             }
             Spacer()
             if let url = model.playingURL, model.playing == scene.id {
-                Button("Montrer le fichier") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                Button("Show the file") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                     .controlSize(.small)
                     .help(url.lastPathComponent)
             }
@@ -229,9 +229,9 @@ struct VersionPicker: View {
 extension SceneVersion {
     var title: String {
         switch kind {
-        case .preview: "Aperçu"
-        case .highResolution: "Haute résolution"
-        case .video(let name): "Vidéo \(name)"
+        case .preview: "Preview"
+        case .highResolution: "High resolution"
+        case .video(let name): "Video \(name)"
         }
     }
 }
@@ -278,12 +278,12 @@ struct StageTracker: View {
     private var exploration: some View {
         VStack(alignment: .leading, spacing: 3) {
             if let score = scene.score { fact(String(format: "score %.2f", score)) }
-            if let galaxies = scene.galaxies { fact(galaxies == 1 ? "1 galaxie" : "\(galaxies) galaxies") }
-            fact(scene.archetype ?? "libre")
+            if let galaxies = scene.galaxies { fact(galaxies == 1 ? "1 galaxy" : "\(galaxies) galaxies") }
+            fact(scene.archetype ?? "free")
             if let story = facts?.story {
                 fact(
                     String(
-                        format: "%.0f Myr, de %.0f à %.0f", story.endMyr - story.startMyr, story.startMyr,
+                        format: "%.0f Myr, from %.0f to %.0f", story.endMyr - story.startMyr, story.startMyr,
                         story.endMyr))
             }
         }
@@ -300,15 +300,15 @@ struct StageTracker: View {
     private var choiceSummary: String {
         var parts: [String] = []
         switch entry?.choice {
-        case .yes: parts.append("Choisie")
-        case .no: parts.append("Écartée")
+        case .yes: parts.append("Kept")
+        case .no: parts.append("Discarded")
         case nil:
             if let picked = entry?.picked {
-                parts.append(String(format: "Choisie par le score (%.2f)", picked.score))
+                parts.append(String(format: "Kept by score (%.2f)", picked.score))
             }
         }
-        if let rating = entry?.rating { parts.append("note \(rating)") }
-        return parts.isEmpty ? "Pas encore décidée" : parts.joined(separator: " · ")
+        if let rating = entry?.rating { parts.append("rating \(rating)") }
+        return parts.isEmpty ? "Not decided yet" : parts.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -318,7 +318,7 @@ struct StageTracker: View {
             VStack(alignment: .leading, spacing: 3) {
                 if let hires = facts?.hires {
                     fact(Format.particles(hires.particles, massive: hires.massive))
-                    if let seconds = hires.seconds { fact("\(Format.duration(seconds)) de calcul") }
+                    if let seconds = hires.seconds { fact("\(Format.duration(seconds)) of computing") }
                 } else if let hires = scene.hires {
                     fact(Format.particles(hires.particles, massive: hires.massive))
                 }
@@ -333,7 +333,7 @@ struct StageTracker: View {
                 }
             }
         case .later:
-            later(scene.folder == nil ? "Pas de dossier de scène" : "Après le choix")
+            later(scene.folder == nil ? "No scene folder" : "After the choice")
         }
         if state == .done, let queue, let folder = scene.folder {
             StageJobLines(queue: queue, folder: folder, kind: .hires)
@@ -345,15 +345,15 @@ struct StageTracker: View {
         switch state {
         case .done:
             VStack(alignment: .leading, spacing: 6) {
-                fact(facts.map { $0.rawStyle ? "Style brut" : $0.styleName ?? "Style" } ?? "Style choisi")
+                fact(facts.map { $0.rawStyle ? "Raw style" : $0.styleName ?? "Style" } ?? "Style chosen")
                 if let palette = facts?.palette, !palette.isEmpty { Swatches(colours: palette) }
             }
         case .next:
-            Button("Choisir le style") { model.tune(scene) }
+            Button("Choose style") { model.tune(scene) }
                 .buttonStyle(.borderedProminent)
-                .help("Ouvre l'éditeur de style sur la haute résolution")
+                .help("Opens the style editor on the high resolution")
         case .later:
-            later("Après la haute résolution")
+            later("After high resolution")
         }
     }
 
@@ -366,14 +366,14 @@ struct StageTracker: View {
                     LibraryScene.videoExtensions.contains($0.pathExtension.lowercased())
                         || ExportedFile.imageExtensions.contains($0.pathExtension.lowercased())
                 }
-                fact(files.count == 1 ? "1 fichier" : "\(files.count) fichiers")
-                Text("Liste ci-dessous").font(.caption).foregroundStyle(Palette.secondary)
+                fact(files.count == 1 ? "1 file" : "\(files.count) files")
+                Text("Listed below").font(.caption).foregroundStyle(Palette.secondary)
                 exportButton(prominent: false)
             }
         case .next:
             exportButton(prominent: true)
         case .later:
-            later("Après le style")
+            later("After the style")
         }
         if state != .later, let queue, let folder = scene.folder {
             StageJobLines(queue: queue, folder: folder, kind: .export)
@@ -384,9 +384,9 @@ struct StageTracker: View {
     private func exportButton(prominent: Bool) -> some View {
         if queue != nil, scene.folder != nil {
             if prominent {
-                Button("Exporter…") { exporting = true }.buttonStyle(.borderedProminent)
+                Button("Export…") { exporting = true }.buttonStyle(.borderedProminent)
             } else {
-                Button("Exporter…") { exporting = true }.controlSize(.small)
+                Button("Export…") { exporting = true }.controlSize(.small)
             }
         }
     }
@@ -442,11 +442,11 @@ struct StageColumn<Content: View>: View {
 extension SceneStep {
     var title: String {
         switch self {
-        case .exploration: "Aperçu"
-        case .choice: "Choix"
-        case .highResolution: "Haute résolution"
+        case .exploration: "Preview"
+        case .choice: "Choice"
+        case .highResolution: "High resolution"
         case .style: "Style"
-        case .export: "Vidéos"
+        case .export: "Videos"
         }
     }
 }
@@ -518,25 +518,25 @@ struct RedoMenu: View {
         let done = { (step: SceneStep) in states[step] == .done }
         Menu {
             if done(.choice) {
-                Button("Effacer le choix et la note") { model.clear(scene.id) }
+                Button("Clear the choice and rating") { model.clear(scene.id) }
             }
             if done(.highResolution), queue != nil, scene.folder != nil {
-                Button("Recalculer en haute résolution…") { sheet = .hires }
-                    .help("Les vidéos restent jusqu'à ce qu'un nouvel export les remplace")
+                Button("Recompute in high resolution…") { sheet = .hires }
+                    .help("The videos stay until a new export replaces them")
             }
             if done(.style) {
-                Button("Choisir le style à nouveau") { model.tune(scene) }
+                Button("Choose the style again") { model.tune(scene) }
                 if facts?.rawStyle == false {
-                    Button("Revenir au style brut") { model.restoreRawLook(scene) }
-                        .help("Le style actuel reste dans le dossier de la scène")
+                    Button("Revert to raw style") { model.restoreRawLook(scene) }
+                        .help("The current style stays in the scene's folder")
                 }
             }
             if done(.export), queue != nil, scene.folder != nil {
-                Button("Exporter dans un autre format ou un autre style…") { sheet = .export }
-                    .help("Écrit un nouveau fichier et garde les autres")
+                Button("Export in another format or style…") { sheet = .export }
+                    .help("Writes a new file and keeps the others")
             }
         } label: {
-            Label("Refaire", systemImage: "arrow.counterclockwise")
+            Label("Redo", systemImage: "arrow.counterclockwise")
         }
         .fixedSize()
         .disabled(!SceneStep.allCases.dropFirst().contains(where: done))
@@ -597,29 +597,29 @@ struct ScenePageFacts: Sendable, Equatable {
 enum Format {
     static func particles(_ count: Int) -> String { StageJobs.particles(count) }
 
-    /// A hires: "8 M particules dont 2 M massives", "2 M particules".
+    /// A hires: "8 M particles (2 M massive)", "2 M particles".
     static func particles(_ count: Int, massive: Int?) -> String {
         let traced = massive.flatMap { $0 < count ? $0 : nil }
-        return "\(particles(count)) particules" + (traced.map { " dont \(particles($0)) massives" } ?? "")
+        return "\(particles(count)) particles" + (traced.map { " (\(particles($0)) massive)" } ?? "")
     }
 
     static func duration(_ seconds: Double) -> String {
         let minutes = Int((seconds / 60).rounded())
-        if minutes < 1 { return "moins d'une minute" }
+        if minutes < 1 { return "under a minute" }
         if minutes < 60 { return "\(minutes) min" }
         let (hours, rest) = (minutes / 60, minutes % 60)
-        return rest == 0 ? "\(hours) h" : "\(hours) h \(String(format: "%02d", rest))"
+        return rest == 0 ? "\(hours) h" : "\(hours) h \(String(format: "%02d", rest)) min"
     }
 
-    /// "environ 12 min", "moins d'une minute".
+    /// "about 12 min", "under a minute".
     static func about(_ seconds: Double) -> String {
-        seconds < 60 ? duration(seconds) : "environ " + duration(seconds)
+        seconds < 60 ? duration(seconds) : "about " + duration(seconds)
     }
 
     static func date(_ date: Date) -> String {
         date.formatted(
             .dateTime.day().month(.abbreviated).year().hour().minute()
-                .locale(Locale(identifier: "fr_FR")))
+                .locale(Locale(identifier: "en_GB")))
     }
 }
 
@@ -668,7 +668,7 @@ struct AnimatedImageView: NSViewRepresentable {
 }
 
 /// Every video and animation of `exports/` with what it is and what can be done with it.
-/// There is no share sheet: Montrer dans le Finder and Copier le chemin work wherever the
+/// There is no share sheet: Show in Finder and Copy path work wherever the
 /// file goes next.
 struct ExportList: View {
     @ObservedObject var model: LibraryModel
@@ -677,7 +677,7 @@ struct ExportList: View {
     var body: some View {
         if !files.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text(files.count == 1 ? "Vidéo exportée" : "Vidéos exportées").font(.headline)
+                Text(files.count == 1 ? "Exported video" : "Exported videos").font(.headline)
                 ForEach(files) { file in
                     ExportRow(model: model, file: file)
                     if file.id != files.last?.id { Divider() }
@@ -704,19 +704,19 @@ struct ExportRow: View {
             Spacer(minLength: 12)
             if offscreen {
                 Text(
-                    "Lire · Montrer dans le Finder · Copier le chemin"
-                        + (file.caption == nil ? "" : " · Copier la légende")
+                    "Play · Show in Finder · Copy path"
+                        + (file.caption == nil ? "" : " · Copy caption")
                 )
                 .font(.caption).foregroundStyle(Palette.secondary)
             } else {
-                Button("Lire") { model.version = file.url }
-                    .help(file.isImage ? "L'affiche dans le lecteur" : "La lit dans le lecteur")
-                Button("Montrer dans le Finder") {
+                Button("Play") { model.version = file.url }
+                    .help(file.isImage ? "Shows it in the player" : "Plays it in the player")
+                Button("Show in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([file.url])
                 }
-                Button("Copier le chemin") { model.copy(file.url.path, note: "Chemin copié") }
+                Button("Copy path") { model.copy(file.url.path, note: "Path copied") }
                 if let caption = file.caption {
-                    Button("Copier la légende") { model.copyCaption(caption) }
+                    Button("Copy caption") { model.copyCaption(caption) }
                 }
             }
         }
@@ -728,12 +728,12 @@ struct ExportRow: View {
 
     static func details(_ file: ExportedFile) -> String {
         var parts: [String] = []
-        parts.append(file.preset.map { "Préréglage \($0)" } ?? "Préréglage libre")
+        parts.append(file.preset.map { "Preset \($0)" } ?? "Custom preset")
         if let style = file.style { parts.append("Style \(style)") }
         if !file.codec.isEmpty { parts.append(file.codec) }
         if let size = file.size { parts.append(size) }
         if let seconds = file.seconds { parts.append(String(format: "%.1f s", seconds)) }
-        parts.append(String(format: "%.1f Mo", Double(file.bytes) / 1_000_000))
+        parts.append(String(format: "%.1f MB", Double(file.bytes) / 1_000_000))
         parts.append(Format.date(file.date))
         return parts.joined(separator: " · ")
     }

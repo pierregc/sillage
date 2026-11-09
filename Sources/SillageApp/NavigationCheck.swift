@@ -17,7 +17,7 @@ enum NavigationCheck {
         guard CommandLine.arguments.contains("--navcheck") else { return }
         Task {
             await exercise(model, library, navigation, queue, nights)
-            let report = lines.joined(separator: "\n") + "\n\n\(failures) échec(s)"
+            let report = lines.joined(separator: "\n") + "\n\n\(failures) failed"
             try? report.write(
                 to: URL(fileURLWithPath: "/tmp/sillage-navigation.log"), atomically: true,
                 encoding: .utf8)
@@ -50,9 +50,9 @@ enum NavigationCheck {
         _ queue: QueueModel, _ nights: NightsModel
     ) async {
         _ = await settle(model, 1)
-        check("la bibliothèque est l'accueil", navigation.selection == .library(.all))
-        check("la grille est montée", await settle(model, 2) { library.isShown })
-        check("l'atelier n'est pas monté", !model.hasPreviewCanvas && !model.hasCanvas)
+        check("the library is the home", navigation.selection == .library(.all))
+        check("the grid is mounted", await settle(model, 2) { library.isShown })
+        check("the workshop is not mounted", !model.hasPreviewCanvas && !model.hasCanvas)
         snapshot("library")
 
         // Each collection of the sidebar is the grid on its own scenes, and the sidebar counts
@@ -63,36 +63,36 @@ enum NavigationCheck {
             let expected = library.scenes.filter { collection.contains($0.stage) }.count
             let listed = await settle(model, 2) { library.visible.count == expected }
             check(
-                "\(collection.title) montre ses scènes", shown && listed,
-                "\(library.visible.count) sur \(expected)")
+                "\(collection.title) shows its scenes", shown && listed,
+                "\(library.visible.count) of \(expected)")
         }
         let staged = LibraryCollection.allCases.dropLast().map { library.counts[$0] ?? 0 }.reduce(0, +)
         let discarded = library.scenes.filter { $0.stage == .discarded }.count
         check(
-            "chaque scène est dans une collection, les écartées dans Toutes seulement",
+            "each scene is in a collection, the discarded ones in All only",
             staged + discarded == library.scenes.count && library.counts[.all] ?? 0 == library.scenes.count,
-            "\(staged) + \(discarded) écartées sur \(library.scenes.count)")
+            "\(staged) + \(discarded) discarded of \(library.scenes.count)")
         navigation.selection = .library(.all)
         _ = await settle(model, 1)
 
         navigation.selection = .queue
-        check("la file d'attente remplace la grille", await settle(model, 2) { !library.isShown })
-        check("la ligne d'état a un texte", !queue.status.statusLine.isEmpty, queue.status.statusLine)
+        check("the queue replaces the grid", await settle(model, 2) { !library.isShown })
+        check("the status line has a text", !queue.status.statusLine.isEmpty, queue.status.statusLine)
         snapshot("queue")
 
         // The library's own nights if it has any, else a name it has none of.
-        let night = nights.items.first?.id ?? "aucune-nuit"
+        let night = nights.items.first?.id ?? "no-night"
         navigation.selection = .night(night)
-        check("une nuit remplace la grille", await settle(model, 2) { !library.isShown })
-        check("le dossier reste lu pour les compteurs", library.isWatching)
+        check("a night replaces the grid", await settle(model, 2) { !library.isShown })
+        check("the folder is still read for the counts", library.isWatching)
         check(
-            "la page lit la nuit choisie",
+            "the page reads the chosen night",
             await settle(model, 3) { nights.selected == night },
-            "\(nights.items.count) nuits, la page est \(nights.page?.id ?? "vide")")
+            "\(nights.items.count) nights, the page is \(nights.page?.id ?? "empty")")
         snapshot("night")
         navigation.selection = .library(.all)
         check(
-            "quitter la page rend la grille et arrête la lecture",
+            "leaving the page gives back the grid and stops reading",
             await settle(model, 3) { library.isShown && nights.selected == nil })
 
         // The new night sheet comes over whatever shows, and a launch lands on the night's page.
@@ -108,24 +108,24 @@ enum NavigationCheck {
         let onScreen = host?.isVisible == true
         navigation.newNight()
         if onScreen {
-            check("Nouvelle nuit ouvre la feuille", await settle(model, 3) { sheetShown() })
+            check("New night opens the sheet", await settle(model, 3) { sheetShown() })
         } else {
             check(
-                "Nouvelle nuit demande la feuille (fenêtre cachée : le modèle seulement)",
+                "New night asks for the sheet (window hidden: the model only)",
                 navigation.showsNightSheet)
         }
         navigation.showsNightSheet = false
-        check("fermer la feuille la retire", await settle(model, 3) { !sheetShown() })
-        check("la bibliothèque reste là", navigation.selection == .library(.all))
+        check("closing the sheet removes it", await settle(model, 3) { !sheetShown() })
+        check("the library stays", navigation.selection == .library(.all))
         navigation.newNight()
         _ = await settle(model, 2) { sheetShown() }
         navigation.nightLaunched("2099-01-01")
         check(
-            "lancer une nuit ferme la feuille et montre sa page",
+            "launching a night closes the sheet and shows its page",
             await settle(model, 3) { !sheetShown() } && navigation.selection == .night("2099-01-01"))
 
         navigation.selection = .workshop
-        check("nouvelle collision montre le réglage", await settle(model, 2) { model.hasPreviewCanvas })
+        check("new collision shows the setup", await settle(model, 2) { model.hasPreviewCanvas })
         snapshot("workshop")
 
         model.draft.solver = .restricted
@@ -134,7 +134,7 @@ enum NavigationCheck {
         navigation.selection = .library(.all)
         model.start()
         check(
-            "lancer montre la simulation dans l'atelier",
+            "launching shows the simulation in the workshop",
             await settle(model, 10) {
                 navigation.selection == .workshop && model.hasCanvas && !model.isPreparing
             })
@@ -142,11 +142,11 @@ enum NavigationCheck {
 
         navigation.selection = .library(.all)
         check(
-            "le canevas quitte la fenêtre", await settle(model, 2) { !model.hasCanvas && library.isShown })
+            "the canvas leaves the window", await settle(model, 2) { !model.hasCanvas && library.isShown })
         let before = model.elapsedMyr
         _ = await settle(model, 3)
         check(
-            "la simulation continue derrière la bibliothèque",
+            "the simulation goes on behind the library",
             model.stage == .running && model.elapsedMyr > before + 1,
             String(format: "%.0f → %.0f Myr", before, model.elapsedMyr))
         snapshot("library-running")
@@ -154,9 +154,9 @@ enum NavigationCheck {
         navigation.selection = .workshop
         let drawn = model.framesDrawn
         check(
-            "revenir à l'atelier la remontre",
+            "back to the workshop shows it again",
             await settle(model, 3) { model.hasCanvas && model.framesDrawn > drawn + 10 },
-            "\(model.framesDrawn - drawn) images")
+            "\(model.framesDrawn - drawn) frames")
 
         let take = FileManager.default.temporaryDirectory
             .appendingPathComponent("sillage-navcheck-\(UUID().uuidString).sillage")
@@ -172,22 +172,22 @@ enum NavigationCheck {
             take: take)
         library.tune(scene)
         check(
-            "choisir le style ouvre la prise dans l'éditeur",
+            "choose style opens the take in the editor",
             await settle(model, 20) {
                 navigation.selection == .style && navigation.style?.isOpen == true && model.hasCanvas
             },
             model.failure ?? "")
-        check("la bibliothèque laisse la place", !library.isShown)
+        check("the library makes way", !library.isShown)
         _ = await settle(model, 1)
         snapshot("style")
         navigation.selection = .queue
-        check("le canevas quitte la fenêtre avec l'éditeur", await settle(model, 2) { !model.hasCanvas })
-        check("l'éditeur reste dans la barre latérale", navigation.style != nil)
+        check("the canvas leaves the window with the editor", await settle(model, 2) { !model.hasCanvas })
+        check("the editor stays in the sidebar", navigation.style != nil)
         navigation.selection = .style
-        check("y revenir remontre la prise", await settle(model, 3) { model.hasCanvas })
+        check("going back shows the take again", await settle(model, 3) { model.hasCanvas })
         navigation.leaveStyle(library)
         check(
-            "fermer revient à la bibliothèque",
+            "closing goes back to the library",
             await settle(model, 2) {
                 navigation.selection == .library(.all) && library.isShown && navigation.style == nil
             })
@@ -197,21 +197,21 @@ enum NavigationCheck {
         _ = await settle(model, 1) { library.isShown }
         model.startContemplation(pace: .brisk)
         check(
-            "la contemplation prend toute la fenêtre",
+            "contemplation takes the whole window",
             await settle(model, 5) { model.hasCanvas && !library.isShown })
         _ = await settle(model, 3)
         // What escape does.
         DispatchQueue.main.async { model.stopContemplation() }
         check(
-            "échap revient là où elle a été lancée",
+            "escape goes back to where it was started",
             await settle(model, 5) {
                 model.stage == .setup && navigation.selection == .library(.all) && library.isShown
             })
         let window = NSApp.windows.first { $0.isVisible }
         check(
-            "la fenêtre quitte le plein écran",
+            "the window leaves full screen",
             await settle(model, 5) { window?.styleMask.contains(.fullScreen) == false })
-        check("aucune erreur", model.failure == nil, model.failure ?? "")
+        check("no error", model.failure == nil, model.failure ?? "")
     }
 
     private static func snapshot(_ name: String) {

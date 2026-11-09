@@ -109,9 +109,9 @@ extension NightDigest {
         guard let (batch, file) = chosen else {
             night = nil
             var lines = [status.summary]
-            if !status.isBusy { lines.append("Aucune nuit encore dans cette bibliothèque") }
+            if !status.isBusy { lines.append("No night yet in this library") }
             if status.waitingCount > 0 { lines.append(QueueStatus.waitingText(status.waitingCount)) }
-            if let last = status.finished.first { lines.append("Dernier travail : " + last.text) }
+            if let last = status.finished.first { lines.append("Last job: " + last.text) }
             self.lines = lines
             return
         }
@@ -142,7 +142,7 @@ extension NightDigest {
 
         var lines: [String] = []
         let errors = Self.errorsText(failures.count)
-        let name = "Nuit du " + (words.nightDate(night: file.id, file: file) ?? file.id)
+        let name = "Night of " + (words.nightDate(night: file.id, file: file) ?? file.id)
         if live {
             lines.append(status.summary + " · " + errors)
         } else {
@@ -153,43 +153,43 @@ extension NightDigest {
         if live { lines.append(Self.readiness(file, paused: status.isPaused, activity, words)) }
         if let first = failures.first {
             let who = [first.scene, first.stage.map(QueueStatus.phaseLabel)].compactMap { $0 }
-            var text = "Erreurs : " + who.joined(separator: " ")
-            if let message = first.message { text += " : " + message }
-            if let log = first.log { text += " (journal " + NightEvents.relative(log, to: batch) + ")" }
-            if failures.count > 1 { text += " · et \(failures.count - 1) de plus" }
+            var text = "Errors: " + who.joined(separator: " ")
+            if let message = first.message { text += ": " + message }
+            if let log = first.log { text += " (log " + NightEvents.relative(log, to: batch) + ")" }
+            if failures.count > 1 { text += " · and \(failures.count - 1) more" }
             lines.append(text)
         }
         if let video {
             let weight = video.megabytes.map { " · " + Words.size(megabytes: $0) } ?? ""
-            lines.append("Dernière vidéo : \(video.path)\(weight) · \(words.at(video.at))")
+            lines.append("Last video: \(video.path)\(weight) · \(words.at(video.at))")
         } else {
-            lines.append("Aucune vidéo pour l'instant")
+            lines.append("No video yet")
         }
         self.lines = lines
     }
 
     static func errorsText(_ count: Int) -> String {
-        count == 0 ? "0 erreur" : count == 1 ? "1 erreur" : "\(count) erreurs"
+        count == 0 ? "0 errors" : count == 1 ? "1 error" : "\(count) errors"
     }
 
-    /// "terminée 6 h 41, avant 7 h 00", for a night that is not running.
+    /// "finished 06:41, before 07:00", for a night that is not running.
     static func outcome(_ night: NightFile, _ words: Words) -> String {
         let end = night.endedAt.map { words.at($0) }
         let state: String =
             switch night.state {
-            case .done: "terminée"
-            case .failed: "en échec"
-            case .stopped: "arrêtée"
-            case .paused: "en pause"
-            case .running: "interrompue"
+            case .done: "finished"
+            case .failed: "failed"
+            case .stopped: "stopped"
+            case .paused: "paused"
+            case .running: "interrupted"
             }
         guard let end, night.state != .running, night.state != .paused else { return state }
         let late = night.deliverBy.map { $0 < (night.endedAt ?? $0) } ?? false
-        let deadline = night.deliverBy.map { (late ? ", après " : ", avant ") + words.at($0) } ?? ""
+        let deadline = night.deliverBy.map { (late ? ", after " : ", before ") + words.at($0) } ?? ""
         return state + " " + end + (night.state == .done ? deadline : "")
     }
 
-    /// "Aperçus 50/50 (2 rejetés) · choix 4/4 · haute résolution 1/4 · 2 vidéos".
+    /// "Previews 50/50 (2 rejected) · selection 4/4 · high resolution 1/4 · 2 videos".
     static func counts(_ night: NightFile, found: NightEvents) -> String {
         var parts: [String] = []
         for name in ["explore", "pick", "hires"] {
@@ -199,30 +199,30 @@ extension NightDigest {
             var aside: [String] = []
             if name == "explore", found.explored("rejected") > 0 {
                 aside.append(
-                    "\(found.explored("rejected")) rejeté\(found.explored("rejected") > 1 ? "s" : "")")
+                    "\(found.explored("rejected")) rejected")
             }
-            if phase.failed > 0 { aside.append("\(phase.failed) en échec") }
+            if phase.failed > 0 { aside.append("\(phase.failed) failed") }
             if let skipped = phase.skipped, skipped > 0 {
-                aside.append("\(skipped) laissée\(skipped > 1 ? "s" : "") de côté")
+                aside.append("\(skipped) left out")
             }
             if !aside.isEmpty { text += " (" + aside.joined(separator: ", ") + ")" }
             parts.append(text)
         }
         let videos = found.videos.count
-        parts.append("\(videos) vidéo\(videos > 1 ? "s" : "")")
+        parts.append("\(videos) video\(videos == 1 ? "" : "s")")
         let line = parts.joined(separator: " · ")
         return line.prefix(1).uppercased() + line.dropFirst()
     }
 
-    /// "Livraison : prête vers 6 h 20, avant 7 h 00 (40 min de marge)".
+    /// "Delivery: ready around 06:20, by 07:00, 40 min to spare".
     static func readiness(
         _ night: NightFile, paused: Bool, _ activity: ActivityFile?, _ words: Words
     ) -> String {
-        if paused { return "Livraison : en pause, pas d'heure estimée" }
+        if paused { return "Delivery: paused, no estimated time" }
         guard let end = night.estimatedEnd ?? activity?.night?.eta else {
-            return "Livraison : pas d'heure estimée"
+            return "Delivery: no estimated time"
         }
-        return "Livraison : prête \(words.about(end)), "
+        return "Delivery: ready \(words.about(end)), "
             + NightReport.delivery(night, end: end, words: words)
     }
 }

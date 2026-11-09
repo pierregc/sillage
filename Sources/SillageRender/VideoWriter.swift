@@ -17,8 +17,8 @@ public final class VideoWriter: @unchecked Sendable {
 
         public var description: String {
             switch self {
-            case .writerUnavailable(let message): "L'encodeur n'a pas démarré : \(message)"
-            case .pixelBuffer: "Impossible d'allouer une image"
+            case .writerUnavailable(let message): "The encoder did not start: \(message)"
+            case .pixelBuffer: "Cannot allocate a frame"
             }
         }
     }
@@ -78,7 +78,7 @@ public final class VideoWriter: @unchecked Sendable {
                 kCVPixelBufferMetalCompatibilityKey as String: true,
                 kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
             ])
-        guard writer.canAdd(input) else { throw Failure.writerUnavailable("entrée refusée") }
+        guard writer.canAdd(input) else { throw Failure.writerUnavailable("input refused") }
         writer.add(input)
         guard writer.startWriting() else {
             throw Failure.writerUnavailable(writer.error?.localizedDescription ?? "inconnu")
@@ -137,7 +137,7 @@ public final class VideoWriter: @unchecked Sendable {
             }
             if !adaptor.append(frame.pixels, withPresentationTime: time) {
                 record(
-                    Failure.writerUnavailable(writer.error?.localizedDescription ?? "image refusée"))
+                    Failure.writerUnavailable(writer.error?.localizedDescription ?? "frame refused"))
             }
         }
     }

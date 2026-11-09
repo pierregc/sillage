@@ -64,13 +64,13 @@ enum SoakCheck {
         // The isolated disk is the control every star formation measurement here needs: a
         // merger always has a bump somewhere, and only a galaxy with nothing to collide with
         // says whether the rate holds on its own.
-        let quiet = CommandLine.arguments.contains("disque")
+        let quiet = CommandLine.arguments.contains("disk")
         model.draft =
             quiet ? .isolatedDisk(particleCount: particles) : .merger(particleCount: particles)
         // Nothing is being looked at, and the picture is not free: the canvas and the solver
         // pull on the same GPU, so a soak that draws is a soak that measures itself competing
-        // with its own display. `écran` puts it back for when somebody does want to watch.
-        model.showCanvasWhileRunning = CommandLine.arguments.contains("écran")
+        // with its own display. `screen` puts it back for when somebody does want to watch.
+        model.showCanvasWhileRunning = CommandLine.arguments.contains("screen")
         model.draft.solver = .barnesHut
         model.draft.retune()
         model.setTotalParticles(particles)
@@ -81,7 +81,7 @@ enum SoakCheck {
             let stamp = DateFormatter()
             stamp.dateFormat = "HH:mm:ss"
             var lines = [
-                "heure     wall s   cpu s   Myr      Myr/s  cpu/s  pas   images  formés  +formés  allumés  écran"
+                "time      wall s   cpu s      Myr  Myr/s  cpu/s  steps  frames  formed  +formed      lit  screen"
             ]
             var lastWall = 0.0
             var lastMyr = 0.0
@@ -107,7 +107,7 @@ enum SoakCheck {
                         (myr - lastMyr) / span, (cpu - lastCPU) / span,
                         model.solverSteps - lastSteps, model.framesDrawn,
                         formed, formed - lastFormed, lit,
-                        awake ? "allumé" : "éteint"))
+                        awake ? "on" : "off"))
                 lastFormed = formed
                 lastWall = wall
                 lastMyr = myr

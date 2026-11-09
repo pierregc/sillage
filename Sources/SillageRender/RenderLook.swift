@@ -234,11 +234,11 @@ public struct RenderLook: Sendable, Equatable {
     }
 
     public static let catalogue: [Named] = [
-        Named(id: "observatory", name: "Observatoire", look: .observatory),
-        Named(id: "dream", name: "Onirique", look: .dream),
-        Named(id: "gloss", name: "Éclat", look: .gloss),
-        Named(id: "ink", name: "Encre", look: .ink),
-        Named(id: "ember", name: "Braise", look: .ember),
+        Named(id: "observatory", name: "Observatory", look: .observatory),
+        Named(id: "dream", name: "Dream", look: .dream),
+        Named(id: "gloss", name: "Gloss", look: .gloss),
+        Named(id: "ink", name: "Ink", look: .ink),
+        Named(id: "ember", name: "Ember", look: .ember),
     ]
 }
 

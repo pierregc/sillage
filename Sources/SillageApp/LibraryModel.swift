@@ -67,7 +67,7 @@ final class LibraryModel: ObservableObject {
     var pasteboard = NSPasteboard.general
 
     /// A sitting at the triage view. The scenes are fixed when it opens, in the sort order of
-    /// that moment, so a decision does not move the ones around it: a decided scene leaves À trier
+    /// that moment, so a decision does not move the ones around it: a decided scene leaves To sort
     /// but stays here, one key away.
     struct Triage: Equatable {
         var batch: String?
@@ -98,7 +98,7 @@ final class LibraryModel: ObservableObject {
     var counts: [LibraryCollection: Int] { LibraryCollection.counts(scenes) }
 
     /// The scene folders a hires is queued or running for, from the queue: they are listed as
-    /// Haute résolution until it ends.
+    /// High resolution until it ends.
     var activeHires: Set<String> = [] {
         didSet {
             guard activeHires != oldValue else { return }
@@ -178,8 +178,8 @@ final class LibraryModel: ObservableObject {
 
     func pickRoot() {
         let panel = NSOpenPanel()
-        panel.title = "Choisir la bibliothèque"
-        panel.message = "Le dossier library, ou une seule nuit."
+        panel.title = "Choose the library"
+        panel.message = "The library folder, or a single night."
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.directoryURL = root
@@ -292,7 +292,7 @@ final class LibraryModel: ObservableObject {
         if visible.contains(where: { $0.id == current }) { selection = current }
     }
 
-    /// Decided scenes over all of the sitting's, for "12 / 35 triées".
+    /// Decided scenes over all of the sitting's, for "12 / 35 sorted".
     var triageProgress: (decided: Int, total: Int)? {
         triage.map { session in (session.order.filter { !isUndecided($0) }.count, session.order.count) }
     }
@@ -424,7 +424,7 @@ final class LibraryModel: ObservableObject {
             failure = nil
             refreshVisible()
         } catch {
-            failure = "Impossible d'écrire \(SceneRatings.fileName) : \(error.localizedDescription)"
+            failure = "Cannot write \(SceneRatings.fileName): \(error.localizedDescription)"
         }
     }
 
@@ -498,10 +498,10 @@ final class LibraryModel: ObservableObject {
     /// The caption written beside a video, ready to paste where it goes.
     func copyCaption(_ url: URL) {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-            failure = "Impossible de lire la légende \(url.lastPathComponent)"
+            failure = "Cannot read the caption \(url.lastPathComponent)"
             return
         }
-        copy(text.trimmingCharacters(in: .whitespacesAndNewlines), note: "Légende copiée")
+        copy(text.trimmingCharacters(in: .whitespacesAndNewlines), note: "Caption copied")
     }
 
     /// Puts text on the pasteboard and says so under the page.
@@ -525,7 +525,7 @@ final class LibraryModel: ObservableObject {
             try folder.restoreRawLook()
             failure = nil
         } catch {
-            failure = "Impossible de revenir au style brut : \(error)"
+            failure = "Cannot revert to the raw style: \(error)"
         }
         loadFacts()
     }

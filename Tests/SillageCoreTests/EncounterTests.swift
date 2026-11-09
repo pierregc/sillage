@@ -264,7 +264,7 @@ struct EncounterTests {
     @Test func fiveGalaxiesArePlaced() {
         var scene = SceneConfig.contemplation(particleCount: 100_000, seed: 11, galaxies: 4)
         var fifth = scene.galaxies[1]
-        fifth.name = "Cinquième"
+        fifth.name = "Fifth"
         scene.galaxies.append(fifth)
         scene.encounters.append(
             Encounter(

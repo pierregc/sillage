@@ -6,7 +6,7 @@ import SwiftUI
 
 /// One scene's style being chosen. The picture and the look file are the model's; this holds
 /// what the editor adds to them: the style as saved, the palettes proposed, the locks, Auto
-/// and Avant/Après.
+/// and Before / After.
 @MainActor
 final class StyleSession: ObservableObject {
     typealias World = SillageRender.Palette.World
@@ -15,7 +15,7 @@ final class StyleSession: ObservableObject {
     let model: SimulationModel
     let catalogue: [LookFile]
     let references: [TelescopeReference]
-    /// `look.json` as it stands: what Annuler goes back to and Avant/Après shows.
+    /// `look.json` as it stands: what Cancel goes back to and Before / After shows.
     @Published private(set) var saved: LookFile?
     /// A look was promoted over the explored one, so the next step is the export.
     @Published private(set) var promoted: Bool
@@ -48,16 +48,16 @@ final class StyleSession: ObservableObject {
     @Published private(set) var autoRunning = false
     /// What Auto found, or why a write failed.
     @Published private(set) var note: String?
-    /// The file the saved style covers while Avant/Après is held.
+    /// The file the saved style covers while Before / After is held.
     @Published private(set) var covered: LookFile?
-    /// The Rendu section's thumbnails, which publish on their own.
+    /// The Rendering section's thumbnails, which publish on their own.
     let thumbnails: StyleThumbnails
 
     /// Proposals shown at a time.
     static let proposalCount = 6
 
     private var coveredFollows = false
-    /// What Lumière, Instrument and Rendu détaillé go back to: the last rendering applied.
+    /// What Light, Instrument and Detailed rendering go back to: the last rendering applied.
     private var renderingBaseline: LookFile?
     private var round = 0
     private var proposing: Task<Void, Never>?
@@ -202,9 +202,9 @@ final class StyleSession: ObservableObject {
         }
         do {
             try FavouritePalettes.remove(favourite, in: favouritesDirectory)
-            note = "Favori retiré : \(favourite.name)"
+            note = "Favourite removed: \(favourite.name)"
         } catch {
-            note = "Favori non retiré : \(error.localizedDescription)"
+            note = "Favourite not removed: \(error.localizedDescription)"
         }
         reloadFavourites()
     }
@@ -213,11 +213,11 @@ final class StyleSession: ObservableObject {
         naming = nil
         do {
             let kept = try FavouritePalettes.save(palette, named: name, in: favouritesDirectory)
-            note = "Favori gardé : palettes/\(kept.name).palette.json"
+            note = "Favourite kept: palettes/\(kept.name).palette.json"
         } catch let error as FavouritePalettes.Failure {
-            note = "Favori non gardé : \(error.description)"
+            note = "Favourite not kept: \(error.description)"
         } catch {
-            note = "Favori non gardé : \(error.localizedDescription)"
+            note = "Favourite not kept: \(error.localizedDescription)"
         }
         reloadFavourites()
     }
@@ -262,11 +262,11 @@ final class StyleSession: ObservableObject {
     private static func describe(_ error: any Error) -> String {
         switch error as? PaletteGenerator.Failure {
         case .tooManyGalaxies:
-            "Les propositions vont jusqu'à 5 galaxies : les couleurs se choisissent une à une."
+            "Proposals go up to 5 galaxies: past that, colours are chosen one by one."
         case .noRoom:
-            "Aucune palette de ce monde ne sépare autant de galaxies."
+            "No palette in this world keeps that many galaxies apart."
         default:
-            "Pas de proposition : \(error)"
+            "No proposal: \(error)"
         }
     }
 
@@ -281,7 +281,7 @@ final class StyleSession: ObservableObject {
 
     private enum AutoFailure: Error, CustomStringConvertible {
         case nothing
-        var description: String { "aucun couple rendu et palette n'a pu être noté" }
+        var description: String { "no rendering and palette pair could be scored" }
     }
 
     /// The best rendering and palette of the world on three key frames of the take (#124),
@@ -326,11 +326,11 @@ final class StyleSession: ObservableObject {
             else { return }
             renderingBaseline = model.lookFile
             note =
-                "Auto : rendu \(StyleNames.rendering(pick.rendering.name)), palette "
+                "Auto: rendering \(StyleNames.rendering(pick.rendering.name)), palette "
                 + "\(pick.palette.family) \(StyleNames.harmony(pick.palette.harmony)), "
-                + "note \(StyleNames.number(pick.score)), la meilleure de \(pick.tried) essais"
+                + "score \(StyleNames.number(pick.score)), the best of \(pick.tried) tries"
         case .failure(let error):
-            note = "Auto n'a pas abouti : \(error)"
+            note = "Auto failed: \(error)"
         }
     }
 
@@ -346,7 +346,7 @@ final class StyleSession: ObservableObject {
         if changed { model.followsPlan = true }
     }
 
-    /// Where a group's Réinitialiser goes: the camera to the saved style, the rest to the last
+    /// Where a group's Reset goes: the camera to the saved style, the rest to the last
     /// rendering applied, else to the saved style.
     func baseline(for group: LookFile.Group) -> LookFile? {
         group == .camera ? saved : renderingBaseline ?? saved
@@ -401,7 +401,7 @@ final class StyleSession: ObservableObject {
             note = nil
             return true
         } catch {
-            note = "Style non enregistré : \(error.localizedDescription)"
+            note = "Style not saved: \(error.localizedDescription)"
             return false
         }
     }
@@ -438,48 +438,48 @@ enum StyleNames {
 
     static func harmony(_ harmony: SillageRender.Palette.Harmony) -> String {
         switch harmony {
-        case .analogous: "analogue"
-        case .complementary: "complémentaire"
-        case .splitComplementary: "complémentaire divisée"
-        case .triadic: "triadique"
-        case .tetradic: "tétradique"
+        case .analogous: "analogous"
+        case .complementary: "complementary"
+        case .splitComplementary: "split complementary"
+        case .triadic: "triadic"
+        case .tetradic: "tetradic"
         case .monochrome: "monochrome"
         }
     }
 
     static func world(_ world: SillageRender.Palette.World) -> String {
         switch world {
-        case .telescope: "Télescope"
-        case .free: "Libre"
+        case .telescope: "Telescope"
+        case .free: "Free"
         }
     }
 
     static func number(_ value: Float) -> String {
-        String(format: "%.2f", value).replacingOccurrences(of: ".", with: ",")
+        String(format: "%.2f", value)
     }
 
     static func oneDecimal(_ value: Float) -> String {
-        String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
+        String(format: "%.1f", value)
     }
 
-    /// Halo, aigrettes, poussières, étoiles de champ and luminosité, the five things a
-    /// rendering changes most.
+    /// Glow, spikes, dust, field stars and brightness, the five things a rendering changes
+    /// most.
     static func traits(_ file: LookFile) -> String {
         let look = file.look
         var parts: [String] = []
-        parts.append("halo \(Self.number(look.bloomIntensity))")
+        parts.append("glow \(Self.number(look.bloomIntensity))")
         if look.spikeArms > 0, look.spikeIntensity > 0 {
-            let pattern = look.spikePattern == .webb ? " de Webb" : ""
-            parts.append("\(look.spikeArms) aigrettes\(pattern)")
+            let pattern = look.spikePattern == .webb ? " Webb" : ""
+            parts.append("\(look.spikeArms)\(pattern) spikes")
         } else {
-            parts.append("sans aigrettes")
+            parts.append("no spikes")
         }
-        parts.append("poussières \(Self.number(look.dustStrength))")
+        parts.append("dust \(Self.number(look.dustStrength))")
         parts.append(
             file.starCount == 0
-                ? "sans étoiles de champ"
-                : "\(file.starCount.formatted(.number.locale(Locale(identifier: "fr_FR")))) étoiles de champ")
-        parts.append("luminosité \(Self.number(look.brightness))")
+                ? "no field stars"
+                : "\(file.starCount.formatted(.number.locale(Locale(identifier: "en_GB")))) field stars")
+        parts.append("brightness \(Self.number(look.brightness))")
         return parts.joined(separator: " · ")
     }
 }

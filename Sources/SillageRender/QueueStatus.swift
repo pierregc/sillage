@@ -2,7 +2,7 @@ import Foundation
 
 /// What the Mac is doing and what is queued, in the words the app, `sillage-render status` and
 /// the remote guide share. Built from the status files (#101) and the queue (#102) only, plus a
-/// look at the running `sillage-render` processes so that "le Mac est libre" is never wrong.
+/// look at the running `sillage-render` processes so that "the Mac is free" is never wrong.
 public struct QueueStatus: Sendable, Equatable {
     public enum Outcome: String, Sendable { case running, waiting, done, failed, cancelled }
 
@@ -12,14 +12,14 @@ public struct QueueStatus: Sendable, Equatable {
         /// The queue's number for it; nil for a stage started from the command line.
         public var job: Int?
         public var outcome: Outcome
-        /// "Haute résolution", "Vidéo", ...
+        /// "High resolution", "Video", ...
         public var title: String
         /// The scene, or the batch, it works on.
         public var subject: String
         /// What it is doing now: "image 412/900".
         public var detail: String?
         public var progress: Double?
-        /// Where it stands in time: "prêt vers 6 h 20", "début vers 6 h 20 · fin vers 7 h 05".
+        /// Where it stands in time: "ready around 06:20", "starts around 06:20 · ends around 07:05".
         public var timing: String?
         public var options: String?
 
@@ -32,7 +32,7 @@ public struct QueueStatus: Sendable, Equatable {
     /// What the top of the sidebar says, without the number of jobs waiting.
     public var headline: String
     /// The headline with the scene and the image it is on, for `status`:
-    /// "Nuit du 25 oct. · haute résolution 2/4 · scene-0023 image 412/900 · prêt vers 6 h 20".
+    /// "Night of 25 Oct · high resolution 2/4 · scene-0023 frame 412/900 · ready around 06:20".
     public var summary: String
     public var isBusy: Bool
     public var isPaused: Bool
@@ -62,26 +62,26 @@ public struct QueueStatus: Sendable, Equatable {
     public var lines: [String] {
         var lines = [statusLine]
         if let running {
-            lines.append("En cours")
+            lines.append("Running")
             lines.append("  " + Self.numbered(running))
         }
         if !waiting.isEmpty {
-            lines.append("En attente")
+            lines.append("Waiting")
             lines += waiting.map { "  " + Self.numbered($0) }
         }
         if !finished.isEmpty {
-            lines.append("Terminés")
+            lines.append("Finished")
             lines += finished.map { "  " + Self.numbered($0) }
         }
         return lines
     }
 
     private static func numbered(_ row: Row) -> String {
-        row.job.map { "n° \($0) · " + row.text } ?? row.text
+        row.job.map { "#\($0) · " + row.text } ?? row.text
     }
 
     public static func waitingText(_ count: Int) -> String {
-        count == 1 ? "1 en attente" : "\(count) en attente"
+        count == 1 ? "1 waiting" : "\(count) waiting"
     }
 }
 
@@ -292,18 +292,18 @@ extension QueueStatus {
 
         let (paused, stuck, busy) = (isPaused, isStuck, isBusy)
         func makeHeadline(detailed: Bool) -> String {
-            var text = "Calcul en cours (sans détail)"
+            var text = "Computing (no detail)"
             if let row {
                 text = Self.headline(
                     row: row, activity: activity, night: inputs.night,
                     ready: paused ? nil : nightReady ?? readyAt, words: words, detailed: detailed)
             }
             if !busy {
-                text = queue.paused ? "File en pause · le Mac est libre" : "Rien en cours · le Mac est libre"
+                text = queue.paused ? "Queue paused · the Mac is free" : "Nothing running · the Mac is free"
             } else if paused {
-                text = "En pause · " + text
+                text = "Paused · " + text
             }
-            if busy, stuck { text += " · semble bloqué, rien écrit depuis \(Words.duration(age))" }
+            if busy, stuck { text += " · seems stuck, nothing written for \(Words.duration(age))" }
             return text
         }
         self.headline = makeHeadline(detailed: false)
@@ -318,10 +318,10 @@ extension QueueStatus {
             if let start = cursor {
                 if let seconds = inputs.estimate(job) {
                     let end = start.addingTimeInterval(seconds)
-                    timing = "début \(words.about(start)) · fin \(words.about(end))"
+                    timing = "starts \(words.about(start)) · ends \(words.about(end))"
                     cursor = end
                 } else {
-                    timing = "début \(words.about(start))"
+                    timing = "starts \(words.about(start))"
                     cursor = nil
                 }
             }
@@ -353,12 +353,12 @@ extension QueueStatus {
     /// The glossary's words for the stages.
     static func title(_ kind: String) -> String {
         switch kind {
-        case "explore": "Aperçus"
-        case "hires": "Haute résolution"
-        case "export": "Vidéo"
+        case "explore": "Previews"
+        case "hires": "High resolution"
+        case "export": "Video"
         case "look": "Style"
         case "palettes": "Palette"
-        case "night": "Nuit"
+        case "night": "Night"
         default: kind.prefix(1).uppercased() + kind.dropFirst()
         }
     }
@@ -369,16 +369,14 @@ extension QueueStatus {
         job.options.isEmpty ? nil : job.options.joined(separator: " ")
     }
 
-    /// "frame 412/900" as the stages write it, in the words the app uses.
+    /// "frame 412/900", as the stages write it.
     static func detail(_ text: String?) -> String? {
         guard let text, !text.isEmpty else { return nil }
-        if text == "starting" { return "démarrage" }
-        if text.hasPrefix("frame ") { return "image " + text.dropFirst("frame ".count) }
         return text
     }
 
     static func readyText(_ date: Date?, _ words: Words) -> String? {
-        date.map { "prêt \(words.about($0))" }
+        date.map { "ready \(words.about($0))" }
     }
 
     static func endText(_ job: QueueJob, _ words: Words) -> String? {
@@ -387,24 +385,24 @@ extension QueueStatus {
         }
         switch job.state {
         case .done:
-            let when = job.ended.map { "terminé \(words.at($0))" }
-            return [when, took.map { "en \($0)" }].compactMap { $0 }.joined(separator: " ")
+            let when = job.ended.map { "done \(words.at($0))" }
+            return [when, took.map { "in \($0)" }].compactMap { $0 }.joined(separator: " ")
         case .failed:
-            let when = job.ended.map { "échec \(words.at($0))" } ?? "échec"
+            let when = job.ended.map { "failed \(words.at($0))" } ?? "failed"
             return [when, job.message].compactMap { $0 }.joined(separator: " · ")
         default:
-            return job.ended.map { "annulé \(words.at($0))" } ?? "annulé"
+            return job.ended.map { "cancelled \(words.at($0))" } ?? "cancelled"
         }
     }
 
-    /// "Nuit du 26 oct. · haute résolution 2/4 · prêt vers 6 h 20", or the job alone.
+    /// "Night of 26 Oct · high resolution 2/4 · ready around 06:20", or the job alone.
     static func headline(
         row: Row, activity: ActivityFile?, night: NightFile?, ready: Date?, words: Words,
         detailed: Bool = false
     ) -> String {
         var parts: [String] = []
         if let running = activity?.night {
-            parts.append("Nuit du " + (words.nightDate(night: running.id, file: night) ?? running.id))
+            parts.append("Night of " + (words.nightDate(night: running.id, file: night) ?? running.id))
             parts.append(Self.phase(running.phase, file: night))
             if detailed, let job = activity?.job {
                 let doing = [job.scene, Self.detail(job.detail)].compactMap { $0 }
@@ -414,11 +412,11 @@ extension QueueStatus {
             parts += [row.title, row.subject]
             if detailed, let detail = row.detail { parts.append(detail) }
         }
-        if let ready { parts.append("prêt \(words.about(ready))") }
+        if let ready { parts.append("ready \(words.about(ready))") }
         return parts.joined(separator: " · ")
     }
 
-    /// "haute résolution 2/4" for the phase a night is in.
+    /// "high resolution 2/4" for the phase a night is in.
     static func phase(_ name: String, file: NightFile?) -> String {
         let label = Self.phaseLabel(name)
         guard let phase = file?.phases.first(where: { $0.name == name }), phase.planned > 0 else {
@@ -429,11 +427,11 @@ extension QueueStatus {
 
     static func phaseLabel(_ name: String) -> String {
         switch name {
-        case "explore": "aperçus"
-        case "pick": "choix"
-        case "hires": "haute résolution"
+        case "explore": "previews"
+        case "pick": "selection"
+        case "hires": "high resolution"
         case "look", "style": "style"
-        case "export": "vidéos"
+        case "export": "videos"
         default: name
         }
     }
@@ -441,8 +439,8 @@ extension QueueStatus {
 
 // MARK: - Words
 
-/// Dates and durations in French, written by hand so that the same text comes out whatever the
-/// machine's language.
+/// Dates and durations written by hand, so that the same text comes out whatever the machine's
+/// language.
 struct Words {
     let now: Date
     let calendar: Calendar
@@ -455,24 +453,23 @@ struct Words {
     }
 
     static let months = [
-        "janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.",
-        "déc.",
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ]
 
-    /// "6 h 20".
+    /// "06:20".
     func clock(_ date: Date) -> String {
         let parts = calendar.dateComponents([.hour, .minute], from: date)
-        return String(format: "%d h %02d", parts.hour ?? 0, parts.minute ?? 0)
+        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
     }
 
-    /// "26 oct.".
+    /// "26 Oct".
     func day(_ date: Date) -> String {
         let parts = calendar.dateComponents([.day, .month], from: date)
         return "\(parts.day ?? 1) \(Self.months[(parts.month ?? 1) - 1])"
     }
 
-    /// The moment with the day only when it is not today: "6 h 20", "demain 6 h 20",
-    /// "28 oct. 6 h 20".
+    /// The moment with the day only when it is not today: "06:20", "tomorrow 06:20",
+    /// "28 Oct 06:20".
     func at(_ date: Date) -> String {
         let days =
             calendar.dateComponents(
@@ -480,39 +477,42 @@ struct Words {
             ).day ?? 0
         switch days {
         case 0: return clock(date)
-        case 1: return "demain " + clock(date)
+        case 1: return "tomorrow " + clock(date)
         default: return day(date) + " " + clock(date)
         }
     }
 
-    /// "vers 6 h 20": an estimate.
-    func about(_ date: Date) -> String { "vers " + at(date) }
+    /// "around 06:20", "tomorrow around 06:20": an estimate.
+    func about(_ date: Date) -> String {
+        let time = clock(date)
+        return String(at(date).dropLast(time.count)) + "around " + time
+    }
 
-    /// "2 h 15", "12 min", "45 s".
+    /// "2 h 15 min", "12 min", "45 s".
     static func duration(_ seconds: TimeInterval) -> String {
         let total = Int(max(seconds, 0).rounded())
-        if total >= 3600 { return String(format: "%d h %02d", total / 3600, total % 3600 / 60) }
+        if total >= 3600 { return String(format: "%d h %02d min", total / 3600, total % 3600 / 60) }
         if total >= 60 { return "\(total / 60) min" }
         return "\(total) s"
     }
 
-    /// "0,91", with a comma.
+    /// "0.91".
     static func decimal(_ value: Double, digits: Int) -> String {
-        String(format: "%.\(digits)f", value).replacingOccurrences(of: ".", with: ",")
+        String(format: "%.\(digits)f", value)
     }
 
-    /// "212,3 Mo", "3,4 Go".
+    /// "212.3 MB", "3.4 GB".
     static func size(megabytes: Double) -> String {
         megabytes >= 1000
-            ? decimal(megabytes / 1000, digits: 1) + " Go" : decimal(megabytes, digits: 1) + " Mo"
+            ? decimal(megabytes / 1000, digits: 1) + " GB" : decimal(megabytes, digits: 1) + " MB"
     }
 
-    /// "2 000 000".
+    /// "2,000,000".
     static func thousands(_ value: Int) -> String {
         var digits = Array(String(abs(value)))
         var index = digits.count - 3
         while index > 0 {
-            digits.insert(" ", at: index)
+            digits.insert(",", at: index)
             index -= 3
         }
         return (value < 0 ? "-" : "") + String(digits)

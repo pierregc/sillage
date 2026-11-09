@@ -19,10 +19,10 @@ struct QueueView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
                         if let running = status.running {
-                            section("En cours") { RunningRow(row: running, paused: status.isPaused) }
+                            section("Running") { RunningRow(row: running, paused: status.isPaused) }
                         }
                         if !status.waiting.isEmpty {
-                            section("En attente") {
+                            section("Waiting") {
                                 ForEach(Array(status.waiting.enumerated()), id: \.element.id) {
                                     position, row in
                                     WaitingRow(row: row, first: position == 0, queue: queue)
@@ -30,7 +30,7 @@ struct QueueView: View {
                             }
                         }
                         if !status.finished.isEmpty {
-                            section("Terminés") {
+                            section("Finished") {
                                 ForEach(status.finished) { FinishedRow(row: $0) }
                             }
                         }
@@ -47,7 +47,7 @@ struct QueueView: View {
     private func header(_ status: QueueStatus) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("File d'attente").font(.title2.weight(.semibold))
+                Text("Queue").font(.title2.weight(.semibold))
                 Text(status.statusLine).foregroundStyle(Palette.secondary)
                 if let failure = queue.failure {
                     Text(failure).font(.callout).foregroundStyle(Palette.warning)
@@ -55,7 +55,7 @@ struct QueueView: View {
             }
             Spacer()
             if status.isPaused || status.running != nil || !status.waiting.isEmpty {
-                Button(status.isPaused ? "Reprendre" : "Mettre en pause") {
+                Button(status.isPaused ? "Resume" : "Pause") {
                     queue.attempt { status.isPaused ? try queue.resume() : try queue.pause() }
                 }
             }
@@ -70,7 +70,7 @@ struct QueueView: View {
                 .font(.system(size: 34))
                 .foregroundStyle(Palette.secondary)
             Text(queue.status.headline).font(.title3)
-            Text("Les calculs lancés depuis l'app ou la ligne de commande apparaîtront ici.")
+            Text("Jobs started from the app or the command line will show here.")
                 .foregroundStyle(Palette.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -107,7 +107,7 @@ private struct RunningRow: View {
                 ProgressView().progressViewStyle(.linear)
             }
             HStack {
-                Text(paused ? "En pause" : (row.detail ?? "En cours"))
+                Text(paused ? "Paused" : (row.detail ?? "Running"))
                 if let progress = row.progress, !paused {
                     Text(String(format: "%.0f %%", progress * 100)).monospacedDigit()
                 }
@@ -148,14 +148,14 @@ private struct WaitingRow: View {
                     } label: {
                         Image(systemName: "arrow.up.to.line")
                     }
-                    .help("Passer en premier")
+                    .help("Move to front")
                 }
                 Button {
                     queue.attempt { try queue.cancel(id) }
                 } label: {
                     Image(systemName: "xmark")
                 }
-                .help("Annuler")
+                .help("Cancel")
             }
         }
         .buttonStyle(.borderless)
@@ -219,7 +219,7 @@ struct SidebarStatus: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .help("Ouvrir la file d'attente")
+            .help("Open the queue")
 
             if model.stage == .running, !model.contemplating {
                 Button(action: openWorkshop) {
@@ -235,7 +235,7 @@ struct SidebarStatus: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 8)
-                .help("Afficher dans l'Atelier")
+                .help("Show in the Workshop")
             }
         }
     }
@@ -247,7 +247,7 @@ struct SidebarStatus: View {
     }
 
     private var workshopTitle: String {
-        if model.mode == .playback { return "Prise ouverte dans l'Atelier" }
-        return model.isPlaying ? "Simulation en cours" : "Simulation en pause"
+        if model.mode == .playback { return "Take open in the Workshop" }
+        return model.isPlaying ? "Simulation running" : "Simulation paused"
     }
 }

@@ -391,15 +391,15 @@ public final class Cinematographer {
                 span: min(base * (1 - depth), value)...max(base * (1 + depth), value))
         }
         readings = [
-            reading("brightness", "luminosité", blended.brightness, base.brightness, 0.42),
-            reading("bloom", "floraison", blended.bloomIntensity, base.bloomIntensity, 0.70),
+            reading("brightness", "brightness", blended.brightness, base.brightness, 0.42),
+            reading("bloom", "bloom", blended.bloomIntensity, base.bloomIntensity, 0.70),
             reading("saturation", "saturation", blended.saturation, base.saturation, 0.45),
-            reading("stretch", "étirement", blended.stretch, base.stretch, 0.55),
-            reading("dust", "poussière", blended.dustStrength, base.dustStrength, 0.65),
-            reading("smoothing", "lissage", blended.smoothingScale, base.smoothingScale, 0.40),
-            reading("sky", "ciel", blended.skyLevel, base.skyLevel, 0.80),
-            reading("tint", "teinte", blended.galaxyTint, base.galaxyTint, 0.50),
-            reading("fov", "champ", blended.fieldOfView, base.fieldOfView, 0.06),
+            reading("stretch", "stretch", blended.stretch, base.stretch, 0.55),
+            reading("dust", "dust", blended.dustStrength, base.dustStrength, 0.65),
+            reading("smoothing", "smoothing", blended.smoothingScale, base.smoothingScale, 0.40),
+            reading("sky", "sky", blended.skyLevel, base.skyLevel, 0.80),
+            reading("tint", "tint", blended.galaxyTint, base.galaxyTint, 0.50),
+            reading("fov", "field", blended.fieldOfView, base.fieldOfView, 0.06),
         ]
         // Deliberately not listed: the kernel ceiling follows how close the camera is rather
         // than any oscillator, and it spends most of its time pinned against its cap, so it

@@ -21,7 +21,7 @@ enum LibraryCheck {
         do {
             try exercise(root)
         } catch {
-            check("le parcours va au bout", false, "\(error)")
+            check("the walk runs to the end", false, "\(error)")
         }
         let report = lines.joined(separator: "\n")
         try? report.write(
@@ -32,7 +32,7 @@ enum LibraryCheck {
     }
 
     private static func check(_ name: String, _ passed: Bool, _ detail: String = "") {
-        lines.append("\(passed ? "OUI" : "NON")  \(name)\(detail.isEmpty ? "" : "  (\(detail))")")
+        lines.append("\(passed ? "ok  " : "FAIL") \(name)\(detail.isEmpty ? "" : "  (\(detail))")")
         if !passed { failures += 1 }
     }
 
@@ -63,12 +63,12 @@ enum LibraryCheck {
         model.watch()
         defer { model.stop() }
         check(
-            "les deux formes de lot sont lues", wait(10) { model.scenes.count == 4 },
-            "\(model.scenes.count) scènes")
-        check("chaque vidéo est jouable", wait(10) { model.playable.count == 4 }, "\(model.playable.count)")
+            "both kinds of batch are read", wait(10) { model.scenes.count == 4 },
+            "\(model.scenes.count) scenes")
+        check("every video is playable", wait(10) { model.playable.count == 4 }, "\(model.playable.count)")
         let ids = model.visible.map(\.id)
         check(
-            "le lot le plus récent vient en premier",
+            "the latest batch comes first",
             ids == [
                 "2026-10-24/scene-0001", "2026-10-24/scene-0002", "2026-10-24/scene-0003",
                 "2026-09-21/scene-0001",
@@ -81,38 +81,39 @@ enum LibraryCheck {
             for scene in scenes where await ThumbnailCache.shared.load(scene) != nil { stills += 1 }
         }
         check(
-            "une vignette par scène, tirée de la vidéo sans thumbnail", wait(10) { stills == 4 }, "\(stills)")
+            "a still per scene, taken from the video when there is no thumbnail",
+            wait(10) { stills == 4 }, "\(stills)")
 
         // Keys, each one saved as it is pressed.
         let first = SceneFolder(batch.appendingPathComponent("scene-0001"))
         model.handle(.right)
-        check("la première flèche choisit la première scène", model.selection == "2026-10-24/scene-0001")
+        check("the first arrow selects the first scene", model.selection == "2026-10-24/scene-0001")
         model.handle(.yes)
         let now = Date()
         model.handle(.digit(1), at: now)
         model.handle(.digit(0), at: now.addingTimeInterval(0.2))
         var saved = SceneRatings.read(batch: first.batch).scenes["scene-0001"]
         check(
-            "Y puis 1 0 : oui et 10 dans ratings.json", saved?.choice == .yes && saved?.rating == 10,
+            "Y then 1 0: yes and 10 in ratings.json", saved?.choice == .yes && saved?.rating == 10,
             "\(String(describing: saved))")
         model.handle(.digit(7), at: now.addingTimeInterval(2))
         model.handle(.digit(0), at: now.addingTimeInterval(4))
         saved = SceneRatings.read(batch: first.batch).scenes["scene-0001"]
-        check("un 0 qui ne suit pas un 1 vaut 0", saved?.rating == 0, "\(String(describing: saved?.rating))")
+        check("a 0 that does not follow a 1 is 0", saved?.rating == 0, "\(String(describing: saved?.rating))")
         model.handle(.right)
         model.handle(.no)
         check(
-            "N sur la scène suivante",
+            "N on the next scene",
             SceneRatings.read(batch: batch).scenes["scene-0002"]?.choice == .no)
         model.columns = 2
         model.handle(.down)
-        check("une ligne plus bas, deux colonnes plus loin", model.selection == "2026-09-21/scene-0001")
+        check("one row down, two columns on", model.selection == "2026-09-21/scene-0001")
         model.handle(.digit(4))
         check(
-            "un lot à plat a son propre ratings.json",
+            "a flat batch has its own ratings.json",
             SceneRatings.read(batch: flat).scenes["scene-0001"]?.rating == 4)
         model.handle(.clear)
-        check("effacer retire la scène du fichier", SceneRatings.read(batch: flat).scenes.isEmpty)
+        check("clear removes the scene from the file", SceneRatings.read(batch: flat).scenes.isEmpty)
 
         // Clicks: one saves, the same one again takes it back.
         let third = "2026-10-24/scene-0003"
@@ -122,100 +123,100 @@ enum LibraryCheck {
         model.rate(6, for: third)
         let rated = SceneRatings.read(batch: batch).scenes["scene-0003"]
         check(
-            "un clic enregistre, un second l'annule",
+            "a click saves, a second one takes it back",
             clicked == .yes && rated?.choice == nil && rated?.rating == 6)
 
         // The collections follow the clicks at once, without waiting for a scan.
         let counts = model.counts
         check(
-            "les compteurs suivent les choix",
+            "the counts follow the choices",
             counts[.toSort] == 2 && counts[.chosen] == 1 && counts[.all] == 4
                 && counts[.toStyle] == nil,
             "\(counts)")
         model.query.collection = .chosen
-        check("Choisies ne montre que les oui", model.visible.map(\.id) == ["2026-10-24/scene-0001"])
+        check("Kept shows only the yes", model.visible.map(\.id) == ["2026-10-24/scene-0001"])
         model.query.collection = .toSort
         check(
-            "À trier ne montre ni les oui ni les non",
+            "To sort shows neither the yes nor the no",
             model.visible.map(\.id) == ["2026-10-24/scene-0003", "2026-09-21/scene-0001"],
             model.visible.map(\.id).joined(separator: " "))
         model.query.search = "0003"
-        check("la recherche porte sur le nom", model.visible.map(\.id) == ["2026-10-24/scene-0003"])
+        check("the search is on the name", model.visible.map(\.id) == ["2026-10-24/scene-0003"])
         model.query = LibraryQuery()
         check(
-            "Toutes garde les écartées",
+            "All keeps the discarded ones",
             model.visible.count == 4 && model.visible.contains { $0.stage == .discarded })
 
         // Filters.
         model.query.choice = .yes
-        check("filtre oui", model.visible.map(\.id) == ["2026-10-24/scene-0001"])
+        check("yes filter", model.visible.map(\.id) == ["2026-10-24/scene-0001"])
         model.query = LibraryQuery()
         model.query.archetype = "antennae"
-        check("filtre par archétype", model.visible.map(\.id) == ["2026-10-24/scene-0001"])
+        check("archetype filter", model.visible.map(\.id) == ["2026-10-24/scene-0001"])
         model.query = LibraryQuery()
         model.query.archetype = LibraryQuery.free
-        check("les scènes sans archétype sont libres", model.visible.count == 3)
+        check("scenes without an archetype are free", model.visible.count == 3)
         model.query = LibraryQuery()
         model.query.batch = "2026-09-21"
-        check("filtre par lot", model.visible.map(\.id) == ["2026-09-21/scene-0001"])
+        check("batch filter", model.visible.map(\.id) == ["2026-09-21/scene-0001"])
         model.query = LibraryQuery()
         model.query.order = .rating
         check(
-            "tri par note", model.visible.first?.id == "2026-10-24/scene-0003",
+            "sort by rating", model.visible.first?.id == "2026-10-24/scene-0003",
             model.visible.map(\.id).joined(separator: " "))
         model.query = LibraryQuery()
         model.query.choice = .undecided
         model.selection = third
         model.handle(.yes)
         check(
-            "une scène qui sort du filtre laisse la sélection à la suivante",
+            "a scene leaving the filter hands the selection to the next",
             model.selection == "2026-09-21/scene-0001" && !model.visible.contains { $0.id == third },
-            model.selection ?? "aucune")
+            model.selection ?? "none")
         model.query = LibraryQuery()
 
         // Another tool writes the file.
         try SceneRatings.update(batch: batch, scene: "scene-0002") { $0.rating = 3 }
         check(
-            "un ratings.json changé ailleurs est relu",
+            "a ratings.json changed elsewhere is read again",
             wait(6) { model.entries["2026-10-24/scene-0002"]?.rating == 3 })
 
         // A render still writing its preview, then finishing it.
         let arriving = SceneFolder(batch.appendingPathComponent("scene-0004"))
         try FileManager.default.createDirectory(at: arriving.url, withIntermediateDirectories: true)
         try PNGWriter.write(pixels(tint: 5), width: width, height: height, to: arriving.thumbnail)
-        try Data("pas encore une vidéo".utf8).write(to: arriving.preview)
-        check("une scène qui arrive apparaît sans rien relancer", wait(6) { model.scenes.count == 5 })
-        check("tant qu'elle s'écrit elle ne joue pas", !model.playable.contains("2026-10-24/scene-0004"))
+        try Data("not a video yet".utf8).write(to: arriving.preview)
+        check("an arriving scene shows without restarting anything", wait(6) { model.scenes.count == 5 })
+        check("while it is being written it does not play", !model.playable.contains("2026-10-24/scene-0004"))
         try writeVideo(to: arriving.preview, tint: 5)
-        check("finie, elle joue", wait(8) { model.playable.contains("2026-10-24/scene-0004") })
+        check("finished, it plays", wait(8) { model.playable.contains("2026-10-24/scene-0004") })
 
         // One player, following the pointer, then the opened scene.
         model.selection = "2026-10-24/scene-0001"
-        check("la sélection joue", model.playing == "2026-10-24/scene-0001")
+        check("the selection plays", model.playing == "2026-10-24/scene-0001")
         model.hover("2026-10-24/scene-0002", inside: true)
-        check("le survol joue", wait(2) { model.playing == "2026-10-24/scene-0002" })
+        check("hovering plays", wait(2) { model.playing == "2026-10-24/scene-0002" })
         model.open("2026-10-24/scene-0003")
-        check("la scène ouverte passe avant le survol", model.playing == "2026-10-24/scene-0003")
+        check("the open scene comes before hovering", model.playing == "2026-10-24/scene-0003")
         check(
-            "le lecteur lit vraiment",
+            "the player really plays",
             wait(5) { model.player.currentItem?.status == .readyToPlay },
             "\(model.player.currentItem?.status.rawValue ?? -1)")
-        check("échap referme", model.handle(.close) && model.opened == nil)
+        check("escape closes", model.handle(.close) && model.opened == nil)
         model.hover("2026-10-24/scene-0002", inside: false)
         check(
-            "un seul lecteur", model.player.items().count <= 3,
-            "\(model.player.items().count) éléments en file")
+            "a single player", model.player.items().count <= 3,
+            "\(model.player.items().count) items queued")
 
         var clock = Date()
         try renderShot(model)
 
         // The card says what the scene is and where it stands.
         var sample = model.scenes[0]
-        check("pas de vidéo, pas de compteur", LibraryCard.videoCount(sample) == nil)
+        check("no video, no count", LibraryCard.videoCount(sample) == nil)
         sample.exports = [URL(fileURLWithPath: "/a.mp4"), URL(fileURLWithPath: "/b.mp4")]
-        check("le compteur de vidéos", LibraryCard.videoCount(sample) == 2)
+        check("the video count", LibraryCard.videoCount(sample) == 2)
         check(
-            "chaque étape a une pastille",
+            "every step has a pill",
             Set(SceneStage.allCases.map(\.pillTitle)).count == SceneStage.allCases.count)
 
         // A library of about a hundred scenes with every kind of file, read in one scan.
@@ -245,9 +246,9 @@ enum LibraryCheck {
         let hundred = SceneLibrary.scan(stages)
         let hundredScan = Date().timeIntervalSince(clock)
         check(
-            "100 scènes à toutes les étapes lues en moins de 50 ms",
+            "100 scenes at every step read in under 50 ms",
             hundred.count == 100 && hundredScan < 0.05 && Set(hundred.map(\.stage)).count >= 5,
-            "\(ms(hundredScan)), \(Set(hundred.map(\.stage)).count) étapes")
+            "\(ms(hundredScan)), \(Set(hundred.map(\.stage)).count) steps")
 
         // A batch of four hundred, the size a night produces.
         let crowd = root.appendingPathComponent("2026-10-25", isDirectory: true)
@@ -260,30 +261,30 @@ enum LibraryCheck {
         clock = Date()
         let scanned = SceneLibrary.scan(root)
         let scan = Date().timeIntervalSince(clock)
-        check("405 scènes lues en moins d'une demi-seconde", scanned.count == 405 && scan < 0.5, ms(scan))
+        check("405 scenes read in under half a second", scanned.count == 405 && scan < 0.5, ms(scan))
         clock = Date()
         let arrived = wait(30) { model.scenes.count == 405 }
-        check("le lot entier arrive dans la fenêtre", arrived, ms(Date().timeIntervalSince(clock)))
+        check("the whole batch reaches the window", arrived, ms(Date().timeIntervalSince(clock)))
         clock = Date()
         let probed = wait(120) { model.playable.count == 405 }
         check(
-            "chaque vidéo sondée une fois", probed,
-            "\(model.playable.count) en \(ms(Date().timeIntervalSince(clock)))")
+            "every video probed once", probed,
+            "\(model.playable.count) in \(ms(Date().timeIntervalSince(clock)))")
         clock = Date()
         for _ in 0..<10 { _ = model.query.apply(model.scenes, entries: model.entries) }
         let filter = Date().timeIntervalSince(clock) / 10
-        check("trier et filtrer 405 scènes tient dans une image", filter < 0.008, ms(filter))
+        check("sorting and filtering 405 scenes fits in a frame", filter < 0.008, ms(filter))
         clock = Date()
         model.selection = "2026-10-25/scene-0200"
         model.handle(.digit(8))
         let click = Date().timeIntervalSince(clock)
-        check("un choix dans un lot de 400 est immédiat", click < 0.016, ms(click))
+        check("a choice in a batch of 400 is immediate", click < 0.016, ms(click))
         let rescans = model.scenes.count
         clock = Date()
         _ = wait(2.5) { false }
         check(
-            "un scan qui ne trouve rien de neuf ne change rien", model.scenes.count == rescans,
-            "dernier scan \(ms(model.lastScan))")
+            "a scan that finds nothing new changes nothing", model.scenes.count == rescans,
+            "last scan \(ms(model.lastScan))")
 
         try exerciseTriage()
         try exerciseScenePage()
@@ -331,7 +332,7 @@ enum LibraryCheck {
         try FileManager.default.createDirectory(at: done.exports, withIntermediateDirectories: true)
         try writeVideo(to: done.export(preset: "1080p"), tint: 12)
         try writeVideo(to: done.export(preset: "whatsapp", codec: nil), tint: 3)
-        try Data("légende".utf8).write(to: done.exports.appendingPathComponent("whatsapp.txt"))
+        try Data("caption".utf8).write(to: done.exports.appendingPathComponent("whatsapp.txt"))
         let frame = [UInt8](repeating: 200, count: 16 * 16 * 4)
         try AnimatedImage.write(
             [frame, frame], width: 16, height: 16, framesPerSecond: 10, format: .gif,
@@ -349,7 +350,7 @@ enum LibraryCheck {
         queue.runnerURL = nil
         renderQueue = queue
         defer { renderQueue = nil }
-        check("trois scènes pour la page", wait(10) { model.scenes.count == 3 && model.playable.count == 3 })
+        check("three scenes for the page", wait(10) { model.scenes.count == 3 && model.playable.count == 3 })
         let id = { (index: Int) in "2026-10-26/" + String(format: "scene-%04d", index) }
 
         stills = 0
@@ -357,59 +358,59 @@ enum LibraryCheck {
         Task { for scene in pageScenes where await ThumbnailCache.shared.load(scene) != nil { stills += 1 } }
         _ = wait(10) { stills == 3 }
         model.open(id(1))
-        check("un clic ouvre la page de la scène", model.opened == id(1) && model.selection == id(1))
-        check("ce que la page lit arrive", wait(5) { model.facts?.id == id(1) })
+        check("a click opens the scene's page", model.opened == id(1) && model.selection == id(1))
+        check("what the page reads arrives", wait(5) { model.facts?.id == id(1) })
         let scene = try found(model.scene(id(1)))
         check(
-            "versions : aperçu, haute résolution, puis chaque vidéo",
-            scene.versions.map(\.title) == ["Aperçu", "Haute résolution", "Vidéo 1080p", "Vidéo whatsapp"],
+            "versions: preview, high resolution, then each video",
+            scene.versions.map(\.title) == ["Preview", "High resolution", "Video 1080p", "Video whatsapp"],
             scene.versions.map(\.title).joined(separator: ", "))
         check(
-            "la page joue d'abord la vidéo exportée",
+            "the page plays the exported video first",
             model.playingURL?.lastPathComponent == "1080p.mp4" && model.playing == id(1))
         model.version = done.hiresVideo
-        check("choisir une version la joue à la place", model.playingURL == done.hiresVideo)
+        check("choosing a version plays it instead", model.playingURL == done.hiresVideo)
         check(
-            "un seul décodeur",
+            "a single decoder",
             model.player.items().count <= 3
                 && wait(5) {
                     model.player.currentItem?.status == .readyToPlay
                 })
         let states = SceneStep.states(scene, entry: model.entries[id(1)])
-        check("tout est fait, rien n'est la suite", SceneStep.allCases.allSatisfy { states[$0] == .done })
+        check("all is done, nothing is next", SceneStep.allCases.allSatisfy { states[$0] == .done })
         let facts = model.facts
         check(
-            "la page lit l'histoire, le calcul et le style",
+            "the page reads the story, the computation and the style",
             facts?.story?.endMyr == 461 && facts?.hires?.particles == 8_000_000
                 && facts?.styleName == "dream" && facts?.palette.count == 2 && facts?.rawStyle == false
                 && facts?.otherLooks.map(\.name) == ["raw"],
-            facts?.styleName ?? "pas de style")
+            facts?.styleName ?? "no style")
         let drawn = facts?.hires.map { Format.particles($0.particles, massive: $0.massive) }
         check(
-            "la haute résolution dit ses particules massives",
-            drawn == "8\u{A0}M particules dont 2\u{A0}M massives" && scene.hires?.massive == 2_000_000,
-            drawn ?? "pas de calcul")
-        check("graine et index du lot", scene.seed == "20261026" && scene.index == 1)
+            "the high resolution gives its massive particles",
+            drawn == "8\u{A0}M particles (2\u{A0}M massive)" && scene.hires?.massive == 2_000_000,
+            drawn ?? "no computation")
+        check("seed and index in the batch", scene.seed == "20261026" && scene.index == 1)
         let files = model.facts?.exports ?? []
         check(
-            "chaque fichier de exports/ a sa ligne, la légende reste à sa vidéo",
+            "each file of exports/ has its row, the caption stays with its video",
             Set(files.map(\.url.lastPathComponent)) == ["1080p.mp4", "whatsapp.mp4", "1080p-dream.gif"]
                 && files.first { $0.url.lastPathComponent == "whatsapp.mp4" }?.caption?.lastPathComponent
                     == "whatsapp.txt",
             files.map(\.url.lastPathComponent).joined(separator: ", "))
         let exported = files.first { $0.url.lastPathComponent == "1080p.mp4" }
         check(
-            "préréglage, codec, taille, durée et poids lus",
+            "preset, codec, size, duration and weight read",
             exported?.preset == "1080p" && exported?.codec == "H.264" && exported?.size != nil
                 && (exported?.seconds ?? 0) > 0 && (exported?.bytes ?? 0) > 0,
-            exported.map { ExportRow.details($0) } ?? "pas de ligne")
+            exported.map { ExportRow.details($0) } ?? "no row")
         let still = files.first { $0.url.lastPathComponent == "1080p-dream.gif" }
         check(
-            "un GIF est une image avec son style, pas une vidéo",
+            "a GIF is an image with its style, not a video",
             still?.isImage == true && still?.codec == "GIF" && still?.style == "dream"
                 && still?.size == "16×16" && !scene.videos.contains { $0.pathExtension == "gif" })
         check(
-            "les noms de fichiers disent préréglage et style",
+            "file names give preset and style",
             ExportedFile.names(of: "4k-aurora") == ("4k", "aurora")
                 && ExportedFile.names(of: "1080p-h264") == ("1080p", nil)
                 && ExportedFile.names(of: "1080p-gold-leaf-hevc") == ("1080p", "gold-leaf")
@@ -417,15 +418,17 @@ enum LibraryCheck {
                 && ExportedFile.names(of: "montage").preset == nil)
         model.copyCaption(try found(files.first { $0.caption != nil }?.caption))
         check(
-            "copier la légende met son texte dans le presse-papiers",
-            model.pasteboard.string(forType: .string) == "légende" && model.copiedNote == "Légende copiée")
+            "copying the caption puts its text on the pasteboard",
+            model.pasteboard.string(forType: .string) == "caption" && model.copiedNote == "Caption copied")
         model.version = still?.url
-        check("lire un GIF ne lance pas le lecteur", model.playing == nil || model.playingURL != still?.url)
+        check(
+            "showing a GIF does not start the player",
+            model.playing == nil || model.playingURL != still?.url)
         model.version = nil
         // A new export lands and the next scan lists it.
         try writeVideo(to: done.export(preset: "square"), tint: 5)
         check(
-            "un export qui arrive s'ajoute à la liste",
+            "an arriving export joins the list",
             wait(8) { model.facts?.exports.count == 4 })
         render(ScenePage(model: model, scene: scene, snapshot: true), to: "out/ui-scene-page.png")
 
@@ -433,14 +436,14 @@ enum LibraryCheck {
 
         model.restoreRawLook(scene)
         check(
-            "revenir au style brut garde l'autre dans looks/",
+            "back to the raw style keeps the other in looks/",
             done.hasRawLook && FileManager.default.fileExists(atPath: done.lookFile(named: "dream").path)
                 && wait(5) { model.facts?.rawStyle == true })
 
         // Neighbours in the collection, and a choice that takes the scene out of it.
         model.handle(.right)
         check(
-            "→ passe à la voisine et revient à sa version par défaut",
+            "→ moves to the neighbour and back to its default version",
             model.opened == id(2) && model.version == nil
                 && model.playingURL == folders[1].preview)
         model.close()
@@ -448,12 +451,12 @@ enum LibraryCheck {
         model.open(id(2))
         model.handle(.yes)
         check(
-            "oui sur la page : la scène quitte À trier mais la page reste",
+            "yes on the page: the scene leaves To sort but the page stays",
             model.opened == id(2) && !model.visible.contains { $0.id == id(2) }
                 && model.entries[id(2)]?.choice == .yes)
         let chosen = try found(model.scene(id(2)))
         let next = SceneStep.states(chosen, entry: model.entries[id(2)])
-        check("la suite est la haute résolution", next[.highResolution] == .next && next[.style] == .later)
+        check("next is the high resolution", next[.highResolution] == .next && next[.style] == .later)
         model.query.collection = .chosen
         model.open(id(3))
         _ = wait(5) { model.facts?.id == id(3) }
@@ -461,16 +464,16 @@ enum LibraryCheck {
             ScenePage(model: model, scene: try found(model.scene(id(3))), snapshot: true),
             to: "out/ui-scene-page-next.png")
         model.handle(.left)
-        check("← passe à la voisine de Choisies", model.opened == id(2), model.opened ?? "fermée")
+        check("← moves to the neighbour in Kept", model.opened == id(2), model.opened ?? "closed")
         model.handle(.digit(6))
-        check("un chiffre note la scène de la page", model.entries[id(2)]?.rating == 6)
+        check("a digit rates the page's scene", model.entries[id(2)]?.rating == 6)
         check(
-            "échap revient à la grille sur la même scène",
+            "escape goes back to the grid on the same scene",
             model.handle(.close) && model.opened == nil && model.selection == id(2))
         model.handle(.open)
-        check("espace rouvre la page", model.opened == id(2))
+        check("space opens the page again", model.opened == id(2))
         model.stop()
-        check("quitter la bibliothèque ferme la page", model.opened == nil && model.playing == nil)
+        check("leaving the library closes the page", model.opened == nil && model.playing == nil)
     }
 
     private struct Missing: Error {}
@@ -487,7 +490,7 @@ enum LibraryCheck {
         write(page.frame(width: 1180, height: 940), to: path)
     }
 
-    /// Calculer and Exporter through the queue, as the form and the sheet plan them, without a
+    /// Compute and Export through the queue, as the form and the sheet plan them, without a
     /// runner: the jobs are checked in `queue.json`, shown on the page and cancelled.
     private static func exerciseStageJobs(
         _ model: LibraryModel, queue: QueueModel, done: SceneFolder, chosen: SceneFolder,
@@ -495,7 +498,7 @@ enum LibraryCheck {
     ) throws {
         let quotes = StageQuotes.read([done, chosen], library: queue.store.library)
         check(
-            "chaque taille de haute résolution a sa durée",
+            "every high resolution size has its duration",
             StageJobs.hiresSizes.filter { $0 <= quotes.maximum }.allSatisfy { quotes.hires[$0] != nil },
             quotes.sizes.map {
                 "\(StageJobs.particles($0, massive: StageJobs.massive(drawing: $0))) "
@@ -503,7 +506,7 @@ enum LibraryCheck {
             }
             .joined(separator: ", "))
 
-        // Calculer draws as a night does: Auto is its 8 M from 2 M massive while the evening leaves
+        // Compute draws as a night does: Auto is its 8 M from 2 M massive while the evening leaves
         // room, and every size past 2 M has light tracers.
         let alone = StageQuotes.read([chosen], library: queue.store.library)
         // The Mac idle at a fixed evening, whatever else runs on it, so the picture says when.
@@ -515,25 +518,25 @@ enum LibraryCheck {
         let form = HiresForm(queue: idle, folders: [chosen], quotes: alone, clock: { evening })
         let menu = form.choices
         check(
-            "Auto tire 8 M dont 2 M massives, comme une nuit",
-            menu.first?.hasPrefix("Auto · 8\u{A0}M dont 2\u{A0}M massives, environ ") == true
+            "Auto draws 8 M with 2 M massive, as a night does",
+            menu.first?.hasPrefix("Auto · 8\u{A0}M (2\u{A0}M massive), about ") == true
                 && form.planned.map(\.options) == [["--particles", "8000000", "--massive", "2000000"]],
-            menu.first ?? "pas de menu")
+            menu.first ?? "no menu")
         let sizes = [
-            (1_000_000, "1\u{A0}M, environ "), (2_000_000, "2\u{A0}M, environ "),
-            (5_000_000, "5\u{A0}M dont 2\u{A0}M massives, environ "),
-            (8_000_000, "8\u{A0}M dont 2\u{A0}M massives, environ "),
-            (10_000_000, "10\u{A0}M dont 2\u{A0}M massives, environ "),
+            (1_000_000, "1\u{A0}M, about "), (2_000_000, "2\u{A0}M, about "),
+            (5_000_000, "5\u{A0}M (2\u{A0}M massive), about "),
+            (8_000_000, "8\u{A0}M (2\u{A0}M massive), about "),
+            (10_000_000, "10\u{A0}M (2\u{A0}M massive), about "),
         ].filter { $0.0 <= alone.maximum }
         check(
-            "chaque taille dit ses massives et sa durée",
+            "every size gives its massive count and its duration",
             menu.count == sizes.count + 1 && zip(menu.dropFirst(), sizes).allSatisfy { $0.hasPrefix($1.1) },
             menu.joined(separator: " | "))
         let real = StageJobs.hiresSeconds(chosen, particles: 8_000_000, cost: alone.cost) ?? 0
         check(
-            "8 M dont 2 M massives se paie moins qu'un vrai 8 M",
+            "8 M with 2 M massive costs less than a real 8 M",
             (alone.hires[8_000_000] ?? .infinity) < real * 0.6,
-            "\(Format.duration(alone.hires[8_000_000] ?? 0)) contre \(Format.duration(real))")
+            "\(Format.duration(alone.hires[8_000_000] ?? 0)) against \(Format.duration(real))")
         write(
             VStack(alignment: .leading, spacing: 12) {
                 form
@@ -553,24 +556,24 @@ enum LibraryCheck {
         let hires = try found(form.planned.first)
         let forecast = StageForecast(jobs: [hires], status: queue.status, now: Date())
         check(
-            "Calculer dit quand ce sera prêt",
-            forecast.summary.contains("prêt vers") || forecast.summary.contains("avant celui-ci"),
+            "Compute says when it will be ready",
+            forecast.summary.contains("ready ") || forecast.summary.contains("ahead of this one"),
             forecast.summary)
         render(
             ScenePage(model: model, scene: try found(model.scene(id(3))), snapshot: true),
             to: "out/ui-scene-page-hires.png")
-        check("Calculer ajoute une haute résolution", queue.submit([hires]) == 1)
+        check("Compute adds a high resolution", queue.submit([hires]) == 1)
         let queued = queue.queue.unfinished(at: chosen)
         check(
-            "la tâche vise la scène, la taille et ses massives",
+            "the job targets the scene, the size and its massive count",
             queued.count == 1 && queued.first?.kind == .hires
                 && queued.first?.options == ["--particles", "8000000", "--massive", "2000000"]
                 && SceneFolder(path: queued.first?.path ?? "").url.path == chosen.url.path,
-            queued.first?.summary ?? "rien")
+            queued.first?.summary ?? "nothing")
         let waiting = queued.first.map { StageJobs.title(of: $0) }
-        check("en attente, elle le dit", waiting == "8\u{A0}M dont 2\u{A0}M massives", waiting ?? "rien")
+        check("waiting, it says so", waiting == "8\u{A0}M (2\u{A0}M massive)", waiting ?? "nothing")
         check(
-            "la même demande n'est pas ajoutée deux fois",
+            "the same request is not added twice",
             queue.submit([
                 StageJobs.hires(
                     chosen, particles: 5_000_000, massive: StageJobs.massive(drawing: 5_000_000),
@@ -579,9 +582,9 @@ enum LibraryCheck {
                 == 0)
         model.activeHires = queue.activeHires
         check(
-            "la scène passe en Haute résolution le temps du calcul",
+            "the scene moves to High resolution while it computes",
             model.scene(id(3))?.stage == .highResolution && model.counts[.highResolution] == 1,
-            "\(model.scene(id(3))?.stage.rawValue ?? "absente"), \(model.counts)")
+            "\(model.scene(id(3))?.stage.rawValue ?? "missing"), \(model.counts)")
 
         let state = quotes.exports[done.url.path] ?? .init()
         let plan = { (choice: ExportChoice, settings: ExportSettings) in
@@ -590,40 +593,42 @@ enum LibraryCheck {
         }
         let again = plan(.hd, ExportSettings())
         check(
-            "le même export après la même prise remplace son fichier",
+            "the same export of the same take replaces its file",
             again.replaces && again.output == done.export(preset: "1080p"),
-            again.output?.lastPathComponent ?? "rien")
+            again.output?.lastPathComponent ?? "nothing")
         var styled = ExportSettings()
         styled.look = model.facts?.otherLooks.first
         let otherLook = plan(.hd, styled)
         check(
-            "un autre style va dans un fichier à lui",
+            "another style goes to a file of its own",
             !otherLook.replaces && otherLook.output?.lastPathComponent == "1080p-raw.mp4"
                 && otherLook.options.contains(done.rawLook.path),
             otherLook.options.joined(separator: " "))
         var prores = ExportSettings()
         prores.codec = .prores
         check(
-            "ProRes écrit un .mov à côté",
+            "ProRes writes a .mov beside it",
             plan(.uhd, prores).output?.lastPathComponent == "4k-prores.mov"
                 && plan(.whatsapp, prores).output?.lastPathComponent == "whatsapp.mp4")
         let sheet = ExportSheet(
             queue: queue, folders: [done], looks: model.facts?.otherLooks ?? [], close: {},
             ticked: [.uhd, .webp], quotes: quotes)
         check(
-            "chaque case cochée est une tâche, avec sa durée",
-            sheet.planned.map(\.title) == ["4K", "Aperçu animé WebP"]
+            "each ticked card is a job, with its duration",
+            sheet.planned.map(\.title) == ["4K", "Animated WebP preview"]
                 && sheet.planned.allSatisfy { $0.seconds != nil })
         write(sheet.environment(\.offscreen, true), to: "out/ui-export-sheet.png")
-        check("Exporter ajoute une tâche par case", queue.submit(sheet.planned) == 2)
+        check("Export adds a job per card", queue.submit(sheet.planned) == 2)
         let exports = queue.queue.unfinished(at: done).filter { $0.kind == .export }
         check(
-            "les exports attendent avec leur fichier",
-            exports.map { StageJobs.title(of: $0) } == ["4K · 4k.mp4", "Aperçu animé WebP · preview.webp"],
+            "the exports wait with their file",
+            exports.map { StageJobs.title(of: $0) } == [
+                "4K · 4k.mp4", "Animated WebP preview · preview.webp",
+            ],
             exports.map { StageJobs.title(of: $0) }.joined(separator: ", "))
         queue.refresh()
         check(
-            "chaque tâche en attente a sa ligne dans la file",
+            "each waiting job has its row in the queue",
             exports.allSatisfy { queue.row($0.id) != nil })
         render(
             ScenePage(model: model, scene: try found(model.scene(id(1))), snapshot: true),
@@ -631,7 +636,7 @@ enum LibraryCheck {
         let first = try found(exports.first)
         queue.attempt { try queue.cancel(first.id) }
         check(
-            "Annuler retire la tâche de la file",
+            "Cancel removes the job from the queue",
             queue.failure == nil && queue.queue.job(first.id)?.state == .cancelled
                 && queue.queue.unfinished(at: done).count == 1)
     }
@@ -659,7 +664,7 @@ enum LibraryCheck {
         model.watch()
         defer { model.stop() }
         model.query.collection = .toSort
-        check("cinq scènes à trier", wait(10) { model.visible.count == 5 }, "\(model.visible.count)")
+        check("five scenes to sort", wait(10) { model.visible.count == 5 }, "\(model.visible.count)")
         let id = { (index: Int) in "2026-10-26/" + String(format: "scene-%04d", index) }
         func saved(_ index: Int) -> SceneRatings.Entry? {
             SceneRatings.read(batch: night).scenes[String(format: "scene-%04d", index)]
@@ -667,78 +672,78 @@ enum LibraryCheck {
 
         model.startTriage(batch: "2026-10-26")
         check(
-            "trier ouvre la première scène de la nuit, dans l'ordre du tri",
+            "sorting opens the night's first scene, in sort order",
             model.triage?.current == id(1) && model.triage?.order.count == 4,
-            model.triage?.current ?? "fermé")
-        check("0 / 4 triées", model.triageProgress?.decided == 0 && model.triageProgress?.total == 4)
+            model.triage?.current ?? "closed")
+        check("0 / 4 sorted", model.triageProgress?.decided == 0 && model.triageProgress?.total == 4)
         model.handle(.digit(7))
         check(
-            "un chiffre note sans changer de scène",
+            "a digit rates without changing scene",
             model.triage?.current == id(1) && saved(1)?.rating == 7)
         model.handle(.yes)
         check(
-            "oui s'écrit tout de suite et passe à la suivante",
+            "yes is written at once and moves to the next",
             saved(1)?.choice == .yes && model.triage?.current == id(2))
-        check("1 / 4 triées", model.triageProgress?.decided == 1)
+        check("1 / 4 sorted", model.triageProgress?.decided == 1)
         let now = Date()
         model.handle(.digit(1), at: now)
         model.handle(.digit(0), at: now.addingTimeInterval(0.3))
-        check("1 puis 0 vaut 10", saved(2)?.rating == 10 && model.triage?.current == id(2))
+        check("1 then 0 is 10", saved(2)?.rating == 10 && model.triage?.current == id(2))
         model.handle(.no)
         check(
-            "non écarte et passe à la suivante",
+            "no discards and moves to the next",
             saved(2)?.choice == .no && model.triage?.current == id(3))
         check(
-            "la scène décidée a quitté À trier mais reste dans la séance",
+            "the decided scene has left To sort but stays in the session",
             !model.visible.contains { $0.id == id(1) } && model.triage?.order.contains(id(1)) == true)
         model.handle(.left)
-        check("← revient sur la scène décidée", model.triage?.current == id(2))
+        check("← goes back to the decided scene", model.triage?.current == id(2))
         model.handle(.right)
         model.handle(.right)
         model.handle(.right)
-        check("→ s'arrête à la dernière", model.triage?.current == id(4))
+        check("→ stops at the last one", model.triage?.current == id(4))
         model.handle(.left)
         model.handle(.left)
         model.handle(.left)
         model.handle(.clear)
         check(
-            "effacer vide la scène et la rend à trier",
+            "clear empties the scene and hands it back to sort",
             saved(1) == nil && model.triageProgress?.decided == 1 && model.triage?.current == id(1))
         model.handle(.right)
         model.handle(.right)
         model.handle(.yes)
         check(
-            "oui sur la 3 va à la prochaine à trier, la 4",
+            "yes on the 3rd goes to the next to sort, the 4th",
             saved(3)?.choice == .yes && model.triage?.current == id(4))
 
         renderTriage(model, to: "out/ui-triage.png")
         try addScene(5)
         check(
-            "une scène qui arrive en cours de séance la rejoint",
+            "a scene arriving during the session joins it",
             wait(6) { model.triageProgress?.total == 5 }, "\(model.triageProgress?.total ?? 0)")
         model.handle(.yes)
-        check("la prochaine à trier fait le tour du début", model.triage?.current == id(5))
+        check("the next to sort wraps round to the start", model.triage?.current == id(5))
         model.handle(.no)
         check(
-            "il reste la première, que l'on a effacée",
+            "the first one is left, the one that was cleared",
             model.triage?.current == id(1) && model.triage?.finished == false)
         model.handle(.yes)
         check(
-            "tout est trié : 5 / 5 et la séance le dit",
+            "all is sorted: 5 / 5 and the session says so",
             model.triage?.finished == true && model.triageProgress?.decided == 5
                 && model.triageProgress?.total == 5)
-        check("rien ne se décide quand tout est trié", !model.handle(.yes) && saved(1)?.choice == .yes)
+        check("nothing is decided when all is sorted", !model.handle(.yes) && saved(1)?.choice == .yes)
         renderTriage(model, to: "out/ui-triage-finished.png")
         model.handle(.left)
-        check("← sort de la fin", model.triage?.finished == false)
-        check("échap quitte la séance", model.handle(.close) && model.triage == nil)
+        check("← leaves the end", model.triage?.finished == false)
+        check("escape leaves the session", model.handle(.close) && model.triage == nil)
         check(
-            "à trier ne garde que la scène de l'autre nuit",
+            "to sort keeps only the other night's scene",
             model.visible.map(\.id) == ["2026-10-25/scene-0001"])
         model.startTriage()
-        check("une séance sur À trier tout entier", model.triageProgress?.total == 1)
+        check("a session on the whole of To sort", model.triageProgress?.total == 1)
         model.stop()
-        check("quitter la bibliothèque ferme la séance", model.triage == nil)
+        check("leaving the library closes the session", model.triage == nil)
     }
 
     private static func ms(_ seconds: TimeInterval) -> String { String(format: "%.1f ms", seconds * 1000) }
@@ -802,14 +807,14 @@ enum LibraryCheck {
         guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
             let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
         else {
-            check("\(path) se rend", false)
+            check("\(path) renders", false)
             return
         }
         let url = URL(fileURLWithPath: path)
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? png.write(to: url)
-        check("\(path) se rend", true)
+        check("\(path) renders", true)
     }
 
     private static func renderShot(_ model: LibraryModel) throws {
@@ -838,13 +843,13 @@ enum LibraryCheck {
         guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
             let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
         else {
-            check("la grille se rend", false)
+            check("the grid renders", false)
             return
         }
         let url = URL(fileURLWithPath: "out/ui-library.png")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try png.write(to: url)
-        check("la grille se rend", true, url.path)
+        check("the grid renders", true, url.path)
     }
 }

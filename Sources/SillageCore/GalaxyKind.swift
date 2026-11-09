@@ -12,10 +12,10 @@ public enum GalaxyKind: String, Codable, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .spiral: "Spirale"
-        case .disk: "Disque"
-        case .globular: "Globulaire"
-        case .blackHole: "Trou noir"
+        case .spiral: "Spiral"
+        case .disk: "Disk"
+        case .globular: "Globular"
+        case .blackHole: "Black hole"
         }
     }
 

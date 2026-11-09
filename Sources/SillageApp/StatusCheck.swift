@@ -17,7 +17,7 @@ enum StatusCheck {
         guard CommandLine.arguments.contains("--statuscheck") else { return }
         NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
         exercise()
-        let report = lines.joined(separator: "\n") + "\n\n\(failures) échec(s)"
+        let report = lines.joined(separator: "\n") + "\n\n\(failures) failed"
         try? report.write(
             to: URL(fileURLWithPath: "/tmp/sillage-status.log"), atomically: true, encoding: .utf8)
         print(report)
@@ -51,7 +51,7 @@ enum StatusCheck {
 
     private static func exercise() {
         guard let fixtures = fixtures(), let runner = QueueModel.runnerExecutable else {
-            check("les fixtures et le runner sont trouvés", false)
+            check("the fixtures and the runner are found", false)
             return
         }
         let paris = TimeZone(identifier: "Europe/Paris")!
@@ -59,7 +59,7 @@ enum StatusCheck {
             ((try? FileManager.default.contentsOfDirectory(atPath: fixtures.path)) ?? []).filter {
                 !$0.hasPrefix(".")
             }.sorted()
-        check("les fixtures sont là", names.count >= 7, "\(names.count)")
+        check("the fixtures are there", names.count >= 7, "\(names.count)")
         for name in names {
             let folder = fixtures.appendingPathComponent(name)
             let read = { (file: String) in
@@ -80,13 +80,13 @@ enum StatusCheck {
                         isAlive: { _ in true })
                 })
             let expected = read("expected.txt").split(separator: "\n").map(String.init)
-            check("\(name) : l'app dit ce que disent les fichiers", model.status.lines == expected)
+            check("\(name): the app says what the files say", model.status.lines == expected)
 
             let printed = status(runner, library: library, now: read("now.txt"), processes: count)
             check(
-                "\(name) : `sillage-render status` dit la même chose",
+                "\(name): `sillage-render status` says the same",
                 printed == model.status.lines,
-                printed.first ?? "aucune sortie")
+                printed.first ?? "no output")
 
             write(
                 AnyView(QueueView(queue: model).frame(width: 760, height: 620)),
@@ -131,15 +131,15 @@ enum StatusCheck {
             library: root,
             status: { QueueStatus.read(library: $0, processes: [], isAlive: { _ in true }) })
         check(
-            "bibliothèque vide : le Mac est libre",
-            model.status.statusLine == "Rien en cours · le Mac est libre")
+            "empty library: the Mac is free",
+            model.status.statusLine == "Nothing running · the Mac is free")
 
         func follows(_ name: String, _ change: () throws -> Void, until: () -> Bool) {
             let started = Date()
             do { try change() } catch { check(name, false, "\(error)") }
             let seen = wait(2) { until() }
             check(
-                "\(name) en moins de 2 s", seen,
+                "\(name) within 2 s", seen,
                 String(format: "%.2f s", Date().timeIntervalSince(started)))
         }
 
@@ -148,37 +148,37 @@ enum StatusCheck {
             kind: "hires", batch: "2026-10-27", scene: "scene-0001", startedAt: Date(),
             progress: 0.25, detail: "frame 225/900", eta: Date().addingTimeInterval(3_600))
         follows(
-            "une étape lancée à la main apparaît",
+            "a stage started by hand shows",
             {
                 let activity = ActivityFile(state: .running, job: job, waiting: 0, updated: Date())
                 try RunStatusFiles.write(
                     activity.encoded(), to: RunStatusFiles.activity(library: root))
             },
-            until: { model.status.running?.detail == "image 225/900" })
+            until: { model.status.running?.detail == "frame 225/900" })
         follows(
-            "une tâche mise en file est comptée",
+            "a queued job is counted",
             {
                 _ = try model.store.submit(
                     .hires, path: batch.appendingPathComponent("scene-0002").path, runner: nil)
             },
             until: { model.status.waitingCount == 1 && model.status.waiting.count == 1 })
         follows(
-            "la file annulée repart à zéro",
+            "the cancelled queue starts from zero",
             {
                 try model.cancel(model.queue.waiting[0].id)
             },
             until: { model.status.waitingCount == 0 && model.status.finished.count == 1 })
         follows(
-            "l'étape finie rend le Mac libre",
+            "the finished stage frees the Mac",
             {
                 try RunStatusFiles.write(
                     ActivityFile(state: .idle, updated: Date()).encoded(),
                     to: RunStatusFiles.activity(library: root))
             },
-            until: { model.status.statusLine == "Rien en cours · le Mac est libre" })
+            until: { model.status.statusLine == "Nothing running · the Mac is free" })
     }
 
-    /// A real `sillage-render` process that wrote no status: "le Mac est libre" must not be said.
+    /// A real `sillage-render` process that wrote no status: "the Mac is free" must not be said.
     /// It is started suspended, so it does nothing and takes no GPU.
     private static func realProcess() {
         let root = FileManager.default.temporaryDirectory
@@ -196,7 +196,7 @@ enum StatusCheck {
         for pointer in cArguments { free(pointer) }
         posix_spawnattr_destroy(&attributes)
         guard result == 0 else {
-            check("un processus sillage-render sans état", false, "posix_spawn \(result)")
+            check("a sillage-render process without status", false, "posix_spawn \(result)")
             return
         }
         defer {
@@ -207,10 +207,10 @@ enum StatusCheck {
         let model = QueueModel(library: root, watch: false)
         let said = wait(2) {
             model.refresh()
-            return model.status.headline == "Calcul en cours (sans détail)"
+            return model.status.headline == "Computing (no detail)"
         }
         check(
-            "un sillage-render sans état : « Calcul en cours (sans détail) »", said,
+            "a sillage-render without status: “Computing (no detail)”", said,
             model.status.headline)
     }
 
@@ -222,13 +222,13 @@ enum StatusCheck {
             let rep = NSBitmapImageRep(data: tiff),
             let png = rep.representation(using: .png, properties: [:])
         else {
-            check("\(path) est dessiné", false)
+            check("\(path) is drawn", false)
             return
         }
         let url = URL(fileURLWithPath: path)
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? png.write(to: url)
-        check("\(path) est dessiné", png.count > 2_000, "\(png.count) octets")
+        check("\(path) is drawn", png.count > 2_000, "\(png.count) bytes")
     }
 }

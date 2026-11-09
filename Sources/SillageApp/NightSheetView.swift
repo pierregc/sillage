@@ -72,7 +72,7 @@ final class NightSheetModel: ObservableObject {
     }
 }
 
-/// "Nouvelle nuit": the time the night must be done by, the plan under it, and four settings
+/// "New night": the time the night must be done by, the plan under it, and four settings
 /// behind one disclosure.
 struct NightSheetView: View {
     @StateObject private var model: NightSheetModel
@@ -99,7 +99,7 @@ struct NightSheetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Nouvelle nuit").font(.title2.weight(.semibold))
+            Text("New night").font(.title2.weight(.semibold))
             timeControl
             planCard
             customise
@@ -119,13 +119,13 @@ struct NightSheetView: View {
     private var timeControl: some View {
         HStack(spacing: 14) {
             if snapshot {
-                Text(model.sheet.timing == .deliver ? "Prêt à" : "Pendant")
+                Text(model.sheet.timing == .deliver ? "Ready by" : "Duration")
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Palette.card, in: RoundedRectangle(cornerRadius: 6))
             } else {
                 Picker("", selection: $model.sheet.timing) {
-                    Text("Prêt à").tag(NightSheet.Timing.deliver)
-                    Text("Pendant").tag(NightSheet.Timing.hours)
+                    Text("Ready by").tag(NightSheet.Timing.deliver)
+                    Text("Duration").tag(NightSheet.Timing.hours)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -169,14 +169,14 @@ struct NightSheetView: View {
     }
 
     static func clock(_ minutes: Int) -> String {
-        String(format: "%d h %02d", minutes / 60 % 24, minutes % 60)
+        String(format: "%02d:%02d", minutes / 60 % 24, minutes % 60)
     }
 
-    /// "8 h", "6 h 30".
+    /// "8 h", "6 h 30 min".
     static func hours(_ hours: Double) -> String {
         let minutes = Int((hours * 60).rounded())
         return minutes % 60 == 0
-            ? "\(minutes / 60) h" : String(format: "%d h %02d", minutes / 60, minutes % 60)
+            ? "\(minutes / 60) h" : String(format: "%d h %02d min", minutes / 60, minutes % 60)
     }
 
     // MARK: Plan
@@ -189,7 +189,7 @@ struct NightSheetView: View {
                     Divider()
                 }
                 if plan.lines.isEmpty {
-                    Text("Rien à calculer.").foregroundStyle(Palette.secondary).padding(14)
+                    Text("Nothing to compute.").foregroundStyle(Palette.secondary).padding(14)
                     Divider()
                 }
                 VStack(alignment: .leading, spacing: 3) {
@@ -212,7 +212,7 @@ struct NightSheetView: View {
             } else {
                 HStack(spacing: 10) {
                     if !snapshot { ProgressView().controlSize(.small) }
-                    Text("Calcul du plan…").foregroundStyle(Palette.secondary)
+                    Text("Planning…").foregroundStyle(Palette.secondary)
                 }
                 .padding(14)
             }
@@ -228,7 +228,7 @@ struct NightSheetView: View {
             isExpanded: $customising,
             content: {
                 VStack(alignment: .leading, spacing: 12) {
-                    row("Scènes en haute résolution") {
+                    row("Scenes in high resolution") {
                         if snapshot {
                             Text(model.sheet.hiresScenes.map(String.init) ?? "Auto")
                         } else {
@@ -244,14 +244,14 @@ struct NightSheetView: View {
                         }
                     }
                     .disabled(model.sheet.exploreOnly)
-                    row("Monde de couleurs") {
+                    row("Colour world") {
                         if snapshot {
                             Text(Self.worldName(model.sheet.world))
                         } else {
                             Picker("", selection: world) {
                                 Text("Auto").tag("")
-                                Text("Télescope").tag("telescope")
-                                Text("Libre").tag("free")
+                                Text("Telescope").tag("telescope")
+                                Text("Free").tag("free")
                             }
                             .labelsHidden()
                             .pickerStyle(.segmented)
@@ -265,14 +265,14 @@ struct NightSheetView: View {
                         }
                     }
                     .disabled(model.sheet.exploreOnly)
-                    checkbox("Aperçus seulement", $model.sheet.exploreOnly)
-                    Text("Tout le reste est laissé en Auto.")
+                    checkbox("Previews only", $model.sheet.exploreOnly)
+                    Text("Everything else stays on Auto.")
                         .font(.caption).foregroundStyle(Palette.secondary)
                 }
                 .padding(.top, 10)
             },
             label: {
-                Text(model.sheet.customised ? "Personnaliser · modifié" : "Personnaliser")
+                Text(model.sheet.customised ? "Customise · modified" : "Customise")
             })
     }
 
@@ -297,8 +297,8 @@ struct NightSheetView: View {
 
     static func worldName(_ world: String?) -> String {
         switch world {
-        case "telescope": "Télescope"
-        case "free": "Libre"
+        case "telescope": "Telescope"
+        case "free": "Free"
         default: "Auto"
         }
     }
@@ -320,8 +320,8 @@ struct NightSheetView: View {
             }
             HStack {
                 Spacer()
-                Button("Annuler", action: dismiss).keyboardShortcut(.cancelAction)
-                Button("Lancer la nuit") {
+                Button("Cancel", action: dismiss).keyboardShortcut(.cancelAction)
+                Button("Launch night") {
                     var batch: String?
                     if model.launch({ batch = try queue.launchNight($0).batch }) { launched(batch) }
                 }

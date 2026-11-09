@@ -1,17 +1,17 @@
-# Nuit du 26 oct.
+# Night of 26 Oct
 
-- État : en cours, de 26 oct. 22 h 00 à 27 oct. 1 h 10 (3 h 10)
-- Livraison : avant 7 h 00, 40 min de marge
-- Aperçus : 47 explorés, 2 rejetés, 1 en échec
-- Choisies : scene-0019 (0,91), scene-0007 (0,88), scene-0023 (0,84), scene-0031 (0,80)
-- Haute résolution : 1 faite sur 4 prévues
-- Vidéos : 1 (212,3 Mo)
-- Laissées de côté : 0 · erreurs : 0
+- State: running, from 26 Oct 22:00 to 27 Oct 01:10 (3 h 10 min)
+- Delivery: by 07:00, 40 min to spare
+- Previews: 47 explored, 2 rejected, 1 failed
+- Kept: scene-0019 (0.91), scene-0007 (0.88), scene-0023 (0.84), scene-0031 (0.80)
+- High resolution: 1 done of 4 planned
+- Videos: 1 (212.3 MB)
+- Left out: 0 · errors: 0
 
-## Haute résolution
+## High resolution
 
-- scene-0019 : 2 000 000 particules en 30 min
+- scene-0019: 2,000,000 particles in 30 min
 
-## Vidéos
+## Videos
 
-- scene-0019/exports/4k.mp4 (212,3 Mo)
+- scene-0019/exports/4k.mp4 (212.3 MB)

@@ -27,7 +27,7 @@ extension SimulationModel {
         let share = max(draft.totalParticleCount / max(draft.galaxies.count, 1), 100_000)
         draft.galaxies.append(
             GalaxyConfig(
-                name: "Galaxie \(draft.galaxies.count + 1)",
+                name: "Galaxy \(draft.galaxies.count + 1)",
                 particleCount: share,
                 kind: .spiral,
                 potential: GalaxyPotential(profile: .hernquist, mass: 30, scaleRadius: 4),

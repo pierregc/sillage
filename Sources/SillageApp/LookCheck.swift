@@ -7,8 +7,8 @@ import simd
 /// Opens a take with a look file the way the library does, and checks what tuning promises:
 /// the file comes back byte for byte, every kind of edit lands where it should and survives a
 /// save, and the playhead can be thrown backwards and forwards at the take's full size. Then
-/// the style editor's session on it: renderings, palettes and locks, Avant/Après, Annuler,
-/// Utiliser pour la scène, the canvas framing what the export frames in every camera mode and
+/// the style editor's session on it: renderings, palettes and locks, Before / After, Cancel,
+/// Use for scene, the canvas framing what the export frames in every camera mode and
 /// a framing made with the mouse kept through a save (#177), and Auto when the take sits in a
 /// scene folder.
 ///
@@ -23,7 +23,7 @@ enum LookCheck {
         var lines: [String] = []
         var failed = false
         func check(_ label: String, _ passed: Bool, _ detail: String = "") {
-            lines.append("\(passed ? "OUI" : "NON")  \(label)\(detail.isEmpty ? "" : "  \(detail)")")
+            lines.append("\(passed ? "ok  " : "FAIL") \(label)\(detail.isEmpty ? "" : "  \(detail)")")
             if !passed { failed = true }
         }
         func fail(_ why: String) -> Never {
@@ -59,9 +59,9 @@ enum LookCheck {
         }
         guard let originalBytes = try? Data(contentsOf: lookURL),
             let loaded = try? LookFile.decoded(from: originalBytes)
-        else { fail("look illisible") }
+        else { fail("unreadable look") }
 
-        guard let model = SimulationModel() else { fail("pas de périphérique Metal") }
+        guard let model = SimulationModel() else { fail("no Metal device") }
         let buildsBefore = model.rendererBuilds
         let opening = CACurrentMediaTime()
         model.openTake(from: take, look: lookURL, folder: folder)
@@ -69,23 +69,23 @@ enum LookCheck {
         while model.mode != .playback || model.capturedFrames < 2 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
             if let failure = model.failure { fail(failure) }
-            if Date() > deadline { fail("la prise n'a pas chargé") }
+            if Date() > deadline { fail("the take did not load") }
         }
         let openSeconds = CACurrentMediaTime() - opening
         let builds = model.rendererBuilds - buildsBefore
         model.resize(to: CGSize(width: 1920, height: 1080))
 
-        check("le look ouvert est celui du fichier", model.lookFile == loaded)
-        check("une seule construction du rendu à l'ouverture", builds == 1, "\(builds)")
+        check("the open look is the file's", model.lookFile == loaded)
+        check("a single renderer build on opening", builds == 1, "\(builds)")
         check(
-            "la palette du fichier colore la scène",
+            "the file's palette colours the scene",
             loaded.palette.isEmpty || model.scene.galaxies[0].color == loaded.palette[0].colour)
-        check("le plan de caméra est suivi", model.followsPlan, "\(loaded.camera.mode)")
+        check("the camera plan is followed", model.followsPlan, "\(loaded.camera.mode)")
 
         let resaved = folder.url.appendingPathComponent("resaved.look.json")
         model.saveLook(to: resaved)
         check(
-            "ouvert puis enregistré sans changement : même fichier",
+            "opened then saved unchanged: same file",
             (try? Data(contentsOf: resaved)) == originalBytes)
 
         // The playhead thrown about, then played: what scrubbing costs at this size.
@@ -97,7 +97,7 @@ enum LookCheck {
                 index % 2 == 0 ? Double(generator.uniform(in: 0...Float(last))) : last - Double(index)
             model.isPlaying = false
             let start = CACurrentMediaTime()
-            guard model.playbackSnapshot() != nil else { fail("rien à dessiner") }
+            guard model.playbackSnapshot() != nil else { fail("nothing to draw") }
             jumps.append((CACurrentMediaTime() - start) * 1000)
             RunLoop.current.run(until: Date())
         }
@@ -127,30 +127,30 @@ enum LookCheck {
         model.setColour(SIMD3(0.2, 0.5, 1), ofGalaxy: model.scene.galaxies.count - 1)
         model.lookFile.armStrength = 0.5
         model.lookFile.camera.zoom = 1.6
-        check("les réglages vifs ne reconstruisent rien", model.rendererBuilds == builds0)
+        check("live settings rebuild nothing", model.rendererBuilds == builds0)
         check(
-            "la couleur d'une galaxie arrive à la scène",
+            "a galaxy's colour reaches the scene",
             model.scene.galaxies.last?.color == SIMD3(0.2, 0.5, 1))
         builds0 = model.rendererBuilds
         model.lookFile.starCount = 20_000
         model.lookFile.bloomLevels = 5
-        check("chaque réglage de tampon reconstruit une fois", model.rendererBuilds == builds0 + 2)
+        check("each buffer setting rebuilds once", model.rendererBuilds == builds0 + 2)
 
         model.playbackPosition = last / 2
         _ = model.playbackSnapshot()
         let planned = model.planCamera
         check(
-            "la caméra affichée est celle du plan",
+            "the camera shown is the plan's",
             planned != nil && model.activeCamera.eye == planned?.eye)
         model.adopt(RenderLook.catalogue[1])
-        check("un look nommé ne touche ni palette ni plan", model.lookFile.camera.zoom == 1.6)
+        check("a named look touches neither palette nor plan", model.lookFile.camera.zoom == 1.6)
 
         let edited = model.lookFile
         let saved = folder.url.appendingPathComponent("edited.look.json")
         model.saveLook(to: saved)
         model.adopt(LookFile.standard, from: nil)
         model.openLook(from: saved)
-        check("enregistré puis rouvert : le même look", model.lookFile == edited)
+        check("saved then reopened: the same look", model.lookFile == edited)
         // The editor reads the scene's look.json, which a look given on the command line is not.
         if !FileManager.default.fileExists(atPath: folder.look.path) {
             try? originalBytes.write(to: folder.look)
@@ -161,54 +161,54 @@ enum LookCheck {
         let favourites = FileManager.default.temporaryDirectory.appendingPathComponent(
             "lookcheck-favourites-\(UUID().uuidString)")
         let session = StyleSession(scene: scene, model: model, favouritesDirectory: favourites)
-        check("l'éditeur trouve la prise ouverte", session.isOpen)
-        check("les retouches faites avant se voient", session.saved == loaded && session.isModified)
+        check("the editor finds the open take", session.isOpen)
+        check("edits made before show", session.saved == loaded && session.isModified)
         session.cancel()
-        check("annuler remet le style enregistré", model.lookFile == loaded && !session.isModified)
+        check("cancel puts back the saved style", model.lookFile == loaded && !session.isModified)
         exerciseStyle(session, model, folder, check)
 
-        // Annuler after all of it: the saved style back on the picture, nothing written.
+        // Cancel after all of it: the saved style back on the picture, nothing written.
         session.cancel()
-        check("annuler après les essais", model.lookFile == loaded && !session.isModified)
+        check("cancel after the tries", model.lookFile == loaded && !session.isModified)
         check(
-            "annuler n'écrit rien",
+            "cancel writes nothing",
             (try? Data(contentsOf: folder.look)) == savedBefore
                 && !FileManager.default.fileExists(atPath: folder.rawLook.path))
 
-        // Utiliser pour la scène: look.json is the style on screen, the explored look stays aside.
+        // Use for scene: look.json is the style on screen, the explored look stays aside.
         if let hubble = session.catalogue.first(where: { $0.name == "hubble" }) { session.apply(hubble) }
         model.lookFile.camera.zoom = 1.3
         let chosen = model.lookFile
-        check("une retouche se voit", session.isModified)
-        check("utiliser pour la scène écrit look.json", session.promote())
+        check("an edit shows", session.isModified)
+        check("use for scene writes look.json", session.promote())
         check(
-            "look.json est le style à l'écran",
+            "look.json is the style on screen",
             (try? LookFile.decoded(from: Data(contentsOf: folder.look))) == chosen
                 && session.saved == chosen && !session.isModified && session.promoted)
         check(
-            "l'ancien look reste dans look-raw.json", (try? Data(contentsOf: folder.rawLook)) == savedBefore)
-        check("le look de l'atelier pointe sur la scène", model.lookURL == folder.look)
+            "the old look stays in look-raw.json", (try? Data(contentsOf: folder.rawLook)) == savedBefore)
+        check("the workshop's look points to the scene", model.lookURL == folder.look)
 
         exerciseFraming(session, model, folder, take, check)
 
         if FileManager.default.fileExists(atPath: folder.scene.path) {
             exerciseAuto(session, model, check)
         } else {
-            lines.append("—    Auto non essayé : la prise n'est pas dans un dossier de scène")
+            lines.append("-    Auto not tried: the take is not in a scene folder")
         }
 
         func split(_ name: String, _ samples: [Double]) -> String {
             let sorted = samples.sorted()
             return String(
-                format: "%@ médiane %6.1f ms, pire %6.1f", name, sorted[sorted.count / 2],
+                format: "%@ median %6.1f ms, worst %6.1f", name, sorted[sorted.count / 2],
                 sorted.last ?? 0)
         }
         let report =
             """
-            prise            \(model.particleCount) particules, \(model.capturedFrames) images gardées (une sur \(model.recording?.interval ?? 1)), ouverte en \(String(format: "%.1f", openSeconds)) s
-            \(split("sauts au hasard ", jumps))
-            \(split("en arrière      ", backwards))
-            \(split("en avant        ", forwards))
+            take             \(model.particleCount) particles, \(model.capturedFrames) frames kept (one in \(model.recording?.interval ?? 1)), opened in \(String(format: "%.1f", openSeconds)) s
+            \(split("random jumps    ", jumps))
+            \(split("backwards       ", backwards))
+            \(split("forwards        ", forwards))
             """ + "\n" + lines.joined(separator: "\n")
         try? report.write(
             to: URL(fileURLWithPath: "/tmp/sillage-lookcheck.log"), atomically: true,
@@ -217,7 +217,7 @@ enum LookCheck {
         exit(failed ? 1 : 0)
     }
 
-    /// Renderings, palettes and their locks, the camera, a reset and Avant/Après, each on the
+    /// Renderings, palettes and their locks, the camera, a reset and Before / After, each on the
     /// picture and none written.
     @MainActor
     private static func exerciseStyle(
@@ -227,58 +227,60 @@ enum LookCheck {
         let before = model.lookFile
         let onDisk = try? Data(contentsOf: folder.look)
         guard let webb = session.catalogue.first(where: { $0.name == "webb" }) else {
-            return check("le catalogue a Webb", false, "")
+            return check("the catalogue has Webb", false, "")
         }
         session.apply(webb)
         check(
-            "un rendu garde la palette et le plan",
+            "a rendering keeps the palette and the plan",
             session.rendering?.name == "webb" && model.lookFile.palette == before.palette
                 && model.lookFile.camera == before.camera && session.isModified, "")
         check(
-            "un rendu choisi à la main garde ses poussières et leur toile",
+            "a rendering chosen by hand keeps its dust and its web",
             model.lookFile.look.dustStrength == webb.look.dustStrength
                 && model.lookFile.look.dustWeb == webb.look.dustWeb && webb.look.dustWeb > 0,
-            "poussières \(StyleNames.number(model.lookFile.look.dustStrength)), toile "
+            "dust \(StyleNames.number(model.lookFile.look.dustStrength)), web "
                 + StyleNames.number(model.lookFile.look.dustWeb))
         session.apply(webb, colours: true)
         check(
-            "avec ses couleurs prend aussi sa palette",
+            "with its colours takes its palette too",
             model.lookFile.palette == webb.palette && session.world == .telescope, "")
 
         session.world = .free
         session.propose(waiting: true)
         let galaxies = model.scene.galaxies.count
         check(
-            "six propositions dans le monde choisi",
+            "six proposals in the chosen world",
             session.proposals.count == StyleSession.proposalCount
                 && session.proposals.allSatisfy { $0.palette.world == .free }, "\(session.proposals.count)")
         let first = session.proposals.map(\.palette)
         session.moreProposals(waiting: true)
-        check("autres palettes en propose d'autres", session.proposals.map(\.palette) != first, "")
+        check("other palettes proposes others", session.proposals.map(\.palette) != first, "")
         if let proposal = session.proposals.first?.palette {
-            let file = session.favouritesDirectory.appendingPathComponent("soir-de-test.palette.json")
-            check("aucun favori au départ", session.favourites.isEmpty && !session.isFavourite(proposal), "")
+            let file = session.favouritesDirectory.appendingPathComponent("test-evening.palette.json")
+            check("no favourite at first", session.favourites.isEmpty && !session.isFavourite(proposal), "")
             session.toggleFavourite(proposal)
-            check("le cœur demande un nom", session.naming == proposal && session.favourites.isEmpty, "")
-            session.saveFavourite(proposal, named: "Soir de Test")
+            check("the heart asks for a name", session.naming == proposal && session.favourites.isEmpty, "")
+            session.saveFavourite(proposal, named: "Test Evening")
             check(
-                "le favori est écrit et reconnu",
+                "the favourite is written and recognised",
                 FileManager.default.fileExists(atPath: file.path) && session.isFavourite(proposal)
                     && session.naming == nil, "")
             session.propose(waiting: true)
             check(
-                "le favori passe en tête des propositions",
+                "the favourite leads the proposals",
                 session.proposals.first?.palette == proposal.truncated(to: galaxies)
                     && session.proposals.count == StyleSession.proposalCount
                     && session.favouriteProposals.count == 1, "\(session.proposals.count)")
             session.world = .telescope
             session.propose(waiting: true)
-            check("un favori d'un autre monde ne s'y propose pas", session.favouriteProposals.isEmpty, "")
+            check(
+                "a favourite from another world is not proposed there",
+                session.favouriteProposals.isEmpty, "")
             session.world = .free
             session.propose(waiting: true)
             session.toggleFavourite(proposal)
             check(
-                "un second clic retire le favori",
+                "a second click removes the favourite",
                 !FileManager.default.fileExists(atPath: file.path) && session.favourites.isEmpty
                     && !session.isFavourite(proposal), "")
             try? FileManager.default.removeItem(at: session.favouritesDirectory)
@@ -288,33 +290,33 @@ enum LookCheck {
             session.toggleLock(0)
             session.use(proposal)
             check(
-                "un cadenas garde sa couleur, les autres changent",
+                "a lock keeps its colour, the others change",
                 model.lookFile.palette[0] == kept && model.lookFile.palette[1].colour == proposal.colours[1]
                     && model.lookFile.paletteRecipe == proposal, "")
             check(
-                "la palette arrive à la scène",
+                "the palette reaches the scene",
                 model.scene.galaxies[1].color == proposal.colours[1], "")
 
             // The look this check opens has plain colours, so the switch starts off.
             check(
-                "multicolore éteint sur un look sans rampes : propositions et palette unies",
+                "multicolour off on a look without ramps: plain proposals and palette",
                 !session.multicolour && !model.lookFile.hasRamps
                     && session.proposals.allSatisfy { !$0.palette.multicolour }, "")
             session.setMulticolour(true, waiting: true)
             check(
-                "allumé : une rampe par galaxie libre, la couleur choisie et le cadenas gardés",
+                "on: a ramp per unlocked galaxy, the chosen colour and the lock kept",
                 session.multicolour && model.lookFile.palette[0] == kept
                     && model.lookFile.palette[1].ramp != nil
                     && model.lookFile.palette[1].colour == proposal.colours[1]
                     && model.lookFile.paletteRecipe == proposal.withMulticolour(true), "")
             check(
-                "allumé : les propositions ont des rampes et leurs notes",
+                "on: the proposals have ramps and their scores",
                 session.proposals.count == StyleSession.proposalCount
                     && session.proposals.allSatisfy { $0.palette.multicolour && $0.score.between != nil },
                 "")
             session.setMulticolour(false, waiting: true)
             check(
-                "éteint : une couleur par galaxie, les propositions sans notes de rampe",
+                "off: one colour per galaxy, the proposals without ramp scores",
                 !session.multicolour && !model.lookFile.hasRamps
                     && model.lookFile.palette[1].colour == proposal.colours[1]
                     && model.lookFile.paletteRecipe?.multicolour == false
@@ -329,13 +331,13 @@ enum LookCheck {
         _ = model.playbackSnapshot()
         let directed = model.planCamera
         check(
-            "le réalisateur se suit au curseur",
+            "the director follows the playhead",
             model.followsPlan && directed != nil && model.activeCamera.eye == directed?.eye, "")
 
         session.setCameraMode(.fixed)
         session.binding(\.camera.rotation).wrappedValue = .pi / 2
         check(
-            "caméra fixe et rotation",
+            "fixed camera and rotation",
             model.lookFile.camera.mode == .fixed && model.followsPlan
                 && abs((model.lookFile.camera.azimuthEnd ?? 0) - model.lookFile.camera.azimuth - .pi / 2)
                     < 1e-5,
@@ -343,33 +345,33 @@ enum LookCheck {
         session.binding(\.look.brightness).wrappedValue = 1.7
         session.reset(.light)
         check(
-            "réinitialiser la lumière revient au rendu",
+            "resetting the light goes back to the rendering",
             model.lookFile.look.brightness == webb.look.brightness, "")
         session.binding(\.look.glint).wrappedValue = 0.9
         session.binding(\.look.columnSmoothing).wrappedValue = 40
         session.reset(.instrument)
         check(
-            "réinitialiser l'instrument revient au rendu, sources compactes et projection comprises",
+            "resetting the instrument goes back to the rendering, compact sources and projection included",
             model.lookFile.look.glint == webb.look.glint
                 && model.lookFile.look.columnSmoothing == webb.look.columnSmoothing, "")
         session.reset(.camera)
-        check("réinitialiser le plan revient au style enregistré", model.lookFile.camera == before.camera, "")
+        check("resetting the plan goes back to the saved style", model.lookFile.camera == before.camera, "")
 
         let edited = model.lookFile
         session.showSaved(true)
         check(
-            "avant : le style enregistré à l'écran",
+            "before: the saved style on screen",
             model.lookFile == session.saved && session.covered == edited && session.isModified, "")
         session.binding(\.look.brightness).wrappedValue = 0.01
-        check("rien ne bouge pendant l'avant", model.lookFile == session.saved, "")
+        check("nothing moves while before shows", model.lookFile == session.saved, "")
         session.showSaved(false)
-        check("après : la retouche revient", model.lookFile == edited && session.covered == nil, "")
-        check("rien d'écrit pendant les essais", (try? Data(contentsOf: folder.look)) == onDisk, "")
+        check("after: the edit comes back", model.lookFile == edited && session.covered == nil, "")
+        check("nothing written during the tries", (try? Data(contentsOf: folder.look)) == onDisk, "")
     }
 
     /// The canvas against the export (#177): in each mode, the camera of a frame exported from
     /// the playhead is the canvas's, scrubbed forwards and back; the immersed director's light
-    /// reaches the canvas; a drag and the wheel move the plan, cheaply in Réalisateur, and
+    /// reaches the canvas; a drag and the wheel move the plan, cheaply in Director, and
     /// `look.json` keeps what they framed for the export.
     @MainActor
     private static func exerciseFraming(
@@ -379,7 +381,7 @@ enum LookCheck {
         // What `sillage-render export` reads: the take off disk, at the folder's rate.
         guard let take = try? RecordingFile.read(from: takeURL),
             let rate = try? folder.capturedRate()
-        else { return check("la prise se relit pour l'export", false, "") }
+        else { return check("the take reads back for the export", false, "") }
         let last = Double(model.capturedFrames - 1)
         let (width, height) = (Int(model.drawableSize.width), Int(model.drawableSize.height))
         model.isPlaying = false
@@ -410,7 +412,7 @@ enum LookCheck {
         }
 
         let modes: [(LookFile.CameraPlan.Mode, String)] = [
-            (.auto, "Auto"), (.director, "Réalisateur"), (.fixed, "Fixe"), (.immersed, "Immergé"),
+            (.auto, "Auto"), (.director, "Director"), (.fixed, "Fixed"), (.immersed, "Immersed"),
         ]
         // Forwards, back past where it was, back to the start, forwards again; between frames.
         let playheads = [0.61, 0.97, 0.23, 0, 0.42].map { min($0 * last + 0.37, last) }
@@ -427,9 +429,9 @@ enum LookCheck {
                 seen += 1
             }
             check(
-                "\(name) : l'image cadre comme l'export, en avançant et en reculant",
+                "\(name): the image frames as the export does, forwards and backwards",
                 seen == playheads.count && worst < 1e-4 && model.followsPlan,
-                String(format: "écart %.1e sur %d têtes de lecture", worst, seen))
+                String(format: "gap %.1e over %d playheads", worst, seen))
         }
 
         session.setCameraMode(.immersed)
@@ -438,21 +440,21 @@ enum LookCheck {
         let modulated = exported(model.lookFile)?.look
         let drawn = model.renderer?.settings
         check(
-            "Immergé : l'image prend la lumière que le réalisateur module à l'export",
+            "Immersed: the image takes the light the director modulates in the export",
             near(drawn?.brightness, modulated?.brightness) && near(drawn?.stretch, modulated?.stretch)
                 && near(drawn?.bloomIntensity, modulated?.bloomIntensity),
             String(
-                format: "luminosité %.3f, celle du fichier %.3f", drawn?.brightness ?? 0,
+                format: "brightness %.3f, the file's %.3f", drawn?.brightness ?? 0,
                 model.look.brightness))
         let immersed = model.lookFile.camera
         model.drag(60, 30)
-        check("Immergé : glisser ne touche pas au plan", model.lookFile.camera == immersed, "")
+        check("Immersed: dragging leaves the plan alone", model.lookFile.camera == immersed, "")
         model.scroll(-30)
         let scrolled = framedAlike()
         check(
-            "Immergé : la molette éloigne, et l'image suit l'export",
+            "Immersed: the wheel moves away, and the image follows the export",
             model.lookFile.camera.zoom < immersed.zoom && scrolled.map { $0 < 1e-4 } == true,
-            String(format: "zoom %.2f, écart %.1e", model.lookFile.camera.zoom, scrolled ?? -1))
+            String(format: "zoom %.2f, gap %.1e", model.lookFile.camera.zoom, scrolled ?? -1))
 
         // The director's plan reads the take once; an edit only turns and scales it.
         session.setCameraMode(.director)
@@ -465,15 +467,15 @@ enum LookCheck {
         let milliseconds = (CACurrentMediaTime() - started) * 1000
         let directed = framedAlike()
         check(
-            "Réalisateur : glisser et la molette règlent ses plans larges, vite, comme à l'export",
+            "Director: drag and wheel set its wide shots, quickly, as in the export",
             model.lookFile.camera.azimuth != planned.azimuth && model.lookFile.camera.zoom > planned.zoom
                 && directed.map { $0 < 1e-4 } == true && milliseconds < 100,
-            String(format: "%.1f ms, écart %.1e", milliseconds, directed ?? -1))
+            String(format: "%.1f ms, gap %.1e", milliseconds, directed ?? -1))
 
         session.setCameraMode(.fixed)
         _ = model.playbackSnapshot()
         check(
-            "Fixe : la lumière du fichier revient",
+            "Fixed: the file's light comes back",
             model.renderer?.settings.brightness == model.look.brightness, "")
         let before = model.lookFile.camera
         let eye = model.activeCamera.eye
@@ -482,26 +484,26 @@ enum LookCheck {
         _ = model.playbackSnapshot()
         let steered = model.lookFile.camera
         check(
-            "Fixe : glisser tourne le plan, la molette le rapproche, l'image suit",
+            "Fixed: drag turns the plan, the wheel brings it closer, the image follows",
             model.steersPlan && steered.azimuth != before.azimuth && steered.elevation < before.elevation
                 && steered.zoom > before.zoom && abs(steered.rotation - before.rotation) < 1e-5
                 && simd_distance(model.activeCamera.eye, eye) > 1,
             String(
-                format: "azimut %.2f, élévation %.2f, zoom %.2f", steered.azimuth, steered.elevation,
+                format: "azimuth %.2f, elevation %.2f, zoom %.2f", steered.azimuth, steered.elevation,
                 steered.zoom))
         let canvas = model.activeCamera
-        check("le cadrage fait à la souris s'enregistre", session.promote(), "")
+        check("the framing made with the mouse is saved", session.promote(), "")
         let onDisk = try? folder.exportLook(nil, catalogue: [])
         let fromDisk = onDisk.flatMap { exported($0) }
         check(
-            "look.json garde ce cadrage et l'export le cadre",
+            "look.json keeps this framing and the export frames it",
             onDisk?.camera == steered && fromDisk.map { gap(canvas, $0.camera) < 1e-4 } == true,
-            String(format: "écart %.1e", fromDisk.map { gap(canvas, $0.camera) } ?? -1))
+            String(format: "gap %.1e", fromDisk.map { gap(canvas, $0.camera) } ?? -1))
 
         model.followsPlan = false
         model.drag(30, 10)
         check(
-            "vue libre : la souris ne touche plus au plan",
+            "free view: the mouse no longer touches the plan",
             !model.steersPlan && model.lookFile.camera == steered
                 && model.activeCamera.eye == model.camera.camera.eye, "")
         model.followsPlan = true
@@ -515,8 +517,8 @@ enum LookCheck {
         _ = model.planShot
         let replayed = (CACurrentMediaTime() - replaying) * 1000
         check(
-            "Immergé : le rejouer jusqu'à la fin de la prise reste vif", replayed < 100,
-            String(format: "%.1f ms pour %d images", replayed, model.playheadCapturedFrame))
+            "Immersed: replaying it to the end of the take stays quick", replayed < 100,
+            String(format: "%.1f ms for %d frames", replayed, model.playheadCapturedFrame))
     }
 
     /// Auto on the telescope world, with a lock: a rendering and a palette from the catalogue,
@@ -539,24 +541,24 @@ enum LookCheck {
         let seconds = CACurrentMediaTime() - started
         let note = session.note ?? ""
         check(
-            "auto choisit un rendu et une palette du télescope",
-            note.hasPrefix("Auto :") && session.rendering?.world == .telescope
+            "auto chooses a telescope rendering and palette",
+            note.hasPrefix("Auto:") && session.rendering?.world == .telescope
                 && model.lookFile.paletteRecipe?.world == .telescope,
             String(format: "%.1f s · %@", seconds, note))
         check(
-            "auto donne des rampes quand multicolore est allumé",
+            "auto gives ramps when multicolour is on",
             session.multicolour && model.lookFile.palette.dropFirst().allSatisfy { $0.ramp != nil }
                 && model.lookFile.paletteRecipe?.multicolour == true, "")
         check(
-            "auto respecte le cadenas et le plan",
+            "auto respects the lock and the plan",
             model.lookFile.colour(ofGalaxy: 0, in: model.scene) == kept && model.lookFile.camera == camera,
             "")
         let dust = session.rendering.map { min($0.look.dustStrength, StyleAuto.dustCap ?? .infinity) }
         check(
-            "auto garde les poussières du rendu et leur toile",
+            "auto keeps the rendering's dust and its web",
             model.lookFile.look.dustStrength == dust
                 && model.lookFile.look.dustWeb == RenderLook.styleDustWeb,
-            "poussières \(StyleNames.number(model.lookFile.look.dustStrength)), toile "
+            "dust \(StyleNames.number(model.lookFile.look.dustStrength)), web "
                 + StyleNames.number(model.lookFile.look.dustWeb))
     }
 }

@@ -230,10 +230,10 @@ extension SceneConfig {
         let scaleA = generator.uniform(in: 2.8...6.2)
         let scaleB = generator.uniform(in: 2.6...5.8)
         let a = disk(
-            "Première", count: particleCount / 2, colour: palette.primary, generator: &generator,
+            "First", count: particleCount / 2, colour: palette.primary, generator: &generator,
             scaleLength: scaleA, mass: generator.uniform(in: 42...60))
         let b = disk(
-            "Seconde", count: particleCount - particleCount / 2, colour: palette.secondary,
+            "Second", count: particleCount - particleCount / 2, colour: palette.secondary,
             generator: &generator, scaleLength: scaleB, mass: generator.uniform(in: 38...56))
         var meeting = Encounter(
             pericentre: generator.uniform(in: close ? 4...12 : 14...30),
@@ -253,7 +253,7 @@ extension SceneConfig {
         particleCount: Int, palette: Palette, generator: inout SeededGenerator
     ) -> SceneConfig {
         var only = disk(
-            "Seule", count: particleCount, colour: palette.primary, generator: &generator,
+            "Lone", count: particleCount, colour: palette.primary, generator: &generator,
             scaleLength: generator.uniform(in: 4.2...6.0),
             mass: generator.uniform(in: 46...64))
         only.diskTruncation = generator.uniform(in: 4.4...5.6)
@@ -268,7 +268,7 @@ extension SceneConfig {
         count: Int, galaxies: Int, palette: Palette, generator: inout SeededGenerator,
         window: ClosedRange<Float>
     ) -> SceneConfig {
-        let names = ["Première", "Deuxième", "Troisième", "Quatrième"]
+        let names = ["First", "Second", "Third", "Fourth"]
         var built: [GalaxyConfig] = []
         var masses: [Float] = []
         for index in 0..<galaxies {
@@ -320,10 +320,10 @@ extension SceneConfig {
     ) -> SceneConfig {
         let small = particleCount / 9
         let host = disk(
-            "Hôte", count: particleCount - small, colour: palette.primary, generator: &generator,
+            "Host", count: particleCount - small, colour: palette.primary, generator: &generator,
             scaleLength: generator.uniform(in: 4.4...6.0), mass: generator.uniform(in: 55...70))
         var intruder = GalaxyConfig(
-            name: "Intrus",
+            name: "Intruder",
             particleCount: small,
             kind: .globular,
             potential: GalaxyPotential(

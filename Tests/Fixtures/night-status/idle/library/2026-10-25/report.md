@@ -1,9 +1,9 @@
-# Nuit du 25 oct.
+# Night of 25 Oct
 
-- État : arrêtée, de 25 oct. 22 h 00 à 25 oct. 23 h 30 (1 h 30)
-- Livraison : avant 7 h 00, arrêtée 7 h 30 avant
-- Aperçus : 0 explorés, 0 rejetés, 0 en échec
-- Choisies : aucune
-- Haute résolution : 0 faite sur 4 prévues
-- Vidéos : 0
-- Laissées de côté : 0 · erreurs : 0
+- State: stopped, from 25 Oct 22:00 to 25 Oct 23:30 (1 h 30 min)
+- Delivery: by 07:00, stopped 7 h 30 min early
+- Previews: 0 explored, 0 rejected, 0 failed
+- Kept: none
+- High resolution: 0 done of 4 planned
+- Videos: 0
+- Left out: 0 · errors: 0

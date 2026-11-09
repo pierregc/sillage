@@ -28,9 +28,9 @@ final class SpillFile {
 
         var description: String {
             switch self {
-            case .create(let why): "Impossible d'ouvrir le fichier de débord : \(why)"
-            case .write(let why): "Écriture du fichier de débord : \(why)"
-            case .read(let why): "Lecture du fichier de débord : \(why)"
+            case .create(let why): "Cannot open the spill file: \(why)"
+            case .write(let why): "Writing the spill file: \(why)"
+            case .read(let why): "Reading the spill file: \(why)"
             }
         }
     }
@@ -61,7 +61,7 @@ final class SpillFile {
             }
             // A zero-length write with no error has nothing left to say, and looping on it
             // would spin for ever.
-            guard n > 0 else { throw Failure.write("écriture vide") }
+            guard n > 0 else { throw Failure.write("empty write") }
             written += n
         }
         byteCount += written
@@ -71,7 +71,7 @@ final class SpillFile {
     func read(into destination: UnsafeMutableRawPointer, count: Int, at offset: Int) throws {
         guard count > 0 else { return }
         guard offset >= 0, offset + count <= byteCount else {
-            throw Failure.read("\(offset)..<\(offset + count) hors des \(byteCount) octets écrits")
+            throw Failure.read("\(offset)..<\(offset + count) outside the \(byteCount) bytes written")
         }
         var got = 0
         while got < count {
@@ -80,7 +80,7 @@ final class SpillFile {
                 if errno == EINTR { continue }
                 throw Failure.read(String(cString: strerror(errno)))
             }
-            guard n > 0 else { throw Failure.read("fin de fichier prématurée") }
+            guard n > 0 else { throw Failure.read("premature end of file") }
             got += n
         }
     }

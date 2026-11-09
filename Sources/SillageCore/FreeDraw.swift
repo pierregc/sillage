@@ -148,7 +148,7 @@ public struct FreeDraw: Sendable {
         (.spiral, 0.4), (.disk, 0.15), (.elliptical, 0.1), (.dwarf, 0.2), (.globular, 0.15),
     ]
     static let armShares: [(Int, Float)] = [(2, 0.4), (3, 0.25), (4, 0.2), (5, 0.15)]
-    static let names = ["Première", "Deuxième", "Troisième", "Quatrième", "Cinquième"]
+    static let names = ["First", "Second", "Third", "Fourth", "Fifth"]
 
     func draft(point: Int, particleCount: Int) -> SceneConfig {
         let u = sequence.point(point)
@@ -239,7 +239,7 @@ public struct FreeDraw: Sendable {
                 index == 0
                 ? particleCount - particleCount / count * (count - 1) : particleCount / count
         }
-        var scene = SceneConfig(name: "Libre", galaxies: galaxies, centerSoftening: 1.2)
+        var scene = SceneConfig(name: "Free", galaxies: galaxies, centerSoftening: 1.2)
         scene.encounters = encounters
         scene.seed = seed
         scene.draw = SceneDraw(

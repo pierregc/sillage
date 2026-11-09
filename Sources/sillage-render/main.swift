@@ -103,7 +103,7 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
         return 0
     }
     guard options.contains("--grid") else {
-        print("look       choose a style in the app (Choisir le style), or with")
+        print("look       choose a style in the app (Choose style), or with")
         print("           sillage-render look \(folder.url.path) --style auto")
         print("           sillage-render look \(folder.url.path) --palette auto")
         return 0

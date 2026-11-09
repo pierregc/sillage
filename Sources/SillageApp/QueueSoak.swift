@@ -33,8 +33,8 @@ enum QueueSoak {
             let stamp = DateFormatter()
             stamp.dateFormat = "HH:mm:ss"
             var lines = [
-                "travail \(job.id), \(job.summary)",
-                "heure     wall s  images  im/min   cpu s  cpu/s  gpu %  fenêtre  état",
+                "job \(job.id), \(job.summary)",
+                "time      wall s  frames  fr/min   cpu s  cpu/s  gpu %  window   state",
             ]
             var last = (wall: 0.0, frames: 0, cpu: 0.0)
             while true {
@@ -51,7 +51,7 @@ enum QueueSoak {
                         format: "%@  %6.0f  %6d  %6.1f  %6.1f  %5.2f  %5.0f  %@  %@",
                         stamp.string(from: Date()), wall, frames,
                         Double(frames - last.frames) / span * 60, cpu, (cpu - last.cpu) / span,
-                        GPUUtilisation.read() ?? -1, visible ? "visible" : "cachée ",
+                        GPUUtilisation.read() ?? -1, visible ? "visible" : "hidden ",
                         current.state.rawValue))
                 last = (wall, frames, cpu)
                 try? lines.joined(separator: "\n").write(to: path, atomically: true, encoding: .utf8)

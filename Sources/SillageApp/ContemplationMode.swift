@@ -32,7 +32,7 @@ extension SimulationModel {
         var megayearsPerSecond: Double { self == .brisk ? 2.6 : 1.2 }
         /// How much the encounter is pulled together at the start.
         var haste: Float { self == .brisk ? 1.0 : 0.35 }
-        var name: String { self == .brisk ? "Contemplation rapide" : "Contemplation lente" }
+        var name: String { self == .brisk ? "Brisk contemplation" : "Slow contemplation" }
     }
 
     func startContemplation(pace: Pace = .slow) {

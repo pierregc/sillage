@@ -372,7 +372,7 @@ struct SillageApp: App {
         var activity = ActivityFile(state: .running, updated: Date())
         activity.job = ActivityFile.Job(
             kind: "hires", batch: "2026-10-25", scene: "scene-0023", startedAt: Date(), progress: 0.46,
-            detail: "image 412/900")
+            detail: "frame 412/900")
         write(
             AnyView(
                 HStack(spacing: 6) {
@@ -389,7 +389,7 @@ struct SillageApp: App {
     /// running scene drawn with Webb and the first proposal.
     @MainActor
     private static func writeStyleEditor(_ model: SimulationModel) {
-        // A scene folder with the look the run opened with, so the edits below read as Modifié.
+        // A scene folder with the look the run opened with, so the edits below read as Modified.
         let folder = SceneFolder(
             FileManager.default.temporaryDirectory.appendingPathComponent(
                 "uishot-\(UUID().uuidString)/2026-10-25-night/scene-0023"))
@@ -419,7 +419,7 @@ struct SillageApp: App {
                 StyleInspector(session: session, snapshot: true, fineShown: true).padding(14)
                     .frame(width: 340)),
             to: "out/ui-style-fine.png")
-        // Réalisateur at the zoom of #177: the legend under the canvas, the caption, the zoom
+        // Director at the zoom of #177: the legend under the canvas, the caption, the zoom
         // read as distance and the rotation greyed.
         model.lookFile.camera.mode = .director
         model.lookFile.camera.zoom = 0.445
@@ -483,7 +483,7 @@ struct SillageApp: App {
         // The setup screen's preview has its own pipeline; check it samples too.
         model.returnToSetup()
         model.rebuildPreview(waiting: true)
-        print("selftest preview     \(model.previewParticleCount) particules")
+        print("selftest preview     \(model.previewParticleCount) particles")
         let preview = model.previewSnapshot() ?? []
         let previewLit = preview.enumerated().filter { $0.offset % 4 != 3 && $0.element > 8 }.count
         print("selftest preview lit \(previewLit)")

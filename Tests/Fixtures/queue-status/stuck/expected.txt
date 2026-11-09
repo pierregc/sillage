@@ -1,3 +1,3 @@
-Haute résolution · scene-0023 · prêt vers 2 h 20 · semble bloqué, rien écrit depuis 25 min
-En cours
-  n° 14 · Haute résolution · scene-0023 · image 412/900 · prêt vers 2 h 20
+High resolution · scene-0023 · ready around 02:20 · seems stuck, nothing written for 25 min
+Running
+  #14 · High resolution · scene-0023 · frame 412/900 · ready around 02:20

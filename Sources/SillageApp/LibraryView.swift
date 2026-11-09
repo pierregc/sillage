@@ -124,20 +124,20 @@ struct LibraryView: View {
         return VStack(spacing: 10) {
             Text(
                 nothingHere || nothingInCollection
-                    ? collection.emptyTitle : "Aucune scène ne passe ces filtres"
+                    ? collection.emptyTitle : "No scene passes these filters"
             )
             .font(.title3)
             Text(
                 model.root.map {
                     nothingHere
-                        ? "Les scènes apparaissent dès qu'elles arrivent dans \($0.path)."
+                        ? "Scenes appear as soon as they reach \($0.path)."
                         : nothingInCollection
-                            ? collection.emptyDetail : "Changer les filtres en haut de la fenêtre."
-                } ?? "Choisir le dossier library."
+                            ? collection.emptyDetail : "Change the filters at the top of the window."
+                } ?? "Choose the library folder."
             )
             .foregroundStyle(Palette.secondary)
             if model.root == nil || nothingHere {
-                Button("Choisir un dossier…") { model.pickRoot() }
+                Button("Choose a folder…") { model.pickRoot() }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -146,7 +146,7 @@ struct LibraryView: View {
     private var footer: some View {
         HStack {
             Text(
-                "← → ↑ ↓ naviguer · Y oui · N non · 0 à 9 la note · ⌫ effacer · espace ouvrir la scène"
+                "← → ↑ ↓ move · Y yes · N no · 0 to 9 rating · ⌫ clear · space open the scene"
             )
             .font(.caption)
             .foregroundStyle(Palette.secondary)
@@ -174,16 +174,16 @@ struct LibraryHeader: View {
             }
             Spacer(minLength: 12)
             LibraryPrimaryButton(model: model, collection: collection)
-            Picker("Trier par", selection: $model.query.order) {
+            Picker("Sort by", selection: $model.query.order) {
                 Text("Score").tag(LibraryQuery.Order.score)
-                Text("Note").tag(LibraryQuery.Order.rating)
-                Text("Récentes").tag(LibraryQuery.Order.newest)
+                Text("Rating").tag(LibraryQuery.Order.rating)
+                Text("Recent").tag(LibraryQuery.Order.newest)
             }
             .fixedSize()
             LibraryFilters(model: model)
             LibrarySearchField(model: model)
-            Button("Dossier…") { model.pickRoot() }
-                .help(model.root?.path ?? "Aucun dossier choisi")
+            Button("Folder…") { model.pickRoot() }
+                .help(model.root?.path ?? "No folder chosen")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -192,13 +192,13 @@ struct LibraryHeader: View {
     private var summary: String {
         let shown = model.visible.count
         let total = model.counts[collection] ?? 0
-        let place = model.root?.lastPathComponent ?? "aucun dossier"
-        return (shown == total ? "\(total) scènes" : "\(shown) sur \(total) scènes") + " · \(place)"
+        let place = model.root?.lastPathComponent ?? "no folder"
+        return (shown == total ? "\(total) scenes" : "\(shown) of \(total) scenes") + " · \(place)"
     }
 }
 
-/// The one thing to do next with the collection, which is the stage's own step. Calculer and
-/// Exporter act on every scene listed, through the same form and sheet as the scene page.
+/// The one thing to do next with the collection, which is the stage's own step. Compute and
+/// Export act on every scene listed, through the same form and sheet as the scene page.
 struct LibraryPrimaryButton: View {
     @ObservedObject var model: LibraryModel
     let collection: LibraryCollection
@@ -209,12 +209,12 @@ struct LibraryPrimaryButton: View {
     var body: some View {
         switch collection {
         case .toSort:
-            button("Trier", "Une scène à la fois, au clavier") { model.startTriage() }
+            button("Sort", "One scene at a time, from the keyboard") { model.startTriage() }
         case .chosen:
             if let queue {
                 button(
-                    "Calculer en haute résolution (\(folders.count))",
-                    "Une haute résolution pour chaque scène listée", count: folders.count
+                    "Compute in high resolution (\(folders.count))",
+                    "A high-resolution run for each listed scene", count: folders.count
                 ) { computing = true }
                 .popover(isPresented: $computing, arrowEdge: .bottom) {
                     HiresForm(queue: queue, folders: folders) { computing = false }
@@ -223,13 +223,13 @@ struct LibraryPrimaryButton: View {
                 }
             }
         case .toStyle:
-            button("Choisir le style de la suivante", "Ouvre l'éditeur de style sur sa haute résolution") {
+            button("Choose the next one's style", "Opens the style editor on its high resolution") {
                 model.chooseStyleOfNext()
             }
         case .ready:
             if let queue {
                 button(
-                    "Exporter (\(folders.count))", "Les mêmes vidéos pour chaque scène listée",
+                    "Export (\(folders.count))", "The same videos for each listed scene",
                     count: folders.count
                 ) { exporting = true }
                 .sheet(isPresented: $exporting) {
@@ -237,7 +237,7 @@ struct LibraryPrimaryButton: View {
                 }
             }
         case .exported:
-            button("Montrer les vidéos", "Les montre dans le Finder") { model.revealExports() }
+            button("Show the videos", "Shows them in the Finder") { model.revealExports() }
         case .highResolution, .all:
             EmptyView()
         }
@@ -261,7 +261,7 @@ struct LibraryPrimaryButton: View {
 struct TriageView: View {
     @ObservedObject var model: LibraryModel
     let triage: LibraryModel.Triage
-    /// Goes to Choisies, once nothing is left to sort.
+    /// Goes to Kept, once nothing is left to sort.
     let showChosen: () -> Void
     @State private var still: NSImage?
 
@@ -287,8 +287,8 @@ struct TriageView: View {
     private var header: some View {
         let progress = model.triageProgress ?? (0, 0)
         return HStack(spacing: 12) {
-            Text("Trier").font(.title2.bold())
-            Text("\(progress.0) / \(progress.1) triées")
+            Text("Sort").font(.title2.bold())
+            Text("\(progress.0) / \(progress.1) sorted")
                 .font(.title3.monospacedDigit())
                 .foregroundStyle(Palette.secondary)
             GeometryReader { bar in
@@ -300,8 +300,8 @@ struct TriageView: View {
             }
             .frame(width: 240, height: 6)
             Spacer()
-            Button("Quitter") { model.endTriage() }
-                .help("Revient à la grille (échap)")
+            Button("Exit") { model.endTriage() }
+                .help("Back to the grid (esc)")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -331,7 +331,7 @@ struct TriageView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                 }
-                .help("La scène d'avant (←)")
+                .help("Previous scene (←)")
                 ChoiceButtons(entry: entry) { model.handle($0 == .yes ? .yes : .no) }
                     .frame(width: 220)
                 RatingButtons(entry: entry) { model.rate($0, for: scene.id) }
@@ -341,7 +341,7 @@ struct TriageView: View {
                 } label: {
                     Image(systemName: "chevron.right")
                 }
-                .help("La scène suivante (→)")
+                .help("Next scene (→)")
             }
         }
         .padding(20)
@@ -352,9 +352,9 @@ struct TriageView: View {
     }
 
     private func details(_ scene: LibraryScene) -> String {
-        var parts = [scene.archetype ?? "libre"]
+        var parts = [scene.archetype ?? "free"]
         if let galaxies = scene.galaxies {
-            parts.append(galaxies == 1 ? "1 galaxie" : "\(galaxies) galaxies")
+            parts.append(galaxies == 1 ? "1 galaxy" : "\(galaxies) galaxies")
         }
         if let score = scene.score { parts.append(String(format: "score %.2f", score)) }
         return parts.joined(separator: " · ")
@@ -365,9 +365,9 @@ struct TriageView: View {
         let kept = entries.filter { $0 == .yes }.count
         return VStack(spacing: 12) {
             Text(LibraryCollection.toSort.emptyTitle).font(.title)
-            Text("\(kept) choisies, \(entries.count - kept) écartées.")
+            Text("\(kept) kept, \(entries.count - kept) discarded.")
                 .foregroundStyle(Palette.secondary)
-            Button("Aller aux Choisies", action: showChosen)
+            Button("Go to Kept", action: showChosen)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
         }
@@ -376,7 +376,7 @@ struct TriageView: View {
     private var footer: some View {
         HStack {
             Text(
-                "Y oui · N non · 0 à 9 la note, 1 puis 0 pour 10 · ← → scène précédente, suivante · ⌫ effacer · échap quitter"
+                "Y yes · N no · 0 to 9 rating, 1 then 0 for 10 · ← → previous, next scene · ⌫ clear · esc exit"
             )
             .font(.caption)
             .foregroundStyle(Palette.secondary)
@@ -396,23 +396,23 @@ struct LibraryFilters: View {
 
     var body: some View {
         Menu {
-            Picker("Archétype", selection: $model.query.archetype) {
-                Text("Tous").tag(String?.none)
+            Picker("Archetype", selection: $model.query.archetype) {
+                Text("All").tag(String?.none)
                 ForEach(model.archetypes, id: \.self) { Text($0).tag(String?.some($0)) }
             }
             Picker("Galaxies", selection: $model.query.galaxies) {
-                Text("Toutes").tag(Int?.none)
+                Text("All").tag(Int?.none)
                 ForEach(model.galaxyCounts, id: \.self) { Text("\($0)").tag(Int?.some($0)) }
             }
-            Picker("Note", selection: $model.query.rating) {
-                Text("Toutes").tag(LibraryQuery.Rating.any)
-                Text("Non notées").tag(LibraryQuery.Rating.unrated)
+            Picker("Rating", selection: $model.query.rating) {
+                Text("All").tag(LibraryQuery.Rating.any)
+                Text("Unrated").tag(LibraryQuery.Rating.unrated)
                 ForEach(1...10, id: \.self) { floor in
                     Text("≥ \(floor)").tag(LibraryQuery.Rating.atLeast(floor))
                 }
             }
             Divider()
-            Button("Tout afficher") {
+            Button("Show all") {
                 model.query.archetype = nil
                 model.query.galaxies = nil
                 model.query.rating = .any
@@ -420,7 +420,7 @@ struct LibraryFilters: View {
             .disabled(active == 0)
         } label: {
             Label(
-                active == 0 ? "Filtres" : "Filtres (\(active))",
+                active == 0 ? "Filters" : "Filters (\(active))",
                 systemImage: "line.3.horizontal.decrease.circle")
         }
         .fixedSize()
@@ -442,7 +442,7 @@ struct LibrarySearchField: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "magnifyingglass").foregroundStyle(Palette.secondary)
-            TextField("Nom de la scène", text: $model.query.search)
+            TextField("Scene name", text: $model.query.search)
                 .textFieldStyle(.plain)
                 .focused($focus)
                 .onSubmit { leave() }
@@ -510,7 +510,7 @@ struct LibraryCard: View {
                 if let videos = Self.videoCount(scene) {
                     Label("\(videos)", systemImage: "film").font(.caption.monospacedDigit())
                         .foregroundStyle(Palette.secondary)
-                        .help("Vidéos")
+                        .help("Videos")
                 }
             }
         }
@@ -535,7 +535,7 @@ struct LibraryCard: View {
                 PlayerView(player: model.player)
             }
             if !ready {
-                Text(scene.video == nil ? "sans vidéo" : "en cours")
+                Text(scene.video == nil ? "no video" : "in progress")
                     .font(.caption2)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -554,7 +554,7 @@ struct LibraryCard: View {
 
     /// The rating if there is one, else the score.
     private var summary: String {
-        if let rating = entry?.rating { return "note \(rating)" }
+        if let rating = entry?.rating { return "rating \(rating)" }
         if let score = scene.score { return String(format: "score %.2f", score) }
         return " "
     }
@@ -582,13 +582,13 @@ struct Pill: View {
 extension SceneStage {
     var pillTitle: String {
         switch self {
-        case .toSort: "À trier"
-        case .discarded: "Écartée"
-        case .chosen: "Choisie"
-        case .highResolution: "Haute résolution"
-        case .toStyle: "Style à choisir"
-        case .ready: "Prête"
-        case .exported: "Exportée"
+        case .toSort: "To sort"
+        case .discarded: "Discarded"
+        case .chosen: "Kept"
+        case .highResolution: "High resolution"
+        case .toStyle: "Style to choose"
+        case .ready: "Ready"
+        case .exported: "Exported"
         }
     }
 }
@@ -600,8 +600,8 @@ struct ChoiceButtons: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            button("Oui", .yes, Color(red: 0.25, green: 0.62, blue: 0.38))
-            button("Non", .no, Color(red: 0.70, green: 0.30, blue: 0.27))
+            button("Yes", .yes, Color(red: 0.25, green: 0.62, blue: 0.38))
+            button("No", .no, Color(red: 0.70, green: 0.30, blue: 0.27))
         }
     }
 
@@ -656,14 +656,14 @@ struct ChoiceBadge: View {
     var body: some View {
         HStack(spacing: 4) {
             if let choice = entry?.choice {
-                Text(choice == .yes ? "Choisie" : "Écartée")
+                Text(choice == .yes ? "Kept" : "Discarded")
                     .foregroundStyle(
                         choice == .yes
                             ? Color(red: 0.45, green: 0.85, blue: 0.55)
                             : Color(red: 0.95, green: 0.5, blue: 0.45))
             }
             if entry?.choice == nil, entry?.picked != nil {
-                Text("Choisie par le score").foregroundStyle(Color(red: 0.55, green: 0.75, blue: 0.95))
+                Text("Kept by score").foregroundStyle(Color(red: 0.55, green: 0.75, blue: 0.95))
             }
             if showsRating, let rating = entry?.rating { Text("\(rating)") }
         }
@@ -717,7 +717,7 @@ struct LibraryCommand: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("Bibliothèque") {
+        Button("Library") {
             navigation.showLibrary()
             openWindow(id: AppNavigation.windowID)
         }

@@ -77,6 +77,8 @@ build_app() {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleLocalizations</key><array><string>en</string></array>
     <key>CFBundleExecutable</key><string>Sillage</string>
     <key>CFBundleIdentifier</key><string>dev.pierregc.sillage</string>
     <key>CFBundleName</key><string>Sillage</string>
@@ -112,11 +114,11 @@ strict_concurrency() {
 # Everything CI used to run, in one command, and now the only gate there is. Run it before
 # every commit.
 check() {
-    echo "== formatage"
+    echo "== format"
     swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests"
-    echo "== concurrence stricte"
+    echo "== strict concurrency"
     strict_concurrency
-    echo "== application"
+    echo "== app"
     build_app >/dev/null
     echo "== tests"
     run_tests

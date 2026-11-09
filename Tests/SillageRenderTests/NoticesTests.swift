@@ -32,18 +32,18 @@ struct NoticesTests {
     }
 
     @Test func wordsFollowTheGlossary() {
-        #expect(Notices.stage("hires") == "Haute résolution")
-        #expect(Notices.stage("export") == "Vidéos")
-        #expect(Notices.night("2026-10-25") == "Nuit du 25 oct.")
-        #expect(Notices.night(nil) == "Nuit")
-        #expect(Notices.queueEmpty(finished: 1).body == "1 travail terminé")
-        #expect(Notices.queueEmpty(finished: 3).body == "3 travaux terminés")
+        #expect(Notices.stage("hires") == "High resolution")
+        #expect(Notices.stage("export") == "Videos")
+        #expect(Notices.night("2026-10-25") == "Night of 25 Oct")
+        #expect(Notices.night(nil) == "Night")
+        #expect(Notices.queueEmpty(finished: 1).body == "1 job finished")
+        #expect(Notices.queueEmpty(finished: 3).body == "3 jobs finished")
         var event = RunEvent(RunEvent.Kind.phaseDone)
         event.night = "2026-10-25"
         event.phase = "hires"
         event.count = 4
         #expect(
-            Notices.phaseDone(event) == Notice("Nuit du 25 oct.", "Haute résolution : fini · 4 scènes"))
+            Notices.phaseDone(event) == Notice("Night of 25 Oct", "High resolution: done · 4 scenes"))
     }
 
     @Test func aNightEndsWithWhatItDid() {
@@ -57,20 +57,20 @@ struct NoticesTests {
         ]
         #expect(
             Notices.summary(events)
-                == "2 scènes explorées · 1 en haute résolution · 1 vidéo · 1 erreur")
-        #expect(Notices.summary([]).hasSuffix("aucune erreur"))
+                == "2 scenes explored · 1 in high resolution · 1 video · 1 error")
+        #expect(Notices.summary([]).hasSuffix("no errors"))
     }
 
     @Test func theStatusLineSaysWhatRuns() {
         let started = Date()
         var activity = ActivityFile(state: .running, updated: started)
-        #expect(Notices.statusLine(ActivityFile(state: .idle, updated: started)) == "Rien en cours")
+        #expect(Notices.statusLine(ActivityFile(state: .idle, updated: started)) == "Nothing running")
         activity.job = ActivityFile.Job(
             kind: "hires", batch: "2026-10-25", scene: "scene-0023", startedAt: started,
-            detail: "image 412/900")
-        #expect(Notices.statusLine(activity) == "Haute résolution · scene-0023 · image 412/900")
+            detail: "frame 412/900")
+        #expect(Notices.statusLine(activity) == "High resolution · scene-0023 · frame 412/900")
         activity.state = .paused
-        #expect(Notices.statusLine(activity).hasSuffix("en pause"))
+        #expect(Notices.statusLine(activity).hasSuffix(" · paused"))
     }
 
     @Test func quotesInANoticeAreNotCode() {
@@ -94,10 +94,10 @@ struct NoticesTests {
         let log = store.library.appendingPathComponent("notices.log")
         setenv(Notifier.logVariable, log.path, 1)
         defer { unsetenv(Notifier.logVariable) }
-        Notifier.post(Notice("Un", "deux"), store: store)
+        Notifier.post(Notice("One", "two"), store: store)
         try QueueSettings(notifications: false).write(store)
-        Notifier.post(Notice("Trois", "quatre"), store: store)
-        #expect(try String(contentsOf: log, encoding: .utf8) == "Un\tdeux\n")
+        Notifier.post(Notice("Three", "four"), store: store)
+        #expect(try String(contentsOf: log, encoding: .utf8) == "One\ttwo\n")
     }
 
     @Test func aFailureAndAnEmptyQueueAreToldOnceEach() throws {
@@ -114,8 +114,8 @@ struct NoticesTests {
         #expect(runner(store, box) { job in job.id == 1 ? "echo no take; exit 2" : "true" }.run() == 0)
         #expect(
             box.notices == [
-                Notice("Échec · Vidéos", "scene-0001 : exit status 2: no take"),
-                Notice("File d'attente vide", "1 travail terminé"),
+                Notice("Failed · Videos", "scene-0001: exit status 2: no take"),
+                Notice("Queue empty", "1 job finished"),
             ])
     }
 
@@ -162,11 +162,11 @@ struct NoticesTests {
         #expect(runner(store, box) { _ in script }.run() == 0)
         #expect(
             box.notices == [
-                Notice("Nuit du 26 oct.", "Aperçus : fini · 12 scènes"),
-                Notice("Nuit du 26 oct.", "Haute résolution : fini · 4 scènes"),
+                Notice("Night of 26 Oct", "Previews: done · 12 scenes"),
+                Notice("Night of 26 Oct", "High resolution: done · 4 scenes"),
                 Notice(
-                    "Nuit du 26 oct. terminée",
-                    "1 scène explorée · 0 en haute résolution · 0 vidéo · aucune erreur"),
+                    "Night of 26 Oct finished",
+                    "1 scene explored · 0 in high resolution · 0 videos · no errors"),
             ])
     }
 }

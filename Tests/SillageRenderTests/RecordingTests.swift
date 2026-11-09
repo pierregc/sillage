@@ -95,7 +95,7 @@ struct RecordingTests {
             for slot in 0..<count {
                 worst = max(worst, simd_reduce_max(abs(decoded[slot] - frames[index][slot])))
             }
-            #expect(worst <= step * 1.5, "image \(index) relue à \(worst) pour un pas de \(step)")
+            #expect(worst <= step * 1.5, "frame \(index) read back off by \(worst) for a step of \(step)")
         }
     }
 
@@ -148,7 +148,7 @@ struct RecordingTests {
             for slot in 0..<count {
                 worst = max(worst, simd_reduce_max(abs(decoded[slot] - originals[slot])))
             }
-            #expect(worst <= step * 1.5, "image \(index) du fichier écartée de \(worst)")
+            #expect(worst <= step * 1.5, "frame \(index) of the file off by \(worst)")
         }
     }
 

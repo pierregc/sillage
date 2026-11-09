@@ -17,9 +17,9 @@ public enum ExportChoice: String, CaseIterable, Sendable, Identifiable {
         case .hd: "1080p"
         case .uhd: "4K"
         case .vertical: "Vertical"
-        case .square: "Carré"
+        case .square: "Square"
         case .whatsapp: "WhatsApp"
-        case .webp: "Aperçu animé WebP"
+        case .webp: "Animated WebP preview"
         case .gif: "GIF"
         }
     }
@@ -30,15 +30,15 @@ public enum ExportChoice: String, CaseIterable, Sendable, Identifiable {
         case .uhd: "3840 × 2160"
         case .vertical: "Shorts, Reels · 1080 × 1920"
         case .square: "1080 × 1080"
-        case .whatsapp: "Moins de 15 Mo, avec sa légende"
-        case .webp, .gif: "960 px, 8 s en boucle"
+        case .whatsapp: "Under 15 MB, with its caption"
+        case .webp, .gif: "960 px, 8 s loop"
         }
     }
 
     public var preset: VideoPreset? { VideoPreset.named(rawValue) }
     public var format: AnimatedImage.Format? { AnimatedImage.Format(rawValue: rawValue) }
 
-    /// WhatsApp keeps H.264 and the animations are no video: Avancé's codec leaves them alone.
+    /// WhatsApp keeps H.264 and the animations are no video: Advanced's codec leaves them alone.
     public var takesCodec: Bool { preset.map { $0.codec == nil } ?? false }
 }
 
@@ -55,7 +55,7 @@ public struct StageLook: Sendable, Equatable, Hashable {
     }
 }
 
-/// Avancé: what every ticked card shares. Absent, the stage's own default.
+/// Advanced: what every ticked card shares. Absent, the stage's own default.
 public struct ExportSettings: Sendable, Equatable {
     public var codec: VideoCodec = .hevc
     public var start: Double?
@@ -266,7 +266,7 @@ public enum StageJobs {
         return job
     }
 
-    /// What a queued job of a scene makes: "8 M dont 2 M massives", "4K · 4k-2.mp4".
+    /// What a queued job of a scene makes: "8 M (2 M massive)", "4K · 4k-2.mp4".
     public static func title(of job: QueueJob) -> String {
         func option(_ name: String) -> String? {
             job.options.firstIndex(of: name).flatMap {
@@ -279,7 +279,7 @@ public enum StageJobs {
             return particles(draw.particles, massive: draw.massive)
         case .export:
             let card = ExportChoice(rawValue: option("--format") ?? option("--preset") ?? "1080p")
-            var parts = [card?.title ?? option("--preset") ?? "Vidéo"]
+            var parts = [card?.title ?? option("--preset") ?? "Video"]
             if let out = option("--out") { parts.append(URL(fileURLWithPath: out).lastPathComponent) }
             return parts.joined(separator: " · ")
         case .explore, .night:
@@ -294,15 +294,15 @@ public enum StageJobs {
             let millions = Double(count) / 1_000_000
             return millions == millions.rounded()
                 ? "\(Int(millions))\u{A0}M"
-                : String(format: "%.1f\u{A0}M", millions).replacingOccurrences(of: ".", with: ",")
+                : String(format: "%.1f\u{A0}M", millions)
         }
         return count >= 1_000 ? "\(count / 1_000)\u{A0}k" : "\(count)"
     }
 
-    /// "8 M dont 2 M massives", or "2 M" when every particle carries the mass.
+    /// "8 M (2 M massive)", or "2 M" when every particle carries the mass.
     public static func particles(_ count: Int, massive: Int?) -> String {
         guard let massive, massive < count else { return particles(count) }
-        return "\(particles(count)) dont \(particles(massive)) massives"
+        return "\(particles(count)) (\(particles(massive)) massive)"
     }
 
     /// A queued export's options without its `--out`, to tell the same request asked twice.
@@ -333,7 +333,7 @@ extension JobQueue {
 }
 
 /// When jobs about to be queued would be ready, behind what the queue already holds:
-/// "2 calculs avant celui-ci · prêt vers 23 h 40".
+/// "2 jobs ahead of this one · ready around 23:40".
 public struct StageForecast: Sendable, Equatable {
     public var ahead: Int
     public var paused: Bool
@@ -369,37 +369,37 @@ public struct StageForecast: Sendable, Equatable {
 
     private var words: Words { Words(now: now, timeZone: timeZone) }
 
-    /// "environ 12 min", "moins d'une minute".
+    /// "about 12 min", "under a minute".
     static func about(_ seconds: Double) -> String {
-        seconds < 60 ? "moins d'une minute" : "environ " + Words.duration(seconds)
+        seconds < 60 ? "under a minute" : "about " + Words.duration(seconds)
     }
 
-    /// "environ 12 min · prêt vers 23 h 40".
+    /// "about 12 min · ready around 23:40".
     public func line(_ index: Int) -> String {
         guard jobs.indices.contains(index) else { return "" }
-        var parts = [jobs[index].seconds.map(Self.about) ?? "durée inconnue"]
-        if let ready = ready[index] { parts.append("prêt " + words.about(ready)) }
+        var parts = [jobs[index].seconds.map(Self.about) ?? "unknown duration"]
+        if let ready = ready[index] { parts.append("ready " + words.about(ready)) }
         return parts.joined(separator: " · ")
     }
 
-    /// "1 calcul avant celui-ci · prêt vers 23 h 40", "Commence tout de suite · tout prêt vers 1 h 10".
+    /// "1 job ahead of this one · ready around 23:40", "Starts right away · all ready around 01:10".
     public var summary: String {
-        guard !jobs.isEmpty else { return "Déjà dans la file d'attente" }
-        let these = jobs.count == 1 ? "celui-ci" : "ceux-ci"
+        guard !jobs.isEmpty else { return "Already in the queue" }
+        let these = jobs.count == 1 ? "this one" : "these"
         var parts: [String] = []
-        if paused { parts.append("File en pause") }
+        if paused { parts.append("Queue paused") }
         if ahead == 0 {
-            if !paused { parts.append("Commence tout de suite") }
+            if !paused { parts.append("Starts right away") }
         } else {
-            parts.append((ahead == 1 ? "1 calcul" : "\(ahead) calculs") + " avant \(these)")
+            parts.append((ahead == 1 ? "1 job" : "\(ahead) jobs") + " ahead of \(these)")
         }
         if jobs.count > 1, jobs.allSatisfy({ $0.seconds != nil }) {
-            parts.append(Self.about(jobs.compactMap(\.seconds).reduce(0, +)) + " en tout")
+            parts.append(Self.about(jobs.compactMap(\.seconds).reduce(0, +)) + " in all")
         }
         if let last = ready.last ?? nil {
-            parts.append((jobs.count == 1 ? "prêt " : "tout prêt ") + words.about(last))
+            parts.append((jobs.count == 1 ? "ready " : "all ready ") + words.about(last))
         } else if !paused {
-            parts.append("heure de fin inconnue")
+            parts.append("end time unknown")
         }
         return parts.joined(separator: " · ")
     }

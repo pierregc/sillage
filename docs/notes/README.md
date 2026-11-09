@@ -46,7 +46,7 @@ session. Read the note for an area before changing it.
 - [Old stars seen edge-on and face-on](old-stars-by-angle.md): the outskirts' light, no young stars in the bulge
 - [Why the red went out](red-population.md): and what a constant population costs
 - [Gas in filaments](gas-filaments.md): and which frame a dust lane lives in
-- [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Télescope world
+- [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Telescope world
 - [Scoring a palette, and the Auto palette](palette-score.md): the five parts, the reference tones, what Auto picks
 
 ## Capture and playback
@@ -65,7 +65,7 @@ session. Read the note for an area before changing it.
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first
-- [The style editor](style-editor.md): renderings, palettes and locks, Auto, Avant/Après
+- [The style editor](style-editor.md): renderings, palettes and locks, Auto, Before / After
 - [Making a galaxy read as matter rather than as a graphic](galaxy-as-matter.md)
 - [Gigantism](gigantism.md): why a render reads as sand, the compact minority, the kernel in projection, what more particles cost
 - [A web of dust that turns without tearing](dust-web.md): spike #173, the web carried round and renewed, finer grains, the web where the disk is intact; #200, the lace baked and paid once per pixel; #197, on in the shipped and generated styles

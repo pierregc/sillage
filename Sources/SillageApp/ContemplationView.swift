@@ -32,7 +32,7 @@ struct ContemplationOverlay: View {
                 VStack {
                     Spacer()
                     Text(
-                        "ZQSD pour voler  ·  espace : scène suivante  ·  I : oscillateurs  ·  échap : revenir"
+                        "WASD to fly  ·  space: next scene  ·  I: oscillators  ·  esc: back"
                     )
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.4))
@@ -64,7 +64,7 @@ struct LFOReadout: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.1)) { _ in
             VStack(alignment: .leading, spacing: 5) {
-                Text("oscillateurs")
+                Text("oscillators")
                     .font(.caption2.smallCaps())
                     .foregroundStyle(.white.opacity(0.4))
                 ForEach(model.director.readings) { reading in
@@ -93,8 +93,8 @@ struct LFOReadout: View {
     }
 
     private var caption: String {
-        let camera = model.cameraIsManual ? "à la main" : "\(model.director.move)"
-        return "\(camera) · \(model.director.immersed ? "immergé" : "orbital")"
+        let camera = model.cameraIsManual ? "manual" : "\(model.director.move)"
+        return "\(camera) · \(model.director.immersed ? "immersed" : "orbital")"
     }
 
     /// Small values here run to thousandths and large ones to hundreds.

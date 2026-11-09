@@ -25,7 +25,7 @@ enum PresetCheck {
                 report +=
                     "\(name.padding(toLength: 10, withPad: " ", startingAt: 0)) "
                     + "\(model.draft.name) · \(model.draft.galaxies.count) galaxies · "
-                    + "\(model.previewParticleCount) particules d'aperçu\n"
+                    + "\(model.previewParticleCount) preview particles\n"
             }
 
             try? await Task.sleep(for: .seconds(1))
