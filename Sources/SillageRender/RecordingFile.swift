@@ -4,8 +4,8 @@ import simd
 
 /// Reads and writes a captured run.
 ///
-/// A run costs minutes to compute and six bytes a particle a frame to hold, so a quarter of a
-/// million particles over five hundred frames is three quarters of a gigabyte. That is worth
+/// A run costs minutes to compute and eight bytes a particle a frame to hold, so a quarter of a
+/// million particles over five hundred frames is a gigabyte. That is worth
 /// keeping: everything about how it looks — exposure, colour, the telescope, the camera — is
 /// decided at draw time and none of it is baked in. Reopening a take is not watching a video,
 /// it is getting the run back.
@@ -22,7 +22,9 @@ import simd
 ///     component, galaxy                particleCount 32-bit words each
 ///     frames                           frameCount x 8 floats
 ///     disk states                      frameCount x galaxyCount x 4 floats, version 3 and up
-///     positions                        frameCount x particleCount x 3 x 16 bits
+///     positions                        frameCount x particleCount x 64 bits, version 7
+///                                      and up: 21 bits an axis, x lowest, the top bit 0;
+///                                      frameCount x particleCount x 3 x 16 bits before
 ///
 /// The bulk sits at the end so it can be written and read as one run of bytes, and the file
 /// is memory-mapped rather than loaded: a take is often larger than is comfortable to hold
@@ -42,7 +44,10 @@ public enum RecordingFile {
     /// 5 may keep one captured frame in several, which the header says, and a reader that
     /// does not know to interpolate across the gaps would play it that many times too fast.
     /// 6 adds each particle's birth radius, which the galaxy colour ramps read (#119).
-    private static let version: UInt64 = 6
+    /// 7 holds each position as 21 bits an axis in eight bytes, where 16 bits took six: 32 times
+    /// finer, a parsec over the largest box measured (#237). The layout is otherwise version 6's,
+    /// which is still written for a take held at 16 bits.
+    private static let version: UInt64 = 7
     private static let oldestReadableVersion: UInt64 = 1
 
     public struct Header: Codable {
@@ -104,6 +109,7 @@ public enum RecordingFile {
         defer { try? handle.close() }
 
         var preamble = Data(magic.utf8)
+        let version: UInt64 = recording.bitsPerAxis > 16 ? Self.version : 6
         preamble.append(contentsOf: withUnsafeBytes(of: version.littleEndian) { Array($0) })
         preamble.append(
             contentsOf: withUnsafeBytes(of: UInt64(encoded.count).littleEndian) { Array($0) })
@@ -294,14 +300,15 @@ public enum RecordingFile {
 
         // The positions stay in the mapping rather than being copied into an array: a take of
         // several gigabytes should cost the pages that are actually looked at.
-        let length = header.frameCount * count * 3 * MemoryLayout<UInt16>.size
+        let bits = version >= 7 ? 21 : 16
+        let length = header.frameCount * count * Recording.bytesPerParticle(bitsPerAxis: bits)
         guard cursor + length <= data.count else { throw Failure.truncated }
         let positions = data[cursor..<(cursor + length)]
 
         let recording = Recording(
             particleCount: count, galaxyCount: galaxies, frames: frames, centers: centers,
             disks: disks, interval: header.interval ?? 1, capturedCount: header.capturedFrames,
-            mapped: positions)
+            bitsPerAxis: bits, mapped: positions)
         recording.setDisks(
             Self.layered(
                 recording, scene: header.scene, galaxy: particles.galaxyIndex,

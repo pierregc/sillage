@@ -10,6 +10,8 @@ public final class LookSheet {
     private let device: MTLDevice
     private let expander: SnapshotExpander
     private let snapshots: MTLBuffer
+    /// Room for one snapshot in `snapshots`, aligned as a bound offset must be.
+    private let slotBytes: Int
     private let positions: MTLBuffer
     private let smoothing: SmoothingField
     private var cameras: [String: [Camera]] = [:]
@@ -25,16 +27,16 @@ public final class LookSheet {
         self.take = take
         self.device = device
         let count = take.recording.particleCount
-        let snapshotBytes = count * 3 * MemoryLayout<UInt16>.size
+        slotBytes = (take.recording.frameBytes + 255) / 256 * 256
         guard
             let snapshots = device.makeBuffer(
-                length: 4 * snapshotBytes, options: .storageModeShared),
+                length: 4 * slotBytes, options: .storageModeShared),
             let positions = device.makeBuffer(
                 length: count * MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared)
         else { throw RenderError.noDevice }
         self.snapshots = snapshots
         self.positions = positions
-        expander = try SnapshotExpander(device: device, particleCount: count)
+        expander = try SnapshotExpander(device: device, recording: take.recording)
         smoothing = try SmoothingField(device: device, particleCount: count)
     }
 
@@ -169,14 +171,13 @@ public final class LookSheet {
 
     private func expand(_ blend: Recording.Blend) throws {
         let recording = take.recording
-        let stride = recording.particleCount * 3 * MemoryLayout<UInt16>.size
         let keys = (0..<4).map { Int(blend.keys[$0]) }
         let frames = keys.enumerated().compactMap { slot, key in
-            recording.copy(frame: key, into: snapshots, atByteOffset: slot * stride)
+            recording.copy(frame: key, into: snapshots, atByteOffset: slot * slotBytes)
         }
         guard frames.count == 4 else { throw RecordingFile.Failure.truncated }
         expander.expand(
-            frames: frames, at: (0..<4).map { $0 * stride }, blend: blend, from: snapshots,
+            frames: frames, at: (0..<4).map { $0 * slotBytes }, blend: blend, from: snapshots,
             into: positions)
     }
 

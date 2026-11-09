@@ -7,14 +7,14 @@ import simd
 
 @Suite("Recording")
 struct RecordingTests {
-    private func captured(frames: Int) throws -> (
+    private func captured(frames: Int, bitsPerAxis: Int = Recording.defaultBitsPerAxis) throws -> (
         Recording, [[SIMD3<Float>]], Int
     ) {
         let scene = SceneConfig.merger(particleCount: 20_000)
         let seeded = RestrictedSolver.sampleParticles(for: scene)
         let solver = try MetalSolver(scene: scene, particles: seeded)
         let count = seeded.count
-        let recording = Recording(particleCount: count)
+        let recording = Recording(particleCount: count, bitsPerAxis: bitsPerAxis)
         let pointer = solver.positions.contents().bindMemory(
             to: SIMD3<Float>.self, capacity: count)
 
@@ -51,7 +51,7 @@ struct RecordingTests {
         var frames: [[SIMD3<Float>]] = []
         var generator = SeededGenerator(seed: 41)
         // Small enough that the first few frames spend it, so most of this take is spilled.
-        let budget = count * 6 * 3
+        let budget = recording.frameBytes * 3
 
         for index in 0..<40 {
             var positions = [SIMD3<Float>](repeating: .zero, count: count)
@@ -77,7 +77,7 @@ struct RecordingTests {
         }
         // The budget bounded memory — to within the one frame that trips it, which lands
         // where the take still had room — and the rest went to the file, whole frames only.
-        let perFrame = count * 6
+        let perFrame = recording.frameBytes
         let records = 40 * MemoryLayout<Recording.Frame>.stride
         #expect(recording.memoryByteCount <= budget + perFrame + records)
         #expect(recording.diskByteCount > 0)
@@ -90,7 +90,7 @@ struct RecordingTests {
             let decoded = recording.positions(at: index)
             #expect(decoded.count == count)
             let box = try #require(recording.frame(at: index))
-            let step = box.extent / 65535
+            let step = recording.quantum(of: box)
             var worst: Float = 0
             for slot in 0..<count {
                 worst = max(worst, simd_reduce_max(abs(decoded[slot] - frames[index][slot])))
@@ -119,7 +119,7 @@ struct RecordingTests {
             positions.withUnsafeBufferPointer {
                 recording.offer(
                     positions: $0.baseAddress!, time: Float(index), centers: [.zero],
-                    budget: count * 6 * 2)
+                    budget: recording.frameBytes * 2)
             }
         }
         #expect(recording.isSpilling)
@@ -143,7 +143,7 @@ struct RecordingTests {
         for (originals, index) in [(first, 0), (last, 23)] {
             let decoded = reloaded.recording.positions(at: index)
             let box = try #require(reloaded.recording.frame(at: index))
-            let step = box.extent / 65535
+            let step = reloaded.recording.quantum(of: box)
             var worst: Float = 0
             for slot in 0..<count {
                 worst = max(worst, simd_reduce_max(abs(decoded[slot] - originals[slot])))
@@ -152,14 +152,15 @@ struct RecordingTests {
         }
     }
 
-    /// Sixteen bits over each snapshot's own bounding box has to be indistinguishable from the
-    /// full precision positions, otherwise halving the memory would cost accuracy.
-    @Test func quantisationStaysBelowOneStepOfTheBox() throws {
-        let (recording, originals, count) = try captured(frames: 3)
+    /// The grid over each snapshot's own bounding box has to be indistinguishable from the
+    /// full precision positions, otherwise the memory it saves would cost accuracy. At either
+    /// depth, since a take older than version 7 still plays.
+    @Test(arguments: [16, 21]) func quantisationStaysBelowOneStepOfTheBox(bitsPerAxis: Int) throws {
+        let (recording, originals, count) = try captured(frames: 3, bitsPerAxis: bitsPerAxis)
         #expect(recording.count == 3)
 
         let device = try #require(MTLCreateSystemDefaultDevice())
-        let expander = try SnapshotExpander(device: device, particleCount: count)
+        let expander = try SnapshotExpander(device: device, recording: recording)
         let output = try #require(
             device.makeBuffer(length: count * MemoryLayout<SIMD3<Float>>.stride))
 
@@ -167,17 +168,60 @@ struct RecordingTests {
         for index in 0..<2 {
             let offset = try #require(stream.fetch(index))
             let frame = try #require(recording.frame(at: index))
-            let pair = (frame, frame)
             expander.expand(
                 first: frame, at: offset, second: frame, at: offset, from: stream.buffer,
                 blend: 0, into: output)
             let decoded = output.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
+            let reference = recording.positions(at: index)
             var worst: Float = 0
+            var apart: Float = 0
             for particle in 0..<count {
                 worst = max(worst, simd_length(decoded[particle] - originals[index][particle]))
+                apart = max(apart, simd_length(decoded[particle] - reference[particle]))
             }
-            #expect(worst < pair.0.extent / 65535 * 3)
+            let step = recording.quantum(of: frame)
+            #expect(worst < step * 3)
+            // The GPU reads the very cells the CPU does, whichever depth: a bit out of place
+            // would put a particle thousands of cells off.
+            #expect(apart < step / 2)
         }
+    }
+
+    /// The same frame held at 21 bits an axis and at 16: 32 times finer for a third more bytes.
+    @Test func twentyOneBitsAreThirtyTwoTimesFinerForAThirdMore() {
+        let count = 5_000
+        var generator = SeededGenerator(seed: 237)
+        // A disk in a box a hundred times wider, as late in a story where the tails reach far.
+        var positions = (0..<count).map { _ in
+            SIMD3<Float>(generator.normal() * 8, generator.normal() * 8, generator.normal() * 0.3)
+        }
+        positions[0] = SIMD3(-600, 0, 0)
+        positions[1] = SIMD3(600, 400, -300)
+        let fine = Recording(particleCount: count)
+        let coarse = Recording(particleCount: count, bitsPerAxis: 16)
+        for reel in [fine, coarse] {
+            positions.withUnsafeBufferPointer {
+                reel.append(positions: $0.baseAddress!, time: 0, centers: [.zero])
+            }
+        }
+        #expect(fine.bitsPerAxis == 21 && coarse.bitsPerAxis == 16)
+        #expect(fine.frameBytes * 3 == coarse.frameBytes * 4)
+        #expect(fine.byteCount - coarse.byteCount == count * 2)
+
+        let box = fine.frames[0]
+        #expect(abs(coarse.quantum(of: box) / fine.quantum(of: box) - 32) < 0.001)
+        func worst(_ reel: Recording) -> Float {
+            zip(reel.positions(at: 0), positions).map { simd_reduce_max(abs($0 - $1)) }.max() ?? 0
+        }
+        // Rounded to the nearest cell, where 16 bits cut down to the one below; a float holds
+        // 24 bits, which leaves a fraction of a cell of its own rounding at 21.
+        #expect(worst(fine) < fine.quantum(of: box))
+        #expect(worst(coarse) < coarse.quantum(of: box) * 1.1)
+        #expect(worst(fine) < worst(coarse) / 24)
+        // One particle in several, and a run of them, decode as the whole frame does.
+        let all = fine.positions(at: 0)
+        #expect(fine.positions(at: 0, every: 7) == stride(from: 0, to: count, by: 7).map { all[$0] })
+        #expect(fine.positions(at: 0, in: 1_000..<1_300) == Array(all[1_000..<1_300]))
     }
 
     /// The cache hands back the snapshot that was asked for, whether the reader had already
@@ -186,7 +230,7 @@ struct RecordingTests {
     @Test func theSnapshotCacheNeverHandsBackTheWrongFrame() throws {
         let (recording, originals, count) = try captured(frames: 6)
         let device = try #require(MTLCreateSystemDefaultDevice())
-        let expander = try SnapshotExpander(device: device, particleCount: count)
+        let expander = try SnapshotExpander(device: device, recording: recording)
         let output = try #require(
             device.makeBuffer(length: count * MemoryLayout<SIMD3<Float>>.stride))
         // Four slots against six frames, so the walk wraps and evicts.
@@ -204,7 +248,7 @@ struct RecordingTests {
             for particle in 0..<count {
                 worst = max(worst, simd_length(decoded[particle] - originals[index][particle]))
             }
-            #expect(worst < frame.extent / 65535 * 3, "image \(index)")
+            #expect(worst < recording.quantum(of: frame) * 3, "image \(index)")
         }
 
         for index in 0..<6 { try check(index) }
@@ -215,7 +259,7 @@ struct RecordingTests {
     @Test func blendReachesBothEndsOfThePair() throws {
         let (recording, originals, count) = try captured(frames: 2)
         let device = try #require(MTLCreateSystemDefaultDevice())
-        let expander = try SnapshotExpander(device: device, particleCount: count)
+        let expander = try SnapshotExpander(device: device, recording: recording)
         let output = try #require(
             device.makeBuffer(length: count * MemoryLayout<SIMD3<Float>>.stride))
         let stream = try #require(SnapshotStream(device: device, recording: recording))
@@ -234,7 +278,7 @@ struct RecordingTests {
             }
             return worst
         }
-        let tolerance = max(pair.0.extent, pair.1.extent) / 65535 * 3
+        let tolerance = max(recording.quantum(of: pair.0), recording.quantum(of: pair.1)) * 3
         #expect(worstAgainst(originals[0], blend: 0) < tolerance)
         #expect(worstAgainst(originals[1], blend: 1) < tolerance)
         // Halfway sits between the two, not on either.
@@ -259,7 +303,7 @@ struct RecordingTests {
         #expect(recording.count == 5 && recording.capturedCount == 11)
 
         let device = try #require(MTLCreateSystemDefaultDevice())
-        let expander = try SnapshotExpander(device: device, particleCount: count)
+        let expander = try SnapshotExpander(device: device, recording: recording)
         let output = try #require(
             device.makeBuffer(length: count * MemoryLayout<SIMD3<Float>>.stride))
         let stream = try #require(SnapshotStream(device: device, recording: recording))
@@ -276,7 +320,7 @@ struct RecordingTests {
             for particle in 0..<count {
                 worst = max(worst, simd_length(drawn[particle] - reference[particle]))
             }
-            #expect(worst < frames[1].extent / 65535, "image \(captured)")
+            #expect(worst < recording.quantum(of: frames[1]) * 2, "image \(captured)")
         }
     }
 

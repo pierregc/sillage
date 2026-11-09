@@ -10,16 +10,20 @@ import simd
 /// whatever pace it can while the viewer plays back from memory at the display rate, with
 /// scrubbing and no loss of physical accuracy.
 ///
-/// Positions are stored as three 16-bit fixed-point values inside each snapshot's own
-/// bounding box. Over a 200 kpc box that resolves 0.003 kpc, far below the force softening,
-/// so nothing visible is lost for six bytes a particle instead of twelve.
+/// Positions are stored as fixed-point values inside each snapshot's own bounding box, 21 bits
+/// an axis packed in one 64-bit word: eight bytes a particle instead of twelve. The box grows
+/// to two megaparsecs late in a story, where the three 16-bit words of every take before
+/// version 7 left a grid of 33 pc and the 21 bits leave 1 pc (#237).
 public final class Recording: @unchecked Sendable {
     public struct Frame: Sendable {
         public var time: Float
-        /// Box origin in xyz, and the extent that maps onto the full 16-bit range in w.
+        /// Box origin, and the extent that maps onto the whole grid.
         public var origin: SIMD3<Float>
         public var extent: Float
     }
+
+    /// What a capture is held at unless told otherwise.
+    public static let defaultBitsPerAxis = 21
 
     public let particleCount: Int
     /// Galaxies whose centres are carried alongside each frame.
@@ -31,6 +35,8 @@ public final class Recording: @unchecked Sendable {
     /// orbit. Keeping one in `interval` and drawing the rest through a cubic between the
     /// stored ones divides the file by `interval` and leaves nothing to see.
     public let interval: Int
+    /// 21, or 16 for a take read from a file older than version 7.
+    public let bitsPerAxis: Int
     /// Every frame the take was offered, kept or not, which is how many a render of it
     /// draws again.
     private var offered = 0
@@ -39,7 +45,7 @@ public final class Recording: @unchecked Sendable {
     /// to `interval - 1` frames short of where the run did.
     private var tail: (frame: Frame, centers: [SIMD3<Float>], disks: [DiskState])?
     private var storedFrames: [Frame] = []
-    private var storage: [UInt16] = []
+    private var storage: [UInt8] = []
     /// A take read from a file stays mapped rather than being copied in. Reopening a run of
     /// several gigabytes should cost the pages the viewer actually touches, not a second copy
     /// of the whole thing.
@@ -78,22 +84,30 @@ public final class Recording: @unchecked Sendable {
     /// should be told, so it is asked for.
     public private(set) var spillFailure: String?
     /// One frame's quantised positions, reused, so a capture allocates nothing per frame.
-    private var staging: [UInt16] = []
+    private var staging: [UInt8] = []
 
-    public init(particleCount: Int, galaxyCount: Int = 1, interval: Int = 1) {
+    public init(
+        particleCount: Int, galaxyCount: Int = 1, interval: Int = 1,
+        bitsPerAxis: Int = Recording.defaultBitsPerAxis
+    ) {
+        precondition(bitsPerAxis == 16 || bitsPerAxis == 21, "a take holds 16 or 21 bits an axis")
         self.particleCount = max(particleCount, 1)
         self.galaxyCount = max(galaxyCount, 1)
         self.interval = max(interval, 1)
+        self.bitsPerAxis = bitsPerAxis
     }
 
     /// Rebuilt from a file rather than captured, over memory the file still owns.
     public init(
         particleCount: Int, galaxyCount: Int, frames: [Frame], centers: [SIMD3<Float>],
-        disks: [DiskState] = [], interval: Int = 1, capturedCount: Int? = nil, mapped: Data
+        disks: [DiskState] = [], interval: Int = 1, capturedCount: Int? = nil,
+        bitsPerAxis: Int, mapped: Data
     ) {
+        precondition(bitsPerAxis == 16 || bitsPerAxis == 21, "a take holds 16 or 21 bits an axis")
         self.particleCount = max(particleCount, 1)
         self.galaxyCount = max(galaxyCount, 1)
         self.interval = max(interval, 1)
+        self.bitsPerAxis = bitsPerAxis
         self.offered = capturedCount ?? frames.count
         self.storedFrames = frames
         self.storedCenters = centers
@@ -107,37 +121,65 @@ public final class Recording: @unchecked Sendable {
     public func reserve(frames: Int) {
         locked {
             guard mapped == nil, frames > 0 else { return }
-            storage.reserveCapacity(frames * particleCount * 3)
+            storage.reserveCapacity(frames * frameBytes)
             storedFrames.reserveCapacity(frames)
             storedCenters.reserveCapacity(frames * galaxyCount)
             storedDisks.reserveCapacity(frames * galaxyCount)
         }
     }
 
-    /// One frame's quantised positions, wherever they live. Never escapes the lock.
-    private func withFrameStorage<T>(_ index: Int, _ body: (UnsafeBufferPointer<UInt16>) -> T)
-        -> T?
+    /// Bytes a particle takes on a stored frame at a given depth.
+    public static func bytesPerParticle(bitsPerAxis: Int) -> Int { bitsPerAxis > 16 ? 8 : 6 }
+
+    /// The last cell along an axis, which a frame's extent maps onto.
+    static func lastCell(bitsPerAxis: Int) -> Float { Float((1 << bitsPerAxis) - 1) }
+
+    public var bytesPerParticle: Int { Self.bytesPerParticle(bitsPerAxis: bitsPerAxis) }
+    /// Bytes one stored frame takes, in memory, in the scratch file and in a file alike.
+    public var frameBytes: Int { particleCount * bytesPerParticle }
+
+    /// The side of a cell of a frame's grid: how finely the take holds its positions there.
+    public func quantum(of frame: Frame) -> Float {
+        frame.extent / Self.lastCell(bitsPerAxis: bitsPerAxis)
+    }
+
+    /// One particle of a stored frame, in cells along each axis. Read unaligned: a mapped
+    /// take starts its positions wherever the header ends.
+    @inline(__always)
+    static func cell(_ bytes: UnsafeRawBufferPointer, _ index: Int, bitsPerAxis: Int)
+        -> SIMD3<Float>
     {
-        let span = particleCount * 3
+        guard bitsPerAxis > 16 else {
+            let base = index * 6
+            return SIMD3(
+                Float(bytes.loadUnaligned(fromByteOffset: base, as: UInt16.self)),
+                Float(bytes.loadUnaligned(fromByteOffset: base + 2, as: UInt16.self)),
+                Float(bytes.loadUnaligned(fromByteOffset: base + 4, as: UInt16.self)))
+        }
+        let word = bytes.loadUnaligned(fromByteOffset: index * 8, as: UInt64.self)
+        let mask: UInt64 = 0x1F_FFFF
+        return SIMD3(Float(word & mask), Float(word >> 21 & mask), Float(word >> 42 & mask))
+    }
+
+    /// One frame's quantised positions, wherever they live. Never escapes the lock.
+    private func withFrameStorage<T>(_ index: Int, _ body: (UnsafeRawBufferPointer) -> T) -> T? {
+        let span = frameBytes
         if let mapped {
             return mapped.withUnsafeBytes {
-                let all = $0.bindMemory(to: UInt16.self)
-                return body(UnsafeBufferPointer(rebasing: all[(index * span)..<((index + 1) * span)]))
+                body(UnsafeRawBufferPointer(rebasing: $0[(index * span)..<((index + 1) * span)]))
             }
         }
         if let spill, index >= spilledFrom {
-            var block = [UInt16](repeating: 0, count: span)
+            var block = [UInt8](repeating: 0, count: span)
             do {
                 try block.withUnsafeMutableBytes {
-                    try spill.read(
-                        into: $0.baseAddress!, count: span * 2,
-                        at: (index - spilledFrom) * span * 2)
+                    try spill.read(into: $0.baseAddress!, count: span, at: (index - spilledFrom) * span)
                 }
             } catch { return nil }
-            return block.withUnsafeBufferPointer(body)
+            return block.withUnsafeBytes(body)
         }
-        return storage.withUnsafeBufferPointer {
-            body(UnsafeBufferPointer(rebasing: $0[(index * span)..<((index + 1) * span)]))
+        return storage.withUnsafeBytes {
+            body(UnsafeRawBufferPointer(rebasing: $0[(index * span)..<((index + 1) * span)]))
         }
     }
 
@@ -245,8 +287,10 @@ public final class Recording: @unchecked Sendable {
 
     /// Memory a run of the given length would take, so the setup screen can warn before it
     /// rather than after.
-    public static func estimatedBytes(particleCount: Int, frames: Int) -> Int {
-        particleCount * 6 * frames
+    public static func estimatedBytes(
+        particleCount: Int, frames: Int, bitsPerAxis: Int = defaultBitsPerAxis
+    ) -> Int {
+        particleCount * bytesPerParticle(bitsPerAxis: bitsPerAxis) * frames
     }
 
     public func close() { locked { closed = true } }
@@ -302,7 +346,7 @@ public final class Recording: @unchecked Sendable {
 
     /// What the take occupies in memory, which is what the budget bounds.
     private func memoryBytes() -> Int {
-        (mapped?.count ?? storage.count * 2) + storedFrames.count * MemoryLayout<Frame>.stride
+        (mapped?.count ?? storage.count) + storedFrames.count * MemoryLayout<Frame>.stride
     }
 
     /// What the take occupies altogether, memory and scratch file, which is what it costs.
@@ -333,15 +377,28 @@ public final class Recording: @unchecked Sendable {
         guard lower.x <= upper.x else { return }
 
         let extent = max((upper - lower).max(), 1e-3) * 1.0005
-        let scale = 65535 / extent
-        let span = particleCount * 3
-        if staging.count != span { staging = [UInt16](repeating: 0, count: span) }
-        staging.withUnsafeMutableBufferPointer { target in
-            for index in 0..<particleCount {
-                let local = (positions[index] - lower) * scale
-                target[index * 3] = UInt16(min(max(local.x, 0), 65535))
-                target[index * 3 + 1] = UInt16(min(max(local.y, 0), 65535))
-                target[index * 3 + 2] = UInt16(min(max(local.z, 0), 65535))
+        let last = Self.lastCell(bitsPerAxis: bitsPerAxis)
+        let scale = last / extent
+        let top = SIMD3<Float>(repeating: last)
+        if staging.count != frameBytes { staging = [UInt8](repeating: 0, count: frameBytes) }
+        staging.withUnsafeMutableBytes { raw in
+            if bitsPerAxis == 16 {
+                let target = raw.bindMemory(to: UInt16.self)
+                for index in 0..<particleCount {
+                    let local = simd_clamp((positions[index] - lower) * scale, .zero, top)
+                    target[index * 3] = UInt16(local.x)
+                    target[index * 3 + 1] = UInt16(local.y)
+                    target[index * 3 + 2] = UInt16(local.z)
+                }
+            } else {
+                // To the nearest cell, which halves the worst error of cutting down to one.
+                let target = raw.bindMemory(to: UInt64.self)
+                for index in 0..<particleCount {
+                    let local = simd_clamp((positions[index] - lower) * scale + 0.5, .zero, top)
+                    target[index] =
+                        UInt64(UInt32(local.x)) | UInt64(UInt32(local.y)) << 21
+                        | UInt64(UInt32(local.z)) << 42
+                }
             }
         }
         let frame = Frame(time: time, origin: lower, extent: extent)
@@ -408,18 +465,14 @@ public final class Recording: @unchecked Sendable {
             guard !storedFrames.isEmpty else { return [] }
             let frame = min(max(index, 0), storedFrames.count - 1)
             let box = storedFrames[frame]
-            let scale = box.extent / 65535
+            let scale = quantum(of: box)
             let kept = (particleCount + stride - 1) / stride
             var decoded = [SIMD3<Float>](repeating: .zero, count: kept)
             let filled: Void? = withFrameStorage(frame) { source in
                 for sample in 0..<kept {
-                    let slot = sample * stride * 3
                     decoded[sample] =
                         box.origin
-                        + SIMD3<Float>(
-                            Float(source[slot]) * scale,
-                            Float(source[slot + 1]) * scale,
-                            Float(source[slot + 2]) * scale)
+                        + Self.cell(source, sample * stride, bitsPerAxis: bitsPerAxis) * scale
                 }
             }
             return filled == nil ? [] : decoded
@@ -429,20 +482,21 @@ public final class Recording: @unchecked Sendable {
     /// A run of particles on a stored frame, decoded without touching the rest of it. Only the
     /// copy out of the take holds the lock, so several frames decode at once.
     func positions(at index: Int, in range: Range<Int>) -> [SIMD3<Float>] {
-        let copied: (box: Frame, cells: [UInt16])? = locked {
+        let width = bytesPerParticle
+        let copied: (box: Frame, bytes: [UInt8])? = locked {
             guard !storedFrames.isEmpty, range.lowerBound >= 0, range.upperBound <= particleCount
             else { return nil }
             let frame = min(max(index, 0), storedFrames.count - 1)
-            let cells = withFrameStorage(frame) { Array($0[(range.lowerBound * 3)..<(range.upperBound * 3)]) }
-            return cells.map { (storedFrames[frame], $0) }
+            let bytes = withFrameStorage(frame) {
+                Array($0[(range.lowerBound * width)..<(range.upperBound * width)])
+            }
+            return bytes.map { (storedFrames[frame], $0) }
         }
         guard let copied else { return [] }
-        let scale = copied.box.extent / 65535
-        return (0..<range.count).map { slot in
-            copied.box.origin
-                + SIMD3<Float>(
-                    Float(copied.cells[slot * 3]), Float(copied.cells[slot * 3 + 1]),
-                    Float(copied.cells[slot * 3 + 2])) * scale
+        let scale = quantum(of: copied.box)
+        let bits = bitsPerAxis
+        return copied.bytes.withUnsafeBytes { raw in
+            (0..<range.count).map { copied.box.origin + Self.cell(raw, $0, bitsPerAxis: bits) * scale }
         }
     }
 
@@ -627,7 +681,7 @@ public final class Recording: @unchecked Sendable {
     public func copy(frame index: Int, into buffer: MTLBuffer, atByteOffset offset: Int)
         -> Frame?
     {
-        let stride = particleCount * 3
+        let span = frameBytes
         lock.lock()
         guard index >= 0, index < storedFrames.count else {
             lock.unlock()
@@ -639,8 +693,7 @@ public final class Recording: @unchecked Sendable {
         let from = spilledFrom
         lock.unlock()
 
-        let destination = buffer.contents().advanced(by: offset).bindMemory(
-            to: UInt16.self, capacity: stride)
+        let destination = buffer.contents().advanced(by: offset)
         // A take read from a file is finished: every frame is already in it and the mapping
         // never moves, so the bulk copy has no business holding the lock. It used to, and the
         // main actor waited behind twenty-eight megabytes of memcpy on every played-back
@@ -648,8 +701,7 @@ public final class Recording: @unchecked Sendable {
         // `frame(at:)`, which only ever wanted a struct.
         if let mapping {
             mapping.withUnsafeBytes { raw in
-                let source = raw.bindMemory(to: UInt16.self)
-                destination.update(from: source.baseAddress! + index * stride, count: stride)
+                destination.copyMemory(from: raw.baseAddress! + index * span, byteCount: span)
             }
             return frame
         }
@@ -658,9 +710,7 @@ public final class Recording: @unchecked Sendable {
         // lands straight in the Metal buffer, which is what keeps playback off the heap.
         if let file = spilling, index >= from {
             do {
-                try file.read(
-                    into: .init(destination), count: stride * 2,
-                    at: (index - from) * stride * 2)
+                try file.read(into: destination, count: span, at: (index - from) * span)
             } catch { return nil }
             return frame
         }
@@ -669,8 +719,8 @@ public final class Recording: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard index < storedFrames.count else { return nil }
-        storage.withUnsafeBufferPointer { source in
-            destination.update(from: source.baseAddress! + index * stride, count: stride)
+        storage.withUnsafeBytes { source in
+            destination.copyMemory(from: source.baseAddress! + index * span, byteCount: span)
         }
         return storedFrames[index]
     }
@@ -688,16 +738,18 @@ struct ExpandParams {
     var pad2: UInt32 = 0
 }
 
-/// Blends two quantised snapshots into the renderer's position buffer.
+/// Blends quantised snapshots of one take into the renderer's position buffer.
 public final class SnapshotExpander {
     private let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLComputePipelineState
     private let particleCount: Int
+    private let bitsPerAxis: Int
 
-    public init(device: MTLDevice, particleCount: Int) throws {
+    public init(device: MTLDevice, recording: Recording) throws {
         self.device = device
-        self.particleCount = max(particleCount, 1)
+        self.particleCount = recording.particleCount
+        self.bitsPerAxis = recording.bitsPerAxis
 
         let library: MTLLibrary
         do {
@@ -705,13 +757,14 @@ public final class SnapshotExpander {
         } catch {
             throw RenderError.shaderCompilation("\(error)")
         }
-        guard let function = library.makeFunction(name: "expandSnapshots") else {
-            throw RenderError.pipelineCreation("missing kernel expandSnapshots")
+        let name = bitsPerAxis > 16 ? "expandSnapshots21" : "expandSnapshots"
+        guard let function = library.makeFunction(name: name) else {
+            throw RenderError.pipelineCreation("missing kernel \(name)")
         }
         do {
             pipeline = try device.makeComputePipelineState(function: function)
         } catch {
-            throw RenderError.pipelineCreation("expandSnapshots: \(error)")
+            throw RenderError.pipelineCreation("\(name): \(error)")
         }
         guard let queue = device.makeCommandQueue() else { throw RenderError.noDevice }
         self.queue = queue
@@ -749,8 +802,9 @@ public final class SnapshotExpander {
             let buffer = queue.makeCommandBuffer(),
             let encoder = buffer.makeComputeCommandEncoder()
         else { return }
+        let last = Recording.lastCell(bitsPerAxis: bitsPerAxis)
         let origins = frames.map {
-            SIMD4<Float>($0.origin.x, $0.origin.y, $0.origin.z, $0.extent / 65535)
+            SIMD4<Float>($0.origin.x, $0.origin.y, $0.origin.z, $0.extent / last)
         }
         var params = ExpandParams(
             origin0: origins[0], origin1: origins[1], origin2: origins[2], origin3: origins[3],
