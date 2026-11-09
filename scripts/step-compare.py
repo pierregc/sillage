@@ -372,8 +372,9 @@ def frames_report(paths):
 def sheet(out, folders, width, crop):
     from PIL import Image
 
-    names = sorted(n for n in os.listdir(folders[0]) if n.endswith(".png")
-                   and all(os.path.exists(os.path.join(f, n)) for f in folders))
+    frame = lambda n: int(re.findall(r"\d+", n)[-1]) if re.findall(r"\d+", n) else 0
+    names = sorted((n for n in os.listdir(folders[0]) if n.endswith(".png")
+                    and all(os.path.exists(os.path.join(f, n)) for f in folders)), key=lambda n: (frame(n), n))
     scaled, crops = [], []
     for name in names:
         row, crop_row = [], []
