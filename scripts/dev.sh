@@ -77,6 +77,8 @@ build_app() {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleLocalizations</key><array><string>en</string></array>
     <key>CFBundleExecutable</key><string>Sillage</string>
     <key>CFBundleIdentifier</key><string>dev.pierregc.sillage</string>
     <key>CFBundleName</key><string>Sillage</string>
