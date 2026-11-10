@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 
 /// A GIF89a written by hand: one global palette for every frame, LZW compressed, looping.
 ///
@@ -24,7 +25,7 @@ enum GIFWriter {
 
         var compressed = [Data](repeating: Data(), count: frames.count)
         compressed.withUnsafeMutableBufferPointer { compressed in
-            DispatchQueue.concurrentPerform(iterations: frames.count) { index in
+            concurrentPerform(iterations: frames.count) { index in
                 compressed[index] = lzw(frames[index])
             }
         }

@@ -1,6 +1,8 @@
 import Foundation
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// What the style editor (#113) does to a look file: a rendering over the palette, a palette
 /// with some colours locked, a group of settings put back.

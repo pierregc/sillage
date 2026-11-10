@@ -78,7 +78,9 @@ public enum NightCommand {
             }
             if isTheJob {
                 // Its log is a file: a line as it comes, not a block at the end.
-                setvbuf(stdout, nil, _IOLBF, 0)
+                #if canImport(Darwin)
+                    setvbuf(stdout, nil, _IOLBF, 0)
+                #endif
                 return NightRunner(folder: folder, executable: executable, catalogue: catalogue, say: say)
                     .run()
             }

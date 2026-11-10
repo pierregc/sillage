@@ -1,5 +1,9 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import SillageCore
+#endif
 
 /// Everything that decides the image and nothing that decides the physics, as it is kept on
 /// disk: the look a frame is drawn with, the render settings that own buffers, the colour of

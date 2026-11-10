@@ -1,6 +1,8 @@
 import Foundation
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// OKLab and its polar form OKLCH (Björn Ottosson, 2020), from and to the linear sRGB the
 /// renderer takes. OKLCH is `(L, C, h)` with the hue in degrees.

@@ -389,7 +389,11 @@ public enum RunStatusFiles {
         let descriptor = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { close(descriptor) }
-        let written = line.withUnsafeBytes { Darwin.write(descriptor, $0.baseAddress, $0.count) }
+        #if canImport(Darwin)
+            let written = line.withUnsafeBytes { Darwin.write(descriptor, $0.baseAddress, $0.count) }
+        #else
+            let written = line.withUnsafeBytes { Glibc.write(descriptor, $0.baseAddress, $0.count) }
+        #endif
         guard written == line.count else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
     }
 }

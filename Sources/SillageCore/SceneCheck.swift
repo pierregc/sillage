@@ -1,5 +1,7 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// Whether a scene is worth simulating, judged from its galaxy centres alone before a single
 /// particle is drawn. The centres run through the same model the encounters were placed with,

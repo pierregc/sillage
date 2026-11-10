@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// Contract between the physics engine and anything that draws it. A renderer only ever
 /// sees positions and per-particle attributes, never how the forces were obtained.

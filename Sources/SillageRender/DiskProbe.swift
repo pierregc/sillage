@@ -1,6 +1,8 @@
 import Foundation
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// Measures one disk, alone, frame by frame and in its own frame: how it settles, how much
 /// structure its particles hold at each azimuthal order, how lumpy it is below the scale of an

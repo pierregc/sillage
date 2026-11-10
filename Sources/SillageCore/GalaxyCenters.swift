@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// The galaxy centres, integrated in double precision. There are only a handful of them and
 /// their trajectory sets the whole encounter geometry, so accuracy here is cheap and matters.

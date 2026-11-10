@@ -1,8 +1,10 @@
 import Foundation
 import Testing
-import simd
 
 @testable import SillageCore
+#if canImport(simd)
+    import simd
+#endif
 
 @Suite("Scene sanity check")
 struct SceneCheckTests {

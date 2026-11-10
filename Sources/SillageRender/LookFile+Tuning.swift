@@ -1,5 +1,9 @@
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// What the app's look tuning needs on top of drawing a file: editing one galaxy's colour
 /// without writing the others into the file.

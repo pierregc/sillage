@@ -3,10 +3,12 @@ import CoreGraphics
 import Foundation
 import Metal
 import Testing
-import simd
 
 @testable import SillageCore
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#endif
 
 /// Checkpoints of long runs (#240): a run stopped and resumed goes on as if it never stopped.
 @Suite("Checkpoints")

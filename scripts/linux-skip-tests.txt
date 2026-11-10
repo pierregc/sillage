@@ -1,0 +1,20 @@
+BarnesHutTests.swift       # Metal
+CheckpointTests.swift      # AVFoundation, Metal
+DiskProbeTests.swift       # DiskProbe.run, in DiskProbeRun, which draws on Metal
+ExportTests.swift          # AVFoundation
+GPUTreeTests.swift         # Metal
+GalaxyColoursTests.swift   # Metal
+LightTracerTests.swift     # Metal
+MetalSolverTests.swift     # Metal
+NightPageTests.swift       # ProcessProbe, which only knows macOS
+NightRunnerTests.swift     # starts processes through Spawn, which only knows macOS
+NoticesTests.swift         # the queue runner
+PlainRenderTests.swift     # Metal
+PlanPlayheadTests.swift    # TakeExport, which needs a Metal device
+PreviewTests.swift         # ImageIO
+QueueRunnerTests.swift     # ProcessProbe and Spawn, which only know macOS
+RecordingTests.swift       # Metal
+RunVideosTests.swift       # CoreGraphics, Metal
+StageJobsTests.swift       # ExportedFile, which reads videos with AVFoundation
+StyleEditTests.swift       # CoreFoundation's CFGetTypeID
+TracerWalkDumpTests.swift  # Metal

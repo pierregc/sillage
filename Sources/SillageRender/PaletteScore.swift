@@ -1,6 +1,8 @@
 import Foundation
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// How good a palette is, from 0 to 1, without drawing anything: the colours decide. Every part
 /// is 0 to 1 too, and the total is their weighted mean.

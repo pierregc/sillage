@@ -1,0 +1,24 @@
+CanvasPacer.swift                # QuartzCore
+DiskProbeRun.swift               # CoreGraphics, CoreVideo, Metal
+DustWeb.swift                    # Metal
+ExportedFile.swift               # CoreMedia, ImageIO
+GPUTreeBuilder.swift             # Metal
+LookGrid.swift                   # CoreGraphics, CoreText
+LookSheet.swift                  # Metal
+MetalBarnesHutSolver.swift       # Metal
+MetalSolver.swift                # Metal
+PNGWriter.swift                  # CoreGraphics, CoreVideo, ImageIO, UniformTypeIdentifiers
+PaletteSheet.swift               # CoreGraphics
+RecordingMetal.swift             # Metal
+Renderer+Look.swift              # Metal
+Renderer.swift                   # Metal, QuartzCore
+RenderingThumbnails.swift        # CoreGraphics, Metal
+RunVideos.swift                  # CoreGraphics, Metal
+ShaderCache.swift                # Metal
+SmoothingField.swift             # Metal
+SnapshotStream.swift             # Metal
+StyleAuto+Sheet.swift            # LookSheet, which draws on Metal
+TakeExport.swift                 # CoreGraphics, Metal
+TracerWalkDump.swift             # TracerStepGPU, in MetalBarnesHutSolver, and Metal buffers
+VideoCodec+AVFoundation.swift    # AVFoundation, VideoToolbox
+VideoWriter.swift                # CoreVideo, Metal

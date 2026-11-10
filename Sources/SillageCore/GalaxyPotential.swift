@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 public enum PotentialProfile: String, Codable, Sendable, CaseIterable {
     case plummer

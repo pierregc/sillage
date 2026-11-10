@@ -1,4 +1,9 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+    import SillageCore
+#endif
 
 public struct Camera: Sendable {
     public var eye: SIMD3<Float>

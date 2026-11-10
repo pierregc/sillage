@@ -1,20 +1,8 @@
-import AVFoundation
 import Foundation
-import VideoToolbox
 
 /// What a video is compressed with. All three run on the media engine of Apple Silicon.
 public enum VideoCodec: String, CaseIterable, Sendable {
     case h264, hevc, prores
-
-    /// H.264 plays everywhere, HEVC is the same picture in about half the bytes, and ProRes
-    /// is for editing: large, and cut and graded without being compressed a second time.
-    public var avCodec: AVVideoCodecType {
-        switch self {
-        case .h264: .h264
-        case .hevc: .hevc
-        case .prores: .proRes422HQ
-        }
-    }
 
     /// ProRes only lives in a QuickTime movie; the others stay in an MP4.
     public var fileExtension: String { self == .prores ? "mov" : "mp4" }
@@ -31,23 +19,6 @@ public enum VideoCodec: String, CaseIterable, Sendable {
         case .hevc: width * height * 6
         case .prores: nil
         }
-    }
-
-    func compressionProperties(
-        width: Int, height: Int, framesPerSecond: Int32, bitsPerSecond: Int?, quality: Double?
-    ) -> [String: Any] {
-        var properties: [String: Any] = [AVVideoExpectedSourceFrameRateKey: framesPerSecond]
-        switch self {
-        case .h264: properties[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
-        case .hevc: properties[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main_AutoLevel as String
-        case .prores: return properties
-        }
-        if let quality {
-            properties[AVVideoQualityKey] = quality
-        } else if let rate = bitsPerSecond ?? defaultBitRate(width: width, height: height) {
-            properties[AVVideoAverageBitRateKey] = rate
-        }
-        return properties
     }
 }
 
@@ -78,38 +49,6 @@ public struct VideoMetadata: Sendable, Equatable {
         "Sillage scene \(sceneID) by \(author), licensed \(Self.licence): \(Self.licenceURL)"
     }
 
-    /// The facts under the keys the container keeps: QuickTime keys in a movie, which Finder,
-    /// `mdls` and `ffprobe` read, and the common identifiers in an MP4, which AVFoundation
-    /// stores as its user data atoms (`cprt`, `dscp`, `titl`, `auth`, `date`) and `AVAsset`
-    /// reads back. `ffprobe` and Spotlight skip those in an MP4, whatever wrote them.
-    func items(quickTime: Bool) -> [AVMetadataItem] {
-        let day = ISO8601DateFormatter().string(from: date)
-        if quickTime {
-            return [
-                item(.quickTimeMetadataDisplayName, title),
-                item(.quickTimeMetadataAuthor, author),
-                item(.quickTimeMetadataCopyright, copyright),
-                item(.quickTimeMetadataDescription, summary),
-                item(.quickTimeMetadataCreationDate, day),
-            ]
-        }
-        return [
-            item(.commonIdentifierTitle, title),
-            item(.commonIdentifierCreator, author),
-            item(.commonIdentifierCopyrights, copyright),
-            item(.commonIdentifierDescription, summary),
-            item(.commonIdentifierCreationDate, day),
-        ]
-    }
-
     /// Two lines to paste beside the video in a chat: what it shows and under which licence.
     public var caption: String { "\(title)\n\(author), \(Self.licence) \(Self.licenceURL)\n" }
-
-    private func item(_ identifier: AVMetadataIdentifier, _ value: String) -> AVMetadataItem {
-        let made = AVMutableMetadataItem()
-        made.identifier = identifier
-        made.value = value as NSString
-        made.dataType = kCMMetadataBaseDataType_UTF8 as String
-        return made
-    }
 }

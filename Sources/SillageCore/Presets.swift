@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 extension SceneConfig {
     /// Two comparable disks on a bound, prograde, near-coplanar encounter. The orbit targets

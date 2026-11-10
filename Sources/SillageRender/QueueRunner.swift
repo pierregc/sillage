@@ -267,12 +267,14 @@ public final class QueueRunner: @unchecked Sendable {
     /// The assertion that keeps the Mac from idle sleep and the runner from App Nap, whatever
     /// the display does.
     private func hold(_ on: Bool) {
-        if on, activity == nil {
-            activity = ProcessInfo.processInfo.beginActivity(
-                options: .userInitiated, reason: "sillage runs its queue")
-        } else if !on, let activity {
-            ProcessInfo.processInfo.endActivity(activity)
-            self.activity = nil
-        }
+        #if canImport(Darwin)
+            if on, activity == nil {
+                activity = ProcessInfo.processInfo.beginActivity(
+                    options: .userInitiated, reason: "sillage runs its queue")
+            } else if !on, let activity {
+                ProcessInfo.processInfo.endActivity(activity)
+                self.activity = nil
+            }
+        #endif
     }
 }
