@@ -72,6 +72,30 @@ struct CrossPlatformTests {
         print("CROSSPLATFORM sample galaxyIndex \(Self.digest(system.galaxyIndex))")
         print("CROSSPLATFORM sample component \(Self.digest(system.component))")
         print("CROSSPLATFORM sample all \(everything.hex())")
+
+        // How far apart two platforms' samples are when their digests differ: the sums
+        // read to rounding if only the last bits part, and to the third decimal if the
+        // streams of draws took other branches.
+        func sums(_ vectors: [SIMD3<Float>]) -> String {
+            var total = SIMD3<Double>.zero
+            for vector in vectors {
+                total.x += Double(vector.x)
+                total.y += Double(vector.y)
+                total.z += Double(vector.z)
+            }
+            return [total.x, total.y, total.z].map { String($0.bitPattern, radix: 16) }
+                .joined(separator: " ")
+        }
+        func bits(_ vector: SIMD3<Float>) -> String {
+            [vector.x, vector.y, vector.z].map { String($0.bitPattern, radix: 16) }
+                .joined(separator: " ")
+        }
+        print("CROSSPLATFORM sample sum positions \(sums(system.positions))")
+        print("CROSSPLATFORM sample sum velocities \(sums(system.velocities))")
+        for index in [0, tracers - 1, tracers, system.count - 1] {
+            print("CROSSPLATFORM sample particle \(index) position \(bits(system.positions[index]))")
+            print("CROSSPLATFORM sample particle \(index) velocity \(bits(system.velocities[index]))")
+        }
     }
 
     /// Darwin's and glibc's libm are not all correctly rounded, so a sampler's rejection test

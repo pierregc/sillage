@@ -136,7 +136,7 @@ merger preset's sample (100 k drawn from 25 k massive, 75 104 tracers among 137 
 over its positions, velocities and masses, and over each other attribute; then one digest per
 libm function, in `Float` and in `Double`, over the same 4 001 inputs; then one per simd function.
 The digests come from `PortableSHA256`, written out and checked against the standard vectors, so
-the two platforms hash the same way. `docs/notes/linux-build-digests.txt` holds what Linux
+the two platforms hash the same way. `docs/notes/cross-platform-linux-x86_64.txt` holds what Linux
 x86_64 gives (Swift 6.2, glibc 2.39), the same in two runs.
 
 To compare: on the Mac, `./scripts/dev.sh test --filter CrossPlatformTests`, keep the
