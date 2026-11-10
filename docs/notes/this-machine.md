@@ -17,6 +17,7 @@
 ./scripts/dev.sh test     # builds and runs the whole suite through swiftc
 ./scripts/dev.sh lint     # swift-format, strict
 ./scripts/dev.sh strict   # the strict-concurrency typecheck the package would do
+./scripts/dev.sh kernels  # the checks that keep the MSL one source for Metal and CUDA
 ./scripts/dev.sh render   # the headless renderer, takes the CLI flags
 ./scripts/dev.sh app      # builds and bundles Sillage.app
 ```

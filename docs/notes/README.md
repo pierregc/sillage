@@ -6,7 +6,7 @@ session. Read the note for an area before changing it.
 
 ## Workflow and the machine
 
-- [There is no CI](no-ci.md): why `./scripts/dev.sh check` is the gate
+- [`dev.sh check` is the gate, and GitHub checks Linux](no-ci.md): why no workflow builds the Mac's code, what the free Linux workflow checks and what it does not (#281)
 - [This machine](this-machine.md): no Xcode, broken SwiftPM, the app's verification modes
 - [Long runs](long-runs.md): memory, divergence, measuring under contention
 - [A run stops when nobody is watching it](app-nap.md): App Nap, `beginActivity`, `--soak`
@@ -79,6 +79,7 @@ session. Read the note for an area before changing it.
 
 ## The CUDA engine (#269)
 
+- [One kernel source for Metal and CUDA](one-kernel-source.md): how to change the engine from now on, what the shared MSL may hold, `msl_compat.h` and the CPU target, `cuda/kernels.txt`, what the Mac's check, the workflow and a GPU session each catch, why Swift and Metal stay (#281)
 - [The tracer walk from its MSL text, on CUDA and on the CPU](cuda-walk-spike.md): spike #271, no line of MSL changed, what `msl_compat.h` and `cuda_cpu.h` do, float literals are doubles, the walk dump's format, the accuracy against Metal
 
 ## State
