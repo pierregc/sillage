@@ -4,6 +4,10 @@ enum BarnesHutShaders {
         #include <metal_stdlib>
         using namespace metal;
 
+        // Metal only so far: #274 and #275 share this library with the CUDA engine
+        // (docs/notes/one-kernel-source.md).
+        #if defined(__METAL_VERSION__)
+
         struct BHNode {
             float4 comMass;
             // Width squared, then the range start and the signed count carried as bit
@@ -40,13 +44,13 @@ enum BarnesHutShaders {
                 float d2 = dot(offset, offset) + scale * scale;
                 return -mass * offset / (d2 * sqrt(d2));
             }
-            float r = max(length(offset), 1e-6);
+            float r = max(length(offset), 1e-6f);
             float s = r + scale;
             return -mass * offset / (r * s * s);
         }
 
         static float3 halos(float3 position, constant HaloGPU *list, uint count, bool after) {
-            float3 total = float3(0.0);
+            float3 total = float3(0.0f);
             for (uint h = 0; h < count; ++h) {
                 float3 center = after ? list[h].centerAfter.xyz : list[h].centerBefore.xyz;
                 total += haloAcceleration(
@@ -63,7 +67,7 @@ enum BarnesHutShaders {
                                 constant BHParams &p [[buffer(3)]],
                                 uint i [[thread_position_in_grid]]) {
             if (i >= p.particleCount) { return; }
-            float3 v = velocities[i] + accelerations[i] * (p.timeStep * 0.5);
+            float3 v = velocities[i] + accelerations[i] * (p.timeStep * 0.5f);
             velocities[i] = v;
             positions[i] += v * p.timeStep;
         }
@@ -73,7 +77,7 @@ enum BarnesHutShaders {
                            constant BHParams &p [[buffer(2)]],
                            uint i [[thread_position_in_grid]]) {
             if (i >= p.particleCount) { return; }
-            velocities[i] += accelerations[i] * (p.timeStep * 0.5);
+            velocities[i] += accelerations[i] * (p.timeStep * 0.5f);
         }
 
         struct DiskCooling {
@@ -109,25 +113,25 @@ enum BarnesHutShaders {
         static float3 bhCool(float3 position, float3 velocity, float3 acceleration,
                              DiskCooling disk) {
             float damping = disk.motion.w;
-            if (damping <= 0.0) { return velocity; }
+            if (damping <= 0.0f) { return velocity; }
 
             float3 axis = disk.axis.xyz;
             float3 offset = position - disk.center.xyz;
             float height = dot(offset, axis);
             float3 inPlane = offset - axis * height;
             float radius = length(inPlane);
-            if (radius < 1e-3) { return velocity; }
+            if (radius < 1e-3f) { return velocity; }
 
             // Fades out rather than stopping at an edge, or the disk would gain a ring where
             // the cooling ends.
-            float radial = 1.0 - smoothstep(disk.reach.x, disk.reach.y, radius);
-            float vertical = 1.0 - smoothstep(disk.reach.z, disk.reach.w, abs(height));
+            float radial = 1.0f - smoothstep(disk.reach.x, disk.reach.y, radius);
+            float vertical = 1.0f - smoothstep(disk.reach.z, disk.reach.w, abs(height));
             float weight = damping * radial * vertical;
-            if (weight <= 0.0) { return velocity; }
+            if (weight <= 0.0f) { return velocity; }
 
             float3 outward = inPlane / radius;
             float inward = -dot(acceleration, outward);
-            if (inward <= 0.0) { return velocity; }
+            if (inward <= 0.0f) { return velocity; }
             float speed = sqrt(inward * radius);
 
             float3 along = cross(axis, outward);
@@ -140,8 +144,8 @@ enum BarnesHutShaders {
             float3 peculiar = velocity - target;
             float random = length(peculiar);
             float floorSpeed = disk.center.w * speed;
-            if (random <= floorSpeed || random < 1e-6) { return velocity; }
-            float cooled = max(random * (1.0 - weight), floorSpeed);
+            if (random <= floorSpeed || random < 1e-6f) { return velocity; }
+            float cooled = max(random * (1.0f - weight), floorSpeed);
             return target + peculiar * (cooled / random);
         }
 
@@ -163,7 +167,7 @@ enum BarnesHutShaders {
             // it took to look away.
             if (kind >= 3u) { return; }
             DiskCooling disk = disks[galaxy[i]];
-            if (disk.motion.w <= 0.0) { return; }
+            if (disk.motion.w <= 0.0f) { return; }
             velocities[i] = bhCool(positions[i], velocities[i], accelerations[i], disk);
         }
 
@@ -186,7 +190,7 @@ enum BarnesHutShaders {
             h = (h ^ (h >> 16u)) * 2246822519u;
             h = (h ^ (h >> 13u)) * 3266489917u;
             h ^= h >> 16u;
-            return float(h) * (1.0 / 4294967296.0);
+            return float(h) * (1.0f / 4294967296.0f);
         }
 
         // Light tracers (#187) are not in the tree, so their gas reads the chance of a massive
@@ -198,7 +202,7 @@ enum BarnesHutShaders {
                                    device const uint *component, uint start, uint count,
                                    float chance) {
             for (uint k = 0u; k < count; ++k) {
-                slotChances[start + k] = component[order[start + k]] == 2u ? chance : -1.0;
+                slotChances[start + k] = component[order[start + k]] == 2u ? chance : -1.0f;
             }
         }
 
@@ -236,10 +240,10 @@ enum BarnesHutShaders {
             uint count = uint(-bhSignedCount(node));
             if (count == 0u) { return; }
             uint start = uint(bhRange(node));
-            if (bhLeafChances) { bhWriteChances(slotChances, order, component, start, count, 0.0); }
-            float width = sqrt(max(node.packed.x, 1e-12));
+            if (bhLeafChances) { bhWriteChances(slotChances, order, component, start, count, 0.0f); }
+            float width = sqrt(max(node.packed.x, 1e-12f));
 
-            float baryons = 0.0;
+            float baryons = 0.0f;
             for (uint k = 0u; k < count; ++k) {
                 uint i = order[start + k];
                 if (component[i] != 3u) { baryons += mass[i]; }
@@ -259,8 +263,8 @@ enum BarnesHutShaders {
             // is what a compression looks like from inside. Made dimensionless against the
             // free-fall rate, so it says how hard the material is being squeezed compared with
             // how hard its own gravity is squeezing it.
-            float3 meanPosition = float3(0.0);
-            float3 meanVelocity = float3(0.0);
+            float3 meanPosition = float3(0.0f);
+            float3 meanVelocity = float3(0.0f);
             uint baryonCount = 0u;
             for (uint k = 0u; k < count; ++k) {
                 uint i = order[start + k];
@@ -270,13 +274,13 @@ enum BarnesHutShaders {
                 baryonCount += 1u;
             }
             float freeFall = sqrt(s.gravitationalConstant * density);
-            float compression = 0.0;
-            if (baryonCount >= 4u && freeFall > 1e-12) {
-                float inv = 1.0 / float(baryonCount);
+            float compression = 0.0f;
+            if (baryonCount >= 4u && freeFall > 1e-12f) {
+                float inv = 1.0f / float(baryonCount);
                 meanPosition *= inv;
                 meanVelocity *= inv;
-                float flux = 0.0;
-                float spread = 0.0;
+                float flux = 0.0f;
+                float spread = 0.0f;
                 for (uint k = 0u; k < count; ++k) {
                     uint i = order[start + k];
                     if (component[i] == 3u) { continue; }
@@ -284,24 +288,24 @@ enum BarnesHutShaders {
                     flux += dot(velocities[i] - meanVelocity, dr);
                     spread += dot(dr, dr);
                 }
-                if (spread > 1e-12) {
+                if (spread > 1e-12f) {
                     // Trace of the velocity gradient. Negative is converging.
-                    float divergence = 3.0 * flux / spread;
+                    float divergence = 3.0f * flux / spread;
                     // Above the floor only. Taking the converging half of a noisy estimator
                     // turns its noise into a rate everywhere, which burned a quiescent disk's
                     // whole gas reservoir before its encounter arrived.
-                    compression = max(-divergence / freeFall - s.compressionFloor, 0.0);
+                    compression = max(-divergence / freeFall - s.compressionFloor, 0.0f);
                 }
             }
 
             float rate = s.efficiency
-                * sqrt(32.0 * s.gravitationalConstant * density / (3.0 * M_PI_F))
-                * (1.0 + s.compressionBoost * compression);
-            float chance = 1.0 - exp(-rate * s.timeStep);
+                * sqrt(32.0f * s.gravitationalConstant * density / (3.0f * M_PI_F))
+                * (1.0f + s.compressionBoost * compression);
+            float chance = 1.0f - exp(-rate * s.timeStep);
             if (bhLeafChances) {
-                bhWriteChances(slotChances, order, component, start, count, max(chance, 0.0));
+                bhWriteChances(slotChances, order, component, start, count, max(chance, 0.0f));
             }
-            if (chance <= 0.0) { return; }
+            if (chance <= 0.0f) { return; }
 
             for (uint k = 0u; k < count; ++k) {
                 uint i = order[start + k];
@@ -309,7 +313,7 @@ enum BarnesHutShaders {
                 // and never unwritten, which is what lets one static array replay the whole
                 // history of a run.
                 if (component[i] != 2u) { continue; }
-                if (formation[i] < 1e8) { continue; }
+                if (formation[i] < 1e8f) { continue; }
                 if (hashUnit(i, s.seed) >= chance) { continue; }
                 formation[i] = s.time;
             }
@@ -341,10 +345,10 @@ enum BarnesHutShaders {
             if (i >= counts.x || counts.y == 0u || s.nodeCount == 0u) { return; }
             if (((motions[i].w >> 4) & 7u) != 2u) { return; }
             float4 state = states[i];
-            if (state.w < 1e8) { return; }
-            const float resolution = 2097151.0;
+            if (state.w < 1e8f) { return; }
+            const float resolution = 2097151.0f;
             float3 local = (state.xyz - float3(frame[0], frame[1], frame[2])) * frame[3];
-            local = clamp(local, 0.0, resolution);
+            local = clamp(local, 0.0f, resolution);
             ulong code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
                        | bhSpread(uint(local.z));
             uint low = 0u;
@@ -355,14 +359,14 @@ enum BarnesHutShaders {
             }
             // Gas is a minority of the tree, dark matter included, so it may be a few slots
             // back. Far from any, there is none to read.
-            float chance = -1.0;
-            for (uint back = 0u; back < 256u && back < low && chance < 0.0; ++back) {
+            float chance = -1.0f;
+            for (uint back = 0u; back < 256u && back < low && chance < 0.0f; ++back) {
                 chance = slotChances[low - 1u - back];
             }
-            for (uint ahead = low; ahead < min(low + 256u, counts.y) && chance < 0.0; ++ahead) {
+            for (uint ahead = low; ahead < min(low + 256u, counts.y) && chance < 0.0f; ++ahead) {
                 chance = slotChances[ahead];
             }
-            if (chance <= 0.0) { return; }
+            if (chance <= 0.0f) { return; }
             if (hashUnit(i | 0x80000000u, s.seed) >= chance) { return; }
             state.w = s.time;
             states[i] = state;
@@ -413,14 +417,14 @@ enum BarnesHutShaders {
                                uint simdGroup [[simdgroup_index_in_threadgroup]]) {
             threadgroup float3 sums[bhHoleLimit][32];
             bool counted = i < p.particleCount && component[i] != 6u;
-            float3 position = counted ? positions[i] : float3(0.0);
-            float3 pulled = float3(0.0);
+            float3 position = counted ? positions[i] : float3(0.0f);
+            float3 pulled = float3(0.0f);
             for (uint h = 0; h < holeCount; ++h) {
-                float3 back = float3(0.0);
+                float3 back = float3(0.0f);
                 if (counted) {
                     float3 d = position - positions[as_type<uint>(holes[h].shape.y)];
                     float r2 = dot(d, d) + holes[h].shape.x;
-                    float inverse = 1.0 / (r2 * sqrt(r2));
+                    float inverse = 1.0f / (r2 * sqrt(r2));
                     pulled -= d * (holes[h].massG.w * inverse);
                     back = d * (p.gravitationalConstant * mass[i] * inverse);
                 }
@@ -432,9 +436,9 @@ enum BarnesHutShaders {
             if (lane != 0) { return; }
             uint groups = (width + 31) / 32;
             for (uint h = 0; h < holeCount; ++h) {
-                float3 total = float3(0.0);
+                float3 total = float3(0.0f);
                 for (uint g = 0; g < groups; ++g) { total += sums[h][g]; }
-                partial[group * bhHoleLimit + h] = float4(total, 0.0);
+                partial[group * bhHoleLimit + h] = float4(total, 0.0f);
             }
         }
 
@@ -453,7 +457,7 @@ enum BarnesHutShaders {
             for (uint h = 0; h < holeCount; ++h) {
                 uint index = as_type<uint>(holes[h].shape.y);
                 float3 position = positions[index];
-                float3 total = float3(0.0);
+                float3 total = float3(0.0f);
                 for (uint g = 0; g < groups; ++g) { total += partial[g * bhHoleLimit + h].xyz; }
                 for (uint o = 0; o < holeCount; ++o) {
                     if (o == h) { continue; }
@@ -485,7 +489,7 @@ enum BarnesHutShaders {
                              device const float4 *moments, float openingAngleSquared,
                              float softeningSquared, float gravitationalConstant,
                              thread uint &work) {
-            float3 total = float3(0.0);
+            float3 total = float3(0.0f);
             // Sibling cells are contiguous, so the stack holds ranges rather than single
             // nodes: one entry per level of the tree instead of one per pending sibling.
             // The old form could hold seven entries per level, so sixty-four slots were
@@ -504,7 +508,7 @@ enum BarnesHutShaders {
                 int following = entry & 7;
                 if (following > 0) { stack[top++] = ((index + 1) << 4) | around | (following - 1); }
                 BHNode node = nodes[index];
-                if (node.comMass.w <= 0.0) { continue; }
+                if (node.comMass.w <= 0.0f) { continue; }
                 work += 1;
 
                 float3 offset = node.comMass.xyz - position;
@@ -537,10 +541,10 @@ enum BarnesHutShaders {
                         float3 qr = float3(qa.x * offset.x + qa.w * offset.y + qb.x * offset.z,
                                            qa.w * offset.x + qa.y * offset.y + qb.y * offset.z,
                                            qb.x * offset.x + qb.y * offset.y + qa.z * offset.z);
-                        float inverse = 1.0 / distanceSquared;
+                        float inverse = 1.0f / distanceSquared;
                         float fifth = inverse * inverse / sqrt(distanceSquared);
-                        float radial = 7.5 * dot(offset, qr) * inverse - 1.5 * (qa.x + qa.y + qa.z);
-                        total += (offset * radial - 3.0 * qr) * (gravitationalConstant * fifth);
+                        float radial = 7.5f * dot(offset, qr) * inverse - 1.5f * (qa.x + qa.y + qa.z);
+                        total += (offset * radial - 3.0f * qr) * (gravitationalConstant * fifth);
                     }
                 } else if (leaf) {
                     work += uint(span);
@@ -653,10 +657,10 @@ enum BarnesHutShaders {
             float3 position = states[i].xyz;
             uint4 motion = motions[i];
             // Placed by the rule the tree sorted by; outside the root it is in no cell at all.
-            const float resolution = 2097151.0;
+            const float resolution = 2097151.0f;
             float3 local = (position - float3(frame[0], frame[1], frame[2])) * frame[3];
-            bool inRoot = all(local >= 0.0) && all(local <= resolution);
-            local = clamp(local, 0.0, resolution);
+            bool inRoot = all(local >= 0.0f) && all(local <= resolution);
+            local = clamp(local, 0.0f, resolution);
             ulong code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
                        | bhSpread(uint(local.z));
             uint work = 0;
@@ -667,7 +671,7 @@ enum BarnesHutShaders {
             for (uint h = 0; h < p.holeCount; ++h) {
                 float3 d = position - massive[as_type<uint>(holes[h].shape.y)];
                 float r2 = dot(d, d) + holes[h].shape.x;
-                float inverse = 1.0 / (r2 * sqrt(r2));
+                float inverse = 1.0f / (r2 * sqrt(r2));
                 acceleration -= d * (holes[h].massG.w * inverse);
             }
             if (p.mode == 2u) {
@@ -675,7 +679,7 @@ enum BarnesHutShaders {
                 return;
             }
             float3 velocity = as_type<float3>(motion.xyz);
-            float halfStep = p.timeStep * 0.5;
+            float halfStep = p.timeStep * 0.5f;
             if (p.mode == 1u) {
                 velocity += acceleration * halfStep;
                 uint kind = (motion.w >> 4) & 7u;
@@ -687,5 +691,6 @@ enum BarnesHutShaders {
             velocity += acceleration * halfStep;
             motions[i] = uint4(as_type<uint3>(velocity), motion.w);
         }
+        #endif
         """
 }

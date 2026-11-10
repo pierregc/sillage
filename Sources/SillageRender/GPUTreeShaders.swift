@@ -4,13 +4,20 @@ enum GPUTreeShaders {
         #include <metal_stdlib>
         using namespace metal;
 
+        // What is outside `#if defined(__METAL_VERSION__)` is shared with the CUDA engine, which
+        // compiles it through cuda/include/msl_compat.h (docs/notes/one-kernel-source.md).
+        #if defined(__METAL_VERSION__)
+        #define SHARED static
+        #define SHARED_CONSTANT constant
+        #endif
+
         struct BHNode {
             float4 comMass;
             float4 packed;
         };
 
-        inline int bhRange(BHNode node) { return as_type<int>(node.packed.y); }
-        inline int bhSignedCount(BHNode node) { return as_type<int>(node.packed.z); }
+        SHARED int bhRange(BHNode node) { return as_type<int>(node.packed.y); }
+        SHARED int bhSignedCount(BHNode node) { return as_type<int>(node.packed.z); }
 
         struct TreeParams {
             uint count;
@@ -25,24 +32,22 @@ enum GPUTreeShaders {
         };
 
         // counters: node count, overflow flag, then the bounds as ordered integers.
-        constant uint counterNodes = 0;
-        constant uint counterOverflow = 1;
-        constant uint counterLower = 2;
-        constant uint counterUpper = 5;
+        SHARED_CONSTANT uint counterNodes = 0;
+        SHARED_CONSTANT uint counterOverflow = 1;
+        SHARED_CONSTANT uint counterLower = 2;
+        SHARED_CONSTANT uint counterUpper = 5;
 
         // Floats compare as these integers do, so the bounds can be taken with integer atomics.
-        inline uint orderedFloat(float value) {
+        SHARED uint orderedFloat(float value) {
             uint bits = as_type<uint>(value);
             return (bits & 0x80000000u) != 0u ? ~bits : (bits | 0x80000000u);
         }
 
-        inline float unorderedFloat(uint key) {
+        SHARED float unorderedFloat(uint key) {
             return as_type<float>((key & 0x80000000u) != 0u ? (key & 0x7FFFFFFFu) : ~key);
         }
 
-        kernel void gtReset(device atomic_uint *counters [[buffer(0)]],
-                            device uint *levels [[buffer(1)]],
-                            uint gid [[thread_position_in_grid]]) {
+        SHARED void treeReset(device atomic_uint *counters, device uint *levels, uint gid) {
             if (gid < 8u) {
                 uint value = gid >= counterLower && gid < counterUpper ? 0xFFFFFFFFu : 0u;
                 atomic_store_explicit(&counters[gid], value, memory_order_relaxed);
@@ -50,15 +55,10 @@ enum GPUTreeShaders {
             if (gid < 24u) { levels[gid] = 0u; }
         }
 
-        kernel void gtBounds(device const float3 *positions [[buffer(0)]],
-                             device atomic_uint *counters [[buffer(1)]],
-                             constant TreeParams &p [[buffer(2)]],
-                             uint gid [[thread_position_in_grid]],
-                             uint threads [[threads_per_grid]],
-                             uint t [[thread_index_in_threadgroup]],
-                             uint simd [[simdgroup_index_in_threadgroup]],
-                             uint lane [[thread_index_in_simdgroup]],
-                             uint simds [[simdgroups_per_threadgroup]]) {
+        SHARED void treeBounds(device const float3 *positions, device atomic_uint *counters,
+                               constant TreeParams &p, uint gid, uint threads, uint t, uint simd,
+                               uint lane, uint simds, threadgroup float3 *lowers,
+                               threadgroup float3 *uppers) {
             float3 lower = float3(INFINITY);
             float3 upper = float3(-INFINITY);
             for (uint i = gid; i < p.count; i += threads) {
@@ -71,8 +71,6 @@ enum GPUTreeShaders {
             }
             lower = simd_min(lower);
             upper = simd_max(upper);
-            threadgroup float3 lowers[32];
-            threadgroup float3 uppers[32];
             if (lane == 0u) {
                 lowers[simd] = lower;
                 uppers[simd] = upper;
@@ -92,12 +90,9 @@ enum GPUTreeShaders {
         }
 
         // The root cell and the frame the codes are taken in, exactly as the CPU build does.
-        kernel void gtRoot(device atomic_uint *counters [[buffer(0)]],
-                           device BHNode *nodes [[buffer(1)]],
-                           device float *frame [[buffer(2)]],
-                           device uint *levels [[buffer(3)]],
-                           constant TreeParams &p [[buffer(4)]],
-                           uint gid [[thread_position_in_grid]]) {
+        SHARED void treeRoot(device atomic_uint *counters, device BHNode *nodes,
+                             device float *frame, device uint *levels, constant TreeParams &p,
+                             uint gid) {
             if (gid != 0u) { return; }
             float3 lower;
             float3 upper;
@@ -131,7 +126,7 @@ enum GPUTreeShaders {
             atomic_store_explicit(&counters[counterNodes], 1u, memory_order_relaxed);
         }
 
-        inline ulong spread(uint value) {
+        SHARED ulong spread(uint value) {
             ulong x = ulong(value) & 0x1FFFFFul;
             x = (x | (x << 32)) & 0x001F00000000FFFFul;
             x = (x | (x << 16)) & 0x001F0000FF0000FFul;
@@ -141,12 +136,9 @@ enum GPUTreeShaders {
             return x;
         }
 
-        kernel void gtMorton(device const float3 *positions [[buffer(0)]],
-                             device ulong *codes [[buffer(1)]],
-                             device uint *order [[buffer(2)]],
-                             device const float *frame [[buffer(3)]],
-                             constant TreeParams &p [[buffer(4)]],
-                             uint i [[thread_position_in_grid]]) {
+        SHARED void treeMorton(device const float3 *positions, device ulong *codes,
+                               device uint *order, device const float *frame,
+                               constant TreeParams &p, uint i) {
             if (i >= p.count) { return; }
             const float resolution = 2097151.0f;
             float3 origin = float3(frame[0], frame[1], frame[2]);
@@ -160,16 +152,16 @@ enum GPUTreeShaders {
 
         // Least significant digit radix sort, eight bits a pass. A tile is 256 threads of 8
         // keys; each SIMD group owns a contiguous run of 256 of them and walks it 32 at a time.
-        constant uint radixBits = 8;
-        constant uint buckets = 1u << radixBits;
-        constant uint sortThreads = 256;
-        constant uint sortItems = 8;
-        constant uint sortSimds = sortThreads / 32u;
-        constant uint tileSize = sortThreads * sortItems;
-        constant uint simdItems = 32u * sortItems;
+        SHARED_CONSTANT uint radixBits = 8;
+        SHARED_CONSTANT uint buckets = 1u << radixBits;
+        SHARED_CONSTANT uint sortThreads = 256;
+        SHARED_CONSTANT uint sortItems = 8;
+        SHARED_CONSTANT uint sortSimds = sortThreads / 32u;
+        SHARED_CONSTANT uint tileSize = sortThreads * sortItems;
+        SHARED_CONSTANT uint simdItems = 32u * sortItems;
 
         // The lanes holding the same digit as this one. The extra bit marks a lane past the end.
-        inline uint sameDigit(uint digit) {
+        SHARED uint sameDigit(uint digit) {
             uint same = 0xFFFFFFFFu;
             for (uint bit = 0u; bit <= radixBits; ++bit) {
                 bool set = ((digit >> bit) & 1u) != 0u;
@@ -179,14 +171,9 @@ enum GPUTreeShaders {
             return same;
         }
 
-        kernel void gtRadixCount(device const ulong *keys [[buffer(0)]],
-                                 device uint *table [[buffer(1)]],
-                                 constant TreeParams &p [[buffer(2)]],
-                                 uint tile [[threadgroup_position_in_grid]],
-                                 uint t [[thread_index_in_threadgroup]],
-                                 uint simd [[simdgroup_index_in_threadgroup]],
-                                 uint lane [[thread_index_in_simdgroup]]) {
-            threadgroup uint counters[sortSimds * buckets];
+        SHARED void treeRadixCount(device const ulong *keys, device uint *table,
+                                   constant TreeParams &p, uint tile, uint t, uint simd, uint lane,
+                                   threadgroup uint *counters) {
             for (uint k = t; k < sortSimds * buckets; k += sortThreads) { counters[k] = 0u; }
             threadgroup_barrier(mem_flags::mem_threadgroup);
             uint first = tile * tileSize + simd * simdItems;
@@ -212,20 +199,15 @@ enum GPUTreeShaders {
 
         // The table is laid out digit by digit and tile by tile, so its exclusive scan is where
         // each tile's run of each digit lands. Scanned in blocks of 1024.
-        kernel void gtScanReduce(device const uint *table [[buffer(0)]],
-                                 device uint *sums [[buffer(1)]],
-                                 constant TreeParams &p [[buffer(2)]],
-                                 uint block [[threadgroup_position_in_grid]],
-                                 uint t [[thread_index_in_threadgroup]],
-                                 uint simd [[simdgroup_index_in_threadgroup]],
-                                 uint lane [[thread_index_in_simdgroup]]) {
+        SHARED void treeScanReduce(device const uint *table, device uint *sums,
+                                   constant TreeParams &p, uint block, uint t, uint simd, uint lane,
+                                   threadgroup uint *partial) {
             uint base = block * 1024u + t * 4u;
             uint sum = 0u;
             for (uint k = 0u; k < 4u; ++k) {
                 if (base + k < p.tableLength) { sum += table[base + k]; }
             }
             sum = simd_sum(sum);
-            threadgroup uint partial[8];
             if (lane == 0u) { partial[simd] = sum; }
             threadgroup_barrier(mem_flags::mem_threadgroup);
             if (t == 0u) {
@@ -235,13 +217,9 @@ enum GPUTreeShaders {
             }
         }
 
-        kernel void gtScanTop(device uint *sums [[buffer(0)]],
-                              constant TreeParams &p [[buffer(1)]],
-                              uint t [[thread_index_in_threadgroup]],
-                              uint simd [[simdgroup_index_in_threadgroup]],
-                              uint lane [[thread_index_in_simdgroup]]) {
-            threadgroup uint partial[32];
-            threadgroup uint chunkTotal;
+        SHARED void treeScanTop(device uint *sums, constant TreeParams &p, uint t, uint simd,
+                                uint lane, threadgroup uint *partial,
+                                threadgroup uint &chunkTotal) {
             uint blocks = (p.tableLength + 1023u) / 1024u;
             uint carry = 0u;
             for (uint chunk = 0u; chunk < blocks; chunk += 1024u) {
@@ -263,13 +241,9 @@ enum GPUTreeShaders {
             }
         }
 
-        kernel void gtScanDown(device uint *table [[buffer(0)]],
-                               device const uint *sums [[buffer(1)]],
-                               constant TreeParams &p [[buffer(2)]],
-                               uint block [[threadgroup_position_in_grid]],
-                               uint t [[thread_index_in_threadgroup]],
-                               uint simd [[simdgroup_index_in_threadgroup]],
-                               uint lane [[thread_index_in_simdgroup]]) {
+        SHARED void treeScanDown(device uint *table, device const uint *sums,
+                                 constant TreeParams &p, uint block, uint t, uint simd, uint lane,
+                                 threadgroup uint *partial) {
             uint base = block * 1024u + t * 4u;
             uint values[4];
             uint own = 0u;
@@ -278,7 +252,6 @@ enum GPUTreeShaders {
                 own += values[k];
             }
             uint inclusive = simd_prefix_inclusive_sum(own);
-            threadgroup uint partial[8];
             if (lane == 31u) { partial[simd] = inclusive; }
             threadgroup_barrier(mem_flags::mem_threadgroup);
             uint running = sums[block] + inclusive - own;
@@ -291,18 +264,11 @@ enum GPUTreeShaders {
 
         // Each key goes to where its digit's run starts for its tile, plus the keys of the
         // same digit ahead of it in the tile. Ranked with ballots, so the sort stays stable.
-        kernel void gtRadixScatter(device const ulong *keysIn [[buffer(0)]],
-                                   device const uint *valuesIn [[buffer(1)]],
-                                   device ulong *keysOut [[buffer(2)]],
-                                   device uint *valuesOut [[buffer(3)]],
-                                   device const uint *table [[buffer(4)]],
-                                   constant TreeParams &p [[buffer(5)]],
-                                   uint tile [[threadgroup_position_in_grid]],
-                                   uint t [[thread_index_in_threadgroup]],
-                                   uint simd [[simdgroup_index_in_threadgroup]],
-                                   uint lane [[thread_index_in_simdgroup]]) {
-            threadgroup uint counters[sortSimds * buckets];
-            threadgroup uint starts[buckets];
+        SHARED void treeRadixScatter(device const ulong *keysIn, device const uint *valuesIn,
+                                     device ulong *keysOut, device uint *valuesOut,
+                                     device const uint *table, constant TreeParams &p, uint tile,
+                                     uint t, uint simd, uint lane, threadgroup uint *counters,
+                                     threadgroup uint *starts) {
             for (uint k = t; k < sortSimds * buckets; k += sortThreads) { counters[k] = 0u; }
             for (uint digit = t; digit < buckets; digit += sortThreads) {
                 starts[digit] = table[digit * p.tiles + tile];
@@ -349,7 +315,7 @@ enum GPUTreeShaders {
         }
 
         // Where each octant of a cell starts. Morton order makes them contiguous runs.
-        inline void octantStarts(device const ulong *codes, uint start, uint count, uint shift,
+        SHARED void octantStarts(device const ulong *codes, uint start, uint count, uint shift,
                                  thread uint *offsets) {
             uint limit = start + count;
             offsets[0] = start;
@@ -382,10 +348,8 @@ enum GPUTreeShaders {
 
         // Closes a level: everything allocated so far ends it. Clamped, so that a build which ran
         // out of nodes never walks past the buffer; it is thrown away and run again anyway.
-        kernel void gtCloseLevel(device atomic_uint *counters [[buffer(0)]],
-                                 device uint *levels [[buffer(1)]],
-                                 constant TreeParams &p [[buffer(2)]],
-                                 uint gid [[thread_position_in_grid]]) {
+        SHARED void treeCloseLevel(device atomic_uint *counters, device uint *levels,
+                                   constant TreeParams &p, uint gid) {
             if (gid != 0u) { return; }
             uint allocated = atomic_load_explicit(&counters[counterNodes], memory_order_relaxed);
             levels[p.level + 1u] = min(allocated, p.nodeCapacity);
@@ -393,15 +357,10 @@ enum GPUTreeShaders {
 
         // Splits every cell of one level. A SIMD group takes one block of child slots for all
         // its cells, so siblings stay contiguous and families keep their parents' order.
-        kernel void gtSplit(device BHNode *nodes [[buffer(0)]],
-                            device const ulong *codes [[buffer(1)]],
-                            device atomic_uint *counters [[buffer(2)]],
-                            device const uint *levels [[buffer(3)]],
-                            device const float *frame [[buffer(4)]],
-                            constant TreeParams &p [[buffer(5)]],
-                            uint gid [[thread_position_in_grid]],
-                            uint threads [[threads_per_grid]],
-                            uint lane [[thread_index_in_simdgroup]]) {
+        SHARED void treeSplit(device BHNode *nodes, device const ulong *codes,
+                              device atomic_uint *counters, device const uint *levels,
+                              device const float *frame, constant TreeParams &p, uint gid,
+                              uint threads, uint lane) {
             uint level = p.level;
             uint begin = levels[level];
             uint end = levels[level + 1u];
@@ -449,12 +408,9 @@ enum GPUTreeShaders {
         }
 
         // The particles in Morton order with their mass beside them, as the force pass reads them.
-        kernel void gtGather(device float4 *sorted [[buffer(0)]],
-                             device const float3 *positions [[buffer(1)]],
-                             device const float *mass [[buffer(2)]],
-                             device const uint *order [[buffer(3)]],
-                             constant TreeParams &p [[buffer(4)]],
-                             uint slot [[thread_position_in_grid]]) {
+        SHARED void treeGather(device float4 *sorted, device const float3 *positions,
+                               device const float *mass, device const uint *order,
+                               constant TreeParams &p, uint slot) {
             if (slot >= p.count) { return; }
             uint i = order[slot];
             sorted[slot] = float4(positions[i], mass[i]);
@@ -465,14 +421,10 @@ enum GPUTreeShaders {
 
         // Each leaf sums its own run of gathered particles. Its second moment is taken about
         // its first particle, as on the CPU: x x^T summed raw cancels away far from the origin.
-        kernel void gtLeafSums(device BHNode *nodes [[buffer(0)]],
-                               device const float4 *sorted [[buffer(1)]],
-                               device const uint *levels [[buffer(2)]],
-                               constant TreeParams &p [[buffer(3)]],
-                               device float4 *moments [[buffer(4)]],
-                               device const uint *counters [[buffer(5)]],
-                               uint gid [[thread_position_in_grid]],
-                               uint threads [[threads_per_grid]]) {
+        SHARED void treeLeafSums(device BHNode *nodes, device const float4 *sorted,
+                                 device const uint *levels, constant TreeParams &p,
+                                 device float4 *moments, device const uint *counters, uint gid,
+                                 uint threads) {
             if (counters[counterOverflow] != 0u) { return; }
             uint total = levels[p.maximumDepth + 1u];
             for (uint n = gid; n < total; n += threads) {
@@ -514,12 +466,9 @@ enum GPUTreeShaders {
         }
 
         // A node holds the sum of its children taken last to first, as the CPU fold does.
-        kernel void gtFold(device BHNode *nodes [[buffer(0)]],
-                           device const uint *levels [[buffer(1)]],
-                           constant TreeParams &p [[buffer(2)]],
-                           device const uint *counters [[buffer(3)]],
-                           uint gid [[thread_position_in_grid]],
-                           uint threads [[threads_per_grid]]) {
+        SHARED void treeFold(device BHNode *nodes, device const uint *levels,
+                             constant TreeParams &p, device const uint *counters, uint gid,
+                             uint threads) {
             if (counters[counterOverflow] != 0u) { return; }
             uint end = levels[p.level + 1u];
             for (uint n = levels[p.level] + gid; n < end; n += threads) {
@@ -532,12 +481,9 @@ enum GPUTreeShaders {
             }
         }
 
-        kernel void gtNormalize(device BHNode *nodes [[buffer(0)]],
-                                device const uint *levels [[buffer(1)]],
-                                constant TreeParams &p [[buffer(2)]],
-                                device const uint *counters [[buffer(3)]],
-                                uint gid [[thread_position_in_grid]],
-                                uint threads [[threads_per_grid]]) {
+        SHARED void treeNormalize(device BHNode *nodes, device const uint *levels,
+                                  constant TreeParams &p, device const uint *counters, uint gid,
+                                  uint threads) {
             if (counters[counterOverflow] != 0u) { return; }
             uint total = levels[p.maximumDepth + 1u];
             for (uint n = gid; n < total; n += threads) {
@@ -551,13 +497,9 @@ enum GPUTreeShaders {
 
         // A branch shifts each child's moment to its own centre of mass, children last to first,
         // which needs the centres normalised first.
-        kernel void gtFoldMoments(device const BHNode *nodes [[buffer(0)]],
-                                  device const uint *levels [[buffer(1)]],
-                                  constant TreeParams &p [[buffer(2)]],
-                                  device float4 *moments [[buffer(3)]],
-                                  device const uint *counters [[buffer(4)]],
-                                  uint gid [[thread_position_in_grid]],
-                                  uint threads [[threads_per_grid]]) {
+        SHARED void treeFoldMoments(device const BHNode *nodes, device const uint *levels,
+                                    constant TreeParams &p, device float4 *moments,
+                                    device const uint *counters, uint gid, uint threads) {
             if (counters[counterOverflow] != 0u) { return; }
             uint end = levels[p.level + 1u];
             for (uint n = levels[p.level] + gid; n < end; n += threads) {
@@ -587,16 +529,10 @@ enum GPUTreeShaders {
         // particles are counted: they come first, and the dark matter sharing their leaf would
         // make the spacing follow the halo. Needs no masses, so the cells are enough. With light
         // tracers each one stands for `ratio` drawn particles (#238).
-        kernel void gtSmoothing(device float *lengths [[buffer(0)]],
-                                device const BHNode *nodes [[buffer(1)]],
-                                device const uint *order [[buffer(2)]],
-                                device const uint *levels [[buffer(3)]],
-                                device const uint *counters [[buffer(4)]],
-                                constant TreeParams &p [[buffer(5)]],
-                                constant uint &drawnCount [[buffer(6)]],
-                                constant float &ratio [[buffer(7)]],
-                                uint gid [[thread_position_in_grid]],
-                                uint threads [[threads_per_grid]]) {
+        SHARED void treeSmoothing(device float *lengths, device const BHNode *nodes,
+                                  device const uint *order, device const uint *levels,
+                                  device const uint *counters, constant TreeParams &p,
+                                  uint drawnCount, float ratio, uint gid, uint threads) {
             if (counters[counterOverflow] != 0u) { return; }
             uint total = levels[p.maximumDepth + 1u];
             for (uint n = gid; n < total; n += threads) {
@@ -609,8 +545,8 @@ enum GPUTreeShaders {
                     if (order[start + k] < drawnCount) { drawn += 1u; }
                 }
                 if (drawn == 0u) { continue; }
-                float width = sqrt(max(node.packed.x, 1e-12));
-                float length = width * pow(1.0 / (float(drawn) * ratio), 1.0 / 3.0);
+                float width = sqrt(max(node.packed.x, 1e-12f));
+                float length = width * pow(1.0f / (float(drawn) * ratio), 1.0f / 3.0f);
                 for (uint k = 0u; k < count; ++k) {
                     uint i = order[start + k];
                     if (i < drawnCount) { lengths[i] = length; }
@@ -623,15 +559,10 @@ enum GPUTreeShaders {
         // particle of the tree standing for `ratio` of them. x counts the drawn particles, then
         // holds the length's bits; y is the first child shifted past a mask of the octants
         // that have one, so a tracer goes down a level in one read.
-        kernel void gtSpacingLeaves(device uint2 *spacing [[buffer(0)]],
-                                    device const BHNode *nodes [[buffer(1)]],
-                                    device const uint *order [[buffer(2)]],
-                                    device const uint *levels [[buffer(3)]],
-                                    device const uint *counters [[buffer(4)]],
-                                    constant TreeParams &p [[buffer(5)]],
-                                    constant uint &drawnCount [[buffer(6)]],
-                                    uint gid [[thread_position_in_grid]],
-                                    uint threads [[threads_per_grid]]) {
+        SHARED void treeSpacingLeaves(device uint2 *spacing, device const BHNode *nodes,
+                                      device const uint *order, device const uint *levels,
+                                      device const uint *counters, constant TreeParams &p,
+                                      uint drawnCount, uint gid, uint threads) {
             if (counters[counterOverflow] != 0u) { return; }
             uint total = levels[p.maximumDepth + 1u];
             for (uint n = gid; n < total; n += threads) {
@@ -654,13 +585,9 @@ enum GPUTreeShaders {
             }
         }
 
-        kernel void gtSpacingFold(device uint2 *spacing [[buffer(0)]],
-                                  device const BHNode *nodes [[buffer(1)]],
-                                  device const uint *levels [[buffer(2)]],
-                                  device const uint *counters [[buffer(3)]],
-                                  constant TreeParams &p [[buffer(4)]],
-                                  uint gid [[thread_position_in_grid]],
-                                  uint threads [[threads_per_grid]]) {
+        SHARED void treeSpacingFold(device uint2 *spacing, device const BHNode *nodes,
+                                    device const uint *levels, device const uint *counters,
+                                    constant TreeParams &p, uint gid, uint threads) {
             if (counters[counterOverflow] != 0u) { return; }
             uint end = levels[p.level + 1u];
             for (uint n = levels[p.level] + gid; n < end; n += threads) {
@@ -673,6 +600,223 @@ enum GPUTreeShaders {
             }
         }
 
+        SHARED void treeSpacingLengths(device uint2 *spacing, device const BHNode *nodes,
+                                       device const uint *levels, device const uint *counters,
+                                       constant TreeParams &p, float ratio, uint gid,
+                                       uint threads) {
+            if (counters[counterOverflow] != 0u) { return; }
+            uint total = levels[p.maximumDepth + 1u];
+            for (uint n = gid; n < total; n += threads) {
+                uint drawn = spacing[n].x;
+                float width = sqrt(max(nodes[n].packed.x, 1e-12f));
+                float length = drawn > 0u ? width * pow(1.0f / (float(drawn) * ratio), 1.0f / 3.0f) : 0.0f;
+                spacing[n].x = as_type<uint>(length);
+            }
+        }
+
+        // Metal's entry points: each one binds its buffers and calls the function above.
+        #if defined(__METAL_VERSION__)
+
+        kernel void gtReset(device atomic_uint *counters [[buffer(0)]],
+                            device uint *levels [[buffer(1)]],
+                            uint gid [[thread_position_in_grid]]) {
+            treeReset(counters, levels, gid);
+        }
+
+        kernel void gtBounds(device const float3 *positions [[buffer(0)]],
+                             device atomic_uint *counters [[buffer(1)]],
+                             constant TreeParams &p [[buffer(2)]],
+                             uint gid [[thread_position_in_grid]],
+                             uint threads [[threads_per_grid]],
+                             uint t [[thread_index_in_threadgroup]],
+                             uint simd [[simdgroup_index_in_threadgroup]],
+                             uint lane [[thread_index_in_simdgroup]],
+                             uint simds [[simdgroups_per_threadgroup]]) {
+            threadgroup float3 lowers[32];
+            threadgroup float3 uppers[32];
+            treeBounds(positions, counters, p, gid, threads, t, simd, lane, simds, lowers, uppers);
+        }
+
+        kernel void gtRoot(device atomic_uint *counters [[buffer(0)]],
+                           device BHNode *nodes [[buffer(1)]],
+                           device float *frame [[buffer(2)]],
+                           device uint *levels [[buffer(3)]],
+                           constant TreeParams &p [[buffer(4)]],
+                           uint gid [[thread_position_in_grid]]) {
+            treeRoot(counters, nodes, frame, levels, p, gid);
+        }
+
+        kernel void gtMorton(device const float3 *positions [[buffer(0)]],
+                             device ulong *codes [[buffer(1)]],
+                             device uint *order [[buffer(2)]],
+                             device const float *frame [[buffer(3)]],
+                             constant TreeParams &p [[buffer(4)]],
+                             uint i [[thread_position_in_grid]]) {
+            treeMorton(positions, codes, order, frame, p, i);
+        }
+
+        kernel void gtRadixCount(device const ulong *keys [[buffer(0)]],
+                                 device uint *table [[buffer(1)]],
+                                 constant TreeParams &p [[buffer(2)]],
+                                 uint tile [[threadgroup_position_in_grid]],
+                                 uint t [[thread_index_in_threadgroup]],
+                                 uint simd [[simdgroup_index_in_threadgroup]],
+                                 uint lane [[thread_index_in_simdgroup]]) {
+            threadgroup uint counters[sortSimds * buckets];
+            treeRadixCount(keys, table, p, tile, t, simd, lane, counters);
+        }
+
+        kernel void gtScanReduce(device const uint *table [[buffer(0)]],
+                                 device uint *sums [[buffer(1)]],
+                                 constant TreeParams &p [[buffer(2)]],
+                                 uint block [[threadgroup_position_in_grid]],
+                                 uint t [[thread_index_in_threadgroup]],
+                                 uint simd [[simdgroup_index_in_threadgroup]],
+                                 uint lane [[thread_index_in_simdgroup]]) {
+            threadgroup uint partial[8];
+            treeScanReduce(table, sums, p, block, t, simd, lane, partial);
+        }
+
+        kernel void gtScanTop(device uint *sums [[buffer(0)]],
+                              constant TreeParams &p [[buffer(1)]],
+                              uint t [[thread_index_in_threadgroup]],
+                              uint simd [[simdgroup_index_in_threadgroup]],
+                              uint lane [[thread_index_in_simdgroup]]) {
+            threadgroup uint partial[32];
+            threadgroup uint chunkTotal;
+            treeScanTop(sums, p, t, simd, lane, partial, chunkTotal);
+        }
+
+        kernel void gtScanDown(device uint *table [[buffer(0)]],
+                               device const uint *sums [[buffer(1)]],
+                               constant TreeParams &p [[buffer(2)]],
+                               uint block [[threadgroup_position_in_grid]],
+                               uint t [[thread_index_in_threadgroup]],
+                               uint simd [[simdgroup_index_in_threadgroup]],
+                               uint lane [[thread_index_in_simdgroup]]) {
+            threadgroup uint partial[8];
+            treeScanDown(table, sums, p, block, t, simd, lane, partial);
+        }
+
+        kernel void gtRadixScatter(device const ulong *keysIn [[buffer(0)]],
+                                   device const uint *valuesIn [[buffer(1)]],
+                                   device ulong *keysOut [[buffer(2)]],
+                                   device uint *valuesOut [[buffer(3)]],
+                                   device const uint *table [[buffer(4)]],
+                                   constant TreeParams &p [[buffer(5)]],
+                                   uint tile [[threadgroup_position_in_grid]],
+                                   uint t [[thread_index_in_threadgroup]],
+                                   uint simd [[simdgroup_index_in_threadgroup]],
+                                   uint lane [[thread_index_in_simdgroup]]) {
+            threadgroup uint counters[sortSimds * buckets];
+            threadgroup uint starts[buckets];
+            treeRadixScatter(keysIn, valuesIn, keysOut, valuesOut, table, p, tile, t, simd, lane,
+                             counters, starts);
+        }
+
+        kernel void gtCloseLevel(device atomic_uint *counters [[buffer(0)]],
+                                 device uint *levels [[buffer(1)]],
+                                 constant TreeParams &p [[buffer(2)]],
+                                 uint gid [[thread_position_in_grid]]) {
+            treeCloseLevel(counters, levels, p, gid);
+        }
+
+        kernel void gtSplit(device BHNode *nodes [[buffer(0)]],
+                            device const ulong *codes [[buffer(1)]],
+                            device atomic_uint *counters [[buffer(2)]],
+                            device const uint *levels [[buffer(3)]],
+                            device const float *frame [[buffer(4)]],
+                            constant TreeParams &p [[buffer(5)]],
+                            uint gid [[thread_position_in_grid]],
+                            uint threads [[threads_per_grid]],
+                            uint lane [[thread_index_in_simdgroup]]) {
+            treeSplit(nodes, codes, counters, levels, frame, p, gid, threads, lane);
+        }
+
+        kernel void gtGather(device float4 *sorted [[buffer(0)]],
+                             device const float3 *positions [[buffer(1)]],
+                             device const float *mass [[buffer(2)]],
+                             device const uint *order [[buffer(3)]],
+                             constant TreeParams &p [[buffer(4)]],
+                             uint slot [[thread_position_in_grid]]) {
+            treeGather(sorted, positions, mass, order, p, slot);
+        }
+
+        kernel void gtLeafSums(device BHNode *nodes [[buffer(0)]],
+                               device const float4 *sorted [[buffer(1)]],
+                               device const uint *levels [[buffer(2)]],
+                               constant TreeParams &p [[buffer(3)]],
+                               device float4 *moments [[buffer(4)]],
+                               device const uint *counters [[buffer(5)]],
+                               uint gid [[thread_position_in_grid]],
+                               uint threads [[threads_per_grid]]) {
+            treeLeafSums(nodes, sorted, levels, p, moments, counters, gid, threads);
+        }
+
+        kernel void gtFold(device BHNode *nodes [[buffer(0)]],
+                           device const uint *levels [[buffer(1)]],
+                           constant TreeParams &p [[buffer(2)]],
+                           device const uint *counters [[buffer(3)]],
+                           uint gid [[thread_position_in_grid]],
+                           uint threads [[threads_per_grid]]) {
+            treeFold(nodes, levels, p, counters, gid, threads);
+        }
+
+        kernel void gtNormalize(device BHNode *nodes [[buffer(0)]],
+                                device const uint *levels [[buffer(1)]],
+                                constant TreeParams &p [[buffer(2)]],
+                                device const uint *counters [[buffer(3)]],
+                                uint gid [[thread_position_in_grid]],
+                                uint threads [[threads_per_grid]]) {
+            treeNormalize(nodes, levels, p, counters, gid, threads);
+        }
+
+        kernel void gtFoldMoments(device const BHNode *nodes [[buffer(0)]],
+                                  device const uint *levels [[buffer(1)]],
+                                  constant TreeParams &p [[buffer(2)]],
+                                  device float4 *moments [[buffer(3)]],
+                                  device const uint *counters [[buffer(4)]],
+                                  uint gid [[thread_position_in_grid]],
+                                  uint threads [[threads_per_grid]]) {
+            treeFoldMoments(nodes, levels, p, moments, counters, gid, threads);
+        }
+
+        kernel void gtSmoothing(device float *lengths [[buffer(0)]],
+                                device const BHNode *nodes [[buffer(1)]],
+                                device const uint *order [[buffer(2)]],
+                                device const uint *levels [[buffer(3)]],
+                                device const uint *counters [[buffer(4)]],
+                                constant TreeParams &p [[buffer(5)]],
+                                constant uint &drawnCount [[buffer(6)]],
+                                constant float &ratio [[buffer(7)]],
+                                uint gid [[thread_position_in_grid]],
+                                uint threads [[threads_per_grid]]) {
+            treeSmoothing(lengths, nodes, order, levels, counters, p, drawnCount, ratio, gid,
+                          threads);
+        }
+
+        kernel void gtSpacingLeaves(device uint2 *spacing [[buffer(0)]],
+                                    device const BHNode *nodes [[buffer(1)]],
+                                    device const uint *order [[buffer(2)]],
+                                    device const uint *levels [[buffer(3)]],
+                                    device const uint *counters [[buffer(4)]],
+                                    constant TreeParams &p [[buffer(5)]],
+                                    constant uint &drawnCount [[buffer(6)]],
+                                    uint gid [[thread_position_in_grid]],
+                                    uint threads [[threads_per_grid]]) {
+            treeSpacingLeaves(spacing, nodes, order, levels, counters, p, drawnCount, gid, threads);
+        }
+
+        kernel void gtSpacingFold(device uint2 *spacing [[buffer(0)]],
+                                  device const BHNode *nodes [[buffer(1)]],
+                                  device const uint *levels [[buffer(2)]],
+                                  device const uint *counters [[buffer(3)]],
+                                  constant TreeParams &p [[buffer(4)]],
+                                  uint gid [[thread_position_in_grid]],
+                                  uint threads [[threads_per_grid]]) {
+            treeSpacingFold(spacing, nodes, levels, counters, p, gid, threads);
+        }
+
         kernel void gtSpacingLengths(device uint2 *spacing [[buffer(0)]],
                                      device const BHNode *nodes [[buffer(1)]],
                                      device const uint *levels [[buffer(2)]],
@@ -681,14 +825,8 @@ enum GPUTreeShaders {
                                      constant float &ratio [[buffer(5)]],
                                      uint gid [[thread_position_in_grid]],
                                      uint threads [[threads_per_grid]]) {
-            if (counters[counterOverflow] != 0u) { return; }
-            uint total = levels[p.maximumDepth + 1u];
-            for (uint n = gid; n < total; n += threads) {
-                uint drawn = spacing[n].x;
-                float width = sqrt(max(nodes[n].packed.x, 1e-12));
-                float length = drawn > 0u ? width * pow(1.0 / (float(drawn) * ratio), 1.0 / 3.0) : 0.0;
-                spacing[n].x = as_type<uint>(length);
-            }
+            treeSpacingLengths(spacing, nodes, levels, counters, p, ratio, gid, threads);
         }
+        #endif
         """
 }

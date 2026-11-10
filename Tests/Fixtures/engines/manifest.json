@@ -1,0 +1,122 @@
+{
+  "byteOrder" : "little",
+  "device" : "Apple M4 Max",
+  "format" : "sillage-engine-fixtures",
+  "frames" : {
+    "capturedFrame" : 0,
+    "height" : 144,
+    "images" : [
+      {
+        "file" : "frames/red-vs-cyan.rgba",
+        "look" : "frames/red-vs-cyan.look.json"
+      },
+      {
+        "file" : "frames/ember.rgba",
+        "look" : "frames/ember.look.json"
+      },
+      {
+        "file" : "frames/webb.rgba",
+        "look" : "frames/webb.look.json"
+      }
+    ],
+    "pixels" : "rgba8",
+    "rows" : "top first",
+    "take" : "frames/take.sillage",
+    "width" : 256
+  },
+  "source" : "Metal, ./scripts/dev.sh fixtures",
+  "system" : "macOS 26.5.1",
+  "tree" : {
+    "buffers" : {
+      "frame" : {
+        "count" : 8,
+        "file" : "tree/frame.bin",
+        "stride" : 4,
+        "type" : "float"
+      },
+      "levels" : {
+        "count" : 22,
+        "file" : "tree/levels.bin",
+        "stride" : 4,
+        "type" : "uint"
+      },
+      "mass" : {
+        "count" : 20000,
+        "file" : "tree/mass.bin",
+        "stride" : 4,
+        "type" : "float"
+      },
+      "moments" : {
+        "count" : 7780,
+        "file" : "tree/moments.bin",
+        "stride" : 16,
+        "type" : "float4"
+      },
+      "nodes" : {
+        "count" : 3890,
+        "file" : "tree/nodes.bin",
+        "stride" : 32,
+        "type" : "BHNode"
+      },
+      "order" : {
+        "count" : 20000,
+        "file" : "tree/order.bin",
+        "stride" : 4,
+        "type" : "uint"
+      },
+      "positions" : {
+        "count" : 20000,
+        "file" : "tree/positions.bin",
+        "stride" : 16,
+        "type" : "float3"
+      },
+      "smoothing" : {
+        "count" : 16000,
+        "file" : "tree/smoothing.bin",
+        "stride" : 4,
+        "type" : "float"
+      },
+      "spacing" : {
+        "count" : 3890,
+        "file" : "tree/spacing.bin",
+        "stride" : 8,
+        "type" : "uint2"
+      }
+    },
+    "drawnCount" : 16000,
+    "layout" : "level order",
+    "leafCapacity" : 16,
+    "maximumDepth" : 20,
+    "nodes" : 3890,
+    "particles" : 20000,
+    "quadrupole" : true,
+    "ratio" : 4
+  },
+  "version" : 1,
+  "walk" : {
+    "clip" : "scene/clip.json",
+    "command" : [
+      "hires",
+      "scene",
+      "--particles",
+      "3013",
+      "--massive",
+      "2000",
+      "--frames",
+      "1",
+      "--width",
+      "256",
+      "--height",
+      "144",
+      "--dump-walk",
+      "walk",
+      "--dump-walk-frames",
+      "0:fixture"
+    ],
+    "dump" : "walk",
+    "format" : "sillage-walk-dump",
+    "layout" : "level order",
+    "scene" : "scene/scene.json",
+    "tracers" : 1000
+  }
+}

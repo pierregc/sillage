@@ -51,7 +51,7 @@ struct GalaxyColoursTests {
                 out[id] = float4(rampColour(ramp, q.x, uint(q.y), q.z), 0.0);
             }
             """
-        let library = try device.makeLibrary(source: Shaders.source + probe, options: nil)
+        let library = try device.makeLibrary(source: Shaders.source + "\n" + probe, options: nil)
         let pipeline = try device.makeComputePipelineState(
             function: try #require(library.makeFunction(name: "rampProbe")))
         var gpu = GalaxyRamp(entry)

@@ -1,0 +1,52 @@
+# The Linux check (#281): the shared kernel source compiled as CUDA and run on the CPU, and the
+# portable Swift built and tested (#272), with no GPU. Free while the repository is public. It
+# adds to ./scripts/dev.sh check on the Mac and replaces nothing: see docs/notes/no-ci.md.
+name: linux
+
+on:
+  push:
+    branches-ignore:
+      - 'assets/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  cuda:
+    # A branch of this repository is checked on its pushes; pull_request is for forks.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: The checks of ./scripts/dev.sh check that need no Mac
+        run: |
+          CXX=clang++ scripts/kernel-check.sh
+          CXX=g++ scripts/kernel-check.sh
+      - name: The CPU target, built and tested
+        run: |
+          CXX=g++ cuda/build.sh cpu
+          CXX=clang++ cuda/build.sh cpu
+      - name: nvcc and the CUDA headers, 13.5 as in docs/notes/cuda-walk-spike.md
+        run: |
+          curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cuda-nvcc-13-5 cuda-cudart-dev-13-5
+      - name: The CUDA build for sm_120, compile only
+        run: REQUIRE_NVCC=1 NVCC=/usr/local/cuda/bin/nvcc cuda/build.sh gpu
+
+  swift:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: The portable Swift, built and tested as scripts/linux.sh check does
+        run: scripts/linux.sh check

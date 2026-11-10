@@ -4,6 +4,9 @@ enum RecordingShaders {
         #include <metal_stdlib>
         using namespace metal;
 
+        // Metal only: the CUDA engine plays no take back (docs/notes/one-kernel-source.md).
+        #if defined(__METAL_VERSION__)
+
         struct ExpandParams {
             float4 origin0;
             float4 origin1;
@@ -73,5 +76,6 @@ enum RecordingShaders {
                                       uint i [[thread_position_in_grid]]) {
             expand(before, first, second, after, positions, p, i);
         }
+        #endif
         """
 }

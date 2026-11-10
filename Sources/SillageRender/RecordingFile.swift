@@ -104,7 +104,10 @@ public enum RecordingFile {
             scene: scene, particleCount: count, galaxyCount: recording.galaxyCount,
             frameCount: contents.frames.count, interval: recording.interval,
             capturedFrames: recording.capturedCount)
-        let encoded = try JSONEncoder().encode(header)
+        // Keys sorted, so the same run writes the same bytes.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let encoded = try encoder.encode(header)
 
         FileManager.default.createFile(atPath: url.path, contents: nil)
         let handle = try FileHandle(forWritingTo: url)

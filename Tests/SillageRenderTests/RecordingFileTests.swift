@@ -462,6 +462,90 @@ struct RecordingFileTests {
         #expect(Int(blend.keys[1]) == 3 && blend.fraction == 0)
     }
 
+    /// The same compact JSON with the members of every object in the opposite order.
+    private func reversedKeys(_ json: [UInt8]) -> [UInt8] {
+        var index = 0
+        func string() -> [UInt8] {
+            let start = index
+            index += 1
+            while json[index] != UInt8(ascii: "\"") { index += json[index] == UInt8(ascii: "\\") ? 2 : 1 }
+            index += 1
+            return Array(json[start..<index])
+        }
+        func value() -> [UInt8] {
+            switch json[index] {
+            case UInt8(ascii: "{"):
+                index += 1
+                var members: [[UInt8]] = []
+                while json[index] != UInt8(ascii: "}") {
+                    if json[index] == UInt8(ascii: ",") { index += 1 }
+                    var member = string()
+                    member.append(json[index])
+                    index += 1
+                    member += value()
+                    members.append(member)
+                }
+                index += 1
+                return [UInt8(ascii: "{")] + members.reversed().joined(separator: [UInt8(ascii: ",")])
+                    + [UInt8(ascii: "}")]
+            case UInt8(ascii: "["):
+                index += 1
+                var items: [[UInt8]] = []
+                while json[index] != UInt8(ascii: "]") {
+                    if json[index] == UInt8(ascii: ",") { index += 1 }
+                    items.append(value())
+                }
+                index += 1
+                return [UInt8(ascii: "[")] + items.joined(separator: [UInt8(ascii: ",")])
+                    + [UInt8(ascii: "]")]
+            case UInt8(ascii: "\""):
+                return string()
+            default:
+                let start = index
+                while !",}]".utf8.contains(json[index]) { index += 1 }
+                return Array(json[start..<index])
+            }
+        }
+        return value()
+    }
+
+    /// Since #281 a take's header is written with its keys sorted, so that the same run writes
+    /// the same bytes. A take written before has them in whatever order the encoder gave that
+    /// day, and reads the same.
+    @Test func aTakeReadsWhateverTheOrderOfItsHeaderKeys() throws {
+        let (recording, system) = take(particles: 200, frames: 4, galaxies: 2)
+        var scene = SceneConfig.merger(particleCount: 200)
+        scene.galaxies[0].dissipationTime = 123
+        let files = ["sorted-keys", "sorted-keys-again", "unsorted-keys"].map {
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent("\($0).\(RecordingFile.fileExtension)")
+        }
+        defer { for file in files { try? FileManager.default.removeItem(at: file) } }
+        try RecordingFile.write(recording, scene: scene, particles: system, to: files[0])
+        try RecordingFile.write(recording, scene: scene, particles: system, to: files[1])
+        let data = try Data(contentsOf: files[0])
+        #expect(try Data(contentsOf: files[1]) == data)
+
+        let length = Int(data[16..<24].withUnsafeBytes { $0.loadUnaligned(as: UInt64.self) })
+        let header = Array(data[24..<(24 + length)])
+        let unsorted = reversedKeys(header)
+        #expect(unsorted != header && unsorted.count == header.count)
+        var old = data
+        old.replaceSubrange(24..<(24 + length), with: unsorted)
+        try old.write(to: files[2])
+
+        let loaded = try RecordingFile.read(from: files[2])
+        #expect(loaded.scene == scene)
+        #expect(loaded.particles.population == system.population)
+        #expect(loaded.particles.galaxyIndex == system.galaxyIndex)
+        #expect(loaded.recording.count == recording.count)
+        for frame in 0..<recording.count {
+            #expect(loaded.recording.frames[frame].time == recording.frames[frame].time)
+            #expect(loaded.recording.centers(at: frame) == recording.centers(at: frame))
+            #expect(loaded.recording.positions(at: frame) == recording.positions(at: frame))
+        }
+    }
+
     /// A take is written in version 7, eight bytes a particle a frame, and one held at 16 bits
     /// in version 6 as before (#237): each reads back at its own depth, cell for cell.
     @Test func aTakeIsWrittenInVersionSevenAndAtSixteenBitsInSix() throws {
