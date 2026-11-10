@@ -127,7 +127,7 @@ public final class RunVideos {
             renderer.skipFrames(progress.frames)
             renderers.append(renderer)
             replays.append(
-                TakeExport.replay(
+                TakeFraming.replay(
                     look: look, framing: framing, capturedRate: self.capturedRate,
                     width: format.width, height: format.height, plan: plan))
             try FileManager.default.createDirectory(
@@ -178,7 +178,7 @@ public final class RunVideos {
             let started = Date()
             let renderer = renderers[index]
             guard
-                let shot = TakeExport.prepare(
+                let shot = TakeFraming.prepare(
                     renderer, look: look, replay: replays[index], framing: framing,
                     at: Double(frame))
             else { throw RecordingFile.Failure.truncated }

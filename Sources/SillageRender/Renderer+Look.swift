@@ -1,7 +1,7 @@
 import SillageCore
 import simd
 
-extension Renderer {
+extension Renderer: FramePreparing {
     public func apply(_ file: LookFile) {
         apply(file.look)
         setGalaxyColours(file.palette)

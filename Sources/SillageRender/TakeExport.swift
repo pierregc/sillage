@@ -201,7 +201,8 @@ public final class TakeExport {
     }
 
     private func makeReplay(width: Int, height: Int) -> ShotReplay {
-        Self.replay(look: look, framing: framing, capturedRate: capturedRate, width: width, height: height)
+        TakeFraming.replay(
+            look: look, framing: framing, capturedRate: capturedRate, width: width, height: height)
     }
 
     private func makeRenderer(width: Int, height: Int) throws -> Renderer {
@@ -228,36 +229,9 @@ public final class TakeExport {
         // a still of the grid and the same frame here a kernel apart.
         smoothing.update(from: positions)
         guard
-            let shot = Self.prepare(
+            let shot = TakeFraming.prepare(
                 renderer, look: look, replay: replay, framing: framing, at: position)
         else { throw RecordingFile.Failure.truncated }
-        return shot
-    }
-}
-
-extension TakeExport {
-    /// The camera an export of `framing` follows at `width` by `height`. `plan`, the director's
-    /// for that take and look, is made once for every format when given.
-    public static func replay(
-        look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int, width: Int, height: Int,
-        plan: ShotPlan? = nil
-    ) -> ShotReplay {
-        ShotReplay(
-            file: look, take: framing, capturedFrames: framing.recording.capturedFrames,
-            framesPerSecond: max(capturedRate, 1), aspect: Float(width) / Float(max(height, 1)),
-            plan: plan)
-    }
-
-    /// Everything of a frame but the positions and the smoothing: the shot at a captured
-    /// position, and the look, the time and the painted arms `framing` holds there. Exports and
-    /// the full pass of a hires (#239) both draw through this. Nil past the take's end.
-    public static func prepare(
-        _ renderer: Renderer, look: LookFile, replay: ShotReplay, framing: RecordingFile.Loaded,
-        at position: Double
-    ) -> ShotReplay.Shot? {
-        guard let blend = framing.recording.blend(atCaptured: position) else { return nil }
-        let shot = replay.shot(atCaptured: position)
-        renderer.prepare(look, shot: shot, take: framing, at: blend)
         return shot
     }
 }
