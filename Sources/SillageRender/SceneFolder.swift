@@ -116,6 +116,8 @@ public struct SceneFolder: Sendable, Equatable {
     /// Every particle of a full pass at a few key frames (#239), and which frames they are.
     public var keyFrames: URL { file("keyframes.sillage") }
     public var keyFrameList: URL { file("keyframes.json") }
+    /// Where a full pass keeps its checkpoint, video segments and key frames until it ends (#240).
+    public var checkpoint: URL { url.appendingPathComponent(".checkpoint", isDirectory: true) }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
     public var lookGrid: URL { looks.appendingPathComponent("grid.png") }
     /// What `palettes` draws: `sheet.png`, `swatches.png` and one look file per palette.
@@ -230,11 +232,13 @@ extension SceneFolder {
             /// `checkedFrames` of its stored frames: 0 when the mass repeated it to the bit.
             public var drift: Float
             public var checkedFrames: Int
+            /// How many times it was resumed from a checkpoint (#240); absent when never.
+            public var resumes: Int?
 
             public init(
                 presets: [String], frames: Int, seconds: Double, drawSeconds: [String: Double],
                 peakMemoryBytes: Int? = nil, keyFrames: [Int] = [], drift: Float = 0,
-                checkedFrames: Int = 0
+                checkedFrames: Int = 0, resumes: Int? = nil
             ) {
                 self.presets = presets
                 self.frames = frames
@@ -244,6 +248,7 @@ extension SceneFolder {
                 self.keyFrames = keyFrames
                 self.drift = drift
                 self.checkedFrames = checkedFrames
+                self.resumes = resumes
             }
 
             /// What drawing cost in all.
@@ -291,6 +296,7 @@ extension SceneFolder {
         case passWithoutTracers
         case noMassivePass(URL)
         case notAVideo(String)
+        case badCheckpoint
 
         public var description: String {
             switch self {
@@ -312,6 +318,7 @@ extension SceneFolder {
             case .notAVideo(let name):
                 "--export \(name): a full pass draws video presets, "
                     + VideoPreset.all.map(\.name).joined(separator: ", ")
+            case .badCheckpoint: "--checkpoint-every is minutes, 0 for none"
             }
         }
     }
@@ -395,6 +402,36 @@ extension SceneFolder {
     /// The scene's video presets a full pass draws (#239).
     public static let fullPassPresets = NightRecipe.defaultExports
 
+    /// How often a full pass checkpoints by default, in minutes of its run (#240).
+    public static let checkpointMinutes = 60.0
+
+    /// Frames, and settle steps, of about `minutes` of a full pass, as the cost model prices them.
+    static func checkpointInterval(minutes: Double, record: Hires, presets: [String], model: CostModel)
+        -> (frames: Int, steps: Int)
+    {
+        let step =
+            model.hires.secondsPerUnit * Double(record.massiveParticles)
+            + model.tracers.secondsPerUnit * Double(record.tracers)
+        let perFrame =
+            step * Double(max(record.steps / max(record.frames, 1), 1))
+            + presets.compactMap(VideoPreset.named).reduce(0) {
+                $0 + model.drawLine(preset: $1).seconds(Double(record.particles))
+            }
+        let seconds = minutes * 60
+        return (max(Int(seconds / max(perFrame, 1e-9)), 1), max(Int(seconds / max(step, 1e-9)), 1))
+    }
+
+    /// Whether a full pass asked with `options` would pick up the checkpoint here: one of the same
+    /// run, scene, look and massive take (#240).
+    public func resumesFullPass(_ options: [String], maximumParticles: Int) -> Bool {
+        guard
+            let arguments = try? hiresArguments(options, maximumParticles: maximumParticles).arguments,
+            arguments.contains("--checkpoint")
+        else { return false }
+        return RunCheckpoint(directory: checkpoint).resumable(
+            arguments: arguments, scene: scene, look: exists(look) ? look : nil, framing: take)
+    }
+
     /// The scenes of a batch folder marked yes in its ratings.
     public static func chosen(inBatch batch: URL) -> [SceneFolder] {
         SceneRatings.read(batch: batch).chosen.map {
@@ -450,6 +487,7 @@ extension SceneFolder {
             return value
         }
         let pass = cut("pass")
+        let checkpointMinutes = cut("checkpoint-every").map { Double($0) ?? -1 }
         if let pass, pass != "massive", pass != "full" { throw HiresError.badPass(pass) }
         let presets = try cut("export").map { list in
             try list.split(separator: ",").map(String.init).map { name in
@@ -505,12 +543,27 @@ extension SceneFolder {
                 throw HiresError.noMassivePass(url)
             }
             record = stored
+            let drawn = presets ?? Self.fullPassPresets
             arguments = [
-                "--draw", (presets ?? Self.fullPassPresets).joined(separator: ","),
+                "--draw", drawn.joined(separator: ","),
                 "--draw-take", take.path, "--draw-out", exports.path,
                 "--key-frames", Self.partial(keyFrames).path, "--key-frame-list", keyFrameList.path,
                 "--key-frame-curves", hiresCurves.path, "--no-sidecars",
             ]
+            let minutes = checkpointMinutes ?? Self.checkpointMinutes
+            guard minutes >= 0 else { throw HiresError.badCheckpoint }
+            if minutes > 0 {
+                arguments += ["--checkpoint", checkpoint.path]
+                if !rest.contains("--checkpoint-frames") && !rest.contains("--checkpoint-steps") {
+                    let every = Self.checkpointInterval(
+                        minutes: minutes, record: record, presets: drawn,
+                        model: CostModel.current(library: library))
+                    arguments += [
+                        "--checkpoint-frames", String(every.frames), "--checkpoint-steps",
+                        String(every.steps),
+                    ]
+                }
+            }
         }
         arguments += ["--particles", String(asked.particles)]
         if let massive { arguments += ["--massive", String(massive)] }

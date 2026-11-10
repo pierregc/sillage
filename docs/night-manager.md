@@ -148,6 +148,18 @@ of them. It also keeps every particle at the curves' key frames in `keyframes.si
 It refuses to run without a massive pass of the same draw and steps. A take of the full pass is
 still a flag away for whoever wants one (`--take <path> --take-interval 8`).
 
+A full pass saves itself about every hour of its run (#240, [the note](notes/checkpoints.md)), in
+`.checkpoint/` in the scene folder, its videos in segments there until it ends:
+
+```bash
+./scripts/dev.sh hires library/2026-10-24/scene-0001 --massive 2000000 --pass full --resume
+```
+
+`--resume` picks the run up from its last checkpoint, to the bit and with the same videos,
+without sampling the scene again, and refuses a checkpoint of another run (another step, count,
+look or massive take); without one it starts from the beginning. `--checkpoint-every <minutes>` sets the interval, 0 for none. A night
+run again after a restart resumes its full pass by itself when the checkpoint is that run's.
+
 **4. Look** – choose the scene's style:
 
 ```bash
@@ -298,6 +310,10 @@ time; a style or an export may end up to 15 minutes past it; a step still runnin
 stopped. A step that fails or is left out leaves the scene out for the night, and the night goes
 on with the next one. The same command on the same folder resumes: explored scenes, done hires,
 promoted looks and existing exports are skipped; what was left out is tried again.
+
+After a restart, a night is resumed by running it again on its folder: a full pass cut short
+picks up from its checkpoint (#240) rather than starting over; a massive pass or a one-pass
+hires, which write a take, start over.
 
 In two passes (`hires.passes`, #239) the hires step is the massive pass, the style is chosen on
 its take, and the first video preset's export step is the full pass, which draws every video

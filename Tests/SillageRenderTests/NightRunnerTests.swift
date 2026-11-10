@@ -85,6 +85,7 @@ struct NightRunnerTests {
                 hires)
                     sleep "$(cat '\(root.path)/hires-seconds' 2>/dev/null || echo 0.2)"
                     if [ "$pass" = full ]; then
+                        [ -f '\(root.path)/fail-full' ] && exit 1
                         mkdir -p "$scene/exports"
                         for name in ${export//,/ }; do touch "$scene/exports/$name.mp4"; done
                         sed -i '' 's/}$/, "full": {"presets": [], "frames": 1, "seconds": 1, "drawSeconds": {}, "keyFrames": [], "drift": 0, "checkedFrames": 0}}/' "$scene/hires.json"
@@ -380,6 +381,48 @@ struct NightRunnerTests {
 
         #expect(runner(recipe).run() == 0)
         #expect(logged() == calls)
+    }
+
+    /// A full pass cut short (a restart) leaves its checkpoint: the night run again resumes it
+    /// rather than starting it over (#240).
+    @Test func aNightResumesAFullPassFromItsCheckpoint() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var recipe = recipe()
+        recipe.pick = .count(1)
+        recipe.hires.massive = .value(50_000)
+        recipe.hires.passes = .value(2)
+        try Data().write(to: root.appendingPathComponent("fail-full"))
+        #expect(runner(recipe).run() == 0)
+        let folder = NightFolder(batch: batch, recipe: recipe, maximumParticles: 10_000_000)
+        let scene = SceneFolder(batch.appendingPathComponent("scene-0002"))
+        // What the massive pass would have recorded, and a checkpoint of the full pass it cut.
+        let massive = try scene.hiresArguments(
+            folder.hiresOptions + ["--pass", "massive"], maximumParticles: 10_000_000)
+        try massive.record.encoded().write(to: scene.hires)
+        let options = folder.hiresOptions + ["--pass", "full", "--export", "1080p"]
+        let full = try scene.hiresArguments(options, maximumParticles: 10_000_000)
+        let identity = RunCheckpoint.Identity(
+            arguments: full.arguments, scene: try String(contentsOf: scene.scene, encoding: .utf8),
+            look: try String(contentsOf: scene.look, encoding: .utf8),
+            framing: RunCheckpoint.stamp(scene.take),
+            particles: 100_000, massive: 50_000, timeStep: 0.01, presets: ["1080p"], code: "")
+        let checkpoint = RunCheckpoint(directory: scene.checkpoint)
+        try checkpoint.saveMassive(ParticleSystem())
+        try checkpoint.save(
+            RunCheckpoint.Run(
+                identity: identity, index: 3, frame: 20, settled: 1, elapsed: 30, resumes: 0, everyFrames: 10,
+                everySteps: 100,
+                solver: MetalBarnesHutSolver.State(
+                    count: 1, tracers: 0, time: 0, stepsSinceTree: 0, stepsSinceFormation: 0,
+                    haloCenters: [], massCenters: [], galaxyMotion: [], diskStates: []),
+                videos: nil, keyFrames: [])
+        ) { _ in }
+        try FileManager.default.removeItem(at: root.appendingPathComponent("fail-full"))
+        #expect(runner(recipe).run() == 0)
+        let fulls = logged().filter { $0.contains("--pass full") }
+        #expect(fulls.count == 2)
+        #expect(!fulls[0].contains("--resume") && fulls[1].hasSuffix("--pass full --export 1080p --resume"))
+        #expect(FileManager.default.fileExists(atPath: scene.export(preset: "1080p").path))
     }
 
     @Test func stopAfterTheStepEndsTheNightStopped() throws {

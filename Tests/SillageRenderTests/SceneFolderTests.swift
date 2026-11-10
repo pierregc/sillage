@@ -318,6 +318,63 @@ struct SceneFolderTests {
         #expect(abs(priced - (run + drawing)) < 1e-6)
     }
 
+    /// A full pass checkpoints about every hour by the cost model's prices, unless told
+    /// otherwise, and resumes only a checkpoint of its own run (#240).
+    @Test func aFullPassCheckpointsAboutEveryHourAndResumesOnlyItsOwnCheckpoint() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        func hires(_ options: [String]) throws -> (arguments: [String], record: SceneFolder.Hires) {
+            try folder.hiresArguments(options, maximumParticles: 10_000_000)
+        }
+        let draw = ["--particles", "8e6", "--massive", "2e6"]
+        let massive = try hires(draw + ["--pass", "massive"])
+        #expect(!massive.arguments.contains("--checkpoint"))
+        try massive.record.encoded().write(to: folder.hires)
+        try Data().write(to: folder.take)
+        let full = try hires(draw + ["--pass", "full"])
+        #expect(value("--checkpoint", in: full.arguments) == folder.checkpoint.path)
+        let model = CostModel.current(library: folder.library)
+        let step = model.hires.secondsPerUnit * 2e6 + model.tracers.secondsPerUnit * 6e6
+        let steps = try #require(value("--checkpoint-steps", in: full.arguments).flatMap(Int.init))
+        let frames = try #require(value("--checkpoint-frames", in: full.arguments).flatMap(Int.init))
+        #expect(abs(Double(steps) * step - 3_600) <= step)
+        #expect(frames >= 1 && frames * (massive.record.steps / massive.record.frames) <= steps)
+        let off = try hires(draw + ["--pass", "full", "--checkpoint-every", "0"])
+        #expect(!off.arguments.contains("--checkpoint"))
+        let exact = try hires(
+            draw + ["--pass", "full", "--checkpoint-frames", "5", "--checkpoint-steps", "50"])
+        #expect(value("--checkpoint-frames", in: exact.arguments) == "5")
+        #expect(exact.arguments.filter { $0 == "--checkpoint-frames" }.count == 1)
+        #expect(throws: SceneFolder.HiresError.self) {
+            try hires(draw + ["--pass", "full", "--checkpoint-every", "soon"])
+        }
+
+        // Nothing to resume, then a checkpoint of this very run, then the look changed.
+        let options = draw + ["--pass", "full"]
+        #expect(!folder.resumesFullPass(options, maximumParticles: 10_000_000))
+        let identity = RunCheckpoint.Identity(
+            arguments: full.arguments, scene: try String(contentsOf: folder.scene, encoding: .utf8),
+            look: try String(contentsOf: folder.look, encoding: .utf8),
+            framing: RunCheckpoint.stamp(folder.take),
+            particles: 8_000_000, massive: 2_000_000, timeStep: 0.02, presets: ["4k", "vertical"], code: "")
+        let run = RunCheckpoint.Run(
+            identity: identity, index: 1, frame: 10, settled: 0, elapsed: 1, resumes: 0, everyFrames: frames,
+            everySteps: steps,
+            solver: MetalBarnesHutSolver.State(
+                count: 1, tracers: 0, time: 0, stepsSinceTree: 0, stepsSinceFormation: 0, haloCenters: [],
+                massCenters: [], galaxyMotion: [], diskStates: []),
+            videos: nil, keyFrames: [])
+        let checkpoint = RunCheckpoint(directory: folder.checkpoint)
+        try checkpoint.saveMassive(ParticleSystem())
+        try checkpoint.save(run) { _ in }
+        #expect(folder.resumesFullPass(options, maximumParticles: 10_000_000))
+        #expect(
+            !folder.resumesFullPass(
+                draw + ["--pass", "full", "--export", "4k"], maximumParticles: 10_000_000))
+        try Data(#"{"name": "another"}"#.utf8).write(to: folder.look)
+        #expect(!folder.resumesFullPass(options, maximumParticles: 10_000_000))
+    }
+
     @Test func anOutputIsWrittenHiddenAndPutInPlaceWhole() throws {
         let folder = try temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder.batch) }

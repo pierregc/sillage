@@ -76,6 +76,8 @@ public final class LightTracerStore {
     /// Tracers and massive particles together.
     public let capacity: Int
     public private(set) var count = 0
+    /// Left for a checkpoint to fill (#240): their saved velocities carry the first half kick.
+    public private(set) var awaitsCheckpoint = false
 
     public init(device: MTLDevice, capacity: Int) throws {
         self.capacity = max(capacity, 1)
@@ -85,6 +87,14 @@ public final class LightTracerStore {
         else { throw RenderError.textureAllocation }
         self.positions = positions
         self.velocities = velocities
+    }
+
+    /// Room for `tracers` light tracers that a checkpoint fills, so a resumed run samples none.
+    public convenience init(device: MTLDevice? = nil, capacity: Int, awaiting tracers: Int) throws {
+        guard let device = device ?? MTLCreateSystemDefaultDevice() else { throw RenderError.noDevice }
+        try self.init(device: device, capacity: capacity)
+        count = min(max(tracers, 0), self.capacity)
+        awaitsCheckpoint = true
     }
 
     public func append(_ chunk: LightTracerChunk) {
@@ -527,12 +537,12 @@ public final class MetalBarnesHutSolver: Solver {
         }
 
         // The first half kick needs an acceleration, so seed it before stepping. A tracer
-        // keeps none, so it takes its first half kick now.
+        // keeps none, so it takes its first half kick now, unless a checkpoint brings it.
         rebuildTree()
         if let buffer = queue.makeCommandBuffer() {
             encodeAccelerations(into: buffer)
             encodeHoles(into: buffer)
-            encodeTracerStep(into: buffer, mode: 0)
+            if store?.awaitsCheckpoint != true { encodeTracerStep(into: buffer, mode: 0) }
             submit(buffer)
         }
     }
@@ -1554,5 +1564,116 @@ extension MetalBarnesHutSolver: TracerDrawing {
     public var tracerSpacing: (cells: MTLBuffer, frame: MTLBuffer, depth: Int)? {
         guard tracerCount > 0, let spacing = builder.spacing else { return nil }
         return (spacing, builder.frame, builder.maximumDepth)
+    }
+}
+
+// MARK: - Checkpoint
+
+extension MetalBarnesHutSolver {
+    /// What a checkpoint keeps of a run besides its particles' buffers (#240): everything the
+    /// next step reads that the positions do not give back.
+    public struct State: Codable, Sendable {
+        public var count: Int
+        public var tracers: Int
+        public var time: Float
+        public var stepsSinceTree: Int
+        public var stepsSinceFormation: Int
+        public var haloCenters: [SIMD3<Float>]
+        public var massCenters: [SIMD3<Float>]
+        public var galaxyMotion: [SIMD3<Float>]
+        public var diskStates: [DiskState]
+    }
+
+    public enum CheckpointError: Error, CustomStringConvertible {
+        case otherRun(String)
+        case truncated
+
+        public var description: String {
+            switch self {
+            case .otherRun(let why): "the checkpoint is of another run: \(why)"
+            case .truncated: "the checkpoint's particles are cut short"
+            }
+        }
+    }
+
+    public var state: State {
+        centersLock.lock()
+        defer { centersLock.unlock() }
+        return State(
+            count: count, tracers: tracerCount, time: time, stepsSinceTree: stepsSinceTree,
+            stepsSinceFormation: stepsSinceFormation, haloCenters: haloCenters,
+            massCenters: massCenters, galaxyMotion: galaxyMotion, diskStates: diskStates)
+    }
+
+    /// The bytes `writeParticles` writes.
+    public var particleBytes: Int { count * 32 + massive * 4 }
+
+    /// What changes of each particle: every position and velocity as the buffers hold them,
+    /// tracers first with their formation time and their `TracerWord` in w (#238), then the
+    /// massive particles' formation times. The rest of a massive particle never changes.
+    private var changing: [(buffer: MTLBuffer, length: Int)] {
+        [(positionBuffer, count * 16), (velocityBuffer, count * 16), (formationBuffer, massive * 4)]
+    }
+
+    public func writeParticles(to handle: FileHandle) throws {
+        for (buffer, length) in changing {
+            try RunCheckpoint.write(buffer.contents(), length, to: handle)
+        }
+    }
+
+    /// Puts the run back where a checkpoint of it left it: its buffers read back, its counters,
+    /// centres and disks set, and the tree and the accelerations the next step starts from
+    /// built again from the positions, as the last step built them. Exact with one tree a step.
+    public func restore(_ state: State, from handle: FileHandle) throws {
+        guard state.count == count, state.tracers == tracerCount else {
+            throw CheckpointError.otherRun(
+                "\(state.count) particles, \(state.tracers) tracers against \(count), \(tracerCount)")
+        }
+        for (buffer, length) in changing {
+            var read = 0
+            while read < length {
+                let piece = min(length - read, 256 << 20)
+                guard let data = try handle.read(upToCount: piece), data.count == piece else {
+                    throw CheckpointError.truncated
+                }
+                data.withUnsafeBytes {
+                    buffer.contents().advanced(by: read).copyMemory(
+                        from: $0.baseAddress!, byteCount: piece)
+                }
+                read += piece
+            }
+        }
+        time = state.time
+        stepsSinceTree = state.stepsSinceTree
+        stepsSinceFormation = state.stepsSinceFormation
+        centersLock.lock()
+        haloCenters = state.haloCenters
+        massCenters = state.massCenters
+        galaxyMotion = state.galaxyMotion
+        diskStates = state.diskStates
+        centersLock.unlock()
+        // The tree without the centres and disk frames a rebuild moves on. The tracers' walk
+        // order only decides how fast they walk, so it is sorted afresh.
+        if let buffer = queue.makeCommandBuffer() {
+            builder.encode(into: buffer, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
+            submit(buffer)
+        }
+        while grewAfterOverflow(), let again = queue.makeCommandBuffer() {
+            builder.encode(into: again, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
+            submit(again)
+        }
+        gathered = true
+        nodeCount = builder.nodeCount
+        if tracerSorter != nil, let sort = queue.makeCommandBuffer() {
+            encodeTracerSort(into: sort)
+            submit(sort)
+            stepsSinceTracerSort = max(Self.tracerSortInterval, 1)
+        }
+        // A tracer keeps no acceleration: its saved velocity is half a kick ahead already.
+        if let buffer = queue.makeCommandBuffer() {
+            encodeAccelerations(into: buffer)
+            encodeHoles(into: buffer)
+            submit(buffer)
+        }
     }
 }

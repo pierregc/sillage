@@ -151,6 +151,8 @@ library/<batch>/
                            only after a massive pass, #239)
         keyframes.sillage  every particle of a full pass at a few key frames, listed in
                            keyframes.json
+        .checkpoint/       a full pass's last checkpoint, its massive particles as sampled and its
+                           video segments, until it ends (#240)
         looks/             the looks the scene has been through, one .look.json each
         look-raw.json      the look explore wrote, once another is promoted over it
         exports/           the finished videos
