@@ -1595,9 +1595,13 @@ if massiveOnly, tracerCount > 0 {
     drawnScene = scene
     print("massive    \(seeded.visibleCount) visible run alone, without the tracers")
 }
-// `--tracer-sort N`: steps between two sorts of the tracers' walk order, to measure it.
+// `--tracer-sort N` and `--tracer-sort-chunk N`: how often the tracers' walk order is sorted,
+// and how many are sorted together, to measure them.
 if let interval = argument("tracer-sort").flatMap(Int.init) {
     MetalBarnesHutSolver.tracerSortInterval = interval
+}
+if let chunk = argument("tracer-sort-chunk").flatMap(Int.init) {
+    MetalBarnesHutSolver.tracerSortChunk = chunk
 }
 let gpuSolver: (any GPUSolver)? =
     backend == "cpu"
@@ -1856,7 +1860,7 @@ while frame < frames || storyGoesOn() {
     if frozenRadius <= 0 && look.camera.mode != .auto && runVideos == nil {
         // Not `particles` with tracers, which would build every one of them as a particle.
         frozenRadius =
-            tracerSolver.map { look.camera.framedRadius(sortedRadii: $0.radii.sorted()) }
+            tracerSolver.map { look.camera.framedRadius(sortedRadii: $0.radii(every: 16).sorted()) }
             ?? look.camera.framedRadius(positions: solver.particles.positions)
     }
 

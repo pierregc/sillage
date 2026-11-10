@@ -1438,8 +1438,9 @@ public final class MetalBarnesHutSolver: Solver {
     }
 
     /// Steps between two sorts of the tracers' walk order. Sorting is what keeps the lanes of a
-    /// SIMD group walking alike; in between, the order only drifts as far as the tracers do.
-    nonisolated(unsafe) public static var tracerSortInterval = 25
+    /// SIMD group walking alike; in between, the walk slows as the order ages. Ten was the
+    /// cheapest of 1, 10, 25, 50 and 100 at 8 M (#238).
+    nonisolated(unsafe) public static var tracerSortInterval = 10
     /// Tracers sorted together. Each chunk is sorted on its own, so the sort's own buffers
     /// stay this size however many tracers there are.
     nonisolated(unsafe) public static var tracerSortChunk = 1 << 22
@@ -1513,10 +1514,11 @@ public final class MetalBarnesHutSolver: Solver {
         return counts.reduce(0, +)
     }
 
-    /// Every particle's distance from the origin, tracers first, dark matter included.
-    public var radii: [Float] {
+    /// The distance from the origin of one particle in `step`, tracers first, dark matter
+    /// included.
+    public func radii(every step: Int = 1) -> [Float] {
         let states = UnsafeRawPointer(positionBuffer.contents())
-        return (0..<count).map {
+        return stride(from: 0, to: count, by: max(step, 1)).map {
             let p = states.load(fromByteOffset: $0 * 16, as: SIMD4<Float>.self)
             return simd_length(SIMD3(p.x, p.y, p.z))
         }
