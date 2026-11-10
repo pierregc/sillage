@@ -47,6 +47,27 @@ struct NightRecipeTests {
         #expect(try recipe(#"{"pick": "none"}"#).pick == NightRecipe.Selection.none)
     }
 
+    /// One pass up to 10 M drawn, two past it or when asked, and only with tracers (#239).
+    @Test func theVideosAreDrawnInASecondPassPastTenMillion() throws {
+        #expect(try recipe(#"{"hires": {"passes": 2}}"#).hiresPasses(maximum: 10_000_000) == 2)
+        #expect(NightRecipe().hiresPasses(maximum: 10_000_000) == 1)
+        var big = NightRecipe()
+        big.hires.particles = .value(50_000_000)
+        #expect(big.hiresPasses(maximum: 10_000_000) == 2)
+        big.hires.passes = .value(1)
+        #expect(big.hiresPasses(maximum: 10_000_000) == 1)
+        // Every particle massive: nothing to draw in a second pass.
+        var real = NightRecipe()
+        real.hires.massive = .value(8_000_000)
+        real.hires.passes = .value(2)
+        #expect(real.hiresPasses(maximum: 10_000_000) == 1)
+        for bad in [
+            #"{"hires": {"passes": 3}}"#, #"{"hires": {"passes": 0}}"#, #"{"hires": {"passes": "two"}}"#,
+        ] {
+            #expect(throws: NightRecipe.Failure.self) { try recipe(bad) }
+        }
+    }
+
     @Test func aMisspeltOrWrongSettingIsAnError() {
         #expect(throws: NightRecipe.Failure.unknownKey("explore.particles")) {
             try recipe(#"{"explore": {"particles": 5}}"#)
@@ -459,6 +480,66 @@ struct NightPlannerTests {
             let take = NightPlanner.takeBytesPerParticleFrame * 8e6 * Double(scene.frames) / 1e9
             #expect(abs(take / scene.takeGB - 1) < 0.01, "\(scene.name)")
         }
+    }
+
+    /// Two passes (#239): the hires step is the massive particles alone, and the full pass
+    /// stands on the first video preset it draws, every particle again and each preset drawn.
+    @Test func twoPassesRunTheMassiveAloneThenDrawTheVideosInTheFullPass() throws {
+        var recipe = NightRecipe()
+        recipe.hires.passes = .value(2)
+        recipe.export = .value(["4k", "vertical", "webp"])
+        var scene = Self.drawn(200_000, 3_600, score: 0.9, name: "scene-0001")
+        scene.hiresUnits = 2e6 * 15_000
+        scene.hiresTracerUnits = 6e6 * 15_000
+        scene.frames = 1_000
+        var progress = NightProgress()
+        progress.exploreDone = true
+        progress.explored = [scene]
+        progress.picks = ["scene-0001"]
+        func planned(_ progress: NightProgress) -> (NightPlanner, NightPlan) {
+            let planner = NightPlanner(
+                recipe: recipe, model: fitted, maximumParticles: 10_000_000, progress: progress,
+                freeBytes: 500e9
+            ) { _ in [] }
+            return (planner, planner.plan(now: start, deliverBy: start.addingTimeInterval(24 * 3600)))
+        }
+        let (planner, plan) = planned(progress)
+        #expect(planner.hiresPasses == 2 && plan.hiresPasses == 2)
+        let steps = plan.steps.filter { $0.scene == "scene-0001" }
+        #expect(steps.map(\.phase) == [.hires, .style, .export, .export, .export])
+        #expect(steps.map(\.pass) == ["massive", nil, "full", "full", nil])
+        #expect(steps[0].seconds == fitted.hiresSeconds(units: 2e6 * 15_000))
+        let drawing = ["4k", "vertical"].compactMap(VideoPreset.named).reduce(0.0) {
+            $0 + fitted.drawSeconds(preset: $1, particles: 8_000_000, frames: 1_000)
+        }
+        let full = fitted.hiresSeconds(units: 2e6 * 15_000, tracerUnits: 6e6 * 15_000) + drawing
+        #expect(abs(steps[2].seconds - full) < 1e-6)
+        #expect(steps[3].seconds == 0 && steps[4].seconds == NightPlanner.previewSeconds)
+        #expect(abs(planner.finishSeconds(scene, pick: 0) - steps.reduce(0) { $0 + $1.seconds }) < 1e-6)
+        // The massive take, the key frames of every particle, and the videos.
+        let videos = ["4k", "vertical", "webp"].reduce(0.0) {
+            $0 + NightPlanner.videoBytes($1, frames: 1_000)
+        }
+        let disk =
+            2e6 * 1_000 * NightPlanner.takeBytesPerParticleFrame
+            + 8e6 * NightPlanner.keyFrameBytesPerParticle + videos
+        #expect(abs(plan.diskBytes - disk) < 1)
+        let printed = NightCommand.lines(plan)
+        #expect(printed.contains { $0.contains("· massive pass ·") })
+        #expect(printed.contains { $0.contains("scene-0001 4k · full pass ·") })
+
+        // The massive pass done: the full pass is what is left.
+        progress.hiresDone = ["scene-0001"]
+        progress.massivePasses = ["scene-0001"]
+        var left = planned(progress).1.steps.filter { $0.scene == "scene-0001" }
+        #expect(left[0].done && left.map(\.pass) == ["massive", nil, "full", "full", nil])
+        #expect(abs(left[2].seconds - full) < 1e-6)
+        // A take of every particle already there: its videos are exported from it.
+        progress.massivePasses = []
+        left = planned(progress).1.steps.filter { $0.scene == "scene-0001" }
+        #expect(left.allSatisfy { $0.pass == nil })
+        let uhd = try #require(VideoPreset.named("4k"))
+        #expect(left[2].seconds == fitted.exportSeconds(preset: uhd, codec: .hevc, frames: 1_000))
     }
 
     @Test func anAutoNightAtARealEightMillionTakesOneOrTwoScenes() throws {

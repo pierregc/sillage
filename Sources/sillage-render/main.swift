@@ -739,7 +739,11 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     }
 
     let capturedRate = try folder.capturedRate()
-    let export = try TakeExport(take: loaded, look: look, capturedRate: capturedRate)
+    // `--framing <take>`: the camera, the painted arms, the time and the exposure of another take
+    // of the same run, as a full pass draws them from the massive take (#239).
+    let framing = try option("framing").map { try RecordingFile.read(from: URL(fileURLWithPath: $0)) }
+    let export = try TakeExport(
+        take: loaded, look: look, capturedRate: capturedRate, framing: framing)
     let start = try value("start") ?? 0
     if let name = option("format") {
         guard let format = AnimatedImage.Format(rawValue: name.lowercased()) else {
@@ -793,19 +797,34 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
             start, export.takeSeconds, look.name, steering))
     var reported = 0
     reporter.start(detail: "frame 0/\(frames)")
+    // `--stills <dir> --still-frames 12,300`: those frames of the video as PNGs, as the encoder
+    // took them.
+    let stillsDirectory = option("stills").map { URL(fileURLWithPath: $0, isDirectory: true) }
+    let stillFrames = Set(option("still-frames")?.split(separator: ",").compactMap { Int($0) } ?? [])
+    if let stillsDirectory {
+        try FileManager.default.createDirectory(at: stillsDirectory, withIntermediateDirectories: true)
+    }
     let report = try export.write(
         to: partial, width: width, height: height, framesPerSecond: fps, start: start,
         duration: duration, codec: codec, bitsPerSecond: bitRate, quality: quality,
-        metadata: VideoMetadata(sceneID: folder.sceneID)
-    ) { done, total in
-        reporter.update(
-            progress: Double(done) / Double(max(total, 1)), detail: "frame \(done)/\(total)")
-        let tenth = done * 10 / max(total, 1)
-        if tenth > reported {
-            reported = tenth
-            print("export     \(done)/\(total)")
-        }
-    }
+        metadata: VideoMetadata(sceneID: folder.sceneID),
+        stills: stillsDirectory == nil ? [] : stillFrames,
+        still: { frame, image in
+            guard let stillsDirectory else { return }
+            try PNGWriter.write(
+                image, maximumWidth: nil,
+                to: stillsDirectory.appendingPathComponent(
+                    String(format: "%@-%04d.png", preset.name, frame)))
+        },
+        progress: { done, total in
+            reporter.update(
+                progress: Double(done) / Double(max(total, 1)), detail: "frame \(done)/\(total)")
+            let tenth = done * 10 / max(total, 1)
+            if tenth > reported {
+                reported = tenth
+                print("export     \(done)/\(total)")
+            }
+        })
     try SceneFolder.commit(out)
     let bytes =
         (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
@@ -1159,6 +1178,8 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "story" {
     exit(storyCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
 var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
+/// The second of a hires's two passes, which draws the videos rather than a take (#239).
+var fullPass = false
 var exploreRun: SceneFolder?
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "probe-disk" {
     exit(probeDiskCommand(Array(CommandLine.arguments.dropFirst(2))))
@@ -1208,24 +1229,37 @@ if CommandLine.arguments.count > 1,
             arguments = plan.arguments
             hiresRun = (folder, plan.record)
             let record = plan.record
+            fullPass = SceneFolder.pass(in: options) == "full"
             let run = StageReporter(stage: stage.rawValue, folder: folder)
             reporter = run
-            run.start(detail: "starting")
+            run.start(detail: fullPass ? "full pass, starting" : "starting")
             var begun = RunEvent(RunEvent.Kind.hiresStart)
             begun.particles = record.particles
             begun.massive = record.massive
             begun.steps = record.steps
+            begun.pass = fullPass ? "full" : record.pass?.rawValue
             run.record(begun)
+            let costs = CostModel.current(library: folder.library)
+            let steps = record.settle + record.steps
+            var seconds = costs.hiresSeconds(
+                particles: record.particles, massive: record.massive, steps: steps)
+            if fullPass, let index = plan.arguments.firstIndex(of: "--draw") {
+                seconds = costs.fullPassSeconds(
+                    particles: record.particles, massive: record.massive, steps: steps,
+                    frames: record.frames,
+                    presets: plan.arguments[index + 1].split(separator: ",").map(String.init))
+            } else if record.pass == .massive {
+                seconds = costs.hiresSeconds(particles: record.massiveParticles, steps: steps)
+            }
             print(
                 String(
                     format: "hires      %d particles%@ (preview %d), step %.5f Myr (preview %.5f),"
-                        + " settle %d, %d steps, clip %.1f to %.1f Myr, about %.1f h",
+                        + " settle %d, %d steps, clip %.1f to %.1f Myr, about %.1f h%@",
                     record.particles, record.massive.map { " from \($0) massive" } ?? "",
                     record.previewParticles, record.timeStepMyr, record.previewTimeStepMyr,
                     record.settle, record.steps, record.clipStartMyr, record.clipEndMyr,
-                    CostModel.current(library: folder.library).hiresSeconds(
-                        particles: record.particles, massive: record.massive,
-                        steps: record.settle + record.steps) / 3600))
+                    seconds / 3600,
+                    fullPass ? ", full pass" : record.pass == .massive ? ", massive pass" : ""))
         } catch {
             fail("hires: \(error)")
         }
@@ -1267,9 +1301,11 @@ let steps = Int(number("steps", 3_000))
 let frames = Int(number("frames", 1))
 let width = Int(number("width", 1920))
 let height = Int(number("height", 1080))
-// A PNG sequence is still the default, but a run asked for a video does not need one too.
+// A PNG sequence is still the default, but a run asked for a video does not need one too, nor
+// a run that draws its videos with `--draw`.
 let videoPath = argument("video")
-let outputPath = argument("out", default: videoPath == nil ? "out/sillage.png" : nil)
+let outputPath = argument(
+    "out", default: videoPath == nil && argument("draw") == nil ? "out/sillage.png" : nil)
 
 let seed = argument("seed").flatMap(UInt64.init)
 let scenePath = argument("scene")
@@ -1541,6 +1577,14 @@ if massiveCount != nil {
 } else {
     seeded = RestrictedSolver.sampleParticles(for: drawnScene)
 }
+// `--massive-only` (#239): the massive particles of that draw run alone, which the same draw
+// with its tracers repeats to the bit, so the shots planned on this run frame that one.
+if arguments.contains("--massive-only"), tracerCount > 0 {
+    seeded = seeded.slice(tracerCount..<seeded.count)
+    tracerCount = 0
+    drawnScene = scene
+    print("massive    \(seeded.visibleCount) visible run alone, without the tracers")
+}
 let gpuSolver: (any GPUSolver)? =
     backend == "cpu"
     ? nil
@@ -1651,6 +1695,51 @@ let massiveTake: Recording? = argument("take-massive").map { _ in
     return reel
 }
 
+// `--draw 4k,vertical --draw-take <massive take> --draw-out <dir>` (#239): the videos drawn as
+// the run goes, framed, painted and exposed as an export of that take is, over every particle.
+let runVideos: RunVideos? = try argument("draw").map { list in
+    guard let path = argument("draw-take"), let out = argument("draw-out") else {
+        fail("--draw needs --draw-take and --draw-out")
+    }
+    let framing = try RecordingFile.read(from: URL(fileURLWithPath: path))
+    // The look as `export` reads it.
+    var drawn =
+        try lookPath.map { try LookFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: $0))) }
+        ?? .standard
+    if drawn.palette.isEmpty { drawn.palette = framing.scene.galaxies.map { GalaxyColours($0.color) } }
+    let directory = URL(fileURLWithPath: out, isDirectory: true)
+    let formats = try list.split(separator: ",").map { name in
+        guard let preset = VideoPreset.named(String(name)) else { fail("--draw: no preset \(name)") }
+        return try RunVideos.Format(
+            preset: preset, frames: frames, framesPerSecond: Int(framesPerSecond),
+            url: directory.appendingPathComponent("\(preset.name).\(preset.defaultCodec.fileExtension)"))
+    }
+    let videos = try RunVideos(
+        formats: formats, look: drawn, framing: framing, capturedRate: Int(framesPerSecond),
+        drawing: renderer, smoothing: smoothing.buffer,
+        metadata: VideoMetadata(
+            sceneID: SceneFolder(URL(fileURLWithPath: path).deletingLastPathComponent()).sceneID))
+    print(
+        "draw       " + formats.map { "\($0.preset.name) \($0.width)x\($0.height)" }.joined(separator: ", ")
+            + " with \(drawn.name), framed on \(path)")
+    for line in videos.shots { print("shot       \(line)") }
+    return videos
+}
+// `--draw-stills 12,300 --draw-stills-dir <dir>`: those frames of every format as PNGs, as the
+// encoder took them.
+let drawStills = Set(argument("draw-stills")?.split(separator: ",").compactMap { Int($0) } ?? [])
+let drawStillsDirectory = argument("draw-stills-dir").map { URL(fileURLWithPath: $0, isDirectory: true) }
+// `--key-frames <path> --key-frame-curves <csv>`: every drawn particle at the key frames of those
+// curves, in a take of their own.
+let keyFrameTake: KeyFrameTake? = argument("key-frames").map { _ in
+    let samples =
+        argument("key-frame-curves").flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
+        .map(KeyFrames.samples) ?? []
+    var keys = KeyFrames.pick(samples.filter { $0.frame < frames })
+    if keys.isEmpty { keys = [KeyFrame(frame: frames / 2, role: .middle, timeMyr: 0)] }
+    return KeyFrameTake(keys: keys, particleCount: drawnCount, galaxyCount: scene.galaxies.count)
+}
+
 /// Per frame scalars, written for whoever scores the result later: a curve to drive a filter
 /// with is worth more than a picture of one.
 let curvesHeader =
@@ -1744,13 +1833,14 @@ while frame < frames || storyGoesOn() {
     if gpuSolver == nil {
         renderer.upload(positions: solver.particles.positions)
     }
-    if frozenRadius <= 0 && look.camera.mode != .auto {
+    // A full pass films through its formats' cameras, never this one.
+    if frozenRadius <= 0 && look.camera.mode != .auto && runVideos == nil {
         frozenRadius = look.camera.framedRadius(positions: solver.particles.positions)
     }
 
     let smoothingStart = Date()
-    // Plain points have no kernel to size.
-    if !look.plain {
+    // Plain points have no kernel to size; an export sizes them whatever its look.
+    if !look.plain || runVideos != nil {
         if let gpuSolver {
             smoothing.update(from: gpuSolver)
         } else {
@@ -1794,10 +1884,30 @@ while frame < frames || storyGoesOn() {
                 renderer.encode(camera: camera, into: buffer, present: target)
             },
             read: wantsStill ? { still = PNGWriter.image(bgra: $0) } : nil)
-    } else {
+    } else if wantsStill {
         still = PNGWriter.image(renderer.render(camera: camera), width: width, height: height)
     }
     let renderMs = Date().timeIntervalSince(renderStart) * 1000
+    if let runVideos {
+        try runVideos.draw(
+            frame: frame, centres: solver.centers,
+            still: drawStills.contains(frame) && drawStillsDirectory != nil
+                ? { format, image in
+                    let url = drawStillsDirectory!.appendingPathComponent(
+                        String(format: "%@-%04d.png", format.preset.name, frame))
+                    try FileManager.default.createDirectory(
+                        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try PNGWriter.write(image, maximumWidth: nil, to: url)
+                } : nil)
+    }
+    if let keyFrameTake, let gpuSolver, keyFrameTake.wants(frame: frame) {
+        keyFrameTake.offer(
+            frame: frame,
+            positions: gpuSolver.positions.contents().bindMemory(
+                to: SIMD3<Float>.self, capacity: seeded.count),
+            time: solver.time, centers: solver.centers,
+            disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [])
+    }
 
     if let outputURL {
         let url =
@@ -1816,7 +1926,8 @@ while frame < frames || storyGoesOn() {
         massiveTake.offer(
             positions: gpuSolver.positions.contents().bindMemory(
                 to: SIMD3<Float>.self, capacity: seeded.count) + tracerCount,
-            time: solver.time, centers: solver.centers, budget: takeBudget)
+            time: solver.time, centers: solver.centers,
+            disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: takeBudget)
     }
     if let take {
         if let gpuSolver {
@@ -1993,6 +2104,13 @@ while frame < frames || storyGoesOn() {
         }
         print("profile    " + phases.joined(separator: ", "))
     }
+    let drawn =
+        runVideos.map { videos in
+            "  draw "
+                + zip(videos.formats, videos.lastSeconds).map {
+                    String(format: "%@ %.1f ms", $0.preset.name, $1 * 1000)
+                }.joined(separator: ", ")
+        } ?? ""
     print(
         String(
             format:
@@ -2000,12 +2118,38 @@ while frame < frames || storyGoesOn() {
                 + "  render %5.1f ms (gpu %5.2f)",
             frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
             simulationMs / Double(stepsPerFrame), smoothingMs, renderMs,
-            (videoWriter?.lastGPUTime ?? renderer.lastGPUTime) * 1000))
+            (videoWriter?.lastGPUTime ?? renderer.lastGPUTime) * 1000) + drawn)
 }
 
 reporter?.update(progress: 1, detail: "finishing", eta: Date())
 try videoWriter?.finish()
 try curves?.close()
+let drawReports = try runVideos?.finish() ?? []
+for report in drawReports {
+    print(
+        String(
+            format: "draw       %@ %d frames, %.1f s drawing, %.1f ms a frame",
+            report.format.preset.name, report.frames, report.seconds,
+            report.seconds * 1000 / Double(max(report.frames, 1))))
+}
+if let runVideos {
+    print(
+        runVideos.firstDrift.map {
+            String(
+                format: "massive    drifts from the massive pass from frame %d,"
+                    + " %.4f kpc at most over %d frames",
+                $0, runVideos.drift, runVideos.checkedFrames)
+        } ?? "massive    repeats the massive pass to the bit over \(runVideos.checkedFrames) stored frames")
+}
+if let keyFrameTake, let path = argument("key-frames") {
+    let captured = gpuSolver?.capturedParticles(from: seeded) ?? seeded
+    let url = try prepared(path)
+    let list =
+        argument("key-frame-list").map { URL(fileURLWithPath: $0) }
+        ?? url.deletingPathExtension().appendingPathExtension("json")
+    try keyFrameTake.write(scene: drawnScene, particles: captured, to: url, list: list)
+    print("key frames " + keyFrameTake.entries.map { "\($0.role) \($0.frame)" }.joined(separator: ", "))
+}
 if let story, let span = story.span(plannedFrames: frames) {
     print(
         String(
@@ -2050,7 +2194,55 @@ if let massiveTake, let path = argument("take-massive") {
     let alone = captured.slice(tracerCount..<captured.count)
     try RecordingFile.write(massiveTake, scene: scene, particles: alone, to: prepared(path))
 }
-if let (folder, done) = hiresRun {
+if let (folder, done) = hiresRun, fullPass {
+    do {
+        try folder.commitFullPass(drawReports.map(\.format.url))
+    } catch {
+        fail("hires: could not put the videos in place: \(error)")
+    }
+    var record = done
+    let seconds = Date().timeIntervalSince(started)
+    var draws: [String: Double] = [:]
+    for report in drawReports { draws[report.format.preset.name] = report.seconds }
+    record.full = SceneFolder.Hires.FullPass(
+        presets: drawReports.map(\.format.preset.name), frames: runVideos?.frames ?? 0,
+        seconds: seconds, drawSeconds: draws, peakMemoryBytes: peakFootprint(),
+        keyFrames: keyFrameTake?.entries.map(\.frame) ?? [], drift: runVideos?.drift ?? 0,
+        checkedFrames: runVideos?.checkedFrames ?? 0)
+    try record.encoded().write(to: folder.hires)
+    print(
+        String(
+            format: "hires      full pass %.0f s, %.0f s of it drawing, peak %.2f GB", seconds,
+            record.full?.drawingSeconds ?? 0, Double(record.full?.peakMemoryBytes ?? 0) / 1e9))
+    for report in drawReports {
+        let bytes =
+            (try? FileManager.default.attributesOfItem(atPath: report.format.url.path)[.size] as? Int) ?? 0
+        var event = RunEvent(RunEvent.Kind.exportDone)
+        event.preset = report.format.preset.name
+        event.style = runVideos?.look.name
+        event.setPalette(runVideos?.look.paletteRecipe)
+        event.codec = report.format.codec.rawValue
+        event.frames = report.frames
+        event.megabytes = Double(bytes) / 1e6
+        event.seconds = report.seconds
+        event.path = report.format.url.path
+        event.pass = "full"
+        reporter?.record(event)
+        print("video      \(report.format.url.path)")
+        if report.format.preset.caption {
+            try VideoMetadata(sceneID: folder.sceneID).caption.write(
+                to: report.format.url.deletingPathExtension().appendingPathExtension("txt"),
+                atomically: true, encoding: .utf8)
+        }
+    }
+    var finished = RunEvent(RunEvent.Kind.hiresDone)
+    finished.particles = record.particles
+    finished.massive = record.massive
+    finished.steps = record.steps
+    finished.minutes = seconds / 60
+    finished.pass = "full"
+    reporter?.record(finished)
+} else if let (folder, done) = hiresRun {
     do {
         try folder.commitHires()
     } catch {
@@ -2073,6 +2265,7 @@ if let (folder, done) = hiresRun {
     finished.steps = record.steps
     finished.minutes = (record.seconds ?? 0) / 60
     finished.takeGB = Double(record.takeBytes ?? 0) / 1e9
+    finished.pass = record.pass?.rawValue
     reporter?.record(finished)
 }
 reporter?.finish()

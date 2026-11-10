@@ -334,12 +334,15 @@ public final class MetalBarnesHutSolver: Solver {
         self.sortedBuffer = sortedBuffer
         self.formationBuffer = formationBuffer
         self.costBuffer = costBuffer
+        // The massive particles' groups, then the tracers'.
+        let holeGroups =
+            (count - tracerCount + Self.holeGroupWidth - 1) / Self.holeGroupWidth
+            + (tracerCount + Self.holeGroupWidth - 1) / Self.holeGroupWidth
         holePartial =
             holes.isEmpty
             ? nil
             : device.makeBuffer(
-                length: ((count + Self.holeGroupWidth - 1) / Self.holeGroupWidth) * Self.holeLimit
-                    * MemoryLayout<SIMD4<Float>>.stride,
+                length: max(holeGroups, 1) * Self.holeLimit * MemoryLayout<SIMD4<Float>>.stride,
                 options: .storageModePrivate)
         let massive = count - tracerCount
         builder = try GPUTreeBuilder(
@@ -830,14 +833,16 @@ public final class MetalBarnesHutSolver: Solver {
             : velocityBuffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
         let limit = min(count, galaxyOf.count)
         let block = 65_536
-        let blocks = (limit + block - 1) / block
+        // Massless, so they weigh nothing, and walking them would cost the most. The blocks
+        // start at the first massive particle, so a run with tracers sums its massive ones in
+        // the order the same run without them does, to the bit (#239).
+        let tracers = min(tracerCount, limit)
+        let blocks = (limit - tracers + block - 1) / block
         // Six sums a galaxy a block: position and velocity weighted by mass, then the mass,
         // over every visible particle and again over the nucleus alone.
         var partial = [SIMD3<Double>](repeating: .zero, count: blocks * galaxies * 6)
         let halo = ParticleComponent.halo.rawValue
         let outskirt = ParticleComponent.outskirt.rawValue
-        // Massless, so they weigh nothing, and walking them would cost the most.
-        let tracers = tracerCount
         // The nucleus: the disk material and the bulge inside one and a half scale lengths of
         // where the centre was. The centre of mass of every visible particle, which this used
         // to be, sat 0.3 to 5 kpc off it once the outskirts went lopsided, and the camera and
@@ -860,8 +865,8 @@ public final class MetalBarnesHutSolver: Solver {
                             var innerWeighted = weighted
                             var innerDrift = weighted
                             var innerTotals = totals
-                            let lower = max(index * block, tracers)
-                            let upper = min((index + 1) * block, limit)
+                            let lower = tracers + index * block
+                            let upper = min(lower + block, limit)
                             for particle in lower..<max(lower, upper) {
                                 let galaxy = Int(galaxyOf[particle])
                                 guard galaxy < galaxies else { continue }
@@ -1082,24 +1087,51 @@ public final class MetalBarnesHutSolver: Solver {
     /// kept: the tree saw it as a test particle, at the stars' softening.
     private func encodeHoles(into buffer: MTLCommandBuffer) {
         guard let holePull, let holeSettle, let holePartial, !holes.isEmpty else { return }
-        var p = params
         var list = haloList
         var count = UInt32(holes.count)
-        var groups = UInt32((self.count + Self.holeGroupWidth - 1) / Self.holeGroupWidth)
-        encode(into: buffer, holePull, width: Self.holeGroupWidth) { encoder in
-            encoder.setBuffer(positionBuffer, offset: 0, index: 0)
-            encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
-            encoder.setBuffer(massBuffer, offset: 0, index: 2)
-            encoder.setBuffer(componentBuffer, offset: 0, index: 3)
-            encoder.setBytes(holes, length: holes.count * MemoryLayout<HoleGPU>.stride, index: 4)
+        // The reactions are summed over the massive particles in groups that start at the first
+        // of them, so a run with tracers adds them up as the same run without does (#239).
+        let first = tracerCount
+        let massiveGroups = (massive + Self.holeGroupWidth - 1) / Self.holeGroupWidth
+        var groups = UInt32(massiveGroups)
+        let relative = holes.map { hole -> HoleGPU in
+            var moved = hole
+            moved.shape.y = Float(bitPattern: hole.shape.y.bitPattern - UInt32(first))
+            return moved
+        }
+        var p = params(over: massive)
+        encode(into: buffer, holePull, threads: massive, width: Self.holeGroupWidth) { encoder in
+            encoder.setBuffer(positionBuffer, offset: first * 16, index: 0)
+            encoder.setBuffer(accelerationBuffer, offset: first * 16, index: 1)
+            encoder.setBuffer(massBuffer, offset: first * 4, index: 2)
+            encoder.setBuffer(componentBuffer, offset: first * 4, index: 3)
+            encoder.setBytes(relative, length: holes.count * MemoryLayout<HoleGPU>.stride, index: 4)
             encoder.setBytes(&count, length: 4, index: 5)
             encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
             encoder.setBuffer(holePartial, offset: 0, index: 7)
         }
+        if first > 0 {
+            // The tracers are pulled too; their reactions weigh nothing and land past the
+            // massive groups, where nothing reads them.
+            var light = params(over: first)
+            encode(into: buffer, holePull, threads: first, width: Self.holeGroupWidth) { encoder in
+                encoder.setBuffer(positionBuffer, offset: 0, index: 0)
+                encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
+                encoder.setBuffer(massBuffer, offset: 0, index: 2)
+                encoder.setBuffer(componentBuffer, offset: 0, index: 3)
+                encoder.setBytes(holes, length: holes.count * MemoryLayout<HoleGPU>.stride, index: 4)
+                encoder.setBytes(&count, length: 4, index: 5)
+                encoder.setBytes(&light, length: MemoryLayout<BHParams>.stride, index: 6)
+                encoder.setBuffer(
+                    holePartial,
+                    offset: massiveGroups * Self.holeLimit * MemoryLayout<SIMD4<Float>>.stride,
+                    index: 7)
+            }
+        }
         encode(into: buffer, holeSettle, threads: 1, width: 1) { encoder in
-            encoder.setBuffer(positionBuffer, offset: 0, index: 0)
-            encoder.setBuffer(accelerationBuffer, offset: 0, index: 1)
-            encoder.setBytes(holes, length: holes.count * MemoryLayout<HoleGPU>.stride, index: 2)
+            encoder.setBuffer(positionBuffer, offset: first * 16, index: 0)
+            encoder.setBuffer(accelerationBuffer, offset: first * 16, index: 1)
+            encoder.setBytes(relative, length: holes.count * MemoryLayout<HoleGPU>.stride, index: 2)
             encoder.setBytes(&count, length: 4, index: 3)
             encoder.setBytes(&groups, length: 4, index: 4)
             encoder.setBuffer(holePartial, offset: 0, index: 5)

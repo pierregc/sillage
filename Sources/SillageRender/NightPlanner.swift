@@ -45,6 +45,8 @@ public struct NightProgress: Sendable, Equatable {
     /// Once the pick is made, best first.
     public var picks: [String]?
     public var hiresDone: Set<String> = []
+    /// Of those, the ones whose hires is a massive pass, whose videos a full pass draws (#239).
+    public var massivePasses: Set<String> = []
     public var styled: Set<String> = []
     /// `<scene>/<format>`.
     public var exported: Set<String> = []
@@ -70,6 +72,9 @@ public struct NightPlan: Codable, Sendable, Equatable {
         public var massive: Int?
         /// Export: the preset, `webp` or `gif`.
         public var format: String?
+        /// Of a scene drawn in two passes (#239): `massive` for its hires, `full` for the video
+        /// presets its full pass draws, the first of them carrying the whole pass.
+        public var pass: String?
         public var seconds: Double
         public var start: Date
         public var end: Date
@@ -107,6 +112,8 @@ public struct NightPlan: Codable, Sendable, Equatable {
     public var hiresParticles: Int
     /// The hires particles that carry the mass, when the others are light tracers.
     public var hiresMassive: Int?
+    /// 2 when the videos are drawn in a full pass (#239).
+    public var hiresPasses: Int?
     public var exports: [String]
     public var steps: [Step]
     /// What the steps left will write, previews, takes and videos.
@@ -148,6 +155,8 @@ public struct NightPlanner: Sendable {
     /// 2.76 GB for 2 M particles over 900 frames at the take interval of 4 (`hires.json` of
     /// 2026-10-25).
     public static let takeBytesPerParticleFrame = 1.533
+    /// The key frames of a full pass: five frames of positions and the particles' own values.
+    public static let keyFrameBytesPerParticle = 58.0
     /// Drawing palettes from the scene's seed and scoring them, for a rendering the recipe names.
     public static let paletteSeconds = 20.0
     /// Auto's choice of rendering and palette (#124) in a world, from the cost at a clip's
@@ -186,6 +195,7 @@ public struct NightPlanner: Sendable {
 
     public var hiresParticles: Int { recipe.hiresParticles(maximum: maximumParticles) }
     public var hiresMassive: Int { recipe.hiresMassive(maximum: maximumParticles) }
+    public var hiresPasses: Int { recipe.hiresPasses(maximum: maximumParticles) }
 
     // MARK: Costs
 
@@ -194,8 +204,24 @@ public struct NightPlanner: Sendable {
         model.explore.seconds(scene.exploreUnits)
     }
 
+    /// The hires step: the massive pass alone when the videos are drawn in a full pass.
     public func hiresSeconds(_ scene: NightScene) -> Double {
+        hiresPasses == 2
+            ? model.hiresSeconds(units: scene.hiresUnits)
+            : model.hiresSeconds(units: scene.hiresUnits, tracerUnits: scene.hiresTracerUnits)
+    }
+
+    /// A scene's full pass (#239): every particle run again, `presets` drawn as it goes.
+    public func fullPassSeconds(_ scene: NightScene, presets: [String]) -> Double {
         model.hiresSeconds(units: scene.hiresUnits, tracerUnits: scene.hiresTracerUnits)
+            + presets.compactMap(VideoPreset.named).reduce(0) {
+                $0 + model.drawSeconds(preset: $1, particles: hiresParticles, frames: scene.frames)
+            }
+    }
+
+    /// The recipe's video presets when a full pass draws them; previews come from the take.
+    var drawnInRun: [String] {
+        hiresPasses == 2 ? recipe.exports.filter { VideoPreset.named($0) != nil } : []
     }
 
     /// The style step of the pick at `index`, best first.
@@ -218,8 +244,12 @@ public struct NightPlanner: Sendable {
 
     /// Everything after the pick for one scene, the pick at `index`.
     public func finishSeconds(_ scene: NightScene, pick index: Int) -> Double {
-        hiresSeconds(scene) + styleSeconds(pick: index)
-            + recipe.exports.reduce(0) { $0 + exportSeconds($1, frames: scene.frames) }
+        let drawn = drawnInRun
+        return hiresSeconds(scene) + styleSeconds(pick: index)
+            + (drawn.isEmpty ? 0 : fullPassSeconds(scene, presets: drawn))
+            + recipe.exports.filter { !drawn.contains($0) }.reduce(0) {
+                $0 + exportSeconds($1, frames: scene.frames)
+            }
     }
 
     /// Everything after the pick for scenes picked in this order.
@@ -454,10 +484,25 @@ public struct NightPlanner: Sendable {
             let skipped = progress.skipped.contains(name)
             let hiresDone = progress.hiresDone.contains(name)
             let styled = progress.styled.contains(name)
-            let hiresTime = hiresDone ? 0 : hiresSeconds(scene)
+            // Two passes, unless a take of every particle is there already to export from.
+            let twoPasses =
+                hiresPasses == 2 && (!hiresDone || progress.massivePasses.contains(name))
+            let drawn =
+                twoPasses
+                ? drawnInRun.filter { !progress.exported.contains("\(name)/\($0)") } : []
+            let hiresTime =
+                hiresDone
+                ? 0
+                : twoPasses
+                    ? model.hiresSeconds(units: scene.hiresUnits)
+                    : model.hiresSeconds(units: scene.hiresUnits, tracerUnits: scene.hiresTracerUnits)
             let styleTime = styled ? 0 : styleSeconds(pick: index)
-            let exportTimes = exports.map {
-                progress.exported.contains("\(name)/\($0)") ? 0 : exportSeconds($0, frames: scene.frames)
+            let exportTimes = exports.map { format -> Double in
+                if progress.exported.contains("\(name)/\(format)") { return 0 }
+                if drawn.contains(format) {
+                    return format == drawn.first ? fullPassSeconds(scene, presets: drawn) : 0
+                }
+                return exportSeconds(format, frames: scene.frames)
             }
             let finishEnd = clock.addingTimeInterval(
                 hiresTime + styleTime + exportTimes.reduce(0, +))
@@ -468,27 +513,34 @@ public struct NightPlanner: Sendable {
                         kind: "late",
                         message: "\(name) cannot be finished before the delivery time: left out"))
             }
-            func add(_ phase: NightPlan.Phase, _ seconds: Double, done: Bool, format: String? = nil) {
+            func add(
+                _ phase: NightPlan.Phase, _ seconds: Double, done: Bool, format: String? = nil,
+                pass: String? = nil
+            ) {
                 if starts, !done, phase != .hires, clock.addingTimeInterval(seconds) > hard {
                     starts = false
                 }
                 steps.append(
                     NightPlan.Step(
                         phase: phase, scene: name, particles: phase == .hires ? hires : nil,
-                        massive: phase == .hires ? massive : nil, format: format, seconds: seconds,
-                        start: clock, end: clock.addingTimeInterval(seconds), done: done, fits: starts))
+                        massive: phase == .hires ? massive : nil, format: format, pass: pass,
+                        seconds: seconds, start: clock, end: clock.addingTimeInterval(seconds), done: done,
+                        fits: starts))
                 if starts { clock = clock.addingTimeInterval(seconds) }
             }
-            add(.hires, hiresTime, done: hiresDone)
+            add(.hires, hiresTime, done: hiresDone, pass: twoPasses ? "massive" : nil)
             if starts, !hiresDone {
-                disk += Double(hires) * Double(scene.frames) * Self.takeBytesPerParticleFrame
+                // A massive pass keeps the take of the massive particles alone.
+                let held = twoPasses ? massive ?? hires : hires
+                disk += Double(held) * Double(scene.frames) * Self.takeBytesPerParticleFrame
             }
             add(.style, styleTime, done: styled)
             for (format, seconds) in zip(exports, exportTimes) {
                 let done = progress.exported.contains("\(name)/\(format)")
-                add(.export, seconds, done: done, format: format)
+                add(.export, seconds, done: done, format: format, pass: drawn.contains(format) ? "full" : nil)
                 if starts, !done { disk += Self.videoBytes(format, frames: scene.frames) }
             }
+            if starts, !drawn.isEmpty { disk += Double(hires) * Self.keyFrameBytesPerParticle }
         }
 
         if let freeBytes, disk > freeBytes {
@@ -501,7 +553,8 @@ public struct NightPlanner: Sendable {
         return NightPlan(
             start: now, deliverBy: deliverBy, end: clock, scenes: scenes,
             particlesPerGalaxy: sized.perGalaxy, exploreBudget: max(sized.budget, 0),
-            picks: finishing.count, hiresParticles: hires, hiresMassive: massive, exports: exports,
+            picks: finishing.count, hiresParticles: hires, hiresMassive: massive,
+            hiresPasses: hiresPasses == 2 ? 2 : nil, exports: exports,
             steps: steps, diskBytes: disk, freeBytes: freeBytes, warnings: warnings)
     }
 }

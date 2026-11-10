@@ -151,12 +151,14 @@ public enum NightCommand {
                     + (step.done ? " · done" : " · at \(time(step.start))")
             case .hires:
                 let massive = step.massive.map { " from \(thousands($0)) massive" } ?? ""
+                let pass = step.pass == "massive" ? " · massive pass" : ""
                 line =
-                    "hires      \(step.scene ?? "") · \(thousands(step.particles ?? 0)) particles\(massive) · \(state)"
+                    "hires      \(step.scene ?? "") · \(thousands(step.particles ?? 0)) particles\(massive)\(pass) · \(state)"
             case .style:
                 line = "style      \(step.scene ?? "") · \(state)"
             case .export:
-                line = "export     \(step.scene ?? "") \(step.format ?? "") · \(state)"
+                let pass = step.pass == "full" ? " · full pass" : ""
+                line = "export     \(step.scene ?? "") \(step.format ?? "")\(pass) · \(state)"
             }
             lines.append(line)
         }

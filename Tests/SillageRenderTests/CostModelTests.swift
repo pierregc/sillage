@@ -176,6 +176,53 @@ struct CostModelTests {
         #expect(rows.count == 1 && rows[0].kind == "hires" && rows[0].took == 2_280)
     }
 
+    /// Two passes (#239): the massive pass is a run without tracers, the full pass one with
+    /// them less its drawing, and each preset's frame is priced against the particles drawn.
+    /// The full pass's videos are left out of the exports' lines.
+    @Test func twoPassesPriceTheMassiveRunTheTracersAndTheDrawingApart() throws {
+        let root = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let batch = root.appendingPathComponent("2026-11-10")
+        try write(
+            batch.appendingPathComponent("scene-0031/hires.json"),
+            #"{"particles": 8000000, "massive": 2000000, "pass": "massive", "previewParticles": 200000, "#
+                + #""width": 960, "height": 540, "frames": 923, "fps": 30, "settle": 1584, "#
+                + #""steps": 7384, "timeStepScale": 3.5, "timeStep": 0.021, "timeStepMyr": 0.0989, "#
+                + #""previewTimeStepMyr": 0.2, "softening": 0.0546, "clipStartMyr": 157, "#
+                + #""clipEndMyr": 887, "seconds": 1000, "full": {"presets": ["4k", "vertical"], "#
+                + #""frames": 923, "seconds": 2600, "drawSeconds": {"4k": 92.3, "vertical": 46.15}, "#
+                + #""keyFrames": [0, 207, 922], "drift": 0, "checkedFrames": 232}}"#, modified: now)
+        try write(
+            batch.appendingPathComponent("events.jsonl"),
+            #"{"t": "2026-11-10T03:12:00+01:00", "kind": "export.done", "preset": "4k", "codec": "hevc", "frames": 923, "seconds": 92.3, "pass": "full"}"#
+                + "\n")
+        let history = CostHistory.read(library: root)
+        #expect(history.hires.count == 2 && history.exports.isEmpty)
+        let alone = try #require(history.hires.first { $0.tracerUnits == 0 })
+        #expect(alone.units == 2e6 * 8_968 && alone.seconds == 1_000)
+        let traced = try #require(history.hires.first { $0.tracerUnits > 0 })
+        #expect(traced.tracerUnits == 6e6 * 8_968 && abs(traced.seconds - (2_600 - 138.45)) < 1e-6)
+        #expect(history.draws["4k/hevc"]?.map(\.units) == [8e6])
+        #expect(abs((history.draws["4k/hevc"]?.first?.seconds ?? 0) - 0.1) < 1e-9)
+
+        let model = try CostModel.refresh(library: root, at: now)
+        #expect(model.hires.source == .scaled && model.tracers.source == .scaled)
+        let uhd = try #require(VideoPreset.named("4k"))
+        #expect(abs(model.drawSeconds(preset: uhd, particles: 8_000_000, frames: 923) - 92.3) < 1e-6)
+        #expect(model.draws["vertical/hevc"]?.source == .scaled)
+        #expect(
+            abs(
+                model.fullPassSeconds(
+                    particles: 8_000_000, massive: 2_000_000, steps: 8_968, frames: 923,
+                    presets: ["4k", "vertical"]) - 2_600) < 1e-6)
+        #expect(model.lines.contains { $0.hasPrefix("draw       4k/hevc") })
+        // Without a full pass yet, the fallback: a frame at 4K and at 1080p's pixels.
+        let fallback = CostModel.fallback()
+        #expect(fallback.drawLine(preset: uhd) == CostModel.fallbackDraw(uhd))
+        let vertical = try #require(VideoPreset.named("vertical"))
+        #expect(CostModel.fallbackDraw(vertical).fixedSeconds == CostModel.fallbackDrawFixed1080p)
+    }
+
     /// A `costs.json` written before light tracers has no line for them, and reads with theirs.
     @Test func aCostsFileWrittenBeforeTracersReadsWithTheirFallback() throws {
         let root = try temporaryLibrary()

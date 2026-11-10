@@ -113,6 +113,9 @@ public struct SceneFolder: Sendable, Equatable {
     public var hiresVideo: URL { file("hires.mov") }
     public var hiresCurves: URL { file("curves-hires.csv") }
     public var hires: URL { file("hires.json") }
+    /// Every particle of a full pass at a few key frames (#239), and which frames they are.
+    public var keyFrames: URL { file("keyframes.sillage") }
+    public var keyFrameList: URL { file("keyframes.json") }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
     public var lookGrid: URL { looks.appendingPathComponent("grid.png") }
     /// What `palettes` draws: `sheet.png`, `swatches.png` and one look file per palette.
@@ -204,6 +207,48 @@ extension SceneFolder {
         public var seconds: Double?
         public var peakMemoryBytes: Int?
         public var takeBytes: Int?
+        /// `massive` when the run held the massive particles alone, the first of two passes
+        /// (#239): the take, the curves and the video here are theirs, and the particles drawn
+        /// come with the full pass. Absent for a run of every particle.
+        public var pass: Pass?
+        /// The full pass, once it has drawn the videos.
+        public var full: FullPass?
+
+        public enum Pass: String, Codable, Sendable { case massive }
+
+        /// The second of two passes: every particle again, the videos drawn as it ran.
+        public struct FullPass: Codable, Sendable, Equatable {
+            public var presets: [String]
+            public var frames: Int
+            public var seconds: Double
+            /// Drawing and handing over each preset's frames, the solver's time apart.
+            public var drawSeconds: [String: Double]
+            public var peakMemoryBytes: Int?
+            /// The frames `keyframes.sillage` holds.
+            public var keyFrames: [Int]
+            /// How far a galaxy's centre strayed from the massive pass's, in kpc, over
+            /// `checkedFrames` of its stored frames: 0 when the mass repeated it to the bit.
+            public var drift: Float
+            public var checkedFrames: Int
+
+            public init(
+                presets: [String], frames: Int, seconds: Double, drawSeconds: [String: Double],
+                peakMemoryBytes: Int? = nil, keyFrames: [Int] = [], drift: Float = 0,
+                checkedFrames: Int = 0
+            ) {
+                self.presets = presets
+                self.frames = frames
+                self.seconds = seconds
+                self.drawSeconds = drawSeconds
+                self.peakMemoryBytes = peakMemoryBytes
+                self.keyFrames = keyFrames
+                self.drift = drift
+                self.checkedFrames = checkedFrames
+            }
+
+            /// What drawing cost in all.
+            public var drawingSeconds: Double { drawSeconds.values.reduce(0, +) }
+        }
 
         public func encoded() throws -> Data {
             let encoder = JSONEncoder()
@@ -214,13 +259,25 @@ extension SceneFolder {
         /// Every particle drawn, unless the others were light tracers.
         public var massiveParticles: Int { massive ?? particles }
         public var tracers: Int { particles - massiveParticles }
+        /// The particles the run itself moved: the massive ones alone in a massive pass.
+        public var simulatedTracers: Int { pass == .massive ? 0 : tracers }
 
         /// Whether this run stands for one asked at `particles` drawn, `massive` of them carrying
         /// the mass (all when nil), and `frames` when given: drawn alike, with at least as many
-        /// massive, so a real 8 M stands for 8 M drawn from 2 M.
-        public func covers(particles: Int, massive: Int?, frames: Int?) -> Bool {
-            self.particles == particles && massiveParticles >= min(massive ?? particles, particles)
+        /// massive, so a real 8 M stands for 8 M drawn from 2 M. A massive pass stands only for
+        /// the first of two `passes`.
+        public func covers(particles: Int, massive: Int?, frames: Int?, passes: Int = 1) -> Bool {
+            (pass == nil || passes == 2) && self.particles == particles
+                && massiveParticles >= min(massive ?? particles, particles)
                 && frames.map { self.frames == $0 } ?? true
+        }
+
+        /// Whether a full pass asked as `asked` can follow this run: the same draw at the same
+        /// steps, of which this is the massive pass.
+        public func leadsTo(_ asked: Hires) -> Bool {
+            pass == .massive && particles == asked.particles && massive == asked.massive
+                && frames == asked.frames && settle == asked.settle && steps == asked.steps
+                && timeStep == asked.timeStep
         }
     }
 
@@ -230,6 +287,10 @@ extension SceneFolder {
         case aboveMaximum(Int, Int)
         case badMassive(String)
         case tracerAngle
+        case badPass(String)
+        case passWithoutTracers
+        case noMassivePass(URL)
+        case notAVideo(String)
 
         public var description: String {
             switch self {
@@ -243,6 +304,14 @@ extension SceneFolder {
             case .tracerAngle:
                 "--theta-tracers: light tracers walk at the scene's opening angle, a looser one"
                     + " drifts them off the mass (docs/notes/light-tracers.md)"
+            case .badPass(let value): "--pass \(value): massive or full"
+            case .passWithoutTracers:
+                "--pass: two passes need light tracers, --massive below --particles"
+            case .noMassivePass(let url):
+                "\(url.path): no massive pass of the same draw and steps here, run --pass massive first"
+            case .notAVideo(let name):
+                "--export \(name): a full pass draws video presets, "
+                    + VideoPreset.all.map(\.name).joined(separator: ", ")
             }
         }
     }
@@ -301,12 +370,27 @@ extension SceneFolder {
     }
 
     /// Whether the hires run here stands for one asked with `options`, which a batch then skips.
+    /// A full pass is done once its videos are drawn.
     public func hiresDone(_ options: [String], maximumParticles: Int) -> Bool {
         let draw = Self.hiresDraw(options, maximumParticles: maximumParticles)
         let frames = options.contains("--frames") ? Clip().updated(with: options).clip.frames : nil
-        return storedHires()?.covers(particles: draw.particles, massive: draw.massive, frames: frames)
-            ?? false
+        let pass = Self.pass(in: options)
+        guard
+            let record = storedHires(),
+            record.covers(
+                particles: draw.particles, massive: draw.massive, frames: frames,
+                passes: pass == nil ? 1 : 2)
+        else { return false }
+        return pass != "full" || record.full != nil
     }
+
+    /// `massive` or `full`, what `--pass` asks, nil without it.
+    public static func pass(in options: [String]) -> String? {
+        options.firstIndex(of: "--pass").flatMap { $0 + 1 < options.count ? options[$0 + 1] : "" }
+    }
+
+    /// The scene's video presets a full pass draws (#239).
+    public static let fullPassPresets = NightRecipe.defaultExports
 
     /// The scenes of a batch folder marked yes in its ratings.
     public static func chosen(inBatch batch: URL) -> [SceneFolder] {
@@ -333,6 +417,10 @@ extension SceneFolder {
     /// the mass to about M of the particles and makes the others light tracers (#187): the
     /// softening, the step and the settle are then M's. Nothing the preview wrote is touched.
     /// The take, the video and the curves go to their partial paths, for `commitHires`.
+    ///
+    /// `--pass massive` runs the massive particles of that draw alone, the tracers left out, and
+    /// `--pass full` the whole draw again once the style is chosen on the massive take, drawing
+    /// the videos of `--export` (4k and vertical by default) as it runs (#239).
     public func hiresArguments(_ options: [String], maximumParticles: Int) throws -> (
         arguments: [String], record: Hires
     ) {
@@ -351,6 +439,20 @@ extension SceneFolder {
             }
             rest.removeSubrange(index...index + 1)
             massiveAsked = count
+        }
+        func cut(_ option: String) -> String? {
+            guard let index = rest.firstIndex(of: "--\(option)") else { return nil }
+            let value = index + 1 < rest.count ? rest[index + 1] : ""
+            rest.removeSubrange(index...min(index + 1, rest.count - 1))
+            return value
+        }
+        let pass = cut("pass")
+        if let pass, pass != "massive", pass != "full" { throw HiresError.badPass(pass) }
+        let presets = try cut("export").map { list in
+            try list.split(separator: ",").map(String.init).map { name in
+                guard VideoPreset.named(name) != nil else { throw HiresError.notAVideo(name) }
+                return name
+            }
         }
         let draw = Self.hiresDraw(
             particles: options.contains("--particles") ? asked.particles : nil, massive: massiveAsked,
@@ -373,7 +475,7 @@ extension SceneFolder {
         let span = preview.spanning(
             previewStep: previewStep, maximumStep: Double(target.timeStep), frames: asked.frames)
         let myr = Physics.megayearsPerTimeUnit
-        let record = Hires(
+        var record = Hires(
             particles: asked.particles, massive: massive, previewParticles: preview.particles,
             width: asked.width, height: asked.height, frames: asked.frames, fps: asked.fps,
             settle: span.settle, steps: span.steps, timeStepScale: hiresFile.timeStepScale,
@@ -381,11 +483,31 @@ extension SceneFolder {
             previewTimeStepMyr: previewStep * myr, softening: target.softening,
             clipStartMyr: Double(span.settle) * span.timeStep * myr,
             clipEndMyr: Double(span.settle + span.steps) * span.timeStep * myr)
+        if pass != nil, massive == nil { throw HiresError.passWithoutTracers }
 
         var arguments = [
             "--video", Self.partial(hiresVideo).path, "--curves", Self.partial(hiresCurves).path,
             "--take", Self.partial(take).path, "--no-sidecars",
         ]
+        if pass == "massive" {
+            record.pass = .massive
+            arguments.append("--massive-only")
+        }
+        // The full pass writes no take, no curves and no video of its own: the massive pass's
+        // frame its videos, drawn into `exports/` as the run goes, and a few key frames of
+        // every particle.
+        if pass == "full" {
+            guard let stored = storedHires(), stored.leadsTo(record), exists(take) else {
+                throw HiresError.noMassivePass(url)
+            }
+            record = stored
+            arguments = [
+                "--draw", (presets ?? Self.fullPassPresets).joined(separator: ","),
+                "--draw-take", take.path, "--draw-out", exports.path,
+                "--key-frames", Self.partial(keyFrames).path, "--key-frame-list", keyFrameList.path,
+                "--key-frame-curves", hiresCurves.path, "--no-sidecars",
+            ]
+        }
         arguments += ["--particles", String(asked.particles)]
         if let massive { arguments += ["--massive", String(massive)] }
         arguments += [
@@ -565,6 +687,14 @@ extension SceneFolder {
         for url in [take, hiresVideo, hiresCurves] { try Self.commit(url) }
     }
 
+    /// Puts a finished full pass's videos and key frames in place (#239).
+    public func commitFullPass(_ videos: [URL]) throws {
+        for url in videos { try Self.commit(url) }
+        if FileManager.default.fileExists(atPath: Self.partial(keyFrames).path) {
+            try Self.commit(keyFrames)
+        }
+    }
+
     /// Removes what an interrupted `hires` or `export` left half written here.
     @discardableResult
     public func removePartialOutputs() -> [URL] {
@@ -572,7 +702,7 @@ extension SceneFolder {
             ((try? FileManager.default.contentsOfDirectory(atPath: exports.path)) ?? [])
             .filter { $0.hasPrefix(".") && $0 != ".DS_Store" }
             .map { exports.appendingPathComponent($0) }
-        return Self.remove([take, hiresVideo, hiresCurves].map(Self.partial) + hidden)
+        return Self.remove([take, hiresVideo, hiresCurves, keyFrames].map(Self.partial) + hidden)
     }
 
     /// The same for a whole batch, with the scenes still being explored in their hidden folders.
