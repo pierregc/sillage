@@ -23,6 +23,9 @@ massive count's (`file.scene(particleCount: massive)`). Since #211 the dark matt
 at the massive count to begin with (`ParticleSystem.lightTracers(drawn:massive:)`, 3 M for 2 M)
 and kept whole, rather than drawn at 12 M for a quarter of it to be kept.
 
+What follows is the spike's solver. Since #238 a tracer is 32 bytes in buffers of its own and
+the passes below are rewritten around that ([compact tracers](#compact-tracers-238)).
+
 In the solver (`MetalBarnesHutSolver(..., tracers:)`) the tracers come first in the buffers,
 `[tracers | massive visible | massive halo]`, so the visible particles stay one run for the
 renderer and the take, and the tree is built over everything after the tracers
@@ -250,3 +253,175 @@ of several hours each. They now draw what a night draws, its 8 M (the maximum be
 2 M massive, `--massive` aside, through one rule (`SceneFolder.hiresDraw`) that the batch's skip
 (`hiresDone`), a queued job's price and its title read too. A scene a night finished, or one
 done at a real 8 M, is skipped. `--particles N` alone stays a real N.
+
+## Compact tracers (#238)
+
+A ticket of the 200 M epic (#236). Until then a tracer held what a massive particle holds. In
+the solver: a position, a velocity and an acceleration, a mass, a formation time, a kind, a
+galaxy, a traversal cost, a slot in the gathered copy and the codes and orders of its own sort,
+about 125 bytes. Around it: the sample it came from kept whole on the CPU, seven attribute
+buffers in the renderer (28 bytes), and a smoothing length and a share of the tree
+`SmoothingField` built over everything drawn. At 100 M that is tens of gigabytes for particles
+that only follow.
+
+### What a tracer holds
+
+Two buffers of 16 bytes a tracer, which are the front of the solver's position and velocity
+buffers, still laid out `[tracers | massive visible | massive halo]`:
+
+| bytes | what |
+| ---: | --- |
+| 16 | position, with the time its stars formed in w |
+| 16 | velocity, with a packed word in w |
+| 4 | its place in the walk order |
+
+The word (`TracerWord`) keeps the galaxy in bits 0 to 3 (16 galaxies at most, which
+`lightTracers` checks), the kind in 4 to 6, the kernel scale in 7 to 9 (one of the five the
+sampler gives), the light in 10 to 17 on a logarithmic scale from 2^-12 to 2^8 (5.6 % between
+steps), and the birth radius in 18 to 31 on a logarithmic scale from 2^-12 to 2^12 kpc (0.1 %
+between steps). The population, which only colours takes written before every particle carried
+an age, is 0.5 for every tracer. The mass, the acceleration and the cost are gone: a tracer weighs nothing, is in no
+leaf, and keeps no acceleration between steps.
+
+Every buffer that only massive particles need is sized for them: masses, accelerations,
+formation, kinds, galaxies, costs, the gathered copy, the tree. The massive kernels bind the
+position and velocity buffers past the tracers, so a run without tracers is the same to the bit:
+scene-0031 at 200 k for 120 steps against the base commit gives the same curves, the same take
+(its JSON header in another key order), the same twelve frames, and the same positions,
+velocities and formation times of all 500 000 particles.
+
+### What reads it
+
+- **One fused pass a step** (`bhTracerStep`): the walk through the massive tree, the analytic
+  halos and the black holes, then this step's closing half kick, the cooling and the next step's
+  opening half kick. That is what a massive particle gets from the kick, the cooling and the
+  next kick, without an acceleration to keep, so a tracer's stored velocity is half a kick
+  ahead of a massive one's. The drift is a pass of its own (`bhTracerDrift`). The cooling reads
+  the same disks as the massive particles', computed once a step.
+- **Star formation** reads the kind from the word and writes the formation time into the
+  position's w, as before from the chance of the massive gas particle before it in Morton order.
+- **The take, the density maps and the curves** read the buffers in place:
+  `drawnAttributes()` unpacks the attributes once, when the take is written, `formed(after:until:)`
+  counts the stars formed from the positions' w, and one radius in 16 frames the camera.
+
+The halo centres, the disk frames and the black holes' reactions are summed over the massive
+particles alone, counted from the first of them, so the massive part of a run with tracers still
+repeats the run without them to the bit, as the full pass of a hires needs
+([render during hires](render-during-hires.md)); the tracers feel the holes in their own pass.
+
+### The walk order
+
+The tracers are sorted into Morton order a chunk at a time, 4 M (2^22) a chunk, every 10 steps
+(`tracerSortInterval` and `tracerSortChunk`, `--tracer-sort` and `--tracer-sort-chunk` on the
+command line). A chunk's order counts from its start, so the order is 4 bytes a tracer whatever
+the count, and the sort's own codes, spare order and histogram are those of one chunk, allocated
+once: 86.1 MB at any count. The spike's sorter took 24.5 bytes a tracer, 2.4 GB at 100 M.
+
+Between two sorts the walk slows as the order ages: 122.9 ms a step at 8 M right after a sort,
+136.5 ms 90 steps later. A sort costs 5.9 ms at 8 M. Measured at 8 M from 2 M, 200 steps after 4,
+all five under the same load (another thread was compiling):
+
+| sorted every | walk a step | sort a step | together | a step |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 121.1 ms | 5.84 ms | 127.0 ms | 247.4 ms |
+| 10 | 122.8 | 0.58 | 123.4 | 244.3 |
+| 25 | 125.2 | 0.23 | 125.4 | 246.2 |
+| 50 | 127.6 | 0.11 | 127.7 | 247.4 |
+| 100 | 131.5 | 0.06 | 131.5 | 251.0 |
+
+Ten is the cheapest, 2 ms a step better than the 25 it started at; the walk's ageing and the sort
+both scale with the tracers, so it stays the cheapest at any count. The sort leaves no transient
+memory: the peak is the same to the megabyte at every interval.
+
+### The kernel without a leaf
+
+A massive particle's kernel is read off the leaf that holds it; no leaf holds a tracer. The
+massive tree now writes, beside the smoothing lengths, one record of 8 bytes a node
+(`encodeSpacing`): the spacing of the drawn particles in that cell, each massive visible
+particle standing for (tracers + massive visible) / massive visible of them, and the node's
+first child with a mask of the octants it has. A tracer's vertex goes down the tree from the
+root, one read a level by the bits of its Morton code, and takes the spacing of the deepest
+cell around it that holds anything drawn; outside the root it takes the root's. The massive
+particles' own lengths take the same ratio, so the two agree where they mix. Nothing is kept
+per tracer for the renderer: the draws read the two buffers through their own vertex
+functions.
+
+### Sampling
+
+`MetalBarnesHutSolver.lightTracers(drawn:massive:)` samples the scene through the same split
+as before, but hands the tracers on as they come, a chunk at a time, packed straight into the
+solver's buffers. Only the massive particles are kept as a `ParticleSystem`.
+
+### What it costs
+
+Measured on the M4 Max on scene-0031 of 2026-10-30-b, from t = 0, 4 steps then 60 timed, with
+`--profile`, frames at the hires size (960 x 540), against main of the same day. The sort ran
+every 25 steps then; at 10 it is about 2 ms a step cheaper at 8 M.
+
+| drawn from 2 M | a step | tracers' walk | their sort, a step | smoothing, a frame | a frame drawn | peak footprint | max RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 8 M, main | 238.9 ms | 115.2 ms | 6.50 ms | 14.9 ms | 49.7 ms | 4.61 GB | 2.69 GB |
+| 8 M | 239.2 | 121.6 | 0.18 | 1.4 | 50.6 | 2.78 | 1.35 |
+| 50 M, main | 1131.5 | 879.6 | 64.4 | 139.9 | 392.7 | 16.15 | 10.30 |
+| 50 M | 1120.7 | 985.5 | 1.72 | 1.5 | 324.7 | 5.02 | 3.22 |
+| 100 M | 2214.0 | 2060.6 | 3.62 | 1.9 | 727.4 | 7.33 | 5.32 |
+
+- **A step costs what it did, for a third of the memory.** From 50 M to 100 M each tracer adds
+  46 bytes to the peak footprint and 42 to the resident set: the 36 it keeps, and the sorted copy
+  of every radius the camera's framing made on the first frame, which now reads one radius in
+  16. From 8 M to 50 M main added 275 bytes a tracer, this 53. The 100 M run peaked at 7.3 GB;
+  by the same slope 200 M would peak near 12 GB, less what the framing no longer takes.
+- **The smoothing and the curves are no longer the drawn count's.** The smoothing field holds the
+  massive particles alone, 1.4 ms a frame at any count against 14.9 at 8 M and 140 at 50 M, and
+  the curves read the tracers in place (2 ms a frame against 27 in the hires below).
+- **The walk costs 20.3 ns a tracer a step at 8 M, 20.5 at 50 M, 21.0 at 100 M**, where main's
+  was 19.2 and 18.3. Main sorted every tracer at once, so the 32 lanes of a SIMD group were 32
+  neighbours among all of them; sorted 4 M at a time, they are as spread as in a sample of 4 M.
+  The step comes out even because main paid 64 ms a step at 50 M for that sort. Larger chunks
+  would buy the walk back for 20.5 bytes a tracer of a chunk; worth measuring at 200 M (#241).
+- **Sampling costs 1.5 us a drawn particle**: 12 s at 8 M, 77 s at 50 M, 154 s at 100 M.
+- **Drawing the tracers** costs the same as drawing whole particles: 40.4 ms of GPU a frame at 8 M
+  against 38.6, and 296 at 50 M against 286.
+
+### Whether the light still stays on the mass
+
+The whole hires of scene-0031 again, with #187's options exactly (923 frames, 1584 steps of
+settle and 7384 more, the tracers at the scene's angle, `--density`), alone on the GPU:
+
+| | #187 | #238 |
+| --- | ---: | ---: |
+| wall time | 38.4 min | 39.2 min |
+| a step, over the frames | 243.2 ms | 254.9 ms |
+| smoothing, a frame | 15.3 ms | 1.4 ms |
+| curves, a frame | 26.8 ms | 2.0 ms |
+| peak footprint | 10.93 GB | 8.74 GB |
+| take | 3.1 GB | 3.06 GB |
+
+The step is 5 % dearer than #187's because main is: the walk of #221 costs 3.6 % at 8 M, and
+the matched runs above put this branch level with main. The density maps, compared as in #187:
+
+| Myr | chi2 a cell, #187 | #238 | binned 4x4, #187 | #238 | light elsewhere, #187 | #238 | noise alone |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 158 | 1.00 | 1.02 | 0.96 | 0.96 | 0.90 % | 0.89 % | 0.92 % |
+| 290 | 1.00 | 1.04 | 1.03 | 1.02 | 0.88 % | 0.87 % | 0.82 % |
+| 423 | 1.03 | 1.02 | 1.02 | 1.02 | 1.13 % | 1.11 % | 1.07 % |
+| 556 | 1.04 | 1.03 | 1.05 | 1.03 | 1.37 % | 1.38 % | 1.30 % |
+| 688 | 1.04 | 1.01 | 1.05 | 1.01 | 1.40 % | 1.33 % | 1.29 % |
+| 887 | 1.01 | 1.03 | 1.03 | 1.01 | 1.28 % | 1.25 % | 1.20 % |
+
+Over the twelve instants the chi-square a cell averages 1.027 (1.017 for #187), the light
+elsewhere is never more than 0.08 points above the noise (0.10), and the residual map has no
+structure. Over every particle of the take the tracers end 0.12 % wider in rms extent than the
+massive particles (#187: 0.11 %), where two halves of the tracers differ by 0.05 %; each disk's
+thickness agrees to 0.85 % at worst, where two halves differ by up to 0.53 % (#187: 0.6 and
+0.5 %).
+
+The key frames 0, 192, 608 and 912, drawn from the new take with #187's looks and crops, have
+the same texture as #187's tracer row: grain 0.184, 0.124, 0.041, 0.037 against 0.183, 0.125,
+0.044, 0.040, structure 0.119, 0.095, 0.102, 0.099 against 0.116, 0.106, 0.107, 0.100. The
+satellites and the knots are their own, as in any new run of the scene (the halo is drawn at the
+massive count since #211, and the walk is #221's). Drawn live, through a fixed camera, the tracers'
+kernels off the massive tree give the frame that playback gives from a one-frame take of the same
+instant with a tree over every particle: the same level to 0.3 %, a mean difference of 0.13 of 255,
+every pixel within 8. The sheets are on `assets/238-key-frames`, the drift sheet and tables on
+`assets/238-drift`, both under `docs/spikes/compact-tracers/`.

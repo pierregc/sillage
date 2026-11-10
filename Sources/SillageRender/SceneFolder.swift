@@ -333,6 +333,9 @@ extension SceneFolder {
     public static let nanosecondsPerParticleStep = 62.0
     /// What a light tracer adds to a step on the same machine (#187), linear in their count.
     public static let nanosecondsPerTracerStep = 20.0
+    /// Every hires runs at this scale, whatever its preview explored at (#225,
+    /// docs/notes/doubled-step.md). `--dt-scale` overrides it.
+    public static let hiresTimeStepScale: Float = 3.5
     /// The take keeps one frame in this many, and drawing it again interpolates the rest. At
     /// the cadence `hires` captures, under a megayear a frame, four cannot be told apart from
     /// one on screen, and ten million particles over nine hundred frames come to 13.5 GB
@@ -503,6 +506,7 @@ extension SceneFolder {
 
         let file = try SceneFile.decoded(from: Data(contentsOf: scene))
         var hiresFile = file
+        hiresFile.timeStepScale = Self.hiresTimeStepScale
         if let index = rest.firstIndex(of: "--dt-scale"), index + 1 < rest.count,
             let scale = Float(rest[index + 1])
         {

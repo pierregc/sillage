@@ -23,9 +23,10 @@ session. Read the note for an area before changing it.
 - [Four scenes in five are pairs](pairs.md): the pair share by place, the pick slots, batches started before
 - [How fast a companion comes in](approach.md): the approach drawn for itself, captured pairs kept bound, what the eccentricity draw gave (#252)
 - [Whole stories](whole-stories.md): when a scene's story is over, and how long clips run
+- [A doubled step](doubled-step.md): 7 against 3.5 on one whole story at 8 M, why hires stays at 3.5 and exploration runs at 7 (#225)
 - [A black hole outside the tree](black-holes.md): its own softening, the step, energy across the mass range
 - [Another language would not make a step faster](solver-language.md): GPU against CPU, Swift against C, the opening angle explore and hires run at
-- [Light tracers](light-tracers.md): drawing 8 M for the price of 2 M, what stays on the mass, star formation without a leaf
+- [Light tracers](light-tracers.md): drawing 8 M for the price of 2 M, what stays on the mass, star formation without a leaf, 32 bytes a tracer (#238)
 - [A cell around the particle](cells-around-the-particle.md): the walk opens every cell that holds the particle, how often the old one did not and what it cost (#221)
 
 ## Physics and galaxies

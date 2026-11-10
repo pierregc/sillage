@@ -147,6 +147,7 @@ public struct NightFolder: Sendable {
             probe.pairShare = conf.isEmpty ? recipe.pairShare : nil
         }
         if let settle = conf["settle"].flatMap(Int.init) { probe.settle = settle }
+        if let scale = conf["dt_scale"].flatMap(Double.init) { probe.dtScale = scale }
         if let range = conf["galaxy_range"] {
             let ends = range.split(separator: "-").compactMap { Int($0) }
             if ends.count == 2 { probe.galaxies = ends[0]...ends[1] }

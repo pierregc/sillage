@@ -191,4 +191,209 @@ struct LightTracerTests {
             #expect(after.formation[index] == split.formation[index])
         }
     }
+
+    /// Streamed a chunk at a time, the split keeps the same massive set to the bit and every
+    /// tracer as it was, its attributes to the steps they are packed at (#238).
+    @Test func streamingSplitsAsTheWholeSampleDid() {
+        let drawn = selfGravitatingDisk(30_000)
+        let massive = selfGravitatingDisk(6_000)
+        let (split, tracers) = ParticleSystem.lightTracers(drawn: drawn, massive: massive)
+        var chunks: [LightTracerChunk] = []
+        let (set, streamed) = ParticleSystem.streamingLightTracers(
+            drawn: drawn, massive: massive, chunk: 4_096
+        ) { chunks.append($0) }
+        #expect(streamed == tracers)
+        #expect(ParticleSystem.lightTracerTotal(drawn: drawn, massive: massive) == split.count)
+
+        let alone = split.slice(tracers..<split.count)
+        #expect(set.count == alone.count && set.visibleCount == alone.visibleCount)
+        #expect(set.positions == alone.positions && set.velocities == alone.velocities)
+        #expect(set.mass == alone.mass && set.galaxyIndex == alone.galaxyIndex)
+        #expect(set.component == alone.component && set.formation == alone.formation)
+        #expect(set.luminosity == alone.luminosity && set.kernelScale == alone.kernelScale)
+        #expect(set.birthRadius == alone.birthRadius && set.population == alone.population)
+
+        let states = chunks.flatMap(\.states)
+        let motions = chunks.flatMap(\.motions)
+        #expect(states.count == tracers && motions.count == tracers)
+        let exact = (0..<min(tracers, states.count)).allSatisfy { index in
+            let word = TracerWord(bits: motions[index].w)
+            let velocity = SIMD3(
+                Float(bitPattern: motions[index].x), Float(bitPattern: motions[index].y),
+                Float(bitPattern: motions[index].z))
+            return SIMD3(states[index].x, states[index].y, states[index].z) == split.positions[index]
+                && velocity == split.velocities[index] && states[index].w == split.formation[index]
+                && word.galaxy == split.galaxyIndex[index] && word.component == split.component[index]
+                && word.kernelScale == split.kernelScale[index]
+        }
+        #expect(exact)
+        var light: Float = 0
+        var radius: Float = 0
+        for index in 0..<min(tracers, motions.count) {
+            let word = TracerWord(bits: motions[index].w)
+            light = max(light, abs(word.luminosity / split.luminosity[index] - 1))
+            radius = max(radius, abs(word.birthRadius / max(split.birthRadius[index], 1e-3) - 1))
+        }
+        #expect(light < 0.03)
+        #expect(radius < 6e-4)
+    }
+
+    @Test func aTracerWordKeepsItsAttributes() {
+        for galaxy: UInt32 in [0, 7, 15] {
+            for component in ParticleComponent.allCases {
+                for scale in TracerWord.kernelScales {
+                    for (light, radius) in [(Float(1), Float(3.2)), (0.05, 0.01), (37, 140), (0, 0)] {
+                        let word = TracerWord(
+                            galaxy: galaxy, component: component.rawValue, kernelScale: scale,
+                            luminosity: light, birthRadius: radius)
+                        #expect(word.galaxy == galaxy && word.component == component.rawValue)
+                        #expect(word.kernelScale == scale)
+                        #expect(light == 0 ? word.luminosity == 0 : abs(word.luminosity / light - 1) < 0.03)
+                        #expect(
+                            radius == 0 ? word.birthRadius == 0 : abs(word.birthRadius / radius - 1) < 6e-4)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A tracer standing where a massive particle stands and moving as it moves stays with it:
+    /// its kicks, its cooling and its drift are the massive particle's, fused (#238).
+    @Test func aTracerOnAMassiveParticleStaysWithIt() throws {
+        let scene = selfGravitatingDisk(8_000)
+        #expect(scene.galaxies[0].dissipationTime > 0, "otherwise the cooling goes untested")
+        let massive = RestrictedSolver.sampleParticles(for: scene)
+        let followed = stride(from: 0, to: massive.visibleCount, by: 37).filter {
+            massive.component[$0] < ParticleComponent.halo.rawValue
+        }
+        var particles = ParticleSystem(capacity: followed.count + massive.count)
+        for index in followed {
+            particles.append(
+                position: massive.positions[index], velocity: massive.velocities[index],
+                galaxy: massive.galaxyIndex[index], radius: massive.birthRadius[index],
+                population: massive.population[index], luminosity: massive.luminosity[index],
+                formation: massive.formation[index],
+                component: ParticleComponent(rawValue: massive.component[index]) ?? .star, mass: 0,
+                kernelScale: massive.kernelScale[index])
+        }
+        particles.append(contentsOf: massive)
+        particles.setVisibleCount(followed.count + massive.visibleCount)
+        let solver = try MetalBarnesHutSolver(
+            scene: scene, particles: particles, tracers: followed.count)
+        solver.step(count: 60)
+        let after = solver.particles.positions
+        var worst: Float = 0
+        var moved: Float = 0
+        for (tracer, index) in followed.enumerated() {
+            worst = max(worst, simd_distance(after[tracer], after[followed.count + index]))
+            moved = max(moved, simd_distance(after[tracer], massive.positions[index]))
+        }
+        #expect(moved > 0.1, "otherwise nothing moved")
+        #expect(worst < 1e-3)
+    }
+
+    /// A tracer's kernel comes off the massive tree one read a level: down to the leaf holding
+    /// a massive particle, the walk reads exactly that particle's smoothing length (#238).
+    @Test func theSpacingWalkFindsEachMassiveParticlesLength() throws {
+        let (split, tracers) = ParticleSystem.lightTracers(
+            drawn: selfGravitatingDisk(40_000), massive: selfGravitatingDisk(10_000))
+        let solver = try MetalBarnesHutSolver(
+            scene: selfGravitatingDisk(10_000), particles: split, tracers: tracers)
+        let drawn = split.visibleCount - tracers
+        let lengths = try #require(
+            solver.device.makeBuffer(length: drawn * 4, options: .storageModeShared))
+        #expect(solver.tracerSpacing == nil)
+        #expect(solver.writeSmoothing(into: lengths, drawn: drawn))
+        let spacing = try #require(solver.tracerSpacing)
+        let cells = spacing.cells.contents().bindMemory(
+            to: SIMD2<UInt32>.self, capacity: spacing.cells.length / 8)
+        let frame = spacing.frame.contents().bindMemory(to: Float.self, capacity: 4)
+        // `tracerSpacing` in the shaders, and the codes as `gtMorton` takes them.
+        func walk(_ position: SIMD3<Float>) -> Float {
+            var length = Float(bitPattern: cells[0].x)
+            let local = (position - SIMD3(frame[0], frame[1], frame[2])) * frame[3]
+            let q = SIMD3<UInt32>(local.clamped(lowerBound: .zero, upperBound: SIMD3(repeating: 2_097_151)))
+            var node = 0
+            for level in 0..<spacing.depth {
+                let links = cells[node].y
+                let mask = links & 255
+                let shift = UInt32(20 - level)
+                let digit = ((q.x >> shift) & 1) << 2 | ((q.y >> shift) & 1) << 1 | ((q.z >> shift) & 1)
+                guard mask & (1 << digit) != 0 else { break }
+                node = Int(links >> 8) + (mask & ((1 << digit) - 1)).nonzeroBitCount
+                let here = Float(bitPattern: cells[node].x)
+                if here > 0 { length = here }
+            }
+            return length
+        }
+        let positions = solver.particles.positions
+        let written = lengths.contents().bindMemory(to: Float.self, capacity: drawn)
+        let matched = (0..<drawn).filter { walk(positions[tracers + $0]) == written[$0] }.count
+        #expect(Double(matched) / Double(drawn) > 0.999)
+        // Each massive particle stands for its share of the drawn count, so its kernel is the
+        // size it would have among all of them.
+        let ratio = Float(split.visibleCount) / Float(drawn)
+        let mean = (0..<drawn).reduce(Float(0)) { $0 + written[$1] } / Float(drawn)
+        let tracerMean = (0..<tracers).reduce(Float(0)) { $0 + walk(positions[$1]) } / Float(tracers)
+        #expect(abs(tracerMean / mean - 1) < 0.2)
+        #expect(ratio > 3.5)
+    }
+
+    /// Drawn from 32 bytes each with their kernels off the massive tree, the tracers make the
+    /// picture the same particles make drawn whole, with a tree of their own (#238).
+    @Test func tracersDrawLikeTheParticlesTheyStandFor() throws {
+        let drawnScene = selfGravitatingDisk(60_000)
+        let massiveScene = selfGravitatingDisk(15_000)
+        let (split, tracers) = ParticleSystem.lightTracers(drawn: drawnScene, massive: massiveScene)
+        let solver = try MetalBarnesHutSolver(scene: massiveScene, particles: split, tracers: tracers)
+        let settings = RenderSettings(width: 160, height: 96, supersample: 2, bloomLevels: 2)
+        let camera = Camera.framing(radius: 30, elevation: 0.6)
+        let frames = DiskFrame.make(
+            scene: massiveScene, centers: solver.centers, time: solver.time, strength: 1)
+
+        let alone = split.slice(tracers..<split.count)
+        let compact = try Renderer(
+            particles: alone, settings: settings, externalPositions: solver.positions,
+            externalFormation: solver.formation, externalPositionOffset: tracers * 16)
+        try compact.setTracers(solver)
+        let field = try SmoothingField(device: compact.device, particleCount: alone.visibleCount)
+        field.update(from: solver)
+        compact.setSmoothing(field.buffer)
+        compact.setDiskFrames(frames)
+        let traced = compact.render(camera: camera)
+
+        let whole = try Renderer(particles: split, settings: settings)
+        let wholeField = try SmoothingField(device: whole.device, particleCount: split.visibleCount)
+        wholeField.update(from: whole.positions)
+        whole.setSmoothing(wholeField.buffer)
+        whole.setDiskFrames(frames)
+        let expected = whole.render(camera: camera)
+
+        func blocks(_ pixels: [UInt8]) -> [Double] {
+            var sums = [Double](repeating: 0, count: (160 / 8) * (96 / 8))
+            for y in 0..<96 {
+                for x in 0..<160 {
+                    let base = (y * 160 + x) * 4
+                    sums[(y / 8) * 20 + x / 8] +=
+                        Double(pixels[base]) + Double(pixels[base + 1]) + Double(pixels[base + 2])
+                }
+            }
+            return sums
+        }
+        let a = blocks(traced)
+        let b = blocks(expected)
+        let meanA = a.reduce(0, +) / Double(a.count)
+        let meanB = b.reduce(0, +) / Double(b.count)
+        #expect(meanB > 0)
+        #expect(abs(meanA / meanB - 1) < 0.2)
+        var covariance = 0.0
+        var varianceA = 0.0
+        var varianceB = 0.0
+        for (x, y) in zip(a, b) {
+            covariance += (x - meanA) * (y - meanB)
+            varianceA += (x - meanA) * (x - meanA)
+            varianceB += (y - meanB) * (y - meanB)
+        }
+        #expect(covariance / (varianceA * varianceB).squareRoot() > 0.9)
+    }
 }

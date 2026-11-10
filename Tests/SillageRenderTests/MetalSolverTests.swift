@@ -54,6 +54,8 @@ struct MetalSolverTests {
             "starfieldFragment", "resolve", "brightPass",
             "downsample", "upsampleAdd", "diffractionSpikes", "composite", "dustWebVertex",
             "webCarrierVertex", "webCarrierFragment", "webResolveVertex", "webResolveFragment", "bakeLace",
+            "splatTracerVertex", "dustWebTracerVertex", "webCarrierTracerVertex", "countTracerVertex",
+            "plainTracerVertex",
         ] {
             #expect(render.makeFunction(name: name) != nil, "missing \(name)")
         }
@@ -133,6 +135,9 @@ struct MetalSolverTests {
         #expect(
             Self.shaderStride(of: "BHParams", in: BarnesHutShaders.source)
                 == MemoryLayout<BHParams>.stride)
+        #expect(
+            Self.shaderStride(of: "TracerStepParams", in: BarnesHutShaders.source)
+                == MemoryLayout<TracerStepGPU>.stride)
     }
 
     @Test func isolatedDiskStaysStableOnGPU() throws {

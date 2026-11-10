@@ -500,6 +500,32 @@ struct SceneFolderTests {
         #expect(StageJobs.title(of: job) == StageJobs.particles(planned.particles, massive: planned.massive))
     }
 
+    /// A preview explored at 7 in half the steps runs the same hires as one explored at 3.5.
+    @Test func hiresRunsAtItsOwnScaleWhateverThePreviewRanAt() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        let options = ["--particles", "8e6", "--massive", "2e6"]
+        let reference = try folder.hiresArguments(options, maximumParticles: 10_000_000)
+        var file = try SceneFile.decoded(from: Data(contentsOf: folder.scene))
+        file.timeStepScale = 7
+        try file.encoded().write(to: folder.scene)
+        var clip = try folder.storedClip()
+        clip.steps /= 2
+        clip.settle /= 2
+        try clip.encoded().write(to: folder.clip)
+        let doubled = try folder.hiresArguments(options, maximumParticles: 10_000_000)
+
+        #expect(reference.record.timeStepScale == SceneFolder.hiresTimeStepScale)
+        #expect(doubled.record.timeStepScale == SceneFolder.hiresTimeStepScale)
+        #expect(doubled.record.previewTimeStepMyr == 2 * reference.record.previewTimeStepMyr)
+        #expect(doubled.record.timeStep == reference.record.timeStep)
+        #expect(doubled.record.settle == reference.record.settle)
+        #expect(doubled.record.steps == reference.record.steps)
+        #expect(value("--dt", in: doubled.arguments) == value("--dt", in: reference.arguments))
+        let given = try folder.hiresArguments(options + ["--dt-scale", "7"], maximumParticles: 10_000_000)
+        #expect(given.record.timeStepScale == 7 && given.record.timeStep > doubled.record.timeStep)
+    }
+
     @Test func hiresNeverRunsAboveTheMaximum() throws {
         let folder = try explored()
         defer { try? FileManager.default.removeItem(at: folder.batch) }

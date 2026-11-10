@@ -585,7 +585,8 @@ enum GPUTreeShaders {
         }
         // A drawn particle's smoothing length, read off the leaf that holds it. Only the drawn
         // particles are counted: they come first, and the dark matter sharing their leaf would
-        // make the spacing follow the halo. Needs no masses, so the cells are enough.
+        // make the spacing follow the halo. Needs no masses, so the cells are enough. With light
+        // tracers each one stands for `ratio` drawn particles (#238).
         kernel void gtSmoothing(device float *lengths [[buffer(0)]],
                                 device const BHNode *nodes [[buffer(1)]],
                                 device const uint *order [[buffer(2)]],
@@ -593,6 +594,7 @@ enum GPUTreeShaders {
                                 device const uint *counters [[buffer(4)]],
                                 constant TreeParams &p [[buffer(5)]],
                                 constant uint &drawnCount [[buffer(6)]],
+                                constant float &ratio [[buffer(7)]],
                                 uint gid [[thread_position_in_grid]],
                                 uint threads [[threads_per_grid]]) {
             if (counters[counterOverflow] != 0u) { return; }
@@ -608,11 +610,84 @@ enum GPUTreeShaders {
                 }
                 if (drawn == 0u) { continue; }
                 float width = sqrt(max(node.packed.x, 1e-12));
-                float length = width * pow(1.0 / float(drawn), 1.0 / 3.0);
+                float length = width * pow(1.0 / (float(drawn) * ratio), 1.0 / 3.0);
                 for (uint k = 0u; k < count; ++k) {
                     uint i = order[start + k];
                     if (i < drawnCount) { lengths[i] = length; }
                 }
+            }
+        }
+
+        // What a light tracer's kernel reads, cell by cell (#238): no leaf holds a tracer, so it
+        // takes the spacing of the deepest cell around it holding anything drawn, each drawn
+        // particle of the tree standing for `ratio` of them. x counts the drawn particles, then
+        // holds the length's bits; y is the first child shifted past a mask of the octants
+        // that have one, so a tracer goes down a level in one read.
+        kernel void gtSpacingLeaves(device uint2 *spacing [[buffer(0)]],
+                                    device const BHNode *nodes [[buffer(1)]],
+                                    device const uint *order [[buffer(2)]],
+                                    device const uint *levels [[buffer(3)]],
+                                    device const uint *counters [[buffer(4)]],
+                                    constant TreeParams &p [[buffer(5)]],
+                                    constant uint &drawnCount [[buffer(6)]],
+                                    uint gid [[thread_position_in_grid]],
+                                    uint threads [[threads_per_grid]]) {
+            if (counters[counterOverflow] != 0u) { return; }
+            uint total = levels[p.maximumDepth + 1u];
+            for (uint n = gid; n < total; n += threads) {
+                BHNode node = nodes[n];
+                int signedCount = bhSignedCount(node);
+                uint start = uint(bhRange(node));
+                if (signedCount <= 0) {
+                    uint drawn = 0u;
+                    for (uint k = 0u; k < uint(-signedCount); ++k) {
+                        if (order[start + k] < drawnCount) { drawn += 1u; }
+                    }
+                    spacing[n] = uint2(drawn, 0u);
+                    continue;
+                }
+                uint mask = 0u;
+                for (int c = 0; c < signedCount; ++c) {
+                    mask |= 1u << (as_type<uint>(nodes[start + uint(c)].packed.w) & 7u);
+                }
+                spacing[n] = uint2(0u, (start << 8) | mask);
+            }
+        }
+
+        kernel void gtSpacingFold(device uint2 *spacing [[buffer(0)]],
+                                  device const BHNode *nodes [[buffer(1)]],
+                                  device const uint *levels [[buffer(2)]],
+                                  device const uint *counters [[buffer(3)]],
+                                  constant TreeParams &p [[buffer(4)]],
+                                  uint gid [[thread_position_in_grid]],
+                                  uint threads [[threads_per_grid]]) {
+            if (counters[counterOverflow] != 0u) { return; }
+            uint end = levels[p.level + 1u];
+            for (uint n = levels[p.level] + gid; n < end; n += threads) {
+                int children = bhSignedCount(nodes[n]);
+                if (children <= 0) { continue; }
+                uint first = uint(bhRange(nodes[n]));
+                uint sum = 0u;
+                for (int c = 0; c < children; ++c) { sum += spacing[first + uint(c)].x; }
+                spacing[n].x = sum;
+            }
+        }
+
+        kernel void gtSpacingLengths(device uint2 *spacing [[buffer(0)]],
+                                     device const BHNode *nodes [[buffer(1)]],
+                                     device const uint *levels [[buffer(2)]],
+                                     device const uint *counters [[buffer(3)]],
+                                     constant TreeParams &p [[buffer(4)]],
+                                     constant float &ratio [[buffer(5)]],
+                                     uint gid [[thread_position_in_grid]],
+                                     uint threads [[threads_per_grid]]) {
+            if (counters[counterOverflow] != 0u) { return; }
+            uint total = levels[p.maximumDepth + 1u];
+            for (uint n = gid; n < total; n += threads) {
+                uint drawn = spacing[n].x;
+                float width = sqrt(max(nodes[n].packed.x, 1e-12));
+                float length = drawn > 0u ? width * pow(1.0 / (float(drawn) * ratio), 1.0 / 3.0) : 0.0;
+                spacing[n].x = as_type<uint>(length);
             }
         }
         """

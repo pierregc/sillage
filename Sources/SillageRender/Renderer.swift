@@ -198,6 +198,7 @@ public enum RenderError: Error, CustomStringConvertible {
     case shaderCompilation(String)
     case pipelineCreation(String)
     case textureAllocation
+    case unsupported(String)
 
     public var description: String {
         switch self {
@@ -205,6 +206,7 @@ public enum RenderError: Error, CustomStringConvertible {
         case .shaderCompilation(let message): "Shader compilation failed: \(message)"
         case .pipelineCreation(let message): "Pipeline creation failed: \(message)"
         case .textureAllocation: "Could not allocate a render texture"
+        case .unsupported(let message): "Not supported: \(message)"
         }
     }
 }
@@ -286,6 +288,23 @@ public final class Renderer {
     private let starBuffer: MTLBuffer?
     private let particleCount: Int
     private let drawnCount: Int
+    /// Where the massive particles start in `positionBuffer`, behind the light tracers.
+    private let positionOffset: Int
+    /// Light tracers drawn beside the massive particles, from the solver's own buffers (#238).
+    private var tracers: TracerDrawing?
+    private var tracerPipelines: TracerPipelines?
+    /// A spacing for tracers drawn before there is a tree to read one off.
+    private var tracerFallback: MTLBuffer?
+    /// Each galaxy's scale length, in which a tracer's composition and ramp key are read.
+    private let tracerScales: [Float]
+    private var tracerCount: Int { tracers?.tracerCount ?? 0 }
+
+    private struct TracerPipelines {
+        let dust: MTLRenderPipelineState
+        let splat: MTLRenderPipelineState
+        let plain: MTLRenderPipelineState
+        let count: MTLRenderPipelineState
+    }
     /// One over the mean light per unit mass across this scene at t = 0.
     ///
     /// The exposure divides by the *number* of particles that reach a pixel, so a law that
@@ -321,6 +340,7 @@ public final class Renderer {
         settings: RenderSettings,
         externalPositions: MTLBuffer? = nil,
         externalFormation: MTLBuffer? = nil,
+        externalPositionOffset: Int = 0,
         sharing other: Renderer? = nil
     ) throws {
         guard let device = other?.device ?? device ?? MTLCreateSystemDefaultDevice() else {
@@ -328,6 +348,8 @@ public final class Renderer {
         }
         self.device = device
         self.settings = settings
+        self.positionOffset =
+            other?.positionOffset ?? (externalPositions == nil ? 0 : externalPositionOffset)
         // Only what is drawn. Dark matter is discarded in the vertex shader anyway, so the
         // draw call stops before it: at three million stars with live halos that is four and a
         // half million vertices a frame that existed only to be thrown away.
@@ -360,26 +382,9 @@ public final class Renderer {
             _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
             attachments: Int = 2, format: MTLPixelFormat = .rgba16Float
         ) throws -> MTLRenderPipelineState {
-            let descriptor = MTLRenderPipelineDescriptor()
-            descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
-            descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
-            for (index, format) in [format, format].prefix(attachments).enumerated() {
-                guard let attachment = descriptor.colorAttachments[index] else { continue }
-                attachment.pixelFormat = format
-                attachment.writeMask = index == target ? .all : []
-                attachment.isBlendingEnabled = index == target
-                attachment.rgbBlendOperation = .add
-                attachment.alphaBlendOperation = .add
-                attachment.sourceRGBBlendFactor = .one
-                attachment.sourceAlphaBlendFactor = .one
-                attachment.destinationRGBBlendFactor = .one
-                attachment.destinationAlphaBlendFactor = .one
-            }
-            do {
-                return try device.makeRenderPipelineState(descriptor: descriptor)
-            } catch {
-                throw RenderError.pipelineCreation("\(fragmentFunction): \(error)")
-            }
+            try Renderer.additive(
+                vertexFunction, fragmentFunction, writing: target, attachments: attachments,
+                format: format, library: library, device: device)
         }
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
         splatPipeline = try additive("splatVertex", "splatFragment", writing: 0)
@@ -472,6 +477,8 @@ public final class Renderer {
         let birthScales =
             other == nil && particles.birthRadius.count == particles.count
             ? Renderer.scaleLengths(particles.birthRadius, of: particles) : [:]
+        tracerScales =
+            other?.tracerScales ?? (0..<TracerWord.galaxyLimit).map { birthScales[UInt32($0)] ?? 0 }
         guard
             let positionBuffer = other?.positionBuffer ?? externalPositions
                 ?? device.makeBuffer(length: count * stride, options: .storageModeShared),
@@ -534,6 +541,7 @@ public final class Renderer {
         if externalPositions == nil, other == nil {
             upload(positions: particles.positions)
         }
+        if let source = other?.tracers { try setTracers(source) }
     }
 
     /// A renderer of its own size and look over the particles `other` draws: the buffers that
@@ -609,6 +617,75 @@ public final class Renderer {
     public func skipFrames(_ count: Int) {
         guard !settings.plain else { return }
         for _ in 0..<max(count, 0) { frameSeed = frameSeed.truncatingRemainder(dividingBy: 4096) + 7.13 }
+    }
+
+    /// Draws the light tracers `source` holds beside the massive particles (#238), each with
+    /// the kernel the massive tree around it gives; nil draws none.
+    public func setTracers(_ source: TracerDrawing?) throws {
+        tracers = source
+        guard source != nil, tracerPipelines == nil else { return }
+        func additive(
+            _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
+            attachments: Int = 2, format: MTLPixelFormat = .rgba16Float
+        ) throws -> MTLRenderPipelineState {
+            try Renderer.additive(
+                vertexFunction, fragmentFunction, writing: target, attachments: attachments,
+                format: format, library: library, device: device)
+        }
+        tracerPipelines = TracerPipelines(
+            dust: try additive("splatTracerVertex", "dustFragment", writing: 1),
+            splat: try additive("splatTracerVertex", "splatFragment", writing: 0),
+            plain: try additive("plainTracerVertex", "plainFragment", writing: 0, attachments: 1),
+            count: try additive(
+                "countTracerVertex", "countFragment", writing: 0, attachments: 1, format: .r32Float))
+        var fallback = SIMD4<UInt32>(Float(0.05).bitPattern, 0, 0, 0)
+        tracerFallback = device.makeBuffer(bytes: &fallback, length: 16, options: .storageModeShared)
+    }
+
+    private static func additive(
+        _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
+        attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice
+    ) throws -> MTLRenderPipelineState {
+        let descriptor = MTLRenderPipelineDescriptor()
+        descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
+        descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
+        for (index, format) in [format, format].prefix(attachments).enumerated() {
+            guard let attachment = descriptor.colorAttachments[index] else { continue }
+            attachment.pixelFormat = format
+            attachment.writeMask = index == target ? .all : []
+            attachment.isBlendingEnabled = index == target
+            attachment.rgbBlendOperation = .add
+            attachment.alphaBlendOperation = .add
+            attachment.sourceRGBBlendFactor = .one
+            attachment.sourceAlphaBlendFactor = .one
+            attachment.destinationRGBBlendFactor = .one
+            attachment.destinationAlphaBlendFactor = .one
+        }
+        do {
+            return try device.makeRenderPipelineState(descriptor: descriptor)
+        } catch {
+            throw RenderError.pipelineCreation("\(fragmentFunction): \(error)")
+        }
+    }
+
+    /// The tracers' buffers, at indices no massive draw binds, so one encoder serves both.
+    private func bindTracers(_ encoder: MTLRenderCommandEncoder, _ source: TracerDrawing) {
+        encoder.setVertexBuffer(source.positions, offset: 0, index: 18)
+        encoder.setVertexBuffer(source.velocities, offset: 0, index: 19)
+        var scales = tracerScales
+        encoder.setVertexBytes(&scales, length: scales.count * 4, index: 17)
+        let spacing = source.tracerSpacing
+        var depth = UInt32(spacing?.depth ?? 0)
+        encoder.setVertexBuffer(spacing?.cells ?? tracerFallback, offset: 0, index: 14)
+        encoder.setVertexBuffer(spacing?.frame ?? tracerFallback, offset: 0, index: 15)
+        encoder.setVertexBytes(&depth, length: 4, index: 16)
+    }
+
+    /// `particles`, counted over `[massive drawn | tracers]`, split into the two draws' ranges.
+    private func split(_ particles: Range<Int>) -> (massive: Range<Int>, tracers: Range<Int>) {
+        let massive = particles.clamped(to: 0..<drawnCount)
+        let light = particles.clamped(to: drawnCount..<(drawnCount + tracerCount))
+        return (massive, (light.lowerBound - drawnCount)..<(light.upperBound - drawnCount))
     }
 
     /// Updates the spiral pattern for each galaxy. Called once per frame with the current
@@ -756,7 +833,7 @@ public final class Renderer {
             time: time, megayearsPerUnit: 0, ionisedMyr: 0, ionisingRiseMyr: 0,
             ionisedStrength: 0, populationYoungMyr: 0, populationSpan: 0, populationLast: 0,
             luminosityNormalisation: 1,
-            brightness: settings.brightness * 1_000_000 / Float(max(drawnCount, 1)),
+            brightness: settings.brightness * 1_000_000 / Float(max(drawnCount + tracerCount, 1)),
             dustStrength: 0, starSize: 0, projectionScale: 0, smoothingScale: 0,
             referenceArea: 0, minimumSize: settings.minimumKernel * Float(scale),
             maximumSize: 0, galaxyTint: 1, slabNear: 0, slabScale: 0, pass: 0)
@@ -769,11 +846,16 @@ public final class Renderer {
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         encoder.setRenderPipelineState(plainPipeline)
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-        encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+        encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
         encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
         encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
         encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
         encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+        if let tracers, let tracerPipelines, tracerCount > 0 {
+            encoder.setRenderPipelineState(tracerPipelines.plain)
+            bindTracers(encoder, tracers)
+            encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: tracerCount)
+        }
         encoder.endEncoding()
     }
 
@@ -798,7 +880,12 @@ public final class Renderer {
         stages: ClosedRange<UInt32> = 0...1, first: Bool = true
     ) {
         if settings.plain { return encodePlain(camera: camera, into: buffer) }
-        let particles = particles ?? 0..<drawnCount
+        let particles = particles ?? 0..<(drawnCount + tracerCount)
+        let parts = split(particles)
+        let traced =
+            tracerCount > 0
+            ? tracers.flatMap { source in tracerPipelines.map { (source: source, pipelines: $0) } }
+            : nil
         let scale = settings.supersample
         let aspect = Float(settings.width) / Float(settings.height)
 
@@ -815,7 +902,7 @@ public final class Renderer {
         // matter that never lands on a pixel. Exposure per drawn particle is what keeps a
         // scene looking the same whether it runs at 500 000 stars or at twenty million,
         // which is the whole point of normalising by count at all.
-        let perParticle = 1_000_000 / Float(max(drawnCount, 1))
+        let perParticle = 1_000_000 / Float(max(drawnCount + tracerCount, 1))
 
         // The stack of depth slabs, centred on what the camera is pointed at and as deep as
         // the frame is wide. A disk seen at any angle at all spans several of them, which is
@@ -878,11 +965,16 @@ public final class Renderer {
             count.colorAttachments[0].storeAction = .store
             if let encoder = buffer.makeRenderCommandEncoder(descriptor: count) {
                 encoder.setRenderPipelineState(countPipeline)
-                encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
                 encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
                 encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
                 encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
                 encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+                if let traced {
+                    encoder.setRenderPipelineState(traced.pipelines.count)
+                    bindTracers(encoder, traced.source)
+                    encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: tracerCount)
+                }
                 encoder.endEncoding()
             }
         }
@@ -899,7 +991,7 @@ public final class Renderer {
             }
             if let encoder = buffer.makeRenderCommandEncoder(descriptor: coarse) {
                 encoder.setRenderPipelineState(web.carrierPipeline)
-                encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
                 encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
                 encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
                 encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
@@ -910,8 +1002,18 @@ public final class Renderer {
                 encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
                 encoder.setVertexBytes(
                     &webUniforms, length: MemoryLayout<WebUniforms>.stride, index: 13)
-                encoder.drawPrimitives(
-                    type: .point, vertexStart: particles.lowerBound, vertexCount: particles.count)
+                if !parts.massive.isEmpty {
+                    encoder.drawPrimitives(
+                        type: .point, vertexStart: parts.massive.lowerBound,
+                        vertexCount: parts.massive.count)
+                }
+                if let traced, !parts.tracers.isEmpty {
+                    encoder.setRenderPipelineState(web.tracerCarrier)
+                    bindTracers(encoder, traced.source)
+                    encoder.drawPrimitives(
+                        type: .point, vertexStart: parts.tracers.lowerBound,
+                        vertexCount: parts.tracers.count)
+                }
                 encoder.endEncoding()
             }
         }
@@ -935,7 +1037,7 @@ public final class Renderer {
                     type: .point, vertexStart: 0, vertexCount: settings.starCount)
             }
 
-            encoder.setVertexBuffer(positionBuffer, offset: 0, index: 0)
+            encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
             encoder.setVertexBuffer(populationBuffer, offset: 0, index: 1)
             encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
             encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
@@ -948,6 +1050,7 @@ public final class Renderer {
             encoder.setVertexBuffer(rampKeyBuffer, offset: 0, index: 11)
             encoder.setVertexBuffer(rampBuffer, offset: 0, index: 12)
             encoder.setVertexTexture(columnDensity, index: 0)
+            if let traced { bindTracers(encoder, traced.source) }
             // Twice over the same buffer: the dust first, so that its opacity is standing in
             // the attachment when the stars are drawn and read it back. Each draw throws away
             // the particles belonging to the other one in the vertex stage, before any
@@ -964,8 +1067,18 @@ public final class Renderer {
                 }
                 encoder.setVertexBytes(
                     &splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-                encoder.drawPrimitives(
-                    type: .point, vertexStart: particles.lowerBound, vertexCount: particles.count)
+                if !parts.massive.isEmpty {
+                    encoder.drawPrimitives(
+                        type: .point, vertexStart: parts.massive.lowerBound,
+                        vertexCount: parts.massive.count)
+                }
+                if let traced, !parts.tracers.isEmpty {
+                    encoder.setRenderPipelineState(
+                        stage == 0 ? web?.tracerPainted ?? traced.pipelines.dust : traced.pipelines.splat)
+                    encoder.drawPrimitives(
+                        type: .point, vertexStart: parts.tracers.lowerBound,
+                        vertexCount: parts.tracers.count)
+                }
                 if stage == 0, let web {
                     // Once per pixel, before any star reads the dust back.
                     encoder.setRenderPipelineState(web.resolve)
@@ -1201,7 +1314,8 @@ public final class Renderer {
     /// took, so the canvas's frames can go between them (#114). Additive, in the same order, so
     /// the same picture.
     public func render(camera: Camera, slice: Int, pacer: CanvasPacer? = nil) -> [UInt8] {
-        guard !settings.plain, slice > 0, drawnCount > slice else {
+        let total = drawnCount + tracerCount
+        guard !settings.plain, slice > 0, total > slice else {
             pacer?.waitForGap(lastGPUTime)
             return render(camera: camera)
         }
@@ -1217,8 +1331,8 @@ public final class Renderer {
             return true
         }
         for stage in UInt32(0)...1 {
-            for start in Swift.stride(from: 0, to: drawnCount, by: slice) {
-                let range = start..<min(start + slice, drawnCount)
+            for start in Swift.stride(from: 0, to: total, by: slice) {
+                let range = start..<min(start + slice, total)
                 guard
                     run({
                         encodeSplat(

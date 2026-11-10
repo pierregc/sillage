@@ -1561,36 +1561,56 @@ print(
     "scene      \(scene.name), \(drawnScene.totalParticleCount) visible"
         + (scene.hasLiveHalos
             ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
+// With tracers `seeded` is the massive set alone: the tracers go straight into the solver's
+// buffers as they are sampled, 32 bytes each (#238).
 var seeded: ParticleSystem
 var tracerCount = 0
+var tracerStore: LightTracerStore?
+// `--massive-only` (#239): the massive particles of that draw run alone, which the same draw
+// with its tracers repeats to the bit, so the shots planned on this run frame that one. The
+// tracers are drawn to pick the same massive particles, then dropped as they come.
+let massiveOnly = arguments.contains("--massive-only")
 if massiveCount != nil {
     let splitStart = Date()
-    (seeded, tracerCount) = ParticleSystem.lightTracers(drawn: drawnScene, massive: scene)
+    if massiveOnly {
+        let kept = ParticleSystem.streamingLightTracers(drawn: drawnScene, massive: scene) { _ in }
+        (seeded, tracerCount) = (kept.massive, kept.tracers)
+    } else {
+        let split = try MetalBarnesHutSolver.lightTracers(drawn: drawnScene, massive: scene)
+        (tracerStore, seeded, tracerCount) = (split.tracers, split.massive, split.tracers.count)
+    }
     print(
         String(
             format: "tracers    %d light, %d massive visible, %d halo, softening %.4f, step %.5f,"
                 + " angle %.2f, %.1f s",
-            tracerCount, seeded.visibleCount - tracerCount, seeded.count - seeded.visibleCount,
+            tracerCount, seeded.visibleCount, seeded.count - seeded.visibleCount,
             scene.softening, scene.timeStep,
             argument("theta-tracers").flatMap(Float.init) ?? scene.openingAngle,
             Date().timeIntervalSince(splitStart)))
 } else {
     seeded = RestrictedSolver.sampleParticles(for: drawnScene)
 }
-// `--massive-only` (#239): the massive particles of that draw run alone, which the same draw
-// with its tracers repeats to the bit, so the shots planned on this run frame that one.
-if arguments.contains("--massive-only"), tracerCount > 0 {
-    seeded = seeded.slice(tracerCount..<seeded.count)
+if massiveOnly, tracerCount > 0 {
     tracerCount = 0
     drawnScene = scene
     print("massive    \(seeded.visibleCount) visible run alone, without the tracers")
+}
+// `--tracer-sort N` and `--tracer-sort-chunk N`: how often the tracers' walk order is sorted,
+// and how many are sorted together, to measure them.
+if let interval = argument("tracer-sort").flatMap(Int.init) {
+    MetalBarnesHutSolver.tracerSortInterval = interval
+}
+if let chunk = argument("tracer-sort-chunk").flatMap(Int.init) {
+    MetalBarnesHutSolver.tracerSortChunk = chunk
 }
 let gpuSolver: (any GPUSolver)? =
     backend == "cpu"
     ? nil
     : tracerCount > 0
-        ? try MetalBarnesHutSolver(scene: scene, particles: seeded, tracers: tracerCount)
+        ? try MetalBarnesHutSolver(scene: scene, massive: seeded, tracers: tracerStore)
         : try GPUSolverFactory.make(scene: scene, particles: seeded)
+tracerStore = nil
+let tracerSolver = tracerCount > 0 ? gpuSolver as? MetalBarnesHutSolver : nil
 if let theta = argument("theta-tracers").flatMap(Float.init),
     let solver = gpuSolver as? MetalBarnesHutSolver
 {
@@ -1602,11 +1622,15 @@ profiled?.profiling = true
 let solver: any Solver = gpuSolver ?? RestrictedSolver(scene: scene, particles: seeded)
 let renderer = try Renderer(
     particles: seeded, settings: settings, externalPositions: gpuSolver?.positions,
-    externalFormation: gpuSolver?.formation)
+    externalFormation: gpuSolver?.formation, externalPositionOffset: tracerCount * 16)
+try renderer.setTracers(tracerSolver)
 // Each particle's kernel spans its own local interparticle spacing, so the surface stays
-// continuous instead of resolving the sampling.
-let drawnCount = seeded.visibleCount > 0 ? seeded.visibleCount : seeded.count
-let smoothing = try SmoothingField(device: renderer.device, particleCount: drawnCount)
+// continuous instead of resolving the sampling. A tracer reads its own off the massive tree.
+let massiveDrawn = seeded.visibleCount > 0 ? seeded.visibleCount : seeded.count
+let drawnCount = tracerCount + massiveDrawn
+// Particles the solver's position buffer holds, tracers first.
+let heldCount = tracerCount + seeded.count
+let smoothing = try SmoothingField(device: renderer.device, particleCount: massiveDrawn)
 renderer.setSmoothing(smoothing.buffer)
 renderer.setGalaxyColours(look.palette)
 print("solver     \(backend) (\(scene.solver.rawValue))")
@@ -1687,7 +1711,6 @@ let take: Recording? = argument("take").map { _ in
     return reel
 }
 // `--take-massive path`: the same run drawn with its massive particles only, for comparing.
-let massiveDrawn = drawnCount - tracerCount
 let massiveTake: Recording? = argument("take-massive").map { _ in
     let reel = Recording(
         particleCount: massiveDrawn, galaxyCount: scene.galaxies.count, interval: takeInterval)
@@ -1922,7 +1945,10 @@ while frame < frames || storyGoesOn() {
     }
     // A full pass films through its formats' cameras, never this one.
     if frozenRadius <= 0 && look.camera.mode != .auto && runVideos == nil {
-        frozenRadius = look.camera.framedRadius(positions: solver.particles.positions)
+        // Not `particles` with tracers, which would build every one of them as a particle.
+        frozenRadius =
+            tracerSolver.map { look.camera.framedRadius(sortedRadii: $0.radii(every: 16).sorted()) }
+            ?? look.camera.framedRadius(positions: solver.particles.positions)
     }
 
     let smoothingStart = Date()
@@ -1991,7 +2017,7 @@ while frame < frames || storyGoesOn() {
         try keyFrameTake.offer(
             frame: frame,
             positions: gpuSolver.positions.contents().bindMemory(
-                to: SIMD3<Float>.self, capacity: seeded.count),
+                to: SIMD3<Float>.self, capacity: heldCount),
             time: solver.time, centers: solver.centers,
             disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [])
     }
@@ -2012,7 +2038,7 @@ while frame < frames || storyGoesOn() {
     if let massiveTake, let gpuSolver {
         massiveTake.offer(
             positions: gpuSolver.positions.contents().bindMemory(
-                to: SIMD3<Float>.self, capacity: seeded.count) + tracerCount,
+                to: SIMD3<Float>.self, capacity: heldCount) + tracerCount,
             time: solver.time, centers: solver.centers,
             disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: takeBudget)
     }
@@ -2020,7 +2046,7 @@ while frame < frames || storyGoesOn() {
         if let gpuSolver {
             take.offer(
                 positions: gpuSolver.positions.contents().bindMemory(
-                    to: SIMD3<Float>.self, capacity: seeded.count),
+                    to: SIMD3<Float>.self, capacity: heldCount),
                 time: solver.time, centers: solver.centers,
                 disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: takeBudget)
         } else {
@@ -2036,7 +2062,7 @@ while frame < frames || storyGoesOn() {
     if density?.wants(frame: frame) == true {
         if let gpuSolver {
             let positions = gpuSolver.positions.contents().bindMemory(
-                to: SIMD3<Float>.self, capacity: seeded.count)
+                to: SIMD3<Float>.self, capacity: heldCount)
             density?.add(positions, count: drawnCount)
             if tracerCount > 0 {
                 tracerDensity?.add(positions, count: tracerCount)
@@ -2062,14 +2088,16 @@ while frame < frames || storyGoesOn() {
                     return (Double(tidal) / samples, (sum / samples).squareRoot())
                 }
                 // And how thick each disk is, off the plane it turns in: heating shows there.
-                let disks = (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? []
+                let disks = tracerSolver?.diskFrames ?? []
                 func heights(_ range: Range<Int>) -> [Double] {
                     var sums = [Double](repeating: 0, count: disks.count)
                     var counted = [Int](repeating: 0, count: disks.count)
                     for index in stride(from: range.lowerBound, to: range.upperBound, by: 16) {
-                        let galaxy = Int(seeded.galaxyIndex[index])
+                        let word = index < tracerCount ? tracerSolver?.tracerWord(index) : nil
+                        let galaxy = Int(word?.galaxy ?? seeded.galaxyIndex[index - tracerCount])
+                        let kind = word?.component ?? seeded.component[index - tracerCount]
                         guard galaxy < disks.count, galaxy < centres.count,
-                            seeded.component[index] < ParticleComponent.halo.rawValue
+                            kind < ParticleComponent.halo.rawValue
                         else { continue }
                         let offset = positions[index] - centres[galaxy]
                         let height = simd_dot(offset, disks[galaxy].axis)
@@ -2131,7 +2159,7 @@ while frame < frames || storyGoesOn() {
         // access, and calling it once per sample made each frame nine seconds slower.
         if let gpuSolver {
             let positions = gpuSolver.positions.contents().bindMemory(
-                to: SIMD3<Float>.self, capacity: seeded.count)
+                to: SIMD3<Float>.self, capacity: heldCount)
             for index in stride(from: 0, to: drawnCount, by: 64) { tally(positions[index]) }
         } else {
             let positions = solver.particles.positions
@@ -2147,7 +2175,9 @@ while frame < frames || storyGoesOn() {
             String(format: ",%.3f", $0 < states.count ? states[$0].torn : 0)
         }.joined()
         var formed = 0
-        if let gpuSolver {
+        if let tracerSolver {
+            formed = tracerSolver.formed(after: previousTime, until: solver.time)
+        } else if let gpuSolver {
             let times = gpuSolver.formation.contents().bindMemory(
                 to: Float.self, capacity: seeded.count)
             for index in 0..<drawnCount
@@ -2232,7 +2262,8 @@ if let runVideos {
         } ?? "massive    repeats the massive pass to the bit over \(runVideos.checkedFrames) stored frames")
 }
 if let keyFrameTake, let path = argument("key-frames") {
-    let captured = gpuSolver?.capturedParticles(from: seeded) ?? seeded
+    let captured =
+        tracerSolver?.drawnAttributes() ?? gpuSolver?.capturedParticles(from: seeded) ?? seeded
     let url = try prepared(path)
     let list =
         argument("key-frame-list").map { URL(fileURLWithPath: $0) }
@@ -2289,13 +2320,13 @@ if curves != nil {
 }
 if let take, let path = argument("take") {
     if let failure = take.spillFailure { print("take       held in memory: \(failure)") }
-    let captured = gpuSolver?.capturedParticles(from: seeded) ?? seeded
+    let captured =
+        tracerSolver?.drawnAttributes() ?? gpuSolver?.capturedParticles(from: seeded) ?? seeded
     try RecordingFile.write(take, scene: drawnScene, particles: captured, to: prepared(path))
 }
 if let massiveTake, let path = argument("take-massive") {
     let captured = gpuSolver?.capturedParticles(from: seeded) ?? seeded
-    let alone = captured.slice(tracerCount..<captured.count)
-    try RecordingFile.write(massiveTake, scene: scene, particles: alone, to: prepared(path))
+    try RecordingFile.write(massiveTake, scene: scene, particles: captured, to: prepared(path))
 }
 if let (folder, done) = hiresRun, fullPass {
     do {
