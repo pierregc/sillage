@@ -57,7 +57,7 @@ session. Read the note for an area before changing it.
 - [What a played-back frame costs](playback-frame-cost.md): `SnapshotStream`
 - [Two things that made a replay a slideshow](replay-slideshow.md): `--replayswitch`, `--replay`
 - [Checkpoints: a long run that survives a restart](checkpoints.md): what the solver keeps and rebuilds, segments joined without encoding, the run's identity, the cost at 8 M and 200 M (#240)
-- [Previews at 200 M](200m-preview.md): an hour at 200 M drawn on 2 M massive, then at 100 M on 20 M, what they cost, why the shapes are the massive count's, a whole story extrapolated (#241)
+- [Previews at 200 M](200m-preview.md): an hour at 200 M drawn on 2 M massive, then at 100 M on 8 M (20 M with their halo), what they cost, why the shapes are the massive count's, a whole story extrapolated (#241)
 - [The videos drawn during the hires run](render-during-hires.md): two passes, the massive part repeated to the bit, the take's exposure, frame for frame against `export`, what drawing costs (#239)
 
 ## Rendering and the app

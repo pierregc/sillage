@@ -4,8 +4,9 @@ Step 5 of epic #236. The ticket planned 2 M massive with 50 M tracers, then the 
 198 M. Pierre dropped the 50 M stage and asked instead for about an hour of computing at 200 M
 drawn: a known scene, shown while the collision is under way, an extract only, in 4K through a
 camera somewhat inside the system, to judge whether 200 M is worth a long run. Seeing it, he asked
-for a second hour with ten times the mass. This note is those two previews. Crops, stills and the
-two side by side are on `assets/241-preview` under `docs/spikes/200m-preview/`.
+for a second hour on four times as many massive particles, 20 M with their halo against 5 M. This
+note is those two previews. Crops, stills and the two side by side are on `assets/241-preview`
+under `docs/spikes/200m-preview/`.
 
 ## The runs
 
@@ -48,7 +49,7 @@ On the M4 Max, alone on the GPU, Pierre using the Mac meanwhile.
 | peak footprint | 4.2 GB | 10.8 GB | 9.8 GB | 11.0 GB |
 | on disk | take 2.0 GB | video 103 MB | take 8.0 GB | video 103 MB |
 
-- **A tracer step** costs 21.0 ns on 2 M massive, as at 100 M drawn (#238), and 23.4 ns on 20 M,
+- **A tracer step** costs 21.0 ns on 2 M massive, as at 100 M drawn (#238), and 23.4 ns on 8 M,
   whose tree is deeper.
 - **Checkpoints** of 6.52 GB, written in 1.07 and 1.08 s, and 3.66 GB in 0.67 to 0.69 s; the
   massive set once, 0.32 and 1.28 GB in 0.10 and 0.26 s. Two at most while one is written,
@@ -60,15 +61,15 @@ On the M4 Max, alone on the GPU, Pierre using the Mac meanwhile.
   (0.040 s + 7.6 ns before); the 0.77 s at 100 M sit 12 % under that line.
 
 **A whole story** of this scene at a hires's step, 923 frames in 4K and vertical, by these
-numbers: on 2 M massive, 8 480 steps, about 11 h and 11 GB of memory; on 20 M massive, 15 430
+numbers: on 2 M massive, 8 480 steps, about 11 h and 11 GB of memory; on 8 M massive, 15 430
 steps (the step halves with the softening), about 12 h at 100 M drawn and about 22 h and 14 GB
 at 200 M. The epic's bounds are 24 h, 20 GB and 35 GB of disk. On disk the key frames weigh
-most at 200 M (1.6 GB each, and their take about 10 GB); on 20 M massive the massive take at one
+most at 200 M (1.6 GB each, and their take about 10 GB); on 8 M massive the massive take at one
 frame in four would be 15 GB more, so one in eight there.
 
 ## What they show
 
-- **Proportions.** In the first preview 97.5 % of the particles drawn carry no mass: gravity is
+- **Proportions.** In the first preview 99 % of the particles drawn carry no mass: gravity is
   computed between 5 M particles (2 M visible, 3 M halo), a hundred tracers to each massive
   visible one, against three in a night's 8 M. In the second, 20 M carry it, 12 tracers to each.
 - **Continuous matter.** At 200 M drawn the streams read smooth, with thin filaments and the sharp
@@ -79,14 +80,16 @@ frame in four would be 15 GB more, so one in eight there.
   hid them: Pierre found the modelling coarser, and asked whether too few massive particles were
   why. A step four times a hires's, which heats and thickens the disks, and a look tuned for
   coarse grain soften both previews further.
-- **Ten times the mass.** With 20 M massive the same encounter keeps its shapes, with a little
-  more fine structure in the debris (thinner streams, more shells and ripples around the core),
-  a modest change at these scales next to the one from 2 M drawn to 200 M. Its grain is a little
-  coarser, at 100 M drawn. Pierre judges it on the side-by-side.
+- **Four times the massive particles.** On 8 M massive (20 M with their halo) the same encounter
+  keeps its shapes, with a little more fine structure in the debris (thinner streams, more shells
+  and ripples around the core), a modest change at these scales next to the one from 2 M drawn to
+  200 M. Its grain is a little coarser, at 100 M drawn, and a whole story at 200 M takes twice as
+  long.
 
 ## What is left
 
-- Past 8 M visible the softening is at its 30 pc floor, so more mass sharpens nothing more.
+- Past 8 M massive the softening is at its 30 pc floor, so more massive particles sharpen
+  nothing more.
 - A hires's step instead of four times it, and a look tuned for 200 M (more contrast, point-like
   stars), are the levers left on the shapes and on the milky look.
 - #241 closes on these previews, and with it epic #236.
