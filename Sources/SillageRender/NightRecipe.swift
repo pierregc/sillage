@@ -245,7 +245,8 @@ extension NightRecipe {
     /// The night's seed when the recipe gives none: the day it starts, as `explore-batch.sh`.
     public static func daySeed(_ date: Date, calendar: Calendar = .current) -> UInt64 {
         let day = calendar.dateComponents([.year, .month, .day], from: date)
-        return UInt64((day.year ?? 2026) * 10_000 + (day.month ?? 1) * 100 + (day.day ?? 1))
+        let (year, month, dayOfMonth) = (day.year ?? 2026, day.month ?? 1, day.day ?? 1)
+        return UInt64(year * 10_000 + month * 100 + dayOfMonth)
     }
 
     /// The moment the night must be done: the next time the clock reads `deliver`, an exact
