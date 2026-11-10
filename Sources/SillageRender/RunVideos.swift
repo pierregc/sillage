@@ -266,6 +266,8 @@ extension RunVideos {
             let (reader, output) = try passthrough(part)
             var count = 0
             while let sample = output.copyNextSampleBuffer() {
+                // The reader's markers, at either end of a segment, hold no frame.
+                guard CMSampleBufferGetNumSamples(sample) > 0 else { continue }
                 if input == nil {
                     // The first segment's description, which every segment of the run shares.
                     let made = AVAssetWriterInput(
@@ -307,7 +309,9 @@ extension RunVideos {
         }
         let (check, output) = try passthrough(url)
         var counted = 0
-        while output.copyNextSampleBuffer() != nil { counted += 1 }
+        while let sample = output.copyNextSampleBuffer() {
+            counted += CMSampleBufferGetNumSamples(sample)
+        }
         guard check.status == .completed, counted == frames, written == frames else {
             throw Failure.join("\(counted) frames in the video, \(written) in the segments, \(frames) drawn")
         }
