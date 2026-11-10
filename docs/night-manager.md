@@ -275,7 +275,8 @@ of them, the other 6 M light tracers in their field ([the note](notes/light-trac
 texture of 8 M, the dynamics and the step of 2 M. The two real 8 M hires of 2026-10-30 took 237
 and 239 minutes for 28 681 and 28 084 steps with the settle, peaked at 15.4 GB of memory and
 wrote takes of 12.7 and 18.5 GB for 1 030 and 1 514 frames: the 1.53 bytes a particle a frame
-the plan counts, which still holds since a take keeps every particle drawn. Their 4K exports
+the plan counted, which still holds since a take keeps every particle drawn. Since #237 a take
+holds eight bytes a particle a kept frame instead of six, and the plan counts 2.04. Their 4K exports
 took one and two and a half minutes. Drawn from 2 M, the same stories take 14 964 and 14 042
 steps, and the model puts them at 63 and 59 minutes: 108 s + 62.4 ns a massive particle step,
 fitted on the library's 2 M and real 8 M runs as before, and 20 ns a tracer step until runs with

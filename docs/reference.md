@@ -277,6 +277,12 @@ frame alone saves another 29 %, and predicting each frame from the two before it
 second decodes only in order, and both would give up the memory-mapped random access playback
 and export rely on, for a smaller saving than the interval already makes.
 
+Since #237 a take holds each position in 21 bits an axis, eight bytes a particle a kept frame
+where the tables above count six: a third more, about 3.7 GB for the 2 M take at 1 in 4, for a
+step between the positions it tells apart 32 times finer than the 3.7 to 14.1 pc of a 16-bit take
+of a 2 M hires (see [takes on disk](notes/takes-on-disk.md)). Takes written before keep their 16
+bits and play as before.
+
 The take also carries what each disk is doing, the plane it turns in and how much of it an
 encounter has torn, which is what fades its painted arms. Takes `hires` wrote before #186 hold
 none: whatever draws one reads each disk's disruption, frame by frame, from the
