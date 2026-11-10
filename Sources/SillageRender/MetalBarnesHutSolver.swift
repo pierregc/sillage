@@ -1570,31 +1570,9 @@ extension MetalBarnesHutSolver: TracerDrawing {
 // MARK: - Checkpoint
 
 extension MetalBarnesHutSolver {
-    /// What a checkpoint keeps of a run besides its particles' buffers (#240): everything the
-    /// next step reads that the positions do not give back.
-    public struct State: Codable, Sendable {
-        public var count: Int
-        public var tracers: Int
-        public var time: Float
-        public var stepsSinceTree: Int
-        public var stepsSinceFormation: Int
-        public var haloCenters: [SIMD3<Float>]
-        public var massCenters: [SIMD3<Float>]
-        public var galaxyMotion: [SIMD3<Float>]
-        public var diskStates: [DiskState]
-    }
+    public typealias State = SolverState
 
-    public enum CheckpointError: Error, CustomStringConvertible {
-        case otherRun(String)
-        case truncated
-
-        public var description: String {
-            switch self {
-            case .otherRun(let why): "the checkpoint is of another run: \(why)"
-            case .truncated: "the checkpoint's particles are cut short"
-            }
-        }
-    }
+    public typealias CheckpointError = RunCheckpointError
 
     public var state: State {
         centersLock.lock()

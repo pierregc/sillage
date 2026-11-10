@@ -1,6 +1,21 @@
-import CryptoKit
 import Foundation
 import SillageCore
+#if canImport(CryptoKit)
+    import CryptoKit
+#endif
+
+/// What reading a checkpoint refuses with.
+public enum RunCheckpointError: Error, CustomStringConvertible {
+    case otherRun(String)
+    case truncated
+
+    public var description: String {
+        switch self {
+        case .otherRun(let why): "the checkpoint is of another run: \(why)"
+        case .truncated: "the checkpoint's particles are cut short"
+        }
+    }
+}
 
 /// A long run's checkpoint (#240), so a restart costs at most an interval of it rather than the
 /// run. A directory holding, for checkpoint `n`, `particles-n.bin` (what changes of every
@@ -110,15 +125,15 @@ public struct RunCheckpoint: Sendable {
         public var resumes: Int
         public var everyFrames: Int
         public var everySteps: Int
-        public var solver: MetalBarnesHutSolver.State
-        public var videos: RunVideos.Progress?
-        public var keyFrames: [KeyFrameTake.Entry]
+        public var solver: SolverState
+        public var videos: VideoProgress?
+        public var keyFrames: [KeyFrameEntry]
         public var saved: Date
 
         public init(
             identity: Identity, index: Int, frame: Int, settled: Int, elapsed: Double,
-            resumes: Int, everyFrames: Int, everySteps: Int, solver: MetalBarnesHutSolver.State,
-            videos: RunVideos.Progress?, keyFrames: [KeyFrameTake.Entry], saved: Date = Date()
+            resumes: Int, everyFrames: Int, everySteps: Int, solver: SolverState,
+            videos: VideoProgress?, keyFrames: [KeyFrameEntry], saved: Date = Date()
         ) {
             self.identity = identity
             self.index = index
@@ -243,7 +258,7 @@ public struct RunCheckpoint: Sendable {
             while done < length {
                 let piece = min(length - done, 256 << 20)
                 guard let data = try handle.read(upToCount: piece), data.count == piece else {
-                    throw MetalBarnesHutSolver.CheckpointError.truncated
+                    throw RunCheckpointError.truncated
                 }
                 data.copyBytes(to: UnsafeMutableRawBufferPointer(rebasing: bytes[done..<(done + piece)]))
                 done += piece
@@ -274,7 +289,11 @@ public struct RunCheckpoint: Sendable {
         let handle = try FileHandle(forWritingTo: aside)
         do {
             try body(handle)
-            if fcntl(handle.fileDescriptor, F_FULLFSYNC) != 0 { try handle.synchronize() }
+            #if canImport(Darwin)
+                if fcntl(handle.fileDescriptor, F_FULLFSYNC) != 0 { try handle.synchronize() }
+            #else
+                try handle.synchronize()
+            #endif
         } catch {
             try? handle.close()
             throw error
@@ -320,10 +339,14 @@ extension RunCheckpoint {
     public static func codeVersion(executable: URL? = Bundle.main.executableURL) -> String {
         guard let executable else { return "" }
         let folder = executable.deletingLastPathComponent()
-        var hash = SHA256()
-        for url in [executable]
-            + ["libSillageCore.dylib", "libSillageRender.dylib"].map({ folder.appendingPathComponent($0) })
-        {
+        #if canImport(CryptoKit)
+            var hash = SHA256()
+            let libraries = ["libSillageCore.dylib", "libSillageRender.dylib"]
+        #else
+            var hash = PortableSHA256()
+            let libraries = ["libSillageCore.so", "libSillageRender.so"]
+        #endif
+        for url in [executable] + libraries.map({ folder.appendingPathComponent($0) }) {
             if let data = try? Data(contentsOf: url, options: .alwaysMapped) { hash.update(data: data) }
         }
         return hash.finalize().prefix(8).map { String(format: "%02x", $0) }.joined()
