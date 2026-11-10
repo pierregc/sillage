@@ -53,7 +53,9 @@ Mac can say after each one whether Metal still gives the same bits:
    #endif
    ```
 2. Move the library's `#if defined(__METAL_VERSION__)` down as functions become shared: what is
-   above it is shared, what is below is Metal's.
+   above it is shared, what is below is Metal's. The text now ends on `#endif`, and a Swift
+   multi-line string has no last line break: code appended to a `source`, as
+   `GalaxyColoursTests` appends a probe kernel to `Shaders.source`, starts with one.
 3. Give every shared function `SHARED` in place of `static` or `inline`, and every program-scope
    constant or table `SHARED_CONSTANT` in place of `constant`.
 4. Move each kernel's body, unchanged, into a `SHARED` function that takes the kernel's
@@ -203,6 +205,10 @@ libraries the Swift links from the same files.
 every thread of every block once, the atomics, the memory calls, the vector types and their
 swizzles, the functions, and a few of the tree's shared functions run from their own MSL text
 (the root cell and its frame, the Morton codes, the gather, both ways of `octantStarts`).
+`cuda/tests/tree_fixture.cu` builds the tree of the reference outputs (below) on the CPU target
+from the shared functions and requires Metal's bits. One thread alone in its SIMD group and its
+threadgroup makes the bounds and the split run there, and lays the nodes out in the fixture's
+level order; a stable sort stands in for the radix kernels, which count on 32 lanes.
 `cuda/tests/tree_probe.cu` only has `nvcc` generate device code for the tree's 20 shared
 functions, so that their PTX is read too; #273 replaces it with the real entry points.
 `cuda/spike/` is #271's throwaway, with two early headers of its own: `cuda/include` replaces
@@ -256,9 +262,11 @@ Who compares with them:
 
 - **On the Mac**, the tests require Metal to give them on every `./scripts/dev.sh check`, to the
   bit where Metal is deterministic.
-- **On Linux**, from #273 on, the CPU target compares what it can run with them on every check,
-  within a stated tolerance: two float machines agree to rounding on one force evaluation or one
-  frame, not to the bit.
+- **On Linux**, on every push: `TreeLayoutTests` requires the portable `BarnesHutTree` to give
+  the fixture's tree to the bit, and `cuda/tests/tree_fixture.cu` requires it of the tree's
+  shared MSL run on the CPU target. From #273 on the CPU target compares the rest of what it can
+  run, within the tolerances above: two float machines agree to rounding on one force evaluation
+  or one frame, not to the bit.
 - **On a GPU**, #283's `scripts/gpu-box.sh setup` runs the whole comparison first thing on every
   box, so a full pass never starts on an engine that drifted.
 
@@ -290,8 +298,10 @@ found a bug.
 - `nvcc` 13.5 compiles `cuda/src` and `cuda/tests` for sm_120: what C++ takes and CUDA does
   not, such as a shared function without `SHARED`, or a host function called from device code;
 - no double precision instruction in the PTX;
-- the CPU target builds without a warning and its tests pass, with `g++` and `clang++`;
-- from #272 on, the portable Swift builds and passes its tests on Linux.
+- the CPU target builds without a warning and its tests pass, with `g++` and `clang++`, the
+  fixture's tree rebuilt from the MSL text among them;
+- the portable Swift builds and passes its tests on Linux (`scripts/linux.sh check`, #272),
+  the fixture's tree rebuilt by `BarnesHutTree` among them.
 
 **Only on a GPU** (#283): anything with block barriers or warp functions, so the tree and the
 sort; the big sizes; every timing; and the comparison of the reference outputs on CUDA, first
@@ -324,6 +334,18 @@ Pierre asked on 2026-11-10 whether to drop Metal and write the engine once in C+
   `nvcc` 13.5 through `msl_compat.h`, no line of them written for it: no double precision
   instruction, and the warp shuffles, ballots, barriers and atomics where Metal has its SIMD
   functions, barriers and atomics. They run first on a GPU in #283.
+- **The same bits on the Mac.** A short hires of scene-0031, 200 k drawn from 50 k massive,
+  gives the same takes, curves, key frames and 4K and vertical stills as main before the change,
+  to the byte, and `GPUTreeTests` and the to-the-bit tests pass.
+- **The same tree from the same text, on another machine.** Built on Linux from
+  `GPUTreeShaders`' shared functions through `msl_compat.h`, with `g++` and with `clang++` and no
+  FMA contraction, the fixture's tree of 20,000 particles is Metal's to the bit: its frame, its
+  order, its 3,890 nodes, their 7,780 moments and the links of the spacing records. Of the
+  19,890 lengths, which go through `pow`, half have Metal's bits and the furthest is 3.7e-7
+  away.
+- **The walk fixture.** #271's harness reads it as it is: over its 1,000 tracers the CPU is
+  within 1.6e-6 of Metal's accelerations (median 8.5e-8) and within 1.7e-7 of its velocities
+  after mode 1, every packed word the same. The 1e-5 asked of the other engines leaves room.
 - **The other libraries, tried ahead.** With its guard lifted and its 11 kernels taken as plain
   functions, the whole of `BarnesHutShaders` already compiles as C++17 through `msl_compat.h`,
   no line changed. Of `Shaders`, the same trial refuses only what Metal alone has: the textures
