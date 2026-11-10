@@ -205,6 +205,8 @@ swizzles, the functions, and a few of the tree's shared functions run from their
 (the root cell and its frame, the Morton codes, the gather, both ways of `octantStarts`).
 `cuda/tests/tree_probe.cu` only has `nvcc` generate device code for the tree's 20 shared
 functions, so that their PTX is read too; #273 replaces it with the real entry points.
+`cuda/spike/` is #271's throwaway, with two early headers of its own: `cuda/include` replaces
+them, and nothing new includes the spike's.
 
 ## `cuda/kernels.txt`
 
@@ -223,6 +225,25 @@ After #281: 62 functions, 59 pending (20 of the tree for #273, 8 of the massive 
 #277) and 3 Metal only (`expandSnapshots`, `expandSnapshots21`, `integrate`). Phase 1 is over
 when no line is pending.
 
+## The reference outputs
+
+`Tests/Fixtures/engines/` holds small outputs both engines must give, under 2 MB in all: a 20 k
+tree, the accelerations of 1,000 tracers from a small `--dump-walk` (#271), and three 256 x 144
+frames in three looks. The README beside them gives their formats, which a C++ reader needs no
+Swift for.
+
+- **On the Mac**, the tests require Metal to give them on every `./scripts/dev.sh check`, to the
+  bit where Metal is deterministic.
+- **On Linux**, from #273 on, the CPU target compares what it can run with them on every check,
+  within a stated tolerance: two float machines agree to rounding on one force evaluation or one
+  frame, not to the bit.
+- **On a GPU**, #283's `scripts/gpu-box.sh setup` runs the whole comparison first thing on every
+  box, so a full pass never starts on an engine that drifted.
+
+`./scripts/dev.sh fixtures` regenerates them on the Mac. A PR that changes them on purpose
+regenerates them and says so in its description; a PR that changes them without meaning to has
+found a bug.
+
 ## What catches what
 
 **On the Mac, in every `./scripts/dev.sh check`**, with `clang++` and no CUDA
@@ -237,6 +258,7 @@ when no line is pending.
 - an MSL struct that changed size without its `SILLAGE_STRUCT` line, and a Swift mirror that no
   longer has that size (`KernelSourceTests`);
 - a library's `source` that is no longer one plain string;
+- Metal no longer giving the reference outputs;
 - from #273 on, CUDA Swift that no longer typechecks against `cuda/include/sillage_cuda.h`, so a
   pass the CUDA engine does not handle.
 

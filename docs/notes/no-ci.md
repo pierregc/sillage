@@ -7,7 +7,8 @@ a small workflow checks, on every push, what the Mac cannot: the CUDA engine's c
 
 `.github/workflows/linux.yml` runs on every push (the `assets/` branches aside) and on pull
 requests from forks, on GitHub's Ubuntu 24.04 runner, with `permissions: contents: read`, no
-secret and no action but GitHub's own checkout. Job `cuda`, about two minutes, capped at ten:
+secret and no action but GitHub's own checkout. Job `cuda`, 37 seconds on its first run, capped
+at ten minutes:
 
 - `scripts/kernel-check.sh` with `clang++` and `g++`: the checks of
   [one-kernel-source.md](one-kernel-source.md) that `./scripts/dev.sh check` runs on the Mac;
@@ -28,9 +29,9 @@ and fixes a red run in the same PR.
 
 **It is free because the repository is public.** GitHub does not meter Actions on public
 repositories. If the repository ever goes private again, its Linux minutes count against the
-account's allowance, one billed minute a minute where macOS counted ten: at two minutes a push,
-the 2 000 free minutes of a month are a thousand pushes. Turn the workflow off before that
-matters, as the macOS one was.
+account's allowance, one billed minute a minute where macOS counted ten, each job rounded up to
+the minute: at a job a push, the 2 000 free minutes of a month are 2 000 pushes, half that once
+#272 adds its job. Turn the workflow off before that matters, as the macOS one was.
 
 ## Why the macOS workflow went away
 
