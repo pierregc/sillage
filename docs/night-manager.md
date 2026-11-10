@@ -374,7 +374,10 @@ showing them, for checks.
 
 - A scene is `--seed S --index N` of a generator: same two numbers, same scene.
 - `explore-batch.sh` runs 4 scenes at once, each at a low particle count with a plain look.
-  Batches are resumable; settings are kept in `batch.conf`.
+  Batches are resumable; settings are kept in `batch.conf`. It steps at seven times the
+  recommended step (`--dt-scale 7`, 375 steps of settle) since #225: the same scenes come out
+  on top as at 3.5, in half the time, with a third fewer young stars in the previews. A batch
+  started before keeps its 3.5 and 750.
 - Four scenes in five have exactly two galaxies, a globular or a dwarf companion counting as one
   and a black hole as none, in every stretch of ten (`--pair-share`, `pair_share` in
   `batch.conf`). A batch started before the share (#176) goes on with the draw it started with.
@@ -385,7 +388,9 @@ showing them, for checks.
   8 pixels in radius for more than half the clip is scored down in proportion, so a black one
   scores zero and a night picks it last (#217).
 - `hires` replays the same physics with more particles, over the story only, and saves the run
-  as `take.sillage`. Its default is a night's draw, 8 M from 2 M, never above the machine's
+  as `take.sillage`. It steps at 3.5 whatever the preview ran at: at 7 the story holds, but
+  star formation and the compact knots do not ([the note](notes/doubled-step.md)). Its default
+  is a night's draw, 8 M from 2 M, never above the machine's
   maximum (`SILLAGE_MAX_PARTICLES`); cost grows with the count and the story's length (about
   30 min at 1 M, 8 h at a real 10 M for 700 Myr). With `--massive M`, as a night runs it, only
   M carry the mass and set the step; the others are light tracers, which cost a third of a

@@ -157,13 +157,12 @@ defaults() {
     [ -n "$height" ] || height=540
     [ -n "$frames" ] || frames=900
     [ -n "$fps" ] || fps=30
-    [ -n "$settle" ] || settle=750
-    # The exploration clip #13 measured: a step three and a half times the recommended one,
-    # which settles over the first hundred and fifty megayears, where a sampled disk's first
-    # radial excursion has peaked (#167), and seven hundred more for the passages, the tails
-    # and what they fall back into. The clip of #41, 900 steps at the generator's own scale,
-    # covers forty. A batch started before keeps the settle its batch.conf recorded.
-    [ -n "$dt_scale" ] || dt_scale=3.5
+    [ -n "$settle" ] || settle=375
+    # A step seven times the recommended one (#225): 375 steps settle the first 150 Myr, where
+    # a sampled disk's first radial excursion has peaked (#167), then 700 Myr for the passages
+    # and the tails. Hires runs at 3.5 whatever its preview ran at. A batch started before
+    # keeps the step and settle its batch.conf recorded.
+    [ -n "$dt_scale" ] || dt_scale=7
     [ -n "$steps" ] || [ -n "$span" ] || span=700
     if [ -z "$per_galaxy" ] && [ -n "$scenes" ] && [ -n "$hours" ]; then
         per_galaxy="$(budget)"

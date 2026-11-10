@@ -441,6 +441,19 @@ struct NightRunnerTests {
         #expect(NightFolder(batch: batch, recipe: ranged).probe(now: Date()).pairShare == nil)
     }
 
+    /// A new batch explores at 7 (#225); one started before keeps the step and settle it recorded.
+    @Test func theProbeKeepsTheStepItsBatchStartedWith() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = NightFolder(batch: batch, recipe: recipe(), maximumParticles: 10_000_000)
+        let fresh = folder.probe(now: Date())
+        #expect(fresh.dtScale == 7 && fresh.settle == 375)
+        try FileManager.default.createDirectory(at: batch, withIntermediateDirectories: true)
+        try Data("seed=1\nper_galaxy=20000\ndt_scale=3.5\nsettle=750\n".utf8).write(
+            to: batch.appendingPathComponent("batch.conf"))
+        let started = folder.probe(now: Date())
+        #expect(started.dtScale == 3.5 && started.settle == 750)
+    }
+
     @Test func theExplorationIsGivenThePairShareTheRecipeNames() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         var recipe = recipe()
