@@ -457,14 +457,20 @@ public final class NightRunner: @unchecked Sendable {
         return outcome
     }
 
-    /// Every particle again, the videos of `presets` drawn as the run goes (#239).
+    /// Every particle again, the videos of `presets` drawn as the run goes (#239), from its last
+    /// checkpoint when a restart or a stop cut it short (#240).
     private func fullPass(_ scene: SceneFolder, presets: [String]) -> Outcome {
         let name = scene.url.lastPathComponent
-        say("night      full pass \(name), drawing \(presets.joined(separator: ", "))")
+        var options =
+            folder.hiresOptions + ["--pass", "full", "--export", presets.joined(separator: ",")]
+        let resumes = scene.resumesFullPass(options, maximumParticles: folder.maximumParticles)
+        if resumes { options.append("--resume") }
+        say(
+            "night      full pass \(name), drawing \(presets.joined(separator: ", "))"
+                + (resumes ? ", from its checkpoint" : ""))
         let outcome = runChild(
             executable.path,
-            ["hires", scene.url.path] + folder.hiresOptions
-                + ["--pass", "full", "--export", presets.joined(separator: ",")],
+            ["hires", scene.url.path] + options,
             log: logs.appendingPathComponent("\(name).full.log")
         ) { [self] in
             update(phase: "export", quiet: true)

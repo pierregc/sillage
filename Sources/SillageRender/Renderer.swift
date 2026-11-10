@@ -605,6 +605,12 @@ public final class Renderer {
     /// fixed number of pixels and the image resolves the sampling rather than the galaxy.
     public func setSmoothing(_ buffer: MTLBuffer?) { smoothingBuffer = buffer }
 
+    /// Moves the grain on as `count` frames drawn would, for a run that resumes (#240).
+    public func skipFrames(_ count: Int) {
+        guard !settings.plain else { return }
+        for _ in 0..<max(count, 0) { frameSeed = frameSeed.truncatingRemainder(dividingBy: 4096) + 7.13 }
+    }
+
     /// Updates the spiral pattern for each galaxy. Called once per frame with the current
     /// galaxy centres and elapsed time, so the arms turn as a density wave.
     public func setDiskFrames(_ frames: [DiskFrame]) {

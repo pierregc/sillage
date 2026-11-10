@@ -178,12 +178,12 @@ struct RunVideosTests {
             KeyFrame(frame: 4, role: .pericentre, timeMyr: 0),
         ]
         let count = loaded.recording.particleCount
-        let kept = KeyFrameTake(keys: keys, particleCount: count, galaxyCount: 2)
+        let kept = try KeyFrameTake(keys: keys, particleCount: count, galaxyCount: 2)
         for frame in 0..<12 {
             guard kept.wants(frame: frame) else { continue }
             let positions = loaded.recording.positions(at: frame)
-            positions.withUnsafeBufferPointer {
-                kept.offer(
+            try positions.withUnsafeBufferPointer {
+                try kept.offer(
                     frame: frame, positions: $0.baseAddress!, time: Float(frame) * 0.1,
                     centers: loaded.recording.centers(at: frame), disks: [])
             }
