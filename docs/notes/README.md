@@ -76,6 +76,10 @@ session. Read the note for an area before changing it.
 - [Ten times the particles](ten-times-the-particles.md): fifty million a galaxy, what it looks like, the softening floor, the halo, the take's grid, tracers
 - [Director shots that fill the frame](director-shots.md): `ShotPlan`, the cuts, the core and plane measured on the take, the disk states takes never carried
 
+## The CUDA engine (#269)
+
+- [The tracer walk from its MSL text, on CUDA and on the CPU](cuda-walk-spike.md): spike #271, no line of MSL changed, what `msl_compat.h` and `cuda_cpu.h` do, float literals are doubles, the walk dump's format, the accuracy against Metal
+
 ## State
 
 - [State and known limitations](state-and-known-limitations.md): standing gaps, time step and traversal measurements
