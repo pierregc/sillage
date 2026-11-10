@@ -62,8 +62,8 @@ enum Shaders {
         // The colour a galaxy's ramp gives this particle. With the mix mapping, gas and the
         // stars the run formed take the young colour, bulge and outskirts the ramp's ends.
         static float3 rampColour(constant GalaxyRamp &ramp, float radius, uint kind, float born) {
-            if (ramp.params.y > 0.5) {
-                if (kind == 1u || kind == 2u || (born >= 0.0 && born < 1e8)) { return ramp.young.rgb; }
+            if (ramp.params.y > 0.5f) {
+                if (kind == 1u || kind == 2u || (born >= 0.0f && born < 1e8f)) { return ramp.young.rgb; }
                 if (kind == 4u) { return ramp.core.rgb; }
                 if (kind == 5u) { return ramp.outskirts.rgb; }
             }
@@ -149,7 +149,7 @@ enum Shaders {
 
         /// Extinction is steeper in the blue than in the red, which is why a lane crossing a
         /// bright disk reads brown rather than grey.
-        constant float3 reddening = float3(1.0, 1.22, 1.52);
+        constant float3 reddening = float3(1.0f, 1.22f, 1.52f);
 
         struct DiskFrame {
             float4 center;
@@ -176,45 +176,45 @@ enum Shaders {
             uint n = uint(k * 374761393 + 668265263);
             n = (n ^ (n >> 13u)) * 1274126177u;
             n = n ^ (n >> 16u);
-            return float(n) * (1.0 / 4294967296.0);
+            return float(n) * (1.0f / 4294967296.0f);
         }
 
         static float valueNoise(float x) {
             float i = floor(x);
             float f = x - i;
-            float u = f * f * (3.0 - 2.0 * f);
-            return mix(hash1(i), hash1(i + 1.0), u);
+            float u = f * f * (3.0f - 2.0f * f);
+            return mix(hash1(i), hash1(i + 1.0f), u);
         }
 
         static float fractalNoise(float x) {
-            return valueNoise(x) * 0.65 + valueNoise(x * 2.3 + 19.1) * 0.35;
+            return valueNoise(x) * 0.65f + valueNoise(x * 2.3f + 19.1f) * 0.35f;
         }
 
         // Strips the luminance out of a colour, leaving only its hue and saturation. Every
         // emitter in this renderer carries unit luminance, so `brightness` stays the single
         // control over exposure and changing a colour can never change how bright a frame is.
         static float3 chromaticity(float3 rgb) {
-            return max(rgb, 0.0) / max(dot(max(rgb, 0.0), float3(0.2126, 0.7152, 0.0722)), 1e-4);
+            return max(rgb, 0.0f) / max(dot(max(rgb, 0.0f), float3(0.2126f, 0.7152f, 0.0722f)), 1e-4f);
         }
 
         // Linear sRGB of a Planckian radiator. Chromaticity from Kang et al. (2002), then
         // CIE xy to sRGB primaries. Y is fixed at 1, so the conversion lands on unit
         // luminance before the negative lobe of a saturated hue is clipped away.
         static float3 blackbody(float kelvin) {
-            float t = clamp(kelvin, 2222.0, 25000.0);
-            float inv = 1.0 / t;
-            float x = t < 4000.0
-                ? ((-0.2661239e9 * inv - 0.2343589e6) * inv + 0.8776956e3) * inv + 0.179910
-                : ((-3.0258469e9 * inv + 2.1070379e6) * inv + 0.2226347e3) * inv + 0.240390;
-            float y = t < 4000.0
-                ? ((-0.9549476 * x - 1.37418593) * x + 2.09137015) * x - 0.16748867
-                : ((3.0817580 * x - 5.87338670) * x + 3.75112997) * x - 0.37001483;
-            float scale = 1.0 / max(y, 1e-4);
-            float3 xyz = float3(x * scale, 1.0, (1.0 - x - y) * scale);
+            float t = clamp(kelvin, 2222.0f, 25000.0f);
+            float inv = 1.0f / t;
+            float x = t < 4000.0f
+                ? ((-0.2661239e9f * inv - 0.2343589e6f) * inv + 0.8776956e3f) * inv + 0.179910f
+                : ((-3.0258469e9f * inv + 2.1070379e6f) * inv + 0.2226347e3f) * inv + 0.240390f;
+            float y = t < 4000.0f
+                ? ((-0.9549476f * x - 1.37418593f) * x + 2.09137015f) * x - 0.16748867f
+                : ((3.0817580f * x - 5.87338670f) * x + 3.75112997f) * x - 0.37001483f;
+            float scale = 1.0f / max(y, 1e-4f);
+            float3 xyz = float3(x * scale, 1.0f, (1.0f - x - y) * scale);
             return chromaticity(float3(
-                dot(xyz, float3(3.2406, -1.5372, -0.4986)),
-                dot(xyz, float3(-0.9689, 1.8758, 0.0415)),
-                dot(xyz, float3(0.0557, -0.2040, 1.0570))));
+                dot(xyz, float3(3.2406f, -1.5372f, -0.4986f)),
+                dot(xyz, float3(-0.9689f, 1.8758f, 0.0415f)),
+                dot(xyz, float3(0.0557f, -0.2040f, 1.0570f))));
         }
 
         // Colour temperature and visible light per unit mass of a population of this age,
@@ -231,14 +231,14 @@ enum Shaders {
             float f = log(max(ageMyr, u.populationYoungMyr) / u.populationYoungMyr)
                 / u.populationSpan;
             float at = saturate(f) * u.populationLast;
-            uint index = uint(min(at, u.populationLast - 1.0));
+            uint index = uint(min(at, u.populationLast - 1.0f));
             return mix(table[index], table[index + 1u], at - float(index));
         }
 
         // The legacy path: a take written before every particle carried an age has only the
         // sampler's old zero-to-one population value, so it keeps the ramp that value meant.
         static float3 legacyColour(float age) {
-            return blackbody(exp(mix(log(4100.0), log(13000.0), saturate(age))));
+            return blackbody(exp(mix(log(4100.0f), log(13000.0f), saturate(age))));
         }
 
         // A star-forming knot is not a blackbody: most of its light leaves in Halpha at
@@ -253,7 +253,7 @@ enum Shaders {
             // sit above: a blue above the green is magenta, and magenta is neither what an
             // HII region looks like through a telescope nor a colour a blackbody can make, so
             // it read as the one thing in the frame that was not a star.
-            return chromaticity(float3(1.00, 0.34, 0.30));
+            return chromaticity(float3(1.00f, 0.34f, 0.30f));
         }
 
         // Where a particle sits relative to the spiral density wave, 0 between the arms and
@@ -266,28 +266,28 @@ enum Shaders {
         // galaxy be lopsided in its mass rather than only in its paint.
         static float spiralRidge(float extent, float phi, float arms, float windRate,
                                  float irregular, float seed, float phase) {
-            float wander = (fractalNoise(extent * 1.5 + seed) - 0.5) * 2.6 * irregular;
-            float wound = phi - windRate * log(max(extent, 1e-3)) - phase + wander;
+            float wander = (fractalNoise(extent * 1.5f + seed) - 0.5f) * 2.6f * irregular;
+            float wound = phi - windRate * log(max(extent, 1e-3f)) - phase + wander;
 
             float armPhase = arms * wound;
-            float ridge = 0.5 + 0.5 * cos(armPhase);
+            float ridge = 0.5f + 0.5f * cos(armPhase);
 
-            float breaks = (0.18 + 1.05 * fractalNoise(wound * 0.62 + extent * 0.9 + seed * 3.1))
-                         / 0.705;
-            ridge *= 1.0 + irregular * (breaks - 1.0);
+            float breaks = (0.18f + 1.05f * fractalNoise(wound * 0.62f + extent * 0.9f + seed * 3.1f))
+                         / 0.705f;
+            ridge *= 1.0f + irregular * (breaks - 1.0f);
 
-            float perArm = (0.35 + 1.25 * fractalNoise(armPhase * 0.159 + seed * 7.7)) / 0.975;
-            ridge *= 1.0 + irregular * (perArm - 1.0);
+            float perArm = (0.35f + 1.25f * fractalNoise(armPhase * 0.159f + seed * 7.7f)) / 0.975f;
+            ridge *= 1.0f + irregular * (perArm - 1.0f);
 
-            float spurPhase = (arms + 3.0) * (phi - 1.7 * windRate * log(max(extent, 1e-3)))
-                            + 2.1;
-            float spur = max(cos(spurPhase), 0.0);
-            float spurWhere = fractalNoise(extent * 0.9 + seed * 2.3 + 31.0);
-            ridge += irregular * 0.55 * spur * spur * spur
-                   * smoothstep(0.55, 0.85, spurWhere);
+            float spurPhase = (arms + 3.0f) * (phi - 1.7f * windRate * log(max(extent, 1e-3f)))
+                            + 2.1f;
+            float spur = max(cos(spurPhase), 0.0f);
+            float spurWhere = fractalNoise(extent * 0.9f + seed * 2.3f + 31.0f);
+            ridge += irregular * 0.55f * spur * spur * spur
+                   * smoothstep(0.55f, 0.85f, spurWhere);
 
-            float lopsided = 1.0 + irregular * 0.30 * cos(phi + seed * 2.1);
-            return clamp(ridge * lopsided, 0.0, 1.0);
+            float lopsided = 1.0f + irregular * 0.30f * cos(phi + seed * 2.1f);
+            return clamp(ridge * lopsided, 0.0f, 1.0f);
         }
 
         // Fine strands inside a dust lane, at rest in the pattern's own frame.
@@ -304,44 +304,44 @@ enum Shaders {
             float u = dot(rel, frame.axisU.xyz);
             float v = dot(rel, frame.axisV.xyz);
             float radius = sqrt(u * u + v * v);
-            float scale = max(frame.center.w, 1e-3);
+            float scale = max(frame.center.w, 1e-3f);
             float extent = radius / scale;
             float wound = atan2(v, u)
-                        - frame.pattern.x * log(max(radius, 1e-3) / scale)
+                        - frame.pattern.x * log(max(radius, 1e-3f) / scale)
                         - frame.pattern.y;
             // The angle is warped before the strands are read off it, which is what makes
             // them snake. Sampled straight, the noise lays down threads that all run along the
             // arm at the same pitch — clean, parallel, and obviously drawn. Displacing the
             // coordinate first bends every strand by a different amount at every radius, and
             // the result reads as torn membrane rather than as combed hair.
-            float warp = fractalNoise(wound * 2.1 + extent * 3.7 + frame.pattern.w * 1.9) - 0.5;
-            float twist = fractalNoise(wound * 5.9 - extent * 1.3 + frame.pattern.w * 4.1) - 0.5;
-            float bent = wound + 0.88 * warp + 0.30 * twist;
+            float warp = fractalNoise(wound * 2.1f + extent * 3.7f + frame.pattern.w * 1.9f) - 0.5f;
+            float twist = fractalNoise(wound * 5.9f - extent * 1.3f + frame.pattern.w * 4.1f) - 0.5f;
+            float bent = wound + 0.88f * warp + 0.30f * twist;
 
             // High along the arm and higher still across it, which is what makes a strand a
             // strand rather than a patch.
-            float fine = fractalNoise(bent * 7.3 + extent * 2.1 + frame.pattern.w * 5.3);
-            float finer = fractalNoise(bent * 19.0 - extent * 5.7 + frame.pattern.w * 2.9);
-            return 0.18 + 1.5 * fine * (0.45 + 0.9 * finer);
+            float fine = fractalNoise(bent * 7.3f + extent * 2.1f + frame.pattern.w * 5.3f);
+            float finer = fractalNoise(bent * 19.0f - extent * 5.7f + frame.pattern.w * 2.9f);
+            return 0.18f + 1.5f * fine * (0.45f + 0.9f * finer);
         }
 
         // Where a particle sits relative to the spiral pattern, evaluated at its current
         // position so the arms do not wind up with the disk.
         static float2 armWave(float3 position, DiskFrame frame) {
             float strength = frame.axisV.w;
-            if (strength <= 0.0) { return float2(0.5, 0.0); }
+            if (strength <= 0.0f) { return float2(0.5f, 0.0f); }
             float3 rel = position - frame.center.xyz;
             float u = dot(rel, frame.axisU.xyz);
             float v = dot(rel, frame.axisV.xyz);
             float radius = sqrt(u * u + v * v);
-            float scale = max(frame.center.w, 1e-3);
+            float scale = max(frame.center.w, 1e-3f);
             float extent = radius / scale;
-            float envelope = smoothstep(0.55, 1.5, extent)
-                           * (1.0 - smoothstep(4.0, 6.5, extent));
+            float envelope = smoothstep(0.55f, 1.5f, extent)
+                           * (1.0f - smoothstep(4.0f, 6.5f, extent));
 
             float ridge = spiralRidge(extent, atan2(v, u), frame.axisU.w, frame.pattern.x,
                                       frame.pattern.z, frame.pattern.w, frame.pattern.y);
-            return float2(mix(0.5, ridge, strength * envelope), envelope);
+            return float2(mix(0.5f, ridge, strength * envelope), envelope);
         }
 
         // What the vertex stages read of a drawn particle: a massive one's from its buffers, a
@@ -371,13 +371,13 @@ enum Shaders {
             p.kernelScale = traits[vid].y;
             p.born = formation[vid];
             p.spacing = smoothing[vid];
-            p.warming = 1.0;
-            p.population = 0.5;
-            p.rampKey = 1.7;
+            p.warming = 1.0f;
+            p.population = 0.5f;
+            p.rampKey = 1.7f;
             return p;
         }
 
-        constant float tracerKernels[5] = {1.0, 0.75, 0.9, 2.2, 1.35};
+        constant float tracerKernels[5] = {1.0f, 0.75f, 0.9f, 2.2f, 1.35f};
 
         // A light tracer's word decoded as `TracerWord` packs it; its spacing is left to the
         // caller, which reads it off the tree only for what it draws.
@@ -388,17 +388,17 @@ enum Shaders {
             p.galaxy = word & 15u;
             p.kind = (word >> 4) & 7u;
             uint kernelClass = (word >> 7) & 7u;
-            p.kernelScale = kernelClass < 5u ? tracerKernels[kernelClass] : 1.0;
+            p.kernelScale = kernelClass < 5u ? tracerKernels[kernelClass] : 1.0f;
             uint light = (word >> 10) & 255u;
-            p.weight = light == 0u ? 0.0 : exp2(float(light - 1u) * 20.0 / 254.0 - 12.0);
+            p.weight = light == 0u ? 0.0f : exp2(float(light - 1u) * 20.0f / 254.0f - 12.0f);
             uint code = word >> 18;
-            float radius = code == 0u ? 0.0 : exp2(float(code - 1u) * 24.0 / 16382.0 - 12.0);
+            float radius = code == 0u ? 0.0f : exp2(float(code - 1u) * 24.0f / 16382.0f - 12.0f);
             float scale = scales[p.galaxy];
-            float iron = 0.25 - 0.22 * clamp(radius / max(scale, 1e-6), 0.0, 5.0);
-            p.warming = scale > 0.0 ? exp(-0.25 * clamp(iron, -1.5, 0.6)) : 1.0;
-            p.rampKey = scale > 0.0 ? radius / scale : 1.7;
-            p.population = 0.5;
-            p.spacing = 0.0;
+            float iron = 0.25f - 0.22f * clamp(radius / max(scale, 1e-6f), 0.0f, 5.0f);
+            p.warming = scale > 0.0f ? exp(-0.25f * clamp(iron, -1.5f, 0.6f)) : 1.0f;
+            p.rampKey = scale > 0.0f ? radius / scale : 1.7f;
+            p.population = 0.5f;
+            p.spacing = 0.0f;
             return p;
         }
 
@@ -408,9 +408,9 @@ enum Shaders {
                                    device const float *frame, uint depth) {
             float length = as_type<float>(cells[0].x);
             if (depth == 0u) { return length; }
-            const float resolution = 2097151.0;
+            const float resolution = 2097151.0f;
             float3 local = (position - float3(frame[0], frame[1], frame[2])) * frame[3];
-            if (any(local < 0.0) || any(local > resolution)) { return length; }
+            if (any(local < 0.0f) || any(local > resolution)) { return length; }
             uint3 q = uint3(local);
             uint node = 0u;
             for (uint level = 0u; level < depth; ++level) {
@@ -422,15 +422,15 @@ enum Shaders {
                 if ((mask & (1u << digit)) == 0u) { break; }
                 node = (links >> 8) + popcount(mask & ((1u << digit) - 1u));
                 float here = as_type<float>(cells[node].x);
-                if (here > 0.0) { length = here; }
+                if (here > 0.0f) { length = here; }
             }
             return length;
         }
 
         static SplatOut culledSplat() {
             SplatOut out;
-            out.position = float4(2.0, 2.0, 2.0, 1.0);
-            out.pointSize = 0.0;
+            out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
+            out.pointSize = 0.0f;
             out.color = half3(0.0h);
             out.opticalDepth = 0.0h;
             out.spikes = 0.0h;
@@ -441,12 +441,12 @@ enum Shaders {
         // Whether this pass leaves the particle out, as `splat` decides it.
         static bool splatSkips(uint kind, float born, constant SplatUniforms &u) {
             bool nursery = kind == 1u || kind == 2u;
-            float ageMyr = (nursery || born >= 0.0)
+            float ageMyr = (nursery || born >= 0.0f)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
-            bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
+            bool knot = born > -1e8f && born < 1e8f && ageMyr >= 0.0f;
             bool hole = kind == 6u;
             bool absorbing = (kind == 2u && !knot) || hole;
-            return kind == 3u || (hole && u.holeShadow <= 0.0) || absorbing != (u.pass == 0u);
+            return kind == 3u || (hole && u.holeShadow <= 0.0f) || absorbing != (u.pass == 0u);
         }
 
         static SplatOut splat(Drawn p, constant SplatUniforms &u, constant DiskFrame *frames,
@@ -455,7 +455,7 @@ enum Shaders {
             SplatOut out;
             float3 position = p.position;
             DiskFrame frame = frames[p.galaxy];
-            out.position = u.viewProjection * float4(position, 1.0);
+            out.position = u.viewProjection * float4(position, 1.0f);
             out.spikes = 0.0h;
             out.slab = half4(0.0h);
             uint kind = p.kind;
@@ -464,9 +464,9 @@ enum Shaders {
             // two per cent of the stars carrying a quarter of the light as point sources. At
             // glint 0 they are given back the light and the width of an ordinary star.
             float kernelScale = p.kernelScale;
-            if (kernelScale < 0.8) {
-                weight *= mix(0.07, 1.0, u.glint);
-                kernelScale = mix(0.9, kernelScale, u.glint);
+            if (kernelScale < 0.8f) {
+                weight *= mix(0.07f, 1.0f, u.glint);
+                kernelScale = mix(0.9f, kernelScale, u.glint);
             }
 
             // Age of this particle's stars, in megayears. Two sentinels sit outside any real
@@ -480,9 +480,9 @@ enum Shaders {
             // of particles the run forms could not repaint it. Frozen at the age it was drawn
             // with; gas, and anything the run itself formed, still ages.
             bool nursery = kind == 1u || kind == 2u;
-            float ageMyr = (nursery || born >= 0.0)
+            float ageMyr = (nursery || born >= 0.0f)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
-            bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
+            bool knot = born > -1e8f && born < 1e8f && ageMyr >= 0.0f;
             // A black hole emits nothing. Asked for, it absorbs like a knot of dust that lets
             // nothing through, so it is drawn with the dust and darkens what lies behind it.
             bool hole = kind == 6u;
@@ -491,9 +491,9 @@ enum Shaders {
             // Dark matter carries mass but no light, and every particle is skipped by one of
             // the two draws. Pushing them outside the clip volume drops them before any
             // fragment work rather than drawing a black point over the galaxy.
-            if (kind == 3u || (hole && u.holeShadow <= 0.0) || absorbing != (u.pass == 0u)) {
-                out.position = float4(2.0, 2.0, 2.0, 1.0);
-                out.pointSize = 0.0;
+            if (kind == 3u || (hole && u.holeShadow <= 0.0f) || absorbing != (u.pass == 0u)) {
+                out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
+                out.pointSize = 0.0f;
                 out.color = half3(0.0h);
                 out.opticalDepth = 0.0h;
                 return out;
@@ -502,7 +502,7 @@ enum Shaders {
             // Which slab of view depth this point falls in. `position.w` is the view depth for
             // a standard perspective projection, and the stack is centred on the camera's
             // target and as deep as the frame is wide, so a disk seen at an angle spans it.
-            float slabAt = clamp((out.position.w - u.slabNear) * u.slabScale, 0.0, 0.999) * 4.0;
+            float slabAt = clamp((out.position.w - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f;
             uint slabIndex = uint(slabAt);
             if (u.pass == 0u) {
                 // Dust writes into its own slab and nowhere else.
@@ -523,24 +523,24 @@ enum Shaders {
 
             // Angular size of this particle's kernel, in pixels. position.w is the view
             // depth for a standard perspective projection, so this is just h over distance.
-            float depth = max(out.position.w, 1e-3);
+            float depth = max(out.position.w, 1e-3f);
             float perPixel = u.projectionScale / depth;
             // Two scales of emission. Most particles are drawn wide, and because widening a
             // kernel conserves its flux that is the same light spread thinner: enough of them
             // overlapping make a continuum instead of a stipple. A small minority are compact
             // and much brighter, and those are the sources the eye picks out one at a time.
-            float raw = max(p.spacing * u.smoothingScale * kernelScale, 1e-4) * perPixel;
+            float raw = max(p.spacing * u.smoothingScale * kernelScale, 1e-4f) * perPixel;
             // The spacing above is the three-dimensional one, read off the solver's tree. A
             // thin disk seen face-on stacks many of those spacings along a line of sight, so
             // a kernel sized to one of them still resolves the particles. Sized instead so
             // that it covers `columnSmoothing` stars in projection, from the count the
             // column pass drew into coarse cells, it is wide where the picture is sparse and
             // narrow where it is dense, and never narrower than the tree's own answer.
-            if (!absorbing && u.columnSmoothing > 0.0) {
-                float2 uv = float2(0.5, 0.5) + float2(0.5, -0.5) * out.position.xy / depth;
-                float count = max(column.sample(bilinear, uv).r, 0.25);
+            if (!absorbing && u.columnSmoothing > 0.0f) {
+                float2 uv = float2(0.5f, 0.5f) + float2(0.5f, -0.5f) * out.position.xy / depth;
+                float count = max(column.sample(bilinear, uv).r, 0.25f);
                 float density = count / (u.columnCell * u.columnCell);
-                float projected = 2.0 * sqrt(u.columnSmoothing / (M_PI_F * density));
+                float projected = 2.0f * sqrt(u.columnSmoothing / (M_PI_F * density));
                 raw = max(raw, projected);
             }
             float span = clamp(raw, u.minimumSize, u.maximumSize);
@@ -575,13 +575,13 @@ enum Shaders {
                 // wide smooth arcs, which is what read as sausages. It is the same band times
                 // a filament field now — the strands are what carry the shape, and they sit
                 // in the pattern's frame, where a lane belongs.
-                float lane = 1.0 + 7.0 * pow(wave, 2.0) * pattern.y * laneDetail(position, frame);
-                out.pointSize = span * 1.3;
+                float lane = 1.0f + 7.0f * pow(wave, 2.0f) * pattern.y * laneDetail(position, frame);
+                out.pointSize = span * 1.3f;
                 out.color = half3(0.0h);
-                out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3);
+                out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3f);
                 if (hole) {
                     // Twice the radius, since the kernel falls to a hundredth at its edge.
-                    out.pointSize = max(4.0 * u.holeShadow * perPixel, 2.0);
+                    out.pointSize = max(4.0f * u.holeShadow * perPixel, 2.0f);
                     out.opticalDepth = 8.0h;
                 }
             } else {
@@ -593,7 +593,7 @@ enum Shaders {
                 // population does not redden and blue again as it turns. An arm is bluer
                 // because of what it contains, and what it contains is fixed when the star
                 // forms.
-                float ambient = 0.55 + 0.95 * wave;
+                float ambient = 0.55f + 0.95f * wave;
                 // Colour and light per unit mass, both from the same synthesised population
                 // at this particle's age. One table, one law: a knot three megayears old and
                 // a bulge star of eleven gigayears are the same lookup at different ages.
@@ -602,7 +602,7 @@ enum Shaders {
                 // that changing the population model moves no exposure and none of the five
                 // looks needs retuning.
                 float2 synth = synthesised(stellar, u, ageMyr);
-                float massToLight = knot ? synth.y * u.luminosityNormalisation : 1.0;
+                float massToLight = knot ? synth.y * u.luminosityNormalisation : 1.0f;
                 float gain = ambient * massToLight;
                 // Composition as well as age. A metal-rich population is redder at the same age
                 // because metal lines blanket its blue, and a disk is metal-rich in the middle
@@ -629,22 +629,22 @@ enum Shaders {
                 // emission: the rise is what stops a knot popping into the frame at full
                 // brightness, and the strength is what keeps it a star with a nebula around
                 // it rather than a red dot.
-                float rise = 1.0 - exp(-ageMyr / max(u.ionisingRiseMyr, 1e-3));
+                float rise = 1.0f - exp(-ageMyr / max(u.ionisingRiseMyr, 1e-3f));
                 float alive = (knot && nursery)
-                    ? u.ionisedStrength * rise * exp(-ageMyr / max(u.ionisedMyr, 1e-3)) : 0.0;
+                    ? u.ionisedStrength * rise * exp(-ageMyr / max(u.ionisedMyr, 1e-3f)) : 0.0f;
                 float3 emitted = mix(stellarLight, hiiColour(), alive);
                 // A tint per galaxy is what keeps stars pulled into the other one legible.
                 // It is a departure from the physical colour, so it is dialled rather than
                 // applied: at 0 the two galaxies are coloured by their populations alone.
-                emitted *= mix(float3(1.0), chromaticity(frame.tint.rgb), u.galaxyTint);
+                emitted *= mix(float3(1.0f), chromaticity(frame.tint.rgb), u.galaxyTint);
                 if (u.mapped != 0u) {
                     constant GalaxyRamp &ramp = ramps[p.galaxy];
-                    if (ramp.params.z > 0.5) {
+                    if (ramp.params.z > 0.5f) {
                         float3 painted = rampColour(ramp, p.rampKey, kind, born);
                         emitted = mix(mix(stellarLight, painted, ramp.params.x), ramp.knot.rgb, alive);
                     }
                 }
-                out.pointSize = span * (alive > 0.15 ? 1.3 : 1.0);
+                out.pointSize = span * (alive > 0.15f ? 1.3f : 1.0f);
                 out.color = half3(emitted * (u.brightness * weight * gain * spread));
                 out.opticalDepth = 0.0h;
             }
@@ -709,9 +709,9 @@ enum Shaders {
             BackgroundStar star = stars[vid];
             float magnitude = star.direction.w;
             SplatOut out;
-            out.position = u.viewProjection * float4(star.direction.xyz, 1.0);
-            out.pointSize = u.starSize * mix(1.6, 9.0, magnitude * magnitude);
-            out.color = half3(star.color.rgb * (magnitude * magnitude * magnitude * 2.4));
+            out.position = u.viewProjection * float4(star.direction.xyz, 1.0f);
+            out.pointSize = u.starSize * mix(1.6f, 9.0f, magnitude * magnitude);
+            out.color = half3(star.color.rgb * (magnitude * magnitude * magnitude * 2.4f));
             out.opticalDepth = 0.0h;
             out.spikes = half(star.color.a);
             return out;
@@ -722,12 +722,12 @@ enum Shaders {
         // and the field stars sit behind the whole stack and are not dimmed by it.
         fragment DustTarget dustFragment(SplatOut in [[stage_in]],
                                          float2 coord [[point_coord]]) {
-            float2 d = coord - 0.5;
-            float r2 = dot(d, d) * 4.0;
-            if (r2 > 1.0) { discard_fragment(); }
+            float2 d = coord - 0.5f;
+            float r2 = dot(d, d) * 4.0f;
+            if (r2 > 1.0f) { discard_fragment(); }
 
             DustTarget out;
-            out.dust = half4(in.opticalDepth * half(exp(-4.5 * r2)) * in.slab);
+            out.dust = half4(in.opticalDepth * half(exp(-4.5f * r2)) * in.slab);
             return out;
         }
 
@@ -765,7 +765,7 @@ enum Shaders {
             v.x += v.y * 1664525u;
             v.y += v.x * 1664525u;
             v = v ^ (v >> 16u);
-            return float2(v) * (1.0 / 4294967296.0);
+            return float2(v) * (1.0f / 4294967296.0f);
         }
 
         // The lace tiles every `laceTile` cells: each lattice it is read off holds a whole
@@ -780,7 +780,7 @@ enum Shaders {
             float2 p = q * (float(period) / float(laceTile)) + shift;
             float2 i = floor(p);
             float2 f = p - i;
-            float2 s = f * f * (3.0 - 2.0 * f);
+            float2 s = f * f * (3.0f - 2.0f * f);
             int2 c = int2(i);
             float a = webHash(uint2(laceWrap(c, period))).x;
             float b = webHash(uint2(laceWrap(c + int2(1, 0), period))).x;
@@ -791,22 +791,22 @@ enum Shaders {
 
         static float laceFbm(float2 q, int low, int high, float2 shift) {
             float ratio = float(high) / float(low);
-            return (0.5 * laceValue(q, low, shift)
-                    + 0.25 * laceValue(q, high, shift * ratio + float2(17.1, -9.7))) / 0.75;
+            return (0.5f * laceValue(q, low, shift)
+                    + 0.25f * laceValue(q, high, shift * ratio + float2(17.1f, -9.7f))) / 0.75f;
         }
 
         static float laceRidge(float2 p, int period, float2 shift) {
-            float ridge = 1.0 - abs(2.0 * laceValue(p, period, shift) - 1.0);
+            float ridge = 1.0f - abs(2.0f * laceValue(p, period, shift) - 1.0f);
             return ridge * ridge * ridge * ridge * ridge;
         }
 
         // Threads that branch: ridged noise, each octave weighted by the ridge above it.
         static float laceThreads(float2 p) {
-            float first = laceRidge(p, 83, float2(0.0));
-            float second = laceRidge(p, 175, float2(5.3, 1.9));
-            float third = laceRidge(p, 367, float2(16.43, 5.89));
-            return 0.6 * first + 0.33 * second * saturate(first * 1.5)
-                + 0.1815 * third * saturate(second * 1.5);
+            float first = laceRidge(p, 83, float2(0.0f));
+            float second = laceRidge(p, 175, float2(5.3f, 1.9f));
+            float third = laceRidge(p, 367, float2(16.43f, 5.89f));
+            return 0.6f * first + 0.33f * second * saturate(first * 1.5f)
+                + 0.1815f * third * saturate(second * 1.5f);
         }
 
         // Cell walls, each wall drawn at its own strength so the web stays open.
@@ -814,14 +814,14 @@ enum Shaders {
             const int period = 51;
             float2 p = q * (float(period) / float(laceTile));
             int2 base = int2(floor(p));
-            float first = 9.0;
-            float second = 9.0;
+            float first = 9.0f;
+            float second = 9.0f;
             int2 near = base;
             int2 next = base;
             for (int y = -1; y <= 1; ++y) {
                 for (int x = -1; x <= 1; ++x) {
                     int2 c = base + int2(x, y);
-                    float d = distance(float2(c) + 0.1 + 0.8 * webHash(uint2(laceWrap(c, period))), p);
+                    float d = distance(float2(c) + 0.1f + 0.8f * webHash(uint2(laceWrap(c, period))), p);
                     if (d < first) {
                         second = first;
                         next = near;
@@ -836,19 +836,19 @@ enum Shaders {
             int2 a = laceWrap(near, period);
             int2 b = laceWrap(next, period);
             float wall = webHash(uint2(min(a, b) * int2(73, 37) + max(a, b) * int2(151, 197))).x;
-            float gap = (second - first) / 0.1;
-            return exp(-gap * gap) * (0.25 + 0.75 * wall);
+            float gap = (second - first) / 0.1f;
+            return exp(-gap * gap) * (0.25f + 0.75f * wall);
         }
 
         // Threads and walls on a warped plane, with clear holes, in cells; not yet divided by
         // its mean.
         static float webLace(float2 q) {
-            float2 p = q + 2.2 * (float2(laceFbm(q, 32, 65, float2(11.3, 2.9)),
-                                         laceFbm(q, 32, 65, float2(-7.1, 17.7))) - 0.5);
+            float2 p = q + 2.2f * (float2(laceFbm(q, 32, 65, float2(11.3f, 2.9f)),
+                                         laceFbm(q, 32, 65, float2(-7.1f, 17.7f))) - 0.5f);
             float threads = laceThreads(p);
             float walls = laceWalls(p);
-            float holes = saturate((laceFbm(p, 58, 118, float2(4.4, 6.6)) - 0.58) * 6.0);
-            return (0.15 + 2.0 * threads + 0.8 * walls) * (1.0 - 0.9 * holes);
+            float holes = saturate((laceFbm(p, 58, 118, float2(4.4f, 6.6f)) - 0.58f) * 6.0f);
+            return (0.15f + 2.0f * threads + 0.8f * walls) * (1.0f - 0.9f * holes);
         }
 
         // One tile of the lace, four samples a texel, baked once per device.
@@ -856,22 +856,22 @@ enum Shaders {
                              uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= lace.get_width() || gid.y >= lace.get_height()) { return; }
             float texel = float(laceTile) / float(lace.get_width());
-            float total = 0.0;
+            float total = 0.0f;
             for (int y = 0; y < 2; ++y) {
                 for (int x = 0; x < 2; ++x) {
-                    total += webLace((float2(gid) + (float2(float(x), float(y)) + 0.5) * 0.5) * texel);
+                    total += webLace((float2(gid) + (float2(float(x), float(y)) + 0.5f) * 0.5f) * texel);
                 }
             }
-            lace.write(half4(half(0.25 * total)), gid);
+            lace.write(half4(half(0.25f * total)), gid);
         }
 
         // The disk's angular rate at a radius, from eight samples a factor 1.68 apart; inside
         // the first it turns as a solid body, past the last its curve is flat.
         static float webOmega(DiskFrame frame, float radius) {
-            float h = max(frame.center.w, 1e-3);
-            float x = (log2(max(radius / h, 1e-4)) + 2.0) / 0.75;
-            if (x >= 7.0) { return frame.omegaOuter.w * 9.5137 * h / max(radius, 1e-4); }
-            x = max(x, 0.0);
+            float h = max(frame.center.w, 1e-3f);
+            float x = (log2(max(radius / h, 1e-4f)) + 2.0f) / 0.75f;
+            if (x >= 7.0f) { return frame.omegaOuter.w * 9.5137f * h / max(radius, 1e-4f); }
+            x = max(x, 0.0f);
             int i = min(int(x), 6);
             float a = i < 4 ? frame.omegaInner[i] : frame.omegaOuter[i - 4];
             float b = i < 3 ? frame.omegaInner[i + 1] : frame.omegaOuter[i - 3];
@@ -880,20 +880,20 @@ enum Shaders {
 
         // How fast that rate falls with radius: the shear a copy has taken on since it rested.
         static float webOmegaSlope(DiskFrame frame, float radius) {
-            float h = max(frame.center.w, 1e-3);
-            float r = max(radius, 1e-4);
-            float x = (log2(max(r / h, 1e-4)) + 2.0) / 0.75;
-            if (x >= 7.0) { return -webOmega(frame, r) / r; }
-            if (x <= 0.0) { return 0.0; }
+            float h = max(frame.center.w, 1e-3f);
+            float r = max(radius, 1e-4f);
+            float x = (log2(max(r / h, 1e-4f)) + 2.0f) / 0.75f;
+            if (x >= 7.0f) { return -webOmega(frame, r) / r; }
+            if (x <= 0.0f) { return 0.0f; }
             int i = min(int(x), 6);
             float a = i < 4 ? frame.omegaInner[i] : frame.omegaOuter[i - 4];
             float b = i < 3 ? frame.omegaInner[i + 1] : frame.omegaOuter[i - 3];
-            return (b - a) / (0.75 * M_LN2_F * r);
+            return (b - a) / (0.75f * M_LN2_F * r);
         }
 
         // A quarter of the dust stays even under the web: with none, a dense clump opens onto
         // whatever bright knot it holds and the core burns white.
-        constant float webDepth = 0.75;
+        constant float webDepth = 0.75f;
 
         constexpr sampler laceSampler(filter::linear, mip_filter::linear, address::repeat,
                                       max_anisotropy(8));
@@ -906,34 +906,34 @@ enum Shaders {
         static float webAt(DiskFrame frame, constant WebUniforms &w, float3 ray, float3 stepX,
                            float3 stepY, texture2d<half> lace) {
             float period = frame.web.y;
-            if (period <= 0.0) { return 1.0; }
+            if (period <= 0.0f) { return 1.0f; }
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
             float3 rel = w.eye.xyz - frame.center.xyz;
-            float least = 0.05 * length(ray);
+            float least = 0.05f * length(ray);
             float along = dot(ray, axis);
-            along = along < 0.0 ? min(along, -least) : max(along, least);
+            along = along < 0.0f ? min(along, -least) : max(along, least);
             float t = -dot(rel, axis) / along;
-            if (t <= 0.0) { return 1.0; }
+            if (t <= 0.0f) { return 1.0f; }
             float3 meet = rel + ray * t;
             float3 ex = t * (stepX - ray * (dot(stepX, axis) / along));
             float3 ey = t * (stepY - ray * (dot(stepY, axis) / along));
             float2 p = float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz));
             float2 dx = float2(dot(ex, frame.axisU.xyz), dot(ex, frame.axisV.xyz));
             float2 dy = float2(dot(ey, frame.axisU.xyz), dot(ey, frame.axisV.xyz));
-            float h = max(frame.center.w, 1e-3);
+            float h = max(frame.center.w, 1e-3f);
             float cell = clamp(w.params.y * h, w.params.z, w.params.w);
             // The thinnest wall is a tenth of a cell: under a pixel it would only shimmer.
             float pixel = max(length(dx), length(dy));
-            float detail = smoothstep(0.6, 2.0, 0.1 * cell / max(pixel, 1e-6));
-            if (detail <= 0.0) { return 1.0; }
+            float detail = smoothstep(0.6f, 2.0f, 0.1f * cell / max(pixel, 1e-6f));
+            if (detail <= 0.0f) { return 1.0f; }
             float radius = length(p);
             float omega = webOmega(frame, radius);
-            float shear = webOmegaSlope(frame, radius) / max(radius, 1e-4);
-            float scale = 1.0 / (cell * float(laceTile));
-            float total = 0.0;
-            float norm = 0.0;
+            float shear = webOmegaSlope(frame, radius) / max(radius, 1e-4f);
+            float scale = 1.0f / (cell * float(laceTile));
+            float total = 0.0f;
+            float norm = 0.0f;
             for (int k = 0; k < 2; ++k) {
-                float s = w.up.w / period + frame.web.z + 0.5 * float(k);
+                float s = w.up.w / period + frame.web.z + 0.5f * float(k);
                 float cycle = floor(s);
                 float phase = s - cycle;
                 float weight = sinpi(phase);
@@ -947,13 +947,13 @@ enum Shaders {
                 float2 turn = float2(n * -p.x + c * p.y, -c * p.x - n * p.y) * (shear * age);
                 float2 qx = float2(c * dx.x + n * dx.y, n * -dx.x + c * dx.y) + turn * dot(p, dx);
                 float2 qy = float2(c * dy.x + n * dy.y, n * -dy.x + c * dy.y) + turn * dot(p, dy);
-                float2 offset = webHash(uint2(int2(int(cycle) * 2 + k, int(frame.pattern.w * 10.0)))) * 400.0;
+                float2 offset = webHash(uint2(int2(int(cycle) * 2 + k, int(frame.pattern.w * 10.0f)))) * 400.0f;
                 float value = float(lace.sample(laceSampler, (q / cell + offset) / float(laceTile),
                                                 gradient2d(qx * scale, qy * scale)).r);
-                total += weight * (value * w.target.w - 1.0);
+                total += weight * (value * w.target.w - 1.0f);
                 norm += weight * weight;
             }
-            return max(1.0 + webDepth * detail * total * rsqrt(max(norm, 1e-4)), 0.0);
+            return max(1.0f + webDepth * detail * total * rsqrt(max(norm, 1e-4f)), 0.0f);
         }
 
         // What both dust passes under the web need of a grain: where it is, which slab, and how
@@ -974,37 +974,37 @@ enum Shaders {
         static bool webGrain(Drawn p, constant SplatUniforms &u, DiskFrame frame,
                              constant WebUniforms &w, thread WebGrain &grain) {
             float3 position = p.position;
-            grain.position = u.viewProjection * float4(position, 1.0);
+            grain.position = u.viewProjection * float4(position, 1.0f);
             uint kind = p.kind;
             grain.weight = p.weight;
             grain.kernelScale = p.kernelScale;
-            if (grain.kernelScale < 0.8) {
-                grain.weight *= mix(0.07, 1.0, u.glint);
-                grain.kernelScale = mix(0.9, grain.kernelScale, u.glint);
+            if (grain.kernelScale < 0.8f) {
+                grain.weight *= mix(0.07f, 1.0f, u.glint);
+                grain.kernelScale = mix(0.9f, grain.kernelScale, u.glint);
             }
             float born = p.born;
             bool nursery = kind == 1u || kind == 2u;
-            float ageMyr = (nursery || born >= 0.0)
+            float ageMyr = (nursery || born >= 0.0f)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
-            bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
+            bool knot = born > -1e8f && born < 1e8f && ageMyr >= 0.0f;
             grain.hole = kind == 6u;
             bool absorbing = (kind == 2u && !knot) || grain.hole;
-            if (kind == 3u || (grain.hole && u.holeShadow <= 0.0) || !absorbing) { return false; }
-            float slabAt = clamp((grain.position.w - u.slabNear) * u.slabScale, 0.0, 0.999) * 4.0;
+            if (kind == 3u || (grain.hole && u.holeShadow <= 0.0f) || !absorbing) { return false; }
+            float slabAt = clamp((grain.position.w - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f;
             uint slabIndex = uint(slabAt);
             grain.slab = half4(slabIndex == 0u, slabIndex == 1u, slabIndex == 2u, slabIndex == 3u);
-            grain.perPixel = u.projectionScale / max(grain.position.w, 1e-3);
-            grain.amount = 0.0;
+            grain.perPixel = u.projectionScale / max(grain.position.w, 1e-3f);
+            grain.amount = 0.0f;
             if (grain.hole) { return true; }
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
             float3 rel = position - frame.center.xyz;
             float height = dot(rel, axis);
-            float scale = max(frame.center.w, 1e-3);
+            float scale = max(frame.center.w, 1e-3f);
             float facing = dot(normalize(position - w.eye.xyz), axis);
             grain.amount = w.eye.w * frame.web.x
-                * (1.0 - smoothstep(0.3 * scale, 0.8 * scale, abs(height)))
-                * (1.0 - smoothstep(5.0 * scale, 7.0 * scale, length(rel - axis * height)))
-                * smoothstep(0.12, 0.35, abs(facing));
+                * (1.0f - smoothstep(0.3f * scale, 0.8f * scale, abs(height)))
+                * (1.0f - smoothstep(5.0f * scale, 7.0f * scale, length(rel - axis * height)))
+                * smoothstep(0.12f, 0.35f, abs(facing));
             return true;
         }
 
@@ -1016,9 +1016,9 @@ enum Shaders {
             SplatOut out;
             out.color = half3(0.0h);
             out.spikes = 0.0h;
-            if (!dust || grain.amount >= 1.0) {
-                out.position = float4(2.0, 2.0, 2.0, 1.0);
-                out.pointSize = 0.0;
+            if (!dust || grain.amount >= 1.0f) {
+                out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
+                out.pointSize = 0.0f;
                 out.opticalDepth = 0.0h;
                 out.slab = half4(0.0h);
                 return out;
@@ -1026,21 +1026,21 @@ enum Shaders {
             out.position = grain.position;
             out.slab = grain.slab;
             if (grain.hole) {
-                out.pointSize = max(4.0 * u.holeShadow * grain.perPixel, 2.0);
+                out.pointSize = max(4.0f * u.holeShadow * grain.perPixel, 2.0f);
                 out.opticalDepth = 8.0h;
                 return out;
             }
             float3 position = p.position;
             float raw = max(p.spacing * u.smoothingScale * grain.kernelScale
-                                * mix(1.0, w.right.w, grain.amount), 1e-4) * grain.perPixel;
+                                * mix(1.0f, w.right.w, grain.amount), 1e-4f) * grain.perPixel;
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             float reach = span / grain.perPixel;
             float spread = u.referenceArea / (reach * reach);
             float2 pattern = armWave(position, frame);
-            float lane = 1.0 + 7.0 * pow(pattern.x, 2.0) * pattern.y * laneDetail(position, frame);
-            out.pointSize = span * 1.3;
-            out.opticalDepth = half(grain.weight * u.dustStrength * spread * 1.3
-                                    * (1.0 - grain.amount) * lane);
+            float lane = 1.0f + 7.0f * pow(pattern.x, 2.0f) * pattern.y * laneDetail(position, frame);
+            out.pointSize = span * 1.3f;
+            out.opticalDepth = half(grain.weight * u.dustStrength * spread * 1.3f
+                                    * (1.0f - grain.amount) * lane);
             return out;
         }
 
@@ -1077,7 +1077,7 @@ enum Shaders {
             DiskFrame frame = frames[p.galaxy];
             WebGrain grain;
             bool dust = webGrain(p, u, frame, w, grain);
-            if (dust && !grain.hole && grain.amount < 1.0) {
+            if (dust && !grain.hole && grain.amount < 1.0f) {
                 p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
             }
             return dustWeb(p, dust, grain, u, frame, w);
@@ -1106,10 +1106,10 @@ enum Shaders {
                                         constant WebUniforms &w) {
             WebCarrierOut out;
             uint g = p.galaxy;
-            if (!dust || grain.hole || grain.amount <= 0.0) {
-                out.position = float4(2.0, 2.0, 2.0, 1.0);
-                out.pointSize = 0.0;
-                out.carried = 0.0;
+            if (!dust || grain.hole || grain.amount <= 0.0f) {
+                out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
+                out.pointSize = 0.0f;
+                out.carried = 0.0f;
                 out.slab = half4(0.0h);
                 out.tag = 0.0h;
                 return out;
@@ -1117,19 +1117,19 @@ enum Shaders {
             float3 position = p.position;
             float coarse = w.carrier.x;
             float raw = max(p.spacing * u.smoothingScale * grain.kernelScale
-                                * mix(1.0, w.right.w, grain.amount), 1e-4) * grain.perPixel;
+                                * mix(1.0f, w.right.w, grain.amount), 1e-4f) * grain.perPixel;
             // Never under a few of its own pixels, or the coarse target would drop part of it.
-            float span = clamp(raw, max(u.minimumSize, w.carrier.y * coarse / 1.3), u.maximumSize);
+            float span = clamp(raw, max(u.minimumSize, w.carrier.y * coarse / 1.3f), u.maximumSize);
             float reach = span / grain.perPixel;
             float spread = u.referenceArea / (reach * reach);
             float2 pattern = armWave(position, frame);
             // The painted strands' own mean under the web, so the web moves no exposure.
-            float lane = 1.0 + 7.0 * pow(pattern.x, 2.0) * pattern.y * 0.855;
+            float lane = 1.0f + 7.0f * pow(pattern.x, 2.0f) * pattern.y * 0.855f;
             out.position = grain.position;
-            out.pointSize = span * 1.3 / coarse;
-            out.carried = grain.weight * u.dustStrength * spread * 1.3 * grain.amount * lane;
+            out.pointSize = span * 1.3f / coarse;
+            out.carried = grain.weight * u.dustStrength * spread * 1.3f * grain.amount * lane;
             out.slab = grain.slab;
-            out.tag = half(float(g + 1u) / 255.0);
+            out.tag = half(float(g + 1u) / 255.0f);
             return out;
         }
 
@@ -1166,7 +1166,7 @@ enum Shaders {
             DiskFrame frame = frames[p.galaxy];
             WebGrain grain;
             bool dust = webGrain(p, u, frame, w, grain);
-            if (dust && !grain.hole && grain.amount > 0.0) {
+            if (dust && !grain.hole && grain.amount > 0.0f) {
                 p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
             }
             return webCarrier(p, dust, grain, u, frame, w);
@@ -1174,11 +1174,11 @@ enum Shaders {
 
         fragment WebCarrierTarget webCarrierFragment(WebCarrierOut in [[stage_in]],
                                                      float2 coord [[point_coord]]) {
-            float2 d = coord - 0.5;
-            float r2 = dot(d, d) * 4.0;
-            if (r2 > 1.0) { discard_fragment(); }
+            float2 d = coord - 0.5f;
+            float r2 = dot(d, d) * 4.0f;
+            if (r2 > 1.0f) { discard_fragment(); }
             WebCarrierTarget out;
-            out.carrier = half4(half(in.carried * exp(-4.5 * r2)) * in.slab);
+            out.carrier = half4(half(in.carried * exp(-4.5f * r2)) * in.slab);
             out.tags = in.tag * in.slab;
             return out;
         }
@@ -1190,7 +1190,7 @@ enum Shaders {
         vertex WebResolveOut webResolveVertex(uint vid [[vertex_id]]) {
             WebResolveOut out;
             float2 corner = float2(float((vid << 1u) & 2u), float(vid & 2u));
-            out.position = float4(corner * 2.0 - 1.0, 0.0, 1.0);
+            out.position = float4(corner * 2.0f - 1.0f, 0.0f, 1.0f);
             return out;
         }
 
@@ -1207,20 +1207,20 @@ enum Shaders {
                                                texture2d<half> tagged [[texture(2)]]) {
             float2 uv = in.position.xy / w.target.xy;
             float4 carrier = float4(carried.sample(bilinear, uv));
-            if (all(carrier <= 0.0)) { discard_fragment(); }
-            float4 tags = float4(tagged.sample(pointSampler, uv)) * 255.0;
-            float2 ndc = float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+            if (all(carrier <= 0.0f)) { discard_fragment(); }
+            float4 tags = float4(tagged.sample(pointSampler, uv)) * 255.0f;
+            float2 ndc = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
             float3 across = w.right.xyz * (w.forward.w * w.target.z);
             float3 upward = w.up.xyz * w.forward.w;
             float3 ray = w.forward.xyz + ndc.x * across + ndc.y * upward;
-            float3 stepX = across * (2.0 / w.target.x);
-            float3 stepY = upward * (-2.0 / w.target.y);
+            float3 stepX = across * (2.0f / w.target.x);
+            float3 stepY = upward * (-2.0f / w.target.y);
             float4 webbed = carrier;
             int last = -1;
-            float web = 1.0;
+            float web = 1.0f;
             for (int s = 0; s < 4; ++s) {
-                int g = int(tags[s] + 0.5) - 1;
-                if (carrier[s] <= 0.0 || g < 0) { continue; }
+                int g = int(tags[s] + 0.5f) - 1;
+                if (carrier[s] <= 0.0f || g < 0) { continue; }
                 if (g != last) {
                     web = webAt(frames[g], w, ray, stepX, stepY, lace);
                     last = g;
@@ -1238,11 +1238,11 @@ enum Shaders {
         fragment LightTarget splatFragment(SplatOut in [[stage_in]],
                                            float2 coord [[point_coord]],
                                            SplatFetch prior) {
-            float2 d = coord - 0.5;
-            float r2 = dot(d, d) * 4.0;
-            if (r2 > 1.0) { discard_fragment(); }
+            float2 d = coord - 0.5f;
+            float r2 = dot(d, d) * 4.0f;
+            if (r2 > 1.0f) { discard_fragment(); }
 
-            float falloff = exp(-4.5 * r2);
+            float falloff = exp(-4.5f * r2);
             float column = dot(float4(prior.dust), float4(in.slab));
             float3 extinction = exp(-column * reddening);
             LightTarget out;
@@ -1260,16 +1260,16 @@ enum Shaders {
         static CountOut countPoint(float3 position, uint kind, float born,
                                    constant SplatUniforms &u) {
             CountOut out;
-            out.position = u.viewProjection * float4(position, 1.0);
-            out.pointSize = 1.0;
+            out.position = u.viewProjection * float4(position, 1.0f);
+            out.pointSize = 1.0f;
             bool nursery = kind == 1u || kind == 2u;
-            float ageMyr = (nursery || born >= 0.0)
+            float ageMyr = (nursery || born >= 0.0f)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
-            bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
+            bool knot = born > -1e8f && born < 1e8f && ageMyr >= 0.0f;
             bool absorbing = (kind == 2u && !knot) || kind == 6u;
             if (kind == 3u || absorbing) {
-                out.position = float4(2.0, 2.0, 2.0, 1.0);
-                out.pointSize = 0.0;
+                out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
+                out.pointSize = 0.0f;
             }
             return out;
         }
@@ -1291,7 +1291,7 @@ enum Shaders {
         }
 
         fragment float4 countFragment(CountOut in [[stage_in]]) {
-            return float4(1.0, 0.0, 0.0, 0.0);
+            return float4(1.0f, 0.0f, 0.0f, 0.0f);
         }
 
         // The raw look: one fixed-size point per particle in its galaxy's tint, none of the
@@ -1305,10 +1305,10 @@ enum Shaders {
         static PlainOut plainPoint(float3 position, uint kind, uint galaxy,
                                    constant SplatUniforms &u, constant DiskFrame *frames) {
             PlainOut out;
-            out.position = u.viewProjection * float4(position, 1.0);
+            out.position = u.viewProjection * float4(position, 1.0f);
             out.pointSize = u.minimumSize;
             out.color = half3(frames[galaxy].tint.xyz * u.brightness);
-            if (kind == 3u || kind == 6u) { out.position = float4(2.0, 2.0, 2.0, 1.0); }
+            if (kind == 3u || kind == 6u) { out.position = float4(2.0f, 2.0f, 2.0f, 1.0f); }
             return out;
         }
 
@@ -1336,21 +1336,21 @@ enum Shaders {
 
         fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
                                                float2 coord [[point_coord]]) {
-            float2 d = coord - 0.5;
-            float r2 = dot(d, d) * 4.0;
-            if (r2 > 1.0) { discard_fragment(); }
+            float2 d = coord - 0.5f;
+            float r2 = dot(d, d) * 4.0f;
+            if (r2 > 1.0f) { discard_fragment(); }
 
             float falloff;
             if (in.spikes > 0.0h) {
                 // A field star needs a tight core, otherwise the bloom halo is all that is left
                 // of it and the image reads as defocused rather than as a long exposure.
-                float ax = abs(d.x) * 2.0;
-                float ay = abs(d.y) * 2.0;
-                float cross = exp(-210.0 * ax * ax - 4.0 * ay)
-                            + exp(-210.0 * ay * ay - 4.0 * ax);
-                falloff = exp(-13.0 * r2) + float(in.spikes) * 0.5 * cross;
+                float ax = abs(d.x) * 2.0f;
+                float ay = abs(d.y) * 2.0f;
+                float cross = exp(-210.0f * ax * ax - 4.0f * ay)
+                            + exp(-210.0f * ay * ay - 4.0f * ax);
+                falloff = exp(-13.0f * r2) + float(in.spikes) * 0.5f * cross;
             } else {
-                falloff = exp(-4.5 * r2);
+                falloff = exp(-4.5f * r2);
             }
 
             LightTarget out;
@@ -1366,7 +1366,7 @@ enum Shaders {
                             constant uint &factor [[buffer(0)]],
                             uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float3 emitted = float3(0.0);
+            float3 emitted = float3(0.0f);
             for (uint y = 0; y < factor; ++y) {
                 for (uint x = 0; x < factor; ++x) {
                     emitted += light.read(gid * factor + uint2(x, y)).rgb;
@@ -1379,7 +1379,7 @@ enum Shaders {
             // of a pixel — in front of the stars and behind them alike — was halved and
             // applied to the total, which cannot make a lane pass in front of anything and
             // only ever pulled the whole galaxy down towards brown.
-            dst.write(float4(averaged, 1.0), gid);
+            dst.write(float4(averaged, 1.0f), gid);
         }
 
         // Box average of the accumulation and an exponential exposure curve, which keeps a
@@ -1390,14 +1390,14 @@ enum Shaders {
                                    constant float &fade [[buffer(1)]],
                                    uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
-            float3 sum = float3(0.0);
+            float3 sum = float3(0.0f);
             for (uint y = 0; y < factor; ++y) {
                 for (uint x = 0; x < factor; ++x) {
                     sum += light.read(gid * factor + uint2(x, y)).rgb;
                 }
             }
             float3 energy = sum / float(factor * factor);
-            output.write(float4(pow(1.0 - exp(-energy), 1.0 / 2.2) * fade, 1.0), gid);
+            output.write(float4(pow(1.0f - exp(-energy), 1.0f / 2.2f) * fade, 1.0f), gid);
         }
 
         kernel void brightPass(texture2d<float, access::sample> src [[texture(0)]],
@@ -1405,14 +1405,14 @@ enum Shaders {
                                constant BloomParams &p [[buffer(0)]],
                                uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float2 uv = (float2(gid) + 0.5) / float2(dst.get_width(), dst.get_height());
+            float2 uv = (float2(gid) + 0.5f) / float2(dst.get_width(), dst.get_height());
             float3 c = src.sample(bilinear, uv).rgb;
             float brightness = max(c.r, max(c.g, c.b));
-            float knee = max(p.threshold * p.softKnee, 1e-5);
-            float soft = clamp(brightness - p.threshold + knee, 0.0, 2.0 * knee);
-            soft = soft * soft / (4.0 * knee);
-            float weight = max(soft, brightness - p.threshold) / max(brightness, 1e-5);
-            dst.write(float4(c * weight, 1.0), gid);
+            float knee = max(p.threshold * p.softKnee, 1e-5f);
+            float soft = clamp(brightness - p.threshold + knee, 0.0f, 2.0f * knee);
+            soft = soft * soft / (4.0f * knee);
+            float weight = max(soft, brightness - p.threshold) / max(brightness, 1e-5f);
+            dst.write(float4(c * weight, 1.0f), gid);
         }
 
         // Kawase dual filter, the downsample half.
@@ -1420,14 +1420,14 @@ enum Shaders {
                                texture2d<float, access::write> dst [[texture(1)]],
                                uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float2 uv = (float2(gid) + 0.5) / float2(dst.get_width(), dst.get_height());
-            float2 hp = 0.5 / float2(src.get_width(), src.get_height());
-            float3 sum = src.sample(bilinear, uv).rgb * 4.0;
+            float2 uv = (float2(gid) + 0.5f) / float2(dst.get_width(), dst.get_height());
+            float2 hp = 0.5f / float2(src.get_width(), src.get_height());
+            float3 sum = src.sample(bilinear, uv).rgb * 4.0f;
             sum += src.sample(bilinear, uv - hp).rgb;
             sum += src.sample(bilinear, uv + hp).rgb;
             sum += src.sample(bilinear, uv + float2(hp.x, -hp.y)).rgb;
             sum += src.sample(bilinear, uv + float2(-hp.x, hp.y)).rgb;
-            dst.write(float4(sum / 8.0, 1.0), gid);
+            dst.write(float4(sum / 8.0f, 1.0f), gid);
         }
 
         // Kawase dual filter, the upsample half, accumulating the finer level underneath.
@@ -1437,17 +1437,17 @@ enum Shaders {
                                 uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
             float2 size = float2(dst.get_width(), dst.get_height());
-            float2 uv = (float2(gid) + 0.5) / size;
-            float2 hp = 0.5 / size;
-            float3 sum = src.sample(bilinear, uv + float2(-hp.x * 2.0, 0.0)).rgb;
-            sum += src.sample(bilinear, uv + float2(-hp.x, hp.y)).rgb * 2.0;
-            sum += src.sample(bilinear, uv + float2(0.0, hp.y * 2.0)).rgb;
-            sum += src.sample(bilinear, uv + float2(hp.x, hp.y)).rgb * 2.0;
-            sum += src.sample(bilinear, uv + float2(hp.x * 2.0, 0.0)).rgb;
-            sum += src.sample(bilinear, uv + float2(hp.x, -hp.y)).rgb * 2.0;
-            sum += src.sample(bilinear, uv + float2(0.0, -hp.y * 2.0)).rgb;
-            sum += src.sample(bilinear, uv + float2(-hp.x, -hp.y)).rgb * 2.0;
-            dst.write(float4(sum / 12.0 + base.read(gid).rgb, 1.0), gid);
+            float2 uv = (float2(gid) + 0.5f) / size;
+            float2 hp = 0.5f / size;
+            float3 sum = src.sample(bilinear, uv + float2(-hp.x * 2.0f, 0.0f)).rgb;
+            sum += src.sample(bilinear, uv + float2(-hp.x, hp.y)).rgb * 2.0f;
+            sum += src.sample(bilinear, uv + float2(0.0f, hp.y * 2.0f)).rgb;
+            sum += src.sample(bilinear, uv + float2(hp.x, hp.y)).rgb * 2.0f;
+            sum += src.sample(bilinear, uv + float2(hp.x * 2.0f, 0.0f)).rgb;
+            sum += src.sample(bilinear, uv + float2(hp.x, -hp.y)).rgb * 2.0f;
+            sum += src.sample(bilinear, uv + float2(0.0f, -hp.y * 2.0f)).rgb;
+            sum += src.sample(bilinear, uv + float2(-hp.x, -hp.y)).rgb * 2.0f;
+            dst.write(float4(sum / 12.0f + base.read(gid).rgb, 1.0f), gid);
         }
 
         // The light of a source with its surroundings taken off, so a star keeps nearly all of
@@ -1458,9 +1458,9 @@ enum Shaders {
                                  constant float &amount [[buffer(0)]],
                                  uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float2 uv = (float2(gid) + 0.5) / float2(dst.get_width(), dst.get_height());
+            float2 uv = (float2(gid) + 0.5f) / float2(dst.get_width(), dst.get_height());
             float3 around = broad.sample(bilinear, uv).rgb;
-            dst.write(float4(max(point.sample(bilinear, uv).rgb - amount * around, 0.0), 1.0), gid);
+            dst.write(float4(max(point.sample(bilinear, uv).rgb - amount * around, 0.0f), 1.0f), gid);
         }
 
         // Diffraction spikes. A telescope's secondary supports and, on a segmented mirror, the
@@ -1474,14 +1474,14 @@ enum Shaders {
                                       uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
             float2 size = float2(dst.get_width(), dst.get_height());
-            float2 uv = (float2(gid) + 0.5) / size;
-            float3 total = float3(0.0);
+            float2 uv = (float2(gid) + 0.5f) / size;
+            float3 total = float3(0.0f);
             if (p.arms == 0u || p.samples == 0u) {
-                dst.write(float4(total, 1.0), gid);
+                dst.write(float4(total, 1.0f), gid);
                 return;
             }
             for (uint arm = 0; arm < p.arms; ++arm) {
-                float angle = p.baseAngle + float(arm) * 6.2831853 / float(p.arms);
+                float angle = p.baseAngle + float(arm) * 6.2831853f / float(p.arms);
                 float2 step = float2(cos(angle), sin(angle)) / size;
                 for (uint sample = 1; sample <= p.samples; ++sample) {
                     float t = float(sample) / float(p.samples);
@@ -1491,7 +1491,7 @@ enum Shaders {
             }
             uint shortSamples = max(8u, uint(float(p.samples) * p.shortScale));
             for (uint arm = 0; arm < p.shortArms; ++arm) {
-                float angle = p.shortBaseAngle + float(arm) * 6.2831853 / float(p.shortArms);
+                float angle = p.shortBaseAngle + float(arm) * 6.2831853f / float(p.shortArms);
                 float2 step = float2(cos(angle), sin(angle)) / size;
                 for (uint sample = 1; sample <= shortSamples; ++sample) {
                     float t = float(sample) / float(shortSamples);
@@ -1499,16 +1499,16 @@ enum Shaders {
                            * exp(-t * p.falloff);
                 }
             }
-            dst.write(float4(total / float(p.samples), 1.0), gid);
+            dst.write(float4(total / float(p.samples), 1.0f), gid);
         }
 
         static float hash2(float2 v) {
-            float x = sin(dot(v, float2(127.1, 311.7))) * 43758.5453;
+            float x = sin(dot(v, float2(127.1f, 311.7f))) * 43758.5453f;
             return x - floor(x);
         }
 
         static float3 acesFilmic(float3 x) {
-            const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+            const float a = 2.51f, b = 0.03f, c = 2.43f, d = 0.59f, e = 0.14f;
             return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
         }
 
@@ -1519,7 +1519,7 @@ enum Shaders {
                               constant CompositeParams &p [[buffer(0)]],
                               uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
-            float2 uv = (float2(gid) + 0.5) / float2(output.get_width(), output.get_height());
+            float2 uv = (float2(gid) + 0.5f) / float2(output.get_width(), output.get_height());
             float3 energy = hdr.read(gid).rgb
                           + bloom.sample(bilinear, uv).rgb * p.bloomIntensity
                           + spikes.sample(bilinear, uv).rgb * p.spikeIntensity;
@@ -1534,18 +1534,18 @@ enum Shaders {
             // patches read as cloud rather than as depth. What makes a background convincing
             // is the field stars and the shot noise, both of which are still there.
             energy += p.skyLevel * float3(p.skyRed, p.skyGreen, p.skyBlue);
-            if (p.noiseLevel > 0.0) {
+            if (p.noiseLevel > 0.0f) {
                 float2 cell = float2(gid) + p.seed;
-                float read = hash2(cell) - 0.5;
-                float shot = hash2(cell + 17.3) - 0.5;
-                float luma = max(dot(energy, float3(0.2126, 0.7152, 0.0722)), 0.0);
-                energy += p.noiseLevel * (read + shot * sqrt(luma) * 4.0);
-                energy = max(energy, 0.0);
+                float read = hash2(cell) - 0.5f;
+                float shot = hash2(cell + 17.3f) - 0.5f;
+                float luma = max(dot(energy, float3(0.2126f, 0.7152f, 0.0722f)), 0.0f);
+                energy += p.noiseLevel * (read + shot * sqrt(luma) * 4.0f);
+                energy = max(energy, 0.0f);
             }
             // Logarithmic stretch, as astronomical imaging does: it keeps faint tidal debris
             // visible without turning the cores into featureless discs.
-            float3 lifted = p.stretch > 0.0
-                ? log(1.0 + energy * p.stretch) / log(1.0 + p.stretch)
+            float3 lifted = p.stretch > 0.0f
+                ? log(1.0f + energy * p.stretch) / log(1.0f + p.stretch)
                 : energy;
             // Tone mapping pulls every bright value toward white, so the warm bulge and the
             // blue arms are re-separated around the curve rather than only before it. Doing
@@ -1553,10 +1553,10 @@ enum Shaders {
             // design, which is right for a photograph and wrong for a galaxy whose core is the
             // most interesting colour in the frame. Half the amount either side gives the same
             // overall push while leaving the bright parts a hue.
-            float half_amount = sqrt(max(p.saturation, 0.0));
-            float luma = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 0.0);
-            lifted = max(mix(float3(luma), lifted, half_amount), 0.0);
-            luma = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 1e-5);
+            float half_amount = sqrt(max(p.saturation, 0.0f));
+            float luma = max(dot(lifted, float3(0.2126f, 0.7152f, 0.0722f)), 0.0f);
+            lifted = max(mix(float3(luma), lifted, half_amount), 0.0f);
+            luma = max(dot(lifted, float3(0.2126f, 0.7152f, 0.0722f)), 1e-5f);
 
             // Where the flat white core came from, and it was not the exposure. The stretch
             // above is normalised so that an energy of one lands on one, and a bulge is two
@@ -1569,8 +1569,8 @@ enum Shaders {
             // three times over the disk lands below white and keeps falling rather than
             // clipping, and the colour is carried through unchanged by scaling the pixel by
             // the ratio. Hue survives the shoulder, which is the whole point.
-            float white = max(p.whitePoint, 1.0);
-            float toned = luma * (1.0 + luma / (white * white)) / (1.0 + luma);
+            float white = max(p.whitePoint, 1.0f);
+            float toned = luma * (1.0f + luma / (white * white)) / (1.0f + luma);
             float3 preserved = lifted * (toned / luma);
 
             // Preserving hue can still push a channel past one where the colour is saturated
@@ -1578,11 +1578,11 @@ enum Shaders {
             // give and losing a little saturation is better than clipping a channel flat.
             float3 filmic = acesFilmic(lifted);
             float over = max(preserved.r, max(preserved.g, preserved.b));
-            float3 mapped = mix(preserved, filmic, smoothstep(0.85, 1.15, over));
-            float mappedLuma = dot(mapped, float3(0.2126, 0.7152, 0.0722));
-            mapped = max(mix(float3(mappedLuma), mapped, half_amount), 0.0);
+            float3 mapped = mix(preserved, filmic, smoothstep(0.85f, 1.15f, over));
+            float mappedLuma = dot(mapped, float3(0.2126f, 0.7152f, 0.0722f));
+            mapped = max(mix(float3(mappedLuma), mapped, half_amount), 0.0f);
             mapped = saturate(mapped);
-            output.write(float4(pow(mapped, 1.0 / 2.2) * p.fade, 1.0), gid);
+            output.write(float4(pow(mapped, 1.0f / 2.2f) * p.fade, 1.0f), gid);
         }
         """
 }

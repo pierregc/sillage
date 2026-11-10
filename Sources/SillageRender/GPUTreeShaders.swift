@@ -609,8 +609,8 @@ enum GPUTreeShaders {
                     if (order[start + k] < drawnCount) { drawn += 1u; }
                 }
                 if (drawn == 0u) { continue; }
-                float width = sqrt(max(node.packed.x, 1e-12));
-                float length = width * pow(1.0 / (float(drawn) * ratio), 1.0 / 3.0);
+                float width = sqrt(max(node.packed.x, 1e-12f));
+                float length = width * pow(1.0f / (float(drawn) * ratio), 1.0f / 3.0f);
                 for (uint k = 0u; k < count; ++k) {
                     uint i = order[start + k];
                     if (i < drawnCount) { lengths[i] = length; }
@@ -685,8 +685,8 @@ enum GPUTreeShaders {
             uint total = levels[p.maximumDepth + 1u];
             for (uint n = gid; n < total; n += threads) {
                 uint drawn = spacing[n].x;
-                float width = sqrt(max(nodes[n].packed.x, 1e-12));
-                float length = drawn > 0u ? width * pow(1.0 / (float(drawn) * ratio), 1.0 / 3.0) : 0.0;
+                float width = sqrt(max(nodes[n].packed.x, 1e-12f));
+                float length = drawn > 0u ? width * pow(1.0f / (float(drawn) * ratio), 1.0f / 3.0f) : 0.0f;
                 spacing[n].x = as_type<uint>(length);
             }
         }

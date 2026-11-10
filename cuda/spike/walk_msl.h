@@ -29,13 +29,13 @@ static float3 haloAcceleration(float3 offset, float mass, float scale, uint prof
         float d2 = dot(offset, offset) + scale * scale;
         return -mass * offset / (d2 * sqrt(d2));
     }
-    float r = max(length(offset), 1e-6);
+    float r = max(length(offset), 1e-6f);
     float s = r + scale;
     return -mass * offset / (r * s * s);
 }
 
 static float3 halos(float3 position, constant HaloGPU *list, uint count, bool after) {
-    float3 total = float3(0.0);
+    float3 total = float3(0.0f);
     for (uint h = 0; h < count; ++h) {
         float3 center = after ? list[h].centerAfter.xyz : list[h].centerBefore.xyz;
         total += haloAcceleration(
@@ -77,25 +77,25 @@ struct DiskCooling {
 static float3 bhCool(float3 position, float3 velocity, float3 acceleration,
                      DiskCooling disk) {
     float damping = disk.motion.w;
-    if (damping <= 0.0) { return velocity; }
+    if (damping <= 0.0f) { return velocity; }
 
     float3 axis = disk.axis.xyz;
     float3 offset = position - disk.center.xyz;
     float height = dot(offset, axis);
     float3 inPlane = offset - axis * height;
     float radius = length(inPlane);
-    if (radius < 1e-3) { return velocity; }
+    if (radius < 1e-3f) { return velocity; }
 
     // Fades out rather than stopping at an edge, or the disk would gain a ring where
     // the cooling ends.
-    float radial = 1.0 - smoothstep(disk.reach.x, disk.reach.y, radius);
-    float vertical = 1.0 - smoothstep(disk.reach.z, disk.reach.w, abs(height));
+    float radial = 1.0f - smoothstep(disk.reach.x, disk.reach.y, radius);
+    float vertical = 1.0f - smoothstep(disk.reach.z, disk.reach.w, abs(height));
     float weight = damping * radial * vertical;
-    if (weight <= 0.0) { return velocity; }
+    if (weight <= 0.0f) { return velocity; }
 
     float3 outward = inPlane / radius;
     float inward = -dot(acceleration, outward);
-    if (inward <= 0.0) { return velocity; }
+    if (inward <= 0.0f) { return velocity; }
     float speed = sqrt(inward * radius);
 
     float3 along = cross(axis, outward);
@@ -108,8 +108,8 @@ static float3 bhCool(float3 position, float3 velocity, float3 acceleration,
     float3 peculiar = velocity - target;
     float random = length(peculiar);
     float floorSpeed = disk.center.w * speed;
-    if (random <= floorSpeed || random < 1e-6) { return velocity; }
-    float cooled = max(random * (1.0 - weight), floorSpeed);
+    if (random <= floorSpeed || random < 1e-6f) { return velocity; }
+    float cooled = max(random * (1.0f - weight), floorSpeed);
     return target + peculiar * (cooled / random);
 }
 
@@ -155,7 +155,7 @@ static float3 bhWalk(float3 position, ulong code, bool inRoot, uint own,
                      device const float4 *moments, float openingAngleSquared,
                      float softeningSquared, float gravitationalConstant,
                      thread uint &work) {
-    float3 total = float3(0.0);
+    float3 total = float3(0.0f);
     // Sibling cells are contiguous, so the stack holds ranges rather than single
     // nodes: one entry per level of the tree instead of one per pending sibling.
     // The old form could hold seven entries per level, so sixty-four slots were
@@ -174,7 +174,7 @@ static float3 bhWalk(float3 position, ulong code, bool inRoot, uint own,
         int following = entry & 7;
         if (following > 0) { stack[top++] = ((index + 1) << 4) | around | (following - 1); }
         BHNode node = nodes[index];
-        if (node.comMass.w <= 0.0) { continue; }
+        if (node.comMass.w <= 0.0f) { continue; }
         work += 1;
 
         float3 offset = node.comMass.xyz - position;
@@ -207,10 +207,10 @@ static float3 bhWalk(float3 position, ulong code, bool inRoot, uint own,
                 float3 qr = float3(qa.x * offset.x + qa.w * offset.y + qb.x * offset.z,
                                    qa.w * offset.x + qa.y * offset.y + qb.y * offset.z,
                                    qb.x * offset.x + qb.y * offset.y + qa.z * offset.z);
-                float inverse = 1.0 / distanceSquared;
+                float inverse = 1.0f / distanceSquared;
                 float fifth = inverse * inverse / sqrt(distanceSquared);
-                float radial = 7.5 * dot(offset, qr) * inverse - 1.5 * (qa.x + qa.y + qa.z);
-                total += (offset * radial - 3.0 * qr) * (gravitationalConstant * fifth);
+                float radial = 7.5f * dot(offset, qr) * inverse - 1.5f * (qa.x + qa.y + qa.z);
+                total += (offset * radial - 3.0f * qr) * (gravitationalConstant * fifth);
             }
         } else if (leaf) {
             work += uint(span);
@@ -276,10 +276,10 @@ kernel void bhTracerStep(device float4 *states [[buffer(0)]],
     float3 position = states[i].xyz;
     uint4 motion = motions[i];
     // Placed by the rule the tree sorted by; outside the root it is in no cell at all.
-    const float resolution = 2097151.0;
+    const float resolution = 2097151.0f;
     float3 local = (position - float3(frame[0], frame[1], frame[2])) * frame[3];
-    bool inRoot = all(local >= 0.0) && all(local <= resolution);
-    local = clamp(local, 0.0, resolution);
+    bool inRoot = all(local >= 0.0f) && all(local <= resolution);
+    local = clamp(local, 0.0f, resolution);
     ulong code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
                | bhSpread(uint(local.z));
     uint work = 0;
@@ -290,7 +290,7 @@ kernel void bhTracerStep(device float4 *states [[buffer(0)]],
     for (uint h = 0; h < p.holeCount; ++h) {
         float3 d = position - massive[as_type<uint>(holes[h].shape.y)];
         float r2 = dot(d, d) + holes[h].shape.x;
-        float inverse = 1.0 / (r2 * sqrt(r2));
+        float inverse = 1.0f / (r2 * sqrt(r2));
         acceleration -= d * (holes[h].massG.w * inverse);
     }
     if (p.mode == 2u) {
@@ -298,7 +298,7 @@ kernel void bhTracerStep(device float4 *states [[buffer(0)]],
         return;
     }
     float3 velocity = as_type<float3>(motion.xyz);
-    float halfStep = p.timeStep * 0.5;
+    float halfStep = p.timeStep * 0.5f;
     if (p.mode == 1u) {
         velocity += acceleration * halfStep;
         uint kind = (motion.w >> 4) & 7u;

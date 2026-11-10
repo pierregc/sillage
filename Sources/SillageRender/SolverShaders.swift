@@ -27,14 +27,14 @@ enum SolverShaders {
                 float d2 = dot(offset, offset) + scale * scale;
                 return -mass * offset / (d2 * sqrt(d2));
             }
-            float r = max(length(offset), 1e-6);
+            float r = max(length(offset), 1e-6f);
             float s = r + scale;
             return -mass * offset / (r * s * s);
         }
 
         static float3 totalAcceleration(float3 position, constant GalaxyGPU *galaxies, uint count,
                                         bool after) {
-            float3 total = float3(0.0);
+            float3 total = float3(0.0f);
             for (uint g = 0; g < count; ++g) {
                 float3 center = after ? galaxies[g].centerAfter : galaxies[g].centerBefore;
                 total += potentialAcceleration(position - center, galaxies[g].mass,
@@ -52,7 +52,7 @@ enum SolverShaders {
                               uint i [[thread_position_in_grid]]) {
             if (i >= p.particleCount) { return; }
             float dt = p.timeStep;
-            float halfStep = dt * 0.5;
+            float halfStep = dt * 0.5f;
 
             float3 x = positions[i];
             float3 v = velocities[i];
