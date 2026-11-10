@@ -1736,7 +1736,7 @@ if let checkpoint, let identity {
         resumed = run
         print(
             String(
-                format: "resume     checkpoint %d: frame %d, settle %d, t=%.1f Myr, restored in %.1f s",
+                format: "resume     checkpoint %d: frame %d, settle %d, t=%.1f Myr, restored in %.2f s",
                 run.index, run.frame, run.settled,
                 Double(run.solver.time) * Physics.megayearsPerTimeUnit,
                 Date().timeIntervalSince(restoring)))
@@ -1815,7 +1815,7 @@ func saveCheckpoint(frame: Int, settled: Int) throws {
     let saved = try checkpoint.save(run) { try barnesHut.writeParticles(to: $0) }
     print(
         String(
-            format: "checkpoint %d before frame %d, settle %d: %.2f GB in %.1f s", checkpointIndex,
+            format: "checkpoint %d before frame %d, settle %d: %.2f GB in %.2f s", checkpointIndex,
             frame, settled, Double(saved.bytes) / 1e9, saved.seconds))
     // A log cut by a restart still says where the run was saved.
     fflush(stdout)
