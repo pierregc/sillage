@@ -302,6 +302,11 @@ Pierre asked on 2026-11-10 whether to drop Metal and write the engine once in C+
   `nvcc` 13.5 through `msl_compat.h`, no line of them written for it: no double precision
   instruction, and the warp shuffles, ballots, barriers and atomics where Metal has its SIMD
   functions, barriers and atomics. They run first on a GPU in #283.
+- **The other libraries, tried ahead.** With its guard lifted and its 11 kernels taken as plain
+  functions, the whole of `BarnesHutShaders` already compiles as C++17 through `msl_compat.h`,
+  no line changed. Of `Shaders`, the same trial refuses only what Metal alone has: the textures
+  and samplers, `discard_fragment`, and 31 half literals. So #274 to #277 move code, they do not
+  port it.
 - **`inline` became `static` on Metal** for seven helpers of the tree (`bhRange`,
   `bhSignedCount`, `orderedFloat`, `unorderedFloat`, `spread`, `sameDigit`, `octantStarts`),
   all integer work, where it cannot change a result.
