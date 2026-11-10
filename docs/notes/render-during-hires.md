@@ -68,7 +68,7 @@ pass should move its massive particles exactly as the massive pass did. Two sums
 - **A black hole's reaction** was summed by threadgroups of 256 particles counted from 0, tracers
   included: zero contributions, but the massive ones grouped differently. The massive particles
   are now pulled in groups of their own; the tracers are pulled in a second dispatch whose
-  reactions land where nothing reads them.
+  reactions land where nothing reads them (since #238, in their own pass).
 
 Neither change touches a run without tracers, which stays the same to the bit. With them, the
 massive particles, their velocities, their formation times, the centres and the disk states of a
