@@ -183,8 +183,8 @@ extension CostModel {
     /// minute, so it is left at zero until runs say otherwise.
     public static let fallbackHires = Line(
         fixedSeconds: 0, secondsPerUnit: SceneFolder.nanosecondsPerParticleStep / 1e9)
-    /// #187: a tracer walks the massive tree as a massive particle does, 20 ns a step at the
-    /// opening angle of 0.9 (8 M drawn from 2 M against 2 M, scene-0031).
+    /// A tracer walks the massive tree as a massive particle does, about 21 ns a step at the
+    /// opening angle of 0.9 from 8 M to 200 M drawn on 2 M massive (#187, #238, #241).
     public static let fallbackTracers = Line(
         fixedSeconds: 0, secondsPerUnit: SceneFolder.nanosecondsPerTracerStep / 1e9)
     /// #24, on a 2 M take at 30 fps: 1080p at 1.23x real time, 4K at 0.64x. Other sizes
@@ -205,9 +205,10 @@ extension CostModel {
     /// Measured alone on the M4 Max (#239, docs/notes/render-during-hires.md): a frame drawn
     /// during a full pass of scene-0031 in the Webb look, at 8 M and 30 M drawn on the same
     /// shots, scaled to the whole story by what it cost at 8 M (101 ms at 4K, 50 ms vertical).
-    /// Other sizes follow 1080p's pixels, as the exports do.
-    public static let fallbackDrawFixed4K = 0.040
-    public static let fallbackDrawPerParticle4K = 7.6e-9
+    /// 4K runs through that 8 M frame and the 1.70 s of one at 200 M through the immersed camera
+    /// (#241, docs/notes/200m-preview.md). Other sizes follow 1080p's pixels, as the exports do.
+    public static let fallbackDrawFixed4K = 0.034
+    public static let fallbackDrawPerParticle4K = 8.35e-9
     public static let fallbackDrawFixed1080p = 0.0095
     public static let fallbackDrawPerParticle1080p = 5.0e-9
 

@@ -146,7 +146,7 @@ struct CostModelTests {
         #expect(
             model.hiresSeconds(particles: 2_000_000, massive: 8_000_000, steps: 10_000)
                 == massive.seconds(2e10))
-        // No run with tracers yet: 20 ns a tracer step (#187).
+        // No run with tracers yet: the fallback's 21 ns a tracer step (#187, #241).
         #expect(CostModel.fitHires(Array(history.prefix(4))).tracers == CostModel.fallbackTracers)
         #expect(model.lines.contains { $0.hasPrefix("tracers    22.0 ns a light tracer step") })
     }
