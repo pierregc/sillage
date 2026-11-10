@@ -1573,7 +1573,8 @@ let massiveOnly = arguments.contains("--massive-only")
 if massiveCount != nil {
     let splitStart = Date()
     if massiveOnly {
-        (seeded, tracerCount) = ParticleSystem.streamingLightTracers(drawn: drawnScene, massive: scene) { _ in }
+        let kept = ParticleSystem.streamingLightTracers(drawn: drawnScene, massive: scene) { _ in }
+        (seeded, tracerCount) = (kept.massive, kept.tracers)
     } else {
         let split = try MetalBarnesHutSolver.lightTracers(drawn: drawnScene, massive: scene)
         (tracerStore, seeded, tracerCount) = (split.tracers, split.massive, split.tracers.count)
