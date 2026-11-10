@@ -158,12 +158,12 @@ public enum DiskSampler {
     /// `selfGravitating` switches the velocity structure from near-circular tracer orbits to
     /// a Toomre-stable disk and gives every particle a mass. `haloCount` draws the dark matter
     /// at another count than the galaxy's own: the massive count of a run with light tracers.
-    public static func sample(
+    public static func sample<Sink: ParticleSink>(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
         selfGravitating: Bool = false,
         haloCount: Int? = nil,
-        into system: inout ParticleSystem,
+        into system: inout Sink,
         using generator: inout SeededGenerator
     ) {
         switch config.kind {
@@ -184,8 +184,8 @@ public enum DiskSampler {
         case .blackHole:
             system.append(
                 position: config.position, velocity: config.velocity, galaxy: galaxyIndex,
-                radius: 0, luminosity: 0, component: .hole,
-                mass: selfGravitating ? config.potential.mass : 0)
+                radius: 0, population: 0.5, luminosity: 0, formation: ParticleSystem.ancient,
+                component: .hole, mass: selfGravitating ? config.potential.mass : 0, kernelScale: 1)
         }
         if selfGravitating {
             let count = config.haloParticleCount > 0 ? haloCount ?? config.haloParticleCount : 0
@@ -198,12 +198,12 @@ public enum DiskSampler {
     /// This is a component, not a label. Before it existed the centre of a galaxy was the
     /// inner part of the exponential disk with its stars merely marked as old, so the light
     /// profile had no central excess and the "bulge" was as flat as the disk it sat in.
-    private static func sampleBulge(
+    private static func sampleBulge<Sink: ParticleSink>(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
         count: Int,
         selfGravitating: Bool,
-        into system: inout ParticleSystem,
+        into system: inout Sink,
         using generator: inout SeededGenerator
     ) {
         guard count > 0 else { return }
@@ -331,11 +331,11 @@ public enum DiskSampler {
     /// function. These particles are never drawn, but without them the halo carries mass and
     /// no inertia: it raises no wake behind an infalling companion, so there is no dynamical
     /// friction and nothing ever merges.
-    private static func sampleHalo(
+    private static func sampleHalo<Sink: ParticleSink>(
         _ config: GalaxyConfig,
         count: Int,
         galaxyIndex: UInt32,
-        into system: inout ParticleSystem,
+        into system: inout Sink,
         using generator: inout SeededGenerator
     ) {
         guard count > 0 else { return }
@@ -378,8 +378,10 @@ public enum DiskSampler {
                 radius: radius,
                 population: 0,
                 luminosity: 0,
+                formation: ParticleSystem.ancient,
                 component: .halo,
-                mass: particleMass
+                mass: particleMass,
+                kernelScale: 1
             )
         }
     }
@@ -488,12 +490,12 @@ public enum DiskSampler {
         return (radius, clump.phi + generator.normal() * arc)
     }
 
-    private static func sampleDisk(
+    private static func sampleDisk<Sink: ParticleSink>(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
         count: Int,
         selfGravitating: Bool,
-        into system: inout ParticleSystem,
+        into system: inout Sink,
         using generator: inout SeededGenerator
     ) {
         let equilibrium = DiskEquilibrium(config: config, selfGravitating: selfGravitating)
@@ -943,11 +945,11 @@ public enum DiskSampler {
         }
     }
 
-    private static func sampleSpheroid(
+    private static func sampleSpheroid<Sink: ParticleSink>(
         _ config: GalaxyConfig,
         galaxyIndex: UInt32,
         selfGravitating: Bool,
-        into system: inout ParticleSystem,
+        into system: inout Sink,
         using generator: inout SeededGenerator
     ) {
         let particleMass =
@@ -978,7 +980,8 @@ public enum DiskSampler {
                 luminosity: 0.8 + 0.5 * generator.uniform(),
                 formation: StarFormation.oldFormation(roll: generator.uniform()),
                 component: .star,
-                mass: particleMass
+                mass: particleMass,
+                kernelScale: 1
             )
         }
     }

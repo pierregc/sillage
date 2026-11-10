@@ -344,33 +344,126 @@ enum Shaders {
             return float2(mix(0.5, ridge, strength * envelope), envelope);
         }
 
-        vertex SplatOut splatVertex(uint vid [[vertex_id]],
-                                    device const float3 *positions [[buffer(0)]],
-                                    device const float *population [[buffer(1)]],
-                                    device const float *formation [[buffer(8)]],
-                                    device const float *luminosity [[buffer(2)]],
-                                    device const uint *component [[buffer(3)]],
-                                    constant SplatUniforms &u [[buffer(4)]],
-                                    device const uint *galaxy [[buffer(5)]],
-                                    constant DiskFrame *frames [[buffer(6)]],
-                                    device const float *smoothing [[buffer(7)]],
-                                    device const float2 *stellar [[buffer(9)]],
-                                    device const float2 *traits [[buffer(10)]],
-                                    device const float *rampKeys [[buffer(11)]],
-                                    constant GalaxyRamp *ramps [[buffer(12)]],
-                                    texture2d<float, access::sample> column [[texture(0)]]) {
+        // What the vertex stages read of a drawn particle: a massive one's from its buffers, a
+        // light tracer's from the 32 bytes it carries and the massive tree around it (#238).
+        struct Drawn {
+            float3 position;
+            uint kind;
+            uint galaxy;
+            float weight;
+            float kernelScale;
+            float born;
+            float spacing;
+            float warming;
+            float population;
+            float rampKey;
+        };
+
+        static Drawn massiveDrawn(uint vid, device const float3 *positions,
+                                  device const float *formation, device const float *luminosity,
+                                  device const uint *component, device const uint *galaxy,
+                                  device const float *smoothing, device const float2 *traits) {
+            Drawn p;
+            p.position = positions[vid];
+            p.kind = component[vid];
+            p.galaxy = galaxy[vid];
+            p.weight = luminosity[vid];
+            p.kernelScale = traits[vid].y;
+            p.born = formation[vid];
+            p.spacing = smoothing[vid];
+            p.warming = 1.0;
+            p.population = 0.5;
+            p.rampKey = 1.7;
+            return p;
+        }
+
+        constant float tracerKernels[5] = {1.0, 0.75, 0.9, 2.2, 1.35};
+
+        // A light tracer's word decoded as `TracerWord` packs it; its spacing is left to the
+        // caller, which reads it off the tree only for what it draws.
+        static Drawn tracerDrawn(float4 state, uint word, constant float *scales) {
+            Drawn p;
+            p.position = state.xyz;
+            p.born = state.w;
+            p.galaxy = word & 15u;
+            p.kind = (word >> 4) & 7u;
+            uint kernelClass = (word >> 7) & 7u;
+            p.kernelScale = kernelClass < 5u ? tracerKernels[kernelClass] : 1.0;
+            uint light = (word >> 10) & 255u;
+            p.weight = light == 0u ? 0.0 : exp2(float(light - 1u) * 20.0 / 254.0 - 12.0);
+            uint code = word >> 18;
+            float radius = code == 0u ? 0.0 : exp2(float(code - 1u) * 24.0 / 16382.0 - 12.0);
+            float scale = scales[p.galaxy];
+            float iron = 0.25 - 0.22 * clamp(radius / max(scale, 1e-6), 0.0, 5.0);
+            p.warming = scale > 0.0 ? exp(-0.25 * clamp(iron, -1.5, 0.6)) : 1.0;
+            p.rampKey = scale > 0.0 ? radius / scale : 1.7;
+            p.population = 0.5;
+            p.spacing = 0.0;
+            return p;
+        }
+
+        // The spacing a tracer's kernel spans: that of the deepest cell of the massive tree
+        // around it holding anything drawn, one read a level (`gtSpacingLeaves`).
+        static float tracerSpacing(float3 position, device const uint2 *cells,
+                                   device const float *frame, uint depth) {
+            float length = as_type<float>(cells[0].x);
+            if (depth == 0u) { return length; }
+            const float resolution = 2097151.0;
+            float3 local = (position - float3(frame[0], frame[1], frame[2])) * frame[3];
+            if (any(local < 0.0) || any(local > resolution)) { return length; }
+            uint3 q = uint3(local);
+            uint node = 0u;
+            for (uint level = 0u; level < depth; ++level) {
+                uint links = cells[node].y;
+                uint mask = links & 255u;
+                uint shift = 20u - level;
+                uint digit = (((q.x >> shift) & 1u) << 2) | (((q.y >> shift) & 1u) << 1)
+                           | ((q.z >> shift) & 1u);
+                if ((mask & (1u << digit)) == 0u) { break; }
+                node = (links >> 8) + popcount(mask & ((1u << digit) - 1u));
+                float here = as_type<float>(cells[node].x);
+                if (here > 0.0) { length = here; }
+            }
+            return length;
+        }
+
+        static SplatOut culledSplat() {
             SplatOut out;
-            float3 position = positions[vid];
-            DiskFrame frame = frames[galaxy[vid]];
+            out.position = float4(2.0, 2.0, 2.0, 1.0);
+            out.pointSize = 0.0;
+            out.color = half3(0.0h);
+            out.opticalDepth = 0.0h;
+            out.spikes = 0.0h;
+            out.slab = half4(0.0h);
+            return out;
+        }
+
+        // Whether this pass leaves the particle out, as `splat` decides it.
+        static bool splatSkips(uint kind, float born, constant SplatUniforms &u) {
+            bool nursery = kind == 1u || kind == 2u;
+            float ageMyr = (nursery || born >= 0.0)
+                ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
+            bool knot = born > -1e8 && born < 1e8 && ageMyr >= 0.0;
+            bool hole = kind == 6u;
+            bool absorbing = (kind == 2u && !knot) || hole;
+            return kind == 3u || (hole && u.holeShadow <= 0.0) || absorbing != (u.pass == 0u);
+        }
+
+        static SplatOut splat(Drawn p, constant SplatUniforms &u, constant DiskFrame *frames,
+                              device const float2 *stellar, constant GalaxyRamp *ramps,
+                              texture2d<float, access::sample> column) {
+            SplatOut out;
+            float3 position = p.position;
+            DiskFrame frame = frames[p.galaxy];
             out.position = u.viewProjection * float4(position, 1.0);
             out.spikes = 0.0h;
             out.slab = half4(0.0h);
-            uint kind = component[vid];
-            float weight = luminosity[vid];
+            uint kind = p.kind;
+            float weight = p.weight;
             // The compact bright minority the sampler drew (DiskSampler, kernelScale 0.75):
             // two per cent of the stars carrying a quarter of the light as point sources. At
             // glint 0 they are given back the light and the width of an ordinary star.
-            float kernelScale = traits[vid].y;
+            float kernelScale = p.kernelScale;
             if (kernelScale < 0.8) {
                 weight *= mix(0.07, 1.0, u.glint);
                 kernelScale = mix(0.9, kernelScale, u.glint);
@@ -379,7 +472,7 @@ enum Shaders {
             // Age of this particle's stars, in megayears. Two sentinels sit outside any real
             // time: material sampled as already old reads as infinitely old, and gas that has
             // formed nothing yet reads as not yet born and is still drawn as dust.
-            float born = formation[vid];
+            float born = p.born;
             // Only gas carries an age that has to advance. A sampled star stands for tens of
             // thousands of stars already in steady state, not for a coeval group, so its
             // colour has no business drifting over a run — and it was drifting hard: a whole
@@ -436,7 +529,7 @@ enum Shaders {
             // kernel conserves its flux that is the same light spread thinner: enough of them
             // overlapping make a continuum instead of a stipple. A small minority are compact
             // and much brighter, and those are the sources the eye picks out one at a time.
-            float raw = max(smoothing[vid] * u.smoothingScale * kernelScale, 1e-4) * perPixel;
+            float raw = max(p.spacing * u.smoothingScale * kernelScale, 1e-4) * perPixel;
             // The spacing above is the three-dimensional one, read off the solver's tree. A
             // thin disk seen face-on stacks many of those spacings along a line of sight, so
             // a kernel sized to one of them still resolves the particles. Sized instead so
@@ -517,8 +610,8 @@ enum Shaders {
                 // warm core and a cool disk, and the half that was missing. Age alone gives a
                 // gradient of the right sign and far too weak to see.
                 float3 stellarLight = knot
-                    ? blackbody(synth.x * traits[vid].x)
-                    : legacyColour(population[vid]);
+                    ? blackbody(synth.x * p.warming)
+                    : legacyColour(p.population);
                 // Halpha, for as long as the region keeps a nebula lit inside it.
                 //
                 // Only gas can be ionised, and that is the whole of what this test says: a
@@ -545,9 +638,9 @@ enum Shaders {
                 // applied: at 0 the two galaxies are coloured by their populations alone.
                 emitted *= mix(float3(1.0), chromaticity(frame.tint.rgb), u.galaxyTint);
                 if (u.mapped != 0u) {
-                    constant GalaxyRamp &ramp = ramps[galaxy[vid]];
+                    constant GalaxyRamp &ramp = ramps[p.galaxy];
                     if (ramp.params.z > 0.5) {
-                        float3 painted = rampColour(ramp, rampKeys[vid], kind, born);
+                        float3 painted = rampColour(ramp, p.rampKey, kind, born);
                         emitted = mix(mix(stellarLight, painted, ramp.params.x), ramp.knot.rgb, alive);
                     }
                 }
@@ -556,6 +649,50 @@ enum Shaders {
                 out.opticalDepth = 0.0h;
             }
             return out;
+        }
+
+        vertex SplatOut splatVertex(uint vid [[vertex_id]],
+                                    device const float3 *positions [[buffer(0)]],
+                                    device const float *population [[buffer(1)]],
+                                    device const float *formation [[buffer(8)]],
+                                    device const float *luminosity [[buffer(2)]],
+                                    device const uint *component [[buffer(3)]],
+                                    constant SplatUniforms &u [[buffer(4)]],
+                                    device const uint *galaxy [[buffer(5)]],
+                                    constant DiskFrame *frames [[buffer(6)]],
+                                    device const float *smoothing [[buffer(7)]],
+                                    device const float2 *stellar [[buffer(9)]],
+                                    device const float2 *traits [[buffer(10)]],
+                                    device const float *rampKeys [[buffer(11)]],
+                                    constant GalaxyRamp *ramps [[buffer(12)]],
+                                    texture2d<float, access::sample> column [[texture(0)]]) {
+            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            p.warming = traits[vid].x;
+            p.population = population[vid];
+            p.rampKey = rampKeys[vid];
+            return splat(p, u, frames, stellar, ramps, column);
+        }
+
+        // A light tracer (#238): positions with their formation times from buffer 18, velocities
+        // with their words from 19, the tree's spacing from 14 to 16, and each galaxy's scale
+        // length from 17.
+        vertex SplatOut splatTracerVertex(uint vid [[vertex_id]],
+                                          constant SplatUniforms &u [[buffer(4)]],
+                                          constant DiskFrame *frames [[buffer(6)]],
+                                          device const float2 *stellar [[buffer(9)]],
+                                          constant GalaxyRamp *ramps [[buffer(12)]],
+                                          device const uint2 *cells [[buffer(14)]],
+                                          device const float *treeFrame [[buffer(15)]],
+                                          constant uint &depth [[buffer(16)]],
+                                          constant float *scales [[buffer(17)]],
+                                          device const float4 *states [[buffer(18)]],
+                                          device const uint *words [[buffer(19)]],
+                                          texture2d<float, access::sample> column [[texture(0)]]) {
+            Drawn p = tracerDrawn(states[vid], words[vid * 4u + 3u], scales);
+            if (splatSkips(p.kind, p.born, u)) { return culledSplat(); }
+            p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
+            return splat(p, u, frames, stellar, ramps, column);
         }
 
         struct BackgroundStar {
@@ -834,21 +971,18 @@ enum Shaders {
             bool hole;
         };
 
-        static bool webGrain(uint vid, device const float3 *positions, device const float *formation,
-                             device const float *luminosity, device const uint *component,
-                             constant SplatUniforms &u, DiskFrame frame,
-                             device const float2 *traits, constant WebUniforms &w,
-                             thread WebGrain &grain) {
-            float3 position = positions[vid];
+        static bool webGrain(Drawn p, constant SplatUniforms &u, DiskFrame frame,
+                             constant WebUniforms &w, thread WebGrain &grain) {
+            float3 position = p.position;
             grain.position = u.viewProjection * float4(position, 1.0);
-            uint kind = component[vid];
-            grain.weight = luminosity[vid];
-            grain.kernelScale = traits[vid].y;
+            uint kind = p.kind;
+            grain.weight = p.weight;
+            grain.kernelScale = p.kernelScale;
             if (grain.kernelScale < 0.8) {
                 grain.weight *= mix(0.07, 1.0, u.glint);
                 grain.kernelScale = mix(0.9, grain.kernelScale, u.glint);
             }
-            float born = formation[vid];
+            float born = p.born;
             bool nursery = kind == 1u || kind == 2u;
             float ageMyr = (nursery || born >= 0.0)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
@@ -877,24 +1011,11 @@ enum Shaders {
         // The dust the painted strands lay, in the frame's own pass: all of it where the web
         // is off and none where it takes everything, so a grain it fully carries draws nothing
         // here.
-        vertex SplatOut dustWebVertex(uint vid [[vertex_id]],
-                                      device const float3 *positions [[buffer(0)]],
-                                      device const float *formation [[buffer(8)]],
-                                      device const float *luminosity [[buffer(2)]],
-                                      device const uint *component [[buffer(3)]],
-                                      constant SplatUniforms &u [[buffer(4)]],
-                                      device const uint *galaxy [[buffer(5)]],
-                                      constant DiskFrame *frames [[buffer(6)]],
-                                      device const float *smoothing [[buffer(7)]],
-                                      device const float2 *traits [[buffer(10)]],
-                                      constant WebUniforms &w [[buffer(13)]]) {
+        static SplatOut dustWeb(Drawn p, bool dust, WebGrain grain, constant SplatUniforms &u,
+                                DiskFrame frame, constant WebUniforms &w) {
             SplatOut out;
             out.color = half3(0.0h);
             out.spikes = 0.0h;
-            DiskFrame frame = frames[galaxy[vid]];
-            WebGrain grain;
-            bool dust = webGrain(vid, positions, formation, luminosity, component, u, frame,
-                                 traits, w, grain);
             if (!dust || grain.amount >= 1.0) {
                 out.position = float4(2.0, 2.0, 2.0, 1.0);
                 out.pointSize = 0.0;
@@ -909,8 +1030,8 @@ enum Shaders {
                 out.opticalDepth = 8.0h;
                 return out;
             }
-            float3 position = positions[vid];
-            float raw = max(smoothing[vid] * u.smoothingScale * grain.kernelScale
+            float3 position = p.position;
+            float raw = max(p.spacing * u.smoothingScale * grain.kernelScale
                                 * mix(1.0, w.right.w, grain.amount), 1e-4) * grain.perPixel;
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             float reach = span / grain.perPixel;
@@ -921,6 +1042,45 @@ enum Shaders {
             out.opticalDepth = half(grain.weight * u.dustStrength * spread * 1.3
                                     * (1.0 - grain.amount) * lane);
             return out;
+        }
+
+        vertex SplatOut dustWebVertex(uint vid [[vertex_id]],
+                                      device const float3 *positions [[buffer(0)]],
+                                      device const float *formation [[buffer(8)]],
+                                      device const float *luminosity [[buffer(2)]],
+                                      device const uint *component [[buffer(3)]],
+                                      constant SplatUniforms &u [[buffer(4)]],
+                                      device const uint *galaxy [[buffer(5)]],
+                                      constant DiskFrame *frames [[buffer(6)]],
+                                      device const float *smoothing [[buffer(7)]],
+                                      device const float2 *traits [[buffer(10)]],
+                                      constant WebUniforms &w [[buffer(13)]]) {
+            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            DiskFrame frame = frames[p.galaxy];
+            WebGrain grain;
+            bool dust = webGrain(p, u, frame, w, grain);
+            return dustWeb(p, dust, grain, u, frame, w);
+        }
+
+        vertex SplatOut dustWebTracerVertex(uint vid [[vertex_id]],
+                                            constant SplatUniforms &u [[buffer(4)]],
+                                            constant DiskFrame *frames [[buffer(6)]],
+                                            constant WebUniforms &w [[buffer(13)]],
+                                            device const uint2 *cells [[buffer(14)]],
+                                            device const float *treeFrame [[buffer(15)]],
+                                            constant uint &depth [[buffer(16)]],
+                                            constant float *scales [[buffer(17)]],
+                                            device const float4 *states [[buffer(18)]],
+                                            device const uint *words [[buffer(19)]]) {
+            Drawn p = tracerDrawn(states[vid], words[vid * 4u + 3u], scales);
+            DiskFrame frame = frames[p.galaxy];
+            WebGrain grain;
+            bool dust = webGrain(p, u, frame, w, grain);
+            if (dust && !grain.hole && grain.amount < 1.0) {
+                p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
+            }
+            return dustWeb(p, dust, grain, u, frame, w);
         }
 
         struct WebCarrierOut {
@@ -941,23 +1101,11 @@ enum Shaders {
         // grain under the web is drawn twice as wide (its column kept) so the grains merge into
         // one even layer and the lace, not the grains, says where the dust is thin, and a layer
         // that smooth loses nothing at a quarter of the pixels.
-        vertex WebCarrierOut webCarrierVertex(uint vid [[vertex_id]],
-                                              device const float3 *positions [[buffer(0)]],
-                                              device const float *formation [[buffer(8)]],
-                                              device const float *luminosity [[buffer(2)]],
-                                              device const uint *component [[buffer(3)]],
-                                              constant SplatUniforms &u [[buffer(4)]],
-                                              device const uint *galaxy [[buffer(5)]],
-                                              constant DiskFrame *frames [[buffer(6)]],
-                                              device const float *smoothing [[buffer(7)]],
-                                              device const float2 *traits [[buffer(10)]],
-                                              constant WebUniforms &w [[buffer(13)]]) {
+        static WebCarrierOut webCarrier(Drawn p, bool dust, WebGrain grain,
+                                        constant SplatUniforms &u, DiskFrame frame,
+                                        constant WebUniforms &w) {
             WebCarrierOut out;
-            uint g = galaxy[vid];
-            DiskFrame frame = frames[g];
-            WebGrain grain;
-            bool dust = webGrain(vid, positions, formation, luminosity, component, u, frame,
-                                 traits, w, grain);
+            uint g = p.galaxy;
             if (!dust || grain.hole || grain.amount <= 0.0) {
                 out.position = float4(2.0, 2.0, 2.0, 1.0);
                 out.pointSize = 0.0;
@@ -966,9 +1114,9 @@ enum Shaders {
                 out.tag = 0.0h;
                 return out;
             }
-            float3 position = positions[vid];
+            float3 position = p.position;
             float coarse = w.carrier.x;
-            float raw = max(smoothing[vid] * u.smoothingScale * grain.kernelScale
+            float raw = max(p.spacing * u.smoothingScale * grain.kernelScale
                                 * mix(1.0, w.right.w, grain.amount), 1e-4) * grain.perPixel;
             // Never under a few of its own pixels, or the coarse target would drop part of it.
             float span = clamp(raw, max(u.minimumSize, w.carrier.y * coarse / 1.3), u.maximumSize);
@@ -983,6 +1131,45 @@ enum Shaders {
             out.slab = grain.slab;
             out.tag = half(float(g + 1u) / 255.0);
             return out;
+        }
+
+        vertex WebCarrierOut webCarrierVertex(uint vid [[vertex_id]],
+                                              device const float3 *positions [[buffer(0)]],
+                                              device const float *formation [[buffer(8)]],
+                                              device const float *luminosity [[buffer(2)]],
+                                              device const uint *component [[buffer(3)]],
+                                              constant SplatUniforms &u [[buffer(4)]],
+                                              device const uint *galaxy [[buffer(5)]],
+                                              constant DiskFrame *frames [[buffer(6)]],
+                                              device const float *smoothing [[buffer(7)]],
+                                              device const float2 *traits [[buffer(10)]],
+                                              constant WebUniforms &w [[buffer(13)]]) {
+            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            DiskFrame frame = frames[p.galaxy];
+            WebGrain grain;
+            bool dust = webGrain(p, u, frame, w, grain);
+            return webCarrier(p, dust, grain, u, frame, w);
+        }
+
+        vertex WebCarrierOut webCarrierTracerVertex(uint vid [[vertex_id]],
+                                                    constant SplatUniforms &u [[buffer(4)]],
+                                                    constant DiskFrame *frames [[buffer(6)]],
+                                                    constant WebUniforms &w [[buffer(13)]],
+                                                    device const uint2 *cells [[buffer(14)]],
+                                                    device const float *treeFrame [[buffer(15)]],
+                                                    constant uint &depth [[buffer(16)]],
+                                                    constant float *scales [[buffer(17)]],
+                                                    device const float4 *states [[buffer(18)]],
+                                                    device const uint *words [[buffer(19)]]) {
+            Drawn p = tracerDrawn(states[vid], words[vid * 4u + 3u], scales);
+            DiskFrame frame = frames[p.galaxy];
+            WebGrain grain;
+            bool dust = webGrain(p, u, frame, w, grain);
+            if (dust && !grain.hole && grain.amount > 0.0) {
+                p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
+            }
+            return webCarrier(p, dust, grain, u, frame, w);
         }
 
         fragment WebCarrierTarget webCarrierFragment(WebCarrierOut in [[stage_in]],
@@ -1070,16 +1257,11 @@ enum Shaders {
             float pointSize [[point_size]];
         };
 
-        vertex CountOut countVertex(uint vid [[vertex_id]],
-                                    device const float3 *positions [[buffer(0)]],
-                                    device const uint *component [[buffer(3)]],
-                                    constant SplatUniforms &u [[buffer(4)]],
-                                    device const float *formation [[buffer(8)]]) {
+        static CountOut countPoint(float3 position, uint kind, float born,
+                                   constant SplatUniforms &u) {
             CountOut out;
-            out.position = u.viewProjection * float4(positions[vid], 1.0);
+            out.position = u.viewProjection * float4(position, 1.0);
             out.pointSize = 1.0;
-            uint kind = component[vid];
-            float born = formation[vid];
             bool nursery = kind == 1u || kind == 2u;
             float ageMyr = (nursery || born >= 0.0)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
@@ -1090,6 +1272,22 @@ enum Shaders {
                 out.pointSize = 0.0;
             }
             return out;
+        }
+
+        vertex CountOut countVertex(uint vid [[vertex_id]],
+                                    device const float3 *positions [[buffer(0)]],
+                                    device const uint *component [[buffer(3)]],
+                                    constant SplatUniforms &u [[buffer(4)]],
+                                    device const float *formation [[buffer(8)]]) {
+            return countPoint(positions[vid], component[vid], formation[vid], u);
+        }
+
+        vertex CountOut countTracerVertex(uint vid [[vertex_id]],
+                                          constant SplatUniforms &u [[buffer(4)]],
+                                          device const float4 *states [[buffer(18)]],
+                                          device const uint *words [[buffer(19)]]) {
+            float4 state = states[vid];
+            return countPoint(state.xyz, (words[vid * 4u + 3u] >> 4) & 7u, state.w, u);
         }
 
         fragment float4 countFragment(CountOut in [[stage_in]]) {
@@ -1104,18 +1302,32 @@ enum Shaders {
             half3 color;
         };
 
+        static PlainOut plainPoint(float3 position, uint kind, uint galaxy,
+                                   constant SplatUniforms &u, constant DiskFrame *frames) {
+            PlainOut out;
+            out.position = u.viewProjection * float4(position, 1.0);
+            out.pointSize = u.minimumSize;
+            out.color = half3(frames[galaxy].tint.xyz * u.brightness);
+            if (kind == 3u || kind == 6u) { out.position = float4(2.0, 2.0, 2.0, 1.0); }
+            return out;
+        }
+
         vertex PlainOut plainVertex(uint vid [[vertex_id]],
                                     device const float3 *positions [[buffer(0)]],
                                     device const uint *component [[buffer(3)]],
                                     constant SplatUniforms &u [[buffer(4)]],
                                     device const uint *galaxy [[buffer(5)]],
                                     constant DiskFrame *frames [[buffer(6)]]) {
-            PlainOut out;
-            out.position = u.viewProjection * float4(positions[vid], 1.0);
-            out.pointSize = u.minimumSize;
-            out.color = half3(frames[galaxy[vid]].tint.xyz * u.brightness);
-            if (component[vid] == 3u || component[vid] == 6u) { out.position = float4(2.0, 2.0, 2.0, 1.0); }
-            return out;
+            return plainPoint(positions[vid], component[vid], galaxy[vid], u, frames);
+        }
+
+        vertex PlainOut plainTracerVertex(uint vid [[vertex_id]],
+                                          constant SplatUniforms &u [[buffer(4)]],
+                                          constant DiskFrame *frames [[buffer(6)]],
+                                          device const float4 *states [[buffer(18)]],
+                                          device const uint *words [[buffer(19)]]) {
+            uint word = words[vid * 4u + 3u];
+            return plainPoint(states[vid].xyz, (word >> 4) & 7u, word & 15u, u, frames);
         }
 
         fragment half4 plainFragment(PlainOut in [[stage_in]]) {

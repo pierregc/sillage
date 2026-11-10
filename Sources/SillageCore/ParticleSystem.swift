@@ -28,9 +28,18 @@ public enum ParticleComponent: UInt32, Codable, Sendable, CaseIterable {
     }
 }
 
+/// Where the sampler puts each particle it draws: a whole system, or a split that hands the
+/// light tracers on as they come (#238).
+public protocol ParticleSink {
+    mutating func append(
+        position: SIMD3<Float>, velocity: SIMD3<Float>, galaxy: UInt32, radius: Float,
+        population: Float, luminosity: Float, formation: Float, component: ParticleComponent,
+        mass: Float, kernelScale: Float)
+}
+
 /// Structure-of-arrays particle storage. `positions` is laid out so it can back a
 /// Metal buffer directly: SIMD3<Float> has a 16-byte stride, matching float3 in MSL.
-public struct ParticleSystem: Sendable {
+public struct ParticleSystem: Sendable, ParticleSink {
     public var positions: [SIMD3<Float>]
     public var velocities: [SIMD3<Float>]
     /// Which galaxy each particle started in, for per-galaxy colouring.
