@@ -430,7 +430,9 @@ public final class KeyFrameTake {
     ) throws {
         guard let key = keys.first(where: { $0.frame == frame }) else { return }
         if let blocks {
-            let one = Recording(particleCount: particleCount, galaxyCount: galaxyCount, interval: 1)
+            let one = Recording(
+                particleCount: particleCount, galaxyCount: galaxyCount, interval: 1,
+                bitsPerAxis: recording.bitsPerAxis)
             one.append(positions: positions, time: time, centers: centers, disks: disks)
             let contents = one.contents()
             guard let box = contents.frames.first else { return }
@@ -481,7 +483,7 @@ public final class KeyFrameTake {
             try handle.close()
             let assembled = Recording(
                 particleCount: particleCount, galaxyCount: galaxyCount, frames: frames, centers: centers,
-                disks: disks, interval: 1, capturedCount: frames.count,
+                disks: disks, interval: 1, capturedCount: frames.count, bitsPerAxis: recording.bitsPerAxis,
                 mapped: try Data(contentsOf: all, options: .alwaysMapped))
             try RecordingFile.write(assembled, scene: scene, particles: particles, to: url)
             try? FileManager.default.removeItem(at: all)

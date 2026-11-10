@@ -220,7 +220,7 @@ struct CheckpointTests {
         let count = loaded.recording.particleCount
         let positions = try #require(
             device.makeBuffer(length: count * MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared))
-        let expander = try SnapshotExpander(device: device, particleCount: count)
+        let expander = try SnapshotExpander(device: device, recording: loaded.recording)
         let stream = try #require(SnapshotStream(device: device, recording: loaded.recording))
         let smoothing = try SmoothingField(device: device, particleCount: count)
         let drawing = try Renderer(
