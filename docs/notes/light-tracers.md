@@ -285,9 +285,10 @@ leaf, and keeps no acceleration between steps.
 
 Every buffer that only massive particles need is sized for them: masses, accelerations,
 formation, kinds, galaxies, costs, the gathered copy, the tree. The massive kernels bind the
-position and velocity buffers past the tracers, so a run without tracers is the same to the bit
-(checked on scene-0031 at 200 k, 120 steps: the take and the curves against the base commit).
-TODO-238 verify.
+position and velocity buffers past the tracers, so a run without tracers is the same to the bit:
+scene-0031 at 200 k for 120 steps against the base commit gives the same curves, the same take
+(its JSON header in another key order), the same twelve frames, and the same positions,
+velocities and formation times of all 500 000 particles.
 
 ### What reads it
 
