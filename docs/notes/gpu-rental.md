@@ -44,7 +44,7 @@ From the ticket, unchanged:
   a big run; tests of 10 to 60 minutes and 200 M stories of 5 to 10 hours, checkpointed every
   hour (#240).
 
-## A cloud session of Claude Code cannot open SSH
+## A cloud coding session cannot open SSH
 
 Tested from this session's container on 2026-11-10:
 
@@ -284,8 +284,8 @@ box runs, and Vast's automatic charge of a saved card has to be avoided.
 
 | | needs | risks | for |
 | --- | --- | --- | --- |
-| Claude Code on the Mac over SSH | the Mac on to start and to fetch, the SSH key and API key on the Mac | the Mac asleep at the wrong time, covered by the deadline | **bring-up and big runs** |
-| a cloud session of Claude Code over an HTTPS API | the provider's API key as a secret of the cloud environment, the provider's host allowed, a job that fetches its own inputs and puts its outputs somewhere the session can read | inputs live on the Mac and outputs need a store; the session cannot log in to see what went wrong | later, correctness checks only |
+| a coding session on the Mac over SSH | the Mac on to start and to fetch, the SSH key and API key on the Mac | the Mac asleep at the wrong time, covered by the deadline | **bring-up and big runs** |
+| a cloud coding session over an HTTPS API | the provider's API key as a secret of the cloud environment, the provider's host allowed, a job that fetches its own inputs and puts its outputs somewhere the session can read | inputs live on the Mac and outputs need a store; the session cannot log in to see what went wrong | later, correctness checks only |
 | Pierre by hand in the console | nothing more | forgetting to destroy, covered by the deadline | a first look, if he wants to learn |
 
 The Mac is the natural driver: the scene and the massive take are made there, the videos come back
