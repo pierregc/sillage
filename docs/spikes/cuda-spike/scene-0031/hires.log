@@ -1,0 +1,14 @@
+hires      200000 particles from 50000 massive (preview 50000), step 0.19782 Myr (preview 0.19782), settle 750, 804 steps, clip 148.4 to 307.4 Myr, about 0.0 h
+draw       antennae, batch 20261030 scene 31 (point 1): spiral, spiral
+encounter  0-1, pericentre 10.5 kpc at 305 Myr, e 0.89 (bound, binding 222 km/s), mass ratio 0.85
+scene      Archétype, 200000 visible, 75000 halo
+tracers    150207 light, 49793 massive visible, 75000 halo, softening 0.3455, step 0.04200, angle 0.90, 0.3 s
+solver     barnes-hut (barnesHut)
+gpu        Apple M4 Max
+settle     750 steps, t=148.4 Myr, 26.2 s
+walk dump  frame 0 (settled), t=149.16 Myr: /Users/pierregc/claude-workspace/sillage-wt-271/out/cuda-spike/assets/scene-0031/frame-00000
+walk dump  frame 200 (pericentre), t=307.41 Myr: /Users/pierregc/claude-workspace/sillage-wt-271/out/cuda-spike/assets/scene-0031/frame-00200
+curves     53.2 ms in all, 0.265 ms a frame
+take       0.7 ms a frame quantising, 21 bits an axis
+hires      63 s, peak 0.59 GB, take 0.09 GB
+done in 62.1 s

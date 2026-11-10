@@ -1,0 +1,146 @@
+{
+  "buffers" : {
+    "accelerations" : {
+      "binding" : 12,
+      "count" : 150207,
+      "file" : "accelerations.bin",
+      "stride" : 16,
+      "type" : "float3"
+    },
+    "disks" : {
+      "binding" : 10,
+      "count" : 1,
+      "file" : "disks.bin",
+      "stride" : 64,
+      "type" : "DiskCooling"
+    },
+    "frame" : {
+      "binding" : 6,
+      "count" : 8,
+      "file" : "frame.bin",
+      "stride" : 4,
+      "type" : "float"
+    },
+    "halos" : {
+      "binding" : 7,
+      "count" : 2,
+      "file" : "halos.bin",
+      "stride" : 48,
+      "type" : "HaloGPU"
+    },
+    "holes" : {
+      "binding" : 8,
+      "count" : 1,
+      "file" : "holes.bin",
+      "stride" : 32,
+      "type" : "HoleGPU"
+    },
+    "massive" : {
+      "binding" : 9,
+      "count" : 124793,
+      "file" : "massive.bin",
+      "stride" : 16,
+      "type" : "float3"
+    },
+    "moments" : {
+      "binding" : 4,
+      "count" : 59824,
+      "file" : "moments.bin",
+      "stride" : 16,
+      "type" : "float4"
+    },
+    "motions" : {
+      "binding" : 1,
+      "count" : 150207,
+      "file" : "motions.bin",
+      "stride" : 16,
+      "type" : "uint4"
+    },
+    "motions-mode1" : {
+      "binding" : 1,
+      "count" : 150207,
+      "file" : "motions-mode1.bin",
+      "stride" : 16,
+      "type" : "uint4"
+    },
+    "nodes" : {
+      "binding" : 3,
+      "count" : 29912,
+      "file" : "nodes.bin",
+      "stride" : 32,
+      "type" : "BHNode"
+    },
+    "order" : {
+      "binding" : 5,
+      "count" : 150207,
+      "file" : "order.bin",
+      "stride" : 4,
+      "type" : "uint"
+    },
+    "params" : {
+      "binding" : 11,
+      "count" : 1,
+      "file" : "params.bin",
+      "stride" : 48,
+      "type" : "TracerStepParams"
+    },
+    "sorted" : {
+      "binding" : 2,
+      "count" : 124793,
+      "file" : "sorted.bin",
+      "stride" : 16,
+      "type" : "float4"
+    },
+    "states" : {
+      "binding" : 0,
+      "count" : 150207,
+      "file" : "states.bin",
+      "stride" : 16,
+      "type" : "float4"
+    }
+  },
+  "byteOrder" : "little",
+  "commit" : "7406c861bd607efce314c8b2f4999036d3dcde4f",
+  "counts" : {
+    "disks" : 0,
+    "halos" : 0,
+    "holes" : 0,
+    "massive" : 124793,
+    "massiveVisible" : 49793,
+    "nodes" : 29912,
+    "tracers" : 150207
+  },
+  "device" : "Apple M4 Max",
+  "dtScale" : 3.5,
+  "format" : "sillage-walk-dump",
+  "frame" : 200,
+  "functionConstants" : {
+    "bhOpensHoldingCells" : true,
+    "bhQuadrupole" : true
+  },
+  "label" : "pericentre",
+  "params" : {
+    "chunkStart" : 0,
+    "diskCount" : 0,
+    "gravitationalConstant" : 1,
+    "haloCount" : 0,
+    "holeCount" : 0,
+    "mode" : 1,
+    "openingAngleSquared" : 0.80999994,
+    "softeningSquared" : 0.11935991,
+    "sortChunk" : 150207,
+    "timeStep" : 0.042,
+    "tracerCount" : 150207
+  },
+  "scene" : "2026-10-30-b/scene-0031",
+  "source" : "Metal, sillage-render hires --dump-walk",
+  "step" : 1554,
+  "time" : 307.4110475921631,
+  "timeUnit" : "Myr",
+  "tracerSort" : {
+    "counter" : 6,
+    "interval" : 10,
+    "stepsSinceSort" : 4
+  },
+  "version" : 1
+}
