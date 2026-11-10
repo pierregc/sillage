@@ -227,12 +227,17 @@ public final class MetalBarnesHutSolver: Solver {
     private let tracerSorter: GPUTreeBuilder?
     private let sortChunk: Int
     private var stepsSinceTracerSort = 0
+    /// Steps since the walk order was last sorted, for `walkDump` (#271).
+    private var tracerOrderAge = 0
+    /// The disks this step's tracer pass cooled towards, for `walkDump` (#271).
+    private var lastCoolingDisks: [DiskCoolingGPU]?
     /// The chance each massive gas particle had of forming stars this step, by Morton slot.
     private let slotChances: MTLBuffer?
     private let galaxyOf: [UInt32]
     private let componentOf: [UInt32]
     private let liveHalos: Bool
     public let quadrupole: Bool
+    public let opensHoldingCells: Bool
     private var stepsSinceTree = 0
     /// Only ever used to vary the per-step random draw in the star formation pass.
     private var stepsSinceFormation = 0
@@ -372,6 +377,7 @@ public final class MetalBarnesHutSolver: Solver {
         self.componentOf = particles.component
         self.liveHalos = scene.hasLiveHalos
         self.quadrupole = quadrupole
+        self.opensHoldingCells = opensHoldingCells
         self.haloCenters = scene.galaxies.map(\.position)
         self.massCenters = scene.galaxies.map(\.position)
         self.galaxyMotion = scene.galaxies.map(\.velocity)
@@ -580,9 +586,11 @@ public final class MetalBarnesHutSolver: Solver {
             }
             stepsSinceTree -= 1
             stepsSinceTracerSort -= 1
+            tracerOrderAge += 1
             lastTreeMilliseconds = Date().timeIntervalSince(clock) * 1000
             clock = Date()
             let disks = coolingDisks()
+            lastCoolingDisks = disks
             if profiling {
                 profiledPass("force") { encodeAccelerations(into: $0) }
                 if !holes.isEmpty { profiledPass("black holes") { encodeHoles(into: $0) } }
@@ -955,7 +963,10 @@ public final class MetalBarnesHutSolver: Solver {
     /// that go with it, and gathers the particles for the force pass on the way.
     private func rebuildTree() {
         let sortTracers = tracerSorter != nil && stepsSinceTracerSort <= 0
-        if sortTracers { stepsSinceTracerSort = max(Self.tracerSortInterval, 1) }
+        if sortTracers {
+            stepsSinceTracerSort = max(Self.tracerSortInterval, 1)
+            tracerOrderAge = 0
+        }
         if profiling {
             timed("halo centres") { updateHaloCenters() }
             if dissipate != nil { timed("disk frames") { updateDiskFrames() } }
@@ -1363,17 +1374,11 @@ public final class MetalBarnesHutSolver: Solver {
     /// next, 2 writes the acceleration into `probe` and moves nothing.
     private func encodeTracerStep(
         into buffer: MTLCommandBuffer, mode: UInt32, pieces: Range<Int>? = nil,
-        disks: [DiskCoolingGPU]? = nil, probe: MTLBuffer? = nil
+        disks: [DiskCoolingGPU]? = nil, probe: MTLBuffer? = nil, motions: MTLBuffer? = nil
     ) {
         guard let tracerStep, let tracerOrder, tracerCount > 0 else { return }
         let list = haloList
-        let base = params
-        var p = TracerStepGPU(
-            tracerCount: UInt32(tracerCount), haloCount: base.haloCount,
-            timeStep: base.timeStep, openingAngleSquared: tracerOpeningAngle * tracerOpeningAngle,
-            softeningSquared: base.softeningSquared,
-            gravitationalConstant: base.gravitationalConstant, sortChunk: UInt32(sortChunk),
-            holeCount: UInt32(holes.count), diskCount: UInt32(disks?.count ?? 0), mode: mode)
+        var p = tracerStepParams(mode: mode, disks: disks)
         let cooling = disks ?? [DiskCoolingGPU(center: .zero, motion: .zero, axis: .zero, reach: .zero)]
         let pulls = holes.isEmpty ? [HoleGPU(massG: .zero, shape: .zero)] : holes
         let slots = pieces ?? 0..<tracerCount
@@ -1384,7 +1389,7 @@ public final class MetalBarnesHutSolver: Solver {
             encode(into: buffer, tracerStep, threads: span, width: Self.forceThreadgroupWidth) {
                 encoder in
                 encoder.setBuffer(positionBuffer, offset: 0, index: 0)
-                encoder.setBuffer(velocityBuffer, offset: 0, index: 1)
+                encoder.setBuffer(motions ?? velocityBuffer, offset: 0, index: 1)
                 encoder.setBuffer(sortedBuffer, offset: 0, index: 2)
                 encoder.setBuffer(builder.nodes, offset: 0, index: 3)
                 encoder.setBuffer(builder.moments, offset: 0, index: 4)
@@ -1400,6 +1405,16 @@ public final class MetalBarnesHutSolver: Solver {
             }
             start += span
         }
+    }
+
+    private func tracerStepParams(mode: UInt32, disks: [DiskCoolingGPU]?) -> TracerStepGPU {
+        let base = params
+        return TracerStepGPU(
+            tracerCount: UInt32(tracerCount), haloCount: base.haloCount,
+            timeStep: base.timeStep, openingAngleSquared: tracerOpeningAngle * tracerOpeningAngle,
+            softeningSquared: base.softeningSquared,
+            gravitationalConstant: base.gravitationalConstant, sortChunk: UInt32(sortChunk),
+            holeCount: UInt32(holes.count), diskCount: UInt32(disks?.count ?? 0), mode: mode)
     }
 
     /// The tracers in Morton order, which only decides how alike neighbouring walks are, a
@@ -1445,6 +1460,77 @@ public final class MetalBarnesHutSolver: Solver {
         submit(buffer)
         let light = probe.contents().bindMemory(to: SIMD3<Float>.self, capacity: tracerCount)
         return Array(UnsafeBufferPointer(start: light, count: tracerCount)) + heavy
+    }
+
+    /// Every buffer `bhTracerStep` reads, as this step's tracer pass bound them, with Metal's
+    /// probe on that same state and one more mode 1 pass run on a copy of the motions (#271).
+    /// Moves nothing: a run that dumps goes on as one that does not.
+    public func walkDump() -> TracerWalkDump? {
+        guard tracerCount > 0, nodeCount > 0, let tracerOrder,
+            let order = device.makeBuffer(length: tracerCount * 4, options: .storageModeShared),
+            let sorted = device.makeBuffer(length: massive * 16, options: .storageModeShared),
+            let probe = device.makeBuffer(length: tracerCount * 16, options: .storageModeShared),
+            let stepped = device.makeBuffer(
+                bytes: velocityBuffer.contents(), length: tracerCount * 16,
+                options: .storageModeShared),
+            let buffer = queue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder()
+        else { return nil }
+        blit.copy(from: sortedBuffer, sourceOffset: 0, to: sorted, destinationOffset: 0, size: massive * 16)
+        blit.copy(from: tracerOrder, sourceOffset: 0, to: order, destinationOffset: 0, size: tracerCount * 4)
+        blit.endEncoding()
+        encodeTracerStep(into: buffer, mode: 2, probe: probe)
+        encodeTracerStep(into: buffer, mode: 1, disks: lastCoolingDisks, motions: stepped)
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        guard buffer.status == .completed else { return nil }
+
+        func bytes(_ source: MTLBuffer, from offset: Int = 0, _ length: Int) -> Data {
+            Data(bytes: source.contents().advanced(by: offset), count: length)
+        }
+        func bytes<T>(_ values: [T]) -> Data { values.withUnsafeBytes { Data($0) } }
+        let halos = haloList
+        let pulls = holes.isEmpty ? [HoleGPU(massG: .zero, shape: .zero)] : holes
+        let cooling =
+            lastCoolingDisks ?? [DiskCoolingGPU(center: .zero, motion: .zero, axis: .zero, reach: .zero)]
+        let params = tracerStepParams(mode: 1, disks: lastCoolingDisks)
+        let nodeStride = MemoryLayout<BHNode>.stride
+        let moments = quadrupole ? nodeCount * 2 : 0
+        typealias Entry = TracerWalkDump.Buffer
+        return TracerWalkDump(
+            buffers: [
+                Entry("states", 0, "float4", 16, tracerCount, bytes(positionBuffer, tracerCount * 16)),
+                Entry("motions", 1, "uint4", 16, tracerCount, bytes(velocityBuffer, tracerCount * 16)),
+                Entry("sorted", 2, "float4", 16, massive, bytes(sorted, massive * 16)),
+                Entry(
+                    "nodes", 3, "BHNode", nodeStride, nodeCount,
+                    bytes(builder.nodes, nodeCount * nodeStride)),
+                Entry("moments", 4, "float4", 16, moments, bytes(builder.moments, moments * 16)),
+                Entry("order", 5, "uint", 4, tracerCount, bytes(order, tracerCount * 4)),
+                Entry("frame", 6, "float", 4, 8, bytes(builder.frame, 8 * 4)),
+                Entry("halos", 7, "HaloGPU", MemoryLayout<HaloGPU>.stride, halos.count, bytes(halos)),
+                Entry("holes", 8, "HoleGPU", MemoryLayout<HoleGPU>.stride, pulls.count, bytes(pulls)),
+                Entry(
+                    "massive", 9, "float3", 16, massive,
+                    bytes(positionBuffer, from: tracerCount * 16, massive * 16)),
+                Entry(
+                    "disks", 10, "DiskCooling", MemoryLayout<DiskCoolingGPU>.stride, cooling.count,
+                    bytes(cooling)),
+                Entry(
+                    "params", 11, "TracerStepParams", MemoryLayout<TracerStepGPU>.stride, 1,
+                    bytes([params])),
+                Entry("accelerations", 12, "float3", 16, tracerCount, bytes(probe, tracerCount * 16)),
+                Entry("motions-mode1", 1, "uint4", 16, tracerCount, bytes(stepped, tracerCount * 16)),
+            ],
+            params: params,
+            counts: [
+                "tracers": tracerCount, "massive": massive, "massiveVisible": massiveVisible,
+                "nodes": nodeCount, "halos": Int(params.haloCount), "holes": holes.count,
+                "disks": lastCoolingDisks?.count ?? 0,
+            ],
+            functionConstants: ["bhQuadrupole": quadrupole, "bhOpensHoldingCells": opensHoldingCells],
+            tracerSort: .init(
+                interval: max(Self.tracerSortInterval, 1), counter: stepsSinceTracerSort,
+                stepsSinceSort: tracerOrderAge))
     }
 
     /// Steps between two sorts of the tracers' walk order. Sorting is what keeps the lanes of a
@@ -1646,6 +1732,7 @@ extension MetalBarnesHutSolver {
             encodeTracerSort(into: sort)
             submit(sort)
             stepsSinceTracerSort = max(Self.tracerSortInterval, 1)
+            tracerOrderAge = 0
         }
         // A tracer keeps no acceleration: its saved velocity is half a kick ahead already.
         if let buffer = queue.makeCommandBuffer() {

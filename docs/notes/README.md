@@ -11,6 +11,7 @@ session. Read the note for an area before changing it.
 - [Long runs](long-runs.md): memory, divergence, measuring under contention
 - [A run stops when nobody is watching it](app-nap.md): App Nap, `beginActivity`, `--soak`
 - [Keeping the machine usable](machine-usable.md): visible particles first, utility queue, force chunks
+- [Renting an NVIDIA GPU for the big runs](gpu-rental.md): the providers compared, renting step by step, a forgotten box bounded, who drives it, what 200 M and a billion would cost on each card (#270)
 - [The portable Swift on Linux](linux-build.md): `scripts/linux.sh`, what is skipped and why, `simd` on Linux, what the Mac and Linux give for the same sample (#272)
 
 ## Solver
@@ -76,6 +77,10 @@ session. Read the note for an area before changing it.
 - [A web of dust that turns without tearing](dust-web.md): spike #173, the web carried round and renewed, finer grains, the web where the disk is intact; #200, the lace baked and paid once per pixel; #197, on in the shipped and generated styles
 - [Ten times the particles](ten-times-the-particles.md): fifty million a galaxy, what it looks like, the softening floor, the halo, the take's grid, tracers
 - [Director shots that fill the frame](director-shots.md): `ShotPlan`, the cuts, the core and plane measured on the take, the disk states takes never carried
+
+## The CUDA engine (#269)
+
+- [The tracer walk from its MSL text, on CUDA and on the CPU](cuda-walk-spike.md): spike #271, no line of MSL changed, what `msl_compat.h` and `cuda_cpu.h` do, float literals are doubles, the walk dump's format, the accuracy against Metal
 
 ## State
 

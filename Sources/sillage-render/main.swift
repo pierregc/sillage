@@ -1957,6 +1957,31 @@ func storyGoesOn() -> Bool {
     return last.timeMyr < story.samples[quiet].timeMyr + storyAfter
 }
 
+// `--dump-walk <dir> --dump-walk-frames 0,57:pericentre` (#271): at the end of the steps of each
+// listed frame, every buffer the tracers' walk reads and Metal's answers on that state, for the
+// CUDA spike (docs/notes/cuda-walk-spike.md). Moves nothing.
+let walkDirectory = argument("dump-walk").map { URL(fileURLWithPath: $0, isDirectory: true) }
+var walkDumps: [Int: String] = [:]
+for entry in argument("dump-walk-frames")?.split(separator: ",") ?? [] {
+    let parts = entry.split(separator: ":", maxSplits: 1).map(String.init)
+    guard let index = Int(parts[0]), index >= 0 else { fail("--dump-walk-frames: no frame \"\(entry)\"") }
+    walkDumps[index] = parts.count > 1 ? parts[1] : "frame \(index)"
+}
+if walkDirectory != nil || !walkDumps.isEmpty {
+    guard walkDirectory != nil, !walkDumps.isEmpty else {
+        fail("--dump-walk and --dump-walk-frames go together")
+    }
+    guard tracerSolver != nil else { fail("--dump-walk: no light tracers to dump (--massive)") }
+}
+let walkScene =
+    scenePath.map { path -> String in
+        let url = URL(fileURLWithPath: path)
+        return url.lastPathComponent == "scene.json"
+            ? url.deletingLastPathComponent().pathComponents.suffix(2).joined(separator: "/")
+            : url.deletingPathExtension().lastPathComponent
+    } ?? presetName
+let walkCommit = walkDirectory.map { _ in TracerWalkDump.sourceCommit() } ?? ""
+
 let framesStart = Date()
 let firstFrame = resumed?.frame ?? 0
 var frame = firstFrame
@@ -1965,6 +1990,17 @@ while frame < frames || storyGoesOn() {
     let simulationStart = Date()
     solver.step(count: stepsPerFrame)
     let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
+    if let walkDirectory, let label = walkDumps[frame], let tracerSolver {
+        guard let dump = tracerSolver.walkDump() else { fail("--dump-walk: frame \(frame) not captured") }
+        let timeMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
+        let written = try dump.write(
+            to: walkDirectory,
+            run: TracerWalkDump.Run(
+                scene: walkScene, label: label, frame: frame, step: settle + (frame + 1) * stepsPerFrame,
+                timeMyr: timeMyr, dtScale: file.timeStepScale, commit: walkCommit,
+                device: renderer.gpuName))
+        print(String(format: "walk dump  frame %d (%@), t=%.2f Myr: %@", frame, label, timeMyr, written.path))
+    }
 
     if gpuSolver == nil {
         renderer.upload(positions: solver.particles.positions)

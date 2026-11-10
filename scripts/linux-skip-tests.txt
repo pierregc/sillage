@@ -17,3 +17,4 @@ RecordingTests.swift       # Metal
 RunVideosTests.swift       # CoreGraphics, Metal
 StageJobsTests.swift       # ExportedFile, which reads videos with AVFoundation
 StyleEditTests.swift       # CoreFoundation's CFGetTypeID
+TracerWalkDumpTests.swift  # Metal
