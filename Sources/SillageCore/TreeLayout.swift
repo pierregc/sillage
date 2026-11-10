@@ -1,4 +1,6 @@
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 extension BarnesHutTree {
     /// Where each cell of the level order is in `nodes`: the root, then level by level, each

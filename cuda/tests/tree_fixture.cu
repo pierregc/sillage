@@ -76,13 +76,6 @@ static void report(const char *name, size_t different, size_t total) {
 
 static int run(const std::string &root) {
     const std::string tree = root + "/tree/";
-    // Until the fixtures are on the branch; a fixture with a manifest is compared whole.
-    if (std::FILE *probe = std::fopen((root + "/manifest.json").c_str(), "rb")) {
-        std::fclose(probe);
-    } else {
-        std::printf("cuda/tests/tree_fixture.cu: no %s/manifest.json yet, nothing compared\n", root.c_str());
-        return 0;
-    }
     std::vector<char> text = load<char>(root + "/manifest.json");
     std::string manifest(text.begin(), text.end());
     std::vector<float3> positions = load<float3>(tree + "positions.bin");
