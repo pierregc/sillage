@@ -279,9 +279,9 @@ and export rely on, for a smaller saving than the interval already makes.
 
 Since #237 a take holds each position in 21 bits an axis, eight bytes a particle a kept frame
 where the tables above count six: a third more, about 3.7 GB for the 2 M take at 1 in 4, for a
-step between the positions it tells apart 32 times finer than the 3.7 to 14.1 pc of a 16-bit take
-of a 2 M hires (see [takes on disk](notes/takes-on-disk.md)). Takes written before keep their 16
-bits and play as before.
+step 32 times finer between the positions it tells apart, 0.38 to 1.54 pc over an 8 M hires
+whose 16-bit twin had 12.2 to 49.1 pc (see [takes on disk](notes/takes-on-disk.md)). Takes
+written before keep their 16 bits and play as before, at the same speed.
 
 The take also carries what each disk is doing, the plane it turns in and how much of it an
 encounter has torn, which is what fades its painted arms. Takes `hires` wrote before #186 hold

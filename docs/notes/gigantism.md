@@ -192,7 +192,8 @@ live halo at 1.5x, opening angle 0.9), 20 steps:
   two hours, two scenes a night. (A first fit written here, 1415 s + 57.2 ns, was run on a
   mirror of the library made of symbolic links: a link has its own date, so every run weighed
   the same and the explore runs lost their durations. Mirror with `cp -p`.)
-- **Memory and disk.** A take costs six bytes a particle a frame: 2.8 GB for the 2 M hires of
+- **Memory and disk.** A take costs six bytes a particle a frame (eight since #237, a third
+  more): 2.8 GB for the 2 M hires of
   a night at the take interval of four, 7 GB at 5 M, 14 GB at 10 M. The Mac has 36 GB and
   1.3 TB free; the 10 M run peaked at 8.3 GB. The tree's float ranges were fixed past sixteen
   million ([float-node-ranges](float-node-ranges.md)). The renderer draws 8 M in 28 ms in 4K:

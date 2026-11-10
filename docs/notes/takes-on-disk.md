@@ -43,3 +43,49 @@ Exported, `2026-10-30-b/scene-0031` (2 M) was the same picture as before up to 2
 painted arms then faded with the first disk from 258 to 283 Myr and the second from 280 to 290 Myr,
 before the closest approach at 308 Myr. Since #210 they fade from 298 to 308 and from 302 to
 312 Myr, with the stars' own arms.
+
+## Twenty-one bits an axis (#237)
+
+A take holds each position as three coordinates in the box of every particle drawn that frame.
+Up to version 6 each was 16 bits, cut down to the cell below, so the step between two positions
+a take tells apart was the box over 65 535; the box is set by the few particles that fly
+furthest out, and on the 8 M run below it ends 3 219 kpc wide. Since version 7 each axis is 21
+bits rounded to the nearest cell, the three in one 64-bit word: x lowest, y across the two
+32-bit halves the GPU reads, then z, the top bit zero. That is eight bytes a particle a kept
+frame where six were, for a step 32 times finer, and as far as three axes go in one word. Takes
+of versions 1 to 6 read at 16 bits and play as before. `sillage-render hires --take-v6 <path>`
+writes the same run's take at 16 bits beside the other, for comparing.
+
+Measured with `scripts/take-quantum.py` on `2026-10-30-b/scene-0030` at 8 M drawn from 2 M
+massive, 1 514 frames kept one in four, both takes written by the same run:
+
+| | version 6, 16 bits | version 7, 21 bits |
+| --- | ---: | ---: |
+| file | 18.46 GB | 24.54 GB, 1.329 times |
+| bytes a particle a captured frame | 1.524 | 2.026 |
+| box, first to last frame | 797 to 3 219 kpc | the same |
+| step, first to last frame | 12.2 to 49.1 pc | 0.38 to 1.54 pc |
+| particles sharing a cell, last frame | 22.1 % | 0.03 % |
+| most in one cell, last frame | 1 523 | 3 |
+
+The two files differ by exactly two bytes a particle a stored frame. The night plan counts 2.04
+bytes a particle a frame, 0.7 % above the measured 2.026.
+
+Drawn at 3840 x 2160 at captured frame 1 288 (1 409 Myr, 85 % of the story, the box 2 860 kpc
+wide, so a 16-bit cell is 43.6 pc and a 21-bit one 1.4 pc) with the scene's look and a fixed
+camera face-on to galaxy 0's remnant at 6 kpc, where a pixel is 5.8 pc, the two takes differ by
+25.4 dB, 55 % of the pixels by more than 8 levels. At 16 bits the dense core carries a regular
+lattice of stripes that 21 bits does not
+([side by side](https://raw.githubusercontent.com/pierregc/sillage/assets/237-closeups/docs/spikes/237-closeups/closeup-core-side-by-side.png)), and blobs near the camera move by up to
+90 px ([the crop that differs most](https://raw.githubusercontent.com/pierregc/sillage/assets/237-closeups/docs/spikes/237-closeups/closeup-side-by-side.png)). The wide shot of the same
+frame, with the look's own camera, differs by 56.2 dB, 0.07 % of the pixels by more than 8.
+
+Playback does not change. `Sillage.app --replay <take> 300` at 2560 x 1440, alone on the GPU:
+a whole frame takes a median 37.6 ms on the 21-bit take, 37.5 ms on its 16-bit twin and 37.6 ms
+on the twin with the application as it was before, the blend 1.8, 1.6 and 1.7 ms, and no frame
+waits for a snapshot. Those are second runs; the first, right after the hires, took 53 to 58 ms
+for all three alike.
+
+Quantising stays on the CPU. The run spends 26.9 ms a frame on the 21-bit take, every frame
+included since the last one offered may end the take, against a median 2.05 s of simulation a
+frame: 1.3 %. Moving it to the GPU would save no more than that.
