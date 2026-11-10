@@ -360,7 +360,7 @@ struct SceneFolderTests {
         let run = RunCheckpoint.Run(
             identity: identity, index: 1, frame: 10, settled: 0, elapsed: 1, resumes: 0, everyFrames: frames,
             everySteps: steps,
-            solver: MetalBarnesHutSolver.State(
+            solver: SolverState(
                 count: 1, tracers: 0, time: 0, stepsSinceTree: 0, stepsSinceFormation: 0, haloCenters: [],
                 massCenters: [], galaxyMotion: [], diskStates: []),
             videos: nil, keyFrames: [])
