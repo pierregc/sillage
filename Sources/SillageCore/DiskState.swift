@@ -7,7 +7,7 @@ import simd
 /// arms stay, lying in a plane nothing occupies any more. This is the measurement that
 /// answers both halves of that: which way the disk material actually turns, and whether it
 /// is still turning together at all.
-public struct DiskState: Sendable {
+public struct DiskState: Sendable, Codable {
     /// Unit normal of the plane the disk material turns in.
     public var axis: SIMD3<Float>
     /// The latest ordered fraction, |sum m r x v| / sum m|r||v| over the disk material. One

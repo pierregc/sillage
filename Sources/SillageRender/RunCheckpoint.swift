@@ -1,0 +1,246 @@
+import CryptoKit
+import Foundation
+
+/// A long run's checkpoint (#240), so a restart costs at most an interval of it rather than the
+/// run. A directory holding, for checkpoint `n`, `particles-n.bin` (what the solver keeps of
+/// every particle) and `state-n.json` (the rest: the solver's counters, where the frames and the
+/// videos stand, the key frames taken), with `current` naming the last whole one; the video
+/// segments and key frame blocks those name sit beside them. Each file is written aside and
+/// renamed into place, `current` last, and the checkpoint before is removed only then.
+public struct RunCheckpoint: Sendable {
+    public let directory: URL
+
+    public init(directory: URL) { self.directory = directory.standardizedFileURL }
+
+    public var segments: URL { directory.appendingPathComponent("segments", isDirectory: true) }
+    public var keyFrames: URL { directory.appendingPathComponent("keyframes", isDirectory: true) }
+    var current: URL { directory.appendingPathComponent("current") }
+    func particles(_ index: Int) -> URL { directory.appendingPathComponent("particles-\(index).bin") }
+    func state(_ index: Int) -> URL { directory.appendingPathComponent("state-\(index).json") }
+
+    /// What a run is: a checkpoint of another one is not resumed.
+    public struct Identity: Codable, Sendable, Equatable {
+        /// The run's command line, less what only says where to put a check's output.
+        public var arguments: [String]
+        /// `scene.json` and the look as read.
+        public var scene: String
+        public var look: String
+        /// The take the videos are framed on: its size and when it was written.
+        public var framing: String
+        public var particles: Int
+        public var massive: Int?
+        /// The step the run takes, in simulation units.
+        public var timeStep: Float
+        public var presets: [String]
+        /// The binary and its libraries: told when it changed, not refused.
+        public var code: String
+
+        public init(
+            arguments: [String], scene: String, look: String, framing: String, particles: Int,
+            massive: Int?, timeStep: Float, presets: [String], code: String
+        ) {
+            self.arguments = Self.kept(arguments)
+            self.scene = scene
+            self.look = look
+            self.framing = framing
+            self.particles = particles
+            self.massive = massive
+            self.timeStep = timeStep
+            self.presets = presets
+            self.code = code
+        }
+
+        /// Options that say where a check writes or how often to checkpoint, not what runs.
+        static let ignored: Set<String> = [
+            "--checkpoint-frames", "--checkpoint-steps", "--draw-stills", "--draw-stills-dir",
+            "--state-out",
+        ]
+
+        static func kept(_ arguments: [String]) -> [String] {
+            var kept: [String] = []
+            var index = 0
+            while index < arguments.count {
+                if arguments[index] == "--resume" {
+                    index += 1
+                } else if ignored.contains(arguments[index]) {
+                    index += 2
+                } else {
+                    kept.append(arguments[index])
+                    index += 1
+                }
+            }
+            return kept
+        }
+
+        /// What differs from `other` that makes it another run; the code is left out.
+        public func differences(from other: Identity) -> [String] {
+            var found: [String] = []
+            if arguments != other.arguments {
+                let mine = Set(arguments)
+                let theirs = Set(other.arguments)
+                let changed = mine.symmetricDifference(theirs).sorted().prefix(6)
+                found.append("its command line (\(changed.joined(separator: " ")))")
+            }
+            if scene != other.scene { found.append("scene.json") }
+            if look != other.look { found.append("the look") }
+            if framing != other.framing { found.append("the massive take") }
+            if particles != other.particles || massive != other.massive {
+                found.append("the particles")
+            }
+            if timeStep != other.timeStep { found.append("the step") }
+            if presets != other.presets { found.append("the videos") }
+            return found
+        }
+    }
+
+    /// The rest of a run's state.
+    public struct Run: Codable, Sendable {
+        public var version = 1
+        public var identity: Identity
+        /// This checkpoint's number.
+        public var index: Int
+        /// The next frame to draw, and the settle steps done.
+        public var frame: Int
+        public var settled: Int
+        /// Seconds of the run kept so far, the lost intervals left out.
+        public var elapsed: Double
+        public var resumes: Int
+        public var everyFrames: Int
+        public var everySteps: Int
+        public var solver: MetalBarnesHutSolver.State
+        public var videos: RunVideos.Progress?
+        public var keyFrames: [KeyFrameTake.Entry]
+        public var saved: Date
+
+        public init(
+            identity: Identity, index: Int, frame: Int, settled: Int, elapsed: Double,
+            resumes: Int, everyFrames: Int, everySteps: Int, solver: MetalBarnesHutSolver.State,
+            videos: RunVideos.Progress?, keyFrames: [KeyFrameTake.Entry], saved: Date = Date()
+        ) {
+            self.identity = identity
+            self.index = index
+            self.frame = frame
+            self.settled = settled
+            self.elapsed = elapsed
+            self.resumes = resumes
+            self.everyFrames = everyFrames
+            self.everySteps = everySteps
+            self.solver = solver
+            self.videos = videos
+            self.keyFrames = keyFrames
+            self.saved = saved
+        }
+    }
+
+    public struct Saved: Sendable {
+        public var seconds: Double
+        public var bytes: Int
+    }
+
+    /// Writes checkpoint `run.index`: the particles, then the state, each aside then renamed,
+    /// then `current` names it; the one before is removed only once it does.
+    @discardableResult
+    public func save(_ run: Run, particles write: (FileHandle) throws -> Void) throws -> Saved {
+        let started = Date()
+        let manager = FileManager.default
+        try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let previous = currentIndex()
+        let data = particles(run.index)
+        let aside = data.appendingPathExtension("partial")
+        manager.createFile(atPath: aside.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: aside)
+        try write(handle)
+        try handle.synchronize()
+        try handle.close()
+        try Self.rename(aside, to: data)
+        try Self.encoder.encode(run).write(to: state(run.index), options: .atomic)
+        try Data("\(run.index)\n".utf8).write(to: current, options: .atomic)
+        if let previous, previous != run.index {
+            try? manager.removeItem(at: particles(previous))
+            try? manager.removeItem(at: state(previous))
+        }
+        let bytes = (try? manager.attributesOfItem(atPath: data.path)[.size] as? Int) ?? 0
+        return Saved(seconds: Date().timeIntervalSince(started), bytes: bytes)
+    }
+
+    /// The last whole checkpoint, with its particles opened at their start; nil when none.
+    public func load() throws -> (run: Run, particles: FileHandle)? {
+        guard let index = currentIndex() else { return nil }
+        let run = try Self.decoder.decode(Run.self, from: Data(contentsOf: state(index)))
+        return (run, try FileHandle(forReadingFrom: particles(index)))
+    }
+
+    /// The last whole checkpoint's state alone, to tell whether a run would resume it.
+    public func stored() -> Run? {
+        guard let index = currentIndex() else { return nil }
+        return (try? Data(contentsOf: state(index))).flatMap { try? Self.decoder.decode(Run.self, from: $0) }
+    }
+
+    /// Removes every checkpoint, its segments and blocks with it.
+    public func clear() {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func currentIndex() -> Int? {
+        (try? String(contentsOf: current, encoding: .utf8)).flatMap {
+            Int($0.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
+    private static func rename(_ from: URL, to: URL) throws {
+        guard Foundation.rename(from.path, to.path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
+
+    private static var encoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.nonConformingFloatEncodingStrategy = .convertToString(
+            positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
+        return encoder
+    }
+
+    private static var decoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+            positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
+        return decoder
+    }
+}
+
+extension RunCheckpoint {
+    /// A file's size and modification date, which say whether it is still the one a run read.
+    public static func stamp(_ url: URL) -> String {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = attributes?[.size] as? Int ?? 0
+        let date = (attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(size) bytes, \(date)"
+    }
+
+    /// A digest of this binary and the libraries beside it.
+    public static func codeVersion(executable: URL? = Bundle.main.executableURL) -> String {
+        guard let executable else { return "" }
+        let folder = executable.deletingLastPathComponent()
+        var hash = SHA256()
+        for url in [executable]
+            + ["libSillageCore.dylib", "libSillageRender.dylib"].map({ folder.appendingPathComponent($0) })
+        {
+            if let data = try? Data(contentsOf: url, options: .alwaysMapped) { hash.update(data: data) }
+        }
+        return hash.finalize().prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Whether a full pass run with `arguments` would resume the checkpoint here: the same
+    /// command line, scene, look and framing take.
+    public func resumable(arguments: [String], scene: URL, look: URL?, framing: URL) -> Bool {
+        guard let run = stored() else { return false }
+        let identity = run.identity
+        return identity.arguments == Identity.kept(arguments)
+            && identity.scene == ((try? String(contentsOf: scene, encoding: .utf8)) ?? "")
+            && identity.look == (look.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "")
+            && identity.framing == Self.stamp(framing)
+    }
+}
