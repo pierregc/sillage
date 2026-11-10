@@ -52,14 +52,15 @@ a few tests alone is `swiftc -Onone -I .build/linux -L .build/linux -lSillageCor
 ## What builds
 
 - **`SillageCore`, every file**, `ParticleSystem.streamingLightTracers` included.
-- **`SillageRender`, every file but 23**, which need an Apple framework or a type defined in one:
-  Metal (the solver, the tree builder, the renderer, the shaders' pipelines, the thumbnails),
+- **`SillageRender`, every file but 24**, which need an Apple framework or a type defined in one:
+  Metal (the solver, the tree builder, the renderer, the shaders' pipelines, the thumbnails, the walk
+  dump of #271),
   CoreGraphics, CoreText, ImageIO, CoreVideo and CoreMedia (PNGs, the look grid and sheet,
   `ExportedFile`), QuartzCore, AVFoundation and VideoToolbox (`VideoWriter`, the codec's
   properties). `scripts/linux-skip.txt` names each with its framework.
-- **The tests of both modules but 19 files**, the ones that need Metal, AVFoundation, ImageIO or
+- **The tests of both modules but 20 files**, the ones that need Metal, AVFoundation, ImageIO or
   CoreGraphics, and the queue and night runner's, which start and watch processes with calls only
-  macOS has. 393 tests run on Linux, against 594 on the Mac.
+  macOS has. 393 tests run on Linux, and the Mac runs those and the rest.
 
 Everything the ticket asked for builds: `SceneFolder`, `LookFile` and its extensions,
 `RenderLook`, `GalaxyColours`, `PaletteRamps`, the cameras (`Camera`, `AutoCamera`,
