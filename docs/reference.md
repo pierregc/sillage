@@ -204,11 +204,11 @@ below), or this Mac's maximum when that is lower. Given a batch folder instead o
 runs every scene marked yes in `ratings.json`, one after another, skipping those already done at
 that size.
 
-Only the particle count and what follows from it change. The geometry is the scene file's, and
-so is `timeStepScale` (3.5 for a night batch) unless `--dt-scale` overrides it. Softening follows
-the interparticle spacing, so the step shrinks as the count grows, and a disk drawn for its
-response (`effectiveToomreQ` in the scene file) is given the Toomre Q that keeps that response at
-the new softening, so it answers as in the preview (#181). `clip.json`'s `steps` and
+Only the particle count and what follows from it change. The geometry is the scene file's. The
+step scale is 3.5 whatever the preview explored at (#225), unless `--dt-scale` overrides it.
+Softening follows the interparticle spacing, so the step shrinks as the count grows, and a disk
+drawn for its response (`effectiveToomreQ` in the scene file) is given the Toomre Q that keeps
+that response at the new softening, so it answers as in the preview (#181). `clip.json`'s `steps` and
 `settle` are step counts at the preview's size: run as they are, they would show a shorter stretch
 of the encounter. They are turned into megayears and back, with a whole number of steps per
 frame, so every frame lands at the time the preview showed it and only the settle is rounded to
@@ -512,6 +512,10 @@ encounters and a night batch judges them. Run again at its own size, a scene com
 
 `--dt-scale 3.5` holds at high resolution: halving the step at 500 000 a galaxy moves the centres
 by less than 0.01 kpc and leaves 98 % of the stars in the same place, for twice the time.
+Doubling it does not hold for a hires: at 8 M drawn from 2 M, 7 keeps the passages, the merger
+and the tails, but forms 15 % fewer stars and parts ways on the compact knots past the
+encounter's own chaos, so hires stays at 3.5 and only exploration runs at 7
+([the note](notes/doubled-step.md), #225).
 
 ### Exploration batches
 
@@ -535,9 +539,9 @@ a different seed or size given to a batch already started is refused. Scenes in 
 stops are started again. A batch started before the pair share has none recorded and goes on
 with the draw it started with.
 
-**The clip shows the encounter.** A step three and a half times the recommended one
-(`--dt-scale 3.5`, measured in #13), 750 steps to settle, which is the first 150 Myr, where a
-sampled disk's first radial excursion has peaked (#167), and then
+**The clip shows the encounter.** A step seven times the recommended one (`--dt-scale 7`,
+#225, 3.5 before), 375 steps to settle, which is the first 150 Myr, where a sampled disk's first
+radial excursion has peaked (#167), and then
 as many steps as cover `--span`, 700 Myr by default: a step is shorter the more particles a disk
 holds, so the step count is worked out per scene. The generator puts the first pericentre at
 least 150 Myr into the clip, and `explore` runs on past the span while the story goes on, so the

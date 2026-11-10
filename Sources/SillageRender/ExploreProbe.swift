@@ -10,10 +10,10 @@ public struct ExploreProbe: Sendable {
     public var archetypeShare = Double(BatchDraw.defaultArchetypeShare)
     /// Nil draws the counts as a batch started before the pair share does.
     public var pairShare: Double? = NightRecipe.defaultPairShare
-    public var dtScale = 3.5
+    public var dtScale = 7.0
     public var spanMyr = 700.0
     public var frames = 900
-    public var settle = 750
+    public var settle = 375
     /// Draws outside these are skipped, as `--galaxies` and `--only-archetypes` skip them.
     public var galaxies: ClosedRange<Int>?
     public var archetypes: [String]?
@@ -94,7 +94,9 @@ public struct ExploreProbe: Sendable {
         _ draw: Draw, hiresParticles: Int, massive: Int? = nil, frames hiresFrames: Int? = nil
     ) -> NightScene {
         let carrying = min(massive ?? hiresParticles, hiresParticles)
-        let target = Double(file(draw.index).file.scene(particleCount: carrying).timeStep)
+        var hires = file(draw.index).file
+        hires.timeStepScale = SceneFolder.hiresTimeStepScale
+        let target = Double(hires.scene(particleCount: carrying).timeStep)
         var clip = SceneFolder.Clip()
         clip.frames = frames
         clip.steps = draw.steps
