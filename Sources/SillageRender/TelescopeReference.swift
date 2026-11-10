@@ -1,6 +1,8 @@
 import Foundation
 #if canImport(simd)
     import simd
+#else
+    import SillageCore
 #endif
 
 /// The colours measured on one set of Hubble or Webb pictures (#125), read from

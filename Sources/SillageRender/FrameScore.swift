@@ -1,6 +1,8 @@
 import Foundation
 #if canImport(simd)
     import simd
+#else
+    import SillageCore
 #endif
 
 /// How good a rendered frame looks, from 0 to 1, measured on its pixels. Every part is 0 to 1

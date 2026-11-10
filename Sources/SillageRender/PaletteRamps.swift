@@ -1,6 +1,8 @@
 import Foundation
 #if canImport(simd)
     import simd
+#else
+    import SillageCore
 #endif
 
 /// How a palette's ramps hold together inside a galaxy and keep apart between galaxies (#120).

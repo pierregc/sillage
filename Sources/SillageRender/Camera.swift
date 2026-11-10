@@ -2,6 +2,7 @@
     import simd
 #else
     import Foundation
+    import SillageCore
 #endif
 
 public struct Camera: Sendable {

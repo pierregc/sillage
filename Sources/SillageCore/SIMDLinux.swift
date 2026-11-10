@@ -273,6 +273,24 @@
 
     public typealias simd_float4x4 = SIMDMatrix4<Float>
 
+    @inlinable public func simd_determinant<T: BinaryFloatingPoint & SIMDScalar>(
+        _ a: SIMDMatrix3<T>
+    ) -> T {
+        a.determinant
+    }
+
+    @inlinable public func simd_inverse<T: BinaryFloatingPoint & SIMDScalar>(
+        _ a: SIMDMatrix3<T>
+    ) -> SIMDMatrix3<T> {
+        a.inverse
+    }
+
+    @inlinable public func simd_transpose<T: BinaryFloatingPoint & SIMDScalar>(
+        _ a: SIMDMatrix3<T>
+    ) -> SIMDMatrix3<T> {
+        a.transpose
+    }
+
     public typealias simd_float3x3 = SIMDMatrix3<Float>
     public typealias simd_double3x3 = SIMDMatrix3<Double>
 #endif

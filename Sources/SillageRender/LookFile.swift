@@ -1,6 +1,8 @@
 import Foundation
 #if canImport(simd)
     import simd
+#else
+    import SillageCore
 #endif
 
 /// Everything that decides the image and nothing that decides the physics, as it is kept on

@@ -2,6 +2,7 @@
     import simd
 #else
     import Foundation
+    import SillageCore
 #endif
 
 /// The simplest camera that never loses a galaxy: centred between them, backed off just far

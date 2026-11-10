@@ -5,6 +5,7 @@ import Testing
     import simd
 #else
     import Foundation
+    import SillageCore
 #endif
 
 @Suite("Cinematography")
