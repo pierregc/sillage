@@ -1758,19 +1758,18 @@ let takeBudget = Int(
 // `--take-interval n` keeps one frame in n, and whatever draws the take again interpolates
 // the rest.
 let takeInterval = max(Int(number("take-interval", 1)), 1)
-let take: Recording? = argument("take").map { _ in
+func takeReel(_ particles: Int, bitsPerAxis: Int = Recording.defaultBitsPerAxis) -> Recording {
     let reel = Recording(
-        particleCount: drawnCount, galaxyCount: scene.galaxies.count, interval: takeInterval)
-    reel.reserve(frames: min(frames / takeInterval + 1, takeBudget / max(drawnCount * 6, 1) + 1))
+        particleCount: particles, galaxyCount: scene.galaxies.count, interval: takeInterval,
+        bitsPerAxis: bitsPerAxis)
+    reel.reserve(frames: min(frames / takeInterval + 1, takeBudget / reel.frameBytes + 1))
     return reel
 }
+let take: Recording? = argument("take").map { _ in takeReel(drawnCount) }
+// `--take-v6 path`: the same take at 16 bits an axis, as version 6 wrote it, for comparing.
+let takeV6: Recording? = argument("take-v6").map { _ in takeReel(drawnCount, bitsPerAxis: 16) }
 // `--take-massive path`: the same run drawn with its massive particles only, for comparing.
-let massiveTake: Recording? = argument("take-massive").map { _ in
-    let reel = Recording(
-        particleCount: massiveDrawn, galaxyCount: scene.galaxies.count, interval: takeInterval)
-    reel.reserve(frames: min(frames / takeInterval + 1, takeBudget / max(massiveDrawn * 6, 1) + 1))
-    return reel
-}
+let massiveTake: Recording? = argument("take-massive").map { _ in takeReel(massiveDrawn) }
 
 var resumed: RunCheckpoint.Run?
 if let checkpoint {
@@ -1897,6 +1896,7 @@ var story =
     ? Story.Tracker(story: Story(scene: scene, settings: storySettings)) : nil
 var previousTime = solver.time
 var curvesSeconds: Double = 0
+var takeSeconds: Double = 0
 // `--density path` counts the stars on a fixed grid at `--density-frames` instants, the same
 // grid at every particle count, so runs of one scene compare without a camera in between.
 let densityURL = try argument("density").map(prepared)
@@ -2068,9 +2068,9 @@ while frame < frames || storyGoesOn() {
             time: solver.time, centers: solver.centers,
             disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [], budget: takeBudget)
     }
-    if let take {
+    func offer(_ reel: Recording) {
         if let gpuSolver {
-            take.offer(
+            reel.offer(
                 positions: gpuSolver.positions.contents().bindMemory(
                     to: SIMD3<Float>.self, capacity: heldCount),
                 time: solver.time, centers: solver.centers,
@@ -2078,12 +2078,18 @@ while frame < frames || storyGoesOn() {
         } else {
             solver.particles.positions.withUnsafeBufferPointer { buffer in
                 guard let base = buffer.baseAddress else { return }
-                take.offer(
+                reel.offer(
                     positions: base, time: solver.time, centers: solver.centers,
                     budget: takeBudget)
             }
         }
     }
+    if let take {
+        let takeStart = Date()
+        offer(take)
+        takeSeconds += Date().timeIntervalSince(takeStart)
+    }
+    if let takeV6 { offer(takeV6) }
 
     if density?.wants(frame: frame) == true {
         if let gpuSolver {
@@ -2346,9 +2352,18 @@ if curves != nil {
 }
 if let take, let path = argument("take") {
     if let failure = take.spillFailure { print("take       held in memory: \(failure)") }
+    print(
+        String(
+            format: "take       %.1f ms a frame quantising, %d bits an axis",
+            takeSeconds * 1000 / Double(max(take.capturedCount, 1)), take.bitsPerAxis))
     let captured =
         tracerSolver?.drawnAttributes() ?? gpuSolver?.capturedParticles(from: seeded) ?? seeded
     try RecordingFile.write(take, scene: drawnScene, particles: captured, to: prepared(path))
+}
+if let takeV6, let path = argument("take-v6") {
+    let captured =
+        tracerSolver?.drawnAttributes() ?? gpuSolver?.capturedParticles(from: seeded) ?? seeded
+    try RecordingFile.write(takeV6, scene: drawnScene, particles: captured, to: prepared(path))
 }
 if let massiveTake, let path = argument("take-massive") {
     let captured = gpuSolver?.capturedParticles(from: seeded) ?? seeded

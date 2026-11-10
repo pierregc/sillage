@@ -53,7 +53,7 @@ session. Read the note for an area before changing it.
 ## Capture and playback
 
 - [A long capture keeps every frame](long-capture.md): spilling to disk instead of thinning
-- [Takes on disk](takes-on-disk.md): `RecordingFile` format and memory peaks, the curves a take without disk states reads them from
+- [Takes on disk](takes-on-disk.md): `RecordingFile` format and memory peaks, the curves a take without disk states reads them from, 21 bits an axis since version 7 (#237)
 - [What a played-back frame costs](playback-frame-cost.md): `SnapshotStream`
 - [Two things that made a replay a slideshow](replay-slideshow.md): `--replayswitch`, `--replay`
 - [Checkpoints: a long run that survives a restart](checkpoints.md): what the solver keeps and rebuilds, segments joined without encoding, the run's identity, the cost at 8 M and 200 M (#240)

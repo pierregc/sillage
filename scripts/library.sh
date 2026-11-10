@@ -5,11 +5,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# A take is six bytes a particle a frame, so it is two thousand megabytes a scene against
+# A take is eight bytes a particle a frame, so it is about 2700 megabytes a scene against
 # eighty for the video alone. The seed reproduces the scene exactly, so triage does not need
 # one: takes are opt in, for the scenes already known to be worth re-rendering.
 MB_PER_SCENE=80         # video and curves only; --takes raises it
-MB_PER_TAKE=2000
+MB_PER_TAKE=2700
 MINUTES_PER_SCENE=9    # rough, and only used for the plan
 SETTLE=750              # steps before the first frame, 150 Myr: past the first excursion (#167)
 FRAMES=900              # 30 s at 30 fps

@@ -147,7 +147,7 @@ up: the frame-filling shots of #186 are drawn from 8 M takes late in their story
 
 The fix is more bits rather than a better box: 21 bits an axis packed in 8 bytes is 32 times
 finer, about 1 pc over the largest box measured and 0.3 pc with a box a galaxy, for a take a
-third larger. Coding each position relative to its galaxy's centre on a scale that is finest at
+third larger. Done in #237, see `takes-on-disk.md`. Coding each position relative to its galaxy's centre on a scale that is finest at
 the centre would keep 6 bytes and serve the close-ups of the inner disk, at the cost of the tails.
 
 ## What 100 M costs as the code stands

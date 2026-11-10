@@ -39,8 +39,7 @@ public final class SnapshotStream {
         self.slotCount = max(slots, 4)
         // Metal wants a bound offset aligned, and a snapshot of an odd number of particles
         // is not even four-byte aligned on its own.
-        let frameBytes = max(recording.particleCount, 1) * 3 * 2
-        self.slotStride = (frameBytes + 255) / 256 * 256
+        self.slotStride = (recording.frameBytes + 255) / 256 * 256
         guard
             let storage = device.makeBuffer(
                 length: slotStride * self.slotCount, options: .storageModeShared)

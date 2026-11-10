@@ -93,7 +93,7 @@ struct RunVideosTests {
         let count = loaded.recording.particleCount
         let positions = try #require(
             device.makeBuffer(length: count * MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared))
-        let expander = try SnapshotExpander(device: device, particleCount: count)
+        let expander = try SnapshotExpander(device: device, recording: loaded.recording)
         let stream = try #require(SnapshotStream(device: device, recording: loaded.recording))
         let smoothing = try SmoothingField(device: device, particleCount: count)
         let drawing = try Renderer(
@@ -201,7 +201,7 @@ struct RunVideosTests {
         let entries = try JSONDecoder().decode([KeyFrameTake.Entry].self, from: Data(contentsOf: list))
         #expect(entries.map(\.frame) == [0, 4, 9])
         #expect(entries.map(\.role) == ["start", "pericentre", "tails"])
-        let step = (read.recording.frame(at: 2)?.extent ?? 1) / 65535
+        let step = try read.recording.quantum(of: #require(read.recording.frame(at: 2)))
         let original = loaded.recording.positions(at: 9)
         let again = read.recording.positions(at: 2)
         #expect(zip(original, again).allSatisfy { simd_distance($0, $1) <= step * 2 })

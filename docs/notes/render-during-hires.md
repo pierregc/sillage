@@ -3,7 +3,7 @@
 Step 3 of epic #236, two galaxies of 100 M stars in under a day. Until now a hires wrote a take
 of every particle and `hires.mov`, and a night's videos were drawn afterwards from the take
 (`look`, `export`). At 200 M no take of the whole history fits on a disk: 450 GB at six bytes a
-star a kept frame. So the videos are drawn during the run, from the solver's floats, as
+star a kept frame, 600 GB at the eight a take holds since #237. So the videos are drawn during the run, from the solver's floats, as
 `hires.mov` always was, with the look, the camera and the shots `export` would give them.
 
 ## How it is built
@@ -135,7 +135,8 @@ against 23 for the whole frame. The two draw the same picture: no difference of 
 colour or exposure shows in any frame. What differs is the positions. The take keeps each axis in 16 bits over a box that
 holds every particle drawn, and that box grows from 244 kpc on the first frame to 923 kpc on the
 last as a few particles fly out, so the step grows from 3.7 to 14.1 pc, and a quantised position
-sits up to a step below the float one (the take truncates). In the closing shot a 4K pixel is
+sits up to a step below the float one (the take truncates; since #237 it holds 21 bits an axis
+and rounds, see `takes-on-disk.md`). In the closing shot a 4K pixel is
 about 19 pc of the disk, so the take moves the stars by up to 0.7 px there; the kernels also come
 from a tree built on those positions, and a particle that crosses a cell boundary changes its
 kernel. The difference follows the step and the framing: 57 dB on the wide shot at frame 120, 41

@@ -889,7 +889,7 @@ final class SimulationModel: ObservableObject {
         capturedFrames = reel.count
         capturedBytes = reel.byteCount
         do {
-            expander = try SnapshotExpander(device: device, particleCount: reel.particleCount)
+            expander = try SnapshotExpander(device: device, recording: reel)
             snapshots = SnapshotStream(device: device, recording: reel)
             playbackPositions = device.makeBuffer(
                 length: reel.particleCount * MemoryLayout<SIMD3<Float>>.stride,
@@ -970,9 +970,7 @@ final class SimulationModel: ObservableObject {
                 failure = "\(error)"
             }
             let expander =
-                loaded.flatMap {
-                    try? SnapshotExpander(device: device, particleCount: $0.recording.particleCount)
-                }
+                loaded.flatMap { try? SnapshotExpander(device: device, recording: $0.recording) }
             // Measured here: at a few million particles they would hold the window a moment, the
             // director's plan most of a second.
             let radii = loaded.map(PlanPlayhead.firstFrameRadii)
@@ -1088,7 +1086,7 @@ final class SimulationModel: ObservableObject {
     /// gigabyte-scale buffer a frame at a time doubles it whenever it fills, and for a moment
     /// both copies are resident.
     nonisolated static func budgetedFrames(particles: Int, gigabytes: Double) -> Int {
-        let perFrame = max(particles * 6, 1)
+        let perFrame = max(Recording.estimatedBytes(particleCount: particles, frames: 1), 1)
         return max(Int(gigabytes * 1_073_741_824) / perFrame, 2)
     }
 

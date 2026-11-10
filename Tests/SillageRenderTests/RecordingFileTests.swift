@@ -7,8 +7,11 @@ import simd
 
 @Suite("Recording files")
 struct RecordingFileTests {
-    private func take(particles: Int, frames: Int, galaxies: Int) -> (Recording, ParticleSystem) {
-        let recording = Recording(particleCount: particles, galaxyCount: galaxies)
+    private func take(
+        particles: Int, frames: Int, galaxies: Int, bitsPerAxis: Int = Recording.defaultBitsPerAxis
+    ) -> (Recording, ParticleSystem) {
+        let recording = Recording(
+            particleCount: particles, galaxyCount: galaxies, bitsPerAxis: bitsPerAxis)
         var system = ParticleSystem()
         var generator = SeededGenerator(seed: 5)
         for index in 0..<particles {
@@ -285,7 +288,7 @@ struct RecordingFileTests {
         let particles = 400
         let recording = Recording(particleCount: particles, galaxyCount: 1)
         // Room for about twenty frames, offered two hundred.
-        let budget = particles * 6 * 20
+        let budget = recording.frameBytes * 20
         var positions = [SIMD3<Float>](repeating: .zero, count: particles)
         for frame in 0..<200 {
             for index in positions.indices {
@@ -304,7 +307,7 @@ struct RecordingFileTests {
         // records, which are twenty bytes each — and every single frame is still there.
         #expect(
             recording.memoryByteCount
-                <= budget + particles * 6 + 200 * MemoryLayout<Recording.Frame>.stride)
+                <= budget + recording.frameBytes + 200 * MemoryLayout<Recording.Frame>.stride)
         #expect(recording.diskByteCount > 0)
         #expect(recording.count == 200)
         let span = recording.frames.last!.time - recording.frames.first!.time
@@ -385,8 +388,13 @@ struct RecordingFileTests {
         }
     }
 
-    /// Rewrites a take as an older version: the same layout without the birth radii.
+    private func version(of url: URL) throws -> UInt64 {
+        try Data(contentsOf: url)[8..<16].withUnsafeBytes { $0.loadUnaligned(as: UInt64.self) }
+    }
+
+    /// Rewrites a version 6 take as an older version: the same layout without the birth radii.
     private func downgrade(_ url: URL, to version: UInt64, particles: Int) throws {
+        #expect(try self.version(of: url) == 6)
         var data = try Data(contentsOf: url)
         let header = Int(data[16..<24].withUnsafeBytes { $0.loadUnaligned(as: UInt64.self) })
         let radii = 24 + header + 16 * particles
@@ -412,7 +420,7 @@ struct RecordingFileTests {
     /// An old take keeps the radius it always replayed with, and gives the ramps the distance
     /// to its galaxy's centre on the first frame.
     @Test func anOldTakeRebuildsTheBirthRadiusFromTheFirstFrame() throws {
-        var (recording, system) = take(particles: 120, frames: 3, galaxies: 2)
+        var (recording, system) = take(particles: 120, frames: 3, galaxies: 2, bitsPerAxis: 16)
         system.birthRadius = (0..<120).map { Float($0) * 0.1 }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("version-5.\(RecordingFile.fileExtension)")
@@ -433,7 +441,7 @@ struct RecordingFileTests {
 
     /// A take written before the interval existed has every frame, and says nothing about it.
     @Test func aVersionFourTakeStillReads() throws {
-        let (recording, system) = take(particles: 100, frames: 5, galaxies: 2)
+        let (recording, system) = take(particles: 100, frames: 5, galaxies: 2, bitsPerAxis: 16)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("version-4.\(RecordingFile.fileExtension)")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -446,8 +454,35 @@ struct RecordingFileTests {
         #expect(loaded.count == 5)
         #expect(loaded.interval == 1)
         #expect(loaded.capturedCount == 5)
+        #expect(loaded.bitsPerAxis == 16)
+        #expect(loaded.positions(at: 4) == recording.positions(at: 4))
         let blend = try #require(loaded.blend(atCaptured: 3))
         #expect(Int(blend.keys[1]) == 3 && blend.fraction == 0)
+    }
+
+    /// A take is written in version 7, eight bytes a particle a frame, and one held at 16 bits
+    /// in version 6 as before (#237): each reads back at its own depth, cell for cell.
+    @Test func aTakeIsWrittenInVersionSevenAndAtSixteenBitsInSix() throws {
+        let scene = SceneConfig.merger(particleCount: 300)
+        var sizes: [Int: Int] = [:]
+        for bits in [21, 16] {
+            let (recording, system) = take(particles: 300, frames: 4, galaxies: 2, bitsPerAxis: bits)
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("bits-\(bits)-\(UUID().uuidString).\(RecordingFile.fileExtension)")
+            defer { try? FileManager.default.removeItem(at: url) }
+            try RecordingFile.write(recording, scene: scene, particles: system, to: url)
+            #expect(try version(of: url) == (bits == 21 ? 7 : 6))
+            sizes[bits] = try Data(contentsOf: url).count
+
+            let loaded = try RecordingFile.read(from: url).recording
+            #expect(loaded.bitsPerAxis == bits)
+            #expect(loaded.frameBytes == recording.frameBytes)
+            for frame in 0..<4 {
+                #expect(loaded.positions(at: frame) == recording.positions(at: frame), "image \(frame)")
+                #expect(loaded.positions(at: frame, in: 7..<31) == recording.positions(at: frame, in: 7..<31))
+            }
+        }
+        #expect(sizes[21]! - sizes[16]! == 300 * 4 * 2)
     }
 
     /// The frames a take no longer keeps come back off the curve the run followed, not off

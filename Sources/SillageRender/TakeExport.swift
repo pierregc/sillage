@@ -99,7 +99,7 @@ public final class TakeExport {
         else { throw RenderError.noDevice }
         self.positions = positions
         self.stream = stream
-        expander = try SnapshotExpander(device: device, particleCount: count)
+        expander = try SnapshotExpander(device: device, recording: take.recording)
         smoothing = try SmoothingField(device: device, particleCount: count)
     }
 
