@@ -416,7 +416,7 @@ public enum RecordingFile {
                 // Each job writes its own slots only.
                 nonisolated(unsafe) let spreadBase = spread.baseAddress!
                 nonisolated(unsafe) let countBase = count.baseAddress!
-                DispatchQueue.concurrentPerform(iterations: jobs) { job in
+                concurrentPerform(iterations: jobs) { job in
                     let frame = job / rotating.count
                     let index = rotating[job % rotating.count]
                     let config = scene.galaxies[index]

@@ -151,7 +151,7 @@ public final class BarnesHutTree {
             repeating: SIMD3<Float>(repeating: -.greatestFiniteMagnitude), count: boundsBlocks)
         lowers.withUnsafeMutableBufferPointer { lowers in
             uppers.withUnsafeMutableBufferPointer { uppers in
-                DispatchQueue.concurrentPerform(iterations: boundsBlocks) { block in
+                concurrentPerform(iterations: boundsBlocks) { block in
                     var lower = lowers[block]
                     var upper = uppers[block]
                     for index in block * boundsBlock..<min((block + 1) * boundsBlock, count) {
@@ -187,7 +187,7 @@ public final class BarnesHutTree {
         let codeChunk = max(count / (ProcessInfo.processInfo.activeProcessorCount * 4), 8192)
         let codeChunks = (count + codeChunk - 1) / codeChunk
         sortedCodes.withUnsafeMutableBufferPointer { target in
-            DispatchQueue.concurrentPerform(iterations: codeChunks) { block in
+            concurrentPerform(iterations: codeChunks) { block in
                 let start = block * codeChunk
                 let end = min(start + codeChunk, count)
                 for index in start..<end {
@@ -249,7 +249,7 @@ public final class BarnesHutTree {
         }
 
         primary.withUnsafeMutableBufferPointer { buffer in
-            DispatchQueue.concurrentPerform(iterations: blocks) { block in
+            concurrentPerform(iterations: blocks) { block in
                 for index in block * blockSize..<min((block + 1) * blockSize, count) {
                     buffer[index] = UInt32(index)
                 }
@@ -264,7 +264,7 @@ public final class BarnesHutTree {
                     primary.withUnsafeMutableBufferPointer { source in
                         scratch.withUnsafeMutableBufferPointer { target in
                             histogram.withUnsafeMutableBufferPointer { counts in
-                                DispatchQueue.concurrentPerform(iterations: blocks) { block in
+                                concurrentPerform(iterations: blocks) { block in
                                     let base = block * buckets
                                     for bucket in 0..<buckets { counts[base + bucket] = 0 }
                                     for position in block * blockSize..<min((block + 1) * blockSize, count) {
@@ -299,7 +299,7 @@ public final class BarnesHutTree {
                                     }
                                 }
                                 guard moves else { return }
-                                DispatchQueue.concurrentPerform(iterations: blocks) { block in
+                                concurrentPerform(iterations: blocks) { block in
                                     let base = block * buckets
                                     for position in block * blockSize..<min((block + 1) * blockSize, count) {
                                         let key = sourceKey[position]
@@ -467,7 +467,7 @@ public final class BarnesHutTree {
             subtrees.withUnsafeMutableBufferPointer { subtrees in
                 blocks.withUnsafeMutableBufferPointer { blocks in
                     schedule.withUnsafeBufferPointer { schedule in
-                        DispatchQueue.concurrentPerform(iterations: schedule.count) { turn in
+                        concurrentPerform(iterations: schedule.count) { turn in
                             let index = schedule[turn]
                             var work = subtrees[index].work
                             work.node = -1
@@ -520,7 +520,7 @@ public final class BarnesHutTree {
             let target = target
             subtrees.withUnsafeBufferPointer { subtrees in
                 blocks.withUnsafeBufferPointer { blocks in
-                    DispatchQueue.concurrentPerform(iterations: subtrees.count) { index in
+                    concurrentPerform(iterations: subtrees.count) { index in
                         let base = subtrees[index].base
                         let offset = Int32(base)
                         blocks[index].withUnsafeBufferPointer { block in
@@ -567,7 +567,7 @@ public final class BarnesHutTree {
             order.withUnsafeBufferPointer { orderBuffer in
                 nodes.withUnsafeMutableBufferPointer { nodeBuffer in
                     quadrupoles.withUnsafeMutableBufferPointer { quadrupoleBuffer in
-                        DispatchQueue.concurrentPerform(iterations: chunks) { block in
+                        concurrentPerform(iterations: chunks) { block in
                             let first = block * chunk
                             let last = min(first + chunk, nodeCount)
                             for index in first..<last where nodeBuffer[index].isLeaf {
@@ -623,7 +623,7 @@ public final class BarnesHutTree {
         nodes.withUnsafeMutableBufferPointer { nodeBuffer in
             subtrees.withUnsafeBufferPointer { subtrees in
                 schedule.withUnsafeBufferPointer { schedule in
-                    DispatchQueue.concurrentPerform(iterations: schedule.count) { turn in
+                    concurrentPerform(iterations: schedule.count) { turn in
                         let subtree = subtrees[schedule[turn]]
                         for index in stride(
                             from: subtree.base + subtree.size - 1, through: subtree.base, by: -1)
@@ -635,7 +635,7 @@ public final class BarnesHutTree {
             }
             for index in topIndices.reversed() { Self.fold(nodeBuffer, index) }
 
-            DispatchQueue.concurrentPerform(iterations: chunks) { block in
+            concurrentPerform(iterations: chunks) { block in
                 for index in block * chunk..<min((block + 1) * chunk, nodeCount) {
                     let total = nodeBuffer[index].comMass.w
                     if total > 0 {
@@ -678,7 +678,7 @@ public final class BarnesHutTree {
             quadrupoles.withUnsafeMutableBufferPointer { moments in
                 subtrees.withUnsafeBufferPointer { subtrees in
                     schedule.withUnsafeBufferPointer { schedule in
-                        DispatchQueue.concurrentPerform(iterations: schedule.count) { turn in
+                        concurrentPerform(iterations: schedule.count) { turn in
                             let subtree = subtrees[schedule[turn]]
                             for index in stride(
                                 from: subtree.base + subtree.size - 1, through: subtree.base, by: -1)
