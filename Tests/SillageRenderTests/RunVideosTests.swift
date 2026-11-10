@@ -2,10 +2,12 @@ import CoreGraphics
 import Foundation
 import Metal
 import Testing
-import simd
 
 @testable import SillageCore
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#endif
 
 /// The videos a full pass draws as it runs (#239), against what `export` draws from a take.
 @Suite("Videos drawn during the run")

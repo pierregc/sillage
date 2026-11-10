@@ -1,9 +1,11 @@
 import Foundation
 import SillageCore
 import Testing
-import simd
 
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#endif
 
 @Suite("Palette generator")
 struct PaletteGeneratorTests {

@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 extension SceneConfig {
     /// A scene generated for its looks rather than for a question about dynamics.

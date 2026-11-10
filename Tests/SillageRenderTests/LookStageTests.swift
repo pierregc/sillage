@@ -1,8 +1,12 @@
 import Foundation
 import Testing
-import simd
 
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#else
+    import SillageCore
+#endif
 
 @Suite("Look stage")
 struct LookStageTests {
@@ -168,13 +172,15 @@ struct LookStageTests {
         #expect(try LookFile.decoded(from: Data(contentsOf: folder.rawLook)) == .raw)
     }
 
-    @Test func theGridHasARowPerLookAndAColumnPerFrame() throws {
-        let cell = [UInt8](repeating: 200, count: 40 * 20 * 4)
-        let image = try #require(
-            LookGrid.image(
-                cells: [[cell, cell, cell], [cell, cell, cell]], rowLabels: ["a", "b"],
-                columnLabels: ["start", "pericentre", "end"], cellWidth: 40, cellHeight: 20))
-        #expect(image.width == LookGrid.labelWidth + 3 * (40 + LookGrid.gap))
-        #expect(image.height == LookGrid.headerHeight + 2 * (20 + LookGrid.gap))
-    }
+    #if canImport(CoreGraphics)
+        @Test func theGridHasARowPerLookAndAColumnPerFrame() throws {
+            let cell = [UInt8](repeating: 200, count: 40 * 20 * 4)
+            let image = try #require(
+                LookGrid.image(
+                    cells: [[cell, cell, cell], [cell, cell, cell]], rowLabels: ["a", "b"],
+                    columnLabels: ["start", "pericentre", "end"], cellWidth: 40, cellHeight: 20))
+            #expect(image.width == LookGrid.labelWidth + 3 * (40 + LookGrid.gap))
+            #expect(image.height == LookGrid.headerHeight + 2 * (20 + LookGrid.gap))
+        }
+    #endif
 }

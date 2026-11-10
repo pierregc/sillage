@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// Linear sRGB of a Planckian radiator, at unit luminance.
 ///

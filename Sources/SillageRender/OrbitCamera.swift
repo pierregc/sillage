@@ -1,4 +1,9 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+    import SillageCore
+#endif
 
 /// Spherical camera rig around a target, which is what mouse orbiting maps onto naturally.
 public struct OrbitCamera: Sendable {

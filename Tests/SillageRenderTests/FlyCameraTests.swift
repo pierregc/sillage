@@ -1,7 +1,12 @@
 import Testing
-import simd
 
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+    import SillageCore
+#endif
 
 @Suite("Free flight")
 struct FlyCameraTests {

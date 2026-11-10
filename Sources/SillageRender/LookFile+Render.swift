@@ -1,5 +1,9 @@
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// Drawing with a look file, in one place, so the command line, the look grid and the app
 /// draw the same file the same way.
@@ -107,29 +111,5 @@ extension LookFile.CameraPlan {
         let eased = u * u * (3 - 2 * u)
         let low = log(max(a.y, 1e-3))
         return exp(low + (log(max(b.y, 1e-3)) - low) * eased)
-    }
-}
-
-extension Renderer {
-    public func apply(_ file: LookFile) {
-        apply(file.look)
-        setGalaxyColours(file.palette)
-    }
-
-    /// Everything but the positions, for drawing `file` on a moment of a take.
-    public func prepare(
-        _ file: LookFile, shot: ShotReplay.Shot, take: RecordingFile.Loaded,
-        at blend: Recording.Blend
-    ) {
-        apply(shot.look)
-        setGalaxyColours(file.palette)
-        time = blend.time
-        var scene = take.scene
-        file.paint(&scene)
-        setDiskFrames(
-            DiskFrame.make(
-                scene: scene, centers: take.recording.centers(at: blend), time: blend.time,
-                strength: LookFile.diskStrength(file.armStrength, shot.look),
-                disks: take.recording.disks(at: blend)))
     }
 }

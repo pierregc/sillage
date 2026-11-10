@@ -1,9 +1,11 @@
 import Foundation
 import Testing
-import simd
 
 @testable import SillageCore
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#endif
 
 /// The canvas against the export (#177): the plan replayed at a scrubbed playhead is the shot
 /// the export draws there, and the mouse edits the plan itself.

@@ -1,7 +1,11 @@
 import Testing
-import simd
 
 @testable import SillageCore
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 @Suite("Restricted solver")
 struct SolverTests {

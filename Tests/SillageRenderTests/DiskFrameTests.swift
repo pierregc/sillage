@@ -1,8 +1,12 @@
 import Testing
-import simd
 
 @testable import SillageCore
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 @Suite("Density wave")
 struct DiskFrameTests {

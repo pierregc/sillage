@@ -4,55 +4,6 @@ import Metal
 import SillageCore
 import simd
 
-/// A size and a bit rate under a name, for the places a video ends up.
-public struct VideoPreset: Sendable, Equatable {
-    public var name: String
-    public var width: Int
-    public var height: Int
-    /// Absent, the encoder's generous default for the size.
-    public var bitsPerSecond: Int?
-    /// Set when the place only takes one codec, which then cannot be changed.
-    public var codec: VideoCodec?
-    /// The most a file may weigh for the place to take it whole; the bit rate then follows
-    /// the clip's length down from `bitsPerSecond` to stay under it.
-    public var maxBytes: Int?
-    /// Whether a caption to paste beside the video is written next to it.
-    public var caption = false
-
-    /// HEVC holds the picture in half the bytes of H.264, so it is what a preset exports
-    /// with unless it names another.
-    public var defaultCodec: VideoCodec { codec ?? .hevc }
-
-    public static let all = [
-        VideoPreset(name: "1080p", width: 1920, height: 1080),
-        VideoPreset(name: "4k", width: 3840, height: 2160),
-        VideoPreset(name: "vertical", width: 1080, height: 1920),
-        VideoPreset(name: "square", width: 1080, height: 1080),
-        // A video sent from WhatsApp Web or Desktop is kept whole under 16 MB: thirty seconds
-        // at 4 Mbit/s is 15, so a clip over 27 s gets a leaner rate. H.264 in an MP4 plays in every
-        // browser and app, which HEVC does not.
-        VideoPreset(
-            name: "whatsapp", width: 1280, height: 720, bitsPerSecond: 4_000_000, codec: .h264,
-            maxBytes: 15_000_000, caption: true),
-    ]
-
-    /// The rate for a clip of `seconds`: the preset's own, or the one that keeps the file
-    /// under `maxBytes` when that is lower (a tenth of margin, the encoder only averages).
-    public func bitRate(forSeconds seconds: Double, floor: Int = 500_000) throws -> Int? {
-        guard let maxBytes else { return bitsPerSecond }
-        let fitting = Int(Double(maxBytes) * 8 * 0.9 / max(seconds, 1e-9))
-        let rate = min(bitsPerSecond ?? fitting, fitting)
-        guard rate >= floor else {
-            throw SceneFolder.ExportError.tooLong(preset: name, seconds: seconds)
-        }
-        return rate
-    }
-
-    public static func named(_ name: String) -> VideoPreset? {
-        all.first { $0.name == name.lowercased() }
-    }
-}
-
 /// Draws a take with a look file into a video, frame by frame and as fast as the GPU goes,
 /// at any size and frame rate. The camera is replayed from the first captured frame as the
 /// look grid replays it, so the same frame of both is the same picture.
@@ -250,7 +201,8 @@ public final class TakeExport {
     }
 
     private func makeReplay(width: Int, height: Int) -> ShotReplay {
-        Self.replay(look: look, framing: framing, capturedRate: capturedRate, width: width, height: height)
+        TakeFraming.replay(
+            look: look, framing: framing, capturedRate: capturedRate, width: width, height: height)
     }
 
     private func makeRenderer(width: Int, height: Int) throws -> Renderer {
@@ -277,36 +229,9 @@ public final class TakeExport {
         // a still of the grid and the same frame here a kernel apart.
         smoothing.update(from: positions)
         guard
-            let shot = Self.prepare(
+            let shot = TakeFraming.prepare(
                 renderer, look: look, replay: replay, framing: framing, at: position)
         else { throw RecordingFile.Failure.truncated }
-        return shot
-    }
-}
-
-extension TakeExport {
-    /// The camera an export of `framing` follows at `width` by `height`. `plan`, the director's
-    /// for that take and look, is made once for every format when given.
-    public static func replay(
-        look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int, width: Int, height: Int,
-        plan: ShotPlan? = nil
-    ) -> ShotReplay {
-        ShotReplay(
-            file: look, take: framing, capturedFrames: framing.recording.capturedFrames,
-            framesPerSecond: max(capturedRate, 1), aspect: Float(width) / Float(max(height, 1)),
-            plan: plan)
-    }
-
-    /// Everything of a frame but the positions and the smoothing: the shot at a captured
-    /// position, and the look, the time and the painted arms `framing` holds there. Exports and
-    /// the full pass of a hires (#239) both draw through this. Nil past the take's end.
-    public static func prepare(
-        _ renderer: Renderer, look: LookFile, replay: ShotReplay, framing: RecordingFile.Loaded,
-        at position: Double
-    ) -> ShotReplay.Shot? {
-        guard let blend = framing.recording.blend(atCaptured: position) else { return nil }
-        let shot = replay.shot(atCaptured: position)
-        renderer.prepare(look, shot: shot, take: framing, at: blend)
         return shot
     }
 }

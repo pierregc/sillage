@@ -1,5 +1,9 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import SillageCore
+#endif
 
 /// One galaxy's entry in a look file's palette: one colour, as every file before #119 holds,
 /// or a ramp from core to outskirts with a young and a knot colour, blended into the population

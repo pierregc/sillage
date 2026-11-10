@@ -1,9 +1,11 @@
 import Foundation
 import Testing
-import simd
 
 @testable import SillageCore
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#endif
 
 @Suite("Recording files")
 struct RecordingFileTests {

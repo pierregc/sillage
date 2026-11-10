@@ -1,5 +1,9 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import SillageCore
+#endif
 
 /// Looks one step away from a base, one knob at a time, so a row of the grid reads as "this,
 /// but brighter".

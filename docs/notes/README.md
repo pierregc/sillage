@@ -12,6 +12,7 @@ session. Read the note for an area before changing it.
 - [A run stops when nobody is watching it](app-nap.md): App Nap, `beginActivity`, `--soak`
 - [Keeping the machine usable](machine-usable.md): visible particles first, utility queue, force chunks
 - [Renting an NVIDIA GPU for the big runs](gpu-rental.md): the providers compared, renting step by step, a forgotten box bounded, who drives it, what 200 M and a billion would cost on each card (#270)
+- [The portable Swift on Linux](linux-build.md): `scripts/linux.sh`, what is skipped and why, `simd` on Linux, what the Mac and Linux give for the same sample (#272)
 
 ## Solver
 

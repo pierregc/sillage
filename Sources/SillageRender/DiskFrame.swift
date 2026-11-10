@@ -1,5 +1,9 @@
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// A galaxy's disk plane and spiral pattern, evaluated at render time.
 ///

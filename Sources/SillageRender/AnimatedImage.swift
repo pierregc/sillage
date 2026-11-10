@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 
 /// A looping animation that plays where a video does not: a README, a contact sheet, a chat.
 public enum AnimatedImage {
@@ -61,7 +62,7 @@ public enum AnimatedImage {
         let palette = GIFPalette(frames: frames)
         var mapped = [[UInt8]](repeating: [], count: frames.count)
         mapped.withUnsafeMutableBufferPointer { out in
-            DispatchQueue.concurrentPerform(iterations: frames.count) { index in
+            concurrentPerform(iterations: frames.count) { index in
                 out[index] = palette.indices(of: frames[index], width: width, height: height)
             }
         }
@@ -84,39 +85,43 @@ public enum AnimatedImage {
         _ frames: [[UInt8]], width: Int, height: Int, _ framesPerSecond: Int, quality: Int,
         to url: URL
     ) throws {
-        guard let tool = img2webp() else { throw Failure.noWebPEncoder }
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("sillage-webp-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
-        let files = frames.indices.map {
-            folder.appendingPathComponent(String(format: "%05d.png", $0))
-        }
-        var written = [Bool](repeating: false, count: frames.count)
-        written.withUnsafeMutableBufferPointer { written in
-            DispatchQueue.concurrentPerform(iterations: frames.count) { index in
-                written[index] =
-                    (try? PNGWriter.write(
-                        frames[index], width: width, height: height, to: files[index])) != nil
+        #if canImport(CoreGraphics)
+            guard let tool = img2webp() else { throw Failure.noWebPEncoder }
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("sillage-webp-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            let files = frames.indices.map {
+                folder.appendingPathComponent(String(format: "%05d.png", $0))
             }
-        }
-        guard !written.contains(false) else { throw Failure.write }
+            var written = [Bool](repeating: false, count: frames.count)
+            written.withUnsafeMutableBufferPointer { written in
+                concurrentPerform(iterations: frames.count) { index in
+                    written[index] =
+                        (try? PNGWriter.write(
+                            frames[index], width: width, height: height, to: files[index])) != nil
+                }
+            }
+            guard !written.contains(false) else { throw Failure.write }
 
-        let delay = Int((1000 / Double(framesPerSecond)).rounded())
-        let process = Process()
-        process.executableURL = tool
-        process.arguments =
-            ["-loop", "0", "-lossy", "-q", "\(quality)", "-d", "\(delay)"]
-            + files.map(\.path) + ["-o", url.path]
-        let errors = Pipe()
-        process.standardError = errors
-        process.standardOutput = FileHandle.nullDevice
-        try process.run()
-        let message = errors.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw Failure.encoder(
-                String(decoding: message, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
-        }
+            let delay = Int((1000 / Double(framesPerSecond)).rounded())
+            let process = Process()
+            process.executableURL = tool
+            process.arguments =
+                ["-loop", "0", "-lossy", "-q", "\(quality)", "-d", "\(delay)"]
+                + files.map(\.path) + ["-o", url.path]
+            let errors = Pipe()
+            process.standardError = errors
+            process.standardOutput = FileHandle.nullDevice
+            try process.run()
+            let message = errors.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                throw Failure.encoder(
+                    String(decoding: message, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        #else
+            throw Failure.noWebPEncoder
+        #endif
     }
 }

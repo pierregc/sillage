@@ -40,22 +40,7 @@ public final class RunVideos {
         public var seconds: Double
     }
 
-    /// Where the drawing stands, for a checkpoint (#240): what a resumed run carries on from.
-    public struct Progress: Codable, Sendable, Equatable {
-        public var frames = 0
-        public var seconds: [Double] = []
-        public var drift: Float = 0
-        public var firstDrift: Int?
-        public var checkedFrames = 0
-        /// The segment being written, and the frame it starts at; those before it are whole, in
-        /// `segments`.
-        public var segment = 0
-        public var segmentStart = 0
-        /// Per format, the file names of the whole segments, in order.
-        public var segments: [[String]] = []
-
-        public init() {}
-    }
+    public typealias Progress = VideoProgress
 
     public enum Failure: Error, CustomStringConvertible {
         case join(String)
@@ -127,7 +112,7 @@ public final class RunVideos {
             renderer.skipFrames(progress.frames)
             renderers.append(renderer)
             replays.append(
-                TakeExport.replay(
+                TakeFraming.replay(
                     look: look, framing: framing, capturedRate: self.capturedRate,
                     width: format.width, height: format.height, plan: plan))
             try FileManager.default.createDirectory(
@@ -178,7 +163,7 @@ public final class RunVideos {
             let started = Date()
             let renderer = renderers[index]
             guard
-                let shot = TakeExport.prepare(
+                let shot = TakeFraming.prepare(
                     renderer, look: look, replay: replays[index], framing: framing,
                     at: Double(frame))
             else { throw RecordingFile.Failure.truncated }
@@ -373,12 +358,7 @@ extension RunVideos {
 /// With `blocks`, each key frame goes to disk as soon as it is taken, so a run that resumes
 /// keeps those it took before (#240), and the take is put together from them at the end.
 public final class KeyFrameTake {
-    public struct Entry: Codable, Sendable, Equatable {
-        /// The captured frame of the run, as the curves count it.
-        public var frame: Int
-        public var role: String
-        public var timeMyr: Double
-    }
+    public typealias Entry = KeyFrameEntry
 
     /// One key frame on disk: its box and what the take keeps beside the positions.
     struct Block: Codable {

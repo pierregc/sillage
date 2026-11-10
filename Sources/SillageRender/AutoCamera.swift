@@ -1,4 +1,9 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+    import SillageCore
+#endif
 
 /// The simplest camera that never loses a galaxy: centred between them, backed off just far
 /// enough to hold every one with its disk, and eased so a pair drawing apart does not make

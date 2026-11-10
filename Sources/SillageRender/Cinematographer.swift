@@ -1,6 +1,8 @@
 import Foundation
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// A slow sine. Periods are given as primes so a bank of them has no common multiple and the
 /// combination does not come round again inside any sitting.

@@ -1,6 +1,8 @@
 import Foundation
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// The shots the director takes of a whole take, planned from a story it already knows.
 ///
