@@ -89,3 +89,17 @@ for all three alike.
 Quantising stays on the CPU. The run spends 26.9 ms a frame on the 21-bit take, every frame
 included since the last one offered may end the take, against a median 2.05 s of simulation a
 frame: 1.3 %. Moving it to the GPU would save no more than that.
+
+## The header's keys are sorted (#281)
+
+A take opens with a JSON header: the scene and the counts. `RecordingFile.write` now encodes it
+with its keys sorted. Before, the encoder gave them in an order that changed from one run to the
+next, so two takes of the same run differed in their first bytes while holding the same data.
+The engines' reference outputs (`Tests/Fixtures/engines/frames/take.sillage`) need a take that
+regenerates to the same bytes, and a hash of a take now says whether two runs agree, header
+included.
+
+Nothing else moves: the version is still 7, the particles and the frames are the same bytes,
+and reading never looked at the order, so a take written before reads as it did.
+`aTakeReadsWhateverTheOrderOfItsHeaderKeys` holds that, and that one take written twice is one
+file.

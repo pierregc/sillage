@@ -257,6 +257,9 @@ Swift.
 - **`frames/`**: a take of one frame, three looks, and for each the 256 x 144 frame `export`
   draws, as raw RGBA, 8 bits a channel, rows from the top. Metal must give the same bytes. The
   CUDA renderer accumulates in fp32 where Metal blends in fp16: #276 and #277 set its tolerance.
+  For that take to regenerate to the same bytes, a take's JSON header is now written with its
+  keys sorted ([takes-on-disk.md](takes-on-disk.md)): the header's bytes change from main, the
+  data do not, and a take written before reads as it did.
 
 Who compares with them:
 
