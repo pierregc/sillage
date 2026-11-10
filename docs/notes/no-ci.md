@@ -1,14 +1,16 @@
 # `./scripts/dev.sh check` is the gate, and GitHub checks Linux
 
 Run `./scripts/dev.sh check` before every commit: no workflow builds the Mac's code. Since #281
-a small workflow checks, on every push, what the Mac cannot: the CUDA engine's code on Linux.
+a small workflow checks, on every push, what the Mac cannot: the CUDA engine's code and the
+portable Swift on Linux.
 
 ## The Linux workflow (#281)
 
 `.github/workflows/linux.yml` runs on every push (the `assets/` branches aside) and on pull
 requests from forks, on GitHub's Ubuntu 24.04 runner, with `permissions: contents: read`, no
-secret and no action but GitHub's own checkout. Job `cuda`, 37 seconds on its first run, capped
-at ten minutes:
+secret and no action but GitHub's own checkout. Two jobs side by side.
+
+Job `cuda`, 37 seconds on its first run:
 
 - `scripts/kernel-check.sh` with `clang++` and `g++`: the checks of
   [one-kernel-source.md](one-kernel-source.md) that `./scripts/dev.sh check` runs on the Mac;
@@ -18,11 +20,14 @@ at ten minutes:
   `cuda/tests` compiled for sm_120, and no double precision instruction in their PTX. Compile
   only.
 
+Job `swift`, in the `swift:6.2-noble` image: `scripts/linux.sh check`, so the formatter, the
+strict-concurrency typecheck and the tests of the Swift that builds on Linux
+([linux-build.md](linux-build.md)).
+
 **What it does not check**: nothing of Metal and nothing of macOS (no macOS job, on purpose),
-so not the formatter, not the strict-concurrency typecheck, not the app and not the Swift tests
-of the Mac; and nothing on a GPU: the runner has none, so no CUDA kernel runs there, only on the
-CPU target. It adds to the Mac and replaces nothing. #272 adds a `swift` job that builds and
-tests the portable Swift on Linux.
+so not the files and the tests `scripts/linux-skip.txt` and `scripts/linux-skip-tests.txt` name,
+not the app, and not what Metal computes; and nothing on a GPU: the runner has none, so no CUDA
+kernel runs there, only on the CPU target. It adds to the Mac and replaces nothing.
 
 **A PR merges only with the workflow green on its head.** Whoever pushed reads the run's result
 and fixes a red run in the same PR.
@@ -30,8 +35,7 @@ and fixes a red run in the same PR.
 **It is free because the repository is public.** GitHub does not meter Actions on public
 repositories. If the repository ever goes private again, its Linux minutes count against the
 account's allowance, one billed minute a minute where macOS counted ten, each job rounded up to
-the minute: at a job a push, the 2 000 free minutes of a month are 2 000 pushes, half that once
-#272 adds its job. Turn the workflow off before that matters, as the macOS one was.
+the minute. Turn the workflow off before that matters, as the macOS one was.
 
 ## Why the macOS workflow went away
 

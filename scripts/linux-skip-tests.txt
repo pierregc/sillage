@@ -4,6 +4,7 @@ DiskProbeTests.swift       # DiskProbe.run, in DiskProbeRun, which draws on Meta
 ExportTests.swift          # AVFoundation
 GPUTreeTests.swift         # Metal
 GalaxyColoursTests.swift   # Metal
+KernelSourceTests.swift    # GPUTreeBuilder, which needs Metal
 LightTracerTests.swift     # Metal
 MetalSolverTests.swift     # Metal
 NightPageTests.swift       # ProcessProbe, which only knows macOS
