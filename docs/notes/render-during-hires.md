@@ -131,8 +131,8 @@ Thirteen frames of each were kept as PNGs on both sides, as the encoders took th
 Levels are 8-bit. The largest single differences, 137 at 4K and 121 vertical, are the edges of
 bright compact stars moved by a fraction of a pixel: on the first 4K frame, 504 pixels differ by
 more than 32 levels, in 405 spots of one pixel at the median, where the frame is at level 140
-against 23 for the whole frame. The two draw the same picture: no difference of camera, cut, colour or exposure shows in
-any frame. What differs is the positions. The take keeps each axis in 16 bits over a box that
+against 23 for the whole frame. The two draw the same picture: no difference of camera, cut,
+colour or exposure shows in any frame. What differs is the positions. The take keeps each axis in 16 bits over a box that
 holds every particle drawn, and that box grows from 244 kpc on the first frame to 923 kpc on the
 last as a few particles fly out, so the step grows from 3.7 to 14.1 pc, and a quantised position
 sits up to a step below the float one (the take truncates). In the closing shot a 4K pixel is
@@ -170,20 +170,48 @@ At 8 M drawn from 2 M massive, the whole story of scene-0031 (923 frames, Webb, 
 The run itself took 2 006 ms a frame (eight steps of 246 ms), so drawing both presets added 7.5 %
 to the frames: 139 s of 2 458 for the whole pass. Exporting the same two presets from the 8 M
 take afterwards took 107 and 67 s, which decode the take as well: drawing during the run costs
-what an export costs, and needs no take.
-The full pass peaked at 12.1 GB, and that with a take of every particle beside it for the check,
-3 GB of it held in memory.
+what an export costs, and needs no take. The full pass peaked at 12.1 GB, and that with a take of
+every particle beside it for the check, 3 GB of it held in memory. The massive pass took 18 min
+(13.5 s of it sampling the 8 M and dropping the tracers), peaked at 7.4 GB and wrote a take of
+2.84 GB.
 
-MEASURED-50M
+At 30 M drawn from 2 M massive, the first 120 frames of the same story, framed on the 8 M run's
+massive take so that they are the same shots (the close disk to frame 78, then wide). The same
+120 frames of the 8 M run beside them:
+
+| frames 1 to 119 | 8 M | 30 M | a particle drawn |
+| --- | ---: | ---: | ---: |
+| 4K | 79.6 ms | 212.4 ms | 6.0 ns |
+| vertical | 39.4 ms | 127.0 ms | 4.0 ns |
+| smoothing | 17.6 ms | 64.5 ms | 2.1 ns |
+| a step of the run | 243 ms | 712 ms | 21 ns |
+
+Drawing is linear in the particles drawn, a fixed part for the pixels (about 31 ms at 4K and 8 ms
+vertical on these shots) and the rest for each particle: the vertical preset has a quarter of
+4K's pixels and two thirds of its cost a particle, which is the splatting rather than the fill.
+Over a whole story the later shots cost more (the whole story at 8 M is 1.27 times its first 120
+frames, 4K and vertical alike), so the cost model's fallback is that line scaled to the whole
+story: 40 ms + 7.6 ns a particle a 4K frame, 9.5 ms + 5.0 ns a vertical one (and for any preset
+of 1080p's pixels). That gives 101 and 50 ms at 8 M as measured, 0.42 and 0.26 s at 50 M, and 1.56
+and 1.01 s at 200 M, where the step itself will be about 4 s, 32 s a frame: drawing both presets
+adds about 8 % to a full pass at 200 M, as it did at 8 M. Every full pass refits these lines from
+its `hires.json` (`draws` in `costs.json`).
+
+50 M was planned and not run: the Mac had 16.9 GB free with 7.5 GB already in swap that night, and
+a 20 M probe of the full pass peaked at 10.5 GB (the 30 M run at 11.1 GB, under that pressure).
+With today's tracers a full pass holds every particle about five times over (the sample, the
+solver's buffers, its CPU copies, the renderer's attributes, the smoothing tree), which #238
+takes apart; #241 measures 50 M once it has.
 
 ## In the nights
 
 `hires.passes` in the recipe: 1, a take of every particle and the videos exported from it after
 the style; 2, the massive pass, the style on its take, then the full pass drawing every video
 preset of the recipe. Auto is 1 up to 10 M drawn and 2 past it: at the night's 8 M a second pass
-costs the massive run once more (17 minutes on scene-0031) for no gain in a night whose take
-still fits (12 to 18 GB), while past 10 M the take reaches 20 GB and more (75 GB at 50 M). Without
-light tracers there is nothing to draw in a second pass, and a night runs one.
+costs the massive run once more (18 minutes on scene-0031) for no gain in a night whose take
+still fits (12 to 18 GB), while past 10 M a long story's take passes 20 GB (scene-0031's 923
+frames would take 71 GB at 50 M). Without light tracers there is nothing to draw in a second
+pass, and a night runs one.
 
 The planner prices the hires step as the massive particles alone, and puts the whole full pass on
 the first video preset's export step: the run with its tracers, and each preset's frames at the
@@ -193,6 +221,10 @@ take, the key frames and the videos. The runner runs `hires --pass massive`, the
 `hires --pass full --export <the presets left>`; a night resumed after the massive pass starts at
 the full pass, and a scene whose take of every particle is already there is exported from it.
 The report lists both passes, and counts a scene once.
+
+A night of two previews at 5 000 a galaxy and one pick drawn at 40 000 from 10 000, in two
+passes, ran its exploration, the pick, the massive pass, the style, the full pass (1080p and
+square) and the GIF in 30 s; the same night run again redid nothing.
 
 ## What is left
 
@@ -204,3 +236,8 @@ The report lists both passes, and counts a scene once.
   smoothing builds a tree over every drawn particle each frame; both are #238's and #241's.
 - A sampled take of the tracers (one frame in eight, for restyling later) is `--take <path>
   --take-interval 8` on the full pass at 8 M drawn; a subset of the tracers at 200 M is for #241.
+- The key frames are `KeyFrames.pick`'s, whose pericentre is the deepest approach in the curves:
+  for a merger that is the coalescence, so scene-0031 kept its start, its approach and frame 914
+  of 923. The first passage, which the director films, is not among them.
+- `hires.mov` stays the massive pass's: the 2 M at the preview's size, as the scene page shows it.
+- The take's exposure, four times dimmer than a live run's (above), wants a ticket of its own.

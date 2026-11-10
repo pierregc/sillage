@@ -203,12 +203,13 @@ extension CostModel {
     }
 
     /// Measured alone on the M4 Max (#239, docs/notes/render-during-hires.md): a frame drawn
-    /// during a full pass, at the presets' sizes with the scene's look, against the particles
-    /// drawn. Other sizes follow 1080p by their pixel count, as the exports do.
+    /// during a full pass of scene-0031 in the Webb look, at 8 M and 30 M drawn on the same
+    /// shots, scaled to the whole story by what it cost at 8 M (101 ms at 4K, 50 ms vertical).
+    /// Other sizes follow 1080p's pixels, as the exports do.
     public static let fallbackDrawFixed4K = 0.040
-    public static let fallbackDrawPerParticle4K = 6.0e-9
-    public static let fallbackDrawFixed1080p = 0.012
-    public static let fallbackDrawPerParticle1080p = 3.0e-9
+    public static let fallbackDrawPerParticle4K = 7.6e-9
+    public static let fallbackDrawFixed1080p = 0.0095
+    public static let fallbackDrawPerParticle1080p = 5.0e-9
 
     public static func fallbackDraw(_ preset: VideoPreset) -> Line {
         if preset.width * preset.height >= 3840 * 2160 {
