@@ -11,6 +11,7 @@ session. Read the note for an area before changing it.
 - [Long runs](long-runs.md): memory, divergence, measuring under contention
 - [A run stops when nobody is watching it](app-nap.md): App Nap, `beginActivity`, `--soak`
 - [Keeping the machine usable](machine-usable.md): visible particles first, utility queue, force chunks
+- [The portable Swift on Linux](linux-build.md): `scripts/linux.sh`, what is skipped and why, `simd` on Linux, what the Mac and Linux give for the same sample (#272)
 
 ## Solver
 
