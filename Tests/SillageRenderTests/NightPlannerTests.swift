@@ -600,7 +600,7 @@ struct NightPlannerTests {
         #expect(hires.allSatisfy { $0.particles == 8_000_000 && $0.massive == 2_000_000 })
         let printed = NightCommand.lines(nine)
         #expect(printed.contains { $0.contains("8 000 000 particles from 2 000 000 massive") })
-        // An hour a scene against four: the fallback's 20 ns a tracer step on the fitted 2 M.
+        // An hour a scene against four: the fallback's 21 ns a tracer step on the fitted 2 M.
         #expect(hires.allSatisfy { $0.seconds > 50 * 60 && $0.seconds < 70 * 60 })
         #expect(nine.scenes == 50 && nine.picks == 4 && nine.warnings.isEmpty && nine.end <= nine.deliverBy)
         let seven = planner.plan(now: start, deliverBy: start.addingTimeInterval(7 * 3600))

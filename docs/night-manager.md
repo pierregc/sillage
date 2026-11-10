@@ -417,9 +417,10 @@ showing them, for checks.
   each one. `sillage-render costs` prints it; `--check <batch>` compares it with a batch. A
   hires is priced as the steps of its massive particles (`hires`, fitted on the runs without
   tracers as it always was) plus those of its light tracers (`tracers`, a line through zero
-  fitted on what the runs with tracers took past the first, 20 ns a step before any). Every
-  night draws 8 M from 2 M, so its runs alone could not tell the two apart. A `costs.json`
-  written before has no `tracers` and reads with the 20 ns. In two passes (#239) a massive pass
+  fitted on what the runs with tracers took past the first, 21 ns a step before any, as
+  measured from 8 M to 200 M drawn). Every night draws 8 M from 2 M, so its runs alone could
+  not tell the two apart. A `costs.json` written before has no `tracers` and reads with the
+  21 ns. In two passes (#239) a massive pass
   is a run without tracers, a full pass one with them less its drawing, and `draws` prices a
   frame drawn during the run for each preset, a fixed part and a part for each particle drawn,
   fitted on the full passes' `hires.json` (their videos stay out of the `exports` lines).

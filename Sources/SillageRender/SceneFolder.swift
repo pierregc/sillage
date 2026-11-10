@@ -331,8 +331,9 @@ extension SceneFolder {
     /// million: 150 at #19, 62 since the opening angle of 0.9 (#166), within 3 % of the two
     /// 8 M hires of 2026-10-30.
     public static let nanosecondsPerParticleStep = 62.0
-    /// What a light tracer adds to a step on the same machine (#187), linear in their count.
-    public static let nanosecondsPerTracerStep = 20.0
+    /// What a light tracer adds to a step on the same machine, linear in their count: 20 ns at
+    /// 8 M drawn (#187), 21.0 at 100 M (#238) and 21.0 at 200 M (#241).
+    public static let nanosecondsPerTracerStep = 21.0
     /// Every hires runs at this scale, whatever its preview explored at (#225,
     /// docs/notes/doubled-step.md). `--dt-scale` overrides it.
     public static let hiresTimeStepScale: Float = 3.5

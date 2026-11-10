@@ -231,7 +231,7 @@ The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the sce
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
 `hires` prints how long a run should take before it starts, from the cost model (`costs`), or
 at 62 ns per visible particle per step before any run (150 ns before the opening angle of 0.9,
-#166), and 20 ns per light tracer per step on top of the massive particles' (#187).
+#166), and 21 ns per light tracer per step on top of the massive particles' (#187, #241).
 
 Measured on a two-disk flyby explored at 400 000 particles (batch 20261024, scene 1, 700 Myr
 over 900 frames at `--dt-scale 3.5`). Live halos add one and a half times the visible count to
