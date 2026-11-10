@@ -45,7 +45,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     container: swift:6.2-noble
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: The portable Swift, built and tested as scripts/linux.sh check does

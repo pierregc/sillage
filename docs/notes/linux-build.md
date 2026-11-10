@@ -60,7 +60,7 @@ a few tests alone is `swiftc -Onone -I .build/linux -L .build/linux -lSillageCor
   properties). `scripts/linux-skip.txt` names each with its framework.
 - **The tests of both modules but 22 files**, the ones that need Metal, AVFoundation, ImageIO or
   CoreGraphics, and the queue and night runner's, which start and watch processes with calls only
-  macOS has. 393 tests run on Linux, and the Mac runs those and the rest.
+  macOS has. 397 tests run on Linux, and the Mac runs those and the rest.
 
 Everything the ticket asked for builds: `SceneFolder`, `LookFile` and its extensions,
 `RenderLook`, `GalaxyColours`, `PaletteRamps`, the cameras (`Camera`, `AutoCamera`,

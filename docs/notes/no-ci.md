@@ -22,7 +22,13 @@ Job `cuda`, 37 seconds on its first run:
 
 Job `swift`, in the `swift:6.2-noble` image: `scripts/linux.sh check`, so the formatter, the
 strict-concurrency typecheck and the tests of the Swift that builds on Linux
-([linux-build.md](linux-build.md)).
+([linux-build.md](linux-build.md)). 8 min 54 s and 9 min 0 s on its first two whole runs, so
+the workflow takes nine minutes: 40 s to fetch the image, 6 s of formatter, 2 min 15 s to build
+the two modules and typecheck them, 1 min 50 s to build the tests and 4 min to run the 397 of
+them. That is under the ten minutes the workflow was given, not by much, and the job is cut off
+at fifteen. If it grows: running the formatter and the typecheck in a job beside the tests'
+saves about a minute, and past that the floor is the longest test, `archetypesPassTheSanityCheck`,
+two minutes on its own.
 
 **What it does not check**: nothing of Metal and nothing of macOS (no macOS job, on purpose),
 so not the files and the tests `scripts/linux-skip.txt` and `scripts/linux-skip-tests.txt` name,
