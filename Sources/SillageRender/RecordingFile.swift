@@ -45,7 +45,7 @@ public enum RecordingFile {
     /// does not know to interpolate across the gaps would play it that many times too fast.
     /// 6 adds each particle's birth radius, which the galaxy colour ramps read (#119).
     /// 7 holds each position as 21 bits an axis in eight bytes, where 16 bits took six: 32 times
-    /// finer, a parsec over the largest box measured (#237). The layout is otherwise version 6's,
+    /// finer, 1.5 pc over the widest box measured (#237). The layout is otherwise version 6's,
     /// which is still written for a take held at 16 bits.
     private static let version: UInt64 = 7
     private static let oldestReadableVersion: UInt64 = 1

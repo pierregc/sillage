@@ -12,8 +12,8 @@ import simd
 ///
 /// Positions are stored as fixed-point values inside each snapshot's own bounding box, 21 bits
 /// an axis packed in one 64-bit word: eight bytes a particle instead of twelve. The box grows
-/// to two megaparsecs late in a story, where the three 16-bit words of every take before
-/// version 7 left a grid of 33 pc and the 21 bits leave 1 pc (#237).
+/// past three megaparsecs late in a story, where the three 16-bit words of every take before
+/// version 7 left a grid of 49 pc and the 21 bits leave 1.5 pc (#237).
 public final class Recording: @unchecked Sendable {
     public struct Frame: Sendable {
         public var time: Float
