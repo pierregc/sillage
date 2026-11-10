@@ -110,8 +110,8 @@ alone on the GPU, drawing 4K and vertical, a checkpoint at frame 3, killed, resu
 - So an hourly checkpoint costs about a second an hour, and a resume a few seconds where sampling
   again would take five minutes. A restart loses the hour since the last checkpoint at most.
 - On disk, until the run ends and removes them: two checkpoints while the next is written
-  (13 GB), the massive set, the key frames taken so far (1.2 GB each at 200 M) and the video
-  segments.
+  (13 GB), the massive set, the key frames taken so far (1.6 GB each at 200 M, eight bytes a
+  particle since #237) and the video segments.
 - One write of 2 GB or more fails on macOS (`EINVAL`), and a buffer of 200 M positions is 3.2 GB:
   the buffers are written 256 MB at a time. The test at the size of 200 M is what found it.
 
