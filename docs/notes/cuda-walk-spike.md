@@ -86,11 +86,19 @@ between the dump and the probe: the probe reads `sorted` as the last force pass 
 }
 ```
 
-The loader needs `format`, `version`, `functionConstants` and, for every file, `buffers.<name>`
-with `file`, `count` and `stride`; it reads the parameters from `params.bin` and fails if the
-manifest's copy disagrees. `tracerSort.counter` is the solver's `stepsSinceTracerSort` as held,
-`stepsSinceSort` is 0 when the walk order was sorted at this step's tree build. The rest is for
-the reader. The dumps go to the branch `assets/cuda-spike`, under
+`tracerSort.counter` is the solver's `stepsSinceTracerSort` as held, `stepsSinceSort` is 0 when
+the walk order was sorted at this step's tree build. `scene`, `label`, `frame`, `step`, `time`,
+`dtScale`, `commit`, `device` and the other `counts` are for the reader.
+
+The loader refuses rather than guesses: another `format`, a `version` other than 1, a byte order
+other than little, a key given twice or text after the JSON, a buffer name it does not know or a
+required one missing, a key it does not know in a buffer's entry, a `binding`, `type` or `stride`
+other than the table's, a file whose size is not `count * stride`, counts that disagree with each
+other (every tracer buffer `tracerCount`, `massive` and `sorted` alike, `moments` 2 per node or
+none, `frame` 8, `halos`, `holes` and `disks` their count or 1), a manifest `params` that is not
+`params.bin` to the bit, or a `params.bin` that is not mode 1 from slot 0. It also checks what the
+walk indexes with: `order` a permutation of each sort chunk, every node's range inside `nodes` or
+`sorted`, every hole's index inside the massive particles. The dumps go to the branch `assets/cuda-spike`, under
 `docs/spikes/cuda-spike/scene-0031/`.
 
 ## The MSL as CUDA: no line changed
@@ -126,28 +134,41 @@ that, and where it had to be careful:
 
 **Float literals are doubles.** MSL reads `0.5` as a float; C++ reads it as a double, so
 `7.5 * dot(offset, qr) * inverse - 1.5 * (qa.x + qa.y + qa.z)` is double arithmetic, and so is
-`max(length(offset), 1e-6)` through CUDA's `max(float, double)`. Where the result is rounded once
-from a single double operation the compiler folds it back to float (`1.0 / distanceSquared` is a
-float division in the PTX), but 26 lines of the PTX are still double: `mul.f64`, `fma.rn.f64`,
-`max.f64`, `sub.f64` and the conversions, three of them in the quadrupole term every accepted
-cell takes. A consumer NVIDIA GPU runs double at 1/64 of float. Writing the literals as `0.5f`
-in 20 lines of the walk's MSL (a scratch copy, not committed) takes the PTX to no double at all,
-the same 40 registers and 128 bytes of stack. Metal reads `0.5f` as it reads `0.5`, so the change
-should leave Metal's runs the same to the bit; #281 has to make it and check that it does. The
-lines:
+`max(length(offset), 1e-6)` through CUDA's `max(float, double)`. A consumer NVIDIA GPU runs double
+at 1/64 of float. 20 lines of the walk's MSL have a float literal without its `f`; 5 of them
+compile to double instructions, 26 lines of the PTX, three of them double arithmetic in the
+quadrupole term every accepted cell takes. In the other 15 the compiler folds the double back to
+float (`1.0 / distanceSquared` is `rcp.rn.f32`, a comparison with `0.0` a float comparison).
+Suffixing only the 5 takes the PTX to no double at all; suffixing all 20 does the same; both keep
+40 registers and 128 bytes of stack. Measured with `nvcc` 13.5 for sm_120 on a scratch copy, not
+committed: in this ticket the MSL Metal runs does not move. Metal reads `0.5f` as it reads `0.5`,
+so #281 should suffix all 20 and check that Metal's runs stay the same to the bit.
 
-```
-halos            float r = max(length(offset), 1e-6f);   float3 total = float3(0.0f);
-bhCool           damping <= 0.0f   radius < 1e-3f   1.0f - smoothstep (twice)   weight <= 0.0f
-                 inward <= 0.0f   random < 1e-6f   max(random * (1.0f - weight), floorSpeed)
-bhWalk           float3 total = float3(0.0f);   node.comMass.w <= 0.0f
-                 float inverse = 1.0f / distanceSquared;
-                 float radial = 7.5f * dot(offset, qr) * inverse - 1.5f * (qa.x + qa.y + qa.z);
-                 (offset * radial - 3.0f * qr)
-bhTracerStep     const float resolution = 2097151.0f;   local >= 0.0f   clamp(local, 0.0f, resolution)
-                 1.0f / (r2 * sqrt(r2))   p.timeStep * 0.5f
-```
+| line of `BarnesHutShaders.swift` | function | as it is | in the PTX |
+| ---: | --- | --- | --- |
+| 43 | `haloAcceleration` | `float r = max(length(offset), 1e-6);` | `max.f64` and two conversions, in each of the 3 copies the halo loop inlines: 9 lines |
+| 49 | `halos` | `float3 total = float3(0.0);` | float |
+| 112 | `bhCool` | `if (damping <= 0.0) { return velocity; }` | float |
+| 119 | `bhCool` | `if (radius < 1e-3) { return velocity; }` | `setp.lt.f64` and a conversion: 2 |
+| 123 | `bhCool` | `float radial = 1.0 - smoothstep(disk.reach.x, disk.reach.y, radius);` | float |
+| 124 | `bhCool` | `float vertical = 1.0 - smoothstep(disk.reach.z, disk.reach.w, abs(height));` | float |
+| 126 | `bhCool` | `if (weight <= 0.0) { return velocity; }` | float |
+| 130 | `bhCool` | `if (inward <= 0.0) { return velocity; }` | float |
+| 143 | `bhCool` | `if (random <= floorSpeed \|\| random < 1e-6) { return velocity; }` | `setp.lt.f64` and a conversion: 2 |
+| 144 | `bhCool` | `float cooled = max(random * (1.0 - weight), floorSpeed);` | `sub.f64`, `mul.f64`, `max.f64` and three conversions: 6 |
+| 488 | `bhWalk` | `float3 total = float3(0.0);` | float |
+| 507 | `bhWalk` | `if (node.comMass.w <= 0.0) { continue; }` | float |
+| 540 | `bhWalk` | `float inverse = 1.0 / distanceSquared;` | float (`rcp.rn.f32`) |
+| 542 | `bhWalk` | `float radial = 7.5 * dot(offset, qr) * inverse - 1.5 * (qa.x + qa.y + qa.z);` | two `mul.f64`, a `fma.rn.f64` and four conversions: 7 |
+| 543 | `bhWalk` | `total += (offset * radial - 3.0 * qr) * (gravitationalConstant * fifth);` | float |
+| 656 | `bhTracerStep` | `const float resolution = 2097151.0;` | float |
+| 658 | `bhTracerStep` | `bool inRoot = all(local >= 0.0) && all(local <= resolution);` | float |
+| 659 | `bhTracerStep` | `local = clamp(local, 0.0, resolution);` | float |
+| 670 | `bhTracerStep` | `float inverse = 1.0 / (r2 * sqrt(r2));` | float |
+| 678 | `bhTracerStep` | `float halfStep = p.timeStep * 0.5;` | float |
 
+The PTX before: 10 `cvt.f64.f32`, 5 `cvt.rn.f32.f64`, 4 `max.f64`, 3 `mul.f64`, 2 `setp.lt.f64`,
+1 `fma.rn.f64`, 1 `sub.f64`. `build.sh` prints the count, so #281 can make it a check.
 `GPUTreeShaders` already writes its literals this way.
 
 ## Build 1: `nvcc`, compile only

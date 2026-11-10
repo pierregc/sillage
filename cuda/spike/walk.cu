@@ -86,7 +86,7 @@ struct JsonReader {
         expect('"');
         std::string out;
         while (p < end && *p != '"') {
-            if (*p == '\\' && p + 1 < end) { ++p; }
+            if (*p == '\\') { fail("manifest: escapes are not read"); }
             out += *p++;
         }
         expect('"');
@@ -100,13 +100,14 @@ struct JsonReader {
             v.kind = Json::Object;
             ++p;
             space();
-            if (*p == '}') { ++p; return v; }
+            if (p < end && *p == '}') { ++p; return v; }
             for (;;) {
                 std::string key = string();
+                if (v.fields.count(key)) { fail("manifest: key " + key + " twice"); }
                 expect(':');
                 v.fields[key] = value();
                 space();
-                if (*p == ',') { ++p; continue; }
+                if (p < end && *p == ',') { ++p; continue; }
                 expect('}');
                 return v;
             }
@@ -115,11 +116,11 @@ struct JsonReader {
             v.kind = Json::Array;
             ++p;
             space();
-            if (*p == ']') { ++p; return v; }
+            if (p < end && *p == ']') { ++p; return v; }
             for (;;) {
                 v.items.push_back(value());
                 space();
-                if (*p == ',') { ++p; continue; }
+                if (p < end && *p == ',') { ++p; continue; }
                 expect(']');
                 return v;
             }
@@ -129,14 +130,27 @@ struct JsonReader {
             v.text = string();
             return v;
         }
-        if (!std::strncmp(p, "true", 4)) { v.kind = Json::Bool; v.boolean = true; p += 4; return v; }
-        if (!std::strncmp(p, "false", 5)) { v.kind = Json::Bool; p += 5; return v; }
-        if (!std::strncmp(p, "null", 4)) { p += 4; return v; }
+        auto word = [&](const char *w) {
+            size_t n = std::strlen(w);
+            if (size_t(end - p) >= n && !std::strncmp(p, w, n)) { p += n; return true; }
+            return false;
+        };
+        if (word("true")) { v.kind = Json::Bool; v.boolean = true; return v; }
+        if (word("false")) { v.kind = Json::Bool; return v; }
+        if (word("null")) { return v; }
+        if (*p != '-' && (*p < '0' || *p > '9')) { fail("manifest: bad value"); }
+        std::string digits;
+        while (p < end && std::strchr("+-.0123456789eE", *p)) { digits += *p++; }
         char *after = nullptr;
-        v.number = std::strtod(p, &after);
-        if (after == p) { fail("manifest: bad value"); }
+        v.number = std::strtod(digits.c_str(), &after);
+        if (*after != '\0' || !std::isfinite(v.number)) { fail("manifest: bad number " + digits); }
         v.kind = Json::Number;
-        p = after;
+        return v;
+    }
+    Json document() {
+        Json v = value();
+        space();
+        if (p != end) { fail("manifest: text after the JSON"); }
         return v;
     }
 };
@@ -160,76 +174,187 @@ struct Dump {
     Json manifest;
     std::map<std::string, Buffer> buffers;
     TracerStepParams params;
+    bool quadrupole = false;
+    bool opensHoldingCells = false;
 
     bool has(const std::string &name) const { return buffers.count(name) != 0; }
     const Buffer &operator[](const std::string &name) const { return buffers.at(name); }
 };
 
+static const Json &member(const Json &object, const char *key, Json::Kind kind, const char *where) {
+    std::string at = std::string(where) + "." + key;
+    if (object.kind != Json::Object) { fail(std::string("manifest: ") + where + " is not an object"); }
+    auto it = object.fields.find(key);
+    if (it == object.fields.end()) { fail("manifest: no " + at); }
+    if (it->second.kind != kind) { fail("manifest: " + at + " has the wrong type"); }
+    return it->second;
+}
+
+static uint64_t integer(const Json &object, const char *key, const char *where) {
+    double v = member(object, key, Json::Number, where).number;
+    if (v < 0 || v != std::floor(v) || v > 9007199254740992.0) {
+        fail(std::string("manifest: ") + where + "." + key + " is not a count");
+    }
+    return uint64_t(v);
+}
+
+static void onlyKeys(const Json &object, std::vector<std::string> keys, const char *where) {
+    for (auto &[key, value] : object.fields) {
+        if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
+            fail(std::string("manifest: ") + where + " has an unknown key " + key);
+        }
+    }
+}
+
+// The format of docs/notes/cuda-walk-spike.md, version 1. Anything else is refused.
 static Dump load(const std::string &dir) {
     Dump d;
     d.dir = dir;
     auto text = readFile(dir + "/manifest.json");
     JsonReader reader{reinterpret_cast<const char *>(text.data()),
                       reinterpret_cast<const char *>(text.data()) + text.size()};
-    d.manifest = reader.value();
-    if (d.manifest["format"].text != "sillage-walk-dump") { fail("not a walk dump: " + dir); }
-    if (d.manifest["version"].number != 1) { fail("dump version is not 1"); }
+    d.manifest = reader.document();
+    const Json &m = d.manifest;
+    if (member(m, "format", Json::String, "top").text != "sillage-walk-dump") {
+        fail("not a walk dump: " + dir);
+    }
+    if (member(m, "version", Json::Number, "top").number != 1) { fail("dump version is not 1"); }
+    if (member(m, "byteOrder", Json::String, "top").text != "little") { fail("byteOrder is not little"); }
+    member(m, "source", Json::String, "top");
 
-    const std::pair<const char *, size_t> expected[] = {
-        {"states", 16}, {"motions", 16}, {"sorted", 16}, {"nodes", 32},    {"moments", 16},
-        {"order", 4},   {"frame", 4},    {"halos", 48},  {"holes", 32},    {"massive", 16},
-        {"disks", 64},  {"params", 48},  {"accelerations", 16}, {"motions-mode1", 16}};
-    const Json &list = d.manifest["buffers"];
-    for (auto &[name, stride] : expected) {
-        const Json &entry = list[name];
-        if (entry.kind != Json::Object) {
-            if (std::string(name) == "motions-mode1") { continue; }
-            fail(std::string("manifest lists no buffer ") + name);
+    const Json &constants = member(m, "functionConstants", Json::Object, "top");
+    onlyKeys(constants, {"bhQuadrupole", "bhOpensHoldingCells"}, "functionConstants");
+    d.quadrupole = member(constants, "bhQuadrupole", Json::Bool, "functionConstants").boolean;
+    d.opensHoldingCells =
+        member(constants, "bhOpensHoldingCells", Json::Bool, "functionConstants").boolean;
+    const Json &sort = member(m, "tracerSort", Json::Object, "top");
+    onlyKeys(sort, {"interval", "counter", "stepsSinceSort"}, "tracerSort");
+    integer(sort, "interval", "tracerSort");
+    member(sort, "counter", Json::Number, "tracerSort");
+    integer(sort, "stepsSinceSort", "tracerSort");
+
+    struct Expected { const char *name; int binding; const char *type; size_t stride; bool required; };
+    const Expected expected[] = {
+        {"states", 0, "float4", 16, true},        {"motions", 1, "uint4", 16, true},
+        {"sorted", 2, "float4", 16, true},        {"nodes", 3, "BHNode", 32, true},
+        {"moments", 4, "float4", 16, true},       {"order", 5, "uint", 4, true},
+        {"frame", 6, "float", 4, true},           {"halos", 7, "HaloGPU", 48, true},
+        {"holes", 8, "HoleGPU", 32, true},        {"massive", 9, "float3", 16, true},
+        {"disks", 10, "DiskCooling", 64, true},   {"params", 11, "TracerStepParams", 48, true},
+        {"accelerations", 12, "float3", 16, true}, {"motions-mode1", 1, "uint4", 16, false}};
+    const Json &list = member(m, "buffers", Json::Object, "top");
+    std::vector<std::string> names;
+    for (const Expected &e : expected) { names.push_back(e.name); }
+    onlyKeys(list, names, "buffers");
+    for (const Expected &e : expected) {
+        if (!list.has(e.name)) {
+            if (!e.required) { continue; }
+            fail(std::string("manifest lists no buffer ") + e.name);
+        }
+        std::string named = std::string("buffers.") + e.name;
+        const char *where = named.c_str();
+        const Json &entry = member(list, e.name, Json::Object, "buffers");
+        onlyKeys(entry, {"file", "binding", "type", "count", "stride"}, where);
+        std::string file = member(entry, "file", Json::String, where).text;
+        if (file.empty() || file.find('/') != std::string::npos) { fail(named + ": bad file name"); }
+        if (integer(entry, "binding", where) != uint64_t(e.binding)) { fail(named + ": wrong binding"); }
+        if (member(entry, "type", Json::String, where).text != e.type) {
+            fail(named + ": type is not " + e.type);
         }
         Buffer b;
-        b.count = size_t(entry["count"].number);
-        b.stride = size_t(entry["stride"].number);
-        if (b.stride != stride) {
-            fail(std::string(name) + ": stride " + std::to_string(b.stride) + ", expected " +
-                 std::to_string(stride));
+        b.count = integer(entry, "count", where);
+        b.stride = integer(entry, "stride", where);
+        if (b.stride != e.stride) {
+            fail(named + ": stride " + std::to_string(b.stride) + ", expected " + std::to_string(e.stride));
         }
-        b.bytes = readFile(dir + "/" + entry["file"].text);
+        b.bytes = readFile(dir + "/" + file);
         if (b.bytes.size() != b.count * b.stride) {
-            fail(std::string(name) + ": " + std::to_string(b.bytes.size()) + " bytes, manifest says " +
+            fail(named + ": " + std::to_string(b.bytes.size()) + " bytes, manifest says " +
                  std::to_string(b.count) + " x " + std::to_string(b.stride));
         }
-        d.buffers[name] = std::move(b);
+        d.buffers[e.name] = std::move(b);
     }
-    std::memcpy(&d.params, d[std::string("params")].bytes.data(), sizeof(TracerStepParams));
+    if (d["params"].count != 1) { fail("params holds more or less than one TracerStepParams"); }
+    std::memcpy(&d.params, d["params"].bytes.data(), sizeof(TracerStepParams));
+    const TracerStepParams &p = d.params;
 
-    size_t tracers = d.params.tracerCount;
-    for (const char *name : {"states", "motions", "order", "accelerations"}) {
-        if (d[name].count != tracers) { fail(std::string(name) + " does not hold every tracer"); }
-    }
-    if (d.has("motions-mode1") && d["motions-mode1"].count != tracers) {
-        fail("motions-mode1 does not hold every tracer");
-    }
-    if (d["frame"].count < 4) { fail("frame holds fewer than 4 floats"); }
-    if (d["halos"].count < std::max(d.params.haloCount, 1u)) { fail("fewer halos than haloCount"); }
-    if (d["holes"].count < d.params.holeCount) { fail("fewer holes than holeCount"); }
-    if (d["disks"].count < d.params.diskCount) { fail("fewer disks than diskCount"); }
-
-    // The manifest's copy of the parameters must be the binary's.
-    const Json &mp = d.manifest["params"];
-    auto same = [&](const char *key, double value) {
-        if (mp.has(key) && float(mp[key].number) != float(value)) {
-            fail(std::string("params.bin and manifest disagree on ") + key);
-        }
+    // The manifest's copy of the parameters must be params.bin's, to the bit.
+    const Json &mp = member(m, "params", Json::Object, "top");
+    onlyKeys(mp, {"tracerCount", "haloCount", "timeStep", "openingAngleSquared", "softeningSquared",
+                  "gravitationalConstant", "chunkStart", "sortChunk", "holeCount", "diskCount", "mode"},
+             "params");
+    auto count = [&](const char *key, uint32_t value) {
+        if (integer(mp, key, "params") != value) { fail(std::string("params.bin and manifest disagree on ") + key); }
     };
-    same("tracerCount", d.params.tracerCount);
-    same("haloCount", d.params.haloCount);
-    same("timeStep", d.params.timeStep);
-    same("openingAngleSquared", d.params.openingAngleSquared);
-    same("softeningSquared", d.params.softeningSquared);
-    same("gravitationalConstant", d.params.gravitationalConstant);
-    same("sortChunk", d.params.sortChunk);
-    same("holeCount", d.params.holeCount);
-    same("diskCount", d.params.diskCount);
+    auto real = [&](const char *key, float value) {
+        float f = float(member(mp, key, Json::Number, "params").number);
+        if (std::memcmp(&f, &value, 4) != 0) { fail(std::string("params.bin and manifest disagree on ") + key); }
+    };
+    count("tracerCount", p.tracerCount);
+    count("haloCount", p.haloCount);
+    real("timeStep", p.timeStep);
+    real("openingAngleSquared", p.openingAngleSquared);
+    real("softeningSquared", p.softeningSquared);
+    real("gravitationalConstant", p.gravitationalConstant);
+    count("chunkStart", p.chunkStart);
+    count("sortChunk", p.sortChunk);
+    count("holeCount", p.holeCount);
+    count("diskCount", p.diskCount);
+    count("mode", p.mode);
+    if (p.mode != 1 || p.chunkStart != 0) { fail("params.bin is not the mode 1 pass from slot 0"); }
+    if (p.sortChunk == 0) { fail("sortChunk is 0"); }
+
+    const Json &counts = member(m, "counts", Json::Object, "top");
+    size_t tracers = p.tracerCount;
+    size_t massive = d["sorted"].count;
+    size_t nodes = d["nodes"].count;
+    if (tracers == 0 || massive == 0 || nodes == 0) { fail("no tracer, no massive particle or no node"); }
+    if (integer(counts, "tracers", "counts") != tracers) { fail("counts.tracers is not tracerCount"); }
+    if (integer(counts, "massive", "counts") != massive) { fail("counts.massive is not sorted's count"); }
+    if (integer(counts, "nodes", "counts") != nodes) { fail("counts.nodes is not nodes' count"); }
+    for (auto [key, value] : {std::pair<const char *, uint>{"halos", p.haloCount}, {"holes", p.holeCount},
+                              {"disks", p.diskCount}}) {
+        if (counts.has(key) && integer(counts, key, "counts") != value) {
+            fail(std::string("counts.") + key + " disagrees with params");
+        }
+    }
+    for (const char *name : {"states", "motions", "order", "accelerations", "motions-mode1"}) {
+        if (d.has(name) && d[name].count != tracers) { fail(std::string(name) + " does not hold every tracer"); }
+    }
+    if (d["massive"].count != massive) { fail("massive and sorted hold different counts"); }
+    if (d["moments"].count != (d.quadrupole ? 2 * nodes : 0)) { fail("moments is not 2 per node, or 0"); }
+    if (d["frame"].count != 8) { fail("frame is not 8 floats"); }
+    if (d["halos"].count != std::max(p.haloCount, 1u)) { fail("halos is not haloCount, or 1"); }
+    if (d["holes"].count != std::max(p.holeCount, 1u)) { fail("holes is not holeCount, or 1"); }
+    if (d["disks"].count != std::max(p.diskCount, 1u)) { fail("disks is not diskCount, or 1"); }
+
+    // What the walk indexes with must stay inside the buffers.
+    const uint *order = d["order"].as<uint>();
+    std::vector<uint8_t> seen;
+    for (size_t base = 0; base < tracers; base += p.sortChunk) {
+        size_t span = std::min<size_t>(p.sortChunk, tracers - base);
+        seen.assign(span, 0);
+        for (size_t s = base; s < base + span; ++s) {
+            if (order[s] >= span || seen[order[s]]++) {
+                fail("order is not a permutation of its chunk at slot " + std::to_string(s));
+            }
+        }
+    }
+    const BHNode *tree = d["nodes"].as<BHNode>();
+    for (size_t n = 0; n < nodes; ++n) {
+        int start = as_type<int>(tree[n].packed.y);
+        int signedCount = as_type<int>(tree[n].packed.z);
+        bool ok = signedCount > 0
+            ? signedCount <= 8 && start >= 1 && size_t(start) + size_t(signedCount) <= nodes
+            : start >= 0 && size_t(start) + size_t(-int64_t(signedCount)) <= massive;
+        if (!ok) { fail("node " + std::to_string(n) + " points outside the buffers"); }
+    }
+    const HoleGPU *holeList = d["holes"].as<HoleGPU>();
+    for (uint h = 0; h < p.holeCount; ++h) {
+        if (as_type<uint>(holeList[h].shape.y) >= massive) { fail("a hole's index is past the massive particles"); }
+    }
+    const float *frame = d["frame"].as<float>();
+    if (!(frame[3] > 0) || !std::isfinite(frame[3])) { fail("frame's scale is not a positive number"); }
     return d;
 }
 
@@ -296,12 +421,18 @@ int main(int argc, char **argv) {
 
     Dump d = load(dir);
     const TracerStepParams &p = d.params;
-    bool quadrupole = d.manifest["functionConstants"]["bhQuadrupole"].boolean;
-    bool opens = d.manifest["functionConstants"]["bhOpensHoldingCells"].boolean;
+    bool quadrupole = d.quadrupole;
+    bool opens = d.opensHoldingCells;
     CHECK(cudaMemcpyToSymbol(bhQuadrupole, &quadrupole, sizeof(bool)));
     CHECK(cudaMemcpyToSymbol(bhOpensHoldingCells, &opens, sizeof(bool)));
 
-    std::printf("dump %s: %s\n", dir.c_str(), d.manifest["source"].text.c_str());
+    const Json &m = d.manifest;
+    std::printf("dump %s: %s\n", dir.c_str(), m["source"].text.c_str());
+    if (m.has("scene")) {
+        std::printf("  %s, %s, frame %.0f, step %.0f, time %.6g, walk order sorted %.0f steps ago\n",
+                    m["scene"].text.c_str(), m["label"].text.c_str(), m["frame"].number,
+                    m["step"].number, m["time"].number, m["tracerSort"]["stepsSinceSort"].number);
+    }
     std::printf("  %u tracers, %zu massive, %zu nodes, %u halos, %u holes, %u disks, sortChunk %u\n",
                 p.tracerCount, d["sorted"].count, d["nodes"].count, p.haloCount, p.holeCount,
                 p.diskCount, p.sortChunk);

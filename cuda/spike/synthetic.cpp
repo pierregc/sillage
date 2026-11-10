@@ -293,7 +293,7 @@ int main(int argc, char **argv) {
         "  \"source\": \"synthetic (cuda/spike/synthetic.cpp, seed %u, theta %g): accelerations by direct summation in double, not Metal's\",\n"
         "  \"counts\": {\"tracers\": %zu, \"massive\": %zu, \"nodes\": %zu, \"halos\": 2, \"holes\": 1, \"disks\": 1},\n"
         "  \"functionConstants\": {\"bhQuadrupole\": true, \"bhOpensHoldingCells\": true},\n"
-        "  \"tracerSort\": {\"interval\": 10, \"stepsSinceSort\": 0},\n"
+        "  \"tracerSort\": {\"interval\": 10, \"counter\": 9, \"stepsSinceSort\": 0},\n"
         "  \"params\": {\"tracerCount\": %zu, \"haloCount\": 2, \"timeStep\": %.9g, \"openingAngleSquared\": %.9g,"
         " \"softeningSquared\": %.9g, \"gravitationalConstant\": %.9g, \"chunkStart\": 0, \"sortChunk\": %zu,"
         " \"holeCount\": 1, \"diskCount\": 1, \"mode\": 1},\n"
