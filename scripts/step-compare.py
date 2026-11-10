@@ -25,6 +25,7 @@ import sys
 
 import numpy as np
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fidelity import curves, passages  # noqa: E402
 
@@ -276,6 +277,10 @@ def batch_rows(batch):
     for name, row in rows.items():
         path = os.path.join(batch, name, "interest.json")
         row["interest"] = json.load(open(path)).get("features", {}) if os.path.exists(path) else {}
+        path = os.path.join(batch, name, "curves.csv")
+        if os.path.exists(path):
+            with open(path, newline="") as handle:
+                row["formed_total"] = sum(float(r.get("formed") or 0) for r in csv.DictReader(handle))
     return rows
 
 
@@ -318,6 +323,11 @@ def explore_report(first, second, markdown):
         lines.append(f"- top {k}: {len(set(ta[:k]) & set(tb[:k]))} in common")
     lines.append(f"- score: mean |difference| {np.mean(np.abs(np.array(sa) - np.array(sb))):.3f}, "
                  f"mean {np.mean(sa):.3f} against {np.mean(sb):.3f}")
+    ratios = [b[n]["formed_total"] / a[n]["formed_total"] for n in common
+              if a[n].get("formed_total") and b[n].get("formed_total") is not None]
+    if ratios:
+        q = np.percentile(ratios, [10, 50, 90])
+        lines.append(f"- stars formed, second over first: median {q[1]:.3f} (10 to 90 % {q[0]:.3f} to {q[2]:.3f})")
     na, wa = slot_ns({n: a[n] for n in common})
     nb, wb = slot_ns({n: b[n] for n in common})
     lines.append(f"- wall per scene {wa:.0f} s against {wb:.0f} s ({wa / max(wb, 1e-9):.2f}x); "
