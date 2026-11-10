@@ -1,0 +1,2 @@
+// Stands in for Metal's header, which the MSL text includes on its first line. The text is
+// already inside msl_compat.h's namespace when it gets here.

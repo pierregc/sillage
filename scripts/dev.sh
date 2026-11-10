@@ -116,6 +116,8 @@ strict_concurrency() {
 check() {
     echo "== format"
     swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests"
+    echo "== kernels"
+    "$ROOT/scripts/kernel-check.sh"
     echo "== strict concurrency"
     strict_concurrency
     echo "== app"
@@ -128,6 +130,7 @@ case "${1:-check}" in
     build)  build_render ;;
     lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
     strict) strict_concurrency ;;
+    kernels) "$ROOT/scripts/kernel-check.sh" ;;
     check)  check ;;
     test)   shift || true; build_render; run_tests "$@" ;;
     app)    build_app ;;
@@ -136,7 +139,7 @@ case "${1:-check}" in
     explore|hires|look|export|palettes|probe-disk)
             build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
-    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|render|app]" >&2
+    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|kernels|render|app]" >&2
             echo "       ${BASH_SOURCE[0]} explore|hires|look|export|palettes <scene folder> [options]" >&2
             echo "       ${BASH_SOURCE[0]} probe-disk <scene.json | scene folder> <galaxy> [options]" >&2
             exit 2 ;;

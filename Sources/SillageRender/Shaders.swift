@@ -6,6 +6,10 @@ enum Shaders {
         #include <metal_stdlib>
         using namespace metal;
 
+        // Metal only so far: #276 and #277 share this library with the CUDA engine
+        // (docs/notes/one-kernel-source.md).
+        #if defined(__METAL_VERSION__)
+
         constexpr sampler bilinear(filter::linear, address::clamp_to_edge, coord::normalized);
 
         struct SplatUniforms {
@@ -1584,5 +1588,6 @@ enum Shaders {
             mapped = saturate(mapped);
             output.write(float4(pow(mapped, 1.0f / 2.2f) * p.fade, 1.0f), gid);
         }
+        #endif
         """
 }

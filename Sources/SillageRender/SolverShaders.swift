@@ -5,6 +5,10 @@ enum SolverShaders {
         #include <metal_stdlib>
         using namespace metal;
 
+        // Metal only: the CUDA engine has no restricted solver
+        // (docs/notes/one-kernel-source.md).
+        #if defined(__METAL_VERSION__)
+
         struct GalaxyGPU {
             float3 centerBefore;
             float3 centerAfter;
@@ -62,5 +66,6 @@ enum SolverShaders {
             positions[i] = x;
             velocities[i] = v;
         }
+        #endif
         """
 }

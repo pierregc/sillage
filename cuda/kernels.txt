@@ -1,0 +1,80 @@
+# Every Metal kernel, vertex and fragment function, and where its CUDA twin stands (#281).
+# scripts/kernel-check.sh holds this list to the MSL in every ./scripts/dev.sh check.
+#
+#   <library> <function> <state>
+#
+#   cuda                  its entry point, `__global__ void <function>(`, is in cuda/src and
+#                         runs on the CPU target too
+#   cuda gpu-only         it is in cuda/src, but uses block barriers or warp functions: it
+#                         runs only on a GPU, first in #283
+#   pending #<issue>      that issue writes it
+#   metal-only: <reason>  the CUDA engine will not have it
+#
+# See docs/notes/one-kernel-source.md.
+
+BarnesHutShaders bhKickDrift pending #274
+BarnesHutShaders bhKick pending #274
+BarnesHutShaders bhDissipate pending #274
+BarnesHutShaders bhFormStars pending #274
+BarnesHutShaders bhTracerFormStars pending #275
+BarnesHutShaders bhGather pending #274
+BarnesHutShaders bhHolePull pending #274
+BarnesHutShaders bhHoleSettle pending #274
+BarnesHutShaders bhAcceleration pending #274
+BarnesHutShaders bhTracerDrift pending #275
+BarnesHutShaders bhTracerStep pending #275
+
+GPUTreeShaders gtReset pending #273
+GPUTreeShaders gtBounds pending #273
+GPUTreeShaders gtRoot pending #273
+GPUTreeShaders gtMorton pending #273
+GPUTreeShaders gtRadixCount pending #273
+GPUTreeShaders gtScanReduce pending #273
+GPUTreeShaders gtScanTop pending #273
+GPUTreeShaders gtScanDown pending #273
+GPUTreeShaders gtRadixScatter pending #273
+GPUTreeShaders gtCloseLevel pending #273
+GPUTreeShaders gtSplit pending #273
+GPUTreeShaders gtGather pending #273
+GPUTreeShaders gtLeafSums pending #273
+GPUTreeShaders gtFold pending #273
+GPUTreeShaders gtNormalize pending #273
+GPUTreeShaders gtFoldMoments pending #273
+GPUTreeShaders gtSmoothing pending #273
+GPUTreeShaders gtSpacingLeaves pending #273
+GPUTreeShaders gtSpacingFold pending #273
+GPUTreeShaders gtSpacingLengths pending #273
+
+RecordingShaders expandSnapshots metal-only: take playback
+RecordingShaders expandSnapshots21 metal-only: take playback
+
+Shaders splatVertex pending #276
+Shaders splatTracerVertex pending #276
+Shaders starfieldVertex pending #276
+Shaders dustFragment pending #276
+Shaders bakeLace pending #276
+Shaders dustWebVertex pending #276
+Shaders dustWebTracerVertex pending #276
+Shaders webCarrierVertex pending #276
+Shaders webCarrierTracerVertex pending #276
+Shaders webCarrierFragment pending #276
+Shaders webResolveVertex pending #276
+Shaders webResolveFragment pending #276
+Shaders splatFragment pending #276
+Shaders countVertex pending #276
+Shaders countTracerVertex pending #276
+Shaders countFragment pending #276
+Shaders plainVertex pending #276
+Shaders plainTracerVertex pending #276
+Shaders plainFragment pending #276
+Shaders starfieldFragment pending #276
+Shaders resolve pending #277
+Shaders plainComposite pending #277
+Shaders brightPass pending #277
+Shaders downsample pending #277
+Shaders upsampleAdd pending #277
+Shaders compactLight pending #277
+Shaders diffractionSpikes pending #277
+Shaders composite pending #277
+
+SolverShaders integrate metal-only: the restricted solver

@@ -4,6 +4,10 @@ enum BarnesHutShaders {
         #include <metal_stdlib>
         using namespace metal;
 
+        // Metal only so far: #274 and #275 share this library with the CUDA engine
+        // (docs/notes/one-kernel-source.md).
+        #if defined(__METAL_VERSION__)
+
         struct BHNode {
             float4 comMass;
             // Width squared, then the range start and the signed count carried as bit
@@ -687,5 +691,6 @@ enum BarnesHutShaders {
             velocity += acceleration * halfStep;
             motions[i] = uint4(as_type<uint3>(velocity), motion.w);
         }
+        #endif
         """
 }

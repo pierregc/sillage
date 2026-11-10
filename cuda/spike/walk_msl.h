@@ -1,5 +1,5 @@
 // The tracer walk's MSL, copied from Sources/SillageRender/BarnesHutShaders.swift (#271):
-// sed -n '4,24p;37,57p;79,147p;318,327p;386,397p;468,564p;612,689p', the Swift string's indentation removed, nothing else changed.
+// sed -n '4,6p;11,28p;41,61p;83,151p;322,331p;390,401p;472,568p;616,693p', the Swift string's indentation removed, nothing else changed.
 // cuda/spike/build.sh checks the copy. Compiled through msl_compat.h.
 
 #include <metal_stdlib>

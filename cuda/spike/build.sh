@@ -14,7 +14,7 @@ out="${SPIKE_OUT:-$here/build}"
 mkdir -p "$out"
 
 echo "== the MSL copy"
-ranges='4,24p;37,57p;79,147p;318,327p;386,397p;468,564p;612,689p'
+ranges='4,6p;11,28p;41,61p;83,151p;322,331p;390,401p;472,568p;616,693p'
 if diff <(sed -n "$ranges" "$root/Sources/SillageRender/BarnesHutShaders.swift" | sed 's/^        //') \
     <(tail -n +5 "$here/walk_msl.h") >"$out/msl.diff"; then
     echo "walk_msl.h is BarnesHutShaders.swift's text, unchanged"
