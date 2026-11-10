@@ -9,10 +9,12 @@ the CUDA engine rests on, on its hardest kernel, the light tracers' walk through
   compiler and running it on the CPU against a state dumped from a real Metal run.
 
 **Both hold.** The walk's MSL compiles under `nvcc` (CUDA 13.5, sm_120) and under `g++` and
-`clang++` with **no line of MSL changed**: `msl_compat.h` takes it as it is. One thing has to
-change in the shared text before it is fast on NVIDIA: its float literals are double literals in
-C++ (below). The comparison with Metal waits for the dumps of scene-0031 (part 1 of #271, on the
-Mac).
+`clang++` with **no line of MSL changed**: `msl_compat.h` takes it as it is. Run on the CPU
+against two states of a Metal run of scene-0031, every one of 150,207 tracers gets Metal's
+acceleration to rounding: a median of 8.5e-8 and 8.9e-8 relative, a 99.9th percentile of 5.2e-7
+and 8.7e-7, none above 4.1e-6, and no walk decided a cell otherwise than Metal where it shows.
+The whole fused step gives the same bits twice. One thing has to change in the shared text before
+it is fast on NVIDIA: its float literals are double literals in C++ (below).
 
 ## What is in `cuda/spike/`
 
@@ -45,7 +47,7 @@ bytes. Counts are elements, not bytes; a file is `count * stride` bytes.
 | `moments.bin` | 4 | `float4` | 16 | 2 * nodes with the quadrupole, 0 without |
 | `order.bin` | 5 | `uint` | 4 | tracers (`tracerOrder`) |
 | `frame.bin` | 6 | `float` | 4 | 8 (the builder's `frame`) |
-| `halos.bin` | 7 | `HaloGPU` | 48 | as bound: `haloList`, or its one zero placeholder |
+| `halos.bin` | 7 | `HaloGPU` | 48 | as bound: `haloList`, one a galaxy even with live halos and `haloCount` 0 |
 | `holes.bin` | 8 | `HoleGPU` | 32 | as bound: `holes`, or the one placeholder |
 | `massive.bin` | 9 | `float3` | 16 | massive (`positionBuffer` from byte `tracers * 16`) |
 | `disks.bin` | 10 | `DiskCooling` | 64 | as this step's mode 1 bound them: `coolingDisks()`, or the placeholder |
@@ -95,11 +97,10 @@ other than little, a key given twice or text after the JSON, a buffer name it do
 required one missing, a key it does not know in a buffer's entry, a `binding`, `type` or `stride`
 other than the table's, a file whose size is not `count * stride`, counts that disagree with each
 other (every tracer buffer `tracerCount`, `massive` and `sorted` alike, `moments` 2 per node or
-none, `frame` 8, `halos`, `holes` and `disks` their count or 1), a manifest `params` that is not
-`params.bin` to the bit, or a `params.bin` that is not mode 1 from slot 0. It also checks what the
-walk indexes with: `order` a permutation of each sort chunk, every node's range inside `nodes` or
-`sorted`, every hole's index inside the massive particles. The dumps go to the branch `assets/cuda-spike`, under
-`docs/spikes/cuda-spike/scene-0031/`.
+none, `frame` 8, `holes` and `disks` their count or 1, `halos` at least its count and at least
+1), a manifest `params` that is not `params.bin` to the bit, or a `params.bin` that is not mode 1
+from slot 0. It also checks what the walk indexes with: `order` a permutation of each sort chunk,
+every node's range inside `nodes` or `sorted`, every hole's index inside the massive particles.
 
 ## The MSL as CUDA: no line changed
 
@@ -209,15 +210,86 @@ The entry point does what `dispatchThreads` does for the Metal kernel: `gid` fro
 thread indices, and no thread at or past the dispatched count, since a CUDA grid is whole blocks.
 Every entry point of #281 needs that bound.
 
-## Accuracy
+## Accuracy against Metal
 
-Waiting for the dumps. On the synthetic dump (20,000 tracers, 5,000 massive, two halos, one black
-hole, one cooled disk, walk order sorted 4,096 at a time) at opening angle 0, where the walk is a
-direct sum, the CPU build is 5.4e-7 from the double sum at the median and 2.5e-6 at the 99.9th
-percentile, and mode 1 twice gives the same bits. At 0.6 the quadrupole takes the median error
-from 2.1e-3 to 7.1e-4. That only says the harness works; it is not a comparison with Metal.
+The dumps are on `assets/cuda-spike` (commit ecc36a9), `docs/spikes/cuda-spike/scene-0031/`, with
+the run and its surprises in the README beside them. Scene-0031 of 2026-10-30-b at the hires step
+(`--dt-scale 3.5`, 0.042 in the solver's units), 200 k drawn from 50 k massive: 150,207 tracers,
+124,793 massive particles with their live halos (so `haloCount` 0), opening angle 0.9,
+softening 0.3455 kpc, quadrupole on, no black hole, the walk order sorted 4 steps before. Frame
+0 is the first after the settle (step 754, 149.2 Myr, both disks cooled, 30,189 nodes); frame
+200 the first pericentre (step 1554, 307.4 Myr, centres 6.58 kpc apart, both disks too disturbed
+to cool, 29,912 nodes). Metal built the walk with its default fast math.
+
+`|a_cpu - a_metal| / |a_metal|` over every tracer, mode 2, `g++ -O2`, FMA contraction off:
+
+| frame | median | 99.9th percentile | max | the same bits | above 1e-4 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 0, settled | 8.50e-8 | 5.18e-7 | 4.01e-6 (tracer 147877) | 3.56 % | 0 |
+| 200, pericentre | 8.88e-8 | 8.72e-7 | 3.50e-6 (tracer 147461) | 3.36 % | 0 |
+
+The 20 largest are all between 1.1e-6 and 4.0e-6, on tracers of every size of acceleration
+(0.025 to 0.25): rounding, accumulated over a walk of a few hundred cells.
+
+Whether a rounding near the opening test made a walk take a cell Metal opened, or the reverse, was
+measured on a scratch copy of the walk (not committed) that records, for every tracer, the
+opening test it passed or failed by the smallest relative margin. 28 tracers at frame 0 and 18 at
+frame 200 had one within 1e-6, where rounding can decide it (the closest, 3e-10). Each was walked
+again with that one decision taken the other way. For 24 and 14 of them the other decision moves
+the acceleration by 1e-4 to 1e-2, and the CPU is 1e-7 from Metal: it decided as Metal did. For the
+other 4 and 4 the other decision moves it by 1.9e-7 to 1.6e-6, rounding itself, so which way
+Metal went cannot be told and changes nothing. The ticket's rule, a bug if more than 0.1 % of
+tracers are above 1e-4, is far from reached: none is.
+
+Mode 1 twice on copies of the motions gives the same bits for every tracer, at both frames.
+Against Metal's own mode 1 pass (`motions-mode1.bin`) the
+velocities agree to a median of 0, a 99.9th percentile of 1.8e-7 and 1.6e-7 and a max of 7.6e-7
+and 2.3e-7, and every tracer's packed word is the same: at frame 0 that pass cooled both disks
+through `bhCool`, at frame 200 it cooled none.
+
+How the CPU build is compiled moves this only at rounding: `clang++` gives the same bits as
+`g++`; FMA contraction on (`-march=native -ffp-contract=fast`) brings it slightly closer to
+Metal, which contracts too (median 7.4e-8 and 7.8e-8, 6.0 % and 5.7 % the same bits); float
+literals read as floats, as MSL reads them (`-fsingle-precision-constant`, or the 20 literals
+suffixed in a scratch copy, which give the same bits as each other), changes the median in the
+third digit. No variant has a tracer above 1e-4.
+
+The session on the Mac ran the same harness with Apple clang 21 on the same dumps and got the same
+numbers to the last digit printed.
+
+## What this means for #281
+
+- **The approach holds**: one MSL text, compiled by Metal as it is and by `nvcc` and a host
+  compiler through two headers. #281 can generalise `msl_compat.h` and `cuda_cpu.h` to the 62
+  kernels rather than port them by hand.
+- **Suffix the float literals** of the shared MSL (`0.5f`), at least in every kernel CUDA runs,
+  and check that Metal's runs stay the same to the bit; then make "no `.f64` in the PTX" one of
+  the checks. 20 lines in the walk alone.
+- **Take the keyword macros as the method**, with their limits written down: `device`,
+  `constant`, `thread`, `kernel`, `static` and `inline` are macros only between `metal_stdlib`
+  and `msl_end.h`, every system header must come before, and `__device__` and `__constant__`
+  must be redefined with the double underscore attribute names. A `static` local variable or a
+  `static` data member inside the MSL would break the `static` macro; the walk has none.
+- **What the walk did not need and other kernels will**: `threadgroup` memory (`__shared__`),
+  `threadgroup_barrier`, the SIMD functions (`simd_sum`, `simd_prefix_exclusive_sum`,
+  `simd_broadcast`, ballots), atomics (`atomic_fetch_add_explicit` and friends), `ldexp`,
+  `popcount`, `exp`, the rest of the swizzles and their writes, `uint2`, a `constant` used as an
+  array bound (`bhHoleLimit`, which `__constant__` cannot be). The CPU target can only run what
+  has no barrier and no SIMD function, as the epic says.
+- **Function constants become `__constant__` variables** set once from the host: a branch at
+  run time, the same for every thread, where Metal specialises the pipeline when it builds it.
+  Not measured here; #283 times it on a GPU, and templates on the constants are the way out if it
+  costs anything.
+- **Every entry point bounds its own grid**: Metal's `dispatchThreads` gives exactly the count
+  asked, a CUDA grid is whole blocks.
+- **Comparing with Metal**: the accelerations of one force evaluation agree to about 1e-6 at
+  worst, and that is the scale to test against, not the bits. A tree is compared structurally:
+  the Mac found that Metal lays a level's nodes out in an order that changes from run to run
+  (#273).
 
 ## What a GPU is needed for (#283)
 
-`walk-gpu` is built and linked but not run: the walk on an NVIDIA GPU, its agreement with the CPU
-build and with Metal there, and its time a tracer.
+`walk-gpu` is built and linked but not run: with no device it prints that the run is #283's and
+exits. On a GPU, `walk-gpu <dump-dir>` is the same comparison: the walk on an NVIDIA GPU, its
+agreement with the CPU build and with Metal there, mode 1 twice for the same bits, and its time a
+tracer (the CPU build's 4.8 microseconds a tracer on one core says nothing about it).

@@ -324,7 +324,7 @@ static Dump load(const std::string &dir) {
     if (d["massive"].count != massive) { fail("massive and sorted hold different counts"); }
     if (d["moments"].count != (d.quadrupole ? 2 * nodes : 0)) { fail("moments is not 2 per node, or 0"); }
     if (d["frame"].count != 8) { fail("frame is not 8 floats"); }
-    if (d["halos"].count != std::max(p.haloCount, 1u)) { fail("halos is not haloCount, or 1"); }
+    if (d["halos"].count < std::max(p.haloCount, 1u)) { fail("halos holds fewer than haloCount, or none"); }
     if (d["holes"].count != std::max(p.holeCount, 1u)) { fail("holes is not holeCount, or 1"); }
     if (d["disks"].count != std::max(p.diskCount, 1u)) { fail("disks is not diskCount, or 1"); }
 
