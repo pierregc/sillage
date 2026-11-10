@@ -277,6 +277,9 @@ def batch_rows(batch):
     for name, row in rows.items():
         path = os.path.join(batch, name, "interest.json")
         row["interest"] = json.load(open(path)).get("features", {}) if os.path.exists(path) else {}
+        path = os.path.join(batch, name, "scene.json")
+        if os.path.exists(path):
+            row["generator"] = (json.load(open(path)).get("draw") or {}).get("generator", "")
         path = os.path.join(batch, name, "curves.csv")
         if os.path.exists(path):
             with open(path, newline="") as handle:
@@ -332,16 +335,18 @@ def explore_report(first, second, markdown):
     nb, wb = slot_ns({n: b[n] for n in common})
     lines.append(f"- wall per scene {wa:.0f} s against {wb:.0f} s ({wa / max(wb, 1e-9):.2f}x); "
                  f"{na:.0f} against {nb:.0f} ns per particle step and slot")
-    lines += ["", "| scene | gal | score | rank | closest kpc | at Myr | tails | burst | disruption |",
-              "| --- | ---: | --- | --- | --- | --- | --- | --- | --- |"]
+    lines += ["", "| scene | drawn | gal | score | rank | closest kpc | at Myr | tails | burst | disruption | formed |",
+              "| --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | ---: |"]
     for n in ta:
         ia, ib = a[n]["interest"], b[n]["interest"]
         pair = lambda key, f="{:.2f}": " / ".join(
             "" if x.get(key) is None else f.format(x[key]) for x in (ia, ib))
-        lines.append(f"| {n} | {a[n]['galaxies']} | {score(a, n):.3f} / {score(b, n):.3f} | "
+        formed = (f"{b[n]['formed_total'] / a[n]['formed_total']:.3f}"
+                  if a[n].get("formed_total") and b[n].get("formed_total") is not None else "")
+        lines.append(f"| {n} | {a[n].get('generator', '')} | {a[n]['galaxies']} | {score(a, n):.3f} / {score(b, n):.3f} | "
                      f"{ta.index(n) + 1} / {tb.index(n) + 1} | {pair('min_separation_kpc')} | "
                      f"{pair('min_separation_myr', '{:.0f}')} | {pair('peak_tidal', '{:.3f}')} | "
-                     f"{pair('burst_ratio')} | {pair('final_disruption')} |")
+                     f"{pair('burst_ratio')} | {pair('final_disruption')} | {formed} |")
     text = "\n".join(lines)
     print(text)
     if markdown:
