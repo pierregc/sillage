@@ -63,7 +63,7 @@ build_cpu() {
         name="$(basename "$source" .cu)"
         grep -q '^int main' "$source" || { "$cxx" "${flags[@]}" -fsyntax-only "$source"; continue; }
         "$cxx" "${flags[@]}" "$source" -o "$out/cpu/$name"
-        "$out/cpu/$name"
+        (cd "$root" && "$out/cpu/$name")
     done
 }
 
