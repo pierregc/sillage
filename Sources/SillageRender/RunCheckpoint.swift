@@ -149,15 +149,10 @@ public struct RunCheckpoint: Sendable {
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
         let previous = currentIndex()
         let data = particles(run.index)
-        let aside = data.appendingPathExtension("partial")
-        manager.createFile(atPath: aside.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: aside)
-        try write(handle)
-        try handle.synchronize()
-        try handle.close()
-        try Self.rename(aside, to: data)
-        try Self.encoder.encode(run).write(to: state(run.index), options: .atomic)
-        try Data("\(run.index)\n".utf8).write(to: current, options: .atomic)
+        try Self.durable(data, write)
+        let encoded = try Self.encoder.encode(run)
+        try Self.durable(state(run.index)) { try $0.write(contentsOf: encoded) }
+        try Self.durable(current) { try $0.write(contentsOf: Data("\(run.index)\n".utf8)) }
         if let previous, previous != run.index {
             try? manager.removeItem(at: particles(previous))
             try? manager.removeItem(at: state(previous))
@@ -168,9 +163,8 @@ public struct RunCheckpoint: Sendable {
 
     /// The last whole checkpoint, with its particles opened at their start; nil when none.
     public func load() throws -> (run: Run, particles: FileHandle)? {
-        guard let index = currentIndex(), hasMassiveSet else { return nil }
-        let run = try Self.decoder.decode(Run.self, from: Data(contentsOf: state(index)))
-        return (run, try FileHandle(forReadingFrom: particles(index)))
+        guard let run = stored() else { return nil }
+        return (run, try FileHandle(forReadingFrom: particles(run.index)))
     }
 
     /// The last whole checkpoint's state alone, to tell whether a run would resume it.
@@ -186,22 +180,18 @@ public struct RunCheckpoint: Sendable {
     public func saveMassive(_ system: ParticleSystem) throws -> Saved {
         let started = Date()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let aside = massive.appendingPathExtension("partial")
-        FileManager.default.createFile(atPath: aside.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: aside)
-        try Self.write([UInt64(system.count), UInt64(system.visibleCount)], to: handle)
-        try Self.write(system.positions, to: handle)
-        try Self.write(system.velocities, to: handle)
-        for values in [
-            system.birthRadius, system.population, system.luminosity, system.formation,
-            system.kernelScale, system.mass,
-        ] {
-            try Self.write(values, to: handle)
+        try Self.durable(massive) { handle in
+            try Self.write([UInt64(system.count), UInt64(system.visibleCount)], to: handle)
+            try Self.write(system.positions, to: handle)
+            try Self.write(system.velocities, to: handle)
+            for values in [
+                system.birthRadius, system.population, system.luminosity, system.formation,
+                system.kernelScale, system.mass,
+            ] {
+                try Self.write(values, to: handle)
+            }
+            for values in [system.galaxyIndex, system.component] { try Self.write(values, to: handle) }
         }
-        for values in [system.galaxyIndex, system.component] { try Self.write(values, to: handle) }
-        try handle.synchronize()
-        try handle.close()
-        try Self.rename(aside, to: massive)
         return Saved(seconds: Date().timeIntervalSince(started), bytes: 16 + system.count * 64)
     }
 
@@ -265,6 +255,23 @@ public struct RunCheckpoint: Sendable {
         (try? String(contentsOf: current, encoding: .utf8)).flatMap {
             Int($0.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+    }
+
+    /// Writes `url` aside, flushed to the disk itself, then renamed into place: `fsync` on macOS
+    /// leaves the data in the drive's cache, where a power cut loses it (`F_FULLFSYNC` does not).
+    private static func durable(_ url: URL, _ body: (FileHandle) throws -> Void) throws {
+        let aside = url.appendingPathExtension("partial")
+        FileManager.default.createFile(atPath: aside.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: aside)
+        do {
+            try body(handle)
+            if fcntl(handle.fileDescriptor, F_FULLFSYNC) != 0 { try handle.synchronize() }
+        } catch {
+            try? handle.close()
+            throw error
+        }
+        try handle.close()
+        try rename(aside, to: url)
     }
 
     private static func rename(_ from: URL, to: URL) throws {
