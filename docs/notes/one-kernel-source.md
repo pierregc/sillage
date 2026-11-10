@@ -243,11 +243,11 @@ Swift.
   in octant order. To the bit for every engine, the lengths aside: they go through `pow`, which
   no two math libraries round alike, so outside Metal they are held to 1e-6 relative.
 - **`walk/`**: a `sillage-walk-dump` version 1 ([cuda-walk-spike.md](cuda-walk-spike.md)) of
-  1,000 tracers over about 2,000 massive particles, two disks cooling, its nodes in the canonical
-  layout. Metal replays `bhTracerStep` on it and must give `accelerations.bin` and
-  `motions-mode1.bin` to the bit. The CPU target and CUDA must give each tracer's acceleration
-  within 1e-5 relative (the CPU was within 4.1e-6 of Metal over 150,207 tracers in #271), its
-  velocity after mode 1 within 1e-5, and its packed word unchanged.
+  1,000 tracers over 5,012 massive particles (2,013 visible, 2,999 of the live halos), two disks
+  cooling, its nodes in the canonical layout. Metal replays `bhTracerStep` on it and must give
+  `accelerations.bin` and `motions-mode1.bin` to the bit. The CPU target and CUDA must give each
+  tracer's acceleration within 1e-5 relative (the CPU was within 4.1e-6 of Metal over 150,207
+  tracers in #271), its velocity after mode 1 within 1e-5, and its packed word unchanged.
 - **`frames/`**: a take of one frame, three looks, and for each the 256 x 144 frame `export`
   draws, as raw RGBA, 8 bits a channel, rows from the top. Metal must give the same bytes. The
   CUDA renderer accumulates in fp32 where Metal blends in fp16: #276 and #277 set its tolerance.

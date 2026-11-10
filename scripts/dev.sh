@@ -134,12 +134,15 @@ case "${1:-check}" in
     check)  check ;;
     test)   shift || true; build_render; run_tests "$@" ;;
     app)    build_app ;;
+    fixtures)
+            build_render
+            DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" fixtures "$ROOT/Tests/Fixtures/engines" ;;
     render) shift || true; build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
     explore|hires|look|export|palettes|probe-disk)
             build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
-    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|kernels|render|app]" >&2
+    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|kernels|render|app|fixtures]" >&2
             echo "       ${BASH_SOURCE[0]} explore|hires|look|export|palettes <scene folder> [options]" >&2
             echo "       ${BASH_SOURCE[0]} probe-disk <scene.json | scene folder> <galaxy> [options]" >&2
             exit 2 ;;

@@ -1177,6 +1177,18 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "status" {
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "story" {
     exit(storyCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
+// `fixtures <directory>`: Metal writes the reference outputs both engines must give (#281).
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "fixtures" {
+    guard CommandLine.arguments.count == 3 else { fail("usage: sillage-render fixtures <directory>") }
+    do {
+        try EngineFixtures.write(
+            into: URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true),
+            executable: Spawn.currentExecutable)
+    } catch {
+        fail("fixtures: \(error)")
+    }
+    exit(0)
+}
 var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
 /// The second of a hires's two passes, which draws the videos rather than a take (#239).
 var fullPass = false

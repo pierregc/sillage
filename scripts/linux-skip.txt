@@ -1,6 +1,7 @@
 CanvasPacer.swift                # QuartzCore
 DiskProbeRun.swift               # CoreGraphics, CoreVideo, Metal
 DustWeb.swift                    # Metal
+EngineFixtures.swift             # Metal
 ExportedFile.swift               # CoreMedia, ImageIO
 GPUTreeBuilder.swift             # Metal
 LookGrid.swift                   # CoreGraphics, CoreText
