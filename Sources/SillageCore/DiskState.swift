@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// What a galaxy's disk is doing now, rather than what it was configured as.
 ///

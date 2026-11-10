@@ -1,9 +1,13 @@
 import Metal
 import Testing
-import simd
 
 @testable import SillageCore
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 @Suite("Barnes-Hut")
 struct BarnesHutTests {

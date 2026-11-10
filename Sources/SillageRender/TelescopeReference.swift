@@ -1,5 +1,7 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// The colours measured on one set of Hubble or Webb pictures (#125), read from
 /// `references/telescope/<set>.json`. Region medians are nearly grey; the colour is in the most

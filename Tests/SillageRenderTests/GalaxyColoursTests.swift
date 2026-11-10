@@ -1,10 +1,12 @@
 import Foundation
 import Metal
 import Testing
-import simd
 
 @testable import SillageCore
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#endif
 
 @Suite("Galaxy colours")
 struct GalaxyColoursTests {

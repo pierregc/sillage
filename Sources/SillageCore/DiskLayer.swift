@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// How far a disk's material stands from its layer: a plane fitted to each ring of the disk,
 /// half a scale length wide, out to the disk's edge.

@@ -1,5 +1,9 @@
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// The camera and the look a look file gives each captured frame of a take, the camera moved
 /// through every frame before it: the auto camera eases and the immersed director moves on, so

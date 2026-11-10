@@ -1,5 +1,7 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// An encounter described by its geometry rather than by where the galaxies start. The
 /// starting positions and velocities are worked out backwards from the pericentre, so the

@@ -1,5 +1,9 @@
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// The part of the render settings a frame can change on its own, without rebuilding
 /// anything. Every field here is already read per frame by `present`; the ones left out —

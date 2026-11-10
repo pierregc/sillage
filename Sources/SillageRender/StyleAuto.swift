@@ -1,6 +1,8 @@
 import Foundation
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// The style Auto chooses for a scene: the best (rendering, palette) pair of a world, judged on
 /// key frames of the take as they are drawn.

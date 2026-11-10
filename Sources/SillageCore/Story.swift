@@ -1,5 +1,7 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// Whether a scene's story is still going, judged on the curves an explore run writes frame by
 /// frame: the galaxy centres, how far the stars have spread, the share of them in tails and how

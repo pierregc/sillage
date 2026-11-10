@@ -2,9 +2,11 @@ import Foundation
 import Metal
 import SillageCore
 import Testing
-import simd
 
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#endif
 
 @Suite("Plain render and auto camera")
 struct PlainRenderTests {

@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// What a particle represents. Stars emit, HII regions emit strongly in a narrow band, and
 /// dust absorbs rather than emits, so the renderer treats them differently.

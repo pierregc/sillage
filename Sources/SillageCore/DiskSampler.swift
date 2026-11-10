@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// Places a galaxy's visible particles. The potential is analytic and spherical in every
 /// case, so this only decides where the tracers sit and how fast they move.

@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// A free camera: a position and a direction to look in, driven by held keys.
 ///

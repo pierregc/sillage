@@ -1,5 +1,7 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// How a palette's ramps hold together inside a galaxy and keep apart between galaxies (#120).
 /// The generator holds the free world to the first two limits; the score reads both.

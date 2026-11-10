@@ -1,7 +1,11 @@
 import Testing
-import simd
 
 @testable import SillageRender
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 @Suite("Cinematography")
 struct CinematographerTests {

@@ -1,6 +1,8 @@
 import Foundation
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 extension DiskProbe {
     /// Bound knots (#218): clumps of disk material that hold together. Each frame, the density

@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// Level 1: galaxies are rigid analytic potentials moving under their mutual attraction,
 /// and disk particles are massless tracers. Cost is O(N) per step.

@@ -1,5 +1,7 @@
 import Foundation
-import simd
+#if canImport(simd)
+    import simd
+#endif
 
 /// One cell of the tree, laid out for a Metal buffer.
 ///

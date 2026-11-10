@@ -1,4 +1,8 @@
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 public enum Spin: String, Codable, Sendable, CaseIterable {
     /// Disk rotation aligned with the orbital angular momentum. Produces the long tidal tails.

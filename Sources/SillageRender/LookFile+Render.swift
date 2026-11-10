@@ -1,5 +1,9 @@
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// Drawing with a look file, in one place, so the command line, the look grid and the app
 /// draw the same file the same way.

@@ -1,5 +1,9 @@
 import SillageCore
-import simd
+#if canImport(simd)
+    import simd
+#else
+    import Foundation
+#endif
 
 /// The shot a look file's plan gives a take at any playhead, for a canvas that scrubs back and
 /// forth (#177): the export's own `ShotReplay` at the rate the take was captured, started again
