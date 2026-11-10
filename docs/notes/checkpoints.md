@@ -8,28 +8,38 @@ the same videos.
 ## What is kept, and what is rebuilt
 
 **The solver saves and restores itself** (`MetalBarnesHutSolver.state`, `writeParticles`,
-`restore`), so a change to the solver touches one place. It keeps every particle's position,
-velocity and formation time, as its buffers hold them (36 bytes a particle), and its counters:
-the time, the steps since the tree and since the last star formation draw (which seeds it), the
-halo and mass centres, each galaxy's motion and the whole state of each disk.
+`restore`), so a change to the solver touches one place. It keeps what changes of every
+particle, as its buffers hold it: each position and velocity, a light tracer's formation time and
+attributes packed in their w (32 bytes a particle, [compact tracers](light-tracers.md#compact-tracers-238)),
+and each massive particle's formation time (4 bytes more). And its counters: the time, the steps
+since the tree and since the last star formation draw (which seeds it), the halo and mass
+centres, each galaxy's motion and the whole state of each disk.
 
 It does not keep what the positions give back exactly:
 
 - **The accelerations.** A step kicks half, drifts, builds the tree, computes the forces and kicks
   the other half, so the accelerations at the end of a step are the forces of a tree built on the
   positions it ends with. A restore builds that tree again (the build alone, without the centres
-  and disk frames a rebuild moves on) and computes the same forces, black holes included.
-- **Every other field of a particle**: mass, component, galaxy, population, light, birth radius.
-  They never change, and the resumed run samples the same scene with the same seed.
+  and disk frames a rebuild moves on) and computes the same forces, black holes included. A
+  tracer keeps none: its fused pass closes a step and opens the next, so its saved velocity is
+  half a kick ahead already, and the solver over a resumed run's tracers gives them no first half
+  kick (`LightTracerStore(capacity:awaiting:)`).
+- **The tracers' walk order**, sorted afresh: it only decides how fast neighbouring tracers walk.
 - **The cameras.** The full pass films through `ShotReplay` over the massive take, which replays
   the frames before the one asked for by itself; only each renderer's grain is moved on by the
   frames already drawn (`Renderer.skipFrames`).
+
+**A resumed run samples nothing.** The rest of a massive particle (mass, kind, galaxy, light,
+kernel, birth radius) never changes, and the massive set is written once as sampled, beside the
+checkpoints (`massive.bin`, 64 bytes a massive particle, first positions and velocities
+included), so the resumed run builds its solver over it and leaves the tracers' buffers for the
+checkpoint to fill. Sampling again would cost 1.5 us a drawn particle, five minutes at 200 M.
 
 **`RunCheckpoint` writes it.** A checkpoint is `particles-<n>.bin` and `state-<n>.json` (the
 solver's counters, the next frame or settle step, where the videos and key frames stand, the run's
 identity), each written aside and renamed into place, then `current` names it, and only then is
 the one before removed. A restart at any moment leaves a whole checkpoint to read; a crash while
-one is written leaves the one before.
+one is written leaves the one before. `massive.bin` is written the same way when the run starts.
 
 **The videos are written in segments**, one a checkpoint interval, since a half-written movie
 cannot be reopened: at each checkpoint every format's segment is closed whole, and the next opens.
@@ -38,7 +48,8 @@ their timestamps moved on), and the video is checked to hold every frame drawn. 
 draws the segment it was writing again from its first frame; the segments before are whole.
 
 **The key frames** go to disk as they are taken, their quantised positions and frame records, and
-the key frame take is put together from them at the end, the same bytes as a take held in memory.
+the key frame take is put together from them at the end, the same take as one held in memory
+(byte for byte past its JSON header, whose keys come in no fixed order).
 
 **The run's identity.** A checkpoint records the run's command line (the step `--dt`, the counts,
 the export presets, the take interval, the scene file), the scene and the look as read, the size
@@ -60,8 +71,3 @@ A full pass that ends removes its checkpoint.
 
 MEASURED
 
-## With #238
-
-#238 moves the tracers out of the solver's full buffers into buffers of their own. Those buffers
-join `writeParticles` and `restore`, and nothing else changes: what a checkpoint keeps of a
-particle is still what the solver writes during a step.

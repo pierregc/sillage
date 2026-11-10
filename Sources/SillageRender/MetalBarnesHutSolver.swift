@@ -76,6 +76,8 @@ public final class LightTracerStore {
     /// Tracers and massive particles together.
     public let capacity: Int
     public private(set) var count = 0
+    /// Left for a checkpoint to fill (#240): their saved velocities carry the first half kick.
+    public private(set) var awaitsCheckpoint = false
 
     public init(device: MTLDevice, capacity: Int) throws {
         self.capacity = max(capacity, 1)
@@ -85,6 +87,14 @@ public final class LightTracerStore {
         else { throw RenderError.textureAllocation }
         self.positions = positions
         self.velocities = velocities
+    }
+
+    /// Room for `tracers` light tracers that a checkpoint fills, so a resumed run samples none.
+    public convenience init(device: MTLDevice? = nil, capacity: Int, awaiting tracers: Int) throws {
+        guard let device = device ?? MTLCreateSystemDefaultDevice() else { throw RenderError.noDevice }
+        try self.init(device: device, capacity: capacity)
+        count = min(max(tracers, 0), self.capacity)
+        awaitsCheckpoint = true
     }
 
     public func append(_ chunk: LightTracerChunk) {
@@ -527,12 +537,12 @@ public final class MetalBarnesHutSolver: Solver {
         }
 
         // The first half kick needs an acceleration, so seed it before stepping. A tracer
-        // keeps none, so it takes its first half kick now.
+        // keeps none, so it takes its first half kick now, unless a checkpoint brings it.
         rebuildTree()
         if let buffer = queue.makeCommandBuffer() {
             encodeAccelerations(into: buffer)
             encodeHoles(into: buffer)
-            encodeTracerStep(into: buffer, mode: 0)
+            if store?.awaitsCheckpoint != true { encodeTracerStep(into: buffer, mode: 0) }
             submit(buffer)
         }
     }
@@ -1595,15 +1605,18 @@ extension MetalBarnesHutSolver {
             massCenters: massCenters, galaxyMotion: galaxyMotion, diskStates: diskStates)
     }
 
-    /// The bytes `writeParticles` writes: positions, velocities and formation times.
-    public static func particleBytes(count: Int) -> Int { count * (16 + 16 + 4) }
+    /// The bytes `writeParticles` writes.
+    public var particleBytes: Int { count * 32 + massive * 4 }
 
-    /// Every particle's position, velocity and formation time, as the buffers hold them. The
-    /// rest of a particle never changes and comes back from the same sample.
+    /// What changes of each particle: every position and velocity as the buffers hold them,
+    /// tracers first with their formation time and their `TracerWord` in w (#238), then the
+    /// massive particles' formation times. The rest of a massive particle never changes.
+    private var changing: [(buffer: MTLBuffer, length: Int)] {
+        [(positionBuffer, count * 16), (velocityBuffer, count * 16), (formationBuffer, massive * 4)]
+    }
+
     public func writeParticles(to handle: FileHandle) throws {
-        for (buffer, length) in [
-            (positionBuffer, count * 16), (velocityBuffer, count * 16), (formationBuffer, count * 4),
-        ] {
+        for (buffer, length) in changing {
             try handle.write(
                 contentsOf: Data(bytesNoCopy: buffer.contents(), count: length, deallocator: .none))
         }
@@ -1617,9 +1630,7 @@ extension MetalBarnesHutSolver {
             throw CheckpointError.otherRun(
                 "\(state.count) particles, \(state.tracers) tracers against \(count), \(tracerCount)")
         }
-        for (buffer, length) in [
-            (positionBuffer, count * 16), (velocityBuffer, count * 16), (formationBuffer, count * 4),
-        ] {
+        for (buffer, length) in changing {
             var read = 0
             while read < length {
                 let piece = min(length - read, 256 << 20)
@@ -1642,10 +1653,10 @@ extension MetalBarnesHutSolver {
         galaxyMotion = state.galaxyMotion
         diskStates = state.diskStates
         centersLock.unlock()
-        // The tree without the centres and disk frames a rebuild moves on.
+        // The tree without the centres and disk frames a rebuild moves on. The tracers' walk
+        // order only decides how fast they walk, so it is sorted afresh.
         if let buffer = queue.makeCommandBuffer() {
             builder.encode(into: buffer, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
-            encodeTracerSort(into: buffer)
             submit(buffer)
         }
         while grewAfterOverflow(), let again = queue.makeCommandBuffer() {
@@ -1654,9 +1665,14 @@ extension MetalBarnesHutSolver {
         }
         gathered = true
         nodeCount = builder.nodeCount
+        if tracerSorter != nil, let sort = queue.makeCommandBuffer() {
+            encodeTracerSort(into: sort)
+            submit(sort)
+            stepsSinceTracerSort = max(Self.tracerSortInterval, 1)
+        }
+        // A tracer keeps no acceleration: its saved velocity is half a kick ahead already.
         if let buffer = queue.makeCommandBuffer() {
             encodeAccelerations(into: buffer)
-            encodeTracerAccelerations(into: buffer)
             encodeHoles(into: buffer)
             submit(buffer)
         }

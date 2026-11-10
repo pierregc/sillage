@@ -37,7 +37,8 @@ struct CheckpointTests {
     }
 
     /// Restored from its checkpoint, a run with tracers, star formation and a black hole goes
-    /// on to the bit as the run that never stopped.
+    /// on to the bit as the run that never stopped, though it samples nothing: its massive set
+    /// comes back from the checkpoint and its tracers from their 32 bytes (#238).
     @Test func aSolverRestoredFromItsCheckpointGoesOnToTheBit() throws {
         let folder = try temporary("solver")
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -49,37 +50,49 @@ struct CheckpointTests {
             ),
         ]
         var last: MetalBarnesHutSolver.State?
-        for (drawn, massive) in scenes {
+        for (index, (drawn, massive)) in scenes.enumerated() {
+            let checkpoint = RunCheckpoint(directory: folder.appendingPathComponent("run-\(index)"))
             let (split, tracers) = ParticleSystem.lightTracers(drawn: drawn, massive: massive)
+            #expect(tracers > 0)
+            try checkpoint.saveMassive(split.slice(tracers..<split.count))
             let straight = try MetalBarnesHutSolver(scene: massive, particles: split, tracers: tracers)
             straight.step(count: 25)
-            let state = straight.state
-            last = state
-            let url = folder.appendingPathComponent("particles.bin")
-            FileManager.default.createFile(atPath: url.path, contents: nil)
-            let handle = try FileHandle(forWritingTo: url)
-            try straight.writeParticles(to: handle)
-            try handle.close()
-            let size = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int
-            #expect(size == MetalBarnesHutSolver.particleBytes(count: split.count))
+            last = straight.state
+            let first = run(1, frame: 1, identity: identity([]), solver: straight.state)
+            let saved = try checkpoint.save(first) { try straight.writeParticles(to: $0) }
+            #expect(
+                saved.bytes == straight.particleBytes
+                    && saved.bytes == split.count * 32 + (split.count - tracers) * 4)
             straight.step(count: 25)
 
-            // A new process: the same sample, its state put back.
-            let resumed = try MetalBarnesHutSolver(scene: massive, particles: split, tracers: tracers)
-            let reading = try FileHandle(forReadingFrom: url)
-            try resumed.restore(state, from: reading)
+            // A new process: nothing sampled, the massive set and the state read back.
+            let seeded = try checkpoint.massiveSet()
+            let kept = split.slice(tracers..<split.count)
+            #expect(seeded.positions == kept.positions && seeded.velocities == kept.velocities)
+            #expect(seeded.mass == kept.mass && seeded.formation == kept.formation)
+            #expect(seeded.galaxyIndex == kept.galaxyIndex && seeded.component == kept.component)
+            #expect(seeded.luminosity == kept.luminosity && seeded.kernelScale == kept.kernelScale)
+            #expect(seeded.birthRadius == kept.birthRadius && seeded.population == kept.population)
+            #expect(seeded.visibleCount == kept.visibleCount)
+            let resumed = try MetalBarnesHutSolver(
+                scene: massive, massive: seeded,
+                tracers: LightTracerStore(capacity: tracers + seeded.count, awaiting: tracers))
+            let (stored, reading) = try #require(try checkpoint.load())
+            try resumed.restore(stored.solver, from: reading)
             try reading.close()
             resumed.step(count: 25)
             let (a, b) = (straight.particles, resumed.particles)
             #expect(a.positions == b.positions, "\(drawn.name)")
             #expect(a.velocities == b.velocities, "\(drawn.name)")
             #expect(a.formation == b.formation, "\(drawn.name)")
+            #expect(a.luminosity == b.luminosity && a.birthRadius == b.birthRadius, "\(drawn.name)")
             #expect(straight.time == resumed.time && straight.centers == resumed.centers)
             #expect(disks(straight.diskFrames) == disks(resumed.diskFrames))
         }
         // A state of another run is refused.
         let other = try MetalBarnesHutSolver(scene: selfGravitatingDisk(2_000))
-        let reading = try FileHandle(forReadingFrom: folder.appendingPathComponent("particles.bin"))
+        let reading = try FileHandle(
+            forReadingFrom: folder.appendingPathComponent("run-0").appendingPathComponent("particles-1.bin"))
         let state = try #require(last)
         #expect(throws: MetalBarnesHutSolver.CheckpointError.self) { try other.restore(state, from: reading) }
     }
@@ -92,15 +105,16 @@ struct CheckpointTests {
             massive: 2_000_000, timeStep: step, presets: ["4k"], code: "abc")
     }
 
-    private func run(_ index: Int, frame: Int, identity: RunCheckpoint.Identity) -> RunCheckpoint.Run {
+    private func run(
+        _ index: Int, frame: Int, identity: RunCheckpoint.Identity,
+        solver: MetalBarnesHutSolver.State = MetalBarnesHutSolver.State(
+            count: 4, tracers: 1, time: 0.5, stepsSinceTree: 0, stepsSinceFormation: 7,
+            haloCenters: [SIMD3(1, 2, 3)], massCenters: [SIMD3(1, 2, 3.5)], galaxyMotion: [.zero],
+            diskStates: [DiskState(axis: SIMD3(0, 0, 1))])
+    ) -> RunCheckpoint.Run {
         RunCheckpoint.Run(
             identity: identity, index: index, frame: frame, settled: 100, elapsed: 60, resumes: 0,
-            everyFrames: 10, everySteps: 500,
-            solver: MetalBarnesHutSolver.State(
-                count: 4, tracers: 1, time: 0.5, stepsSinceTree: 0, stepsSinceFormation: 7,
-                haloCenters: [SIMD3(1, 2, 3)], massCenters: [SIMD3(1, 2, 3.5)], galaxyMotion: [.zero],
-                diskStates: [DiskState(axis: SIMD3(0, 0, 1))]),
-            videos: nil, keyFrames: [])
+            everyFrames: 10, everySteps: 500, solver: solver, videos: nil, keyFrames: [])
     }
 
     /// Each checkpoint is written aside and renamed into place, `current` last; the one before
@@ -320,8 +334,8 @@ struct CheckpointTests {
                 to: folder.appendingPathComponent("\(name).sillage"),
                 list: folder.appendingPathComponent("\(name).json"))
         }
-        let a = try Data(contentsOf: folder.appendingPathComponent("a.sillage"))
-        #expect(a == (try Data(contentsOf: folder.appendingPathComponent("b.sillage"))))
+        let a = try content(of: folder.appendingPathComponent("a.sillage"))
+        #expect(a == (try content(of: folder.appendingPathComponent("b.sillage"))))
         let read = try RecordingFile.read(from: folder.appendingPathComponent("a.sillage"))
         #expect(read.recording.count == 3)
         // And as one held in memory writes it.
@@ -330,6 +344,16 @@ struct CheckpointTests {
         try memory.write(
             scene: loaded.scene, particles: loaded.particles, to: folder.appendingPathComponent("c.sillage"),
             list: folder.appendingPathComponent("c.json"))
-        #expect(a == (try Data(contentsOf: folder.appendingPathComponent("c.sillage"))))
+        #expect(a == (try content(of: folder.appendingPathComponent("c.sillage"))))
+    }
+
+    /// A take as its header reads and the bytes after it: the header's JSON keys come in no
+    /// fixed order.
+    private func content(of url: URL) throws -> [Data] {
+        let data = try Data(contentsOf: url)
+        let length = Int(data[16..<24].reversed().reduce(UInt64(0)) { $0 << 8 | UInt64($1) })
+        let header = try JSONSerialization.jsonObject(with: data[24..<(24 + length)])
+        let sorted = try JSONSerialization.data(withJSONObject: header, options: [.sortedKeys])
+        return [sorted, Data(data[(24 + length)...])]
     }
 }

@@ -155,9 +155,9 @@ A full pass saves itself about every hour of its run (#240, [the note](notes/che
 ./scripts/dev.sh hires library/2026-10-24/scene-0001 --massive 2000000 --pass full --resume
 ```
 
-`--resume` picks the run up from its last checkpoint, to the bit and with the same videos, and
-refuses a checkpoint of another run (another step, count, look or massive take); without one it
-starts from the beginning. `--checkpoint-every <minutes>` sets the interval, 0 for none. A night
+`--resume` picks the run up from its last checkpoint, to the bit and with the same videos,
+without sampling the scene again, and refuses a checkpoint of another run (another step, count,
+look or massive take); without one it starts from the beginning. `--checkpoint-every <minutes>` sets the interval, 0 for none. A night
 run again after a restart resumes its full pass by itself when the checkpoint is that run's.
 
 **4. Look** – choose the scene's style:

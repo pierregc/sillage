@@ -1561,6 +1561,48 @@ print(
     "scene      \(scene.name), \(drawnScene.totalParticleCount) visible"
         + (scene.hasLiveHalos
             ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
+// `--checkpoint <dir>` (#240): every `--checkpoint-frames` frames, and `--checkpoint-steps` steps
+// of the settle, the run is saved there and its videos closed in segments; `--resume` picks the
+// last checkpoint up, and refuses one of another run. Decided before sampling: a resumed run
+// samples nothing.
+let checkpoint = argument("checkpoint").map {
+    RunCheckpoint(directory: URL(fileURLWithPath: $0, isDirectory: true))
+}
+let identity = checkpoint.map { _ in
+    RunCheckpoint.Identity(
+        arguments: arguments,
+        scene: scenePath.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
+        look: lookPath.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
+        framing: argument("draw-take").map { RunCheckpoint.stamp(URL(fileURLWithPath: $0)) } ?? "",
+        particles: particles, massive: massiveCount, timeStep: scene.timeStep,
+        presets: argument("draw")?.split(separator: ",").map(String.init) ?? [],
+        code: RunCheckpoint.codeVersion())
+}
+var resuming: (run: RunCheckpoint.Run, particles: FileHandle)?
+if let checkpoint, let identity {
+    for flag in ["take", "take-massive", "video", "curves", "density", "out", "thumbnail", "massive-only"]
+    where arguments.contains("--\(flag)") {
+        fail("--checkpoint: only the full pass checkpoints, not a run with --\(flag)")
+    }
+    guard backend == "barnes-hut" else { fail("--checkpoint needs the Barnes-Hut solver on the GPU") }
+    if arguments.contains("--resume"), let stored = try checkpoint.load() {
+        let differences = stored.run.identity.differences(from: identity)
+        guard differences.isEmpty else {
+            fail(
+                "--resume: the checkpoint in \(checkpoint.directory.path) is of another run, its "
+                    + differences.joined(separator: ", ") + " differ")
+        }
+        if stored.run.identity.code != identity.code {
+            print("warning    the code changed since the checkpoint: the run goes on, not to the bit")
+        }
+        resuming = stored
+    } else {
+        if arguments.contains("--resume") {
+            print("resume     no checkpoint in \(checkpoint.directory.path): from the start")
+        }
+        checkpoint.clear()
+    }
+}
 // With tracers `seeded` is the massive set alone: the tracers go straight into the solver's
 // buffers as they are sampled, 32 bytes each (#238).
 var seeded: ParticleSystem
@@ -1570,7 +1612,19 @@ var tracerStore: LightTracerStore?
 // with its tracers repeats to the bit, so the shots planned on this run frame that one. The
 // tracers are drawn to pick the same massive particles, then dropped as they come.
 let massiveOnly = arguments.contains("--massive-only")
-if massiveCount != nil {
+if let checkpoint, let resuming {
+    let reading = Date()
+    seeded = try checkpoint.massiveSet()
+    tracerCount = resuming.run.solver.tracers
+    if tracerCount > 0 {
+        tracerStore = try LightTracerStore(capacity: tracerCount + seeded.count, awaiting: tracerCount)
+    }
+    print(
+        String(
+            format: "tracers    %d light, %d massive visible, %d halo, from the checkpoint in %.1f s",
+            tracerCount, seeded.visibleCount, seeded.count - seeded.visibleCount,
+            Date().timeIntervalSince(reading)))
+} else if massiveCount != nil {
     let splitStart = Date()
     if massiveOnly {
         let kept = ParticleSystem.streamingLightTracers(drawn: drawnScene, massive: scene) { _ in }
@@ -1718,41 +1772,12 @@ let massiveTake: Recording? = argument("take-massive").map { _ in
     return reel
 }
 
-// `--checkpoint <dir>` (#240): every `--checkpoint-frames` frames, and `--checkpoint-steps` steps
-// of the settle, the run is saved there and its videos closed in segments; `--resume` picks the
-// last checkpoint up, and refuses one of another run.
-let checkpoint = argument("checkpoint").map {
-    RunCheckpoint(directory: URL(fileURLWithPath: $0, isDirectory: true))
-}
-let identity = checkpoint.map { _ in
-    RunCheckpoint.Identity(
-        arguments: arguments,
-        scene: scenePath.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
-        look: lookPath.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
-        framing: argument("draw-take").map { RunCheckpoint.stamp(URL(fileURLWithPath: $0)) } ?? "",
-        particles: particles, massive: massiveCount, timeStep: scene.timeStep,
-        presets: argument("draw")?.split(separator: ",").map(String.init) ?? [],
-        code: RunCheckpoint.codeVersion())
-}
 var resumed: RunCheckpoint.Run?
-if let checkpoint, let identity {
-    for flag in ["take", "take-massive", "video", "curves", "density", "out", "thumbnail"]
-    where arguments.contains("--\(flag)") {
-        fail("--checkpoint: a run writing --\(flag) cannot resume it; only the full pass checkpoints")
-    }
+if let checkpoint {
     guard let barnesHut = gpuSolver as? MetalBarnesHutSolver else {
         fail("--checkpoint needs the Barnes-Hut solver on the GPU")
     }
-    if arguments.contains("--resume"), let (run, handle) = try checkpoint.load() {
-        let differences = run.identity.differences(from: identity)
-        guard differences.isEmpty else {
-            fail(
-                "--resume: the checkpoint in \(checkpoint.directory.path) is of another run, its "
-                    + differences.joined(separator: ", ") + " differ")
-        }
-        if run.identity.code != identity.code {
-            print("warning    the code changed since the checkpoint: the run goes on, not to the bit")
-        }
+    if let (run, handle) = resuming {
         let restoring = Date()
         try barnesHut.restore(run.solver, from: handle)
         try handle.close()
@@ -1763,13 +1788,14 @@ if let checkpoint, let identity {
                 run.index, run.frame, run.settled,
                 Double(run.solver.time) * Physics.megayearsPerTimeUnit,
                 Date().timeIntervalSince(restoring)))
-        fflush(stdout)
     } else {
-        if arguments.contains("--resume") {
-            print("resume     no checkpoint in \(checkpoint.directory.path): from the start")
-        }
-        checkpoint.clear()
+        let saved = try checkpoint.saveMassive(seeded)
+        print(
+            String(
+                format: "checkpoint the massive set, once: %.2f GB in %.2f s", Double(saved.bytes) / 1e9,
+                saved.seconds))
     }
+    fflush(stdout)
 }
 let everyFrames = resumed?.everyFrames ?? max(Int(number("checkpoint-frames", 0)), 0)
 let everySteps = resumed?.everySteps ?? max(Int(number("checkpoint-steps", 0)), 0)

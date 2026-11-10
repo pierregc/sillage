@@ -1,12 +1,14 @@
 import CryptoKit
 import Foundation
+import SillageCore
 
 /// A long run's checkpoint (#240), so a restart costs at most an interval of it rather than the
-/// run. A directory holding, for checkpoint `n`, `particles-n.bin` (what the solver keeps of
-/// every particle) and `state-n.json` (the rest: the solver's counters, where the frames and the
-/// videos stand, the key frames taken), with `current` naming the last whole one; the video
-/// segments and key frame blocks those name sit beside them. Each file is written aside and
-/// renamed into place, `current` last, and the checkpoint before is removed only then.
+/// run. A directory holding, for checkpoint `n`, `particles-n.bin` (what changes of every
+/// particle) and `state-n.json` (the rest: the solver's counters, where the frames and the
+/// videos stand, the key frames taken), with `current` naming the last whole one, and
+/// `massive.bin`, the massive particles as sampled, written once; the video segments and key
+/// frame blocks sit beside them. Each file is written aside and renamed into place, `current`
+/// last, and the checkpoint before is removed only then.
 public struct RunCheckpoint: Sendable {
     public let directory: URL
 
@@ -15,6 +17,7 @@ public struct RunCheckpoint: Sendable {
     public var segments: URL { directory.appendingPathComponent("segments", isDirectory: true) }
     public var keyFrames: URL { directory.appendingPathComponent("keyframes", isDirectory: true) }
     var current: URL { directory.appendingPathComponent("current") }
+    var massive: URL { directory.appendingPathComponent("massive.bin") }
     func particles(_ index: Int) -> URL { directory.appendingPathComponent("particles-\(index).bin") }
     func state(_ index: Int) -> URL { directory.appendingPathComponent("state-\(index).json") }
 
@@ -174,6 +177,80 @@ public struct RunCheckpoint: Sendable {
     public func stored() -> Run? {
         guard let index = currentIndex() else { return nil }
         return (try? Data(contentsOf: state(index))).flatMap { try? Self.decoder.decode(Run.self, from: $0) }
+    }
+
+    /// Writes the massive particles as sampled, which never change but for what
+    /// `particles-n.bin` keeps, so a run resumed from here samples nothing: with light tracers
+    /// sampling costs 1.5 us a drawn particle, five minutes at 200 M (#238).
+    @discardableResult
+    public func saveMassive(_ system: ParticleSystem) throws -> Saved {
+        let started = Date()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let aside = massive.appendingPathExtension("partial")
+        FileManager.default.createFile(atPath: aside.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: aside)
+        try Self.write([UInt64(system.count), UInt64(system.visibleCount)], to: handle)
+        try Self.write(system.positions, to: handle)
+        try Self.write(system.velocities, to: handle)
+        for values in [
+            system.birthRadius, system.population, system.luminosity, system.formation,
+            system.kernelScale, system.mass,
+        ] {
+            try Self.write(values, to: handle)
+        }
+        for values in [system.galaxyIndex, system.component] { try Self.write(values, to: handle) }
+        try handle.synchronize()
+        try handle.close()
+        try Self.rename(aside, to: massive)
+        return Saved(seconds: Date().timeIntervalSince(started), bytes: 16 + system.count * 64)
+    }
+
+    /// The massive particles `saveMassive` wrote.
+    public func massiveSet() throws -> ParticleSystem {
+        let handle = try FileHandle(forReadingFrom: massive)
+        defer { try? handle.close() }
+        let header = try Self.read(2, of: UInt64.self, from: handle)
+        let count = Int(header[0])
+        var system = ParticleSystem()
+        system.positions = try Self.read(count, of: SIMD3<Float>.self, from: handle)
+        system.velocities = try Self.read(count, of: SIMD3<Float>.self, from: handle)
+        system.birthRadius = try Self.read(count, of: Float.self, from: handle)
+        system.population = try Self.read(count, of: Float.self, from: handle)
+        system.luminosity = try Self.read(count, of: Float.self, from: handle)
+        system.formation = try Self.read(count, of: Float.self, from: handle)
+        system.kernelScale = try Self.read(count, of: Float.self, from: handle)
+        system.mass = try Self.read(count, of: Float.self, from: handle)
+        system.galaxyIndex = try Self.read(count, of: UInt32.self, from: handle)
+        system.component = try Self.read(count, of: UInt32.self, from: handle)
+        system.setVisibleCount(Int(header[1]))
+        return system
+    }
+
+    private static func write<T>(_ values: [T], to handle: FileHandle) throws {
+        try values.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress, !bytes.isEmpty else { return }
+            try handle.write(
+                contentsOf: Data(
+                    bytesNoCopy: UnsafeMutableRawPointer(mutating: base), count: bytes.count,
+                    deallocator: .none))
+        }
+    }
+
+    private static func read<T>(_ count: Int, of _: T.Type, from handle: FileHandle) throws -> [T] {
+        let length = count * MemoryLayout<T>.stride
+        return try [T](unsafeUninitializedCapacity: count) { buffer, initialized in
+            let bytes = UnsafeMutableRawBufferPointer(buffer)
+            var done = 0
+            while done < length {
+                let piece = min(length - done, 256 << 20)
+                guard let data = try handle.read(upToCount: piece), data.count == piece else {
+                    throw MetalBarnesHutSolver.CheckpointError.truncated
+                }
+                data.copyBytes(to: UnsafeMutableRawBufferPointer(rebasing: bytes[done..<(done + piece)]))
+                done += piece
+            }
+            initialized = count
+        }
     }
 
     /// Removes every checkpoint, its segments and blocks with it.
