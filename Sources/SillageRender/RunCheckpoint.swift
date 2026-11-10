@@ -168,14 +168,14 @@ public struct RunCheckpoint: Sendable {
 
     /// The last whole checkpoint, with its particles opened at their start; nil when none.
     public func load() throws -> (run: Run, particles: FileHandle)? {
-        guard let index = currentIndex() else { return nil }
+        guard let index = currentIndex(), hasMassiveSet else { return nil }
         let run = try Self.decoder.decode(Run.self, from: Data(contentsOf: state(index)))
         return (run, try FileHandle(forReadingFrom: particles(index)))
     }
 
     /// The last whole checkpoint's state alone, to tell whether a run would resume it.
     public func stored() -> Run? {
-        guard let index = currentIndex() else { return nil }
+        guard let index = currentIndex(), hasMassiveSet else { return nil }
         return (try? Data(contentsOf: state(index))).flatMap { try? Self.decoder.decode(Run.self, from: $0) }
     }
 
@@ -257,6 +257,9 @@ public struct RunCheckpoint: Sendable {
     public func clear() {
         try? FileManager.default.removeItem(at: directory)
     }
+
+    /// A checkpoint is only whole with the massive set it was taken over.
+    private var hasMassiveSet: Bool { FileManager.default.fileExists(atPath: massive.path) }
 
     func currentIndex() -> Int? {
         (try? String(contentsOf: current, encoding: .utf8)).flatMap {

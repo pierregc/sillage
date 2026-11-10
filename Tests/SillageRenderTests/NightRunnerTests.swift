@@ -406,7 +406,9 @@ struct NightRunnerTests {
             look: try String(contentsOf: scene.look, encoding: .utf8),
             framing: RunCheckpoint.stamp(scene.take),
             particles: 100_000, massive: 50_000, timeStep: 0.01, presets: ["1080p"], code: "")
-        try RunCheckpoint(directory: scene.checkpoint).save(
+        let checkpoint = RunCheckpoint(directory: scene.checkpoint)
+        try checkpoint.saveMassive(ParticleSystem())
+        try checkpoint.save(
             RunCheckpoint.Run(
                 identity: identity, index: 3, frame: 20, settled: 1, elapsed: 30, resumes: 0, everyFrames: 10,
                 everySteps: 100,

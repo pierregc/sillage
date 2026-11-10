@@ -364,7 +364,9 @@ struct SceneFolderTests {
                 count: 1, tracers: 0, time: 0, stepsSinceTree: 0, stepsSinceFormation: 0, haloCenters: [],
                 massCenters: [], galaxyMotion: [], diskStates: []),
             videos: nil, keyFrames: [])
-        try RunCheckpoint(directory: folder.checkpoint).save(run) { _ in }
+        let checkpoint = RunCheckpoint(directory: folder.checkpoint)
+        try checkpoint.saveMassive(ParticleSystem())
+        try checkpoint.save(run) { _ in }
         #expect(folder.resumesFullPass(options, maximumParticles: 10_000_000))
         #expect(
             !folder.resumesFullPass(

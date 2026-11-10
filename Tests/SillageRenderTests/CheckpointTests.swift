@@ -125,10 +125,11 @@ struct CheckpointTests {
         let checkpoint = RunCheckpoint(directory: folder.appendingPathComponent(".checkpoint"))
         #expect(try checkpoint.load() == nil)
         let me = identity(["--particles", "8000000", "--checkpoint-frames", "10", "--resume"])
+        try checkpoint.saveMassive(ParticleSystem())
         try checkpoint.save(run(1, frame: 10, identity: me)) { try $0.write(contentsOf: Data([1, 2, 3])) }
         try checkpoint.save(run(2, frame: 20, identity: me)) { try $0.write(contentsOf: Data([4, 5, 6, 7])) }
         let names = try FileManager.default.contentsOfDirectory(atPath: checkpoint.directory.path).sorted()
-        #expect(names == ["current", "particles-2.bin", "state-2.json"])
+        #expect(names == ["current", "massive.bin", "particles-2.bin", "state-2.json"])
         // A third cut short before its rename: the second is the one read.
         try Data([9]).write(to: checkpoint.directory.appendingPathComponent("particles-3.bin.partial"))
         let (stored, handle) = try #require(try checkpoint.load())
@@ -137,6 +138,9 @@ struct CheckpointTests {
         #expect(stored.solver.diskStates[0].axis == SIMD3(0, 0, 1) && stored.solver.stepsSinceFormation == 7)
         // What runs is kept, not where a check writes or how often to checkpoint.
         #expect(stored.identity.arguments == ["--particles", "8000000"])
+        // Without the massive set it was taken over, it is no checkpoint at all.
+        try FileManager.default.removeItem(at: checkpoint.directory.appendingPathComponent("massive.bin"))
+        #expect(try checkpoint.load() == nil && checkpoint.stored() == nil)
         checkpoint.clear()
         #expect(!FileManager.default.fileExists(atPath: checkpoint.directory.path))
     }
