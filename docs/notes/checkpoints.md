@@ -69,5 +69,27 @@ A night run again after a restart picks its full pass up from its checkpoint whe
 is that run's own (`SceneFolder.resumesFullPass`), and starts it over otherwise, which clears it.
 A full pass that ends removes its checkpoint.
 
-MEASURED
+## Whether it holds, and what it costs
+
+**To the bit at 2 M.** scene-0031 of 2026-10-30-b drawn at 2 M from 500 k massive (1.5 M
+tracers, 750 k halo), its first 60 frames after a settle of 792 steps, checkpointed every 250
+steps of the settle and every 20 frames: a full pass never stopped, against one killed in its
+settle just after its first checkpoint (step 250), resumed, killed again a second after the
+checkpoint at frame 40 (its next segment open), and resumed to the end.
+
+- What a checkpoint keeps of the particles at the end, 93 MB, and the solver's counters, centres
+  and disks are the same to the bit.
+- The 16 stills both runs drew (frames 0, 19 to 21, 39 to 41 and 59, in both formats) are the
+  same to the bit, and so is every frame of both videos once decoded, 60 of 60 in 1080p and
+  vertical. The videos themselves are the same byte for byte but for a note the encoder writes at
+  the start of each segment, an unregistered SEI message of VideoToolbox's that decoders skip,
+  which changes from one encoding session to the next: 4 bytes of 5.1 MB differ in 1080p, 5 of
+  3.7 MB in vertical.
+- The key frame take holds the same three frames to the bit, with the same formation times. Both
+  runs report 60 frames, key frames 0, 32 and 59, and no drift from the massive take; the resumed
+  one says it was resumed twice.
+- The resumed runs read their massive set in 0.1 s at most where the first run sampled the scene
+  in 3.2 s, and restored the solver in 0.10 to 0.14 s.
+
+The same check passed on the layout before #238, which kept every field of a tracer.
 
