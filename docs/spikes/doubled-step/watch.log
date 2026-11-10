@@ -32,3 +32,30 @@
 2026-11-10 00:48:23 beat: 22 GB free, lock 225 hires-dt35b 2026-11-10 00:12:33, mine: 1
 2026-11-10 00:52:05 run dt35b exit 0 wall 2372 s
 2026-11-10 00:52:05 step hires dt35b end
+2026-11-10 01:33:49 step explore dt35 dt7 dt35b start
+2026-11-10 01:33:49 run explore dt35 start
+2026-11-10 01:33:49 beat: 25 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 0
+2026-11-10 01:35:17 foreign: 28977 /Users/pierregc/claude-workspace/sillage-wt-239/.build/dev/tests;
+2026-11-10 01:38:58 beat: 23 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 01:40:03 foreign: none
+2026-11-10 01:44:05 beat: 23 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 01:49:14 beat: 23 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 01:54:22 beat: 24 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 01:59:30 beat: 24 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 3
+2026-11-10 02:01:05 run explore dt35 exit 0 wall 1636 s
+2026-11-10 02:01:05 run explore dt7 start
+2026-11-10 02:04:38 beat: 23 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 02:09:46 beat: 24 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 02:14:19 run explore dt7 exit 0 wall 794 s
+2026-11-10 02:14:19 run explore dt35b start
+2026-11-10 02:14:39 check starts beside batch dt35b
+2026-11-10 02:14:55 beat: 24 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 02:19:52 foreign: 7154 /Users/pierregc/claude-workspace/sillage-wt-225-check/.build/dev/tests;
+2026-11-10 02:20:02 beat: 23 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 02:24:31 foreign: none
+2026-11-10 02:25:10 beat: 24 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 02:30:19 beat: 24 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 02:35:27 beat: 24 GB free, lock 225 explore-dt35+dt7+dt35b 2026-11-10 01:33:49, mine: 4
+2026-11-10 02:40:00 run explore dt35b exit 0 wall 1541 s
+2026-11-10 02:40:00 check done
+2026-11-10 02:40:00 step explore dt35 dt7 dt35b end

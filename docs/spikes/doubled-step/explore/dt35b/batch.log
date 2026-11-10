@@ -1,0 +1,22 @@
+2026-11-10 02:14:19 start: seed 20261109, 4 at once, 100000 a galaxy, scenes 20, hours unbounded
+2026-11-10 02:17:28 scene-0002 ok in 189s, 2 galaxies, 200000 particles, 3600 steps
+2026-11-10 02:18:55 scene-0003 ok in 276s, 2 galaxies, 200000 particles, 5436 steps
+2026-11-10 02:20:03 scene-0001 ok in 344s, 2 galaxies, 200000 particles, 6824 steps
+2026-11-10 02:20:30 scene-0004 ok in 371s, 2 galaxies, 200000 particles, 7288 steps
+2026-11-10 02:24:09 scene-0007 ok in 246s, 2 galaxies, 200000 particles, 3600 steps
+2026-11-10 02:25:03 scene-0006 ok in 368s, 2 galaxies, 200000 particles, 5944 steps
+2026-11-10 02:27:53 scene-0005 ok in 625s, 5 galaxies, 500000 particles, 5992 steps
+2026-11-10 02:28:00 scene-0010 ok in 177s, 1 galaxies, 100000 particles, 3600 steps
+2026-11-10 02:28:03 scene-0008 ok in 453s, 2 galaxies, 200000 particles, 7860 steps
+2026-11-10 02:28:09 scene-0009 ok in 239s, 2 galaxies, 200000 particles, 4136 steps
+2026-11-10 02:31:27 scene-0011 ok in 214s, 2 galaxies, 200000 particles, 4092 steps
+2026-11-10 02:31:35 scene-0013 ok in 211s, 2 galaxies, 200000 particles, 3988 steps
+2026-11-10 02:31:36 scene-0014 ok in 207s, 2 galaxies, 200000 particles, 4020 steps
+2026-11-10 02:33:19 scene-0012 ok in 319s, 2 galaxies, 200000 particles, 6176 steps
+2026-11-10 02:35:13 scene-0016 ok in 218s, 2 galaxies, 200000 particles, 3600 steps
+2026-11-10 02:37:01 scene-0018 ok in 222s, 2 galaxies, 200000 particles, 3600 steps
+2026-11-10 02:37:41 scene-0017 ok in 364s, 2 galaxies, 200000 particles, 6308 steps
+2026-11-10 02:37:47 scene-0015 ok in 380s, 5 galaxies, 500000 particles, 3896 steps
+2026-11-10 02:39:01 scene-0019 ok in 228s, 2 galaxies, 200000 particles, 5100 steps
+2026-11-10 02:40:00 scene-0020 ok in 179s, 3 galaxies, 300000 particles, 5700 steps
+20 done, 0 rejected, 0 failed in 1541 s: 77.0 s per scene, each 291.5 s on average, 4 at once
