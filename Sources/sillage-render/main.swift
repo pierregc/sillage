@@ -1740,6 +1740,7 @@ if let checkpoint, let identity {
                 run.index, run.frame, run.settled,
                 Double(run.solver.time) * Physics.megayearsPerTimeUnit,
                 Date().timeIntervalSince(restoring)))
+        fflush(stdout)
     } else {
         if arguments.contains("--resume") {
             print("resume     no checkpoint in \(checkpoint.directory.path): from the start")
@@ -1816,6 +1817,8 @@ func saveCheckpoint(frame: Int, settled: Int) throws {
         String(
             format: "checkpoint %d before frame %d, settle %d: %.2f GB in %.1f s", checkpointIndex,
             frame, settled, Double(saved.bytes) / 1e9, saved.seconds))
+    // A log cut by a restart still says where the run was saved.
+    fflush(stdout)
 }
 
 /// Per frame scalars, written for whoever scores the result later: a curve to drive a filter
