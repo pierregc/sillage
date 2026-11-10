@@ -59,7 +59,7 @@ a few tests alone is `swiftc -Onone -I .build/linux -L .build/linux -lSillageCor
   properties). `scripts/linux-skip.txt` names each with its framework.
 - **The tests of both modules but 19 files**, the ones that need Metal, AVFoundation, ImageIO or
   CoreGraphics, and the queue and night runner's, which start and watch processes with calls only
-  macOS has. 387 tests ran on Linux the day this was written, 6 more since.
+  macOS has. 393 tests run on Linux, against 594 on the Mac.
 
 Everything the ticket asked for builds: `SceneFolder`, `LookFile` and its extensions,
 `RenderLook`, `GalaxyColours`, `PaletteRamps`, the cameras (`Camera`, `AutoCamera`,
@@ -133,16 +133,52 @@ file fails `strict` on Linux with "capture of ... non-Sendable type": call this 
 
 `Tests/SillageCoreTests/CrossPlatformTests.swift` prints, and asserts nothing: the SHA-256 of a
 merger preset's sample (100 k drawn from 25 k massive, 75 104 tracers among 137 500 particles)
-over its positions, velocities and masses, and over each other attribute; then one digest per
-libm function, in `Float` and in `Double`, over the same 4 001 inputs; then one per simd function.
-The digests come from `PortableSHA256`, written out and checked against the standard vectors, so
-the two platforms hash the same way. `docs/notes/cross-platform-linux-x86_64.txt` holds what Linux
-x86_64 gives (Swift 6.2, glibc 2.39), the same in two runs.
+over its positions, velocities and masses, and over each other attribute; the sums of the
+positions and velocities and a few particles as bit patterns; then one digest per libm function,
+in `Float` and in `Double`, over the same 4 001 inputs; then one per simd function. The digests
+come from `PortableSHA256`, written out and checked against the standard vectors, so the two
+platforms hash the same way. To compare, on the Mac: `./scripts/dev.sh test --filter
+CrossPlatformTests`, keep the `CROSSPLATFORM` lines, sort them and `diff` them against
+`docs/notes/cross-platform-linux-x86_64.txt` (Linux x86_64, Swift 6.2, glibc 2.39, the same in
+two runs) and `docs/notes/cross-platform-mac-arm64.txt` (Mac arm64, Swift 6.3.2, Apple's simd
+and Darwin's libm). Of 57 lines of digests, 12 agree and 45 differ.
 
-To compare: on the Mac, `./scripts/dev.sh test --filter CrossPlatformTests`, keep the
-`CROSSPLATFORM` lines, sort them and `diff` them against that file.
+**The two platforms do not agree to the bit.**
 
-ANSWER PENDING: the Mac's lines.
+- **The sample.** The counts are the same (137 500 particles, 75 104 tracers), and so are the
+  masses, the galaxy indices, the kernel scales and the components. The positions, the
+  velocities, the formation times, the luminosities, the birth radii and the populations are
+  not.
+- **By how little.** The sums over all 137 500 particles agree to 2e-9 up to 5e-8 of their
+  value, under a `Float`'s own epsilon of 1.2e-7, and the first particle, the first massive one
+  and the last one are the same to the bit; the last tracer's z parts by one unit in the last
+  place and its x velocity by two. The draws did not take other branches: no rejection test
+  went the other way in this sample, and the particles are the same to rounding. What differs is
+  the last bits of the particles that went through a function below.
+- **libm.** Every function tried differs, as `Float` and as `Double`, but `sqrt`, which is
+  correctly rounded, and `cos` on `Float`: `exp`, `exp2`, `log`, `log10`, `pow`, `sin`, `cos`
+  on `Double`, `tan`, `atan`, `atan2`, `asin`, `acos`, `cbrt`, `sinh`, `cosh`, `tanh`, `erf` and
+  `tgamma`. The sampler draws through `exp`, `log`, `pow`, `sin`, `cos` and `cbrt`, and turns
+  each galaxy by `GalaxyConfig.orientation`, so the sample's last bits come from there and from
+  the matrix product below.
+- **simd.** `simd_dot`, `simd_length`, `simd_length_squared` and `simd_distance` give Apple's
+  bits. `simd_cross`, `simd_normalize` and a matrix times a vector do not, over 6 000
+  components: `cross` differs on 1 560 of them, by up to 423 units in the last place where the
+  products cancel, `normalize` on 2 880, by up to 3, and `matrix_vector` on 2 085, by up to 520.
+  The functions of `SIMDLinux.swift`, compiled on the Mac without Apple's module, give
+  exactly the digests Linux gives, so the gap is Apple's own arithmetic and not the processor:
+  most likely fused multiply-adds in the cross product and the matrix product, and a product
+  by an inverse square root in `normalize`. That was not checked further.
+
+Nothing is fixed here, as the ticket says.
+
+**What it decides for the CUDA tickets.** A sample drawn on Linux is the Mac's to rounding and not
+to the bit. The full pass of a CUDA run therefore reads the massive particles the Mac sampled,
+`massive.bin` (#240), and does not sample them again: a Metal run and a CUDA run then start from
+the same bits, which is what measuring how far apart they drift needs. A reference output that
+goes through the functions above (a sample, a rotation by `GalaxyConfig.orientation`, a
+normalised vector) is the platform's own in its last bits and is compared with a tolerance
+across platforms; the same platform repeats itself to the bit.
 
 ## What the CUDA tickets can rely on
 
