@@ -153,10 +153,12 @@ public struct NightPlanner: Sendable {
     /// A raw preview at 960x540, as `explore-batch.sh` counts it.
     public static let previewBytes = 40e6
     /// 2.76 GB for 2 M particles over 900 frames at the take interval of 4 (`hires.json` of
-    /// 2026-10-25).
-    public static let takeBytesPerParticleFrame = 1.533
-    /// The key frames of a full pass: five frames of positions and the particles' own values.
-    public static let keyFrameBytesPerParticle = 58.0
+    /// 2026-10-25), at six bytes a particle a kept frame; a third more since a take holds
+    /// eight (#237).
+    public static let takeBytesPerParticleFrame = 2.04
+    /// The key frames of a full pass: five frames of positions at eight bytes and the particles'
+    /// own 28.
+    public static let keyFrameBytesPerParticle = 68.0
     /// Drawing palettes from the scene's seed and scoring them, for a rendering the recipe names.
     public static let paletteSeconds = 20.0
     /// Auto's choice of rendering and palette (#124) in a world, from the cost at a clip's

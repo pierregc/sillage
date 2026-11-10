@@ -477,8 +477,10 @@ struct NightPlannerTests {
         for scene in Self.eightMillion {
             let minutes = fitted.hiresSeconds(particles: 8_000_000, steps: scene.steps) / 60
             #expect(abs(minutes / scene.minutes - 1) < 0.02, "\(scene.name)")
+            // Those takes are version 6, six bytes a particle a kept frame; since #237 a take
+            // holds eight.
             let take = NightPlanner.takeBytesPerParticleFrame * 8e6 * Double(scene.frames) / 1e9
-            #expect(abs(take / scene.takeGB - 1) < 0.01, "\(scene.name)")
+            #expect(abs(take / (scene.takeGB * 8 / 6) - 1) < 0.01, "\(scene.name)")
         }
     }
 
