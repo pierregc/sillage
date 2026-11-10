@@ -1617,8 +1617,7 @@ extension MetalBarnesHutSolver {
 
     public func writeParticles(to handle: FileHandle) throws {
         for (buffer, length) in changing {
-            try handle.write(
-                contentsOf: Data(bytesNoCopy: buffer.contents(), count: length, deallocator: .none))
+            try RunCheckpoint.write(buffer.contents(), length, to: handle)
         }
     }
 

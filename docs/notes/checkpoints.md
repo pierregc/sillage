@@ -93,3 +93,25 @@ checkpoint at frame 40 (its next segment open), and resumed to the end.
 
 The same check passed on the layout before #238, which kept every field of a tracer.
 
+**At 8 M**, 6 M tracers drawn from 2 M massive and 3 M halo, 11 M particles: scene-0031 again,
+alone on the GPU, drawing 4K and vertical, a checkpoint at frame 3, killed, resumed.
+
+- A checkpoint is 0.37 GB, written in 0.10 s with the flush to the disk itself. The massive set,
+  0.32 GB, is written once in 0.07 s when the run starts.
+- The resumed run read its massive set in 0.1 s, restored the solver in 0.15 s and was stepping
+  again 0.6 s after it started, where the first run spent 12.6 s sampling the scene. It peaked at
+  a footprint of 4.8 GB.
+
+**At 200 M**, #241's run: 198 M tracers drawn from 2 M massive, 203 M particles with the halo.
+
+- A checkpoint is 6.52 GB, the massive set 0.32 GB once. A file that size written and read as a
+  checkpoint is: 1.0 s to write, flushed (6.4 GB/s), and 2.4 s to read back into the buffers from
+  the page cache; after a restart the disk's own read comes on top, about a second.
+- So an hourly checkpoint costs about a second an hour, and a resume a few seconds where sampling
+  again would take five minutes. A restart loses the hour since the last checkpoint at most.
+- On disk, until the run ends and removes them: two checkpoints while the next is written
+  (13 GB), the massive set, the key frames taken so far (1.2 GB each at 200 M) and the video
+  segments.
+- One write of 2 GB or more fails on macOS (`EINVAL`), and a buffer of 200 M positions is 3.2 GB:
+  the buffers are written 256 MB at a time. The test at the size of 200 M is what found it.
+
