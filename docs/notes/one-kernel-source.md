@@ -227,10 +227,32 @@ when no line is pending.
 
 ## The reference outputs
 
-`Tests/Fixtures/engines/` holds small outputs both engines must give, under 2 MB in all: a 20 k
-tree, the accelerations of 1,000 tracers from a small `--dump-walk` (#271), and three 256 x 144
-frames in three looks. The README beside them gives their formats, which a C++ reader needs no
-Swift for.
+`Tests/Fixtures/engines/` holds small outputs both engines must give, under 2 MB in all, byte for
+byte as Metal holds them, little endian (a `float3` is 16 bytes). `manifest.json`
+(`sillage-engine-fixtures`, version 1) lists every file with its type, stride and count, as
+#271's walk dump does, and the README beside it gives the formats in full: a C++ reader needs no
+Swift.
+
+- **`tree/`**: 20,000 particles (a disk, a tight clump, coincident points that reach the depth
+  limit), leaf capacity 16, depth 20, quadrupoles on. In: `positions.bin`, `mass.bin`. Out:
+  `order.bin`, `nodes.bin`, `moments.bin`, `frame.bin`, `levels.bin`, and what the renderer reads
+  off the tree, the smoothing lengths (`smoothing.bin`) and the spacing records (`spacing.bin`)
+  for the drawn count and the ratio the manifest gives. Metal lays a level's nodes out in an
+  order that changes from run to run, so the fixture holds them in a canonical layout: level by
+  level, the root first, a level's cells in their parents' order, a parent's children contiguous
+  in octant order. To the bit for every engine, the lengths aside: they go through `pow`, which
+  no two math libraries round alike, so outside Metal they are held to 1e-6 relative.
+- **`walk/`**: a `sillage-walk-dump` version 1 ([cuda-walk-spike.md](cuda-walk-spike.md)) of
+  1,000 tracers over about 2,000 massive particles, two disks cooling, its nodes in the canonical
+  layout. Metal replays `bhTracerStep` on it and must give `accelerations.bin` and
+  `motions-mode1.bin` to the bit. The CPU target and CUDA must give each tracer's acceleration
+  within 1e-5 relative (the CPU was within 4.1e-6 of Metal over 150,207 tracers in #271), its
+  velocity after mode 1 within 1e-5, and its packed word unchanged.
+- **`frames/`**: a take of one frame, three looks, and for each the 256 x 144 frame `export`
+  draws, as raw RGBA, 8 bits a channel, rows from the top. Metal must give the same bytes. The
+  CUDA renderer accumulates in fp32 where Metal blends in fp16: #276 and #277 set its tolerance.
+
+Who compares with them:
 
 - **On the Mac**, the tests require Metal to give them on every `./scripts/dev.sh check`, to the
   bit where Metal is deterministic.
