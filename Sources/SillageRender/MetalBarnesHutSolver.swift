@@ -1524,7 +1524,7 @@ public final class MetalBarnesHutSolver: Solver {
             params: params,
             counts: [
                 "tracers": tracerCount, "massive": massive, "massiveVisible": massiveVisible,
-                "nodes": nodeCount, "halos": halos.count, "holes": holes.count,
+                "nodes": nodeCount, "halos": Int(params.haloCount), "holes": holes.count,
                 "disks": lastCoolingDisks?.count ?? 0,
             ],
             functionConstants: ["bhQuadrupole": quadrupole, "bhOpensHoldingCells": opensHoldingCells],
