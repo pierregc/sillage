@@ -956,13 +956,13 @@ the first frame of a look with the web 35 s, the lace's bake.
   and grain), the calls it refuses, the pack's rounding and its three layouts, and the hash.
 - `PostPlanTests` (14 tests, also on the Mac): the passes of each kind of look, the levels'
   sizes, the grain's seed and what skipping does to it.
-- `CUDA post-processing` (13 tests run here): the three reference frames of
+- `CUDA post-processing` (10 tests run here, of 13): the three reference frames of
   `Tests/Fixtures/engines/frames`, drawn from their take and held to Metal's (below); the three
   formats of one picture; a frame drawn twice, by another renderer and from three threads, the
   same bytes; the grain moving with the frame of a video; the raw look's exposure curve; a plan
   for other sizes and a light too small refused; a star's bloom; the PNG writer and reader, with
   and without zlib.
-- `theStillsAgreeWithMetal`, a fourteenth, when `SILLAGE_CUDA_RENDER_TARGETS` names the render
+- `theStillsAgreeWithMetal`, an eleventh, when `SILLAGE_CUDA_RENDER_TARGETS` names the render
   folder of `assets/cuda-checks`: the comparison below.
 
 **Written now, run on a GPU in #283**, each skipped on the CPU target with "needs an NVIDIA GPU
