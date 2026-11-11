@@ -5,7 +5,8 @@
 #
 #   1. no float literal of the MSL lacks its suffix: C++ and CUDA would read it as a double;
 #   2. the shared MSL of every library, what is outside `#if defined(__METAL_VERSION__)`,
-#      compiles as C++17 through cuda/include/msl_compat.h;
+#      compiles as C++17 through cuda/include/msl_compat.h, and so do the CUDA entry points of
+#      cuda/src that call it, as the CPU target builds them;
 #   3. cuda/kernels.txt lists every Metal kernel, vertex and fragment function with its state,
 #      and a function marked `cuda` has its entry point in cuda/src.
 #
@@ -78,6 +79,16 @@ if ! "$cxx" -std=c++17 -fsyntax-only -Werror=double-promotion -Werror=float-conv
     echo "  the Metal entry point (docs/notes/one-kernel-source.md)." >&2
     failed=1
 fi
+for source in "$root"/cuda/src/*.cu; do
+    [[ "$(basename "$source")" == kernels.cu ]] && continue
+    if ! "$cxx" -std=c++17 -fsyntax-only -Werror=double-promotion -Werror=float-conversion \
+        -I "$root/cuda/include" -I "$kernels" -x c++ "$source"; then
+        echo "kernel-check: ${source#"$root"/} no longer compiles against the shared MSL: a shared" >&2
+        echo "  function its entry points call changed. Change the CUDA entry point with it" >&2
+        echo "  (docs/notes/cuda-engine.md)." >&2
+        failed=1
+    fi
+done
 
 # 3. cuda/kernels.txt against the MSL and against cuda/src.
 entries="$(find "$root/cuda/src" -type f \( -name '*.cu' -o -name '*.h' \) -exec cat {} + | awk '
