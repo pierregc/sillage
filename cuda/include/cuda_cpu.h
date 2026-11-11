@@ -41,9 +41,10 @@ struct sillage_cpu_index {
     unsigned x, y, z;
 };
 
-// Set by the launch for the thread that is running.
-inline sillage_cpu_index threadIdx, blockIdx;
-inline dim3 blockDim, gridDim;
+// Set by the launch for the thread that is running. One a host thread, so that two launches
+// from two host threads do not mix.
+inline thread_local sillage_cpu_index threadIdx, blockIdx;
+inline thread_local dim3 blockDim, gridDim;
 
 template <class Body>
 void sillage_cpu_launch(dim3 grid, dim3 block, Body body) {

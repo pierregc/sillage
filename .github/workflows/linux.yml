@@ -38,15 +38,38 @@ jobs:
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cuda-nvcc-13-5 cuda-cudart-dev-13-5
-      - name: The CUDA build for sm_120, compile only
-        run: REQUIRE_NVCC=1 NVCC=/usr/local/cuda/bin/nvcc cuda/build.sh gpu
+      - name: The CUDA build for sm_120, compile only, and the two libraries the Swift links
+        run: REQUIRE_NVCC=1 NVCC=/usr/local/cuda/bin/nvcc cuda/build.sh gpu libs
 
-  swift:
+  # scripts/linux.sh check in three jobs side by side (#273), so that the longest stays under
+  # ten minutes: SillageCore's tests, SillageRender's, and the formatter, the strict concurrency
+  # typecheck and the CUDA engine's tests on the CPU target.
+  swift-core:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     container: swift:6.2-noble
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      - name: The portable Swift, built and tested as scripts/linux.sh check does
-        run: scripts/linux.sh check
+      - name: SillageCore, built and tested
+        run: scripts/linux.sh test-core
+
+  swift-render:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: SillageRender, built and tested
+        run: scripts/linux.sh test-render
+
+  swift-checks:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: The formatter, the strict concurrency typecheck, the CUDA engine's tests
+        run: scripts/linux.sh lint strict test-cuda

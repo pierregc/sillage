@@ -24,26 +24,26 @@ BarnesHutShaders bhAcceleration pending #274
 BarnesHutShaders bhTracerDrift pending #275
 BarnesHutShaders bhTracerStep pending #275
 
-GPUTreeShaders gtReset pending #273
-GPUTreeShaders gtBounds pending #273
-GPUTreeShaders gtRoot pending #273
-GPUTreeShaders gtMorton pending #273
-GPUTreeShaders gtRadixCount pending #273
-GPUTreeShaders gtScanReduce pending #273
-GPUTreeShaders gtScanTop pending #273
-GPUTreeShaders gtScanDown pending #273
-GPUTreeShaders gtRadixScatter pending #273
-GPUTreeShaders gtCloseLevel pending #273
-GPUTreeShaders gtSplit pending #273
-GPUTreeShaders gtGather pending #273
-GPUTreeShaders gtLeafSums pending #273
-GPUTreeShaders gtFold pending #273
-GPUTreeShaders gtNormalize pending #273
-GPUTreeShaders gtFoldMoments pending #273
-GPUTreeShaders gtSmoothing pending #273
-GPUTreeShaders gtSpacingLeaves pending #273
-GPUTreeShaders gtSpacingFold pending #273
-GPUTreeShaders gtSpacingLengths pending #273
+GPUTreeShaders gtReset cuda
+GPUTreeShaders gtBounds cuda gpu-only
+GPUTreeShaders gtRoot cuda
+GPUTreeShaders gtMorton cuda
+GPUTreeShaders gtRadixCount cuda gpu-only
+GPUTreeShaders gtScanReduce cuda gpu-only
+GPUTreeShaders gtScanTop cuda gpu-only
+GPUTreeShaders gtScanDown cuda gpu-only
+GPUTreeShaders gtRadixScatter cuda gpu-only
+GPUTreeShaders gtCloseLevel cuda
+GPUTreeShaders gtSplit cuda gpu-only
+GPUTreeShaders gtGather cuda
+GPUTreeShaders gtLeafSums cuda
+GPUTreeShaders gtFold cuda
+GPUTreeShaders gtNormalize cuda
+GPUTreeShaders gtFoldMoments cuda
+GPUTreeShaders gtSmoothing cuda
+GPUTreeShaders gtSpacingLeaves cuda
+GPUTreeShaders gtSpacingFold cuda
+GPUTreeShaders gtSpacingLengths cuda
 
 RecordingShaders expandSnapshots metal-only: take playback
 RecordingShaders expandSnapshots21 metal-only: take playback

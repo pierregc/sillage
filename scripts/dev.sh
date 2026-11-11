@@ -111,6 +111,20 @@ strict_concurrency() {
         "$ROOT"/Sources/SillageApp/*.swift
 }
 
+# The CUDA engine's Swift (#273) typechecks here against the C API's header, plain C: its
+# library is built and its tests run on Linux (scripts/linux.sh). A pass the CUDA side does not
+# handle, or a change of the C API it does not follow, fails here.
+cuda_swift() {
+    build_render
+    local includes=(-I "$BUILD" -I "$ROOT/cuda/include")
+    swiftc -emit-module -enable-testing -module-name SillageCUDA "${includes[@]}" \
+        "$ROOT"/Sources/SillageCUDA/*.swift -emit-module-path "$BUILD/SillageCUDA.swiftmodule"
+    swiftc -typecheck -strict-concurrency=complete -swift-version 6 -module-name SillageCUDA \
+        "${includes[@]}" "$ROOT"/Sources/SillageCUDA/*.swift
+    swiftc -typecheck "${includes[@]}" -F "$FRAMEWORKS" -load-plugin-library "$PLUGIN" \
+        -parse-as-library "$ROOT"/Tests/SillageCUDATests/*.swift
+}
+
 # Everything CI used to run, in one command, and now the only gate there is. Run it before
 # every commit.
 check() {
@@ -120,6 +134,8 @@ check() {
     "$ROOT/scripts/kernel-check.sh"
     echo "== strict concurrency"
     strict_concurrency
+    echo "== cuda swift"
+    cuda_swift
     echo "== app"
     build_app >/dev/null
     echo "== tests"
@@ -131,6 +147,7 @@ case "${1:-check}" in
     lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
     strict) strict_concurrency ;;
     kernels) "$ROOT/scripts/kernel-check.sh" ;;
+    cuda)   cuda_swift ;;
     check)  check ;;
     test)   shift || true; build_render; run_tests "$@" ;;
     app)    build_app ;;
@@ -142,7 +159,7 @@ case "${1:-check}" in
     explore|hires|look|export|palettes|probe-disk)
             build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
-    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|kernels|render|app|fixtures]" >&2
+    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|kernels|cuda|render|app|fixtures]" >&2
             echo "       ${BASH_SOURCE[0]} explore|hires|look|export|palettes <scene folder> [options]" >&2
             echo "       ${BASH_SOURCE[0]} probe-disk <scene.json | scene folder> <galaxy> [options]" >&2
             exit 2 ;;

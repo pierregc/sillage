@@ -198,8 +198,9 @@ __global__ void gtGather(float4 *sorted, const float3 *positions, const float *m
 `cuda/build.sh` builds `cuda/src` and `cuda/tests` both ways: with `nvcc` for sm_120 (the RTX
 5090), compile only, without FMA contraction or fast math until a file's Metal twin asks for
 them, and it fails if a file's PTX holds a double precision instruction; then the CPU target
-with `-O2 -ffp-contract=off -Wall -Wextra -Werror`, whose tests it runs. #273 builds the two
-libraries the Swift links from the same files.
+with `-O2 -ffp-contract=off -Wall -Wextra -Werror`, whose tests it runs. `cuda/build.sh libs`
+builds the two libraries the Swift links from the same files (#273,
+[cuda-engine.md](cuda-engine.md)).
 
 `cuda/tests/compat.cu` tests the two headers on the CPU target, 109 checks: the launch reaches
 every thread of every block once, the atomics, the memory calls, the vector types and their
@@ -209,8 +210,9 @@ swizzles, the functions, and a few of the tree's shared functions run from their
 from the shared functions and requires Metal's bits. One thread alone in its SIMD group and its
 threadgroup makes the bounds and the split run there, and lays the nodes out in the fixture's
 level order; a stable sort stands in for the radix kernels, which count on 32 lanes.
-`cuda/tests/tree_probe.cu` only has `nvcc` generate device code for the tree's 20 shared
-functions, so that their PTX is read too; #273 replaces it with the real entry points.
+`cuda/tests/tree_entries.cu` (#273) runs the tree's entry points that need no barrier on the
+CPU target, on the same fixture: `cuda/src/tree.cu` holds the 20, whose PTX `nvcc` writes and
+the build reads.
 `cuda/spike/` is #271's throwaway, with two early headers of its own: `cuda/include` replaces
 them, and nothing new includes the spike's.
 
@@ -292,8 +294,10 @@ found a bug.
   longer has that size (`KernelSourceTests`);
 - a library's `source` that is no longer one plain string;
 - Metal no longer giving the reference outputs;
-- from #273 on, CUDA Swift that no longer typechecks against `cuda/include/sillage_cuda.h`, so a
-  pass the CUDA engine does not handle.
+- a CUDA entry point of `cuda/src` that no longer compiles against the shared MSL it calls
+  (#273);
+- CUDA Swift that no longer typechecks against `cuda/include/sillage_cuda.h`, so a pass the CUDA
+  engine does not handle (`./scripts/dev.sh cuda`, #273).
 
 **On GitHub, on every push** (`.github/workflows/linux.yml`, [no-ci.md](no-ci.md)):
 
