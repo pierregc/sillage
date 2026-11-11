@@ -541,6 +541,17 @@ struct CUDARenderTests {
             for line in comparison.lines { print("CUDARENDER", line) }
             Self.expectAgreement(comparison)
         }
+        // A run's frame, drawn with its light tracers.
+        let traced = folder.appendingPathComponent("tracers")
+        if FileManager.default.fileExists(atPath: traced.appendingPathComponent("manifest.json").path) {
+            let comparisons = try CUDARenderChecks.compare(
+                folder: traced, maps: maps.map { URL(fileURLWithPath: $0).appendingPathComponent("tracers") })
+            #expect(!comparisons.isEmpty)
+            for comparison in comparisons {
+                for line in comparison.lines { print("CUDARENDER", line) }
+                Self.expectAgreement(comparison)
+            }
+        }
         // And from the take alone, every input made here.
         let alone = try CUDARenderChecks.compareFromTake(folder: folder)
         for line in alone.inputs { print("CUDARENDER", line) }

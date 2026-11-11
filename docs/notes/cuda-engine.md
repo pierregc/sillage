@@ -591,14 +591,14 @@ only the buffers are CUDA's.
   every thread adds is the same in any order, so **a frame drawn twice is the same to the
   bit**, on a GPU as on the CPU target, whatever the number of threads. A pixel holds up to
   2^24 = 16.8 million, 256 times the 65,504 of Metal's half float target.
-- **The scale, from the largest values measured.** On the twelve frames below, at 200 k drawn
-  in 960 by 540, the largest value a pixel holds on any channel is 909 in the light of a splat
-  look (the core of a wide shot, where Metal's half float holds 854), 23.5 in the dust, and
-  5,586 in the raw look, whose alpha counts the points on a pixel and stops at 2,048 on Metal.
-  The exposure divides the colours by the count, so they stay there at any count; the alpha
-  grows with it, to about a hundred thousand a pixel for the raw look in a 4K frame at 200 M.
-  The ceiling is 160 times that. #283's faint light measure prints the largest value it meets
-  at 200 M.
+- **The scale, from the largest values measured.** On the frames below, at 200 k drawn in 960
+  by 540, the largest value a pixel holds on any channel is 2,980 in the light of a splat look
+  (the core of a run's frame whose camera holds the whole scene; 909 on a take's wide shot),
+  24 in the dust, and 11,570 in the raw look, whose alpha counts the points on a pixel and
+  stops at 2,048 on Metal. The exposure divides the colours by the count, so they stay there
+  at any count; the alpha grows with it, to about two hundred thousand a pixel for the raw
+  look in a 4K frame at 200 M. The ceiling is 90 times that. #283's faint light measure prints
+  the largest value it meets at 200 M.
 - **What is not laid**: a negative value and a value that is not a number add nothing. Every
   per-pixel function of `Shaders` gives non-negative values today.
 - **The column pass counts**: one a particle, in 64-bit integers. Metal counts in a 32-bit
@@ -650,7 +650,7 @@ only the buffers are CUDA's.
   frame; a pixel saturates rather than wrap; half floats hold 11 bits and lose what falls under
   their smallest value; the two measures of #283 run small.
 - `theParticlePassesAgreeWithMetal`, a sixteenth, when `SILLAGE_CUDA_RENDER_TARGETS` names the
-  Mac's folder: the comparison below. The folder is 128 MB on an assets branch, so the push
+  Mac's folder: the comparison below. The folder is 156 MB on an assets branch, so the push
   workflow does not fetch it; #277's reference frames bring the comparison into every check.
 
 **Written now, run on a GPU in #283**, each skipped on the CPU target with "needs an NVIDIA GPU
@@ -674,27 +674,33 @@ and libsillagecuda.a: #283 runs it":
 frames named, what the particle passes left in their targets before any post-processing and
 everything they drew from, byte for byte as the GPU holds it (`Renderer.particleTargets`,
 `RenderTargetManifest` in `ParticleTargets.swift`). An export draws the same frames with and
-without the option. The folder, little endian, rows from the top:
+without the option. `hires` takes the same two options and writes a frame of the run itself,
+drawn with its light tracers, which a take's export never draws. The folder, little endian,
+rows from the top:
 
 | where | what |
 | --- | --- |
 | `manifest.json` | `sillage-render-targets`, version 1: the commit, the device, the take, then every file with its type, stride, count and, for a texture, width and height. A reader goes by it |
 | `particles/` | one value a drawn particle, as the renderer binds them: `population.f32`, `formation.f32`, `luminosity.f32`, `component.u32`, `galaxy.u32`, `traits.f32x2`, `rampKeys.f32`; and `stellar.f32x2` |
-| `frames/<name>/` | `positions.f32x4` (16 bytes a position) and `smoothing.f32` |
-| `targets/<look>/<name>/` | `splat-uniforms.bin` (176 bytes, `pass` 1), `web-uniforms.bin`, `disk-frames.bin`, `ramps.bin`, `starfield.bin`; `light.f16` and `dust.f16` (rgba16Float, a half's bits a value), `column.f32`, `carrier.f16`, `tags.u8` |
+| `frames/<name>/` | `positions.f32x4` (16 bytes a position) and `smoothing.f32`; for a run's frame, `states.f32x4` (a tracer's position, its formation time in w), `words.u32x4` (its velocity, its `TracerWord` last) and `scales.f32` (each galaxy's scale length, 16 floats) |
+| `targets/<look>/<name>/` | `splat-uniforms.bin` (176 bytes, `pass` 1), `web-uniforms.bin`, `disk-frames.bin`, `ramps.bin`, `starfield.bin`; `light.f16` and `dust.f16` (rgba16Float, a half's bits a value), `column.f32`, `carrier.f16`, `tags.u8`; with tracers, `cells.u32x2` and `treeFrame.f32`, the massive tree's spacing records as bound and the frame its codes are taken in |
 | `lace/` | 256 by 256 texels of the baked lace's first level and the whole of its fifth |
 
 A target also lists its look, its frame, the director's shot, the camera, `supersample`,
 `plain`, `starCount`, `dustWeb`, `columnSmoothing`, `holeShadow`, `mapped`, the luminosity
-normalisation and the lace's mean.
+normalisation, the lace's mean and, for a run's frame, `tracers` and `tracerDepth`: how many
+light tracers it draws after its `drawn` massive particles and the depth of their tree.
 
 **The frames compared.** On the `assets/cuda-checks` branch, under
 `docs/spikes/cuda-checks/render/`: a take of scene-0031 of 2026-10-30-b at 200 k drawn from
 50 k massive, 30 captured frames through the first pericentre, drawn at 480 by 270 on an M4
-Max in four looks with the scene's director camera: `hubble` (the dust web, 1,500 field stars),
-`red-vs-cyan` (no web, no dust), `raw` (plain points, supersampling 1) and `red-vs-cyan` with
-`columnSmoothing` 8 for the column pass, each on a close shot of a disk (frame 4), a wide shot
-(frame 12) and the pericentre (frame 19).
+Max in five looks with the scene's director camera: `hubble` (the dust web, 1,500 field stars),
+`hubble-noweb` (the same with `dustWeb` 0: the dust in its four slabs), `red-vs-cyan` (no dust),
+`raw` (plain points, supersampling 1) and `red-vs-cyan` with `columnSmoothing` 8 for the column
+pass, each on a close shot of a disk (frame 4), a wide shot (frame 12) and the pericentre
+(frame 19). And under `tracers/`, one frame of a run of the same scene, drawn as a full pass
+draws it: 49,793 massive particles and 150,207 light tracers, through the director's live
+camera, which holds the whole scene, in `hubble`, `raw` and `red-vs-cyan` with the column.
 
 **The CUDA side**, on the CPU target in a cloud session (`CUDARenderChecks.compare`):
 
@@ -707,7 +713,7 @@ SILLAGE_CUDA_RENDER_TARGETS=../checks/docs/spikes/cuda-checks/render \
 draws each frame from Metal's own bytes (its attribute buffers, positions, smoothing lengths,
 disk frames, field stars, stellar table, and its uniforms laid over the plan's), once in fixed
 point and once in half floats with one thread, which blends the fragments as Metal does and in
-its order. Two minutes for the twelve frames, both ways, and again from the take alone. The
+its order. Three minutes for the eighteen frames, both ways, and again from the take alone. The
 relative difference of a pixel is `|CUDA - Metal| / max(CUDA, Metal)` of the sum of its red,
 green and blue, over the pixels where either holds something.
 
@@ -716,6 +722,9 @@ green and blue, over the pixels where either holds something.
 | `hubble` | close | 1.0017 | 0.66 % | 4.3 % | 10.6 % | 1.00009 | 0.18 % | 1.5 % | 4.1 % |
 | `hubble` | wide | 1.0017 | 57 % | 100 % | 100 % | 0.99992 | 11 % | 67 % | 100 % |
 | `hubble` | pericentre | 1.0024 | 0.76 % | 3.5 % | 8.9 % | 1.00003 | 0.16 % | 1.2 % | 3.3 % |
+| `hubble-noweb` | close | 1.0016 | 0.61 % | 4.3 % | 10.6 % | 1.00000 | 0.12 % | 1.5 % | 4.1 % |
+| `hubble-noweb` | wide | 1.0031 | 57 % | 100 % | 100 % | 0.99998 | 11 % | 67 % | 100 % |
+| `hubble-noweb` | pericentre | 1.0024 | 0.76 % | 3.5 % | 8.9 % | 1.00002 | 0.15 % | 1.2 % | 3.3 % |
 | `raw` | close | 1.0001 | 0.02 % | 0.04 % | 0.20 % | 1.00000 | 0 | 0 | 0 |
 | `raw` | wide | 1.0282 | 0.02 % | 0.21 % | 3.7 % | 1.00001 | 0 | 0 | 0 |
 | `raw` | pericentre | 1.0004 | 0.02 % | 0.04 % | 0.28 % | 1.00002 | 0 | 0 | 0 |
@@ -725,11 +734,14 @@ green and blue, over the pixels where either holds something.
 | with the column | close | 1.0014 | 0.38 % | 2.8 % | 8.5 % | 0.99992 | 0.09 % | 1.3 % | 4.3 % |
 | with the column | wide | 1.0060 | 30 % | 100 % | 100 % | 0.99985 | 5.3 % | 50 % | 100 % |
 | with the column | pericentre | 1.0028 | 0.37 % | 2.0 % | 6.1 % | 0.99991 | 0.10 % | 0.92 % | 2.9 % |
+| `hubble`, with tracers | the run's | 1.0059 | 100 % | 100 % | 100 % | 0.99983 | 6.5 % | 50 % | 100 % |
+| `raw`, with tracers | the run's | 1.1640 | 0.005 % | 0.55 % | 9.8 % | 1.00000 | 0 | 0 | 0 |
+| with the column and tracers | the run's | 1.0246 | 100 % | 100 % | 100 % | 0.99987 | 4.7 % | 50 % | 100 % |
 
 - **The same picture.** Blending as Metal does, the whole light of a frame is Metal's within
-  0.015 %, and in the raw look more than 99 pixels in 100 hold Metal's value exactly. In fixed
-  point the CUDA renderer holds 0.01 to 0.6 % more light than Metal, what half floats round
-  away, and 2.8 % more in the raw wide shot, whose core Metal stops counting.
+  0.02 %, and in the raw look more than 99 pixels in 100 hold Metal's value exactly. In fixed
+  point the CUDA renderer holds 0.01 to 0.6 % more light than Metal on the take's frames, what
+  half floats round away, and 2.8 % more in the raw wide shot, whose core Metal stops counting.
 - **The coverage**, the alpha of the light, where the kernels of a pixel add up and which no
   colour and no dust touches. In the splat looks its total is Metal's within 0.03 %, its
   median difference 0.03 to 0.07 %, its 99th percentile 0.3 to 0.4 %. That is the rasteriser's
@@ -745,6 +757,17 @@ green and blue, over the pixels where either holds something.
   median difference 0.3 % at most; the web's carrier within 0.006 % in total on the close
   shots, 0.3 % over on the wide one, its median 0.04 to 0.08 %; the tags the same on all but
   4 values of 1.5 million.
+- **The dust without the web** (`hubble-noweb`, the `dust` pass in its four slabs): its total
+  within 0.02 % in half floats, where more than half of its pixels hold Metal's value exactly
+  and the 99th percentile is 0.2 to 0.7 %; in fixed point its median difference is 0.03 to
+  0.05 %.
+- **The light tracers** (the run's frame, where they are three quarters of what is drawn): in
+  half floats the light's total is Metal's within 0.017 %, the raw look holds Metal's value on
+  99 pixels in 100, the column counts the same 151,878 particles with the same count in 8,038
+  cells of 8,040, and the web's tags are the same on every pixel. The live camera holds the
+  whole scene in a small part of the frame, so most of its lit pixels are faint and its cores
+  dense: a half float stops at 2,048 on a pixel in all three looks, where the fixed point
+  counts to 2,664, 2,980 and 11,570 and holds 0.6, 2.5 and 16 % more light.
 - **The column**: the same count in the frame (144,260, 152,165 and 146,273 particles), and in
   8,034, 8,040 and 8,036 cells of 8,040: a particle on a cell's edge falls on the other side.
 - **The lace**: the first level baked here is Metal's within the rounding of its half floats
@@ -768,11 +791,9 @@ green and blue, over the pixels where either holds something.
    where Metal has its GPU's. The dust is 0.1 to 0.4 % apart in the median and the light
    behind it follows.
 
-**What these frames do not draw**: a palette with a ramp (`mapped`), the dust without the web
-(the `dust` pass in its four slabs, which shares `dustPixel` with the painted dust drawn
-here), and a light tracer, which only a full pass draws. The tests of the CPU target cover the
-three (a ramp paints its galaxy's stars and moves no kernel, a tracer draws like the particle
-it stands for, the dust dims what stands behind it), not against Metal.
+**What these frames do not draw**: a palette with a ramp (`mapped`), which no look of the
+catalogue has. A test of the CPU target holds that a ramp paints its galaxy's stars and moves
+no kernel; it is in no comparison with Metal yet.
 
 **The pictures**, on `assets/cuda-checks` under `docs/spikes/cuda-checks/render/compare/`, with
 every number of the run in `comparison.txt` and the script that draws them from the maps the
@@ -786,6 +807,8 @@ difference in fixed point and in half floats below, on a log scale from 1e-4 (bl
 | `raw` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-pericentre.png) |
 | `red-vs-cyan` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-pericentre.png) |
 | `red-vs-cyan-column` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-pericentre.png) |
+| `hubble-noweb` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-noweb-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-noweb-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-noweb-pericentre.png) |
+| the run's frame, with tracers | [`hubble`](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/tracers/hubble-early.png) | [`raw`](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/tracers/raw-early.png) | [with the column](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/tracers/red-vs-cyan-column-early.png) |
 
 **From the take alone**, as #278 will draw (`CUDARenderChecks.compareFromTake`): every input
 made on Linux in place of Metal's bytes.
@@ -805,7 +828,7 @@ same table within a unit of its last digit (the light's total within 0.015 % in 
 the light's and the dust's totals within 0.1 %, the median difference of the light under 0.5 %
 in each decade of Metal's value from 1e-4 up, of the dust under 1 %; in fixed point the
 coverage's 90th percentile under 0.5 %; from the take alone the light's total within 0.2 %.
-About twice what was measured.
+About twice what was measured. The run's frame under `tracers/` is held to the same.
 
 ### What #277 and #278 can rely on
 

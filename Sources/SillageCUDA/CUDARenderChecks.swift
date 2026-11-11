@@ -417,6 +417,9 @@ extension CUDARenderChecks {
                     : try values(entry("traits"), in: folder, as: SIMD2<Float>.self)
                 attributes.galaxySlots = target.galaxySlots
                 attributes.luminosityNormalisation = target.luminosityNormalisation
+                if frame.files["scales"] != nil {
+                    attributes.tracerScales = try values(entry("scales"), in: folder, as: Float.self)
+                }
                 renderer = try CUDARenderer(
                     context: context, attributes: attributes, settings: settings,
                     laceTexels: laceTexels)
@@ -440,6 +443,27 @@ extension CUDARenderChecks {
                 }
             }
 
+            // A run's frame draws its light tracers behind the massive particles: their states
+            // and words, and the spacing records of the tree Metal sized them from.
+            let tracers = target.tracers ?? 0
+            if tracers > 0 {
+                let depth = target.tracerDepth ?? 0
+                renderer.setTracers(
+                    CUDARenderer.Tracers(
+                        states: try context.makeBuffer(
+                            values(entry("states"), in: folder, as: SIMD4<Float>.self)),
+                        motions: try context.makeBuffer(
+                            values(entry("words"), in: folder, as: SIMD4<UInt32>.self)),
+                        count: tracers,
+                        cells: depth > 0
+                            ? try context.makeBuffer(
+                                values(entry("cells"), in: folder, as: SIMD2<UInt32>.self)) : nil,
+                        treeFrame: depth > 0
+                            ? try context.makeBuffer(
+                                values(entry("treeFrame"), in: folder, as: Float.self)) : nil,
+                        depth: depth))
+            }
+
             // The plan's passes from what the frame draws, its uniforms Metal's own bytes.
             let camera = Camera(
                 eye: SIMD3(target.camera.eye[0], target.camera.eye[1], target.camera.eye[2]),
@@ -450,7 +474,7 @@ extension CUDARenderChecks {
             let webbed = target.files["web-uniforms"] != nil
             var plan = FramePlan(
                 settings: settings, camera: camera, time: target.time, drawnCount: target.drawn,
-                tracerCount: 0, luminosityNormalisation: target.luminosityNormalisation,
+                tracerCount: tracers, luminosityNormalisation: target.luminosityNormalisation,
                 mapped: target.mapped, laceScale: webbed ? 1 / max(target.laceMean ?? 1, 1e-6) : nil)
             let uniforms = try data(entry("splat-uniforms"), in: folder)
             plan.splat = uniforms.withUnsafeBytes { $0.loadUnaligned(as: SplatUniforms.self) }
@@ -490,6 +514,7 @@ extension CUDARenderChecks {
             let name = "\(target.look) \(target.frame)"
             comparison.lines.append(
                 "\(name) (\(target.shot ?? "no shot"), \(width) x \(height), \(target.drawn) drawn,"
+                    + (tracers > 0 ? " \(tracers) light tracers," : "")
                     + " largest light Metal \(metalLight.max() ?? 0), CUDA \(light.max() ?? 0))")
             comparison.lines.append("  light, fixed point: \(comparison.light.summary)")
             comparison.lines.append("  light, half floats: \(comparison.halfLight.summary)")
