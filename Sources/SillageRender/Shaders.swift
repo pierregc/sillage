@@ -6,11 +6,15 @@ enum Shaders {
         #include <metal_stdlib>
         using namespace metal;
 
-        // Metal only so far: #276 and #277 share this library with the CUDA engine
-        // (docs/notes/one-kernel-source.md).
+        // What is outside `#if defined(__METAL_VERSION__)` is shared with the CUDA engine, which
+        // compiles it through cuda/include/msl_compat.h (docs/notes/one-kernel-source.md). #276
+        // shared the particle passes; the post-processing kernels at the end wait for #277.
         #if defined(__METAL_VERSION__)
+        #define SHARED static
+        #define SHARED_CONSTANT constant
 
         constexpr sampler bilinear(filter::linear, address::clamp_to_edge, coord::normalized);
+        #endif
 
         struct SplatUniforms {
             float4x4 viewProjection;
@@ -65,7 +69,7 @@ enum Shaders {
 
         // The colour a galaxy's ramp gives this particle. With the mix mapping, gas and the
         // stars the run formed take the young colour, bulge and outskirts the ramp's ends.
-        static float3 rampColour(constant GalaxyRamp &ramp, float radius, uint kind, float born) {
+        SHARED float3 rampColour(constant GalaxyRamp &ramp, float radius, uint kind, float born) {
             if (ramp.params.y > 0.5f) {
                 if (kind == 1u || kind == 2u || (born >= 0.0f && born < 1e8f)) { return ramp.young.rgb; }
                 if (kind == 4u) { return ramp.core.rgb; }
@@ -112,6 +116,7 @@ enum Shaders {
             float shortScale;
         };
 
+        #if defined(__METAL_VERSION__)
         struct SplatOut {
             float4 position [[position]];
             float pointSize [[point_size]];
@@ -150,10 +155,11 @@ enum Shaders {
         struct SplatFetch {
             half4 dust [[color(1)]];
         };
+        #endif
 
         /// Extinction is steeper in the blue than in the red, which is why a lane crossing a
         /// bright disk reads brown rather than grey.
-        constant float3 reddening = float3(1.0f, 1.22f, 1.52f);
+        SHARED_CONSTANT float3 reddening = float3(1.0f, 1.22f, 1.52f);
 
         struct DiskFrame {
             float4 center;
@@ -175,7 +181,7 @@ enum Shaders {
         // multiplying by forty thousand and taking the fraction, two implementations agreeing
         // to seven digits give unrelated numbers. This gives the same answer on both, exactly.
         // Mirrored in `SpiralPattern.hash`; edit both.
-        static float hash1(float i) {
+        SHARED float hash1(float i) {
             int k = int(i);
             uint n = uint(k * 374761393 + 668265263);
             n = (n ^ (n >> 13u)) * 1274126177u;
@@ -183,28 +189,28 @@ enum Shaders {
             return float(n) * (1.0f / 4294967296.0f);
         }
 
-        static float valueNoise(float x) {
+        SHARED float valueNoise(float x) {
             float i = floor(x);
             float f = x - i;
             float u = f * f * (3.0f - 2.0f * f);
             return mix(hash1(i), hash1(i + 1.0f), u);
         }
 
-        static float fractalNoise(float x) {
+        SHARED float fractalNoise(float x) {
             return valueNoise(x) * 0.65f + valueNoise(x * 2.3f + 19.1f) * 0.35f;
         }
 
         // Strips the luminance out of a colour, leaving only its hue and saturation. Every
         // emitter in this renderer carries unit luminance, so `brightness` stays the single
         // control over exposure and changing a colour can never change how bright a frame is.
-        static float3 chromaticity(float3 rgb) {
+        SHARED float3 chromaticity(float3 rgb) {
             return max(rgb, 0.0f) / max(dot(max(rgb, 0.0f), float3(0.2126f, 0.7152f, 0.0722f)), 1e-4f);
         }
 
         // Linear sRGB of a Planckian radiator. Chromaticity from Kang et al. (2002), then
         // CIE xy to sRGB primaries. Y is fixed at 1, so the conversion lands on unit
         // luminance before the negative lobe of a saturated hue is clipped away.
-        static float3 blackbody(float kelvin) {
+        SHARED float3 blackbody(float kelvin) {
             float t = clamp(kelvin, 2222.0f, 25000.0f);
             float inv = 1.0f / t;
             float x = t < 4000.0f
@@ -230,7 +236,7 @@ enum Shaders {
         // same way: the young end of the real curve is 18000 K and the real contrast between
         // a ten-megayear population and a ten-gigayear one is a factor of fifty. Young stars
         // came out too red and too faint at once, which is why a galaxy had no blue in it.
-        static float2 synthesised(device const float2 *table, constant SplatUniforms &u,
+        SHARED float2 synthesised(device const float2 *table, constant SplatUniforms &u,
                                   float ageMyr) {
             float f = log(max(ageMyr, u.populationYoungMyr) / u.populationYoungMyr)
                 / u.populationSpan;
@@ -241,7 +247,7 @@ enum Shaders {
 
         // The legacy path: a take written before every particle carried an age has only the
         // sampler's old zero-to-one population value, so it keeps the ramp that value meant.
-        static float3 legacyColour(float age) {
+        SHARED float3 legacyColour(float age) {
             return blackbody(exp(mix(log(4100.0f), log(13000.0f), saturate(age))));
         }
 
@@ -250,7 +256,7 @@ enum Shaders {
         // pink rather than blue. This is the colour such a region shows through broadband
         // filters, stated directly; deriving it from line ratios needs an emission model and
         // the CIE colour matching functions.
-        static float3 hiiColour() {
+        SHARED float3 hiiColour() {
             // Halpha at 656 nm carries the region, and the rest of what a broadband camera
             // sees of one is Hbeta and [OIII] at 486 and 500 — comparable to each other and
             // both well under the red. So the blue sits *below* the green, where it used to
@@ -268,7 +274,7 @@ enum Shaders {
         // the particles down. The two have to stay the same expression: this is what makes the
         // light and the matter agree about where the arms are, and it is what lets a lopsided
         // galaxy be lopsided in its mass rather than only in its paint.
-        static float spiralRidge(float extent, float phi, float arms, float windRate,
+        SHARED float spiralRidge(float extent, float phi, float arms, float windRate,
                                  float irregular, float seed, float phase) {
             float wander = (fractalNoise(extent * 1.5f + seed) - 0.5f) * 2.6f * irregular;
             float wound = phi - windRate * log(max(extent, 1e-3f)) - phase + wander;
@@ -303,7 +309,7 @@ enum Shaders {
         // sampler lays down are carried by the grains and are therefore sheared away within
         // an orbit — measured, the lane structure was gone by two hundred megayears — so this
         // is what makes a galaxy still have dust in it after a turn.
-        static float laneDetail(float3 position, DiskFrame frame) {
+        SHARED float laneDetail(float3 position, DiskFrame frame) {
             float3 rel = position - frame.center.xyz;
             float u = dot(rel, frame.axisU.xyz);
             float v = dot(rel, frame.axisV.xyz);
@@ -331,7 +337,7 @@ enum Shaders {
 
         // Where a particle sits relative to the spiral pattern, evaluated at its current
         // position so the arms do not wind up with the disk.
-        static float2 armWave(float3 position, DiskFrame frame) {
+        SHARED float2 armWave(float3 position, DiskFrame frame) {
             float strength = frame.axisV.w;
             if (strength <= 0.0f) { return float2(0.5f, 0.0f); }
             float3 rel = position - frame.center.xyz;
@@ -363,7 +369,7 @@ enum Shaders {
             float rampKey;
         };
 
-        static Drawn massiveDrawn(uint vid, device const float3 *positions,
+        SHARED Drawn massiveDrawn(uint vid, device const float3 *positions,
                                   device const float *formation, device const float *luminosity,
                                   device const uint *component, device const uint *galaxy,
                                   device const float *smoothing, device const float2 *traits) {
@@ -381,11 +387,11 @@ enum Shaders {
             return p;
         }
 
-        constant float tracerKernels[5] = {1.0f, 0.75f, 0.9f, 2.2f, 1.35f};
+        SHARED_CONSTANT float tracerKernels[5] = {1.0f, 0.75f, 0.9f, 2.2f, 1.35f};
 
         // A light tracer's word decoded as `TracerWord` packs it; its spacing is left to the
         // caller, which reads it off the tree only for what it draws.
-        static Drawn tracerDrawn(float4 state, uint word, constant float *scales) {
+        SHARED Drawn tracerDrawn(float4 state, uint word, constant float *scales) {
             Drawn p;
             p.position = state.xyz;
             p.born = state.w;
@@ -408,7 +414,7 @@ enum Shaders {
 
         // The spacing a tracer's kernel spans: that of the deepest cell of the massive tree
         // around it holding anything drawn, one read a level (`gtSpacingLeaves`).
-        static float tracerSpacing(float3 position, device const uint2 *cells,
+        SHARED float tracerSpacing(float3 position, device const uint2 *cells,
                                    device const float *frame, uint depth) {
             float length = as_type<float>(cells[0].x);
             if (depth == 0u) { return length; }
@@ -431,6 +437,7 @@ enum Shaders {
             return length;
         }
 
+        #if defined(__METAL_VERSION__)
         static SplatOut culledSplat() {
             SplatOut out;
             out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
@@ -1254,16 +1261,18 @@ enum Shaders {
             return out;
         }
 
+        #endif
+
         // The column pass: one count per emitting particle into coarse cells, which the
         // splat vertex reads back to size a kernel by how many stars share its patch of sky.
-        struct CountOut {
-            float4 position [[position]];
-            float pointSize [[point_size]];
+        struct CountPoint {
+            float4 position;
+            float pointSize;
         };
 
-        static CountOut countPoint(float3 position, uint kind, float born,
-                                   constant SplatUniforms &u) {
-            CountOut out;
+        SHARED CountPoint countPoint(float3 position, uint kind, float born,
+                                     constant SplatUniforms &u) {
+            CountPoint out;
             out.position = u.viewProjection * float4(position, 1.0f);
             out.pointSize = 1.0f;
             bool nursery = kind == 1u || kind == 2u;
@@ -1278,41 +1287,90 @@ enum Shaders {
             return out;
         }
 
+        // A light tracer's, from its state and its word.
+        SHARED CountPoint countTracer(float4 state, uint word, constant SplatUniforms &u) {
+            return countPoint(state.xyz, (word >> 4) & 7u, state.w, u);
+        }
+
+        // What a counted particle adds to the cell it falls in.
+        SHARED float4 countPixel() {
+            return float4(1.0f, 0.0f, 0.0f, 0.0f);
+        }
+
+        #if defined(__METAL_VERSION__)
+        struct CountOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+        };
+
+        static CountOut countOut(CountPoint point) {
+            CountOut out;
+            out.position = point.position;
+            out.pointSize = point.pointSize;
+            return out;
+        }
+
         vertex CountOut countVertex(uint vid [[vertex_id]],
                                     device const float3 *positions [[buffer(0)]],
                                     device const uint *component [[buffer(3)]],
                                     constant SplatUniforms &u [[buffer(4)]],
                                     device const float *formation [[buffer(8)]]) {
-            return countPoint(positions[vid], component[vid], formation[vid], u);
+            return countOut(countPoint(positions[vid], component[vid], formation[vid], u));
         }
 
         vertex CountOut countTracerVertex(uint vid [[vertex_id]],
                                           constant SplatUniforms &u [[buffer(4)]],
                                           device const float4 *states [[buffer(18)]],
                                           device const uint *words [[buffer(19)]]) {
-            float4 state = states[vid];
-            return countPoint(state.xyz, (words[vid * 4u + 3u] >> 4) & 7u, state.w, u);
+            return countOut(countTracer(states[vid], words[vid * 4u + 3u], u));
         }
 
         fragment float4 countFragment(CountOut in [[stage_in]]) {
-            return float4(1.0f, 0.0f, 0.0f, 0.0f);
+            return countPixel();
         }
+        #endif
 
         // The raw look: one fixed-size point per particle in its galaxy's tint, none of the
         // per-particle state the full splat reads. Dark matter is pushed out of the clip volume.
+        struct PlainPoint {
+            float4 position;
+            float pointSize;
+            half3 color;
+        };
+
+        SHARED PlainPoint plainPoint(float3 position, uint kind, uint galaxy,
+                                     constant SplatUniforms &u, constant DiskFrame *frames) {
+            PlainPoint out;
+            out.position = u.viewProjection * float4(position, 1.0f);
+            out.pointSize = u.minimumSize;
+            out.color = half3(frames[galaxy].tint.xyz * u.brightness);
+            if (kind == 3u || kind == 6u) { out.position = float4(2.0f, 2.0f, 2.0f, 1.0f); }
+            return out;
+        }
+
+        // A light tracer's, from its state and its word.
+        SHARED PlainPoint plainTracer(float4 state, uint word, constant SplatUniforms &u,
+                                      constant DiskFrame *frames) {
+            return plainPoint(state.xyz, (word >> 4) & 7u, word & 15u, u, frames);
+        }
+
+        // What a plain point lays on every pixel of its square.
+        SHARED half4 plainPixel(half3 color) {
+            return half4(color, half(1.0f));
+        }
+
+        #if defined(__METAL_VERSION__)
         struct PlainOut {
             float4 position [[position]];
             float pointSize [[point_size]];
             half3 color;
         };
 
-        static PlainOut plainPoint(float3 position, uint kind, uint galaxy,
-                                   constant SplatUniforms &u, constant DiskFrame *frames) {
+        static PlainOut plainOut(PlainPoint point) {
             PlainOut out;
-            out.position = u.viewProjection * float4(position, 1.0f);
-            out.pointSize = u.minimumSize;
-            out.color = half3(frames[galaxy].tint.xyz * u.brightness);
-            if (kind == 3u || kind == 6u) { out.position = float4(2.0f, 2.0f, 2.0f, 1.0f); }
+            out.position = point.position;
+            out.pointSize = point.pointSize;
+            out.color = point.color;
             return out;
         }
 
@@ -1322,7 +1380,7 @@ enum Shaders {
                                     constant SplatUniforms &u [[buffer(4)]],
                                     device const uint *galaxy [[buffer(5)]],
                                     constant DiskFrame *frames [[buffer(6)]]) {
-            return plainPoint(positions[vid], component[vid], galaxy[vid], u, frames);
+            return plainOut(plainPoint(positions[vid], component[vid], galaxy[vid], u, frames));
         }
 
         vertex PlainOut plainTracerVertex(uint vid [[vertex_id]],
@@ -1330,12 +1388,11 @@ enum Shaders {
                                           constant DiskFrame *frames [[buffer(6)]],
                                           device const float4 *states [[buffer(18)]],
                                           device const uint *words [[buffer(19)]]) {
-            uint word = words[vid * 4u + 3u];
-            return plainPoint(states[vid].xyz, (word >> 4) & 7u, word & 15u, u, frames);
+            return plainOut(plainTracer(states[vid], words[vid * 4u + 3u], u, frames));
         }
 
         fragment half4 plainFragment(PlainOut in [[stage_in]]) {
-            return half4(in.color, half(1.0f));
+            return plainPixel(in.color);
         }
 
         fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
