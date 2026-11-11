@@ -219,6 +219,13 @@ public final class CUDARenderer: FrameStyling {
         self.armPersistence = armPersistence
     }
 
+    /// Puts the grain where frame `index` of a video finds it, whatever was drawn before: the
+    /// next picture is that frame's, as an `export` draws it.
+    public func setGrain(frame index: Int) {
+        grain = FrameGrain()
+        skipFrames(index)
+    }
+
     /// Moves the grain on as `count` frames drawn would, as `Renderer.skipFrames` does.
     public func skipFrames(_ count: Int) {
         guard !settings.plain else { return }

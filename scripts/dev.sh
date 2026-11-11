@@ -121,6 +121,8 @@ cuda_swift() {
         "$ROOT"/Sources/SillageCUDA/*.swift -emit-module-path "$BUILD/SillageCUDA.swiftmodule"
     swiftc -typecheck -strict-concurrency=complete -swift-version 6 -module-name SillageCUDA \
         "${includes[@]}" "$ROOT"/Sources/SillageCUDA/*.swift
+    swiftc -typecheck -strict-concurrency=complete -swift-version 6 -module-name sillage_cuda \
+        "${includes[@]}" "$ROOT"/Sources/sillage-cuda/main.swift
     swiftc -typecheck "${includes[@]}" -F "$FRAMEWORKS" -load-plugin-library "$PLUGIN" \
         -parse-as-library "$ROOT"/Tests/SillageCUDATests/*.swift
 }
