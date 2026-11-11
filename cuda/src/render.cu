@@ -62,7 +62,76 @@ static __device__ __forceinline__ void addFixed(fixed_t *cell, fixed_t amount) {
 #endif
 }
 
-static __device__ __forceinline__ void add4(fixed_t *pixel, float4 value, float unit) {
+// Half floats, for the measure of what Metal's rgba16Float targets lose (#283): a float to the
+// nearest half, ties to even, and back.
+static __device__ __forceinline__ uint halfBits(float value) {
+    uint bits = as_type<uint>(value);
+    uint sign = (bits >> 16) & 0x8000u;
+    uint biased = (bits >> 23) & 0xFFu;
+    uint mantissa = bits & 0x7FFFFFu;
+    if (biased == 0xFFu) { return sign | (mantissa != 0u ? 0x7E00u : 0x7C00u); }
+    int exponent = int(biased) - 112;
+    if (exponent >= 31) { return sign | 0x7C00u; }
+    if (exponent <= 0) {
+        if (exponent < -10) { return sign; }
+        mantissa |= 0x800000u;
+        uint shift = uint(14 - exponent);
+        uint half = mantissa >> shift;
+        uint rest = mantissa & ((1u << shift) - 1u);
+        uint tie = 1u << (shift - 1u);
+        if (rest > tie || (rest == tie && (half & 1u) != 0u)) { half += 1u; }
+        return sign | half;
+    }
+    uint half = (uint(exponent) << 10) | (mantissa >> 13);
+    uint rest = mantissa & 0x1FFFu;
+    if (rest > 0x1000u || (rest == 0x1000u && (half & 1u) != 0u)) { half += 1u; }
+    return sign | half;
+}
+
+static __device__ __forceinline__ float halfValue(uint half) {
+    uint sign = (half & 0x8000u) << 16;
+    uint exponent = (half >> 10) & 0x1Fu;
+    uint mantissa = half & 0x3FFu;
+    if (exponent == 0u) {
+        float small = float(mantissa) * 5.9604645e-8f;
+        return sign != 0u ? -small : small;
+    }
+    if (exponent == 31u) { return as_type<float>(sign | 0x7F800000u | (mantissa << 13)); }
+    return as_type<float>(sign | ((exponent + 112u) << 23) | (mantissa << 13));
+}
+
+// A cell that holds a half, blended as Metal blends a fragment into an rgba16Float target:
+// the fragment's value is a half, and so is the sum. Its result depends on the order.
+static __device__ __forceinline__ void addHalf(fixed_t *cell, float value) {
+    if (!(value > 0.0f)) { return; }
+    float laid = halfValue(halfBits(value));
+    if (!(laid > 0.0f)) { return; }
+#if defined(SILLAGE_CPU)
+    fixed_t held = __atomic_load_n(cell, __ATOMIC_RELAXED);
+    for (;;) {
+        fixed_t sum = halfBits(halfValue(uint(held)) + laid);
+        if (__atomic_compare_exchange_n(cell, &held, sum, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) { return; }
+    }
+#else
+    fixed_t held = *cell;
+    for (;;) {
+        fixed_t sum = halfBits(halfValue(uint(held)) + laid);
+        fixed_t seen = atomicCAS(cell, held, sum);
+        if (seen == held) { return; }
+        held = seen;
+    }
+#endif
+}
+
+// `halves` accumulates as Metal does, for the measure; otherwise in fixed point.
+static __device__ __forceinline__ void add4(fixed_t *pixel, float4 value, float unit, bool halves = false) {
+    if (halves) {
+        addHalf(pixel, value.x);
+        addHalf(pixel + 1, value.y);
+        addHalf(pixel + 2, value.z);
+        addHalf(pixel + 3, value.w);
+        return;
+    }
     addFixed(pixel, toFixed(value.x, unit));
     addFixed(pixel + 1, toFixed(value.y, unit));
     addFixed(pixel + 2, toFixed(value.z, unit));
@@ -176,6 +245,8 @@ struct Targets {
     const float4 *finishedDust;
     uint width;
     uint height;
+    // Whether the targets hold half floats, blended as Metal blends them (#283's measure).
+    bool halves;
 };
 
 struct CarrierTargets {
@@ -183,6 +254,7 @@ struct CarrierTargets {
     uint *tags;
     uint width;
     uint height;
+    bool halves;
 };
 
 // Which fragment function a splat's pixels go through: Metal's pipeline pairs it with the
@@ -219,12 +291,13 @@ static __device__ __forceinline__ void laySplat(uint lay, const Splat &splat, in
     if (r2 > 1.0f) { return; }
     size_t pixel = size_t(y) * targets.width + size_t(x);
     if (lay == layDust) {
-        add4(targets.dust + pixel * 4u, dustPixel(splat.opticalDepth, splat.slab, r2), fixedUnit);
+        add4(targets.dust + pixel * 4u, dustPixel(splat.opticalDepth, splat.slab, r2), fixedUnit, targets.halves);
     } else if (lay == layLight) {
         add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2),
-             fixedUnit);
+             fixedUnit, targets.halves);
     } else {
-        add4(targets.light + pixel * 4u, starfieldPixel(splat.color, splat.spikes, coord, r2), fixedUnit);
+        add4(targets.light + pixel * 4u, starfieldPixel(splat.color, splat.spikes, coord, r2), fixedUnit,
+             targets.halves);
     }
 }
 
@@ -251,7 +324,7 @@ static __device__ __forceinline__ void layCarrier(const WebCarrier &grain, int x
     if (r2 > 1.0f) { return; }
     half4 tags = webTagPixel(grain.tag, grain.slab);
     size_t pixel = (size_t(y) * targets.width + size_t(x)) * 4u;
-    add4(targets.carrier + pixel, webCarrierPixel(grain.carried, grain.slab, r2), fixedUnit);
+    add4(targets.carrier + pixel, webCarrierPixel(grain.carried, grain.slab, r2), fixedUnit, targets.halves);
     for (int channel = 0; channel < 4; ++channel) { maxBits(targets.tags + pixel + channel, unorm8(tags[channel])); }
 }
 
@@ -361,7 +434,7 @@ __global__ void webCarrierTracerVertex(Tracers t, Frame f, Range range, CarrierT
 // The carrier times the web, a thread a pixel of the frame, where Metal draws one triangle
 // over it. The carrier is read with Metal's bilinear sampler and the tags with its nearest.
 __global__ void webResolveFragment(Frame f, Lace lace, texels2d carried, texels2d tagged, fixed_t *dust,
-                                   uint width, uint height) {
+                                   uint width, uint height, bool halves) {
     size_t pixel = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
     if (pixel >= size_t(width) * height) { return; }
     float2 centre(float(pixel % width) + 0.5f, float(pixel / width) + 0.5f);
@@ -369,31 +442,35 @@ __global__ void webResolveFragment(Frame f, Lace lace, texels2d carried, texels2
     float4 carrier = sample_bilinear(carried, uv);
     // Where nothing was carried Metal's fragment is discarded.
     if (!webCarried(carrier)) { return; }
-    add4(dust + pixel * 4u, webResolved(uv, carrier, sample_nearest(tagged, uv), f.frames, f.w, lace), fixedUnit);
+    add4(dust + pixel * 4u, webResolved(uv, carrier, sample_nearest(tagged, uv), f.frames, f.w, lace), fixedUnit,
+         halves);
 }
 
 // The raw look's points: every pixel of the square, with no kernel.
 static __device__ __forceinline__ void drawPlain(const PlainPoint &point, fixed_t *light, uint width,
-                                                 uint height) {
+                                                 uint height, bool halves) {
     Square square;
     if (!pointSquare(point.position, point.pointSize, width, height, square)) { return; }
     for (int y = square.top; y < square.bottom; ++y) {
         for (int x = square.left; x < square.right; ++x) {
-            add4(light + (size_t(y) * width + size_t(x)) * 4u, plainPixel(point.color), fixedUnit);
+            add4(light + (size_t(y) * width + size_t(x)) * 4u, plainPixel(point.color), fixedUnit, halves);
         }
     }
 }
 
-__global__ void plainVertex(Massive m, Frame f, Range range, fixed_t *light, uint width, uint height) {
+__global__ void plainVertex(Massive m, Frame f, Range range, fixed_t *light, uint width, uint height,
+                            bool halves) {
     uint vid;
     if (!particle(range, vid)) { return; }
-    drawPlain(plainPoint(m.positions[vid], m.component[vid], m.galaxy[vid], f.u, f.frames), light, width, height);
+    drawPlain(plainPoint(m.positions[vid], m.component[vid], m.galaxy[vid], f.u, f.frames), light, width, height,
+              halves);
 }
 
-__global__ void plainTracerVertex(Tracers t, Frame f, Range range, fixed_t *light, uint width, uint height) {
+__global__ void plainTracerVertex(Tracers t, Frame f, Range range, fixed_t *light, uint width, uint height,
+                                  bool halves) {
     uint vid;
     if (!particle(range, vid)) { return; }
-    drawPlain(plainTracer(t.states[vid], t.words[vid * 4u + 3u], f.u, f.frames), light, width, height);
+    drawPlain(plainTracer(t.states[vid], t.words[vid * 4u + 3u], f.u, f.frames), light, width, height, halves);
 }
 
 // One tile of the lace, a thread a texel.
@@ -418,11 +495,11 @@ __global__ void laceLevel(float *lace, uint from, uint to, uint side) {
                                 + above[(y + 1u) * wide + x + 1u]);
 }
 
-// A fixed point target as the floats the next pass reads.
+// A fixed point target as the floats the next pass reads; a unit of zero says it holds halves.
 __global__ void finishFixed(const fixed_t *fixed, float *values, size_t count, float unit) {
     size_t index = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
     if (index >= count) { return; }
-    values[index] = float(fixed[index]) / unit;
+    values[index] = unit > 0.0f ? float(fixed[index]) / unit : halfValue(uint(fixed[index]));
 }
 
 // The splats set aside, a block each: its threads share the pixels of the square.
@@ -467,6 +544,7 @@ struct sc_renderer {
     float laceMean;
     uint32_t largeThreshold;
     uint32_t largeCount;
+    bool halves;
     std::mutex largeLock;
     // What a later pass reads as floats and an earlier one changed.
     bool columnStale;
@@ -587,12 +665,12 @@ static sh::Tracers tracers(const sc_renderer *renderer) {
 static sh::Targets targets(const sc_renderer *renderer) {
     return sh::Targets{pointer<sh::fixed_t>(renderer->lightFixed), pointer<sh::fixed_t>(renderer->dustFixed),
                        pointer<const metal::float4>(renderer->dust), renderer->config.width,
-                       renderer->config.height};
+                       renderer->config.height, renderer->halves};
 }
 
 static sh::CarrierTargets carrierTargets(const sc_renderer *renderer) {
     return sh::CarrierTargets{pointer<sh::fixed_t>(renderer->carrierFixed), pointer<metal::uint>(renderer->tags),
-                              renderer->config.carrier_width, renderer->config.carrier_height};
+                              renderer->config.carrier_width, renderer->config.carrier_height, renderer->halves};
 }
 
 // The splats of one pass, the first way or the second: its particles' threads, then a block
@@ -700,24 +778,27 @@ static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_rend
             auto tagged = metal::texels2d_of(pointer<const float>(renderer->tags), config.carrier_width,
                                              config.carrier_height, 4u);
             LAUNCH(webResolveFragment, groups(pixels(renderer)), width, frame, lace, carried, tagged,
-                   pointer<sh::fixed_t>(renderer->dustFixed), config.width, config.height);
+                   pointer<sh::fixed_t>(renderer->dustFixed), config.width, config.height, renderer->halves);
             return SC_OK;
         }
         case SC_RENDER_PLAIN: {
             auto light = pointer<sh::fixed_t>(renderer->lightFixed);
             if (some.count > 0u) {
                 LAUNCH(plainVertex, groups(some.count), width, massive(renderer), frame, some, light, config.width,
-                       config.height);
+                       config.height, renderer->halves);
             }
             if (traced.count > 0u) {
                 LAUNCH(plainTracerVertex, groups(traced.count), width, tracers(renderer), frame, traced, light,
-                       config.width, config.height);
+                       config.width, config.height, renderer->halves);
             }
             return SC_OK;
         }
     }
     return fail(SC_INVALID_ARGUMENT, "no render pass %d", int(pass));
 }
+
+// What a finish divides the light, the dust and the carrier by: nothing when they hold halves.
+static float unit(const sc_renderer *renderer) { return renderer->halves ? 0.0f : sh::fixedUnit; }
 
 static bool known(sc_render_pass pass) { return pass >= SC_RENDER_COLUMN && pass <= SC_RENDER_PLAIN; }
 
@@ -889,6 +970,12 @@ sc_status sc_render_set_large(sc_renderer *renderer, uint32_t threshold) {
     return SC_OK;
 }
 
+sc_status sc_render_set_half_floats(sc_renderer *renderer, int32_t halves) {
+    if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
+    renderer->halves = halves != 0;
+    return SC_OK;
+}
+
 sc_status sc_render_set_particles(sc_renderer *renderer, const sc_render_massive *massive,
                                   const sc_render_tracers *tracers) {
     if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
@@ -989,7 +1076,7 @@ sc_status sc_render_begin(sc_renderer *renderer, sc_render_pass pass) {
     }
     if (renderer->carrierStale && pass == SC_RENDER_WEB_RESOLVE) {
         if (sc_status status =
-                finish(renderer->carrierFixed, renderer->carrier, coarse(renderer) * 4u, sh::fixedUnit)) {
+                finish(renderer->carrierFixed, renderer->carrier, coarse(renderer) * 4u, unit(renderer))) {
             return status;
         }
         renderer->carrierStale = false;
@@ -999,7 +1086,7 @@ sc_status sc_render_begin(sc_renderer *renderer, sc_render_pass pass) {
         return SC_OK;
     }
     if (renderer->dustStale) {
-        if (sc_status status = finish(renderer->dustFixed, renderer->dust, pixels(renderer) * 4u, sh::fixedUnit)) {
+        if (sc_status status = finish(renderer->dustFixed, renderer->dust, pixels(renderer) * 4u, unit(renderer))) {
             return status;
         }
         renderer->dustStale = false;
@@ -1060,7 +1147,7 @@ sc_status sc_render_finish(sc_renderer *renderer) {
     if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
     if (sc_status status = use(renderer->context)) { return status; }
     if (renderer->dustStale) {
-        if (sc_status status = finish(renderer->dustFixed, renderer->dust, pixels(renderer) * 4u, sh::fixedUnit)) {
+        if (sc_status status = finish(renderer->dustFixed, renderer->dust, pixels(renderer) * 4u, unit(renderer))) {
             return status;
         }
         renderer->dustStale = false;
@@ -1073,12 +1160,12 @@ sc_status sc_render_finish(sc_renderer *renderer) {
     }
     if (renderer->carrierStale) {
         if (sc_status status =
-                finish(renderer->carrierFixed, renderer->carrier, coarse(renderer) * 4u, sh::fixedUnit)) {
+                finish(renderer->carrierFixed, renderer->carrier, coarse(renderer) * 4u, unit(renderer))) {
             return status;
         }
         renderer->carrierStale = false;
     }
-    return finish(renderer->lightFixed, renderer->light, pixels(renderer) * 4u, sh::fixedUnit);
+    return finish(renderer->lightFixed, renderer->light, pixels(renderer) * 4u, unit(renderer));
 }
 
 sc_buffer *sc_render_target_of(sc_renderer *renderer, sc_render_target which) {

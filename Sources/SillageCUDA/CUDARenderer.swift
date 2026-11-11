@@ -62,6 +62,10 @@ public final class CUDARenderer: FramePreparing {
     public var largeSplatPixels = 0 {
         didSet { largeSplatPixels = largeCapacity > 0 ? max(largeSplatPixels, 0) : 0 }
     }
+    /// Accumulates as Metal's half float targets do in place of fixed point, to measure what
+    /// they lose of the faint light (#283): the result depends on the order the threads run
+    /// in, and `fixedTarget` then holds a half's bits a value.
+    public var halfFloats = false
     /// Splats the last pass set aside.
     public var largeSplatCount: Int { Int(sc_render_large_count(handle)) }
 
@@ -370,6 +374,7 @@ public final class CUDARenderer: FramePreparing {
         }
         try check(status, "the disk frames and the ramps")
         try check(sc_render_set_large(handle, UInt32(largeSplatPixels)), "the large splats' size")
+        try check(sc_render_set_half_floats(handle, halfFloats ? 1 : 0), "the accumulation")
     }
 
     private func draw(

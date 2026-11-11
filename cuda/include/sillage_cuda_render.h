@@ -106,6 +106,12 @@ sc_status sc_render_bake_lace(sc_renderer *renderer, float *mean);
  * each, the second way; 0 draws every splat from its particle's thread, the first way. */
 sc_status sc_render_set_large(sc_renderer *renderer, uint32_t threshold);
 
+/* 1 accumulates the light, the dust and the carrier as half floats, blended as Metal blends
+ * its rgba16Float targets: the measure of what they lose (#283). The result then depends on
+ * the order the threads run in, and the fixed targets hold a half's bits a value. Set before
+ * a frame is cleared. */
+sc_status sc_render_set_half_floats(sc_renderer *renderer, int32_t halves);
+
 /* Either may be NULL. */
 sc_status sc_render_set_particles(sc_renderer *renderer, const sc_render_massive *massive,
                                   const sc_render_tracers *tracers);

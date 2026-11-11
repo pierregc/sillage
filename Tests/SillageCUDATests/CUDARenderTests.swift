@@ -424,28 +424,67 @@ struct CUDARenderTests {
         #expect(light.allSatisfy { $0.isFinite })
     }
 
-    // MARK: - On a GPU, in #283
+    // MARK: - The measures #283 makes, small
 
-    /// The comparison with Metal at 4K with supersampling 2, from a take at 8 M drawn from 2 M
-    /// massive: the targets the Mac wrote for it, named by `SILLAGE_CUDA_RENDER_4K`.
-    @Test(.enabled(if: onAGPU, needsAGPU))
-    func theParticlePassesAgreeWithMetalAt4K() throws {
-        let folder = try #require(
-            ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_4K"],
-            "set SILLAGE_CUDA_RENDER_4K to the folder of Metal's targets")
-        let report = try CUDARenderChecks.compare(folder: URL(fileURLWithPath: folder))
-        for line in report.lines { print("CUDARENDER", line) }
-        #expect(report.worst < CUDARenderChecks.tolerance)
+    /// Half floats as Metal blends them hold a star's light to their own precision, and lose
+    /// the light that falls under their smallest value.
+    @Test func halfFloatsHoldLessThanFixedPoint() throws {
+        func light(brightness: Float, halves: Bool) throws -> [Float] {
+            var particles = ParticleSystem(capacity: 1)
+            particles.append(position: .zero, velocity: .zero, galaxy: 0, radius: 1)
+            var settings = RenderSettings(
+                width: 64, height: 64, supersample: 1, brightness: brightness, starCount: 0,
+                minimumKernel: 20, maximumKernel: 20)
+            settings.glint = 1
+            let renderer = try CUDARenderer(
+                context: CUDAContext(), particles: particles, settings: settings,
+                laceTexels: Self.laceTexels)
+            renderer.halfFloats = halves
+            try renderer.render(camera: Camera(eye: SIMD3(0.013, -50, 0.007), target: SIMD3(0.013, 0, 0.007)))
+            return try renderer.target(.light)
+        }
+        // One splat a pixel: a half float holds what the fixed point holds, to 11 bits.
+        let fixed = try light(brightness: 0.15, halves: false)
+        let halves = try light(brightness: 0.15, halves: true)
+        var compared = 0
+        for (a, b) in zip(fixed, halves) where a > 1e-3 {
+            #expect(abs(b / a - 1) < 0.0005, "\(b) against \(a)")
+            // A half float has 11 significant bits.
+            let scaled = b / b.binade * 1024
+            #expect(scaled == scaled.rounded())
+            compared += 1
+        }
+        #expect(compared > 500)
+        // Under half the smallest half float, 3e-8, the light is gone; fixed point keeps it.
+        let faint = try light(brightness: 1e-10, halves: false)
+        let lost = try light(brightness: 1e-10, halves: true)
+        #expect(Self.total(faint, channel: 0) > 0)
+        #expect(Self.total(lost, channel: 0) == 0)
     }
+
+    /// The measures #283 runs at 4K and up to 200 M drawn, at a size the CPU target draws:
+    /// they run, and say what they are asked to say.
+    @Test func theMeasuresOfABoxRunSmall() throws {
+        let faint = try CUDARenderChecks.faintLight(
+            drawn: 20_000, width: 160, height: 90, laceTexels: Self.laceTexels)
+        #expect(faint.count > 5 && faint.contains { $0.contains("half floats keep") })
+        let timed = try CUDARenderChecks.timings(
+            drawn: 20_000, width: 160, height: 90, repeats: 1, largeSplatPixels: 64,
+            laceTexels: Self.laceTexels)
+        #expect(timed.count == 5 && timed.contains { $0.contains("second way") })
+    }
+
+    // MARK: - On a GPU, in #283
 
     /// The faint light at 200 M drawn, where a particle carries 0.005 of the light: the
     /// sampler's starting positions accumulated in half floats as Metal blends them, and in
-    /// fixed point. Printed, for #283 to say what half floats lose.
+    /// fixed point. Printed, for #283 to say what half floats lose. `SILLAGE_CUDA_RENDER_COUNT`
+    /// draws another count.
     @Test(.enabled(if: onAGPU, needsAGPU))
     func theFaintLightAt200MSurvivesTheAccumulation() throws {
-        let count = Int(ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_COUNT"] ?? "") ?? 200_000_000
-        let report = try CUDARenderChecks.faintLight(drawn: count)
-        for line in report { print("CUDARENDER", line) }
+        let count =
+            Int(ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_COUNT"] ?? "") ?? 200_000_000
+        for line in try CUDARenderChecks.faintLight(drawn: count) { print("CUDARENDER", line) }
     }
 
     /// The time of the particle passes at 4K at 8 M, 50 M and 200 M drawn, both ways for large
