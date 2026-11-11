@@ -103,8 +103,8 @@ public enum PNG {
 
     /// The deflate stream of `bytes` in zlib's wrapper: compressed when zlib is there, as stored
     /// blocks when it is not.
-    private static func deflate(_ bytes: [UInt8]) -> [UInt8] {
-        if let zlib {
+    private static func deflate(_ bytes: [UInt8], compressed: Bool) -> [UInt8] {
+        if compressed, let zlib {
             var length = UInt(bytes.count + bytes.count / 1000 + 64)
             var packed = [UInt8](repeating: 0, count: Int(length))
             let status = packed.withUnsafeMutableBufferPointer { target in
@@ -171,7 +171,8 @@ public enum PNG {
         return out
     }
 
-    public static func encode(_ image: Image) -> Data {
+    /// `compressed: false` writes stored blocks even where zlib is there.
+    public static func encode(_ image: Image, compressed: Bool = true) -> Data {
         precondition(
             [1, 3, 4].contains(image.channels)
                 && image.bytes.count == image.width * image.height * image.channels,
@@ -180,7 +181,7 @@ public enum PNG {
         let header = be32(UInt32(image.width)) + be32(UInt32(image.height)) + [8, colour, 0, 0, 0]
         var file: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
         file += chunk("IHDR", header)
-        file += chunk("IDAT", deflate(filtered(image)))
+        file += chunk("IDAT", deflate(filtered(image), compressed: compressed))
         file += chunk("IEND", [])
         return Data(file)
     }
