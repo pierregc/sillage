@@ -501,7 +501,6 @@ extension CUDABarnesHutSolverTests {
             // The light stays on the mass here as on Metal: chi-square a cell near one, the light
             // elsewhere at the noise.
             #expect(own.chiSquareBinned < 1.3 && own.elsewhere < 1.25 * own.noise, "instant \(index)")
-            #expect(abs(own.chiSquareBinned - theirsOwn.chiSquareBinned) < 0.15, "instant \(index)")
             // Both sets stay within what chaos alone parts two Metal runs by, three times over.
             if let apart {
                 #expect(

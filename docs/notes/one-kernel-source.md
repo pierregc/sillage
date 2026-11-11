@@ -17,10 +17,9 @@ every push by a GitHub workflow that compiles the CUDA code and runs it on the C
   or warp functions run one thread after another on small inputs. Phase 1 of #269 tests the
   CUDA engine that way, with nothing rented.
 
-#281 shared the tree (`GPUTreeShaders`, 20 kernels) and #274 the massive particles' kernels of
-`BarnesHutShaders` (8 of its 11). What is left is still inside
-`#if defined(__METAL_VERSION__)`: #275 shares the light tracers' three kernels, #276 and #277
-`Shaders`; `RecordingShaders` (take playback) and `SolverShaders` (the restricted solver) stay
+#281 shared the tree (`GPUTreeShaders`, 20 kernels), #274 the massive particles' kernels of
+`BarnesHutShaders` (8 of its 11) and #275 its light tracers' three. What is left is still inside
+`#if defined(__METAL_VERSION__)`: #276 and #277 share `Shaders`; `RecordingShaders` (take playback) and `SolverShaders` (the restricted solver) stay
 Metal only.
 
 ## Changing the engine from now on
@@ -198,6 +197,12 @@ __global__ void gtGather(float4 *sorted, const float3 *positions, const float *m
 }
 ```
 
+**A pass dispatched in pieces** counts its threads from the piece's start (`chunkStart`), and
+the shared function's own bound is the whole count, not the piece's end: the entry point stops
+the threads past the piece itself, as `bhAcceleration` and `bhTracerStep` do with their `slots`.
+Without it the last block of a piece runs the next piece's first slots too, and a light tracer
+there was kicked twice (#275).
+
 `cuda/build.sh` builds `cuda/src` and `cuda/tests` both ways: with `nvcc` for sm_120 (the RTX
 5090), compile only, without FMA contraction or fast math until a file's Metal twin asks for
 them, and it fails if a file's PTX holds a double precision instruction; then the CPU target
@@ -234,7 +239,8 @@ One line for each Metal `kernel`, `vertex` and `fragment` function: `<library> <
 After #281: 62 functions, 59 pending (20 of the tree for #273, 8 of the massive solver for
 #274, 3 of the tracers for #275, 20 particle passes for #276, 8 post-processing kernels for
 #277) and 3 Metal only (`expandSnapshots`, `expandSnapshots21`, `integrate`). After #274: 21
-`cuda`, 7 `cuda gpu-only`, 31 pending. Phase 1 is over when no line is pending.
+`cuda`, 7 `cuda gpu-only`, 31 pending. After #275: 24 `cuda`, 7 `cuda gpu-only`, 28 pending. Phase
+1 is over when no line is pending.
 
 ## The reference outputs
 
