@@ -13,7 +13,7 @@ namespace metal {
 //   - the point is dropped when z < 0 or z > w, when |x| or |y| passes 1.5 w (its centre more
 //     than a quarter of the frame outside it), or when s <= 0; a centre outside by less still
 //     draws the part of its square that is inside;
-//   - its size is held under 511, and a size under 1 is not raised;
+//   - its size is capped at 511, and a size under 1 is not raised;
 //   - it stands at c = ((x / w + 1) W / 2, (1 - y / w) H / 2), and its square runs from
 //     c - s / 2 to c + s / 2 with each edge rounded to 1/256 of a pixel;
 //   - it covers the pixels whose centre is in that square, the first edge included and the

@@ -537,7 +537,8 @@ it:
 1. the point is dropped when `z < 0` or `z > w`, when `|x| > 1.5 w` or `|y| > 1.5 w` (its
    centre more than a quarter of the frame outside it), or when `s <= 0`. A centre outside the
    frame by less still draws the part of its square that is inside;
-2. its size is held under 511 pixels, and a size under 1 is not raised;
+2. its size is capped at 511 pixels (512 and 1,200 draw as 511), and a size under 1 is not
+   raised;
 3. it stands at `c = ((x / w + 1) W / 2, (1 - y / w) H / 2)`, pixel centres at half integers
    and y down, and its square runs from `c - s / 2` to `c + s / 2` with **each edge rounded to
    1/256 of a pixel**;
