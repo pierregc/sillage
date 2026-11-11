@@ -37,7 +37,7 @@ MSL_API texels2d texels2d_of(const float *texels, uint width, uint height, uint 
 }
 
 // A texel as Metal returns one: the channels a texture lacks read 0, and its alpha 1.
-MSL_API float4 texel(const texels2d &t, uint level, uint x, uint y) {
+MSL_API float4 fetch_texel(const texels2d &t, uint level, uint x, uint y) {
     uint w = max(t.width >> level, 1u);
     const float *at = t.texels + size_t(t.offset[level] + y * w + x) * t.channels;
     float4 value(0.0f, 0.0f, 0.0f, 1.0f);
@@ -56,7 +56,7 @@ MSL_API uint texel_wrapped(float at, uint side) {
 
 // filter::nearest, address::clamp_to_edge, coord::normalized.
 MSL_API float4 sample_nearest(const texels2d &t, float2 uv) {
-    return texel(t, 0u, texel_clamped(floorf(uv.x * float(t.width)), t.width),
+    return fetch_texel(t, 0u, texel_clamped(floorf(uv.x * float(t.width)), t.width),
                  texel_clamped(floorf(uv.y * float(t.height)), t.height));
 }
 
@@ -83,8 +83,8 @@ MSL_API float4 sample_linear_level(const texels2d &t, float2 uv, uint level, boo
         y0 = texel_clamped(top, h);
         y1 = texel_clamped(top + 1.0f, h);
     }
-    return mix(mix(texel(t, level, x0, y0), texel(t, level, x1, y0), across),
-               mix(texel(t, level, x0, y1), texel(t, level, x1, y1), across), down);
+    return mix(mix(fetch_texel(t, level, x0, y0), fetch_texel(t, level, x1, y0), across),
+               mix(fetch_texel(t, level, x0, y1), fetch_texel(t, level, x1, y1), across), down);
 }
 
 // filter::linear, address::clamp_to_edge, coord::normalized, the first level.

@@ -140,14 +140,14 @@ enum Shaders {
             half4 slab;
         };
 
-        static SplatOut splatOut(Splat splat) {
+        static SplatOut splatOut(Splat point) {
             SplatOut out;
-            out.position = splat.position;
-            out.pointSize = splat.pointSize;
-            out.color = splat.color;
-            out.opticalDepth = splat.opticalDepth;
-            out.spikes = splat.spikes;
-            out.slab = splat.slab;
+            out.position = point.position;
+            out.pointSize = point.pointSize;
+            out.color = point.color;
+            out.opticalDepth = point.opticalDepth;
+            out.spikes = point.spikes;
+            out.slab = point.slab;
             return out;
         }
 
@@ -816,6 +816,7 @@ enum Shaders {
             out.dust = dust;
             return out;
         }
+        #endif
 
         // The dust web (#173, docs/notes/dust-web.md): a field of filaments in each disk's own
         // plane, carried round by the disk's rotation curve and renewed before the shear can
@@ -843,7 +844,7 @@ enum Shaders {
             float4 carrier;
         };
 
-        static float2 webHash(uint2 v) {
+        SHARED float2 webHash(uint2 v) {
             v = v * 1664525u + 1013904223u;
             v.x += v.y * 1664525u;
             v.y += v.x * 1664525u;
@@ -856,13 +857,13 @@ enum Shaders {
 
         // The lace tiles every `laceTile` cells: each lattice it is read off holds a whole
         // number of its cells in a tile, within 0.7 % of the frequencies the spike drew.
-        constant int laceTile = 64;
+        SHARED_CONSTANT int laceTile = 64;
 
-        static int2 laceWrap(int2 cell, int period) {
+        SHARED int2 laceWrap(int2 cell, int period) {
             return (cell % period + period) % period;
         }
 
-        static float laceValue(float2 q, int period, float2 shift) {
+        SHARED float laceValue(float2 q, int period, float2 shift) {
             float2 p = q * (float(period) / float(laceTile)) + shift;
             float2 i = floor(p);
             float2 f = p - i;
@@ -875,19 +876,19 @@ enum Shaders {
             return mix(mix(a, b, s.x), mix(d, e, s.x), s.y);
         }
 
-        static float laceFbm(float2 q, int low, int high, float2 shift) {
+        SHARED float laceFbm(float2 q, int low, int high, float2 shift) {
             float ratio = float(high) / float(low);
             return (0.5f * laceValue(q, low, shift)
                     + 0.25f * laceValue(q, high, shift * ratio + float2(17.1f, -9.7f))) / 0.75f;
         }
 
-        static float laceRidge(float2 p, int period, float2 shift) {
+        SHARED float laceRidge(float2 p, int period, float2 shift) {
             float ridge = 1.0f - abs(2.0f * laceValue(p, period, shift) - 1.0f);
             return ridge * ridge * ridge * ridge * ridge;
         }
 
         // Threads that branch: ridged noise, each octave weighted by the ridge above it.
-        static float laceThreads(float2 p) {
+        SHARED float laceThreads(float2 p) {
             float first = laceRidge(p, 83, float2(0.0f));
             float second = laceRidge(p, 175, float2(5.3f, 1.9f));
             float third = laceRidge(p, 367, float2(16.43f, 5.89f));
@@ -896,7 +897,7 @@ enum Shaders {
         }
 
         // Cell walls, each wall drawn at its own strength so the web stays open.
-        static float laceWalls(float2 q) {
+        SHARED float laceWalls(float2 q) {
             const int period = 51;
             float2 p = q * (float(period) / float(laceTile));
             int2 base = int2(floor(p));
@@ -928,7 +929,7 @@ enum Shaders {
 
         // Threads and walls on a warped plane, with clear holes, in cells; not yet divided by
         // its mean.
-        static float webLace(float2 q) {
+        SHARED float webLace(float2 q) {
             float2 p = q + 2.2f * (float2(laceFbm(q, 32, 65, float2(11.3f, 2.9f)),
                                          laceFbm(q, 32, 65, float2(-7.1f, 17.7f))) - 0.5f);
             float threads = laceThreads(p);
@@ -937,23 +938,30 @@ enum Shaders {
             return (0.15f + 2.0f * threads + 0.8f * walls) * (1.0f - 0.9f * holes);
         }
 
-        // One tile of the lace, four samples a texel, baked once per device.
-        kernel void bakeLace(texture2d<half, access::write> lace [[texture(0)]],
-                             uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= lace.get_width() || gid.y >= lace.get_height()) { return; }
-            float texel = float(laceTile) / float(lace.get_width());
+        // A texel of one tile of the lace, `width` texels on a side: four samples of it.
+        SHARED float laceTexel(uint2 gid, uint width) {
+            float texel = float(laceTile) / float(width);
             float total = 0.0f;
             for (int y = 0; y < 2; ++y) {
                 for (int x = 0; x < 2; ++x) {
                     total += webLace((float2(gid) + (float2(float(x), float(y)) + 0.5f) * 0.5f) * texel);
                 }
             }
-            lace.write(half4(half(0.25f * total)), gid);
+            return 0.25f * total;
         }
+
+        #if defined(__METAL_VERSION__)
+        // One tile of the lace, baked once per device.
+        kernel void bakeLace(texture2d<half, access::write> lace [[texture(0)]],
+                             uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= lace.get_width() || gid.y >= lace.get_height()) { return; }
+            lace.write(half4(half(laceTexel(gid, lace.get_width()))), gid);
+        }
+        #endif
 
         // The disk's angular rate at a radius, from eight samples a factor 1.68 apart; inside
         // the first it turns as a solid body, past the last its curve is flat.
-        static float webOmega(DiskFrame frame, float radius) {
+        SHARED float webOmega(DiskFrame frame, float radius) {
             float h = max(frame.center.w, 1e-3f);
             float x = (log2(max(radius / h, 1e-4f)) + 2.0f) / 0.75f;
             if (x >= 7.0f) { return frame.omegaOuter.w * 9.5137f * h / max(radius, 1e-4f); }
@@ -965,7 +973,7 @@ enum Shaders {
         }
 
         // How fast that rate falls with radius: the shear a copy has taken on since it rested.
-        static float webOmegaSlope(DiskFrame frame, float radius) {
+        SHARED float webOmegaSlope(DiskFrame frame, float radius) {
             float h = max(frame.center.w, 1e-3f);
             float r = max(radius, 1e-4f);
             float x = (log2(max(r / h, 1e-4f)) + 2.0f) / 0.75f;
@@ -979,18 +987,32 @@ enum Shaders {
 
         // A quarter of the dust stays even under the web: with none, a dense clump opens onto
         // whatever bright knot it holds and the core burns white.
-        constant float webDepth = 0.75f;
+        SHARED_CONSTANT float webDepth = 0.75f;
 
+        // The baked lace as each engine holds it, and its value over a pixel's footprint, whose two
+        // axes `dx` and `dy` are in the lace's own coordinates: Metal samples its texture, the CUDA
+        // engine reads its levels by hand with a filter of the same kind.
+        #if defined(__METAL_VERSION__)
         constexpr sampler laceSampler(filter::linear, mip_filter::linear, address::repeat,
                                       max_anisotropy(8));
+        typedef texture2d<half> Lace;
+        static float laceRead(Lace lace, float2 at, float2 dx, float2 dy) {
+            return float(lace.sample(laceSampler, at, gradient2d(dx, dy)).r);
+        }
+        #else
+        typedef texels2d Lace;
+        SHARED float laceRead(Lace lace, float2 at, float2 dx, float2 dy) {
+            return sample_anisotropic(lace, at, dx, dy, 8.0f).x;
+        }
+        #endif
 
         // The web where this pixel's ray meets the disk's mid-plane, which is the same point
         // whichever grain the dust came from, so an inclined disk shows it foreshortened. Each
         // copy is carried round from where it rests, a share of its life in, and fades in and
         // out with sin squared; the two weights always sum to one, and dividing by their root
         // sum of squares keeps the contrast through the cross-fade.
-        static float webAt(DiskFrame frame, constant WebUniforms &w, float3 ray, float3 stepX,
-                           float3 stepY, texture2d<half> lace) {
+        SHARED float webAt(DiskFrame frame, constant WebUniforms &w, float3 ray, float3 stepX,
+                           float3 stepY, Lace lace) {
             float period = frame.web.y;
             if (period <= 0.0f) { return 1.0f; }
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
@@ -1034,8 +1056,8 @@ enum Shaders {
                 float2 qx = float2(c * dx.x + n * dx.y, n * -dx.x + c * dx.y) + turn * dot(p, dx);
                 float2 qy = float2(c * dy.x + n * dy.y, n * -dy.x + c * dy.y) + turn * dot(p, dy);
                 float2 offset = webHash(uint2(int2(int(cycle) * 2 + k, int(frame.pattern.w * 10.0f)))) * 400.0f;
-                float value = float(lace.sample(laceSampler, (q / cell + offset) / float(laceTile),
-                                                gradient2d(qx * scale, qy * scale)).r);
+                float value = laceRead(lace, (q / cell + offset) / float(laceTile), qx * scale,
+                                       qy * scale);
                 total += weight * (value * w.target.w - 1.0f);
                 norm += weight * weight;
             }
@@ -1057,7 +1079,7 @@ enum Shaders {
             bool hole;
         };
 
-        static bool webGrain(Drawn p, constant SplatUniforms &u, DiskFrame frame,
+        SHARED bool webGrain(Drawn p, constant SplatUniforms &u, DiskFrame frame,
                              constant WebUniforms &w, thread WebGrain &grain) {
             float3 position = p.position;
             grain.position = u.viewProjection * float4(position, 1.0f);
@@ -1097,9 +1119,9 @@ enum Shaders {
         // The dust the painted strands lay, in the frame's own pass: all of it where the web
         // is off and none where it takes everything, so a grain it fully carries draws nothing
         // here.
-        static SplatOut dustWeb(Drawn p, bool dust, WebGrain grain, constant SplatUniforms &u,
-                                DiskFrame frame, constant WebUniforms &w) {
-            SplatOut out;
+        SHARED Splat dustWeb(Drawn p, bool dust, WebGrain grain, constant SplatUniforms &u,
+                             DiskFrame frame, constant WebUniforms &w) {
+            Splat out;
             out.color = half3(half(0.0f));
             out.spikes = half(0.0f);
             if (!dust || grain.amount >= 1.0f) {
@@ -1130,6 +1152,37 @@ enum Shaders {
             return out;
         }
 
+        // A massive particle's, from the renderer's buffers.
+        SHARED Splat massiveDustWeb(uint vid, device const float3 *positions,
+                                    device const float *formation, device const float *luminosity,
+                                    device const uint *component, constant SplatUniforms &u,
+                                    device const uint *galaxy, constant DiskFrame *frames,
+                                    device const float *smoothing, device const float2 *traits,
+                                    constant WebUniforms &w) {
+            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            DiskFrame frame = frames[p.galaxy];
+            WebGrain grain;
+            bool dust = webGrain(p, u, frame, w, grain);
+            return dustWeb(p, dust, grain, u, frame, w);
+        }
+
+        // A light tracer's, from its state and its word.
+        SHARED Splat tracerDustWeb(float4 state, uint word, constant SplatUniforms &u,
+                                   constant DiskFrame *frames, constant WebUniforms &w,
+                                   device const uint2 *cells, device const float *treeFrame,
+                                   uint depth, constant float *scales) {
+            Drawn p = tracerDrawn(state, word, scales);
+            DiskFrame frame = frames[p.galaxy];
+            WebGrain grain;
+            bool dust = webGrain(p, u, frame, w, grain);
+            if (dust && !grain.hole && grain.amount < 1.0f) {
+                p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
+            }
+            return dustWeb(p, dust, grain, u, frame, w);
+        }
+
+        #if defined(__METAL_VERSION__)
         vertex SplatOut dustWebVertex(uint vid [[vertex_id]],
                                       device const float3 *positions [[buffer(0)]],
                                       device const float *formation [[buffer(8)]],
@@ -1141,12 +1194,8 @@ enum Shaders {
                                       device const float *smoothing [[buffer(7)]],
                                       device const float2 *traits [[buffer(10)]],
                                       constant WebUniforms &w [[buffer(13)]]) {
-            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
-                                   smoothing, traits);
-            DiskFrame frame = frames[p.galaxy];
-            WebGrain grain;
-            bool dust = webGrain(p, u, frame, w, grain);
-            return dustWeb(p, dust, grain, u, frame, w);
+            return splatOut(massiveDustWeb(vid, positions, formation, luminosity, component, u,
+                                           galaxy, frames, smoothing, traits, w));
         }
 
         vertex SplatOut dustWebTracerVertex(uint vid [[vertex_id]],
@@ -1159,38 +1208,29 @@ enum Shaders {
                                             constant float *scales [[buffer(17)]],
                                             device const float4 *states [[buffer(18)]],
                                             device const uint *words [[buffer(19)]]) {
-            Drawn p = tracerDrawn(states[vid], words[vid * 4u + 3u], scales);
-            DiskFrame frame = frames[p.galaxy];
-            WebGrain grain;
-            bool dust = webGrain(p, u, frame, w, grain);
-            if (dust && !grain.hole && grain.amount < 1.0f) {
-                p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
-            }
-            return dustWeb(p, dust, grain, u, frame, w);
+            return splatOut(tracerDustWeb(states[vid], words[vid * 4u + 3u], u, frames, w, cells,
+                                          treeFrame, depth, scales));
         }
+        #endif
 
-        struct WebCarrierOut {
-            float4 position [[position]];
-            float pointSize [[point_size]];
+        // What a carried grain hands from its particle to its pixels.
+        struct WebCarrier {
+            float4 position;
+            float pointSize;
             float carried;
             half4 slab;
             /// The grain's galaxy plus one, over 255.
             half tag;
         };
 
-        struct WebCarrierTarget {
-            half4 carrier [[color(0)]];
-            half4 tags [[color(1)]];
-        };
-
         // The dust the web multiplies, drawn a few times coarser than the frame (#200): a
         // grain under the web is drawn twice as wide (its column kept) so the grains merge into
         // one even layer and the lace, not the grains, says where the dust is thin, and a layer
         // that smooth loses nothing at a quarter of the pixels.
-        static WebCarrierOut webCarrier(Drawn p, bool dust, WebGrain grain,
-                                        constant SplatUniforms &u, DiskFrame frame,
-                                        constant WebUniforms &w) {
-            WebCarrierOut out;
+        SHARED WebCarrier webCarrier(Drawn p, bool dust, WebGrain grain,
+                                     constant SplatUniforms &u, DiskFrame frame,
+                                     constant WebUniforms &w) {
+            WebCarrier out;
             uint g = p.galaxy;
             if (!dust || grain.hole || grain.amount <= 0.0f) {
                 out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
@@ -1219,6 +1259,73 @@ enum Shaders {
             return out;
         }
 
+        // A massive particle's, from the renderer's buffers.
+        SHARED WebCarrier massiveWebCarrier(uint vid, device const float3 *positions,
+                                            device const float *formation,
+                                            device const float *luminosity,
+                                            device const uint *component, constant SplatUniforms &u,
+                                            device const uint *galaxy, constant DiskFrame *frames,
+                                            device const float *smoothing, device const float2 *traits,
+                                            constant WebUniforms &w) {
+            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            DiskFrame frame = frames[p.galaxy];
+            WebGrain grain;
+            bool dust = webGrain(p, u, frame, w, grain);
+            return webCarrier(p, dust, grain, u, frame, w);
+        }
+
+        // A light tracer's, from its state and its word.
+        SHARED WebCarrier tracerWebCarrier(float4 state, uint word, constant SplatUniforms &u,
+                                           constant DiskFrame *frames, constant WebUniforms &w,
+                                           device const uint2 *cells, device const float *treeFrame,
+                                           uint depth, constant float *scales) {
+            Drawn p = tracerDrawn(state, word, scales);
+            DiskFrame frame = frames[p.galaxy];
+            WebGrain grain;
+            bool dust = webGrain(p, u, frame, w, grain);
+            if (dust && !grain.hole && grain.amount > 0.0f) {
+                p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
+            }
+            return webCarrier(p, dust, grain, u, frame, w);
+        }
+
+        // What a carried grain lays on a pixel of the coarse targets: its dust into its slab of the
+        // carrier, and its galaxy's tag there. False in the corners of the point's square.
+        SHARED bool webCarrierPixel(float carried, half4 slab, half tag, float2 coord,
+                                    thread half4 &carrier, thread half4 &tags) {
+            float2 d = coord - 0.5f;
+            float r2 = dot(d, d) * 4.0f;
+            if (r2 > 1.0f) { return false; }
+            carrier = half4(half(carried * exp(-4.5f * r2)) * slab);
+            tags = tag * slab;
+            return true;
+        }
+
+        #if defined(__METAL_VERSION__)
+        struct WebCarrierOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            float carried;
+            half4 slab;
+            half tag;
+        };
+
+        struct WebCarrierTarget {
+            half4 carrier [[color(0)]];
+            half4 tags [[color(1)]];
+        };
+
+        static WebCarrierOut webCarrierOut(WebCarrier grain) {
+            WebCarrierOut out;
+            out.position = grain.position;
+            out.pointSize = grain.pointSize;
+            out.carried = grain.carried;
+            out.slab = grain.slab;
+            out.tag = grain.tag;
+            return out;
+        }
+
         vertex WebCarrierOut webCarrierVertex(uint vid [[vertex_id]],
                                               device const float3 *positions [[buffer(0)]],
                                               device const float *formation [[buffer(8)]],
@@ -1230,12 +1337,8 @@ enum Shaders {
                                               device const float *smoothing [[buffer(7)]],
                                               device const float2 *traits [[buffer(10)]],
                                               constant WebUniforms &w [[buffer(13)]]) {
-            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
-                                   smoothing, traits);
-            DiskFrame frame = frames[p.galaxy];
-            WebGrain grain;
-            bool dust = webGrain(p, u, frame, w, grain);
-            return webCarrier(p, dust, grain, u, frame, w);
+            return webCarrierOut(massiveWebCarrier(vid, positions, formation, luminosity, component,
+                                                   u, galaxy, frames, smoothing, traits, w));
         }
 
         vertex WebCarrierOut webCarrierTracerVertex(uint vid [[vertex_id]],
@@ -1248,24 +1351,20 @@ enum Shaders {
                                                     constant float *scales [[buffer(17)]],
                                                     device const float4 *states [[buffer(18)]],
                                                     device const uint *words [[buffer(19)]]) {
-            Drawn p = tracerDrawn(states[vid], words[vid * 4u + 3u], scales);
-            DiskFrame frame = frames[p.galaxy];
-            WebGrain grain;
-            bool dust = webGrain(p, u, frame, w, grain);
-            if (dust && !grain.hole && grain.amount > 0.0f) {
-                p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
-            }
-            return webCarrier(p, dust, grain, u, frame, w);
+            return webCarrierOut(tracerWebCarrier(states[vid], words[vid * 4u + 3u], u, frames, w,
+                                                  cells, treeFrame, depth, scales));
         }
 
         fragment WebCarrierTarget webCarrierFragment(WebCarrierOut in [[stage_in]],
                                                      float2 coord [[point_coord]]) {
-            float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
-            if (r2 > 1.0f) { discard_fragment(); }
+            half4 carrier = half4(half(0.0f));
+            half4 tags = half4(half(0.0f));
+            if (!webCarrierPixel(in.carried, in.slab, in.tag, coord, carrier, tags)) {
+                discard_fragment();
+            }
             WebCarrierTarget out;
-            out.carrier = half4(half(in.carried * exp(-4.5f * r2)) * in.slab);
-            out.tags = in.tag * in.slab;
+            out.carrier = carrier;
+            out.tags = tags;
             return out;
         }
 
@@ -1281,20 +1380,22 @@ enum Shaders {
         }
 
         constexpr sampler pointSampler(filter::nearest, address::clamp_to_edge, coord::normalized);
+        #endif
+
+        // Where a pixel of the frame reads the coarse targets, from its centre in pixels.
+        SHARED float2 webResolveAt(float2 pixel, constant WebUniforms &w) {
+            return pixel / w.target.xy;
+        }
 
         // Once per pixel, after the painted dust and before the stars: each slab's carried dust
         // times the web of the disk that filled it. Where two disks carry dust into one slab of
-        // one pixel, the later galaxy's web serves both.
-        fragment DustTarget webResolveFragment(WebResolveOut in [[stage_in]],
-                                               constant DiskFrame *frames [[buffer(0)]],
-                                               constant WebUniforms &w [[buffer(1)]],
-                                               texture2d<half> lace [[texture(0)]],
-                                               texture2d<half> carried [[texture(1)]],
-                                               texture2d<half> tagged [[texture(2)]]) {
-            float2 uv = in.position.xy / w.target.xy;
-            float4 carrier = float4(carried.sample(bilinear, uv));
-            if (all(carrier <= 0.0f)) { discard_fragment(); }
-            float4 tags = float4(tagged.sample(pointSampler, uv)) * 255.0f;
+        // one pixel, the later galaxy's web serves both. `carrier` and `tagged` are the coarse
+        // targets read at `uv`, the first filtered and the second not; false where nothing was
+        // carried, and the pixel keeps the dust it has.
+        SHARED bool webResolved(float2 uv, float4 carrier, float4 tagged, constant DiskFrame *frames,
+                                constant WebUniforms &w, Lace lace, thread half4 &dust) {
+            if (all(carrier <= 0.0f)) { return false; }
+            float4 tags = tagged * 255.0f;
             float2 ndc = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
             float3 across = w.right.xyz * (w.forward.w * w.target.z);
             float3 upward = w.up.xyz * w.forward.w;
@@ -1313,11 +1414,27 @@ enum Shaders {
                 }
                 webbed[s] = carrier[s] * web;
             }
-            DustTarget out;
-            out.dust = half4(webbed);
-            return out;
+            dust = half4(webbed);
+            return true;
         }
 
+        #if defined(__METAL_VERSION__)
+        fragment DustTarget webResolveFragment(WebResolveOut in [[stage_in]],
+                                               constant DiskFrame *frames [[buffer(0)]],
+                                               constant WebUniforms &w [[buffer(1)]],
+                                               texture2d<half> lace [[texture(0)]],
+                                               texture2d<half> carried [[texture(1)]],
+                                               texture2d<half> tagged [[texture(2)]]) {
+            float2 uv = webResolveAt(in.position.xy, w);
+            half4 dust = half4(half(0.0f));
+            if (!webResolved(uv, float4(carried.sample(bilinear, uv)),
+                             float4(tagged.sample(pointSampler, uv)), frames, w, lace, dust)) {
+                discard_fragment();
+            }
+            DustTarget out;
+            out.dust = dust;
+            return out;
+        }
         #endif
 
         // The light a star lays on a pixel of its splat, through everything standing between it
