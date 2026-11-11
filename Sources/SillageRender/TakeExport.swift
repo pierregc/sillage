@@ -100,13 +100,8 @@ public final class TakeExport {
                 read: stills.contains(index)
                     ? { pixels in if let image = PNGWriter.image(bgra: pixels) { try still(index, image) } }
                     : nil)
-            if dumps.contains(index), let targets = renderer.particleTargets() {
-                try dump(
-                    index,
-                    RenderTargetManifest.Capture(
-                        captured: position, time: renderer.time,
-                        shot: replay.plan?.shot(atCaptured: position)?.subject.description,
-                        camera: shot.camera, targets: targets))
+            if dumps.contains(index), let capture = capture(renderer, at: position, shot, replay) {
+                try dump(index, capture)
             }
             progress(index + 1, wanted.count)
         }
@@ -203,6 +198,32 @@ public final class TakeExport {
         let shot = try prepare(
             renderer, at: Double(frame), replay: makeReplay(width: width, height: height))
         return renderer.render(camera: shot.camera)
+    }
+
+    /// One frame as the export draws it, and what its particle passes left and drew from (#276).
+    func targets(atCaptured frame: Int, width: Int, height: Int) throws -> (
+        pixels: [UInt8], capture: RenderTargetManifest.Capture
+    ) {
+        let renderer = try makeRenderer(width: width, height: height)
+        let replay = makeReplay(width: width, height: height)
+        let shot = try prepare(renderer, at: Double(frame), replay: replay)
+        let pixels = renderer.render(camera: shot.camera)
+        guard let capture = capture(renderer, at: Double(frame), shot, replay) else {
+            throw RenderError.textureAllocation
+        }
+        return (pixels, capture)
+    }
+
+    /// What the frame `renderer` has just drawn at `position` left in its targets.
+    private func capture(
+        _ renderer: Renderer, at position: Double, _ shot: ShotReplay.Shot, _ replay: ShotReplay
+    ) -> RenderTargetManifest.Capture? {
+        renderer.particleTargets().map {
+            RenderTargetManifest.Capture(
+                captured: position, time: renderer.time,
+                shot: replay.plan?.shot(atCaptured: position)?.subject.description,
+                camera: shot.camera, targets: $0)
+        }
     }
 
     /// The shot each of `positions`, in the order a video plays them, is drawn through at
