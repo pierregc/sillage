@@ -230,6 +230,24 @@ public enum SolverCheck {
 
     // MARK: - Two runs side by side
 
+    /// The maps of `DensityMap.npy()`, a NumPy array of float32 shaped (maps, size, size): their
+    /// side and each map, row major.
+    public static func maps(npy data: Data) -> (size: Int, maps: [[Float]]) {
+        guard data.count > 10 else { return (0, []) }
+        let header = Int(data[data.startIndex + 8]) | Int(data[data.startIndex + 9]) << 8
+        let described = String(decoding: data.dropFirst(10).prefix(header), as: UTF8.self)
+        let shape = described.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+        guard shape.count >= 3, let side = shape.last, side > 0 else { return (0, []) }
+        let body = [UInt8](data.dropFirst(10 + header))
+        let values = body.withUnsafeBytes { raw in
+            (0..<body.count / 4).map { raw.loadUnaligned(fromByteOffset: $0 * 4, as: Float.self) }
+        }
+        let maps = (0..<values.count / (side * side)).map {
+            Array(values[$0 * side * side..<($0 + 1) * side * side])
+        }
+        return (side, maps)
+    }
+
     /// A run read back: its curves by column, and its maps.
     public struct Run {
         public let folder: URL
@@ -249,21 +267,8 @@ public enum SolverCheck {
                     curves[name]?.append(Double(field) ?? .nan)
                 }
             }
-            // A NumPy array of float32, shaped (maps, size, size).
-            let data = try Data(contentsOf: folder.appendingPathComponent("density.npy"))
-            guard data.count > 10 else { return }
-            let header = Int(data[data.startIndex + 8]) | Int(data[data.startIndex + 9]) << 8
-            let described = String(decoding: data.dropFirst(10).prefix(header), as: UTF8.self)
-            let shape = described.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
-            guard shape.count >= 3, let side = shape.last, side > 0 else { return }
-            size = side
-            let body = [UInt8](data.dropFirst(10 + header))
-            let values = body.withUnsafeBytes { raw in
-                (0..<body.count / 4).map { raw.loadUnaligned(fromByteOffset: $0 * 4, as: Float.self) }
-            }
-            for index in 0..<values.count / (side * side) {
-                maps.append(Array(values[index * side * side..<(index + 1) * side * side]))
-            }
+            (size, maps) = SolverCheck.maps(
+                npy: try Data(contentsOf: folder.appendingPathComponent("density.npy")))
         }
 
         public var steps: [Int] { (curves["step"] ?? []).map { Int($0) } }
