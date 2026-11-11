@@ -3,9 +3,10 @@
 The hires engine's CUDA twin for rented NVIDIA GPUs (#269), written and tested without one in
 phase 1. #273 laid the frame the next steps build in: the C API, the Swift module over it, the
 build for the GPU and for the CPU target, and the tree builder, the first engine in it. #274
-added the solver of the massive particles, which has [a section of its own](#the-massive-particles-solver-274).
-How a kernel's text is shared with Metal is in [one-kernel-source.md](one-kernel-source.md);
-this note is how the CUDA side around it is built, run and tested.
+added the solver of the massive particles, which has
+[a section of its own](#the-massive-particles-solver-274). How a kernel's text is shared with
+Metal is in [one-kernel-source.md](one-kernel-source.md); this note is how the CUDA side around
+it is built, run and tested.
 
 ## Layout
 
@@ -335,3 +336,124 @@ now with its sorted Morton codes, which the walk reads to open the cells around 
 tree kernel that strides over the nodes gives each node to one thread whatever the grid, so the
 CPU target launches one block of them where a GPU launches 1,024: the same nodes to the bit, and
 a step of 20,000 particles went from 168 ms to 52.
+A step of scene-0031 at 20 k, 49,999 particles with their live halos, takes 0.21 s there: 2,000
+steps in seven minutes.
+
+### Tests
+
+**Now, in every Linux check and on every push**, on the CPU target (16 s for the three CUDA
+suites):
+
+- `cuda/tests/solver_fixture.cu`, with `g++` and `clang++`: `bhWalk` and `halos` from the MSL
+  text over the walk fixture of #281, 1,000 tracers through a tree of 5,012 massive particles.
+  No acceleration past 1e-5 of Metal's, the furthest 1.63e-6 away, 42 with Metal's bits.
+- `CUDA solver` (7 tests run here): accelerations against direct summation at 2,000, 3,000 and
+  20,000 to the tolerance `accelerationMatchesDirectSummation` holds the Metal solver to (mean
+  under 2 %, worst under 15 % at an opening angle of 0.4); a black hole's pull on every particle
+  and its reaction, as `aBlackHolePullsDirectlyAndTakesTheReaction`; 200 steps of a merger of
+  20,000 with star formation, two cooling disks and dissipation, twice, the same bits, and
+  stopped at step 100, saved and resumed in a solver that samples nothing, the same bits at
+  step 200; the force pass in pieces of 700 slots, and every pass profiled, the same bits, over
+  live halos; a tree reused for two steps, gathered in between, within 0.05 kpc after 20 steps;
+  the smoothing lengths from the solver's own tree; a checkpoint of another size or cut short
+  refused; a solver check's run written and read back.
+
+**Written now, run on a GPU in #283**, each skipped on the CPU target with "needs an NVIDIA GPU
+and libsillagecuda.a: #283 runs it":
+
+- `accelerationMatchesDirectSummationAt500k`: direct summation at 500 k, over the tree its own
+  kernels build.
+- `aMergerOf500kRepeatsToTheBitAndResumesFromItsCheckpoint`: 200 k drawn and 300 k of live
+  halos, 200 steps twice and resumed from step 100.
+- `aStepIsTimed` at 2 M and 5 M massive particles: the mean of ten steps, phase by phase, on a
+  `CUDASOLVER` line, to set against the M4 Max.
+
+And on a GPU the tests of the first list run through the real tree, the radix sort and the split
+among them. One test waits for data instead of a GPU: `aRunStaysWithinWhatChaosPartsTwoMetalRunsBy`
+is skipped without the Metal runs of branch `assets/cuda-checks` (below), and #283 runs it on
+its box with them, at 20 k and at 500 k.
+
+### Against Metal
+
+Two float machines do not follow a chaotic system to the bit, so the CUDA solver is held to
+rounding on one force evaluation, and along a run to how far Metal parts from itself when a
+position differs by its last bit.
+
+**The run.** Scene-0031 of 2026-10-30-b at 20 k as a hires steps it: 49,999 particles, 20,000
+drawn and 29,999 of the two live halos, step 0.042 (0.198 Myr), opening angle 0.9, quadrupole
+on, two cooling disks, 2,000 steps to 395.6 Myr, through the first pericentre (308.6 Myr). The
+Mac sampled it once, `massive.bin`, and both engines read that file. Linux builds the same
+`SceneConfig` from `scene.json`, with the Mac's step, softening and opening angle to the bit.
+The Mac ran Metal over it (identical to the byte twice over), then four more times from positions
+a last bit away: one particle moved, three times over (the first drawn, the last drawn, the last
+of the halo), and every particle moved. Its runs are on `assets/cuda-checks` (6c74570),
+`docs/spikes/cuda-checks/solver/`, with their formats. The CUDA run is the CPU target's.
+
+**One force evaluation**, on the positions of `massive.bin`: the accelerations are within
+7.7e-8 of Metal's in the median, 2.4e-7 at the 99th percentile and 2.7e-6 at most, 4.7 % of them
+with the same bits. Metal moved by one bit everywhere is 2e-7, 2.4e-6 and 2.1e-5 from itself.
+
+**Particle by particle**, the distance between the two runs' positions of the drawn particles,
+in kpc (median, 99th percentile, largest):
+
+| step | CUDA against Metal | Metal, one particle a bit away | Metal, every particle a bit away |
+| ---: | --- | --- | --- |
+| 1 | 0, 1.5e-8, 3.8e-6 | 0, 0, 9.5e-7 | 1.9e-6, 3.8e-6, 7.6e-6 |
+| 10 | 0, 1.9e-6, 5.4e-6 | 0, 0, 9.5e-7 | 1.9e-6, 4.3e-6, 2.4e-5 |
+| 100 | 2.4e-7, 7.6e-6, 1.5e-4 | 0, 0, 9.5e-7 | 4.3e-6, 7.3e-5, 5.6e-4 |
+| 1,000 | 3.3e-4, 3.2e-3, 0.021 | 1.5e-4, 1.3e-3, 6.9e-3 | 6.3e-4, 5.5e-3, 0.022 |
+| 2,000 | 8.1e-3, 0.17, 1.41 | 4.7e-3, 0.086, 0.69 | 0.014, 0.28, 1.45 |
+
+After one step more than half the particles still sit where Metal put them, to the bit. From
+there the CUDA run parts from Metal as a Metal run does: further than one particle moved by a
+bit, which stays alone for a hundred steps, and less far than every particle moved by a bit.
+
+**Along the run**, the most each measure reaches over the 2,000 steps:
+
+| measure | CUDA against Metal | Metal against itself, the widest of the four |
+| --- | ---: | ---: |
+| centre of galaxy 0, kpc | 0.0184 | 0.0206 |
+| centre of galaxy 1, kpc | 0.0187 | 0.0147 |
+| thickness of disk 0 | 1.04e-4 | 9.5e-5 |
+| thickness of disk 1 | 1.23e-4 | 9.3e-5 |
+| axis of disk 0, degrees | 0.0189 | 0.0188 |
+| axis of disk 1, degrees | 0.0182 | 0.0251 |
+| momentum | 7.8e-4 | 8.3e-4 |
+| centre of mass, kpc | 9.8e-5 | 1.4e-4 |
+| stars formed | 3 (141 against 138) | 3 |
+| density maps, chi-square a cell, 4 x 4 | 0.0057 | 0.0122 |
+| density maps, chi-square a cell, 8 x 8 | 0.0018 | 0.0033 |
+| stars elsewhere, % | 1.75 | 2.94 |
+
+The centres travel 50 and 63 kpc, the thickness goes from 0.02 to 0.28 and the momentum from
+2.1 to 2.7 in those units, and a chi-square of 1 is two independent draws of one distribution.
+**The CUDA run stays within what chaos alone gives.** Four measures pass the widest of four
+Metal runs, by 0.3 % to 32 % (a centre, both thicknesses, an axis): four draws do not bound a
+fifth, and the test allows three times the widest.
+
+**To run it again**, on Linux, with the Mac's folder checked out from `assets/cuda-checks`:
+
+```
+SILLAGE_CUDA_CHECKS=<folder> SILLAGE_CUDA_CHECKS_OUT=<out> scripts/linux.sh test-cuda \
+    --filter aRunStaysWithinWhatChaosPartsTwoMetalRunsBy
+cd <folder> && python3 <repository>/scripts/solver-compare.py metal \
+    --scale metal-bit-a metal-bit-b metal-bit-c metal-bit-all --test <out>/cuda-cpu
+```
+
+The test writes the CUDA run in the Mac's format (`SolverCheck`), holds the accelerations of step
+0 to rounding and the measures above to three times the widest Metal run, and prints them on
+`CUDASOLVER` lines; the script prints every measure along the run. The Metal side is written by
+`SILLAGE_SOLVER_CHECK_OUT=<folder> ./scripts/dev.sh test --filter SolverCheckTests` on the Mac,
+at `SILLAGE_SOLVER_CHECK_PARTICLES` drawn (20,000) for `SILLAGE_SOLVER_CHECK_STEPS` (2,000).
+
+### What #274 measured
+
+- **Metal is the same to the bit.** After the kernels were shared, and again after the step and
+  the CPU work moved out of `MetalBarnesHutSolver`, the Mac's check passed with the same 605
+  tests, a short hires of scene-0031 (200 k drawn from 50 k massive) gave its 26 files to the
+  byte, and so did a Metal run of 2,000 steps at 20 k with its checkpoints and accelerations.
+- **The massive kernels compile for CUDA as they are**: 12 entry points for sm_120, no barrier,
+  no double precision instruction.
+- **The CPU target repeats itself and resumes to the bit** over 200 steps of a merger of 20,000.
+- **A scene built on Linux has the Mac's step, softening and opening angle to the bit** at 20 k,
+  though its sample does not (#272).
