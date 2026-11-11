@@ -452,6 +452,10 @@ at `SILLAGE_SOLVER_CHECK_PARTICLES` drawn (20,000) for `SILLAGE_SOLVER_CHECK_STE
   the CPU work moved out of `MetalBarnesHutSolver`, the Mac's check passed with the same 605
   tests, a short hires of scene-0031 (200 k drawn from 50 k massive) gave its 26 files to the
   byte, and so did a Metal run of 2,000 steps at 20 k with its checkpoints and accelerations.
+  Scene-0031 has no black hole, and `holePair` rewrote the one place a hole pulls: a black hole
+  pass at 12,000, alone and with light tracers, gave main's particles, state and accelerations
+  to the byte at seven steps up to 1,200. `aBlackHolePassKeepsItsBits` now holds that run to
+  its digests in every check on the Mac, on the GPU they were taken on.
 - **The massive kernels compile for CUDA as they are**: 12 entry points for sm_120, no barrier,
   no double precision instruction.
 - **The CPU target repeats itself and resumes to the bit** over 200 steps of a merger of 20,000.

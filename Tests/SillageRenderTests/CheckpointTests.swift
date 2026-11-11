@@ -38,6 +38,48 @@ struct CheckpointTests {
         }
     }
 
+    /// A black hole's pull to the bit (#274): `Archetype.blackHolePass` at 12,000, alone and with
+    /// light tracers, stepped 50 times, and what a checkpoint keeps of the particles then,
+    /// against its digest from before the solver's kernels were shared with CUDA. The hole's
+    /// acceleration is all summed reactions, so a bit that moves in the pull shows here; no
+    /// other reference of the check has a black hole. Metal's bits are a GPU's own: on a GPU
+    /// with no digest here, the test prints the ones to add.
+    @Test func aBlackHolePassKeepsItsBits() throws {
+        let references = [
+            "Apple M4 Max": [
+                "fa59aca28531f27b132d401d44562f488bcb8bf7e6c153e1fa2bedbb522b0376",
+                "36384d48f900e9af93403f8b7b08dd0e9e36451bd9540881662aaf445c591812",
+            ]
+        ]
+        let folder = try temporary("hole")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let drawn = Archetype.blackHolePass.scene(batchSeed: 5, occurrence: 1, particleCount: 12_000)
+        let massive = Archetype.blackHolePass.scene(batchSeed: 5, occurrence: 1, particleCount: 3_000)
+        let (split, tracers) = ParticleSystem.lightTracers(drawn: drawn, massive: massive)
+        let solvers = [
+            try MetalBarnesHutSolver(scene: drawn),
+            try MetalBarnesHutSolver(scene: massive, particles: split, tracers: tracers),
+        ]
+        var digests: [String] = []
+        for (index, solver) in solvers.enumerated() {
+            solver.step(count: 50)
+            let file = folder.appendingPathComponent("particles-\(index).bin")
+            _ = FileManager.default.createFile(atPath: file.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: file)
+            try solver.writeParticles(to: handle)
+            try handle.close()
+            var hash = PortableSHA256()
+            hash.update(data: try Data(contentsOf: file))
+            digests.append(hash.hex())
+        }
+        let gpu = solvers[0].device.name
+        guard let expected = references[gpu] else {
+            print("aBlackHolePassKeepsItsBits: no digest for \(gpu) yet, its own are \(digests)")
+            return
+        }
+        #expect(digests == expected, "\(gpu)")
+    }
+
     /// Restored from its checkpoint, a run with tracers, star formation and a black hole goes
     /// on to the bit as the run that never stopped, though it samples nothing: its massive set
     /// comes back from the checkpoint and its tracers from their 32 bytes (#238).
