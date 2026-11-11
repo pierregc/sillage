@@ -8,7 +8,7 @@ import SillageRender
 /// plan (`FramePlan`), from the same attributes (`ParticleAttributes`), through kernels that
 /// call the shared functions of `Shaders`; the light and the dust accumulate as 64-bit fixed
 /// point, so a frame drawn twice is the same to the bit. #277 turns the targets into a picture.
-public final class CUDARenderer: FramePreparing {
+public final class CUDARenderer: FrameStyling {
     /// Light tracers drawn beside the massive particles (#238), from the solver's own buffers:
     /// a float4 a state, four words a motion of which the last is the tracer's, and the spacing
     /// records of the massive tree with the frame they are read in. Without the records every
@@ -51,6 +51,11 @@ public final class CUDARenderer: FramePreparing {
     public var armPersistence: Float = 1
     /// Simulated time of the frame being drawn, in code units.
     public var time: Float = 0
+    /// Master fade, 1 for the picture and 0 for black, as `Renderer.fade`.
+    public var fade: Float = 1
+    /// Where the film grain stands in a run of frames: each picture moves it on.
+    var grain = FrameGrain()
+    private var post: CUDAPost?
     /// One over the mean light per unit mass across the scene: `Renderer.luminosityNormalisation`.
     public var luminosityNormalisation: Float
     public let drawnCount: Int
@@ -84,9 +89,7 @@ public final class CUDARenderer: FramePreparing {
     private let tracerScales: [Float]
     private let galaxySlots: Int
     private var diskFrames: [DiskFrame] = []
-    private var ramps: [GalaxyRamp]
-    private var galaxyColours: [GalaxyColours] = []
-    private var mapped = false
+    private var palette: GalaxyPalette
     /// One over the lace's mean, once it is baked.
     private var laceScale: Float?
     private var tracerCount: Int { tracers?.count ?? 0 }
@@ -122,7 +125,7 @@ public final class CUDARenderer: FramePreparing {
         luminosityNormalisation = attributes.luminosityNormalisation
         tracerScales = attributes.tracerScales
         galaxySlots = attributes.galaxySlots
-        ramps = GalaxyRamp.ramps(for: [], slots: attributes.galaxySlots)
+        palette = GalaxyPalette(slots: attributes.galaxySlots)
         largeCapacity = max(largeSplatCapacity, 0)
         positionOffset = externalPositions == nil ? 0 : externalPositionOffset
 
@@ -205,40 +208,21 @@ public final class CUDARenderer: FramePreparing {
     }
 
     /// Each galaxy's colours from a look file's palette, as `Renderer.setGalaxyColours`.
-    public func setGalaxyColours(_ palette: [GalaxyColours]) {
-        guard palette != galaxyColours else { return }
-        galaxyColours = palette
-        ramps = GalaxyRamp.ramps(for: palette, slots: galaxySlots)
-        mapped = GalaxyRamp.mapped(ramps)
-    }
+    public func setGalaxyColours(_ colours: [GalaxyColours]) { palette.set(colours) }
 
     /// One ramp a galaxy slot, as `GalaxyRamp.ramps` makes them from a palette.
-    public func setRamps(_ ramps: [GalaxyRamp]) {
-        galaxyColours = []
-        self.ramps = ramps
-        mapped = GalaxyRamp.mapped(ramps)
+    public func setRamps(_ ramps: [GalaxyRamp]) { palette.set(ramps: ramps) }
+
+    /// `apply(_:)` and `prepare` are `FrameStyling`'s, which the Metal renderer shares.
+    public func restyle(_ settings: RenderSettings, armPersistence: Float) {
+        self.settings = settings
+        self.armPersistence = armPersistence
     }
 
-    public func apply(_ look: RenderLook) {
-        settings.apply(look)
-        armPersistence = look.armPersistence
-    }
-
-    public func apply(_ file: LookFile) {
-        apply(file.look)
-        setGalaxyColours(file.palette)
-    }
-
-    /// Everything but the positions and the smoothing, for drawing `file` on a moment of a take.
-    public func prepare(
-        _ file: LookFile, shot: ShotReplay.Shot, take: RecordingFile.Loaded,
-        at blend: Recording.Blend
-    ) {
-        let moment = TakeFraming.moment(file, shot: shot, take: take, at: blend)
-        apply(moment.look)
-        setGalaxyColours(moment.palette)
-        time = moment.time
-        setDiskFrames(moment.diskFrames)
+    /// Moves the grain on as `count` frames drawn would, as `Renderer.skipFrames` does.
+    public func skipFrames(_ count: Int) {
+        guard !settings.plain else { return }
+        grain.skip(count)
     }
 
     /// The plan `draw` executes for this camera, with the lace baked if the frame wants the web.
@@ -249,7 +233,7 @@ public final class CUDARenderer: FramePreparing {
         return FramePlan(
             settings: settings, camera: camera, time: time, drawnCount: drawnCount,
             tracerCount: tracerCount, luminosityNormalisation: luminosityNormalisation,
-            mapped: mapped,
+            mapped: palette.mapped,
             laceScale: FramePlan.drawsWeb(settings, stages: stages) ? laceScale : nil,
             stages: stages, first: first)
     }
@@ -328,6 +312,40 @@ public final class CUDARenderer: FramePreparing {
     /// Brings the light and the dust up to date as floats, for `target` and for #277.
     public func finish() throws {
         try check(sc_render_finish(handle), "finishing the frame's targets")
+    }
+
+    /// The frame as a picture in 8-bit bytes: the particle passes, then the post-processing of
+    /// `PostPlan` over the light they left, in pinned host memory, valid until the next frame
+    /// (#277). The grain moves on one frame, as a frame drawn by `Renderer` does.
+    public func picture(
+        camera: Camera, format: CUDAPost.Format = .rgb, threads: Int = 1
+    ) throws -> UnsafeRawBufferPointer {
+        try render(camera: camera, threads: threads)
+        return try develop(format: format)
+    }
+
+    /// The post-processing of the light the last frame left, as bytes.
+    public func develop(format: CUDAPost.Format = .rgb) throws -> UnsafeRawBufferPointer {
+        let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
+        let post: CUDAPost
+        if let held = self.post, held.sizes == plan.sizes {
+            post = held
+        } else {
+            post = try CUDAPost(context: context, sizes: plan.sizes)
+            self.post = post
+        }
+        guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
+            throw CUDAError(.invalidArgument, "this renderer has no light")
+        }
+        try post.run(
+            plan, light: CUDABuffer(borrowing: light, of: self, context: context))
+        return try post.pack(format)
+    }
+
+    /// An image of the post-processing of the last frame, for the comparisons.
+    public func postImage(_ which: PostPlan.Image) throws -> [Float] {
+        guard let post else { throw CUDAError(.invalidArgument, "no frame has been developed") }
+        return try post.image(which)
     }
 
     /// A target of the last frame, after `finish`.
@@ -415,10 +433,10 @@ public final class CUDARenderer: FramePreparing {
             try check(sc_render_set_particles(handle, &massive, nil), "the particles' buffers")
         }
         let status = diskFrames.withUnsafeBytes { frames in
-            ramps.withUnsafeBytes { ramps in
+            palette.ramps.withUnsafeBytes { ramps in
                 sc_render_set_frame(
                     handle, frames.baseAddress, UInt32(diskFrames.count), ramps.baseAddress,
-                    UInt32(self.ramps.count))
+                    UInt32(self.palette.ramps.count))
             }
         }
         try check(status, "the disk frames and the ramps")

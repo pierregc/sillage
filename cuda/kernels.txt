@@ -71,13 +71,13 @@ Shaders plainVertex cuda
 Shaders plainTracerVertex cuda
 Shaders plainFragment cuda in plainVertex plainTracerVertex
 Shaders starfieldFragment cuda in starfieldVertex
-Shaders resolve pending #277
-Shaders plainComposite pending #277
-Shaders brightPass pending #277
-Shaders downsample pending #277
-Shaders upsampleAdd pending #277
-Shaders compactLight pending #277
-Shaders diffractionSpikes pending #277
-Shaders composite pending #277
+Shaders resolve cuda
+Shaders plainComposite cuda
+Shaders brightPass cuda
+Shaders downsample cuda
+Shaders upsampleAdd cuda
+Shaders compactLight cuda
+Shaders diffractionSpikes cuda
+Shaders composite cuda
 
 SolverShaders integrate metal-only: the restricted solver
