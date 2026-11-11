@@ -8,7 +8,8 @@ enum Shaders {
 
         // What is outside `#if defined(__METAL_VERSION__)` is shared with the CUDA engine, which
         // compiles it through cuda/include/msl_compat.h (docs/notes/one-kernel-source.md). #276
-        // shared the particle passes; the post-processing kernels at the end wait for #277.
+        // shared the particle passes and #277 the post-processing kernels: their work is the
+        // functions ending in Pixel, and the kernels at the end only read and write textures.
         #if defined(__METAL_VERSION__)
         #define SHARED static
         #define SHARED_CONSTANT constant
@@ -1573,64 +1574,32 @@ enum Shaders {
             return half4(color * half(falloff), half(falloff));
         }
 
+        // The textures the post-processing kernels read, side by side as the column's and the
+        // lace's are: Metal's own, and four floats a texel in device memory elsewhere (#277).
         #if defined(__METAL_VERSION__)
-        struct PlainOut {
-            float4 position [[position]];
-            float pointSize [[point_size]];
-            half3 color;
-        };
+        typedef texture2d<float, access::read> PostRead;
+        typedef texture2d<float, access::sample> PostSample;
 
-        static PlainOut plainOut(PlainPoint point) {
-            PlainOut out;
-            out.position = point.position;
-            out.pointSize = point.pointSize;
-            out.color = point.color;
-            return out;
-        }
+        SHARED float3 postRead(PostRead t, uint2 at) { return t.read(at).rgb; }
+        SHARED float3 postSample(PostSample t, float2 uv) { return t.sample(bilinear, uv).rgb; }
+        SHARED float2 postExtent(PostSample t) { return float2(t.get_width(), t.get_height()); }
+        #else
+        typedef texels2d PostRead;
+        typedef texels2d PostSample;
 
-        vertex PlainOut plainVertex(uint vid [[vertex_id]],
-                                    device const float3 *positions [[buffer(0)]],
-                                    device const uint *component [[buffer(3)]],
-                                    constant SplatUniforms &u [[buffer(4)]],
-                                    device const uint *galaxy [[buffer(5)]],
-                                    constant DiskFrame *frames [[buffer(6)]]) {
-            return plainOut(plainPoint(positions[vid], component[vid], galaxy[vid], u, frames));
-        }
-
-        vertex PlainOut plainTracerVertex(uint vid [[vertex_id]],
-                                          constant SplatUniforms &u [[buffer(4)]],
-                                          constant DiskFrame *frames [[buffer(6)]],
-                                          device const float4 *states [[buffer(18)]],
-                                          device const uint *words [[buffer(19)]]) {
-            return plainOut(plainTracer(states[vid], words[vid * 4u + 3u], u, frames));
-        }
-
-        fragment half4 plainFragment(PlainOut in [[stage_in]]) {
-            return plainPixel(in.color);
-        }
-
-        fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
-                                               float2 coord [[point_coord]]) {
-            float r2 = splatRadius2(coord);
-            if (r2 > 1.0f) { discard_fragment(); }
-
-            LightTarget out;
-            out.light = starfieldPixel(in.color, in.spikes, coord, r2);
-            return out;
-        }
+        SHARED float3 postRead(PostRead t, uint2 at) { return fetch_texel(t, 0u, at.x, at.y).rgb; }
+        SHARED float3 postSample(PostSample t, float2 uv) { return sample_bilinear(t, uv).rgb; }
+        SHARED float2 postExtent(PostSample t) { return float2(float(t.width), float(t.height)); }
+        #endif
 
         // Box average of the supersampled accumulation down to output resolution, with dust
         // extinction applied on the way. Interstellar dust removes blue far more than red, so a
         // lane crossing a bright disk reads brown rather than grey.
-        kernel void resolve(texture2d<float, access::read> light [[texture(0)]],
-                            texture2d<float, access::write> dst [[texture(2)]],
-                            constant uint &factor [[buffer(0)]],
-                            uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+        SHARED float4 resolvePixel(PostRead light, uint2 gid, uint factor) {
             float3 emitted = float3(0.0f);
             for (uint y = 0; y < factor; ++y) {
                 for (uint x = 0; x < factor; ++x) {
-                    emitted += light.read(gid * factor + uint2(x, y)).rgb;
+                    emitted += postRead(light, gid * factor + uint2(x, y));
                 }
             }
             float3 averaged = emitted / float(factor * factor);
@@ -1640,88 +1609,68 @@ enum Shaders {
             // of a pixel — in front of the stars and behind them alike — was halved and
             // applied to the total, which cannot make a lane pass in front of anything and
             // only ever pulled the whole galaxy down towards brown.
-            dst.write(float4(averaged, 1.0f), gid);
+            return float4(averaged, 1.0f);
         }
 
         // Box average of the accumulation and an exponential exposure curve, which keeps a
         // dense core in its galaxy's hue instead of clipping it to white.
-        kernel void plainComposite(texture2d<float, access::read> light [[texture(0)]],
-                                   texture2d<float, access::write> output [[texture(2)]],
-                                   constant uint &factor [[buffer(0)]],
-                                   constant float &fade [[buffer(1)]],
-                                   uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
+        SHARED float4 plainCompositePixel(PostRead light, uint2 gid, uint factor, float fade) {
             float3 sum = float3(0.0f);
             for (uint y = 0; y < factor; ++y) {
                 for (uint x = 0; x < factor; ++x) {
-                    sum += light.read(gid * factor + uint2(x, y)).rgb;
+                    sum += postRead(light, gid * factor + uint2(x, y));
                 }
             }
             float3 energy = sum / float(factor * factor);
-            output.write(float4(pow(1.0f - exp(-energy), 1.0f / 2.2f) * fade, 1.0f), gid);
+            return float4(pow(1.0f - exp(-energy), 1.0f / 2.2f) * fade, 1.0f);
         }
 
-        kernel void brightPass(texture2d<float, access::sample> src [[texture(0)]],
-                               texture2d<float, access::write> dst [[texture(1)]],
-                               constant BloomParams &p [[buffer(0)]],
-                               uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float2 uv = (float2(gid) + 0.5f) / float2(dst.get_width(), dst.get_height());
-            float3 c = src.sample(bilinear, uv).rgb;
+        SHARED float4 brightPixel(PostSample src, uint2 gid, uint2 size, constant BloomParams &p) {
+            float2 uv = (float2(gid) + 0.5f) / float2(size);
+            float3 c = postSample(src, uv);
             float brightness = max(c.r, max(c.g, c.b));
             float knee = max(p.threshold * p.softKnee, 1e-5f);
             float soft = clamp(brightness - p.threshold + knee, 0.0f, 2.0f * knee);
             soft = soft * soft / (4.0f * knee);
             float weight = max(soft, brightness - p.threshold) / max(brightness, 1e-5f);
-            dst.write(float4(c * weight, 1.0f), gid);
+            return float4(c * weight, 1.0f);
         }
 
         // Kawase dual filter, the downsample half.
-        kernel void downsample(texture2d<float, access::sample> src [[texture(0)]],
-                               texture2d<float, access::write> dst [[texture(1)]],
-                               uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float2 uv = (float2(gid) + 0.5f) / float2(dst.get_width(), dst.get_height());
-            float2 hp = 0.5f / float2(src.get_width(), src.get_height());
-            float3 sum = src.sample(bilinear, uv).rgb * 4.0f;
-            sum += src.sample(bilinear, uv - hp).rgb;
-            sum += src.sample(bilinear, uv + hp).rgb;
-            sum += src.sample(bilinear, uv + float2(hp.x, -hp.y)).rgb;
-            sum += src.sample(bilinear, uv + float2(-hp.x, hp.y)).rgb;
-            dst.write(float4(sum / 8.0f, 1.0f), gid);
+        SHARED float4 downsamplePixel(PostSample src, uint2 gid, uint2 size) {
+            float2 uv = (float2(gid) + 0.5f) / float2(size);
+            float2 hp = 0.5f / postExtent(src);
+            float3 sum = postSample(src, uv) * 4.0f;
+            sum += postSample(src, uv - hp);
+            sum += postSample(src, uv + hp);
+            sum += postSample(src, uv + float2(hp.x, -hp.y));
+            sum += postSample(src, uv + float2(-hp.x, hp.y));
+            return float4(sum / 8.0f, 1.0f);
         }
 
         // Kawase dual filter, the upsample half, accumulating the finer level underneath.
-        kernel void upsampleAdd(texture2d<float, access::sample> src [[texture(0)]],
-                                texture2d<float, access::read> base [[texture(1)]],
-                                texture2d<float, access::write> dst [[texture(2)]],
-                                uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float2 size = float2(dst.get_width(), dst.get_height());
-            float2 uv = (float2(gid) + 0.5f) / size;
-            float2 hp = 0.5f / size;
-            float3 sum = src.sample(bilinear, uv + float2(-hp.x * 2.0f, 0.0f)).rgb;
-            sum += src.sample(bilinear, uv + float2(-hp.x, hp.y)).rgb * 2.0f;
-            sum += src.sample(bilinear, uv + float2(0.0f, hp.y * 2.0f)).rgb;
-            sum += src.sample(bilinear, uv + float2(hp.x, hp.y)).rgb * 2.0f;
-            sum += src.sample(bilinear, uv + float2(hp.x * 2.0f, 0.0f)).rgb;
-            sum += src.sample(bilinear, uv + float2(hp.x, -hp.y)).rgb * 2.0f;
-            sum += src.sample(bilinear, uv + float2(0.0f, -hp.y * 2.0f)).rgb;
-            sum += src.sample(bilinear, uv + float2(-hp.x, -hp.y)).rgb * 2.0f;
-            dst.write(float4(sum / 12.0f + base.read(gid).rgb, 1.0f), gid);
+        SHARED float4 upsamplePixel(PostSample src, PostRead base, uint2 gid, uint2 size) {
+            float2 extent = float2(size);
+            float2 uv = (float2(gid) + 0.5f) / extent;
+            float2 hp = 0.5f / extent;
+            float3 sum = postSample(src, uv + float2(-hp.x * 2.0f, 0.0f));
+            sum += postSample(src, uv + float2(-hp.x, hp.y)) * 2.0f;
+            sum += postSample(src, uv + float2(0.0f, hp.y * 2.0f));
+            sum += postSample(src, uv + float2(hp.x, hp.y)) * 2.0f;
+            sum += postSample(src, uv + float2(hp.x * 2.0f, 0.0f));
+            sum += postSample(src, uv + float2(hp.x, -hp.y)) * 2.0f;
+            sum += postSample(src, uv + float2(0.0f, -hp.y * 2.0f));
+            sum += postSample(src, uv + float2(-hp.x, -hp.y)) * 2.0f;
+            return float4(sum / 12.0f + postRead(base, gid), 1.0f);
         }
 
         // The light of a source with its surroundings taken off, so a star keeps nearly all of
         // its own and an extended core almost none: what throws thin spikes rather than cones.
-        kernel void compactLight(texture2d<float, access::sample> point [[texture(0)]],
-                                 texture2d<float, access::sample> broad [[texture(1)]],
-                                 texture2d<float, access::write> dst [[texture(2)]],
-                                 constant float &amount [[buffer(0)]],
-                                 uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float2 uv = (float2(gid) + 0.5f) / float2(dst.get_width(), dst.get_height());
-            float3 around = broad.sample(bilinear, uv).rgb;
-            dst.write(float4(max(point.sample(bilinear, uv).rgb - amount * around, 0.0f), 1.0f), gid);
+        SHARED float4 compactPixel(PostSample point, PostSample broad, uint2 gid, uint2 size,
+                                   float amount) {
+            float2 uv = (float2(gid) + 0.5f) / float2(size);
+            float3 around = postSample(broad, uv);
+            return float4(max(postSample(point, uv) - amount * around, 0.0f), 1.0f);
         }
 
         // Diffraction spikes. A telescope's secondary supports and, on a segmented mirror, the
@@ -1729,61 +1678,51 @@ enum Shaders {
         // mirror, four for a Cassegrain spider, and on Webb two short ones from the strut.
         // Gathering bright light back along those directions is most of what makes a rendered
         // field read as an exposure.
-        kernel void diffractionSpikes(texture2d<float, access::sample> src [[texture(0)]],
-                                      texture2d<float, access::write> dst [[texture(1)]],
-                                      constant SpikeParams &p [[buffer(0)]],
-                                      uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
-            float2 size = float2(dst.get_width(), dst.get_height());
-            float2 uv = (float2(gid) + 0.5f) / size;
+        SHARED float4 spikesPixel(PostSample src, uint2 gid, uint2 size, constant SpikeParams &p) {
+            float2 extent = float2(size);
+            float2 uv = (float2(gid) + 0.5f) / extent;
             float3 total = float3(0.0f);
             if (p.arms == 0u || p.samples == 0u) {
-                dst.write(float4(total, 1.0f), gid);
-                return;
+                return float4(total, 1.0f);
             }
             for (uint arm = 0; arm < p.arms; ++arm) {
                 float angle = p.baseAngle + float(arm) * 6.2831853f / float(p.arms);
-                float2 step = float2(cos(angle), sin(angle)) / size;
+                float2 step = float2(cos(angle), sin(angle)) / extent;
                 for (uint sample = 1; sample <= p.samples; ++sample) {
                     float t = float(sample) / float(p.samples);
-                    total += src.sample(bilinear, uv + step * (t * p.length)).rgb
+                    total += postSample(src, uv + step * (t * p.length))
                            * exp(-t * p.falloff);
                 }
             }
             uint shortSamples = max(8u, uint(float(p.samples) * p.shortScale));
             for (uint arm = 0; arm < p.shortArms; ++arm) {
                 float angle = p.shortBaseAngle + float(arm) * 6.2831853f / float(p.shortArms);
-                float2 step = float2(cos(angle), sin(angle)) / size;
+                float2 step = float2(cos(angle), sin(angle)) / extent;
                 for (uint sample = 1; sample <= shortSamples; ++sample) {
                     float t = float(sample) / float(shortSamples);
-                    total += src.sample(bilinear, uv + step * (t * p.length * p.shortScale)).rgb
+                    total += postSample(src, uv + step * (t * p.length * p.shortScale))
                            * exp(-t * p.falloff);
                 }
             }
-            dst.write(float4(total / float(p.samples), 1.0f), gid);
+            return float4(total / float(p.samples), 1.0f);
         }
 
-        static float hash2(float2 v) {
+        SHARED float hash2(float2 v) {
             float x = sin(dot(v, float2(127.1f, 311.7f))) * 43758.5453f;
             return x - floor(x);
         }
 
-        static float3 acesFilmic(float3 x) {
+        SHARED float3 acesFilmic(float3 x) {
             const float a = 2.51f, b = 0.03f, c = 2.43f, d = 0.59f, e = 0.14f;
             return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
         }
 
-        kernel void composite(texture2d<float, access::read> hdr [[texture(0)]],
-                              texture2d<float, access::sample> bloom [[texture(1)]],
-                              texture2d<float, access::write> output [[texture(2)]],
-                              texture2d<float, access::sample> spikes [[texture(3)]],
-                              constant CompositeParams &p [[buffer(0)]],
-                              uint2 gid [[thread_position_in_grid]]) {
-            if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
-            float2 uv = (float2(gid) + 0.5f) / float2(output.get_width(), output.get_height());
-            float3 energy = hdr.read(gid).rgb
-                          + bloom.sample(bilinear, uv).rgb * p.bloomIntensity
-                          + spikes.sample(bilinear, uv).rgb * p.spikeIntensity;
+        SHARED float4 compositePixel(PostRead hdr, PostSample bloom, PostSample spikes, uint2 gid,
+                                     uint2 size, constant CompositeParams &p) {
+            float2 uv = (float2(gid) + 0.5f) / float2(size);
+            float3 energy = postRead(hdr, gid)
+                          + postSample(bloom, uv) * p.bloomIntensity
+                          + postSample(spikes, uv) * p.spikeIntensity;
             // A real frame is never on pure black: there is airglow and zodiacal light under
             // everything, and the detector adds read noise and photon shot noise on top.
             // Counterintuitively, putting them back is what stops the image looking synthetic.
@@ -1843,7 +1782,125 @@ enum Shaders {
             float mappedLuma = dot(mapped, float3(0.2126f, 0.7152f, 0.0722f));
             mapped = max(mix(float3(mappedLuma), mapped, half_amount), 0.0f);
             mapped = saturate(mapped);
-            output.write(float4(pow(mapped, 1.0f / 2.2f) * p.fade, 1.0f), gid);
+            return float4(pow(mapped, 1.0f / 2.2f) * p.fade, 1.0f);
+        }
+
+        #if defined(__METAL_VERSION__)
+        struct PlainOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            half3 color;
+        };
+
+        static PlainOut plainOut(PlainPoint point) {
+            PlainOut out;
+            out.position = point.position;
+            out.pointSize = point.pointSize;
+            out.color = point.color;
+            return out;
+        }
+
+        vertex PlainOut plainVertex(uint vid [[vertex_id]],
+                                    device const float3 *positions [[buffer(0)]],
+                                    device const uint *component [[buffer(3)]],
+                                    constant SplatUniforms &u [[buffer(4)]],
+                                    device const uint *galaxy [[buffer(5)]],
+                                    constant DiskFrame *frames [[buffer(6)]]) {
+            return plainOut(plainPoint(positions[vid], component[vid], galaxy[vid], u, frames));
+        }
+
+        vertex PlainOut plainTracerVertex(uint vid [[vertex_id]],
+                                          constant SplatUniforms &u [[buffer(4)]],
+                                          constant DiskFrame *frames [[buffer(6)]],
+                                          device const float4 *states [[buffer(18)]],
+                                          device const uint *words [[buffer(19)]]) {
+            return plainOut(plainTracer(states[vid], words[vid * 4u + 3u], u, frames));
+        }
+
+        fragment half4 plainFragment(PlainOut in [[stage_in]]) {
+            return plainPixel(in.color);
+        }
+
+        fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
+                                               float2 coord [[point_coord]]) {
+            float r2 = splatRadius2(coord);
+            if (r2 > 1.0f) { discard_fragment(); }
+
+            LightTarget out;
+            out.light = starfieldPixel(in.color, in.spikes, coord, r2);
+            return out;
+        }
+
+        kernel void resolve(texture2d<float, access::read> light [[texture(0)]],
+                            texture2d<float, access::write> dst [[texture(2)]],
+                            constant uint &factor [[buffer(0)]],
+                            uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            dst.write(resolvePixel(light, gid, factor), gid);
+        }
+
+        kernel void plainComposite(texture2d<float, access::read> light [[texture(0)]],
+                                   texture2d<float, access::write> output [[texture(2)]],
+                                   constant uint &factor [[buffer(0)]],
+                                   constant float &fade [[buffer(1)]],
+                                   uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
+            output.write(plainCompositePixel(light, gid, factor, fade), gid);
+        }
+
+        kernel void brightPass(texture2d<float, access::sample> src [[texture(0)]],
+                               texture2d<float, access::write> dst [[texture(1)]],
+                               constant BloomParams &p [[buffer(0)]],
+                               uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            dst.write(brightPixel(src, gid, uint2(dst.get_width(), dst.get_height()), p), gid);
+        }
+
+        kernel void downsample(texture2d<float, access::sample> src [[texture(0)]],
+                               texture2d<float, access::write> dst [[texture(1)]],
+                               uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            dst.write(downsamplePixel(src, gid, uint2(dst.get_width(), dst.get_height())), gid);
+        }
+
+        kernel void upsampleAdd(texture2d<float, access::sample> src [[texture(0)]],
+                                texture2d<float, access::read> base [[texture(1)]],
+                                texture2d<float, access::write> dst [[texture(2)]],
+                                uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            dst.write(upsamplePixel(src, base, gid, uint2(dst.get_width(), dst.get_height())), gid);
+        }
+
+        kernel void compactLight(texture2d<float, access::sample> point [[texture(0)]],
+                                 texture2d<float, access::sample> broad [[texture(1)]],
+                                 texture2d<float, access::write> dst [[texture(2)]],
+                                 constant float &amount [[buffer(0)]],
+                                 uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            dst.write(
+                compactPixel(point, broad, gid, uint2(dst.get_width(), dst.get_height()), amount),
+                gid);
+        }
+
+        kernel void diffractionSpikes(texture2d<float, access::sample> src [[texture(0)]],
+                                      texture2d<float, access::write> dst [[texture(1)]],
+                                      constant SpikeParams &p [[buffer(0)]],
+                                      uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            dst.write(spikesPixel(src, gid, uint2(dst.get_width(), dst.get_height()), p), gid);
+        }
+
+        kernel void composite(texture2d<float, access::read> hdr [[texture(0)]],
+                              texture2d<float, access::sample> bloom [[texture(1)]],
+                              texture2d<float, access::write> output [[texture(2)]],
+                              texture2d<float, access::sample> spikes [[texture(3)]],
+                              constant CompositeParams &p [[buffer(0)]],
+                              uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
+            output.write(
+                compositePixel(hdr, bloom, spikes, gid,
+                               uint2(output.get_width(), output.get_height()), p),
+                gid);
         }
         #endif
         """
