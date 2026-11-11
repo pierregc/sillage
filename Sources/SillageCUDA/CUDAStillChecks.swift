@@ -162,3 +162,55 @@ extension CUDAStillChecks {
         return rows
     }
 }
+
+extension CUDAStillChecks {
+    /// Metal's own accumulation of each frame developed by the CUDA post-processing alone and
+    /// measured against Metal's PNG: the quick way to tell the post-processing from the particle
+    /// passes, in seconds where `compareWithMetal` draws every frame three ways.
+    public static func developMetalLight(
+        folder: URL, looks: Set<String>? = nil, output: URL? = nil,
+        log: (String) -> Void = { _ in }
+    ) throws -> [(look: String, frame: String, measure: Measure)] {
+        guard let manifest = RenderTargetManifest.read(from: folder) else {
+            throw CUDARenderChecks.Failure.folder("\(folder.path): no manifest of sillage-render-targets 1")
+        }
+        let take = try RecordingFile.read(from: folder.appendingPathComponent(manifest.take.file))
+        let context = try CUDAContext()
+        var drawings: [String: CUDATakeStills] = [:]
+        var rows: [(look: String, frame: String, measure: Measure)] = []
+        for target in manifest.targets where looks?.contains(target.look) ?? true {
+            let png = folder.appendingPathComponent("stills/\(target.look)-\(target.frame).png")
+            guard FileManager.default.fileExists(atPath: png.path),
+                let entry = target.files["light"]
+            else { continue }
+            let metal = try PNG.read(png)
+            let drawing: CUDATakeStills
+            if let held = drawings[target.look] {
+                drawing = held
+            } else {
+                drawing = try CUDATakeStills(
+                    context: context, take: take,
+                    look: LookFile.decoded(
+                        from: Data(contentsOf: folder.appendingPathComponent(target.lookFile))),
+                    capturedRate: manifest.take.capturedRate, width: manifest.width,
+                    height: manifest.height)
+                drawings[target.look] = drawing
+            }
+            let bytes = try drawing.still(
+                atCaptured: target.captured, frame: Int(target.captured), threads: 1,
+                light: CUDARenderChecks.halves(entry, in: folder))
+            let picture = [UInt8](bytes)
+            if let output {
+                try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+                try PNG.write(
+                    PNG.Image(
+                        width: manifest.width, height: manifest.height, channels: 3, bytes: picture),
+                    to: output.appendingPathComponent("\(target.look)-\(target.frame)-post.png"))
+            }
+            let measured = measure(picture, channels: 3, metal.bytes, channels: metal.channels)
+            log("\(target.look) \(target.frame): \(measured)")
+            rows.append((target.look, target.frame, measured))
+        }
+        return rows
+    }
+}
