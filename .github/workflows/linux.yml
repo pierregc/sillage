@@ -41,18 +41,28 @@ jobs:
       - name: The CUDA build for sm_120, compile only, and the two libraries the Swift links
         run: REQUIRE_NVCC=1 NVCC=/usr/local/cuda/bin/nvcc cuda/build.sh gpu libs
 
-  # scripts/linux.sh check in two jobs side by side (#273), so that the longest stays under ten
-  # minutes: the portable Swift's tests, and the formatter, the strict concurrency typecheck
-  # and the CUDA engine's tests on the CPU target.
-  swift:
+  # scripts/linux.sh check in three jobs side by side (#273), so that the longest stays under
+  # ten minutes: SillageCore's tests, SillageRender's, and the formatter, the strict concurrency
+  # typecheck and the CUDA engine's tests on the CPU target.
+  swift-core:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     container: swift:6.2-noble
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      - name: The portable Swift, built and tested
-        run: scripts/linux.sh test-swift
+      - name: SillageCore, built and tested
+        run: scripts/linux.sh test-core
+
+  swift-render:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: SillageRender, built and tested
+        run: scripts/linux.sh test-render
 
   swift-checks:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository

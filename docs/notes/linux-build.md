@@ -35,7 +35,7 @@ In the manner of `dev.sh`: plain `swiftc`, no SwiftPM, output in `.build/linux/`
 | --- | --- |
 | `build` | `SillageCore` whole, then `SillageRender` without the files of `scripts/linux-skip.txt` |
 | `test [args]` | `build`, then the tests of both modules without those of `scripts/linux-skip-tests.txt`, and the CUDA engine's (#273), with swift-testing's own arguments (`--filter name`) |
-| `test-swift [args]`, `test-cuda [args]` | the tests of `SillageCore` and `SillageRender` alone, or the CUDA engine's alone (#273) |
+| `test-core [args]`, `test-render [args]`, `test-cuda [args]` | the tests of one module alone, the CUDA engine's for the last (#273) |
 | `strict` | the strict concurrency typecheck of both modules, as `dev.sh strict` does |
 | `lint` | `swift format lint --recursive --strict Sources Tests`, the same formatter run as on the Mac |
 | `check` | `lint`, `strict`, then `test`: the gate on Linux. About ten minutes on four cores |

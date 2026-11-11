@@ -46,11 +46,12 @@ core_sources() { sources "$ROOT/Sources/SillageCore"; }
 render_sources() { sources "$ROOT/Sources/SillageRender" "$ROOT/scripts/linux-skip.txt"; }
 cuda_sources() { sources "$ROOT/Sources/SillageCUDA"; }
 
-# The test files of a set: all, swift (SillageCore's and SillageRender's) or cuda.
+# The test files of a set: all, core, render or cuda.
 test_sources() {
     local set="${1:-all}" skip="$ROOT/scripts/linux-skip-tests.txt" name file dir dirs
     case "$set" in
-        swift) dirs=(SillageCoreTests SillageRenderTests) ;;
+        core) dirs=(SillageCoreTests) ;;
+        render) dirs=(SillageRenderTests) ;;
         cuda) dirs=(SillageCUDATests) ;;
         *) dirs=(SillageCoreTests SillageRenderTests SillageCUDATests) ;;
     esac
@@ -129,8 +130,9 @@ build_cuda() {
 run_tests() {
     local set="$1"
     shift
-    local modules=(-lSillageCore -lSillageRender)
-    [ "$set" = swift ] || modules+=(-I "$ROOT/cuda/include" -lSillageCUDA)
+    local modules=(-lSillageCore)
+    [ "$set" = core ] || modules+=(-lSillageRender)
+    [ "$set" = core ] || [ "$set" = render ] || modules+=(-I "$ROOT/cuda/include" -lSillageCUDA)
     cat > "$BUILD/runner.swift" <<'SWIFT'
 import Foundation
 import Testing
@@ -169,7 +171,7 @@ check() {
 
 usage() {
     echo "usage: ${BASH_SOURCE[0]} [check|build|lint|strict|files|test-cuda]..." >&2
-    echo "       ${BASH_SOURCE[0]} test|test-swift|test-cuda [swift-testing arguments]" >&2
+    echo "       ${BASH_SOURCE[0]} test|test-core|test-render|test-cuda [swift-testing arguments]" >&2
     exit 2
 }
 
@@ -182,7 +184,8 @@ run_command() {
                 echo "== SillageCUDA"; cuda_sources; echo "== Tests"; test_sources all ;;
         check)  check ;;
         test)   shift; build_cuda; run_tests all "$@" ;;
-        test-swift) shift; build_render; run_tests swift "$@" ;;
+        test-core) shift; build_core; run_tests core "$@" ;;
+        test-render) shift; build_render; run_tests render "$@" ;;
         test-cuda) shift; build_cuda; run_tests cuda "$@" ;;
         *)      usage ;;
     esac
@@ -190,6 +193,6 @@ run_command() {
 
 [ $# -gt 0 ] || set -- check
 case "$1" in
-    test|test-swift|test-cuda) [ $# -eq 1 ] || { run_command "$@"; exit; } ;;
+    test|test-core|test-render|test-cuda) [ $# -eq 1 ] || { run_command "$@"; exit; } ;;
 esac
 for name in "$@"; do run_command "$name"; done

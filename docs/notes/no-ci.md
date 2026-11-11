@@ -8,7 +8,7 @@ portable Swift on Linux.
 
 `.github/workflows/linux.yml` runs on every push (the `assets/` branches aside) and on pull
 requests from forks, on GitHub's Ubuntu 24.04 runner, with `permissions: contents: read`, no
-secret and no action but GitHub's own checkout. Three jobs side by side.
+secret and no action but GitHub's own checkout. Four jobs side by side.
 
 Job `cuda`, 37 seconds on its first run:
 
@@ -34,11 +34,14 @@ two minutes on its own.
 #273 made it grow, by the CUDA engine's CPU library, its Swift module and its tests, about 35 s
 on the runner, and one run took 11 min 31 s where the one before took 8 min 1 s, most of it the
 runner's own speed (the tests' build, two files longer, took 52 s more; here they build in 4 s).
-The next run, with the formatter and the typecheck moved beside the tests, still took 9 min 58 s.
-So `scripts/linux.sh check` now runs as two jobs: `swift`, `scripts/linux.sh test-swift`, the
-portable Swift's tests as before #273; and `swift-checks`, `scripts/linux.sh lint strict
-test-cuda`, the formatter, the strict concurrency typecheck and the CUDA engine's tests on the
-CPU target, the modules built once. Together they run what `scripts/linux.sh check` runs.
+The next run, with the formatter and the typecheck moved beside the tests, still took 9 min 58 s,
+and the one after, with nothing of #273 left in the tests' job, 9 min 53 s: that night's
+runners ran main's own tests past ten minutes. So `scripts/linux.sh check` now runs as three
+jobs: `swift-core`, `scripts/linux.sh test-core`, `SillageCore` built and its tests run;
+`swift-render`, `scripts/linux.sh test-render`, the same for `SillageRender`; and `swift-checks`,
+`scripts/linux.sh lint strict test-cuda`, the formatter, the strict concurrency typecheck and
+the CUDA engine's tests on the CPU target, the modules built once. Together they run what
+`scripts/linux.sh check` runs.
 
 **What it does not check**: nothing of Metal and nothing of macOS (no macOS job, on purpose),
 so not the files and the tests `scripts/linux-skip.txt` and `scripts/linux-skip-tests.txt` name,
