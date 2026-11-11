@@ -12,15 +12,10 @@ extension Renderer: FramePreparing {
         _ file: LookFile, shot: ShotReplay.Shot, take: RecordingFile.Loaded,
         at blend: Recording.Blend
     ) {
-        apply(shot.look)
-        setGalaxyColours(file.palette)
-        time = blend.time
-        var scene = take.scene
-        file.paint(&scene)
-        setDiskFrames(
-            DiskFrame.make(
-                scene: scene, centers: take.recording.centers(at: blend), time: blend.time,
-                strength: LookFile.diskStrength(file.armStrength, shot.look),
-                disks: take.recording.disks(at: blend)))
+        let moment = TakeFraming.moment(file, shot: shot, take: take, at: blend)
+        apply(moment.look)
+        setGalaxyColours(moment.palette)
+        time = moment.time
+        setDiskFrames(moment.diskFrames)
     }
 }

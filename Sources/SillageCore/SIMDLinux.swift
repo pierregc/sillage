@@ -273,6 +273,10 @@
 
     public typealias simd_float4x4 = SIMDMatrix4<Float>
 
+    // Apple's matrices are Sendable: plain values, as these are.
+    extension SIMDMatrix3: @unchecked Sendable {}
+    extension SIMDMatrix4: @unchecked Sendable {}
+
     @inlinable public func simd_determinant<T: BinaryFloatingPoint & SIMDScalar>(
         _ a: SIMDMatrix3<T>
     ) -> T {
