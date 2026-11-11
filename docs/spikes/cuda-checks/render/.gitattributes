@@ -1,0 +1,9 @@
+*.f16 binary
+*.f32 binary
+*.f32x2 binary
+*.f32x4 binary
+*.u32 binary
+*.u8 binary
+*.bin binary
+*.sillage binary
+*.png binary
