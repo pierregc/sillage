@@ -243,6 +243,34 @@ struct CUDARenderTests {
         #expect(coverage == coverage.rounded() && coverage >= Double(renderer.drawnCount) / 2)
     }
 
+    /// A palette with a ramp paints each galaxy's stars along it, and moves no kernel.
+    @Test func aRampPaintsTheStarsOfItsGalaxy() throws {
+        let stage = Stage.merger()
+        let renderer = try Self.renderer(stage, Self.settings(dust: 0, stars: 0))
+        try renderer.render(camera: stage.camera)
+        let own = try renderer.target(.light)
+        #expect(Self.total(own, channel: 0) > 0 && Self.total(own, channel: 2) > 0)
+
+        let green = SIMD3<Float>(0, 1, 0)
+        let ramp = GalaxyColours.Ramp(
+            mapping: .radius, core: green, disk: green, outskirts: green, young: green,
+            knot: green, blend: 1)
+        renderer.setGalaxyColours([GalaxyColours(green, ramp: ramp), GalaxyColours(green)])
+        try renderer.render(camera: stage.camera)
+        let painted = try renderer.target(.light)
+        // The second galaxy has no ramp and keeps its own light.
+        #expect(Self.total(painted, channel: 1) > Self.total(own, channel: 1))
+        #expect(Self.total(painted, channel: 0) < Self.total(own, channel: 0))
+        #expect(Self.total(painted, channel: 0) > 0)
+        #expect(Self.total(painted, channel: 3) == Self.total(own, channel: 3))
+
+        renderer.setGalaxyColours([GalaxyColours(green, ramp: ramp), GalaxyColours(green, ramp: ramp)])
+        try renderer.render(camera: stage.camera)
+        let both = try renderer.target(.light)
+        #expect(Self.total(both, channel: 0) == 0 && Self.total(both, channel: 2) == 0)
+        #expect(Self.total(both, channel: 1) > 0)
+    }
+
     /// The dust web changes how the dust is drawn and nothing else: with no dust, no web.
     @Test func theDustWebMovesOnlyTheDust() throws {
         let stage = Stage.disk()
@@ -323,7 +351,7 @@ struct CUDARenderTests {
         compact.setTracers(
             CUDARenderer.Tracers(
                 states: try context.makeBuffer(states), motions: try context.makeBuffer(motions),
-                count: tracers, cells: try #require(builder.spacing), treeFrame: builder.frame,
+                count: tracers, cells: builder.spacing, treeFrame: builder.frame,
                 depth: builder.maximumDepth))
         compact.setDiskFrames(frames)
         try compact.render(camera: camera)
