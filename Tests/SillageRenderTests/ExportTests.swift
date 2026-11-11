@@ -184,52 +184,35 @@ struct ExportTests {
         #expect(abs(duration.seconds - 0.5) < 0.01)
     }
 
-    /// The particle targets of chosen frames, as the GPU holds them before any post-processing
-    /// (#276): reading them leaves the frames drawn as they were, to the byte, and the manifest
-    /// lists every file written with its size.
-    @Test func dumpingTheParticleTargetsLeavesTheFramesAsTheyWere() throws {
+    /// The particle targets of a frame, as the GPU holds them before any post-processing (#276):
+    /// read off the frame the export draws, and listed in the manifest with their sizes. No
+    /// video is written here: the encoder is not part of what is checked.
+    @Test func theParticleTargetsOfAFrameAreReadAndListed() throws {
         var look = autoLook
         look.look.dustStrength = 0.3
         look.look.dustWeb = 1
         look.look.columnSmoothing = 8
         look.starCount = 40
         let export = try TakeExport(take: take(frames: 6), look: look, capturedRate: 10)
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("export-\(UUID().uuidString).mp4")
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("targets-\(UUID().uuidString)", isDirectory: true)
-        defer {
-            try? FileManager.default.removeItem(at: url)
-            try? FileManager.default.removeItem(at: directory)
-        }
-        func stills(dumping: Set<Int>, _ dump: (RenderTargetManifest.Capture) throws -> Void) throws
-            -> [Int: Data]
-        {
-            let frames = Stills()
-            _ = try export.write(
-                to: url, width: 64, height: 36, framesPerSecond: 10, stills: [1, 4],
-                still: { frame, image in frames.held[frame] = image.dataProvider?.data as Data? },
-                dumps: dumping, dump: { _, capture in try dump(capture) })
-            return frames.held
-        }
-        let plain = try stills(dumping: []) { _ in }
-        var captures: [RenderTargetManifest.Capture] = []
-        let dumped = try stills(dumping: [1, 4]) { captures.append($0) }
-        #expect(plain.count == 2 && plain == dumped)
-        #expect(captures.map(\.captured) == [1, 4])
+        defer { try? FileManager.default.removeItem(at: directory) }
 
         var manifest = RenderTargetManifest(
             commit: "", device: export.gpuName, system: "", width: 64, height: 36,
             take: RenderTargetManifest.Take(
                 file: "", scene: "", particles: 2000, drawn: 2000, capturedFrames: 6, capturedRate: 10))
-        for (capture, name) in zip(captures, ["early", "late"]) {
-            let targets = capture.targets
+        for (frame, name) in [(1, "early"), (4, "late")] {
+            let drawn = try export.targets(atCaptured: frame, width: 64, height: 36)
+            #expect(drawn.pixels == (try export.still(atCaptured: frame, width: 64, height: 36)))
+            #expect(drawn.capture.captured == Double(frame))
+            let targets = drawn.capture.targets
             #expect(targets.supersample == 2 && targets.drawn == 2000 && targets.starCount == 40)
             let light = try #require(targets.target.first { $0.name == "light.f16" })
             #expect(light.width == 128 && light.height == 72 && light.bytes.count == 128 * 72 * 8)
             #expect(light.bytes.contains { $0 != 0 })
             try manifest.add(
-                capture, look: "web", lookFile: "", name: name,
+                drawn.capture, look: "web", lookFile: "", name: name,
                 megayearsPerUnit: Physics.megayearsPerTimeUnit, to: directory)
         }
         let read = try #require(RenderTargetManifest.read(from: directory))
@@ -252,10 +235,6 @@ struct ExportTests {
                     atPath: directory.appendingPathComponent(entry.file).path)[.size] as? Int
             #expect(size == entry.count * entry.stride, "\(entry.file)")
         }
-    }
-
-    private final class Stills: @unchecked Sendable {
-        var held: [Int: Data] = [:]
     }
 
     private func exported(
