@@ -94,7 +94,7 @@ build_cpu() {
     done
 }
 
-# cuda/src for the GPUs of #270: the RTX 3090 and A100 class (sm_86), the RTX 4090 (sm_89), the
+# cuda/src for the GPUs of #270: the RTX 30 series and A40 (sm_86), the RTX 4090 and L40S (sm_89), the
 # RTX 5090 (sm_120), and PTX for what comes after. No FMA contraction, as in the GPU build.
 build_gpu_library() {
     have_nvcc || return 0

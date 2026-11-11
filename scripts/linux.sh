@@ -3,6 +3,10 @@
 # of dev.sh: plain swiftc, no SwiftPM, output in .build/linux. SillageCore builds whole;
 # SillageRender and the tests build without the files listed in scripts/linux-skip.txt and
 # scripts/linux-skip-tests.txt, which need an Apple framework. docs/notes/linux-build.md says why.
+#
+# SillageCUDA, the CUDA engine's Swift (#273), links libsillagecuda.a, built by nvcc, when a GPU
+# is there, and libsillagecuda_cpu.a, the CPU target, otherwise; SILLAGE_CUDA_TARGET=gpu or cpu
+# chooses. docs/notes/cuda-engine.md says what the CPU target runs.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,6 +41,7 @@ skipped() { sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e '/^$/d' "$1"; }
 
 core_sources() { sources "$ROOT/Sources/SillageCore"; }
 render_sources() { sources "$ROOT/Sources/SillageRender" "$ROOT/scripts/linux-skip.txt"; }
+cuda_sources() { sources "$ROOT/Sources/SillageCUDA"; }
 
 test_sources() {
     local skip="$ROOT/scripts/linux-skip-tests.txt" name file dir
@@ -44,7 +49,7 @@ test_sources() {
         [ -f "$ROOT/Tests/SillageCoreTests/$name" ] || [ -f "$ROOT/Tests/SillageRenderTests/$name" ] \
             || { echo "$skip lists $name, which is not a test file" >&2; exit 1; }
     done < <(skipped "$skip")
-    for dir in SillageCoreTests SillageRenderTests; do
+    for dir in SillageCoreTests SillageRenderTests SillageCUDATests; do
         for file in "$ROOT"/Tests/$dir/*.swift; do
             skipped "$skip" | grep -qxF "$(basename "$file")" || echo "$file"
         done
@@ -68,6 +73,42 @@ build_render() {
         -o "$BUILD/libSillageRender.so"
 }
 
+# The library SillageCUDA links: the GPU's when nvcc built it and a GPU is there.
+cuda_target() {
+    local target="${SILLAGE_CUDA_TARGET:-}"
+    if [ -z "$target" ]; then
+        target=cpu
+        if [ -f "$ROOT/.build/cuda/lib/libsillagecuda.a" ] && nvidia-smi -L 2>/dev/null | grep -q GPU; then
+            target=gpu
+        fi
+    fi
+    echo "$target"
+}
+
+build_cuda() {
+    build_render
+    if [ -z "${CXX:-}" ]; then
+        CXX="$(command -v c++ || command -v clang++ || command -v g++ || echo c++)"
+        export CXX
+    fi
+    "$ROOT/cuda/build.sh" libs
+    local libraries
+    if [ "$(cuda_target)" = gpu ]; then
+        local nvcc="${NVCC:-$(command -v nvcc || echo /usr/local/cuda/bin/nvcc)}"
+        local cuda="$(cd "$(dirname "$nvcc")/.." && pwd)"
+        libraries=(-lsillagecuda -L "$cuda/lib64" -lcudart_static -ldl -lrt -lpthread)
+    else
+        libraries=(-lsillagecuda_cpu)
+    fi
+    echo "SillageCUDA links the $(cuda_target) target"
+    swiftc -O -num-threads "$THREADS" -emit-library -emit-module -enable-testing \
+        -module-name SillageCUDA -I "$BUILD" -I "$ROOT/cuda/include" -L "$BUILD" -lSillageCore \
+        $(cuda_sources) \
+        -emit-module-path "$BUILD/SillageCUDA.swiftmodule" \
+        -L "$ROOT/.build/cuda/lib" "${libraries[@]}" -lstdc++ \
+        -o "$BUILD/libSillageCUDA.so"
+}
+
 run_tests() {
     cat > "$BUILD/runner.swift" <<'SWIFT'
 import Foundation
@@ -77,7 +118,8 @@ import Testing
     static func main() async { exit(await __swiftPMEntryPoint() as CInt) }
 }
 SWIFT
-    swiftc -O -num-threads "$THREADS" -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender \
+    swiftc -O -num-threads "$THREADS" -I "$BUILD" -I "$ROOT/cuda/include" -L "$BUILD" \
+        -lSillageCore -lSillageRender -lSillageCUDA \
         -parse-as-library $(test_sources) "$BUILD/runner.swift" \
         -Xlinker -rpath -Xlinker "$BUILD" \
         -o "$BUILD/tests"
@@ -87,11 +129,13 @@ SWIFT
 
 # The package turns strict concurrency on and plain swiftc does not, as dev.sh explains.
 strict_concurrency() {
-    build_render
+    build_cuda
     swiftc -typecheck -strict-concurrency=complete -swift-version 6 \
         -module-name SillageCore $(core_sources)
     swiftc -typecheck -strict-concurrency=complete -swift-version 6 \
         -module-name SillageRender -I "$BUILD" -L "$BUILD" -lSillageCore $(render_sources)
+    swiftc -typecheck -strict-concurrency=complete -swift-version 6 \
+        -module-name SillageCUDA -I "$BUILD" -I "$ROOT/cuda/include" $(cuda_sources)
 }
 
 check() {
@@ -104,13 +148,13 @@ check() {
 }
 
 case "${1:-check}" in
-    build)  build_render ;;
+    build)  build_cuda ;;
     lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
     strict) strict_concurrency ;;
     files)  echo "== SillageCore"; core_sources; echo "== SillageRender"; render_sources
-            echo "== Tests"; test_sources ;;
+            echo "== SillageCUDA"; cuda_sources; echo "== Tests"; test_sources ;;
     check)  check ;;
-    test)   shift || true; build_render; run_tests "$@" ;;
+    test)   shift || true; build_cuda; run_tests "$@" ;;
     *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|files]" >&2
             exit 2 ;;
 esac

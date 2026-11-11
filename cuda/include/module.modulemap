@@ -1,0 +1,6 @@
+// The C API as a module for Swift (#273): Sources/SillageCUDA imports it, with this directory
+// on the include path.
+module CSillageCUDA {
+    header "sillage_cuda.h"
+    export *
+}
