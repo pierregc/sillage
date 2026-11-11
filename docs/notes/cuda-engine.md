@@ -522,9 +522,18 @@ here), and a light tracer, which only a full pass draws. The tests of the CPU ta
 three (a ramp paints its galaxy's stars and moves no kernel, a tracer draws like the particle
 it stands for, the dust dims what stands behind it), not against Metal.
 
-The pictures are on `assets/cuda-checks` under `docs/spikes/cuda-checks/render/compare/`: for
-each look and frame, Metal's light, the CUDA light and the two difference maps, with every
-number of the run in `comparison.txt`.
+**The pictures**, on `assets/cuda-checks` under `docs/spikes/cuda-checks/render/compare/`, with
+every number of the run in `comparison.txt` and the script that draws them from the maps the
+test writes. Each has four panels: Metal's light and the CUDA light above, their relative
+difference in fixed point and in half floats below, on a log scale from 1e-4 (black) through
+0.2 % (red) and 5 % (yellow) to 1 (white).
+
+| look | | | |
+| --- | --- | --- | --- |
+| `hubble` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-pericentre.png) |
+| `raw` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-pericentre.png) |
+| `red-vs-cyan` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-pericentre.png) |
+| `red-vs-cyan-column` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-pericentre.png) |
 
 **From the take alone**, as #278 will draw (`CUDARenderChecks.compareFromTake`): every input
 made on Linux in place of Metal's bytes.
