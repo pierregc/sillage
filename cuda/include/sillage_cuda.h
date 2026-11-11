@@ -75,5 +75,6 @@ void sc_host_free(void *memory);
 #endif
 
 #include "sillage_cuda_tree.h"
+#include "sillage_cuda_solver.h"
 
 #endif

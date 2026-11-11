@@ -10,5 +10,11 @@
     static_assert(sizeof(metal::library::name) == bytes,       \
                   #library "." #name " is no longer " #bytes " bytes: its Swift mirror must follow")
 
+SILLAGE_STRUCT(BarnesHutShaders, BHNode, 32);
+SILLAGE_STRUCT(BarnesHutShaders, BHParams, 32);
+SILLAGE_STRUCT(BarnesHutShaders, HaloGPU, 48);
+SILLAGE_STRUCT(BarnesHutShaders, DiskCooling, 64);
+SILLAGE_STRUCT(BarnesHutShaders, SFParams, 36);
+SILLAGE_STRUCT(BarnesHutShaders, HoleGPU, 32);
 SILLAGE_STRUCT(GPUTreeShaders, BHNode, 32);
 SILLAGE_STRUCT(GPUTreeShaders, TreeParams, 36);

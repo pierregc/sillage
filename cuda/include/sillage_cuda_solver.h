@@ -1,0 +1,79 @@
+/* The massive particles' solver (#274): the kernels of BarnesHutShaders that step them, a call
+ * a pass. The order of a step is not here: BarnesHutStep, in Swift, runs these passes as it runs
+ * Metal's. Included by sillage_cuda.h.
+ *
+ * A pass takes its parameters as the bytes of the struct the shared MSL reads (BHParams,
+ * SFParams) and its lists as the bytes of their elements (HaloGPU, HoleGPU, DiskCooling), which
+ * Swift fills as it fills Metal's; a size that is not the MSL's is refused. Every pass runs on
+ * the CPU target. */
+#ifndef SILLAGE_CUDA_SOLVER_H
+#define SILLAGE_CUDA_SOLVER_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct sc_solver sc_solver;
+
+typedef struct sc_solver_config {
+    /* The massive particles, at least 1. */
+    uint32_t massive;
+    /* Their first in the position and velocity buffers: the light tracers come before (#275). */
+    uint32_t first;
+    int32_t quadrupole;
+    int32_t opens_holding_cells;
+    /* Star formation also writes each leaf's chance, for the light tracers' gas (#275). */
+    int32_t leaf_chances;
+} sc_solver_config;
+
+/* The particles' buffers, which the caller keeps alive for as long as the solver. */
+typedef struct sc_solver_buffers {
+    /* A float3 a particle, 16 bytes, the massive ones from `first`. */
+    sc_buffer *positions;
+    sc_buffer *velocities;
+    /* A float3 a massive particle. */
+    sc_buffer *accelerations;
+    /* A float a massive particle: the masses the tree is built over, a black hole's 0. */
+    sc_buffer *mass;
+    /* A float4 a massive particle, by Morton slot: what the tree build gathers. */
+    sc_buffer *sorted;
+    /* A float a massive particle: when its stars formed. */
+    sc_buffer *formation;
+    /* A uint a massive particle. */
+    sc_buffer *component;
+    /* A uint a massive particle; NULL when no disk is cooled. */
+    sc_buffer *galaxy;
+    /* A uint a massive particle: what each walk cost, by Morton slot. */
+    sc_buffer *cost;
+    /* A float a massive particle, with leaf_chances; NULL otherwise. */
+    sc_buffer *slot_chances;
+} sc_solver_buffers;
+
+sc_status sc_solver_create(sc_context *context, const sc_solver_config *config,
+                           const sc_solver_buffers *buffers, sc_solver **solver);
+void sc_solver_destroy(sc_solver *solver);
+
+/* bhFormStars over the tree's `SFParams.nodeCount` nodes. */
+sc_status sc_solver_form_stars(sc_solver *solver, sc_tree *tree, const void *formation, size_t bytes);
+/* bhKickDrift. */
+sc_status sc_solver_kick_drift(sc_solver *solver, const void *params, size_t bytes);
+/* bhGather: the particles into the tree's order, when a tree is used again. */
+sc_status sc_solver_gather(sc_solver *solver, sc_tree *tree, const void *params, size_t bytes);
+/* bhAcceleration over `slots` Morton slots from `BHParams.chunkStart`, with the analytic halos
+ * of `halos`, `halo_count` HaloGPU (at least `BHParams.haloCount`). */
+sc_status sc_solver_accelerations(sc_solver *solver, sc_tree *tree, const void *params, size_t bytes,
+                                  uint32_t slots, const void *halos, uint32_t halo_count);
+/* bhHolePull then bhHoleSettle: `hole_count` HoleGPU, at most 4. */
+sc_status sc_solver_holes(sc_solver *solver, const void *params, size_t bytes, const void *holes,
+                          uint32_t hole_count, const void *halos, uint32_t halo_count);
+/* bhKick. */
+sc_status sc_solver_kick(sc_solver *solver, const void *params, size_t bytes);
+/* bhDissipate towards `disk_count` DiskCooling, one a galaxy. */
+sc_status sc_solver_dissipate(sc_solver *solver, const void *params, size_t bytes, const void *disks,
+                              uint32_t disk_count);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

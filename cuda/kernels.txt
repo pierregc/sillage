@@ -12,15 +12,15 @@
 #
 # See docs/notes/one-kernel-source.md.
 
-BarnesHutShaders bhKickDrift pending #274
-BarnesHutShaders bhKick pending #274
-BarnesHutShaders bhDissipate pending #274
-BarnesHutShaders bhFormStars pending #274
+BarnesHutShaders bhKickDrift cuda
+BarnesHutShaders bhKick cuda
+BarnesHutShaders bhDissipate cuda
+BarnesHutShaders bhFormStars cuda
 BarnesHutShaders bhTracerFormStars pending #275
-BarnesHutShaders bhGather pending #274
-BarnesHutShaders bhHolePull pending #274
-BarnesHutShaders bhHoleSettle pending #274
-BarnesHutShaders bhAcceleration pending #274
+BarnesHutShaders bhGather cuda
+BarnesHutShaders bhHolePull cuda
+BarnesHutShaders bhHoleSettle cuda
+BarnesHutShaders bhAcceleration cuda
 BarnesHutShaders bhTracerDrift pending #275
 BarnesHutShaders bhTracerStep pending #275
 
