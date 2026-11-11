@@ -55,6 +55,7 @@ public final class TakeExport {
     }
 
     public var capturedFrames: Int { take.recording.capturedFrames }
+    public var gpuName: String { device.name }
     public var takeSeconds: Double { Double(capturedFrames - 1) / Double(capturedRate) }
 
     /// Captured positions, fractional between captured frames, of every frame a video at
@@ -71,12 +72,15 @@ public final class TakeExport {
     }
 
     /// `stills` are frames of the video, counted from its first, handed to `still` exactly as
-    /// the encoder takes them.
+    /// the encoder takes them. `dumps` are frames of the video too: once drawn, `dump` is handed
+    /// what their particle passes left and drew from (#276).
     public func write(
         to url: URL, width: Int, height: Int, framesPerSecond: Int, start: Double = 0,
         duration: Double? = nil, codec: VideoCodec = .hevc, bitsPerSecond: Int? = nil,
         quality: Double? = nil, metadata: VideoMetadata? = nil, stills: Set<Int> = [],
         still: @escaping (_ frame: Int, _ image: CGImage) throws -> Void = { _, _ in },
+        dumps: Set<Int> = [],
+        dump: (_ frame: Int, _ capture: RenderTargetManifest.Capture) throws -> Void = { _, _ in },
         progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
     ) throws -> Report {
         let wanted = positions(framesPerSecond: framesPerSecond, start: start, duration: duration)
@@ -96,6 +100,14 @@ public final class TakeExport {
                 read: stills.contains(index)
                     ? { pixels in if let image = PNGWriter.image(bgra: pixels) { try still(index, image) } }
                     : nil)
+            if dumps.contains(index), let targets = renderer.particleTargets() {
+                try dump(
+                    index,
+                    RenderTargetManifest.Capture(
+                        captured: position, time: renderer.time,
+                        shot: replay.plan?.shot(atCaptured: position)?.subject.description,
+                        camera: shot.camera, targets: targets))
+            }
             progress(index + 1, wanted.count)
         }
         try writer.finish()

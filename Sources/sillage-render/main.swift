@@ -804,6 +804,52 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     if let stillsDirectory {
         try FileManager.default.createDirectory(at: stillsDirectory, withIntermediateDirectories: true)
     }
+    // `--dump-targets <dir> --dump-targets-frames 12:wide,19:pericentre` (#276): for those frames
+    // of the video, what the particle passes left in their targets before any post-processing
+    // and what they drew from, with the take and the look, for the CUDA renderer
+    // (docs/notes/cuda-engine.md). Each export adds its look to the folder. Draws nothing more.
+    let dumpDirectory = option("dump-targets").map { URL(fileURLWithPath: $0, isDirectory: true) }
+    var dumpFrames: [Int: String] = [:]
+    for entry in option("dump-targets-frames")?.split(separator: ",") ?? [] {
+        let parts = entry.split(separator: ":", maxSplits: 1).map(String.init)
+        guard let index = Int(parts[0]), index >= 0 else {
+            throw SceneFolder.ExportError.badValue("dump-targets-frames", String(entry))
+        }
+        dumpFrames[index] = parts.count > 1 ? parts[1] : String(format: "frame-%05d", index)
+    }
+    guard (dumpDirectory == nil) == dumpFrames.isEmpty else {
+        throw SceneFolder.ExportError.badValue("dump-targets", "it goes with --dump-targets-frames")
+    }
+    var manifest: RenderTargetManifest?
+    let lookFile = "looks/\(look.name).look.json"
+    if let dumpDirectory {
+        let files = FileManager.default
+        let takeFile = "take/\(takeURL.lastPathComponent)"
+        for file in [takeFile, lookFile] {
+            let url = dumpDirectory.appendingPathComponent(file)
+            try files.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? files.removeItem(at: url)
+        }
+        try files.copyItem(at: takeURL, to: dumpDirectory.appendingPathComponent(takeFile))
+        try look.encoded().write(to: dumpDirectory.appendingPathComponent(lookFile))
+        let visible = loaded.particles.visibleCount
+        let take = RenderTargetManifest.Take(
+            file: takeFile, scene: folder.sceneID, particles: loaded.particles.count,
+            drawn: visible > 0 ? visible : loaded.particles.count,
+            capturedFrames: export.capturedFrames, capturedRate: capturedRate)
+        var held =
+            RenderTargetManifest.read(from: dumpDirectory).flatMap {
+                $0.width == width && $0.height == height && $0.take.scene == take.scene ? $0 : nil
+            }
+            ?? RenderTargetManifest(
+                commit: "", device: "", system: "", width: width, height: height, take: take)
+        held.commit = TracerWalkDump.sourceCommit()
+        held.device = export.gpuName
+        held.system = ProcessInfo.processInfo.operatingSystemVersionString
+        held.take = take
+        manifest = held
+    }
     let report = try export.write(
         to: partial, width: width, height: height, framesPerSecond: fps, start: start,
         duration: duration, codec: codec, bitsPerSecond: bitRate, quality: quality,
@@ -815,6 +861,18 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
                 image, maximumWidth: nil,
                 to: stillsDirectory.appendingPathComponent(
                     String(format: "%@-%04d.png", preset.name, frame)))
+        },
+        dumps: Set(dumpFrames.keys),
+        dump: { frame, capture in
+            guard let dumpDirectory, let name = dumpFrames[frame] else { return }
+            try manifest?.add(
+                capture, look: look.name, lookFile: lookFile, name: name,
+                megayearsPerUnit: Physics.megayearsPerTimeUnit, to: dumpDirectory)
+            print(
+                String(
+                    format: "targets    frame %d (%@, %@), look %@: %@", frame, name,
+                    capture.shot ?? "no plan", look.name,
+                    dumpDirectory.appendingPathComponent("targets/\(look.name)/\(name)").path))
         },
         progress: { done, total in
             reporter.update(

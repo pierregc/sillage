@@ -142,6 +142,8 @@ public final class Renderer {
     /// Each galaxy's scale length, in which a tracer's composition and ramp key are read.
     private let tracerScales: [Float]
     private var tracerCount: Int { tracers?.tracerCount ?? 0 }
+    /// The plan the particle passes last drew, kept for `particleTargets` (#276).
+    private var drawn: FramePlan?
 
     private struct TracerPipelines {
         let dust: MTLRenderPipelineState
@@ -557,6 +559,7 @@ public final class Renderer {
             settings: settings, camera: camera, time: time, drawnCount: drawnCount,
             tracerCount: tracerCount, luminosityNormalisation: luminosityNormalisation,
             mapped: mapped, laceScale: web?.scale, stages: stages, first: first)
+        if first { drawn = plan }
         let parts = split(particles ?? 0..<(drawnCount + tracerCount))
         let traced =
             tracerCount > 0
@@ -987,6 +990,121 @@ public final class Renderer {
         guard run({ encodePost(into: $0, present: nil) }) else { return [] }
         lastGPUTime = took
         return readBack()
+    }
+
+    /// What the particle passes of the last frame drawn left in their targets, before any
+    /// post-processing, and what they drew from, byte for byte as the GPU holds them (#276).
+    public func particleTargets() -> ParticleTargets? {
+        guard let plan = drawn, let buffer = queue.makeCommandBuffer(),
+            let blit = buffer.makeBlitCommandEncoder()
+        else { return nil }
+        typealias File = ParticleTargets.File
+        var reads: [(file: File, copy: MTLBuffer, lace: Bool)] = []
+        func read(
+            _ name: String, _ texture: MTLTexture, _ format: String, _ texel: Int, level: Int = 0,
+            side: Int? = nil
+        ) {
+            let width = side ?? texture.width
+            let height = side ?? texture.height
+            let row = width * texel
+            guard let copy = device.makeBuffer(length: row * height, options: .storageModeShared)
+            else { return }
+            blit.copy(
+                from: texture, sourceSlice: 0, sourceLevel: level,
+                sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                sourceSize: MTLSize(width: width, height: height, depth: 1),
+                to: copy, destinationOffset: 0, destinationBytesPerRow: row,
+                destinationBytesPerImage: row * height)
+            reads.append(
+                (
+                    File(name, format, texel, width * height, Data(), width: width, height: height),
+                    copy, side != nil
+                ))
+        }
+        let web = plan.web.flatMap { _ in webPass }
+        read("light.f16", accumulation, "rgba16Float", 8)
+        if !settings.plain {
+            read("dust.f16", dustAccumulation, "rgba16Float", 8)
+            if settings.columnSmoothing > 0 { read("column.f32", columnDensity, "r32Float", 4) }
+        }
+        if let web {
+            read("carrier.f16", web.carrier, "rgba16Float", 8)
+            read("tags.u8", web.tags, "rgba8Unorm", 4)
+            read("level0-crop.f16", web.lace, "r16Float", 2, side: 256)
+            read("level4.f16", web.lace, "r16Float", 2, level: 4, side: 256)
+        }
+        blit.endEncoding()
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        let textures = reads.map { read in
+            var file = read.file
+            file.bytes = Data(bytes: read.copy.contents(), count: read.copy.length)
+            return (file: file, lace: read.lace)
+        }
+
+        func bytes(_ buffer: MTLBuffer?, offset: Int = 0, _ stride: Int, _ count: Int) -> Data {
+            guard let buffer, offset + stride * count <= buffer.length else { return Data() }
+            return Data(bytes: buffer.contents() + offset, count: stride * count)
+        }
+        func file(
+            _ name: String, _ type: String, _ buffer: MTLBuffer?, _ stride: Int, _ count: Int,
+            offset: Int = 0
+        ) -> File {
+            let held = bytes(buffer, offset: offset, stride, count)
+            return File(name, type, stride, held.count / max(stride, 1), held)
+        }
+        func value<T>(_ name: String, _ type: String, _ value: T) -> File {
+            var held = Data(count: MemoryLayout<T>.stride)
+            held.withUnsafeMutableBytes { $0.storeBytes(of: value, as: T.self) }
+            return File(name, type, MemoryLayout<T>.stride, 1, held)
+        }
+        let vector = MemoryLayout<SIMD3<Float>>.stride
+        var particles = [
+            file("component.u32", "uint", componentBuffer, 4, drawnCount),
+            file("galaxy.u32", "uint", galaxyBuffer, 4, drawnCount),
+        ]
+        var frame = [
+            file("positions.f32x4", "float3", positionBuffer, vector, drawnCount, offset: positionOffset)
+        ]
+        let splat = plan.uniforms(for: settings.plain ? .plain : .stars)
+        var target = [
+            value("splat-uniforms.bin", "SplatUniforms", splat),
+            file("disk-frames.bin", "DiskFrame", frameBuffer, MemoryLayout<DiskFrame>.stride, frameCount),
+        ]
+        if !settings.plain {
+            particles += [
+                file("population.f32", "float", populationBuffer, 4, drawnCount),
+                file("formation.f32", "float", formationBuffer, 4, drawnCount),
+                file("luminosity.f32", "float", luminosityBuffer, 4, drawnCount),
+                file("traits.f32x2", "float2", traitBuffer, 8, drawnCount),
+                file("rampKeys.f32", "float", rampKeyBuffer, 4, drawnCount),
+                file("stellar.f32x2", "float2", stellarBuffer, 8, StellarPopulation.samples),
+            ]
+            frame.append(file("smoothing.f32", "float", smoothingBuffer, 4, drawnCount))
+            target.append(
+                file("ramps.bin", "GalaxyRamp", rampBuffer, MemoryLayout<GalaxyRamp>.stride, galaxySlots))
+            if let starBuffer {
+                target.append(
+                    file(
+                        "starfield.bin", "BackgroundStar", starBuffer,
+                        MemoryLayout<BackgroundStar>.stride, settings.starCount))
+            }
+            if let uniforms = plan.web, web != nil {
+                target.append(value("web-uniforms.bin", "WebUniforms", uniforms))
+            }
+        }
+        return ParticleTargets(
+            particles: particles, frame: frame,
+            target: target + textures.filter { !$0.lace }.map(\.file),
+            lace: textures.filter(\.lace).map(\.file),
+            laceMean: web == nil ? nil : (try? DustWeb.lace(library: library, device: device))?.mean,
+            width: settings.width, height: settings.height, supersample: settings.supersample,
+            plain: settings.plain, starCount: starBuffer == nil ? 0 : settings.starCount,
+            dustWeb: settings.plain ? 0 : settings.dustWeb,
+            columnSmoothing: settings.plain ? 0 : settings.columnSmoothing,
+            holeShadow: splat.holeShadow, mapped: splat.mapped != 0,
+            luminosityNormalisation: splat.luminosityNormalisation, drawn: drawnCount,
+            galaxies: frameCount, galaxySlots: galaxySlots)
     }
 
     private func readBack() -> [UInt8] {
