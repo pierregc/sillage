@@ -1,0 +1,21 @@
+{
+  "centerSoftening" : 1.2,
+  "count" : 49999,
+  "forceChunk" : 1000000,
+  "frameSample" : 50000,
+  "leafCapacity" : 16,
+  "maximumTreeDepth" : 20,
+  "megayearsPerStep" : 0.19781999733299016,
+  "openingAngle" : 0.9,
+  "openingAngleBits" : "0x3f666666",
+  "particles" : 20000,
+  "quadrupole" : true,
+  "softening" : 0.5462539,
+  "softeningBits" : "0x3f0bd74c",
+  "tidalCeiling" : 1.4,
+  "tidalFloor" : 0.7,
+  "timeStep" : 0.042,
+  "timeStepBits" : "0x3d2c0831",
+  "treeReuse" : 1,
+  "visible" : 20000
+}
