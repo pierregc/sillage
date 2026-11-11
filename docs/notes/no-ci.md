@@ -33,10 +33,12 @@ two minutes on its own.
 
 #273 made it grow, by the CUDA engine's CPU library, its Swift module and its tests, about 35 s
 on the runner, and one run took 11 min 31 s where the one before took 8 min 1 s, most of it the
-runner's own speed (the tests' build, two files longer, took 52 s more). So `scripts/linux.sh
-check` now runs as two jobs: `swift`, `scripts/linux.sh test`, the modules built and every test
-run; and `swift-checks`, `scripts/linux.sh lint` then `scripts/linux.sh strict`, the formatter
-and the strict concurrency typecheck. Together they run what `scripts/linux.sh check` runs.
+runner's own speed (the tests' build, two files longer, took 52 s more; here they build in 4 s).
+The next run, with the formatter and the typecheck moved beside the tests, still took 9 min 58 s.
+So `scripts/linux.sh check` now runs as two jobs: `swift`, `scripts/linux.sh test-swift`, the
+portable Swift's tests as before #273; and `swift-checks`, `scripts/linux.sh lint strict
+test-cuda`, the formatter, the strict concurrency typecheck and the CUDA engine's tests on the
+CPU target, the modules built once. Together they run what `scripts/linux.sh check` runs.
 
 **What it does not check**: nothing of Metal and nothing of macOS (no macOS job, on purpose),
 so not the files and the tests `scripts/linux-skip.txt` and `scripts/linux-skip-tests.txt` name,

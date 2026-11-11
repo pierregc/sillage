@@ -69,15 +69,32 @@ build_gpu() {
 cxx="${CXX:-c++}"
 cpu_flags=(-std=c++17 -O2 -ffp-contract=off -fPIC -Wall -Wextra -Werror "${includes[@]}" -x c++)
 
+# What the libraries hold: cuda/src but kernels.cu, which defines nothing and is there for the
+# checks of every library's MSL.
+library_sources() {
+    local source
+    for source in "$here"/src/*.cu; do
+        [[ "$(basename "$source")" == kernels.cu ]] || echo "$source"
+    done
+}
+
+# Compiles each file in the background and waits for them all.
+compile_all() {
+    local into="$1" source name pids=() pid
+    shift
+    while read -r source; do
+        name="$(basename "$source" .cu)"
+        "$@" -c "$source" -o "$into/$name.o" &
+        pids+=($!)
+    done < <(library_sources)
+    for pid in "${pids[@]}"; do wait "$pid"; done
+}
+
 # cuda/src for the CPU target, and its library.
 build_cpu_library() {
     mkdir -p "$out/cpu" "$out/lib"
     rm -f "$out/cpu"/*.o
-    local source name
-    for source in "$here"/src/*.cu; do
-        name="$(basename "$source" .cu)"
-        "$cxx" "${cpu_flags[@]}" -c "$source" -o "$out/cpu/$name.o"
-    done
+    compile_all "$out/cpu" "$cxx" "${cpu_flags[@]}"
     rm -f "$out/lib/libsillagecuda_cpu.a"
     ar rcs "$out/lib/libsillagecuda_cpu.a" "$out/cpu"/*.o
     echo "cpu: cuda/src built with $("$cxx" --version | head -1), $out/lib/libsillagecuda_cpu.a"
@@ -85,6 +102,7 @@ build_cpu_library() {
 
 build_cpu() {
     build_cpu_library
+    "$cxx" "${cpu_flags[@]}" -fsyntax-only "$here/src/kernels.cu"
     local source name
     for source in "$here"/tests/*.cu; do
         name="$(basename "$source" .cu)"
@@ -94,8 +112,9 @@ build_cpu() {
     done
 }
 
-# cuda/src for the GPUs of #270: the RTX 30 series and A40 (sm_86), the RTX 4090 and L40S (sm_89), the
-# RTX 5090 (sm_120), and PTX for what comes after. No FMA contraction, as in the GPU build.
+# cuda/src for the GPUs of #270: the RTX 30 series and A40 (sm_86), the RTX 4090 and L40S
+# (sm_89), the RTX 5090 (sm_120), and PTX for what comes after. No FMA contraction, as in the
+# GPU build.
 build_gpu_library() {
     have_nvcc || return 0
     mkdir -p "$out/gpu-lib" "$out/lib"
@@ -103,11 +122,7 @@ build_gpu_library() {
     local flags=(-std=c++17 -O3 --fmad=false -Xcompiler -fPIC "${includes[@]}"
         -gencode arch=compute_86,code=sm_86 -gencode arch=compute_89,code=sm_89
         -gencode arch=compute_120,code=[sm_120,compute_120])
-    local source name
-    for source in "$here"/src/*.cu; do
-        name="$(basename "$source" .cu)"
-        "$nvcc" "${flags[@]}" -c "$source" -o "$out/gpu-lib/$name.o"
-    done
+    compile_all "$out/gpu-lib" "$nvcc" "${flags[@]}"
     rm -f "$out/lib/libsillagecuda.a"
     ar rcs "$out/lib/libsillagecuda.a" "$out/gpu-lib"/*.o
     echo "gpu: cuda/src built for sm_86, sm_89 and sm_120 with PTX, $out/lib/libsillagecuda.a"

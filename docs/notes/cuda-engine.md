@@ -105,7 +105,8 @@ cuda/build.sh [gpu] [cpu] [libs]
 - `cpu`: `cuda/src` with a host compiler through `cuda_cpu.h` (`-O2 -ffp-contract=off -fPIC
   -Wall -Wextra -Werror`) into `.build/cuda/lib/libsillagecuda_cpu.a`, then every C test linked
   against it and run.
-- `libs`: the two libraries the Swift links, in `.build/cuda/lib`: `libsillagecuda_cpu.a`, and,
+- `libs`: the two libraries the Swift links, in `.build/cuda/lib`, from every file of `cuda/src`
+  but `kernels.cu`, which defines nothing: `libsillagecuda_cpu.a`, and,
   where `nvcc` is, `libsillagecuda.a` for sm_86 (RTX 30 series, A40), sm_89 (RTX 4090, L40S)
   and sm_120 (RTX 5090) with PTX for what comes after (`-std=c++17 -O3 --fmad=false`). CUDA 12.8
   or later, for sm_120; the build refuses an older one. An A100 (8.0) would need sm_80 added,
@@ -116,7 +117,8 @@ cuda/build.sh [gpu] [cpu] [libs]
 packages, as that note describes for a session that may not install them.
 
 `scripts/linux.sh` runs `cuda/build.sh libs`, builds `SillageCUDA` (`libSillageCUDA.so`) over
-`SillageCore`, and adds `Tests/SillageCUDATests` to the tests. It links the GPU library when it
+`SillageCore`, and adds `Tests/SillageCUDATests` to the tests (`scripts/linux.sh test-cuda` runs
+them alone). It links the GPU library when it
 was built and `nvidia-smi` lists a GPU, the CPU one otherwise, and says which;
 `SILLAGE_CUDA_TARGET=gpu` or `cpu` chooses. The CUDA runtime goes in statically
 (`cudart_static`), so a box needs only its driver.
@@ -126,9 +128,10 @@ strict concurrency included, and its tests against `sillage_cuda.h`, plain C, wi
 no library; `scripts/kernel-check.sh` compiles every file of `cuda/src` against the shared MSL.
 A shared function whose signature changes, or a C call the Swift no longer matches, fails there.
 
-The GitHub workflow runs `cuda/build.sh gpu libs` with `nvcc` 13.5 in its `cuda` job, the CPU
-target's C tests with `g++` and `clang++`, and `scripts/linux.sh check` in its `swift` job,
-where there is no `nvcc` and the CPU library is linked.
+The GitHub workflow runs `cuda/build.sh gpu libs` with `nvcc` 13.5 in its `cuda` job, and the
+CPU target's C tests with `g++` and `clang++`; its `swift-checks` job runs the Swift tests of the
+CPU target with the formatter and the typecheck (`scripts/linux.sh lint strict test-cuda`),
+where there is no `nvcc` and the CPU library is linked ([no-ci.md](no-ci.md)).
 
 ## The CPU target
 
