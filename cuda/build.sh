@@ -43,6 +43,25 @@ have_nvcc() {
     fi
 }
 
+# The double precision instructions of a PTX file that are its own. CUDA's sinf, cosf and tanf
+# reduce an argument past 105,615 through three of them (a 64-bit integer to a double, times
+# pi / 2^63, back to a float), a path no angle of the engine takes: those are not counted.
+own_doubles() {
+    awk '
+        { line[NR] = $0 }
+        END {
+            for (i = 1; i <= NR; ++i) {
+                if (line[i] ~ /cvt\.rn\.f64\.s64/ && line[i + 1] ~ /mul\.rn\.f64.*0d3BF921FB54442D19/ \
+                    && line[i + 2] ~ /cvt\.rn\.f32\.f64/) {
+                    i += 2
+                    continue
+                }
+                if (line[i] ~ /\.f64/) { own += 1 }
+            }
+            print own + 0
+        }' "$1"
+}
+
 build_gpu() {
     have_nvcc || return 0
     "$nvcc" --version | grep release
@@ -55,7 +74,7 @@ build_gpu() {
         name="$(basename "$source" .cu)"
         "$nvcc" "${flags[@]}" -c "$source" -o "$out/gpu/$name.o"
         "$nvcc" "${flags[@]}" -ptx "$source" -o "$out/gpu/$name.ptx"
-        doubles="$(grep -cE '\.f64' "$out/gpu/$name.ptx" || true)"
+        doubles="$(own_doubles "$out/gpu/$name.ptx")"
         if [[ "$doubles" != 0 ]]; then
             echo "$source: $doubles double precision instructions in its PTX ($out/gpu/$name.ptx)." >&2
             echo "  A consumer NVIDIA GPU runs them at 1/64 of float speed: look for a double in the" >&2

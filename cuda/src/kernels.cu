@@ -19,3 +19,10 @@ SILLAGE_STRUCT(BarnesHutShaders, HoleGPU, 32);
 SILLAGE_STRUCT(BarnesHutShaders, TracerStepParams, 48);
 SILLAGE_STRUCT(GPUTreeShaders, BHNode, 32);
 SILLAGE_STRUCT(GPUTreeShaders, TreeParams, 36);
+
+// The renderer's particle passes (#276).
+SILLAGE_STRUCT(Shaders, SplatUniforms, 176);
+SILLAGE_STRUCT(Shaders, WebUniforms, 112);
+SILLAGE_STRUCT(Shaders, DiskFrame, 128);
+SILLAGE_STRUCT(Shaders, GalaxyRamp, 112);
+SILLAGE_STRUCT(Shaders, BackgroundStar, 32);

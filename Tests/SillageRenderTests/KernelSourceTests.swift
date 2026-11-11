@@ -24,6 +24,11 @@ struct KernelSourceTests {
         "BarnesHutShaders.TracerStepParams": MemoryLayout<TracerStepGPU>.stride,
         "GPUTreeShaders.BHNode": MemoryLayout<BHNode>.stride,
         "GPUTreeShaders.TreeParams": MemoryLayout<GPUTreeBuilder.Params>.stride,
+        "Shaders.SplatUniforms": MemoryLayout<SplatUniforms>.stride,
+        "Shaders.WebUniforms": MemoryLayout<WebUniforms>.stride,
+        "Shaders.DiskFrame": MemoryLayout<DiskFrame>.stride,
+        "Shaders.GalaxyRamp": MemoryLayout<GalaxyRamp>.stride,
+        "Shaders.BackgroundStar": MemoryLayout<BackgroundStar>.stride,
     ]
 
     @Test func swiftMirrorsHaveTheSizesOfTheirMSLStructs() throws {

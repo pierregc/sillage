@@ -120,4 +120,36 @@ public struct RenderSettings: Sendable {
         self.galaxyTint = galaxyTint
         self.plain = plain
     }
+
+    /// Everything a frame may change on its own, in one go. Resolution, supersampling, bloom
+    /// levels and the starfield are deliberately absent: those own textures and buffers, and
+    /// changing them means a new renderer. The look's arm persistence is the renderer's to
+    /// keep: it goes into the disk frames, not into a setting.
+    public mutating func apply(_ look: RenderLook) {
+        brightness = look.brightness
+        dustStrength = look.dustStrength
+        smoothingScale = look.smoothingScale
+        minimumKernel = look.minimumKernel
+        maximumKernel = look.maximumKernel
+        bloomThreshold = look.bloomThreshold
+        bloomSoftKnee = look.bloomSoftKnee
+        bloomIntensity = look.bloomIntensity
+        stretch = look.stretch
+        saturation = look.saturation
+        whitePoint = look.whitePoint
+        spikeArms = look.spikeArms
+        spikeLength = look.spikeLength
+        spikeIntensity = look.spikeIntensity
+        spikePattern = look.spikePattern
+        spikeSharpness = look.spikeSharpness
+        skyLevel = look.skyLevel
+        skyColour = look.skyColour
+        noiseLevel = look.noiseLevel
+        galaxyTint = look.galaxyTint
+        holeShadow = look.holeShadow
+        columnSmoothing = look.columnSmoothing
+        glint = look.glint
+        dustWeb = look.dustWeb
+        starSize = look.starSize
+    }
 }

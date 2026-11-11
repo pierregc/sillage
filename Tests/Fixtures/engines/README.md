@@ -79,3 +79,16 @@ Each `<look>.rgba` is that frame as `export` draws it with `<look>.look.json`: 2
 | `red-vs-cyan` | each galaxy in its own colour, bloom, no noise, no sky |
 | `ember` | the dust web, the stars of the sky, noise |
 | `webb` | the telescope world: Webb's spikes and its sky |
+
+## `raster/`: Metal's rasteriser on one point
+
+`probe.txt`: what an Apple M4 Max does with a point at 131 clip positions and sizes, one case a
+line (#276): how many pixels it covers, the columns and the rows they fill, and `point_coord` at
+the first and the last of them. The CUDA renderer has no rasteriser and covers a point's pixels
+by hand (`pointSquare` in `cuda/src/raster.h`); `cuda/tests/raster_probe.cu` holds it to every
+case on each push. The rules the cases follow are in `docs/notes/cuda-engine.md`.
+
+Not written by `./scripts/dev.sh fixtures`: it is the manifest of `raster-probe.swift`, a
+standalone Metal script kept with its pictures on the `assets/cuda-checks` branch under
+`docs/spikes/cuda-checks/render/raster-probe/`, which `rules.py` there checks the same rules
+against.

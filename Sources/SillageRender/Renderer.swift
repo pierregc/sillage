@@ -4,43 +4,6 @@ import QuartzCore
 import SillageCore
 import simd
 
-struct SplatUniforms {
-    var viewProjection: simd_float4x4
-    /// Simulated time of this frame and how to read it in megayears, so a knot's colour and
-    /// brightness can be worked out from its own age rather than painted from a pattern.
-    var time: Float
-    var megayearsPerUnit: Float
-    var ionisedMyr: Float
-    var ionisingRiseMyr: Float
-    var ionisedStrength: Float
-    var populationYoungMyr: Float
-    var populationSpan: Float
-    var populationLast: Float
-    var luminosityNormalisation: Float
-    var brightness: Float
-    var dustStrength: Float
-    var starSize: Float
-    var projectionScale: Float
-    var smoothingScale: Float
-    var referenceArea: Float
-    var minimumSize: Float
-    var maximumSize: Float
-    var galaxyTint: Float
-    var slabNear: Float
-    var slabScale: Float
-    var pass: UInt32
-    var mapped: UInt32 = 0
-    var holeShadow: Float = 0
-    var columnSmoothing: Float = 0
-    var columnCell: Float = 8
-    var glint: Float = 1
-}
-
-struct BackgroundStar {
-    var direction: SIMD4<Float>
-    var color: SIMD4<Float>
-}
-
 struct BloomParams {
     var threshold: Float
     var softKnee: Float
@@ -124,7 +87,7 @@ public final class Renderer {
     /// Emitting particles per cell of `columnCell` accumulation pixels, for the projected
     /// kernel.
     private let columnDensity: MTLTexture
-    static let columnCell = 8
+    static let columnCell = FramePlan.columnCell
     private let resolved: MTLTexture
     private let bloomDown: [MTLTexture]
     private let bloomUp: [MTLTexture]
@@ -179,6 +142,8 @@ public final class Renderer {
     /// Each galaxy's scale length, in which a tracer's composition and ramp key are read.
     private let tracerScales: [Float]
     private var tracerCount: Int { tracers?.tracerCount ?? 0 }
+    /// The plan the particle passes last drew, kept for `particleTargets` (#276).
+    private var drawn: FramePlan?
 
     private struct TracerPipelines {
         let dust: MTLRenderPipelineState
@@ -234,11 +199,11 @@ public final class Renderer {
         // Only what is drawn. Dark matter is discarded in the vertex shader anyway, so the
         // draw call stops before it: at three million stars with live halos that is four and a
         // half million vertices a frame that existed only to be thrown away.
-        self.drawnCount =
-            other?.drawnCount ?? (particles.visibleCount > 0 ? particles.visibleCount : particles.count)
+        let attributes = ParticleAttributes(particles)
+        self.drawnCount = other?.drawnCount ?? attributes.drawnCount
         self.particleCount = other?.particleCount ?? particles.count
         self.luminosityNormalisation =
-            other?.luminosityNormalisation ?? Self.luminosityNormalisation(formation: particles.formation)
+            other?.luminosityNormalisation ?? attributes.luminosityNormalisation
 
         let library: MTLLibrary
         do {
@@ -347,46 +312,38 @@ public final class Renderer {
             settings.width, settings.height, .rgba8Unorm, [.shaderRead, .shaderWrite], shared: true)
 
         let stride = MemoryLayout<SIMD3<Float>>.stride
-        let count = max(particles.count, 1)
-        // makeBuffer(bytes:length:) copies `length` bytes from the pointer it is given, so a
-        // one-element stand-in would have it read off the end of the array. Fill the whole
-        // length instead.
-        func attribute<T>(_ values: [T], _ fallback: T) -> [T] {
-            values.count == count ? values : [T](repeating: fallback, count: count)
-        }
-        // Sorting every galaxy's radii is most of what building the two costs, so once.
-        let birthScales =
-            other == nil && particles.birthRadius.count == particles.count
-            ? Renderer.scaleLengths(particles.birthRadius, of: particles) : [:]
-        tracerScales =
-            other?.tracerScales ?? (0..<TracerWord.galaxyLimit).map { birthScales[UInt32($0)] ?? 0 }
+        // Every array of `attributes` holds `count` values: makeBuffer(bytes:length:) copies
+        // `length` bytes from the pointer it is given, so a one-element stand-in would have it
+        // read off the end of the array.
+        let count = attributes.count
+        tracerScales = other?.tracerScales ?? attributes.tracerScales
         guard
             let positionBuffer = other?.positionBuffer ?? externalPositions
                 ?? device.makeBuffer(length: count * stride, options: .storageModeShared),
             let populationBuffer = other?.populationBuffer
                 ?? device.makeBuffer(
-                    bytes: attribute(particles.population, Float(0.5)),
+                    bytes: attributes.population,
                     length: count * 4, options: .storageModeShared),
             let formationBuffer = other?.formationBuffer ?? externalFormation
                 ?? device.makeBuffer(
-                    bytes: attribute(particles.formation, ParticleSystem.ancient),
+                    bytes: attributes.formation,
                     length: count * 4, options: .storageModeShared),
             let luminosityBuffer = other?.luminosityBuffer
                 ?? device.makeBuffer(
-                    bytes: attribute(particles.luminosity, Float(1)),
+                    bytes: attributes.luminosity,
                     length: count * 4, options: .storageModeShared),
             let componentBuffer = other?.componentBuffer
                 ?? device.makeBuffer(
-                    bytes: attribute(particles.component, UInt32(0)),
+                    bytes: attributes.component,
                     length: count * 4, options: .storageModeShared),
             let traitBuffer = other?.traitBuffer
                 ?? device.makeBuffer(
-                    bytes: Renderer.traits(of: particles, scales: birthScales),
+                    bytes: attributes.traits,
                     length: count * MemoryLayout<SIMD2<Float>>.stride,
                     options: .storageModeShared),
             let rampKeyBuffer = other?.rampKeyBuffer
                 ?? device.makeBuffer(
-                    bytes: Renderer.rampKeys(of: particles, birthScales: birthScales),
+                    bytes: attributes.rampKeys,
                     length: count * 4,
                     options: .storageModeShared),
             let stellarBuffer = other?.stellarBuffer
@@ -396,7 +353,7 @@ public final class Renderer {
                     options: .storageModeShared),
             let galaxyBuffer = other?.galaxyBuffer
                 ?? device.makeBuffer(
-                    bytes: attribute(particles.galaxyIndex, UInt32(0)),
+                    bytes: attributes.galaxy,
                     length: count * 4, options: .storageModeShared)
         else {
             throw RenderError.textureAllocation
@@ -410,7 +367,7 @@ public final class Renderer {
         self.stellarBuffer = stellarBuffer
         self.traitBuffer = traitBuffer
         self.rampKeyBuffer = rampKeyBuffer
-        galaxySlots = other?.galaxySlots ?? Int(particles.galaxyIndex.max() ?? 0) + 1
+        galaxySlots = other?.galaxySlots ?? attributes.galaxySlots
         guard
             let rampBuffer = device.makeBuffer(
                 bytes: [GalaxyRamp](repeating: .none, count: galaxySlots),
@@ -435,56 +392,13 @@ public final class Renderer {
     /// One over the mean light per unit mass of particles formed at `formation`, read on about
     /// fifty thousand of them.
     public static func luminosityNormalisation(formation: [Float]) -> Float {
-        var totalLight: Float = 0
-        var lit = 0
-        let step = max(formation.count / 50_000, 1)
-        for index in stride(from: 0, to: formation.count, by: step) {
-            let born = formation[index]
-            guard born > -1e8, born < 1e8 else { continue }
-            totalLight +=
-                StellarPopulation.sampled(ageMyr: -born * Float(Physics.megayearsPerTimeUnit))
-                .lightPerMass
-            lit += 1
-        }
-        return lit > 0 ? Float(lit) / max(totalLight, 1e-6) : 1
+        ParticleAttributes.luminosityNormalisation(formation: formation)
     }
 
-    /// Field stars, placed far enough out that orbiting the galaxy does not parallax them.
-    ///
-    /// Colours are drawn as temperatures and converted by the same Planckian law the galaxy's
-    /// own stars use, rather than picked out of three buckets by hand. The temperature
-    /// distribution is the sky's: the overwhelming majority of stars are cool dwarfs, and the
-    /// hot blue ones are rare and — because they are enormously more luminous — the ones that
-    /// end up bright. Drawing brightness and colour together instead of independently is what
-    /// makes a field read as a sky rather than as confetti.
+    /// The field stars `BackgroundStar.field` draws, in a buffer.
     private static func makeStarfield(device: MTLDevice, count: Int) -> MTLBuffer? {
-        guard count > 0 else { return nil }
-        var generator = SeededGenerator(seed: 0x5111_1A6E)
-        var stars: [BackgroundStar] = []
-        stars.reserveCapacity(count)
-        let shell: Float = 6_000
-
-        for _ in 0..<count {
-            let direction = DiskSampler.randomDirection(&generator)
-            // Steeply weighted to the cool end, which is what a magnitude-limited field is.
-            let heat = pow(generator.uniform(), 2.6)
-            let kelvin = 3_000 * pow(28_000 / 3_000, heat)
-            let colour = Blackbody.linearSRGB(kelvin: kelvin)
-            // Hot stars are the bright ones, because they are enormously more luminous; the
-            // exponent bends with temperature rather than a term being added, so that raising
-            // the count adds faint stars and not bright ones. Added instead of bent, at ten
-            // thousand stars, and the frame came out a wall of diffraction spikes with the
-            // galaxy lost behind it.
-            let magnitude = pow(generator.uniform(), 6.5 - 2.2 * heat)
-            // And a spike belongs to the few that earn one. Every star having one is what
-            // makes a field read as a graphic rather than as a sky.
-            let spike = DiskSampler.smoothstep(0.80, 0.97, magnitude)
-            stars.append(
-                BackgroundStar(
-                    direction: SIMD4<Float>(
-                        direction.x * shell, direction.y * shell, direction.z * shell, magnitude),
-                    color: SIMD4<Float>(colour.x, colour.y, colour.z, spike)))
-        }
+        let stars = BackgroundStar.field(count: count)
+        guard !stars.isEmpty else { return nil }
         return device.makeBuffer(
             bytes: stars, length: stars.count * MemoryLayout<BackgroundStar>.stride,
             options: .storageModeShared)
@@ -588,10 +502,8 @@ public final class Renderer {
     public func setGalaxyColours(_ palette: [GalaxyColours]) {
         guard palette != galaxyColours else { return }
         galaxyColours = palette
-        let ramps = (0..<galaxySlots).map {
-            $0 < palette.count ? GalaxyRamp(palette[$0]) : GalaxyRamp.none
-        }
-        mapped = ramps.contains { $0.params.z > 0 }
+        let ramps = GalaxyRamp.ramps(for: palette, slots: galaxySlots)
+        mapped = GalaxyRamp.mapped(ramps)
         ramps.withUnsafeBytes { source in
             rampBuffer.contents().copyMemory(from: source.baseAddress!, byteCount: source.count)
         }
@@ -609,135 +521,14 @@ public final class Renderer {
     /// levels and the starfield are deliberately absent: those own textures and buffers, and
     /// changing them means a new renderer.
     public func apply(_ look: RenderLook) {
-        settings.brightness = look.brightness
-        settings.dustStrength = look.dustStrength
-        settings.smoothingScale = look.smoothingScale
-        settings.minimumKernel = look.minimumKernel
-        settings.maximumKernel = look.maximumKernel
-        settings.bloomThreshold = look.bloomThreshold
-        settings.bloomSoftKnee = look.bloomSoftKnee
-        settings.bloomIntensity = look.bloomIntensity
-        settings.stretch = look.stretch
-        settings.saturation = look.saturation
-        settings.whitePoint = look.whitePoint
-        settings.spikeArms = look.spikeArms
-        settings.spikeLength = look.spikeLength
-        settings.spikeIntensity = look.spikeIntensity
-        settings.spikePattern = look.spikePattern
-        settings.spikeSharpness = look.spikeSharpness
-        settings.skyLevel = look.skyLevel
-        settings.skyColour = look.skyColour
-        settings.noiseLevel = look.noiseLevel
-        settings.galaxyTint = look.galaxyTint
-        settings.holeShadow = look.holeShadow
-        settings.columnSmoothing = look.columnSmoothing
-        settings.glint = look.glint
-        settings.dustWeb = look.dustWeb
-        settings.starSize = look.starSize
+        settings.apply(look)
         armPersistence = look.armPersistence
     }
 
     /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
-    /// The colour-temperature multiplier each particle carries for its composition, one per
-    /// particle, in the order the buffers are uploaded.
-    ///
-    /// Stored as the multiplier rather than as the abundance so that the slope relating the
-    /// two lives in exactly one place, in `StellarPopulation`, instead of being written once
-    /// here and once in the shader where it could drift.
-    ///
-    /// The scale length is measured off the sample rather than passed in: the renderer is not
-    /// given the scene, and for an exponential disk the median radius is 1.678 scale lengths,
-    /// which is a sturdier way to ask the question than trusting a configuration field to
-    /// still describe the particles by the time they arrive here.
-    private static func traits(of particles: ParticleSystem, scales scaleLength: [UInt32: Float])
-        -> [SIMD2<Float>]
-    {
-        let count = particles.count
-        let scales =
-            particles.kernelScale.count == count
-            ? particles.kernelScale : [Float](repeating: 1, count: count)
-        guard particles.birthRadius.count == count else {
-            return (0..<max(count, 1)).map { SIMD2<Float>(1, $0 < scales.count ? scales[$0] : 1) }
-        }
-        return (0..<count).map { index in
-            guard let scale = scaleLength[particles.galaxyIndex[index]] else {
-                return SIMD2<Float>(1, scales[index])
-            }
-            let warming = StellarPopulation.metallicityWarming(
-                StellarPopulation.metallicity(
-                    atScaleLengths: particles.birthRadius[index] / scale))
-            return SIMD2<Float>(warming, scales[index])
-        }
-    }
-
-    /// For an exponential disk the median radius is 1.678 scale lengths.
-    private static func scaleLengths(_ radii: [Float], of particles: ParticleSystem) -> [UInt32:
-        Float]
-    {
-        var byGalaxy: [UInt32: [Float]] = [:]
-        for index in 0..<particles.count
-        where particles.component[index] == ParticleComponent.star.rawValue {
-            byGalaxy[particles.galaxyIndex[index], default: []].append(radii[index])
-        }
-        var scaleLength: [UInt32: Float] = [:]
-        for (galaxy, radii) in byGalaxy where !radii.isEmpty {
-            let sorted = radii.sorted()
-            scaleLength[galaxy] = max(sorted[sorted.count / 2] / 1.678, 1e-3)
-        }
-        return scaleLength
-    }
-
-    /// Birth radius in scale lengths of the particle's own galaxy, one per particle.
-    static func rampKeys(of particles: ParticleSystem, birthScales: [UInt32: Float]) -> [Float] {
-        let count = particles.count
-        let rebuilt = particles.colourRadius.count == count
-        let radii = rebuilt ? particles.colourRadius : particles.birthRadius
-        guard radii.count == count, count > 0 else {
-            return [Float](repeating: 1.7, count: max(count, 1))
-        }
-        let scales = rebuilt ? scaleLengths(radii, of: particles) : birthScales
-        return (0..<count).map { index in
-            scales[particles.galaxyIndex[index]].map { radii[index] / $0 } ?? 1.7
-        }
-    }
-
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
         encodeSplat(camera: camera, into: buffer)
         encodePost(into: buffer, present: present)
-    }
-
-    private func encodePlain(camera: Camera, into buffer: MTLCommandBuffer) {
-        let scale = settings.supersample
-        let aspect = Float(settings.width) / Float(settings.height)
-        var uniforms = SplatUniforms(
-            viewProjection: camera.viewProjection(aspectRatio: aspect),
-            time: time, megayearsPerUnit: 0, ionisedMyr: 0, ionisingRiseMyr: 0,
-            ionisedStrength: 0, populationYoungMyr: 0, populationSpan: 0, populationLast: 0,
-            luminosityNormalisation: 1,
-            brightness: settings.brightness * 1_000_000 / Float(max(drawnCount + tracerCount, 1)),
-            dustStrength: 0, starSize: 0, projectionScale: 0, smoothingScale: 0,
-            referenceArea: 0, minimumSize: settings.minimumKernel * Float(scale),
-            maximumSize: 0, galaxyTint: 1, slabNear: 0, slabScale: 0, pass: 0)
-
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = accumulation
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        pass.colorAttachments[0].storeAction = .store
-        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        encoder.setRenderPipelineState(plainPipeline)
-        encoder.setVertexBytes(&uniforms, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-        encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
-        encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
-        encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
-        encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
-        encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
-        if let tracers, let tracerPipelines, tracerCount > 0 {
-            encoder.setRenderPipelineState(tracerPipelines.plain)
-            bindTracers(encoder, tracers)
-            encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: tracerCount)
-        }
-        encoder.endEncoding()
     }
 
     private func encodePlainPost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
@@ -754,170 +545,56 @@ public final class Renderer {
         compute.endEncoding()
     }
 
-    /// `particles` and `stages` draw part of the splat into what earlier parts left, for
-    /// `render(camera:slice:)`; the first part clears and draws the star field.
+    /// The particle passes of a frame, as its plan lists them (`FramePlan`, which the CUDA
+    /// renderer executes too). `particles` and `stages` draw part of the splat into what
+    /// earlier parts left, for `render(camera:slice:)`; the first part clears and draws the
+    /// star field.
     private func encodeSplat(
         camera: Camera, into buffer: MTLCommandBuffer, particles: Range<Int>? = nil,
         stages: ClosedRange<UInt32> = 0...1, first: Bool = true
     ) {
-        if settings.plain { return encodePlain(camera: camera, into: buffer) }
-        let particles = particles ?? 0..<(drawnCount + tracerCount)
-        let parts = split(particles)
+        // Its own pipelines, so a look without the web draws what it always drew.
+        let web = FramePlan.drawsWeb(settings, stages: stages) ? webResources() : nil
+        let plan = FramePlan(
+            settings: settings, camera: camera, time: time, drawnCount: drawnCount,
+            tracerCount: tracerCount, luminosityNormalisation: luminosityNormalisation,
+            mapped: mapped, laceScale: web?.scale, stages: stages, first: first)
+        if first { drawn = plan }
+        let parts = split(particles ?? 0..<(drawnCount + tracerCount))
         let traced =
             tracerCount > 0
             ? tracers.flatMap { source in tracerPipelines.map { (source: source, pipelines: $0) } }
             : nil
-        let scale = settings.supersample
-        let aspect = Float(settings.width) / Float(settings.height)
+        let uniformsLength = MemoryLayout<SplatUniforms>.stride
+        let webLength = MemoryLayout<WebUniforms>.stride
 
-        // Pixels per unit length at unit depth. The vertex shader divides a particle's
-        // smoothing length by its view depth to get the kernel's size on screen.
-        let projectionScale =
-            Float(settings.height * scale) / (2 * tan(camera.fieldOfView / 2))
-        // Conserving flux per particle already makes surface brightness independent of the
-        // zoom, so no separate area correction is needed here.
-        //
-        // Over the particles that reach a pixel, not over every particle simulated. Dividing
-        // by the whole count meant that turning live halos on dimmed a scene by the halo
-        // ratio — two and a half at the default — because three particles in five are dark
-        // matter that never lands on a pixel. Exposure per drawn particle is what keeps a
-        // scene looking the same whether it runs at 500 000 stars or at twenty million,
-        // which is the whole point of normalising by count at all.
-        let perParticle = 1_000_000 / Float(max(drawnCount + tracerCount, 1))
-
-        // The stack of depth slabs, centred on what the camera is pointed at and as deep as
-        // the frame is wide. A disk seen at any angle at all spans several of them, which is
-        // what lets its near side shadow its far side; seen exactly face-on it does not, and
-        // it should not — a thin disk seen flat has no lane in front of anything.
-        let distance = simd_length(camera.eye - camera.target)
-        let halfExtent = distance * tan(camera.fieldOfView / 2)
-        let slabNear = distance - halfExtent
-
-        var splat = SplatUniforms(
-            viewProjection: camera.viewProjection(aspectRatio: aspect),
-            time: time,
-            megayearsPerUnit: Float(Physics.megayearsPerTimeUnit),
-            ionisedMyr: StarFormation.ionisedMyr,
-            ionisingRiseMyr: StarFormation.ionisingRiseMyr,
-            ionisedStrength: StarFormation.ionisedStrength,
-            populationYoungMyr: Float(StellarPopulation.youngestMyr),
-            populationSpan: log(Float(StellarPopulation.oldestMyr / StellarPopulation.youngestMyr)),
-            populationLast: Float(StellarPopulation.samples - 1),
-            luminosityNormalisation: luminosityNormalisation,
-            brightness: settings.brightness * perParticle,
-            dustStrength: settings.dustStrength * perParticle,
-            starSize: settings.starSize * Float(scale),
-            projectionScale: projectionScale,
-            smoothingScale: settings.smoothingScale,
-            referenceArea: 0.01,
-            minimumSize: settings.minimumKernel * Float(scale),
-            maximumSize: settings.maximumKernel * Float(scale),
-            galaxyTint: settings.galaxyTint,
-            slabNear: slabNear,
-            slabScale: 1 / max(2 * halfExtent, 1e-3),
-            pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow,
-            columnSmoothing: settings.columnSmoothing, columnCell: Float(Self.columnCell),
-            glint: settings.glint)
-
-        // Its own pipelines, so a look without the web draws what it always drew.
-        let web = settings.dustWeb > 0 && stages.contains(0) ? webResources() : nil
-        let forward = simd_normalize(camera.target - camera.eye)
-        let right = simd_normalize(simd_cross(forward, camera.up))
-        let up = simd_cross(right, forward)
-        var webUniforms = WebUniforms(
-            eye: SIMD4(camera.eye, min(max(settings.dustWeb, 0), 1)),
-            right: SIMD4(right, DustWeb.carrier),
-            up: SIMD4(up, time),
-            params: SIMD4(
-                DustWeb.rest, DustWeb.cellShare, DustWeb.smallestCell, DustWeb.largestCell),
-            forward: SIMD4(forward, tan(camera.fieldOfView / 2)),
-            target: SIMD4(
-                Float(settings.width * scale), Float(settings.height * scale), aspect,
-                web?.scale ?? 1),
-            carrier: SIMD4(Float(DustWeb.carrierCoarse), DustWeb.carrierSmallest, 0, 0))
-
-        // The column pass, once per frame over every drawn particle: counts into coarse
-        // cells, which the splat vertex reads back to size its kernel in projection.
-        if first, settings.columnSmoothing > 0 {
-            let count = MTLRenderPassDescriptor()
-            count.colorAttachments[0].texture = columnDensity
-            count.colorAttachments[0].loadAction = .clear
-            count.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-            count.colorAttachments[0].storeAction = .store
-            if let encoder = buffer.makeRenderCommandEncoder(descriptor: count) {
-                encoder.setRenderPipelineState(countPipeline)
-                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
-                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
-                encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
-                encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
-                if let traced {
-                    encoder.setRenderPipelineState(traced.pipelines.count)
-                    bindTracers(encoder, traced.source)
-                    encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: tracerCount)
-                }
-                encoder.endEncoding()
-            }
-        }
-
-        // The dust the web multiplies, coarse, before the pass that multiplies it.
-        if let web {
-            let coarse = MTLRenderPassDescriptor()
-            for (index, target) in [web.carrier, web.tags].enumerated() {
-                coarse.colorAttachments[index].texture = target
-                coarse.colorAttachments[index].loadAction = .clear
-                coarse.colorAttachments[index].clearColor = MTLClearColor(
+        func descriptor(_ targets: [MTLTexture], load: MTLLoadAction = .clear)
+            -> MTLRenderPassDescriptor
+        {
+            let pass = MTLRenderPassDescriptor()
+            for (index, target) in targets.enumerated() {
+                pass.colorAttachments[index].texture = target
+                pass.colorAttachments[index].loadAction = load
+                pass.colorAttachments[index].clearColor = MTLClearColor(
                     red: 0, green: 0, blue: 0, alpha: 0)
-                coarse.colorAttachments[index].storeAction = .store
+                pass.colorAttachments[index].storeAction = .store
             }
-            if let encoder = buffer.makeRenderCommandEncoder(descriptor: coarse) {
-                encoder.setRenderPipelineState(web.carrierPipeline)
-                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
-                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
-                encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
-                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
-                encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
-                encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
-                encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
-                encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
-                encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-                encoder.setVertexBytes(
-                    &webUniforms, length: MemoryLayout<WebUniforms>.stride, index: 13)
-                if !parts.massive.isEmpty {
-                    encoder.drawPrimitives(
-                        type: .point, vertexStart: parts.massive.lowerBound,
-                        vertexCount: parts.massive.count)
-                }
-                if let traced, !parts.tracers.isEmpty {
-                    encoder.setRenderPipelineState(web.tracerCarrier)
-                    bindTracers(encoder, traced.source)
-                    encoder.drawPrimitives(
-                        type: .point, vertexStart: parts.tracers.lowerBound,
-                        vertexCount: parts.tracers.count)
-                }
-                encoder.endEncoding()
-            }
+            return pass
         }
 
-        let pass = MTLRenderPassDescriptor()
-        for (index, target) in [accumulation, dustAccumulation].enumerated() {
-            pass.colorAttachments[index].texture = target
-            pass.colorAttachments[index].loadAction = first ? .clear : .load
-            pass.colorAttachments[index].clearColor = MTLClearColor(
-                red: 0, green: 0, blue: 0, alpha: 0)
-            pass.colorAttachments[index].storeAction = .store
+        // The light and the dust: one encoder for every pass that draws into them, opened by
+        // the first of them.
+        var frame: MTLRenderCommandEncoder?
+        func frameEncoder() -> MTLRenderCommandEncoder? {
+            if frame == nil {
+                frame = buffer.makeRenderCommandEncoder(
+                    descriptor: descriptor(
+                        [accumulation, dustAccumulation], load: plan.clears ? .clear : .load))
+            }
+            return frame
         }
 
-        if let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) {
-            encoder.setVertexBytes(&splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-
-            if first, let starBuffer {
-                encoder.setRenderPipelineState(starfieldPipeline)
-                encoder.setVertexBuffer(starBuffer, offset: 0, index: 0)
-                encoder.drawPrimitives(
-                    type: .point, vertexStart: 0, vertexCount: settings.starCount)
-            }
-
+        func bindParticles(_ encoder: MTLRenderCommandEncoder) {
             encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
             encoder.setVertexBuffer(populationBuffer, offset: 0, index: 1)
             encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
@@ -932,48 +609,134 @@ public final class Renderer {
             encoder.setVertexBuffer(rampBuffer, offset: 0, index: 12)
             encoder.setVertexTexture(columnDensity, index: 0)
             if let traced { bindTracers(encoder, traced.source) }
-            // Twice over the same buffer: the dust first, so that its opacity is standing in
-            // the attachment when the stars are drawn and read it back. Each draw throws away
-            // the particles belonging to the other one in the vertex stage, before any
-            // fragment work, so the cost of the second pass is a vertex shader over the whole
-            // buffer and nothing else. Compacting each draw's particles into its own index
-            // list was measured in #35: the vertex stage did not shrink and the frame got slower.
-            for stage in stages {
-                splat.pass = stage
-                encoder.setRenderPipelineState(stage == 0 ? dustPipeline : splatPipeline)
-                if stage == 0, let web {
-                    encoder.setRenderPipelineState(web.painted)
-                    encoder.setVertexBytes(
-                        &webUniforms, length: MemoryLayout<WebUniforms>.stride, index: 13)
-                }
-                encoder.setVertexBytes(
-                    &splat, length: MemoryLayout<SplatUniforms>.stride, index: 4)
-                if !parts.massive.isEmpty {
-                    encoder.drawPrimitives(
-                        type: .point, vertexStart: parts.massive.lowerBound,
-                        vertexCount: parts.massive.count)
-                }
-                if let traced, !parts.tracers.isEmpty {
-                    encoder.setRenderPipelineState(
-                        stage == 0 ? web?.tracerPainted ?? traced.pipelines.dust : traced.pipelines.splat)
-                    encoder.drawPrimitives(
-                        type: .point, vertexStart: parts.tracers.lowerBound,
-                        vertexCount: parts.tracers.count)
-                }
-                if stage == 0, let web {
-                    // Once per pixel, before any star reads the dust back.
-                    encoder.setRenderPipelineState(web.resolve)
-                    encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
-                    encoder.setFragmentBytes(
-                        &webUniforms, length: MemoryLayout<WebUniforms>.stride, index: 1)
-                    encoder.setFragmentTexture(web.lace, index: 0)
-                    encoder.setFragmentTexture(web.carrier, index: 1)
-                    encoder.setFragmentTexture(web.tags, index: 2)
-                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-                }
-            }
-            encoder.endEncoding()
         }
+
+        // The part's massive particles, then its light tracers. Each draw throws away the
+        // particles belonging to another pass in the vertex stage, before any fragment work,
+        // so the cost of a second pass over the buffer is a vertex shader and nothing else.
+        // Compacting each draw's particles into its own index list was measured in #35: the
+        // vertex stage did not shrink and the frame got slower.
+        func drawParts(
+            _ encoder: MTLRenderCommandEncoder, massive: MTLRenderPipelineState,
+            tracers: MTLRenderPipelineState?
+        ) {
+            if !parts.massive.isEmpty {
+                encoder.setRenderPipelineState(massive)
+                encoder.drawPrimitives(
+                    type: .point, vertexStart: parts.massive.lowerBound,
+                    vertexCount: parts.massive.count)
+            }
+            if let tracers, !parts.tracers.isEmpty {
+                encoder.setRenderPipelineState(tracers)
+                encoder.drawPrimitives(
+                    type: .point, vertexStart: parts.tracers.lowerBound,
+                    vertexCount: parts.tracers.count)
+            }
+        }
+
+        for pass in plan.passes {
+            var uniforms = plan.uniforms(for: pass)
+            switch pass {
+            case .column:
+                guard
+                    let encoder = buffer.makeRenderCommandEncoder(
+                        descriptor: descriptor([columnDensity]))
+                else { continue }
+                encoder.setRenderPipelineState(countPipeline)
+                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
+                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
+                encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+                if let traced {
+                    encoder.setRenderPipelineState(traced.pipelines.count)
+                    bindTracers(encoder, traced.source)
+                    encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: tracerCount)
+                }
+                encoder.endEncoding()
+
+            case .webCarrier:
+                guard let web, var webUniforms = plan.web,
+                    let encoder = buffer.makeRenderCommandEncoder(
+                        descriptor: descriptor([web.carrier, web.tags]))
+                else { continue }
+                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
+                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
+                encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
+                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+                encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
+                encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
+                encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
+                encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
+                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
+                if let traced { bindTracers(encoder, traced.source) }
+                drawParts(
+                    encoder, massive: web.carrierPipeline,
+                    tracers: traced == nil ? nil : web.tracerCarrier)
+                encoder.endEncoding()
+
+            case .starfield:
+                guard let starBuffer, let encoder = frameEncoder() else { continue }
+                encoder.setRenderPipelineState(starfieldPipeline)
+                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                encoder.setVertexBuffer(starBuffer, offset: 0, index: 0)
+                encoder.drawPrimitives(
+                    type: .point, vertexStart: 0, vertexCount: settings.starCount)
+
+            case .dust:
+                guard let encoder = frameEncoder() else { continue }
+                bindParticles(encoder)
+                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                drawParts(encoder, massive: dustPipeline, tracers: traced?.pipelines.dust)
+
+            case .paintedDust:
+                guard let web, var webUniforms = plan.web, let encoder = frameEncoder()
+                else { continue }
+                bindParticles(encoder)
+                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
+                drawParts(
+                    encoder, massive: web.painted, tracers: traced == nil ? nil : web.tracerPainted)
+
+            case .webResolve:
+                guard let web, var webUniforms = plan.web, let encoder = frameEncoder()
+                else { continue }
+                encoder.setRenderPipelineState(web.resolve)
+                encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
+                encoder.setFragmentBytes(&webUniforms, length: webLength, index: 1)
+                encoder.setFragmentTexture(web.lace, index: 0)
+                encoder.setFragmentTexture(web.carrier, index: 1)
+                encoder.setFragmentTexture(web.tags, index: 2)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+
+            case .stars:
+                guard let encoder = frameEncoder() else { continue }
+                bindParticles(encoder)
+                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                drawParts(encoder, massive: splatPipeline, tracers: traced?.pipelines.splat)
+
+            case .plain:
+                guard
+                    let encoder = buffer.makeRenderCommandEncoder(
+                        descriptor: descriptor([accumulation]))
+                else { continue }
+                encoder.setRenderPipelineState(plainPipeline)
+                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
+                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+                encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
+                encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
+                encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
+                if let traced {
+                    encoder.setRenderPipelineState(traced.pipelines.plain)
+                    bindTracers(encoder, traced.source)
+                    encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: tracerCount)
+                }
+                encoder.endEncoding()
+            }
+        }
+        frame?.endEncoding()
     }
 
     /// Nil when the web could not be built, and the dust is then drawn as it always was.
@@ -1227,6 +990,143 @@ public final class Renderer {
         guard run({ encodePost(into: $0, present: nil) }) else { return [] }
         lastGPUTime = took
         return readBack()
+    }
+
+    /// What the particle passes of the last frame drawn left in their targets, before any
+    /// post-processing, and what they drew from, byte for byte as the GPU holds them (#276).
+    public func particleTargets() -> ParticleTargets? {
+        guard let plan = drawn, let buffer = queue.makeCommandBuffer(),
+            let blit = buffer.makeBlitCommandEncoder()
+        else { return nil }
+        typealias File = ParticleTargets.File
+        var reads: [(file: File, copy: MTLBuffer, lace: Bool)] = []
+        func read(
+            _ name: String, _ texture: MTLTexture, _ format: String, _ texel: Int, level: Int = 0,
+            side: Int? = nil
+        ) {
+            let width = side ?? texture.width
+            let height = side ?? texture.height
+            let row = width * texel
+            guard let copy = device.makeBuffer(length: row * height, options: .storageModeShared)
+            else { return }
+            blit.copy(
+                from: texture, sourceSlice: 0, sourceLevel: level,
+                sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                sourceSize: MTLSize(width: width, height: height, depth: 1),
+                to: copy, destinationOffset: 0, destinationBytesPerRow: row,
+                destinationBytesPerImage: row * height)
+            reads.append(
+                (
+                    File(name, format, texel, width * height, Data(), width: width, height: height),
+                    copy, side != nil
+                ))
+        }
+        let web = plan.web.flatMap { _ in webPass }
+        read("light.f16", accumulation, "rgba16Float", 8)
+        if !settings.plain {
+            read("dust.f16", dustAccumulation, "rgba16Float", 8)
+            if settings.columnSmoothing > 0 { read("column.f32", columnDensity, "r32Float", 4) }
+        }
+        if let web {
+            read("carrier.f16", web.carrier, "rgba16Float", 8)
+            read("tags.u8", web.tags, "rgba8Unorm", 4)
+            read("level0-crop.f16", web.lace, "r16Float", 2, side: 256)
+            read("level4.f16", web.lace, "r16Float", 2, level: 4, side: 256)
+        }
+        blit.endEncoding()
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        let textures = reads.map { read in
+            var file = read.file
+            file.bytes = Data(bytes: read.copy.contents(), count: read.copy.length)
+            return (file: file, lace: read.lace)
+        }
+
+        func bytes(_ buffer: MTLBuffer?, offset: Int = 0, _ stride: Int, _ count: Int) -> Data {
+            guard let buffer, offset + stride * count <= buffer.length else { return Data() }
+            return Data(bytes: buffer.contents() + offset, count: stride * count)
+        }
+        func file(
+            _ name: String, _ type: String, _ buffer: MTLBuffer?, _ stride: Int, _ count: Int,
+            offset: Int = 0
+        ) -> File {
+            let held = bytes(buffer, offset: offset, stride, count)
+            return File(name, type, stride, held.count / max(stride, 1), held)
+        }
+        func value<T>(_ name: String, _ type: String, _ value: T) -> File {
+            var held = Data(count: MemoryLayout<T>.stride)
+            held.withUnsafeMutableBytes { $0.storeBytes(of: value, as: T.self) }
+            return File(name, type, MemoryLayout<T>.stride, 1, held)
+        }
+        let vector = MemoryLayout<SIMD3<Float>>.stride
+        var particles = [
+            file("component.u32", "uint", componentBuffer, 4, drawnCount),
+            file("galaxy.u32", "uint", galaxyBuffer, 4, drawnCount),
+        ]
+        var frame = [
+            file("positions.f32x4", "float3", positionBuffer, vector, drawnCount, offset: positionOffset)
+        ]
+        let splat = plan.uniforms(for: settings.plain ? .plain : .stars)
+        var target = [
+            value("splat-uniforms.bin", "SplatUniforms", splat),
+            file("disk-frames.bin", "DiskFrame", frameBuffer, MemoryLayout<DiskFrame>.stride, frameCount),
+        ]
+        if !settings.plain {
+            particles += [
+                file("population.f32", "float", populationBuffer, 4, drawnCount),
+                file("formation.f32", "float", formationBuffer, 4, drawnCount),
+                file("luminosity.f32", "float", luminosityBuffer, 4, drawnCount),
+                file("traits.f32x2", "float2", traitBuffer, 8, drawnCount),
+                file("rampKeys.f32", "float", rampKeyBuffer, 4, drawnCount),
+                file("stellar.f32x2", "float2", stellarBuffer, 8, StellarPopulation.samples),
+            ]
+            frame.append(file("smoothing.f32", "float", smoothingBuffer, 4, drawnCount))
+            target.append(
+                file("ramps.bin", "GalaxyRamp", rampBuffer, MemoryLayout<GalaxyRamp>.stride, galaxySlots))
+            if let starBuffer {
+                target.append(
+                    file(
+                        "starfield.bin", "BackgroundStar", starBuffer,
+                        MemoryLayout<BackgroundStar>.stride, settings.starCount))
+            }
+            if let uniforms = plan.web, web != nil {
+                target.append(value("web-uniforms.bin", "WebUniforms", uniforms))
+            }
+        }
+        // The light tracers the frame drew behind the massive particles (#238), as bound. The
+        // tree's spacing goes with the target: its cells are laid out anew by every run, and a
+        // plain look binds none.
+        var tracerDepth = 0
+        if let tracers, tracerCount > 0 {
+            let spacing = tracers.tracerSpacing
+            tracerDepth = spacing?.depth ?? 0
+            let cells = spacing?.cells ?? tracerFallback
+            let treeFrame = spacing?.frame ?? tracerFallback
+            frame += [
+                file("states.f32x4", "float4", tracers.positions, 16, tracerCount),
+                file("words.u32x4", "uint4", tracers.velocities, 16, tracerCount),
+                File(
+                    "scales.f32", "float", 4, tracerScales.count,
+                    tracerScales.withUnsafeBytes { Data($0) }),
+            ]
+            target += [
+                file("cells.u32x2", "uint2", cells, 8, (cells?.length ?? 0) / 8),
+                file("treeFrame.f32", "float", treeFrame, 4, (treeFrame?.length ?? 0) / 4),
+            ]
+        }
+        return ParticleTargets(
+            particles: particles, frame: frame,
+            target: target + textures.filter { !$0.lace }.map(\.file),
+            lace: textures.filter(\.lace).map(\.file),
+            laceMean: web == nil ? nil : (try? DustWeb.lace(library: library, device: device))?.mean,
+            width: settings.width, height: settings.height, supersample: settings.supersample,
+            plain: settings.plain, starCount: starBuffer == nil ? 0 : settings.starCount,
+            dustWeb: settings.plain ? 0 : settings.dustWeb,
+            columnSmoothing: settings.plain ? 0 : settings.columnSmoothing,
+            holeShadow: splat.holeShadow, mapped: splat.mapped != 0,
+            luminosityNormalisation: splat.luminosityNormalisation, drawn: drawnCount,
+            galaxies: frameCount, galaxySlots: galaxySlots, tracers: tracerCount,
+            tracerDepth: tracerDepth)
     }
 
     private func readBack() -> [UInt8] {

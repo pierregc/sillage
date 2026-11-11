@@ -230,21 +230,32 @@ extension Palette {
 }
 
 /// One galaxy's ramp as the splat shader reads it; mirrors `GalaxyRamp` in `Shaders`.
-struct GalaxyRamp {
-    var core: SIMD4<Float>
-    var disk: SIMD4<Float>
-    var outskirts: SIMD4<Float>
-    var young: SIMD4<Float>
-    var knot: SIMD4<Float>
-    var stops: SIMD4<Float>
+public struct GalaxyRamp: Sendable {
+    public var core: SIMD4<Float>
+    public var disk: SIMD4<Float>
+    public var outskirts: SIMD4<Float>
+    public var young: SIMD4<Float>
+    public var knot: SIMD4<Float>
+    public var stops: SIMD4<Float>
     /// Blend, mix mapping (0 or 1), whether the galaxy has a ramp at all (0 or 1).
-    var params: SIMD4<Float>
+    public var params: SIMD4<Float>
 
-    static let none = GalaxyRamp(
+    public static let none = GalaxyRamp(
         core: .zero, disk: .zero, outskirts: .zero, young: .zero, knot: .zero, stops: .zero,
         params: .zero)
 
-    init(
+    /// One ramp a galaxy slot from a look file's palette; a galaxy with no ramp, or past the
+    /// palette's end, keeps the one-colour shading.
+    public static func ramps(for palette: [GalaxyColours], slots: Int) -> [GalaxyRamp] {
+        (0..<slots).map { $0 < palette.count ? GalaxyRamp(palette[$0]) : GalaxyRamp.none }
+    }
+
+    /// Whether any of them has a colour ramp (#119).
+    public static func mapped(_ ramps: [GalaxyRamp]) -> Bool {
+        ramps.contains { $0.params.z > 0 }
+    }
+
+    public init(
         core: SIMD4<Float>, disk: SIMD4<Float>, outskirts: SIMD4<Float>, young: SIMD4<Float>,
         knot: SIMD4<Float>, stops: SIMD4<Float>, params: SIMD4<Float>
     ) {
@@ -257,7 +268,7 @@ struct GalaxyRamp {
         self.params = params
     }
 
-    init(_ entry: GalaxyColours) {
+    public init(_ entry: GalaxyColours) {
         guard let ramp = entry.ramp else {
             self = .none
             return
