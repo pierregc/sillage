@@ -432,6 +432,52 @@ The centres travel 50 and 63 kpc, the thickness goes from 0.02 to 0.28 and the m
 Metal runs, by 0.3 % to 32 % (a centre, both thicknesses, an axis): four draws do not bound a
 fifth, and the test allows three times the widest.
 
+The Mac's folder is on `assets/cuda-checks` (e11a3d9), `docs/spikes/cuda-checks/tracers/`, with
+its formats and what it found; the CUDA run is the CPU target's, 1,560 steps in 38 minutes.
+
+**One force evaluation**, on the drawn positions: the tracers' accelerations are within 8.4e-8 of
+Metal's in the median, 2.6e-7 at the 99th percentile and 6.2e-6 at most, none past 1e-4 and 3.6 %
+with Metal's bits; the massive particles' within 7.7e-8, 2.3e-7 and 2.5e-6, as in #274. After one
+step 98 % of the positions are Metal's to the bit, and every tracer's packed word.
+
+**The light stays on the mass**, the tracers against the massive visible particles of the same
+run, as `tracer-drift.py` scores them:
+
+| Myr | CUDA: chi2 a cell | binned 4x4 | light elsewhere | noise alone | Metal: binned 4x4 | light elsewhere |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 1.039 | 0.995 | 5.52 % | 5.40 % | 0.995 | 5.52 % |
+| 39 | 0.980 | 0.960 | 5.29 % | 5.51 % | 0.960 | 5.29 % |
+| 77 | 0.978 | 0.993 | 5.57 % | 5.54 % | 0.993 | 5.57 % |
+| 116 | 0.995 | 0.889 | 5.25 % | 5.56 % | 0.889 | 5.26 % |
+| 154 | 1.009 | 0.966 | 5.73 % | 5.63 % | 0.967 | 5.73 % |
+| 193 | 1.056 | 0.913 | 5.51 % | 5.65 % | 0.913 | 5.51 % |
+| 231 | 0.997 | 0.970 | 5.57 % | 5.51 % | 0.972 | 5.55 % |
+| 270 | 0.993 | 1.043 | 5.38 % | 5.17 % | 1.053 | 5.42 % |
+| 309 | 1.012 | 0.977 | 4.85 % | 4.75 % | 0.969 | 4.86 % |
+
+Chi-square near 1 at every instant and the light elsewhere within 0.25 points of the noise, as on
+Metal; 50 k massive particles make that noise about six times #238's at 2 M.
+
+**Against Metal**, each set's maps against the same set's on Metal, chi-square a cell binned 4 x 4,
+beside Metal against itself with every position a last bit away:
+
+| Myr | tracers, CUDA against Metal | Metal a bit away | massive, CUDA against Metal | Metal a bit away |
+| ---: | ---: | ---: | ---: | ---: |
+| 116 | 0.0001 | 0.0001 | 0.0002 | 0.0001 |
+| 193 | 0.0002 | 0.0003 | 0.0002 | 0.0005 |
+| 231 | 0.0006 | 0.0009 | 0.0007 | 0.0010 |
+| 270 | 0.0012 | 0.0019 | 0.0025 | 0.0041 |
+| 309 | 0.0031 | 0.0045 | 0.0038 | 0.0092 |
+
+Along the run the most the centres part is 4.3 and 4.0 pc (Metal a bit away: 6.2 and 4.7), the
+disks' thicknesses 1.6e-5 and 1.8e-5 (2.6e-5, 3.1e-5), the momentum 4.5e-4 (4.8e-4), and 1,177
+stars form against Metal's 1,176 (1,169), tracers and massive particles together. At the
+pericentre the tracers are 5.1 pc from Metal's in the median, 0.11 kpc at the 99th percentile,
+exactly as far as the massive visible particles are. **The light stays on the mass on CUDA as on
+Metal, and the CUDA run parts from Metal less than Metal parts from itself after a one-bit change.**
+The test holds each instant to a chi-square under 1.3 and the light elsewhere under 1.25 times the
+noise, and each set to three times what Metal a bit away gives.
+
 **To run it again**, on Linux, with the Mac's folder checked out from `assets/cuda-checks`:
 
 ```
@@ -623,6 +669,52 @@ bit away (`metal-bit-all`); Linux on the CPU target. Each writes nine density ma
 and of the massive visible particles (256 x 256 over 120 kpc, at steps 0, 195, ..., 1,560) with
 the lines `scripts/tracer-drift.py` reads, and the accelerations at step 0.
 
+The Mac's folder is on `assets/cuda-checks` (e11a3d9), `docs/spikes/cuda-checks/tracers/`, with
+its formats and what it found; the CUDA run is the CPU target's, 1,560 steps in 38 minutes.
+
+**One force evaluation**, on the drawn positions: the tracers' accelerations are within 8.4e-8 of
+Metal's in the median, 2.6e-7 at the 99th percentile and 6.2e-6 at most, none past 1e-4 and 3.6 %
+with Metal's bits; the massive particles' within 7.7e-8, 2.3e-7 and 2.5e-6, as in #274. After one
+step 98 % of the positions are Metal's to the bit, and every tracer's packed word.
+
+**The light stays on the mass**, the tracers against the massive visible particles of the same
+run, as `tracer-drift.py` scores them:
+
+| Myr | CUDA: chi2 a cell | binned 4x4 | light elsewhere | noise alone | Metal: binned 4x4 | light elsewhere |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 1.039 | 0.995 | 5.52 % | 5.40 % | 0.995 | 5.52 % |
+| 39 | 0.980 | 0.960 | 5.29 % | 5.51 % | 0.960 | 5.29 % |
+| 77 | 0.978 | 0.993 | 5.57 % | 5.54 % | 0.993 | 5.57 % |
+| 116 | 0.995 | 0.889 | 5.25 % | 5.56 % | 0.889 | 5.26 % |
+| 154 | 1.009 | 0.966 | 5.73 % | 5.63 % | 0.967 | 5.73 % |
+| 193 | 1.056 | 0.913 | 5.51 % | 5.65 % | 0.913 | 5.51 % |
+| 231 | 0.997 | 0.970 | 5.57 % | 5.51 % | 0.972 | 5.55 % |
+| 270 | 0.993 | 1.043 | 5.38 % | 5.17 % | 1.053 | 5.42 % |
+| 309 | 1.012 | 0.977 | 4.85 % | 4.75 % | 0.969 | 4.86 % |
+
+Chi-square near 1 at every instant and the light elsewhere within 0.25 points of the noise, as on
+Metal; 50 k massive particles make that noise about six times #238's at 2 M.
+
+**Against Metal**, each set's maps against the same set's on Metal, chi-square a cell binned 4 x 4,
+beside Metal against itself with every position a last bit away:
+
+| Myr | tracers, CUDA against Metal | Metal a bit away | massive, CUDA against Metal | Metal a bit away |
+| ---: | ---: | ---: | ---: | ---: |
+| 116 | 0.0001 | 0.0001 | 0.0002 | 0.0001 |
+| 193 | 0.0002 | 0.0003 | 0.0002 | 0.0005 |
+| 231 | 0.0006 | 0.0009 | 0.0007 | 0.0010 |
+| 270 | 0.0012 | 0.0019 | 0.0025 | 0.0041 |
+| 309 | 0.0031 | 0.0045 | 0.0038 | 0.0092 |
+
+Along the run the most the centres part is 4.3 and 4.0 pc (Metal a bit away: 6.2 and 4.7), the
+disks' thicknesses 1.6e-5 and 1.8e-5 (2.6e-5, 3.1e-5), the momentum 4.5e-4 (4.8e-4), and 1,177
+stars form against Metal's 1,176 (1,169), tracers and massive particles together. At the
+pericentre the tracers are 5.1 pc from Metal's in the median, 0.11 kpc at the 99th percentile,
+exactly as far as the massive visible particles are. **The light stays on the mass on CUDA as on
+Metal, and the CUDA run parts from Metal less than Metal parts from itself after a one-bit change.**
+The test holds each instant to a chi-square under 1.3 and the light elsewhere under 1.25 times the
+noise, and each set to three times what Metal a bit away gives.
+
 **To run it again**, on Linux, with the Mac's folder checked out from `assets/cuda-checks`:
 
 ```
@@ -637,3 +729,30 @@ tracers against its massive particles and for each set against Metal's, beside M
 itself a last bit away, and prints it all on `CUDATRACERS` lines. The Metal side is written by
 `SILLAGE_TRACER_CHECK_OUT=<folder> ./scripts/dev.sh test --filter TracerCheckTests` on the Mac;
 `SILLAGE_TRACER_CHECK_DRAWN`, `_MASSIVE` and `_STEPS` change the run, for #283's at 8 M.
+
+### What #275 measured
+
+- **Metal is the same to the bit.** After the kernels were shared and after the CUDA side was
+  added, the Mac's check passed (608 tests, main's 607 and the comparison's, skipped without its
+  folder), with `theMassiveParticlesRepeatTheRunWithoutTracersToTheBit` and
+  `aBlackHolePassKeepsItsBits`, and a short hires of scene-0031 at 200 k drawn from 50 k massive,
+  its tracers sorted, forming stars and checkpointed, gave main's 26 files to the byte.
+- **The tracers' kernels compile for CUDA as they are**: no line of their MSL written for it,
+  nothing added to `msl_compat.h`.
+- **On the CPU target** the fixture's walk is Metal's to 1.63e-6, its velocities after a step to
+  1.73e-7, and a run with tracers repeats and resumes to the bit. A step of scene-0031 at 200 k
+  drawn from 50 k massive, 150,207 tracers and 124,793 massive particles, takes 1.46 s there.
+- **One bug**, the double kick at the edge of a piece, which only CUDA's whole blocks can make.
+- **The workflow** stays at 6 min 46 s, its longest job `swift-core`; the CUDA suites take 55 s
+  of the `swift-checks` job, 39 more than before.
+
+### For #278
+
+The full pass on Linux takes from here what the Mac's takes from `MetalBarnesHutSolver`:
+`CUDABarnesHutSolver.lightTracers(context:drawn:massive:)` to sample, `CUDALightTracerStore(
+context:capacity:awaiting:)` and `restore(_:from:)` to resume, `positions`, `velocities` and
+`formation` for the renderer and the take, `writeSmoothing(into:drawn:)` and `tracerSpacing` for
+the kernels' sizes, `tracerWord(_:)`. What the Mac's full pass also reads in place on unified
+memory, `drawnAttributes()`, `formed(after:until:)` and `radii(every:)`, has no CUDA twin yet:
+on a GPU they become downloads of the tracers' words and formation times, or small kernels, as
+#278 finds cheapest at 200 M (the words alone are 0.8 GB).
