@@ -1740,7 +1740,7 @@ enum Shaders {
             if (p.noiseLevel > 0.0f) {
                 float2 cell = float2(gid) + p.seed;
                 float read = hash2(cell) - 0.5f;
-                float shot = hash2(cell + 17.3f) - 0.5f;
+                float shot = hash2(float2(gid) + (p.seed + 17.3f)) - 0.5f;
                 float luma = max(dot(energy, float3(0.2126f, 0.7152f, 0.0722f)), 0.0f);
                 energy += p.noiseLevel * (read + shot * sqrt(luma) * 4.0f);
                 energy = max(energy, 0.0f);
