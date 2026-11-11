@@ -184,6 +184,59 @@ struct ExportTests {
         #expect(abs(duration.seconds - 0.5) < 0.01)
     }
 
+    /// The particle targets of a frame, as the GPU holds them before any post-processing (#276):
+    /// read off the frame the export draws, and listed in the manifest with their sizes. No
+    /// video is written here: the encoder is not part of what is checked.
+    @Test func theParticleTargetsOfAFrameAreReadAndListed() throws {
+        var look = autoLook
+        look.look.dustStrength = 0.3
+        look.look.dustWeb = 1
+        look.look.columnSmoothing = 8
+        look.starCount = 40
+        let export = try TakeExport(take: take(frames: 6), look: look, capturedRate: 10)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("targets-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var manifest = RenderTargetManifest(
+            commit: "", device: export.gpuName, system: "", width: 64, height: 36,
+            take: RenderTargetManifest.Take(
+                file: "", scene: "", particles: 2000, drawn: 2000, capturedFrames: 6, capturedRate: 10))
+        for (frame, name) in [(1, "early"), (4, "late")] {
+            let drawn = try export.targets(atCaptured: frame, width: 64, height: 36)
+            #expect(drawn.pixels == (try export.still(atCaptured: frame, width: 64, height: 36)))
+            #expect(drawn.capture.captured == Double(frame))
+            let targets = drawn.capture.targets
+            #expect(targets.supersample == 2 && targets.drawn == 2000 && targets.starCount == 40)
+            let light = try #require(targets.target.first { $0.name == "light.f16" })
+            #expect(light.width == 128 && light.height == 72 && light.bytes.count == 128 * 72 * 8)
+            #expect(light.bytes.contains { $0 != 0 })
+            try manifest.add(
+                drawn.capture, look: "web", lookFile: "", name: name,
+                megayearsPerUnit: Physics.megayearsPerTimeUnit, to: directory)
+        }
+        let read = try #require(RenderTargetManifest.read(from: directory))
+        #expect(read.frames.map(\.name) == ["early", "late"] && read.targets.count == 2)
+        #expect(read.lace?.files.keys.sorted() == ["level0-crop", "level4"])
+        let late = try #require(read.targets.last)
+        #expect(
+            late.files.keys.sorted() == [
+                "carrier", "column", "disk-frames", "dust", "light", "ramps", "splat-uniforms",
+                "starfield", "tags", "web-uniforms",
+            ])
+        #expect(read.particles.count == 8)
+        #expect(read.frames[1].files.keys.sorted() == ["positions", "smoothing"])
+        let listed =
+            Array(read.particles.values) + read.frames.flatMap(\.files.values)
+            + read.targets.flatMap(\.files.values) + Array(read.lace?.files.values ?? [:].values)
+        for entry in listed {
+            let size =
+                try FileManager.default.attributesOfItem(
+                    atPath: directory.appendingPathComponent(entry.file).path)[.size] as? Int
+            #expect(size == entry.count * entry.stride, "\(entry.file)")
+        }
+    }
+
     private func exported(
         _ codec: VideoCodec, metadata: VideoMetadata? = nil, quality: Double? = nil
     ) async throws -> (AVURLAsset, URL) {

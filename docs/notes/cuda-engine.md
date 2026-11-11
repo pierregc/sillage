@@ -4,9 +4,10 @@ The hires engine's CUDA twin for rented NVIDIA GPUs (#269), written and tested w
 phase 1. #273 laid the frame the next steps build in: the C API, the Swift module over it, the
 build for the GPU and for the CPU target, and the tree builder, the first engine in it. #274
 added the solver of the massive particles, which has
-[a section of its own](#the-massive-particles-solver-274). How a kernel's text is shared with
-Metal is in [one-kernel-source.md](one-kernel-source.md); this note is how the CUDA side around
-it is built, run and tested.
+[a section of its own](#the-massive-particles-solver-274), and #276 the renderer's particle
+passes, [which have theirs](#the-renderers-particle-passes-276). How a kernel's text is shared
+with Metal is in [one-kernel-source.md](one-kernel-source.md); this note is how the CUDA side
+around it is built, run and tested.
 
 ## Layout
 
@@ -19,9 +20,10 @@ it is built, run and tested.
 | `cuda/src/context.cu` | errors, contexts, buffers and pinned memory |
 | `cuda/src/tree.cu` | the 20 tree entry points, their launches and the tree's calls |
 | `cuda/include/sillage_cuda_solver.h`, `cuda/src/solver.cu` | the massive solver's calls, its 8 entry points and their launches (#274) |
+| `cuda/include/sillage_cuda_render.h`, `cuda/src/render.cu` | the renderer's calls, the 13 entry points of its particle passes and their launches (#276) |
 | `cuda/src/kernels.cu` | every library's MSL in one unit, for the checks (#281) |
-| `cuda/tests/*.cu` | the C tests of the CPU target (`compat`, `tree_fixture`, `tree_entries`, `solver_fixture`) |
-| `Sources/SillageCUDA/` | the Swift: `CUDAContext` and `CUDAError`, `CUDABuffer` and `CUDAHostMemory`, `CUDATreeBuilder`, `CUDABarnesHutSolver` |
+| `cuda/tests/*.cu` | the C tests of the CPU target (`compat`, `tree_fixture`, `tree_entries`, `solver_fixture`, `render_passes`, `raster_probe`) |
+| `Sources/SillageCUDA/` | the Swift: `CUDAContext` and `CUDAError`, `CUDABuffer` and `CUDAHostMemory`, `CUDATreeBuilder`, `CUDABarnesHutSolver`, `CUDARenderer` |
 | `Tests/SillageCUDATests/` | the Swift tests, run on Linux |
 
 **A new domain** (#274's solver, #276's renderer) takes files of its own, so that two tickets
@@ -461,3 +463,388 @@ at `SILLAGE_SOLVER_CHECK_PARTICLES` drawn (20,000) for `SILLAGE_SOLVER_CHECK_STE
 - **The CPU target repeats itself and resumes to the bit** over 200 steps of a merger of 20,000.
 - **A scene built on Linux has the Mac's step, softening and opening angle to the bit** at 20 k,
   though its sample does not (#272).
+
+## The renderer's particle passes (#276)
+
+What `Renderer` draws with Metal's rasteriser into its supersampled light and dust, before any
+post-processing, drawn by compute kernels. #277 turns the two targets into a picture; #278
+draws a full pass with it.
+
+| where | what |
+| --- | --- |
+| `Sources/SillageRender/Shaders.swift` | the shared per-particle and per-pixel functions, and Metal's thin `vertex` and `fragment` functions |
+| `Sources/SillageRender/FramePlan.swift` | `FramePlan`, the passes of a frame and their uniforms, for both renderers; `SplatUniforms` |
+| `Sources/SillageRender/ParticleAttributes.swift` | the 28 bytes a massive particle carries, and the field stars |
+| `Sources/SillageRender/ParticleTargets.swift` | what Metal's particle passes left and drew from, as `export --dump-targets` writes it and the comparison reads it |
+| `cuda/include/sillage_cuda_render.h` | the renderer's calls |
+| `cuda/include/msl_texture.h` | a texture read by hand: `texels2d` and its filters |
+| `cuda/src/render.cu` | the 13 entry points of the passes, the walk over a point's pixels, the accumulation, the launches |
+| `cuda/src/raster.h` | the pixels a point covers and `point_coord` at each, by Metal's rules |
+| `cuda/tests/render_passes.cu`, `raster_probe.cu` | the C tests of the CPU target |
+| `Tests/Fixtures/engines/raster/probe.txt` | what Metal's rasteriser did with 131 points |
+| `Sources/SillageCUDA/CUDARenderer.swift` | the Swift renderer, which executes the frame plan |
+| `Sources/SillageCUDA/CUDARenderChecks.swift` | the comparison with Metal's dumped frames, and the measures #283 makes on a box |
+| `Tests/SillageCUDATests/CUDARenderTests.swift` | the Swift tests |
+
+### What is shared, and what a kernel does
+
+Metal draws a particle as a point: a vertex function says where it lands, how wide, and what
+it carries; the rasteriser covers the pixels of its square; a fragment function says what each
+pixel takes; the target blends it in. CUDA has no rasteriser, so a kernel does a pass, a thread
+a particle:
+
+1. it calls the **shared per-particle function** (`massiveSplat`, `tracerSplat`,
+   `starfieldSplat`, `massiveDustWeb`, `massiveWebCarrier`, `countPoint`, `plainPoint` and
+   their tracer twins), which returns a plain struct (`Splat`, `WebCarrier`, `CountPoint`,
+   `PlainPoint`): the clip position, the point size, and what the pixels read;
+2. it works out the point's square as the rasteriser does (`pointSquare`, below) and walks its
+   pixels;
+3. for each it calls `splatRadius2(coord)` and leaves the pixel alone past one, where Metal's
+   fragment calls `discard_fragment`, then the **shared per-pixel function** (`dustPixel`,
+   `lightPixel`, `starfieldPixel`, `webCarrierPixel` with `webTagPixel`, `countPixel`,
+   `plainPixel`) and adds its value to the target.
+
+The arithmetic of a splat is in `Shaders` alone. Metal's `vertex` functions copy the plain
+struct into a stage struct that carries `[[position]]` and `[[point_size]]`; its `fragment`
+functions take `point_coord`, discard, and call the same per-pixel function. `webResolveFragment`
+is a thread a pixel of the frame, where Metal draws one triangle over it, and `bakeLace` a
+thread a texel.
+
+**A fragment discards first.** Metal compiles `Shaders` with fast math, and a fragment whose
+shared function returned early with its value written through a reference gave other bytes
+than main (up to 38 half float steps in the light of a star behind dust). The form that keeps
+them: in the Metal fragment, the test and `discard_fragment()` first, then the shared function,
+its value returned. The CUDA kernel makes the same test in the same place.
+
+**A texture read in the middle of a shared function** goes through a type and a one-line
+function each engine defines, side by side in the MSL: `ColumnDensity` with `columnRead`, and
+`Lace` with `laceRead`. On Metal they are a `texture2d` and a `sample` with the sampler; on
+CUDA a `texels2d` (float texels in device memory) and a filter of `msl_texture.h` written by
+hand: `sample_bilinear` (linear, clamp to edge) for the column density, the carrier and, with
+`sample_nearest`, the tags; `sample_anisotropic` (trilinear over the lace's levels, up to
+eight taps along the footprint's long axis, repeat) for the lace. Metal's own filters are its
+GPU's; how far the hand-written ones land from them is in the comparison below.
+
+### The rasteriser's rules
+
+A point's pixels are covered by hand, so the rules are Metal's own, read off its rasteriser.
+The Mac drew one point at 131 clip positions and sizes into a 64 by 64 float target, its
+fragment writing `point_coord` (`raster-probe.swift`, with its pictures on the
+`assets/cuda-checks` branch). What the M4 Max does with a point of size `s` at clip position
+`(x, y, z, w)` in a frame of `W` by `H` pixels, and `pointSquare` in `cuda/src/raster.h` after
+it:
+
+1. the point is dropped when `z < 0` or `z > w`, when `|x| > 1.5 w` or `|y| > 1.5 w` (its
+   centre more than a quarter of the frame outside it), or when `s <= 0`. A centre outside the
+   frame by less still draws the part of its square that is inside;
+2. its size is capped at 511 pixels (512 and 1,200 draw as 511), and a size under 1 is not
+   raised;
+3. it stands at `c = ((x / w + 1) W / 2, (1 - y / w) H / 2)`, pixel centres at half integers
+   and y down, and its square runs from `c - s / 2` to `c + s / 2` with **each edge rounded to
+   1/256 of a pixel**;
+4. it covers the pixels whose centre is in that square, the first edge included and the last
+   not;
+5. `point_coord` at a pixel is `(its centre - the first edge) / span`, where the span is the
+   square's side with its two edges **rounded to a sixteenth of a pixel** instead. At a size of
+   1.3 the span is 1.25 or 1.3125 according to where the centre falls.
+
+`Tests/Fixtures/engines/raster/probe.txt` holds the probe's 131 cases, and
+`cuda/tests/raster_probe.cu` holds `pointSquare` to each on every push: how many pixels, which
+columns and rows, and `point_coord` at the first and the last, within 1.2e-6. Another GPU's
+rasteriser rounds otherwise; these rules are the M4 Max's, and the CUDA renderer follows them
+on every machine so that its picture is Metal's.
+
+### The frame plan
+
+`FramePlan(settings:camera:time:drawnCount:tracerCount:luminosityNormalisation:mapped:laceScale:stages:first:)`
+gives a frame's passes in order and their uniforms, from the look's settings and the camera,
+with the expressions `Renderer.encodeSplat` had:
+
+| pass | when | CUDA entry points |
+| --- | --- | --- |
+| `column` | `columnSmoothing > 0`, first part of the frame | `countVertex`, `countTracerVertex` |
+| `webCarrier` | the web is drawn | `webCarrierVertex`, `webCarrierTracerVertex` |
+| `starfield` | `starCount > 0`, first part | `starfieldVertex` |
+| `dust` or `paintedDust` | stage 0, without or with the web | `splatVertex` and `splatTracerVertex`, or `dustWebVertex` and `dustWebTracerVertex` |
+| `webResolve` | after `paintedDust` | `webResolveFragment` |
+| `stars` | stage 1 | `splatVertex`, `splatTracerVertex` |
+| `plain` | the raw look, alone | `plainVertex`, `plainTracerVertex` |
+
+`Renderer` and `CUDARenderer` both execute `plan.passes` through a `switch` with no `default`:
+a pass added to `FramePlan.Pass` stops both from compiling until they draw it, and the Mac's
+typecheck of `SillageCUDA` says so there. `plan.uniforms(for:)` sets `SplatUniforms.pass`.
+`stages` and `first` draw part of a frame into what earlier parts left, as
+`Renderer.render(camera:slice:)` does.
+
+`ParticleAttributes(particles)` makes what a renderer holds of each massive particle
+(population, luminosity, component, galaxy, the two traits, the ramp key: 28 bytes), each
+galaxy's scale length for the tracers, and the luminosity normalisation; `BackgroundStar.field`
+the field stars; `GalaxyRamp.ramps(for:slots:)` the ramps of a palette; `RenderSettings.apply`
+a look; `TakeFraming.moment` what `FramePreparing.prepare` sets. Both renderers call them, so
+only the buffers are CUDA's.
+
+### Accumulation
+
+- **64-bit fixed point, 2^40 a unit.** A pixel of the light, the dust or the carrier is four
+  unsigned 64-bit values. A value a pixel takes is rounded to the nearest 2^-40 (9e-13) and
+  added with a compare-and-swap that stops at the ceiling rather than wrap. The sum of what
+  every thread adds is the same in any order, so **a frame drawn twice is the same to the
+  bit**, on a GPU as on the CPU target, whatever the number of threads. A pixel holds up to
+  2^24 = 16.8 million, 256 times the 65,504 of Metal's half float target.
+- **The scale, from the largest values measured.** On the frames below, at 200 k drawn in 960
+  by 540, the largest value a pixel holds on any channel is 2,980 in the light of a splat look
+  (the core of a run's frame whose camera holds the whole scene; 909 on a take's wide shot),
+  24 in the dust, and 11,570 in the raw look, whose alpha counts the points on a pixel and
+  stops at 2,048 on Metal. The exposure divides the colours by the count, so they stay there
+  at any count; the alpha grows with it, to about two hundred thousand a pixel for the raw
+  look in a 4K frame at 200 M. The ceiling is 90 times that. #283's faint light measure prints
+  the largest value it meets at 200 M.
+- **What is not laid**: a negative value and a value that is not a number add nothing. Every
+  per-pixel function of `Shaders` gives non-negative values today.
+- **The column pass counts**: one a particle, in 64-bit integers. Metal counts in a 32-bit
+  float, which stops at 2^24 a cell; no cell is near it at 200 M drawn.
+- **The tags** of the web's carrier take the largest value, as Metal's `max` blend, held as
+  Metal's 8-bit target holds them.
+- **Floats for the next pass.** A star reads the finished dust, a splat the column's cells, the
+  resolve the carrier: `sc_render_begin` converts the fixed point a pass reads into floats
+  once, after the passes that wrote it. `sc_render_finish` does it for the light and the dust,
+  which is what #277 reads (`SC_RENDER_LIGHT`, `SC_RENDER_DUST_TARGET`: four floats a pixel,
+  rows from the top).
+- **Memory**: 96 bytes a supersampled pixel (the light and the dust as fixed point and as
+  floats), 3.2 GB at 4K with supersampling 2, plus 85 MB for a lace of 4,096 texels. Metal
+  holds 16. #283 measures whether the float copies should go.
+- **Half floats, for the measure.** `CUDARenderer.halfFloats` accumulates as Metal's
+  `rgba16Float` targets do, a half float a value blended one fragment after another. It
+  depends on the order, and is there to measure what half floats lose (below).
+
+### Large splats, two ways
+
+- **The first way**: a particle's thread walks every pixel of its square. Most splats cover a
+  few pixels; a close-up gives some hundreds, and their threads hold their whole warp back.
+- **The second way** (`CUDARenderer.largeSplatPixels`, `sc_render_set_large`): a splat whose
+  square covers more pixels than the threshold is set aside in a list (an atomic counter, the
+  struct the shared function returned), and a second kernel (`largeSplats`, `largeCarriers`)
+  draws the list a block a splat, its 256 threads sharing the pixels. A list that is full
+  leaves the splat to its particle's thread. No block barrier and no shared memory, so it runs
+  on the CPU target, and it lays the same bits as the first way: integer sums do not care
+  which thread adds.
+
+#283 times both on a wide shot and on a close one and keeps the faster.
+
+### Tests
+
+**Now, on the CPU target**, in every Linux check and on every push:
+
+- `cuda/tests/render_passes.cu`, with `g++` and `clang++`: a star lays its whole kernel (its
+  coverage against the kernel's integral over the point's disc, within 1 %); a frame of 6,000
+  stars and grains drawn twice gives the same bits; the second way gives the first way's bits
+  with room for its splats and with a list that fills; the calls the renderer refuses; the
+  lace's last level is its mean.
+- `cuda/tests/raster_probe.cu`, with both compilers: the 131 points of Metal's probe, pixel
+  for pixel.
+- `CUDA renderer` (15 tests run here): a frame drawn twice, by another renderer, from five
+  threads at once, in slices as `render(camera:slice:)` cuts it, and the second way at three
+  thresholds: the same bits each time; a star's kernel; dust dims a star behind it and not one
+  in front; the plain points; a palette's ramp; the web moves only the dust; the column counts
+  what emits; light tracers draw like the particles they stand for; the passes of each kind of
+  frame; a pixel saturates rather than wrap; half floats hold 11 bits and lose what falls under
+  their smallest value; the two measures of #283 run small.
+- `theParticlePassesAgreeWithMetal`, a sixteenth, when `SILLAGE_CUDA_RENDER_TARGETS` names the
+  Mac's folder: the comparison below. The folder is 156 MB on an assets branch, so the push
+  workflow does not fetch it; #277's reference frames bring the comparison into every check.
+
+**Written now, run on a GPU in #283**, each skipped on the CPU target with "needs an NVIDIA GPU
+and libsillagecuda.a: #283 runs it":
+
+- `theParticlePassesAgreeWithMetalAt4K`: the comparison below at 4K with supersampling 2, from
+  a take at 8 M drawn from 2 M massive. The Mac fills the folder with `export --dump-targets`
+  at 3840 by 2160; it ships with the box's data and `SILLAGE_CUDA_RENDER_4K` names it.
+- `theFaintLightAt200MSurvivesTheAccumulation`: the sampler's starting positions at 200 M drawn
+  from 50 M massive (`SILLAGE_CUDA_RENDER_COUNT` for another count), at 4K with supersampling 2,
+  wide and close, accumulated in half floats and in fixed point: the light each keeps, decade by
+  decade of pixel value, on `CUDARENDER` lines.
+- `theParticlePassesAreTimed`: the particle passes at 4K at 8 M, 50 M and 200 M drawn, wide and
+  close, both ways for large splats, the median of five frames after a first, against the line
+  Metal's follow on the M4 Max (40 ms + 7.6 ns a particle a 4K frame, #239).
+
+### Against Metal
+
+**Metal's side.** `sillage-render export <scene> --look <look> --width 480 --height 270
+--dump-targets <dir> --dump-targets-frames 12:wide,19:pericentre,4:close` writes, for the
+frames named, what the particle passes left in their targets before any post-processing and
+everything they drew from, byte for byte as the GPU holds it (`Renderer.particleTargets`,
+`RenderTargetManifest` in `ParticleTargets.swift`). An export draws the same frames with and
+without the option. `hires` takes the same two options and writes a frame of the run itself,
+drawn with its light tracers, which a take's export never draws. The folder, little endian,
+rows from the top:
+
+| where | what |
+| --- | --- |
+| `manifest.json` | `sillage-render-targets`, version 1: the commit, the device, the take, then every file with its type, stride, count and, for a texture, width and height. A reader goes by it |
+| `particles/` | one value a drawn particle, as the renderer binds them: `population.f32`, `formation.f32`, `luminosity.f32`, `component.u32`, `galaxy.u32`, `traits.f32x2`, `rampKeys.f32`; and `stellar.f32x2` |
+| `frames/<name>/` | `positions.f32x4` (16 bytes a position) and `smoothing.f32`; for a run's frame, `states.f32x4` (a tracer's position, its formation time in w), `words.u32x4` (its velocity, its `TracerWord` last) and `scales.f32` (each galaxy's scale length, 16 floats) |
+| `targets/<look>/<name>/` | `splat-uniforms.bin` (176 bytes, `pass` 1), `web-uniforms.bin`, `disk-frames.bin`, `ramps.bin`, `starfield.bin`; `light.f16` and `dust.f16` (rgba16Float, a half's bits a value), `column.f32`, `carrier.f16`, `tags.u8`; with tracers, `cells.u32x2` and `treeFrame.f32`, the massive tree's spacing records as bound and the frame its codes are taken in |
+| `lace/` | 256 by 256 texels of the baked lace's first level and the whole of its fifth |
+
+A target also lists its look, its frame, the director's shot, the camera, `supersample`,
+`plain`, `starCount`, `dustWeb`, `columnSmoothing`, `holeShadow`, `mapped`, the luminosity
+normalisation, the lace's mean and, for a run's frame, `tracers` and `tracerDepth`: how many
+light tracers it draws after its `drawn` massive particles and the depth of their tree.
+
+**The frames compared.** On the `assets/cuda-checks` branch, under
+`docs/spikes/cuda-checks/render/`: a take of scene-0031 of 2026-10-30-b at 200 k drawn from
+50 k massive, 30 captured frames through the first pericentre, drawn at 480 by 270 on an M4
+Max in five looks with the scene's director camera: `hubble` (the dust web, 1,500 field stars),
+`hubble-noweb` (the same with `dustWeb` 0: the dust in its four slabs), `red-vs-cyan` (no dust),
+`raw` (plain points, supersampling 1) and `red-vs-cyan` with `columnSmoothing` 8 for the column
+pass, each on a close shot of a disk (frame 4), a wide shot (frame 12) and the pericentre
+(frame 19). And under `tracers/`, one frame of a run of the same scene, drawn as a full pass
+draws it: 49,793 massive particles and 150,207 light tracers, through the director's live
+camera, which holds the whole scene, in `hubble`, `raw` and `red-vs-cyan` with the column.
+
+**The CUDA side**, on the CPU target in a cloud session (`CUDARenderChecks.compare`):
+
+```
+git worktree add ../checks origin/assets/cuda-checks
+SILLAGE_CUDA_RENDER_TARGETS=../checks/docs/spikes/cuda-checks/render \
+    SILLAGE_CUDA_RENDER_MAPS=/tmp/maps scripts/linux.sh test-cuda --filter theParticlePassesAgreeWithMetal
+```
+
+draws each frame from Metal's own bytes (its attribute buffers, positions, smoothing lengths,
+disk frames, field stars, stellar table, and its uniforms laid over the plan's), once in fixed
+point and once in half floats with one thread, which blends the fragments as Metal does and in
+its order. Three minutes for the eighteen frames, both ways, and again from the take alone. The
+relative difference of a pixel is `|CUDA - Metal| / max(CUDA, Metal)` of the sum of its red,
+green and blue, over the pixels where either holds something.
+
+| look | frame | fixed point: total | median | 90 % | 99 % | half floats: total | median | 90 % | 99 % |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `hubble` | close | 1.0017 | 0.66 % | 4.3 % | 10.6 % | 1.00009 | 0.18 % | 1.5 % | 4.1 % |
+| `hubble` | wide | 1.0017 | 57 % | 100 % | 100 % | 0.99992 | 11 % | 67 % | 100 % |
+| `hubble` | pericentre | 1.0024 | 0.76 % | 3.5 % | 8.9 % | 1.00003 | 0.16 % | 1.2 % | 3.3 % |
+| `hubble-noweb` | close | 1.0016 | 0.61 % | 4.3 % | 10.6 % | 1.00000 | 0.12 % | 1.5 % | 4.1 % |
+| `hubble-noweb` | wide | 1.0031 | 57 % | 100 % | 100 % | 0.99998 | 11 % | 67 % | 100 % |
+| `hubble-noweb` | pericentre | 1.0024 | 0.76 % | 3.5 % | 8.9 % | 1.00002 | 0.15 % | 1.2 % | 3.3 % |
+| `raw` | close | 1.0001 | 0.02 % | 0.04 % | 0.20 % | 1.00000 | 0 | 0 | 0 |
+| `raw` | wide | 1.0282 | 0.02 % | 0.21 % | 3.7 % | 1.00001 | 0 | 0 | 0 |
+| `raw` | pericentre | 1.0004 | 0.02 % | 0.04 % | 0.28 % | 1.00002 | 0 | 0 | 0 |
+| `red-vs-cyan` | close | 1.0014 | 0.36 % | 2.8 % | 8.5 % | 0.99993 | 0.06 % | 1.3 % | 4.2 % |
+| `red-vs-cyan` | wide | 1.0060 | 30 % | 100 % | 100 % | 0.99985 | 5.3 % | 50 % | 100 % |
+| `red-vs-cyan` | pericentre | 1.0028 | 0.36 % | 2.0 % | 6.1 % | 0.99991 | 0.07 % | 0.91 % | 2.9 % |
+| with the column | close | 1.0014 | 0.38 % | 2.8 % | 8.5 % | 0.99992 | 0.09 % | 1.3 % | 4.3 % |
+| with the column | wide | 1.0060 | 30 % | 100 % | 100 % | 0.99985 | 5.3 % | 50 % | 100 % |
+| with the column | pericentre | 1.0028 | 0.37 % | 2.0 % | 6.1 % | 0.99991 | 0.10 % | 0.92 % | 2.9 % |
+| `hubble`, with tracers | the run's | 1.0059 | 100 % | 100 % | 100 % | 0.99983 | 6.5 % | 50 % | 100 % |
+| `raw`, with tracers | the run's | 1.1640 | 0.005 % | 0.55 % | 9.8 % | 1.00000 | 0 | 0 | 0 |
+| with the column and tracers | the run's | 1.0246 | 100 % | 100 % | 100 % | 0.99987 | 4.7 % | 50 % | 100 % |
+
+- **The same picture.** Blending as Metal does, the whole light of a frame is Metal's within
+  0.02 %, and in the raw look more than 99 pixels in 100 hold Metal's value exactly. In fixed
+  point the CUDA renderer holds 0.01 to 0.6 % more light than Metal on the take's frames, what
+  half floats round away, and 2.8 % more in the raw wide shot, whose core Metal stops counting.
+- **The coverage**, the alpha of the light, where the kernels of a pixel add up and which no
+  colour and no dust touches. In the splat looks its total is Metal's within 0.03 %, its
+  median difference 0.03 to 0.07 %, its 99th percentile 0.3 to 0.4 %. That is the rasteriser's
+  rules and the kernel, held.
+- **By what Metal holds on a pixel**, in fixed point, in the splat looks: where it holds over
+  1e-4 the median difference is 0.1 to 0.8 % and the 99th percentile 0.5 to 2 %; from 1e-5 to
+  1e-4 the median is 1 to 6 %; from 1e-6 to 1e-5, 2 to 20 %; from 1e-7 to 1e-6, 10 to 38 %;
+  and on 104,000 to 148,000 pixels of a wide shot, a third to a half of those the CUDA
+  renderer lights, Metal holds nothing at all. A half float has 11 bits down to 6e-5 and loses
+  one with each halving under it, to nothing under 3e-8: the faint outskirts are where the two
+  engines part, and the CUDA one is the one that keeps the light.
+- **The dust** (`hubble`, through the web): its total within 0.006 % in half floats, its
+  median difference 0.3 % at most; the web's carrier within 0.006 % in total on the close
+  shots, 0.3 % over on the wide one, its median 0.04 to 0.08 %; the tags the same on all but
+  4 values of 1.5 million.
+- **The dust without the web** (`hubble-noweb`, the `dust` pass in its four slabs): its total
+  within 0.02 % in half floats, where more than half of its pixels hold Metal's value exactly
+  and the 99th percentile is 0.2 to 0.7 %; in fixed point its median difference is 0.03 to
+  0.05 %.
+- **The light tracers** (the run's frame, where they are three quarters of what is drawn): in
+  half floats the light's total is Metal's within 0.017 %, the raw look holds Metal's value on
+  99 pixels in 100, the column counts the same 151,878 particles with the same count in 8,038
+  cells of 8,040, and the web's tags are the same on every pixel. The live camera holds the
+  whole scene in a small part of the frame, so most of its lit pixels are faint and its cores
+  dense: a half float stops at 2,048 on a pixel in all three looks, where the fixed point
+  counts to 2,664, 2,980 and 11,570 and holds 0.6, 2.5 and 16 % more light.
+- **The column**: the same count in the frame (144,260, 152,165 and 146,273 particles), and in
+  8,034, 8,040 and 8,036 cells of 8,040: a particle on a cell's edge falls on the other side.
+- **The lace**: the first level baked here is Metal's within the rounding of its half floats
+  (4.9e-4 of the value at most), its mean 0.54517 against 0.54492 from Metal's own levels.
+
+**Where the large differences are.**
+
+1. *The faint outskirts*, above: half floats, and the reason for the fixed point.
+2. *The densest pixels.* In the core of a wide shot a pixel reaches 785 and 909 here where
+   Metal holds 728 and 854, 6 to 7 % under, and in the raw look 5,586 against 2,048: past
+   2,048 a half float no longer takes a one, and it rounds smaller additions away long before.
+3. *Single pixels under a bright compact star*, up to 29 % in the close shot of `hubble` and
+   66 % at the pericentre of `red-vs-cyan`: 132 pixels of the 207,870 where Metal holds more
+   than 1e-3 are over 5 % in the first, 26 of 188,700 in the second, alone among neighbours
+   that agree, and their coverage is Metal's. It reads as a tie in the sixteenths of rule 5:
+   Metal's vertex arithmetic differs from this one's in its last bits, a point two pixels
+   wide has its span rounded to the other sixteenth, its kernel is stretched by 3 %, and a
+   star bright enough to be most of its pixel shows it. Read from the maps, not traced a
+   particle at a time.
+4. *Along the web's lanes* in `hubble`: the lace read with a hand-written anisotropic filter
+   where Metal has its GPU's. The dust is 0.1 to 0.4 % apart in the median and the light
+   behind it follows.
+
+**What these frames do not draw**: a palette with a ramp (`mapped`), which no look of the
+catalogue has. A test of the CPU target holds that a ramp paints its galaxy's stars and moves
+no kernel; it is in no comparison with Metal yet.
+
+**The pictures**, on `assets/cuda-checks` under `docs/spikes/cuda-checks/render/compare/`, with
+every number of the run in `comparison.txt` and the script that draws them from the maps the
+test writes. Each has four panels: Metal's light and the CUDA light above, their relative
+difference in fixed point and in half floats below, on a log scale from 1e-4 (black) through
+0.2 % (red) and 5 % (yellow) to 1 (white).
+
+| look | | | |
+| --- | --- | --- | --- |
+| `hubble` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-pericentre.png) |
+| `raw` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/raw-pericentre.png) |
+| `red-vs-cyan` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-pericentre.png) |
+| `red-vs-cyan-column` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/red-vs-cyan-column-pericentre.png) |
+| `hubble-noweb` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-noweb-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-noweb-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/hubble-noweb-pericentre.png) |
+| the run's frame, with tracers | [`hubble`](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/tracers/hubble-early.png) | [`raw`](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/tracers/raw-early.png) | [with the column](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/render/compare/tracers/red-vs-cyan-column-early.png) |
+
+**From the take alone**, as #278 will draw (`CUDARenderChecks.compareFromTake`): every input
+made on Linux in place of Metal's bytes.
+
+| input | against Metal's |
+| --- | --- |
+| population, formation, luminosity, ramp keys, component, galaxy, stellar table | the same bits |
+| traits | 1,055 of 400,000 values differ, by 1.2e-7 at most (`exp` and `pow` of the two math libraries) |
+| positions decoded from the take | two thirds differ in their last bits, by 7.6e-6 kpc at most on two frames and 3.1e-5 on the third: the decode's multiply and add, fused on Metal |
+| smoothing lengths of the CUDA tree | half to all differ in their last bits (`pow`); 90 to 205 of 200,000 by more than 1e-5, a particle in another leaf, up to 63 % |
+| uniforms from `TakeFraming` and `FramePlan` | 10 to 16 of 42 values differ, by 2e-5 at most |
+
+The picture drawn from them is as close to Metal's as the one drawn from Metal's own bytes: the
+same table within a unit of its last digit (the light's total within 0.015 % in half floats).
+
+**What the test holds**, when `SILLAGE_CUDA_RENDER_TARGETS` names the folder: in half floats
+the light's and the dust's totals within 0.1 %, the median difference of the light under 0.5 %
+in each decade of Metal's value from 1e-4 up, of the dust under 1 %; in fixed point the
+coverage's 90th percentile under 0.5 %; from the take alone the light's total within 0.2 %.
+About twice what was measured. The run's frame under `tracers/` is held to the same.
+
+### What #277 and #278 can rely on
+
+- After `CUDARenderer.render(camera:)`, or `draw` then `finish`, `SC_RENDER_LIGHT` and
+  `SC_RENDER_DUST_TARGET` hold four floats a supersampled pixel, rows from the top, on the
+  device: `resolve` reads the light's red, green and blue as Metal's does. `target(.light)`
+  downloads them.
+- `CUDARenderer` conforms to `FramePreparing`: `TakeFraming.prepare` gives it the look, the
+  palette, the time and the painted arms of a moment of a take, as it gives `Renderer`.
+- A full pass hands it the solver's own buffers: `externalPositions` with their offset,
+  `externalFormation`, `setSmoothing`, and `setTracers` with the tracers' states, their motions
+  and the massive tree's spacing records.
+- The post-processing kernels of `Shaders` are still inside the Metal guard, and their structs
+  (`BloomParams`, `CompositeParams`, `SpikeParams`) already outside it. A kernel that reads a
+  texture at its start can keep the read in its entry point; `msl_texture.h` has the bilinear
+  filter by hand.
+- The reference frames of `Tests/Fixtures/engines/frames` are final pictures: #277 draws them
+  through these passes and sets the tolerance there, which puts the comparison with Metal in
+  every Linux check without the assets branch.

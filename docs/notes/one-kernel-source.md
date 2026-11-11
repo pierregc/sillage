@@ -17,11 +17,12 @@ every push by a GitHub workflow that compiles the CUDA code and runs it on the C
   or warp functions run one thread after another on small inputs. Phase 1 of #269 tests the
   CUDA engine that way, with nothing rented.
 
-#281 shared the tree (`GPUTreeShaders`, 20 kernels) and #274 the massive particles' kernels of
-`BarnesHutShaders` (8 of its 11). What is left is still inside
-`#if defined(__METAL_VERSION__)`: #275 shares the light tracers' three kernels, #276 and #277
-`Shaders`; `RecordingShaders` (take playback) and `SolverShaders` (the restricted solver) stay
-Metal only.
+#281 shared the tree (`GPUTreeShaders`, 20 kernels), #274 the massive particles' kernels of
+`BarnesHutShaders` (8 of its 11) and #276 the particle passes of the renderer (`Shaders`, 19
+vertex and fragment functions and the lace's kernel). What is left is still inside
+`#if defined(__METAL_VERSION__)`: #275 shares the light tracers' three kernels, #277 the
+post-processing kernels of `Shaders`; `RecordingShaders` (take playback) and `SolverShaders`
+(the restricted solver) stay Metal only.
 
 ## Changing the engine from now on
 
@@ -68,6 +69,29 @@ Mac can say after each one whether Metal still gives the same bits:
 5. Write the CUDA entry points in `cuda/src`, update `cuda/kernels.txt`, and add a
    `SILLAGE_STRUCT` line and a mirror in `KernelSourceTests` for each struct read from a buffer.
 
+**Share a vertex and a fragment function** (#276), which have no kernel of their own on CUDA:
+the rasteriser between them is a kernel's loop over the pixels of a point
+([cuda-engine.md](cuda-engine.md)).
+
+- A vertex function's work is a shared function that returns a plain struct, without
+  `[[position]]` or `[[point_size]]`; the Metal `vertex` function copies it into its stage
+  struct, field by field. Reading a buffer at an index and decoding a word are part of the
+  shared function, so the CUDA entry point repeats nothing.
+- A fragment function's work is a shared function that takes the varyings it reads and the
+  pixel's place, and **returns its value**. The test that discards stays in the Metal fragment,
+  **before** the call: `float r2 = splatRadius2(coord); if (r2 > 1.0f) { discard_fragment(); }
+  out.light = lightPixel(in.color, in.slab, prior.dust, r2);`. Written the other way round (a
+  shared function that returns false early and writes through a reference), Metal's fast math
+  compiled the same arithmetic into other bytes. The CUDA kernel makes the same test where
+  Metal discards.
+- A texture read in the middle of a shared function goes through a type and a one-line
+  function that each engine defines side by side, `#if defined(__METAL_VERSION__)` then
+  `#else`: a `texture2d` sampled with its sampler on Metal, a `texels2d` read by hand with the
+  same filter elsewhere (`cuda/include/msl_texture.h`). A read at the start or the end of a
+  function stays in the Metal entry point, which passes the value down.
+- In `cuda/kernels.txt` the vertex function is `cuda`, its entry point the kernel of the pass,
+  and the fragment function `cuda in <kernels>`, the kernels that call its shared function.
+
 ## What the shared text may hold
 
 The shared text is MSL that is also C++17. `scripts/kernel-check.sh` enforces it; these are the
@@ -105,7 +129,9 @@ rules it comes down to.
   entry point passes down as plain integers. A function constant
   (`[[function_constant(n)]]`, three in `BarnesHutShaders`) stays there too and reaches the
   shared function as an argument; on CUDA it is a template parameter of the entry point, which
-  passes it down the same way (#274: `bhAcceleration<quadrupole, opensHoldingCells>`).
+  passes it down the same way (#274: `bhAcceleration<quadrupole, opensHoldingCells>`). One
+  exception, for a texture a shared function reads half way: the read is a one-line function
+  of its own, Metal's inside the guard and the other engines' in its `#else` (#276, above).
 - **No `static` local variable, no recursion, no `double`**, as in MSL.
 
 What `msl_compat.h` gives the text, with MSL's meaning: `float2`, `float3`, `float4`, their
@@ -228,13 +254,17 @@ One line for each Metal `kernel`, `vertex` and `fragment` function: `<library> <
 | --- | --- |
 | `cuda` | its entry point, `__global__ void <function>(` on one line, is in `cuda/src` and runs on the CPU target too |
 | `cuda gpu-only` | it is in `cuda/src` but uses block barriers or warp functions: it runs only on a GPU, first in #283 |
+| `cuda in <kernels>` | a fragment function: the kernels named, which are in `cuda/src`, call its shared per-pixel function for each pixel of a point (#276) |
 | `pending #<issue>` | that issue writes it |
 | `metal-only: <reason>` | the CUDA engine will not have it |
 
 After #281: 62 functions, 59 pending (20 of the tree for #273, 8 of the massive solver for
 #274, 3 of the tracers for #275, 20 particle passes for #276, 8 post-processing kernels for
 #277) and 3 Metal only (`expandSnapshots`, `expandSnapshots21`, `integrate`). After #274: 21
-`cuda`, 7 `cuda gpu-only`, 31 pending. Phase 1 is over when no line is pending.
+`cuda`, 7 `cuda gpu-only`, 31 pending. After #276 the 20 particle passes are 13 `cuda`, 6
+`cuda in` and one Metal only (`webResolveVertex`, the triangle that covers the frame), which
+leaves 11 pending: the tracers' three and the eight of the post-processing. Phase 1 is over
+when no line is pending.
 
 ## The reference outputs
 
@@ -307,7 +337,8 @@ found a bug.
 - the same checks with `clang++` and `g++`;
 - `nvcc` 13.5 compiles `cuda/src` and `cuda/tests` for sm_120: what C++ takes and CUDA does
   not, such as a shared function without `SHARED`, or a host function called from device code;
-- no double precision instruction in the PTX;
+- no double precision instruction in the PTX, but the three of CUDA's own `sinf`, `cosf` and
+  `tanf` for an argument past 105,615, which no angle of the engine reaches (#276);
 - the CPU target builds without a warning and its tests pass, with `g++` and `clang++`, the
   fixture's tree rebuilt from the MSL text among them;
 - the portable Swift builds and passes its tests on Linux (`scripts/linux.sh check`, #272),

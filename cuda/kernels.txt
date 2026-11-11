@@ -7,6 +7,9 @@
 #                         runs on the CPU target too
 #   cuda gpu-only         it is in cuda/src, but uses block barriers or warp functions: it
 #                         runs only on a GPU, first in #283
+#   cuda in <kernels>     a fragment function: CUDA has no rasteriser, so the kernels named,
+#                         which are the vertex functions' entry points, call its shared
+#                         per-pixel function for each pixel of a point
 #   pending #<issue>      that issue writes it
 #   metal-only: <reason>  the CUDA engine will not have it
 #
@@ -48,26 +51,26 @@ GPUTreeShaders gtSpacingLengths cuda
 RecordingShaders expandSnapshots metal-only: take playback
 RecordingShaders expandSnapshots21 metal-only: take playback
 
-Shaders splatVertex pending #276
-Shaders splatTracerVertex pending #276
-Shaders starfieldVertex pending #276
-Shaders dustFragment pending #276
-Shaders bakeLace pending #276
-Shaders dustWebVertex pending #276
-Shaders dustWebTracerVertex pending #276
-Shaders webCarrierVertex pending #276
-Shaders webCarrierTracerVertex pending #276
-Shaders webCarrierFragment pending #276
-Shaders webResolveVertex pending #276
-Shaders webResolveFragment pending #276
-Shaders splatFragment pending #276
-Shaders countVertex pending #276
-Shaders countTracerVertex pending #276
-Shaders countFragment pending #276
-Shaders plainVertex pending #276
-Shaders plainTracerVertex pending #276
-Shaders plainFragment pending #276
-Shaders starfieldFragment pending #276
+Shaders splatVertex cuda
+Shaders splatTracerVertex cuda
+Shaders starfieldVertex cuda
+Shaders dustFragment cuda in splatVertex splatTracerVertex dustWebVertex dustWebTracerVertex
+Shaders bakeLace cuda
+Shaders dustWebVertex cuda
+Shaders dustWebTracerVertex cuda
+Shaders webCarrierVertex cuda
+Shaders webCarrierTracerVertex cuda
+Shaders webCarrierFragment cuda in webCarrierVertex webCarrierTracerVertex
+Shaders webResolveVertex metal-only: the triangle that covers the frame, where CUDA launches webResolveFragment a pixel
+Shaders webResolveFragment cuda
+Shaders splatFragment cuda in splatVertex splatTracerVertex
+Shaders countVertex cuda
+Shaders countTracerVertex cuda
+Shaders countFragment cuda in countVertex countTracerVertex
+Shaders plainVertex cuda
+Shaders plainTracerVertex cuda
+Shaders plainFragment cuda in plainVertex plainTracerVertex
+Shaders starfieldFragment cuda in starfieldVertex
 Shaders resolve pending #277
 Shaders plainComposite pending #277
 Shaders brightPass pending #277

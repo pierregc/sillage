@@ -12,6 +12,30 @@ public protocol FramePreparing: AnyObject {
 /// The cameras and the per-shot look of a take, worked out apart from the engine that draws
 /// it, so an export, a look grid and the full pass of a hires frame it the same way.
 public enum TakeFraming {
+    /// What `FramePreparing.prepare` gives a renderer, whichever engine it draws with.
+    public struct Moment {
+        public var look: RenderLook
+        public var palette: [GalaxyColours]
+        public var time: Float
+        public var diskFrames: [DiskFrame]
+    }
+
+    /// The look, the palette, the time and the painted arms for drawing `file` on a moment of
+    /// a take.
+    public static func moment(
+        _ file: LookFile, shot: ShotReplay.Shot, take: RecordingFile.Loaded,
+        at blend: Recording.Blend
+    ) -> Moment {
+        var scene = take.scene
+        file.paint(&scene)
+        return Moment(
+            look: shot.look, palette: file.palette, time: blend.time,
+            diskFrames: DiskFrame.make(
+                scene: scene, centers: take.recording.centers(at: blend), time: blend.time,
+                strength: LookFile.diskStrength(file.armStrength, shot.look),
+                disks: take.recording.disks(at: blend)))
+    }
+
     /// The camera an export of `framing` follows at `width` by `height`. `plan`, the director's
     /// for that take and look, is made once for every format when given.
     public static func replay(

@@ -614,4 +614,6 @@ MSL_API T simd_prefix_exclusive_sum(T) { return T(0); }
 
 }  // namespace metal
 
+#include "msl_texture.h"
+
 #endif
