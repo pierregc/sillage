@@ -116,10 +116,11 @@ enum Shaders {
             float shortScale;
         };
 
-        #if defined(__METAL_VERSION__)
-        struct SplatOut {
-            float4 position [[position]];
-            float pointSize [[point_size]];
+        // What a splat hands from its particle to its pixels: where its point lands and how wide,
+        // then what every pixel of it reads.
+        struct Splat {
+            float4 position;
+            float pointSize;
             half3 color;
             half opticalDepth;
             half spikes;
@@ -128,6 +129,27 @@ enum Shaders {
             /// opacity into its own slab, and a star reads the slabs ahead of its own.
             half4 slab;
         };
+
+        #if defined(__METAL_VERSION__)
+        struct SplatOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            half3 color;
+            half opticalDepth;
+            half spikes;
+            half4 slab;
+        };
+
+        static SplatOut splatOut(Splat splat) {
+            SplatOut out;
+            out.position = splat.position;
+            out.pointSize = splat.pointSize;
+            out.color = splat.color;
+            out.opticalDepth = splat.opticalDepth;
+            out.spikes = splat.spikes;
+            out.slab = splat.slab;
+            return out;
+        }
 
         // Two attachments: emitted light, and the optical depth of intervening dust. Both blend
         // additively, and each draw writes only the one it contributes to; the other is masked
@@ -437,9 +459,8 @@ enum Shaders {
             return length;
         }
 
-        #if defined(__METAL_VERSION__)
-        static SplatOut culledSplat() {
-            SplatOut out;
+        SHARED Splat culledSplat() {
+            Splat out;
             out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
             out.pointSize = 0.0f;
             out.color = half3(half(0.0f));
@@ -450,7 +471,7 @@ enum Shaders {
         }
 
         // Whether this pass leaves the particle out, as `splat` decides it.
-        static bool splatSkips(uint kind, float born, constant SplatUniforms &u) {
+        SHARED bool splatSkips(uint kind, float born, constant SplatUniforms &u) {
             bool nursery = kind == 1u || kind == 2u;
             float ageMyr = (nursery || born >= 0.0f)
                 ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
@@ -460,10 +481,24 @@ enum Shaders {
             return kind == 3u || (hole && u.holeShadow <= 0.0f) || absorbing != (u.pass == 0u);
         }
 
-        static SplatOut splat(Drawn p, constant SplatUniforms &u, constant DiskFrame *frames,
-                              device const float2 *stellar, constant GalaxyRamp *ramps,
-                              texture2d<float, access::sample> column) {
-            SplatOut out;
+        // The column density as each engine holds it, and the count around a point of the frame:
+        // Metal samples its texture, the CUDA engine reads its cells with the same filter.
+        #if defined(__METAL_VERSION__)
+        typedef texture2d<float, access::sample> ColumnDensity;
+        static float columnRead(ColumnDensity column, float2 uv) {
+            return column.sample(bilinear, uv).r;
+        }
+        #else
+        typedef texels2d ColumnDensity;
+        SHARED float columnRead(ColumnDensity column, float2 uv) {
+            return sample_bilinear(column, uv).x;
+        }
+        #endif
+
+        SHARED Splat splat(Drawn p, constant SplatUniforms &u, constant DiskFrame *frames,
+                           device const float2 *stellar, constant GalaxyRamp *ramps,
+                           ColumnDensity column) {
+            Splat out;
             float3 position = p.position;
             DiskFrame frame = frames[p.galaxy];
             out.position = u.viewProjection * float4(position, 1.0f);
@@ -549,7 +584,7 @@ enum Shaders {
             // narrow where it is dense, and never narrower than the tree's own answer.
             if (!absorbing && u.columnSmoothing > 0.0f) {
                 float2 uv = float2(0.5f, 0.5f) + float2(0.5f, -0.5f) * out.position.xy / depth;
-                float count = max(column.sample(bilinear, uv).r, 0.25f);
+                float count = max(columnRead(column, uv), 0.25f);
                 float density = count / (u.columnCell * u.columnCell);
                 float projected = 2.0f * sqrt(u.columnSmoothing / (M_PI_F * density));
                 raw = max(raw, projected);
@@ -662,6 +697,69 @@ enum Shaders {
             return out;
         }
 
+        // A massive particle's splat, from the renderer's buffers.
+        SHARED Splat massiveSplat(uint vid, device const float3 *positions,
+                                  device const float *population, device const float *formation,
+                                  device const float *luminosity, device const uint *component,
+                                  constant SplatUniforms &u, device const uint *galaxy,
+                                  constant DiskFrame *frames, device const float *smoothing,
+                                  device const float2 *stellar, device const float2 *traits,
+                                  device const float *rampKeys, constant GalaxyRamp *ramps,
+                                  ColumnDensity column) {
+            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            p.warming = traits[vid].x;
+            p.population = population[vid];
+            p.rampKey = rampKeys[vid];
+            return splat(p, u, frames, stellar, ramps, column);
+        }
+
+        // A light tracer's (#238), from its state and its word; its spacing is read off the tree
+        // only when this pass draws it.
+        SHARED Splat tracerSplat(float4 state, uint word, constant SplatUniforms &u,
+                                 constant DiskFrame *frames, device const float2 *stellar,
+                                 constant GalaxyRamp *ramps, device const uint2 *cells,
+                                 device const float *treeFrame, uint depth, constant float *scales,
+                                 ColumnDensity column) {
+            Drawn p = tracerDrawn(state, word, scales);
+            if (splatSkips(p.kind, p.born, u)) { return culledSplat(); }
+            p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
+            return splat(p, u, frames, stellar, ramps, column);
+        }
+
+        struct BackgroundStar {
+            float4 direction;
+            float4 color;
+        };
+
+        // Foreground field stars, sitting far enough out that orbiting the galaxy does not
+        // parallax them. The brightest ones carry diffraction spikes, which is most of what
+        // makes an image read as a telescope exposure rather than a plot.
+        SHARED Splat starfieldSplat(BackgroundStar star, constant SplatUniforms &u) {
+            float magnitude = star.direction.w;
+            Splat out;
+            out.position = u.viewProjection * float4(star.direction.xyz, 1.0f);
+            out.pointSize = u.starSize * mix(1.6f, 9.0f, magnitude * magnitude);
+            out.color = half3(star.color.rgb * (magnitude * magnitude * magnitude * 2.4f));
+            out.opticalDepth = half(0.0f);
+            out.spikes = half(star.color.a);
+            out.slab = half4(half(0.0f));
+            return out;
+        }
+
+        // The dust a grain lays on a pixel of its splat, into its own slab. `coord` is the pixel's
+        // place in the point's square, as Metal's point_coord gives it; false in the corners of the
+        // square, past the kernel's edge, where the splat leaves the pixel alone.
+        SHARED bool dustPixel(half opticalDepth, half4 slab, float2 coord, thread half4 &dust) {
+            float2 d = coord - 0.5f;
+            float r2 = dot(d, d) * 4.0f;
+            if (r2 > 1.0f) { return false; }
+
+            dust = half4(opticalDepth * half(exp(-4.5f * r2)) * slab);
+            return true;
+        }
+
+        #if defined(__METAL_VERSION__)
         vertex SplatOut splatVertex(uint vid [[vertex_id]],
                                     device const float3 *positions [[buffer(0)]],
                                     device const float *population [[buffer(1)]],
@@ -677,12 +775,9 @@ enum Shaders {
                                     device const float *rampKeys [[buffer(11)]],
                                     constant GalaxyRamp *ramps [[buffer(12)]],
                                     texture2d<float, access::sample> column [[texture(0)]]) {
-            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
-                                   smoothing, traits);
-            p.warming = traits[vid].x;
-            p.population = population[vid];
-            p.rampKey = rampKeys[vid];
-            return splat(p, u, frames, stellar, ramps, column);
+            return splatOut(massiveSplat(vid, positions, population, formation, luminosity,
+                                         component, u, galaxy, frames, smoothing, stellar, traits,
+                                         rampKeys, ramps, column));
         }
 
         // A light tracer (#238): positions with their formation times from buffer 18, velocities
@@ -700,32 +795,14 @@ enum Shaders {
                                           device const float4 *states [[buffer(18)]],
                                           device const uint *words [[buffer(19)]],
                                           texture2d<float, access::sample> column [[texture(0)]]) {
-            Drawn p = tracerDrawn(states[vid], words[vid * 4u + 3u], scales);
-            if (splatSkips(p.kind, p.born, u)) { return culledSplat(); }
-            p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
-            return splat(p, u, frames, stellar, ramps, column);
+            return splatOut(tracerSplat(states[vid], words[vid * 4u + 3u], u, frames, stellar, ramps,
+                                        cells, treeFrame, depth, scales, column));
         }
 
-        struct BackgroundStar {
-            float4 direction;
-            float4 color;
-        };
-
-        // Foreground field stars, sitting far enough out that orbiting the galaxy does not
-        // parallax them. The brightest ones carry diffraction spikes, which is most of what
-        // makes an image read as a telescope exposure rather than a plot.
         vertex SplatOut starfieldVertex(uint vid [[vertex_id]],
                                         device const BackgroundStar *stars [[buffer(0)]],
                                         constant SplatUniforms &u [[buffer(4)]]) {
-            BackgroundStar star = stars[vid];
-            float magnitude = star.direction.w;
-            SplatOut out;
-            out.position = u.viewProjection * float4(star.direction.xyz, 1.0f);
-            out.pointSize = u.starSize * mix(1.6f, 9.0f, magnitude * magnitude);
-            out.color = half3(star.color.rgb * (magnitude * magnitude * magnitude * 2.4f));
-            out.opticalDepth = half(0.0f);
-            out.spikes = half(star.color.a);
-            return out;
+            return splatOut(starfieldSplat(stars[vid], u));
         }
 
         // Reading the dust attachment makes overlapping fragments on a pixel run in order, so
@@ -733,12 +810,10 @@ enum Shaders {
         // and the field stars sit behind the whole stack and are not dimmed by it.
         fragment DustTarget dustFragment(SplatOut in [[stage_in]],
                                          float2 coord [[point_coord]]) {
-            float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
-            if (r2 > 1.0f) { discard_fragment(); }
-
+            half4 dust = half4(half(0.0f));
+            if (!dustPixel(in.opticalDepth, in.slab, coord, dust)) { discard_fragment(); }
             DustTarget out;
-            out.dust = half4(in.opticalDepth * half(exp(-4.5f * r2)) * in.slab);
+            out.dust = dust;
             return out;
         }
 
@@ -1243,24 +1318,35 @@ enum Shaders {
             return out;
         }
 
-        // Everything standing between this point and the camera: the slabs in front of its
-        // own, plus half of its own. `in.slab` holds the weights the vertex worked out, so a
-        // star picks out the ones it is behind.
+        #endif
+
+        // The light a star lays on a pixel of its splat, through everything standing between it
+        // and the camera: the slabs in front of its own, plus half of its own. `slab` holds the
+        // weights the vertex worked out, so a star picks out the ones it is behind, and `dust` is
+        // the finished dust of the pixel. False in the corners of the point's square.
+        SHARED bool lightPixel(half3 color, half4 slab, half4 dust, float2 coord,
+                               thread half4 &light) {
+            float2 d = coord - 0.5f;
+            float r2 = dot(d, d) * 4.0f;
+            if (r2 > 1.0f) { return false; }
+
+            float falloff = exp(-4.5f * r2);
+            float column = dot(float4(dust), float4(slab));
+            float3 extinction = exp(-column * reddening);
+            light = half4(color * half3(extinction) * half(falloff), half(falloff));
+            return true;
+        }
+
+        #if defined(__METAL_VERSION__)
         fragment LightTarget splatFragment(SplatOut in [[stage_in]],
                                            float2 coord [[point_coord]],
                                            SplatFetch prior) {
-            float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
-            if (r2 > 1.0f) { discard_fragment(); }
-
-            float falloff = exp(-4.5f * r2);
-            float column = dot(float4(prior.dust), float4(in.slab));
-            float3 extinction = exp(-column * reddening);
+            half4 light = half4(half(0.0f));
+            if (!lightPixel(in.color, in.slab, prior.dust, coord, light)) { discard_fragment(); }
             LightTarget out;
-            out.light = half4(in.color * half3(extinction) * half(falloff), half(falloff));
+            out.light = light;
             return out;
         }
-
         #endif
 
         // The column pass: one count per emitting particle into coarse cells, which the
@@ -1359,6 +1445,29 @@ enum Shaders {
             return half4(color, half(1.0f));
         }
 
+        // The light a field star lays on a pixel of its point; false in the corners of its square.
+        SHARED bool starfieldPixel(half3 color, half spikes, float2 coord, thread half4 &light) {
+            float2 d = coord - 0.5f;
+            float r2 = dot(d, d) * 4.0f;
+            if (r2 > 1.0f) { return false; }
+
+            float falloff;
+            if (spikes > half(0.0f)) {
+                // A field star needs a tight core, otherwise the bloom halo is all that is left
+                // of it and the image reads as defocused rather than as a long exposure.
+                float ax = abs(d.x) * 2.0f;
+                float ay = abs(d.y) * 2.0f;
+                float cross = exp(-210.0f * ax * ax - 4.0f * ay)
+                            + exp(-210.0f * ay * ay - 4.0f * ax);
+                falloff = exp(-13.0f * r2) + float(spikes) * 0.5f * cross;
+            } else {
+                falloff = exp(-4.5f * r2);
+            }
+
+            light = half4(color * half(falloff), half(falloff));
+            return true;
+        }
+
         #if defined(__METAL_VERSION__)
         struct PlainOut {
             float4 position [[position]];
@@ -1397,25 +1506,10 @@ enum Shaders {
 
         fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
                                                float2 coord [[point_coord]]) {
-            float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
-            if (r2 > 1.0f) { discard_fragment(); }
-
-            float falloff;
-            if (in.spikes > half(0.0f)) {
-                // A field star needs a tight core, otherwise the bloom halo is all that is left
-                // of it and the image reads as defocused rather than as a long exposure.
-                float ax = abs(d.x) * 2.0f;
-                float ay = abs(d.y) * 2.0f;
-                float cross = exp(-210.0f * ax * ax - 4.0f * ay)
-                            + exp(-210.0f * ay * ay - 4.0f * ax);
-                falloff = exp(-13.0f * r2) + float(in.spikes) * 0.5f * cross;
-            } else {
-                falloff = exp(-4.5f * r2);
-            }
-
+            half4 light = half4(half(0.0f));
+            if (!starfieldPixel(in.color, in.spikes, coord, light)) { discard_fragment(); }
             LightTarget out;
-            out.light = half4(in.color * half(falloff), half(falloff));
+            out.light = light;
             return out;
         }
 
