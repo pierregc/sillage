@@ -513,6 +513,15 @@ struct CUDARenderTests {
             for line in comparison.lines { print("CUDARENDER", line) }
             Self.expectAgreement(comparison)
         }
+        // And from the take alone, every input made here.
+        let alone = try CUDARenderChecks.compareFromTake(folder: folder)
+        for line in alone.inputs { print("CUDARENDER", line) }
+        for frame in alone.frames {
+            for line in frame.lines { print("CUDARENDER", line) }
+            #expect(
+                abs(frame.halfLight.total - 1) < 0.002,
+                "\(frame.look) \(frame.frame) from the take: the light's total")
+        }
     }
 
     // MARK: - On a GPU, in #283

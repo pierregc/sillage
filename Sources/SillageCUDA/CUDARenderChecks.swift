@@ -567,3 +567,174 @@ extension CUDARenderChecks {
         return comparisons
     }
 }
+
+// MARK: - From the take
+
+/// The same frames drawn from the take alone, as a full pass on Linux will draw them (#278):
+/// the positions decoded here, the attributes, the smoothing lengths, the camera and the
+/// uniforms all made by the portable Swift and the CUDA tree, where `compare` takes Metal's own
+/// bytes for each. Says how far each input is from Metal's, then how far the picture is.
+extension CUDARenderChecks {
+    public struct TakeComparison {
+        public var look: String
+        public var frame: String
+        public var light = Difference()
+        public var halfLight = Difference()
+        public var lines: [String] = []
+    }
+
+    /// How many values of two buffers differ in their bits, and by how much at most, relative
+    /// to the larger.
+    private static func apart(_ mine: [Float], _ theirs: [Float]) -> String {
+        guard mine.count == theirs.count else { return "\(mine.count) values against \(theirs.count)" }
+        var differing = 0
+        var far = 0
+        var largest: Float = 0
+        var absolute: Float = 0
+        for (a, b) in zip(mine, theirs) where a.bitPattern != b.bitPattern {
+            differing += 1
+            let scale = max(abs(a), abs(b))
+            let relative = scale > 0 ? abs(a - b) / scale : 0
+            largest = max(largest, relative)
+            absolute = max(absolute, abs(a - b))
+            if relative > 1e-5 { far += 1 }
+        }
+        return differing == 0
+            ? "the same bits (\(mine.count) values)"
+            : "\(differing) of \(mine.count) values differ, \(far) by more than 1e-5 of their value;"
+                + " the largest difference \(absolute), or \(largest) of the value"
+    }
+
+    private static func floats<T>(_ values: [T]) -> [Float] {
+        values.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+    }
+
+    public static func compareFromTake(
+        folder: URL, looks: Set<String>? = nil,
+        threads: Int = ProcessInfo.processInfo.activeProcessorCount,
+        laceTexels: Int = DustWeb.laceTexels
+    ) throws -> (inputs: [String], frames: [TakeComparison]) {
+        guard let manifest = RenderTargetManifest.read(from: folder) else {
+            throw Failure.folder("\(folder.path): no manifest of sillage-render-targets 1")
+        }
+        let take = try RecordingFile.read(from: folder.appendingPathComponent(manifest.take.file))
+        let context = try CUDAContext()
+        var inputs: [String] = []
+
+        // The attributes, from the take's particles.
+        let attributes = ParticleAttributes(take.particles)
+        let drawn = attributes.drawnCount
+        func listed(_ name: String) throws -> [Float] {
+            guard let entry = manifest.particles[name] else { throw Failure.folder("no \(name)") }
+            return floats(try [UInt8](data(entry, in: folder)))
+        }
+        inputs.append("attributes of \(drawn) drawn particles, made here against Metal's:")
+        for (name, mine) in [
+            ("population", attributes.population), ("formation", attributes.formation),
+            ("luminosity", attributes.luminosity), ("rampKeys", attributes.rampKeys),
+            ("component", floats(attributes.component)), ("galaxy", floats(attributes.galaxy)),
+            ("traits", floats(attributes.traits)),
+        ] {
+            let width = name == "traits" ? 2 : 1
+            inputs.append("  \(name): \(apart(Array(mine.prefix(drawn * width)), try listed(name)))")
+        }
+        inputs.append(
+            "  stellar table: \(apart(floats(StellarPopulation.table), try listed("stellar")))")
+
+        // The positions and the smoothing lengths of each frame.
+        var positions: [String: [SIMD3<Float>]] = [:]
+        var smoothing: [String: CUDABuffer] = [:]
+        let builder = try CUDATreeBuilder(
+            context: context, count: take.recording.particleCount, leafCapacity: 24,
+            nodeCapacity: take.recording.particleCount / 4 + 1024)
+        let held = try context.makeBuffer(length: take.recording.particleCount * 16)
+        for frame in manifest.frames {
+            guard let blend = take.recording.blend(atCaptured: frame.captured),
+                let files = Optional(frame.files), let dumped = files["positions"]
+            else { throw Failure.folder("no frame \(frame.name) in the take") }
+            let decoded = take.recording.positions(at: blend)
+            positions[frame.name] = decoded
+            inputs.append(
+                "frame \(frame.name): positions decoded here: "
+                    + apart(
+                        floats(Array(decoded.prefix(drawn))),
+                        floats(try [UInt8](data(dumped, in: folder)))))
+            try held.upload(decoded)
+            var grown = 0
+            repeat {
+                if try builder.overflowed {
+                    try builder.grow()
+                    grown += 1
+                }
+                try builder.buildCells(positions: held)
+            } while try builder.overflowed && grown < 20
+            let lengths = try context.makeBuffer(length: take.recording.particleCount * 4)
+            try builder.buildSmoothing(into: lengths, drawn: drawn)
+            smoothing[frame.name] = lengths
+            if let entry = files["smoothing"] {
+                let mine = try lengths.download(Float.self, count: drawn)
+                inputs.append(
+                    "frame \(frame.name): smoothing lengths of the CUDA tree: "
+                        + apart(mine, floats(try [UInt8](data(entry, in: folder)))))
+            }
+        }
+
+        var frames: [TakeComparison] = []
+        var renderers: [String: (renderer: CUDARenderer, look: LookFile, replay: ShotReplay)] = [:]
+        for target in manifest.targets where looks?.contains(target.look) ?? true {
+            let made: (renderer: CUDARenderer, look: LookFile, replay: ShotReplay)
+            if let kept = renderers[target.look] {
+                made = kept
+            } else {
+                let look = try LookFile.decoded(
+                    from: Data(contentsOf: folder.appendingPathComponent(target.lookFile)))
+                let renderer = try CUDARenderer(
+                    context: context, particles: take.particles,
+                    settings: look.renderSettings(width: manifest.width, height: manifest.height),
+                    laceTexels: laceTexels)
+                let replay = TakeFraming.replay(
+                    look: look, framing: take, capturedRate: manifest.take.capturedRate,
+                    width: manifest.width, height: manifest.height)
+                made = (renderer, look, replay)
+                renderers[target.look] = made
+            }
+            let renderer = made.renderer
+            guard let decoded = positions[target.frame], let lengths = smoothing[target.frame],
+                let shot = TakeFraming.prepare(
+                    renderer, look: made.look, replay: made.replay, framing: take,
+                    at: target.captured)
+            else { throw Failure.folder("no frame \(target.frame) in the take") }
+            try renderer.upload(positions: decoded)
+            try renderer.setSmoothing(lengths)
+            let plan = try renderer.plan(camera: shot.camera)
+
+            var comparison = TakeComparison(look: target.look, frame: target.frame)
+            if let entry = target.files["splat-uniforms"] {
+                var mine = plan.uniforms(for: target.plain ? .plain : .stars)
+                let words = withUnsafeBytes(of: &mine) { Array($0.bindMemory(to: Float.self)) }
+                let theirs = floats(try [UInt8](data(entry, in: folder)))
+                comparison.lines.append(
+                    "\(target.look) \(target.frame): uniforms made here: "
+                        + apart(Array(words.prefix(42)), Array(theirs.prefix(42))))
+            }
+
+            renderer.halfFloats = false
+            try renderer.draw(plan, threads: threads)
+            try renderer.finish()
+            let light = try renderer.target(.light)
+            renderer.halfFloats = true
+            try renderer.draw(plan, threads: 1)
+            try renderer.finish()
+            let halfLight = try renderer.target(.light)
+            renderer.halfFloats = false
+            guard let entry = target.files["light"] else { continue }
+            let metal = try halves(entry, in: folder)
+            comparison.light = difference(light, metal, channels: 0..<3)
+            comparison.halfLight = difference(halfLight, metal, channels: 0..<3)
+            comparison.lines.append("  light, fixed point: \(comparison.light.summary)")
+            comparison.lines.append("  light, half floats: \(comparison.halfLight.summary)")
+            frames.append(comparison)
+        }
+        return (inputs, frames)
+    }
+}
