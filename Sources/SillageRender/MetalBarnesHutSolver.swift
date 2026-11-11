@@ -1138,3 +1138,11 @@ extension MetalBarnesHutSolver: BarnesHutPasses {
         }
     }
 }
+
+// MARK: - The solver check
+
+extension MetalBarnesHutSolver: CheckedSolver {
+    public func forces() -> [SIMD3<Float>] { accelerations }
+
+    public func stepChecked() { step() }
+}

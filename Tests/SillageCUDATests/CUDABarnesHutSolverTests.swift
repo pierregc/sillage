@@ -390,114 +390,130 @@ struct CUDABarnesHutSolverTests {
             "sillage-cuda-\(name)-\(UUID().uuidString)", isDirectory: true)
     }
 
-    private func recorded(
-        _ engine: String, scene: SceneConfig, particles: Int, sample: ParticleSystem, steps: Int,
-        every: Int, snapshots: [Int], into directory: URL
-    ) throws -> SolverCurves {
-        let solver = try CUDABarnesHutSolver(context: CUDAContext(), scene: scene, massive: sample)
-        return try SolverCheck.record(
-            engine: engine, scene: scene, particles: particles, host: solver.host, steps: steps,
-            every: every, snapshots: snapshots, into: directory,
-            advance: { try solver.advance(steps: $0) }, particles: { solver.particles })
-    }
-
-    /// The curves a run is compared by, and the gaps between two runs: none between a run and
-    /// itself, some once a position has moved by its last bit.
-    @Test func theCurvesOfTwoRunsAndTheirGaps() throws {
-        let folder = temporary("curves")
+    /// The run a solver check keeps, and how two of them are measured: nothing between a run
+    /// and itself, and a run one bit away still as one 60 steps on.
+    @Test func theRunsOfASolverCheckAndTheirGaps() throws {
+        let folder = temporary("check")
         defer { try? FileManager.default.removeItem(at: folder) }
         let scene = try SolverCheck.scene(file: Self.sceneFile, particles: 2_000)
         #expect(scene.hasLiveHalos && scene.galaxies.count == 2)
         let sample = RestrictedSolver.sampleParticles(for: scene)
-        let sets = [("first", sample), ("again", sample), ("moved", SolverCheck.oneBitMoved(sample))]
-        let all = SolverCheck.everyBitMoved(sample)
+        let all = SolverCheck.nudged(sample, nil)
         #expect(zip(all.positions, sample.positions).allSatisfy { $0.x == $1.x.nextUp && $0.y == $1.y })
+        let sets = [("first", sample), ("again", sample), ("moved", SolverCheck.nudged(sample, 0))]
+        var runs: [SolverCheck.Run] = []
         for (name, set) in sets {
-            let curves = try recorded(
-                name, scene: scene, particles: 2_000, sample: set, steps: 60, every: 10,
-                snapshots: SolverCheck.snapshots(steps: 60), into: folder.appendingPathComponent(name))
-            #expect(curves.steps == [0, 10, 20, 30, 40, 50, 60] && curves.snapshots == [0, 30, 60])
-            #expect(curves.massive == sample.count && curves.visible == sample.visibleCount)
-            #expect(curves.centers.allSatisfy { $0.count == 2 } && curves.thickness.last?.count == 2)
-            #expect(curves.timeMyr.last ?? 0 > 0 && curves.momentumScale.allSatisfy { $0 > 0 })
+            let solver = try CUDABarnesHutSolver(context: CUDAContext(), scene: scene, massive: set)
+            let out = folder.appendingPathComponent(name)
+            try SolverCheck.record(
+                solver, sampled: set.formation, steps: 60, mapsEvery: 30,
+                snapshots: SolverCheck.snapshots(steps: 60), into: out)
+            let run = try SolverCheck.Run(out)
+            #expect(run.steps == [0, 10, 20, 30, 40, 50, 60] && run.galaxies == 2)
+            #expect(run.maps.count == 3 && run.size == 256)
+            #expect(try run.positions(step: 30)?.count == sample.count)
+            #expect(try run.accelerations(step: 0)?.count == sample.count)
+            #expect(FileManager.default.fileExists(atPath: out.appendingPathComponent("state-60.json").path))
+            runs.append(run)
         }
-        let same = try SolverCheck.gaps(
-            folder.appendingPathComponent("first"), folder.appendingPathComponent("again"))
-        #expect(same.count == 3 && same.map(\.step) == [0, 30, 60])
-        #expect(same.allSatisfy { $0.furthest == 0 && $0.chiSquare == 0 })
-        #expect(same.allSatisfy { $0.centers == 0 && $0.thickness == 0 && $0.momentum == 0 })
-        let moved = try SolverCheck.gaps(
-            folder.appendingPathComponent("first"), folder.appendingPathComponent("moved"))
-        // One particle a bit away at the start; 60 steps on the two runs are still as one.
-        #expect(moved[0].furthest > 0 && moved[0].furthest < 1e-5 && moved[0].ninetieth == 0)
-        #expect(moved[2].furthest < 1e-2 && moved[2].chiSquare < 0.01)
+        let same = SolverCheck.gap(runs[0], runs[1], visible: sample.visibleCount)
+        #expect(same.centers == 0 && same.thickness == 0 && same.momentum == 0 && same.chiSquare == 0)
+        let moved = SolverCheck.gap(runs[0], runs[2], visible: sample.visibleCount)
+        #expect(moved.centers < 1e-2 && moved.chiSquare < 0.01)
+        let first = try #require(try runs[0].positions(step: 1))
+        let other = try #require(try runs[2].positions(step: 1))
+        let apart = SolverCheck.spread(first, other)
+        #expect(apart.most > 0 && apart.most < 1e-5 && apart.median == 0)
     }
 
     /// Scene-0031 at 20 k over the massive particles the Mac sampled, 2,000 steps, against the
-    /// Metal run over the same particles: the centres, each disk's thickness, the density maps
-    /// and the momentum. They do not agree to the bit; they part as two Metal runs part when one
-    /// position differs by its last bit, the scale chaos alone gives. The counts and the steps
-    /// are those of the Metal runs, so the same test reads the runs at 500 k on a GPU (#283).
+    /// Metal run over the same particles: one force evaluation to rounding, then the galaxy
+    /// centres, each disk's thickness, the density maps and the momentum along the run. They do
+    /// not agree to the bit; they part as Metal parts from itself when positions differ by their
+    /// last bit, the scale chaos alone gives. The counts and the steps are those of the Metal
+    /// runs in the folder, so the same test reads the runs at 500 k on a GPU (#283).
+    /// `scripts/solver-compare.py` prints the whole comparison from the folder this writes.
     @Test(.enabled(if: metalRuns != nil, needsMetalRuns))
     func aRunStaysWithinWhatChaosPartsTwoMetalRunsBy() throws {
         let folder = URL(fileURLWithPath: try #require(metalRuns), isDirectory: true)
-        let metal = try SolverCurves.load(folder.appendingPathComponent("metal"))
+        let mac = try SolverCheck.Sample.load(folder)
+        let metal = try SolverCheck.Run(folder.appendingPathComponent("metal"))
         let steps = try #require(metal.steps.last)
-        var scene = try SolverCheck.scene(file: Self.sceneFile, particles: metal.particles)
+        var scene = try SolverCheck.scene(
+            file: folder.appendingPathComponent("scene.json"), particles: mac.particles)
+        let here = SolverCheck.Sample(scene: scene, sample: ParticleSystem(), particles: mac.particles)
         print(
-            "CUDASOLVER scene \(metal.particles) drawn, \(metal.massive) massive:"
-                + " step \(scene.timeStep) here and \(metal.timeStep) on the Mac,"
-                + " softening \(scene.softening) and \(metal.softening)")
-        // What the Mac worked out, so both engines step the same scene.
-        scene.timeStep = metal.timeStep
-        scene.softening = metal.softening
-        scene.openingAngle = metal.openingAngle
+            "CUDASOLVER the scene here and on the Mac: step \(here.timeStepBits) \(mac.timeStepBits),"
+                + " softening \(here.softeningBits) \(mac.softeningBits),"
+                + " angle \(here.openingAngleBits) \(mac.openingAngleBits)")
+        // What the Mac worked out, so that both engines step the same scene.
+        scene.timeStep = mac.timeStep
+        scene.softening = mac.softening
+        scene.openingAngle = mac.openingAngle
         let sample = try RunCheckpoint(directory: folder).massiveSet()
-        #expect(sample.count == metal.massive && sample.visibleCount == metal.visible)
+        #expect(sample.count == mac.count && sample.visibleCount == mac.visible)
 
         let engine = CUDAContext.target == .cpu ? "cuda-cpu" : "cuda"
         let out =
-            ProcessInfo.processInfo.environment["SILLAGE_CUDA_CHECKS_OUT"].map {
+            (ProcessInfo.processInfo.environment["SILLAGE_CUDA_CHECKS_OUT"].map {
                 URL(fileURLWithPath: $0, isDirectory: true)
-            } ?? temporary("checks")
+            } ?? temporary("checks")).appendingPathComponent(engine, isDirectory: true)
+        let solver = try CUDABarnesHutSolver(context: CUDAContext(), scene: scene, massive: sample)
         let started = Date()
-        let mine = try recorded(
-            engine, scene: scene, particles: metal.particles, sample: sample, steps: steps,
-            every: metal.every, snapshots: metal.snapshots, into: out.appendingPathComponent(engine))
+        let kept = Set([1, 10, 100, steps / 2, steps].filter { (try? metal.positions(step: $0)) != nil })
+        try SolverCheck.record(
+            solver, sampled: sample.formation, steps: steps, every: metal.steps.dropFirst().first ?? 10,
+            mapsEvery: max(steps / max(metal.maps.count - 1, 1), 1), snapshots: kept, into: out)
+        let mine = try SolverCheck.Run(out)
         print(
             String(
-                format: "CUDASOLVER %@: %d steps in %.0f s, %d stars formed, %d on the Mac", engine,
-                steps, Date().timeIntervalSince(started), mine.formed.last ?? 0, metal.formed.last ?? 0))
+                format: "CUDASOLVER %@: %d steps of %d particles in %.0f s, written to %@", engine,
+                steps, sample.count, Date().timeIntervalSince(started), out.path))
 
-        // What parts two Metal runs: one position moved by its last bit, and every one.
-        var scales: [(name: String, gaps: [SolverCheck.Gap])] = []
-        for name in ["metal-one-bit", "metal-every-bit"] {
-            let run = folder.appendingPathComponent(name)
-            guard FileManager.default.fileExists(atPath: run.appendingPathComponent("curves.json").path)
-            else { continue }
-            scales.append((name, try SolverCheck.gaps(folder.appendingPathComponent("metal"), run)))
-        }
-        let gaps = try SolverCheck.gaps(
-            folder.appendingPathComponent("metal"), out.appendingPathComponent(engine))
-        let chaos = try #require(scales.last?.gaps)
-        #expect(gaps.count == chaos.count && !gaps.isEmpty)
-        func line(_ name: String, _ gap: SolverCheck.Gap) -> String {
+        // One force evaluation, on the positions of massive.bin: to rounding.
+        let forces = try #require(try metal.accelerations(step: 0))
+        let force = SolverCheck.spread(forces, try #require(try mine.accelerations(step: 0)), relative: true)
+        print(
             String(
-                format: "CUDASOLVER %-15@ step %5d %6.1f Myr  apart %.3g median %.3g 90%% %.3g max kpc"
-                    + "  chi2 %.4f binned %.4f  centres %.3g kpc  thickness %.3g  momentum %.3g",
-                name, gap.step, gap.timeMyr, gap.median, gap.ninetieth, gap.furthest, gap.chiSquare,
-                gap.chiSquareBinned, gap.centers, gap.thickness, gap.momentum)
+                format: "CUDASOLVER accelerations at step 0, relative: median %.3g, 99 %% %.3g, most %.3g",
+                force.median, force.high, force.most))
+        #expect(force.median < 1e-6 && force.high < 1e-4)
+        for step in kept.sorted() {
+            let theirs = try #require(try metal.positions(step: step))
+            let apart = SolverCheck.spread(
+                theirs, try #require(try mine.positions(step: step)), count: mac.visible)
+            print(
+                String(
+                    format: "CUDASOLVER positions at step %d, kpc: median %.3g, 99 %% %.3g, most %.3g",
+                    step, apart.median, apart.high, apart.most))
         }
-        for index in gaps.indices {
-            print(line(engine, gaps[index]))
-            for scale in scales where index < scale.gaps.count { print(line(scale.name, scale.gaps[index])) }
+
+        // Along the run, beside what a last bit parts two Metal runs by.
+        var chaos = SolverCheck.Gap()
+        for name in ["metal-bit-a", "metal-bit-b", "metal-bit-c", "metal-bit-all"] {
+            let run = folder.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: run.appendingPathComponent("curves.csv").path)
+            else { continue }
+            let gap = SolverCheck.gap(metal, try SolverCheck.Run(run), visible: mac.visible)
+            chaos = chaos.envelope(gap)
+            print(line(name, gap))
         }
-        // Within what chaos gives: no further from Metal than a few times what a last bit parts
-        // two Metal runs by, once that has grown past rounding.
-        for (gap, scale) in zip(gaps, chaos) where gap.step > 0 {
-            #expect(gap.median < 10 * max(scale.median, 1e-4), "step \(gap.step)")
-            #expect(gap.centers < 10 * max(scale.centers, 1e-3), "step \(gap.step)")
-            #expect(gap.chiSquareBinned < 10 * max(scale.chiSquareBinned, 0.01), "step \(gap.step)")
-        }
+        let gap = SolverCheck.gap(metal, mine, visible: mac.visible)
+        print(line(engine, gap))
+        #expect(chaos.centers > 0, "no Metal run a bit away in \(folder.path)")
+        // Chaos is measured on four runs, and a second engine rounds every force of every step
+        // its own way: three times the widest of the four.
+        #expect(gap.centers < 3 * chaos.centers)
+        #expect(gap.thickness < 3 * chaos.thickness)
+        #expect(gap.momentum < 3 * chaos.momentum)
+        #expect(gap.chiSquare < 3 * chaos.chiSquare)
+        #expect(gap.formed <= 3 * max(chaos.formed, 1))
+    }
+
+    private func line(_ name: String, _ gap: SolverCheck.Gap) -> String {
+        String(
+            format: "CUDASOLVER %-13@ the most along the run: centres %.3g kpc, thickness %.3g,"
+                + " momentum %.3g, stars formed %.0f, chi2 a cell 4x4 %.4f",
+            name, gap.centers, gap.thickness, gap.momentum, gap.formed, gap.chiSquare)
     }
 }

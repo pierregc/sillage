@@ -387,3 +387,11 @@ extension CUDABarnesHutSolver {
         if let failure { throw failure }
     }
 }
+
+// MARK: - The solver check
+
+extension CUDABarnesHutSolver: CheckedSolver {
+    public func forces() throws -> [SIMD3<Float>] { try accelerations }
+
+    public func stepChecked() throws { try advance(steps: 1) }
+}
