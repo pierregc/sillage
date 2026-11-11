@@ -902,8 +902,10 @@ Metal's frame for them and for nothing else:
   with the one written. It is now `hash2(float2(gid) + (p.seed + 17.3f))`: 49 to 53 dB.
 
 Both are changes of shared arithmetic meant to leave Metal's bytes as they are (the order and
-the fusing Metal's compiler chose), each in a commit of its own, `git revert`able; the Mac's
-check holds the bytes. They were found by correlating Metal's grain with the hash in each
+the fusing Metal's compiler chose), each in a commit of its own, `git revert`able. They do: the
+Mac drew 30 frames at 480 by 270 in each of the five looks of #276, `hubble` and `hubble-noweb`
+with their grain among them, on main before this ticket and on this branch, twice each, and
+the 150 PNGs are the same to the byte. They were found by correlating Metal's grain with the hash in each
 form, on the dark pixels where the other noise term vanishes and the bright ones where it does
 not.
 
