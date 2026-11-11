@@ -3,13 +3,13 @@
 The hires engine's CUDA twin for rented NVIDIA GPUs (#269), written and tested without one in
 phase 1. #273 laid the frame the next steps build in: the C API, the Swift module over it, the
 build for the GPU and for the CPU target, and the tree builder, the first engine in it. #274
-added the solver of the massive particles, which has
-[a section of its own](#the-massive-particles-solver-274), #276 the renderer's particle
-passes, [which have theirs](#the-renderers-particle-passes-276), and #277 its post-processing and
-a first command that draws frames of a take, [with
-theirs](#the-post-processing-and-the-stills-277). How a kernel's text is shared
-with Metal is in [one-kernel-source.md](one-kernel-source.md); this note is how the CUDA side
-around it is built, run and tested.
+added the solver of the massive particles, #275 its light tracers, #276 the renderer's particle
+passes and #277 its post-processing and a first command that draws frames of a take, which have
+sections of their own ([the massive particles](#the-massive-particles-solver-274),
+[the light tracers](#the-light-tracers-275), [the particle passes](#the-renderers-particle-passes-276),
+[the post-processing and the stills](#the-post-processing-and-the-stills-277)).
+How a kernel's text is shared with Metal is in [one-kernel-source.md](one-kernel-source.md); this
+note is how the CUDA side around it is built, run and tested.
 
 ## Layout
 
@@ -21,12 +21,12 @@ around it is built, run and tested.
 | `cuda/src/engine.h` | what the files of `cuda/src` share behind the API: `sc_context`, `sc_buffer`, `fail`, `check`, `allocate`, `pointer` |
 | `cuda/src/context.cu` | errors, contexts, buffers and pinned memory |
 | `cuda/src/tree.cu` | the 20 tree entry points, their launches and the tree's calls |
-| `cuda/include/sillage_cuda_solver.h`, `cuda/src/solver.cu` | the massive solver's calls, its 8 entry points and their launches (#274) |
+| `cuda/include/sillage_cuda_solver.h`, `cuda/src/solver.cu` | the solver's calls, its 11 entry points and their launches: the massive particles' 8 (#274), the light tracers' 3 (#275) |
 | `cuda/include/sillage_cuda_render.h`, `cuda/src/render.cu` | the renderer's calls, the 13 entry points of its particle passes and their launches (#276) |
 | `cuda/include/sillage_cuda_post.h`, `cuda/src/post.cu` | the post-processing's calls, the 8 entry points of its kernels and the pack into 8-bit bytes (#277) |
 | `cuda/src/kernels.cu` | every library's MSL in one unit, for the checks (#281) |
 | `cuda/tests/*.cu` | the C tests of the CPU target (`compat`, `tree_fixture`, `tree_entries`, `solver_fixture`, `render_passes`, `raster_probe`, `post_passes`) |
-| `Sources/SillageCUDA/` | the Swift: `CUDAContext` and `CUDAError`, `CUDABuffer` and `CUDAHostMemory`, `CUDATreeBuilder`, `CUDABarnesHutSolver`, `CUDARenderer`, `CUDAPost`, `CUDATakeStills`, `PNG`, `CUDAStillChecks` |
+| `Sources/SillageCUDA/` | the Swift: `CUDAContext` and `CUDAError`, `CUDABuffer` and `CUDAHostMemory`, `CUDATreeBuilder`, `CUDABarnesHutSolver` and `CUDALightTracerStore`, `CUDARenderer`, `CUDAPost`, `CUDATakeStills`, `PNG`, `CUDAStillChecks` |
 | `Sources/sillage-cuda/` | the command on Linux (#277) |
 | `Tests/SillageCUDATests/` | the Swift tests, run on Linux |
 
@@ -163,7 +163,8 @@ its cells in the level order (`BarnesHutTree.levelOrdered`) with no mass yet, th
 smoothing lengths and the spacing records then come from the CUDA entry points, the shared MSL
 run on the CPU, so the next steps can run their own kernels over a real tree. A tree of more
 nodes than the capacity raises the overflow flag, and the grow-and-build-again loop is the GPU's.
-`sortOrder` (the light tracers' walk order) takes a `BarnesHutTree`'s order on the CPU target.
+`sortOrder` (the light tracers' walk order) takes a stable sort of the same Morton codes on the
+CPU target (#275).
 
 ## Tests
 
@@ -224,7 +225,7 @@ runs `scripts/linux.sh check` on the box first, with both variables set.
 
 ## The massive particles' solver (#274)
 
-`MetalBarnesHutSolver` without its light tracers, on CUDA: a scene's massive particles stepped as
+`MetalBarnesHutSolver` on CUDA, first without its light tracers: a scene's massive particles stepped as
 the Mac steps them, with the analytic or live halos, the black holes, star formation, the cooling
 disks and dissipation, saved and resumed to the bit. Nothing of it is a copy. The kernels are the
 shared MSL of `BarnesHutShaders`; the order of a step and the CPU work around it are portable
@@ -232,7 +233,7 @@ Swift that both solvers run. #275 adds the light tracers to it, #278 steps it in
 
 | where | what |
 | --- | --- |
-| `Sources/SillageRender/BarnesHutShaders.swift` | the eight massive kernels' work in shared functions, the three tracer kernels still Metal's (#275) |
+| `Sources/SillageRender/BarnesHutShaders.swift` | the eight massive kernels' work in shared functions, and the three tracer kernels' since #275 |
 | `Sources/SillageRender/BarnesHutRecords.swift` | the Swift mirrors of the structs those kernels read |
 | `Sources/SillageRender/BarnesHutHost.swift` | the solver's CPU side: counts, masses, black holes, centres, disk frames, cooling disks, pass parameters, settings, a checkpoint's state |
 | `Sources/SillageRender/BarnesHutStep.swift` | the step, the seed of a new solver and the restart of a restored one; `BarnesHutPass`, `BarnesHutPasses` |
@@ -330,10 +331,9 @@ it: `positions` and `formation` (device buffers), `centers`, `diskFrames`, `time
   ([linux-build.md](linux-build.md)), so a run compared with Metal, and the full pass (#278),
   read the massive particles the Mac sampled, `massive.bin` (`RunCheckpoint.massiveSet()`).
   `init(context:scene:)` samples here, for tests and timings.
-- **The light tracers (#275)** come in front of the massive particles in `positions` and
-  `velocities`, as on Metal: `sc_solver_config.first` and `leaf_chances` are there for them,
-  and the three passes this solver leaves empty are `tracerStarFormation`, `tracerStep` and the
-  tracers' half of `drift`.
+- **The light tracers** come in front of the massive particles in `positions` and
+  `velocities`, as on Metal: `sc_solver_config.first` and `leaf_chances` are there for them.
+  #275 runs their three passes ([below](#the-light-tracers-275)).
 
 ### On the CPU target
 
@@ -467,6 +467,255 @@ at `SILLAGE_SOLVER_CHECK_PARTICLES` drawn (20,000) for `SILLAGE_SOLVER_CHECK_STE
 - **The CPU target repeats itself and resumes to the bit** over 200 steps of a merger of 20,000.
 - **A scene built on Linux has the Mac's step, softening and opening angle to the bit** at 20 k,
   though its sample does not (#272).
+
+## The light tracers (#275)
+
+198 M of a 200 M run are light tracers (#187, #238): 32 bytes each in the solver's buffers and 4
+of walk order, walked through the massive tree once a step and weighing nothing. #275 puts them
+in `CUDABarnesHutSolver` as `MetalBarnesHutSolver` holds and steps them
+([light-tracers.md](light-tracers.md#compact-tracers-238)), from the same source and on the same
+step.
+
+| where | what |
+| --- | --- |
+| `Sources/SillageRender/BarnesHutShaders.swift` | `tracerStep`, `tracerDrift` and `tracerFormStars`, the work of `bhTracerStep`, `bhTracerDrift` and `bhTracerFormStars`, with `TracerStepParams` |
+| `cuda/src/solver.cu`, `cuda/include/sillage_cuda_solver.h` | their entry points, `sc_solver_tracer_step`, `_tracer_drift` and `_tracer_form_stars` |
+| `Sources/SillageCUDA/CUDABarnesHutSolver.swift` | `CUDALightTracerStore`, the tracers in the solver, `lightTracers(context:drawn:massive:)`, `footprint` |
+| `Sources/SillageCore/BarnesHutTree.swift` | `mortonOrder(of:)`, the walk order on the CPU target |
+| `Sources/SillageRender/TracerCheck.swift`, `Tests/SillageRenderTests/TracerCheckTests.swift` | the run both engines make to check the light stays on the mass, and the Mac's side of it |
+| `Tests/SillageCUDATests/CUDALightTracerTests.swift` | the tests, part of the solver's serialized suite |
+
+### The kernels
+
+The three bodies moved into shared functions line for line, the two function constants of
+`bhTracerStep` (`bhQuadrupole`, `bhOpensHoldingCells`) reaching `tracerStep` as arguments and on
+CUDA as the template parameters of `bhTracerStep<quadrupole, opensHoldingCells>`, launched through
+a function pointer as `bhAcceleration` is. None needs a block barrier or a warp function, so all
+three are `cuda` in `cuda/kernels.txt` and run on the CPU target. With #276's passes the list
+holds 37 `cuda`, 7 `cuda gpu-only`, 6 inside a kernel, 4 Metal only, and 8 pending, the
+post-processing kernels of #277. Each `bhTracerStep` instantiation takes 40 registers for sm_120, as #271's spike did,
+with no double precision instruction; the solver's PTX now holds 18 entry points and no barrier.
+
+**A piece of a pass is its slots, not a whole number of blocks.** Metal's `dispatchThreads`
+dispatches exactly the slots of a piece of the force pass; a CUDA grid is whole blocks, and the
+shared function only stops at the whole count, so the last block of a piece ran the first slots of
+the next piece too. For a massive particle that wrote the same acceleration twice; for a tracer,
+whose pass kicks it, it was a second kick, which the test of the pass in pieces of 700 found. The
+entry points of `bhTracerStep` and `bhAcceleration` now take the piece's `slots` and stop the
+threads past it ([one-kernel-source.md](one-kernel-source.md#the-cpu-target)).
+
+The tracers' passes are where `BarnesHutStep` puts them since #274: their star formation right
+after the massive one, at the chances its leaves just wrote (`leaf_chances`, the slot chances);
+their drift in `drift`; their fused pass after the massive pieces, a launch for each `forceChunk`
+of the walk order, blocks of 64 as on Metal. A pass reads the lists it needs as the massive passes
+do (the analytic halos, the black holes, the cooling disks), staged in the same small buffers.
+
+### The buffers
+
+As on Metal: `[tracers | massive visible | massive halo]` in the position and velocity buffers, a
+tracer's formation time in the w of its position and its `TracerWord` in the w of its velocity,
+everything else the massive particles' alone, the massive passes bound past the tracers
+(`sc_solver_config.first`), the tree built over the massive particles (`CUDATreeBuilder(first:)`),
+the halo centres, disk frames and holes' reactions summed over the massive particles from the
+first of them. `particles` and `accelerations` give the tracers first, as Metal's do, the
+tracers' accelerations walked again in mode 2 from the same tree.
+
+- **Sampling by chunks straight into the GPU.** `CUDABarnesHutSolver.lightTracers(context:drawn:
+  massive:)` samples through `ParticleSystem.streamingLightTracers`, which hands the tracers on a
+  million at a time, packed: each chunk is uploaded into a `CUDALightTracerStore` as it comes,
+  so the drawn count is never held on the host. The store's buffers become the solver's.
+- **A resumed run** reads its tracers from the checkpoint and gives them no first half kick:
+  `CUDALightTracerStore(context:capacity:awaiting:)` leaves them to `restore`, whose files are
+  the Metal solver's (#240), 32 bytes a particle and 4 a massive particle, tracers first.
+- **The walk order** is sorted a chunk at a time, 4 M a chunk every 10 steps
+  (`BarnesHutHost.tracerSortChunk` and `tracerSortInterval`, which `--tracer-sort` and
+  `--tracer-sort-chunk` set for both engines), each chunk counted from its start, 4 bytes a tracer.
+  On a GPU it is the tree's radix sort, run by a second `CUDATreeBuilder` that only sorts
+  (`sortOrder`, `gpu-only` kernels); on the CPU target a stable sort of the same Morton codes by
+  the standard library (`BarnesHutTree.mortonOrder`), which gives the radix sort's order and the
+  tree's (`aChunkSortsIntoMortonOrder` holds it to `BarnesHutTree.order`). The order only decides
+  which thread walks which tracer: a tracer's result does not depend on it, so a run resumed with
+  a freshly sorted order gives the same bits.
+
+### The renderer's side
+
+`writeSmoothing(into:drawn:)` writes what Metal's does: with tracers each massive visible particle
+stands for (tracers + massive visible) / massive visible drawn particles, in the smoothing lengths
+and in the spacing records a tracer's kernel reads (`buildSpacing`, #273). `tracerSpacing` gives
+the renderer those records, the frame the codes are taken in and the depth, as `TracerDrawing`
+does on Metal, for #276 and #278 to bind.
+
+### Memory
+
+The context counts the device bytes its buffers hold and the most they have held, from the
+allocations (`sc_context_memory`, `CUDAContext.memoryHeld`). `CUDABarnesHutSolver.footprint`
+works out the same total from the counts with the sizes the allocations take, and
+`theMemoryIsWhatTheAllocationsHold` holds the two equal on a run of 80,072 tracers and 49,928
+massive particles: 12,014,244 bytes. On paper, for scene-0031 drawn from 2 M massive (5 M with
+the halos, the tree at its first node capacity of 2.5 M nodes, two disks cooled):
+
+| drawn | tracers | the tracers | the massive particles | their tree | the sort | in all | a tracer |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 8 M | 6 M | 0.22 GB | 0.44 GB | 0.30 GB | 0.09 GB | 1.05 GB | |
+| 50 M | 48 M | 1.73 | 0.44 | 0.30 | 0.09 | 2.56 | 53 bytes |
+| 100 M | 98 M | 3.53 | 0.44 | 0.30 | 0.09 | 4.36 | 44 |
+| 200 M | 198 M | 7.13 | 0.44 | 0.30 | 0.09 | 7.96 | 40 |
+| 1 G | 998 M | 35.93 | 0.44 | 0.30 | 0.09 | 36.76 | 37 |
+
+- **The tracers are 36 bytes each and nothing else grows with them.** A massive particle holds 88
+  bytes (its position and velocity, acceleration, gathered copy, mass, formation time, kind,
+  galaxy, cost, slot chance), the tree 64 a node with the quadrupole and 24 a massive particle of
+  codes and orders, the sort 86 MB at any count, as on Metal (light-tracers.md).
+- **200 M fits a 32 GB card with room for the renderer.** The solver holds 8.0 GB; with about
+  4 GB for the renderer's targets at 4K with supersampling 2 and the CUDA context's own few
+  hundred megabytes, a run needs about 12.5 GB, which also fits a 24 GB RTX 4090. A tree that
+  outgrows its first capacity doubles it, 160 MB more at 5 M massive. A billion needs about 41 GB
+  with the renderer: one 48 GB card, or the tracers spread over several (#280).
+- **On the host**, pinned copies of the massive positions and velocities (160 MB at 5 M), the
+  massive set as sampled (320 MB) and one chunk of sampled tracers at a time (32 MB).
+
+#283 measures the peak on a GPU (`aStepWithTracersIsTimed` prints it beside the footprint).
+
+### Tests
+
+**Now, in every Linux check and on every push**, on the CPU target:
+
+- `cuda/tests/solver_fixture.cu`, with `g++` and `clang++`: `bhTracerStep` through
+  `sc_solver_tracer_step` over the walk fixture's tree laid out by `sc_tree_upload`, 1,000 tracers
+  over 5,012 massive particles in blocks of 64. In mode 2 no acceleration past 1e-5 of Metal's,
+  the furthest 1.63e-6 away, 42 with Metal's bits; in mode 1 no velocity past 1e-5 of Metal's,
+  the furthest 1.73e-7 away, every packed word unchanged and the same bits twice; mode 2 moves
+  nothing, and a pass without its probe or with a walk order sorted 0 at a time is refused.
+  `bhTracerFormStars` through `sc_solver_tracer_form_stars` over the tree's codes: at a chance of
+  1 each of the 246 gas tracers whose stars had not formed forms them at this step's time, at -1
+  none does, and no other tracer changes.
+- `CUDA solver`, 7 more tests run here (55 s for the suite, 16 s before):
+  `theMassiveParticlesRepeatTheRunWithoutTracersToTheBit`, 20 k massive and 80 k tracers for 20
+  steps, then a black hole pass of 3 k massive and 9 k tracers for 40, side by side with the same
+  massive particles alone: their positions, velocities, formation times, centres and disks to the
+  bit, as `LightTracerTests` holds Metal; `aRunWithTracersRepeatsAndResumesFromItsCheckpoint`, a
+  merger of 10 k massive and 20 k tracers with star formation, rigid halos and two cooling disks,
+  200 steps twice and resumed from step 100 in a solver that samples nothing, the same bits,
+  tracers and accelerations included; the tracers' pass in pieces of 700 and every pass profiled,
+  the same bits, with the tracers' phases timed; a tracer's acceleration against direct summation
+  (mean under 2 %, worst under 15 %); the streamed draw equal to the split one, and a run over it
+  the same run; the spacing records and lengths a builder writes over the same positions; the
+  memory held equal to the footprint.
+
+**Written now, run on a GPU in #283**, each skipped on the CPU target with "needs an NVIDIA GPU
+and libsillagecuda.a: #283 runs it":
+
+- `theTracersOf8MRepeatAndResume`: scene-0031 drawn at 8 M from 2 M massive with the radix sort,
+  the massive part against the run without tracers to the bit after 20 steps, then stopped,
+  saved, resumed and stepped 20 more, the same bits.
+- `aStepWithTracersIsTimed` at 8 M, 50 M and 200 M drawn from 2 M massive: sampled on the box
+  (about five minutes at 200 M), ten steps profiled after two, on a `CUDATRACERS` line: a step,
+  the walk in ns a tracer a step, against 21.0 on the M4 Max at 100 M (#238) and #283's own
+  timing of the walk, the sort a step, and the device memory at its peak, held and on paper.
+
+And on a GPU the tests of the first list run through the radix sort. One test waits for data
+instead of a GPU: `theLightStaysOnTheMassAsOnMetal` is skipped without the Mac's draw and runs
+of branch `assets/cuda-checks` (below); #283 runs it at 8 M with the Mac's runs at that size.
+
+### Whether the light stays on the mass, against Metal
+
+**The run.** Scene-0031 of 2026-10-30-b drawn at 200 k from 50 k massive as a hires draws it
+(`TracerCheck.scenes`: the draw's disks held at the massive softening): 150,207 tracers and
+124,793 massive particles with their live halos, step 0.042 (0.198 Myr), softening 0.3455 kpc,
+opening angle 0.9 for both sets, 1,560 steps to 308.6 Myr, the first pericentre. The Mac drew it
+once, `massive.bin` and `tracers.bin` (the tracers as drawn, before any kick), and both engines
+step that draw: the Mac on Metal, twice to the byte, then once more with every position a last
+bit away (`metal-bit-all`); Linux on the CPU target. Each writes nine density maps of the tracers
+and of the massive visible particles (256 x 256 over 120 kpc, at steps 0, 195, ..., 1,560) with
+the lines `scripts/tracer-drift.py` reads, and the accelerations at step 0.
+
+The Mac's folder is on `assets/cuda-checks` (e11a3d9), `docs/spikes/cuda-checks/tracers/`, with
+its formats and what it found; the CUDA run is the CPU target's, 1,560 steps in 38 minutes.
+
+**One force evaluation**, on the drawn positions: the tracers' accelerations are within 8.4e-8 of
+Metal's in the median, 2.6e-7 at the 99th percentile and 6.2e-6 at most, none past 1e-4 and 3.6 %
+with Metal's bits; the massive particles' within 7.7e-8, 2.3e-7 and 2.5e-6, as in #274. After one
+step 98 % of the positions are Metal's to the bit, and every tracer's packed word.
+
+**The light stays on the mass**, the tracers against the massive visible particles of the same
+run, as `tracer-drift.py` scores them:
+
+| Myr | CUDA: chi2 a cell | binned 4x4 | light elsewhere | noise alone | Metal: binned 4x4 | light elsewhere |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 1.039 | 0.995 | 5.52 % | 5.40 % | 0.995 | 5.52 % |
+| 39 | 0.980 | 0.960 | 5.29 % | 5.51 % | 0.960 | 5.29 % |
+| 77 | 0.978 | 0.993 | 5.57 % | 5.54 % | 0.993 | 5.57 % |
+| 116 | 0.995 | 0.889 | 5.25 % | 5.56 % | 0.889 | 5.26 % |
+| 154 | 1.009 | 0.966 | 5.73 % | 5.63 % | 0.967 | 5.73 % |
+| 193 | 1.056 | 0.913 | 5.51 % | 5.65 % | 0.913 | 5.51 % |
+| 231 | 0.997 | 0.970 | 5.57 % | 5.51 % | 0.972 | 5.55 % |
+| 270 | 0.993 | 1.043 | 5.38 % | 5.17 % | 1.053 | 5.42 % |
+| 309 | 1.012 | 0.977 | 4.85 % | 4.75 % | 0.969 | 4.86 % |
+
+Chi-square near 1 at every instant and the light elsewhere within 0.25 points of the noise, as on
+Metal; 50 k massive particles make that noise about six times #238's at 2 M.
+
+**Against Metal**, each set's maps against the same set's on Metal, chi-square a cell binned 4 x 4,
+beside Metal against itself with every position a last bit away:
+
+| Myr | tracers, CUDA against Metal | Metal a bit away | massive, CUDA against Metal | Metal a bit away |
+| ---: | ---: | ---: | ---: | ---: |
+| 116 | 0.0001 | 0.0001 | 0.0002 | 0.0001 |
+| 193 | 0.0002 | 0.0003 | 0.0002 | 0.0005 |
+| 231 | 0.0006 | 0.0009 | 0.0007 | 0.0010 |
+| 270 | 0.0012 | 0.0019 | 0.0025 | 0.0041 |
+| 309 | 0.0031 | 0.0045 | 0.0038 | 0.0092 |
+
+Along the run the most the centres part is 4.3 and 4.0 pc (Metal a bit away: 6.2 and 4.7), the
+disks' thicknesses 1.6e-5 and 1.8e-5 (2.6e-5, 3.1e-5), the momentum 4.5e-4 (4.8e-4), and 1,177
+stars form against Metal's 1,176 (1,169), tracers and massive particles together. At the
+pericentre the tracers are 5.1 pc from Metal's in the median, 0.11 kpc at the 99th percentile,
+exactly as far as the massive visible particles are. **The light stays on the mass on CUDA as on
+Metal, and the CUDA run parts from Metal less than Metal parts from itself after a one-bit change.**
+The test holds each instant to a chi-square under 1.3 and the light elsewhere under 1.25 times the
+noise, and each set to three times what Metal a bit away gives.
+
+**To run it again**, on Linux, with the Mac's folder checked out from `assets/cuda-checks`:
+
+```
+SILLAGE_CUDA_TRACER_CHECKS=<folder> SILLAGE_CUDA_CHECKS_OUT=<out> scripts/linux.sh test-cuda \
+    --filter theLightStaysOnTheMassAsOnMetal
+python3 scripts/tracer-drift.py <out>/cuda-cpu/run.log <out>/cuda-cpu/density.npy
+```
+
+The test scores each instant as `tracer-drift.py` does (chi-square a cell binned 4 x 4 against the
+Poisson noise of both maps, the light elsewhere against the noise alone), for each engine's
+tracers against its massive particles and for each set against Metal's, beside Metal against
+itself a last bit away, and prints it all on `CUDATRACERS` lines. The Metal side is written by
+`SILLAGE_TRACER_CHECK_OUT=<folder> ./scripts/dev.sh test --filter TracerCheckTests` on the Mac;
+`SILLAGE_TRACER_CHECK_DRAWN`, `_MASSIVE` and `_STEPS` change the run, for #283's at 8 M.
+
+### What #275 measured
+
+- **Metal is the same to the bit.** After the kernels were shared and after the CUDA side was
+  added, the Mac's check passed (608 tests, main's 607 and the comparison's, skipped without its
+  folder), with `theMassiveParticlesRepeatTheRunWithoutTracersToTheBit` and
+  `aBlackHolePassKeepsItsBits`, and a short hires of scene-0031 at 200 k drawn from 50 k massive,
+  its tracers sorted, forming stars and checkpointed, gave main's 26 files to the byte.
+- **The tracers' kernels compile for CUDA as they are**: no line of their MSL written for it,
+  nothing added to `msl_compat.h`.
+- **On the CPU target** the fixture's walk is Metal's to 1.63e-6, its velocities after a step to
+  1.73e-7, and a run with tracers repeats and resumes to the bit. A step of scene-0031 at 200 k
+  drawn from 50 k massive, 150,207 tracers and 124,793 massive particles, takes 1.46 s there.
+- **One bug**, the double kick at the edge of a piece, which only CUDA's whole blocks can make.
+- **The workflow** stays at 6 min 46 s, its longest job `swift-core`; the CUDA suites take 55 s
+  of the `swift-checks` job, 39 more than before.
+
+### For #278
+
+The full pass on Linux takes from here what the Mac's takes from `MetalBarnesHutSolver`:
+`CUDABarnesHutSolver.lightTracers(context:drawn:massive:)` to sample, `CUDALightTracerStore(
+context:capacity:awaiting:)` and `restore(_:from:)` to resume, `positions`, `velocities` and
+`formation` for the renderer and the take, `writeSmoothing(into:drawn:)` and `tracerSpacing` for
+the kernels' sizes, `tracerWord(_:)`. What the Mac's full pass also reads in place on unified
+memory, `drawnAttributes()`, `formed(after:until:)` and `radii(every:)`, has no CUDA twin yet:
+on a GPU they become downloads of the tracers' words and formation times, or small kernels, as
+#278 finds cheapest at 200 M (the words alone are 0.8 GB).
 
 ## The renderer's particle passes (#276)
 

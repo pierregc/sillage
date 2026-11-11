@@ -144,7 +144,9 @@ public final class CUDATreeBuilder {
 
     /// Sorts `points` positions from `offset` into Morton order, written into `target` from
     /// `targetOffset` and counted from the first of them: the light tracers' walk order (#238).
-    /// On a GPU it uses this builder's own buffers, as `GPUTreeBuilder.encodeOrder` does.
+    /// On a GPU it is the radix sort of the tree, in this builder's own buffers, as
+    /// `GPUTreeBuilder.encodeOrder` sorts; on the CPU target a stable sort of the same codes by
+    /// the standard library (`BarnesHutTree.mortonOrder`), which gives the same order.
     public func sortOrder(
         positions: CUDABuffer, offset: Int, points: Int, into target: CUDABuffer,
         at targetOffset: Int
@@ -152,10 +154,8 @@ public final class CUDATreeBuilder {
         let points = min(max(points, 0), count)
         guard points > 0, offset >= 0, targetOffset >= 0 else { return }
         guard CUDAContext.target == .gpu else {
-            let tree = BarnesHutTree(leafCapacity: leafCapacity, maximumDepth: maximumDepth)
             let chunk = try positions.download(SIMD3<Float>.self, count: points, from: offset * 16)
-            tree.build(positions: chunk, mass: [Float](repeating: 0, count: points))
-            return try target.upload(tree.order, at: targetOffset * 4)
+            return try target.upload(BarnesHutTree.mortonOrder(of: chunk), at: targetOffset * 4)
         }
         try check(
             sc_tree_sort_order(

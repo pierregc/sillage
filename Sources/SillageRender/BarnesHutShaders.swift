@@ -6,7 +6,7 @@ enum BarnesHutShaders {
 
         // What is outside `#if defined(__METAL_VERSION__)` is shared with the CUDA engine, which
         // compiles it through cuda/include/msl_compat.h (docs/notes/one-kernel-source.md): the
-        // massive particles' kernels (#274). The light tracers' are still Metal's alone (#275).
+        // massive particles' kernels (#274) and the light tracers' (#275).
         #if defined(__METAL_VERSION__)
         #define SHARED static
         #define SHARED_CONSTANT constant
@@ -565,6 +565,129 @@ enum BarnesHutShaders {
             cost[slot] = work;
         }
 
+        // A tracer's gas forms its stars at the chance of the massive gas particle just before
+        // it in Morton order, almost always in its own cell or the next one. Drawn from the
+        // same distribution, tracer gas is equally likely to follow any massive gas particle,
+        // so the chances it reads are distributed as theirs are. A tracer's formation time is
+        // the w of its position, its kind in the word in the w of its velocity (#238).
+        SHARED void tracerFormStars(device float4 *states, device const uint4 *motions,
+                                    device const ulong *codes, device const float *frame,
+                                    device const float *slotChances, constant SFParams &s,
+                                    uint2 counts, uint i) {
+            if (i >= counts.x || counts.y == 0u || s.nodeCount == 0u) { return; }
+            if (((motions[i].w >> 4) & 7u) != 2u) { return; }
+            float4 state = states[i];
+            if (state.w < 1e8f) { return; }
+            const float resolution = 2097151.0f;
+            float3 local = (state.xyz - float3(frame[0], frame[1], frame[2])) * frame[3];
+            local = clamp(local, 0.0f, resolution);
+            ulong code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
+                       | bhSpread(uint(local.z));
+            uint low = 0u;
+            uint high = counts.y;
+            while (low < high) {
+                uint middle = (low + high) / 2u;
+                if (codes[middle] < code) { low = middle + 1u; } else { high = middle; }
+            }
+            // Gas is a minority of the tree, dark matter included, so it may be a few slots
+            // back. Far from any, there is none to read.
+            float chance = -1.0f;
+            for (uint back = 0u; back < 256u && back < low && chance < 0.0f; ++back) {
+                chance = slotChances[low - 1u - back];
+            }
+            for (uint ahead = low; ahead < min(low + 256u, counts.y) && chance < 0.0f; ++ahead) {
+                chance = slotChances[ahead];
+            }
+            if (chance <= 0.0f) { return; }
+            if (hashUnit(i | 0x80000000u, s.seed) >= chance) { return; }
+            state.w = s.time;
+            states[i] = state;
+        }
+
+        // Light tracers (#238) hold a position with the time their stars formed in w, and a
+        // velocity with a packed word in w: galaxy in bits 0 to 3, kind in 4 to 6.
+        SHARED void tracerDrift(device float4 *states, device const uint4 *motions,
+                                constant BHParams &p, uint i) {
+            if (i >= p.particleCount) { return; }
+            float4 state = states[i];
+            state.xyz += as_type<float3>(motions[i].xyz) * p.timeStep;
+            states[i] = state;
+        }
+
+        struct TracerStepParams {
+            uint tracerCount;
+            uint haloCount;
+            float timeStep;
+            float openingAngleSquared;
+            float softeningSquared;
+            float gravitationalConstant;
+            uint chunkStart;
+            /// The walk order is sorted a chunk at a time and counts from each chunk's start.
+            uint sortChunk;
+            uint holeCount;
+            /// Zero when no disk is being cooled.
+            uint diskCount;
+            /// 0 opens the first step, 1 closes this one and opens the next, 2 only writes
+            /// the acceleration.
+            uint mode;
+            uint _pad;
+        };
+
+        // A light tracer's whole force pass, fused so it keeps no acceleration of its own: the
+        // walk through the massive tree, which no leaf of holds it, the analytic halos and the
+        // black holes, then this step's closing half kick, the cooling and the next step's
+        // opening half kick, which is what a massive particle gets from the kick, the cooling
+        // and the next step's kick and drift. The drift alone is left for the next step.
+        SHARED void tracerStep(device float4 *states, device uint4 *motions,
+                               device const float4 *sorted, device const BHNode *nodes,
+                               device const float4 *moments, device const uint *order,
+                               device const float *frame, constant HaloGPU *haloList,
+                               constant HoleGPU *holes, device const float3 *massive,
+                               constant DiskCooling *disks, constant TracerStepParams &p,
+                               device float3 *probe, bool quadrupole, bool opensHoldingCells,
+                               uint gid) {
+            uint slot = gid + p.chunkStart;
+            if (slot >= p.tracerCount) { return; }
+            uint i = slot - slot % p.sortChunk + order[slot];
+            float3 position = states[i].xyz;
+            uint4 motion = motions[i];
+            // Placed by the rule the tree sorted by; outside the root it is in no cell at all.
+            const float resolution = 2097151.0f;
+            float3 local = (position - float3(frame[0], frame[1], frame[2])) * frame[3];
+            bool inRoot = all(local >= 0.0f) && all(local <= resolution);
+            local = clamp(local, 0.0f, resolution);
+            ulong code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
+                       | bhSpread(uint(local.z));
+            uint work = 0;
+            float3 acceleration = bhWalk(position, code, inRoot, 0xFFFFFFFFu, sorted, nodes,
+                                         moments, p.openingAngleSquared, p.softeningSquared,
+                                         p.gravitationalConstant, quadrupole,
+                                         opensHoldingCells, work)
+                                + halos(position, haloList, p.haloCount, true);
+            for (uint h = 0; h < p.holeCount; ++h) {
+                float3 d = position - massive[as_type<uint>(holes[h].shape.y)];
+                float r2 = dot(d, d) + holes[h].shape.x;
+                float inverse = 1.0f / (r2 * sqrt(r2));
+                acceleration -= d * (holes[h].massG.w * inverse);
+            }
+            if (p.mode == 2u) {
+                probe[i] = acceleration;
+                return;
+            }
+            float3 velocity = as_type<float3>(motion.xyz);
+            float halfStep = p.timeStep * 0.5f;
+            if (p.mode == 1u) {
+                velocity += acceleration * halfStep;
+                uint kind = (motion.w >> 4) & 7u;
+                if (kind < 3u && p.diskCount > 0u) {
+                    DiskCooling disk = disks[min(motion.w & 15u, p.diskCount - 1u)];
+                    velocity = bhCool(position, velocity, acceleration, disk);
+                }
+            }
+            velocity += acceleration * halfStep;
+            motions[i] = uint4(as_type<uint3>(velocity), motion.w);
+        }
+
         #if defined(__METAL_VERSION__)
 
         kernel void bhKickDrift(device float3 *positions [[buffer(0)]],
@@ -609,11 +732,6 @@ enum BarnesHutShaders {
                              slotChances, bhLeafChances, n);
         }
 
-        // A tracer's gas forms its stars at the chance of the massive gas particle just before
-        // it in Morton order, almost always in its own cell or the next one. Drawn from the
-        // same distribution, tracer gas is equally likely to follow any massive gas particle,
-        // so the chances it reads are distributed as theirs are. A tracer's formation time is
-        // the w of its position, its kind in the word in the w of its velocity (#238).
         kernel void bhTracerFormStars(device float4 *states [[buffer(0)]],
                                       device const uint4 *motions [[buffer(1)]],
                                       device const ulong *codes [[buffer(3)]],
@@ -622,34 +740,7 @@ enum BarnesHutShaders {
                                       constant SFParams &s [[buffer(6)]],
                                       constant uint2 &counts [[buffer(7)]],
                                       uint i [[thread_position_in_grid]]) {
-            if (i >= counts.x || counts.y == 0u || s.nodeCount == 0u) { return; }
-            if (((motions[i].w >> 4) & 7u) != 2u) { return; }
-            float4 state = states[i];
-            if (state.w < 1e8f) { return; }
-            const float resolution = 2097151.0f;
-            float3 local = (state.xyz - float3(frame[0], frame[1], frame[2])) * frame[3];
-            local = clamp(local, 0.0f, resolution);
-            ulong code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
-                       | bhSpread(uint(local.z));
-            uint low = 0u;
-            uint high = counts.y;
-            while (low < high) {
-                uint middle = (low + high) / 2u;
-                if (codes[middle] < code) { low = middle + 1u; } else { high = middle; }
-            }
-            // Gas is a minority of the tree, dark matter included, so it may be a few slots
-            // back. Far from any, there is none to read.
-            float chance = -1.0f;
-            for (uint back = 0u; back < 256u && back < low && chance < 0.0f; ++back) {
-                chance = slotChances[low - 1u - back];
-            }
-            for (uint ahead = low; ahead < min(low + 256u, counts.y) && chance < 0.0f; ++ahead) {
-                chance = slotChances[ahead];
-            }
-            if (chance <= 0.0f) { return; }
-            if (hashUnit(i | 0x80000000u, s.seed) >= chance) { return; }
-            state.w = s.time;
-            states[i] = state;
+            tracerFormStars(states, motions, codes, frame, slotChances, s, counts, i);
         }
 
         kernel void bhGather(device float4 *sorted [[buffer(0)]],
@@ -710,42 +801,13 @@ enum BarnesHutShaders {
                                 codes, bhQuadrupole, bhOpensHoldingCells, gid);
         }
 
-        // Light tracers (#238) hold a position with the time their stars formed in w, and a
-        // velocity with a packed word in w: galaxy in bits 0 to 3, kind in 4 to 6.
         kernel void bhTracerDrift(device float4 *states [[buffer(0)]],
                                   device const uint4 *motions [[buffer(1)]],
                                   constant BHParams &p [[buffer(2)]],
                                   uint i [[thread_position_in_grid]]) {
-            if (i >= p.particleCount) { return; }
-            float4 state = states[i];
-            state.xyz += as_type<float3>(motions[i].xyz) * p.timeStep;
-            states[i] = state;
+            tracerDrift(states, motions, p, i);
         }
 
-        struct TracerStepParams {
-            uint tracerCount;
-            uint haloCount;
-            float timeStep;
-            float openingAngleSquared;
-            float softeningSquared;
-            float gravitationalConstant;
-            uint chunkStart;
-            /// The walk order is sorted a chunk at a time and counts from each chunk's start.
-            uint sortChunk;
-            uint holeCount;
-            /// Zero when no disk is being cooled.
-            uint diskCount;
-            /// 0 opens the first step, 1 closes this one and opens the next, 2 only writes
-            /// the acceleration.
-            uint mode;
-            uint _pad;
-        };
-
-        // A light tracer's whole force pass, fused so it keeps no acceleration of its own: the
-        // walk through the massive tree, which no leaf of holds it, the analytic halos and the
-        // black holes, then this step's closing half kick, the cooling and the next step's
-        // opening half kick, which is what a massive particle gets from the kick, the cooling
-        // and the next step's kick and drift. The drift alone is left for the next step.
         kernel void bhTracerStep(device float4 *states [[buffer(0)]],
                                  device uint4 *motions [[buffer(1)]],
                                  device const float4 *sorted [[buffer(2)]],
@@ -760,46 +822,8 @@ enum BarnesHutShaders {
                                  constant TracerStepParams &p [[buffer(11)]],
                                  device float3 *probe [[buffer(12)]],
                                  uint gid [[thread_position_in_grid]]) {
-            uint slot = gid + p.chunkStart;
-            if (slot >= p.tracerCount) { return; }
-            uint i = slot - slot % p.sortChunk + order[slot];
-            float3 position = states[i].xyz;
-            uint4 motion = motions[i];
-            // Placed by the rule the tree sorted by; outside the root it is in no cell at all.
-            const float resolution = 2097151.0f;
-            float3 local = (position - float3(frame[0], frame[1], frame[2])) * frame[3];
-            bool inRoot = all(local >= 0.0f) && all(local <= resolution);
-            local = clamp(local, 0.0f, resolution);
-            ulong code = (bhSpread(uint(local.x)) << 2) | (bhSpread(uint(local.y)) << 1)
-                       | bhSpread(uint(local.z));
-            uint work = 0;
-            float3 acceleration = bhWalk(position, code, inRoot, 0xFFFFFFFFu, sorted, nodes,
-                                         moments, p.openingAngleSquared, p.softeningSquared,
-                                         p.gravitationalConstant, bhQuadrupole,
-                                         bhOpensHoldingCells, work)
-                                + halos(position, haloList, p.haloCount, true);
-            for (uint h = 0; h < p.holeCount; ++h) {
-                float3 d = position - massive[as_type<uint>(holes[h].shape.y)];
-                float r2 = dot(d, d) + holes[h].shape.x;
-                float inverse = 1.0f / (r2 * sqrt(r2));
-                acceleration -= d * (holes[h].massG.w * inverse);
-            }
-            if (p.mode == 2u) {
-                probe[i] = acceleration;
-                return;
-            }
-            float3 velocity = as_type<float3>(motion.xyz);
-            float halfStep = p.timeStep * 0.5f;
-            if (p.mode == 1u) {
-                velocity += acceleration * halfStep;
-                uint kind = (motion.w >> 4) & 7u;
-                if (kind < 3u && p.diskCount > 0u) {
-                    DiskCooling disk = disks[min(motion.w & 15u, p.diskCount - 1u)];
-                    velocity = bhCool(position, velocity, acceleration, disk);
-                }
-            }
-            velocity += acceleration * halfStep;
-            motions[i] = uint4(as_type<uint3>(velocity), motion.w);
+            tracerStep(states, motions, sorted, nodes, moments, order, frame, haloList, holes,
+                       massive, disks, p, probe, bhQuadrupole, bhOpensHoldingCells, gid);
         }
         #endif
         """

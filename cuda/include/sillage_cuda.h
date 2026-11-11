@@ -53,6 +53,8 @@ void sc_context_destroy(sc_context *context);
 sc_status sc_context_info(const sc_context *context, sc_device_info *info);
 /* Waits for the work queued so far, and reports an error a kernel left behind. */
 sc_status sc_context_synchronize(sc_context *context);
+/* The device bytes the context's buffers hold, and the most they have held (#275). */
+sc_status sc_context_memory(const sc_context *context, uint64_t *held, uint64_t *peak);
 
 /* Device memory. A buffer belongs to its context, which must outlive it. */
 typedef struct sc_buffer sc_buffer;

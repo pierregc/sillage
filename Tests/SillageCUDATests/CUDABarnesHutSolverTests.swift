@@ -21,7 +21,7 @@ private let needsMetalRuns: Comment =
 /// the CPU's own tree. Serialized: some tests move the solver's settings, which are global.
 @Suite("CUDA solver", .serialized)
 struct CUDABarnesHutSolverTests {
-    private func cluster(count: Int, seed: UInt64 = 3) -> (
+    func cluster(count: Int, seed: UInt64 = 3) -> (
         positions: [SIMD3<Float>], mass: [Float]
     ) {
         var generator = SeededGenerator(seed: seed)
@@ -35,7 +35,7 @@ struct CUDABarnesHutSolverTests {
         return (positions, mass)
     }
 
-    private func clusterScene(_ count: Int, angle: Float = 0.4) -> SceneConfig {
+    func clusterScene(_ count: Int, angle: Float = 0.4) -> SceneConfig {
         // diskMassFraction 1 leaves no halo mass, so the result is pure self-gravity.
         var scene = SceneConfig(
             name: "cluster",
@@ -50,7 +50,7 @@ struct CUDABarnesHutSolverTests {
         return scene
     }
 
-    private func system(_ positions: [SIMD3<Float>], _ mass: [Float]) -> ParticleSystem {
+    func system(_ positions: [SIMD3<Float>], _ mass: [Float]) -> ParticleSystem {
         var particles = ParticleSystem(capacity: positions.count)
         for index in positions.indices {
             particles.append(
@@ -61,7 +61,7 @@ struct CUDABarnesHutSolverTests {
 
     /// A merger of two disks that cool, with gas that forms stars, in rigid analytic halos or,
     /// with `liveHalos`, in halos of particles as a hires has them: every pass of a step runs.
-    private func merger(_ count: Int, liveHalos: Bool = false) -> SceneConfig {
+    func merger(_ count: Int, liveHalos: Bool = false) -> SceneConfig {
         var scene = Archetype.antennae.scene(batchSeed: 5, occurrence: 1, particleCount: count)
         if liveHalos {
             for index in scene.galaxies.indices { scene.galaxies[index].haloParticleRatio = 1.5 }
@@ -70,7 +70,7 @@ struct CUDABarnesHutSolverTests {
         return scene
     }
 
-    private func disks(_ states: [DiskState]) -> [Float] {
+    func disks(_ states: [DiskState]) -> [Float] {
         states.flatMap {
             [
                 $0.axis.x, $0.axis.y, $0.axis.z, $0.coherence, $0.reference, $0.thickness,
@@ -79,11 +79,11 @@ struct CUDABarnesHutSolverTests {
         }
     }
 
-    private func bits(_ values: [SIMD3<Float>]) -> [UInt32] {
+    func bits(_ values: [SIMD3<Float>]) -> [UInt32] {
         values.flatMap { [$0.x.bitPattern, $0.y.bitPattern, $0.z.bitPattern] }
     }
 
-    private func expectSameRun(
+    func expectSameRun(
         _ a: CUDABarnesHutSolver, _ b: CUDABarnesHutSolver, _ what: Comment
     ) throws {
         let (first, second) = (a.particles, b.particles)
@@ -382,10 +382,10 @@ struct CUDABarnesHutSolverTests {
 
     // MARK: - Against Metal
 
-    private static let sceneFile = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    static let sceneFile = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .deletingLastPathComponent().appendingPathComponent("Fixtures/engines/scene/scene.json")
 
-    private func temporary(_ name: String) -> URL {
+    func temporary(_ name: String) -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent(
             "sillage-cuda-\(name)-\(UUID().uuidString)", isDirectory: true)
     }
