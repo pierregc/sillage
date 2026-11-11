@@ -15,6 +15,12 @@ struct KernelSourceTests {
 
     /// The stride of the Swift mirror of each struct `SILLAGE_STRUCT` names.
     static let mirrors: [String: Int] = [
+        "BarnesHutShaders.BHNode": MemoryLayout<BHNode>.stride,
+        "BarnesHutShaders.BHParams": MemoryLayout<BHParams>.stride,
+        "BarnesHutShaders.HaloGPU": MemoryLayout<HaloGPU>.stride,
+        "BarnesHutShaders.DiskCooling": MemoryLayout<DiskCoolingGPU>.stride,
+        "BarnesHutShaders.SFParams": MemoryLayout<StarFormationGPU>.stride,
+        "BarnesHutShaders.HoleGPU": MemoryLayout<HoleGPU>.stride,
         "GPUTreeShaders.BHNode": MemoryLayout<BHNode>.stride,
         "GPUTreeShaders.TreeParams": MemoryLayout<GPUTreeBuilder.Params>.stride,
     ]

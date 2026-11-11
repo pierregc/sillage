@@ -240,7 +240,7 @@ public struct RunCheckpoint: Sendable {
 
     /// `length` bytes from `start`, a piece at a time: one write of 2 GB or more fails on macOS
     /// (`EINVAL`), and a buffer of 200 M positions is 3.2 GB.
-    static func write(_ start: UnsafeMutableRawPointer, _ length: Int, to handle: FileHandle) throws {
+    public static func write(_ start: UnsafeMutableRawPointer, _ length: Int, to handle: FileHandle) throws {
         var done = 0
         while done < length {
             let piece = min(length - done, 256 << 20)

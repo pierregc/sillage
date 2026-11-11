@@ -17,6 +17,7 @@ PreviewTests.swift         # ImageIO
 QueueRunnerTests.swift     # ProcessProbe and Spawn, which only know macOS
 RecordingTests.swift       # Metal
 RunVideosTests.swift       # CoreGraphics, Metal
+SolverCheckTests.swift     # Metal
 StageJobsTests.swift       # ExportedFile, which reads videos with AVFoundation
 StyleEditTests.swift       # CoreFoundation's CFGetTypeID
 TracerWalkDumpTests.swift  # Metal

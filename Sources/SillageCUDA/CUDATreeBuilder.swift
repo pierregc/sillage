@@ -195,6 +195,8 @@ public final class CUDATreeBuilder {
             }
         }
         try check(status, "laying out a tree of \(level.nodes.count) nodes")
+        // The codes the walk reads of a massive particle, by Morton slot (#274).
+        if tree.sortedCodes.count == count { try codes.upload(tree.sortedCodes) }
     }
 
     private func layOutCPUTree(positions: CUDABuffer) throws {
