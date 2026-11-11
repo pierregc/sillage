@@ -430,75 +430,17 @@ public final class GPUTreeBuilder {
 
     /// How this tree compares with a CPU build over the same positions. Both are walked from
     /// the root, so the two layouts may differ; masses are compared to the bit.
-    public struct Comparison: Sendable {
-        public var nodes = (gpu: 0, cpu: 0)
-        public var orderMatches = false
-        public var firstDifference: String?
-        public var massesCompared = 0
-        public var massesDiffering = 0
-        public var largestRelativeGap: Float = 0
-        public var momentsCompared = 0
-        public var momentsDiffering = 0
-    }
+    public typealias Comparison = TreeComparison
 
     public func compare(with tree: BarnesHutTree) -> Comparison {
-        var result = Comparison()
         let gpuCount = nodeCount
-        result.nodes = (gpuCount, tree.nodes.count)
         let gpuOrder = UnsafeBufferPointer(
             start: order.contents().bindMemory(to: UInt32.self, capacity: count), count: count)
-        result.orderMatches = tree.order.count == count && tree.order.elementsEqual(gpuOrder)
         let gpuNodes = UnsafeBufferPointer(
             start: nodes.contents().bindMemory(to: BHNode.self, capacity: gpuCount), count: gpuCount)
-        let cpuNodes = tree.nodes
         let gpuMoments = UnsafeBufferPointer(
             start: moments.contents().bindMemory(to: SIMD4<Float>.self, capacity: gpuCount * 2),
             count: quadrupole ? gpuCount * 2 : 0)
-        guard gpuCount > 0, !cpuNodes.isEmpty else {
-            if gpuCount != cpuNodes.count { result.firstDifference = "one tree is empty" }
-            return result
-        }
-        var stack = [(0, 0)]
-        while let (g, c) = stack.popLast() {
-            guard g < gpuCount, c < cpuNodes.count else {
-                result.firstDifference = "gpu node \(g) or cpu node \(c) is out of range"
-                return result
-            }
-            let a = gpuNodes[g]
-            let b = cpuNodes[c]
-            if a.packed.x.bitPattern != b.packed.x.bitPattern || a.signedCount != b.signedCount
-                || a.digit != b.digit || (a.isLeaf && a.range != b.range)
-            {
-                result.firstDifference =
-                    "gpu node \(g) (\(a.packed.x), \(a.range), \(a.signedCount), \(a.digit)) against"
-                    + " cpu node \(c) (\(b.packed.x), \(b.range), \(b.signedCount), \(b.digit))"
-                return result
-            }
-            result.massesCompared += 1
-            if !Self.identical(a.comMass, b.comMass) {
-                result.massesDiffering += 1
-                for axis in 0..<4 {
-                    let gap = abs(a.comMass[axis] - b.comMass[axis])
-                    let scale = axis == 3 ? abs(b.comMass[3]) : max(abs(b.comMass[axis]), 1e-3)
-                    if scale > 0 { result.largestRelativeGap = max(result.largestRelativeGap, gap / scale) }
-                }
-            }
-            if quadrupole && tree.quadrupoles.count == cpuNodes.count * 2 {
-                result.momentsCompared += 1
-                if !Self.identical(gpuMoments[2 * g], tree.quadrupoles[2 * c])
-                    || !Self.identical(gpuMoments[2 * g + 1], tree.quadrupoles[2 * c + 1])
-                {
-                    result.momentsDiffering += 1
-                }
-            }
-            if !a.isLeaf {
-                for k in 0..<a.childCount { stack.append((a.childOffset + k, b.childOffset + k)) }
-            }
-        }
-        return result
-    }
-
-    private static func identical(_ a: SIMD4<Float>, _ b: SIMD4<Float>) -> Bool {
-        unsafeBitCast(a, to: SIMD4<UInt32>.self) == unsafeBitCast(b, to: SIMD4<UInt32>.self)
+        return tree.compare(nodes: gpuNodes, order: gpuOrder, moments: quadrupole ? gpuMoments : nil)
     }
 }

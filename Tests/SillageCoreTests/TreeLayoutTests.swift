@@ -76,5 +76,45 @@ struct TreeLayoutTests {
         #expect(bytes(tree.order) == (try file("order.bin")))
         #expect(bytes(level.nodes) == (try file("nodes.bin")))
         #expect(bytes(level.moments) == (try file("moments.bin")))
+        // What only the GPU builders kept until #273, which the CUDA engine's CPU target lays
+        // out from this tree.
+        #expect(bytes(tree.frame) == (try file("frame.bin")))
+        let starts = try #require(BarnesHutTree.levelStarts(of: level.nodes, maximumDepth: 20))
+        #expect(bytes(starts.map { UInt32($0) }) == (try file("levels.bin")))
+        let spacing = try file("spacing.bin").withUnsafeBytes {
+            Array($0.bindMemory(to: SIMD2<UInt32>.self))
+        }
+        let sources = try #require(BarnesHutTree.levelOrder(of: level.nodes))
+        #expect(sources == Array(0..<level.nodes.count))
+        #expect(
+            BarnesHutTree.levelOrdered(spacing: spacing, sources: sources, ordered: level.nodes)
+                == spacing)
+    }
+
+    /// A depth-first tree's spacing records follow their cells, and a branch's names its first
+    /// child where the level order put it.
+    @Test func spacingRecordsFollowTheirCells() throws {
+        var generator = SeededGenerator(seed: 13)
+        let positions = (0..<5_000).map { _ in
+            SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
+        }
+        let tree = BarnesHutTree()
+        tree.build(positions: positions, mass: positions.map { _ in 1 })
+        let records = tree.nodes.enumerated().map { index, node in
+            SIMD2<UInt32>(UInt32(index), node.isLeaf ? 7 : UInt32(node.childOffset) << 8 | 0x5A)
+        }
+        let sources = try #require(BarnesHutTree.levelOrder(of: tree.nodes))
+        let level = try #require(BarnesHutTree.levelOrdered(tree.nodes))
+        let moved = BarnesHutTree.levelOrdered(spacing: records, sources: sources, ordered: level.nodes)
+        for (index, node) in level.nodes.enumerated() {
+            #expect(moved[index].x == UInt32(sources[index]))
+            #expect(moved[index].y == (node.isLeaf ? 7 : UInt32(node.childOffset) << 8 | 0x5A))
+        }
+        let starts = try #require(BarnesHutTree.levelStarts(of: level.nodes, maximumDepth: 20))
+        #expect(starts.count == 22 && starts[0] == 0 && starts[21] == level.nodes.count)
+        #expect(zip(starts, starts.dropFirst()).allSatisfy { $0 <= $1 })
+        #expect(BarnesHutTree.levelStarts(of: tree.nodes, maximumDepth: 20) == nil)
+        #expect(BarnesHutTree.levelStarts(of: level.nodes, maximumDepth: 2) == nil)
+        #expect(BarnesHutTree.levelStarts(of: [], maximumDepth: 3) == [0, 0, 0, 0, 0])
     }
 }

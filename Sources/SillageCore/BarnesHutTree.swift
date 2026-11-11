@@ -73,6 +73,9 @@ public final class BarnesHutTree {
     /// node's centre of mass, as (xx, yy, zz, xy) then (xz, yz, 0, 0).
     public private(set) var quadrupoles: [SIMD4<Float>] = []
     public var computesQuadrupoles = false
+    /// The frame the codes were taken in, as `GPUTreeBuilder` keeps it: the root's corner,
+    /// the codes' scale, the root's half width, then three zeros. Empty without a root.
+    public private(set) var frame: [Float] = []
 
     public let leafCapacity: Int
     public let maximumDepth: Int
@@ -135,6 +138,7 @@ public final class BarnesHutTree {
             clock = Date()
         }
         let count = positions.count
+        frame = []
         guard count > 0 else {
             nodes.removeAll(keepingCapacity: true)
             order = []
@@ -184,6 +188,7 @@ public final class BarnesHutTree {
         let resolution: Float = 2_097_151
         let inverse = resolution / (2 * half)
         let origin = center - SIMD3<Float>(repeating: half)
+        frame = [origin.x, origin.y, origin.z, inverse, half, 0, 0, 0]
         let codeChunk = max(count / (ProcessInfo.processInfo.activeProcessorCount * 4), 8192)
         let codeChunks = (count + codeChunk - 1) / codeChunk
         sortedCodes.withUnsafeMutableBufferPointer { target in
