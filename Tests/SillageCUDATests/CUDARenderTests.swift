@@ -478,15 +478,20 @@ struct CUDARenderTests {
 
     private static let targets = ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_TARGETS"]
 
-    /// What the two renderers are held to on a frame, from what #276 measured: the whole light
-    /// of the frame, and the pixels' own differences once the CUDA side blends in half floats
-    /// as Metal does.
+    /// What the two renderers are held to on a frame, about twice what #276 measured
+    /// (docs/notes/cuda-engine.md): with the CUDA side blending in half floats as Metal does,
+    /// the frame's whole light and dust, and the pixels' own light wherever Metal holds enough
+    /// of it for a half float's 11 bits; in fixed point, the coverage, which no blend rounds.
     private static func expectAgreement(_ comparison: CUDARenderChecks.Comparison) {
         let name = "\(comparison.look) \(comparison.frame)"
-        #expect(abs(comparison.halfLight.total - 1) < 0.01, "\(name): the light's total")
-        #expect(comparison.halfLight.median < 0.01, "\(name): the light's median difference")
+        #expect(abs(comparison.halfLight.total - 1) < 0.001, "\(name): the light's total")
+        for decade in comparison.halfLight.decades where decade.from >= 1e-4 {
+            #expect(decade.median < 0.005, "\(name): the light over \(decade.from)")
+        }
+        #expect(comparison.coverage.ninety < 0.005, "\(name): the coverage")
         if let dust = comparison.halfDust, dust.lit > 0 {
-            #expect(abs(dust.total - 1) < 0.02, "\(name): the dust's total")
+            #expect(abs(dust.total - 1) < 0.001, "\(name): the dust's total")
+            #expect(dust.median < 0.01, "\(name): the dust")
         }
     }
 

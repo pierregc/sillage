@@ -16,6 +16,7 @@
 #include <new>
 
 #include "engine.h"
+#include "raster.h"
 #include "Shaders.h"
 
 namespace metal {
@@ -157,49 +158,6 @@ static __device__ __forceinline__ uint claim(uint *counter) {
 #else
     return atomicAdd(counter, 1u);
 #endif
-}
-
-// What Metal's rasteriser does with a point, on a target of `width` by `height` pixels whose
-// centres sit at half integers: a point whose centre is outside the clip volume draws nothing,
-// its size is held between the smallest and the largest a point may have, and it covers the
-// pixels whose centre lies in the square of that size about its own.
-constexpr float smallestPoint = 1.0f;
-constexpr float largestPoint = 511.0f;
-
-struct Square {
-    float2 centre;
-    float size;
-    int left;
-    int right;
-    int top;
-    int bottom;
-};
-
-static __device__ __forceinline__ int pixelEdge(float edge, uint side) {
-    return int(min(max(ceilf(edge - 0.5f), 0.0f), float(side)));
-}
-
-static __device__ __forceinline__ bool pointSquare(float4 clip, float pointSize, uint width, uint height,
-                                                   Square &square) {
-    if (!(clip.w > 0.0f) || !(pointSize == pointSize)) { return false; }
-    if (!(clip.x >= -clip.w && clip.x <= clip.w && clip.y >= -clip.w && clip.y <= clip.w && clip.z >= 0.0f
-          && clip.z <= clip.w)) {
-        return false;
-    }
-    square.size = min(max(pointSize, smallestPoint), largestPoint);
-    square.centre = float2((clip.x / clip.w * 0.5f + 0.5f) * float(width),
-                           (0.5f - clip.y / clip.w * 0.5f) * float(height));
-    float reach = square.size * 0.5f;
-    square.left = pixelEdge(square.centre.x - reach, width);
-    square.right = pixelEdge(square.centre.x + reach, width);
-    square.top = pixelEdge(square.centre.y - reach, height);
-    square.bottom = pixelEdge(square.centre.y + reach, height);
-    return square.left < square.right && square.top < square.bottom;
-}
-
-// Where a pixel sits in the point's square, from 0 to 1 on each axis: Metal's point_coord.
-static __device__ __forceinline__ float2 pointCoord(const Square &square, int x, int y) {
-    return (float2(float(x) + 0.5f, float(y) + 0.5f) - square.centre) / square.size + 0.5f;
 }
 
 // The buffers of a pass, as Metal binds them to its vertex function.

@@ -523,7 +523,7 @@ extension CUDARenderChecks {
                     "  carrier: \(difference(carrier, metal, channels: 0..<4).summary)")
             }
             if let tags, let listed = target.files["tags"] {
-                let metal = try values(listed, in: folder, as: UInt8.self)
+                let metal = [UInt8](try data(listed, in: folder))
                 let same = zip(tags, metal).filter { ($0 * 255).rounded() == Float($1) }.count
                 comparison.lines.append("  tags: \(same) of \(metal.count) values the same")
             }
