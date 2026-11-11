@@ -171,7 +171,14 @@ namespace tree {
 // GPUTreeBuilder's dispatch shapes.
 constexpr uint32_t tileSize = 2048u;
 constexpr uint32_t radixBits = 8u;
+// A kernel that strides over the nodes gives each node to one thread whatever the grid, so the
+// CPU target runs one block of them: 1,024 blocks there are 262,144 calls a launch, nearly all
+// with nothing to do, and were most of a solver's step (#274).
+#if defined(SILLAGE_CPU)
+constexpr uint32_t strideGroups = 1u;
+#else
 constexpr uint32_t strideGroups = 1024u;
+#endif
 constexpr uint32_t width = 256u;
 #if defined(SILLAGE_CPU)
 static_assert(tileSize == gt::tileSize && radixBits == gt::radixBits && width == gt::sortThreads,

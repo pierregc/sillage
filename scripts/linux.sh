@@ -119,6 +119,7 @@ build_cuda() {
     echo "SillageCUDA links the $(cuda_target) target"
     swiftc -O -num-threads "$THREADS" -emit-library -emit-module -enable-testing \
         -module-name SillageCUDA -I "$BUILD" -I "$ROOT/cuda/include" -L "$BUILD" -lSillageCore \
+        -lSillageRender \
         $(cuda_sources) \
         -emit-module-path "$BUILD/SillageCUDA.swiftmodule" \
         -L "$ROOT/.build/cuda/lib" "${libraries[@]}" -lstdc++ \
