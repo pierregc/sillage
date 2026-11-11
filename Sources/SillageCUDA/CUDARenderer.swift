@@ -93,15 +93,30 @@ public final class CUDARenderer: FramePreparing {
 
     /// `externalPositions` and `externalFormation` are a solver's own buffers, read where they
     /// are. `laceTexels` is the side of the baked lace, `DustWeb.laceTexels` for a picture.
-    public init(
+    public convenience init(
         context: CUDAContext, particles: ParticleSystem, settings: RenderSettings,
+        externalPositions: CUDABuffer? = nil, externalFormation: CUDABuffer? = nil,
+        externalPositionOffset: Int = 0, largeSplatCapacity: Int = 0,
+        laceTexels: Int = DustWeb.laceTexels
+    ) throws {
+        try self.init(
+            context: context, attributes: ParticleAttributes(particles), settings: settings,
+            externalPositions: externalPositions, externalFormation: externalFormation,
+            externalPositionOffset: externalPositionOffset, largeSplatCapacity: largeSplatCapacity,
+            laceTexels: laceTexels)
+        if externalPositions == nil { try upload(positions: particles.positions) }
+    }
+
+    /// The same from attributes made elsewhere, as `ParticleAttributes` lays them out: another
+    /// renderer's, read back from its buffers. The positions are uploaded afterwards.
+    public init(
+        context: CUDAContext, attributes: ParticleAttributes, settings: RenderSettings,
         externalPositions: CUDABuffer? = nil, externalFormation: CUDABuffer? = nil,
         externalPositionOffset: Int = 0, largeSplatCapacity: Int = 0,
         laceTexels: Int = DustWeb.laceTexels
     ) throws {
         self.context = context
         self.settings = settings
-        let attributes = ParticleAttributes(particles)
         count = attributes.count
         drawnCount = attributes.drawnCount
         luminosityNormalisation = attributes.luminosityNormalisation
@@ -142,24 +157,31 @@ public final class CUDARenderer: FramePreparing {
             // Without lengths every particle is drawn with one spacing, as Metal's
             // `SmoothingField` starts.
             smoothing = try context.makeBuffer([Float](repeating: 0.05, count: count))
-            let table = StellarPopulation.table
-            try table.withUnsafeBytes { bytes in
-                try check(
-                    sc_render_set_stellar(
-                        made, bytes.baseAddress?.assumingMemoryBound(to: Float.self),
-                        UInt32(StellarPopulation.samples)),
-                    "the stellar population's table")
-            }
-            let stars = BackgroundStar.field(count: settings.starCount)
-            try stars.withUnsafeBytes { bytes in
-                try check(
-                    sc_render_set_starfield(made, bytes.baseAddress, UInt32(stars.count)),
-                    "the field stars")
-            }
-            if externalPositions == nil { try upload(positions: particles.positions) }
+            try setStellar(StellarPopulation.table)
+            try setStarfield(BackgroundStar.field(count: settings.starCount))
         } catch {
             sc_renderer_destroy(made)
             throw error
+        }
+    }
+
+    /// Colour temperature and light per unit mass against age: `StellarPopulation.table`
+    /// unless another is given.
+    public func setStellar(_ table: [SIMD2<Float>]) throws {
+        try table.withUnsafeBytes { bytes in
+            try check(
+                sc_render_set_stellar(
+                    handle, bytes.baseAddress?.assumingMemoryBound(to: Float.self), UInt32(table.count)),
+                "the stellar population's table")
+        }
+    }
+
+    /// The field stars: `BackgroundStar.field` of the settings' count unless others are given.
+    public func setStarfield(_ stars: [BackgroundStar]) throws {
+        try stars.withUnsafeBytes { bytes in
+            try check(
+                sc_render_set_starfield(handle, bytes.baseAddress, UInt32(stars.count)),
+                "the field stars")
         }
     }
 
@@ -190,6 +212,13 @@ public final class CUDARenderer: FramePreparing {
         mapped = GalaxyRamp.mapped(ramps)
     }
 
+    /// One ramp a galaxy slot, as `GalaxyRamp.ramps` makes them from a palette.
+    public func setRamps(_ ramps: [GalaxyRamp]) {
+        galaxyColours = []
+        self.ramps = ramps
+        mapped = GalaxyRamp.mapped(ramps)
+    }
+
     public func apply(_ look: RenderLook) {
         settings.apply(look)
         armPersistence = look.armPersistence
@@ -216,11 +245,7 @@ public final class CUDARenderer: FramePreparing {
     public func plan(
         camera: Camera, stages: ClosedRange<UInt32> = 0...1, first: Bool = true
     ) throws -> FramePlan {
-        if FramePlan.drawsWeb(settings, stages: stages), laceScale == nil {
-            var mean: Float = 0
-            try check(sc_render_bake_lace(handle, &mean), "baking the lace")
-            laceScale = 1 / max(mean, 1e-6)
-        }
+        if FramePlan.drawsWeb(settings, stages: stages) { try bakeLace() }
         return FramePlan(
             settings: settings, camera: camera, time: time, drawnCount: drawnCount,
             tracerCount: tracerCount, luminosityNormalisation: luminosityNormalisation,
@@ -242,8 +267,32 @@ public final class CUDARenderer: FramePreparing {
             threads: threads)
     }
 
+    /// One over the mean of the lace, baked the first time a frame draws the web.
+    @discardableResult
+    public func bakeLace() throws -> Float {
+        if let laceScale { return laceScale }
+        var mean: Float = 0
+        try check(sc_render_bake_lace(handle, &mean), "baking the lace")
+        let scale = 1 / max(mean, 1e-6)
+        laceScale = scale
+        return scale
+    }
+
+    /// The baked lace's first level, a float a texel, rows from the top.
+    public func lace(level: Int = 0, side: Int) throws -> [Float] {
+        try bakeLace()
+        guard let buffer = sc_render_target_of(handle, SC_RENDER_LACE) else {
+            throw CUDAError(.invalidArgument, "this renderer has no lace")
+        }
+        var offset = 0
+        for above in 0..<level { offset += (side << (level - above)) * (side << (level - above)) }
+        return try CUDABuffer(borrowing: buffer, of: self, context: context)
+            .download(Float.self, count: side * side, from: offset * 4)
+    }
+
     /// The same from a plan made elsewhere: another renderer's, or one read back from a file.
     public func draw(_ plan: FramePlan, particles: Range<Int>? = nil, threads: Int = 1) throws {
+        if plan.web != nil { try bakeLace() }
         try bind()
         if plan.clears { try check(sc_render_clear(handle), "emptying the light and the dust") }
         let everything = split(0..<(drawnCount + tracerCount))

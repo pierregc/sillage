@@ -474,7 +474,57 @@ struct CUDARenderTests {
         #expect(timed.count == 5 && timed.contains { $0.contains("second way") })
     }
 
+    // MARK: - Against Metal
+
+    private static let targets = ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_TARGETS"]
+
+    /// What the two renderers are held to on a frame, from what #276 measured: the whole light
+    /// of the frame, and the pixels' own differences once the CUDA side blends in half floats
+    /// as Metal does.
+    private static func expectAgreement(_ comparison: CUDARenderChecks.Comparison) {
+        let name = "\(comparison.look) \(comparison.frame)"
+        #expect(abs(comparison.halfLight.total - 1) < 0.01, "\(name): the light's total")
+        #expect(comparison.halfLight.median < 0.01, "\(name): the light's median difference")
+        if let dust = comparison.halfDust, dust.lit > 0 {
+            #expect(abs(dust.total - 1) < 0.02, "\(name): the dust's total")
+        }
+    }
+
+    /// The frames of the `assets/cuda-checks` branch, which the Mac drew with Metal and wrote
+    /// with what they were drawn from (`export --dump-targets`), drawn here from the same bytes:
+    /// the relative differences are printed, and written for the pictures when
+    /// `SILLAGE_CUDA_RENDER_MAPS` names a folder. docs/notes/cuda-engine.md has the numbers.
+    @Test(
+        .enabled(
+            if: targets != nil,
+            "set SILLAGE_CUDA_RENDER_TARGETS to the render folder of the assets/cuda-checks branch"))
+    func theParticlePassesAgreeWithMetal() throws {
+        let folder = URL(fileURLWithPath: try #require(Self.targets))
+        let maps = ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_MAPS"]
+        let comparisons = try CUDARenderChecks.compare(
+            folder: folder, maps: maps.map { URL(fileURLWithPath: $0) })
+        #expect(!comparisons.isEmpty)
+        for comparison in comparisons {
+            for line in comparison.lines { print("CUDARENDER", line) }
+            Self.expectAgreement(comparison)
+        }
+    }
+
     // MARK: - On a GPU, in #283
+
+    /// The same comparison at 4K with supersampling 2, from a take at 8 M drawn from 2 M
+    /// massive: the folder the Mac's `export --dump-targets` filled for it, shipped with the
+    /// box's data and named by `SILLAGE_CUDA_RENDER_4K`.
+    @Test(.enabled(if: onAGPU, needsAGPU))
+    func theParticlePassesAgreeWithMetalAt4K() throws {
+        let folder = try #require(
+            ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_4K"],
+            "set SILLAGE_CUDA_RENDER_4K to the folder of Metal's targets at 4K")
+        for comparison in try CUDARenderChecks.compare(folder: URL(fileURLWithPath: folder), threads: 1) {
+            for line in comparison.lines { print("CUDARENDER", line) }
+            Self.expectAgreement(comparison)
+        }
+    }
 
     /// The faint light at 200 M drawn, where a particle carries 0.005 of the light: the
     /// sampler's starting positions accumulated in half floats as Metal blends them, and in

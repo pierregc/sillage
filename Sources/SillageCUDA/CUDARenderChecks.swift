@@ -209,3 +209,361 @@ public enum CUDARenderChecks {
         return lines
     }
 }
+
+// MARK: - Against Metal's targets
+
+/// The CUDA renderer against the targets Metal left (#276): the folder `sillage-render export
+/// --dump-targets` fills on the Mac holds, for chosen frames of a take and a few looks, the
+/// light and the dust before any post-processing with the buffers and uniforms they were drawn
+/// from, byte for byte. The same frames are drawn here from those very bytes and compared.
+extension CUDARenderChecks {
+    public enum Failure: Error, CustomStringConvertible {
+        case folder(String)
+
+        public var description: String {
+            switch self {
+            case .folder(let message): message
+            }
+        }
+    }
+
+    /// How far two targets are apart, over the pixels where either holds something.
+    public struct Difference {
+        public var lit = 0
+        /// The sum of mine over the sum of theirs.
+        public var total = 1.0
+        public var median: Float = 0
+        public var ninety: Float = 0
+        public var ninetyNine: Float = 0
+        public var largest: Float = 0
+        /// The relative difference a pixel, rows from the top, zero where neither holds anything.
+        public var map: [Float] = []
+        /// Lit pixels and their median relative difference, by the decade of their value.
+        public var decades: [(from: Float, pixels: Int, median: Float, ninetyNine: Float)] = []
+
+        var summary: String {
+            "\(lit) pixels, total \(total), relative difference: median \(median), 90 % \(ninety),"
+                + " 99 % \(ninetyNine), largest \(largest)"
+        }
+    }
+
+    /// One target of the Mac drawn here.
+    public struct Comparison {
+        public var look: String
+        public var frame: String
+        public var shot: String
+        public var width: Int
+        public var height: Int
+        /// The light in fixed point against Metal's, then accumulated in half floats as Metal
+        /// blends them, one thread in Metal's order.
+        public var light = Difference()
+        public var halfLight = Difference()
+        public var coverage = Difference()
+        public var dust: Difference?
+        public var halfDust: Difference?
+        public var lines: [String] = []
+        public var metalLight: [Float] = []
+        public var cudaLight: [Float] = []
+    }
+
+    static func float(half bits: UInt16) -> Float {
+        let sign = UInt32(bits & 0x8000) << 16
+        let exponent = UInt32(bits >> 10) & 0x1F
+        let mantissa = UInt32(bits & 0x3FF)
+        if exponent == 0 {
+            let small = Float(mantissa) * 5.9604645e-8
+            return sign != 0 ? -small : small
+        }
+        if exponent == 31 { return Float(bitPattern: sign | 0x7F80_0000 | (mantissa << 13)) }
+        return Float(bitPattern: sign | ((exponent + 112) << 23) | (mantissa << 13))
+    }
+
+    private static func data(_ entry: RenderTargetManifest.Entry, in folder: URL) throws -> Data {
+        let data = try Data(contentsOf: folder.appendingPathComponent(entry.file))
+        guard data.count == entry.count * entry.stride else {
+            throw Failure.folder(
+                "\(entry.file): \(data.count) bytes, not \(entry.count) of \(entry.stride)")
+        }
+        return data
+    }
+
+    private static func values<T>(
+        _ entry: RenderTargetManifest.Entry, in folder: URL, as type: T.Type
+    ) throws -> [T] {
+        let data = try data(entry, in: folder)
+        guard entry.stride == MemoryLayout<T>.stride else {
+            throw Failure.folder(
+                "\(entry.file): \(entry.stride) bytes a value, not \(MemoryLayout<T>.stride)")
+        }
+        return data.withUnsafeBytes { Array($0.bindMemory(to: T.self)) }
+    }
+
+    /// A half float target as floats.
+    private static func halves(
+        _ entry: RenderTargetManifest.Entry, in folder: URL
+    ) throws -> [Float] {
+        let data = try data(entry, in: folder)
+        return data.withUnsafeBytes { $0.bindMemory(to: UInt16.self).map { float(half: $0) } }
+    }
+
+    /// The relative difference of two targets a pixel, `|mine - theirs| / max(mine, theirs)` of
+    /// the sum of `channels`, over the pixels where that maximum passes `floor`.
+    static func difference(
+        _ mine: [Float], _ theirs: [Float], channels: Range<Int>, of stride: Int = 4,
+        floor: Float = 0
+    ) -> Difference {
+        var result = Difference()
+        let pixels = min(mine.count, theirs.count) / stride
+        result.map = [Float](repeating: 0, count: pixels)
+        var relative: [(value: Float, difference: Float)] = []
+        var sums = (mine: 0.0, theirs: 0.0)
+        for pixel in 0..<pixels {
+            var a: Float = 0
+            var b: Float = 0
+            for channel in channels {
+                a += mine[pixel * stride + channel]
+                b += theirs[pixel * stride + channel]
+            }
+            sums.mine += Double(a)
+            sums.theirs += Double(b)
+            let larger = max(a, b)
+            guard larger > floor else { continue }
+            let difference = abs(a - b) / larger
+            result.map[pixel] = difference
+            relative.append((b, difference))
+        }
+        result.lit = relative.count
+        result.total = sums.theirs > 0 ? sums.mine / sums.theirs : (sums.mine > 0 ? .infinity : 1)
+        func percentiles(_ values: [Float]) -> (Float, Float, Float, Float) {
+            let sorted = values.sorted()
+            return (
+                percentile(sorted, 0.5), percentile(sorted, 0.9), percentile(sorted, 0.99),
+                sorted.last ?? 0
+            )
+        }
+        (result.median, result.ninety, result.ninetyNine, result.largest) = percentiles(
+            relative.map(\.difference))
+        // By what Metal holds there: nothing, then a decade at a time.
+        let edges: [Float] = [
+            -.infinity, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100, 1_000, .infinity,
+        ]
+        for index in edges.indices.dropLast() {
+            let inside = relative.filter { $0.value > edges[index] && $0.value <= edges[index + 1] }
+            guard !inside.isEmpty else { continue }
+            let (median, _, ninetyNine, _) = percentiles(inside.map(\.difference))
+            result.decades.append((edges[index], inside.count, median, ninetyNine))
+        }
+        return result
+    }
+
+    /// Draws every target the manifest of `folder` lists, or those of `looks`, from the bytes
+    /// Metal drew them from, and compares. `maps` takes the relative differences of the light
+    /// and the two lights, as raw floats with a JSON index, for the pictures.
+    public static func compare(
+        folder: URL, looks: Set<String>? = nil, maps: URL? = nil,
+        threads: Int = ProcessInfo.processInfo.activeProcessorCount,
+        laceTexels: Int = DustWeb.laceTexels
+    ) throws -> [Comparison] {
+        guard let manifest = RenderTargetManifest.read(from: folder),
+            manifest.format == "sillage-render-targets", manifest.version == 1
+        else { throw Failure.folder("\(folder.path): no manifest of sillage-render-targets 1") }
+        let context = try CUDAContext()
+        var comparisons: [Comparison] = []
+        var renderers: [String: CUDARenderer] = [:]
+        var index: [[String: String]] = []
+        if let maps {
+            try FileManager.default.createDirectory(at: maps, withIntermediateDirectories: true)
+        }
+
+        for target in manifest.targets where looks?.contains(target.look) ?? true {
+            guard let frame = manifest.frames.first(where: { $0.name == target.frame }) else {
+                throw Failure.folder("no frame \(target.frame) for \(target.look)")
+            }
+            func entry(_ name: String) throws -> RenderTargetManifest.Entry {
+                guard let entry = target.files[name] ?? frame.files[name] ?? manifest.particles[name]
+                else { throw Failure.folder("\(target.look) \(target.frame): no \(name)") }
+                return entry
+            }
+            let scale = target.supersample
+            var settings = RenderSettings(
+                width: manifest.width, height: manifest.height, supersample: scale,
+                starCount: target.starCount, plain: target.plain)
+            settings.dustWeb = target.dustWeb
+            settings.columnSmoothing = target.columnSmoothing
+            settings.holeShadow = target.holeShadow
+
+            // A renderer a look: its lace is baked once. The attributes are Metal's own bytes.
+            let renderer: CUDARenderer
+            if let made = renderers[target.look] {
+                renderer = made
+            } else {
+                var attributes = ParticleAttributes(ParticleSystem())
+                attributes.count = target.drawn
+                attributes.drawnCount = target.drawn
+                attributes.component = try values(entry("component"), in: folder, as: UInt32.self)
+                attributes.galaxy = try values(entry("galaxy"), in: folder, as: UInt32.self)
+                func floats(_ name: String, _ fallback: Float) throws -> [Float] {
+                    target.plain
+                        ? [Float](repeating: fallback, count: target.drawn)
+                        : try values(entry(name), in: folder, as: Float.self)
+                }
+                attributes.population = try floats("population", 0.5)
+                attributes.formation = try floats("formation", ParticleSystem.ancient)
+                attributes.luminosity = try floats("luminosity", 1)
+                attributes.rampKeys = try floats("rampKeys", 1.7)
+                attributes.traits =
+                    target.plain
+                    ? [SIMD2<Float>](repeating: SIMD2(1, 1), count: target.drawn)
+                    : try values(entry("traits"), in: folder, as: SIMD2<Float>.self)
+                attributes.galaxySlots = target.galaxySlots
+                attributes.luminosityNormalisation = target.luminosityNormalisation
+                renderer = try CUDARenderer(
+                    context: context, attributes: attributes, settings: settings,
+                    laceTexels: laceTexels)
+                if !target.plain {
+                    try renderer.setStellar(values(entry("stellar"), in: folder, as: SIMD2<Float>.self))
+                }
+                renderers[target.look] = renderer
+            }
+
+            try renderer.upload(
+                positions: values(entry("positions"), in: folder, as: SIMD3<Float>.self))
+            renderer.setDiskFrames(try values(entry("disk-frames"), in: folder, as: DiskFrame.self))
+            if !target.plain {
+                let lengths = try context.makeBuffer(
+                    values(entry("smoothing"), in: folder, as: Float.self))
+                try renderer.setSmoothing(lengths)
+                renderer.setRamps(try values(entry("ramps"), in: folder, as: GalaxyRamp.self))
+                if target.starCount > 0 {
+                    try renderer.setStarfield(
+                        values(entry("starfield"), in: folder, as: BackgroundStar.self))
+                }
+            }
+
+            // The plan's passes from what the frame draws, its uniforms Metal's own bytes.
+            let camera = Camera(
+                eye: SIMD3(target.camera.eye[0], target.camera.eye[1], target.camera.eye[2]),
+                target: SIMD3(target.camera.target[0], target.camera.target[1], target.camera.target[2]),
+                up: SIMD3(target.camera.up[0], target.camera.up[1], target.camera.up[2]),
+                fieldOfView: target.camera.fieldOfView, near: target.camera.near,
+                far: target.camera.far)
+            let webbed = target.files["web-uniforms"] != nil
+            var plan = FramePlan(
+                settings: settings, camera: camera, time: target.time, drawnCount: target.drawn,
+                tracerCount: 0, luminosityNormalisation: target.luminosityNormalisation,
+                mapped: target.mapped, laceScale: webbed ? 1 / max(target.laceMean ?? 1, 1e-6) : nil)
+            let uniforms = try data(entry("splat-uniforms"), in: folder)
+            plan.splat = uniforms.withUnsafeBytes { $0.loadUnaligned(as: SplatUniforms.self) }
+            plan.splat.pass = 0
+            if webbed {
+                plan.web = try data(entry("web-uniforms"), in: folder).withUnsafeBytes {
+                    $0.loadUnaligned(as: WebUniforms.self)
+                }
+            }
+
+            renderer.halfFloats = false
+            try renderer.draw(plan, threads: threads)
+            try renderer.finish()
+            let light = try renderer.target(.light)
+            let dust = target.plain ? nil : try renderer.target(.dust)
+            let column = target.columnSmoothing > 0 ? try renderer.target(.column) : nil
+            let carrier = webbed ? try renderer.target(.carrier) : nil
+            let tags = webbed ? try renderer.target(.tags) : nil
+            // As Metal blends: half floats, one thread, the particles in their order.
+            renderer.halfFloats = true
+            try renderer.draw(plan, threads: 1)
+            try renderer.finish()
+            let halfLight = try renderer.target(.light)
+            let halfDust = target.plain ? nil : try renderer.target(.dust)
+            renderer.halfFloats = false
+
+            let metalLight = try halves(entry("light"), in: folder)
+            let (width, height) = (manifest.width * scale, manifest.height * scale)
+            var comparison = Comparison(
+                look: target.look, frame: target.frame, shot: target.shot ?? "", width: width,
+                height: height)
+            comparison.metalLight = metalLight
+            comparison.cudaLight = light
+            comparison.light = difference(light, metalLight, channels: 0..<3)
+            comparison.halfLight = difference(halfLight, metalLight, channels: 0..<3)
+            comparison.coverage = difference(light, metalLight, channels: 3..<4)
+            let name = "\(target.look) \(target.frame)"
+            comparison.lines.append(
+                "\(name) (\(target.shot ?? "no shot"), \(width) x \(height), \(target.drawn) drawn,"
+                    + " largest light Metal \(metalLight.max() ?? 0), CUDA \(light.max() ?? 0))")
+            comparison.lines.append("  light, fixed point: \(comparison.light.summary)")
+            comparison.lines.append("  light, half floats: \(comparison.halfLight.summary)")
+            comparison.lines.append("  coverage: \(comparison.coverage.summary)")
+            for decade in comparison.light.decades {
+                comparison.lines.append(
+                    "  light where Metal holds over \(decade.from): \(decade.pixels) pixels,"
+                        + " median \(decade.median), 99 % \(decade.ninetyNine)")
+            }
+            if let dust, let halfDust, let listed = target.files["dust"] {
+                let metalDust = try halves(listed, in: folder)
+                let fixed = difference(dust, metalDust, channels: 0..<4)
+                let half = difference(halfDust, metalDust, channels: 0..<4)
+                comparison.dust = fixed
+                comparison.halfDust = half
+                comparison.lines.append(
+                    "  dust, fixed point (largest Metal \(metalDust.max() ?? 0)): \(fixed.summary)")
+                comparison.lines.append("  dust, half floats: \(half.summary)")
+            }
+            if let column, let listed = target.files["column"] {
+                let metal = try values(listed, in: folder, as: Float.self)
+                let same = zip(column, metal).filter { $0 == $1 }.count
+                let (mine, theirs) = (column.reduce(0, +), metal.reduce(0, +))
+                comparison.lines.append(
+                    "  column: \(same) of \(metal.count) cells the same count, \(mine) counted here,"
+                        + " \(theirs) on Metal")
+            }
+            if let carrier, let listed = target.files["carrier"] {
+                let metal = try halves(listed, in: folder)
+                comparison.lines.append(
+                    "  carrier: \(difference(carrier, metal, channels: 0..<4).summary)")
+            }
+            if let tags, let listed = target.files["tags"] {
+                let metal = try values(listed, in: folder, as: UInt8.self)
+                let same = zip(tags, metal).filter { ($0 * 255).rounded() == Float($1) }.count
+                comparison.lines.append("  tags: \(same) of \(metal.count) values the same")
+            }
+            if webbed, let lace = manifest.lace, let crop = lace.files["level0-crop"],
+                let side = crop.width
+            {
+                let metal = try halves(crop, in: folder)
+                let whole = try renderer.lace(side: laceTexels)
+                var mine: [Float] = []
+                for row in 0..<min(side, laceTexels) {
+                    mine += whole[(row * laceTexels)..<(row * laceTexels + min(side, laceTexels))]
+                }
+                let apart = difference(mine, metal, channels: 0..<1, of: 1)
+                comparison.lines.append(
+                    "  lace, first level: \(apart.summary); mean \(1 / (try renderer.bakeLace())) here,"
+                        + " \(lace.mean) on Metal")
+            }
+
+            if let maps {
+                let stem = "\(target.look)-\(target.frame)"
+                func write(_ values: [Float], _ suffix: String) throws {
+                    try values.withUnsafeBytes { Data($0) }
+                        .write(to: maps.appendingPathComponent("\(stem)-\(suffix).f32"))
+                }
+                try write(comparison.light.map, "light-difference")
+                try write(comparison.halfLight.map, "half-light-difference")
+                try write(metalLight, "metal-light")
+                try write(light, "cuda-light")
+                index.append([
+                    "look": target.look, "frame": target.frame, "shot": target.shot ?? "",
+                    "width": String(width), "height": String(height), "stem": stem,
+                ])
+            }
+            comparisons.append(comparison)
+        }
+        if let maps {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(index).write(to: maps.appendingPathComponent("maps.json"))
+        }
+        return comparisons
+    }
+}
