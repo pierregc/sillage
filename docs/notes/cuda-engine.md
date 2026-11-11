@@ -886,13 +886,26 @@ is not one read as 0.
 
 The shared text was also where the grain could not be shared as it stood. `hash2` takes the
 sine of `dot(v, (127.1, 311.7))`, of the order of 1e5 where a float's last bit is 0.008, and
-keeps the fraction of 43,758 times it: the last bit of that argument decides the hash. Metal
-fuses the multiply-add; CUDA, built without contraction as the tree and the solver are, did
-not, and the two grains agreed on 52 to 55 % of the pixels (`cuda/tests/post_passes.cu` counts
-20 % of a frame's hashes changing with the rounding alone). The Hubble look held 33 to 35 dB
-against Metal's frame for that reason and no other. `hash2` now says
-`sin(fma(v.y, 311.7f, v.x * 127.1f))`: the one line of the post-processing whose arithmetic
-changed on Metal, to what Metal's compiler already did, and the Mac's check holds its bytes.
+keeps the fraction of 43,758 times it: the last bit of that argument decides the hash. Two
+places let the two engines round it alike or not, and the Hubble look held 33 to 35 dB against
+Metal's frame for them and for nothing else:
+
+- **The fused multiply-add.** Metal fuses the dot product; CUDA, built without contraction as
+  the tree and the solver are, did not, and the two grains agreed on 52 to 55 % of the pixels
+  (`cuda/tests/post_passes.cu` counts 20 % of a frame's hashes changing with the rounding
+  alone). `hash2` now says `sin(fma(v.y, 311.7f, v.x * 127.1f))`, the fused form written out:
+  46 to 48 dB.
+- **The offset of the shot noise.** `composite` took `hash2(cell + 17.3f)` of the cell
+  `float2(gid) + p.seed`. Metal's fast math adds the two uniform constants first and the pixel
+  to their sum, which rounds elsewhere on a third of the pixels; the correlation of Metal's
+  grain over the bright pixels, where the shot noise matters, was 0.48 with that order and 0.27
+  with the one written. It is now `hash2(float2(gid) + (p.seed + 17.3f))`: 49 to 53 dB.
+
+Both are changes of shared arithmetic meant to leave Metal's bytes as they are (the order and
+the fusing Metal's compiler chose), each in a commit of its own, `git revert`able; the Mac's
+check holds the bytes. They were found by correlating Metal's grain with the hash in each
+form, on the dark pixels where the other noise term vanishes and the bright ones where it does
+not.
 
 ### The plan
 
@@ -944,7 +957,8 @@ them. `--look` is a look file or the name of one in `looks/` beside the take; th
 comes from `hires.json` or `clip.json` beside it, or `--rate`; `--width` and `--height` set
 another size. It runs on the GPU library or on the CPU target, whichever `scripts/linux.sh`
 linked. On the CPU target a 480 by 270 frame of 200 k takes 0.2 to 1.6 s without the web, and
-the first frame of a look with the web 35 s, the lace's bake.
+the first frame of a look with the web 35 s, the lace's bake; a frame of the fixture take's
+3,013 particles takes 41 s at 1080p and 63 s at 4K.
 
 ### Tests
 
@@ -992,12 +1006,12 @@ PSNR against Metal's frame over the red, green and blue of every pixel, and the 
 
 | look | shot | drawn | half floats | Metal's light developed here |
 | --- | --- | --- | --- | --- |
-| `hubble` | close | 47.8 dB, 0.357 | 47.8 dB, 0.347 | 47.9 dB, 0.341 |
-| `hubble` | wide | 46.7 dB, 0.298 | 46.7 dB, 0.289 | 46.7 dB, 0.289 |
-| `hubble` | pericentre | 45.9 dB, 0.515 | 45.9 dB, 0.506 | 45.9 dB, 0.505 |
-| `hubble-noweb` | close | 47.8 dB, 0.352 | 47.9 dB, 0.342 | 47.9 dB, 0.340 |
-| `hubble-noweb` | wide | 46.7 dB, 0.300 | 46.7 dB, 0.289 | 46.7 dB, 0.289 |
-| `hubble-noweb` | pericentre | 45.9 dB, 0.516 | 45.9 dB, 0.505 | 45.9 dB, 0.505 |
+| `hubble` | close | 52.4 dB, 0.065 | 52.6 dB, 0.047 | 52.7 dB, 0.040 |
+| `hubble` | wide | 49.4 dB, 0.073 | 49.5 dB, 0.056 | 49.5 dB, 0.056 |
+| `hubble` | pericentre | 50.5 dB, 0.075 | 50.7 dB, 0.051 | 50.7 dB, 0.048 |
+| `hubble-noweb` | close | 52.5 dB, 0.062 | 52.7 dB, 0.043 | 52.8 dB, 0.040 |
+| `hubble-noweb` | wide | 49.4 dB, 0.075 | 49.5 dB, 0.056 | 49.5 dB, 0.056 |
+| `hubble-noweb` | pericentre | 50.5 dB, 0.075 | 50.7 dB, 0.050 | 50.7 dB, 0.048 |
 | `red-vs-cyan` | close | 62.3 dB, 0.038 | 65.4 dB, 0.019 | 66.7 dB, 0.014 |
 | `red-vs-cyan` | wide | 60.4 dB, 0.051 | 66.3 dB, 0.015 | 68.5 dB, 0.009 |
 | `red-vs-cyan` | pericentre | 60.5 dB, 0.055 | 64.1 dB, 0.025 | 65.6 dB, 0.017 |
@@ -1026,11 +1040,12 @@ PSNR against Metal's frame over the red, green and blue of every pixel, and the 
   13, 2 and 5 are over 8 levels, up to 178, and the half float run has the same ones. The
   ones looked at are a point on one pixel in Metal's frame and on its neighbour in CUDA's,
   which reads as the ties of the rasteriser's sixteenths (#276, rule 5), not as light.
-- **The grain is where `hubble` stands**, 45.9 to 47.9 dB, 0.4 to 0.6 % of its pixels over 8
-  levels and none by more than 32, the film grain's amplitude. Before `hash2`'s multiply-add was
-  written out they were 32.9 to 35.6 dB, 6 to 11 % over 8 (above), and the same whether the
-  particle passes or Metal's own light fed the post-processing: the grain alone. The pixels that
-  remain, in rectangular patches of the difference maps, are not traced further.
+- **The grain is where `hubble` stands**, 49.4 to 52.8 dB, 0.06 to 0.10 % of its pixels over 8
+  levels and none by more than 32, the film grain's amplitude. Before the two changes above
+  they were 32.9 to 35.6 dB, 6 to 11 % over 8, and the same whether the particle passes or
+  Metal's own light fed the post-processing: the grain alone. What remains are single pixels
+  scattered over the frame (about a hundred of 130,000), which reads as the sine itself landing
+  the other side: Metal's `sin` is its GPU's, CUDA's `sinf` is not. It was not traced further.
 - **`hubble` with and without the web are within 0.1 dB of each other**: the grain sets both.
 
 **The pairs**, on `assets/cuda-checks` under `docs/spikes/cuda-checks/stills/compare/`, with
@@ -1047,9 +1062,9 @@ CUDA frame and their difference side by side, white at 32 levels of 255.
 
 **The three reference frames of the repository**
 (`Tests/Fixtures/engines/frames`, 256 by 144, one frame of a 3,013 particle take), drawn from
-their take: `red-vs-cyan` 68.0 dB, `ember` 48.8 dB and `webb` 47.1 dB, the largest difference 2,
-31 and 30 levels. The test holds the first to 60 dB and the two with grain to 44, and the share
-of pixels over 8 levels to 0.01 %, 1 % and 1 %.
+their take: `red-vs-cyan` 68.0 dB, `ember` 53.2 dB and `webb` 50.8 dB, the largest difference 2,
+31 and 30 levels. The test holds the first to 60 dB and the two with grain to 48, and the share
+of pixels over 8 levels to 0.01 %, 0.3 % and 0.3 %.
 
 ### What waits for #283
 

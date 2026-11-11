@@ -23,11 +23,11 @@ struct CUDAPostTests {
 
     /// What the CUDA picture is held to against Metal's, with room over what #277 measured
     /// (docs/notes/cuda-engine.md): the look without grain agrees to rounding, and the two with
-    /// it to the last pixels whose grain hash lands the other side of a rounding.
+    /// it but for the 0.1 % of the pixels whose grain hash lands the other side of a rounding.
     static let tolerances: [(look: String, psnr: Double, largest: Int, overEight: Double)] = [
         ("red-vs-cyan", 60, 6, 0.0001),
-        ("ember", 44, 40, 0.01),
-        ("webb", 44, 40, 0.01),
+        ("ember", 48, 40, 0.003),
+        ("webb", 48, 40, 0.003),
     ]
 
     @Test(arguments: tolerances)
@@ -219,7 +219,7 @@ struct CUDAPostTests {
     private static let targets = ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_TARGETS"]
 
     /// What the stills of a take of 200 k are held to, a little under what #277 measured: with
-    /// no grain 50 dB (52 to 62 drawn, 61 to 68 from Metal's own light), with it 44 (46 to 48).
+    /// no grain 50 dB (52 to 62 drawn, 61 to 68 from Metal's own light), with it 47 (49 to 53).
     /// Metal's accumulation developed here is exactly Metal's in the raw look.
     @Test(
         .enabled(
@@ -235,10 +235,10 @@ struct CUDAPostTests {
         for row in rows {
             let name = "\(row.look) \(row.frame)"
             let grained = row.look.hasPrefix("hubble")
-            #expect(row.drawn.psnr >= (grained ? 44 : 50), "\(name): \(row.drawn)")
-            #expect(row.drawn.overEight < (grained ? 0.01 : 0.0003), "\(name): \(row.drawn)")
+            #expect(row.drawn.psnr >= (grained ? 47 : 50), "\(name): \(row.drawn)")
+            #expect(row.drawn.overEight < (grained ? 0.003 : 0.0003), "\(name): \(row.drawn)")
             #expect(abs(row.drawn.meanA - row.drawn.meanB) < 0.1, "\(name): the exposure moved")
-            #expect(row.postOnly.psnr >= (grained ? 44 : 60), "\(name): \(row.postOnly)")
+            #expect(row.postOnly.psnr >= (grained ? 47 : 60), "\(name): \(row.postOnly)")
             // Half floats in the particle passes put the picture nearer Metal's.
             #expect(row.halfFloats.psnr >= row.drawn.psnr - 0.1, "\(name): half floats")
             if row.look == "raw" { #expect(row.postOnly.largest == 0, "\(name): \(row.postOnly)") }

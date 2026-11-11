@@ -102,9 +102,11 @@ the rasteriser between them is a kernel's loop over the pixels of a point
   the sine of an argument of the order of 1e5 and keeps the fraction of 43,758 times it: where
   the compiler is left to fuse the multiply-add of that argument, Metal fuses it and CUDA, built
   with `--fmad=false`, does not, and the two grains agree on half the pixels. Written
-  `fma(v.y, 311.7f, v.x * 127.1f)` both give the same, and a frame of the Hubble look went from
-  33 to 35 dB against Metal's to 46 to 48. Any shared arithmetic whose result is that sensitive
-  to the rounding of an intermediate value says its fusing as `hash2` does.
+  `fma(v.y, 311.7f, v.x * 127.1f)` both give the same. The same goes for the order of a sum of
+  uniforms and a pixel: Metal's fast math adds the constants first, so `composite` writes
+  `float2(gid) + (p.seed + 17.3f)`. With both a frame of the Hubble look went from 33 to 35 dB
+  against Metal's to 49 to 53. Any shared arithmetic whose result is that sensitive to the
+  rounding of an intermediate value says its fusing and its order as `hash2` does.
 - In `cuda/kernels.txt` the vertex function is `cuda`, its entry point the kernel of the pass,
   and the fragment function `cuda in <kernels>`, the kernels that call its shared function.
 
