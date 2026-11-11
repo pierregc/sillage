@@ -80,7 +80,7 @@ session. Read the note for an area before changing it.
 
 ## The CUDA engine (#269)
 
-- [The CUDA engine](cuda-engine.md): its layout and C API, how to build and test it, the CPU target and what it cannot run, what an entry point does and what the shared MSL does, the tests waiting for #283 (#273)
+- [The CUDA engine](cuda-engine.md): its layout and C API, how to build and test it, the CPU target and what it cannot run, what an entry point does and what the shared MSL does, the tests waiting for #283 (#273); the renderer's particle passes as kernels, the frame plan both renderers execute, the fixed point accumulation and the comparison with Metal (#276)
 - [One kernel source for Metal and CUDA](one-kernel-source.md): how to change the engine from now on, what the shared MSL may hold, `msl_compat.h` and the CPU target, `cuda/kernels.txt`, what the Mac's check, the workflow and a GPU session each catch, why Swift and Metal stay (#281)
 - [The tracer walk from its MSL text, on CUDA and on the CPU](cuda-walk-spike.md): spike #271, no line of MSL changed, what `msl_compat.h` and `cuda_cpu.h` do, float literals are doubles, the walk dump's format, the accuracy against Metal
 
