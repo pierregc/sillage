@@ -8,7 +8,7 @@ portable Swift on Linux.
 
 `.github/workflows/linux.yml` runs on every push (the `assets/` branches aside) and on pull
 requests from forks, on GitHub's Ubuntu 24.04 runner, with `permissions: contents: read`, no
-secret and no action but GitHub's own checkout. Two jobs side by side.
+secret and no action but GitHub's own checkout. Three jobs side by side.
 
 Job `cuda`, 37 seconds on its first run:
 
@@ -18,7 +18,8 @@ Job `cuda`, 37 seconds on its first run:
 - `nvcc` and the CUDA headers at 13.5, the version of
   [cuda-walk-spike.md](cuda-walk-spike.md), from NVIDIA's apt repository: `cuda/src` and
   `cuda/tests` compiled for sm_120, and no double precision instruction in their PTX. Compile
-  only.
+  only. Since #273 also the two libraries the Swift links, the GPU's for sm_86, sm_89 and
+  sm_120 ([cuda-engine.md](cuda-engine.md)): a minute in all.
 
 Job `swift`, in the `swift:6.2-noble` image: `scripts/linux.sh check`, so the formatter, the
 strict-concurrency typecheck and the tests of the Swift that builds on Linux
@@ -29,6 +30,13 @@ them. That is under the ten minutes the workflow was given, not by much, and the
 at fifteen. If it grows: running the formatter and the typecheck in a job beside the tests'
 saves about a minute, and past that the floor is the longest test, `archetypesPassTheSanityCheck`,
 two minutes on its own.
+
+#273 made it grow, by the CUDA engine's CPU library, its Swift module and its tests, about 35 s
+on the runner, and one run took 11 min 31 s where the one before took 8 min 1 s, most of it the
+runner's own speed (the tests' build, two files longer, took 52 s more). So `scripts/linux.sh
+check` now runs as two jobs: `swift`, `scripts/linux.sh test`, the modules built and every test
+run; and `swift-checks`, `scripts/linux.sh lint` then `scripts/linux.sh strict`, the formatter
+and the strict concurrency typecheck. Together they run what `scripts/linux.sh check` runs.
 
 **What it does not check**: nothing of Metal and nothing of macOS (no macOS job, on purpose),
 so not the files and the tests `scripts/linux-skip.txt` and `scripts/linux-skip-tests.txt` name,

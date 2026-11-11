@@ -41,6 +41,8 @@ jobs:
       - name: The CUDA build for sm_120, compile only, and the two libraries the Swift links
         run: REQUIRE_NVCC=1 NVCC=/usr/local/cuda/bin/nvcc cuda/build.sh gpu libs
 
+  # scripts/linux.sh check in two jobs side by side (#273): the tests, and the formatter and the
+  # strict concurrency typecheck, so that the longest stays under ten minutes.
   swift:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
@@ -48,5 +50,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      - name: The portable Swift, built and tested as scripts/linux.sh check does
-        run: scripts/linux.sh check
+      - name: The portable Swift and the CUDA engine's on the CPU target, built and tested
+        run: scripts/linux.sh test
+
+  swift-checks:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: The formatter and the strict concurrency typecheck of scripts/linux.sh check
+        run: |
+          scripts/linux.sh lint
+          scripts/linux.sh strict
