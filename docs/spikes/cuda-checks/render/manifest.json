@@ -1,6 +1,6 @@
 {
   "byteOrder" : "little",
-  "commit" : "e338f57a09ab8f71e3300d7a314b60a461b7580d",
+  "commit" : "876ba07e83ad2e5743a10df737b368f607c4fc2a",
   "device" : "Apple M4 Max",
   "format" : "sillage-render-targets",
   "frames" : [
@@ -458,6 +458,255 @@
       "laceMean" : 0.5449219,
       "look" : "hubble",
       "lookFile" : "looks/hubble.look.json",
+      "luminosityNormalisation" : 0.5358675,
+      "mapped" : false,
+      "plain" : false,
+      "shot" : "pericentre 0-1",
+      "starCount" : 1500,
+      "supersample" : 2,
+      "time" : 65.09974,
+      "timeMyr" : 306.61977104187014
+    },
+    {
+      "camera" : {
+        "aspect" : 1.7777778,
+        "eye" : [
+          34.471634,
+          -39.63263,
+          75.0642
+        ],
+        "far" : 40000,
+        "fieldOfView" : 0.6,
+        "near" : 1,
+        "target" : [
+          19.080746,
+          -16.233858,
+          2.345134
+        ],
+        "up" : [
+          0.8778146,
+          0.47793004,
+          -0.03200496
+        ]
+      },
+      "captured" : 4,
+      "columnSmoothing" : 0,
+      "drawn" : 200000,
+      "dustWeb" : 0,
+      "files" : {
+        "disk-frames" : {
+          "count" : 2,
+          "file" : "targets/hubble-noweb/close/disk-frames.bin",
+          "stride" : 128,
+          "type" : "DiskFrame"
+        },
+        "dust" : {
+          "count" : 518400,
+          "file" : "targets/hubble-noweb/close/dust.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "light" : {
+          "count" : 518400,
+          "file" : "targets/hubble-noweb/close/light.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "ramps" : {
+          "count" : 2,
+          "file" : "targets/hubble-noweb/close/ramps.bin",
+          "stride" : 112,
+          "type" : "GalaxyRamp"
+        },
+        "splat-uniforms" : {
+          "count" : 1,
+          "file" : "targets/hubble-noweb/close/splat-uniforms.bin",
+          "stride" : 176,
+          "type" : "SplatUniforms"
+        },
+        "starfield" : {
+          "count" : 1500,
+          "file" : "targets/hubble-noweb/close/starfield.bin",
+          "stride" : 32,
+          "type" : "BackgroundStar"
+        }
+      },
+      "frame" : "close",
+      "galaxies" : 2,
+      "galaxySlots" : 2,
+      "holeShadow" : 0,
+      "look" : "hubble-noweb",
+      "lookFile" : "looks/hubble-noweb.look.json",
+      "luminosityNormalisation" : 0.5358675,
+      "mapped" : false,
+      "plain" : false,
+      "shot" : "disk 0",
+      "starCount" : 1500,
+      "supersample" : 2,
+      "time" : 39.89985,
+      "timeMyr" : 187.9282884979248
+    },
+    {
+      "camera" : {
+        "aspect" : 1.7777778,
+        "eye" : [
+          32.416626,
+          -146.77695,
+          337.76953
+        ],
+        "far" : 40000,
+        "fieldOfView" : 0.6,
+        "near" : 1,
+        "target" : [
+          -0.99844086,
+          0.71152675,
+          -0.14533763
+        ],
+        "up" : [
+          0,
+          0,
+          1
+        ]
+      },
+      "captured" : 12,
+      "columnSmoothing" : 0,
+      "drawn" : 200000,
+      "dustWeb" : 0,
+      "files" : {
+        "disk-frames" : {
+          "count" : 2,
+          "file" : "targets/hubble-noweb/wide/disk-frames.bin",
+          "stride" : 128,
+          "type" : "DiskFrame"
+        },
+        "dust" : {
+          "count" : 518400,
+          "file" : "targets/hubble-noweb/wide/dust.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "light" : {
+          "count" : 518400,
+          "file" : "targets/hubble-noweb/wide/light.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "ramps" : {
+          "count" : 2,
+          "file" : "targets/hubble-noweb/wide/ramps.bin",
+          "stride" : 112,
+          "type" : "GalaxyRamp"
+        },
+        "splat-uniforms" : {
+          "count" : 1,
+          "file" : "targets/hubble-noweb/wide/splat-uniforms.bin",
+          "stride" : 176,
+          "type" : "SplatUniforms"
+        },
+        "starfield" : {
+          "count" : 1500,
+          "file" : "targets/hubble-noweb/wide/starfield.bin",
+          "stride" : 32,
+          "type" : "BackgroundStar"
+        }
+      },
+      "frame" : "wide",
+      "galaxies" : 2,
+      "galaxySlots" : 2,
+      "holeShadow" : 0,
+      "look" : "hubble-noweb",
+      "lookFile" : "looks/hubble-noweb.look.json",
+      "luminosityNormalisation" : 0.5358675,
+      "mapped" : false,
+      "plain" : false,
+      "shot" : "wide",
+      "starCount" : 1500,
+      "supersample" : 2,
+      "time" : 53.33979,
+      "timeMyr" : 251.2304125213623
+    },
+    {
+      "camera" : {
+        "aspect" : 1.7777778,
+        "eye" : [
+          29.380108,
+          -8.037946,
+          61.895615
+        ],
+        "far" : 40000,
+        "fieldOfView" : 0.6,
+        "near" : 1,
+        "target" : [
+          -0.45140287,
+          -1.2259521,
+          -0.15771595
+        ],
+        "up" : [
+          -0.8877707,
+          -0.22379126,
+          0.40221968
+        ]
+      },
+      "captured" : 19,
+      "columnSmoothing" : 0,
+      "drawn" : 200000,
+      "dustWeb" : 0,
+      "files" : {
+        "disk-frames" : {
+          "count" : 2,
+          "file" : "targets/hubble-noweb/pericentre/disk-frames.bin",
+          "stride" : 128,
+          "type" : "DiskFrame"
+        },
+        "dust" : {
+          "count" : 518400,
+          "file" : "targets/hubble-noweb/pericentre/dust.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "light" : {
+          "count" : 518400,
+          "file" : "targets/hubble-noweb/pericentre/light.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "ramps" : {
+          "count" : 2,
+          "file" : "targets/hubble-noweb/pericentre/ramps.bin",
+          "stride" : 112,
+          "type" : "GalaxyRamp"
+        },
+        "splat-uniforms" : {
+          "count" : 1,
+          "file" : "targets/hubble-noweb/pericentre/splat-uniforms.bin",
+          "stride" : 176,
+          "type" : "SplatUniforms"
+        },
+        "starfield" : {
+          "count" : 1500,
+          "file" : "targets/hubble-noweb/pericentre/starfield.bin",
+          "stride" : 32,
+          "type" : "BackgroundStar"
+        }
+      },
+      "frame" : "pericentre",
+      "galaxies" : 2,
+      "galaxySlots" : 2,
+      "holeShadow" : 0,
+      "look" : "hubble-noweb",
+      "lookFile" : "looks/hubble-noweb.look.json",
       "luminosityNormalisation" : 0.5358675,
       "mapped" : false,
       "plain" : false,

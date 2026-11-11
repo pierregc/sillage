@@ -1,0 +1,426 @@
+{
+  "byteOrder" : "little",
+  "commit" : "876ba07e83ad2e5743a10df737b368f607c4fc2a",
+  "device" : "Apple M4 Max",
+  "format" : "sillage-render-targets",
+  "frames" : [
+    {
+      "captured" : 4,
+      "files" : {
+        "positions" : {
+          "count" : 49793,
+          "file" : "frames/early/positions.f32x4",
+          "stride" : 16,
+          "type" : "float3"
+        },
+        "scales" : {
+          "count" : 16,
+          "file" : "frames/early/scales.f32",
+          "stride" : 4,
+          "type" : "float"
+        },
+        "smoothing" : {
+          "count" : 49793,
+          "file" : "frames/early/smoothing.f32",
+          "stride" : 4,
+          "type" : "float"
+        },
+        "states" : {
+          "count" : 150207,
+          "file" : "frames/early/states.f32x4",
+          "stride" : 16,
+          "type" : "float4"
+        },
+        "words" : {
+          "count" : 150207,
+          "file" : "frames/early/words.u32x4",
+          "stride" : 16,
+          "type" : "uint4"
+        }
+      },
+      "name" : "early",
+      "time" : 39.89985,
+      "timeMyr" : 187.9282884979248
+    }
+  ],
+  "height" : 270,
+  "lace" : {
+    "files" : {
+      "level0-crop" : {
+        "count" : 65536,
+        "file" : "lace/level0-crop.f16",
+        "height" : 256,
+        "stride" : 2,
+        "type" : "r16Float",
+        "width" : 256
+      },
+      "level4" : {
+        "count" : 65536,
+        "file" : "lace/level4.f16",
+        "height" : 256,
+        "stride" : 2,
+        "type" : "r16Float",
+        "width" : 256
+      }
+    },
+    "mean" : 0.5449219
+  },
+  "particles" : {
+    "component" : {
+      "count" : 49793,
+      "file" : "particles/component.u32",
+      "stride" : 4,
+      "type" : "uint"
+    },
+    "formation" : {
+      "count" : 49793,
+      "file" : "particles/formation.f32",
+      "stride" : 4,
+      "type" : "float"
+    },
+    "galaxy" : {
+      "count" : 49793,
+      "file" : "particles/galaxy.u32",
+      "stride" : 4,
+      "type" : "uint"
+    },
+    "luminosity" : {
+      "count" : 49793,
+      "file" : "particles/luminosity.f32",
+      "stride" : 4,
+      "type" : "float"
+    },
+    "population" : {
+      "count" : 49793,
+      "file" : "particles/population.f32",
+      "stride" : 4,
+      "type" : "float"
+    },
+    "rampKeys" : {
+      "count" : 49793,
+      "file" : "particles/rampKeys.f32",
+      "stride" : 4,
+      "type" : "float"
+    },
+    "stellar" : {
+      "count" : 64,
+      "file" : "particles/stellar.f32x2",
+      "stride" : 8,
+      "type" : "float2"
+    },
+    "traits" : {
+      "count" : 49793,
+      "file" : "particles/traits.f32x2",
+      "stride" : 8,
+      "type" : "float2"
+    }
+  },
+  "rows" : "top to bottom",
+  "source" : "Metal, sillage-render hires --dump-targets",
+  "system" : "Version 26.5.1 (Build 25F80)",
+  "take" : {
+    "capturedFrames" : 5,
+    "capturedRate" : 3,
+    "drawn" : 200000,
+    "file" : "",
+    "particles" : 275000,
+    "scene" : "2026-10-30-b/scene-0031"
+  },
+  "targets" : [
+    {
+      "camera" : {
+        "aspect" : 1.7777778,
+        "eye" : [
+          -3.9361372,
+          -752.5675,
+          343.9199
+        ],
+        "far" : 40000,
+        "fieldOfView" : 0.5883684,
+        "near" : 1,
+        "target" : [
+          -1.3010715,
+          1.0627855,
+          -0.10630735
+        ],
+        "up" : [
+          0,
+          0,
+          1
+        ]
+      },
+      "captured" : 4,
+      "columnSmoothing" : 0,
+      "drawn" : 49793,
+      "dustWeb" : 1,
+      "files" : {
+        "carrier" : {
+          "count" : 129600,
+          "file" : "targets/hubble/early/carrier.f16",
+          "height" : 270,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 480
+        },
+        "cells" : {
+          "count" : 63420,
+          "file" : "targets/hubble/early/cells.u32x2",
+          "stride" : 8,
+          "type" : "uint2"
+        },
+        "disk-frames" : {
+          "count" : 2,
+          "file" : "targets/hubble/early/disk-frames.bin",
+          "stride" : 128,
+          "type" : "DiskFrame"
+        },
+        "dust" : {
+          "count" : 518400,
+          "file" : "targets/hubble/early/dust.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "light" : {
+          "count" : 518400,
+          "file" : "targets/hubble/early/light.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "ramps" : {
+          "count" : 2,
+          "file" : "targets/hubble/early/ramps.bin",
+          "stride" : 112,
+          "type" : "GalaxyRamp"
+        },
+        "splat-uniforms" : {
+          "count" : 1,
+          "file" : "targets/hubble/early/splat-uniforms.bin",
+          "stride" : 176,
+          "type" : "SplatUniforms"
+        },
+        "starfield" : {
+          "count" : 1500,
+          "file" : "targets/hubble/early/starfield.bin",
+          "stride" : 32,
+          "type" : "BackgroundStar"
+        },
+        "tags" : {
+          "count" : 129600,
+          "file" : "targets/hubble/early/tags.u8",
+          "height" : 270,
+          "stride" : 4,
+          "type" : "rgba8Unorm",
+          "width" : 480
+        },
+        "treeFrame" : {
+          "count" : 8,
+          "file" : "targets/hubble/early/treeFrame.f32",
+          "stride" : 4,
+          "type" : "float"
+        },
+        "web-uniforms" : {
+          "count" : 1,
+          "file" : "targets/hubble/early/web-uniforms.bin",
+          "stride" : 112,
+          "type" : "WebUniforms"
+        }
+      },
+      "frame" : "early",
+      "galaxies" : 2,
+      "galaxySlots" : 2,
+      "holeShadow" : 0,
+      "laceMean" : 0.5449219,
+      "look" : "hubble",
+      "lookFile" : "looks/hubble.look.json",
+      "luminosityNormalisation" : 0.68824935,
+      "mapped" : false,
+      "plain" : false,
+      "starCount" : 1500,
+      "supersample" : 2,
+      "time" : 39.89985,
+      "timeMyr" : 187.9282884979248,
+      "tracerDepth" : 20,
+      "tracers" : 150207
+    },
+    {
+      "camera" : {
+        "aspect" : 1.7777778,
+        "eye" : [
+          -3.9361372,
+          -752.5675,
+          343.9199
+        ],
+        "far" : 40000,
+        "fieldOfView" : 0.5883684,
+        "near" : 1,
+        "target" : [
+          -1.3010715,
+          1.0627855,
+          -0.10630735
+        ],
+        "up" : [
+          0,
+          0,
+          1
+        ]
+      },
+      "captured" : 4,
+      "columnSmoothing" : 0,
+      "drawn" : 49793,
+      "dustWeb" : 0,
+      "files" : {
+        "cells" : {
+          "count" : 2,
+          "file" : "targets/raw/early/cells.u32x2",
+          "stride" : 8,
+          "type" : "uint2"
+        },
+        "disk-frames" : {
+          "count" : 2,
+          "file" : "targets/raw/early/disk-frames.bin",
+          "stride" : 128,
+          "type" : "DiskFrame"
+        },
+        "light" : {
+          "count" : 129600,
+          "file" : "targets/raw/early/light.f16",
+          "height" : 270,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 480
+        },
+        "splat-uniforms" : {
+          "count" : 1,
+          "file" : "targets/raw/early/splat-uniforms.bin",
+          "stride" : 176,
+          "type" : "SplatUniforms"
+        },
+        "treeFrame" : {
+          "count" : 4,
+          "file" : "targets/raw/early/treeFrame.f32",
+          "stride" : 4,
+          "type" : "float"
+        }
+      },
+      "frame" : "early",
+      "galaxies" : 2,
+      "galaxySlots" : 2,
+      "holeShadow" : 0,
+      "look" : "raw",
+      "lookFile" : "looks/raw.look.json",
+      "luminosityNormalisation" : 1,
+      "mapped" : false,
+      "plain" : true,
+      "starCount" : 0,
+      "supersample" : 1,
+      "time" : 39.89985,
+      "timeMyr" : 187.9282884979248,
+      "tracerDepth" : 0,
+      "tracers" : 150207
+    },
+    {
+      "camera" : {
+        "aspect" : 1.7777778,
+        "eye" : [
+          -3.9361372,
+          -752.5675,
+          343.9199
+        ],
+        "far" : 40000,
+        "fieldOfView" : 0.5883684,
+        "near" : 1,
+        "target" : [
+          -1.3010715,
+          1.0627855,
+          -0.10630735
+        ],
+        "up" : [
+          0,
+          0,
+          1
+        ]
+      },
+      "captured" : 4,
+      "columnSmoothing" : 8,
+      "drawn" : 49793,
+      "dustWeb" : 0,
+      "files" : {
+        "cells" : {
+          "count" : 63420,
+          "file" : "targets/red-vs-cyan-column/early/cells.u32x2",
+          "stride" : 8,
+          "type" : "uint2"
+        },
+        "column" : {
+          "count" : 8040,
+          "file" : "targets/red-vs-cyan-column/early/column.f32",
+          "height" : 67,
+          "stride" : 4,
+          "type" : "r32Float",
+          "width" : 120
+        },
+        "disk-frames" : {
+          "count" : 2,
+          "file" : "targets/red-vs-cyan-column/early/disk-frames.bin",
+          "stride" : 128,
+          "type" : "DiskFrame"
+        },
+        "dust" : {
+          "count" : 518400,
+          "file" : "targets/red-vs-cyan-column/early/dust.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "light" : {
+          "count" : 518400,
+          "file" : "targets/red-vs-cyan-column/early/light.f16",
+          "height" : 540,
+          "stride" : 8,
+          "type" : "rgba16Float",
+          "width" : 960
+        },
+        "ramps" : {
+          "count" : 2,
+          "file" : "targets/red-vs-cyan-column/early/ramps.bin",
+          "stride" : 112,
+          "type" : "GalaxyRamp"
+        },
+        "splat-uniforms" : {
+          "count" : 1,
+          "file" : "targets/red-vs-cyan-column/early/splat-uniforms.bin",
+          "stride" : 176,
+          "type" : "SplatUniforms"
+        },
+        "treeFrame" : {
+          "count" : 8,
+          "file" : "targets/red-vs-cyan-column/early/treeFrame.f32",
+          "stride" : 4,
+          "type" : "float"
+        }
+      },
+      "frame" : "early",
+      "galaxies" : 2,
+      "galaxySlots" : 2,
+      "holeShadow" : 0,
+      "look" : "red-vs-cyan-column",
+      "lookFile" : "looks/red-vs-cyan-column.look.json",
+      "luminosityNormalisation" : 0.68824935,
+      "mapped" : false,
+      "plain" : false,
+      "starCount" : 0,
+      "supersample" : 2,
+      "time" : 39.89985,
+      "timeMyr" : 187.9282884979248,
+      "tracerDepth" : 20,
+      "tracers" : 150207
+    }
+  ],
+  "version" : 1,
+  "width" : 480
+}

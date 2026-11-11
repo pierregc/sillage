@@ -1,13 +1,14 @@
 # Metal's side of the renderer check (#276)
 
 What the Metal renderer's particle passes leave in their targets, before any post-processing,
-on three frames of a small take in four looks, with everything they drew from, for the CUDA
+on three frames of a small take in five looks, with everything they drew from, for the CUDA
 renderer to draw the same frames on the CPU target and compare. Written by
 `sillage-render export --dump-targets` on an Apple M4 Max; `manifest.json`
 (`sillage-render-targets`, version 1) lists every file with its type, stride and count, and a
 reader goes by it, not by the paths below.
 
-`compare/` is the CUDA side's: the difference maps of #276's cloud session.
+`compare/` is the CUDA side's: the difference maps of #276's cloud session. `tracers/` is a
+frame drawn with light tracers, in the same format.
 
 ## The take
 
@@ -50,10 +51,11 @@ main) with its `camera` replaced by the scene's own (`director`, from
 | `red-vs-cyan` | no web, no field star, `dustStrength` 0: its dust target is all zeros |
 | `raw` | plain points, supersampling 1: its light target is 480 x 270, and it has no dust target |
 | `red-vs-cyan-column` | not in the catalogue: `red-vs-cyan` with `columnSmoothing` 8, for the column pass, which no look of the catalogue turns on |
+| `hubble-noweb` | not in the catalogue: `hubble` with `dustWeb` 0, for the dust drawn without the web (`dustStrength` 0.45), which every look of the catalogue with dust draws through it |
 
-No target here has `mapped` set (no palette of the catalogue has a ramp), draws the dust without
-the web with `dustStrength` above 0, or draws a light tracer: an export of a take has none, the
-tracer vertex functions run only in the full pass of a hires.
+No target here has `mapped` set: no palette of the catalogue has a ramp. None draws a light
+tracer either, since an export of a take has none: `tracers/` holds one frame of a run drawn
+with its own, with a README.
 
 ## The files
 
@@ -65,7 +67,7 @@ Little endian, rows from the top, bytes as the GPU holds them.
 | `frames/<name>/` | what a frame draws from whatever its look: `positions.f32x4` (Metal's `float3`, 16 bytes) and `smoothing.f32`, the take's frame expanded and its smoothing lengths |
 | `targets/<look>/<name>/` | `splat-uniforms.bin` (`SplatUniforms`, its whole stride, `pass` 1; for `raw`, the plain pass's, `pass` 0), `web-uniforms.bin` (`WebUniforms`), `disk-frames.bin` (`DiskFrame` a galaxy), `ramps.bin` (`GalaxyRamp` a galaxy), `starfield.bin` (`BackgroundStar` a field star); then the targets: `light.f16` (the accumulation, rgba16Float, raw half bits), `dust.f16` (the four depth slabs, rgba16Float), `column.f32` (the column density, r32Float, 120 x 67), `carrier.f16` and `tags.u8` (the web's coarse targets, rgba16Float and rgba8Unorm, 480 x 270) |
 | `lace/` | the baked lace, r16Float: `level0-crop.f16`, 256 x 256 texels from the origin of level 0, and `level4.f16`, the whole of level 4 (256 x 256); its mean is `lace.mean` in the manifest |
-| `stills/` | the 12 frames as the export draws them, 480 x 270 PNG, for the eye |
+| `stills/` | the 15 frames as the export draws them, 480 x 270 PNG, for the eye |
 
 A target lists in the manifest: its look and look file, its frame (name, captured position,
 time in code units and in Myr), the director's shot, `supersample`, `plain`, `starCount`,
@@ -87,7 +89,8 @@ the manifest. The frames an export draws are the same with and without the optio
 - `raw`, frame `wide`: the core reaches 2048 in `light.f16` and stays there. In half floats
   2048 + 1 is 2048, so Metal stops counting where an fp32 or a fixed point accumulation goes on.
   The large relative differences there are the half floats' plateau, not an error.
-- `red-vs-cyan` has `dustStrength` 0: only `hubble` has dust, and it goes through the web.
+- `red-vs-cyan` has `dustStrength` 0: only `hubble` has dust, through the web, and
+  `hubble-noweb`, without it.
 - The light and the dust are blended in the order the rasteriser takes the fragments, in half
   floats: a sum of many splats in a pixel carries their rounding, a few ulp of a half.
 - `splat-uniforms.bin` is the 176 bytes of the stride: the struct's 168 bytes, then 8 bytes
@@ -95,8 +98,8 @@ the manifest. The frames an export draws are the same with and without the optio
 
 ## The byte reference
 
-`digests.txt`: the SHA-256 of the 120 PNG stills (the 30 frames of the take in the four looks)
-that main at b41436f draws, twice the same; every head of #276 must give them again.
+`digests.txt`: the SHA-256 of the 120 PNG stills (the 30 frames of the take in the first four
+looks) that main at b41436f draws, twice the same; every head of #276 must give them again.
 
 ```
 sillage-render export <scene folder> --look <look> --width 480 --height 270 \
