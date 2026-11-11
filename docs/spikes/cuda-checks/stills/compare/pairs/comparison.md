@@ -1,11 +1,11 @@
 | frame | drawn | half floats in the particle passes | Metal's light developed here |
 | --- | --- | --- | --- |
-| hubble-close | 47.8 dB, mean 0.357, 0.37 % over 8 | 47.8 dB, mean 0.347, 0.37 % over 8 | 47.9 dB, mean 0.341, 0.37 % over 8 |
-| hubble-noweb-close | 47.8 dB, mean 0.352, 0.36 % over 8 | 47.9 dB, mean 0.342, 0.36 % over 8 | 47.9 dB, mean 0.340, 0.37 % over 8 |
-| hubble-noweb-pericentre | 45.9 dB, mean 0.516, 0.59 % over 8 | 45.9 dB, mean 0.505, 0.59 % over 8 | 45.9 dB, mean 0.505, 0.59 % over 8 |
-| hubble-noweb-wide | 46.7 dB, mean 0.300, 0.42 % over 8 | 46.7 dB, mean 0.289, 0.42 % over 8 | 46.7 dB, mean 0.289, 0.42 % over 8 |
-| hubble-pericentre | 45.9 dB, mean 0.515, 0.59 % over 8 | 45.9 dB, mean 0.506, 0.59 % over 8 | 45.9 dB, mean 0.505, 0.59 % over 8 |
-| hubble-wide | 46.7 dB, mean 0.298, 0.41 % over 8 | 46.7 dB, mean 0.289, 0.42 % over 8 | 46.7 dB, mean 0.289, 0.42 % over 8 |
+| hubble-close | 52.4 dB, mean 0.065, 0.06 % over 8 | 52.6 dB, mean 0.047, 0.06 % over 8 | 52.7 dB, mean 0.040, 0.06 % over 8 |
+| hubble-noweb-close | 52.5 dB, mean 0.062, 0.06 % over 8 | 52.7 dB, mean 0.043, 0.06 % over 8 | 52.8 dB, mean 0.040, 0.06 % over 8 |
+| hubble-noweb-pericentre | 50.5 dB, mean 0.075, 0.08 % over 8 | 50.7 dB, mean 0.050, 0.08 % over 8 | 50.7 dB, mean 0.048, 0.08 % over 8 |
+| hubble-noweb-wide | 49.4 dB, mean 0.075, 0.10 % over 8 | 49.5 dB, mean 0.056, 0.10 % over 8 | 49.5 dB, mean 0.056, 0.10 % over 8 |
+| hubble-pericentre | 50.5 dB, mean 0.075, 0.08 % over 8 | 50.7 dB, mean 0.051, 0.08 % over 8 | 50.7 dB, mean 0.048, 0.08 % over 8 |
+| hubble-wide | 49.4 dB, mean 0.073, 0.10 % over 8 | 49.5 dB, mean 0.056, 0.10 % over 8 | 49.5 dB, mean 0.056, 0.10 % over 8 |
 | raw-close | 52.2 dB, mean 0.007, 0.01 % over 8 | 52.3 dB, mean 0.004, 0.01 % over 8 | exact, mean 0.000, 0.00 % over 8 |
 | raw-pericentre | 55.3 dB, mean 0.004, 0.00 % over 8 | 55.3 dB, mean 0.002, 0.00 % over 8 | exact, mean 0.000, 0.00 % over 8 |
 | raw-wide | 55.6 dB, mean 0.002, 0.00 % over 8 | 55.6 dB, mean 0.001, 0.00 % over 8 | exact, mean 0.000, 0.00 % over 8 |
