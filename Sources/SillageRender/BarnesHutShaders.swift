@@ -4,9 +4,13 @@ enum BarnesHutShaders {
         #include <metal_stdlib>
         using namespace metal;
 
-        // Metal only so far: #274 and #275 share this library with the CUDA engine
-        // (docs/notes/one-kernel-source.md).
+        // What is outside `#if defined(__METAL_VERSION__)` is shared with the CUDA engine, which
+        // compiles it through cuda/include/msl_compat.h (docs/notes/one-kernel-source.md): the
+        // massive particles' kernels (#274). The light tracers' are still Metal's alone (#275).
         #if defined(__METAL_VERSION__)
+        #define SHARED static
+        #define SHARED_CONSTANT constant
+        #endif
 
         struct BHNode {
             float4 comMass;
@@ -17,8 +21,8 @@ enum BarnesHutShaders {
             float4 packed;
         };
 
-        inline int bhRange(BHNode node) { return as_type<int>(node.packed.y); }
-        inline int bhSignedCount(BHNode node) { return as_type<int>(node.packed.z); }
+        SHARED int bhRange(BHNode node) { return as_type<int>(node.packed.y); }
+        SHARED int bhSignedCount(BHNode node) { return as_type<int>(node.packed.z); }
 
         struct HaloGPU {
             float4 centerBefore;
@@ -39,7 +43,7 @@ enum BarnesHutShaders {
         };
 
         // profile 0 is Plummer, 1 is Hernquist. Mass already carries the gravitational constant.
-        static float3 haloAcceleration(float3 offset, float mass, float scale, uint profile) {
+        SHARED float3 haloAcceleration(float3 offset, float mass, float scale, uint profile) {
             if (profile == 0u) {
                 float d2 = dot(offset, offset) + scale * scale;
                 return -mass * offset / (d2 * sqrt(d2));
@@ -49,7 +53,7 @@ enum BarnesHutShaders {
             return -mass * offset / (r * s * s);
         }
 
-        static float3 halos(float3 position, constant HaloGPU *list, uint count, bool after) {
+        SHARED float3 halos(float3 position, constant HaloGPU *list, uint count, bool after) {
             float3 total = float3(0.0f);
             for (uint h = 0; h < count; ++h) {
                 float3 center = after ? list[h].centerAfter.xyz : list[h].centerBefore.xyz;
@@ -61,21 +65,17 @@ enum BarnesHutShaders {
 
         // Half kick with the acceleration left over from the previous step, then drift. The tree
         // is rebuilt from the drifted positions before the second half kick.
-        kernel void bhKickDrift(device float3 *positions [[buffer(0)]],
-                                device float3 *velocities [[buffer(1)]],
-                                device const float3 *accelerations [[buffer(2)]],
-                                constant BHParams &p [[buffer(3)]],
-                                uint i [[thread_position_in_grid]]) {
+        SHARED void massiveKickDrift(device float3 *positions, device float3 *velocities,
+                                     device const float3 *accelerations, constant BHParams &p,
+                                     uint i) {
             if (i >= p.particleCount) { return; }
             float3 v = velocities[i] + accelerations[i] * (p.timeStep * 0.5f);
             velocities[i] = v;
             positions[i] += v * p.timeStep;
         }
 
-        kernel void bhKick(device float3 *velocities [[buffer(0)]],
-                           device const float3 *accelerations [[buffer(1)]],
-                           constant BHParams &p [[buffer(2)]],
-                           uint i [[thread_position_in_grid]]) {
+        SHARED void massiveKick(device float3 *velocities, device const float3 *accelerations,
+                                constant BHParams &p, uint i) {
             if (i >= p.particleCount) { return; }
             velocities[i] += accelerations[i] * (p.timeStep * 0.5f);
         }
@@ -110,7 +110,7 @@ enum BarnesHutShaders {
         // Only material still in the disk is touched. A tidal tail is gas and stars thrown
         // clear, on no circular orbit at all, and cooling it would quietly erase the very
         // thing an encounter is watched for.
-        static float3 bhCool(float3 position, float3 velocity, float3 acceleration,
+        SHARED float3 bhCool(float3 position, float3 velocity, float3 acceleration,
                              DiskCooling disk) {
             float damping = disk.motion.w;
             if (damping <= 0.0f) { return velocity; }
@@ -149,14 +149,10 @@ enum BarnesHutShaders {
             return target + peculiar * (cooled / random);
         }
 
-        kernel void bhDissipate(device const float3 *positions [[buffer(0)]],
-                                device float3 *velocities [[buffer(1)]],
-                                device const float3 *accelerations [[buffer(2)]],
-                                device const uint *component [[buffer(3)]],
-                                device const uint *galaxy [[buffer(4)]],
-                                constant DiskCooling *disks [[buffer(5)]],
-                                constant BHParams &p [[buffer(6)]],
-                                uint i [[thread_position_in_grid]]) {
+        SHARED void massiveDissipate(device const float3 *positions, device float3 *velocities,
+                                     device const float3 *accelerations,
+                                     device const uint *component, device const uint *galaxy,
+                                     constant DiskCooling *disks, constant BHParams &p, uint i) {
             if (i >= p.particleCount) { return; }
             uint kind = component[i];
             // Dark matter has no gas in it; a bulge is held up by the very motion this takes
@@ -185,7 +181,7 @@ enum BarnesHutShaders {
 
         // A unit float from two integers. Per particle and per step, so a knot forming is an
         // independent draw rather than the same particles winning every time.
-        static float hashUnit(uint a, uint b) {
+        SHARED float hashUnit(uint a, uint b) {
             uint h = a * 747796405u + b * 2891336453u;
             h = (h ^ (h >> 16u)) * 2246822519u;
             h = (h ^ (h >> 13u)) * 3266489917u;
@@ -196,9 +192,7 @@ enum BarnesHutShaders {
         // Light tracers (#187) are not in the tree, so their gas reads the chance of a massive
         // gas particle's leaf: each leaf writes its chance into its gas slots, and -1 into the
         // others.
-        constant bool bhLeafChances [[function_constant(2)]];
-
-        static void bhWriteChances(device float *slotChances, device const uint *order,
+        SHARED void bhWriteChances(device float *slotChances, device const uint *order,
                                    device const uint *component, uint start, uint count,
                                    float chance) {
             for (uint k = 0u; k < count; ++k) {
@@ -223,16 +217,12 @@ enum BarnesHutShaders {
         // one step goes as the square root of the density around it. Below a threshold nothing
         // forms at all, which is what keeps the outskirts dark: without one the whole disk
         // slowly turns into knots, evenly, which is the opposite of what an encounter shows.
-        kernel void bhFormStars(device float *formation [[buffer(0)]],
-                                device const uint *component [[buffer(1)]],
-                                device const float *mass [[buffer(2)]],
-                                device const BHNode *nodes [[buffer(3)]],
-                                device const uint *order [[buffer(4)]],
-                                constant SFParams &s [[buffer(5)]],
-                                device const float3 *positions [[buffer(6)]],
-                                device const float3 *velocities [[buffer(7)]],
-                                device float *slotChances [[buffer(8)]],
-                                uint n [[thread_position_in_grid]]) {
+        SHARED void massiveFormStars(device float *formation, device const uint *component,
+                                     device const float *mass, device const BHNode *nodes,
+                                     device const uint *order, constant SFParams &s,
+                                     device const float3 *positions,
+                                     device const float3 *velocities, device float *slotChances,
+                                     bool leafChances, uint n) {
             if (n >= s.nodeCount) { return; }
             BHNode node = nodes[n];
             // A positive count is a branch; a leaf carries minus the particles it holds.
@@ -240,7 +230,7 @@ enum BarnesHutShaders {
             uint count = uint(-bhSignedCount(node));
             if (count == 0u) { return; }
             uint start = uint(bhRange(node));
-            if (bhLeafChances) { bhWriteChances(slotChances, order, component, start, count, 0.0f); }
+            if (leafChances) { bhWriteChances(slotChances, order, component, start, count, 0.0f); }
             float width = sqrt(max(node.packed.x, 1e-12f));
 
             float baryons = 0.0f;
@@ -302,7 +292,7 @@ enum BarnesHutShaders {
                 * sqrt(32.0f * s.gravitationalConstant * density / (3.0f * M_PI_F))
                 * (1.0f + s.compressionBoost * compression);
             float chance = 1.0f - exp(-rate * s.timeStep);
-            if (bhLeafChances) {
+            if (leafChances) {
                 bhWriteChances(slotChances, order, component, start, count, max(chance, 0.0f));
             }
             if (chance <= 0.0f) { return; }
@@ -319,7 +309,7 @@ enum BarnesHutShaders {
             }
         }
 
-        inline ulong bhSpread(uint value) {
+        SHARED ulong bhSpread(uint value) {
             ulong x = ulong(value) & 0x1FFFFFul;
             x = (x | (x << 32)) & 0x001F00000000FFFFul;
             x = (x | (x << 16)) & 0x001F0000FF0000FFul;
@@ -327,6 +317,296 @@ enum BarnesHutShaders {
             x = (x | (x << 4)) & 0x10C30C30C30C30C3ul;
             x = (x | (x << 2)) & 0x1249249249249249ul;
             return x;
+        }
+
+        // The particles in Morton order with their mass beside them, so a leaf's direct sum
+        // reads one contiguous run rather than two scattered reads per neighbour. Gathered
+        // before every force pass rather than once per build: a tree may be reused or built
+        // a step behind, and the sum has to see where the particles are now.
+        SHARED void massiveGather(device float4 *sorted, device const float3 *positions,
+                                  device const float *mass, device const uint *order,
+                                  constant BHParams &p, uint slot) {
+            if (slot >= p.particleCount) { return; }
+            uint i = order[slot];
+            sorted[slot] = float4(positions[i], mass[i]);
+        }
+
+        // Black holes pull outside the tree. A hole is one particle up to a hundred thousand
+        // times heavier than a star; summed through the tree it would be softened at the
+        // stars' length and fold into every cell it sits in. Here it pulls on every particle
+        // directly at a softening of its own, and takes the exact reaction back, so the pair
+        // forces stay equal and opposite. The tree sees it with no mass.
+        struct HoleGPU {
+            // xyz unused, w the mass times the gravitational constant.
+            float4 massG;
+            // x the softening squared, y the particle's index as a bit pattern.
+            float4 shape;
+        };
+
+        SHARED_CONSTANT uint bhHoleLimit = 4;
+
+        // A hole's pull on a particle `d` away from it, and in `back` the particle's on the hole,
+        // `weight` being the particle's mass times the gravitational constant.
+        SHARED float3 holePair(float3 d, float softeningSquared, float holeMassG, float weight,
+                               thread float3 &back) {
+            float r2 = dot(d, d) + softeningSquared;
+            float inverse = 1.0f / (r2 * sqrt(r2));
+            back = d * (weight * inverse);
+            return d * (holeMassG * inverse);
+        }
+
+        // A thread a particle: the reactions are summed over each SIMD group, then over the
+        // threadgroup behind a barrier. `sums` holds bhHoleLimit rows of 32.
+        SHARED void holePull(device const float3 *positions, device float3 *accelerations,
+                             device const float *mass, device const uint *component,
+                             constant HoleGPU *holes, uint holeCount, constant BHParams &p,
+                             device float4 *partial, uint i, uint lane, uint group, uint width,
+                             uint simdLane, uint simdGroup, threadgroup float3 *sums) {
+            bool counted = i < p.particleCount && component[i] != 6u;
+            float3 position = counted ? positions[i] : float3(0.0f);
+            float3 pulled = float3(0.0f);
+            for (uint h = 0; h < holeCount; ++h) {
+                float3 back = float3(0.0f);
+                if (counted) {
+                    float3 d = position - positions[as_type<uint>(holes[h].shape.y)];
+                    pulled -= holePair(d, holes[h].shape.x, holes[h].massG.w,
+                                       p.gravitationalConstant * mass[i], back);
+                }
+                back = simd_sum(back);
+                if (simdLane == 0) { sums[h * 32u + simdGroup] = back; }
+            }
+            if (counted) { accelerations[i] += pulled; }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            if (lane != 0) { return; }
+            uint groups = (width + 31) / 32;
+            for (uint h = 0; h < holeCount; ++h) {
+                float3 total = float3(0.0f);
+                for (uint g = 0; g < groups; ++g) { total += sums[h * 32u + g]; }
+                partial[group * bhHoleLimit + h] = float4(total, 0.0f);
+            }
+        }
+
+        // The same pull with a thread a block of `width` particles, which adds its block's
+        // reactions in the particles' order and needs no barrier: the CUDA engine's, which the
+        // CPU target runs too. `partial` holds the same sums a block as above, for holeSettle.
+        SHARED void holePullBlock(device const float3 *positions, device float3 *accelerations,
+                                  device const float *mass, device const uint *component,
+                                  constant HoleGPU *holes, uint holeCount, constant BHParams &p,
+                                  device float4 *partial, uint block, uint width) {
+            if (block * width >= p.particleCount) { return; }
+            uint end = min((block + 1u) * width, p.particleCount);
+            float3 sums[bhHoleLimit];
+            for (uint h = 0; h < bhHoleLimit; ++h) { sums[h] = float3(0.0f); }
+            for (uint i = block * width; i < end; ++i) {
+                if (component[i] == 6u) { continue; }
+                float3 position = positions[i];
+                float3 pulled = float3(0.0f);
+                for (uint h = 0; h < holeCount; ++h) {
+                    float3 back = float3(0.0f);
+                    float3 d = position - positions[as_type<uint>(holes[h].shape.y)];
+                    pulled -= holePair(d, holes[h].shape.x, holes[h].massG.w,
+                                       p.gravitationalConstant * mass[i], back);
+                    sums[h] += back;
+                }
+                accelerations[i] += pulled;
+            }
+            for (uint h = 0; h < holeCount; ++h) {
+                partial[block * bhHoleLimit + h] = float4(sums[h], 0.0f);
+            }
+        }
+
+        // One thread: the reactions added up in a fixed order, so a run repeats exactly, and
+        // the holes' pull on each other. The analytic halos the tree added are kept.
+        SHARED void holeSettle(device const float3 *positions, device float3 *accelerations,
+                               constant HoleGPU *holes, uint holeCount, uint groups,
+                               device const float4 *partial, constant HaloGPU *haloList,
+                               constant BHParams &p, uint gid) {
+            if (gid != 0) { return; }
+            for (uint h = 0; h < holeCount; ++h) {
+                uint index = as_type<uint>(holes[h].shape.y);
+                float3 position = positions[index];
+                float3 total = float3(0.0f);
+                for (uint g = 0; g < groups; ++g) { total += partial[g * bhHoleLimit + h].xyz; }
+                for (uint o = 0; o < holeCount; ++o) {
+                    if (o == h) { continue; }
+                    float3 d = positions[as_type<uint>(holes[o].shape.y)] - position;
+                    float r2 = dot(d, d) + max(holes[o].shape.x, holes[h].shape.x);
+                    total += d * (holes[o].massG.w / (r2 * sqrt(r2)));
+                }
+                accelerations[index] = total + halos(position, haloList, p.haloCount, true);
+            }
+        }
+
+        // One traversal from `position`. A cell is accepted whole when its width subtends less
+        // than the opening angle, and opened otherwise; leaves fall back to direct summation.
+        //
+        // A cell that holds the particle is always opened. Inside a cube the centre of mass can
+        // be up to 1.7 widths away, past the 1.11 the angle asks at 0.9, and a particle in the
+        // far corner of a lopsided cell took it as one point: a dwarf took the whole root, its
+        // own stars with it, and lost its own gravity (#221). A cell holds the particle when its
+        // parent does and the particle's Morton `code` has the cell's digit at the cell's level;
+        // the stack carries the first half down with each range of siblings. `own` is the
+        // walker's Morton slot, which its own leaf's sum skips; a light tracer is in no leaf and
+        // passes 0xFFFFFFFF.
+        //
+        // `quadrupole` adds an accepted cell's quadrupole to its monopole, and `opensHoldingCells`
+        // is off only to measure the walk of before #221: function constants on Metal, template
+        // parameters on CUDA.
+        SHARED float3 bhWalk(float3 position, ulong code, bool inRoot, uint own,
+                             device const float4 *sorted, device const BHNode *nodes,
+                             device const float4 *moments, float openingAngleSquared,
+                             float softeningSquared, float gravitationalConstant,
+                             bool quadrupole, bool opensHoldingCells, thread uint &work) {
+            float3 total = float3(0.0f);
+            // Sibling cells are contiguous, so the stack holds ranges rather than single
+            // nodes: one entry per level of the tree instead of one per pending sibling.
+            // The old form could hold seven entries per level, so sixty-four slots were
+            // already not enough at ten levels — and running out meant silently dropping
+            // whole cells, and their mass, out of the sum. An entry packs the next node of
+            // the range in the high bits, which leaves room for 2^27 nodes, then whether their
+            // parent holds the particle, then how many siblings follow it in the low three.
+            int stack[32];
+            int top = 0;
+            stack[top++] = inRoot ? 8 : 0;
+
+            while (top > 0) {
+                int entry = stack[--top];
+                int index = entry >> 4;
+                int around = entry & 8;
+                int following = entry & 7;
+                if (following > 0) { stack[top++] = ((index + 1) << 4) | around | (following - 1); }
+                BHNode node = nodes[index];
+                if (node.comMass.w <= 0.0f) { continue; }
+                work += 1;
+
+                float3 offset = node.comMass.xyz - position;
+                float distanceSquared = dot(offset, offset) + softeningSquared;
+                bool leaf = bhSignedCount(node) <= 0;
+                int start = bhRange(node);
+                int span = -bhSignedCount(node);
+                // Whether this node holds the particle. For a leaf of massive particles it is
+                // the leaf whose run of the Morton order holds this slot, so a node may never
+                // stand in for itself.
+                uint digit = as_type<uint>(node.packed.w);
+                bool holdsMe = opensHoldingCells
+                    ? around != 0 && uint((code >> (digit >> 3)) & 7ul) == (digit & 7u)
+                    : leaf && own >= uint(start) && own < uint(start + span);
+
+                if (!holdsMe && node.packed.x <= openingAngleSquared * distanceSquared) {
+                    // Far enough that the centre of mass stands in — for a leaf as much as
+                    // for a branch. Summing a distant leaf particle by particle was the
+                    // single largest cost in an evolved scene: as the disk concentrates,
+                    // leaves at the depth limit grow to hundreds of particles, and every one
+                    // of them was being summed in full by every particle that reached it.
+                    total += offset
+                           * (gravitationalConstant * node.comMass.w
+                              / (distanceSquared * sqrt(distanceSquared)));
+                    if (quadrupole) {
+                        // The next term of the softened potential about the centre of mass.
+                        // With softening the trace no longer drops out, so all six are kept.
+                        float4 qa = moments[2 * index];
+                        float4 qb = moments[2 * index + 1];
+                        float3 qr = float3(qa.x * offset.x + qa.w * offset.y + qb.x * offset.z,
+                                           qa.w * offset.x + qa.y * offset.y + qb.y * offset.z,
+                                           qb.x * offset.x + qb.y * offset.y + qa.z * offset.z);
+                        float inverse = 1.0f / distanceSquared;
+                        float fifth = inverse * inverse / sqrt(distanceSquared);
+                        float radial = 7.5f * dot(offset, qr) * inverse - 1.5f * (qa.x + qa.y + qa.z);
+                        total += (offset * radial - 3.0f * qr) * (gravitationalConstant * fifth);
+                    }
+                } else if (leaf) {
+                    work += uint(span);
+                    for (int k = start; k < start + span; ++k) {
+                        if (uint(k) == own) { continue; }
+                        float4 other = sorted[k];
+                        float3 d = other.xyz - position;
+                        float r2 = dot(d, d) + softeningSquared;
+                        total += d * (gravitationalConstant * other.w / (r2 * sqrt(r2)));
+                    }
+                } else {
+                    int first = bhRange(node);
+                    int children = bhSignedCount(node);
+                    if (children > 0) {
+                        stack[top++] = (first << 4) | (holdsMe ? 8 : 0) | (children - 1);
+                    }
+                }
+            }
+            return total;
+        }
+
+        // One traversal per massive particle, its own pieces of the force pass.
+        SHARED void massiveAcceleration(device const float4 *sorted, device float3 *accelerations,
+                                        device const BHNode *nodes, device const uint *order,
+                                        constant HaloGPU *haloList, constant BHParams &p,
+                                        device uint *cost, device const float4 *moments,
+                                        device const ulong *codes, bool quadrupole,
+                                        bool opensHoldingCells, uint gid) {
+            // Dispatched in pieces, so the display has somewhere to get in. One kernel over
+            // seven million particles keeps the GPU to itself for the best part of a second
+            // and the whole machine feels it.
+            uint slot = gid + p.chunkStart;
+            if (slot >= p.particleCount) { return; }
+            // Threads walk the tree in Morton order, so neighbours in a SIMD group are also
+            // neighbours in space and take almost the same path. Traversing in sampling order
+            // leaves every lane on a different branch and the divergence dominates the cost.
+            uint i = order[slot];
+            float3 position = sorted[slot].xyz;
+            // The code the tree sorted this particle by.
+            ulong code = opensHoldingCells ? codes[slot] : 0ul;
+            // What this lane actually does. Divergence inside a SIMD group is the whole
+            // question for a cooperative traversal, and it cannot be reasoned about: the
+            // group already executes the union of its lanes' paths with the idle ones masked
+            // off, so what a shared traversal would buy back is exactly the masking.
+            uint work = 0;
+            float3 total = bhWalk(position, code, true, slot, sorted, nodes, moments,
+                                  p.openingAngleSquared, p.softeningSquared,
+                                  p.gravitationalConstant, quadrupole, opensHoldingCells, work);
+            accelerations[i] = total + halos(position, haloList, p.haloCount, true);
+            cost[slot] = work;
+        }
+
+        #if defined(__METAL_VERSION__)
+
+        kernel void bhKickDrift(device float3 *positions [[buffer(0)]],
+                                device float3 *velocities [[buffer(1)]],
+                                device const float3 *accelerations [[buffer(2)]],
+                                constant BHParams &p [[buffer(3)]],
+                                uint i [[thread_position_in_grid]]) {
+            massiveKickDrift(positions, velocities, accelerations, p, i);
+        }
+
+        kernel void bhKick(device float3 *velocities [[buffer(0)]],
+                           device const float3 *accelerations [[buffer(1)]],
+                           constant BHParams &p [[buffer(2)]],
+                           uint i [[thread_position_in_grid]]) {
+            massiveKick(velocities, accelerations, p, i);
+        }
+
+        kernel void bhDissipate(device const float3 *positions [[buffer(0)]],
+                                device float3 *velocities [[buffer(1)]],
+                                device const float3 *accelerations [[buffer(2)]],
+                                device const uint *component [[buffer(3)]],
+                                device const uint *galaxy [[buffer(4)]],
+                                constant DiskCooling *disks [[buffer(5)]],
+                                constant BHParams &p [[buffer(6)]],
+                                uint i [[thread_position_in_grid]]) {
+            massiveDissipate(positions, velocities, accelerations, component, galaxy, disks, p, i);
+        }
+
+        constant bool bhLeafChances [[function_constant(2)]];
+
+        kernel void bhFormStars(device float *formation [[buffer(0)]],
+                                device const uint *component [[buffer(1)]],
+                                device const float *mass [[buffer(2)]],
+                                device const BHNode *nodes [[buffer(3)]],
+                                device const uint *order [[buffer(4)]],
+                                constant SFParams &s [[buffer(5)]],
+                                device const float3 *positions [[buffer(6)]],
+                                device const float3 *velocities [[buffer(7)]],
+                                device float *slotChances [[buffer(8)]],
+                                uint n [[thread_position_in_grid]]) {
+            massiveFormStars(formation, component, mass, nodes, order, s, positions, velocities,
+                             slotChances, bhLeafChances, n);
         }
 
         // A tracer's gas forms its stars at the chance of the massive gas particle just before
@@ -372,34 +652,14 @@ enum BarnesHutShaders {
             states[i] = state;
         }
 
-        // The particles in Morton order with their mass beside them, so a leaf's direct sum
-        // reads one contiguous run rather than two scattered reads per neighbour. Gathered
-        // before every force pass rather than once per build: a tree may be reused or built
-        // a step behind, and the sum has to see where the particles are now.
         kernel void bhGather(device float4 *sorted [[buffer(0)]],
                              device const float3 *positions [[buffer(1)]],
                              device const float *mass [[buffer(2)]],
                              device const uint *order [[buffer(3)]],
                              constant BHParams &p [[buffer(4)]],
                              uint slot [[thread_position_in_grid]]) {
-            if (slot >= p.particleCount) { return; }
-            uint i = order[slot];
-            sorted[slot] = float4(positions[i], mass[i]);
+            massiveGather(sorted, positions, mass, order, p, slot);
         }
-
-        // Black holes pull outside the tree. A hole is one particle up to a hundred thousand
-        // times heavier than a star; summed through the tree it would be softened at the
-        // stars' length and fold into every cell it sits in. Here it pulls on every particle
-        // directly at a softening of its own, and takes the exact reaction back, so the pair
-        // forces stay equal and opposite. The tree sees it with no mass.
-        struct HoleGPU {
-            // xyz unused, w the mass times the gravitational constant.
-            float4 massG;
-            // x the softening squared, y the particle's index as a bit pattern.
-            float4 shape;
-        };
-
-        constant uint bhHoleLimit = 4;
 
         kernel void bhHolePull(device const float3 *positions [[buffer(0)]],
                                device float3 *accelerations [[buffer(1)]],
@@ -415,35 +675,11 @@ enum BarnesHutShaders {
                                uint width [[threads_per_threadgroup]],
                                uint simdLane [[thread_index_in_simdgroup]],
                                uint simdGroup [[simdgroup_index_in_threadgroup]]) {
-            threadgroup float3 sums[bhHoleLimit][32];
-            bool counted = i < p.particleCount && component[i] != 6u;
-            float3 position = counted ? positions[i] : float3(0.0f);
-            float3 pulled = float3(0.0f);
-            for (uint h = 0; h < holeCount; ++h) {
-                float3 back = float3(0.0f);
-                if (counted) {
-                    float3 d = position - positions[as_type<uint>(holes[h].shape.y)];
-                    float r2 = dot(d, d) + holes[h].shape.x;
-                    float inverse = 1.0f / (r2 * sqrt(r2));
-                    pulled -= d * (holes[h].massG.w * inverse);
-                    back = d * (p.gravitationalConstant * mass[i] * inverse);
-                }
-                back = simd_sum(back);
-                if (simdLane == 0) { sums[h][simdGroup] = back; }
-            }
-            if (counted) { accelerations[i] += pulled; }
-            threadgroup_barrier(mem_flags::mem_threadgroup);
-            if (lane != 0) { return; }
-            uint groups = (width + 31) / 32;
-            for (uint h = 0; h < holeCount; ++h) {
-                float3 total = float3(0.0f);
-                for (uint g = 0; g < groups; ++g) { total += sums[h][g]; }
-                partial[group * bhHoleLimit + h] = float4(total, 0.0f);
-            }
+            threadgroup float3 sums[bhHoleLimit * 32];
+            holePull(positions, accelerations, mass, component, holes, holeCount, p, partial, i,
+                     lane, group, width, simdLane, simdGroup, sums);
         }
 
-        // One thread: the reactions added up in a fixed order, so a run repeats exactly, and
-        // the holes' pull on each other. The analytic halos the tree added are kept.
         kernel void bhHoleSettle(device const float3 *positions [[buffer(0)]],
                                  device float3 *accelerations [[buffer(1)]],
                                  constant HoleGPU *holes [[buffer(2)]],
@@ -453,120 +689,13 @@ enum BarnesHutShaders {
                                  constant HaloGPU *haloList [[buffer(6)]],
                                  constant BHParams &p [[buffer(7)]],
                                  uint gid [[thread_position_in_grid]]) {
-            if (gid != 0) { return; }
-            for (uint h = 0; h < holeCount; ++h) {
-                uint index = as_type<uint>(holes[h].shape.y);
-                float3 position = positions[index];
-                float3 total = float3(0.0f);
-                for (uint g = 0; g < groups; ++g) { total += partial[g * bhHoleLimit + h].xyz; }
-                for (uint o = 0; o < holeCount; ++o) {
-                    if (o == h) { continue; }
-                    float3 d = positions[as_type<uint>(holes[o].shape.y)] - position;
-                    float r2 = dot(d, d) + max(holes[o].shape.x, holes[h].shape.x);
-                    total += d * (holes[o].massG.w / (r2 * sqrt(r2)));
-                }
-                accelerations[index] = total + halos(position, haloList, p.haloCount, true);
-            }
+            holeSettle(positions, accelerations, holes, holeCount, groups, partial, haloList, p, gid);
         }
 
         constant bool bhQuadrupole [[function_constant(0)]];
         // Off only to measure the walk that took a branch around the particle whole (#221).
         constant bool bhOpensHoldingCells [[function_constant(3)]];
 
-        // One traversal from `position`. A cell is accepted whole when its width subtends less
-        // than the opening angle, and opened otherwise; leaves fall back to direct summation.
-        //
-        // A cell that holds the particle is always opened. Inside a cube the centre of mass can
-        // be up to 1.7 widths away, past the 1.11 the angle asks at 0.9, and a particle in the
-        // far corner of a lopsided cell took it as one point: a dwarf took the whole root, its
-        // own stars with it, and lost its own gravity (#221). A cell holds the particle when its
-        // parent does and the particle's Morton `code` has the cell's digit at the cell's level;
-        // the stack carries the first half down with each range of siblings. `own` is the
-        // walker's Morton slot, which its own leaf's sum skips; a light tracer is in no leaf and
-        // passes 0xFFFFFFFF.
-        static float3 bhWalk(float3 position, ulong code, bool inRoot, uint own,
-                             device const float4 *sorted, device const BHNode *nodes,
-                             device const float4 *moments, float openingAngleSquared,
-                             float softeningSquared, float gravitationalConstant,
-                             thread uint &work) {
-            float3 total = float3(0.0f);
-            // Sibling cells are contiguous, so the stack holds ranges rather than single
-            // nodes: one entry per level of the tree instead of one per pending sibling.
-            // The old form could hold seven entries per level, so sixty-four slots were
-            // already not enough at ten levels — and running out meant silently dropping
-            // whole cells, and their mass, out of the sum. An entry packs the next node of
-            // the range in the high bits, which leaves room for 2^27 nodes, then whether their
-            // parent holds the particle, then how many siblings follow it in the low three.
-            int stack[32];
-            int top = 0;
-            stack[top++] = inRoot ? 8 : 0;
-
-            while (top > 0) {
-                int entry = stack[--top];
-                int index = entry >> 4;
-                int around = entry & 8;
-                int following = entry & 7;
-                if (following > 0) { stack[top++] = ((index + 1) << 4) | around | (following - 1); }
-                BHNode node = nodes[index];
-                if (node.comMass.w <= 0.0f) { continue; }
-                work += 1;
-
-                float3 offset = node.comMass.xyz - position;
-                float distanceSquared = dot(offset, offset) + softeningSquared;
-                bool leaf = bhSignedCount(node) <= 0;
-                int start = bhRange(node);
-                int span = -bhSignedCount(node);
-                // Whether this node holds the particle. For a leaf of massive particles it is
-                // the leaf whose run of the Morton order holds this slot, so a node may never
-                // stand in for itself.
-                uint digit = as_type<uint>(node.packed.w);
-                bool holdsMe = bhOpensHoldingCells
-                    ? around != 0 && uint((code >> (digit >> 3)) & 7ul) == (digit & 7u)
-                    : leaf && own >= uint(start) && own < uint(start + span);
-
-                if (!holdsMe && node.packed.x <= openingAngleSquared * distanceSquared) {
-                    // Far enough that the centre of mass stands in — for a leaf as much as
-                    // for a branch. Summing a distant leaf particle by particle was the
-                    // single largest cost in an evolved scene: as the disk concentrates,
-                    // leaves at the depth limit grow to hundreds of particles, and every one
-                    // of them was being summed in full by every particle that reached it.
-                    total += offset
-                           * (gravitationalConstant * node.comMass.w
-                              / (distanceSquared * sqrt(distanceSquared)));
-                    if (bhQuadrupole) {
-                        // The next term of the softened potential about the centre of mass.
-                        // With softening the trace no longer drops out, so all six are kept.
-                        float4 qa = moments[2 * index];
-                        float4 qb = moments[2 * index + 1];
-                        float3 qr = float3(qa.x * offset.x + qa.w * offset.y + qb.x * offset.z,
-                                           qa.w * offset.x + qa.y * offset.y + qb.y * offset.z,
-                                           qb.x * offset.x + qb.y * offset.y + qa.z * offset.z);
-                        float inverse = 1.0f / distanceSquared;
-                        float fifth = inverse * inverse / sqrt(distanceSquared);
-                        float radial = 7.5f * dot(offset, qr) * inverse - 1.5f * (qa.x + qa.y + qa.z);
-                        total += (offset * radial - 3.0f * qr) * (gravitationalConstant * fifth);
-                    }
-                } else if (leaf) {
-                    work += uint(span);
-                    for (int k = start; k < start + span; ++k) {
-                        if (uint(k) == own) { continue; }
-                        float4 other = sorted[k];
-                        float3 d = other.xyz - position;
-                        float r2 = dot(d, d) + softeningSquared;
-                        total += d * (gravitationalConstant * other.w / (r2 * sqrt(r2)));
-                    }
-                } else {
-                    int first = bhRange(node);
-                    int children = bhSignedCount(node);
-                    if (children > 0) {
-                        stack[top++] = (first << 4) | (holdsMe ? 8 : 0) | (children - 1);
-                    }
-                }
-            }
-            return total;
-        }
-
-        // One traversal per massive particle, its own pieces of the force pass.
         kernel void bhAcceleration(device const float4 *sorted [[buffer(0)]],
                                    device float3 *accelerations [[buffer(1)]],
                                    device const BHNode *nodes [[buffer(2)]],
@@ -577,28 +706,8 @@ enum BarnesHutShaders {
                                    device const float4 *moments [[buffer(7)]],
                                    device const ulong *codes [[buffer(10)]],
                                    uint gid [[thread_position_in_grid]]) {
-            // Dispatched in pieces, so the display has somewhere to get in. One kernel over
-            // seven million particles keeps the GPU to itself for the best part of a second
-            // and the whole machine feels it.
-            uint slot = gid + p.chunkStart;
-            if (slot >= p.particleCount) { return; }
-            // Threads walk the tree in Morton order, so neighbours in a SIMD group are also
-            // neighbours in space and take almost the same path. Traversing in sampling order
-            // leaves every lane on a different branch and the divergence dominates the cost.
-            uint i = order[slot];
-            float3 position = sorted[slot].xyz;
-            // The code the tree sorted this particle by.
-            ulong code = bhOpensHoldingCells ? codes[slot] : 0ul;
-            // What this lane actually does. Divergence inside a SIMD group is the whole
-            // question for a cooperative traversal, and it cannot be reasoned about: the
-            // group already executes the union of its lanes' paths with the idle ones masked
-            // off, so what a shared traversal would buy back is exactly the masking.
-            uint work = 0;
-            float3 total = bhWalk(position, code, true, slot, sorted, nodes, moments,
-                                  p.openingAngleSquared, p.softeningSquared,
-                                  p.gravitationalConstant, work);
-            accelerations[i] = total + halos(position, haloList, p.haloCount, true);
-            cost[slot] = work;
+            massiveAcceleration(sorted, accelerations, nodes, order, haloList, p, cost, moments,
+                                codes, bhQuadrupole, bhOpensHoldingCells, gid);
         }
 
         // Light tracers (#238) hold a position with the time their stars formed in w, and a
@@ -666,7 +775,8 @@ enum BarnesHutShaders {
             uint work = 0;
             float3 acceleration = bhWalk(position, code, inRoot, 0xFFFFFFFFu, sorted, nodes,
                                          moments, p.openingAngleSquared, p.softeningSquared,
-                                         p.gravitationalConstant, work)
+                                         p.gravitationalConstant, bhQuadrupole,
+                                         bhOpensHoldingCells, work)
                                 + halos(position, haloList, p.haloCount, true);
             for (uint h = 0; h < p.holeCount; ++h) {
                 float3 d = position - massive[as_type<uint>(holes[h].shape.y)];

@@ -17,9 +17,10 @@ every push by a GitHub workflow that compiles the CUDA code and runs it on the C
   or warp functions run one thread after another on small inputs. Phase 1 of #269 tests the
   CUDA engine that way, with nothing rented.
 
-#281 shared the tree (`GPUTreeShaders`, 20 kernels), and #276 the particle passes of the
-renderer (`Shaders`, 20 vertex and fragment functions and the lace's kernel). The others are
-still inside `#if defined(__METAL_VERSION__)`: #274 and #275 share `BarnesHutShaders`, #277 the
+#281 shared the tree (`GPUTreeShaders`, 20 kernels), #274 the massive particles' kernels of
+`BarnesHutShaders` (8 of its 11) and #276 the particle passes of the renderer (`Shaders`, 19
+vertex and fragment functions and the lace's kernel). What is left is still inside
+`#if defined(__METAL_VERSION__)`: #275 shares the light tracers' three kernels, #277 the
 post-processing kernels of `Shaders`; `RecordingShaders` (take playback) and `SolverShaders`
 (the restricted solver) stay Metal only.
 
@@ -33,7 +34,9 @@ is not also C++ (below).
 entry point inside `#if defined(__METAL_VERSION__)`, and its CUDA entry point of the same name
 in `cuda/src`, or mark it `pending #<issue>` or `metal-only: <reason>` in `cuda/kernels.txt`.
 A pass goes into the shared order of a step or of a frame (portable Swift with exhaustive
-switches, from #274 and #276 on), so that the CUDA module stops compiling until it handles it.
+switches, from #274 and #276 on), so that the CUDA module stops compiling until it handles it:
+for the solver, a case of `BarnesHutPass` and its place in `BarnesHutStep`
+([cuda-engine.md](cuda-engine.md)).
 The check fails on a Metal function missing from `cuda/kernels.txt`, and says what to add.
 
 **Change a struct a kernel reads**: change it in the MSL and in its Swift mirror. If
@@ -125,10 +128,10 @@ rules it comes down to.
   and writes, samplers, `discard_fragment`, `point_coord`, and the thread's position, which the
   entry point passes down as plain integers. A function constant
   (`[[function_constant(n)]]`, three in `BarnesHutShaders`) stays there too and reaches the
-  shared function as an argument, or becomes a template parameter of the CUDA entry point
-  (#274). One exception, for a texture a shared function reads half way: the read is a
-  one-line function of its own, Metal's inside the guard and the other engines' in its `#else`
-  (#276, above).
+  shared function as an argument; on CUDA it is a template parameter of the entry point, which
+  passes it down the same way (#274: `bhAcceleration<quadrupole, opensHoldingCells>`). One
+  exception, for a texture a shared function reads half way: the read is a one-line function
+  of its own, Metal's inside the guard and the other engines' in its `#else` (#276, above).
 - **No `static` local variable, no recursion, no `double`**, as in MSL.
 
 What `msl_compat.h` gives the text, with MSL's meaning: `float2`, `float3`, `float4`, their
@@ -257,9 +260,11 @@ One line for each Metal `kernel`, `vertex` and `fragment` function: `<library> <
 
 After #281: 62 functions, 59 pending (20 of the tree for #273, 8 of the massive solver for
 #274, 3 of the tracers for #275, 20 particle passes for #276, 8 post-processing kernels for
-#277) and 3 Metal only (`expandSnapshots`, `expandSnapshots21`, `integrate`). After #276 the 20
-particle passes are 13 `cuda`, 6 `cuda in` and one Metal only (`webResolveVertex`, the triangle
-that covers the frame). Phase 1 is over when no line is pending.
+#277) and 3 Metal only (`expandSnapshots`, `expandSnapshots21`, `integrate`). After #274: 21
+`cuda`, 7 `cuda gpu-only`, 31 pending. After #276 the 20 particle passes are 13 `cuda`, 6
+`cuda in` and one Metal only (`webResolveVertex`, the triangle that covers the frame), which
+leaves 11 pending: the tracers' three and the eight of the post-processing. Phase 1 is over
+when no line is pending.
 
 ## The reference outputs
 

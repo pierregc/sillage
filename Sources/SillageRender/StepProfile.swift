@@ -24,23 +24,25 @@ public struct StepProfile: Sendable {
         steps > 0 ? (milliseconds[phase] ?? 0) / Double(steps) : 0
     }
 
-    mutating func add(_ phase: String, _ value: Double) {
+    public mutating func add(_ phase: String, _ value: Double) {
         milliseconds[phase, default: 0] += value
     }
 }
 
 /// Shared between the stepping thread and whoever reads it.
-final class StepProfiler: @unchecked Sendable {
+public final class StepProfiler: @unchecked Sendable {
     private let lock = NSLock()
     private var profile = StepProfile()
 
-    func update(_ change: (inout StepProfile) -> Void) {
+    public init() {}
+
+    public func update(_ change: (inout StepProfile) -> Void) {
         lock.lock()
         change(&profile)
         lock.unlock()
     }
 
-    func take() -> StepProfile {
+    public func take() -> StepProfile {
         lock.lock()
         defer {
             profile = StepProfile()

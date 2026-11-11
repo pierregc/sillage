@@ -2,9 +2,12 @@
 
 The hires engine's CUDA twin for rented NVIDIA GPUs (#269), written and tested without one in
 phase 1. #273 laid the frame the next steps build in: the C API, the Swift module over it, the
-build for the GPU and for the CPU target, and the tree builder, the first engine in it. How a
-kernel's text is shared with Metal is in [one-kernel-source.md](one-kernel-source.md); this note
-is how the CUDA side around it is built, run and tested.
+build for the GPU and for the CPU target, and the tree builder, the first engine in it. #274
+added the solver of the massive particles, which has
+[a section of its own](#the-massive-particles-solver-274), and #276 the renderer's particle
+passes, [which have theirs](#the-renderers-particle-passes-276). How a kernel's text is shared
+with Metal is in [one-kernel-source.md](one-kernel-source.md); this note is how the CUDA side
+around it is built, run and tested.
 
 ## Layout
 
@@ -16,9 +19,11 @@ is how the CUDA side around it is built, run and tested.
 | `cuda/src/engine.h` | what the files of `cuda/src` share behind the API: `sc_context`, `sc_buffer`, `fail`, `check`, `allocate`, `pointer` |
 | `cuda/src/context.cu` | errors, contexts, buffers and pinned memory |
 | `cuda/src/tree.cu` | the 20 tree entry points, their launches and the tree's calls |
+| `cuda/include/sillage_cuda_solver.h`, `cuda/src/solver.cu` | the massive solver's calls, its 8 entry points and their launches (#274) |
+| `cuda/include/sillage_cuda_render.h`, `cuda/src/render.cu` | the renderer's calls, the 13 entry points of its particle passes and their launches (#276) |
 | `cuda/src/kernels.cu` | every library's MSL in one unit, for the checks (#281) |
-| `cuda/tests/*.cu` | the C tests of the CPU target (`compat`, `tree_fixture`, `tree_entries`, `render_passes`, `raster_probe`) |
-| `Sources/SillageCUDA/` | the Swift: `CUDAContext` and `CUDAError`, `CUDABuffer` and `CUDAHostMemory`, `CUDATreeBuilder` |
+| `cuda/tests/*.cu` | the C tests of the CPU target (`compat`, `tree_fixture`, `tree_entries`, `solver_fixture`, `render_passes`, `raster_probe`) |
+| `Sources/SillageCUDA/` | the Swift: `CUDAContext` and `CUDAError`, `CUDABuffer` and `CUDAHostMemory`, `CUDATreeBuilder`, `CUDABarnesHutSolver`, `CUDARenderer` |
 | `Tests/SillageCUDATests/` | the Swift tests, run on Linux |
 
 **A new domain** (#274's solver, #276's renderer) takes files of its own, so that two tickets
@@ -117,7 +122,7 @@ cuda/build.sh [gpu] [cpu] [libs]
 packages, as that note describes for a session that may not install them.
 
 `scripts/linux.sh` runs `cuda/build.sh libs`, builds `SillageCUDA` (`libSillageCUDA.so`) over
-`SillageCore`, and adds `Tests/SillageCUDATests` to the tests (`scripts/linux.sh test-cuda` runs
+`SillageCore` and, since the solver shares its step with Metal's (#274), `SillageRender`, and adds `Tests/SillageCUDATests` to the tests (`scripts/linux.sh test-cuda` runs
 them alone). It links the GPU library when it
 was built and `nvidia-smi` lists a GPU, the CPU one otherwise, and says which;
 `SILLAGE_CUDA_TARGET=gpu` or `cpu` chooses. The CUDA runtime goes in statically
@@ -212,6 +217,252 @@ runs `scripts/linux.sh check` on the box first, with both variables set.
 - **The Swift tests of the CPU target take about two seconds.** With the GPU library and no
   driver, every call returns `SC_NO_DEVICE` or `SC_CUDA_ERROR` with the runtime's message, and
   nothing crashes.
+
+## The massive particles' solver (#274)
+
+`MetalBarnesHutSolver` without its light tracers, on CUDA: a scene's massive particles stepped as
+the Mac steps them, with the analytic or live halos, the black holes, star formation, the cooling
+disks and dissipation, saved and resumed to the bit. Nothing of it is a copy. The kernels are the
+shared MSL of `BarnesHutShaders`; the order of a step and the CPU work around it are portable
+Swift that both solvers run. #275 adds the light tracers to it, #278 steps it in the full pass.
+
+| where | what |
+| --- | --- |
+| `Sources/SillageRender/BarnesHutShaders.swift` | the eight massive kernels' work in shared functions, the three tracer kernels still Metal's (#275) |
+| `Sources/SillageRender/BarnesHutRecords.swift` | the Swift mirrors of the structs those kernels read |
+| `Sources/SillageRender/BarnesHutHost.swift` | the solver's CPU side: counts, masses, black holes, centres, disk frames, cooling disks, pass parameters, settings, a checkpoint's state |
+| `Sources/SillageRender/BarnesHutStep.swift` | the step, the seed of a new solver and the restart of a restored one; `BarnesHutPass`, `BarnesHutPasses` |
+| `cuda/include/sillage_cuda_solver.h`, `cuda/src/solver.cu` | the eight CUDA entry points and a C call a pass |
+| `Sources/SillageCUDA/CUDABarnesHutSolver.swift` | the CUDA solver: its buffers, and each pass run |
+| `Sources/SillageRender/SolverCheck.swift`, `scripts/solver-compare.py` | the run two engines are compared by, and its scoring |
+
+### One step, two engines
+
+- **`BarnesHutPass`** is one pass of a step: `starFormation`, `tracerStarFormation`, `drift`,
+  `gather`, `accelerations(slots)`, `holes`, `kick`, `dissipation(disks)`,
+  `tracerStep(mode, pieces, disks)`. An engine runs a pass by switching over it with no
+  `default`. **A pass added for Metal is a new case, and `CUDABarnesHutSolver` stops compiling
+  until it runs it**, on the Mac too, where `./scripts/dev.sh check` typechecks `SillageCUDA`.
+- **`BarnesHutStep`** holds the order, and nothing else decides it: `run` (formation, drift, the
+  tree build with the CPU work it leaves room for, the cooling disks, the forces a piece of
+  `forceChunk` slots at a time, then the holes, the kick and the dissipation with the last
+  piece, then the tracers), `seed` (what a new solver starts from) and `restored` (what a
+  solver read back from a checkpoint starts from). When a reused tree gathers, when the tracers
+  sort and how the force pass is cut are decided there. **A pass moved in `BarnesHutStep` moves
+  for both engines.**
+- **`BarnesHutPasses`** is what an engine gives the step: `run(passes)` as one submission,
+  `profile(phase, passes)` for the same timed, `buildTree(sortingTracers:meanwhile:profiled:)`,
+  and where the CPU reads the massive positions and velocities. Metal encodes `run`'s passes
+  into one command buffer, commits and waits, as it did; CUDA queues their launches.
+- **`BarnesHutHost`** is the CPU side, moved out of `MetalBarnesHutSolver` as it was: the halo
+  centres summed in double a block at a time (`updateHaloCenters`), the disk frames
+  (`updateDiskFrames`, `tidalStress`), the cooling disks, the halo list, each pass's parameters,
+  star formation's parameters and its draw, the black holes' bookkeeping, the momentum, and
+  `SolverState`. It reads the positions through a pointer: Metal's unified memory, or CUDA's
+  copy in pinned host memory. The solver's settings (`forceChunk`, `treeReuse`, `leafCapacity`,
+  `maximumTreeDepth`, `quadrupole`, `frameSample`, the tidal bounds, the tracers' sort) are its
+  statics, which `MetalBarnesHutSolver` forwards under the names they had.
+
+On the Mac nothing changed: the same passes go into the same command buffers in the same order,
+profiled or not, and the CPU work still runs between the tree build's commit and its wait.
+
+### The kernels
+
+`bhKickDrift`, `bhKick`, `bhDissipate`, `bhFormStars`, `bhGather`, `bhHolePull`, `bhHoleSettle`
+and `bhAcceleration` are `cuda` in `cuda/kernels.txt`: none needs a block barrier or a warp
+function, so all eight run on the CPU target. Their work is in `massiveKickDrift`,
+`massiveKick`, `massiveDissipate`, `massiveFormStars`, `massiveGather`, `holePull`,
+`holeSettle` and `massiveAcceleration`, with `bhWalk`, `halos`, `bhCool`, `hashUnit` and
+`bhWriteChances` beside them.
+
+- **The function constants** stay in the Metal part and reach the shared functions as
+  arguments: `leafChances` for `massiveFormStars`, `quadrupole` and `opensHoldingCells` for
+  `bhWalk` and `massiveAcceleration`. On CUDA they are template parameters of the entry points,
+  `bhFormStars<leafChances>` and `bhAcceleration<quadrupole, opensHoldingCells>`: six
+  instantiations, each specialised as Metal specialises a pipeline, launched through a function
+  pointer the solver picks once.
+- **The black holes' pull is the one kernel CUDA runs another way.** On Metal a thread takes a
+  particle, sums the reactions over its SIMD group and then over its threadgroup behind a
+  barrier (`holePull`). On CUDA a thread takes a block of 256 particles and adds their reactions
+  in the particles' order (`holePullBlock`): no barrier, so it runs on the CPU target, and a
+  fixed order, so a run repeats. Both call `holePair` for a hole's pull on a particle and its
+  reaction, so the arithmetic is written once; both leave four sums a block in `partial`, which
+  `holeSettle` adds in the blocks' order on one thread, on both engines.
+- **Launches**: blocks of 256 threads over the massive particles or the tree's nodes, blocks of
+  64 for the walk as on Metal (#283 times other widths), one thread for `bhHoleSettle`. The
+  lists Metal binds as bytes (halos, holes, disks) are staged in small device buffers.
+- **Built like the tree**, without FMA contraction or fast math (`--fmad=false`,
+  `-ffp-contract=off`), where Metal builds this library with its default fast math. #283 can
+  time what contraction buys the walk; a checkpoint written on one NVIDIA model resumes the
+  same on another either way, since contraction is the compiler's choice and not the GPU's. The
+  PTX holds 12 entry points, no barrier and no double precision instruction.
+
+### The C API and `CUDABarnesHutSolver`
+
+`sillage_cuda_solver.h` is a call a pass (`sc_solver_form_stars`, `_kick_drift`, `_gather`,
+`_accelerations`, `_holes`, `_kick`, `_dissipate`) over buffers the caller owns. A pass takes
+its parameters as the bytes of the struct the MSL reads (`BHParams`, `SFParams`) and its lists
+as the bytes of their elements (`HaloGPU`, `HoleGPU`, `DiskCooling`), which Swift fills as it
+fills Metal's; a size other than the MSL's is refused, and `KernelSourceTests` holds the Swift
+mirrors to the sizes `cuda/src/kernels.cu` asserts.
+
+`CUDABarnesHutSolver` conforms to `Solver` and `BarnesHutPasses`. What the hires loop reads of
+it: `positions` and `formation` (device buffers), `centers`, `diskFrames`, `time`, and
+`writeSmoothing(into:drawn:)` from its own tree.
+
+- **The CPU work overlaps the build.** `buildTree` copies the massive positions, and the
+  velocities when a disk cools, to pinned host memory once the drift has landed, queues the tree
+  build, and runs the shared CPU work on the copy while the device builds.
+- **Errors.** A pass cannot throw through the shared step, so the solver keeps the first
+  `CUDAError` in `failure` and runs nothing after it; `advance(steps:)` steps and throws it.
+- **Checkpoints** are the Metal solver's files (#240): `state` is the host's `SolverState`,
+  `writeParticles(to:)` downloads and writes the positions, the velocities and the formation
+  times 256 MB at a time, `restore(_:from:)` reads them back, takes the counters and runs
+  `BarnesHutStep.restored`.
+- **Deterministic.** No float atomic feeds the motion: the only sums over particles on the
+  device are the holes' reactions, added a block at a time and the blocks in a fixed order. The
+  halo centres are summed in double in fixed blocks on the CPU. No fast math.
+- **The massive set.** A sample drawn on Linux is the Mac's to rounding and not to the bit
+  ([linux-build.md](linux-build.md)), so a run compared with Metal, and the full pass (#278),
+  read the massive particles the Mac sampled, `massive.bin` (`RunCheckpoint.massiveSet()`).
+  `init(context:scene:)` samples here, for tests and timings.
+- **The light tracers (#275)** come in front of the massive particles in `positions` and
+  `velocities`, as on Metal: `sc_solver_config.first` and `leaf_chances` are there for them,
+  and the three passes this solver leaves empty are `tracerStarFormation`, `tracerStep` and the
+  tracers' half of `drift`.
+
+### On the CPU target
+
+The whole step runs, slowly: the tree is the CPU's `BarnesHutTree` laid out by `sc_tree_upload`,
+now with its sorted Morton codes, which the walk reads to open the cells around a particle. A
+tree kernel that strides over the nodes gives each node to one thread whatever the grid, so the
+CPU target launches one block of them where a GPU launches 1,024: the same nodes to the bit, and
+a step of 20,000 particles went from 168 ms to 52.
+A step of scene-0031 at 20 k, 49,999 particles with their live halos, takes 0.21 s there: 2,000
+steps in seven minutes.
+
+### Tests
+
+**Now, in every Linux check and on every push**, on the CPU target (16 s for the three CUDA
+suites):
+
+- `cuda/tests/solver_fixture.cu`, with `g++` and `clang++`: `bhWalk` and `halos` from the MSL
+  text over the walk fixture of #281, 1,000 tracers through a tree of 5,012 massive particles.
+  No acceleration past 1e-5 of Metal's, the furthest 1.63e-6 away, 42 with Metal's bits.
+- `CUDA solver` (7 tests run here): accelerations against direct summation at 2,000, 3,000 and
+  20,000 to the tolerance `accelerationMatchesDirectSummation` holds the Metal solver to (mean
+  under 2 %, worst under 15 % at an opening angle of 0.4); a black hole's pull on every particle
+  and its reaction, as `aBlackHolePullsDirectlyAndTakesTheReaction`; 200 steps of a merger of
+  20,000 with star formation, two cooling disks and dissipation, twice, the same bits, and
+  stopped at step 100, saved and resumed in a solver that samples nothing, the same bits at
+  step 200; the force pass in pieces of 700 slots, and every pass profiled, the same bits, over
+  live halos; a tree reused for two steps, gathered in between, within 0.05 kpc after 20 steps;
+  the smoothing lengths from the solver's own tree; a checkpoint of another size or cut short
+  refused; a solver check's run written and read back.
+
+**Written now, run on a GPU in #283**, each skipped on the CPU target with "needs an NVIDIA GPU
+and libsillagecuda.a: #283 runs it":
+
+- `accelerationMatchesDirectSummationAt500k`: direct summation at 500 k, over the tree its own
+  kernels build.
+- `aMergerOf500kRepeatsToTheBitAndResumesFromItsCheckpoint`: 200 k drawn and 300 k of live
+  halos, 200 steps twice and resumed from step 100.
+- `aStepIsTimed` at 2 M and 5 M massive particles: the mean of ten steps, phase by phase, on a
+  `CUDASOLVER` line, to set against the M4 Max.
+
+And on a GPU the tests of the first list run through the real tree, the radix sort and the split
+among them. One test waits for data instead of a GPU: `aRunStaysWithinWhatChaosPartsTwoMetalRunsBy`
+is skipped without the Metal runs of branch `assets/cuda-checks` (below), and #283 runs it on
+its box with them, at 20 k and at 500 k.
+
+### Against Metal
+
+Two float machines do not follow a chaotic system to the bit, so the CUDA solver is held to
+rounding on one force evaluation, and along a run to how far Metal parts from itself when a
+position differs by its last bit.
+
+**The run.** Scene-0031 of 2026-10-30-b at 20 k as a hires steps it: 49,999 particles, 20,000
+drawn and 29,999 of the two live halos, step 0.042 (0.198 Myr), opening angle 0.9, quadrupole
+on, two cooling disks, 2,000 steps to 395.6 Myr, through the first pericentre (308.6 Myr). The
+Mac sampled it once, `massive.bin`, and both engines read that file. Linux builds the same
+`SceneConfig` from `scene.json`, with the Mac's step, softening and opening angle to the bit.
+The Mac ran Metal over it (identical to the byte twice over), then four more times from positions
+a last bit away: one particle moved, three times over (the first drawn, the last drawn, the last
+of the halo), and every particle moved. Its runs are on `assets/cuda-checks` (6c74570),
+`docs/spikes/cuda-checks/solver/`, with their formats. The CUDA run is the CPU target's.
+
+**One force evaluation**, on the positions of `massive.bin`: the accelerations are within
+7.7e-8 of Metal's in the median, 2.4e-7 at the 99th percentile and 2.7e-6 at most, 4.7 % of them
+with the same bits. Metal moved by one bit everywhere is 2e-7, 2.4e-6 and 2.1e-5 from itself.
+
+**Particle by particle**, the distance between the two runs' positions of the drawn particles,
+in kpc (median, 99th percentile, largest):
+
+| step | CUDA against Metal | Metal, one particle a bit away | Metal, every particle a bit away |
+| ---: | --- | --- | --- |
+| 1 | 0, 1.5e-8, 3.8e-6 | 0, 0, 9.5e-7 | 1.9e-6, 3.8e-6, 7.6e-6 |
+| 10 | 0, 1.9e-6, 5.4e-6 | 0, 0, 9.5e-7 | 1.9e-6, 4.3e-6, 2.4e-5 |
+| 100 | 2.4e-7, 7.6e-6, 1.5e-4 | 0, 0, 9.5e-7 | 4.3e-6, 7.3e-5, 5.6e-4 |
+| 1,000 | 3.3e-4, 3.2e-3, 0.021 | 1.5e-4, 1.3e-3, 6.9e-3 | 6.3e-4, 5.5e-3, 0.022 |
+| 2,000 | 8.1e-3, 0.17, 1.41 | 4.7e-3, 0.086, 0.69 | 0.014, 0.28, 1.45 |
+
+After one step more than half the particles still sit where Metal put them, to the bit. From
+there the CUDA run parts from Metal as a Metal run does: further than one particle moved by a
+bit, which stays alone for a hundred steps, and less far than every particle moved by a bit.
+
+**Along the run**, the most each measure reaches over the 2,000 steps:
+
+| measure | CUDA against Metal | Metal against itself, the widest of the four |
+| --- | ---: | ---: |
+| centre of galaxy 0, kpc | 0.0184 | 0.0206 |
+| centre of galaxy 1, kpc | 0.0187 | 0.0147 |
+| thickness of disk 0 | 1.04e-4 | 9.5e-5 |
+| thickness of disk 1 | 1.23e-4 | 9.3e-5 |
+| axis of disk 0, degrees | 0.0189 | 0.0188 |
+| axis of disk 1, degrees | 0.0182 | 0.0251 |
+| momentum | 7.8e-4 | 8.3e-4 |
+| centre of mass, kpc | 9.8e-5 | 1.4e-4 |
+| stars formed | 3 (141 against 138) | 3 |
+| density maps, chi-square a cell, 4 x 4 | 0.0057 | 0.0122 |
+| density maps, chi-square a cell, 8 x 8 | 0.0018 | 0.0033 |
+| stars elsewhere, % | 1.75 | 2.94 |
+
+The centres travel 50 and 63 kpc, the thickness goes from 0.02 to 0.28 and the momentum from
+2.1 to 2.7 in those units, and a chi-square of 1 is two independent draws of one distribution.
+**The CUDA run stays within what chaos alone gives.** Four measures pass the widest of four
+Metal runs, by 0.3 % to 32 % (a centre, both thicknesses, an axis): four draws do not bound a
+fifth, and the test allows three times the widest.
+
+**To run it again**, on Linux, with the Mac's folder checked out from `assets/cuda-checks`:
+
+```
+SILLAGE_CUDA_CHECKS=<folder> SILLAGE_CUDA_CHECKS_OUT=<out> scripts/linux.sh test-cuda \
+    --filter aRunStaysWithinWhatChaosPartsTwoMetalRunsBy
+cd <folder> && python3 <repository>/scripts/solver-compare.py metal \
+    --scale metal-bit-a metal-bit-b metal-bit-c metal-bit-all --test <out>/cuda-cpu
+```
+
+The test writes the CUDA run in the Mac's format (`SolverCheck`), holds the accelerations of step
+0 to rounding and the measures above to three times the widest Metal run, and prints them on
+`CUDASOLVER` lines; the script prints every measure along the run. The Metal side is written by
+`SILLAGE_SOLVER_CHECK_OUT=<folder> ./scripts/dev.sh test --filter SolverCheckTests` on the Mac,
+at `SILLAGE_SOLVER_CHECK_PARTICLES` drawn (20,000) for `SILLAGE_SOLVER_CHECK_STEPS` (2,000).
+
+### What #274 measured
+
+- **Metal is the same to the bit.** After the kernels were shared, and again after the step and
+  the CPU work moved out of `MetalBarnesHutSolver`, the Mac's check passed with the same 605
+  tests, a short hires of scene-0031 (200 k drawn from 50 k massive) gave its 26 files to the
+  byte, and so did a Metal run of 2,000 steps at 20 k with its checkpoints and accelerations.
+  Scene-0031 has no black hole, and `holePair` rewrote the one place a hole pulls: a black hole
+  pass at 12,000, alone and with light tracers, gave main's particles, state and accelerations
+  to the byte at seven steps up to 1,200. `aBlackHolePassKeepsItsBits` now holds that run to
+  its digests in every check on the Mac, on the GPU they were taken on.
+- **The massive kernels compile for CUDA as they are**: 12 entry points for sm_120, no barrier,
+  no double precision instruction.
+- **The CPU target repeats itself and resumes to the bit** over 200 steps of a merger of 20,000.
+- **A scene built on Linux has the Mac's step, softening and opening angle to the bit** at 20 k,
+  though its sample does not (#272).
 
 ## The renderer's particle passes (#276)
 
