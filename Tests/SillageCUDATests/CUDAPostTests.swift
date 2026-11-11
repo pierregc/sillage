@@ -247,14 +247,14 @@ struct CUDAPostTests {
 
     // MARK: - Written now, run on a GPU in #283
 
-    private static let fourK = ProcessInfo.processInfo.environment["SILLAGE_CUDA_STILLS_4K"]
+    private static let fourK = ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_4K"]
 
     /// The comparison above at 3840 by 2160, from a take at 8 M drawn from 2 M massive. The
     /// Mac fills the folder as the render folder of the assets branch is filled, with
     /// `export --width 3840 --height 2160 --dump-targets` and `--stills`.
     @Test(
         .enabled(if: onAGPU && fourK != nil, needsAGPU),
-        .enabled(if: fourK != nil, "set SILLAGE_CUDA_STILLS_4K to the Mac's folder of 4K stills"))
+        .enabled(if: fourK != nil, "set SILLAGE_CUDA_RENDER_4K to the Mac's folder of 4K stills"))
     func theStillsAgreeWithMetalAt4K() throws {
         let rows = try CUDAStillChecks.compareWithMetal(
             folder: URL(fileURLWithPath: try #require(Self.fourK)), log: { print("CUDAPOST4K", $0) })
