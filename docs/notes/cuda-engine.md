@@ -487,8 +487,9 @@ The three bodies moved into shared functions line for line, the two function con
 `bhTracerStep` (`bhQuadrupole`, `bhOpensHoldingCells`) reaching `tracerStep` as arguments and on
 CUDA as the template parameters of `bhTracerStep<quadrupole, opensHoldingCells>`, launched through
 a function pointer as `bhAcceleration` is. None needs a block barrier or a warp function, so all
-three are `cuda` in `cuda/kernels.txt` and run on the CPU target: 24 `cuda`, 7 `cuda gpu-only`, 28
-pending. Each `bhTracerStep` instantiation takes 40 registers for sm_120, as #271's spike did,
+three are `cuda` in `cuda/kernels.txt` and run on the CPU target. With #276's passes the list
+holds 37 `cuda`, 7 `cuda gpu-only`, 6 inside a kernel, 4 Metal only, and 8 pending, the
+post-processing kernels of #277. Each `bhTracerStep` instantiation takes 40 registers for sm_120, as #271's spike did,
 with no double precision instruction; the solver's PTX now holds 18 entry points and no barrier.
 
 **A piece of a pass is its slots, not a whole number of blocks.** Metal's `dispatchThreads`
