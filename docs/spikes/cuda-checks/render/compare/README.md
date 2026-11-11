@@ -1,11 +1,13 @@
 # The CUDA side of the renderer check (#276)
 
-The particle passes of the CUDA renderer against Metal's, on the twelve frames of the folder
-above: `hubble`, `raw`, `red-vs-cyan` and `red-vs-cyan-column` on the close shot, the wide shot
-and the pericentre. Drawn on the CPU target of the CUDA engine (no GPU, the same kernels compiled
-by `g++`) in a cloud session, at commit a630372 of `feat/276-cuda-renderer-particles`, from the
-bytes Metal drew from: its attribute buffers, positions, smoothing lengths, disk frames, field
-stars, stellar table and uniforms.
+The particle passes of the CUDA renderer against Metal's, on the eighteen frames of the folder
+above: `hubble`, `hubble-noweb`, `raw`, `red-vs-cyan` and `red-vs-cyan-column` on the close
+shot, the wide shot and the pericentre of the take, and the run's frame of `tracers/`, drawn
+with its light tracers, in three looks. Drawn on the CPU target of the CUDA engine (no GPU, the
+same kernels compiled by `g++`) in a cloud session, at commit 1008cac of
+`feat/276-cuda-renderer-particles`, from the bytes Metal drew from: its attribute buffers,
+positions, smoothing lengths, disk frames, field stars, stellar table and uniforms, and for the
+run's frame its tracers' states and words and the spacing records of its tree.
 
 ```
 git worktree add ../checks origin/assets/cuda-checks
@@ -14,12 +16,14 @@ SILLAGE_CUDA_RENDER_TARGETS=../checks/docs/spikes/cuda-checks/render \
 python3 pictures.py /tmp/maps .
 ```
 
-Two minutes for the test, which also holds the agreement (`CUDARenderTests`); the maps it writes
-are 193 MB of floats and are not kept here.
+Three minutes for the test, which also holds the agreement (`CUDARenderTests`); the maps it
+writes are 250 MB of floats and are not kept here. The run's frame goes to `/tmp/maps/tracers`
+and its pictures to `tracers/`: `python3 pictures.py /tmp/maps/tracers tracers`.
 
 ## The pictures
 
-`<look>-<frame>.png`, four panels, each half the size of the supersampled target:
+`<look>-<frame>.png`, and `tracers/<look>-early.png` for the run's frame: four panels, each
+half the size of the supersampled target:
 
 | | |
 | --- | --- |
@@ -53,14 +57,22 @@ how far each input is from Metal's bytes.
 | `hubble` | close | 1.0017 | 0.66 % | 10.6 % | 1.00009 | 0.18 % | 4.1 % |
 | `hubble` | wide | 1.0017 | 57 % | 100 % | 0.99992 | 11 % | 100 % |
 | `hubble` | pericentre | 1.0024 | 0.76 % | 8.9 % | 1.00003 | 0.16 % | 3.3 % |
+| `hubble-noweb` | close | 1.0016 | 0.61 % | 10.6 % | 1.00000 | 0.12 % | 4.1 % |
+| `hubble-noweb` | wide | 1.0031 | 57 % | 100 % | 0.99998 | 11 % | 100 % |
+| `hubble-noweb` | pericentre | 1.0024 | 0.76 % | 8.9 % | 1.00002 | 0.15 % | 3.3 % |
 | `raw` | close | 1.0001 | 0.02 % | 0.20 % | 1.00000 | 0 | 0 |
 | `raw` | wide | 1.0282 | 0.02 % | 3.7 % | 1.00001 | 0 | 0 |
 | `raw` | pericentre | 1.0004 | 0.02 % | 0.28 % | 1.00002 | 0 | 0 |
 | `red-vs-cyan` | close | 1.0014 | 0.36 % | 8.5 % | 0.99993 | 0.06 % | 4.2 % |
 | `red-vs-cyan` | wide | 1.0060 | 30 % | 100 % | 0.99985 | 5.3 % | 100 % |
 | `red-vs-cyan` | pericentre | 1.0028 | 0.36 % | 6.1 % | 0.99991 | 0.07 % | 2.9 % |
+| `hubble`, with tracers | the run's | 1.0059 | 100 % | 100 % | 0.99983 | 6.5 % | 100 % |
+| `raw`, with tracers | the run's | 1.1640 | 0.005 % | 9.8 % | 1.00000 | 0 | 0 |
+| `red-vs-cyan-column`, with tracers | the run's | 1.0246 | 100 % | 100 % | 0.99987 | 4.7 % | 100 % |
 
-`red-vs-cyan-column` is `red-vs-cyan` within a unit of the last digit. The wide shots are mostly
-faint pixels, which is where half floats lose the light: where Metal holds more than 1e-4 the
-median difference is under 1 % on every frame. What the numbers mean, and where the large
+`red-vs-cyan-column` is `red-vs-cyan` within a unit of the last digit on the take's frames. The
+wide shots and the run's frame, whose camera holds the whole scene, are mostly faint pixels,
+which is where half floats lose the light: where Metal holds more than 1e-4 the median
+difference is under 1 % on every frame. In the run's frame a half float stops at 2,048 on the
+densest pixels, where the fixed point counts to 11,570 in the raw look: hence its totals. What the numbers mean, and where the large
 differences are, is in `docs/notes/cuda-engine.md` on the branch of #276.
