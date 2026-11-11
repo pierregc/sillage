@@ -214,20 +214,17 @@ static __device__ __forceinline__ bool setAside(const Large &large, const Square
 
 static __device__ __forceinline__ void laySplat(uint lay, const Splat &splat, int x, int y, float2 coord,
                                                 const Targets &targets) {
+    // Past the kernel's edge, in the corners of the square, Metal's fragment is discarded.
+    float r2 = splatRadius2(coord);
+    if (r2 > 1.0f) { return; }
     size_t pixel = size_t(y) * targets.width + size_t(x);
     if (lay == layDust) {
-        half4 dust(0.0f);
-        if (dustPixel(splat.opticalDepth, splat.slab, coord, dust)) { add4(targets.dust + pixel * 4u, dust, fixedUnit); }
+        add4(targets.dust + pixel * 4u, dustPixel(splat.opticalDepth, splat.slab, r2), fixedUnit);
     } else if (lay == layLight) {
-        half4 light(0.0f);
-        if (lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], coord, light)) {
-            add4(targets.light + pixel * 4u, light, fixedUnit);
-        }
+        add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2),
+             fixedUnit);
     } else {
-        half4 light(0.0f);
-        if (starfieldPixel(splat.color, splat.spikes, coord, light)) {
-            add4(targets.light + pixel * 4u, light, fixedUnit);
-        }
+        add4(targets.light + pixel * 4u, starfieldPixel(splat.color, splat.spikes, coord, r2), fixedUnit);
     }
 }
 
@@ -250,11 +247,11 @@ static __device__ __forceinline__ float unorm8(float value) {
 
 static __device__ __forceinline__ void layCarrier(const WebCarrier &grain, int x, int y, float2 coord,
                                                   const CarrierTargets &targets) {
-    half4 carrier(0.0f);
-    half4 tags(0.0f);
-    if (!webCarrierPixel(grain.carried, grain.slab, grain.tag, coord, carrier, tags)) { return; }
+    float r2 = splatRadius2(coord);
+    if (r2 > 1.0f) { return; }
+    half4 tags = webTagPixel(grain.tag, grain.slab);
     size_t pixel = (size_t(y) * targets.width + size_t(x)) * 4u;
-    add4(targets.carrier + pixel, carrier, fixedUnit);
+    add4(targets.carrier + pixel, webCarrierPixel(grain.carried, grain.slab, r2), fixedUnit);
     for (int channel = 0; channel < 4; ++channel) { maxBits(targets.tags + pixel + channel, unorm8(tags[channel])); }
 }
 
@@ -369,10 +366,10 @@ __global__ void webResolveFragment(Frame f, Lace lace, texels2d carried, texels2
     if (pixel >= size_t(width) * height) { return; }
     float2 centre(float(pixel % width) + 0.5f, float(pixel / width) + 0.5f);
     float2 uv = webResolveAt(centre, f.w);
-    half4 webbed(0.0f);
-    if (webResolved(uv, sample_bilinear(carried, uv), sample_nearest(tagged, uv), f.frames, f.w, lace, webbed)) {
-        add4(dust + pixel * 4u, webbed, fixedUnit);
-    }
+    float4 carrier = sample_bilinear(carried, uv);
+    // Where nothing was carried Metal's fragment is discarded.
+    if (!webCarried(carrier)) { return; }
+    add4(dust + pixel * 4u, webResolved(uv, carrier, sample_nearest(tagged, uv), f.frames, f.w, lace), fixedUnit);
 }
 
 // The raw look's points: every pixel of the square, with no kernel.
