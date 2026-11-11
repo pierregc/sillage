@@ -8,7 +8,8 @@
 #      compiles as C++17 through cuda/include/msl_compat.h, and so do the CUDA entry points of
 #      cuda/src that call it, as the CPU target builds them;
 #   3. cuda/kernels.txt lists every Metal kernel, vertex and fragment function with its state,
-#      and a function marked `cuda` has its entry point in cuda/src.
+#      and a function marked `cuda` has its entry point in cuda/src, as have the kernels a
+#      function marked `cuda in` names.
 #
 # See docs/notes/one-kernel-source.md.
 set -euo pipefail
@@ -137,12 +138,22 @@ awk -v entries="$entries" '
                 fail(where $2 " is marked `" state "`, but cuda/src has no `__global__ void " $2 "(`: write its entry point, or mark it `pending #<issue>`.")
             }
             tally[state] += 1
+        } else if (state ~ /^cuda in [A-Za-z_][A-Za-z0-9_ ]*$/) {
+            names = state
+            sub(/^cuda in /, "", names)
+            held = split(names, inside, " ")
+            for (i = 1; i <= held; ++i) {
+                if (!(inside[i] in entry)) {
+                    fail(where $2 " is marked `" state "`, but cuda/src has no `__global__ void " inside[i] "(`: name the kernels that call its shared function.")
+                }
+            }
+            tally["cuda in"] += 1
         } else if (state ~ /^pending #[0-9]+$/) {
             tally["pending"] += 1
         } else if (state ~ /^metal-only: [^ \t]/) {
             tally["metal-only"] += 1
         } else {
-            fail(where "`" state "` is not a state: cuda, cuda gpu-only, pending #<issue> or metal-only: <reason>.")
+            fail(where "`" state "` is not a state: cuda, cuda gpu-only, cuda in <kernels>, pending #<issue> or metal-only: <reason>.")
         }
     }
     END {
@@ -153,7 +164,7 @@ awk -v entries="$entries" '
             }
         }
         if (!bad) {
-            printf "kernels: %d Metal functions: %d cuda, %d cuda gpu-only, %d pending, %d metal-only\n", total, tally["cuda"], tally["cuda gpu-only"], tally["pending"], tally["metal-only"]
+            printf "kernels: %d Metal functions: %d cuda, %d cuda gpu-only, %d inside a kernel, %d pending, %d metal-only\n", total, tally["cuda"], tally["cuda gpu-only"], tally["cuda in"], tally["pending"], tally["metal-only"]
         }
         exit bad
     }
