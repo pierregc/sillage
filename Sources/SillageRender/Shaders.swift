@@ -1707,8 +1707,11 @@ enum Shaders {
             return float4(total / float(p.samples), 1.0f);
         }
 
+        // The argument is of the order of 1e5, where the last bit of its rounding sets the whole
+        // hash, so its fused multiply-add is written out: where it is left to the compiler,
+        // Metal fuses it and CUDA, built without contraction, does not (#277).
         SHARED float hash2(float2 v) {
-            float x = sin(dot(v, float2(127.1f, 311.7f))) * 43758.5453f;
+            float x = sin(fma(v.y, 311.7f, v.x * 127.1f)) * 43758.5453f;
             return x - floor(x);
         }
 
