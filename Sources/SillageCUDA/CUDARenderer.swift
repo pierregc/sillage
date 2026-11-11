@@ -331,8 +331,12 @@ public final class CUDARenderer: FrameStyling {
         return try develop(format: format)
     }
 
-    /// The post-processing of the light the last frame left, as bytes.
-    public func develop(format: CUDAPost.Format = .rgb) throws -> UnsafeRawBufferPointer {
+    /// The post-processing of the light the last frame left, as bytes; or of `light`, four
+    /// floats a supersampled pixel as `target(.light)` gives them, when another engine's is
+    /// to be developed with this renderer's look and grain.
+    public func develop(
+        format: CUDAPost.Format = .rgb, light external: CUDABuffer? = nil
+    ) throws -> UnsafeRawBufferPointer {
         let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
         let post: CUDAPost
         if let held = self.post, held.sizes == plan.sizes {
@@ -341,11 +345,14 @@ public final class CUDARenderer: FrameStyling {
             post = try CUDAPost(context: context, sizes: plan.sizes)
             self.post = post
         }
-        guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
-            throw CUDAError(.invalidArgument, "this renderer has no light")
+        if let external {
+            try post.run(plan, light: external)
+        } else {
+            guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
+                throw CUDAError(.invalidArgument, "this renderer has no light")
+            }
+            try post.run(plan, light: CUDABuffer(borrowing: light, of: self, context: context))
         }
-        try post.run(
-            plan, light: CUDABuffer(borrowing: light, of: self, context: context))
         return try post.pack(format)
     }
 

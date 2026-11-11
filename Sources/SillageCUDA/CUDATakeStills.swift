@@ -67,9 +67,12 @@ public final class CUDATakeStills {
     /// The frame at a captured position as the video's frame `index` is drawn: the film grain
     /// has moved on by the frames of the video before it. 8-bit bytes in pinned host memory,
     /// valid until the next call.
+    ///
+    /// With `light`, another engine's accumulation (four floats a supersampled pixel), the
+    /// particle passes are not run: the frame is set up as ever and `light` is developed.
     public func still(
         atCaptured position: Double, frame index: Int, format: CUDAPost.Format = .rgb,
-        threads: Int = 1
+        threads: Int = 1, light: [Float]? = nil
     ) throws -> UnsafeRawBufferPointer {
         guard let blend = take.recording.blend(atCaptured: position) else {
             throw RecordingFile.Failure.truncated
@@ -92,6 +95,9 @@ public final class CUDATakeStills {
         try renderer.upload(positions: decoded)
         try renderer.setSmoothing(lengths)
         renderer.setGrain(frame: index)
+        if let light {
+            return try renderer.develop(format: format, light: context.makeBuffer(light))
+        }
         return try renderer.picture(camera: shot.camera, format: format, threads: threads)
     }
 }
