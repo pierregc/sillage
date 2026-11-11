@@ -747,16 +747,17 @@ enum Shaders {
             return out;
         }
 
-        // The dust a grain lays on a pixel of its splat, into its own slab. `coord` is the pixel's
-        // place in the point's square, as Metal's point_coord gives it; false in the corners of the
-        // square, past the kernel's edge, where the splat leaves the pixel alone.
-        SHARED bool dustPixel(half opticalDepth, half4 slab, float2 coord, thread half4 &dust) {
+        // How far a pixel stands from the centre of its point's square, squared, in kernel radii.
+        // `coord` is its place in the square, as Metal's point_coord gives it. Past one, in the
+        // corners of the square, the splat leaves the pixel alone.
+        SHARED float splatRadius2(float2 coord) {
             float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
-            if (r2 > 1.0f) { return false; }
+            return dot(d, d) * 4.0f;
+        }
 
-            dust = half4(opticalDepth * half(exp(-4.5f * r2)) * slab);
-            return true;
+        // The dust a grain lays on a pixel of its splat, into its own slab, `r2` from the centre.
+        SHARED half4 dustPixel(half opticalDepth, half4 slab, float r2) {
+            return half4(opticalDepth * half(exp(-4.5f * r2)) * slab);
         }
 
         #if defined(__METAL_VERSION__)
@@ -810,10 +811,11 @@ enum Shaders {
         // and the field stars sit behind the whole stack and are not dimmed by it.
         fragment DustTarget dustFragment(SplatOut in [[stage_in]],
                                          float2 coord [[point_coord]]) {
-            half4 dust = half4(half(0.0f));
-            if (!dustPixel(in.opticalDepth, in.slab, coord, dust)) { discard_fragment(); }
+            float r2 = splatRadius2(coord);
+            if (r2 > 1.0f) { discard_fragment(); }
+
             DustTarget out;
-            out.dust = dust;
+            out.dust = dustPixel(in.opticalDepth, in.slab, r2);
             return out;
         }
         #endif
@@ -1290,16 +1292,14 @@ enum Shaders {
             return webCarrier(p, dust, grain, u, frame, w);
         }
 
-        // What a carried grain lays on a pixel of the coarse targets: its dust into its slab of the
-        // carrier, and its galaxy's tag there. False in the corners of the point's square.
-        SHARED bool webCarrierPixel(float carried, half4 slab, half tag, float2 coord,
-                                    thread half4 &carrier, thread half4 &tags) {
-            float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
-            if (r2 > 1.0f) { return false; }
-            carrier = half4(half(carried * exp(-4.5f * r2)) * slab);
-            tags = tag * slab;
-            return true;
+        // What a carried grain lays on a pixel of the coarse targets, `r2` from its centre: its dust
+        // into its slab of the carrier, and its galaxy's tag there.
+        SHARED half4 webCarrierPixel(float carried, half4 slab, float r2) {
+            return half4(half(carried * exp(-4.5f * r2)) * slab);
+        }
+
+        SHARED half4 webTagPixel(half tag, half4 slab) {
+            return tag * slab;
         }
 
         #if defined(__METAL_VERSION__)
@@ -1357,14 +1357,11 @@ enum Shaders {
 
         fragment WebCarrierTarget webCarrierFragment(WebCarrierOut in [[stage_in]],
                                                      float2 coord [[point_coord]]) {
-            half4 carrier = half4(half(0.0f));
-            half4 tags = half4(half(0.0f));
-            if (!webCarrierPixel(in.carried, in.slab, in.tag, coord, carrier, tags)) {
-                discard_fragment();
-            }
+            float r2 = splatRadius2(coord);
+            if (r2 > 1.0f) { discard_fragment(); }
             WebCarrierTarget out;
-            out.carrier = carrier;
-            out.tags = tags;
+            out.carrier = webCarrierPixel(in.carried, in.slab, r2);
+            out.tags = webTagPixel(in.tag, in.slab);
             return out;
         }
 
@@ -1390,11 +1387,14 @@ enum Shaders {
         // Once per pixel, after the painted dust and before the stars: each slab's carried dust
         // times the web of the disk that filled it. Where two disks carry dust into one slab of
         // one pixel, the later galaxy's web serves both. `carrier` and `tagged` are the coarse
-        // targets read at `uv`, the first filtered and the second not; false where nothing was
-        // carried, and the pixel keeps the dust it has.
-        SHARED bool webResolved(float2 uv, float4 carrier, float4 tagged, constant DiskFrame *frames,
-                                constant WebUniforms &w, Lace lace, thread half4 &dust) {
-            if (all(carrier <= 0.0f)) { return false; }
+        // targets read at `uv`, the first filtered and the second not. Where nothing was carried
+        // (`webCarried` false) the pixel keeps the dust it has.
+        SHARED bool webCarried(float4 carrier) {
+            return !all(carrier <= 0.0f);
+        }
+
+        SHARED half4 webResolved(float2 uv, float4 carrier, float4 tagged, constant DiskFrame *frames,
+                                 constant WebUniforms &w, Lace lace) {
             float4 tags = tagged * 255.0f;
             float2 ndc = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
             float3 across = w.right.xyz * (w.forward.w * w.target.z);
@@ -1414,8 +1414,7 @@ enum Shaders {
                 }
                 webbed[s] = carrier[s] * web;
             }
-            dust = half4(webbed);
-            return true;
+            return half4(webbed);
         }
 
         #if defined(__METAL_VERSION__)
@@ -1426,13 +1425,11 @@ enum Shaders {
                                                texture2d<half> carried [[texture(1)]],
                                                texture2d<half> tagged [[texture(2)]]) {
             float2 uv = webResolveAt(in.position.xy, w);
-            half4 dust = half4(half(0.0f));
-            if (!webResolved(uv, float4(carried.sample(bilinear, uv)),
-                             float4(tagged.sample(pointSampler, uv)), frames, w, lace, dust)) {
-                discard_fragment();
-            }
+            float4 carrier = float4(carried.sample(bilinear, uv));
+            if (!webCarried(carrier)) { discard_fragment(); }
             DustTarget out;
-            out.dust = dust;
+            out.dust = webResolved(uv, carrier, float4(tagged.sample(pointSampler, uv)), frames, w,
+                                   lace);
             return out;
         }
         #endif
@@ -1440,28 +1437,23 @@ enum Shaders {
         // The light a star lays on a pixel of its splat, through everything standing between it
         // and the camera: the slabs in front of its own, plus half of its own. `slab` holds the
         // weights the vertex worked out, so a star picks out the ones it is behind, and `dust` is
-        // the finished dust of the pixel. False in the corners of the point's square.
-        SHARED bool lightPixel(half3 color, half4 slab, half4 dust, float2 coord,
-                               thread half4 &light) {
-            float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
-            if (r2 > 1.0f) { return false; }
-
+        // the finished dust of the pixel, `r2` from the splat's centre.
+        SHARED half4 lightPixel(half3 color, half4 slab, half4 dust, float r2) {
             float falloff = exp(-4.5f * r2);
             float column = dot(float4(dust), float4(slab));
             float3 extinction = exp(-column * reddening);
-            light = half4(color * half3(extinction) * half(falloff), half(falloff));
-            return true;
+            return half4(color * half3(extinction) * half(falloff), half(falloff));
         }
 
         #if defined(__METAL_VERSION__)
         fragment LightTarget splatFragment(SplatOut in [[stage_in]],
                                            float2 coord [[point_coord]],
                                            SplatFetch prior) {
-            half4 light = half4(half(0.0f));
-            if (!lightPixel(in.color, in.slab, prior.dust, coord, light)) { discard_fragment(); }
+            float r2 = splatRadius2(coord);
+            if (r2 > 1.0f) { discard_fragment(); }
+
             LightTarget out;
-            out.light = light;
+            out.light = lightPixel(in.color, in.slab, prior.dust, r2);
             return out;
         }
         #endif
@@ -1562,12 +1554,9 @@ enum Shaders {
             return half4(color, half(1.0f));
         }
 
-        // The light a field star lays on a pixel of its point; false in the corners of its square.
-        SHARED bool starfieldPixel(half3 color, half spikes, float2 coord, thread half4 &light) {
+        // The light a field star lays on a pixel of its point, `r2` from its centre.
+        SHARED half4 starfieldPixel(half3 color, half spikes, float2 coord, float r2) {
             float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
-            if (r2 > 1.0f) { return false; }
-
             float falloff;
             if (spikes > half(0.0f)) {
                 // A field star needs a tight core, otherwise the bloom halo is all that is left
@@ -1581,8 +1570,7 @@ enum Shaders {
                 falloff = exp(-4.5f * r2);
             }
 
-            light = half4(color * half(falloff), half(falloff));
-            return true;
+            return half4(color * half(falloff), half(falloff));
         }
 
         #if defined(__METAL_VERSION__)
@@ -1623,10 +1611,11 @@ enum Shaders {
 
         fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
                                                float2 coord [[point_coord]]) {
-            half4 light = half4(half(0.0f));
-            if (!starfieldPixel(in.color, in.spikes, coord, light)) { discard_fragment(); }
+            float r2 = splatRadius2(coord);
+            if (r2 > 1.0f) { discard_fragment(); }
+
             LightTarget out;
-            out.light = light;
+            out.light = starfieldPixel(in.color, in.spikes, coord, r2);
             return out;
         }
 
