@@ -1,8 +1,9 @@
-// The massive particles' solver on CUDA (#274): the entry points of the eight kernels of
-// BarnesHutShaders that step them, and their launches, a C call a pass. An entry point works out
-// the thread's position and calls the shared function; the arithmetic is the MSL's alone, and
-// the order of a step is BarnesHutStep's, in Swift. None of them needs a block barrier or a warp
-// function, so all of them run on the CPU target.
+// The Barnes-Hut solver on CUDA: the entry points of the eight kernels of BarnesHutShaders that
+// step the massive particles (#274) and of the three that step the light tracers (#275), and their
+// launches, a C call a pass. An entry point works out the thread's position and calls the shared
+// function; the arithmetic is the MSL's alone, and the order of a step is BarnesHutStep's, in
+// Swift. None of them needs a block barrier or a warp function, so all of them run on the CPU
+// target.
 #include "cuda_cpu.h"
 
 #include <cstring>
@@ -60,12 +61,37 @@ __global__ void bhHoleSettle(const float3 *positions, float3 *accelerations, con
 }
 
 // Metal's function constants bhQuadrupole and bhOpensHoldingCells are the template parameters.
+// A piece of the pass is `slots` threads on Metal; a CUDA grid is whole blocks, so the threads past
+// the piece stop here rather than walk the next piece's first slots again.
 template <bool quadrupole, bool opensHoldingCells>
 __global__ void bhAcceleration(const float4 *sorted, float3 *accelerations, const BHNode *nodes,
                                const uint *order, const HaloGPU *haloList, BHParams p, uint *cost,
-                               const float4 *moments, const ulong *codes) {
+                               const float4 *moments, const ulong *codes, uint slots) {
+    uint gid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (gid >= slots) { return; }
     massiveAcceleration(sorted, accelerations, nodes, order, haloList, p, cost, moments, codes, quadrupole,
-                        opensHoldingCells, blockIdx.x * blockDim.x + threadIdx.x);
+                        opensHoldingCells, gid);
+}
+
+__global__ void bhTracerFormStars(float4 *states, const uint4 *motions, const ulong *codes, const float *frame,
+                                  const float *slotChances, SFParams s, uint2 counts) {
+    tracerFormStars(states, motions, codes, frame, slotChances, s, counts, blockIdx.x * blockDim.x + threadIdx.x);
+}
+
+__global__ void bhTracerDrift(float4 *states, const uint4 *motions, BHParams p) {
+    tracerDrift(states, motions, p, blockIdx.x * blockDim.x + threadIdx.x);
+}
+
+// bhAcceleration's template parameters and bound again: a tracer walked twice would be kicked twice.
+template <bool quadrupole, bool opensHoldingCells>
+__global__ void bhTracerStep(float4 *states, uint4 *motions, const float4 *sorted, const BHNode *nodes,
+                             const float4 *moments, const uint *order, const float *frame, const HaloGPU *haloList,
+                             const HoleGPU *holes, const float3 *massive, const DiskCooling *disks,
+                             TracerStepParams p, float3 *probe, uint slots) {
+    uint gid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (gid >= slots) { return; }
+    tracerStep(states, motions, sorted, nodes, moments, order, frame, haloList, holes, massive, disks, p, probe,
+               quadrupole, opensHoldingCells, gid);
 }
 
 }  // namespace BarnesHutShaders
@@ -107,7 +133,11 @@ using FormStars = void (*)(float *, const metal::uint *, const float *, const bh
                            bh::SFParams, const metal::float3 *, const metal::float3 *, float *);
 using Acceleration = void (*)(const metal::float4 *, metal::float3 *, const bh::BHNode *, const metal::uint *,
                               const bh::HaloGPU *, bh::BHParams, metal::uint *, const metal::float4 *,
-                              const metal::ulong *);
+                              const metal::ulong *, metal::uint);
+using TracerStep = void (*)(metal::float4 *, metal::uint4 *, const metal::float4 *, const bh::BHNode *,
+                            const metal::float4 *, const metal::uint *, const float *, const bh::HaloGPU *,
+                            const bh::HoleGPU *, const metal::float3 *, const bh::DiskCooling *,
+                            bh::TracerStepParams, metal::float3 *, metal::uint);
 
 static Acceleration acceleration(const sc_solver *solver) {
     if (solver->config.quadrupole != 0) {
@@ -116,6 +146,13 @@ static Acceleration acceleration(const sc_solver *solver) {
     }
     return solver->config.opens_holding_cells != 0 ? bh::bhAcceleration<false, true>
                                                    : bh::bhAcceleration<false, false>;
+}
+
+static TracerStep tracerStepEntry(const sc_solver *solver) {
+    if (solver->config.quadrupole != 0) {
+        return solver->config.opens_holding_cells != 0 ? bh::bhTracerStep<true, true> : bh::bhTracerStep<true, false>;
+    }
+    return solver->config.opens_holding_cells != 0 ? bh::bhTracerStep<false, true> : bh::bhTracerStep<false, false>;
 }
 
 // The struct a pass reads, from the bytes Swift filled it with.
@@ -138,7 +175,8 @@ static sc_status parameters(const sc_solver *solver, const void *bytes, size_t l
     return SC_OK;
 }
 
-// `count` elements of `stride` bytes in a device buffer of the solver's, made or grown for them.
+// `count` elements of `stride` bytes in a device buffer of the solver's, made or grown for them;
+// never an empty pointer, as Metal binds a placeholder for a list a kernel may not read.
 static sc_status stage(sc_solver *solver, sc_buffer *&list, const void *bytes, uint32_t count, size_t stride) {
     size_t length = size_t(count) * stride;
     if (length > 0u && !bytes) { return fail(SC_INVALID_ARGUMENT, "a list of %u without its bytes", count); }
@@ -201,6 +239,7 @@ sc_status sc_solver_create(sc_context *context, const sc_solver_config *config, 
              Wanted{buffers->galaxy, 0u, massive * 4u, "galaxies", true},
              Wanted{buffers->cost, 0u, massive * 4u, "costs", false},
              Wanted{buffers->slot_chances, 0u, massive * 4u, "slot chances", config->leaf_chances == 0},
+             Wanted{buffers->tracer_order, 0u, first * 4u, "tracers' walk order", first == 0u},
          }) {
         if (!wanted.buffer && wanted.optional) { continue; }
         if (!holds(wanted.buffer, wanted.offset, wanted.length)) {
@@ -278,7 +317,7 @@ sc_status sc_solver_accelerations(sc_solver *solver, sc_tree *tree, const void *
            pointer<const metal::uint>(sc_tree_buffer_of(tree, SC_TREE_ORDER_BUFFER)),
            pointer<const bh::HaloGPU>(solver->halos), p, pointer<metal::uint>(b.cost),
            pointer<const metal::float4>(sc_tree_buffer_of(tree, SC_TREE_MOMENTS_BUFFER)),
-           pointer<const metal::ulong>(sc_tree_buffer_of(tree, SC_TREE_CODES_BUFFER)));
+           pointer<const metal::ulong>(sc_tree_buffer_of(tree, SC_TREE_CODES_BUFFER)), slots);
     return SC_OK;
 }
 
@@ -333,6 +372,77 @@ sc_status sc_solver_dissipate(sc_solver *solver, const void *params, size_t byte
     LAUNCH(bh::bhDissipate, blocks(p.particleCount), width, positions(solver), velocities(solver),
            pointer<const metal::float3>(b.accelerations), pointer<const metal::uint>(b.component),
            pointer<const metal::uint>(b.galaxy), pointer<const bh::DiskCooling>(solver->disks), p);
+    return SC_OK;
+}
+
+// MARK: - The light tracers (#275)
+
+sc_status sc_solver_tracer_drift(sc_solver *solver, const void *params, size_t bytes) {
+    bh::BHParams p;
+    if (sc_status status = read(solver, params, bytes, p, "BHParams")) { return status; }
+    if (p.particleCount > solver->config.first) {
+        return fail(SC_INVALID_ARGUMENT, "a drift of %u light tracers, the solver holds %u", p.particleCount,
+                    solver->config.first);
+    }
+    if (p.particleCount == 0u) { return SC_OK; }
+    LAUNCH(bh::bhTracerDrift, blocks(p.particleCount), width, pointer<metal::float4>(solver->buffers.positions),
+           pointer<const metal::uint4>(solver->buffers.velocities), p);
+    return SC_OK;
+}
+
+sc_status sc_solver_tracer_form_stars(sc_solver *solver, sc_tree *tree, const void *formation, size_t bytes) {
+    bh::SFParams s;
+    if (sc_status status = read(solver, formation, bytes, s, "SFParams")) { return status; }
+    if (solver->config.first == 0u || s.nodeCount == 0u) { return SC_OK; }
+    if (!tree || !solver->buffers.slot_chances) {
+        return fail(SC_INVALID_ARGUMENT, "sc_solver_tracer_form_stars: no tree, or no chances to read");
+    }
+    const sc_solver_buffers &b = solver->buffers;
+    metal::uint2 counts(solver->config.first, solver->config.massive);
+    LAUNCH(bh::bhTracerFormStars, blocks(solver->config.first), width, pointer<metal::float4>(b.positions),
+           pointer<const metal::uint4>(b.velocities),
+           pointer<const metal::ulong>(sc_tree_buffer_of(tree, SC_TREE_CODES_BUFFER)),
+           pointer<const float>(sc_tree_buffer_of(tree, SC_TREE_FRAME_BUFFER)), pointer<const float>(b.slot_chances), s,
+           counts);
+    return SC_OK;
+}
+
+sc_status sc_solver_tracer_step(sc_solver *solver, sc_tree *tree, const void *params, size_t bytes, uint32_t slots,
+                                const void *halo_list, uint32_t halo_count, const void *hole_list, uint32_t hole_count,
+                                const void *disk_list, uint32_t disk_count, sc_buffer *probe) {
+    bh::TracerStepParams p;
+    if (sc_status status = read(solver, params, bytes, p, "TracerStepParams")) { return status; }
+    if (!tree) { return fail(SC_INVALID_ARGUMENT, "sc_solver_tracer_step: no tree"); }
+    if (p.tracerCount > solver->config.first || p.sortChunk == 0u) {
+        return fail(SC_INVALID_ARGUMENT, "a tracer pass over %u light tracers sorted %u at a time, the solver holds %u",
+                    p.tracerCount, p.sortChunk, solver->config.first);
+    }
+    if (p.haloCount > halo_count || p.holeCount > hole_count || p.diskCount > disk_count ||
+        hole_count > bh::bhHoleLimit) {
+        return fail(SC_INVALID_ARGUMENT, "a tracer pass over %u halos, %u holes and %u disks given %u, %u and %u",
+                    p.haloCount, p.holeCount, p.diskCount, halo_count, hole_count, disk_count);
+    }
+    if (p.mode == 2u && !holds(probe, 0u, size_t(p.tracerCount) * 16u)) {
+        return fail(SC_INVALID_ARGUMENT, "sc_solver_tracer_step: no probe of %u accelerations", p.tracerCount);
+    }
+    if (sc_status status = stage(solver, solver->halos, halo_list, halo_count, sizeof(bh::HaloGPU))) { return status; }
+    if (sc_status status = stage(solver, solver->holes, hole_list, hole_count, sizeof(bh::HoleGPU))) { return status; }
+    if (sc_status status = stage(solver, solver->disks, disk_list, disk_count, sizeof(bh::DiskCooling))) {
+        return status;
+    }
+    if (slots == 0u || p.tracerCount == 0u) { return SC_OK; }
+    const sc_solver_buffers &b = solver->buffers;
+    TracerStep bhTracerStep = tracerStepEntry(solver);
+    // The probe is the accelerations outside mode 2, which then never writes it.
+    LAUNCH(bhTracerStep, blocks(slots, forceWidth), forceWidth, pointer<metal::float4>(b.positions),
+           pointer<metal::uint4>(b.velocities), pointer<const metal::float4>(b.sorted),
+           pointer<const bh::BHNode>(sc_tree_buffer_of(tree, SC_TREE_NODES_BUFFER)),
+           pointer<const metal::float4>(sc_tree_buffer_of(tree, SC_TREE_MOMENTS_BUFFER)),
+           pointer<const metal::uint>(b.tracer_order),
+           pointer<const float>(sc_tree_buffer_of(tree, SC_TREE_FRAME_BUFFER)),
+           pointer<const bh::HaloGPU>(solver->halos), pointer<const bh::HoleGPU>(solver->holes), positions(solver),
+           pointer<const bh::DiskCooling>(solver->disks), p,
+           pointer<metal::float3>(p.mode == 2u ? probe : b.accelerations), slots);
     return SC_OK;
 }
 

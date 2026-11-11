@@ -125,6 +125,43 @@ public final class BarnesHutTree {
         Int((code >> UInt64(60 - 3 * depth)) & 7)
     }
 
+    /// The frame the codes are taken in, from the bounds of the positions: the corner of a cube,
+    /// so a cell's opening angle does not depend on direction, the codes' scale and the cube's
+    /// half width.
+    static func codeFrame(lower: SIMD3<Float>, upper: SIMD3<Float>) -> (
+        origin: SIMD3<Float>, inverse: Float, half: Float
+    ) {
+        let center = (lower + upper) * 0.5
+        let half = max((upper - lower).max() * 0.5, 1e-3) * 1.001
+        let inverse = codeResolution / (2 * half)
+        return (center - SIMD3<Float>(repeating: half), inverse, half)
+    }
+
+    static let codeResolution: Float = 2_097_151
+
+    static func code(of position: SIMD3<Float>, origin: SIMD3<Float>, inverse: Float) -> UInt64 {
+        let local = (position - origin) * inverse
+        return morton(
+            UInt32(min(max(local.x, 0), codeResolution)), UInt32(min(max(local.y, 0), codeResolution)),
+            UInt32(min(max(local.z, 0), codeResolution)))
+    }
+
+    /// The order `build` sorts `positions` into, in the frame of their own bounds, by a stable
+    /// sort of the standard library: the light tracers' walk order on the CUDA engine's CPU
+    /// target, where the radix sort's kernels cannot run (#275).
+    public static func mortonOrder(of positions: [SIMD3<Float>]) -> [UInt32] {
+        var lower = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
+        var upper = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
+        for position in positions where position.x.isFinite && position.y.isFinite && position.z.isFinite {
+            lower = simd_min(lower, position)
+            upper = simd_max(upper, position)
+        }
+        guard lower.x <= upper.x else { return [] }
+        let (origin, inverse, _) = codeFrame(lower: lower, upper: upper)
+        let codes = positions.map { code(of: $0, origin: origin, inverse: inverse) }
+        return positions.indices.sorted { (codes[$0], $0) < (codes[$1], $1) }.map { UInt32($0) }
+    }
+
     public func build(positions: [SIMD3<Float>], mass: [Float]) {
         positions.withUnsafeBufferPointer { build(positions: $0, mass: mass) }
     }
@@ -179,16 +216,11 @@ public final class BarnesHutTree {
             return
         }
 
-        // A cube, so a cell's opening angle does not depend on direction.
-        let center = (lower + upper) * 0.5
-        let half = max((upper - lower).max() * 0.5, 1e-3) * 1.001
+        let (origin, inverse, half) = Self.codeFrame(lower: lower, upper: upper)
 
         mark("bounds")
 
         if sortedCodes.count != count { sortedCodes = [UInt64](repeating: 0, count: count) }
-        let resolution: Float = 2_097_151
-        let inverse = resolution / (2 * half)
-        let origin = center - SIMD3<Float>(repeating: half)
         frame = [origin.x, origin.y, origin.z, inverse, half, 0, 0, 0]
         let codeChunk = max(count / (ProcessInfo.processInfo.activeProcessorCount * 4), 8192)
         let codeChunks = (count + codeChunk - 1) / codeChunk
@@ -197,11 +229,7 @@ public final class BarnesHutTree {
                 let start = block * codeChunk
                 let end = min(start + codeChunk, count)
                 for index in start..<end {
-                    let local = (positions[index] - origin) * inverse
-                    target[index] = BarnesHutTree.morton(
-                        UInt32(min(max(local.x, 0), resolution)),
-                        UInt32(min(max(local.y, 0), resolution)),
-                        UInt32(min(max(local.z, 0), resolution)))
+                    target[index] = BarnesHutTree.code(of: positions[index], origin: origin, inverse: inverse)
                 }
             }
         }

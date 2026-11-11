@@ -19,13 +19,13 @@ BarnesHutShaders bhKickDrift cuda
 BarnesHutShaders bhKick cuda
 BarnesHutShaders bhDissipate cuda
 BarnesHutShaders bhFormStars cuda
-BarnesHutShaders bhTracerFormStars pending #275
+BarnesHutShaders bhTracerFormStars cuda
 BarnesHutShaders bhGather cuda
 BarnesHutShaders bhHolePull cuda
 BarnesHutShaders bhHoleSettle cuda
 BarnesHutShaders bhAcceleration cuda
-BarnesHutShaders bhTracerDrift pending #275
-BarnesHutShaders bhTracerStep pending #275
+BarnesHutShaders bhTracerDrift cuda
+BarnesHutShaders bhTracerStep cuda
 
 GPUTreeShaders gtReset cuda
 GPUTreeShaders gtBounds cuda gpu-only
