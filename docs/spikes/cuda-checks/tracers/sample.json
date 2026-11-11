@@ -1,0 +1,32 @@
+{
+  "drawn" : 200000,
+  "extent" : 60,
+  "maps" : 9,
+  "massive" : {
+    "centerSoftening" : 1.2,
+    "count" : 124793,
+    "forceChunk" : 1000000,
+    "frameSample" : 50000,
+    "leafCapacity" : 16,
+    "maximumTreeDepth" : 20,
+    "megayearsPerStep" : 0.19781999733299016,
+    "openingAngle" : 0.9,
+    "openingAngleBits" : "0x3f666666",
+    "particles" : 50000,
+    "quadrupole" : true,
+    "softening" : 0.34548503,
+    "softeningBits" : "0x3eb0e36a",
+    "tidalCeiling" : 1.4,
+    "tidalFloor" : 0.7,
+    "timeStep" : 0.042,
+    "timeStepBits" : "0x3d2c0831",
+    "treeReuse" : 1,
+    "visible" : 49793
+  },
+  "steps" : 1560,
+  "tracerOpeningAngle" : 0.9,
+  "tracerOpeningAngleBits" : "0x3f666666",
+  "tracerSortChunk" : 4194304,
+  "tracerSortInterval" : 10,
+  "tracers" : 150207
+}

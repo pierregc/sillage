@@ -1,0 +1,10 @@
+tracers    150207 light, 49793 massive visible, 75000 halo
+drift      frame 0 t=0.0 Myr
+drift      frame 195 t=38.6 Myr
+drift      frame 390 t=77.1 Myr
+drift      frame 585 t=115.7 Myr
+drift      frame 780 t=154.3 Myr
+drift      frame 975 t=192.9 Myr
+drift      frame 1170 t=231.4 Myr
+drift      frame 1365 t=270.0 Myr
+drift      frame 1560 t=308.6 Myr
