@@ -3,12 +3,16 @@
 #ifndef SILLAGE_ENGINE_H
 #define SILLAGE_ENGINE_H
 
+#include <atomic>
 #include <cstddef>
 
 #include "sillage_cuda.h"
 
 struct sc_context {
     int32_t device;
+    // The device bytes its buffers hold, and the most they have held (#275).
+    std::atomic<uint64_t> held{0};
+    std::atomic<uint64_t> peak{0};
 };
 
 struct sc_buffer {

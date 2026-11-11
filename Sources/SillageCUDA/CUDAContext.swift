@@ -93,6 +93,14 @@ public final class CUDAContext {
         try check(sc_context_synchronize(handle), "synchronizing device \(device)")
     }
 
+    /// The device memory this context's buffers hold, and the most they have held, in bytes,
+    /// counted from the allocations (#275).
+    public var memoryHeld: (now: Int, peak: Int) {
+        var (now, peak): (UInt64, UInt64) = (0, 0)
+        _ = sc_context_memory(handle, &now, &peak)
+        return (Int(now), Int(peak))
+    }
+
     public func makeBuffer(length: Int) throws -> CUDABuffer {
         try CUDABuffer(context: self, length: length)
     }

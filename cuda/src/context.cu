@@ -52,7 +52,11 @@ sc_buffer *allocate(sc_context *context, size_t length, sc_status *status) {
     if (!buffer) {
         cudaFree(memory);
         if (*status == SC_OK) { *status = fail(SC_OUT_OF_MEMORY, "no host memory for a buffer"); }
+        return nullptr;
     }
+    uint64_t held = context->held += bytes;
+    uint64_t peak = context->peak.load();
+    while (held > peak && !context->peak.compare_exchange_weak(peak, held)) {}
     return buffer;
 }
 
@@ -60,6 +64,7 @@ void release(sc_buffer *&buffer) {
     if (!buffer) { return; }
     cudaSetDevice(buffer->context->device);
     cudaFree(buffer->device);
+    buffer->context->held -= buffer->length < 16 ? 16 : buffer->length;
     delete buffer;
     buffer = nullptr;
 }
@@ -142,6 +147,13 @@ sc_status sc_context_info(const sc_context *context, sc_device_info *info) {
     info->multiprocessors = properties.multiProcessorCount;
     info->warp_size = properties.warpSize;
 #endif
+    return SC_OK;
+}
+
+sc_status sc_context_memory(const sc_context *context, uint64_t *held, uint64_t *peak) {
+    if (!context || !held || !peak) { return fail(SC_INVALID_ARGUMENT, "sc_context_memory: no context or no count"); }
+    *held = context->held.load();
+    *peak = context->peak.load();
     return SC_OK;
 }
 
