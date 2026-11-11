@@ -6,7 +6,8 @@ that builds and walks its tree on the GPU, and a renderer for tens of millions o
 https://github.com/user-attachments/assets/325910ab-a244-47e4-a323-6c62412da79a
 
 *Two spiral galaxies meet, fling out two long tidal tails and merge into one over about a
-billion years: 32 million particles, 3 million of them carrying the mass.*
+billion years: 8 million stars, each carrying its mass, inside 12 million particles of dark
+matter.*
 
 The aim is a beautiful render that stays honest about the physics: the models come from the
 standard literature, and the limits are listed below.
