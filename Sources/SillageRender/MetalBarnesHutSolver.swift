@@ -3,69 +3,6 @@ import Metal
 import SillageCore
 import simd
 
-struct HaloGPU {
-    var centerBefore: SIMD4<Float>
-    var centerAfter: SIMD4<Float>
-    /// Mass carrying G, scale radius, profile index, unused.
-    var shape: SIMD4<Float>
-}
-
-/// A black hole the solver pulls with outside the tree.
-struct HoleGPU {
-    /// Mass times G in w.
-    var massG: SIMD4<Float>
-    /// Softening squared, then the particle's index as a bit pattern.
-    var shape: SIMD4<Float>
-}
-
-struct StarFormationGPU {
-    var efficiency: Float
-    var threshold: Float
-    var timeStep: Float
-    var time: Float
-    var gravitationalConstant: Float
-    var compressionBoost: Float
-    var compressionFloor: Float
-    var seed: UInt32
-    var nodeCount: UInt32
-}
-
-struct DiskCoolingGPU {
-    var center: SIMD4<Float>
-    var motion: SIMD4<Float>
-    var axis: SIMD4<Float>
-    var reach: SIMD4<Float>
-}
-
-struct BHParams {
-    var particleCount: UInt32
-    var haloCount: UInt32
-    var timeStep: Float
-    var openingAngleSquared: Float
-    var softeningSquared: Float
-    var gravitationalConstant: Float
-    /// First particle of the piece being dispatched. The force pass is split so the display
-    /// is not locked out for the length of one very large kernel.
-    var chunkStart: UInt32 = 0
-    var pad1: Float = 0
-}
-
-/// The light tracers' fused force pass (#238), as `TracerStepParams` reads it.
-struct TracerStepGPU {
-    var tracerCount: UInt32
-    var haloCount: UInt32
-    var timeStep: Float
-    var openingAngleSquared: Float
-    var softeningSquared: Float
-    var gravitationalConstant: Float
-    var chunkStart: UInt32 = 0
-    var sortChunk: UInt32
-    var holeCount: UInt32
-    var diskCount: UInt32
-    var mode: UInt32
-    var pad: UInt32 = 0
-}
-
 /// Light tracers as the solver holds them (#238): the front of its position and velocity
 /// buffers, 16 bytes each, the formation time in the w of the one and the `TracerWord` in the
 /// w of the other. Filled a chunk at a time while the scene is sampled, so the drawn count is
@@ -134,25 +71,40 @@ public protocol TracerDrawing: AnyObject {
 /// to ten times more particles, none of which are visible.
 public final class MetalBarnesHutSolver: Solver {
     public let kind: SolverKind = .barnesHut
-    public let scene: SceneConfig
-    public private(set) var time: Float = 0
+    public var scene: SceneConfig { host.scene }
+    public var time: Float { host.time }
     public let device: MTLDevice
+    /// The solver's CPU side, which the CUDA engine shares: its counters, centres, disk frames,
+    /// parameters and checkpoint state (#274).
+    let host: BarnesHutHost
 
     /// Opening angle. Smaller is more accurate and slower; 0.5 to 0.7 is the usual range.
-    public var openingAngle: Float
+    public var openingAngle: Float {
+        get { host.openingAngle }
+        set { host.openingAngle = newValue }
+    }
     /// Force softening in kpc, which should sit near the mean interparticle separation.
-    public var softening: Float
+    public var softening: Float {
+        get { host.softening }
+        set { host.softening = newValue }
+    }
 
     /// The longest single hold on the GPU since it was last read. A step is chunked so the
     /// display can get in between the pieces, which means the piece is what matters and the
     /// whole step is not: a window that is visible waits on a free drawable, and one dispatch
     /// longer than a frame stalls that wait for its whole length.
     public var longestDispatchMilliseconds = 0.0
-    public var lastDriftMilliseconds = 0.0
-    public var lastTreeMilliseconds = 0.0
+    public var lastDriftMilliseconds: Double {
+        get { host.lastDriftMilliseconds }
+        set { host.lastDriftMilliseconds = newValue }
+    }
+    public var lastTreeMilliseconds: Double {
+        get { host.lastTreeMilliseconds }
+        set { host.lastTreeMilliseconds = newValue }
+    }
     /// The tree build by the GPU clock.
     public private(set) var lastBuildMilliseconds = 0.0
-    public private(set) var lastForceMilliseconds = 0.0
+    public var lastForceMilliseconds: Double { host.lastForceMilliseconds }
     /// Times every phase of a step into `takeProfile()`, and submits each GPU pass on its own
     /// so the GPU clock can say what each one cost.
     public var profiling = false
@@ -192,85 +144,46 @@ public final class MetalBarnesHutSolver: Solver {
     /// The tree, built on the GPU from the positions in place. It used to be built on every
     /// core while the GPU sat idle, 13.7 % of a step at five million visible particles (#38).
     private let builder: GPUTreeBuilder
-    /// The last build gathered the particles into Morton order, so the force pass need not.
-    private var gathered = false
     private var componentBuffer: MTLBuffer?
     private var galaxyBuffer: MTLBuffer?
 
-    /// Masses never change, so they are read once. A black hole's is here and not in the
-    /// buffer the tree is built from.
-    private let particleMass: [Float]
-    /// Black holes, pulled outside the tree; empty in a scene without one.
-    private let holes: [HoleGPU]
+    private var particleMass: [Float] { host.particleMass }
+    private var holes: [HoleGPU] { host.holes }
     private let holePull: MTLComputePipelineState?
     private let holeSettle: MTLComputePipelineState?
     private let holePartial: MTLBuffer?
     private static let holeLimit = 4
     private static let holeGroupWidth = 256
-    private let template: ParticleSystem
-    /// Everything the position buffer holds, tracers included.
-    private let count: Int
-    /// Light tracers (#187): the first `tracerCount` particles carry no mass and stay out of
-    /// the tree. They are drawn, kicked, drifted and cooled like the rest, in the field of the
-    /// massive ones, so the softening and the step stay those of the massive count. Since
-    /// #238 they hold a position and a velocity and nothing else: 32 bytes each.
-    public let tracerCount: Int
-    /// The particles the tree is built over, after the tracers, and the visible ones of them.
-    private let massive: Int
-    private let massiveVisible: Int
-    /// The opening angle of the tracers' walk alone. Their force error does not feed back.
-    public var tracerOpeningAngle: Float
+    private var template: ParticleSystem { host.template }
+    private var count: Int { host.count }
+    public var tracerCount: Int { host.tracerCount }
+    private var massive: Int { host.massive }
+    private var massiveVisible: Int { host.massiveVisible }
+    public var tracerOpeningAngle: Float {
+        get { host.tracerOpeningAngle }
+        set { host.tracerOpeningAngle = newValue }
+    }
     /// The tracers in Morton order, so that neighbours in a SIMD group walk alike: sorted a
     /// chunk of `sortChunk` at a time every `tracerSortInterval` steps, each chunk's entries
     /// counting from its start.
     private let tracerOrder: MTLBuffer?
     private let tracerSorter: GPUTreeBuilder?
-    private let sortChunk: Int
-    private var stepsSinceTracerSort = 0
-    /// Steps since the walk order was last sorted, for `walkDump` (#271).
-    private var tracerOrderAge = 0
-    /// The disks this step's tracer pass cooled towards, for `walkDump` (#271).
-    private var lastCoolingDisks: [DiskCoolingGPU]?
+    private var sortChunk: Int { host.sortChunk }
+    private var stepsSinceTracerSort: Int { host.stepsSinceTracerSort }
+    private var tracerOrderAge: Int { host.tracerOrderAge }
+    private var lastCoolingDisks: [DiskCoolingGPU]? { host.lastCoolingDisks }
     /// The chance each massive gas particle had of forming stars this step, by Morton slot.
     private let slotChances: MTLBuffer?
-    private let galaxyOf: [UInt32]
-    private let componentOf: [UInt32]
-    private let liveHalos: Bool
     public let quadrupole: Bool
     public let opensHoldingCells: Bool
-    private var stepsSinceTree = 0
-    /// Only ever used to vary the per-step random draw in the star formation pass.
-    private var stepsSinceFormation = 0
-    private var haloCenters: [SIMD3<Float>]
-    /// Where a rigid analytic halo sits: the centre of mass of the galaxy's visible particles.
-    /// Not the nucleus the rest follows: a rigid halo on the nucleus pulls on its own lopsided
-    /// stars with nothing pulling back, and the galaxy pushes itself along (review of #179).
-    private(set) var massCenters: [SIMD3<Float>]
-    private var galaxyMotion: [SIMD3<Float>]
-    private var diskStates: [DiskState]
-    private let centersLock = NSLock()
+    var massCenters: [SIMD3<Float>] { host.massCenters }
 
     public var positions: MTLBuffer { positionBuffer }
     /// Read in place by the disk probe, which needs every velocity and must not copy them.
     public var velocities: MTLBuffer { velocityBuffer }
     public var formation: MTLBuffer { formationBuffer }
-    /// Written on whichever queue is stepping and read by the renderer on the main thread,
-    /// so the array is handed over under a lock rather than copied out from under the write.
-    public var centers: [SIMD3<Float>] {
-        centersLock.lock()
-        defer { centersLock.unlock() }
-        return haloCenters
-    }
-
-    /// The axis each disk is currently turning about, and how much of its material still
-    /// turns that way. Both are measured from the particles rather than taken from the setup,
-    /// and both are what decides whether the disk is still cooled. Exposed because a run that
-    /// wrongly keeps cooling a wrecked disk looks perfectly healthy from anywhere else.
-    public var diskFrames: [DiskState] {
-        centersLock.lock()
-        defer { centersLock.unlock() }
-        return diskStates
-    }
+    public var centers: [SIMD3<Float>] { host.centers }
+    public var diskFrames: [DiskState] { host.diskFrames }
 
     /// Every particle as it stands, tracers first. Rebuilt on every access, and with tracers
     /// their light, kernel and birth radius come back at the steps they are kept at, their
@@ -364,54 +277,15 @@ public final class MetalBarnesHutSolver: Solver {
             throw RenderError.noDevice
         }
         self.device = device
-        self.scene = scene
         let tracers = store?.count ?? 0
-        self.tracerCount = tracers
-        self.massive = max(particles.count, 1)
-        self.count = tracers + max(particles.count, 1)
-        self.massiveVisible = particles.visibleCount > 0 ? particles.visibleCount : particles.count
-        self.tracerOpeningAngle = scene.openingAngle
-        self.openingAngle = scene.openingAngle
-        self.softening = scene.softening
-        self.galaxyOf = particles.galaxyIndex
-        self.componentOf = particles.component
-        self.liveHalos = scene.hasLiveHalos
+        let host = BarnesHutHost(scene: scene, massive: particles, tracers: tracers)
+        self.host = host
+        let massive = host.massive
+        let count = host.count
         self.quadrupole = quadrupole
         self.opensHoldingCells = opensHoldingCells
-        self.haloCenters = scene.galaxies.map(\.position)
-        self.massCenters = scene.galaxies.map(\.position)
-        self.galaxyMotion = scene.galaxies.map(\.velocity)
-        self.diskStates = DiskState.natal(scene)
-        var masses = particles.mass
-        if masses.count != massive {
-            masses = [Float](repeating: 0, count: massive)
-        }
-        self.particleMass = masses
-        // Never softer than the stars, whatever the scene says.
-        var holes: [HoleGPU] = []
-        for index in particles.component.indices
-        where particles.component[index] == ParticleComponent.hole.rawValue
-            && holes.count < Self.holeLimit && index < masses.count
-        {
-            let galaxy = Int(particles.galaxyIndex[index])
-            let own =
-                scene.galaxies.indices.contains(galaxy) ? scene.galaxies[galaxy].potential.scaleRadius : 0
-            let length = max(own, scene.softening)
-            holes.append(
-                HoleGPU(
-                    massG: SIMD4<Float>(0, 0, 0, masses[index] * Physics.gravitationalConstant),
-                    shape: SIMD4<Float>(length * length, Float(bitPattern: UInt32(index)), 0, 0)))
-        }
-        self.holes = holes
-        var treeMass = masses
-        for hole in holes { treeMass[Int(hole.shape.y.bitPattern)] = 0 }
-
-        var stripped = particles
-        stripped.positions = []
-        stripped.velocities = []
-        // Read back from the buffer the solver writes, not from the sample it started with.
-        stripped.formation = []
-        self.template = stripped
+        let holes = host.holes
+        let treeMass = host.treeMass
 
         let library: MTLLibrary
         do {
@@ -506,7 +380,7 @@ public final class MetalBarnesHutSolver: Solver {
             device: device, count: massive, leafCapacity: Self.leafCapacity,
             maximumDepth: Self.maximumTreeDepth, quadrupole: quadrupole,
             nodeCapacity: massive / 2 + 1024, first: tracers)
-        sortChunk = min(max(Self.tracerSortChunk, 1), max(tracers, 1))
+        let sortChunk = host.sortChunk
         tracerOrder =
             tracing ? device.makeBuffer(length: tracers * 4, options: .storageModePrivate) : nil
         tracerSorter =
@@ -517,7 +391,6 @@ public final class MetalBarnesHutSolver: Solver {
         slotChances =
             tracing ? device.makeBuffer(length: massive * 4, options: .storageModePrivate) : nil
 
-        let massive = self.massive
         func attribute(_ values: [UInt32], _ fallback: UInt32) -> [UInt32] {
             values.count == massive ? values : [UInt32](repeating: fallback, count: massive)
         }
@@ -542,106 +415,13 @@ public final class MetalBarnesHutSolver: Solver {
             }
         }
 
-        // The first half kick needs an acceleration, so seed it before stepping. A tracer
-        // keeps none, so it takes its first half kick now, unless a checkpoint brings it.
-        rebuildTree()
-        if let buffer = queue.makeCommandBuffer() {
-            encodeAccelerations(into: buffer)
-            encodeHoles(into: buffer)
-            if store?.awaitsCheckpoint != true { encodeTracerStep(into: buffer, mode: 0) }
-            submit(buffer)
-        }
+        BarnesHutStep.seed(
+            host, on: self, tracersAwaitCheckpoint: store?.awaitsCheckpoint == true)
     }
 
     public func step() { step(count: 1) }
 
-    public func step(count steps: Int) {
-        for _ in 0..<max(steps, 0) {
-            let stepClock = Date()
-            var clock = Date()
-            // Star formation goes first, before the drift, and that is not a detail.
-            //
-            // It reads a velocity *gradient* across a single leaf — sixteen particles — and
-            // one step of drift is enough to blur that below the threshold a shock has to
-            // clear. Run on a stale tree, it lost two thirds of the rate and the whole merger
-            // burst with it: the windows went from 213, 261, 536, 199, 456, 727 to 107, 84,
-            // 110, 68, 46, 42. Here the tree was built from exactly these positions.
-            if profiling {
-                profiledPass("star formation") { encodeStarFormation(into: $0) }
-                if tracerCount > 0 {
-                    profiledPass("tracer formation") { encodeTracerStarFormation(into: $0) }
-                }
-                profiledPass("drift") { encodeIntegrate(into: $0) }
-            } else if let opening = queue.makeCommandBuffer() {
-                encodeStarFormation(into: opening)
-                encodeTracerStarFormation(into: opening)
-                encodeIntegrate(into: opening)
-                submit(opening)
-            }
-            lastDriftMilliseconds = Date().timeIntervalSince(clock) * 1000
-            clock = Date()
-            if stepsSinceTree <= 0 {
-                rebuildTree()
-                stepsSinceTree = max(Self.treeReuse, 1)
-            }
-            stepsSinceTree -= 1
-            stepsSinceTracerSort -= 1
-            tracerOrderAge += 1
-            lastTreeMilliseconds = Date().timeIntervalSince(clock) * 1000
-            clock = Date()
-            let disks = coolingDisks()
-            lastCoolingDisks = disks
-            if profiling {
-                profiledPass("force") { encodeAccelerations(into: $0) }
-                if !holes.isEmpty { profiledPass("black holes") { encodeHoles(into: $0) } }
-                profiledPass("kick") { encodeKick(into: $0) }
-                profiledPass("dissipation") { encodeShedRandomMotion(into: $0, disks: disks) }
-                if tracerCount > 0 {
-                    profiledPass("tracer force") { encodeTracerStep(into: $0, mode: 1, disks: disks) }
-                }
-            } else {
-                submitForces(disks: disks)
-            }
-            lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
-            time += scene.timeStep
-            if profiling {
-                let spent = Date().timeIntervalSince(stepClock) * 1000
-                profiler.update {
-                    $0.steps += 1
-                    $0.add("step", spent)
-                }
-            }
-        }
-    }
-
-    /// The force pass, one command buffer a piece, with the kick and the cooling in the last
-    /// massive one. The tracers' pieces follow: they move nothing the massive pass reads.
-    ///
-    /// A frame queued behind the solver waits for the whole command buffer, not for the next
-    /// piece encoded in it. The CPU build used to be the gap frames got in through; without it
-    /// one buffer for the whole pass halved the live frame rate, 13 to 15 a second down to 8
-    /// at two million visible particles. In pieces it was 17.5, and with nothing drawn the
-    /// pieces cost nothing (#38).
-    private func submitForces(disks: [DiskCoolingGPU]?) {
-        let chunk = max(Self.forceChunk, 1)
-        for start in stride(from: 0, to: massive, by: chunk) {
-            guard let buffer = queue.makeCommandBuffer() else { return }
-            let upper = min(start + chunk, massive)
-            encodeAccelerations(into: buffer, pieces: start..<upper)
-            if upper == massive {
-                encodeHoles(into: buffer)
-                encodeKick(into: buffer)
-                encodeShedRandomMotion(into: buffer, disks: disks)
-            }
-            submit(buffer)
-        }
-        for start in stride(from: 0, to: tracerCount, by: chunk) {
-            guard let buffer = queue.makeCommandBuffer() else { return }
-            encodeTracerStep(
-                into: buffer, mode: 1, pieces: start..<min(start + chunk, tracerCount), disks: disks)
-            submit(buffer)
-        }
-    }
+    public func step(count steps: Int) { BarnesHutStep.run(host, on: self, steps: steps) }
 
     /// Turns gas into stars where the tree says it has been compressed.
     ///
@@ -650,9 +430,9 @@ public final class MetalBarnesHutSolver: Solver {
     /// drawing for all of its own. Nothing here is read back — the buffer it writes is the one
     /// the renderer draws from.
     private func encodeStarFormation(into buffer: MTLCommandBuffer) {
-        guard nodeCount > 0, componentBuffer != nil else { return }
-        stepsSinceFormation &+= 1
-        var params = formationParams
+        guard componentBuffer != nil, var params = host.drawFormation(nodeCount: nodeCount) else {
+            return
+        }
         let first = tracerCount
         encode(into: buffer, formStars, threads: nodeCount) { encoder in
             encoder.setBuffer(formationBuffer, offset: 0, index: 0)
@@ -674,7 +454,7 @@ public final class MetalBarnesHutSolver: Solver {
         guard let tracerFormStars, let slotChances, componentBuffer != nil, nodeCount > 0 else {
             return
         }
-        var params = formationParams
+        var params = host.formationParams(nodeCount: nodeCount)
         var counts = SIMD2<UInt32>(UInt32(tracerCount), UInt32(massive))
         encode(into: buffer, tracerFormStars, threads: tracerCount) { encoder in
             encoder.setBuffer(positionBuffer, offset: 0, index: 0)
@@ -685,19 +465,6 @@ public final class MetalBarnesHutSolver: Solver {
             encoder.setBytes(&params, length: MemoryLayout<StarFormationGPU>.stride, index: 6)
             encoder.setBytes(&counts, length: MemoryLayout<SIMD2<UInt32>>.stride, index: 7)
         }
-    }
-
-    private var formationParams: StarFormationGPU {
-        StarFormationGPU(
-            efficiency: StarFormation.efficiency,
-            threshold: StarFormation.thresholdDensity,
-            timeStep: scene.timeStep,
-            time: time,
-            gravitationalConstant: Physics.gravitationalConstant,
-            compressionBoost: StarFormation.compressionBoost,
-            compressionFloor: StarFormation.compressionFloor,
-            seed: UInt32(truncatingIfNeeded: stepsSinceFormation),
-            nodeCount: UInt32(nodeCount))
     }
 
     /// Writes the smoothing lengths of the first `drawn` massive particles from the live tree,
@@ -737,80 +504,9 @@ public final class MetalBarnesHutSolver: Solver {
         }
     }
 
-    /// What each disk is cooled towards this step, for the massive pass and the tracers' alike;
-    /// nil when nothing is cooled.
-    private func coolingDisks() -> [DiskCoolingGPU]? {
-        guard dissipate != nil else { return nil }
-        let elapsed = scene.timeStep * Float(Physics.megayearsPerTimeUnit)
-        centersLock.lock()
-        let frames = (haloCenters, galaxyMotion, diskStates)
-        centersLock.unlock()
-        let disks = scene.galaxies.enumerated().map { index, galaxy -> DiskCoolingGPU in
-            let centre = index < frames.0.count ? frames.0[index] : galaxy.position
-            let motion = index < frames.1.count ? frames.1[index] : galaxy.velocity
-            let state = index < frames.2.count ? frames.2[index] : DiskState.natal(galaxy)
-            let axis = state.axis
-            // The share of the gap to circular closed this step, from the time constant,
-            // taken away again by whatever is stopping this from being a quiet disk: a
-            // companion close enough to be tearing at it now, and the memory of one that
-            // already has.
-            let disturbed = Self.smoothstep(
-                Self.tidalFloor, Self.tidalCeiling, tidalStress(on: index, centers: frames.0))
-            let wrecked = state.disruption
-            let quiet = max((1 - disturbed) * (1 - wrecked), 0)
-            let damping =
-                galaxy.dissipationTime > 0 && galaxy.kind.isRotating
-                ? quiet * (1 - exp(-elapsed / galaxy.dissipationTime)) : 0
-            let edge = max(galaxy.diskScaleLength, 0.1)
-            // The floor the disk cools to, taken from the equilibrium it was sampled in so it
-            // holds the Toomre parameter the galaxy asked for rather than a number picked by
-            // hand. Read at two scale lengths and carried as a fraction of the circular
-            // speed, which is close enough to constant across an exponential disk.
-            let equilibrium = DiskEquilibrium(config: galaxy, selfGravitating: true)
-            let reference = edge * 2
-            let circular = max(equilibrium.circularSpeed(atRadius: reference), 1e-6)
-            // The floor applies to the whole peculiar velocity, so it has to be the whole
-            // equilibrium dispersion. Flooring the three-dimensional motion at the radial
-            // component alone leaves the radial part below what Toomre asks and the disk
-            // fragments anyway, which is what the first attempt did.
-            let radial = equilibrium.radialDispersion(atRadius: reference)
-            let azimuthal = equilibrium.azimuthalDispersion(atRadius: reference)
-            let vertical = equilibrium.verticalDispersion(atRadius: reference)
-            let dispersion =
-                (radial * radial + azimuthal * azimuthal + vertical * vertical).squareRoot()
-            let floorFraction = min(dispersion / circular, 0.5)
-            return DiskCoolingGPU(
-                center: SIMD4<Float>(centre.x, centre.y, centre.z, floorFraction),
-                motion: SIMD4<Float>(motion.x, motion.y, motion.z, damping),
-                axis: SIMD4<Float>(axis.x, axis.y, axis.z, 0),
-                // Generous on purpose. Halo and bulge are already excluded by component, so
-                // the only thing these limits keep out is material genuinely thrown clear —
-                // a tidal tail, not a disk star that has been heated. Cutting in at a few
-                // scale heights did the opposite: it stopped cooling the stars that had
-                // picked up the most motion, and the disk heated almost as fast as with no
-                // dissipation at all.
-                reach: SIMD4<Float>(edge * 5, edge * 9, edge, edge * 2))
-        }
-        if disks.isEmpty { return nil }
-        // Permanent once every disk is wrecked, which is where a merger ends up.
-        if disks.allSatisfy({ $0.motion.w <= 0 }) { return nil }
-        return disks
-    }
+    private var params: BHParams { host.params }
 
-    private var params: BHParams { params(over: massive) }
-
-    private func params(over particles: Int) -> BHParams {
-        BHParams(
-            particleCount: UInt32(particles),
-            // With a live halo the dark matter is already in the tree; adding the analytic
-            // potential on top would double its mass, and a rigid potential that follows the
-            // disk does work on the system, which is why the old one leaked energy.
-            haloCount: liveHalos ? 0 : UInt32(scene.galaxies.count),
-            timeStep: scene.timeStep,
-            openingAngleSquared: openingAngle * openingAngle,
-            softeningSquared: softening * softening,
-            gravitationalConstant: Physics.gravitationalConstant)
-    }
+    private func params(over particles: Int) -> BHParams { host.params(over: particles) }
 
     /// Encodes a pass into a command buffer without submitting it.
     ///
@@ -869,54 +565,54 @@ public final class MetalBarnesHutSolver: Solver {
             longestDispatchMilliseconds, Date().timeIntervalSince(clock) * 1000)
     }
 
-    // Deliberately mutable: the tests and the measurement probes set these to sweep them, and
-    // nothing else ever writes one. Strict concurrency has no way to know that, so it is said
-    // here rather than by making them lets that the tests could not move.
-    //
-    /// Particles per piece of the force pass, each committed on its own. A whole large scene
-    /// in one kernel keeps the GPU to itself long enough that the pointer stutters, and frames
-    /// only get in between command buffers.
-    nonisolated(unsafe) public static var forceChunk = 1_000_000
-
-    /// Particles a leaf may hold before it splits. Bigger leaves mean far fewer nodes and a
-    /// cheaper build at the cost of more direct summation in the force pass. That trade only
-    /// became worth taking once leaves started respecting the opening criterion, since a
-    /// distant leaf now costs one evaluation whatever it holds.
-    nonisolated(unsafe) public static var leafCapacity = 16
+    // The solver's settings are `BarnesHutHost`'s, which the CUDA engine reads too (#274); they
+    // keep the names they had here.
+    public static var forceChunk: Int {
+        get { BarnesHutHost.forceChunk }
+        set { BarnesHutHost.forceChunk = newValue }
+    }
+    public static var leafCapacity: Int {
+        get { BarnesHutHost.leafCapacity }
+        set { BarnesHutHost.leafCapacity = newValue }
+    }
 
     /// Threads per group in the force pass; zero takes the pipeline's maximum. The kernel keeps
     /// a 32 entry stack per thread, and 64 beat the maximum by 2% at 5M visible particles
     /// (363 against 370 ms) while the widths in between were level with it.
     nonisolated(unsafe) public static var forceThreadgroupWidth = 64
 
-    /// How deep the tree may go. A merged core subdivides to the ceiling, one dispatch a level.
-    /// Twenty is right when accuracy matters; thirteen puts the smallest cell at a few tens of
-    /// parsecs, far below any softening length used here.
-    nonisolated(unsafe) public static var maximumTreeDepth = 20
-
-    /// Steps a tree is reused for. The build is most of what a step costs, and what decides
-    /// whether motion looks continuous is how *often* positions change, not how far they move
-    /// each time: a few large steps a second make the galaxies jump while the starfield, which
-    /// only follows the camera, glides. Reusing the tree buys the step rate that fixes that,
-    /// and costs nothing at these step sizes — a particle crosses a fraction of a leaf cell
-    /// in the interval, which is well inside what the opening angle already approximates.
-    nonisolated(unsafe) public static var treeReuse = 1
-
-    /// Whether an accepted cell adds its quadrupole to its monopole, which is what lets the
-    /// opening angle be 0.9 rather than 0.7 for the same force error. The default for new
-    /// solvers; the monopole stays for measuring against.
-    nonisolated(unsafe) public static var quadrupole = true
-
-    /// Particles a galaxy contributes to its own disk frame. The axis and the coherence are
-    /// mass-weighted sums over a hundred thousand-odd stars; fifty thousand of them give the
-    /// same answer, and this runs on every tree rebuild.
-    nonisolated(unsafe) public static var frameSample = 50_000
-
-    /// Where a companion stops leaving the disk alone, as the disk's radius over its tidal
-    /// radius. Below the floor the disk sits well inside the tidal radius and its gas is
-    /// undisturbed; past the ceiling the companion is cutting into the disk itself.
-    nonisolated(unsafe) public static var tidalFloor: Float = 0.7
-    nonisolated(unsafe) public static var tidalCeiling: Float = 1.4
+    public static var maximumTreeDepth: Int {
+        get { BarnesHutHost.maximumTreeDepth }
+        set { BarnesHutHost.maximumTreeDepth = newValue }
+    }
+    public static var treeReuse: Int {
+        get { BarnesHutHost.treeReuse }
+        set { BarnesHutHost.treeReuse = newValue }
+    }
+    public static var quadrupole: Bool {
+        get { BarnesHutHost.quadrupole }
+        set { BarnesHutHost.quadrupole = newValue }
+    }
+    public static var frameSample: Int {
+        get { BarnesHutHost.frameSample }
+        set { BarnesHutHost.frameSample = newValue }
+    }
+    public static var tidalFloor: Float {
+        get { BarnesHutHost.tidalFloor }
+        set { BarnesHutHost.tidalFloor = newValue }
+    }
+    public static var tidalCeiling: Float {
+        get { BarnesHutHost.tidalCeiling }
+        set { BarnesHutHost.tidalCeiling = newValue }
+    }
+    public static var tracerSortInterval: Int {
+        get { BarnesHutHost.tracerSortInterval }
+        set { BarnesHutHost.tracerSortInterval = newValue }
+    }
+    public static var tracerSortChunk: Int {
+        get { BarnesHutHost.tracerSortChunk }
+        set { BarnesHutHost.tracerSortChunk = newValue }
+    }
 
     /// The massive particles' half kick and drift, and the tracers' drift: their half kick
     /// came with the last force pass.
@@ -959,17 +655,13 @@ public final class MetalBarnesHutSolver: Solver {
             .bindMemory(to: SIMD3<Float>.self, capacity: massive)
     }
 
-    /// Builds the tree from the drifted positions, with the halo centres and the disk frames
-    /// that go with it, and gathers the particles for the force pass on the way.
-    private func rebuildTree() {
-        let sortTracers = tracerSorter != nil && stepsSinceTracerSort <= 0
-        if sortTracers {
-            stepsSinceTracerSort = max(Self.tracerSortInterval, 1)
-            tracerOrderAge = 0
-        }
-        if profiling {
-            timed("halo centres") { updateHaloCenters() }
-            if dissipate != nil { timed("disk frames") { updateDiskFrames() } }
+    /// Builds the tree from the positions and gathers the particles for the force pass on the
+    /// way, `work` running on the CPU meanwhile.
+    public func buildTree(
+        sortingTracers sortTracers: Bool, meanwhile work: [BarnesHutWork], profiled: Bool
+    ) {
+        if profiling, profiled {
+            for item in work { timed(item.phase, item.run) }
             repeat {
                 for phase in GPUTreeBuilder.Phase.allCases {
                     profiledPass(phase.rawValue) {
@@ -986,8 +678,7 @@ public final class MetalBarnesHutSolver: Solver {
                 into: buffer, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
             buffer.commit()
             // The centres read the positions the build is reading, so they are taken meanwhile.
-            updateHaloCenters()
-            if dissipate != nil { updateDiskFrames() }
+            for item in work { item.run() }
             buffer.waitUntilCompleted()
             var spent = max(buffer.gpuEndTime - buffer.gpuStartTime, 0) * 1000
             longestDispatchMilliseconds = max(longestDispatchMilliseconds, spent)
@@ -1003,7 +694,6 @@ public final class MetalBarnesHutSolver: Solver {
                 submit(sort)
             }
         }
-        gathered = true
         nodeCount = builder.nodeCount
     }
 
@@ -1016,267 +706,6 @@ public final class MetalBarnesHutSolver: Solver {
         return true
     }
 
-    /// Each halo rides on the centre of mass of its own galaxy's particles, and so does the
-    /// frame the dissipation pass cools towards: cooling in the wrong frame would drag two
-    /// galaxies to a halt instead of letting them orbit.
-    ///
-    /// Summed in fixed blocks on every core, in double precision. The single running float sum
-    /// this replaced was not exact enough to be worth matching: by the time a galaxy's total
-    /// mass is tens of thousands of times one particle's, every addition rounds the same way,
-    /// and at sixty thousand particles a galaxy the centre came out scaled by 1.0008, 23 pc off
-    /// at 30 kpc. Fixed blocks added in order also make the answer the same on any machine.
-    private func updateHaloCenters() {
-        let galaxies = scene.galaxies.count
-        guard galaxies > 0 else { return }
-        let positions = currentPositions
-        let velocities = dissipate == nil ? nil : massiveState(velocityBuffer)
-        let limit = min(massive, galaxyOf.count)
-        let block = 65_536
-        // Over the massive particles alone, so a run with tracers sums them in the order the same
-        // run without them does, to the bit (#239).
-        let blocks = (limit + block - 1) / block
-        // Six sums a galaxy a block: position and velocity weighted by mass, then the mass,
-        // over every visible particle and again over the nucleus alone.
-        var partial = [SIMD3<Double>](repeating: .zero, count: blocks * galaxies * 6)
-        let halo = ParticleComponent.halo.rawValue
-        let outskirt = ParticleComponent.outskirt.rawValue
-        // The nucleus: the disk material and the bulge inside one and a half scale lengths of
-        // where the centre was. The centre of mass of every visible particle, which this used
-        // to be, sat 0.3 to 5 kpc off it once the outskirts went lopsided, and the camera and
-        // the cooling followed that (docs/notes/lumpy-arms.md). Real galaxies are centred on
-        // their bulge to a few pixels whatever their outskirts do.
-        centersLock.lock()
-        let previous = haloCenters
-        centersLock.unlock()
-        let reach = scene.galaxies.map { galaxy -> Float in
-            galaxy.kind == .blackHole ? 0 : max(galaxy.diskScaleLength * 1.5, 0.5)
-        }
-        galaxyOf.withUnsafeBufferPointer { galaxyOf in
-            componentOf.withUnsafeBufferPointer { componentOf in
-                particleMass.withUnsafeBufferPointer { mass in
-                    partial.withUnsafeMutableBufferPointer { partial in
-                        DispatchQueue.concurrentPerform(iterations: blocks) { index in
-                            var weighted = [SIMD3<Double>](repeating: .zero, count: galaxies)
-                            var drift = weighted
-                            var totals = [Double](repeating: 0, count: galaxies)
-                            var innerWeighted = weighted
-                            var innerDrift = weighted
-                            var innerTotals = totals
-                            let lower = index * block
-                            let upper = min((index + 1) * block, limit)
-                            for particle in lower..<max(lower, upper) {
-                                let galaxy = Int(galaxyOf[particle])
-                                guard galaxy < galaxies else { continue }
-                                // Halo particles outnumber the disk, so including them would
-                                // put the centre at the halo's centroid rather than at the
-                                // visible galaxy's.
-                                let kind = particle < componentOf.count ? componentOf[particle] : halo
-                                if kind == halo { continue }
-                                let m = Double(max(mass[particle], 1e-20))
-                                let position = positions[particle]
-                                weighted[galaxy] += SIMD3<Double>(position) * m
-                                if let velocities {
-                                    drift[galaxy] += SIMD3<Double>(velocities[particle]) * m
-                                }
-                                totals[galaxy] += m
-                                let offset = position - previous[galaxy]
-                                let inside = simd_length_squared(offset) < reach[galaxy] * reach[galaxy]
-                                if kind != outskirt, inside {
-                                    innerWeighted[galaxy] += SIMD3<Double>(position) * m
-                                    if let velocities {
-                                        innerDrift[galaxy] += SIMD3<Double>(velocities[particle]) * m
-                                    }
-                                    innerTotals[galaxy] += m
-                                }
-                            }
-                            for galaxy in 0..<galaxies {
-                                let base = (index * galaxies + galaxy) * 6
-                                partial[base] = weighted[galaxy]
-                                partial[base + 1] = drift[galaxy]
-                                partial[base + 2] = SIMD3<Double>(repeating: totals[galaxy])
-                                partial[base + 3] = innerWeighted[galaxy]
-                                partial[base + 4] = innerDrift[galaxy]
-                                partial[base + 5] = SIMD3<Double>(repeating: innerTotals[galaxy])
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        var weighted = [SIMD3<Double>](repeating: .zero, count: galaxies)
-        var drift = weighted
-        var totals = [Double](repeating: 0, count: galaxies)
-        var innerWeighted = weighted
-        var innerDrift = weighted
-        var innerTotals = totals
-        for index in 0..<blocks {
-            for galaxy in 0..<galaxies {
-                let base = (index * galaxies + galaxy) * 6
-                weighted[galaxy] += partial[base]
-                drift[galaxy] += partial[base + 1]
-                totals[galaxy] += partial[base + 2].x
-                innerWeighted[galaxy] += partial[base + 3]
-                innerDrift[galaxy] += partial[base + 4]
-                innerTotals[galaxy] += partial[base + 5].x
-            }
-        }
-        var updated = centers
-        var masses = massCenters
-        for galaxy in updated.indices where totals[galaxy] > 0 {
-            masses[galaxy] = SIMD3<Float>(weighted[galaxy] / totals[galaxy])
-            // The nucleus when there still is one; a galaxy torn apart, or a black hole, is
-            // wherever its mass is.
-            let nucleus = innerTotals[galaxy] > 0.01 * totals[galaxy]
-            let sum = nucleus ? innerWeighted[galaxy] : weighted[galaxy]
-            let motion = nucleus ? innerDrift[galaxy] : drift[galaxy]
-            let mass = nucleus ? innerTotals[galaxy] : totals[galaxy]
-            updated[galaxy] = SIMD3<Float>(sum / mass)
-            if velocities != nil {
-                galaxyMotion[galaxy] = SIMD3<Float>(motion / mass)
-            }
-        }
-        centersLock.lock()
-        haloCenters = updated
-        massCenters = masses
-        centersLock.unlock()
-    }
-
-    /// The plane each disk is actually turning in, and how much of it still turns that way.
-    ///
-    /// Cooling towards the orientation the galaxy was *set up* with is a spring back to the
-    /// natal plane: a disk thrown out of it by an encounter gets pulled back into it, and
-    /// re-thins, which is the one thing a collisionless system cannot do. Measured on a run
-    /// of three galaxies, the inclined one heated from 0.24 kpc thick to 11.7 through
-    /// pericentre and was back to 1.04 four hundred megayears later, still within five degrees
-    /// of the plane it was born in and eighty-three from the remnant it was supposed to have
-    /// joined. The axis is now the mass-weighted angular momentum of the galaxy's own disk
-    /// material about its own moving centre, so it tumbles, precesses and warps with the disk
-    /// instead of holding it.
-    ///
-    /// `coherence` is |sum m l| / sum m |l|: one where every star turns the same way, near
-    /// zero for a spheroid whose angular momenta cancel. It is what says a disk has stopped
-    /// being a disk.
-    ///
-    /// Fifty thousand particles a galaxy answer both questions. Walking millions of them on
-    /// every tree rebuild would cost more than the cooling it feeds.
-    private func updateDiskFrames() {
-        let galaxies = scene.galaxies.count
-        guard galaxies > 0 else { return }
-        let positions = currentPositions
-        let mass = particleMass
-        var angular = [SIMD3<Double>](repeating: .zero, count: galaxies)
-        var scalar = [Double](repeating: 0, count: galaxies)
-        var height = [Double](repeating: 0, count: galaxies)
-        var across = [Double](repeating: 0, count: galaxies)
-        let velocities = massiveState(velocityBuffer)
-        centersLock.lock()
-        let plane = diskStates.map(\.axis)
-        centersLock.unlock()
-        var layers = scene.galaxies.enumerated().map { index, galaxy in
-            DiskLayer(
-                axis: plane[index], scaleLength: galaxy.diskScaleLength,
-                edge: galaxy.diskScaleLength * galaxy.diskTruncation)
-        }
-        let limit = min(massive, min(galaxyOf.count, componentOf.count))
-        let step = max(limit / (Self.frameSample * galaxies), 1)
-        for index in Swift.stride(from: 0, to: limit, by: step) {
-            let kind = componentOf[index]
-            // The same material the cooling touches, so the frame is the frame of the thing
-            // being cooled: no dark matter, no bulge, which has no plane to speak of, and no
-            // thick halo either. The cooling excludes everything from `halo` upward and this
-            // has to say the same thing — when the thick component was added to one and not
-            // the other, a spheroid reaching past thirty kiloparsecs and turning at a third of
-            // the circular speed was being counted as disk, and the ordered-rotation fraction
-            // it is measured by came out of a mixture of two populations.
-            if kind >= ParticleComponent.halo.rawValue { continue }
-            let galaxy = Int(galaxyOf[index])
-            guard galaxy < galaxies else { continue }
-            let offset = SIMD3<Double>(positions[index] - haloCenters[galaxy])
-            let motion = SIMD3<Double>(velocities[index] - galaxyMotion[galaxy])
-            let weight = Double(max(mass[index], 1e-20))
-            angular[galaxy] += simd_cross(offset, motion) * weight
-            // Against m|r||v| rather than m|r x v|. The cross product is already blind to
-            // radial motion, so normalising by its own magnitude asks only whether the
-            // angular momenta point the same way and answers yes for a swarm of plunging
-            // radial orbits. What is wanted is whether the material is rotationally
-            // supported, and this is the ratio that says so.
-            scalar[galaxy] += simd_length(offset) * simd_length(motion) * weight
-            let z = simd_dot(offset, SIMD3<Double>(plane[galaxy]))
-            height[galaxy] += z * z * weight
-            across[galaxy] += simd_length_squared(offset) * weight
-            layers[galaxy].add(positions[index] - haloCenters[galaxy])
-        }
-
-        // The same particles again, now that each ring's plane is known.
-        let fits = layers.map { $0.fitted() }
-        centersLock.lock()
-        let cut = (0..<galaxies).map { diskStates[$0].layerHeight(spread: fits[$0].spread) }
-        centersLock.unlock()
-        var held = [Double](repeating: 0, count: galaxies)
-        var material = [Double](repeating: 0, count: galaxies)
-        for index in Swift.stride(from: 0, to: limit, by: step)
-        where componentOf[index] < ParticleComponent.halo.rawValue {
-            let galaxy = Int(galaxyOf[index])
-            guard galaxy < galaxies else { continue }
-            material[galaxy] += 1
-            if let standing = fits[galaxy].height(of: positions[index] - haloCenters[galaxy]),
-                abs(standing) < cut[galaxy]
-            {
-                held[galaxy] += 1
-            }
-        }
-
-        centersLock.lock()
-        for galaxy in 0..<galaxies {
-            // A globular has no ordered rotation to lose and is never cooled, so leaving its
-            // state alone keeps the reading worth looking at rather than pinned at one.
-            guard scene.galaxies[galaxy].kind.isRotating else { continue }
-            diskStates[galaxy].fold(
-                momentum: angular[galaxy], scalar: scalar[galaxy],
-                height: height[galaxy], across: across[galaxy])
-            if material[galaxy] > 0 {
-                diskStates[galaxy].foldLayer(
-                    spread: fits[galaxy].spread, held: Float(held[galaxy] / material[galaxy]))
-            }
-        }
-        centersLock.unlock()
-    }
-
-    /// How hard the nearest companion is working on a disk, as the disk's own radius over its
-    /// tidal radius in that companion's field: r_t = d (M / 3 M_companion)^(1/3).
-    ///
-    /// Cooling stands in for gas sitting in a quiet cold layer and forming stars on circular
-    /// orbits. During an encounter that gas is being shocked, driven inward and burned, so
-    /// the stand-in has no business running: this is what takes the cooling off *while* the
-    /// galaxies are passing through each other, which is when the disk is meant to be
-    /// destroyed and when holding it together does the most damage. It comes back on if the
-    /// two separate again without wrecking each other, which is what a distant fly-by is.
-    ///
-    /// Scale-free, so a small satellite passing close does not switch off a large disk's
-    /// cooling the way an equal-mass companion does.
-    private func tidalStress(on index: Int, centers: [SIMD3<Float>]) -> Float {
-        let galaxy = scene.galaxies[index]
-        // Three scale lengths holds about four fifths of an exponential disk's mass, so it is
-        // the radius at which "the disk is inside its tidal radius" means the disk.
-        let radius = max(galaxy.diskScaleLength * 3, 0.1)
-        let mass = max(galaxy.potential.mass, 1e-6)
-        var worst: Float = 0
-        for other in scene.galaxies.indices where other != index {
-            let companion = max(scene.galaxies[other].potential.mass, 1e-6)
-            let separation = max(simd_distance(centers[index], centers[other]), 1e-3)
-            let tidalRadius = separation * cbrt(mass / (3 * companion))
-            worst = max(worst, radius / max(tidalRadius, 1e-3))
-        }
-        return worst
-    }
-
-    private static func smoothstep(_ low: Float, _ high: Float, _ x: Float) -> Float {
-        guard high > low else { return x < low ? 0 : 1 }
-        let t = min(max((x - low) / (high - low), 0), 1)
-        return t * t * (3 - 2 * t)
-    }
-
-    /// Particles are taken by Morton slot, so `pieces` is a range of slots.
     /// The black holes' pull on everything, and everything's back on them. After the whole
     /// force pass, which leaves each hole the analytic halos' pull and nothing else that is
     /// kept: the tree saw it as a test particle, at the stars' softening.
@@ -1312,42 +741,26 @@ public final class MetalBarnesHutSolver: Solver {
         }
     }
 
-    /// The analytic halos the force pass adds, one a galaxy, at the current centres.
-    private var haloList: [HaloGPU] {
-        var list = scene.galaxies.enumerated().map { index, galaxy -> HaloGPU in
-            let center = index < massCenters.count ? massCenters[index] : galaxy.position
-            let haloMass =
-                galaxy.potential.mass * (1 - galaxy.diskMassFraction)
-                * Physics.gravitationalConstant
-            let point = SIMD4<Float>(center.x, center.y, center.z, 0)
-            return HaloGPU(
-                centerBefore: point, centerAfter: point,
-                shape: SIMD4<Float>(
-                    haloMass, galaxy.potential.scaleRadius,
-                    galaxy.potential.profile == .plummer ? 0 : 1, 0))
+    private var haloList: [HaloGPU] { host.haloList }
+
+    /// A reused tree still needs this step's positions in its order.
+    private func encodeGather(into buffer: MTLCommandBuffer) {
+        var p = params
+        let first = tracerCount * 16
+        encode(into: buffer, gather, threads: massive) { encoder in
+            encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
+            encoder.setBuffer(positionBuffer, offset: first, index: 1)
+            encoder.setBuffer(massBuffer, offset: 0, index: 2)
+            encoder.setBuffer(builder.order, offset: 0, index: 3)
+            encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 4)
         }
-        if list.isEmpty { list = [HaloGPU(centerBefore: .zero, centerAfter: .zero, shape: .zero)] }
-        return list
     }
 
+    /// Particles are taken by Morton slot, so `pieces` is a range of slots.
     private func encodeAccelerations(into buffer: MTLCommandBuffer, pieces: Range<Int>? = nil) {
         var p = params
         let list = haloList
-        let first = tracerCount * 16
-
-        // A reused tree still needs this step's positions in its order.
-        if !gathered {
-            encode(into: buffer, gather, threads: massive) { encoder in
-                encoder.setBuffer(sortedBuffer, offset: 0, index: 0)
-                encoder.setBuffer(positionBuffer, offset: first, index: 1)
-                encoder.setBuffer(massBuffer, offset: 0, index: 2)
-                encoder.setBuffer(builder.order, offset: 0, index: 3)
-                encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 4)
-            }
-            gathered = true
-        }
         let slots = pieces ?? 0..<massive
-        if slots.upperBound >= massive { gathered = false }
         var start = slots.lowerBound
         while start < slots.upperBound {
             let span = min(max(Self.forceChunk, 1), slots.upperBound - start)
@@ -1408,13 +821,7 @@ public final class MetalBarnesHutSolver: Solver {
     }
 
     private func tracerStepParams(mode: UInt32, disks: [DiskCoolingGPU]?) -> TracerStepGPU {
-        let base = params
-        return TracerStepGPU(
-            tracerCount: UInt32(tracerCount), haloCount: base.haloCount,
-            timeStep: base.timeStep, openingAngleSquared: tracerOpeningAngle * tracerOpeningAngle,
-            softeningSquared: base.softeningSquared,
-            gravitationalConstant: base.gravitationalConstant, sortChunk: UInt32(sortChunk),
-            holeCount: UInt32(holes.count), diskCount: UInt32(disks?.count ?? 0), mode: mode)
+        host.tracerStepParams(mode: mode, disks: disks)
     }
 
     /// The tracers in Morton order, which only decides how alike neighbouring walks are, a
@@ -1430,14 +837,7 @@ public final class MetalBarnesHutSolver: Solver {
 
     /// Total momentum. With live halos nothing external acts on the system, so this must be
     /// constant; a rigid halo that follows the disk makes it drift. Tracers weigh nothing.
-    public func momentum() -> SIMD3<Float> {
-        let velocities = massiveState(velocityBuffer)
-        var total = SIMD3<Float>.zero
-        for index in 0..<min(massive, particleMass.count) {
-            total += velocities[index] * particleMass[index]
-        }
-        return total
-    }
+    public func momentum() -> SIMD3<Float> { host.momentum(velocities: massiveVelocities) }
 
     /// What each massive traversal cost, in node evaluations, by Morton slot.
     public var traversalCosts: [UInt32] {
@@ -1532,14 +932,6 @@ public final class MetalBarnesHutSolver: Solver {
                 interval: max(Self.tracerSortInterval, 1), counter: stepsSinceTracerSort,
                 stepsSinceSort: tracerOrderAge))
     }
-
-    /// Steps between two sorts of the tracers' walk order. Sorting is what keeps the lanes of a
-    /// SIMD group walking alike; in between, the walk slows as the order ages. Ten was the
-    /// cheapest of 1, 10, 25, 50 and 100 at 8 M (#238).
-    nonisolated(unsafe) public static var tracerSortInterval = 10
-    /// Tracers sorted together. Each chunk is sorted on its own, so the sort's own buffers
-    /// stay this size however many tracers there are.
-    nonisolated(unsafe) public static var tracerSortChunk = 1 << 22
 
     /// The tracer's attributes, `index` counting from the first tracer.
     public func tracerWord(_ index: Int) -> TracerWord {
@@ -1660,14 +1052,7 @@ extension MetalBarnesHutSolver {
 
     public typealias CheckpointError = RunCheckpointError
 
-    public var state: State {
-        centersLock.lock()
-        defer { centersLock.unlock() }
-        return State(
-            count: count, tracers: tracerCount, time: time, stepsSinceTree: stepsSinceTree,
-            stepsSinceFormation: stepsSinceFormation, haloCenters: haloCenters,
-            massCenters: massCenters, galaxyMotion: galaxyMotion, diskStates: diskStates)
-    }
+    public var state: State { host.state }
 
     /// The bytes `writeParticles` writes.
     public var particleBytes: Int { count * 32 + massive * 4 }
@@ -1689,10 +1074,7 @@ extension MetalBarnesHutSolver {
     /// centres and disks set, and the tree and the accelerations the next step starts from
     /// built again from the positions, as the last step built them. Exact with one tree a step.
     public func restore(_ state: State, from handle: FileHandle) throws {
-        guard state.count == count, state.tracers == tracerCount else {
-            throw CheckpointError.otherRun(
-                "\(state.count) particles, \(state.tracers) tracers against \(count), \(tracerCount)")
-        }
+        try host.accepts(state)
         for (buffer, length) in changing {
             var read = 0
             while read < length {
@@ -1707,38 +1089,52 @@ extension MetalBarnesHutSolver {
                 read += piece
             }
         }
-        time = state.time
-        stepsSinceTree = state.stepsSinceTree
-        stepsSinceFormation = state.stepsSinceFormation
-        centersLock.lock()
-        haloCenters = state.haloCenters
-        massCenters = state.massCenters
-        galaxyMotion = state.galaxyMotion
-        diskStates = state.diskStates
-        centersLock.unlock()
-        // The tree without the centres and disk frames a rebuild moves on. The tracers' walk
-        // order only decides how fast they walk, so it is sorted afresh.
-        if let buffer = queue.makeCommandBuffer() {
-            builder.encode(into: buffer, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
-            submit(buffer)
+        host.take(state)
+        BarnesHutStep.restored(host, on: self)
+    }
+}
+
+// MARK: - The step's passes
+
+extension MetalBarnesHutSolver: BarnesHutPasses {
+    public var massivePositions: UnsafeBufferPointer<SIMD3<Float>> { currentPositions }
+
+    public var massiveVelocities: UnsafeBufferPointer<SIMD3<Float>> {
+        UnsafeBufferPointer(start: massiveState(velocityBuffer), count: massive)
+    }
+
+    /// One command buffer for `passes`, committed and waited for.
+    public func run(_ passes: [BarnesHutPass]) {
+        guard let buffer = queue.makeCommandBuffer() else { return }
+        for pass in passes { encode(pass, into: buffer) }
+        submit(buffer)
+    }
+
+    public func profile(_ phase: String, _ passes: [BarnesHutPass]) {
+        profiledPass(phase) { buffer in
+            for pass in passes { encode(pass, into: buffer) }
         }
-        while grewAfterOverflow(), let again = queue.makeCommandBuffer() {
-            builder.encode(into: again, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
-            submit(again)
+    }
+
+    public func stepped(milliseconds: Double) {
+        profiler.update {
+            $0.steps += 1
+            $0.add("step", milliseconds)
         }
-        gathered = true
-        nodeCount = builder.nodeCount
-        if tracerSorter != nil, let sort = queue.makeCommandBuffer() {
-            encodeTracerSort(into: sort)
-            submit(sort)
-            stepsSinceTracerSort = max(Self.tracerSortInterval, 1)
-            tracerOrderAge = 0
-        }
-        // A tracer keeps no acceleration: its saved velocity is half a kick ahead already.
-        if let buffer = queue.makeCommandBuffer() {
-            encodeAccelerations(into: buffer)
-            encodeHoles(into: buffer)
-            submit(buffer)
+    }
+
+    private func encode(_ pass: BarnesHutPass, into buffer: MTLCommandBuffer) {
+        switch pass {
+        case .starFormation: encodeStarFormation(into: buffer)
+        case .tracerStarFormation: encodeTracerStarFormation(into: buffer)
+        case .drift: encodeIntegrate(into: buffer)
+        case .gather: encodeGather(into: buffer)
+        case .accelerations(let pieces): encodeAccelerations(into: buffer, pieces: pieces)
+        case .holes: encodeHoles(into: buffer)
+        case .kick: encodeKick(into: buffer)
+        case .dissipation(let disks): encodeShedRandomMotion(into: buffer, disks: disks)
+        case .tracerStep(let mode, let pieces, let disks):
+            encodeTracerStep(into: buffer, mode: mode, pieces: pieces, disks: disks)
         }
     }
 }

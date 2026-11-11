@@ -83,7 +83,8 @@ public final class BarnesHutTree {
     private var scratch: [UInt32] = []
     private var primary: [UInt32] = []
     private var histogram: [Int] = []
-    private(set) var sortedCodes: [UInt64] = []
+    /// The Morton codes in the order of `order`, as `GPUTreeBuilder.codes` holds them.
+    public private(set) var sortedCodes: [UInt64] = []
     private var scratchCodes: [UInt64] = []
     private var spareNodes: [BHNode] = []
     private var top: [BHNode] = []
