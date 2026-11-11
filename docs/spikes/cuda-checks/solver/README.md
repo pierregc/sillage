@@ -6,6 +6,18 @@ run four more times from positions that differ by their last bit, which gives th
 alone produces. Written on an Apple M4 Max from commit b41436f (main before #274), 2026-11-11.
 Another render held the GPU throughout: nothing here is a timing.
 
+The repository writes the same folder since #274: `SolverCheck` (`Sources/SillageRender`) holds
+what the harness here does, `scripts/solver-compare.py` is `compare.py`, and
+`CUDABarnesHutSolverTests` reads the folder that `SILLAGE_CUDA_CHECKS` names. Run on the Mac at
+commit eb36e4c of `feat/274-cuda-solver`,
+
+```
+SILLAGE_SOLVER_CHECK_OUT=<folder> ./scripts/dev.sh test --filter SolverCheckTests
+```
+
+wrote `massive.bin`, `sample.json`, `scene.json` and the five runs as they are here, 29 files
+the same to the byte.
+
 ## The run
 
 Scene `2026-10-30-b/scene-0031` (`scene.json`, the file of `assets/tenfold`), built as
