@@ -3,22 +3,8 @@
 What the CUDA solver for the massive particles is compared with: the massive particles of
 scene-0031 at 20 k as the Mac samples them, a Metal run of 2,000 steps over them, and the same
 run four more times from positions that differ by their last bit, which gives the scale chaos
-alone produces. Written on an Apple M4 Max, 2026-11-11. Another render held the GPU throughout:
-nothing here is a timing.
-
-Two sets of files share the folder, over the same runs:
-
-- **What `CUDABarnesHutSolverTests` reads** (`SILLAGE_CUDA_CHECKS` names this folder):
-  `massive.bin`, and `curves.json` with `positions-<step>.bin` in `metal/`, `metal-one-bit/` and
-  `metal-every-bit/`. The repository's own `SolverCheckTests` wrote them, at commit 7f33fac of
-  `feat/274-cuda-solver`.
-- **What the Mac's harness adds**, from commit b41436f (main before #274): `curves.csv` and
-  `density.npy` in every run, Metal's checkpoints and accelerations in `metal/`, two more
-  one-bit runs, and `compare.py`.
-
-Both wrote the same runs: `massive.bin` is the same file, and the positions at steps 100, 1,000
-and 2,000, the centres, the thickness and the momentum of each run are the same bits in both
-sets.
+alone produces. Written on an Apple M4 Max from commit b41436f (main before #274), 2026-11-11.
+Another render held the GPU throughout: nothing here is a timing.
 
 ## The run
 
@@ -47,9 +33,8 @@ disks end torn, and 138 stars form.
 | `sample.json` | the counts, the step, softening and opening angle with their bit patterns, and the solver's static settings |
 | `massive.bin` | the sample, as `RunCheckpoint.saveMassive` writes it (#240) |
 | `metal/` | the reference run |
-| `metal-one-bit/` | the same run with particle 0's x (the first visible) moved to the next float up |
-| `metal-every-bit/` | the same run with every particle's x moved to the next float up |
-| `metal-bit-b/`, `metal-bit-c/` | two more one-bit runs: particle 19,999 (the last visible) and 49,998 (the last of the halo) |
+| `metal-bit-a/`, `-b/`, `-c/` | the same run with one particle's x moved to the next float up: particle 0 (the first visible), 19,999 (the last visible), 49,998 (the last of the halo) |
+| `metal-bit-all/` | the same run with every particle's x moved to the next float up |
 | `compare.py` | scores two runs, or one run against the envelope of others |
 | `SolverCurves.swift` | what writes a line of `curves.csv` and the maps, with no Metal in it |
 | `solver-check.swift` | the Mac's harness around it |
@@ -64,11 +49,6 @@ count; then for the `count` particles, visible first, the positions (16 bytes ea
 `SIMD3<Float>`), the velocities (the same), `birthRadius`, `population`, `luminosity`,
 `formation`, `kernelScale` and `mass` (a `Float` each), `galaxyIndex` and `component` (a
 `UInt32` each). 16 + 64 bytes a particle.
-
-**`curves.json` and `positions-<step>.bin`** (`SolverCheck.record` in
-`Sources/SillageRender/SolverCheck.swift`, read by `SolverCurves.load` and `SolverCheck.gaps`):
-the curves every 10 steps as a `SolverCurves` in JSON, and the massive particles' positions, 16
-bytes each, at steps 0, 100, 200, 500, 1,000, 1,500 and 2,000.
 
 **`curves.csv`**: a line every 10 steps from step 0 to step 2,000 (201 lines), floats as `%.9g`
 and doubles as `%.17g`.
@@ -102,9 +82,9 @@ of `massive.bin`).
 **Metal repeats itself to the byte.** A second run of `metal/` gave the same 18 files.
 
 **How far one bit goes.** Against `metal/`, the most each measure reaches anywhere along the
-2,000 steps, from `curves.csv` and `density.npy` (`compare.py`):
+2,000 steps:
 
-| the most over the run | one bit | b | c | envelope of the three | every bit |
+| the most over the run | a | b | c | envelope of a, b, c | all |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | centre 0, kpc | 0.0189 | 0.0164 | 0.0177 | 0.0189 | 0.0206 |
 | centre 1, kpc | 0.0129 | 0.0147 | 0.0102 | 0.0147 | 0.0128 |
@@ -125,7 +105,7 @@ The total momentum itself goes from 2.13 to 2.70 in these units along the run (i
 Particle by particle, the distance between the two runs' positions, in kpc (median, 99th
 percentile and largest over the visible particles):
 
-| step | one bit | every bit |
+| step | a | all |
 | ---: | --- | --- |
 | 1 | 0, 0, 9.5e-07 | 1.9e-06, 3.8e-06, 7.6e-06 |
 | 10 | 0, 0, 9.5e-07 | 1.9e-06, 4.3e-06, 2.4e-05 |
@@ -145,13 +125,6 @@ percentile and largest over the visible particles):
 
 ## Commands
 
-What the CUDA test reads, from a checkout of `feat/274-cuda-solver` (it writes `massive.bin`
-and the three runs' `curves.json` and positions):
-
-```
-SILLAGE_SOLVER_CHECK_OUT=<folder> ./scripts/dev.sh test --filter SolverCheckTests
-```
-
 The harness is `solver-check.swift` and `SolverCurves.swift` compiled against a build of the
 commit (`./scripts/dev.sh build`):
 
@@ -161,18 +134,18 @@ swiftc -O -I .build/dev -L .build/dev -lSillageCore -lSillageRender \
 export DYLD_LIBRARY_PATH=.build/dev
 ./solver-check sample scene.json 20000 .
 ./solver-check run scene.json . metal --snapshots 1,10,100,1000,2000
-./solver-check run scene.json . metal-one-bit --nudge 0
+./solver-check run scene.json . metal-bit-a --nudge 0
 ./solver-check run scene.json . metal-bit-b --nudge 19999
 ./solver-check run scene.json . metal-bit-c --nudge 49998
-./solver-check run scene.json . metal-every-bit --nudge all
+./solver-check run scene.json . metal-bit-all --nudge all
 ```
 
-For `compare.py`, a run of another engine is a folder holding `curves.csv` and `density.npy` in
-these formats, and if it can `particles-<step>.bin` and `accelerations-<step>.bin`:
+A run of another engine is a folder holding `curves.csv` and `density.npy` in these formats, and
+if it can `particles-<step>.bin` and `accelerations-<step>.bin`:
 
 ```
 python3 compare.py metal cuda
-python3 compare.py metal --scale metal-one-bit metal-bit-b metal-bit-c --test cuda
+python3 compare.py metal --scale metal-bit-a metal-bit-b metal-bit-c --test cuda
 ```
 
 The first prints the measures along the run and, where both folders hold them, the distance
