@@ -1,0 +1,222 @@
+hubble close (disk 0, 960 x 540, 200000 drawn, largest light Metal 170.375, CUDA 172.61299)
+  light, fixed point: 518400 pixels, total 1.0017307899240304, relative difference: median 0.006577493, 90 % 0.04296585, 99 % 0.10621407, largest 0.28793454
+  light, half floats: 518400 pixels, total 1.0000872112891597, relative difference: median 0.0017910447, 90 % 0.014858841, 99 % 0.041237112, largest 0.29037637
+  coverage: 518400 pixels, total 0.9998729350906239, relative difference: median 0.0007354132, 90 % 0.002130324, 99 % 0.003898886, largest 0.01296537
+  light where Metal holds over 1e-07: 16 pixels, median 0.24119605, 99 % 0.2773157
+  light where Metal holds over 1e-06: 73886 pixels, median 0.043639865, 99 % 0.15641874
+  light where Metal holds over 1e-05: 183426 pixels, median 0.018510032, 99 % 0.06297044
+  light where Metal holds over 0.0001: 53202 pixels, median 0.0046746773, 99 % 0.016423477
+  light where Metal holds over 0.001: 70585 pixels, median 0.0034066057, 99 % 0.009592535
+  light where Metal holds over 0.01: 92249 pixels, median 0.0022873466, 99 % 0.0136516625
+  light where Metal holds over 0.1: 42797 pixels, median 0.0020730186, 99 % 0.019868936
+  light where Metal holds over 1.0: 2238 pixels, median 0.0018784852, 99 % 0.015813582
+  light where Metal holds over 10.0: 1 pixels, median 0.004718682, 99 % 0.004718682
+  dust, fixed point (largest Metal 14.5078125): 413699 pixels, total 1.0000283849905405, relative difference: median 0.0037275187, 90 % 0.019815912, 99 % 0.11495972, largest 1.0
+  dust, half floats: 413112 pixels, total 0.9999469504369799, relative difference: median 0.003076923, 90 % 0.017106201, 99 % 0.061964404, largest 1.0
+  carrier: 103057 pixels, total 1.0000511346480518, relative difference: median 0.0005405026, 90 % 0.0027574133, 99 % 0.07682419, largest 1.0
+  tags: 518399 of 518400 values the same
+  lace, first level: 65536 pixels, total 0.9999998297111043, relative difference: median 0.00016924096, 90 % 0.00032832715, 99 % 0.00043053937, largest 0.00048579727; mean 0.54516906 here, 0.5449219 on Metal
+hubble wide (wide, 960 x 540, 200000 drawn, largest light Metal 728.0, CUDA 784.5014)
+  light, fixed point: 319017 pixels, total 1.0017334826505815, relative difference: median 0.5727841, 90 % 1.0, 99 % 1.0, largest 1.0
+  light, half floats: 187655 pixels, total 0.9999235628561782, relative difference: median 0.11111111, 90 % 0.6666667, 99 % 1.0, largest 1.0
+  coverage: 319123 pixels, total 1.0002322566389528, relative difference: median 0.0003557685, 90 % 0.0013682374, 99 % 0.0031870205, largest 0.07202206
+  light where Metal holds over -inf: 147799 pixels, median 1.0, 99 % 1.0
+  light where Metal holds over 1e-07: 81632 pixels, median 0.38412172, 99 % 0.7868526
+  light where Metal holds over 1e-06: 60538 pixels, median 0.20362622, 99 % 0.4450546
+  light where Metal holds over 1e-05: 14593 pixels, median 0.061915066, 99 % 0.1531847
+  light where Metal holds over 0.0001: 2464 pixels, median 0.007934727, 99 % 0.020193784
+  light where Metal holds over 0.001: 3301 pixels, median 0.0039854352, 99 % 0.009820343
+  light where Metal holds over 0.01: 5238 pixels, median 0.0020020844, 99 % 0.00668259
+  light where Metal holds over 0.1: 3197 pixels, median 0.0016046454, 99 % 0.02142587
+  light where Metal holds over 1.0: 255 pixels, median 0.0004992701, 99 % 0.0807486
+  dust, fixed point (largest Metal 5.34375): 25922 pixels, total 1.0029607552491668, relative difference: median 0.0006598528, 90 % 0.014438211, 99 % 0.711792, largest 1.0
+  dust, half floats: 25663 pixels, total 0.9999815170287932, relative difference: median 0.0, 90 % 0.000639141, 99 % 0.011363637, largest 1.0
+  carrier: 6116 pixels, total 1.0029823977309922, relative difference: median 0.00081980875, 90 % 0.013059749, 99 % 0.22122955, largest 1.0
+  tags: 518400 of 518400 values the same
+  lace, first level: 65536 pixels, total 0.9999998297111043, relative difference: median 0.00016924096, 90 % 0.00032832715, 99 % 0.00043053937, largest 0.00048579727; mean 0.54516906 here, 0.5449219 on Metal
+hubble pericentre (pericentre 0-1, 960 x 540, 200000 drawn, largest light Metal 190.375, CUDA 193.9141)
+  light, fixed point: 518400 pixels, total 1.00243944323739, relative difference: median 0.007611066, 90 % 0.03534862, 99 % 0.08859285, largest 0.45706683
+  light, half floats: 518400 pixels, total 1.0000271315846125, relative difference: median 0.001633987, 90 % 0.011952192, 99 % 0.033333335, largest 0.39222223
+  coverage: 518400 pixels, total 1.0000496293352137, relative difference: median 0.0007468815, 90 % 0.0021730096, 99 % 0.004259248, largest 0.018536663
+  light where Metal holds over 1e-07: 72 pixels, median 0.37848645, 99 % 0.45706683
+  light where Metal holds over 1e-06: 48834 pixels, median 0.037736412, 99 % 0.2277438
+  light where Metal holds over 1e-05: 233727 pixels, median 0.01733651, 99 % 0.060366955
+  light where Metal holds over 0.0001: 47260 pixels, median 0.0050373455, 99 % 0.013854925
+  light where Metal holds over 0.001: 46955 pixels, median 0.0033236847, 99 % 0.009567764
+  light where Metal holds over 0.01: 93069 pixels, median 0.002293026, 99 % 0.0071967747
+  light where Metal holds over 0.1: 46102 pixels, median 0.0022622948, 99 % 0.0087885205
+  light where Metal holds over 1.0: 2379 pixels, median 0.0025177952, 99 % 0.013654072
+  light where Metal holds over 10.0: 2 pixels, median 0.0053088064, 99 % 0.0053088064
+  dust, fixed point (largest Metal 23.46875): 301974 pixels, total 1.0000240569943137, relative difference: median 0.0009945887, 90 % 0.005546392, 99 % 0.02697118, largest 1.0
+  dust, half floats: 301504 pixels, total 0.9999392105327332, relative difference: median 0.00081243017, 90 % 0.004862237, 99 % 0.01614205, largest 1.0
+  carrier: 70308 pixels, total 1.0000599101931746, relative difference: median 0.00040617117, 90 % 0.0035758638, 99 % 1.0, largest 1.0
+  tags: 518397 of 518400 values the same
+  lace, first level: 65536 pixels, total 0.9999998297111043, relative difference: median 0.00016924096, 90 % 0.00032832715, 99 % 0.00043053937, largest 0.00048579727; mean 0.54516906 here, 0.5449219 on Metal
+raw close (disk 0, 480 x 270, 200000 drawn, largest light Metal 1069.0, CUDA 1069.0)
+  light, fixed point: 55793 pixels, total 1.0001045259848202, relative difference: median 0.00017145349, 90 % 0.00042509107, 99 % 0.0020062805, largest 0.516713
+  light, half floats: 55793 pixels, total 0.9999978003144671, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.5167683
+  coverage: 55793 pixels, total 0.9999976604356269, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.5
+  light where Metal holds over 1.0: 44430 pixels, median 0.00017145349, 99 % 0.0003526161
+  light where Metal holds over 10.0: 10917 pixels, median 0.00042092754, 99 % 0.0021792382
+  light where Metal holds over 100.0: 443 pixels, median 0.0043403483, 99 % 0.019730011
+  light where Metal holds over 1000.0: 3 pixels, median 0.04120811, 99 % 0.042621646
+raw wide (wide, 480 x 270, 200000 drawn, largest light Metal 2048.0, CUDA 5586.0)
+  light, fixed point: 10293 pixels, total 1.0281675235639134, relative difference: median 0.00017145349, 90 % 0.0021467544, 99 % 0.036870297, largest 1.0
+  light, half floats: 10293 pixels, total 1.0000078227524287, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 1.0
+  coverage: 10293 pixels, total 1.025395546390063, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 1.0
+  light where Metal holds over 1.0: 6982 pixels, median 0.00017145349, 99 % 0.0003526161
+  light where Metal holds over 10.0: 2268 pixels, median 0.00053998054, 99 % 0.002960774
+  light where Metal holds over 100.0: 971 pixels, median 0.007469658, 99 % 0.0733875
+  light where Metal holds over 1000.0: 72 pixels, median 0.048541863, 99 % 0.4651248
+raw pericentre (pericentre 0-1, 480 x 270, 200000 drawn, largest light Metal 1338.0, CUDA 1338.0)
+  light, fixed point: 45885 pixels, total 1.0004385936654079, relative difference: median 0.00017145349, 90 % 0.00043753043, 99 % 0.0028017825, largest 1.0
+  light, half floats: 45885 pixels, total 1.0000167596369638, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 1.0
+  coverage: 45885 pixels, total 1.0000163089948766, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 1.0
+  light where Metal holds over 1.0: 36903 pixels, median 0.00017145349, 99 % 0.0003526161
+  light where Metal holds over 10.0: 8314 pixels, median 0.00041884018, 99 % 0.002558224
+  light where Metal holds over 100.0: 659 pixels, median 0.0031179383, 99 % 0.030422764
+  light where Metal holds over 1000.0: 9 pixels, median 0.041811004, 99 % 0.04688529
+red-vs-cyan close (disk 0, 960 x 540, 200000 drawn, largest light Metal 180.125, CUDA 182.37067)
+  light, fixed point: 518400 pixels, total 1.0013553373832873, relative difference: median 0.0035526354, 90 % 0.028086994, 99 % 0.08520281, largest 0.4515487
+  light, half floats: 518400 pixels, total 0.9999307988793956, relative difference: median 0.00059087685, 90 % 0.0125, 99 % 0.041666668, largest 0.36363637
+  coverage: 518400 pixels, total 0.999871917392268, relative difference: median 0.0006192469, 90 % 0.0018480214, 99 % 0.0034210414, largest 0.01259476
+  light where Metal holds over 1e-07: 840 pixels, median 0.102844305, 99 % 0.38456628
+  light where Metal holds over 1e-06: 76855 pixels, median 0.025439482, 99 % 0.14597893
+  light where Metal holds over 1e-05: 176374 pixels, median 0.011415924, 99 % 0.045991626
+  light where Metal holds over 0.0001: 55680 pixels, median 0.0026726525, 99 % 0.011102597
+  light where Metal holds over 0.001: 67700 pixels, median 0.0021502478, 99 % 0.005531781
+  light where Metal holds over 0.01: 83326 pixels, median 0.0017463069, 99 % 0.004793029
+  light where Metal holds over 0.1: 48425 pixels, median 0.0013622054, 99 % 0.004534045
+  light where Metal holds over 1.0: 9144 pixels, median 0.0011782333, 99 % 0.004552886
+  light where Metal holds over 10.0: 56 pixels, median 0.0013754586, 99 % 0.014715104
+  dust, fixed point (largest Metal 0.0): 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  dust, half floats: 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+red-vs-cyan wide (wide, 960 x 540, 200000 drawn, largest light Metal 853.5, CUDA 909.49426)
+  light, fixed point: 291374 pixels, total 1.0059619392841401, relative difference: median 0.3035445, 90 % 1.0, 99 % 1.0, largest 1.0
+  light, half floats: 205110 pixels, total 0.9998539332781547, relative difference: median 0.05263158, 90 % 0.5, 99 % 1.0, largest 1.0
+  coverage: 291374 pixels, total 1.0003390748743688, relative difference: median 0.00033460604, 90 % 0.0012688643, 99 % 0.0029911168, largest 0.08065393
+  light where Metal holds over -inf: 104170 pixels, median 1.0, 99 % 1.0
+  light where Metal holds over 1e-07: 86489 pixels, median 0.30588037, 99 % 0.7026969
+  light where Metal holds over 1e-06: 70061 pixels, median 0.15185496, 99 % 0.3815095
+  light where Metal holds over 1e-05: 17475 pixels, median 0.050780915, 99 % 0.12394679
+  light where Metal holds over 0.0001: 2403 pixels, median 0.006440169, 99 % 0.018013485
+  light where Metal holds over 0.001: 2882 pixels, median 0.0030641675, 99 % 0.0077324626
+  light where Metal holds over 0.01: 4353 pixels, median 0.0019513798, 99 % 0.00630083
+  light where Metal holds over 0.1: 2979 pixels, median 0.0015940486, 99 % 0.005671806
+  light where Metal holds over 1.0: 562 pixels, median 0.005009236, 99 % 0.053480983
+  dust, fixed point (largest Metal 0.0): 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  dust, half floats: 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+red-vs-cyan pericentre (pericentre 0-1, 960 x 540, 200000 drawn, largest light Metal 190.875, CUDA 193.21176)
+  light, fixed point: 518400 pixels, total 1.0028362744852435, relative difference: median 0.003621899, 90 % 0.019898923, 99 % 0.061145965, largest 0.66067874
+  light, half floats: 518400 pixels, total 0.9999051026339955, relative difference: median 0.00071123755, 90 % 0.009070295, 99 % 0.029411765, largest 0.33333334
+  coverage: 518400 pixels, total 0.9999503674798705, relative difference: median 0.0006173348, 90 % 0.0018548991, 99 % 0.0036452785, largest 0.020312816
+  light where Metal holds over 1e-07: 651 pixels, median 0.11546612, 99 % 0.43072692
+  light where Metal holds over 1e-06: 48700 pixels, median 0.022303797, 99 % 0.12933542
+  light where Metal holds over 1e-05: 223638 pixels, median 0.00829617, 99 % 0.03687059
+  light where Metal holds over 0.0001: 56711 pixels, median 0.0025467295, 99 % 0.009649147
+  light where Metal holds over 0.001: 44678 pixels, median 0.0019216774, 99 % 0.005656571
+  light where Metal holds over 0.01: 82653 pixels, median 0.0018374244, 99 % 0.005781741
+  light where Metal holds over 0.1: 48624 pixels, median 0.0017677568, 99 % 0.0052743764
+  light where Metal holds over 1.0: 11734 pixels, median 0.0019999954, 99 % 0.006054948
+  light where Metal holds over 10.0: 1011 pixels, median 0.0040907343, 99 % 0.012005258
+  dust, fixed point (largest Metal 0.0): 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  dust, half floats: 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+red-vs-cyan-column close (disk 0, 960 x 540, 200000 drawn, largest light Metal 180.125, CUDA 182.37067)
+  light, fixed point: 518400 pixels, total 1.0013547064931712, relative difference: median 0.003780959, 90 % 0.028140167, 99 % 0.08541053, largest 0.4515487
+  light, half floats: 518400 pixels, total 0.999924869869447, relative difference: median 0.00093445467, 90 % 0.012738854, 99 % 0.04255319, largest 0.45363206
+  coverage: 518400 pixels, total 0.999871239711285, relative difference: median 0.0006214206, 90 % 0.0018585655, 99 % 0.00343549, largest 0.01259476
+  light where Metal holds over 1e-07: 840 pixels, median 0.102844305, 99 % 0.38456628
+  light where Metal holds over 1e-06: 76772 pixels, median 0.025416462, 99 % 0.14597969
+  light where Metal holds over 1e-05: 174873 pixels, median 0.011459315, 99 % 0.046111256
+  light where Metal holds over 0.0001: 55618 pixels, median 0.002763519, 99 % 0.012109453
+  light where Metal holds over 0.001: 67088 pixels, median 0.002229279, 99 % 0.009553544
+  light where Metal holds over 0.01: 84965 pixels, median 0.0018164282, 99 % 0.0096717
+  light where Metal holds over 0.1: 49143 pixels, median 0.0014428232, 99 % 0.010231882
+  light where Metal holds over 1.0: 9048 pixels, median 0.0012334142, 99 % 0.0072527356
+  light where Metal holds over 10.0: 53 pixels, median 0.001425509, 99 % 0.014715104
+  dust, fixed point (largest Metal 0.0): 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  dust, half floats: 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  column: 8034 of 8040 cells the same count, 144260.0 counted here, 144260.0 on Metal
+red-vs-cyan-column wide (wide, 960 x 540, 200000 drawn, largest light Metal 853.5, CUDA 909.49426)
+  light, fixed point: 291374 pixels, total 1.0059611675157516, relative difference: median 0.30351612, 90 % 1.0, 99 % 1.0, largest 1.0
+  light, half floats: 205110 pixels, total 0.999853062161726, relative difference: median 0.05263158, 90 % 0.5, 99 % 1.0, largest 1.0
+  coverage: 291374 pixels, total 1.0003375346453305, relative difference: median 0.00033471524, 90 % 0.0012732306, 99 % 0.002986596, largest 0.08065393
+  light where Metal holds over -inf: 104170 pixels, median 1.0, 99 % 1.0
+  light where Metal holds over 1e-07: 86379 pixels, median 0.30577558, 99 % 0.7030122
+  light where Metal holds over 1e-06: 70122 pixels, median 0.15203251, 99 % 0.3807882
+  light where Metal holds over 1e-05: 17479 pixels, median 0.050779272, 99 % 0.12344326
+  light where Metal holds over 0.0001: 2434 pixels, median 0.006519905, 99 % 0.022082262
+  light where Metal holds over 0.001: 2891 pixels, median 0.0031017151, 99 % 0.012597834
+  light where Metal holds over 0.01: 4358 pixels, median 0.0019613814, 99 % 0.008393986
+  light where Metal holds over 0.1: 2979 pixels, median 0.0015940486, 99 % 0.005671806
+  light where Metal holds over 1.0: 562 pixels, median 0.005009236, 99 % 0.053480983
+  dust, fixed point (largest Metal 0.0): 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  dust, half floats: 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  column: 8040 of 8040 cells the same count, 152165.0 counted here, 152165.0 on Metal
+red-vs-cyan-column pericentre (pericentre 0-1, 960 x 540, 200000 drawn, largest light Metal 190.875, CUDA 193.21176)
+  light, fixed point: 518400 pixels, total 1.0028412675996214, relative difference: median 0.0037245967, 90 % 0.019915417, 99 % 0.061159037, largest 0.66067874
+  light, half floats: 518400 pixels, total 0.9999074720619174, relative difference: median 0.00096525095, 90 % 0.009221312, 99 % 0.029411765, largest 0.42526963
+  coverage: 518400 pixels, total 0.9999499793897831, relative difference: median 0.00061817415, 90 % 0.0018600516, 99 % 0.003646244, largest 0.020312816
+  light where Metal holds over 1e-07: 651 pixels, median 0.11546612, 99 % 0.43072692
+  light where Metal holds over 1e-06: 48638 pixels, median 0.022283303, 99 % 0.12933542
+  light where Metal holds over 1e-05: 223136 pixels, median 0.008271425, 99 % 0.036861606
+  light where Metal holds over 0.0001: 56668 pixels, median 0.002604988, 99 % 0.0102507975
+  light where Metal holds over 0.001: 43755 pixels, median 0.0019742295, 99 % 0.0071033947
+  light where Metal holds over 0.01: 82988 pixels, median 0.0018863092, 99 % 0.007896676
+  light where Metal holds over 0.1: 49932 pixels, median 0.0018443867, 99 % 0.007886953
+  light where Metal holds over 1.0: 11621 pixels, median 0.0020466393, 99 % 0.0067506107
+  light where Metal holds over 10.0: 1011 pixels, median 0.0040907343, 99 % 0.012005258
+  dust, fixed point (largest Metal 0.0): 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  dust, half floats: 0 pixels, total 1.0, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 0.0
+  column: 8036 of 8040 cells the same count, 146273.0 counted here, 146273.0 on Metal
+attributes of 200000 drawn particles, made here against Metal's:
+  population: the same bits (200000 values)
+  formation: the same bits (200000 values)
+  luminosity: the same bits (200000 values)
+  rampKeys: the same bits (200000 values)
+  component: the same bits (200000 values)
+  galaxy: the same bits (200000 values)
+  traits: 1055 of 400000 values differ, 0 by more than 1e-5 of their value; the largest difference 1.1920929e-07, or 1.1914272e-07 of the value
+  stellar table: the same bits (128 values)
+frame close: positions decoded here: 516223 of 800000 values differ, 5525 by more than 1e-5 of their value; the largest difference 7.6293945e-06, or 0.024275843 of the value
+frame close: smoothing lengths of the CUDA tree: 180674 of 200000 values differ, 138 by more than 1e-5 of their value; the largest difference 0.2963512, or 0.63159686 of the value
+frame wide: positions decoded here: 547571 of 800000 values differ, 5916 by more than 1e-5 of their value; the largest difference 7.6293945e-06, or 0.10074997 of the value
+frame wide: smoothing lengths of the CUDA tree: 98365 of 200000 values differ, 90 by more than 1e-5 of their value; the largest difference 0.072314054, or 0.23685718 of the value
+frame pericentre: positions decoded here: 571215 of 800000 values differ, 44216 by more than 1e-5 of their value; the largest difference 3.0517578e-05, or 1.4097996 of the value
+frame pericentre: smoothing lengths of the CUDA tree: 200000 of 200000 values differ, 205 by more than 1e-5 of their value; the largest difference 0.118784696, or 0.46139118 of the value
+hubble close: uniforms made here: 16 of 42 values differ, 0 by more than 1e-5 of their value; the largest difference 1.1444092e-05, or 8.353301e-06 of the value
+  light, fixed point: 518400 pixels, total 1.0017606349752566, relative difference: median 0.0066254092, 90 % 0.042979315, 99 % 0.10619474, largest 0.28796613
+  light, half floats: 518400 pixels, total 1.0001178699125464, relative difference: median 0.0018348624, 90 % 0.014925373, 99 % 0.041450776, largest 0.29037637
+hubble wide: uniforms made here: 10 of 42 values differ, 1 by more than 1e-5 of their value; the largest difference 4.9352646e-05, or 1.9688481e-05 of the value
+  light, fixed point: 319017 pixels, total 1.0017329032245486, relative difference: median 0.5727841, 90 % 1.0, 99 % 1.0, largest 1.0
+  light, half floats: 187655 pixels, total 0.9999249692331516, relative difference: median 0.11111111, 90 % 0.6666667, 99 % 1.0, largest 1.0
+hubble pericentre: uniforms made here: 10 of 42 values differ, 0 by more than 1e-5 of their value; the largest difference 2.3841858e-07, or 1.6477745e-07 of the value
+  light, fixed point: 518400 pixels, total 1.0024417152971477, relative difference: median 0.007628169, 90 % 0.035353824, 99 % 0.08859973, largest 0.4570672
+  light, half floats: 518400 pixels, total 1.000028834039967, relative difference: median 0.0016501651, 90 % 0.011969532, 99 % 0.033333335, largest 0.39222223
+raw close: uniforms made here: 16 of 42 values differ, 0 by more than 1e-5 of their value; the largest difference 1.1444092e-05, or 8.353301e-06 of the value
+  light, fixed point: 55795 pixels, total 1.000116187455235, relative difference: median 0.00017145349, 90 % 0.00042870882, 99 % 0.00203346, largest 1.0
+  light, half floats: 55795 pixels, total 1.000009411494039, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 1.0
+raw wide: uniforms made here: 10 of 42 values differ, 1 by more than 1e-5 of their value; the largest difference 4.9352646e-05, or 1.9688481e-05 of the value
+  light, fixed point: 10293 pixels, total 1.0281533315831848, relative difference: median 0.00017145349, 90 % 0.0021579915, 99 % 0.037127256, largest 1.0
+  light, half floats: 10293 pixels, total 0.9999971967066812, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 1.0
+raw pericentre: uniforms made here: 10 of 42 values differ, 0 by more than 1e-5 of their value; the largest difference 2.3841858e-07, or 1.6477745e-07 of the value
+  light, fixed point: 45885 pixels, total 1.0004426352038271, relative difference: median 0.00017145349, 90 % 0.00043753043, 99 % 0.0028199279, largest 1.0
+  light, half floats: 45885 pixels, total 1.0000214272691275, relative difference: median 0.0, 90 % 0.0, 99 % 0.0, largest 1.0
+red-vs-cyan close: uniforms made here: 16 of 42 values differ, 0 by more than 1e-5 of their value; the largest difference 1.1444092e-05, or 8.353301e-06 of the value
+  light, fixed point: 518400 pixels, total 1.0013601278420357, relative difference: median 0.0035858543, 90 % 0.028113632, 99 % 0.08522268, largest 0.4515487
+  light, half floats: 518400 pixels, total 0.9999345624777868, relative difference: median 0.0006535948, 90 % 0.012552301, 99 % 0.041666668, largest 0.36363637
+red-vs-cyan wide: uniforms made here: 10 of 42 values differ, 1 by more than 1e-5 of their value; the largest difference 4.9352646e-05, or 1.9688481e-05 of the value
+  light, fixed point: 291374 pixels, total 1.0059542559947978, relative difference: median 0.30354694, 90 % 1.0, 99 % 1.0, largest 1.0
+  light, half floats: 205110 pixels, total 0.9998476001133275, relative difference: median 0.05263158, 90 % 0.5, 99 % 1.0, largest 1.0
+red-vs-cyan pericentre: uniforms made here: 10 of 42 values differ, 0 by more than 1e-5 of their value; the largest difference 2.3841858e-07, or 1.6477745e-07 of the value
+  light, fixed point: 518400 pixels, total 1.0028389632488455, relative difference: median 0.0036324407, 90 % 0.01990717, 99 % 0.061164003, largest 0.66067874
+  light, half floats: 518400 pixels, total 0.9999092211341211, relative difference: median 0.0007324517, 90 % 0.009090909, 99 % 0.029411765, largest 0.33333334
+red-vs-cyan-column close: uniforms made here: 16 of 42 values differ, 0 by more than 1e-5 of their value; the largest difference 1.1444092e-05, or 8.353301e-06 of the value
+  light, fixed point: 518400 pixels, total 1.0013593820717726, relative difference: median 0.0038061913, 90 % 0.028153092, 99 % 0.085383825, largest 0.4515487
+  light, half floats: 518400 pixels, total 0.9999286802482449, relative difference: median 0.0009902624, 90 % 0.012820513, 99 % 0.04255319, largest 0.45363206
+red-vs-cyan-column wide: uniforms made here: 10 of 42 values differ, 1 by more than 1e-5 of their value; the largest difference 4.9352646e-05, or 1.9688481e-05 of the value
+  light, fixed point: 291374 pixels, total 1.0059533434097347, relative difference: median 0.30351537, 90 % 1.0, 99 % 1.0, largest 1.0
+  light, half floats: 205110 pixels, total 0.999846589455374, relative difference: median 0.05263158, 90 % 0.5, 99 % 1.0, largest 1.0
+red-vs-cyan-column pericentre: uniforms made here: 10 of 42 values differ, 0 by more than 1e-5 of their value; the largest difference 2.3841858e-07, or 1.6477745e-07 of the value
+  light, fixed point: 518400 pixels, total 1.002842920032094, relative difference: median 0.0037297704, 90 % 0.019920353, 99 % 0.061159037, largest 0.66067874
+  light, half floats: 518400 pixels, total 0.9999107548921534, relative difference: median 0.0009823183, 90 % 0.009230769, 99 % 0.029411765, largest 0.42526963
