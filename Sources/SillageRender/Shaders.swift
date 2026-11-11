@@ -435,10 +435,10 @@ enum Shaders {
             SplatOut out;
             out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
             out.pointSize = 0.0f;
-            out.color = half3(0.0h);
-            out.opticalDepth = 0.0h;
-            out.spikes = 0.0h;
-            out.slab = half4(0.0h);
+            out.color = half3(half(0.0f));
+            out.opticalDepth = half(0.0f);
+            out.spikes = half(0.0f);
+            out.slab = half4(half(0.0f));
             return out;
         }
 
@@ -460,8 +460,8 @@ enum Shaders {
             float3 position = p.position;
             DiskFrame frame = frames[p.galaxy];
             out.position = u.viewProjection * float4(position, 1.0f);
-            out.spikes = 0.0h;
-            out.slab = half4(0.0h);
+            out.spikes = half(0.0f);
+            out.slab = half4(half(0.0f));
             uint kind = p.kind;
             float weight = p.weight;
             // The compact bright minority the sampler drew (DiskSampler, kernelScale 0.75):
@@ -498,8 +498,8 @@ enum Shaders {
             if (kind == 3u || (hole && u.holeShadow <= 0.0f) || absorbing != (u.pass == 0u)) {
                 out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
                 out.pointSize = 0.0f;
-                out.color = half3(0.0h);
-                out.opticalDepth = 0.0h;
+                out.color = half3(half(0.0f));
+                out.opticalDepth = half(0.0f);
                 return out;
             }
 
@@ -517,10 +517,10 @@ enum Shaders {
                 // between it and the camera. Without that half term a lane and the stars
                 // embedded in it would be exactly as bright as a lane with nothing in it.
                 out.slab = half4(
-                    slabIndex > 0u ? 1.0h : 0.5h,
-                    slabIndex > 1u ? 1.0h : (slabIndex == 1u ? 0.5h : 0.0h),
-                    slabIndex > 2u ? 1.0h : (slabIndex == 2u ? 0.5h : 0.0h),
-                    slabIndex == 3u ? 0.5h : 0.0h);
+                    slabIndex > 0u ? half(1.0f) : half(0.5f),
+                    slabIndex > 1u ? half(1.0f) : (slabIndex == 1u ? half(0.5f) : half(0.0f)),
+                    slabIndex > 2u ? half(1.0f) : (slabIndex == 2u ? half(0.5f) : half(0.0f)),
+                    slabIndex == 3u ? half(0.5f) : half(0.0f));
             }
             float2 pattern = armWave(position, frame);
             float wave = pattern.x;
@@ -581,12 +581,12 @@ enum Shaders {
                 // in the pattern's frame, where a lane belongs.
                 float lane = 1.0f + 7.0f * pow(wave, 2.0f) * pattern.y * laneDetail(position, frame);
                 out.pointSize = span * 1.3f;
-                out.color = half3(0.0h);
+                out.color = half3(half(0.0f));
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3f);
                 if (hole) {
                     // Twice the radius, since the kernel falls to a hundredth at its edge.
                     out.pointSize = max(4.0f * u.holeShadow * perPixel, 2.0f);
-                    out.opticalDepth = 8.0h;
+                    out.opticalDepth = half(8.0f);
                 }
             } else {
                 // An arm is brighter than the disk around it, by about the factor of two a
@@ -650,7 +650,7 @@ enum Shaders {
                 }
                 out.pointSize = span * (alive > 0.15f ? 1.3f : 1.0f);
                 out.color = half3(emitted * (u.brightness * weight * gain * spread));
-                out.opticalDepth = 0.0h;
+                out.opticalDepth = half(0.0f);
             }
             return out;
         }
@@ -716,7 +716,7 @@ enum Shaders {
             out.position = u.viewProjection * float4(star.direction.xyz, 1.0f);
             out.pointSize = u.starSize * mix(1.6f, 9.0f, magnitude * magnitude);
             out.color = half3(star.color.rgb * (magnitude * magnitude * magnitude * 2.4f));
-            out.opticalDepth = 0.0h;
+            out.opticalDepth = half(0.0f);
             out.spikes = half(star.color.a);
             return out;
         }
@@ -1018,20 +1018,20 @@ enum Shaders {
         static SplatOut dustWeb(Drawn p, bool dust, WebGrain grain, constant SplatUniforms &u,
                                 DiskFrame frame, constant WebUniforms &w) {
             SplatOut out;
-            out.color = half3(0.0h);
-            out.spikes = 0.0h;
+            out.color = half3(half(0.0f));
+            out.spikes = half(0.0f);
             if (!dust || grain.amount >= 1.0f) {
                 out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
                 out.pointSize = 0.0f;
-                out.opticalDepth = 0.0h;
-                out.slab = half4(0.0h);
+                out.opticalDepth = half(0.0f);
+                out.slab = half4(half(0.0f));
                 return out;
             }
             out.position = grain.position;
             out.slab = grain.slab;
             if (grain.hole) {
                 out.pointSize = max(4.0f * u.holeShadow * grain.perPixel, 2.0f);
-                out.opticalDepth = 8.0h;
+                out.opticalDepth = half(8.0f);
                 return out;
             }
             float3 position = p.position;
@@ -1114,8 +1114,8 @@ enum Shaders {
                 out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
                 out.pointSize = 0.0f;
                 out.carried = 0.0f;
-                out.slab = half4(0.0h);
-                out.tag = 0.0h;
+                out.slab = half4(half(0.0f));
+                out.tag = half(0.0f);
                 return out;
             }
             float3 position = p.position;
@@ -1335,7 +1335,7 @@ enum Shaders {
         }
 
         fragment half4 plainFragment(PlainOut in [[stage_in]]) {
-            return half4(in.color, 1.0h);
+            return half4(in.color, half(1.0f));
         }
 
         fragment LightTarget starfieldFragment(SplatOut in [[stage_in]],
@@ -1345,7 +1345,7 @@ enum Shaders {
             if (r2 > 1.0f) { discard_fragment(); }
 
             float falloff;
-            if (in.spikes > 0.0h) {
+            if (in.spikes > half(0.0f)) {
                 // A field star needs a tight core, otherwise the bloom halo is all that is left
                 // of it and the image reads as defocused rather than as a long exposure.
                 float ax = abs(d.x) * 2.0f;
