@@ -18,11 +18,11 @@ every push by a GitHub workflow that compiles the CUDA code and runs it on the C
   CUDA engine that way, with nothing rented.
 
 #281 shared the tree (`GPUTreeShaders`, 20 kernels), #274 the massive particles' kernels of
-`BarnesHutShaders` (8 of its 11) and #276 the particle passes of the renderer (`Shaders`, 19
-vertex and fragment functions and the lace's kernel). What is left is still inside
-`#if defined(__METAL_VERSION__)`: #275 shares the light tracers' three kernels, #277 the
-post-processing kernels of `Shaders`; `RecordingShaders` (take playback) and `SolverShaders`
-(the restricted solver) stay Metal only.
+`BarnesHutShaders` (8 of its 11), #276 the particle passes of the renderer (`Shaders`, 19
+vertex and fragment functions and the lace's kernel) and #277 its post-processing kernels (eight
+more). What is left is still inside `#if defined(__METAL_VERSION__)`: #275 shares the light
+tracers' three kernels; `RecordingShaders` (take playback) and `SolverShaders` (the restricted
+solver) stay Metal only.
 
 ## Changing the engine from now on
 
@@ -89,6 +89,22 @@ the rasteriser between them is a kernel's loop over the pixels of a point
   `#else`: a `texture2d` sampled with its sampler on Metal, a `texels2d` read by hand with the
   same filter elsewhere (`cuda/include/msl_texture.h`). A read at the start or the end of a
   function stays in the Metal entry point, which passes the value down.
+- A compute kernel that reads and writes textures all along (#277's post-processing) keeps its
+  Metal entry point to the bounds test, the write and the texture arguments, and its work is a
+  shared function that **returns the float4 it writes** and reads its textures through
+  `PostRead` and `PostSample` and the functions `postRead`, `postSample` and `postExtent`: the
+  typedefs of the Metal textures (`texture2d<float, access::read>` and `access::sample`) and of
+  a `texels2d` outside Metal. The function's lines are the kernel's own, in the same order: a
+  kernel's name is its CUDA entry point's, so the function takes another (`resolvePixel` for
+  `resolve`). On the CUDA side the entry point is a thread a pixel with a 16 by 16 block, the
+  images are four floats a texel and the result goes where Metal's `write` goes.
+- **An argument that a last bit decides is written out.** `hash2`, the film grain's hash, takes
+  the sine of an argument of the order of 1e5 and keeps the fraction of 43,758 times it: where
+  the compiler is left to fuse the multiply-add of that argument, Metal fuses it and CUDA, built
+  with `--fmad=false`, does not, and the two grains agree on half the pixels. Written
+  `fma(v.y, 311.7f, v.x * 127.1f)` both give the same, and a frame of the Hubble look went from
+  33 to 35 dB against Metal's to 46 to 48. Any shared arithmetic whose result is that sensitive
+  to the rounding of an intermediate value says its fusing as `hash2` does.
 - In `cuda/kernels.txt` the vertex function is `cuda`, its entry point the kernel of the pass,
   and the fragment function `cuda in <kernels>`, the kernels that call its shared function.
 
@@ -263,8 +279,9 @@ After #281: 62 functions, 59 pending (20 of the tree for #273, 8 of the massive 
 #277) and 3 Metal only (`expandSnapshots`, `expandSnapshots21`, `integrate`). After #274: 21
 `cuda`, 7 `cuda gpu-only`, 31 pending. After #276 the 20 particle passes are 13 `cuda`, 6
 `cuda in` and one Metal only (`webResolveVertex`, the triangle that covers the frame), which
-leaves 11 pending: the tracers' three and the eight of the post-processing. Phase 1 is over
-when no line is pending.
+leaves 11 pending: the tracers' three and the eight of the post-processing. After #277 the eight
+are `cuda`, and the tracers' three are all that is pending. Phase 1 is over when no line is
+pending.
 
 ## The reference outputs
 

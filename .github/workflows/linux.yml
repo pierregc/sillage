@@ -72,4 +72,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: The formatter, the strict concurrency typecheck, the CUDA engine's tests
-        run: scripts/linux.sh lint strict test-cuda
+        run: scripts/linux.sh lint strict test-cuda tool
+      - name: sillage-cuda draws a frame of a take as a PNG
+        run: |
+          .build/linux/sillage-cuda still Tests/Fixtures/engines/frames/take.sillage \
+            --look Tests/Fixtures/engines/frames/webb.look.json --rate 30 --width 128 --height 72 \
+            --frames 0 --out "$RUNNER_TEMP/stills"
+          test -s "$RUNNER_TEMP/stills/1080p-0000.png"

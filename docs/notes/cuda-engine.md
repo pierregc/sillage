@@ -4,8 +4,10 @@ The hires engine's CUDA twin for rented NVIDIA GPUs (#269), written and tested w
 phase 1. #273 laid the frame the next steps build in: the C API, the Swift module over it, the
 build for the GPU and for the CPU target, and the tree builder, the first engine in it. #274
 added the solver of the massive particles, which has
-[a section of its own](#the-massive-particles-solver-274), and #276 the renderer's particle
-passes, [which have theirs](#the-renderers-particle-passes-276). How a kernel's text is shared
+[a section of its own](#the-massive-particles-solver-274), #276 the renderer's particle
+passes, [which have theirs](#the-renderers-particle-passes-276), and #277 its post-processing and
+a first command that draws frames of a take, [with
+theirs](#the-post-processing-and-the-stills-277). How a kernel's text is shared
 with Metal is in [one-kernel-source.md](one-kernel-source.md); this note is how the CUDA side
 around it is built, run and tested.
 
@@ -21,9 +23,11 @@ around it is built, run and tested.
 | `cuda/src/tree.cu` | the 20 tree entry points, their launches and the tree's calls |
 | `cuda/include/sillage_cuda_solver.h`, `cuda/src/solver.cu` | the massive solver's calls, its 8 entry points and their launches (#274) |
 | `cuda/include/sillage_cuda_render.h`, `cuda/src/render.cu` | the renderer's calls, the 13 entry points of its particle passes and their launches (#276) |
+| `cuda/include/sillage_cuda_post.h`, `cuda/src/post.cu` | the post-processing's calls, the 8 entry points of its kernels and the pack into 8-bit bytes (#277) |
 | `cuda/src/kernels.cu` | every library's MSL in one unit, for the checks (#281) |
-| `cuda/tests/*.cu` | the C tests of the CPU target (`compat`, `tree_fixture`, `tree_entries`, `solver_fixture`, `render_passes`, `raster_probe`) |
-| `Sources/SillageCUDA/` | the Swift: `CUDAContext` and `CUDAError`, `CUDABuffer` and `CUDAHostMemory`, `CUDATreeBuilder`, `CUDABarnesHutSolver`, `CUDARenderer` |
+| `cuda/tests/*.cu` | the C tests of the CPU target (`compat`, `tree_fixture`, `tree_entries`, `solver_fixture`, `render_passes`, `raster_probe`, `post_passes`) |
+| `Sources/SillageCUDA/` | the Swift: `CUDAContext` and `CUDAError`, `CUDABuffer` and `CUDAHostMemory`, `CUDATreeBuilder`, `CUDABarnesHutSolver`, `CUDARenderer`, `CUDAPost`, `CUDATakeStills`, `PNG`, `CUDAStillChecks` |
+| `Sources/sillage-cuda/` | the command on Linux (#277) |
 | `Tests/SillageCUDATests/` | the Swift tests, run on Linux |
 
 **A new domain** (#274's solver, #276's renderer) takes files of its own, so that two tickets
@@ -836,15 +840,233 @@ About twice what was measured. The run's frame under `tracers/` is held to the s
   `SC_RENDER_DUST_TARGET` hold four floats a supersampled pixel, rows from the top, on the
   device: `resolve` reads the light's red, green and blue as Metal's does. `target(.light)`
   downloads them.
-- `CUDARenderer` conforms to `FramePreparing`: `TakeFraming.prepare` gives it the look, the
-  palette, the time and the painted arms of a moment of a take, as it gives `Renderer`.
+- `CUDARenderer` conforms to `FrameStyling` (and so to `FramePreparing`): `TakeFraming.prepare`
+  gives it the look, the palette, the time and the painted arms of a moment of a take, as it
+  gives `Renderer`.
 - A full pass hands it the solver's own buffers: `externalPositions` with their offset,
   `externalFormation`, `setSmoothing`, and `setTracers` with the tracers' states, their motions
   and the massive tree's spacing records.
-- The post-processing kernels of `Shaders` are still inside the Metal guard, and their structs
-  (`BloomParams`, `CompositeParams`, `SpikeParams`) already outside it. A kernel that reads a
-  texture at its start can keep the read in its entry point; `msl_texture.h` has the bilinear
-  filter by hand.
-- The reference frames of `Tests/Fixtures/engines/frames` are final pictures: #277 draws them
-  through these passes and sets the tolerance there, which puts the comparison with Metal in
-  every Linux check without the assets branch.
+- The post-processing kernels of `Shaders` are shared and on CUDA since #277
+  ([below](#the-post-processing-and-the-stills-277)), and the three reference frames of
+  `Tests/Fixtures/engines/frames` are in every Linux check, within a tolerance.
+
+## The post-processing and the stills (#277)
+
+What turns the supersampled light into a frame, with the arithmetic Metal does it with, and a
+first command on Linux that draws chosen frames of a take, so that the two engines can be
+compared picture against picture. #278 draws a full pass with it.
+
+| where | what |
+| --- | --- |
+| `Sources/SillageRender/Shaders.swift` | the work of the eight kernels as shared functions (`resolvePixel`, `plainCompositePixel`, `brightPixel`, `downsamplePixel`, `upsamplePixel`, `compactPixel`, `spikesPixel`, `compositePixel`); a Metal kernel only reads its textures, calls one and writes what it returns |
+| `Sources/SillageRender/PostPlan.swift` | `PostPlan`: the passes of a frame's post-processing and the size of every image, for both renderers; `FrameGrain`; `BloomParams`, `CompositeParams`, `SpikeParams` |
+| `Sources/SillageRender/FrameStyling.swift` | `FrameStyling`, which gives `apply(look)`, `apply(file)` and `prepare` to any renderer, and `GalaxyPalette` |
+| `cuda/include/sillage_cuda_post.h`, `cuda/src/post.cu` | nine calls (the eight passes and the pack), the 8 entry points and their launches |
+| `Sources/SillageCUDA/CUDAPost.swift` | executes a `PostPlan` over fp32 images, packs the picture |
+| `Sources/SillageCUDA/CUDATakeStills.swift` | what `TakeExport` does for Metal: a frame of a take as an export draws it |
+| `Sources/SillageCUDA/PNG.swift` | 8-bit PNGs, read and written |
+| `Sources/SillageCUDA/CUDAStillChecks.swift` | the measures, and the comparison with Metal's stills |
+| `Sources/sillage-cuda/main.swift`, `scripts/linux.sh tool` | the command |
+| `scripts/still-pairs.py` | the pairs side by side |
+| `cuda/tests/post_passes.cu`, `Tests/SillageRenderTests/PostPlanTests.swift`, `Tests/SillageCUDATests/CUDAPostTests.swift` | the tests |
+
+### The kernels
+
+`resolve`, `plainComposite`, `brightPass`, `downsample`, `upsampleAdd`, `compactLight`,
+`diffractionSpikes` and `composite` are `cuda` in `cuda/kernels.txt`. Each is a thread a pixel
+of the image it writes and none needs a block barrier, so all eight run on the CPU target. The
+shared function is the Metal kernel's body, line for line, with its texture reads in
+`postRead`, `postSample` and `postExtent` ([one-kernel-source.md](one-kernel-source.md)) and
+the float4 it writes as its result. A CUDA entry point is a 16 by 16 block over the image,
+the bounds test and a `put`; its images are four floats a texel, where Metal's are
+`rgba16Float` textures, and its bilinear filter is `msl_texture.h`'s, where Metal's is its
+GPU's. The pack (`packPixels`) is the one kernel without a Metal twin: it writes the picture as
+bytes the way Metal's `rgba8Unorm` write does, rounded to nearest even, clamped, a number that
+is not one read as 0.
+
+The shared text was also where the grain could not be shared as it stood. `hash2` takes the
+sine of `dot(v, (127.1, 311.7))`, of the order of 1e5 where a float's last bit is 0.008, and
+keeps the fraction of 43,758 times it: the last bit of that argument decides the hash. Metal
+fuses the multiply-add; CUDA, built without contraction as the tree and the solver are, did
+not, and the two grains agreed on 52 to 55 % of the pixels (`cuda/tests/post_passes.cu` counts
+20 % of a frame's hashes changing with the rounding alone). The Hubble look held 33 to 35 dB
+against Metal's frame for that reason and no other. `hash2` now says
+`sin(fma(v.y, 311.7f, v.x * 127.1f))`: the one line of the post-processing whose arithmetic
+changed on Metal, to what Metal's compiler already did, and the Mac's check holds its bytes.
+
+### The plan
+
+`PostPlan(settings:fade:grain:)` gives a frame's passes in order and the size of every image it
+runs on, with the expressions `Renderer.encodePost` had: the raw look's one `plainComposite`;
+otherwise `resolve`, the bright pass and the levels down while the bloom or the sharp spikes
+need them, the levels back up, the spikes, and the composite with its bloom and spikes
+images. The renderers execute it through a switch with no default, so **a pass added to
+`PostPlan.Pass` stops both from compiling until they run it**, as for `FramePlan` and
+`BarnesHutPass`. `PostPlan.Image` names what a pass reads and writes (`light`, `resolved`,
+`down(n)`, `up(n)`, `sharpSource`, `sharpSpikes`, `spikes`, `output`); the Metal renderer maps
+them to its textures, CUDA to its fp32 buffers, and both allocate from `PostPlan.sizes(for:)`:
+the levels halve from half the picture's size while they stay at 8 by 8 or more. On Metal the
+same pipelines, textures and bindings are encoded in the same order as before, which the Mac
+checks by byte.
+
+### The frame's settings
+
+- **`FrameStyling`** gives `apply(look)`, `apply(file)` and `prepare` to a renderer that gives
+  `restyle`, `setGalaxyColours` and `setDiskFrames`, the three that fill its own buffers.
+  `Renderer` and `CUDARenderer` conform; the copies each had are gone.
+- **`GalaxyPalette`** holds the palette, its ramps and whether any galaxy has one.
+- **`FrameGrain`** is the grain's place in a run: `advance()` on every frame drawn that is not
+  the raw look's, `skip(_:)` for the frames a resumed run did not draw (`skipFrames`). A still
+  from the middle of a video sets it where that frame finds it (`setGrain(frame:)`), which is
+  what an `export` of the whole video does by drawing the frames before it.
+
+### The picture out
+
+`CUDARenderer.picture(camera:format:)` draws the particle passes, runs the plan over the light
+they left and returns the picture as 8-bit `rgb`, `rgba` or `bgra` bytes in pinned host
+memory, valid until the next frame (`CUDAPost`). `develop(light:)` runs the post-processing over
+a light of another engine's, with this renderer's look and grain. At 4K with supersampling 2
+the light holds 0.53 GB in fp32 and the post-processing's images 0.4 GB, with 66 MB of bytes on the device and as much in pinned memory.
+
+### `sillage-cuda still`
+
+```
+scripts/linux.sh tool
+.build/linux/sillage-cuda still <take> --look <look> [--framing <massive take>] \
+    --preset 4k --frames 0,200,900 --out <dir>
+```
+
+Frame N is the Nth frame of a video of the take at `--fps` (the captured rate by default),
+drawn as `sillage-render export --stills` draws it: the camera `TakeFraming.replay` gives it,
+the positions the take holds there, the smoothing lengths of the tree built over them, the
+look, and the grain after N frames. PNGs go to `<dir>/<preset>-NNNN.png`, as an export names
+them. `--look` is a look file or the name of one in `looks/` beside the take; the captured rate
+comes from `hires.json` or `clip.json` beside it, or `--rate`; `--width` and `--height` set
+another size. It runs on the GPU library or on the CPU target, whichever `scripts/linux.sh`
+linked. On the CPU target a 480 by 270 frame of 200 k takes 0.2 to 1.6 s without the web, and
+the first frame of a look with the web 35 s, the lace's bake.
+
+### Tests
+
+**Now, on the CPU target**, in every Linux check and on every push:
+
+- `cuda/tests/post_passes.cu`, with `g++` and `clang++`: each pass on a small image against its
+  arithmetic worked out by hand (the box average, the exposure curve, the bright pass's knee,
+  the flat image kept flat by the two filters, the spikes' falloff, the composite's fade, sky
+  and grain), the calls it refuses, the pack's rounding and its three layouts, and the hash.
+- `PostPlanTests` (14 tests, also on the Mac): the passes of each kind of look, the levels'
+  sizes, the grain's seed and what skipping does to it.
+- `CUDA post-processing` (13 tests run here): the three reference frames of
+  `Tests/Fixtures/engines/frames`, drawn from their take and held to Metal's (below); the three
+  formats of one picture; a frame drawn twice, by another renderer and from three threads, the
+  same bytes; the grain moving with the frame of a video; the raw look's exposure curve; a plan
+  for other sizes and a light too small refused; a star's bloom; the PNG writer and reader, with
+  and without zlib.
+- `theStillsAgreeWithMetal`, a fourteenth, when `SILLAGE_CUDA_RENDER_TARGETS` names the render
+  folder of `assets/cuda-checks`: the comparison below.
+
+**Written now, run on a GPU in #283**, each skipped on the CPU target with "needs an NVIDIA GPU
+and libsillagecuda.a: #283 runs it":
+
+- `theStillsAgreeWithMetalAt4K`: the comparison below at 3840 by 2160 with supersampling 2,
+  from the folder `SILLAGE_CUDA_RENDER_4K` names (the Mac's `export --dump-targets` of #276's
+  4K take, with `--stills <folder>/stills` of the same frames).
+- `thePostProcessingOfA4KFrameIsTimed`: the passes of a look with bloom, sharp spikes and grain
+  at 4K, the median of five frames after a first, on a `CUDAPOST4K` line.
+
+### Against Metal
+
+**The frames compared.** The take of #276 (scene-0031 at 200 k drawn from 50 k massive, 480 by
+270) in its five looks, on its three shots (`close`, `wide`, `pericentre`: frames 4, 12 and 19
+of a video at the captured 3 a second), against the PNGs `sillage-render export --stills`
+drew on the M4 Max (`render/stills/` of `assets/cuda-checks`). Each is drawn three ways on the
+CPU target:
+
+- **drawn**: the CUDA engine as it is, the particle passes in fixed point;
+- **half floats**: the particle passes blending in half floats as Metal's targets do, one
+  thread, in Metal's order;
+- **Metal's light developed here**: Metal's own accumulation (`light.f16`, #276) through the
+  CUDA post-processing alone.
+
+PSNR against Metal's frame over the red, green and blue of every pixel, and the mean absolute difference in levels of 255.
+
+| look | shot | drawn | half floats | Metal's light developed here |
+| --- | --- | --- | --- | --- |
+| `hubble` | close | 47.8 dB, 0.357 | 47.8 dB, 0.347 | 47.9 dB, 0.341 |
+| `hubble` | wide | 46.7 dB, 0.298 | 46.7 dB, 0.289 | 46.7 dB, 0.289 |
+| `hubble` | pericentre | 45.9 dB, 0.515 | 45.9 dB, 0.506 | 45.9 dB, 0.505 |
+| `hubble-noweb` | close | 47.8 dB, 0.352 | 47.9 dB, 0.342 | 47.9 dB, 0.340 |
+| `hubble-noweb` | wide | 46.7 dB, 0.300 | 46.7 dB, 0.289 | 46.7 dB, 0.289 |
+| `hubble-noweb` | pericentre | 45.9 dB, 0.516 | 45.9 dB, 0.505 | 45.9 dB, 0.505 |
+| `red-vs-cyan` | close | 62.3 dB, 0.038 | 65.4 dB, 0.019 | 66.7 dB, 0.014 |
+| `red-vs-cyan` | wide | 60.4 dB, 0.051 | 66.3 dB, 0.015 | 68.5 dB, 0.009 |
+| `red-vs-cyan` | pericentre | 60.5 dB, 0.055 | 64.1 dB, 0.025 | 65.6 dB, 0.017 |
+| `red-vs-cyan-column` | close | 62.1 dB, 0.039 | 64.9 dB, 0.020 | 66.7 dB, 0.014 |
+| `red-vs-cyan-column` | wide | 60.4 dB, 0.051 | 66.3 dB, 0.015 | 68.5 dB, 0.009 |
+| `red-vs-cyan-column` | pericentre | 60.3 dB, 0.056 | 63.7 dB, 0.027 | 65.5 dB, 0.018 |
+| `raw` | close | 52.2 dB, 0.007 | 52.3 dB, 0.004 | exact |
+| `raw` | wide | 55.6 dB, 0.002 | 55.6 dB, 0.001 | exact |
+| `raw` | pericentre | 55.3 dB, 0.004 | 55.3 dB, 0.002 | exact |
+
+- **The post-processing is Metal's.** Developed from Metal's own light, the raw look's three
+  frames are Metal's to the byte, and `red-vs-cyan`, which runs `resolve`, the bright pass, the
+  levels down and up, and `composite` with the sky, is 65.5 to 68.5 dB from it with the largest
+  difference 3 to 9 levels and at most 0.002 % of the pixels over 8: the rounding of Metal's
+  half float images and of its GPU's bilinear filter, which `msl_texture.h` writes at full
+  precision.
+- **What the fixed point costs is the accumulation, and nothing else.** In `red-vs-cyan` the
+  frame as CUDA draws it is 60.3 to 62.3 dB from Metal's, and 63.7 to 66.3 when the particle
+  passes blend in half floats as Metal's targets do: the 3 to 6 dB between them are the faint
+  light that half floats round away and the fixed point keeps (#276 measured 0.01 to 0.6 %
+  more light in these frames). The 1 to 2 dB from there to Metal's own light developed here
+  are the particle passes' remaining differences with Metal's targets (#276: the lace's
+  hand-written filter, the ties of the rasteriser). All 15 frames are 45.9 dB or more, the aim
+  being 40.
+- **The raw look's largest differences are single points a pixel apart.** Of its 129,600 pixels
+  13, 2 and 5 are over 8 levels, up to 178, and the half float run has the same ones. The
+  ones looked at are a point on one pixel in Metal's frame and on its neighbour in CUDA's,
+  which reads as the ties of the rasteriser's sixteenths (#276, rule 5), not as light.
+- **The grain is where `hubble` stands**, 45.9 to 47.9 dB, 0.4 to 0.6 % of its pixels over 8
+  levels and none by more than 32, the film grain's amplitude. Before `hash2`'s multiply-add was
+  written out they were 32.9 to 35.6 dB, 6 to 11 % over 8 (above), and the same whether the
+  particle passes or Metal's own light fed the post-processing: the grain alone. The pixels that
+  remain, in rectangular patches of the difference maps, are not traced further.
+- **`hubble` with and without the web are within 0.1 dB of each other**: the grain sets both.
+
+**The pairs**, on `assets/cuda-checks` under `docs/spikes/cuda-checks/stills/compare/`, with
+`comparison.md` and the script that draws them (`scripts/still-pairs.py`): Metal's frame, the
+CUDA frame and their difference side by side, white at 32 levels of 255.
+
+| look | | | |
+| --- | --- | --- | --- |
+| `hubble` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/hubble-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/hubble-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/hubble-pericentre.png) |
+| `hubble-noweb` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/hubble-noweb-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/hubble-noweb-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/hubble-noweb-pericentre.png) |
+| `red-vs-cyan` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/red-vs-cyan-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/red-vs-cyan-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/red-vs-cyan-pericentre.png) |
+| `red-vs-cyan-column` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/red-vs-cyan-column-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/red-vs-cyan-column-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/red-vs-cyan-column-pericentre.png) |
+| `raw` | [close](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/raw-close.png) | [wide](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/raw-wide.png) | [pericentre](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/stills/compare/pairs/raw-pericentre.png) |
+
+**The three reference frames of the repository**
+(`Tests/Fixtures/engines/frames`, 256 by 144, one frame of a 3,013 particle take), drawn from
+their take: `red-vs-cyan` 68.0 dB, `ember` 48.8 dB and `webb` 47.1 dB, the largest difference 2,
+31 and 30 levels. The test holds the first to 60 dB and the two with grain to 44, and the share
+of pixels over 8 levels to 0.01 %, 1 % and 1 %.
+
+### What waits for #283
+
+- The comparison at 4K, and every number of the post-processing's time: on the CPU target
+  neither means anything. The test and its line are written.
+- The post-processing's passes on a GPU at all: they have been compiled for sm_86, sm_89 and
+  sm_120 and are in the PTX with no double precision instruction, but the CPU target is the
+  only place they have run.
+- Whether the float copies of the light and the dust (96 bytes a supersampled pixel) are worth
+  their memory, now that the post-processing reads the light as floats.
+
+### What #278 can rely on
+
+- `CUDARenderer.picture(camera:format:)`, or `draw`, `finish` then `develop(format:)`, gives
+  the frame as bytes in pinned host memory: `.bgra` for an encoder, `.rgb` for a PNG.
+  `CUDATakeStills` draws a take's frames as `TakeExport` does, positions and smoothing lengths
+  included, and is the model for a full pass that draws from a solver's buffers instead.
+- `fade` and `skipFrames` are the Metal renderer's: a run that resumes moves the grain on by
+  the frames it did not draw, and a crossfade goes through `fade`.
+- `sillage-cuda` has one command, `still`; a full pass is `sillage-cuda`'s next.
