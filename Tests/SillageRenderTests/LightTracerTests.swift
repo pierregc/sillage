@@ -365,6 +365,13 @@ struct LightTracerTests {
         compact.setSmoothing(field.buffer)
         compact.setDiskFrames(frames)
         let traced = compact.render(camera: camera)
+        // What the frame drew from, as `--dump-targets` writes it (#276): the tracers too.
+        let dumped = try #require(compact.particleTargets())
+        let held = Dictionary(uniqueKeysWithValues: dumped.frame.map { ($0.name, $0) })
+        #expect(dumped.tracers == tracers && dumped.tracerDepth > 0)
+        #expect(held["states.f32x4"]?.count == tracers && held["words.u32x4"]?.count == tracers)
+        #expect(dumped.target.first { $0.name == "cells.u32x2" }?.bytes.isEmpty == false)
+        #expect(held["scales.f32"]?.count == TracerWord.galaxyLimit)
 
         let whole = try Renderer(particles: split, settings: settings)
         let wholeField = try SmoothingField(device: whole.device, particleCount: split.visibleCount)

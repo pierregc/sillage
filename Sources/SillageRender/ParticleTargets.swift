@@ -46,6 +46,10 @@ public struct ParticleTargets {
     public var drawn: Int
     public var galaxies: Int
     public var galaxySlots: Int
+    /// Light tracers drawn behind the `drawn` massive particles, and the depth of the tree
+    /// their spacing is read from; zero for a take, which draws none.
+    public var tracers = 0
+    public var tracerDepth = 0
 }
 
 /// The folder `export --dump-targets` fills, a look an export: `manifest.json`
@@ -120,6 +124,9 @@ public struct RenderTargetManifest: Codable {
         public var mapped: Bool
         public var luminosityNormalisation: Float
         public var drawn: Int
+        /// Light tracers drawn too, and their tree's depth: a run's frame, not a take's.
+        public var tracers: Int?
+        public var tracerDepth: Int?
         public var galaxies: Int
         public var galaxySlots: Int
         public var laceMean: Float?
@@ -155,6 +162,13 @@ public struct RenderTargetManifest: Codable {
         public var shot: String?
         public var camera: Camera
         public var targets: ParticleTargets
+
+        public init(
+            captured: Double, time: Float, shot: String?, camera: Camera, targets: ParticleTargets
+        ) {
+            (self.captured, self.time, self.shot) = (captured, time, shot)
+            (self.camera, self.targets) = (camera, targets)
+        }
     }
 
     static let file = "manifest.json"
@@ -213,6 +227,8 @@ public struct RenderTargetManifest: Codable {
                 columnSmoothing: captured.columnSmoothing, holeShadow: captured.holeShadow,
                 mapped: captured.mapped,
                 luminosityNormalisation: captured.luminosityNormalisation, drawn: captured.drawn,
+                tracers: captured.tracers > 0 ? captured.tracers : nil,
+                tracerDepth: captured.tracers > 0 ? captured.tracerDepth : nil,
                 galaxies: captured.galaxies, galaxySlots: captured.galaxySlots,
                 laceMean: captured.laceMean,
                 camera: CameraEntry(

@@ -2052,6 +2052,48 @@ let walkScene =
     } ?? presetName
 let walkCommit = walkDirectory.map { _ in TracerWalkDump.sourceCommit() } ?? ""
 
+// `--dump-targets <dir> --dump-targets-frames 4:close` (#276): as `export --dump-targets`, of the
+// frames this run draws itself, with the light tracers it draws. Moves nothing.
+let targetDirectory = argument("dump-targets").map { URL(fileURLWithPath: $0, isDirectory: true) }
+var targetDumps: [Int: String] = [:]
+for entry in argument("dump-targets-frames")?.split(separator: ",") ?? [] {
+    let parts = entry.split(separator: ":", maxSplits: 1).map(String.init)
+    guard let index = Int(parts[0]), index >= 0 else {
+        fail("--dump-targets-frames: no frame \"\(entry)\"")
+    }
+    targetDumps[index] = parts.count > 1 ? parts[1] : String(format: "frame-%05d", index)
+}
+guard (targetDirectory == nil) == targetDumps.isEmpty else {
+    fail("--dump-targets and --dump-targets-frames go together")
+}
+if targetDirectory != nil, runVideos != nil {
+    fail("--dump-targets: the frames of a full pass are its formats', not this run's")
+}
+let targetLookFile = "looks/\(look.name).look.json"
+var targetManifest = try targetDirectory.map { directory -> RenderTargetManifest in
+    let url = directory.appendingPathComponent(targetLookFile)
+    try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try look.encoded().write(to: url)
+    let visible = solver.particles.visibleCount
+    let take = RenderTargetManifest.Take(
+        file: "", scene: walkScene, particles: solver.particles.count,
+        drawn: visible > 0 ? visible : solver.particles.count, capturedFrames: frames,
+        capturedRate: Int(framesPerSecond))
+    var held =
+        RenderTargetManifest.read(from: directory).flatMap {
+            $0.width == width && $0.height == height && $0.take.scene == take.scene ? $0 : nil
+        }
+        ?? RenderTargetManifest(
+            commit: "", device: "", system: "", width: width, height: height, take: take)
+    held.source = "Metal, sillage-render hires --dump-targets"
+    held.commit = TracerWalkDump.sourceCommit()
+    held.device = renderer.gpuName
+    held.system = ProcessInfo.processInfo.operatingSystemVersionString
+    held.take = take
+    return held
+}
+
 let framesStart = Date()
 let firstFrame = resumed?.frame ?? 0
 var frame = firstFrame
@@ -2133,6 +2175,23 @@ while frame < frames || storyGoesOn() {
         still = PNGWriter.image(renderer.render(camera: camera), width: width, height: height)
     }
     let renderMs = Date().timeIntervalSince(renderStart) * 1000
+    if let targetDirectory, let name = targetDumps[frame] {
+        if videoWriter == nil && !wantsStill { _ = renderer.render(camera: camera) }
+        guard let targets = renderer.particleTargets() else {
+            fail("--dump-targets: frame \(frame) not captured")
+        }
+        try targetManifest?.add(
+            RenderTargetManifest.Capture(
+                captured: Double(frame), time: solver.time, shot: nil, camera: camera,
+                targets: targets),
+            look: look.name, lookFile: targetLookFile, name: name,
+            megayearsPerUnit: Physics.megayearsPerTimeUnit, to: targetDirectory)
+        print(
+            String(
+                format: "targets    frame %d (%@), %d massive and %d tracers, look %@: %@", frame,
+                name, targets.drawn, targets.tracers, look.name,
+                targetDirectory.appendingPathComponent("targets/\(look.name)/\(name)").path))
+    }
     if let runVideos {
         try runVideos.draw(
             frame: frame, centres: solver.centers,

@@ -1093,6 +1093,27 @@ public final class Renderer {
                 target.append(value("web-uniforms.bin", "WebUniforms", uniforms))
             }
         }
+        // The light tracers the frame drew behind the massive particles (#238), as bound. The
+        // tree's spacing goes with the target: its cells are laid out anew by every run, and a
+        // plain look binds none.
+        var tracerDepth = 0
+        if let tracers, tracerCount > 0 {
+            let spacing = tracers.tracerSpacing
+            tracerDepth = spacing?.depth ?? 0
+            let cells = spacing?.cells ?? tracerFallback
+            let treeFrame = spacing?.frame ?? tracerFallback
+            frame += [
+                file("states.f32x4", "float4", tracers.positions, 16, tracerCount),
+                file("words.u32x4", "uint4", tracers.velocities, 16, tracerCount),
+                File(
+                    "scales.f32", "float", 4, tracerScales.count,
+                    tracerScales.withUnsafeBytes { Data($0) }),
+            ]
+            target += [
+                file("cells.u32x2", "uint2", cells, 8, (cells?.length ?? 0) / 8),
+                file("treeFrame.f32", "float", treeFrame, 4, (treeFrame?.length ?? 0) / 4),
+            ]
+        }
         return ParticleTargets(
             particles: particles, frame: frame,
             target: target + textures.filter { !$0.lace }.map(\.file),
@@ -1104,7 +1125,8 @@ public final class Renderer {
             columnSmoothing: settings.plain ? 0 : settings.columnSmoothing,
             holeShadow: splat.holeShadow, mapped: splat.mapped != 0,
             luminosityNormalisation: splat.luminosityNormalisation, drawn: drawnCount,
-            galaxies: frameCount, galaxySlots: galaxySlots)
+            galaxies: frameCount, galaxySlots: galaxySlots, tracers: tracerCount,
+            tracerDepth: tracerDepth)
     }
 
     private func readBack() -> [UInt8] {
