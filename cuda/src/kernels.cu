@@ -25,3 +25,8 @@ SILLAGE_STRUCT(Shaders, WebUniforms, 112);
 SILLAGE_STRUCT(Shaders, DiskFrame, 128);
 SILLAGE_STRUCT(Shaders, GalaxyRamp, 112);
 SILLAGE_STRUCT(Shaders, BackgroundStar, 32);
+
+// The post-processing's parameters (#277).
+SILLAGE_STRUCT(Shaders, BloomParams, 16);
+SILLAGE_STRUCT(Shaders, CompositeParams, 48);
+SILLAGE_STRUCT(Shaders, SpikeParams, 32);
