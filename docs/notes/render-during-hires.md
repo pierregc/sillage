@@ -26,6 +26,10 @@ star a kept frame, 600 GB at the eight a take holds since #237. So the videos ar
   steps, and adds `full` to `hires.json` (presets, frames, seconds, drawing seconds per preset,
   peak memory, key frames, drift).
 
+**One flow, two engines** (#278): the full pass is `FullPassRun`, which `sillage-render` runs on
+Metal and `sillage-cuda` on CUDA, and `RunVideos` draws through a `RunVideoDrawing` each engine
+gives it ([cuda-engine.md](cuda-engine.md#the-full-pass-278)).
+
 **One drawing, two callers.** `RunVideos` (Sources/SillageRender/RunVideos.swift) draws through
 the same code an export does: `TakeExport.replay` gives each preset's camera from the massive
 take (the director's `ShotPlan` is made once from it and handed to every preset), and

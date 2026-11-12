@@ -54,7 +54,7 @@ a few tests alone is `swiftc -Onone -I .build/linux -L .build/linux -lSillageCor
 ## What builds
 
 - **`SillageCore`, every file**, `ParticleSystem.streamingLightTracers` included.
-- **`SillageRender`, every file but 25**, which need an Apple framework or a type defined in one:
+- **`SillageRender`, every file but 26**, which need an Apple framework or a type defined in one:
   Metal (the solver, the tree builder, the renderer, the shaders' pipelines, the thumbnails, the walk
   dump of #271),
   CoreGraphics, CoreText, ImageIO, CoreVideo and CoreMedia (PNGs, the look grid and sheet,
