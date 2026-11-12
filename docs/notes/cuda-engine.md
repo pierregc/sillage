@@ -141,9 +141,9 @@ no library; `scripts/kernel-check.sh` compiles every file of `cuda/src` against 
 A shared function whose signature changes, or a C call the Swift no longer matches, fails there.
 
 The GitHub workflow runs `cuda/build.sh gpu libs` with `nvcc` 13.5 in its `cuda` job, and the
-CPU target's C tests with `g++` and `clang++`; its `swift-checks` job runs the Swift tests of the
-CPU target with the formatter and the typecheck (`scripts/linux.sh lint strict test-cuda`),
-where there is no `nvcc` and the CPU library is linked ([no-ci.md](no-ci.md)).
+CPU target's C tests with `g++` and `clang++`; its `swift-cuda` job runs the Swift tests of the
+CPU target (`scripts/linux.sh test-cuda tool`), where there is no `nvcc` and the CPU library is
+linked, with ffmpeg and `sillage-cuda check` since #278 ([no-ci.md](no-ci.md)).
 
 ## The CPU target
 
@@ -1636,10 +1636,12 @@ still above 25 dB and the drift under the bound.
   host and 0.29 GB held on the "device", the CPU target's buffers.
 - **ffmpeg 6.1.1** of Ubuntu 24.04 has libx264, libx265 and prores_ks, and libx265 and libx264
   give the same bytes from the same frames run after run.
-- **The workflow** stays at 7 min 06 s, its longest job still `swift-core`: installing ffmpeg in
-  the `swift:6.2-noble` container takes 18 s, the full pass's tests 90 s of the `swift-checks` job
-  (70 of them the engine check), and `sillage-cuda check` 32 s more, which brings `swift-checks`
-  to 5 min 30 s.
+- **The workflow**: installing ffmpeg in the `swift:6.2-noble` container takes 18 to 20 s, the
+  full pass's tests about 90 s (70 of them the engine check) and `sillage-cuda check` 32 to 45 s.
+  With them the job of the formatter, the typecheck and the CUDA tests took 5 min 30 s on one run
+  (the workflow 7 min 06 s) and 8 min 47 s on the next, the runners' own speed (its tests' step 3
+  min 45 s, then 6 min 45 s): too near the ten minutes. So the CUDA engine's tests and command
+  have a job of their own, `swift-cuda`, beside `swift-checks` (the formatter and the typecheck).
 - **`scripts/linux.sh check`** passes with 490 tests in 53 suites, in 16 minutes on four cores.
 
 ## What waits for a GPU (#283)

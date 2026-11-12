@@ -41,9 +41,9 @@ jobs:
       - name: The CUDA build for sm_120, compile only, and the two libraries the Swift links
         run: REQUIRE_NVCC=1 NVCC=/usr/local/cuda/bin/nvcc cuda/build.sh gpu libs
 
-  # scripts/linux.sh check in three jobs side by side (#273), so that the longest stays under
-  # ten minutes: SillageCore's tests, SillageRender's, and the formatter, the strict concurrency
-  # typecheck and the CUDA engine's tests on the CPU target.
+  # scripts/linux.sh check in four jobs side by side (#273, #278), so that the longest stays
+  # under ten minutes: SillageCore's tests, SillageRender's, the formatter with the strict
+  # concurrency typecheck, and the CUDA engine's tests on the CPU target with its command.
   swift-core:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
@@ -71,13 +71,23 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+      - name: The formatter and the strict concurrency typecheck
+        run: scripts/linux.sh lint strict
+
+  swift-cuda:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    container: swift:6.2-noble
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
       - name: ffmpeg, which encodes the full pass's videos (#278)
         run: |
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
           ffmpeg -hide_banner -version | head -1
-      - name: The formatter, the strict concurrency typecheck, the CUDA engine's tests
-        run: scripts/linux.sh lint strict test-cuda tool
+      - name: The CUDA engine's tests on the CPU target, and sillage-cuda
+        run: scripts/linux.sh test-cuda tool
       - name: sillage-cuda draws a frame of a take as a PNG
         run: |
           .build/linux/sillage-cuda still Tests/Fixtures/engines/frames/take.sillage \
