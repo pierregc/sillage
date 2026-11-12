@@ -28,6 +28,9 @@ public struct VideoProgress: Codable, Sendable, Equatable {
     public var segmentStart = 0
     /// Per format, the file names of the whole segments, in order.
     public var segments: [[String]] = []
+    /// The largest gap of a centre from the massive take's on each stored frame (#278); absent
+    /// from a checkpoint written before.
+    public var gaps: [CentreGap]?
 
     public init() {}
 }
@@ -38,4 +41,16 @@ public struct KeyFrameEntry: Codable, Sendable, Equatable {
     public var frame: Int
     public var role: String
     public var timeMyr: Double
+}
+
+/// How far the galaxies' centres of a full pass are from the massive take's on one of its
+/// stored frames, the largest of them, in kpc (#278).
+public struct CentreGap: Codable, Sendable, Equatable {
+    public var frame: Int
+    public var kpc: Float
+
+    public init(frame: Int, kpc: Float) {
+        self.frame = frame
+        self.kpc = kpc
+    }
 }
