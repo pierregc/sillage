@@ -87,7 +87,7 @@ jobs:
           apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
           ffmpeg -hide_banner -version | head -1
       - name: The CUDA engine's tests on the CPU target, and sillage-cuda
-        run: scripts/linux.sh test-cuda tool
+        run: scripts/linux.sh tool test-cuda
       - name: sillage-cuda draws a frame of a take as a PNG
         run: |
           .build/linux/sillage-cuda still Tests/Fixtures/engines/frames/take.sillage \

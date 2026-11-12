@@ -40,7 +40,7 @@ runners ran main's own tests past ten minutes. So `scripts/linux.sh check` now r
 jobs: `swift-core`, `scripts/linux.sh test-core`, `SillageCore` built and its tests run;
 `swift-render`, `scripts/linux.sh test-render`, the same for `SillageRender`; `swift-checks`,
 `scripts/linux.sh lint strict`, the formatter and the strict concurrency typecheck; and
-`swift-cuda`, `scripts/linux.sh test-cuda tool`, the CUDA engine's tests on the CPU target and
+`swift-cuda`, `scripts/linux.sh tool test-cuda`, the CUDA engine's tests on the CPU target and
 its command, with ffmpeg installed for the full pass's videos and `sillage-cuda check` run
 (#278, which split it from `swift-checks` when that job reached 8 min 47 s). Together they run
 what `scripts/linux.sh check` runs.

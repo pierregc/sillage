@@ -142,7 +142,7 @@ A shared function whose signature changes, or a C call the Swift no longer match
 
 The GitHub workflow runs `cuda/build.sh gpu libs` with `nvcc` 13.5 in its `cuda` job, and the
 CPU target's C tests with `g++` and `clang++`; its `swift-cuda` job runs the Swift tests of the
-CPU target (`scripts/linux.sh test-cuda tool`), where there is no `nvcc` and the CPU library is
+CPU target (`scripts/linux.sh tool test-cuda`), where there is no `nvcc` and the CPU library is
 linked, with ffmpeg and `sillage-cuda check` since #278 ([no-ci.md](no-ci.md)).
 
 ## The CPU target
