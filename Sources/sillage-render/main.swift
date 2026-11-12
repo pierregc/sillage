@@ -1719,6 +1719,18 @@ if massiveOnly, tracerCount > 0 {
     drawnScene = scene
     print("massive    \(seeded.visibleCount) visible run alone, without the tracers")
 }
+// `--massive-set <path>` (#278): the massive set as sampled, which a full pass on another
+// machine reads rather than sampling it again.
+if let path = argument("massive-set") {
+    let url = URL(fileURLWithPath: path)
+    try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let saved = try RunCheckpoint.writeMassiveSet(seeded, to: url)
+    print(
+        String(
+            format: "massive    the massive set, %.2f GB in %.2f s", Double(saved.bytes) / 1e9,
+            saved.seconds))
+}
 // `--tracer-sort N` and `--tracer-sort-chunk N`: how often the tracers' walk order is sorted,
 // and how many are sorted together, to measure them.
 if let interval = argument("tracer-sort").flatMap(Int.init) {
@@ -1887,7 +1899,8 @@ let runVideos: RunVideos? = try argument("draw").map { list in
         guard let preset = VideoPreset.named(String(name)) else { fail("--draw: no preset \(name)") }
         return try RunVideos.Format(
             preset: preset, frames: frames, framesPerSecond: Int(framesPerSecond),
-            url: directory.appendingPathComponent("\(preset.name).\(preset.defaultCodec.fileExtension)"))
+            url: directory.appendingPathComponent("\(preset.name).\(preset.defaultCodec.fileExtension)"),
+            divisor: Int(number("draw-divisor", 1)))
     }
     let videos = try RunVideos(
         formats: formats, look: drawn, framing: framing, capturedRate: Int(framesPerSecond),

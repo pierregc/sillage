@@ -193,40 +193,50 @@ public struct RunCheckpoint: Sendable {
     /// sampling costs 1.5 us a drawn particle, five minutes at 200 M (#238).
     @discardableResult
     public func saveMassive(_ system: ParticleSystem) throws -> Saved {
-        let started = Date()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try Self.durable(massive) { handle in
-            try Self.write([UInt64(system.count), UInt64(system.visibleCount)], to: handle)
-            try Self.write(system.positions, to: handle)
-            try Self.write(system.velocities, to: handle)
+        return try Self.writeMassiveSet(system, to: massive)
+    }
+
+    /// The massive particles `saveMassive` wrote.
+    public func massiveSet() throws -> ParticleSystem { try Self.readMassiveSet(from: massive) }
+
+    /// A massive set in `massive.bin`'s format, at `url`: a checkpoint's, or the one a massive
+    /// pass leaves in its scene folder for a full pass run elsewhere (#278).
+    @discardableResult
+    public static func writeMassiveSet(_ system: ParticleSystem, to url: URL) throws -> Saved {
+        let started = Date()
+        try durable(url) { handle in
+            try write([UInt64(system.count), UInt64(system.visibleCount)], to: handle)
+            try write(system.positions, to: handle)
+            try write(system.velocities, to: handle)
             for values in [
                 system.birthRadius, system.population, system.luminosity, system.formation,
                 system.kernelScale, system.mass,
             ] {
-                try Self.write(values, to: handle)
+                try write(values, to: handle)
             }
-            for values in [system.galaxyIndex, system.component] { try Self.write(values, to: handle) }
+            for values in [system.galaxyIndex, system.component] { try write(values, to: handle) }
         }
         return Saved(seconds: Date().timeIntervalSince(started), bytes: 16 + system.count * 64)
     }
 
-    /// The massive particles `saveMassive` wrote.
-    public func massiveSet() throws -> ParticleSystem {
-        let handle = try FileHandle(forReadingFrom: massive)
+    /// The massive set `writeMassiveSet` wrote at `url`.
+    public static func readMassiveSet(from url: URL) throws -> ParticleSystem {
+        let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
-        let header = try Self.read(2, of: UInt64.self, from: handle)
+        let header = try read(2, of: UInt64.self, from: handle)
         let count = Int(header[0])
         var system = ParticleSystem()
-        system.positions = try Self.read(count, of: SIMD3<Float>.self, from: handle)
-        system.velocities = try Self.read(count, of: SIMD3<Float>.self, from: handle)
-        system.birthRadius = try Self.read(count, of: Float.self, from: handle)
-        system.population = try Self.read(count, of: Float.self, from: handle)
-        system.luminosity = try Self.read(count, of: Float.self, from: handle)
-        system.formation = try Self.read(count, of: Float.self, from: handle)
-        system.kernelScale = try Self.read(count, of: Float.self, from: handle)
-        system.mass = try Self.read(count, of: Float.self, from: handle)
-        system.galaxyIndex = try Self.read(count, of: UInt32.self, from: handle)
-        system.component = try Self.read(count, of: UInt32.self, from: handle)
+        system.positions = try read(count, of: SIMD3<Float>.self, from: handle)
+        system.velocities = try read(count, of: SIMD3<Float>.self, from: handle)
+        system.birthRadius = try read(count, of: Float.self, from: handle)
+        system.population = try read(count, of: Float.self, from: handle)
+        system.luminosity = try read(count, of: Float.self, from: handle)
+        system.formation = try read(count, of: Float.self, from: handle)
+        system.kernelScale = try read(count, of: Float.self, from: handle)
+        system.mass = try read(count, of: Float.self, from: handle)
+        system.galaxyIndex = try read(count, of: UInt32.self, from: handle)
+        system.component = try read(count, of: UInt32.self, from: handle)
         system.setVisibleCount(Int(header[1]))
         return system
     }

@@ -21,12 +21,16 @@ public final class RunVideos {
         public var url: URL
 
         /// As `export` draws `preset` with nothing else asked: its size with even sides, its own
-        /// codec, and its rate for `frames` at `framesPerSecond`.
-        public init(preset: VideoPreset, frames: Int, framesPerSecond: Int, url: URL) throws {
+        /// codec, and its rate for `frames` at `framesPerSecond`. `divisor` draws it smaller by
+        /// that much on each side, for checks (`--draw-divisor`, #278).
+        public init(
+            preset: VideoPreset, frames: Int, framesPerSecond: Int, url: URL, divisor: Int = 1
+        ) throws {
             self.preset = preset
             codec = preset.defaultCodec
-            width = preset.width / 2 * 2
-            height = preset.height / 2 * 2
+            let divisor = max(divisor, 1)
+            width = max(preset.width / divisor / 2 * 2, 16)
+            height = max(preset.height / divisor / 2 * 2, 16)
             bitsPerSecond = try preset.bitRate(
                 forSeconds: Double(frames) / Double(max(framesPerSecond, 1)))
             self.url = url
