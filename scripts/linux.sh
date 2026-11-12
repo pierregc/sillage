@@ -183,6 +183,20 @@ strict_concurrency() {
         "$ROOT/Sources/sillage-cuda/main.swift"
 }
 
+# The engine held to the reference outputs (#281) before a full pass may run on it (#278): the C
+# tests of the CPU target, the walk fixture among them, then `sillage-cuda check`, which builds the
+# fixture's tree and draws the reference frames with this build and records the outcome beside
+# its libraries. `sillage-cuda hires` refuses a build without a record that passed.
+engine_check() {
+    if [ -z "${CXX:-}" ]; then
+        CXX="$(command -v c++ || command -v clang++ || command -v g++ || echo c++)"
+        export CXX
+    fi
+    "$ROOT/cuda/build.sh" cpu
+    build_tool
+    LD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-cuda" check --fixtures "$ROOT/Tests/Fixtures/engines"
+}
+
 check() {
     echo "== format"
     swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests"
@@ -193,7 +207,7 @@ check() {
 }
 
 usage() {
-    echo "usage: ${BASH_SOURCE[0]} [check|build|tool|lint|strict|files|test-cuda]..." >&2
+    echo "usage: ${BASH_SOURCE[0]} [check|build|tool|engine-check|lint|strict|files|test-cuda]..." >&2
     echo "       ${BASH_SOURCE[0]} test|test-core|test-render|test-cuda [swift-testing arguments]" >&2
     exit 2
 }
@@ -202,6 +216,7 @@ run_command() {
     case "$1" in
         build)  build_cuda ;;
         tool)   build_tool ;;
+        engine-check) engine_check ;;
         lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
         strict) strict_concurrency ;;
         files)  echo "== SillageCore"; core_sources; echo "== SillageRender"; render_sources

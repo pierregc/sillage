@@ -71,6 +71,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+      - name: ffmpeg, which encodes the full pass's videos (#278)
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
+          ffmpeg -hide_banner -version | head -1
       - name: The formatter, the strict concurrency typecheck, the CUDA engine's tests
         run: scripts/linux.sh lint strict test-cuda tool
       - name: sillage-cuda draws a frame of a take as a PNG
@@ -79,3 +84,5 @@ jobs:
             --look Tests/Fixtures/engines/frames/webb.look.json --rate 30 --width 128 --height 72 \
             --frames 0 --out "$RUNNER_TEMP/stills"
           test -s "$RUNNER_TEMP/stills/1080p-0000.png"
+      - name: sillage-cuda holds the engine to the reference outputs, as a full pass requires
+        run: .build/linux/sillage-cuda check --fixtures Tests/Fixtures/engines

@@ -482,6 +482,7 @@ public final class FullPassRun {
                     frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
                     simulationMs / Double(stepsPerFrame), smoothingMs, drawing.joined(separator: ", "),
                     done * 100, eta))
+            fflush(nil)
             if everyFrames > 0, (frame + 1) % everyFrames == 0, frame + 1 < frames {
                 try save(frame: frame + 1, settled: settle)
             }
