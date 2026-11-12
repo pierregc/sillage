@@ -377,6 +377,7 @@ public final class FullPassRun {
                 + formats.map { "\($0.preset.name) \($0.width)x\($0.height)" }.joined(separator: ", ")
                 + " with \(look.name), framed on \(framingPath)")
         for line in videos.shots { print("shot       \(line)") }
+        fflush(nil)
 
         // `--draw-stills 12,300 --draw-stills-dir <dir>`: those frames of every preset as PNGs,
         // as the encoder took them.
@@ -441,6 +442,7 @@ public final class FullPassRun {
                     String(
                         format: "settle     %d/%d steps, t=%.1f Myr, %.1f s", settled, settle,
                         Double(solver.time) * Physics.megayearsPerTimeUnit, elapsed))
+                fflush(nil)
             }
         }
 
