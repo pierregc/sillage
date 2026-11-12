@@ -1,0 +1,22 @@
+[
+  {
+    "frame" : 0,
+    "role" : "start",
+    "timeMyr" : 156.27722648620605
+  },
+  {
+    "frame" : 11,
+    "role" : "approach",
+    "timeMyr" : 243.3176470184326
+  },
+  {
+    "frame" : 19,
+    "role" : "pericentre",
+    "timeMyr" : 306.61977104187014
+  },
+  {
+    "frame" : 23,
+    "role" : "end",
+    "timeMyr" : 338.2708330535889
+  }
+]

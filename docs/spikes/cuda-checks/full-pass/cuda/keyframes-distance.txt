@@ -1,0 +1,9 @@
+particles 200000 200000 frames 4
+frame 0 tracers median 0.0002 p99 0.0029 max 0.036 kpc
+frame 0 massive median 0.0002 p99 0.0030 max 0.029 kpc
+frame 1 tracers median 0.0014 p99 0.0238 max 0.291 kpc
+frame 1 massive median 0.0014 p99 0.0236 max 0.125 kpc
+frame 2 tracers median 0.0049 p99 0.1072 max 0.879 kpc
+frame 2 massive median 0.0049 p99 0.1055 max 1.273 kpc
+frame 3 tracers median 0.0097 p99 0.2478 max 2.413 kpc
+frame 3 massive median 0.0096 p99 0.2407 max 5.523 kpc

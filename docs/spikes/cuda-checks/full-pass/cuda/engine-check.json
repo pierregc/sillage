@@ -1,0 +1,28 @@
+{
+  "build" : "f7e6787be90c0f9e",
+  "date" : "2026-11-12T12:37:11Z",
+  "device" : "the CPU target (cuda_cpu.h)",
+  "engine" : "cuda-cpu",
+  "items" : [
+    {
+      "detail" : "20000 particles, 3890 cells, as the fixture",
+      "name" : "tree",
+      "passed" : true
+    },
+    {
+      "detail" : "PSNR 68.03 dB, mean difference 0.010, largest 2, 0.000 % of the pixels over 8",
+      "name" : "frame red-vs-cyan",
+      "passed" : true
+    },
+    {
+      "detail" : "PSNR 53.17 dB, mean difference 0.043, largest 31, 0.095 % of the pixels over 8",
+      "name" : "frame ember",
+      "passed" : true
+    },
+    {
+      "detail" : "PSNR 50.79 dB, mean difference 0.051, largest 30, 0.114 % of the pixels over 8",
+      "name" : "frame webb",
+      "passed" : true
+    }
+  ]
+}

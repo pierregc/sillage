@@ -1,0 +1,144 @@
+{
+  "clipEndMyr" : 338.27219543941317,
+  "clipStartMyr" : 148.36499799974263,
+  "fps" : 3,
+  "frames" : 24,
+  "full" : {
+    "checkedFrames" : 24,
+    "drawSeconds" : {
+      "4k" : 65.48388743400574,
+      "vertical" : 47.25805640220642
+    },
+    "drift" : 0.019556828,
+    "driftBound" : 0.062,
+    "engine" : "cuda-cpu",
+    "frames" : 24,
+    "gaps" : [
+      {
+        "frame" : 0,
+        "kpc" : 1.6247486e-05
+      },
+      {
+        "frame" : 1,
+        "kpc" : 0.0007217189
+      },
+      {
+        "frame" : 2,
+        "kpc" : 3.843275e-05
+      },
+      {
+        "frame" : 3,
+        "kpc" : 4.9856284e-05
+      },
+      {
+        "frame" : 4,
+        "kpc" : 0.0012832702
+      },
+      {
+        "frame" : 5,
+        "kpc" : 0.0012369944
+      },
+      {
+        "frame" : 6,
+        "kpc" : 0.00076562975
+      },
+      {
+        "frame" : 7,
+        "kpc" : 0.0006796502
+      },
+      {
+        "frame" : 8,
+        "kpc" : 0.0005588162
+      },
+      {
+        "frame" : 9,
+        "kpc" : 0.001061906
+      },
+      {
+        "frame" : 10,
+        "kpc" : 0.0013022858
+      },
+      {
+        "frame" : 11,
+        "kpc" : 0.0011540031
+      },
+      {
+        "frame" : 12,
+        "kpc" : 0.0013380231
+      },
+      {
+        "frame" : 13,
+        "kpc" : 0.0019087966
+      },
+      {
+        "frame" : 14,
+        "kpc" : 0.004229645
+      },
+      {
+        "frame" : 15,
+        "kpc" : 0.0034278044
+      },
+      {
+        "frame" : 16,
+        "kpc" : 0.00081018003
+      },
+      {
+        "frame" : 17,
+        "kpc" : 0.00077886926
+      },
+      {
+        "frame" : 18,
+        "kpc" : 0.0010476997
+      },
+      {
+        "frame" : 19,
+        "kpc" : 0.0014545639
+      },
+      {
+        "frame" : 20,
+        "kpc" : 0.0018052291
+      },
+      {
+        "frame" : 21,
+        "kpc" : 0.0016194349
+      },
+      {
+        "frame" : 22,
+        "kpc" : 0.0023176817
+      },
+      {
+        "frame" : 23,
+        "kpc" : 0.019556828
+      }
+    ],
+    "keyFrames" : [
+      0,
+      11,
+      19,
+      23
+    ],
+    "peakDeviceBytes" : 294727240,
+    "peakMemoryBytes" : 381673472,
+    "presets" : [
+      "4k",
+      "vertical"
+    ],
+    "seconds" : 3431.1554386615753
+  },
+  "height" : 270,
+  "massive" : 50000,
+  "particles" : 200000,
+  "pass" : "massive",
+  "peakMemoryBytes" : 494404328,
+  "previewParticles" : 50000,
+  "previewTimeStepMyr" : 0.19781999733299016,
+  "seconds" : 10.371355056762695,
+  "settle" : 750,
+  "softening" : 0.34548503,
+  "steps" : 960,
+  "takeBytes" : 10958927,
+  "timeStep" : 0.041999999433755875,
+  "timeStepMyr" : 0.19781999733299016,
+  "timeStepScale" : 3.5,
+  "width" : 480
+}

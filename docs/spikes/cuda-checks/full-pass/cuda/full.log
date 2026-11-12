@@ -1,0 +1,92 @@
+hires      200000 particles from 50000 massive, step 0.19782 Myr, settle 750, 960 steps, 24 frames, clip 148.4 to 338.3 Myr, full pass on cuda-cpu
+draw       antennae, batch 20261030 scene 31 (point 1): spiral, spiral
+encounter  0-1, pericentre 10.5 kpc at 305 Myr, e 0.89 (bound, binding 222 km/s), mass ratio 0.85
+scene      Archétype, 200000 visible, 75000 halo
+tracers    150207 light, 49793 massive visible, 75000 halo, softening 0.3455, step 0.04200, drawn in 3.7 s
+engine     cuda-cpu on the CPU target (cuda_cpu.h)
+draw       4k 480x270, vertical 134x240 with webb, framed on <scene>/take.sillage
+shot       disk 0 frames 0-7 (2.7 s), 19.7 kpc held
+shot       wide frames 8-16 (3.0 s)
+shot       pericentre 0-1 frames 17-23 (2.3 s), 17.1 kpc held
+settle     15/750 steps, t=3.0 Myr, 30.3 s
+settle     30/750 steps, t=5.9 Myr, 59.2 s
+settle     45/750 steps, t=8.9 Myr, 87.5 s
+settle     60/750 steps, t=11.9 Myr, 116.5 s
+settle     75/750 steps, t=14.8 Myr, 148.7 s
+settle     90/750 steps, t=17.8 Myr, 179.5 s
+settle     105/750 steps, t=20.8 Myr, 213.7 s
+settle     120/750 steps, t=23.7 Myr, 245.1 s
+settle     135/750 steps, t=26.7 Myr, 279.6 s
+settle     150/750 steps, t=29.7 Myr, 309.5 s
+settle     165/750 steps, t=32.6 Myr, 338.6 s
+settle     180/750 steps, t=35.6 Myr, 368.6 s
+settle     195/750 steps, t=38.6 Myr, 399.7 s
+settle     210/750 steps, t=41.5 Myr, 430.5 s
+settle     225/750 steps, t=44.5 Myr, 460.7 s
+settle     240/750 steps, t=47.5 Myr, 493.5 s
+settle     255/750 steps, t=50.4 Myr, 522.5 s
+settle     270/750 steps, t=53.4 Myr, 552.8 s
+settle     285/750 steps, t=56.4 Myr, 583.9 s
+settle     300/750 steps, t=59.3 Myr, 615.2 s
+settle     315/750 steps, t=62.3 Myr, 647.0 s
+settle     330/750 steps, t=65.3 Myr, 678.4 s
+settle     345/750 steps, t=68.2 Myr, 710.3 s
+settle     360/750 steps, t=71.2 Myr, 742.2 s
+settle     375/750 steps, t=74.2 Myr, 777.4 s
+settle     390/750 steps, t=77.1 Myr, 811.6 s
+settle     405/750 steps, t=80.1 Myr, 845.3 s
+settle     420/750 steps, t=83.1 Myr, 880.4 s
+settle     435/750 steps, t=86.1 Myr, 912.4 s
+settle     450/750 steps, t=89.0 Myr, 947.0 s
+settle     465/750 steps, t=92.0 Myr, 976.4 s
+settle     480/750 steps, t=95.0 Myr, 1006.1 s
+settle     495/750 steps, t=97.9 Myr, 1034.7 s
+settle     510/750 steps, t=100.9 Myr, 1065.7 s
+settle     525/750 steps, t=103.9 Myr, 1093.7 s
+settle     540/750 steps, t=106.8 Myr, 1120.7 s
+settle     555/750 steps, t=109.8 Myr, 1148.7 s
+settle     570/750 steps, t=112.8 Myr, 1177.9 s
+settle     585/750 steps, t=115.7 Myr, 1208.1 s
+settle     600/750 steps, t=118.7 Myr, 1237.6 s
+settle     615/750 steps, t=121.7 Myr, 1266.1 s
+settle     630/750 steps, t=124.6 Myr, 1296.4 s
+settle     645/750 steps, t=127.6 Myr, 1328.2 s
+settle     660/750 steps, t=130.6 Myr, 1359.7 s
+settle     675/750 steps, t=133.5 Myr, 1391.9 s
+settle     690/750 steps, t=136.5 Myr, 1423.3 s
+settle     705/750 steps, t=139.5 Myr, 1454.1 s
+settle     720/750 steps, t=142.4 Myr, 1482.0 s
+settle     735/750 steps, t=145.4 Myr, 1513.2 s
+settle     750/750 steps, t=148.4 Myr, 1541.5 s
+frame 0000  t=156.3 Myr  sim 75782.7 ms (1894.568 ms/step)  smoothing    3.2 ms  draw 4k 38454.7 ms, vertical 38180.7 ms  4 %, 3506 s left
+frame 0001  t=164.2 Myr  sim 84341.7 ms (2108.543 ms/step)  smoothing    3.5 ms  draw 4k 1889.2 ms, vertical 487.2 ms  8 %, 2631 s left
+frame 0002  t=172.1 Myr  sim 75800.4 ms (1895.010 ms/step)  smoothing    3.0 ms  draw 4k 1335.5 ms, vertical 447.3 ms  12 %, 2217 s left
+frame 0003  t=180.0 Myr  sim 75971.1 ms (1899.278 ms/step)  smoothing    3.2 ms  draw 4k 1748.4 ms, vertical 381.7 ms  17 %, 1974 s left
+frame 0004  t=187.9 Myr  sim 74102.3 ms (1852.556 ms/step)  smoothing    3.9 ms  draw 4k 1480.3 ms, vertical 461.4 ms  21 %, 1789 s left
+frame 0005  t=195.8 Myr  sim 72301.6 ms (1807.539 ms/step)  smoothing    3.0 ms  draw 4k 1645.7 ms, vertical 411.7 ms  25 %, 1636 s left
+frame 0006  t=203.8 Myr  sim 72809.7 ms (1820.243 ms/step)  smoothing    2.9 ms  draw 4k 1659.9 ms, vertical 381.9 ms  29 %, 1506 s left
+frame 0007  t=211.7 Myr  sim 70757.6 ms (1768.941 ms/step)  smoothing    3.0 ms  draw 4k 1447.1 ms, vertical 468.9 ms  33 %, 1386 s left
+frame 0008  t=219.6 Myr  sim 70380.8 ms (1759.520 ms/step)  smoothing    3.0 ms  draw 4k 577.3 ms, vertical 219.4 ms  38 %, 1273 s left
+frame 0009  t=227.5 Myr  sim 69641.6 ms (1741.040 ms/step)  smoothing    3.0 ms  draw 4k 617.1 ms, vertical 229.8 ms  42 %, 1168 s left
+frame 0010  t=235.4 Myr  sim 74498.7 ms (1862.466 ms/step)  smoothing    3.0 ms  draw 4k 682.8 ms, vertical 285.6 ms  46 %, 1075 s left
+frame 0011  t=243.3 Myr  sim 77369.0 ms (1934.225 ms/step)  smoothing    3.0 ms  draw 4k 610.5 ms, vertical 271.3 ms  50 %, 988 s left
+frame 0012  t=251.2 Myr  sim 76210.0 ms (1905.249 ms/step)  smoothing    3.6 ms  draw 4k 638.9 ms, vertical 226.1 ms  54 %, 901 s left
+frame 0013  t=259.1 Myr  sim 72760.2 ms (1819.005 ms/step)  smoothing    2.9 ms  draw 4k 615.7 ms, vertical 245.2 ms  58 %, 814 s left
+frame 0014  t=267.1 Myr  sim 71210.5 ms (1780.262 ms/step)  smoothing    2.9 ms  draw 4k 560.8 ms, vertical 253.3 ms  62 %, 727 s left
+frame 0015  t=275.0 Myr  sim 71148.9 ms (1778.723 ms/step)  smoothing    3.0 ms  draw 4k 589.4 ms, vertical 313.6 ms  67 %, 642 s left
+frame 0016  t=282.9 Myr  sim 72825.7 ms (1820.642 ms/step)  smoothing    3.0 ms  draw 4k 630.0 ms, vertical 230.7 ms  71 %, 559 s left
+frame 0017  t=290.8 Myr  sim 74166.2 ms (1854.156 ms/step)  smoothing    3.2 ms  draw 4k 1378.3 ms, vertical 455.0 ms  75 %, 478 s left
+frame 0018  t=298.7 Myr  sim 73385.1 ms (1834.627 ms/step)  smoothing    3.0 ms  draw 4k 1383.2 ms, vertical 456.2 ms  79 %, 397 s left
+frame 0019  t=306.6 Myr  sim 71281.7 ms (1782.043 ms/step)  smoothing    4.0 ms  draw 4k 1504.5 ms, vertical 463.0 ms  83 %, 316 s left
+frame 0020  t=314.5 Myr  sim 75832.5 ms (1895.813 ms/step)  smoothing    3.0 ms  draw 4k 1068.2 ms, vertical 379.0 ms  88 %, 237 s left
+frame 0021  t=322.4 Myr  sim 73957.4 ms (1848.934 ms/step)  smoothing    4.5 ms  draw 4k 1286.1 ms, vertical 448.5 ms  92 %, 158 s left
+frame 0022  t=330.4 Myr  sim 72092.2 ms (1802.305 ms/step)  smoothing    2.9 ms  draw 4k 1010.2 ms, vertical 391.1 ms  96 %, 79 s left
+frame 0023  t=338.3 Myr  sim 74027.3 ms (1850.682 ms/step)  smoothing    3.1 ms  draw 4k 1201.3 ms, vertical 328.4 ms  100 %, 0 s left
+draw       4k 24 frames, 65.5 s drawing, 2728.5 ms a frame
+draw       vertical 24 frames, 47.3 s drawing, 1969.1 ms a frame
+massive    drifts from the massive pass from frame 0, 0.0196 kpc at most over 24 frames
+key frames start 0, approach 11, pericentre 19, end 23
+hires      full pass 3431 s, 113 s of it drawing, peak 0.38 GB, 0.29 GB on the device
+video      <scene>/exports/4k.mp4
+video      <scene>/exports/vertical.mp4
+done in 3431.2 s
