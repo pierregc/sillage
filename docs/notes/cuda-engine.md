@@ -1534,8 +1534,8 @@ rented box.
   record that failed, and a `massive.bin` one position of which moved by 1 kpc.
 
 **With the Mac's full pass**, `theFullPassAgreesWithTheMacs`, when `SILLAGE_CUDA_FULL_PASS` names
-the folder of branch `assets/cuda-checks` ([below](#against-the-macs-full-pass)): about fifty
-minutes on the CPU target.
+the folder of branch `assets/cuda-checks` ([below](#against-the-macs-full-pass)): 57 minutes on
+the CPU target here.
 
 **Written now, run on a GPU in #283**, each skipped on the CPU target with "needs an NVIDIA GPU
 and libsillagecuda.a: #283 runs it":
@@ -1548,3 +1548,137 @@ and libsillagecuda.a: #283 runs it":
 - `aFrameOfTheFullPassIsTimed`: 20 frames at 8 M drawn from 2 M massive in 4K and vertical, a
   frame of the run and of each preset and the peak host and device memory on a `CUDAFULLPASS`
   line, against the Mac's full pass (#239: 2.0 s a frame, 101 ms 4K, 50 ms vertical, 12.1 GB).
+
+### Against the Mac's full pass
+
+**The run.** Scene-0031 of 2026-10-30-b drawn at 200 k from 50 k massive (150,207 light tracers,
+49,793 massive visible, 75,000 halo), the scene's Webb look with the director, a clip at 3 frames
+a second of 40 steps of 0.042 (0.19782 Myr) after a settle of 750 steps. The Mac ran the massive
+pass, then the full pass over 24 frames, 156.3 to 338.3 Myr, through the first pericentre (frame
+19, 306.6 Myr, the centres 6.59 kpc apart), in both presets at an eighth of their size
+(`--draw-divisor 8`: 4K at 480 by 270, vertical at 134 by 240) with five stills of each:
+
+```
+sillage-render hires <scene> --particles 200000 --massive 50000 --dt-scale 3.5 --frames 24 \
+    --take-interval 1 --pass massive
+sillage-render hires <scene> --particles 200000 --massive 50000 --dt-scale 3.5 --frames 24 \
+    --take-interval 1 --pass full --export 4k,vertical --draw-divisor 8 \
+    --draw-stills 0,4,12,19,23 --draw-stills-dir <scene>/stills --checkpoint-every 0
+```
+
+The CUDA engine ran the same full pass on the CPU target from the Mac's scene folder after its
+massive pass (`sillage-cuda hires`, the same options): the Mac's massive particles, its own
+tracers, the Mac's massive take for the cameras and the drift. Both sides are on
+`assets/cuda-checks` under `docs/spikes/cuda-checks/full-pass/`, `mac/` (a321df9) and `cuda/`
+(994a15f), with their READMEs, logs, videos and stills. Both take the same shots (disk 0 frames 0
+to 7, wide 8 to 16, pericentre 17 to 23) and the same key frames (0, 11, 19, 23).
+
+**The stills**, PSNR against the Mac's, mean difference in levels of 255, share of the pixels
+over 8 levels:
+
+| frame | Myr | 4K | vertical |
+| ---: | ---: | --- | --- |
+| 0 | 156.3 | 50.9 dB, 0.076, 0.09 % | 50.1 dB, 0.069, 0.11 % |
+| 4 | 188.0 | 51.9 dB, 0.097, 0.07 % | 50.6 dB, 0.083, 0.08 % |
+| 12 | 251.2 | 50.1 dB, 0.066, 0.10 % | 48.4 dB, 0.095, 0.13 % |
+| 19 | 306.6 | 43.3 dB, 0.485, 0.93 % | 45.4 dB, 0.375, 0.59 % |
+| 23 | 338.3 | 40.9 dB, 0.738, 1.80 % | 42.4 dB, 0.593, 1.12 % |
+
+Up to frame 12 the frames are as close as the renderer alone makes them: drawn from the same
+positions, the looks with film grain came within 49 to 53 dB of Metal's (#277). From the
+pericentre on, the dynamics parting shows on top: the same picture, its stars a fraction of a
+pixel to a few pixels elsewhere ([frame 19 in 4K](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/full-pass/cuda/pairs/4k-0019.png),
+[frame 23](https://raw.githubusercontent.com/pierregc/sillage/assets/cuda-checks/docs/spikes/cuda-checks/full-pass/cuda/pairs/4k-0023.png):
+Metal's frame, the CUDA frame, their difference white at 32 levels).
+
+**The drift**, the largest gap of a galaxy's centre from the Mac's massive take on each of its 24
+stored frames: 0.02 to 0.7 pc on frames 0 to 3, 0.6 to 1.9 pc on 4 to 13, 4.2 and 3.4 pc on 14
+and 15, 0.8 to 2.3 pc on 16 to 22, then 19.6 pc on frame 23, 32 Myr past the pericentre, under
+the 62 pc bound (`drift.csv`). #274's run of 2,000 steps at 20 k parted the centres by 18 pc.
+
+**Particle by particle**, every drawn particle of the CUDA key frames against the Mac's, in the
+takes' 21 bits an axis:
+
+| key frame | Myr | tracers: median, 99 %, largest | massive visible |
+| --- | ---: | --- | --- |
+| start, 0 | 156.3 | 0.2 pc, 2.9 pc, 0.036 kpc | 0.2 pc, 3.0 pc, 0.029 kpc |
+| approach, 11 | 243.3 | 1.4 pc, 24 pc, 0.29 kpc | 1.4 pc, 24 pc, 0.13 kpc |
+| pericentre, 19 | 306.6 | 4.9 pc, 0.107 kpc, 0.88 kpc | 4.9 pc, 0.106 kpc, 1.27 kpc |
+| end, 23 | 338.3 | 9.7 pc, 0.25 kpc, 2.4 kpc | 9.6 pc, 0.24 kpc, 5.5 kpc |
+
+**The two full passes differ by the dynamics parting, and by as much as #275 measured.** The
+tracers part from the Mac's exactly as the massive particles do, so the light stays on the mass;
+and at the pericentre they are as far from Metal's as in #275's run (5.1 pc in the median, 0.11
+kpc at the 99th percentile), where both engines stepped the same draw of tracers. Here the tracers
+were drawn on each machine, a last bit apart (#272), and that adds nothing visible.
+
+**To run it again**, on Linux, with the Mac's folder checked out from `assets/cuda-checks`:
+
+```
+git worktree add ../checks origin/assets/cuda-checks
+SILLAGE_CUDA_FULL_PASS=../checks/docs/spikes/cuda-checks/full-pass/mac SILLAGE_CUDA_CHECKS_OUT=<out> \
+    scripts/linux.sh test-cuda --filter theFullPassAgreesWithTheMacs
+python3 scripts/still-pairs.py ../checks/docs/spikes/cuda-checks/full-pass/mac/full/stills \
+    <out>/stills --out <out>/pairs --looks 4k,vertical
+```
+
+The test copies the Mac's scene folder to `<out>/library/2026-10-30-b/scene-0031`, runs the full
+pass with the Mac's options (read from its `hires.json` and stills), or measures the one
+`sillage-cuda hires` already ran there, and writes `stills.csv` and `drift.csv`; it holds each
+still above 25 dB and the drift under the bound.
+
+### What #278 measured
+
+- **The Mac keeps its bits** through every step of the move (above), its check at 623 tests.
+- **The CPU target runs the comparison in 57 minutes** here: the settle's 750 steps in 26
+  minutes, then 1.8 to 2.1 s a step (1.46 in #275's session) and 1 to 3 s a frame for both
+  presets at an eighth of their size, the first frame 38 s. The full pass peaked at 0.38 GB on the
+  host and 0.29 GB held on the "device", the CPU target's buffers.
+- **ffmpeg 6.1.1** of Ubuntu 24.04 has libx264, libx265 and prores_ks, and libx265 and libx264
+  give the same bytes from the same frames run after run.
+- **The workflow** stays at 7 min 06 s, its longest job still `swift-core`: installing ffmpeg in
+  the `swift:6.2-noble` container takes 18 s, the full pass's tests 90 s of the `swift-checks` job
+  (70 of them the engine check), and `sillage-cuda check` 32 s more, which brings `swift-checks`
+  to 5 min 30 s.
+- **`scripts/linux.sh check`** passes with 490 tests in 53 suites, in 16 minutes on four cores.
+
+## What waits for a GPU (#283)
+
+Phase 1 ends with every CUDA entry point written and compiled by `nvcc`, and run on the CPU
+target where it can. What only a GPU can run is written and skipped with "needs an NVIDIA GPU and
+libsillagecuda.a: #283 runs it". #283 runs `scripts/linux.sh check` and
+`scripts/linux.sh engine-check` on its box first, with the GPU library linked, so that:
+
+- **every test of the CPU target runs again through the real kernels**, the seven `cuda gpu-only`
+  ones of the tree among them (`gtBounds`, the radix sort's five, `gtSplit`), which the CPU target
+  replaces with the CPU's own tree;
+- **`sillage-cuda check` holds the GPU to the reference outputs** before anything long runs.
+
+And these 17 tests, which skip without a GPU:
+
+| suite | test | what |
+| --- | --- | --- |
+| `CUDA tree` | `aMergerAtTheStart` | a 500 k merger at t = 0: the tree to the bit, the lengths and spacing records against the CPU's |
+| `CUDA tree` | `aMergerAfter200Steps` | the same 200 steps in, from a Metal take (`SILLAGE_CUDA_TREE_TAKE`) |
+| `CUDA tree` | `theMassiveParticlesOfADump` | the 5 M massive particles of #283's 8 M walk dump (`SILLAGE_CUDA_TREE_DUMP`) |
+| `CUDA tree` | `theBuildIsTimed` | the build at 2 M and 5 M, on a `CUDATREE` line |
+| `CUDA solver` | `accelerationMatchesDirectSummationAt500k` | direct summation at 500 k over the tree its own kernels build |
+| `CUDA solver` | `aMergerOf500kRepeatsToTheBitAndResumesFromItsCheckpoint` | 200 k drawn and 300 k of live halos, 200 steps twice and resumed from step 100 |
+| `CUDA solver` | `aStepIsTimed` | a step at 2 M and 5 M massive, phase by phase, on a `CUDASOLVER` line |
+| `CUDA solver` | `theTracersOf8MRepeatAndResume` | scene-0031 drawn at 8 M from 2 M with the radix sort, repeated and resumed to the bit |
+| `CUDA solver` | `aStepWithTracersIsTimed` | 8 M, 50 M and 200 M drawn from 2 M massive, on a `CUDATRACERS` line with the peak memory |
+| `CUDA renderer` | `theParticlePassesAgreeWithMetalAt4K` | the comparison of #276 at 4K from a take at 8 M (`SILLAGE_CUDA_RENDER_4K`) |
+| `CUDA renderer` | `theFaintLightAt200MSurvivesTheAccumulation` | half floats against fixed point at 200 M, decade by decade, on `CUDARENDER` lines |
+| `CUDA renderer` | `theParticlePassesAreTimed` | the particle passes at 4K at 8 M, 50 M and 200 M, wide and close, both ways for large splats |
+| `CUDA post-processing` | `theStillsAgreeWithMetalAt4K` | the comparison of #277 at 3840 by 2160 (`SILLAGE_CUDA_RENDER_4K`) |
+| `CUDA post-processing` | `thePostProcessingOfA4KFrameIsTimed` | the post-processing of a 4K frame, on a `CUDAPOST4K` line |
+| `CUDA full pass` | `theFullPassAt8MAgreesWithTheMacs` | the full pass at 8 M against the Mac's, 13 stills (`SILLAGE_CUDA_FULL_PASS_8M`) |
+| `CUDA full pass` | `aRunOnTheGPUStoppedAndResumedDrawsTheSameFrames` | #240's resume test at 2 M drawn from 500 k |
+| `CUDA full pass` | `aFrameOfTheFullPassIsTimed` | a frame of the run and of each preset at 8 M, with the peak host and device memory |
+
+Five more wait for data rather than a GPU, and run on the CPU target when their folder of branch
+`assets/cuda-checks` is named; #283 runs them on its box too, at the sizes it names:
+`aRunStaysWithinWhatChaosPartsTwoMetalRunsBy` (`SILLAGE_CUDA_CHECKS`),
+`theLightStaysOnTheMassAsOnMetal` (`SILLAGE_CUDA_TRACER_CHECKS`), `theParticlePassesAgreeWithMetal`
+and `theStillsAgreeWithMetal` (`SILLAGE_CUDA_RENDER_TARGETS`), and `theFullPassAgreesWithTheMacs`
+(`SILLAGE_CUDA_FULL_PASS`).
