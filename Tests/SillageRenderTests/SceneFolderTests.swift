@@ -244,6 +244,9 @@ struct SceneFolderTests {
         let whole = try hires(draw)
         let massive = try hires(draw + ["--pass", "massive"])
         #expect(massive.arguments.contains("--massive-only") && !whole.arguments.contains("--massive-only"))
+        // The massive set goes beside the take, for a full pass run on another machine (#278).
+        #expect(value("--massive-set", in: massive.arguments) == SceneFolder.partial(folder.massiveSet).path)
+        #expect(!whole.arguments.contains("--massive-set"))
         #expect(massive.record.pass == .massive && whole.record.pass == nil)
         #expect(value("--take", in: massive.arguments) == value("--take", in: whole.arguments))
         #expect(value("--dt", in: massive.arguments) == value("--dt", in: whole.arguments))
@@ -270,7 +273,7 @@ struct SceneFolderTests {
         #expect(value("--draw-out", in: full.arguments) == folder.exports.path)
         #expect(value("--key-frames", in: full.arguments) == SceneFolder.partial(folder.keyFrames).path)
         #expect(value("--key-frame-curves", in: full.arguments) == folder.hiresCurves.path)
-        for flag in ["--video", "--curves", "--take", "--massive-only"] {
+        for flag in ["--video", "--curves", "--take", "--massive-only", "--massive-set"] {
             #expect(!full.arguments.contains(flag))
         }
         for flag in ["--particles", "--massive", "--dt", "--settle", "--steps", "--frames", "--scene"] {
@@ -386,6 +389,13 @@ struct SceneFolderTests {
         try folder.commitHires()
         #expect(try String(contentsOf: folder.take, encoding: .utf8) == "new")
         #expect(!FileManager.default.fileExists(atPath: SceneFolder.partial(folder.take).path))
+        // A run without its massive set leaves none; a massive pass puts its own in place.
+        #expect(!FileManager.default.fileExists(atPath: folder.massiveSet.path))
+        for url in [folder.take, folder.hiresVideo, folder.hiresCurves, folder.massiveSet] {
+            try Data("massive".utf8).write(to: SceneFolder.partial(url))
+        }
+        try folder.commitHires()
+        #expect(try String(contentsOf: folder.massiveSet, encoding: .utf8) == "massive")
         #expect(throws: POSIXError.self) { try SceneFolder.commit(folder.preview) }
     }
 

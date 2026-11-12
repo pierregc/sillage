@@ -39,6 +39,10 @@ for the solver, a case of `BarnesHutPass` and its place in `BarnesHutStep`
 ([cuda-engine.md](cuda-engine.md)).
 The check fails on a Metal function missing from `cuda/kernels.txt`, and says what to add.
 
+**Change the full pass of a hires**: `FullPassRun` (`Sources/SillageRender/FullPass.swift`),
+which `sillage-render` and `sillage-cuda` both run since #278; what differs between the two
+engines is a `FullPassEngine` each ([cuda-engine.md](cuda-engine.md#the-full-pass-278)).
+
 **Change a struct a kernel reads**: change it in the MSL and in its Swift mirror. If
 `cuda/src/kernels.cu` holds it to a size (`SILLAGE_STRUCT`), change the size there:
 `KernelSourceTests` holds the Swift mirror to the same line.

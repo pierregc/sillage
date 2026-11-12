@@ -29,6 +29,10 @@ It does not keep what the positions give back exactly:
   the frames before the one asked for by itself; only each renderer's grain is moved on by the
   frames already drawn (`Renderer.skipFrames`).
 
+**The massive pass leaves its massive set too** (#278): `massive.bin` in the scene folder, the
+same bytes a full pass writes into its checkpoint, so that a full pass on another machine reads
+the Mac's massive particles rather than sampling them again ([cuda-engine.md](cuda-engine.md#the-full-pass-278)).
+
 **A resumed run samples nothing.** The rest of a massive particle (mass, kind, galaxy, light,
 kernel, birth radius) never changes, and the massive set is written once as sampled, beside the
 checkpoints (`massive.bin`, 64 bytes a massive particle, first positions and velocities

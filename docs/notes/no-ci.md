@@ -36,12 +36,14 @@ on the runner, and one run took 11 min 31 s where the one before took 8 min 1 s,
 runner's own speed (the tests' build, two files longer, took 52 s more; here they build in 4 s).
 The next run, with the formatter and the typecheck moved beside the tests, still took 9 min 58 s,
 and the one after, with nothing of #273 left in the tests' job, 9 min 53 s: that night's
-runners ran main's own tests past ten minutes. So `scripts/linux.sh check` now runs as three
+runners ran main's own tests past ten minutes. So `scripts/linux.sh check` now runs as four
 jobs: `swift-core`, `scripts/linux.sh test-core`, `SillageCore` built and its tests run;
-`swift-render`, `scripts/linux.sh test-render`, the same for `SillageRender`; and `swift-checks`,
-`scripts/linux.sh lint strict test-cuda`, the formatter, the strict concurrency typecheck and
-the CUDA engine's tests on the CPU target, the modules built once. Together they run what
-`scripts/linux.sh check` runs.
+`swift-render`, `scripts/linux.sh test-render`, the same for `SillageRender`; `swift-checks`,
+`scripts/linux.sh lint strict`, the formatter and the strict concurrency typecheck; and
+`swift-cuda`, `scripts/linux.sh tool test-cuda`, the CUDA engine's tests on the CPU target and
+its command, with ffmpeg installed for the full pass's videos and `sillage-cuda check` run
+(#278, which split it from `swift-checks` when that job reached 8 min 47 s). Together they run
+what `scripts/linux.sh check` runs.
 
 **What it does not check**: nothing of Metal and nothing of macOS (no macOS job, on purpose),
 so not the files and the tests `scripts/linux-skip.txt` and `scripts/linux-skip-tests.txt` name,

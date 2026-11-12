@@ -116,6 +116,9 @@ public struct SceneFolder: Sendable, Equatable {
     /// Every particle of a full pass at a few key frames (#239), and which frames they are.
     public var keyFrames: URL { file("keyframes.sillage") }
     public var keyFrameList: URL { file("keyframes.json") }
+    /// The massive particles a massive pass sampled, as a checkpoint keeps them (#240): a full
+    /// pass on another machine reads them rather than sampling them again (#278).
+    public var massiveSet: URL { file("massive.bin") }
     /// Where a full pass keeps its checkpoint, video segments and key frames until it ends (#240).
     public var checkpoint: URL { url.appendingPathComponent(".checkpoint", isDirectory: true) }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
@@ -234,6 +237,14 @@ extension SceneFolder {
             public var checkedFrames: Int
             /// How many times it was resumed from a checkpoint (#240); absent when never.
             public var resumes: Int?
+            /// What ran it (#278): `metal`, `cuda-gpu` or `cuda-cpu`; absent before.
+            public var engine: String?
+            /// The device's own memory at its peak, on an engine that has one (#278).
+            public var peakDeviceBytes: Int?
+            /// The largest gap of a centre from the massive pass's on each stored frame checked,
+            /// and the gap past which the run warned (#278).
+            public var gaps: [CentreGap]?
+            public var driftBound: Float?
 
             public init(
                 presets: [String], frames: Int, seconds: Double, drawSeconds: [String: Double],
@@ -534,7 +545,7 @@ extension SceneFolder {
         ]
         if pass == "massive" {
             record.pass = .massive
-            arguments.append("--massive-only")
+            arguments += ["--massive-only", "--massive-set", Self.partial(massiveSet).path]
         }
         // The full pass writes no take, no curves and no video of its own: the massive pass's
         // frame its videos, drawn into `exports/` as the run goes, and a few key frames of
@@ -743,6 +754,7 @@ extension SceneFolder {
     /// Puts a finished `hires` run's take, video and curves in place of the last run's.
     public func commitHires() throws {
         for url in [take, hiresVideo, hiresCurves] { try Self.commit(url) }
+        if exists(Self.partial(massiveSet)) { try Self.commit(massiveSet) }
     }
 
     /// Puts a finished full pass's videos and key frames in place (#239).
@@ -760,7 +772,8 @@ extension SceneFolder {
             ((try? FileManager.default.contentsOfDirectory(atPath: exports.path)) ?? [])
             .filter { $0.hasPrefix(".") && $0 != ".DS_Store" }
             .map { exports.appendingPathComponent($0) }
-        return Self.remove([take, hiresVideo, hiresCurves, keyFrames].map(Self.partial) + hidden)
+        return Self.remove(
+            [take, hiresVideo, hiresCurves, keyFrames, massiveSet].map(Self.partial) + hidden)
     }
 
     /// The same for a whole batch, with the scenes still being explored in their hidden folders.

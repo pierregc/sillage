@@ -3,6 +3,7 @@ DiskProbeRun.swift               # CoreGraphics, CoreVideo, Metal
 DustWebMetal.swift               # Metal
 EngineFixtures.swift             # Metal
 ExportedFile.swift               # CoreMedia, ImageIO
+FullPassMetal.swift              # Metal
 GPUTreeBuilder.swift             # Metal
 LookGrid.swift                   # CoreGraphics, CoreText
 LookSheet.swift                  # Metal
@@ -14,7 +15,7 @@ RecordingMetal.swift             # Metal
 Renderer+Look.swift              # Metal
 Renderer.swift                   # Metal, QuartzCore
 RenderingThumbnails.swift        # CoreGraphics, Metal
-RunVideos.swift                  # CoreGraphics, Metal
+RunVideos+Metal.swift            # AVFoundation, CoreGraphics, Metal
 ShaderCache.swift                # Metal
 SmoothingField.swift             # Metal
 SnapshotStream.swift             # Metal
