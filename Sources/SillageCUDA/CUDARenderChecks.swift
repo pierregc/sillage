@@ -278,7 +278,7 @@ extension CUDARenderChecks {
         return Float(bitPattern: sign | ((exponent + 112) << 23) | (mantissa << 13))
     }
 
-    private static func data(_ entry: RenderTargetManifest.Entry, in folder: URL) throws -> Data {
+    static func data(_ entry: RenderTargetManifest.Entry, in folder: URL) throws -> Data {
         let data = try Data(contentsOf: folder.appendingPathComponent(entry.file))
         guard data.count == entry.count * entry.stride else {
             throw Failure.folder(
@@ -299,7 +299,7 @@ extension CUDARenderChecks {
     }
 
     /// A half float target as floats.
-    private static func halves(
+    static func halves(
         _ entry: RenderTargetManifest.Entry, in folder: URL
     ) throws -> [Float] {
         let data = try data(entry, in: folder)

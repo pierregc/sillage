@@ -127,6 +127,25 @@ build_cuda() {
     built_cuda=1
 }
 
+# The sillage-cuda command (#277), linked as SillageCUDA is.
+build_tool() {
+    build_cuda
+    local libraries=()
+    if [ "$(cuda_target)" = gpu ]; then
+        local nvcc="${NVCC:-$(command -v nvcc || echo /usr/local/cuda/bin/nvcc)}"
+        local cuda="$(cd "$(dirname "$nvcc")/.." && pwd)"
+        libraries=(-lsillagecuda -L "$cuda/lib64" -lcudart_static -ldl -lrt -lpthread)
+    else
+        libraries=(-lsillagecuda_cpu)
+    fi
+    swiftc -O -num-threads "$THREADS" -I "$BUILD" -I "$ROOT/cuda/include" -L "$BUILD" \
+        -lSillageCore -lSillageRender -lSillageCUDA \
+        -L "$ROOT/.build/cuda/lib" "${libraries[@]}" -lstdc++ \
+        -Xlinker -rpath -Xlinker "$BUILD" \
+        "$ROOT/Sources/sillage-cuda/main.swift" -o "$BUILD/sillage-cuda"
+    echo "$BUILD/sillage-cuda"
+}
+
 # Builds and runs the tests of a set (test_sources), with swift-testing's own arguments after it.
 run_tests() {
     local set="$1"
@@ -159,6 +178,9 @@ strict_concurrency() {
         -module-name SillageRender -I "$BUILD" -L "$BUILD" -lSillageCore $(render_sources)
     swiftc -typecheck -strict-concurrency=complete -swift-version 6 \
         -module-name SillageCUDA -I "$BUILD" -I "$ROOT/cuda/include" $(cuda_sources)
+    swiftc -typecheck -strict-concurrency=complete -swift-version 6 \
+        -module-name sillage_cuda -I "$BUILD" -I "$ROOT/cuda/include" \
+        "$ROOT/Sources/sillage-cuda/main.swift"
 }
 
 check() {
@@ -171,7 +193,7 @@ check() {
 }
 
 usage() {
-    echo "usage: ${BASH_SOURCE[0]} [check|build|lint|strict|files|test-cuda]..." >&2
+    echo "usage: ${BASH_SOURCE[0]} [check|build|tool|lint|strict|files|test-cuda]..." >&2
     echo "       ${BASH_SOURCE[0]} test|test-core|test-render|test-cuda [swift-testing arguments]" >&2
     exit 2
 }
@@ -179,6 +201,7 @@ usage() {
 run_command() {
     case "$1" in
         build)  build_cuda ;;
+        tool)   build_tool ;;
         lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
         strict) strict_concurrency ;;
         files)  echo "== SillageCore"; core_sources; echo "== SillageRender"; render_sources

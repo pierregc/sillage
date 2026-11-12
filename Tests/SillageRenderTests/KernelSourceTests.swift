@@ -29,6 +29,9 @@ struct KernelSourceTests {
         "Shaders.DiskFrame": MemoryLayout<DiskFrame>.stride,
         "Shaders.GalaxyRamp": MemoryLayout<GalaxyRamp>.stride,
         "Shaders.BackgroundStar": MemoryLayout<BackgroundStar>.stride,
+        "Shaders.BloomParams": MemoryLayout<BloomParams>.stride,
+        "Shaders.CompositeParams": MemoryLayout<CompositeParams>.stride,
+        "Shaders.SpikeParams": MemoryLayout<SpikeParams>.stride,
     ]
 
     @Test func swiftMirrorsHaveTheSizesOfTheirMSLStructs() throws {

@@ -4,39 +4,6 @@ import QuartzCore
 import SillageCore
 import simd
 
-struct BloomParams {
-    var threshold: Float
-    var softKnee: Float
-    var pad0: Float = 0
-    var pad1: Float = 0
-}
-
-struct CompositeParams {
-    var bloomIntensity: Float
-    var stretch: Float
-    var saturation: Float
-    var spikeIntensity: Float
-    var skyLevel: Float
-    var noiseLevel: Float
-    var seed: Float
-    var whitePoint: Float
-    var fade: Float = 1
-    var skyRed: Float = 0.36
-    var skyGreen: Float = 0.42
-    var skyBlue: Float = 0.60
-}
-
-struct SpikeParams {
-    var arms: UInt32
-    var baseAngle: Float
-    var length: Float
-    var falloff: Float
-    var samples: UInt32
-    var shortArms: UInt32 = 0
-    var shortBaseAngle: Float = 0
-    var shortScale: Float = 0
-}
-
 public enum RenderError: Error, CustomStringConvertible {
     case noDevice
     case shaderCompilation(String)
@@ -61,7 +28,7 @@ public final class Renderer {
     public let device: MTLDevice
     public private(set) var settings: RenderSettings
     public private(set) var lastGPUTime: Double = 0
-    private var frameSeed: Float = 1
+    private var grain = FrameGrain()
 
     private let queue: MTLCommandQueue
     private let dustPipeline: MTLRenderPipelineState
@@ -96,9 +63,6 @@ public final class Renderer {
     /// no finer than that, and gathering at half size cost a millisecond a frame on Webb.
     private let sharpSource: MTLTexture
     private let sharpSpikes: MTLTexture
-    static let spikeVisible: Float = 0.0001
-    /// Webb's horizontal strut spikes, as a fraction of the long ones.
-    static let webbShortArm: Float = 0.4
     public let output: MTLTexture
 
     private let positionBuffer: MTLBuffer
@@ -121,8 +85,7 @@ public final class Renderer {
     /// One `GalaxyRamp` per galaxy; none of them mapped until a look gives ramps.
     private let rampBuffer: MTLBuffer
     private let galaxySlots: Int
-    private var mapped = false
-    private var galaxyColours: [GalaxyColours] = []
+    private var palette: GalaxyPalette
     private let luminosityBuffer: MTLBuffer
     private let componentBuffer: MTLBuffer
     private let galaxyBuffer: MTLBuffer
@@ -284,30 +247,25 @@ public final class Renderer {
             settings.plain ? 1 : settings.height * scale / Self.columnCell,
             .r32Float, [.renderTarget, .shaderRead])
 
+        // The images of the post-processing, of the sizes its plan gives (#277).
+        let post = PostPlan.sizes(for: settings)
         var down: [MTLTexture] = []
         var up: [MTLTexture] = []
-        var levelWidth = settings.width / 2
-        var levelHeight = settings.height / 2
-        while down.count < settings.bloomLevels && levelWidth >= 8 && levelHeight >= 8 {
+        for level in post.levels {
             down.append(
-                try texture(levelWidth, levelHeight, .rgba16Float, [.shaderRead, .shaderWrite]))
+                try texture(level.width, level.height, .rgba16Float, [.shaderRead, .shaderWrite]))
             up.append(
-                try texture(levelWidth, levelHeight, .rgba16Float, [.shaderRead, .shaderWrite]))
-            levelWidth /= 2
-            levelHeight /= 2
+                try texture(level.width, level.height, .rgba16Float, [.shaderRead, .shaderWrite]))
         }
         bloomDown = down
         bloomUp = up
 
         spikeTexture = try texture(
-            max(settings.width / 2, 1), max(settings.height / 2, 1), .rgba16Float,
-            [.shaderRead, .shaderWrite])
+            post.spikes.width, post.spikes.height, .rgba16Float, [.shaderRead, .shaderWrite])
         sharpSource = try texture(
-            max(settings.width / 4, 1), max(settings.height / 4, 1), .rgba16Float,
-            [.shaderRead, .shaderWrite])
+            post.sharp.width, post.sharp.height, .rgba16Float, [.shaderRead, .shaderWrite])
         sharpSpikes = try texture(
-            max(settings.width / 4, 1), max(settings.height / 4, 1), .rgba16Float,
-            [.shaderRead, .shaderWrite])
+            post.sharp.width, post.sharp.height, .rgba16Float, [.shaderRead, .shaderWrite])
         output = try texture(
             settings.width, settings.height, .rgba8Unorm, [.shaderRead, .shaderWrite], shared: true)
 
@@ -368,6 +326,7 @@ public final class Renderer {
         self.traitBuffer = traitBuffer
         self.rampKeyBuffer = rampKeyBuffer
         galaxySlots = other?.galaxySlots ?? attributes.galaxySlots
+        palette = GalaxyPalette(slots: galaxySlots)
         guard
             let rampBuffer = device.makeBuffer(
                 bytes: [GalaxyRamp](repeating: .none, count: galaxySlots),
@@ -411,7 +370,7 @@ public final class Renderer {
     /// Moves the grain on as `count` frames drawn would, for a run that resumes (#240).
     public func skipFrames(_ count: Int) {
         guard !settings.plain else { return }
-        for _ in 0..<max(count, 0) { frameSeed = frameSeed.truncatingRemainder(dividingBy: 4096) + 7.13 }
+        grain.skip(count)
     }
 
     /// Draws the light tracers `source` holds beside the massive particles (#238), each with
@@ -499,12 +458,9 @@ public final class Renderer {
 
     /// Each galaxy's colours from a look file's palette; a galaxy with no ramp, or past the
     /// palette's end, keeps the one-colour shading.
-    public func setGalaxyColours(_ palette: [GalaxyColours]) {
-        guard palette != galaxyColours else { return }
-        galaxyColours = palette
-        let ramps = GalaxyRamp.ramps(for: palette, slots: galaxySlots)
-        mapped = GalaxyRamp.mapped(ramps)
-        ramps.withUnsafeBytes { source in
+    public func setGalaxyColours(_ colours: [GalaxyColours]) {
+        guard palette.set(colours) else { return }
+        palette.ramps.withUnsafeBytes { source in
             rampBuffer.contents().copyMemory(from: source.baseAddress!, byteCount: source.count)
         }
     }
@@ -517,32 +473,16 @@ public final class Renderer {
         }
     }
 
-    /// Everything a frame may change on its own, in one go. Resolution, supersampling, bloom
-    /// levels and the starfield are deliberately absent: those own textures and buffers, and
-    /// changing them means a new renderer.
-    public func apply(_ look: RenderLook) {
-        settings.apply(look)
-        armPersistence = look.armPersistence
+    /// `apply(_:)` and `prepare` are `FrameStyling`'s, which the CUDA renderer shares.
+    public func restyle(_ settings: RenderSettings, armPersistence: Float) {
+        self.settings = settings
+        self.armPersistence = armPersistence
     }
 
     /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
         encodeSplat(camera: camera, into: buffer)
         encodePost(into: buffer, present: present)
-    }
-
-    private func encodePlainPost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
-        guard let compute = buffer.makeComputeCommandEncoder() else { return }
-        var factor = UInt32(settings.supersample)
-        var visible = min(max(fade, 0), 1)
-        let target = present ?? output
-        dispatch(compute, plainCompositePipeline, into: target) { encoder in
-            encoder.setTexture(accumulation, index: 0)
-            encoder.setTexture(target, index: 2)
-            encoder.setBytes(&factor, length: 4, index: 0)
-            encoder.setBytes(&visible, length: 4, index: 1)
-        }
-        compute.endEncoding()
     }
 
     /// The particle passes of a frame, as its plan lists them (`FramePlan`, which the CUDA
@@ -558,7 +498,7 @@ public final class Renderer {
         let plan = FramePlan(
             settings: settings, camera: camera, time: time, drawnCount: drawnCount,
             tracerCount: tracerCount, luminosityNormalisation: luminosityNormalisation,
-            mapped: mapped, laceScale: web?.scale, stages: stages, first: first)
+            mapped: palette.mapped, laceScale: web?.scale, stages: stages, first: first)
         if first { drawn = plan }
         let parts = split(particles ?? 0..<(drawnCount + tracerCount))
         let traced =
@@ -754,114 +694,98 @@ public final class Renderer {
         return webPass
     }
 
+    /// The post-processing of a frame, as its plan lists the passes (`PostPlan`, which the CUDA
+    /// renderer executes too).
     private func encodePost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
-        if settings.plain { return encodePlainPost(into: buffer, present: present) }
         guard let compute = buffer.makeComputeCommandEncoder() else { return }
+        let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
+        let target = present ?? output
 
-        var factor = UInt32(settings.supersample)
-        dispatch(compute, resolvePipeline, into: resolved) { encoder in
-            encoder.setTexture(accumulation, index: 0)
-            encoder.setTexture(resolved, index: 2)
-            encoder.setBytes(&factor, length: 4, index: 0)
+        func texture(_ image: PostPlan.Image) -> MTLTexture {
+            switch image {
+            case .light: accumulation
+            case .resolved: resolved
+            case .down(let level): bloomDown[level]
+            case .up(let level): bloomUp[level]
+            case .sharpSource: sharpSource
+            case .sharpSpikes: sharpSpikes
+            case .spikes: spikeTexture
+            case .output: target
+            }
         }
 
-        let bloomOn = settings.bloomIntensity > 0
-        let spikesOn = settings.spikeArms > 0 && settings.spikeIntensity >= Self.spikeVisible
-        var bloom = BloomParams(
-            threshold: settings.bloomThreshold, softKnee: settings.bloomSoftKnee)
-        // A sharp spike source is the light one bloom level down, a little wider than a pixel so
-        // taps two pixels apart do not bead, less the broad light two levels further down.
-        let broadLevel = min(3, bloomDown.count - 1)
-        let sharpSpikes = spikesOn && settings.spikeSharpness > 0 && broadLevel > 1
-        if let first = bloomDown.first, bloomOn || spikesOn {
-            dispatch(compute, brightPassPipeline, into: first) { encoder in
-                encoder.setTexture(resolved, index: 0)
-                encoder.setTexture(first, index: 1)
-                encoder.setBytes(&bloom, length: MemoryLayout<BloomParams>.stride, index: 0)
-            }
-            for level in 1..<bloomDown.count where bloomOn || (sharpSpikes && level <= broadLevel) {
+        for pass in plan.passes {
+            switch pass {
+            case .resolve(let factor):
+                var factor = UInt32(factor)
+                dispatch(compute, resolvePipeline, into: resolved) { encoder in
+                    encoder.setTexture(accumulation, index: 0)
+                    encoder.setTexture(resolved, index: 2)
+                    encoder.setBytes(&factor, length: 4, index: 0)
+                }
+
+            case .plainComposite(let factor, let fade):
+                var factor = UInt32(factor)
+                var visible = fade
+                dispatch(compute, plainCompositePipeline, into: target) { encoder in
+                    encoder.setTexture(accumulation, index: 0)
+                    encoder.setTexture(target, index: 2)
+                    encoder.setBytes(&factor, length: 4, index: 0)
+                    encoder.setBytes(&visible, length: 4, index: 1)
+                }
+
+            case .bright(var bloom):
+                let first = bloomDown[0]
+                dispatch(compute, brightPassPipeline, into: first) { encoder in
+                    encoder.setTexture(resolved, index: 0)
+                    encoder.setTexture(first, index: 1)
+                    encoder.setBytes(&bloom, length: MemoryLayout<BloomParams>.stride, index: 0)
+                }
+
+            case .downsample(let level):
                 dispatch(compute, downsamplePipeline, into: bloomDown[level]) { encoder in
                     encoder.setTexture(bloomDown[level - 1], index: 0)
                     encoder.setTexture(bloomDown[level], index: 1)
                 }
-            }
-        }
 
-        var bloomResult = bloomOn ? bloomDown.last : nil
-        if bloomOn, bloomDown.count > 1 {
-            for level in stride(from: bloomDown.count - 1, to: 0, by: -1) {
+            case .upsample(let level, let source):
                 let destination = bloomUp[level - 1]
-                let source = bloomResult!
+                let from = texture(source)
                 dispatch(compute, upsamplePipeline, into: destination) { encoder in
-                    encoder.setTexture(source, index: 0)
+                    encoder.setTexture(from, index: 0)
                     encoder.setTexture(bloomDown[level - 1], index: 1)
                     encoder.setTexture(destination, index: 2)
                 }
-                bloomResult = destination
-            }
-        }
 
-        // Spikes are gathered from the bright pass, so they pick up stars and galaxy cores
-        // rather than the whole frame.
-        var spike = SpikeParams(
-            arms: UInt32(max(settings.spikeArms, 0)),
-            baseAngle: 0.32,
-            length: settings.spikeLength,
-            falloff: 4.2,
-            samples: 28)
-        // A sharp source is a pixel or two wide at quarter size, so the taps have to be that
-        // close or a spike comes out as a string of beads. Lengths are in half-size pixels.
-        if sharpSpikes {
-            spike.length = settings.spikeLength / 2
-            spike.samples = UInt32(min(max(28, settings.spikeLength / 2.5), 96))
-        }
-        if settings.spikePattern == .webb {
-            spike.baseAngle = .pi / 2
-            spike.shortArms = 2
-            spike.shortScale = Self.webbShortArm
-        }
-        var spikeSource = bloomDown.first ?? resolved
-        let spikeResult = sharpSpikes ? self.sharpSpikes : spikeTexture
-        if sharpSpikes {
-            var amount = min(max(settings.spikeSharpness, 0), 1)
-            let point = bloomDown[1]
-            dispatch(compute, compactPipeline, into: sharpSource) { encoder in
-                encoder.setTexture(point, index: 0)
-                encoder.setTexture(bloomDown[broadLevel], index: 1)
-                encoder.setTexture(sharpSource, index: 2)
-                encoder.setBytes(&amount, length: 4, index: 0)
-            }
-            spikeSource = sharpSource
-        }
-        if spikesOn {
-            dispatch(compute, spikePipeline, into: spikeResult) { encoder in
-                encoder.setTexture(spikeSource, index: 0)
-                encoder.setTexture(spikeResult, index: 1)
-                encoder.setBytes(&spike, length: MemoryLayout<SpikeParams>.stride, index: 0)
-            }
-        }
+            case .compact(var amount, let broad):
+                dispatch(compute, compactPipeline, into: sharpSource) { encoder in
+                    encoder.setTexture(bloomDown[1], index: 0)
+                    encoder.setTexture(bloomDown[broad], index: 1)
+                    encoder.setTexture(sharpSource, index: 2)
+                    encoder.setBytes(&amount, length: 4, index: 0)
+                }
 
-        frameSeed = frameSeed.truncatingRemainder(dividingBy: 4096) + 7.13
-        var composite = CompositeParams(
-            bloomIntensity: bloomResult == nil ? 0 : settings.bloomIntensity,
-            stretch: settings.stretch,
-            saturation: settings.saturation,
-            spikeIntensity: spikesOn ? settings.spikeIntensity : 0,
-            skyLevel: settings.skyLevel,
-            noiseLevel: settings.noiseLevel,
-            seed: frameSeed,
-            whitePoint: settings.whitePoint,
-            fade: min(max(fade, 0), 1),
-            skyRed: settings.skyColour.x,
-            skyGreen: settings.skyColour.y,
-            skyBlue: settings.skyColour.z)
-        let target = present ?? output
-        dispatch(compute, compositePipeline, into: target) { encoder in
-            encoder.setTexture(resolved, index: 0)
-            encoder.setTexture(bloomResult ?? resolved, index: 1)
-            encoder.setTexture(target, index: 2)
-            encoder.setTexture(spikesOn ? spikeResult : resolved, index: 3)
-            encoder.setBytes(&composite, length: MemoryLayout<CompositeParams>.stride, index: 0)
+            case .spikes(var spike, let source, let into):
+                let from = texture(source)
+                let result = texture(into)
+                dispatch(compute, spikePipeline, into: result) { encoder in
+                    encoder.setTexture(from, index: 0)
+                    encoder.setTexture(result, index: 1)
+                    encoder.setBytes(&spike, length: MemoryLayout<SpikeParams>.stride, index: 0)
+                }
+
+            case .composite(var composite, let bloom, let spikes):
+                let glow = texture(bloom)
+                let rays = texture(spikes)
+                dispatch(compute, compositePipeline, into: target) { encoder in
+                    encoder.setTexture(resolved, index: 0)
+                    encoder.setTexture(glow, index: 1)
+                    encoder.setTexture(target, index: 2)
+                    encoder.setTexture(rays, index: 3)
+                    encoder.setBytes(
+                        &composite, length: MemoryLayout<CompositeParams>.stride, index: 0)
+                }
+            }
         }
         compute.endEncoding()
     }
