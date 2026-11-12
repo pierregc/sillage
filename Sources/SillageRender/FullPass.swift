@@ -218,6 +218,28 @@ public final class FullPassRun {
 
         let built = try scenes()
         let scene = built.scene
+        if let draw = built.drawn.draw {
+            print(
+                "draw       \(draw.generator), batch \(draw.batchSeed) scene \(draw.index) (point \(draw.point)): "
+                    + draw.families.map(\.rawValue).joined(separator: ", "))
+        }
+        for encounter in built.drawn.encounters {
+            // How fast the pair would be far apart, or for a bound one, the speed its binding is worth.
+            let mass =
+                built.drawn.galaxies[encounter.primary].potential.mass
+                + built.drawn.galaxies[encounter.secondary].potential.mass
+            let speed =
+                (abs(encounter.eccentricity - 1) * mass / encounter.pericentre).squareRoot()
+                * Float(Physics.kilometersPerSecondPerVelocityUnit)
+            print(
+                String(
+                    format:
+                        "encounter  %d-%d, pericentre %.1f kpc at %.0f Myr, e %.2f (%@, %@ %.0f km/s), mass ratio %.2f",
+                    encounter.primary, encounter.secondary, encounter.pericentre, encounter.pericentreTime,
+                    encounter.eccentricity, encounter.orbit.rawValue,
+                    encounter.eccentricity < 1 ? "binding" : "far out",
+                    speed, encounter.massRatio))
+        }
         print(
             "scene      \(scene.name), \(built.drawn.totalParticleCount) visible"
                 + (scene.hasLiveHalos
