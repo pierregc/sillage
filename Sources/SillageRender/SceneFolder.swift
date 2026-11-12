@@ -237,6 +237,14 @@ extension SceneFolder {
             public var checkedFrames: Int
             /// How many times it was resumed from a checkpoint (#240); absent when never.
             public var resumes: Int?
+            /// What ran it (#278): `metal`, `cuda-gpu` or `cuda-cpu`; absent before.
+            public var engine: String?
+            /// The device's own memory at its peak, on an engine that has one (#278).
+            public var peakDeviceBytes: Int?
+            /// The largest gap of a centre from the massive pass's on each stored frame checked,
+            /// and the gap past which the run warned (#278).
+            public var gaps: [CentreGap]?
+            public var driftBound: Float?
 
             public init(
                 presets: [String], frames: Int, seconds: Double, drawSeconds: [String: Double],

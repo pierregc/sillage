@@ -52,10 +52,13 @@ public struct RunCheckpoint: Sendable {
         public var presets: [String]
         /// The binary and its libraries: told when it changed, not refused.
         public var code: String
+        /// What runs it (#278): `metal`, `cuda-gpu` or `cuda-cpu`. Absent from a checkpoint
+        /// written before, which Metal wrote.
+        public var engine: String?
 
         public init(
             arguments: [String], scene: String, look: String, framing: String, particles: Int,
-            massive: Int?, timeStep: Float, presets: [String], code: String
+            massive: Int?, timeStep: Float, presets: [String], code: String, engine: String? = nil
         ) {
             self.arguments = Self.kept(arguments)
             self.scene = scene
@@ -66,6 +69,7 @@ public struct RunCheckpoint: Sendable {
             self.timeStep = timeStep
             self.presets = presets
             self.code = code
+            self.engine = engine
         }
 
         /// Options that say where a check writes or how often to checkpoint, not what runs.
@@ -107,6 +111,7 @@ public struct RunCheckpoint: Sendable {
             }
             if timeStep != other.timeStep { found.append("the step") }
             if presets != other.presets { found.append("the videos") }
+            if (engine ?? "metal") != (other.engine ?? "metal") { found.append("the engine") }
             return found
         }
     }
@@ -354,7 +359,7 @@ extension RunCheckpoint {
             let libraries = ["libSillageCore.dylib", "libSillageRender.dylib"]
         #else
             var hash = PortableSHA256()
-            let libraries = ["libSillageCore.so", "libSillageRender.so"]
+            let libraries = ["libSillageCore.so", "libSillageRender.so", "libSillageCUDA.so"]
         #endif
         for url in [executable] + libraries.map({ folder.appendingPathComponent($0) }) {
             if let data = try? Data(contentsOf: url, options: .alwaysMapped) { hash.update(data: data) }

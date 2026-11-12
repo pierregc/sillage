@@ -1365,6 +1365,22 @@ func number(_ name: String, _ fallback: Double) -> Double {
     argument(name).flatMap(Double.init) ?? fallback
 }
 
+// A full pass (#239) runs through the flow the Mac and the CUDA engine share (#278).
+if arguments.contains("--draw") {
+    do {
+        try FullPassRun(
+            arguments: arguments, engine: MetalFullPassMaker(), started: started, reporter: reporter,
+            hires: fullPass ? hiresRun : nil
+        ).run()
+    } catch {
+        fail("full pass: \(error)")
+    }
+    reporter?.finish()
+    if let (folder, _) = hiresRun { refreshCosts(folder) }
+    print(String(format: "done in %.1f s", Date().timeIntervalSince(started)))
+    exit(0)
+}
+
 let presetName = argument("preset", default: "merger")!
 let particles = Int(number("particles", 1_000_000))
 let steps = Int(number("steps", 3_000))
@@ -1631,48 +1647,8 @@ print(
     "scene      \(scene.name), \(drawnScene.totalParticleCount) visible"
         + (scene.hasLiveHalos
             ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
-// `--checkpoint <dir>` (#240): every `--checkpoint-frames` frames, and `--checkpoint-steps` steps
-// of the settle, the run is saved there and its videos closed in segments; `--resume` picks the
-// last checkpoint up, and refuses one of another run. Decided before sampling: a resumed run
-// samples nothing.
-let checkpoint = argument("checkpoint").map {
-    RunCheckpoint(directory: URL(fileURLWithPath: $0, isDirectory: true))
-}
-let identity = checkpoint.map { _ in
-    RunCheckpoint.Identity(
-        arguments: arguments,
-        scene: scenePath.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
-        look: lookPath.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
-        framing: argument("draw-take").map { RunCheckpoint.stamp(URL(fileURLWithPath: $0)) } ?? "",
-        particles: particles, massive: massiveCount, timeStep: scene.timeStep,
-        presets: argument("draw")?.split(separator: ",").map(String.init) ?? [],
-        code: RunCheckpoint.codeVersion())
-}
-var resuming: (run: RunCheckpoint.Run, particles: FileHandle)?
-if let checkpoint, let identity {
-    for flag in ["take", "take-massive", "video", "curves", "density", "out", "thumbnail", "massive-only"]
-    where arguments.contains("--\(flag)") {
-        fail("--checkpoint: only the full pass checkpoints, not a run with --\(flag)")
-    }
-    guard backend == "barnes-hut" else { fail("--checkpoint needs the Barnes-Hut solver on the GPU") }
-    if arguments.contains("--resume"), let stored = try checkpoint.load() {
-        let differences = stored.run.identity.differences(from: identity)
-        guard differences.isEmpty else {
-            fail(
-                "--resume: the checkpoint in \(checkpoint.directory.path) is of another run, its "
-                    + differences.joined(separator: ", ") + " differ")
-        }
-        if stored.run.identity.code != identity.code {
-            print("warning    the code changed since the checkpoint: the run goes on, not to the bit")
-        }
-        resuming = stored
-    } else {
-        if arguments.contains("--resume") {
-            print("resume     no checkpoint in \(checkpoint.directory.path): from the start")
-        }
-        checkpoint.clear()
-    }
-}
+// Only the full pass checkpoints (#240), and it runs above.
+if arguments.contains("--checkpoint") { fail("--checkpoint: only the full pass checkpoints, with --draw") }
 // With tracers `seeded` is the massive set alone: the tracers go straight into the solver's
 // buffers as they are sampled, 32 bytes each (#238).
 var seeded: ParticleSystem
@@ -1682,19 +1658,7 @@ var tracerStore: LightTracerStore?
 // with its tracers repeats to the bit, so the shots planned on this run frame that one. The
 // tracers are drawn to pick the same massive particles, then dropped as they come.
 let massiveOnly = arguments.contains("--massive-only")
-if let checkpoint, let resuming {
-    let reading = Date()
-    seeded = try checkpoint.massiveSet()
-    tracerCount = resuming.run.solver.tracers
-    if tracerCount > 0 {
-        tracerStore = try LightTracerStore(capacity: tracerCount + seeded.count, awaiting: tracerCount)
-    }
-    print(
-        String(
-            format: "tracers    %d light, %d massive visible, %d halo, from the checkpoint in %.1f s",
-            tracerCount, seeded.visibleCount, seeded.count - seeded.visibleCount,
-            Date().timeIntervalSince(reading)))
-} else if massiveCount != nil {
+if massiveCount != nil {
     let splitStart = Date()
     if massiveOnly {
         let kept = ParticleSystem.streamingLightTracers(drawn: drawnScene, massive: scene) { _ in }
@@ -1853,105 +1817,6 @@ let takeV6: Recording? = argument("take-v6").map { _ in takeReel(drawnCount, bit
 // `--take-massive path`: the same run drawn with its massive particles only, for comparing.
 let massiveTake: Recording? = argument("take-massive").map { _ in takeReel(massiveDrawn) }
 
-var resumed: RunCheckpoint.Run?
-if let checkpoint {
-    guard let barnesHut = gpuSolver as? MetalBarnesHutSolver else {
-        fail("--checkpoint needs the Barnes-Hut solver on the GPU")
-    }
-    if let (run, handle) = resuming {
-        let restoring = Date()
-        try barnesHut.restore(run.solver, from: handle)
-        try handle.close()
-        resumed = run
-        print(
-            String(
-                format: "resume     checkpoint %d: frame %d, settle %d, t=%.1f Myr, restored in %.2f s",
-                run.index, run.frame, run.settled,
-                Double(run.solver.time) * Physics.megayearsPerTimeUnit,
-                Date().timeIntervalSince(restoring)))
-    } else {
-        let saved = try checkpoint.saveMassive(seeded)
-        print(
-            String(
-                format: "checkpoint the massive set, once: %.2f GB in %.2f s", Double(saved.bytes) / 1e9,
-                saved.seconds))
-    }
-    fflush(stdout)
-}
-let everyFrames = resumed?.everyFrames ?? max(Int(number("checkpoint-frames", 0)), 0)
-let everySteps = resumed?.everySteps ?? max(Int(number("checkpoint-steps", 0)), 0)
-let resumes = resumed.map { $0.resumes + 1 } ?? 0
-
-// `--draw 4k,vertical --draw-take <massive take> --draw-out <dir>` (#239): the videos drawn as
-// the run goes, framed, painted and exposed as an export of that take is, over every particle.
-let runVideos: RunVideos? = try argument("draw").map { list in
-    guard let path = argument("draw-take"), let out = argument("draw-out") else {
-        fail("--draw needs --draw-take and --draw-out")
-    }
-    let framing = try RecordingFile.read(from: URL(fileURLWithPath: path))
-    // The look as `export` reads it.
-    var drawn =
-        try lookPath.map { try LookFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: $0))) }
-        ?? .standard
-    if drawn.palette.isEmpty { drawn.palette = framing.scene.galaxies.map { GalaxyColours($0.color) } }
-    let directory = URL(fileURLWithPath: out, isDirectory: true)
-    let formats = try list.split(separator: ",").map { name in
-        guard let preset = VideoPreset.named(String(name)) else { fail("--draw: no preset \(name)") }
-        return try RunVideos.Format(
-            preset: preset, frames: frames, framesPerSecond: Int(framesPerSecond),
-            url: directory.appendingPathComponent("\(preset.name).\(preset.defaultCodec.fileExtension)"),
-            divisor: Int(number("draw-divisor", 1)))
-    }
-    let videos = try RunVideos(
-        formats: formats, look: drawn, framing: framing, capturedRate: Int(framesPerSecond),
-        drawing: renderer, smoothing: smoothing.buffer,
-        metadata: VideoMetadata(
-            sceneID: SceneFolder(URL(fileURLWithPath: path).deletingLastPathComponent()).sceneID),
-        segments: checkpoint?.segments, resume: resumed?.videos)
-    print(
-        "draw       " + formats.map { "\($0.preset.name) \($0.width)x\($0.height)" }.joined(separator: ", ")
-            + " with \(drawn.name), framed on \(path)")
-    for line in videos.shots { print("shot       \(line)") }
-    return videos
-}
-// `--draw-stills 12,300 --draw-stills-dir <dir>`: those frames of every format as PNGs, as the
-// encoder took them.
-let drawStills = Set(argument("draw-stills")?.split(separator: ",").compactMap { Int($0) } ?? [])
-let drawStillsDirectory = argument("draw-stills-dir").map { URL(fileURLWithPath: $0, isDirectory: true) }
-// `--key-frames <path> --key-frame-curves <csv>`: every drawn particle at the key frames of those
-// curves, in a take of their own.
-let keyFrameTake: KeyFrameTake? = try argument("key-frames").map { _ in
-    let samples =
-        argument("key-frame-curves").flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
-        .map(KeyFrames.samples) ?? []
-    var keys = KeyFrames.pick(samples.filter { $0.frame < frames })
-    if keys.isEmpty { keys = [KeyFrame(frame: frames / 2, role: .middle, timeMyr: 0)] }
-    return try KeyFrameTake(
-        keys: keys, particleCount: drawnCount, galaxyCount: scene.galaxies.count,
-        blocks: checkpoint?.keyFrames, taken: resumed?.keyFrames ?? [])
-}
-var checkpointIndex = resumed?.index ?? 0
-/// Closes the videos' segments and saves the run, the next frame to draw `frame`.
-func saveCheckpoint(frame: Int, settled: Int) throws {
-    guard let checkpoint, let identity, let barnesHut = gpuSolver as? MetalBarnesHutSolver else {
-        return
-    }
-    try runVideos?.cut()
-    checkpointIndex += 1
-    let run = RunCheckpoint.Run(
-        identity: identity, index: checkpointIndex, frame: frame, settled: settled,
-        elapsed: (resumed?.elapsed ?? 0) + Date().timeIntervalSince(started), resumes: resumes,
-        everyFrames: everyFrames, everySteps: everySteps, solver: barnesHut.state,
-        videos: runVideos?.state, keyFrames: keyFrameTake?.entries ?? [])
-    let saved = try checkpoint.save(run) { try barnesHut.writeParticles(to: $0) }
-    print(
-        String(
-            format: "checkpoint %d before frame %d, settle %d: %.2f GB in %.2f s", checkpointIndex,
-            frame, settled, Double(saved.bytes) / 1e9, saved.seconds))
-    // A log cut by a restart still says where the run was saved.
-    fflush(stdout)
-}
-
 /// Per frame scalars, written for whoever scores the result later: a curve to drive a filter
 /// with is worth more than a picture of one.
 let curvesHeader =
@@ -2003,20 +1868,15 @@ let settle = Int(number("settle", 0))
 // settling, from the pace of the steps; once frames come, from the pace of the frames, which
 // the drawing of each one is part of.
 let totalSteps = settle + stepsPerFrame * frames
-// A run resumed past its settle starts at its frame.
-if settle > 0 && (resumed?.frame ?? 0) == 0 {
+if settle > 0 {
     let settleStart = Date()
-    // In chunks, so a settle of minutes still reports, cut at the checkpoints' steps.
+    // In chunks, so a settle of minutes still reports.
     let chunk = max(settle / 50, 1)
-    var settled = resumed?.settled ?? 0
+    var settled = 0
     while settled < settle {
-        var count = min(chunk, settle - settled)
-        if everySteps > 0 { count = min(count, everySteps - settled % everySteps) }
+        let count = min(chunk, settle - settled)
         solver.step(count: count)
         settled += count
-        if everySteps > 0, settled % everySteps == 0, settled < settle {
-            try saveCheckpoint(frame: 0, settled: settled)
-        }
         let elapsed = Date().timeIntervalSince(settleStart)
         reporter?.update(
             progress: Double(settled) / Double(max(totalSteps, 1)), detail: "settle \(settled)/\(settle)",
@@ -2079,9 +1939,6 @@ for entry in argument("dump-targets-frames")?.split(separator: ",") ?? [] {
 guard (targetDirectory == nil) == targetDumps.isEmpty else {
     fail("--dump-targets and --dump-targets-frames go together")
 }
-if targetDirectory != nil, runVideos != nil {
-    fail("--dump-targets: the frames of a full pass are its formats', not this run's")
-}
 let targetLookFile = "looks/\(look.name).look.json"
 var targetManifest = try targetDirectory.map { directory -> RenderTargetManifest in
     let url = directory.appendingPathComponent(targetLookFile)
@@ -2108,7 +1965,7 @@ var targetManifest = try targetDirectory.map { directory -> RenderTargetManifest
 }
 
 let framesStart = Date()
-let firstFrame = resumed?.frame ?? 0
+let firstFrame = 0
 var frame = firstFrame
 while frame < frames || storyGoesOn() {
     defer { frame += 1 }
@@ -2130,8 +1987,7 @@ while frame < frames || storyGoesOn() {
     if gpuSolver == nil {
         renderer.upload(positions: solver.particles.positions)
     }
-    // A full pass films through its formats' cameras, never this one.
-    if frozenRadius <= 0 && look.camera.mode != .auto && runVideos == nil {
+    if frozenRadius <= 0 && look.camera.mode != .auto {
         // Not `particles` with tracers, which would build every one of them as a particle.
         frozenRadius =
             tracerSolver.map { look.camera.framedRadius(sortedRadii: $0.radii(every: 16).sorted()) }
@@ -2139,8 +1995,8 @@ while frame < frames || storyGoesOn() {
     }
 
     let smoothingStart = Date()
-    // Plain points have no kernel to size; an export sizes them whatever its look.
-    if !look.plain || runVideos != nil {
+    // Plain points have no kernel to size.
+    if !look.plain {
         if let gpuSolver {
             smoothing.update(from: gpuSolver)
         } else {
@@ -2205,27 +2061,6 @@ while frame < frames || storyGoesOn() {
                 name, targets.drawn, targets.tracers, look.name,
                 targetDirectory.appendingPathComponent("targets/\(look.name)/\(name)").path))
     }
-    if let runVideos {
-        try runVideos.draw(
-            frame: frame, centres: solver.centers,
-            still: drawStills.contains(frame) && drawStillsDirectory != nil
-                ? { format, image in
-                    let url = drawStillsDirectory!.appendingPathComponent(
-                        String(format: "%@-%04d.png", format.preset.name, frame))
-                    try FileManager.default.createDirectory(
-                        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try PNGWriter.write(image, maximumWidth: nil, to: url)
-                } : nil)
-    }
-    if let keyFrameTake, let gpuSolver, keyFrameTake.wants(frame: frame) {
-        try keyFrameTake.offer(
-            frame: frame,
-            positions: gpuSolver.positions.contents().bindMemory(
-                to: SIMD3<Float>.self, capacity: heldCount),
-            time: solver.time, centers: solver.centers,
-            disks: (gpuSolver as? MetalBarnesHutSolver)?.diskFrames ?? [])
-    }
-
     if let outputURL {
         let url =
             frames == 1
@@ -2431,13 +2266,6 @@ while frame < frames || storyGoesOn() {
         }
         print("profile    " + phases.joined(separator: ", "))
     }
-    let drawn =
-        runVideos.map { videos in
-            "  draw "
-                + zip(videos.formats, videos.lastSeconds).map {
-                    String(format: "%@ %.1f ms", $0.preset.name, $1 * 1000)
-                }.joined(separator: ", ")
-        } ?? ""
     print(
         String(
             format:
@@ -2445,42 +2273,12 @@ while frame < frames || storyGoesOn() {
                 + "  render %5.1f ms (gpu %5.2f)",
             frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
             simulationMs / Double(stepsPerFrame), smoothingMs, renderMs,
-            (videoWriter?.lastGPUTime ?? renderer.lastGPUTime) * 1000) + drawn)
-    if everyFrames > 0, (frame + 1) % everyFrames == 0, frame + 1 < frames {
-        try saveCheckpoint(frame: frame + 1, settled: settle)
-    }
+            (videoWriter?.lastGPUTime ?? renderer.lastGPUTime) * 1000))
 }
 
 reporter?.update(progress: 1, detail: "finishing", eta: Date())
 try videoWriter?.finish()
 try curves?.close()
-let drawReports = try runVideos?.finish() ?? []
-for report in drawReports {
-    print(
-        String(
-            format: "draw       %@ %d frames, %.1f s drawing, %.1f ms a frame",
-            report.format.preset.name, report.frames, report.seconds,
-            report.seconds * 1000 / Double(max(report.frames, 1))))
-}
-if let runVideos {
-    print(
-        runVideos.firstDrift.map {
-            String(
-                format: "massive    drifts from the massive pass from frame %d,"
-                    + " %.4f kpc at most over %d frames",
-                $0, runVideos.drift, runVideos.checkedFrames)
-        } ?? "massive    repeats the massive pass to the bit over \(runVideos.checkedFrames) stored frames")
-}
-if let keyFrameTake, let path = argument("key-frames") {
-    let captured =
-        tracerSolver?.drawnAttributes() ?? gpuSolver?.capturedParticles(from: seeded) ?? seeded
-    let url = try prepared(path)
-    let list =
-        argument("key-frame-list").map { URL(fileURLWithPath: $0) }
-        ?? url.deletingPathExtension().appendingPathExtension("json")
-    try keyFrameTake.write(scene: drawnScene, particles: captured, to: url, list: list)
-    print("key frames " + keyFrameTake.entries.map { "\($0.role) \($0.frame)" }.joined(separator: ", "))
-}
 // `--state-out <path>`: what a checkpoint keeps of the particles at the end, and the solver's
 // state beside it as `<path>.json`, to compare two runs to the bit.
 if let path = argument("state-out"), let barnesHut = gpuSolver as? MetalBarnesHutSolver {
@@ -2547,56 +2345,7 @@ if let massiveTake, let path = argument("take-massive") {
     let captured = gpuSolver?.capturedParticles(from: seeded) ?? seeded
     try RecordingFile.write(massiveTake, scene: scene, particles: captured, to: prepared(path))
 }
-if let (folder, done) = hiresRun, fullPass {
-    do {
-        try folder.commitFullPass(drawReports.map(\.format.url))
-    } catch {
-        fail("hires: could not put the videos in place: \(error)")
-    }
-    var record = done
-    // The run's time kept across its resumes, the intervals a restart lost left out.
-    let seconds = (resumed?.elapsed ?? 0) + Date().timeIntervalSince(started)
-    var draws: [String: Double] = [:]
-    for report in drawReports { draws[report.format.preset.name] = report.seconds }
-    record.full = SceneFolder.Hires.FullPass(
-        presets: drawReports.map(\.format.preset.name), frames: runVideos?.frames ?? 0,
-        seconds: seconds, drawSeconds: draws, peakMemoryBytes: peakFootprint(),
-        keyFrames: keyFrameTake?.entries.map(\.frame) ?? [], drift: runVideos?.drift ?? 0,
-        checkedFrames: runVideos?.checkedFrames ?? 0, resumes: resumes > 0 ? resumes : nil)
-    try record.encoded().write(to: folder.hires)
-    print(
-        String(
-            format: "hires      full pass %.0f s, %.0f s of it drawing, peak %.2f GB", seconds,
-            record.full?.drawingSeconds ?? 0, Double(record.full?.peakMemoryBytes ?? 0) / 1e9))
-    for report in drawReports {
-        let bytes =
-            (try? FileManager.default.attributesOfItem(atPath: report.format.url.path)[.size] as? Int) ?? 0
-        var event = RunEvent(RunEvent.Kind.exportDone)
-        event.preset = report.format.preset.name
-        event.style = runVideos?.look.name
-        event.setPalette(runVideos?.look.paletteRecipe)
-        event.codec = report.format.codec.rawValue
-        event.frames = report.frames
-        event.megabytes = Double(bytes) / 1e6
-        event.seconds = report.seconds
-        event.path = report.format.url.path
-        event.pass = "full"
-        reporter?.record(event)
-        print("video      \(report.format.url.path)")
-        if report.format.preset.caption {
-            try VideoMetadata(sceneID: folder.sceneID).caption.write(
-                to: report.format.url.deletingPathExtension().appendingPathExtension("txt"),
-                atomically: true, encoding: .utf8)
-        }
-    }
-    var finished = RunEvent(RunEvent.Kind.hiresDone)
-    finished.particles = record.particles
-    finished.massive = record.massive
-    finished.steps = record.steps
-    finished.minutes = seconds / 60
-    finished.pass = "full"
-    reporter?.record(finished)
-} else if let (folder, done) = hiresRun {
+if let (folder, done) = hiresRun {
     do {
         try folder.commitHires()
     } catch {
@@ -2622,8 +2371,6 @@ if let (folder, done) = hiresRun, fullPass {
     finished.pass = record.pass?.rawValue
     reporter?.record(finished)
 }
-// The run is whole: its checkpoint has nothing left to give.
-checkpoint?.clear()
 reporter?.finish()
 if let (folder, _) = hiresRun { refreshCosts(folder) }
 if let exploreRun { refreshCosts(exploreRun) }

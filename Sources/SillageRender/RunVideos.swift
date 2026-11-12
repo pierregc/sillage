@@ -181,8 +181,8 @@ public final class RunVideos {
     /// Draws captured frame `frame` in every format, once the solver has stepped to it and the
     /// smoothing is refreshed. `centres` are the solver's, checked against the massive take's.
     /// `keeping` sees a format's finished frame when given.
-    public func draw(
-        frame: Int, centres: [SIMD3<Float>],
+    public func drawFrame(
+        _ frame: Int, centres: [SIMD3<Float>],
         keeping: ((_ format: Format, _ still: any RunVideoStill) throws -> Void)? = nil
     ) throws {
         check(frame: frame, centres: centres)

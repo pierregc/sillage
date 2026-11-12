@@ -85,13 +85,13 @@ extension RunVideos {
             join: RunVideos.join)
     }
 
-    /// `draw(frame:centres:keeping:)` with each kept frame as an image.
+    /// `drawFrame(_:centres:keeping:)` with each kept frame as an image.
     public func draw(
         frame: Int, centres: [SIMD3<Float>],
         still: ((_ format: Format, _ image: CGImage) throws -> Void)?
     ) throws {
-        try draw(
-            frame: frame, centres: centres,
+        try drawFrame(
+            frame, centres: centres,
             keeping: still.map { grab in
                 { format, kept in
                     if let kept = kept as? MetalRunVideoStill { try grab(format, kept.image) }
