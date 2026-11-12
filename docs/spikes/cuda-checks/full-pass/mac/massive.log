@@ -1,0 +1,38 @@
+hires      200000 particles from 50000 massive (preview 50000), step 0.19782 Myr (preview 0.19782), settle 750, 960 steps, clip 148.4 to 338.3 Myr, about 0.0 h, massive pass
+draw       antennae, batch 20261030 scene 31 (point 1): spiral, spiral
+encounter  0-1, pericentre 10.5 kpc at 305 Myr, e 0.89 (bound, binding 222 km/s), mass ratio 0.85
+scene      Archétype, 200000 visible, 75000 halo
+tracers    150207 light, 49793 massive visible, 75000 halo, softening 0.3455, step 0.04200, angle 0.90, 0.3 s
+massive    49793 visible run alone, without the tracers
+massive    the massive set, 0.01 GB in 0.01 s
+solver     barnes-hut (barnesHut)
+gpu        Apple M4 Max
+settle     750 steps, t=148.4 Myr, 4.3 s
+frame 0000  t=156.3 Myr  sim   239.3 ms (5.982 ms/step)  smoothing    0.7 ms  render  38.6 ms (gpu  1.28)
+frame 0001  t=164.2 Myr  sim   184.9 ms (4.622 ms/step)  smoothing    0.2 ms  render   1.9 ms (gpu  1.14)
+frame 0002  t=172.1 Myr  sim   192.0 ms (4.800 ms/step)  smoothing    0.2 ms  render   1.5 ms (gpu  1.15)
+frame 0003  t=180.0 Myr  sim   191.5 ms (4.788 ms/step)  smoothing    0.2 ms  render   1.4 ms (gpu  1.13)
+frame 0004  t=187.9 Myr  sim   195.8 ms (4.895 ms/step)  smoothing    0.2 ms  render   1.6 ms (gpu  1.30)
+frame 0005  t=195.8 Myr  sim   234.8 ms (5.869 ms/step)  smoothing    0.2 ms  render   2.3 ms (gpu  1.90)
+frame 0006  t=203.8 Myr  sim   243.4 ms (6.085 ms/step)  smoothing    0.2 ms  render   2.0 ms (gpu  1.66)
+frame 0007  t=211.7 Myr  sim   237.7 ms (5.943 ms/step)  smoothing    0.2 ms  render   2.0 ms (gpu  1.72)
+frame 0008  t=219.6 Myr  sim   248.1 ms (6.203 ms/step)  smoothing    0.2 ms  render   2.0 ms (gpu  1.73)
+frame 0009  t=227.5 Myr  sim   249.9 ms (6.247 ms/step)  smoothing    0.2 ms  render   2.0 ms (gpu  1.74)
+frame 0010  t=235.4 Myr  sim   233.7 ms (5.842 ms/step)  smoothing    0.2 ms  render   2.0 ms (gpu  1.74)
+frame 0011  t=243.3 Myr  sim   235.0 ms (5.876 ms/step)  smoothing    0.2 ms  render   1.9 ms (gpu  1.59)
+frame 0012  t=251.2 Myr  sim   231.0 ms (5.774 ms/step)  smoothing    0.2 ms  render   1.9 ms (gpu  1.61)
+frame 0013  t=259.1 Myr  sim   237.1 ms (5.928 ms/step)  smoothing    0.2 ms  render   2.0 ms (gpu  1.76)
+frame 0014  t=267.1 Myr  sim   244.6 ms (6.116 ms/step)  smoothing    0.2 ms  render   2.0 ms (gpu  1.73)
+frame 0015  t=275.0 Myr  sim   246.7 ms (6.168 ms/step)  smoothing    0.2 ms  render   2.1 ms (gpu  1.81)
+frame 0016  t=282.9 Myr  sim   239.9 ms (5.997 ms/step)  smoothing    0.2 ms  render   1.9 ms (gpu  1.55)
+frame 0017  t=290.8 Myr  sim   243.1 ms (6.076 ms/step)  smoothing    0.2 ms  render   2.2 ms (gpu  1.89)
+frame 0018  t=298.7 Myr  sim   278.2 ms (6.955 ms/step)  smoothing    0.2 ms  render   2.3 ms (gpu  2.01)
+frame 0019  t=306.6 Myr  sim   289.3 ms (7.233 ms/step)  smoothing    0.2 ms  render   2.5 ms (gpu  2.02)
+frame 0020  t=314.5 Myr  sim   203.6 ms (5.091 ms/step)  smoothing    0.2 ms  render   1.8 ms (gpu  1.51)
+frame 0021  t=322.4 Myr  sim   181.6 ms (4.539 ms/step)  smoothing    0.2 ms  render   1.6 ms (gpu  1.34)
+frame 0022  t=330.4 Myr  sim   204.6 ms (5.115 ms/step)  smoothing    0.2 ms  render   1.8 ms (gpu  1.53)
+frame 0023  t=338.3 Myr  sim   259.2 ms (6.480 ms/step)  smoothing    0.2 ms  render   2.4 ms (gpu  2.08)
+curves     8.4 ms in all, 0.352 ms a frame
+take       0.3 ms a frame quantising, 21 bits an axis
+hires      10 s, peak 0.49 GB, take 0.01 GB
+done in 10.0 s

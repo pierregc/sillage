@@ -1,0 +1,9 @@
+{
+  "fps" : 3,
+  "frames" : 90,
+  "height" : 270,
+  "particles" : 50000,
+  "settle" : 750,
+  "steps" : 3600,
+  "width" : 480
+}

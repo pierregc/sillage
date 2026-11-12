@@ -1,0 +1,90 @@
+hires      200000 particles from 50000 massive (preview 50000), step 0.19782 Myr (preview 0.19782), settle 750, 960 steps, clip 148.4 to 338.3 Myr, about 0.0 h, full pass
+scene      Archétype, 200000 visible, 75000 halo
+tracers    150207 light, 49793 massive visible, 75000 halo, softening 0.3455, step 0.04200, drawn in 0.4 s
+engine     metal on Apple M4 Max
+draw       4k 480x270, vertical 134x240 with webb, framed on <scene>/take.sillage
+shot       disk 0 frames 0-7 (2.7 s), 19.7 kpc held
+shot       wide frames 8-16 (3.0 s)
+shot       pericentre 0-1 frames 17-23 (2.3 s), 17.1 kpc held
+settle     15/750 steps, t=3.0 Myr, 0.1 s
+settle     30/750 steps, t=5.9 Myr, 0.2 s
+settle     45/750 steps, t=8.9 Myr, 0.3 s
+settle     60/750 steps, t=11.9 Myr, 0.4 s
+settle     75/750 steps, t=14.8 Myr, 0.5 s
+settle     90/750 steps, t=17.8 Myr, 0.6 s
+settle     105/750 steps, t=20.8 Myr, 0.7 s
+settle     120/750 steps, t=23.7 Myr, 0.8 s
+settle     135/750 steps, t=26.7 Myr, 0.9 s
+settle     150/750 steps, t=29.7 Myr, 1.1 s
+settle     165/750 steps, t=32.6 Myr, 1.2 s
+settle     180/750 steps, t=35.6 Myr, 1.3 s
+settle     195/750 steps, t=38.6 Myr, 1.4 s
+settle     210/750 steps, t=41.5 Myr, 1.5 s
+settle     225/750 steps, t=44.5 Myr, 1.6 s
+settle     240/750 steps, t=47.5 Myr, 1.7 s
+settle     255/750 steps, t=50.4 Myr, 1.9 s
+settle     270/750 steps, t=53.4 Myr, 2.0 s
+settle     285/750 steps, t=56.4 Myr, 2.1 s
+settle     300/750 steps, t=59.3 Myr, 2.2 s
+settle     315/750 steps, t=62.3 Myr, 2.3 s
+settle     330/750 steps, t=65.3 Myr, 2.4 s
+settle     345/750 steps, t=68.2 Myr, 2.5 s
+settle     360/750 steps, t=71.2 Myr, 2.6 s
+settle     375/750 steps, t=74.2 Myr, 2.7 s
+settle     390/750 steps, t=77.1 Myr, 2.8 s
+settle     405/750 steps, t=80.1 Myr, 2.9 s
+settle     420/750 steps, t=83.1 Myr, 3.1 s
+settle     435/750 steps, t=86.1 Myr, 3.2 s
+settle     450/750 steps, t=89.0 Myr, 3.3 s
+settle     465/750 steps, t=92.0 Myr, 3.4 s
+settle     480/750 steps, t=95.0 Myr, 3.5 s
+settle     495/750 steps, t=97.9 Myr, 3.6 s
+settle     510/750 steps, t=100.9 Myr, 3.8 s
+settle     525/750 steps, t=103.9 Myr, 3.9 s
+settle     540/750 steps, t=106.8 Myr, 4.0 s
+settle     555/750 steps, t=109.8 Myr, 4.1 s
+settle     570/750 steps, t=112.8 Myr, 4.2 s
+settle     585/750 steps, t=115.7 Myr, 4.3 s
+settle     600/750 steps, t=118.7 Myr, 4.4 s
+settle     615/750 steps, t=121.7 Myr, 4.5 s
+settle     630/750 steps, t=124.6 Myr, 4.7 s
+settle     645/750 steps, t=127.6 Myr, 4.8 s
+settle     660/750 steps, t=130.6 Myr, 4.9 s
+settle     675/750 steps, t=133.5 Myr, 5.0 s
+settle     690/750 steps, t=136.5 Myr, 5.1 s
+settle     705/750 steps, t=139.5 Myr, 5.2 s
+settle     720/750 steps, t=142.4 Myr, 5.3 s
+settle     735/750 steps, t=145.4 Myr, 5.4 s
+settle     750/750 steps, t=148.4 Myr, 5.5 s
+frame 0000  t=156.3 Myr  sim   310.9 ms (7.773 ms/step)  smoothing    0.6 ms  draw 4k 37.7 ms, vertical 4.0 ms  4 %, 8 s left
+frame 0001  t=164.2 Myr  sim   277.0 ms (6.924 ms/step)  smoothing    0.6 ms  draw 4k 1.7 ms, vertical 1.2 ms  8 %, 7 s left
+frame 0002  t=172.1 Myr  sim   275.1 ms (6.879 ms/step)  smoothing    0.6 ms  draw 4k 1.0 ms, vertical 0.8 ms  12 %, 6 s left
+frame 0003  t=180.0 Myr  sim   275.5 ms (6.887 ms/step)  smoothing    0.5 ms  draw 4k 1.1 ms, vertical 0.8 ms  17 %, 6 s left
+frame 0004  t=187.9 Myr  sim   280.6 ms (7.014 ms/step)  smoothing    0.6 ms  draw 4k 8.0 ms, vertical 3.1 ms  21 %, 6 s left
+frame 0005  t=195.8 Myr  sim   277.5 ms (6.937 ms/step)  smoothing    0.5 ms  draw 4k 1.0 ms, vertical 0.8 ms  25 %, 5 s left
+frame 0006  t=203.8 Myr  sim   275.5 ms (6.887 ms/step)  smoothing    0.5 ms  draw 4k 1.1 ms, vertical 0.8 ms  29 %, 5 s left
+frame 0007  t=211.7 Myr  sim   286.8 ms (7.171 ms/step)  smoothing    0.6 ms  draw 4k 1.2 ms, vertical 0.9 ms  33 %, 5 s left
+frame 0008  t=219.6 Myr  sim   308.7 ms (7.718 ms/step)  smoothing    0.5 ms  draw 4k 1.9 ms, vertical 2.2 ms  38 %, 4 s left
+frame 0009  t=227.5 Myr  sim   315.6 ms (7.891 ms/step)  smoothing    0.6 ms  draw 4k 1.9 ms, vertical 2.3 ms  42 %, 4 s left
+frame 0010  t=235.4 Myr  sim   292.2 ms (7.304 ms/step)  smoothing    0.6 ms  draw 4k 2.1 ms, vertical 2.1 ms  46 %, 4 s left
+frame 0011  t=243.3 Myr  sim   286.0 ms (7.149 ms/step)  smoothing    0.6 ms  draw 4k 2.2 ms, vertical 2.0 ms  50 %, 4 s left
+frame 0012  t=251.2 Myr  sim   280.2 ms (7.005 ms/step)  smoothing    0.5 ms  draw 4k 7.7 ms, vertical 3.9 ms  54 %, 3 s left
+frame 0013  t=259.1 Myr  sim   278.0 ms (6.951 ms/step)  smoothing    0.5 ms  draw 4k 2.2 ms, vertical 2.1 ms  58 %, 3 s left
+frame 0014  t=267.1 Myr  sim   306.7 ms (7.667 ms/step)  smoothing    0.5 ms  draw 4k 2.4 ms, vertical 2.2 ms  62 %, 3 s left
+frame 0015  t=275.0 Myr  sim   292.8 ms (7.319 ms/step)  smoothing    0.6 ms  draw 4k 2.4 ms, vertical 2.2 ms  67 %, 2 s left
+frame 0016  t=282.9 Myr  sim   282.3 ms (7.057 ms/step)  smoothing    0.6 ms  draw 4k 2.5 ms, vertical 2.3 ms  71 %, 2 s left
+frame 0017  t=290.8 Myr  sim   283.7 ms (7.092 ms/step)  smoothing    0.5 ms  draw 4k 1.2 ms, vertical 1.3 ms  75 %, 2 s left
+frame 0018  t=298.7 Myr  sim   287.1 ms (7.179 ms/step)  smoothing    0.6 ms  draw 4k 1.2 ms, vertical 1.4 ms  79 %, 1 s left
+frame 0019  t=306.6 Myr  sim   304.0 ms (7.599 ms/step)  smoothing    0.5 ms  draw 4k 7.9 ms, vertical 3.8 ms  83 %, 1 s left
+frame 0020  t=314.5 Myr  sim   320.7 ms (8.018 ms/step)  smoothing    0.6 ms  draw 4k 1.1 ms, vertical 1.2 ms  88 %, 1 s left
+frame 0021  t=322.4 Myr  sim   293.3 ms (7.332 ms/step)  smoothing    0.6 ms  draw 4k 1.2 ms, vertical 1.3 ms  92 %, 1 s left
+frame 0022  t=330.4 Myr  sim   295.4 ms (7.384 ms/step)  smoothing    0.6 ms  draw 4k 1.2 ms, vertical 1.1 ms  96 %, 0 s left
+frame 0023  t=338.3 Myr  sim   291.4 ms (7.285 ms/step)  smoothing    0.5 ms  draw 4k 6.8 ms, vertical 3.2 ms  100 %, 0 s left
+draw       4k 24 frames, 0.1 s drawing, 4.3 ms a frame
+draw       vertical 24 frames, 0.0 s drawing, 2.1 ms a frame
+massive    repeats the massive pass to the bit over 24 stored frames
+key frames start 0, approach 11, pericentre 19, end 23
+hires      full pass 13 s, 0 s of it drawing, peak 0.55 GB
+video      <scene>/exports/4k.mp4
+video      <scene>/exports/vertical.mp4
+done in 13.1 s

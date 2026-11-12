@@ -1,0 +1,22 @@
+{
+  "clipEndMyr" : 338.27219543941317,
+  "clipStartMyr" : 148.36499799974263,
+  "fps" : 3,
+  "frames" : 24,
+  "height" : 270,
+  "massive" : 50000,
+  "particles" : 200000,
+  "pass" : "massive",
+  "peakMemoryBytes" : 494404328,
+  "previewParticles" : 50000,
+  "previewTimeStepMyr" : 0.19781999733299016,
+  "seconds" : 10.371355056762695,
+  "settle" : 750,
+  "softening" : 0.34548503,
+  "steps" : 960,
+  "takeBytes" : 10958927,
+  "timeStep" : 0.041999999433755875,
+  "timeStepMyr" : 0.19781999733299016,
+  "timeStepScale" : 3.5,
+  "width" : 480
+}
