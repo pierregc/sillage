@@ -1,0 +1,24 @@
+scene-0001   story   396 to  1334 Myr, first pass   546, engaged to   698 | before  30% engaged  23% after  48% | video  44.6 s at 1x,  27.8 s paced ( 62%), top 4.5x,   5% of its frames at 4x or more
+scene-0002   story   237 to   896 Myr, first pass   387, engaged to   480 | before  26% engaged  27% after  46% | video  27.8 s at 1x,  22.5 s paced ( 81%), top 2.6x,   0% of its frames at 4x or more
+scene-0003   story   343 to  1225 Myr, first pass   493, engaged to   888 | before  28% engaged  45% after  27% | video  37.2 s at 1x,  34.4 s paced ( 93%), top 2.5x,   0% of its frames at 4x or more
+scene-0004   story   297 to  1309 Myr, first pass   447, engaged to   692 | before  23% engaged  30% after  47% | video  52.3 s at 1x,  33.6 s paced ( 64%), top 4.6x,   5% of its frames at 4x or more
+scene-0005   story   161 to  1059 Myr, first pass   311, engaged to   674 | before  15% engaged  48% after  36% | video  47.7 s at 1x,  44.9 s paced ( 94%), top 2.3x,   0% of its frames at 4x or more
+scene-0006   story   198 to  1321 Myr, first pass   348, engaged to   710 | before  15% engaged  39% after  46% | video  47.3 s at 1x,  29.9 s paced ( 63%), top 7.0x,  27% of its frames at 4x or more
+scene-0007   story   267 to   861 Myr, first pass   417, engaged to   514 | before  31% engaged  29% after  40% | video  25.0 s at 1x,  22.2 s paced ( 89%), top 2.6x,   0% of its frames at 4x or more
+scene-0008   story   158 to  1909 Myr, first pass   308, engaged to  1909 | before   8% engaged  92% after   0% | video 109.1 s at 1x, 109.1 s paced (100%), top 1.0x,   0% of its frames at 4x or more
+scene-0009   story   233 to   974 Myr, first pass   383, engaged to   531 | before  24% engaged  31% after  46% | video  31.2 s at 1x,  20.6 s paced ( 66%), top 3.9x,   0% of its frames at 4x or more
+scene-0010   no collision
+scene-0011   story   281 to   894 Myr, first pass   431, engaged to   498 | before  31% engaged  24% after  44% | video  27.7 s at 1x,  23.5 s paced ( 85%), top 2.6x,   0% of its frames at 4x or more
+scene-0012   story   254 to  1100 Myr, first pass   404, engaged to  1100 | before  23% engaged  77% after   0% | video  44.1 s at 1x,  44.1 s paced (100%), top 1.0x,   0% of its frames at 4x or more
+scene-0013   story   207 to   927 Myr, first pass   357, engaged to   462 | before  22% engaged  27% after  50% | video  30.3 s at 1x,  29.5 s paced ( 97%), top 1.4x,   0% of its frames at 4x or more
+scene-0014   story   246 to   936 Myr, first pass   396, engaged to   463 | before  26% engaged  23% after  51% | video  29.1 s at 1x,  19.6 s paced ( 67%), top 4.4x,   7% of its frames at 4x or more
+scene-0015   story   149 to   922 Myr, first pass   186, engaged to   382 | before  16% engaged  25% after  59% | video  32.6 s at 1x,  20.9 s paced ( 64%), top 4.2x,   2% of its frames at 4x or more
+scene-0016   story   262 to   819 Myr, first pass   412, engaged to   502 | before  32% engaged  29% after  39% | video  24.7 s at 1x,  19.9 s paced ( 81%), top 2.7x,   0% of its frames at 4x or more
+scene-0017   story   472 to  1360 Myr, first pass   622, engaged to   917 | before  35% engaged  33% after  33% | video  37.4 s at 1x,  34.1 s paced ( 91%), top 2.7x,   0% of its frames at 4x or more
+scene-0018   story   251 to   861 Myr, first pass   401, engaged to   505 | before  29% engaged  30% after  41% | video  25.7 s at 1x,  20.0 s paced ( 78%), top 3.4x,   0% of its frames at 4x or more
+scene-0019   story   190 to  1139 Myr, first pass   340, engaged to   622 | before  17% engaged  38% after  45% | video  40.6 s at 1x,  30.8 s paced ( 76%), top 3.1x,   0% of its frames at 4x or more
+scene-0020   story   188 to  1271 Myr, first pass   338, engaged to   819 | before  15% engaged  50% after  36% | video  45.6 s at 1x,  42.2 s paced ( 92%), top 2.6x,   0% of its frames at 4x or more
+dt35         story   162 to   887 Myr, first pass   312, engaged to   459 | before  18% engaged  34% after  48% | video  30.6 s at 1x,  22.2 s paced ( 73%), top 3.6x,   0% of its frames at 4x or more
+
+20 stories, 22004 Myr simulated: before the story 23%, engaged 40%, after 37%; of the story's own frames engaged 52%
+paced video against 1x: mean 81%, from 62% to 100%
