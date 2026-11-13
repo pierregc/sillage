@@ -287,22 +287,22 @@ the rungs on a real run before anything is built.
 
 ## The plan
 
-Epic issue "Time that runs faster when nothing happens", sub-issues in waves:
+Epic #304, sub-issues in waves:
 
 1. Wave 1, no dependency:
-   - A time track and constant speeds in exports: `TimeTrack`, `export --speed <x>|<file>`, the
-     cameras on the video's time, the track written beside the export (shared with #295).
-   - Spike: star formation that does not depend on the step.
-   - Spike: a coarser step before the story and late in the aftermath (7 and 14, the seams).
-   - Spike: how many light tracers could step less often.
+   - #305 A time track and constant speeds in exports: `TimeTrack`, `export --speed <x>|<file>`,
+     the cameras on the video's time, the track written beside the export (shared with #295).
+   - #306 Spike: star formation that does not depend on the step.
+   - #307 Spike: a coarser step before the story and late in the aftermath (7 and 14, the seams).
+   - #308 Spike: how many light tracers could step less often.
 2. Wave 2:
-   - Spike: which automatic pace reads best, chosen by Pierre on videos (after the time track).
-   - The full pass draws along a time track, exact between steps (after the time track).
+   - #309 Spike: which automatic pace reads best, chosen by Pierre on videos (after #305).
+   - #310 The full pass draws along a time track, exact between steps (after #305).
 3. Wave 3:
-   - Automatic pace in exports, nights and the app (after the pace spike and Pierre's choice).
-   - Step schedules in hires (after both step spikes and Pierre's choice).
-4. Optional, on Pierre's go: light tracers on steps of their own (after the tracer spike, if it
-   promises at least a fifth of a 200 M run).
+   - #311 Automatic pace in exports, nights and the app (after #309 and Pierre's choice).
+   - #312 Step schedules in hires (after #306, #307 and Pierre's choice).
+4. Optional, on Pierre's go: #313 light tracers on steps of their own (after #308, if it promises
+   at least a fifth of a 200 M run).
 
 ## References
 
