@@ -1,0 +1,16 @@
+{
+  "approach" : 40,
+  "cloudRadius" : 1.5,
+  "coolingTime" : 10,
+  "crossingSpeed" : 0.3,
+  "duration" : 5000,
+  "frameInterval" : 250,
+  "pericentre" : 6,
+  "release" : 10,
+  "seed" : 1,
+  "stickiness" : 2,
+  "swallow" : 1.5,
+  "timeStep" : 0.25,
+  "tracers" : 6000000,
+  "viscousOrbits" : 40
+}
