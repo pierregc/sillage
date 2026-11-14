@@ -1,0 +1,127 @@
+{
+  "armStrength": 1,
+  "bloomLevels": 4,
+  "camera": {
+    "azimuth": 0.467,
+    "azimuthEnd": 0.467,
+    "center": [
+      -2.38,
+      -3.61,
+      -0.65
+    ],
+    "elevation": 1.1,
+    "mode": "fixed",
+    "percentile": 0.98,
+    "radius": 0,
+    "zoom": 0.6426
+  },
+  "look": {
+    "armPersistence": 1.6,
+    "bloomIntensity": 0.7,
+    "bloomSoftKnee": 0.6,
+    "bloomThreshold": 0.26,
+    "brightness": 0.6149232,
+    "columnSmoothing": 0,
+    "dustStrength": 0,
+    "dustWeb": 0,
+    "fieldOfView": 0.6,
+    "galaxyTint": 1,
+    "glint": 0.3,
+    "holeShadow": 0,
+    "maximumKernel": 92,
+    "minimumKernel": 1.8,
+    "noiseLevel": 0,
+    "saturation": 3,
+    "skyColour": [
+      0.44,
+      0.42,
+      0.39
+    ],
+    "skyLevel": 0.0006,
+    "smoothingScale": 2.17794,
+    "spikeArms": 6,
+    "spikeIntensity": 0,
+    "spikeLength": 110,
+    "spikePattern": "webb",
+    "spikeSharpness": 1,
+    "starSize": 0.9,
+    "stretch": 30.423235,
+    "whitePoint": 4.5
+  },
+  "name": "readme-v4",
+  "palette": [
+    {
+      "blend": 0.75,
+      "colour": [
+        1.88027,
+        0.8049,
+        0.34063
+      ],
+      "core": [
+        0.89529,
+        1.01305,
+        1.1791
+      ],
+      "disk": [
+        1.88027,
+        0.8049,
+        0.34063
+      ],
+      "knot": [
+        3.03685,
+        0.47764,
+        0.17671
+      ],
+      "mapping": "mix",
+      "outskirts": [
+        2.37247,
+        0.65771,
+        0.34928
+      ],
+      "young": [
+        1.53822,
+        0.89049,
+        0.49998
+      ]
+    },
+    {
+      "blend": 0.75,
+      "colour": [
+        0.73839,
+        1.01245,
+        1.64696
+      ],
+      "core": [
+        0.95832,
+        1.00279,
+        1.09505
+      ],
+      "disk": [
+        0.73839,
+        1.01245,
+        1.64696
+      ],
+      "knot": [
+        2.62132,
+        0.5954,
+        0.2338
+      ],
+      "mapping": "mix",
+      "outskirts": [
+        0.61688,
+        0.99804,
+        2.14752
+      ],
+      "young": [
+        0.65701,
+        1.0046,
+        1.96441
+      ]
+    }
+  ],
+  "plain": false,
+  "starCount": 7200,
+  "supersample": 2,
+  "version": 1,
+  "world": "telescope"
+}

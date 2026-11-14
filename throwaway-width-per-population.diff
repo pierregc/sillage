@@ -1,0 +1,23 @@
+diff --git a/Sources/SillageRender/ShaderCache.swift b/Sources/SillageRender/ShaderCache.swift
+index 8213a98..19859fc 100644
+--- a/Sources/SillageRender/ShaderCache.swift
++++ b/Sources/SillageRender/ShaderCache.swift
+@@ -21,6 +21,18 @@ enum ShaderCache {
+     }
+ 
+     static func library(_ source: String, on device: MTLDevice) throws -> MTLLibrary {
++        var source = source
++        // Throwaway (#315): a kernel width per population, "old,young,run-formed,bulge".
++        if let widths = ProcessInfo.processInfo.environment["SILLAGE_315_WIDTHS"],
++            let at = source.range(of: "raw = max(raw, projected);"),
++            let close = source.range(of: "}", range: at.upperBound..<source.endIndex)
++        {
++            let w = widths.split(separator: ",").map { Float(String($0))! }
++            source.insert(
++                contentsOf:
++                    "\nraw *= (kind == 4u) ? \(w[3])f : ((nursery && knot && ageMyr < 50.0f) ? \(w[2])f : ((knot && ageMyr < \(w.count > 4 ? w[4] : 300)f) ? \(w[1])f : \(w[0])f));\n",
++                at: close.upperBound)
++        }
+         let key = Key(device: ObjectIdentifier(device), source: source.hashValue)
+         lock.lock()
+         if let held = libraries[key] {

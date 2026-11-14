@@ -1,0 +1,127 @@
+{
+  "armStrength": 1,
+  "bloomLevels": 4,
+  "camera": {
+    "azimuth": 0.467,
+    "azimuthEnd": 0.467,
+    "center": [
+      -2.38,
+      -3.61,
+      -0.65
+    ],
+    "elevation": 1.1,
+    "mode": "fixed",
+    "percentile": 0.98,
+    "radius": 0,
+    "zoom": 0.6426
+  },
+  "look": {
+    "armPersistence": 1.6,
+    "bloomIntensity": 0.7,
+    "bloomSoftKnee": 0.6,
+    "bloomThreshold": 0.26,
+    "brightness": 0.7778,
+    "columnSmoothing": 0,
+    "dustStrength": 0,
+    "dustWeb": 0,
+    "fieldOfView": 0.6,
+    "galaxyTint": 0,
+    "glint": 0.3,
+    "holeShadow": 0,
+    "maximumKernel": 92,
+    "minimumKernel": 1.8,
+    "noiseLevel": 0,
+    "saturation": 3,
+    "skyColour": [
+      0.44,
+      0.42,
+      0.39
+    ],
+    "skyLevel": 0.0006,
+    "smoothingScale": 2.17794,
+    "spikeArms": 6,
+    "spikeIntensity": 0,
+    "spikeLength": 110,
+    "spikePattern": "webb",
+    "spikeSharpness": 1,
+    "starSize": 0.9,
+    "stretch": 10,
+    "whitePoint": 3
+  },
+  "name": "step2",
+  "palette": [
+    {
+      "blend": 0.75,
+      "mapping": "mix",
+      "core": [
+        1.71172,
+        0.85288,
+        0.36158
+      ],
+      "disk": [
+        1.16045,
+        0.97711,
+        0.75425
+      ],
+      "outskirts": [
+        0.58683,
+        1.04166,
+        1.80393
+      ],
+      "young": [
+        0.83829,
+        1.02158,
+        1.26236
+      ],
+      "knot": [
+        1.34223,
+        0.90956,
+        0.88818
+      ],
+      "colour": [
+        1.16045,
+        0.97711,
+        0.75425
+      ]
+    },
+    {
+      "blend": 0.75,
+      "mapping": "mix",
+      "core": [
+        1.71172,
+        0.85288,
+        0.36158
+      ],
+      "disk": [
+        1.16045,
+        0.97711,
+        0.75425
+      ],
+      "outskirts": [
+        0.58683,
+        1.04166,
+        1.80393
+      ],
+      "young": [
+        0.83829,
+        1.02158,
+        1.26236
+      ],
+      "knot": [
+        1.34223,
+        0.90956,
+        0.88818
+      ],
+      "colour": [
+        1.16045,
+        0.97711,
+        0.75425
+      ]
+    }
+  ],
+  "plain": false,
+  "starCount": 7200,
+  "supersample": 2,
+  "version": 1,
+  "world": "telescope"
+}

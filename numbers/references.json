@@ -1,0 +1,137 @@
+{
+ "out/telescope-images/heic0615a.jpg": {
+  "sky": 0.117,
+  "lit": 0.556,
+  "L50": 0.424,
+  "L99": 0.914,
+  "saturated": 0.139,
+  "grain": 0.224,
+  "shadow": 0.051
+ },
+ "out/telescope-images/heic0506a.jpg": {
+  "sky": 0.134,
+  "lit": 0.66,
+  "L50": 0.391,
+  "L99": 0.853,
+  "saturated": 0.078,
+  "grain": 0.199,
+  "shadow": 0.053
+ },
+ "out/telescope-images/heic1107a.jpg": {
+  "sky": 0.181,
+  "lit": 0.235,
+  "L50": 0.402,
+  "L99": 0.849,
+  "saturated": 0.145,
+  "grain": 0.191,
+  "shadow": 0.152
+ },
+ "out/telescope-images/heic0206h.jpg": {
+  "sky": 0.113,
+  "lit": 0.125,
+  "L50": 0.297,
+  "L99": 0.879,
+  "saturated": 0.024,
+  "grain": 0.197,
+  "shadow": 0.259
+ },
+ "out/telescope-images/potm2212a.jpg": {
+  "sky": 0.125,
+  "lit": 0.42,
+  "L50": 0.36,
+  "L99": 0.796,
+  "saturated": 0.047,
+  "grain": 0.173,
+  "shadow": 0.004
+ },
+ "out/telescope-images/potm2405a.jpg": {
+  "sky": 0.35,
+  "lit": 0.687,
+  "L50": 0.551,
+  "L99": 0.856,
+  "saturated": 0.731,
+  "grain": 0.246,
+  "shadow": 0.002
+ },
+ "out/telescope-images/weic2608a.jpg": {
+  "sky": 0.197,
+  "lit": 0.699,
+  "L50": 0.394,
+  "L99": 0.796,
+  "saturated": 0.347,
+  "grain": 0.533,
+  "shadow": 0.019
+ },
+ "out/telescope-images/weic2306a.jpg": {
+  "sky": 0.154,
+  "lit": 0.438,
+  "L50": 0.324,
+  "L99": 0.805,
+  "saturated": 0.047,
+  "grain": 0.419,
+  "shadow": 0.278
+ },
+ "out/telescope-images/weic2208b.jpg": {
+  "sky": 0.168,
+  "lit": 0.152,
+  "L50": 0.381,
+  "L99": 0.873,
+  "saturated": 0.338,
+  "grain": 0.449,
+  "shadow": 0.233
+ },
+ "out/telescope-images/weic2211a.jpg": {
+  "sky": 0.133,
+  "lit": 0.309,
+  "L50": 0.473,
+  "L99": 0.897,
+  "saturated": 0.561,
+  "grain": 0.281,
+  "shadow": 0.069
+ },
+ "out/telescope-images/weic2420a.jpg": {
+  "sky": 0.186,
+  "lit": 0.256,
+  "L50": 0.408,
+  "L99": 0.911,
+  "saturated": 0.196,
+  "grain": 0.237,
+  "shadow": 0.001
+ },
+ "out/telescope-images/potm2602a.jpg": {
+  "sky": 0.135,
+  "lit": 0.712,
+  "L50": 0.464,
+  "L99": 0.82,
+  "saturated": 0.301,
+  "grain": 0.136,
+  "shadow": 0.0
+ },
+ "out/ground-images/ngc1232-ls.jpg": {
+  "sky": 0.245,
+  "lit": 0.384,
+  "L50": 0.549,
+  "L99": 0.981,
+  "saturated": 0.092,
+  "grain": 0.125,
+  "shadow": 0.021
+ },
+ "out/ground-images/antennae-ls.jpg": {
+  "sky": 0.242,
+  "lit": 0.082,
+  "L50": 0.444,
+  "L99": 0.996,
+  "saturated": 0.188,
+  "grain": 0.412,
+  "shadow": 0.033
+ },
+ "out/ground-images/mice-ls.jpg": {
+  "sky": 0.242,
+  "lit": 0.054,
+  "L50": 0.446,
+  "L99": 0.986,
+  "saturated": 0.148,
+  "grain": 0.151,
+  "shadow": 0.044
+ }
+}

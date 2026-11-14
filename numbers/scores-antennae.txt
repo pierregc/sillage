@@ -1,0 +1,9 @@
+key frames ["approach 119", "pericentre 700", "end 746"]
+auto: webb hubble-visible-complementary	frame 0.577	clip 1.00 expo 0.54 colour 0.28 sep 0.46 noise 0.92 detail 0.81 ref 0.74 variety 0.20	palette 0.827	total 0.627
+auto: webb hubble-visible-complementary	frame 0.573	clip 1.00 expo 0.54 colour 0.29 sep 0.44 noise 0.92 detail 0.81 ref 0.73 variety 0.20	palette 0.818	total 0.622
+auto: webb hubble-visible-complementary	frame 0.571	clip 1.00 expo 0.54 colour 0.27 sep 0.45 noise 0.92 detail 0.81 ref 0.74 variety 0.20	palette 0.788	total 0.615
+photograph palette: separation 0.00 harmony 1.00 range 0.00 balance 0.10 reference 0.32 total 0.290
+given: step5	frame 0.534	clip 1.00 expo 0.88 colour 0.45 sep 0.10 noise 1.00 detail 0.49 ref 0.37 variety 0.40	palette 0.290	total 0.485
+  approach 119: nearest 0.019 colourfulness 51.5 referenceMiss 0.034 detail 0.127 litLuma 0.34
+  pericentre 700: nearest 0.010 colourfulness 10.3 referenceMiss 0.051 detail 0.038 litLuma 0.29
+  end 746: nearest 0.003 colourfulness 10.5 referenceMiss 0.057 detail 0.037 litLuma 0.31
