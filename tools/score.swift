@@ -45,7 +45,7 @@ try outcome.sheet.draw(
         pixels: cell.pixels, width: StyleAuto.cellWidth, height: cellHeight, owners: cell.owners,
         references: references, ramps: true))
 }
-let colour = look.palette.first?.colour ?? SIMD3(1, 1, 1)
+let colour = (look.palette.first?.colour ?? SIMD3(1, 1, 1)) * 0.512  // unit luminance to OKLab L 0.8, as palettes are kept
 let one = Palette(world: .telescope, family: "hubble-visible", harmony: .monochrome, seed: 0,
     colours: Array(repeating: colour, count: max(look.palette.count, 2)), multicolour: false)
 let paletteScore = PaletteScore(one, references: references)

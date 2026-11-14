@@ -1,0 +1,9 @@
+key frames ["approach 119", "pericentre 700", "end 746"]
+auto: photograph webb-miri-triadic	frame 0.685	clip 1.00 expo 0.89 colour 0.72 sep 0.46 noise 1.00 detail 0.49 ref 0.59 variety 0.47	palette 0.825	total 0.713
+auto: photograph hubble-visible-complementary	frame 0.671	clip 1.00 expo 0.88 colour 0.57 sep 0.48 noise 1.00 detail 0.49 ref 0.64 variety 0.49	palette 0.827	total 0.702
+auto: photograph hubble-visible-complementary	frame 0.669	clip 1.00 expo 0.88 colour 0.59 sep 0.46 noise 1.00 detail 0.49 ref 0.65 variety 0.48	palette 0.818	total 0.699
+photograph palette: separation 0.00 harmony 1.00 range 1.00 balance 0.10 reference 0.32 total 0.440
+given: step5	frame 0.534	clip 1.00 expo 0.88 colour 0.45 sep 0.10 noise 1.00 detail 0.49 ref 0.37 variety 0.40	palette 0.440	total 0.515
+  approach 119: nearest 0.019 colourfulness 51.5 referenceMiss 0.034 detail 0.127 litLuma 0.34
+  pericentre 700: nearest 0.010 colourfulness 10.3 referenceMiss 0.051 detail 0.038 litLuma 0.29
+  end 746: nearest 0.003 colourfulness 10.5 referenceMiss 0.057 detail 0.037 litLuma 0.31

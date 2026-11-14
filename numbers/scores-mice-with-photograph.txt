@@ -1,0 +1,9 @@
+key frames ["approach 115", "pericentre 1280", "tails 1434"]
+auto: photograph hubble-visible-split-complementary	frame 0.688	clip 1.00 expo 0.43 colour 0.57 sep 0.72 noise 1.00 detail 0.71 ref 0.79 variety 0.45	palette 0.843	total 0.719
+auto: photograph hubble-visible-complementary	frame 0.665	clip 1.00 expo 0.43 colour 0.56 sep 0.74 noise 1.00 detail 0.71 ref 0.58 variety 0.49	palette 0.828	total 0.698
+auto: photograph webb-miri-triadic	frame 0.655	clip 1.00 expo 0.43 colour 0.64 sep 0.71 noise 1.00 detail 0.71 ref 0.48 variety 0.43	palette 0.805	total 0.685
+photograph palette: separation 0.00 harmony 1.00 range 1.00 balance 0.10 reference 0.32 total 0.440
+given: step5	frame 0.559	clip 1.00 expo 0.44 colour 0.50 sep 0.38 noise 1.00 detail 0.71 ref 0.38 variety 0.45	palette 0.440	total 0.535
+  approach 115: nearest 0.137 colourfulness 45.0 referenceMiss 0.030 detail 0.171 litLuma 0.35
+  pericentre 1280: nearest 0.014 colourfulness 12.7 referenceMiss 0.053 detail 0.065 litLuma 0.18
+  tails 1434: nearest 0.002 colourfulness 13.4 referenceMiss 0.056 detail 0.067 litLuma 0.18
