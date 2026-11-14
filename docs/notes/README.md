@@ -88,3 +88,4 @@ session. Read the note for an area before changing it.
 ## State
 
 - [State and known limitations](state-and-known-limitations.md): standing gaps, time step and traversal measurements
+- [What would give Sillage its dimension](next-dimension.md): why a frame does not read as a galaxy, measured against Hubble's Antennae, the published orbits a named scene needs, the open tickets sorted by what a viewer sees, and ten recommendations ranked by what they show for what they cost
