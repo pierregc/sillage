@@ -24,15 +24,34 @@ public final class TakeExport {
     public let look: LookFile
     /// The rate the run was captured at, which decides how long the take plays.
     public let capturedRate: Int
+    /// From the video's time to the take's (#305): one captured frame per played one unless
+    /// given.
+    public let track: TimeTrack
     private let device: MTLDevice
     private let positions: MTLBuffer
     private let expander: SnapshotExpander
     private let smoothing: SmoothingField
     private let stream: SnapshotStream
+    /// The captured position `positions` holds, and the smoothing drawn from it: a frame at the
+    /// same moment of the take, as a freeze or a slow track gives, draws from them again.
+    private var expanded: Double?
+    /// How many times the take was expanded, for the tests.
+    private(set) var expansions = 0
+
+    public enum Failure: Error, CustomStringConvertible {
+        case trackForAnotherTake(track: Int, take: Int)
+
+        public var description: String {
+            switch self {
+            case .trackForAnotherTake(let track, let take):
+                "a time track of \(track) captured frames for a take of \(take)"
+            }
+        }
+    }
 
     public init(
         take: RecordingFile.Loaded, look: LookFile, capturedRate: Int, device: MTLDevice? = nil,
-        framing: RecordingFile.Loaded? = nil
+        framing: RecordingFile.Loaded? = nil, track: TimeTrack? = nil
     ) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
@@ -41,6 +60,12 @@ public final class TakeExport {
         self.framing = framing ?? take
         self.look = look
         self.capturedRate = max(capturedRate, 1)
+        let frames = take.recording.capturedFrames
+        if let track, track.capturedFrames != frames || track.capturedRate != self.capturedRate {
+            throw Failure.trackForAnotherTake(track: track.capturedFrames, take: frames)
+        }
+        self.track =
+            try track ?? TimeTrack(capturedFrames: frames, capturedRate: self.capturedRate)
         self.device = device
         let count = take.recording.particleCount
         guard
@@ -57,18 +82,19 @@ public final class TakeExport {
     public var capturedFrames: Int { take.recording.capturedFrames }
     public var gpuName: String { device.name }
     public var takeSeconds: Double { Double(capturedFrames - 1) / Double(capturedRate) }
+    /// The whole take's video along the track.
+    public var videoSeconds: Double { track.seconds }
 
     /// Captured positions, fractional between captured frames, of every frame a video at
-    /// `framesPerSecond` shows from `start` for `duration` seconds, cut at the end of the take.
+    /// `framesPerSecond` shows from `start` for `duration` seconds of video, cut at the end of
+    /// the take.
     public func positions(framesPerSecond: Int, start: Double, duration: Double?) -> [Double] {
-        let rate = Double(capturedRate)
-        let last = Double(capturedFrames - 1)
-        let first = min(max(start, 0) * rate, last)
-        let step = rate / Double(max(framesPerSecond, 1))
-        let span = min(duration.map { max($0, 0) * rate } ?? last, last - first)
-        let count = duration.map { max(Int(($0 * Double(framesPerSecond)).rounded()), 1) }
-        let fitting = Int((span / step + 1e-9).rounded(.down)) + 1
-        return (0..<min(count ?? fitting, fitting)).map { first + Double($0) * step }
+        videoFrames(framesPerSecond: framesPerSecond, start: start, duration: duration).map(\.captured)
+    }
+
+    /// The same frames, each with its moment in the video's time as well.
+    public func videoFrames(framesPerSecond: Int, start: Double, duration: Double?) -> [TimeTrack.Frame] {
+        track.frames(framesPerSecond: framesPerSecond, start: start, duration: duration)
     }
 
     /// `stills` are frames of the video, counted from its first, handed to `still` exactly as
@@ -83,15 +109,15 @@ public final class TakeExport {
         dump: (_ frame: Int, _ capture: RenderTargetManifest.Capture) throws -> Void = { _, _ in },
         progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
     ) throws -> Report {
-        let wanted = positions(framesPerSecond: framesPerSecond, start: start, duration: duration)
+        let wanted = videoFrames(framesPerSecond: framesPerSecond, start: start, duration: duration)
         let renderer = try makeRenderer(width: width, height: height)
         let replay = makeReplay(width: width, height: height)
         let writer = try VideoWriter(
             width: width, height: height, framesPerSecond: Int32(framesPerSecond), codec: codec,
             bitsPerSecond: bitsPerSecond, quality: quality, metadata: metadata, to: url)
         let started = Date()
-        for (index, position) in wanted.enumerated() {
-            let shot = try prepare(renderer, at: position, replay: replay)
+        for (index, frame) in wanted.enumerated() {
+            let shot = try prepare(renderer, at: frame, replay: replay)
             try writer.append(
                 on: device,
                 drawing: { target, buffer in
@@ -100,7 +126,7 @@ public final class TakeExport {
                 read: stills.contains(index)
                     ? { pixels in if let image = PNGWriter.image(bgra: pixels) { try still(index, image) } }
                     : nil)
-            if dumps.contains(index), let capture = capture(renderer, at: position, shot, replay) {
+            if dumps.contains(index), let capture = capture(renderer, at: frame, shot, replay) {
                 try dump(index, capture)
             }
             progress(index + 1, wanted.count)
@@ -117,11 +143,11 @@ public final class TakeExport {
         width: Int, height: Int, framesPerSecond: Int, start: Double = 0,
         duration: Double? = nil, progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
     ) throws -> [[UInt8]] {
-        let wanted = positions(framesPerSecond: framesPerSecond, start: start, duration: duration)
+        let wanted = videoFrames(framesPerSecond: framesPerSecond, start: start, duration: duration)
         let renderer = try makeRenderer(width: width, height: height)
         let replay = makeReplay(width: width, height: height)
-        return try wanted.enumerated().map { index, position in
-            let shot = try prepare(renderer, at: position, replay: replay)
+        return try wanted.enumerated().map { index, frame in
+            let shot = try prepare(renderer, at: frame, replay: replay)
             defer { progress(index + 1, wanted.count) }
             return renderer.render(camera: shot.camera)
         }
@@ -192,11 +218,12 @@ public final class TakeExport {
         return nil
     }
 
-    /// One frame as the export draws it, read back as RGBA.
+    /// One frame as the export draws it, read back as RGBA. Captured and played are one
+    /// without a track.
     func still(atCaptured frame: Int, width: Int, height: Int) throws -> [UInt8] {
         let renderer = try makeRenderer(width: width, height: height)
         let shot = try prepare(
-            renderer, at: Double(frame), replay: makeReplay(width: width, height: height))
+            renderer, at: Self.untracked(frame), replay: makeReplay(width: width, height: height))
         return renderer.render(camera: shot.camera)
     }
 
@@ -206,22 +233,26 @@ public final class TakeExport {
     ) {
         let renderer = try makeRenderer(width: width, height: height)
         let replay = makeReplay(width: width, height: height)
-        let shot = try prepare(renderer, at: Double(frame), replay: replay)
+        let shot = try prepare(renderer, at: Self.untracked(frame), replay: replay)
         let pixels = renderer.render(camera: shot.camera)
-        guard let capture = capture(renderer, at: Double(frame), shot, replay) else {
+        guard let capture = capture(renderer, at: Self.untracked(frame), shot, replay) else {
             throw RenderError.textureAllocation
         }
         return (pixels, capture)
     }
 
-    /// What the frame `renderer` has just drawn at `position` left in its targets.
+    private static func untracked(_ frame: Int) -> TimeTrack.Frame {
+        TimeTrack.Frame(played: Double(frame), captured: Double(frame))
+    }
+
+    /// What the frame `renderer` has just drawn at `frame` left in its targets.
     private func capture(
-        _ renderer: Renderer, at position: Double, _ shot: ShotReplay.Shot, _ replay: ShotReplay
+        _ renderer: Renderer, at frame: TimeTrack.Frame, _ shot: ShotReplay.Shot, _ replay: ShotReplay
     ) -> RenderTargetManifest.Capture? {
         renderer.particleTargets().map {
             RenderTargetManifest.Capture(
-                captured: position, time: renderer.time,
-                shot: replay.plan?.shot(atCaptured: position)?.subject.description,
+                captured: frame.captured, time: renderer.time,
+                shot: replay.plan?.shot(atCaptured: frame.played)?.subject.description,
                 camera: shot.camera, targets: $0)
         }
     }
@@ -233,9 +264,10 @@ public final class TakeExport {
         return positions.map { replay.shot(atCaptured: $0) }
     }
 
-    private func makeReplay(width: Int, height: Int) -> ShotReplay {
+    func makeReplay(width: Int, height: Int) -> ShotReplay {
         TakeFraming.replay(
-            look: look, framing: framing, capturedRate: capturedRate, width: width, height: height)
+            look: look, framing: framing, capturedRate: capturedRate, width: width, height: height,
+            track: track)
     }
 
     private func makeRenderer(width: Int, height: Int) throws -> Renderer {
@@ -251,19 +283,24 @@ public final class TakeExport {
         return renderer
     }
 
-    private func prepare(_ renderer: Renderer, at position: Double, replay: ShotReplay) throws
+    private func prepare(_ renderer: Renderer, at frame: TimeTrack.Frame, replay: ShotReplay) throws
         -> ShotReplay.Shot
     {
-        let recording = take.recording
-        guard let blend = recording.blend(atCaptured: position),
-            expander.expand(blend, of: recording, through: stream, into: positions)
-        else { throw RecordingFile.Failure.truncated }
-        // Every frame, as the look grid does: a field refreshed every few frames would leave
-        // a still of the grid and the same frame here a kernel apart.
-        smoothing.update(from: positions)
+        if expanded != frame.captured {
+            let recording = take.recording
+            expanded = nil
+            guard let blend = recording.blend(atCaptured: frame.captured),
+                expander.expand(blend, of: recording, through: stream, into: positions)
+            else { throw RecordingFile.Failure.truncated }
+            // Every frame, as the look grid does: a field refreshed every few frames would leave
+            // a still of the grid and the same frame here a kernel apart.
+            smoothing.update(from: positions)
+            expanded = frame.captured
+            expansions += 1
+        }
         guard
             let shot = TakeFraming.prepare(
-                renderer, look: look, replay: replay, framing: framing, at: position)
+                renderer, look: look, replay: replay, framing: framing, at: frame)
         else { throw RecordingFile.Failure.truncated }
         return shot
     }
