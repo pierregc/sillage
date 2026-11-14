@@ -102,11 +102,27 @@ public enum BarnesHutStep {
                 submitForces(host, on: engine, disks: disks)
             }
             host.lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
-            host.time += host.scene.timeStep
+            host.time += host.timeStep
             if engine.profiling {
                 engine.stepped(milliseconds: Date().timeIntervalSince(stepClock) * 1000)
             }
         }
+    }
+
+    /// Changes the step between two steps, for a step schedule (#307). A massive particle closes
+    /// each step with its own half kick and opens the next with the step then in force, so it
+    /// needs nothing; a tracer opened the next step at the old one already, and is given the
+    /// difference, its acceleration walked again from the same tree.
+    public static func changeStep(
+        _ host: BarnesHutHost, on engine: some BarnesHutPasses, to step: Float
+    ) {
+        let old = host.timeStep
+        guard step != old else { return }
+        if host.tracerCount > 0 {
+            host.timeStep = step - old
+            engine.run(tracerSteps(host, mode: 0, disks: nil))
+        }
+        host.timeStep = step
     }
 
     /// What a new solver starts from: the first half kick needs an acceleration, so the tree and

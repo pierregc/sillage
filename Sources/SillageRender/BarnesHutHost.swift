@@ -15,6 +15,8 @@ import SillageCore
 public final class BarnesHutHost {
     public let scene: SceneConfig
     public internal(set) var time: Float = 0
+    /// The scene's step, unless a step schedule changed it between two steps (#307).
+    public internal(set) var timeStep: Float
 
     /// Opening angle. Smaller is more accurate and slower; 0.5 to 0.7 is the usual range.
     public var openingAngle: Float
@@ -94,6 +96,7 @@ public final class BarnesHutHost {
     /// tracers in front of them in the engine's buffers.
     public init(scene: SceneConfig, massive particles: ParticleSystem, tracers: Int) {
         self.scene = scene
+        self.timeStep = scene.timeStep
         self.tracerCount = tracers
         self.massive = max(particles.count, 1)
         self.count = tracers + max(particles.count, 1)
@@ -150,7 +153,7 @@ public final class BarnesHutHost {
         StarFormationGPU(
             efficiency: StarFormation.efficiency,
             threshold: StarFormation.thresholdDensity,
-            timeStep: scene.timeStep,
+            timeStep: timeStep,
             time: time,
             gravitationalConstant: Physics.gravitationalConstant,
             compressionBoost: StarFormation.compressionBoost,
@@ -171,7 +174,7 @@ public final class BarnesHutHost {
     /// nil when nothing is cooled.
     public func coolingDisks() -> [DiskCoolingGPU]? {
         guard dissipates else { return nil }
-        let elapsed = scene.timeStep * Float(Physics.megayearsPerTimeUnit)
+        let elapsed = timeStep * Float(Physics.megayearsPerTimeUnit)
         centersLock.lock()
         let frames = (haloCenters, galaxyMotion, diskStates)
         centersLock.unlock()
@@ -236,7 +239,7 @@ public final class BarnesHutHost {
             // potential on top would double its mass, and a rigid potential that follows the
             // disk does work on the system, which is why the old one leaked energy.
             haloCount: liveHalos ? 0 : UInt32(scene.galaxies.count),
-            timeStep: scene.timeStep,
+            timeStep: timeStep,
             openingAngleSquared: openingAngle * openingAngle,
             softeningSquared: softening * softening,
             gravitationalConstant: Physics.gravitationalConstant)

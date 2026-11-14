@@ -227,6 +227,17 @@ tracers walk at the scene's opening angle, so `--theta-tracers` is refused. `hir
 mass. A night draws 8 M from 2 M (#211): the texture of 8 M for about a third of a real 8 M's
 time. `--particles N` without `--massive` is a real N, every particle carrying mass.
 
+`--dt-schedule <Myr>:<scale>,...` is a spike option (#307), until step schedules come to hires
+for good (#312): from each moment on, the step is `scale` times the run's own, a power of two that
+divides a frame's steps, and a switch waits for the next frame boundary, settle included, so the
+captured frames keep their cadence in megayears. `0:4,162:1,610:2` steps four times coarser up to
+162 Myr, at the run's own step to 610, then twice as coarse. The leapfrog stays whole across a
+switch: a massive particle closes the old step with its half kick and opens the new one with its
+own; a light tracer, which opened the next step already, gets the difference. `hires.json` keeps
+the schedule, the steps run (`stepsRun`, against `settle + steps` of the run's own) and where it
+switched; a full pass and a massive pass refuse it. Measured in
+[variable time](notes/variable-time.md).
+
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
 `hires` prints how long a run should take before it starts, from the cost model (`costs`), or

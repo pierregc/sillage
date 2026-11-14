@@ -471,7 +471,7 @@ public struct CostHistory: Sendable, Equatable {
     static func hiresSample(_ folder: SceneFolder) -> CostModel.Sample? {
         guard let record = folder.storedHires(), let seconds = record.seconds, seconds > 0
         else { return nil }
-        let steps = Double(record.settle + record.steps)
+        let steps = Double(record.stepsRun ?? record.settle + record.steps)
         return CostModel.Sample(
             units: Double(record.massiveParticles) * steps,
             tracerUnits: Double(record.simulatedTracers) * steps, seconds: seconds,
