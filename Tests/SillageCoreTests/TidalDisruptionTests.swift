@@ -116,10 +116,25 @@ struct HoleLensTests {
         cameraDistance: 50, radiusCount: 128, angleCount: 128, uniformRays: 3000, criticalRays: 3000)
 
     @Test func theShadowsEdgeIsTheCriticalRay() {
+        // The photon ring, the light that went round once more, hugs from outside the edge that
+        // the critical ray, b = 3√3/2, sets at asin(b √(1 - 1/r_o) / r_o).
+        let lens = Self.lens
         let b = 1.5 * Float(3).squareRoot()
         let edge = asin(b * (1 - Float(1) / 50).squareRoot() / 50)
-        #expect(abs(Self.lens.shadowAngle - edge) < 1e-6)
-        // Nothing from behind the hole shows inside it, and the further images hug it.
+        var closest = Float.infinity
+        for row in 0..<lens.radiusCount {
+            let radius =
+                lens.minimumRadius
+                * pow(lens.maximumRadius / lens.minimumRadius, Float(row) / Float(lens.radiusCount - 1))
+            guard radius >= 1.5 else { continue }
+            for column in 0..<lens.angleCount {
+                let entry = lens.entries[(2 * lens.radiusCount + row) * lens.angleCount + column]
+                if entry.w > 0 { closest = min(closest, entry.x - edge) }
+            }
+        }
+        #expect(closest > 0)
+        #expect(closest < 1e-5)
+        // Nothing far enough behind the hole shows inside it, and the further images hug it.
         for angle in stride(from: Float(1.8), through: 3.1, by: 0.2) {
             for radius: Float in [2.5, 4, 8, 16, 40] {
                 let direct = Self.lens.lookup(image: 0, radius: radius, angle: angle)

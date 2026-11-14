@@ -22,19 +22,20 @@ The stills, the clip and the story video are on the branch `assets/314-black-hol
   ring in to the last stable orbit. Crude, cheap, and enough to show the story; it is the part
   of the model most worth a better one.
 - **The bent images stay in the particle renderer.** A table computed once per camera distance,
-  half a second on the CPU and 12.6 MB, gives each tracer where it shows directly, round the far side
-  of the hole and once more round; the pass draws every tracer once per image. The far side of
-  the disk rises over the shadow, the image that went under it closes the ring, the shadow
+  half a second on the CPU and 12.6 MB, gives each tracer where it shows directly, round the
+  far side of the hole and once more round; the pass draws every tracer once per image. The far
+  side of the disk rises over the shadow, the image that went under it closes the ring, the shadow
   needs no disc of its own and the near side crosses in front of it. It agrees with Einstein's
   weak-field lens within 4 % on positions and 5 % on brightness where that formula holds, and
-  with the shadow's edge to a millionth of a radian.
+  its photon ring lies within a millionth of a radian outside the shadow's edge.
 - **Heat from the crossing tells the story; heat from the radius makes the textbook disk.** With
   a thin disk's law, the stream is cold and the disk white-hot whatever the gas does. With the
   run's own heat, the stream stays dark until it comes back, and the light is where it hits
   itself; the settled disk is hot inside and orange outside. Recommended: the crossing, coloured
   at 6500 K at the hottest, which is about Interstellar's gold.
-- **Risks are small but real**: the gas model, a second subject to keep, and the camera at a
-  fixed distance from the hole for a given table.
+- **The risk is in the gas, not in the lens**: the gas is a sketch that nothing calibrates, and
+  the scene is a second subject to keep. The lens's own limits are a table per camera distance
+  and a second image that costs three times the first until it is drawn for fewer tracers.
 
 ## The scene
 
@@ -156,7 +157,8 @@ images that go round lie within a hair of each other, integrated with RK4 on fou
 | built | 0.50 s per camera distance, on fourteen cores |
 | size | 3 images × 512 × 512 × 16 bytes, 12.6 MB |
 | filled | between 1.5 and 100 r_s: 99.94 % of image 0, all of images 1 and 2 |
-| shadow's edge | to 10^-6 rad of asin(b_c √(1 - 1/r_o) / r_o), b_c = 3√3/2 |
+| shadow's edge | image 2 within 3 × 10^-7 rad outside asin(b_c √(1 - 1/r_o) / r_o), b_c = 3√3/2 |
+| inside the shadow | nothing from more than 100° behind the hole and 2.5 r_s out; gas closer in can show there, as it should |
 | a point 800 r_s behind, camera at 400 | both images within 4 % of Einstein's lens, their brightness within 5 % |
 | a point 30 to 45 r_s aside | within 5 % of the straight angle, brightness 1 ± 5 % |
 
