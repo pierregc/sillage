@@ -51,6 +51,7 @@ session. Read the note for an area before changing it.
 - [Gas in filaments](gas-filaments.md): and which frame a dust lane lives in
 - [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Telescope world
 - [Scoring a palette, and the Auto palette](palette-score.md): the five parts, the reference tones, what Auto picks
+- [A black hole close up](black-hole-close-up.md): spike #314, a cloud torn apart in the hole's own units, gas that sticks where the stream crosses itself, the light bent per particle from a table, what it costs and what it risks
 
 ## Capture and playback
 

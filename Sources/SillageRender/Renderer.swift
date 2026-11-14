@@ -877,6 +877,23 @@ public final class Renderer {
         return readBack()
     }
 
+    /// A frame whose light another pass draws (#314): `draw` encodes into the light target,
+    /// which it clears, and the post stages make the picture as they do for the particles.
+    /// `present` takes it instead of the output, read back otherwise.
+    func render(
+        present: MTLTexture? = nil, into given: MTLCommandBuffer? = nil,
+        light draw: (MTLTexture, MTLCommandBuffer) -> Void
+    ) -> [UInt8] {
+        guard let buffer = given ?? queue.makeCommandBuffer() else { return [] }
+        draw(accumulation, buffer)
+        encodePost(into: buffer, present: present)
+        guard given == nil else { return [] }
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
+        return present == nil ? readBack() : []
+    }
+
     /// As `render`, with the splat cut into command buffers of `slice` particles at most, each
     /// waited for before the next and each first handed to `pacer` with what the one before
     /// took, so the canvas's frames can go between them (#114). Additive, in the same order, so
