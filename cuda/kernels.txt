@@ -48,6 +48,12 @@ GPUTreeShaders gtSpacingLeaves cuda
 GPUTreeShaders gtSpacingFold cuda
 GPUTreeShaders gtSpacingLengths cuda
 
+HoleShaders holeClear metal-only: the black hole close up, a spike (#314)
+HoleShaders holeDeposit metal-only: the black hole close up, a spike (#314)
+HoleShaders holeStep metal-only: the black hole close up, a spike (#314)
+HoleShaders holeSplatVertex metal-only: the black hole close up, a spike (#314)
+HoleShaders holeSplatFragment metal-only: the black hole close up, a spike (#314)
+
 RecordingShaders expandSnapshots metal-only: take playback
 RecordingShaders expandSnapshots21 metal-only: take playback
 
