@@ -51,6 +51,7 @@ session. Read the note for an area before changing it.
 - [Gas in filaments](gas-filaments.md): and which frame a dust lane lives in
 - [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Telescope world
 - [Scoring a palette, and the Auto palette](palette-score.md): the five parts, the reference tones, what Auto picks
+- [A frame that passes for a photograph](a-frame-that-passes-for-a-photograph.md): the six cues taken in order on an 8 M take against deep ground photographs, `scripts/photo-ruler.py`, the `photograph` look, what settings cannot do and what the telescope scores reward (#315)
 
 ## Capture and playback
 
