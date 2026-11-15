@@ -197,6 +197,12 @@ it at the run's softening), `--softening` overrides the scene's, and
 `scripts/probe-report.py` lays runs side by side. The columns and how to read
 them: [docs/notes/calm-disk-probe.md](notes/calm-disk-probe.md).
 
+**What star formation reads.** `--sf-leaves <file>`, on `probe-disk` or on any run, writes after
+each frame what the next step's star formation pass reads on the leaves of the tree, summed: the
+gas left, the density and compression terms in stars a megayear, and how the gas spreads over
+the convergence of the flow. `scripts/sf-leaves.py` lays runs side by side, window by window
+([docs/notes/star-formation.md](notes/star-formation.md), #306).
+
 ### High resolution
 
 `hires` runs the scene again from its `scene.json` at `--particles` and writes `take.sillage`,
@@ -226,6 +232,17 @@ tracers walk at the scene's opening angle, so `--theta-tracers` is refused. `hir
 `massive` beside `particles`, and a record without it is a run in which every particle carried
 mass. A night draws 8 M from 2 M (#211): the texture of 8 M for about a third of a real 8 M's
 time. `--particles N` without `--massive` is a real N, every particle carrying mass.
+
+`--dt-schedule <Myr>:<scale>,...` is a spike option (#307), until step schedules come to hires
+for good (#312): from each moment on, the step is `scale` times the run's own, a power of two that
+divides a frame's steps, and a switch waits for the next frame boundary, settle included, so the
+captured frames keep their cadence in megayears. `0:4,162:1,610:2` steps four times coarser up to
+162 Myr, at the run's own step to 610, then twice as coarse. The leapfrog stays whole across a
+switch: a massive particle closes the old step with its half kick and opens the new one with its
+own; a light tracer, which opened the next step already, gets the difference. `hires.json` keeps
+the schedule, the steps run (`stepsRun`, against `settle + steps` of the run's own) and where it
+switched; a full pass and a massive pass refuse it. Measured in
+[variable time](notes/variable-time.md).
 
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
@@ -559,10 +576,11 @@ encounters and a night batch judges them. Run again at its own size, a scene com
 
 `--dt-scale 3.5` holds at high resolution: halving the step at 500 000 a galaxy moves the centres
 by less than 0.01 kpc and leaves 98 % of the stars in the same place, for twice the time.
-Doubling it does not hold for a hires: at 8 M drawn from 2 M, 7 keeps the passages, the merger
-and the tails, but forms 15 % fewer stars and parts ways on the compact knots past the
-encounter's own chaos, so hires stays at 3.5 and only exploration runs at 7
-([the note](notes/doubled-step.md), #225).
+Doubling it does not hold for a hires: at 8 M drawn from 2 M, 7 keeps the passages, the merger,
+the tails and the stars formed, but parts ways on the compact knots past the encounter's own
+chaos, so hires stays at 3.5 and only exploration runs at 7
+([the note](notes/doubled-step.md), #225). The 15 % fewer stars #225 saw at 7 were the curves
+losing the first step of every frame (#306).
 
 ### Exploration batches
 

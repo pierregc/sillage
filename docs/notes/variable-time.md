@@ -283,11 +283,8 @@ changes. Margins of 100 or 150 Myr instead of 250 would save 26 or 24 %.
 
 What a schedule needs:
 
-- **Star formation that does not depend on the step.** It falls by 15 % at twice the step in a
-  hires, a third at the explore count, and uniformly over the story, quiet disks included
-  ([a doubled step](doubled-step.md)): changing the step mid-run would change the rate of young
-  stars at the switch, which shows. Which of the rule's two readings moves, the leaf's density or
-  the convergence of its flow, was never measured; that comes first.
+- **Star formation that does not depend on the step.** It does not
+  ([below](#star-formation-and-the-step-306)): the drop #225 measured was in the curves' count.
 - **A schedule planned from the preview's curves** with margins (a hires diverges from its
   preview by a few megayears at a merger). The massive pass judges its own curves as it goes, as
   explore does, keeps the fine step while a pair is still engaged, and records in `hires.json`
@@ -297,6 +294,112 @@ What a schedule needs:
   curves stay uniform.
 - **The frames on either side of each switch compared** against a run at 3.5 throughout and its
   1 pc floor, as #225 did, with stills of the disks at the story's start and of the remnant.
+
+### Star formation and the step (#306)
+
+Measured, the rule's rate does not follow the step. The 15 % and the third #225 found at twice
+the step were the curves losing the first step of every frame. Counted in full off the takes, a
+hires at 7 forms 0.994 of 3.5's stars (its floor 1.000), every window within a percent but the
+merger's, which comes 0.8 Myr later; at the exploration's count 7 and 14 form 1.02 and 1.00 of
+3.5's (floor 1.01), the leaves' density and convergence unchanged within the floor
+([star formation](star-formation.md)). At 14 a hires moves the encounter itself, its pericentre
+half a kiloparsec wider and its merger 2.4 Myr earlier, and its quiet disks form 2.6 % fewer
+stars. For a schedule:
+
+- **A switch to 7 leaves the young stars alone.** To 14 it costs a hires' quiet disks 2.6 % of
+  their young stars, through a compression term the coarser step smooths: nothing a film shows,
+  but past the floor. The remnant's stay within it at both.
+- **Curves written since #306 count every step**, whatever a frame holds, so frames at the coarse
+  step and at the fine one count alike. Older curves show (k - 1)/k of the stars at k steps a
+  frame; corrected by k/(k - 1) they compare with a schedule's.
+- **A knot is stamped at the start of its step**, so a coarse step stamps it up to a step early:
+  0.4 Myr at 14 in a hires, against the 25 Myr its light takes to rise.
+
+### Measured: a coarser step on scene-0031 (#307)
+
+`--dt-schedule` (a spike option, [reference](../reference.md#high-resolution)) on the story #225
+ran: scene-0031 of 2026-10-30-b, 8 M drawn from 2 M massive, 923 frames from 157 to 887 Myr,
+8 steps a frame at 3.5. The run at 3.5 throughout and its 1 pc floor came out bit for bit as
+#225's (`assets/225-doubled-step`): nothing in the solver moved since. The story starts at
+162 Myr (`Story`) and the pair merges for good at 510 Myr; the schedules switched on the first
+frame boundary past 162, 760 (250 Myr after the merger) and 610 (100 Myr after). Each run alone
+on the GPU, its time the process's own:
+
+| run | schedule | steps | saved | time | saved |
+| --- | --- | ---: | ---: | ---: | ---: |
+| (a) 3.5 throughout | | 8 968 | | 39.8 min | |
+| (b) its 1 pc floor | | 8 968 | | 39.9 min | |
+| (c) 7 before the story | `0:2,162:1` | 8 148 | 9.1 % | 36.3 min | 8.7 % |
+| (d) 14 before the story | `0:4,162:1` | 7 738 | 13.7 % | 34.8 min | 12.5 % |
+| (e) 7 from the merger + 250 Myr | `760:2` | 8 328 | 7.1 % | 36.7 min | 7.7 % |
+| (f) 7 from the merger + 100 Myr | `610:2` | 7 568 | 15.6 % | 33.5 min | 15.7 % |
+| (g) (d) and (f) together | `0:4,162:1,610:2` | 6 338 | 29.3 % | 28.6 min | 28.2 % |
+
+A step costs the same at every scale (264 to 271 ms), so the time saved is the steps saved, and the
+savings add up: (g) saves what (d) and (f) save apart.
+
+**No seam at any switch.** On 4K stills (the Hubble look of #225, automatic camera), the change
+from one stored frame to the next across each switch is the run at 3.5's own change within 1 %:
+frames 4 to 8 around the switch at 162 Myr in (c), (d) and (g), 572 to 576 at 610 in (f), 760 to
+764 at 760 in (e); the floor's ratio wanders by 2 %. In (d) and (g) every frame of the remnant
+changes 6 % more than in (a), before the switch at 610 as after it: that is the remnant the
+settle at 14 left, not the switch. A frame does not jump: the leapfrog closes the
+old step and opens the new one, the light tracers' half kick included, and the switch only
+starts a divergence that grows as any other.
+
+**After the merger, the coarser step is invisible.** Until its switch a run is (a) to the bit, its
+curves included (the automatic camera frames the whole take, so its stills differ by 0.1 %).
+At the last frame, 887 Myr, (f) puts 0.20 % of the light elsewhere than (a) (Poisson noise alone
+0.73 %, the floor 4.45 %), (e) 0.06 %; the remnant keeps its one compact knot within a cell; tails,
+extent and centres agree to the printed digit. The remnant's orbits take 10 to 30 Myr, fifty
+steps or more even at 7.
+
+**Before the story, the disks arrive the same, the encounter a little less so.** At the story's
+start the disks' rms heights agree to the third decimal in every run (0.211 and 0.135 kpc), and
+their projected profiles at 2 to 15 kpc within 0.4 % at 7 and 2 % at 14. But a settle at a
+coarser step is a larger perturbation than the floor's 1 pc, and the encounter amplifies it like
+any other: at 887 Myr, 9.3 % of the light is elsewhere at 7 and 13.8 % at 14, against 4.45 % for
+the floor, as much at 7 as #225's whole run at 7 (9.31 %).
+
+| against (a) | floor | (c) 7 before | (d) 14 before |
+| --- | ---: | ---: | ---: |
+| first passage | 6.11 kpc, 311.8 Myr | 6.11 kpc, 311.0 Myr | 6.50 kpc, 311.8 Myr |
+| merged for good | 510.4 Myr | 511.2 Myr | 508.0 Myr |
+| pair's angular momentum while apart, median | 0.42 % | 2.24 % | 3.05 % |
+| tails at the end (0.3007) | 0.3006 | 0.3081 | 0.3061 |
+| 4K stills apart, 309 / 423 / 887 Myr (8 px blur) | 1.3 / 3.6 / 6.2 % | 2.3 / 7.8 / 8.0 % | 3.4 / 10.8 / 9.3 % |
+| compact knots in the remnant besides the nucleus ((a): 1) | 1 | 2 | 3 |
+
+At 14 the settle moves the orbit (half a kiloparsec wider at the first passage, as #306 found for
+a whole run at 14) and the remnant keeps knots (a) does not; at 7 the passage and the merger stay
+within the floor's frame or two, and one more knot shows.
+
+**Star formation, apart.** The curves of these runs were written before #306 and count
+(k - 1)/k of a frame's stars at k steps a frame, which reads as a 14 % drop at a switch to 7 and
+43 % to 14 that is the count, not a seam. Corrected frame by frame, every stretch at 7 forms what
+(a) forms within 2 % (the floor's own spread). After the settle at 14, the first frames form 6 %
+more and the burst through the merger 4 to 6 % more, with the orbit it moved.
+
+**What it means for #312.**
+
+- The aftermath is where a schedule is free: 7 from 100 Myr after the merger saves 15.6 % here,
+  with nothing a viewer could see. 250 Myr only saved 7 %, the clip ending 127 Myr later.
+- Before the story, 7 saves 9 % and leaves the disks as they were; the encounter it then shows is
+  as faithful as a run at 7 throughout, within twice the floor at its pericentre. 14 saves 4 %
+  more and moves the orbit.
+- "The last engagement" must be the merger, or the parting. `Story`'s own `engagedMyr` reads
+  657 Myr here: after the merger, the two disks' debris centres still count as a pair inside its
+  reach moving as two bodies until its pull test settles them, 147 Myr later. Planned from it, the
+  schedule of (f) would have switched at 757 Myr and saved half as much.
+- The switch logic is in `sillage-render`'s frame loop (`advance`), the step change in
+  `BarnesHutStep.changeStep`; `hires.json` keeps `stepSchedule`, `stepsRun` and `stepSwitches`
+  (the step, the time and the frame of each). A full pass and a resumed run do not follow a
+  schedule yet, and a checkpoint does not keep the step in force.
+- Recommended, for Pierre to choose on the frames: 7 before the story and 7 from 100 Myr after
+  the merger, about a quarter of the steps here (9.1 + 15.6 %), with the encounter as a run at 7
+  shows it; (g), 14 before, saves 29 % and moves the orbit. The runs, the comparisons, 4K stills
+  either side of each switch and (a) beside (g) are on the branch `assets/307-dt-schedule`
+  (`docs/spikes/dt-schedule/`).
 
 ### Light tracers on steps of their own
 

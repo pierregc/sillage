@@ -1233,9 +1233,9 @@ func storyCommand(_ arguments: [String]) -> Int32 {
             } ?? "no collision"
         print(
             String(
-                format: "%@  %d galaxies  curves %.0f-%.0f Myr  %@  story %.0f-%.0f Myr  %@",
+                format: "%@  %d galaxies  curves %.0f-%.0f Myr  %@  story %.0f-%.0f Myr, engaged to %.0f  %@",
                 folder.url.lastPathComponent, file.galaxies.count, first.timeMyr, last.timeMyr,
-                collision, span.startMyr, span.endMyr,
+                collision, span.startMyr, span.endMyr, tracker.engagedMyr ?? first.timeMyr,
                 span.complete
                     ? "over" : "going on: " + tracker.activity.map(\.description).joined(separator: "; ")))
     }
@@ -1252,7 +1252,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
         + " [--clumpiness X] [--toomre-q X] [--arm-strength X] [--arm-count N]"
         + " [--arm-irregularity X] [--disk-mass-fraction X] [--disk-thickness KPC] [--dissipation T]"
         + " [--mass-contrast X] [--streaming X] [--young-clumpiness X] [--dust-fraction X]"
-        + " [--dust-mass X] [--effective-q X] [--calm]"
+        + " [--dust-mass X] [--effective-q X] [--calm] [--sf-leaves FILE]"
     guard arguments.count >= 2, !arguments[0].hasPrefix("--"), let galaxy = Int(arguments[1]) else {
         fail(usage)
     }
@@ -1269,7 +1269,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
             "lag-myr", "stills", "dt-scale", "clumpiness", "toomre-q", "arm-strength", "arm-count",
             "arm-irregularity", "disk-mass-fraction", "disk-thickness", "dissipation", "mass-contrast",
             "streaming", "young-clumpiness", "dust-fraction", "dust-mass", "calm", "softening",
-            "effective-q",
+            "effective-q", "sf-leaves",
         ]
         guard known.contains(String(word.dropFirst(2))) else {
             fail("probe-disk: unknown option \(word)\n" + usage)
@@ -1303,6 +1303,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
     options.dustFraction = float("dust-fraction")
     options.dustMassFraction = float("dust-mass")
     options.calm = rest.contains("--calm")
+    options.formationLeaves = value("sf-leaves")
     do {
         let report = try DiskProbe.run(options)
         let summary = report.summary
@@ -1562,6 +1563,9 @@ func number(_ name: String, _ fallback: Double) -> Double {
 
 // A full pass (#239) runs through the flow the Mac and the CUDA engine share (#278).
 if arguments.contains("--draw") {
+    if arguments.contains("--dt-schedule") {
+        fail("--dt-schedule: a spike option, not for a full pass (#312)")
+    }
     do {
         try FullPassRun(
             arguments: arguments, engine: MetalFullPassMaker(), started: started, reporter: reporter,
@@ -1960,6 +1964,41 @@ if let sceneOutPath = argument("scene-out") ?? beside(".scene.json") {
 }
 
 let stepsPerFrame = max(steps / max(frames, 1), 1)
+// `--dt-schedule 0:2,162:1` (#307): a coarser step for stretches of the run, switched on frame
+// boundaries. A spike option; docs/notes/variable-time.md.
+let stepSchedule = try argument("dt-schedule").map(StepSchedule.init(parsing:))
+try stepSchedule?.check(stepsPerFrame: stepsPerFrame)
+let scheduledSolver = gpuSolver as? MetalBarnesHutSolver
+if stepSchedule != nil && scheduledSolver == nil { fail("--dt-schedule needs the Barnes-Hut solver") }
+let ownStep = scene.timeStep
+var ownStepsDone = 0
+var stepsRun = 0
+var stepScale = 1
+var stepSwitches: [StepSchedule.Switch] = []
+/// Steps through `count` of the run's own steps, at the scale the schedule gives the stretch
+/// starting here. Returns how many steps that took.
+@discardableResult
+func advance(_ count: Int, frame: Int?) -> Int {
+    var scale = 1
+    if let stepSchedule, let scheduledSolver {
+        let myr = Double(ownStepsDone) * Double(ownStep) * Physics.megayearsPerTimeUnit
+        scale = stepSchedule.scale(atMyr: myr)
+        if count % scale != 0 { scale = 1 }
+        if scale != stepScale {
+            scheduledSolver.changeStep(to: ownStep * Float(scale))
+            stepScale = scale
+            stepSwitches.append(.init(step: ownStepsDone, myr: myr, scale: scale, frame: frame))
+            print(
+                String(
+                    format: "schedule   step x%d from t=%.2f Myr%@", scale, myr,
+                    frame.map { " (frame \($0))" } ?? ", settling"))
+        }
+    }
+    solver.step(count: count / scale)
+    ownStepsDone += count
+    stepsRun += count / scale
+    return count / scale
+}
 let zoom = look.camera.zoom
 let clock = Date()
 
@@ -2037,6 +2076,15 @@ storySettings.horizon = storyCap
 var story =
     storyCap > 0 && curves != nil
     ? Story.Tracker(story: Story(scene: scene, settings: storySettings)) : nil
+// `--sf-leaves <path>` (#306): what the star formation pass reads on the leaves, summed, after
+// each frame's steps.
+let formationLeaves: FileHandle? = try argument("sf-leaves").map { path in
+    let url = try prepared(path)
+    FileManager.default.createFile(atPath: url.path, contents: nil)
+    let handle = try FileHandle(forWritingTo: url)
+    try handle.write(contentsOf: Data((StarFormationLeaves.csvHeader + "\n").utf8))
+    return handle
+}
 var previousTime = solver.time
 var curvesSeconds: Double = 0
 var takeSeconds: Double = 0
@@ -2065,12 +2113,15 @@ let settle = Int(number("settle", 0))
 let totalSteps = settle + stepsPerFrame * frames
 if settle > 0 {
     let settleStart = Date()
-    // In chunks, so a settle of minutes still reports.
-    let chunk = max(settle / 50, 1)
+    // In chunks, so a settle of minutes still reports; a schedule's in frames, the last one
+    // ending where the first frame starts.
+    let chunk = stepSchedule == nil ? max(settle / 50, 1) : stepsPerFrame
     var settled = 0
     while settled < settle {
-        let count = min(chunk, settle - settled)
-        solver.step(count: count)
+        let count =
+            stepSchedule == nil || settled > 0
+            ? min(chunk, settle - settled) : (settle - 1) % stepsPerFrame + 1
+        advance(count, frame: nil)
         settled += count
         let elapsed = Date().timeIntervalSince(settleStart)
         reporter?.update(
@@ -2165,8 +2216,14 @@ var frame = firstFrame
 while frame < frames || storyGoesOn() {
     defer { frame += 1 }
     let simulationStart = Date()
-    solver.step(count: stepsPerFrame)
+    let frameSteps = advance(stepsPerFrame, frame: frame)
     let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
+    if let formationLeaves, let barnesHut = gpuSolver as? MetalBarnesHutSolver {
+        let line = barnesHut.formationLeaves().csvLine(
+            frame: frame, timeMyr: Double(solver.time) * Physics.megayearsPerTimeUnit,
+            stepMyr: Double(scene.timeStep) * Physics.megayearsPerTimeUnit)
+        try formationLeaves.write(contentsOf: Data((line + "\n").utf8))
+    }
     if let walkDirectory, let label = walkDumps[frame], let tracerSolver {
         guard let dump = tracerSolver.walkDump() else { fail("--dump-walk: frame \(frame) not captured") }
         let timeMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
@@ -2414,17 +2471,10 @@ while frame < frames || storyGoesOn() {
         let torn = scene.galaxies.indices.map {
             String(format: ",%.3f", $0 < states.count ? states[$0].torn : 0)
         }.joined()
-        var formed = 0
-        if let tracerSolver {
-            formed = tracerSolver.formed(after: previousTime, until: solver.time)
-        } else if let gpuSolver {
-            let times = gpuSolver.formation.contents().bindMemory(
-                to: Float.self, capacity: seeded.count)
-            for index in 0..<drawnCount
-            where times[index] > previousTime && times[index] <= solver.time {
-                formed += 1
-            }
-        }
+        // From the frame's start, the time its first step's knots carry, to just before now:
+        // counted from just after the start, that step never showed (#306).
+        let formed =
+            (gpuSolver as? MetalBarnesHutSolver)?.formed(since: previousTime, before: solver.time) ?? 0
         let myr = Double(solver.time) * Physics.megayearsPerTimeUnit
         let track = centres.map { String(format: ",%.4f,%.4f,%.4f", $0.x, $0.y, $0.z) }.joined()
         let line =
@@ -2467,7 +2517,7 @@ while frame < frames || storyGoesOn() {
                 "frame %04d  t=%.1f Myr  sim %7.1f ms (%.3f ms/step)  smoothing %6.1f ms"
                 + "  render %5.1f ms (gpu %5.2f)",
             frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
-            simulationMs / Double(stepsPerFrame), smoothingMs, renderMs,
+            simulationMs / Double(frameSteps), smoothingMs, renderMs,
             (videoWriter?.lastGPUTime ?? renderer.lastGPUTime) * 1000))
 }
 
@@ -2548,6 +2598,11 @@ if let (folder, done) = hiresRun {
     }
     var record = done
     record.seconds = Date().timeIntervalSince(started)
+    if stepSchedule != nil {
+        record.stepsRun = stepsRun
+        record.stepSwitches = stepSwitches
+        print("schedule   \(stepsRun) steps run for \(ownStepsDone) of the run's own")
+    }
     record.peakMemoryBytes = peakFootprint()
     record.takeBytes =
         (try? FileManager.default.attributesOfItem(atPath: folder.take.path)[.size] as? Int)
