@@ -20,6 +20,7 @@ RecordingTests.swift       # Metal
 RunVideosTests.swift       # CoreGraphics, Metal
 SolverCheckTests.swift     # Metal
 StageJobsTests.swift       # ExportedFile, which reads videos with AVFoundation
+StepScheduleRunTests.swift # Metal
 StyleEditTests.swift       # CoreFoundation's CFGetTypeID
 TidalRunTests.swift        # Metal
 TracerCheckTests.swift     # Metal
