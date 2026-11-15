@@ -199,7 +199,8 @@ def compare_drift(a, b):
 
 def timing(run):
     record = run["record"]
-    steps = record["settle"] + record["steps"]
+    # A step schedule (#307) runs fewer steps than the run's own count.
+    steps = record.get("stepsRun") or record["settle"] + record["steps"]
     massive = record.get("massive") or record["particles"]
     out = {"seconds": record.get("seconds"), "steps": steps, "step_myr": record["timeStepMyr"],
            "peak_gb": (record.get("peakMemoryBytes") or 0) / 1e9}

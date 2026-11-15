@@ -218,6 +218,11 @@ extension SceneFolder {
         public var pass: Pass?
         /// The full pass, once it has drawn the videos.
         public var full: FullPass?
+        /// A step schedule (#307, a spike option): what was asked, the steps it ran in all
+        /// against `settle + steps` of the run's own, and where it switched. Absent without one.
+        public var stepSchedule: StepSchedule?
+        public var stepsRun: Int?
+        public var stepSwitches: [StepSchedule.Switch]?
 
         public enum Pass: String, Codable, Sendable { case massive }
 
@@ -311,6 +316,7 @@ extension SceneFolder {
         case notAVideo(String)
         case badCheckpoint
         case speedWithoutFullPass
+        case scheduleWithPass
 
         public var description: String {
             switch self {
@@ -336,6 +342,7 @@ extension SceneFolder {
             case .speedWithoutFullPass:
                 "--speed: only the full pass draws along a time track (--pass full); export the"
                     + " take with --speed otherwise"
+            case .scheduleWithPass: "--dt-schedule: a spike option, for a hires in one pass (#307)"
             }
         }
     }
@@ -546,6 +553,10 @@ extension SceneFolder {
             clipStartMyr: Double(span.settle) * span.timeStep * myr,
             clipEndMyr: Double(span.settle + span.steps) * span.timeStep * myr)
         if pass != nil, massive == nil { throw HiresError.passWithoutTracers }
+        if let index = rest.firstIndex(of: "--dt-schedule") {
+            if pass != nil { throw HiresError.scheduleWithPass }
+            record.stepSchedule = try StepSchedule(parsing: index + 1 < rest.count ? rest[index + 1] : "")
+        }
 
         var arguments = [
             "--video", Self.partial(hiresVideo).path, "--curves", Self.partial(hiresCurves).path,

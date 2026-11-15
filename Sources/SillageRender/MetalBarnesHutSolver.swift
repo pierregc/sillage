@@ -469,6 +469,9 @@ public final class MetalBarnesHutSolver: Solver {
         }
     }
 
+    /// The step from the next one on, in simulation units (#307).
+    public func changeStep(to step: Float) { BarnesHutStep.changeStep(host, on: self, to: step) }
+
     /// Turns gas into stars where the tree says it has been compressed.
     ///
     /// Dispatched over nodes rather than particles: the density estimate lives on the leaves,
