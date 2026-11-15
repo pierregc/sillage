@@ -1,0 +1,11 @@
+Alone on the GPU, scene-0031 at 100 000, 150 frames of 4 steps at 3.5, origin/main's binary (cf580aa)
+and the branch's, twice each: the take's payload after its header, the curves without the formed
+column, and the stars the curves counted.
+
+main  payload 5207eabd435c619f curves-but-formed d83ecd4aeb156ba7 formed 154
+final payload 5207eabd435c619f curves-but-formed d83ecd4aeb156ba7 formed 192
+main  payload 5207eabd435c619f curves-but-formed d83ecd4aeb156ba7 formed 154
+final payload 5207eabd435c619f curves-but-formed d83ecd4aeb156ba7 formed 192
+
+--selftest, the same builds, alone on the GPU: four different out/selftest.png, lit samples 2753055,
+2744776, 2753058, 2753073; origin/main's build alone gives two clusters as well.
