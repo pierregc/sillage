@@ -120,8 +120,9 @@ public struct StarFormationLeaves: Sendable {
         guard density >= s.threshold else { return }
         dense += 1
         denseGas += unformed
-        let base = Double(
-            s.efficiency * (32 * s.gravitationalConstant * density / (3 * Float.pi)).squareRoot())
+        let freeFallRate: Float = (32 * s.gravitationalConstant * density / (3 * Float.pi)).squareRoot()
+        let base = Double(s.efficiency * freeFallRate)
+        let gasCount = Double(unformed)
         let freeFall = (s.gravitationalConstant * density).squareRoot()
         var compression: Float = 0
         if count >= 4 && freeFall > 1e-12 {
@@ -144,19 +145,20 @@ public struct StarFormationLeaves: Sendable {
                         index += 1
                     }
                     measuredGas += unformed
-                    gasFreeFall += Double(unformed) * Double(freeFall)
-                    gasConvergenceSquared += Double(unformed) * Double(convergence * convergence)
+                    gasFreeFall += gasCount * Double(freeFall)
+                    gasConvergenceSquared += gasCount * Double(convergence * convergence)
                     binLeaves[index] += 1
                     binGas[index] += unformed
-                    binCompressionRate[index] +=
-                        Double(unformed) * base * Double(s.compressionBoost * compression)
+                    binCompressionRate[index] += gasCount * base * Double(s.compressionBoost * compression)
                 }
             }
         }
-        let rate = base * Double(1 + s.compressionBoost * compression)
-        densityRate += Double(unformed) * base
-        compressionRate += Double(unformed) * base * Double(s.compressionBoost * compression)
-        drawnRate += Double(unformed) * (1 - exp(-rate * Double(s.timeStep))) / Double(s.timeStep)
+        let boost = base * Double(s.compressionBoost * compression)
+        let step = Double(s.timeStep)
+        let chance: Double = 1 - exp(-(base + boost) * step)
+        densityRate += gasCount * base
+        compressionRate += gasCount * boost
+        drawnRate += gasCount * chance / step
     }
 
     /// The columns of `csvLine`.
@@ -167,22 +169,23 @@ public struct StarFormationLeaves: Sendable {
             "density_rate", "compression_rate", "drawn_rate", "measured_gas", "gas_free_fall",
             "gas_convergence_sq",
         ]
-        return (fixed + ["bl", "bg", "bc"].flatMap { name in bins.map { "\(name)\($0)" } })
-            .joined(separator: ",")
+        let binned: [String] = ["bl", "bg", "bc"].flatMap { name in bins.map { "\(name)\($0)" } }
+        return (fixed + binned).joined(separator: ",")
     }
 
     /// One line of `csvHeader`; the rates are stars a megayear.
     public func csvLine(frame: Int, timeMyr: Double, stepMyr: Double) -> String {
         let perMyr = 1 / Physics.megayearsPerTimeUnit
         func g(_ value: Double) -> String { String(format: "%.6g", value) }
-        let fields =
-            [
-                String(frame), String(format: "%.3f", timeMyr), String(format: "%.5f", stepMyr),
-                String(leaves), String(dense), String(measured), String(gas), String(denseGas),
-                g(densityRate * perMyr), g(compressionRate * perMyr), g(drawnRate * perMyr),
-                String(measuredGas), g(gasFreeFall), g(gasConvergenceSquared),
-            ] + binLeaves.map(String.init) + binGas.map(String.init)
-            + binCompressionRate.map { g($0 * perMyr) }
+        var fields: [String] = [
+            String(frame), String(format: "%.3f", timeMyr), String(format: "%.5f", stepMyr),
+        ]
+        fields += [leaves, dense, measured, gas, denseGas].map { String($0) }
+        fields += [densityRate * perMyr, compressionRate * perMyr, drawnRate * perMyr].map(g)
+        fields += [String(measuredGas), g(gasFreeFall), g(gasConvergenceSquared)]
+        fields += binLeaves.map { String($0) }
+        fields += binGas.map { String($0) }
+        fields += binCompressionRate.map { g($0 * perMyr) }
         return fields.joined(separator: ",")
     }
 }
