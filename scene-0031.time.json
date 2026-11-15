@@ -1,0 +1,10 @@
+{
+  "keys" : [
+    { "myr" : 149.2, "speed" : 1 },
+    { "myr" : 285, "speed" : 0.5 },
+    { "myr" : 340, "speed" : 1 },
+    { "myr" : 550, "speed" : 4 }
+  ],
+  "ramp" : 1.5,
+  "version" : 1
+}
