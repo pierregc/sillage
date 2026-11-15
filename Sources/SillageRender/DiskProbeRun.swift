@@ -57,6 +57,8 @@ extension DiskProbe {
         public var lagMyr: Double = 50
         /// Instants, in Myr, a still is written at, from the same frames as the clip.
         public var stillsMyr: [Double] = []
+        /// Where to write what the star formation pass reads on the leaves after each frame (#306).
+        public var formationLeaves: String?
 
         public init(scene: String, galaxy: Int) {
             self.scene = scene
@@ -332,6 +334,12 @@ extension DiskProbe {
         let csv = try FileHandle(forWritingTo: csvURL)
         try csv.write(contentsOf: Data((Measurement.csvHeader + "\n").utf8))
 
+        let leaves = try options.formationLeaves.map { path -> FileHandle in
+            FileManager.default.createFile(atPath: path, contents: nil)
+            let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
+            try handle.write(contentsOf: Data((StarFormationLeaves.csvHeader + "\n").utf8))
+            return handle
+        }
         var frame = Frame.natal(galaxy)
         var tracker = Tracker(lagMyr: options.lagMyr, patternMode: patternMode, equilibrium: equilibrium)
         var knots = KnotTracker(lagMyr: options.lagMyr, softening: alone.softening)
@@ -348,6 +356,10 @@ extension DiskProbe {
                 stepSeconds += stepMs / 1000
             }
             let timeMyr = Double(solver.time) * myr
+            if let leaves {
+                let line = solver.formationLeaves().csvLine(frame: index, timeMyr: timeMyr, stepMyr: stepMyr)
+                try leaves.write(contentsOf: Data((line + "\n").utf8))
+            }
             let measureStart = Date()
             let positions = UnsafeBufferPointer(
                 start: solver.positions.contents().bindMemory(to: SIMD3<Float>.self, capacity: drawn),
@@ -432,6 +444,7 @@ extension DiskProbe {
         }
         try writer?.finish()
         try csv.close()
+        try leaves?.close()
 
         let steps = frames * stepsPerFrame
         let report = Report(
