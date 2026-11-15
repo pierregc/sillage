@@ -197,6 +197,12 @@ it at the run's softening), `--softening` overrides the scene's, and
 `scripts/probe-report.py` lays runs side by side. The columns and how to read
 them: [docs/notes/calm-disk-probe.md](notes/calm-disk-probe.md).
 
+**What star formation reads.** `--sf-leaves <file>`, on `probe-disk` or on any run, writes after
+each frame what the next step's star formation pass reads on the leaves of the tree, summed: the
+gas left, the density and compression terms in stars a megayear, and how the gas spreads over
+the convergence of the flow. `scripts/sf-leaves.py` lays runs side by side, window by window
+([docs/notes/star-formation.md](notes/star-formation.md), #306).
+
 ### High resolution
 
 `hires` runs the scene again from its `scene.json` at `--particles` and writes `take.sillage`,
@@ -548,10 +554,11 @@ encounters and a night batch judges them. Run again at its own size, a scene com
 
 `--dt-scale 3.5` holds at high resolution: halving the step at 500 000 a galaxy moves the centres
 by less than 0.01 kpc and leaves 98 % of the stars in the same place, for twice the time.
-Doubling it does not hold for a hires: at 8 M drawn from 2 M, 7 keeps the passages, the merger
-and the tails, but forms 15 % fewer stars and parts ways on the compact knots past the
-encounter's own chaos, so hires stays at 3.5 and only exploration runs at 7
-([the note](notes/doubled-step.md), #225).
+Doubling it does not hold for a hires: at 8 M drawn from 2 M, 7 keeps the passages, the merger,
+the tails and the stars formed, but parts ways on the compact knots past the encounter's own
+chaos, so hires stays at 3.5 and only exploration runs at 7
+([the note](notes/doubled-step.md), #225). The 15 % fewer stars #225 saw at 7 were the curves
+losing the first step of every frame (#306).
 
 ### Exploration batches
 

@@ -1126,7 +1126,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
         + " [--clumpiness X] [--toomre-q X] [--arm-strength X] [--arm-count N]"
         + " [--arm-irregularity X] [--disk-mass-fraction X] [--disk-thickness KPC] [--dissipation T]"
         + " [--mass-contrast X] [--streaming X] [--young-clumpiness X] [--dust-fraction X]"
-        + " [--dust-mass X] [--effective-q X] [--calm]"
+        + " [--dust-mass X] [--effective-q X] [--calm] [--sf-leaves FILE]"
     guard arguments.count >= 2, !arguments[0].hasPrefix("--"), let galaxy = Int(arguments[1]) else {
         fail(usage)
     }
@@ -1143,7 +1143,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
             "lag-myr", "stills", "dt-scale", "clumpiness", "toomre-q", "arm-strength", "arm-count",
             "arm-irregularity", "disk-mass-fraction", "disk-thickness", "dissipation", "mass-contrast",
             "streaming", "young-clumpiness", "dust-fraction", "dust-mass", "calm", "softening",
-            "effective-q",
+            "effective-q", "sf-leaves",
         ]
         guard known.contains(String(word.dropFirst(2))) else {
             fail("probe-disk: unknown option \(word)\n" + usage)
@@ -1177,6 +1177,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
     options.dustFraction = float("dust-fraction")
     options.dustMassFraction = float("dust-mass")
     options.calm = rest.contains("--calm")
+    options.formationLeaves = value("sf-leaves")
     do {
         let report = try DiskProbe.run(options)
         let summary = report.summary
@@ -1946,6 +1947,15 @@ storySettings.horizon = storyCap
 var story =
     storyCap > 0 && curves != nil
     ? Story.Tracker(story: Story(scene: scene, settings: storySettings)) : nil
+// `--sf-leaves <path>` (#306): what the star formation pass reads on the leaves, summed, after
+// each frame's steps.
+let formationLeaves: FileHandle? = try argument("sf-leaves").map { path in
+    let url = try prepared(path)
+    FileManager.default.createFile(atPath: url.path, contents: nil)
+    let handle = try FileHandle(forWritingTo: url)
+    try handle.write(contentsOf: Data((StarFormationLeaves.csvHeader + "\n").utf8))
+    return handle
+}
 var previousTime = solver.time
 var curvesSeconds: Double = 0
 var takeSeconds: Double = 0
@@ -2079,6 +2089,12 @@ while frame < frames || storyGoesOn() {
     let simulationStart = Date()
     let frameSteps = advance(stepsPerFrame, frame: frame)
     let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
+    if let formationLeaves, let barnesHut = gpuSolver as? MetalBarnesHutSolver {
+        let line = barnesHut.formationLeaves().csvLine(
+            frame: frame, timeMyr: Double(solver.time) * Physics.megayearsPerTimeUnit,
+            stepMyr: Double(scene.timeStep) * Physics.megayearsPerTimeUnit)
+        try formationLeaves.write(contentsOf: Data((line + "\n").utf8))
+    }
     if let walkDirectory, let label = walkDumps[frame], let tracerSolver {
         guard let dump = tracerSolver.walkDump() else { fail("--dump-walk: frame \(frame) not captured") }
         let timeMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
@@ -2326,17 +2342,10 @@ while frame < frames || storyGoesOn() {
         let torn = scene.galaxies.indices.map {
             String(format: ",%.3f", $0 < states.count ? states[$0].torn : 0)
         }.joined()
-        var formed = 0
-        if let tracerSolver {
-            formed = tracerSolver.formed(after: previousTime, until: solver.time)
-        } else if let gpuSolver {
-            let times = gpuSolver.formation.contents().bindMemory(
-                to: Float.self, capacity: seeded.count)
-            for index in 0..<drawnCount
-            where times[index] > previousTime && times[index] <= solver.time {
-                formed += 1
-            }
-        }
+        // From the frame's start, the time its first step's knots carry, to just before now:
+        // counted from just after the start, that step never showed (#306).
+        let formed =
+            (gpuSolver as? MetalBarnesHutSolver)?.formed(since: previousTime, before: solver.time) ?? 0
         let myr = Double(solver.time) * Physics.megayearsPerTimeUnit
         let track = centres.map { String(format: ",%.4f,%.4f,%.4f", $0.x, $0.y, $0.z) }.joined()
         let line =
