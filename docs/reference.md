@@ -401,6 +401,23 @@ moments between captured frames through the same cubic the take's skipped frames
 camera between the two captured frames around them. `--look` takes a file, a look kept in
 the scene's `looks/` by name or a catalogue look, `--take` another take and `--out` another path.
 
+`--speed <x>` plays the take at a constant speed, from 0.25 to 16, in captured frames per video
+frame at the captured rate: 2 shows every other captured frame and lasts half as long, 0.5 draws
+a frame between each two. `--speed <file>` follows a time track kept in a `.time.json` (format in
+[time that runs faster](notes/variable-time.md#the-track-file)): speeds at moments of the take,
+held until the next and ramped by no more than a doubling or a halving over three seconds of
+video, a speed for every captured frame, or a flight's keys of video seconds and megayears.
+`--start`, `--duration`, `--fps`, `--stills`, `--still-frames` and the previews count in the
+video's time, the cameras move in it and look at the take's moment, and the track used is
+written beside the video as `exports/<name>.time.json`; the export's second line gives the
+video's length and the span of the take it shows. Without `--speed`, and with `--speed 1`, every
+frame is the one it always was.
+
+```bash
+./scripts/dev.sh export library/2026-10-23/scene-0001 --speed 2
+./scripts/dev.sh export library/2026-10-23/scene-0001 --preset 4k --speed pace.time.json
+```
+
 `--codec hevc|h264|prores` picks what the frames are compressed with, all on the media engine:
 
 | codec | file | for | rate |
