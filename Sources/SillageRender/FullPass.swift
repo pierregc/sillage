@@ -480,11 +480,13 @@ public final class FullPassRun {
                 url: out.appendingPathComponent("\(preset.name).\(preset.defaultCodec.fileExtension)"),
                 divisor: Int(number("draw-divisor", 1)))
         }
-        let metadata = VideoMetadata(sceneID: SceneFolder(framingURL.deletingLastPathComponent()).sceneID)
+        let framingFolder = SceneFolder(framingURL.deletingLastPathComponent())
+        let metadata = VideoMetadata(sceneID: framingFolder.sceneID)
         let look = drawnLook
         let videos = try RunVideos(
             formats: formats, look: look, framing: framing, capturedRate: framesPerSecond,
             metadata: metadata, segments: checkpoint?.segments, resume: resumed?.videos, track: track,
+            overlay: try framingFolder.overlayRequest(look: look),
             drawing: { format, exposure, drawn in
                 try engine.drawing(
                     for: format, look: look, exposure: exposure, drawn: drawn,
@@ -505,6 +507,7 @@ public final class FullPassRun {
                     argument("speed") ?? "", track.seconds,
                     Double(max(frames - 1, 0)) / Double(max(framesPerSecond, 1)), wanted.count))
         }
+        for line in videos.overlayNotes { print("overlay    \(line)") }
         fflush(nil)
 
         // `--draw-stills 12,300 --draw-stills-dir <dir>`: those frames of every preset as PNGs,

@@ -756,6 +756,11 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     }
     let export = try TakeExport(
         take: loaded, look: look, capturedRate: capturedRate, framing: framing, track: speed?.track)
+    // `--overlay all|title,clock,scale,captions|<file>.json` (#317), over the scene's overlay.json
+    // and the look's; `--no-overlay` draws none.
+    if !options.contains("--no-overlay") {
+        export.overlay = try folder.overlayRequest(look: look, asked: option("overlay"))
+    }
     let start = try value("start") ?? 0
     if let name = option("format") {
         guard let format = AnimatedImage.Format(rawValue: name.lowercased()) else {
@@ -900,6 +905,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     if let speed { try writeTrack(speed.file, beside: out) }
     let bytes =
         (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
+    for line in report.overlay { print("overlay    \(line)") }
     print(
         String(
             format: "export     %d frames in %.1f s, %.1f frames a second, %.2fx real time, %.1f MB",

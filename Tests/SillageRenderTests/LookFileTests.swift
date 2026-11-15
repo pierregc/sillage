@@ -92,6 +92,7 @@ struct LookFileTests {
         var file = LookFile.raw
         file.paletteRecipe = Palette(
             world: .free, family: "ember", harmony: .triadic, seed: 1, colours: file.palette.map(\.colour))
+        file.overlay = Overlay(clock: Overlay.Clock())
         #expect(try keys(JSONEncoder().encode(file.look)) == fields(file.look))
         #expect(try keys(file.encoded()) == fields(file))
     }

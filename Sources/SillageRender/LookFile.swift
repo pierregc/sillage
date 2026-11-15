@@ -1,4 +1,5 @@
 import Foundation
+
 #if canImport(simd)
     import simd
 #else
@@ -37,6 +38,8 @@ public struct LookFile: Codable, Sendable, Equatable {
     /// The colour world the look belongs to: the telescope renderings, or the free catalogue.
     public var world: Palette.World
     public var camera: CameraPlan
+    /// Written over the picture of every video drawn with this look (#317). Absent, nothing.
+    public var overlay: Overlay?
 
     public struct CameraPlan: Codable, Sendable, Equatable {
         public enum Mode: String, Codable, Sendable {
@@ -115,7 +118,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         name: String = "standard", look: RenderLook = LookFile.standardLook,
         starCount: Int = 2500, supersample: Int = 2, bloomLevels: Int = 6, plain: Bool = false,
         armStrength: Float = 1, palette: [GalaxyColours] = [], paletteRecipe: Palette? = nil,
-        world: Palette.World = .free, camera: CameraPlan = CameraPlan()
+        world: Palette.World = .free, camera: CameraPlan = CameraPlan(), overlay: Overlay? = nil
     ) {
         version = Self.currentVersion
         self.name = name
@@ -129,6 +132,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         self.paletteRecipe = paletteRecipe
         self.world = world
         self.camera = camera
+        self.overlay = overlay
     }
 
     public init(from decoder: any Decoder) throws {
@@ -146,7 +150,8 @@ public struct LookFile: Codable, Sendable, Equatable {
             palette: try c.value(.palette, or: d.palette),
             paletteRecipe: try c.decodeIfPresent(Palette.self, forKey: .paletteRecipe),
             world: try c.value(.world, or: d.world),
-            camera: try c.value(.camera, or: d.camera))
+            camera: try c.value(.camera, or: d.camera),
+            overlay: try c.decodeIfPresent(Overlay.self, forKey: .overlay))
         version = try c.decode(Int.self, forKey: .version)
     }
 

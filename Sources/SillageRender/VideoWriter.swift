@@ -87,11 +87,11 @@ public final class VideoWriter: @unchecked Sendable {
     }
 
     /// Draws the next frame on the GPU into `target`, a BGRA texture over the encoder's pixel
-    /// buffer, through `buffer`. `read`, when given, sees the finished frame before the encoder
-    /// takes it.
+    /// buffer, through `buffer`. `over`, when given, draws on the finished frame on the CPU, and
+    /// `read` sees it after that, before the encoder takes it.
     public func append(
         on device: MTLDevice, drawing draw: (_ target: MTLTexture, _ buffer: MTLCommandBuffer) -> Void,
-        read: ((CVPixelBuffer) throws -> Void)? = nil
+        over: ((CVPixelBuffer) throws -> Void)? = nil, read: ((CVPixelBuffer) throws -> Void)? = nil
     ) throws {
         let (queue, cache) = try metal(device)
         defer { CVMetalTextureCacheFlush(cache, 0) }
@@ -110,6 +110,7 @@ public final class VideoWriter: @unchecked Sendable {
             buffer.waitUntilCompleted()
             lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
             if let error = buffer.error { throw error }
+            try over?(pixels)
             try read?(pixels)
         })
     }

@@ -112,6 +112,8 @@ public struct SceneFolder: Sendable, Equatable {
     public var take: URL { file("take.sillage") }
     public var hiresVideo: URL { file("hires.mov") }
     public var hiresCurves: URL { file("curves-hires.csv") }
+    /// What is written over this scene's videos, in place of its look's (#317).
+    public var overlay: URL { file("overlay.json") }
     public var hires: URL { file("hires.json") }
     /// Every particle of a full pass at a few key frames (#239), and which frames they are.
     public var keyFrames: URL { file("keyframes.sillage") }
@@ -786,6 +788,23 @@ extension SceneFolder {
             throw ExportError.noSuchLook(name)
         }
         return found
+    }
+
+    /// What a video of this scene drawn with `look` is overlaid with (#317): `asked`, a file or
+    /// a list of elements (`export --overlay`), else the scene's `overlay.json`, else the
+    /// look's. Nil when that asks for nothing.
+    public func overlayRequest(look: LookFile, asked: String? = nil) throws -> OverlayRequest? {
+        var overlay = look.overlay
+        if exists(self.overlay) { overlay = try Overlay.decoded(from: Data(contentsOf: self.overlay)) }
+        if let asked {
+            overlay =
+                asked.hasSuffix(".json")
+                ? try Overlay.decoded(from: Data(contentsOf: URL(fileURLWithPath: asked)))
+                : try Overlay.elements(asked)
+        }
+        guard let overlay, !overlay.isEmpty else { return nil }
+        let curves = (try? String(contentsOf: hiresCurves, encoding: .utf8)).map(KeyFrames.samples) ?? []
+        return OverlayRequest(overlay: overlay, texts: try overlay.loadTexts(folder: url), curves: curves)
     }
 }
 
