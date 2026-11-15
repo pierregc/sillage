@@ -503,6 +503,15 @@ from 100 Myr after the merger or the parting. What decides it, and where:
   through the existing tracer pass (#307's mechanism), in the full pass and in a hires in one
   pass alike.
 
+**Measured on scene-0031** (8 M from 2 M, `--take-interval 4`, alone on the GPU): 6 524 steps in
+29.4 min against (a)'s 8 968 in 39.8 min, 27 % saved. The aftermath starts at 560 Myr, not #307's
+610: the pace's merger is 459 Myr, when the centres come within 10 kpc for good, where #307 read
+510. The frame-to-frame change across that switch is (a)'s within 0.3 %. With the schedule off a
+hires, a massive pass and its full pass give origin/main's take, curves, stills and end state to
+the bit (800 k from 200 k), a scheduled full pass repeats its massive pass on every checked frame,
+and one killed and resumed twice, in the coarse settle and before the aftermath's switch, ends in
+the same state. Side by side and stills on `assets/312-step-schedules`.
+
 ### Light tracers on steps of their own
 
 At 200 M nine tenths of a step is the tracers' walk. Tracers carry no mass, so each could step at
