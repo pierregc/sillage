@@ -273,13 +273,14 @@ public final class CUDABarnesHutSolver: Solver {
         BarnesHutStep.run(host, on: self, steps: steps)
     }
 
-    /// The drawn particles, `[tracers | massive visible]` as `positions` holds them, `interval`
-    /// past the last step on the straight line the next step's drift moves them along, as
-    /// `MetalBarnesHutSolver.drawnDrift` gives them (#310). The run's own buffers are only read.
-    public func drawnDrift(by interval: Float) throws -> CUDABuffer {
+    /// The drawn particles, `[tracers | massive visible]` as `positions` holds them, `fraction`
+    /// of the step in force past the last step on the straight line the next step's drift moves
+    /// them along, as `MetalBarnesHutSolver.drawnDrift` gives them (#310). The run's own buffers
+    /// are only read.
+    public func drawnDrift(by fraction: Float) throws -> CUDABuffer {
         let copy = try drawnCopy ?? context.makeBuffer(length: max(tracerCount + massiveVisible, 1) * 16)
         drawnCopy = copy
-        run([.drawnDrift(interval: interval)])
+        run([.drawnDrift(fraction: fraction)])
         if let failure { throw failure }
         return copy
     }
@@ -550,11 +551,12 @@ extension CUDABarnesHutSolver: BarnesHutPasses {
                 "the tracers' star formation")
         case .tracerStep(let mode, let pieces, let disks):
             try tracerSteps(mode: mode, pieces: pieces, disks: disks, probe: nil)
-        case .drawnDrift(let interval):
+        case .drawnDrift(let fraction):
             guard let drawnCopy else { return }
+            let step = host.params.timeStep
             var p = DrawnDriftGPU(
-                tracerCount: UInt32(tracerCount), massiveCount: UInt32(massiveVisible),
-                timeStep: host.params.timeStep, interval: interval)
+                tracerCount: UInt32(tracerCount), massiveCount: UInt32(massiveVisible), timeStep: step,
+                interval: step * fraction)
             try check(
                 sc_solver_drawn_drift(handle, drawnCopy.handle, &p, MemoryLayout<DrawnDriftGPU>.stride),
                 "the drawn particles' drift")

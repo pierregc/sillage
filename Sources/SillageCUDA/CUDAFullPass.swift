@@ -134,8 +134,8 @@ public final class CUDAFullPassEngine: FullPassEngine {
         _ = try barnesHut.writeSmoothing(into: lengths, drawn: massiveDrawn)
     }
 
-    public func drawDrifted(by interval: Float?) throws {
-        drifted = try interval.map { try barnesHut.drawnDrift(by: $0) }
+    public func drawDrifted(by fraction: Float?) throws {
+        drifted = try fraction.map { try barnesHut.drawnDrift(by: $0) }
     }
 
     /// The light tracers as the renderer reads them, with the spacing records of the tree as

@@ -225,18 +225,24 @@ position. What changes is where a frame's positions come from.
   held.
 - **The checks stay on captured frames**: the drift against the massive take on every frame it
   stored, and the key frames, whether or not the video draws them.
+- **A GPU that drops the work stops the run.** On 15/11, with three other runs sharing the GPU,
+  the demonstration's 8 M full pass was hit by GPU faults several times; after one, the GPU
+  ignores the process's command buffers, and the solver went on "stepping" in 6 ms a step on
+  positions that no longer moved. The drift's copy now throws when its command buffer failed,
+  and so does a Metal full pass after any step whose pass did (`MetalBarnesHutSolver.failure`,
+  read by `check()` as the CUDA engine's is), so the run stops and resumes from its checkpoint
+  instead of drawing a frozen scene.
 - **Recorded**: the track as read goes into `hires.json` (`full.track`) and beside each video
   (`exports/<preset>.time.json`), `full.frames` counts the video's frames, and `--draw-stills`
   counts them too. The checkpoint's identity carries the track as read (`identity.track`): a
   resumed run follows it, and one whose track changed, even in a file of the same name, is
   refused with "the time track" among what differs.
-- **For #312.** `place` counts the steps of a captured frame as a constant, and the drift reads
-  the step it is a fraction of from the solver's parameters (`host.params.timeStep`), as the next
-  massive half kick will. A schedule that changes the step at a frame boundary has to count each
-  frame's steps there, and have the new step in the parameters before a frame after the switch
-  is drawn. The tracers' stored velocity was half kicked by their last fused pass with whatever
-  step it was given; the copy follows that velocity, which is right as long as the tracers' next
-  drift does too.
+- **For #312.** The drift is asked for a fraction of the step in force (`host.timeStep`, which
+  #307's `changeStep` sets), the one the next massive half kick and drift take; after a
+  `changeStep` the tracers' velocities are opened at the new step too, so a whole step still
+  lands on the next step's positions (tested with the step halved). What a schedule still has
+  to change is `place`, which counts the steps of a captured frame as a constant: a frame whose
+  step changed holds another number of them.
 
 ## Part 2: knowing when it is interesting
 

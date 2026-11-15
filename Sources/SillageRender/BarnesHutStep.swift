@@ -23,9 +23,10 @@ public enum BarnesHutPass {
     case dissipation([DiskCoolingGPU]?)
     /// One dispatch of the tracers' fused pass over these slots of their walk order.
     case tracerStep(mode: UInt32, pieces: Range<Int>, disks: [DiskCoolingGPU]?)
-    /// Not a step's: the drawn particles copied `interval` past the last step along the next
-    /// drift's straight line, for a frame between two steps (#310). Nothing of the run moves.
-    case drawnDrift(interval: Float)
+    /// Not a step's: the drawn particles copied `fraction` of the step in force past the last
+    /// step, along the next drift's straight line, for a frame between two steps (#310).
+    /// Nothing of the run moves.
+    case drawnDrift(fraction: Float)
 }
 
 /// CPU work a tree build leaves room for, with the phase it is timed as while profiling.

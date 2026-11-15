@@ -77,8 +77,8 @@ public final class MetalFullPassEngine: FullPassEngine {
 
     public func refreshSmoothing() throws { smoothing.update(from: barnesHut) }
 
-    public func drawDrifted(by interval: Float?) throws {
-        let copy = try interval.map { try barnesHut.drawnDrift(by: $0) }
+    public func drawDrifted(by fraction: Float?) throws {
+        let copy = try fraction.map { try barnesHut.drawnDrift(by: $0) }
         for drawing in drawings { drawing.drawnPositions = copy }
     }
 
@@ -123,7 +123,9 @@ public final class MetalFullPassEngine: FullPassEngine {
 
     public func takeProfile() -> StepProfile? { barnesHut.profiling ? barnesHut.takeProfile() : nil }
 
-    public func check() throws {}
+    public func check() throws {
+        if let failure = barnesHut.failure { throw failure }
+    }
 
     public var peakMemory: (host: Int?, device: Int?) { (ProcessMemory.peakFootprint(), nil) }
 }

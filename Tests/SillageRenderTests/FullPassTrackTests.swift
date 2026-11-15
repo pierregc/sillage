@@ -39,12 +39,14 @@ struct FullPassTrackTests {
 
     /// A copy drifted by a whole step is where the next step puts every drawn particle, to the
     /// bit, tracers included; drifted by part of one, it lies on the segment between the two.
-    /// Drifting moves nothing of the run. With tracers and without, and with a black hole.
+    /// Drifting moves nothing of the run. With tracers and without, with a black hole, and
+    /// after the step changed between two steps, as a schedule changes it (#307).
     @Test func aCopyDriftedByAWholeStepIsWhereTheNextStepPutsIt() throws {
         let hole = Archetype.blackHolePass.scene(batchSeed: 5, occurrence: 1, particleCount: 12_000)
         let massiveHole = Archetype.blackHolePass.scene(batchSeed: 5, occurrence: 1, particleCount: 3_000)
-        for (drawnScene, massiveScene, traced) in [
-            (disk(12_000), disk(3_000), true), (hole, massiveHole, true), (disk(3_000), disk(3_000), false),
+        for (drawnScene, massiveScene, traced, halved) in [
+            (disk(12_000), disk(3_000), true, false), (hole, massiveHole, true, false),
+            (disk(3_000), disk(3_000), false, false), (disk(12_000), disk(3_000), true, true),
         ] {
             let solver: MetalBarnesHutSolver
             if traced {
@@ -57,10 +59,10 @@ struct FullPassTrackTests {
             let visible = solver.particles.visibleCount - tracers
             #expect(traced == (tracers > 0))
             solver.step(count: 6)
+            if halved { solver.changeStep(to: solver.scene.timeStep / 2) }
             let before = solver.particles
-            let step = solver.scene.timeStep
-            let whole = drawn(try solver.drawnDrift(by: step), tracers: tracers, visible: visible)
-            let part = drawn(try solver.drawnDrift(by: step * 0.37), tracers: tracers, visible: visible)
+            let whole = drawn(try solver.drawnDrift(by: 1), tracers: tracers, visible: visible)
+            let part = drawn(try solver.drawnDrift(by: 0.37), tracers: tracers, visible: visible)
             let still = solver.particles
             #expect(bits(still.positions) == bits(before.positions), "\(drawnScene.name)")
             #expect(bits(still.velocities) == bits(before.velocities), "\(drawnScene.name)")
@@ -299,7 +301,7 @@ final class UnencodedFullPass: FullPassEngineMaker {
         var diskFrames: [DiskState] { base.diskFrames }
         var device: String { base.device }
         func refreshSmoothing() throws { try base.refreshSmoothing() }
-        func drawDrifted(by interval: Float?) throws { try base.drawDrifted(by: interval) }
+        func drawDrifted(by fraction: Float?) throws { try base.drawDrifted(by: fraction) }
         func drawing(
             for format: RunVideos.Format, look: LookFile, exposure: Float, drawn: Int, framesPerSecond: Int,
             metadata: VideoMetadata?

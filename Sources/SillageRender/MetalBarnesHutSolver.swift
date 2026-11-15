@@ -94,6 +94,10 @@ public final class MetalBarnesHutSolver: Solver {
     /// whole step is not: a window that is visible waits on a free drawable, and one dispatch
     /// longer than a frame stalls that wait for its whole length.
     public var longestDispatchMilliseconds = 0.0
+    /// The first error the GPU gave a step's pass, which cannot throw: a GPU that drops a
+    /// process's work after a fault leaves it stepping in no time on positions that no longer
+    /// move, and a full pass would draw them on (#310).
+    public private(set) var failure: (any Error)?
     public var lastDriftMilliseconds: Double {
         get { host.lastDriftMilliseconds }
         set { host.lastDriftMilliseconds = newValue }
@@ -426,11 +430,11 @@ public final class MetalBarnesHutSolver: Solver {
 
     public func step(count steps: Int) { BarnesHutStep.run(host, on: self, steps: steps) }
 
-    /// The drawn particles, `[tracers | massive visible]` as `positions` holds them, `interval`
-    /// past the last step on the straight line the next step's drift moves them along: what
-    /// the integrator gives a frame between two steps (#310). Written into a buffer of its own,
-    /// the same on every call; the run's own buffers are only read.
-    public func drawnDrift(by interval: Float) throws -> MTLBuffer {
+    /// The drawn particles, `[tracers | massive visible]` as `positions` holds them, `fraction`
+    /// of the step in force past the last step, on the straight line the next step's drift
+    /// moves them along: what the integrator gives a frame between two steps (#310). Written
+    /// into a buffer of its own, the same on every call; the run's own buffers are only read.
+    public func drawnDrift(by fraction: Float) throws -> MTLBuffer {
         if drawnDriftPipeline == nil {
             let library = try ShaderCache.library(BarnesHutShaders.source, on: device)
             guard let function = library.makeFunction(name: "bhDrawnDrift") else {
@@ -443,7 +447,7 @@ public final class MetalBarnesHutSolver: Solver {
                 length: max(tracerCount + massiveVisible, 1) * 16, options: .storageModeShared)
         }
         guard let drawnCopy, let buffer = queue.makeCommandBuffer() else { throw RenderError.noDevice }
-        encode(.drawnDrift(interval: interval), into: buffer)
+        encode(.drawnDrift(fraction: fraction), into: buffer)
         buffer.commit()
         buffer.waitUntilCompleted()
         // A copy the GPU dropped would draw the frame before's positions without a word.
@@ -451,11 +455,12 @@ public final class MetalBarnesHutSolver: Solver {
         return drawnCopy
     }
 
-    private func encodeDrawnDrift(into buffer: MTLCommandBuffer, interval: Float) {
+    private func encodeDrawnDrift(into buffer: MTLCommandBuffer, fraction: Float) {
         guard let drawnDriftPipeline, let drawnCopy else { return }
+        let step = host.params.timeStep
         var p = DrawnDriftGPU(
-            tracerCount: UInt32(tracerCount), massiveCount: UInt32(massiveVisible),
-            timeStep: host.params.timeStep, interval: interval)
+            tracerCount: UInt32(tracerCount), massiveCount: UInt32(massiveVisible), timeStep: step,
+            interval: step * fraction)
         let first = tracerCount * 16
         encode(into: buffer, drawnDriftPipeline, threads: tracerCount + massiveVisible) { encoder in
             encoder.setBuffer(drawnCopy, offset: 0, index: 0)
@@ -612,6 +617,7 @@ public final class MetalBarnesHutSolver: Solver {
         buffer.waitUntilCompleted()
         longestDispatchMilliseconds = max(
             longestDispatchMilliseconds, Date().timeIntervalSince(clock) * 1000)
+        if failure == nil, let error = buffer.error { failure = error }
     }
 
     // The solver's settings are `BarnesHutHost`'s, which the CUDA engine reads too (#274); they
@@ -1206,7 +1212,7 @@ extension MetalBarnesHutSolver: BarnesHutPasses {
         case .dissipation(let disks): encodeShedRandomMotion(into: buffer, disks: disks)
         case .tracerStep(let mode, let pieces, let disks):
             encodeTracerStep(into: buffer, mode: mode, pieces: pieces, disks: disks)
-        case .drawnDrift(let interval): encodeDrawnDrift(into: buffer, interval: interval)
+        case .drawnDrift(let fraction): encodeDrawnDrift(into: buffer, fraction: fraction)
         }
     }
 }

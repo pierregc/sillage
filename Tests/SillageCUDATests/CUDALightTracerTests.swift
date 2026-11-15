@@ -268,10 +268,9 @@ extension CUDABarnesHutSolverTests {
         let count = split.visibleCount
         try solver.advance(steps: 6)
         let before = solver.particles
-        let step = solver.scene.timeStep
         func xyz(_ states: [SIMD4<Float>]) -> [SIMD3<Float>] { states.map { SIMD3($0.x, $0.y, $0.z) } }
-        let whole = xyz(try solver.drawnDrift(by: step).download(SIMD4<Float>.self, count: count))
-        let part = xyz(try solver.drawnDrift(by: step * 0.37).download(SIMD4<Float>.self, count: count))
+        let whole = xyz(try solver.drawnDrift(by: 1).download(SIMD4<Float>.self, count: count))
+        let part = xyz(try solver.drawnDrift(by: 0.37).download(SIMD4<Float>.self, count: count))
         let still = solver.particles
         #expect(bits(still.positions) == bits(before.positions))
         #expect(bits(still.velocities) == bits(before.velocities))

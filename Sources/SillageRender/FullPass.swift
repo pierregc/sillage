@@ -15,11 +15,11 @@ public protocol FullPassEngine: AnyObject {
     var device: String { get }
     /// Refreshes the smoothing lengths the drawings read, from the solver's tree.
     func refreshSmoothing() throws
-    /// Draws the frames that follow from a copy of the drawn particles `interval` past the last
-    /// step, on the straight line the next step's drift moves them along, which is what the
-    /// integrator gives a frame between two steps (#310); nil draws from the solver's own again.
-    /// Nothing of the run moves.
-    func drawDrifted(by interval: Float?) throws
+    /// Draws the frames that follow from a copy of the drawn particles `fraction` of the step in
+    /// force past the last step, on the straight line the next step's drift moves them along,
+    /// which is what the integrator gives a frame between two steps (#310); nil draws from the
+    /// solver's own again. Nothing of the run moves.
+    func drawDrifted(by fraction: Float?) throws
     /// A preset's drawing over the solver's buffers and the smoothing, its exposure
     /// `exposure` and its grain moved on by `drawn` frames.
     func drawing(
@@ -541,7 +541,7 @@ public final class FullPassRun {
                     smoothed = true
                 }
                 if fraction > 0 {
-                    try engine.drawDrifted(by: Float(fraction) * scene.timeStep)
+                    try engine.drawDrifted(by: Float(fraction))
                     drifted = true
                 } else if drifted {
                     try engine.drawDrifted(by: nil)
