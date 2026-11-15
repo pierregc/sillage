@@ -279,3 +279,42 @@ above the disk's plane, azimuth, distance, field of view in degrees, `--straight
 `--temperature`, `--hottest`, `--beaming`, `--exposure`, `--stars`. `orbit` goes round once in
 `--seconds`, the time frozen, or with `--scene` stepping the run on from the frame, a step a
 video frame.
+
+## Sources
+
+What the spike's physics and drawing rest on. They were used from memory of the papers and
+textbooks, not read again for the spike: read them before the epic (#331) leans on a number.
+
+- **The hole's pull.** Paczyński B., Wiita P. J. 1980, "Thick accretion disks and supercritical
+  luminosities", A&A 88, 23: the potential -GM / (r - r_s), its last stable orbit at 3 r_s and
+  marginally bound one at 2 r_s.
+- **The tear.** Rees M. J. 1988, "Tidal disruption of stars by black holes of 10^6-10^8 solar
+  masses in nearby galaxies", Nature 333, 523; Phinney E. S. 1989, "Manifestations of a massive
+  black hole in the galactic center", IAU Symposium 136, 543: half the debris bound, the return
+  of its most bound part after one Kepler period, the fallback rate as t^-5/3. Lodato G.,
+  King A. R., Pringle J. E. 2009, "Stellar disruption by a supermassive black hole: is the light
+  curve really proportional to t^-5/3?", MNRAS 392, 332: the spread of energies frozen in where
+  the star is torn, which the release at 10 r_s stands in for.
+- **The disk's heat.** Shakura N. I., Sunyaev R. A. 1973, "Black holes in binary systems.
+  Observational appearance", A&A 24, 337; Novikov I. D., Thorne K. S. 1973, "Astrophysics of
+  black holes", in Black Holes (Les Houches 1972): T as r^-3/4 times (1 - √(r_in / r))^1/4, zero
+  torque at the last stable orbit.
+- **The colour of a black body.** Kang B. et al. 2002, "Design of advanced color temperature
+  control system for HDTV applications", Journal of the Korean Physical Society 41, 865: the
+  chromaticity fit `Blackbody` and the shader already use.
+- **Light round the hole.** Synge J. L. 1966, "The escape of photons from gravitationally intense
+  stars", MNRAS 131, 463: the shadow's critical impact parameter 3√3/2 r_s. Luminet J.-P. 1979,
+  "Image of a spherical black hole with thin accretion disk", A&A 75, 228: the direct and
+  secondary images of a disk, its flux and redshift, the picture the bent stills reproduce.
+  Bozza V. 2002, "Gravitational lensing in the strong field limit", Physical Review D 66, 103001:
+  the logarithmic deflection near the critical ray, why each further image is e^-Δφ as thin.
+- **Magnification.** Paczyński B. 1986, "Gravitational microlensing by the galactic halo", ApJ
+  304, 1: a point lens's two images and their magnifications, the formula the weak-field test
+  holds the table to.
+- **Doppler beaming and redshift.** Rybicki G. B., Lightman A. P. 1979, Radiative Processes in
+  Astrophysics, Wiley: I_ν / ν³ invariant along a ray, so a bolometric intensity shifted by g goes
+  as g⁴.
+- **The reference look.** James O., von Tunzelmann E., Franklin P., Thorne K. S. 2015,
+  "Gravitational lensing by spinning black holes in astrophysics, and in the movie Interstellar",
+  Classical and Quantum Gravity 32, 065001: how Interstellar's disk was drawn, and why the film
+  left out the Doppler shift and beaming.
