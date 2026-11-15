@@ -3,6 +3,7 @@ import Testing
 
 @testable import SillageCore
 @testable import SillageRender
+
 #if canImport(simd)
     import simd
 #else
@@ -112,6 +113,39 @@ struct LightTracerTests {
             #expect(traced.centers == reference.centers)
             #expect(read(traced.diskFrames) == read(reference.diskFrames))
         }
+    }
+
+    /// At a switch of a step schedule (#307) a massive particle needs nothing; a tracer opened
+    /// the next step at the old one, so it gets the difference of the two half kicks, and
+    /// nothing else moves.
+    @Test func aTracerReopensItsStepAtTheNewOne() throws {
+        let drawn = selfGravitatingDisk(4_000)
+        let massive = selfGravitatingDisk(1_000)
+        let (split, tracers) = ParticleSystem.lightTracers(drawn: drawn, massive: massive)
+        let solver = try MetalBarnesHutSolver(scene: massive, particles: split, tracers: tracers)
+        solver.step(count: 5)
+        let step = massive.timeStep
+        let before = solver.particles
+        let pulls = solver.accelerations
+        solver.changeStep(to: step * 2)
+        let after = solver.particles
+        #expect(after.positions == before.positions)
+        #expect(Array(after.velocities[tracers...]) == Array(before.velocities[tracers...]))
+        var worst: Float = 0
+        for index in 0..<tracers {
+            let expected = before.velocities[index] + pulls[index] * (step * 0.5)
+            worst = max(worst, simd_length(after.velocities[index] - expected))
+        }
+        #expect(worst < 1e-5)
+        solver.changeStep(to: step)
+        for index in 0..<tracers {
+            #expect(simd_length(solver.particles.velocities[index] - before.velocities[index]) < 1e-5)
+        }
+        // The time goes on at the step in force.
+        let time = solver.time
+        solver.changeStep(to: step * 4)
+        solver.step(count: 1)
+        #expect(abs(solver.time - time - step * 4) < 1e-6)
     }
 
     /// A tracer anywhere feels what direct summation over the massive particles says.

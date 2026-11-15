@@ -688,6 +688,38 @@ enum BarnesHutShaders {
             motions[i] = uint4(as_type<uint3>(velocity), motion.w);
         }
 
+        struct DrawnDriftParams {
+            uint tracerCount;
+            /// The massive particles drawn, the halo left out.
+            uint massiveCount;
+            /// The next step's, whose first half kick the massive particles' line starts with.
+            float timeStep;
+            float interval;
+        };
+
+        // A copy of the drawn particles `interval` past the last step, for a frame between two
+        // steps (#310): the straight line the next step's drift takes, the next step's own
+        // arithmetic, so a whole step lands on its positions. The solver's buffers are only read.
+        SHARED void drawnDrift(device float4 *drawnStates, device float3 *drawnMassive,
+                               device const float4 *states, device const uint4 *motions,
+                               device const float3 *positions, device const float3 *velocities,
+                               device const float3 *accelerations, constant DrawnDriftParams &p,
+                               uint i) {
+            if (i < p.tracerCount) {
+                // A tracer's velocity is half a kick ahead already.
+                float4 state = states[i];
+                state.xyz += as_type<float3>(motions[i].xyz) * p.interval;
+                drawnStates[i] = state;
+                return;
+            }
+            uint j = i - p.tracerCount;
+            if (j >= p.massiveCount) { return; }
+            float3 v = velocities[j] + accelerations[j] * (p.timeStep * 0.5f);
+            float3 position = positions[j];
+            position += v * p.interval;
+            drawnMassive[j] = position;
+        }
+
         #if defined(__METAL_VERSION__)
 
         kernel void bhKickDrift(device float3 *positions [[buffer(0)]],
@@ -824,6 +856,19 @@ enum BarnesHutShaders {
                                  uint gid [[thread_position_in_grid]]) {
             tracerStep(states, motions, sorted, nodes, moments, order, frame, haloList, holes,
                        massive, disks, p, probe, bhQuadrupole, bhOpensHoldingCells, gid);
+        }
+
+        kernel void bhDrawnDrift(device float4 *drawnStates [[buffer(0)]],
+                                 device float3 *drawnMassive [[buffer(1)]],
+                                 device const float4 *states [[buffer(2)]],
+                                 device const uint4 *motions [[buffer(3)]],
+                                 device const float3 *positions [[buffer(4)]],
+                                 device const float3 *velocities [[buffer(5)]],
+                                 device const float3 *accelerations [[buffer(6)]],
+                                 constant DrawnDriftParams &p [[buffer(7)]],
+                                 uint i [[thread_position_in_grid]]) {
+            drawnDrift(drawnStates, drawnMassive, states, motions, positions, velocities,
+                       accelerations, p, i);
         }
         #endif
         """

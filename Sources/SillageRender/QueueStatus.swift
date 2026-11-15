@@ -213,7 +213,11 @@ public enum JobEstimate {
                 return StageJobs.hiresSeconds(
                     folder, particles: draw.particles, massive: draw.massive, cost: cost
                 ).map { run in
-                    let frames = folder.storedHires()?.frames ?? (try? folder.storedClip())?.storyFrames ?? 0
+                    let taken = folder.storedHires()?.frames ?? (try? folder.storedClip())?.storyFrames ?? 0
+                    let frames = Int(
+                        (Double(taken)
+                            * VideoLength.share(of: option("--speed", in: job.options), folder: folder))
+                            .rounded())
                     return run
                         + presets.compactMap(VideoPreset.named).reduce(0) {
                             $0 + cost.drawSeconds(preset: $1, particles: draw.particles, frames: frames)
@@ -243,7 +247,9 @@ public enum JobEstimate {
             if let duration = number("--duration") {
                 frames = Int(duration * fps)
             } else if let taken = hires?.frames ?? clip?.frames {
-                let left = Double(taken) / captured - (number("--start") ?? 0)
+                // Along a track the video is the share of the take's frames the track keeps.
+                let share = VideoLength.share(of: option("--speed", in: job.options), folder: folder)
+                let left = Double(taken) / captured * share - (number("--start") ?? 0)
                 frames = Int(max(left, 0) * fps)
             } else {
                 frames = nil

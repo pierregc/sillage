@@ -69,7 +69,7 @@ public protocol TracerDrawing: AnyObject {
 /// none of the inertia, so there is no dynamical friction against it and two galaxies keep
 /// orbiting instead of settling into a merger. Live halos would fix that at the cost of five
 /// to ten times more particles, none of which are visible.
-public final class MetalBarnesHutSolver: Solver {
+public final class MetalBarnesHutSolver: StepChangingSolver {
     public let kind: SolverKind = .barnesHut
     public var scene: SceneConfig { host.scene }
     public var time: Float { host.time }
@@ -94,6 +94,10 @@ public final class MetalBarnesHutSolver: Solver {
     /// whole step is not: a window that is visible waits on a free drawable, and one dispatch
     /// longer than a frame stalls that wait for its whole length.
     public var longestDispatchMilliseconds = 0.0
+    /// The first error the GPU gave a step's pass, which cannot throw: a GPU that drops a
+    /// process's work after a fault leaves it stepping in no time on positions that no longer
+    /// move, and a full pass would draw them on (#310).
+    public private(set) var failure: (any Error)?
     public var lastDriftMilliseconds: Double {
         get { host.lastDriftMilliseconds }
         set { host.lastDriftMilliseconds = newValue }
@@ -146,6 +150,9 @@ public final class MetalBarnesHutSolver: Solver {
     private let builder: GPUTreeBuilder
     private var componentBuffer: MTLBuffer?
     private var galaxyBuffer: MTLBuffer?
+    /// The drawn particles between two steps, and its kernel, made on first use (#310).
+    private var drawnCopy: MTLBuffer?
+    private var drawnDriftPipeline: MTLComputePipelineState?
 
     private var particleMass: [Float] { host.particleMass }
     private var holes: [HoleGPU] { host.holes }
@@ -423,6 +430,53 @@ public final class MetalBarnesHutSolver: Solver {
 
     public func step(count steps: Int) { BarnesHutStep.run(host, on: self, steps: steps) }
 
+    /// The drawn particles, `[tracers | massive visible]` as `positions` holds them, `fraction`
+    /// of the step in force past the last step, on the straight line the next step's drift
+    /// moves them along: what the integrator gives a frame between two steps (#310). Written
+    /// into a buffer of its own, the same on every call; the run's own buffers are only read.
+    public func drawnDrift(by fraction: Float) throws -> MTLBuffer {
+        if drawnDriftPipeline == nil {
+            let library = try ShaderCache.library(BarnesHutShaders.source, on: device)
+            guard let function = library.makeFunction(name: "bhDrawnDrift") else {
+                throw RenderError.pipelineCreation("missing kernel bhDrawnDrift")
+            }
+            drawnDriftPipeline = try device.makeComputePipelineState(function: function)
+        }
+        if drawnCopy == nil {
+            drawnCopy = device.makeBuffer(
+                length: max(tracerCount + massiveVisible, 1) * 16, options: .storageModeShared)
+        }
+        guard let drawnCopy, let buffer = queue.makeCommandBuffer() else { throw RenderError.noDevice }
+        encode(.drawnDrift(fraction: fraction), into: buffer)
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        // A copy the GPU dropped would draw the frame before's positions without a word.
+        if let error = buffer.error { throw error }
+        return drawnCopy
+    }
+
+    private func encodeDrawnDrift(into buffer: MTLCommandBuffer, fraction: Float) {
+        guard let drawnDriftPipeline, let drawnCopy else { return }
+        let step = host.params.timeStep
+        var p = DrawnDriftGPU(
+            tracerCount: UInt32(tracerCount), massiveCount: UInt32(massiveVisible), timeStep: step,
+            interval: step * fraction)
+        let first = tracerCount * 16
+        encode(into: buffer, drawnDriftPipeline, threads: tracerCount + massiveVisible) { encoder in
+            encoder.setBuffer(drawnCopy, offset: 0, index: 0)
+            encoder.setBuffer(drawnCopy, offset: first, index: 1)
+            encoder.setBuffer(positionBuffer, offset: 0, index: 2)
+            encoder.setBuffer(velocityBuffer, offset: 0, index: 3)
+            encoder.setBuffer(positionBuffer, offset: first, index: 4)
+            encoder.setBuffer(velocityBuffer, offset: first, index: 5)
+            encoder.setBuffer(accelerationBuffer, offset: 0, index: 6)
+            encoder.setBytes(&p, length: MemoryLayout<DrawnDriftGPU>.stride, index: 7)
+        }
+    }
+
+    /// The step from the next one on, in simulation units (#307).
+    public func changeStep(to step: Float) { BarnesHutStep.changeStep(host, on: self, to: step) }
+
     /// Turns gas into stars where the tree says it has been compressed.
     ///
     /// Dispatched over nodes rather than particles: the density estimate lives on the leaves,
@@ -563,6 +617,7 @@ public final class MetalBarnesHutSolver: Solver {
         buffer.waitUntilCompleted()
         longestDispatchMilliseconds = max(
             longestDispatchMilliseconds, Date().timeIntervalSince(clock) * 1000)
+        if failure == nil, let error = buffer.error { failure = error }
     }
 
     // The solver's settings are `BarnesHutHost`'s, which the CUDA engine reads too (#274); they
@@ -977,8 +1032,10 @@ public final class MetalBarnesHutSolver: Solver {
         return system
     }
 
-    /// Drawn particles whose stars formed after `start` and by `end`, tracers included.
-    public func formed(after start: Float, until end: Float) -> Int {
+    /// Drawn particles whose stars formed from `start` to before `end`, tracers included. A
+    /// knot carries the time at the start of the step that lit it, so the steps from `start`
+    /// to `end` lit exactly these.
+    public func formed(since start: Float, before end: Float) -> Int {
         let block = 1 << 20
         let tracers = tracerCount
         let drawn = tracers + massiveVisible
@@ -994,12 +1051,32 @@ public final class MetalBarnesHutSolver: Solver {
                         index < tracers
                         ? states.load(fromByteOffset: index * 16 + 12, as: Float.self)
                         : times.load(fromByteOffset: (index - tracers) * 4, as: Float.self)
-                    if time > start && time <= end { formed += 1 }
+                    if time >= start && time < end { formed += 1 }
                 }
                 counts[chunk] = formed
             }
         }
         return counts.reduce(0, +)
+    }
+
+    /// What the next step's star formation pass will read on each leaf, summed (#306).
+    public func formationLeaves() -> StarFormationLeaves {
+        guard nodeCount > 0, let componentBuffer else { return StarFormationLeaves() }
+        func view<T>(_ buffer: MTLBuffer, _ type: T.Type, offset: Int = 0, count: Int)
+            -> UnsafeBufferPointer<T>
+        {
+            UnsafeBufferPointer(
+                start: (buffer.contents() + offset).bindMemory(to: T.self, capacity: count), count: count)
+        }
+        return StarFormationLeaves.read(
+            nodes: view(builder.nodes, BHNode.self, count: nodeCount),
+            order: view(builder.order, UInt32.self, count: massive),
+            positions: view(positionBuffer, SIMD3<Float>.self, offset: tracerCount * 16, count: massive),
+            velocities: view(velocityBuffer, SIMD3<Float>.self, offset: tracerCount * 16, count: massive),
+            mass: view(massBuffer, Float.self, count: massive),
+            component: view(componentBuffer, UInt32.self, count: massive),
+            formation: view(formationBuffer, Float.self, count: massive),
+            params: host.formationParams(nodeCount: nodeCount))
     }
 
     /// The distance from the origin of one particle in `step`, tracers first, dark matter
@@ -1135,6 +1212,7 @@ extension MetalBarnesHutSolver: BarnesHutPasses {
         case .dissipation(let disks): encodeShedRandomMotion(into: buffer, disks: disks)
         case .tracerStep(let mode, let pieces, let disks):
             encodeTracerStep(into: buffer, mode: mode, pieces: pieces, disks: disks)
+        case .drawnDrift(let fraction): encodeDrawnDrift(into: buffer, fraction: fraction)
         }
     }
 }

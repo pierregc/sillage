@@ -742,8 +742,20 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     // `--framing <take>`: the camera, the painted arms, the time and the exposure of another take
     // of the same run, as a full pass draws them from the massive take (#239).
     let framing = try option("framing").map { try RecordingFile.read(from: URL(fileURLWithPath: $0)) }
+    let speed = try option("speed").map { text in
+        if let spec = PaceSpec(text) {
+            let drawn = (
+                width: try value("width") ?? Double(preset.width),
+                height: try value("height") ?? Double(preset.height)
+            )
+            return try pacedTrack(
+                spec, name: text, folder: folder, loaded: loaded, look: look, capturedRate: capturedRate,
+                framing: framing, aspect: drawn.height / drawn.width, slow: option("slow"), csv: nil)
+        }
+        return try timeTrack(text, recording: loaded.recording, capturedRate: capturedRate)
+    }
     let export = try TakeExport(
-        take: loaded, look: look, capturedRate: capturedRate, framing: framing)
+        take: loaded, look: look, capturedRate: capturedRate, framing: framing, track: speed?.track)
     let start = try value("start") ?? 0
     if let name = option("format") {
         guard let format = AnimatedImage.Format(rawValue: name.lowercased()) else {
@@ -751,7 +763,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         }
         return try previewStage(
             folder, export: export, format: format, preset: options.contains("--preset") ? preset : nil,
-            start: start, reporter: reporter, option: option, value: value)
+            start: start, speed: speed, reporter: reporter, option: option, value: value)
     }
 
     // H.264 wants even sides.
@@ -791,10 +803,11 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         } ?? "ProRes 422 HQ"
     print(
         String(
-            format: "export     %@ %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s take),"
+            format: "export     %@ %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s %@),"
                 + " look %@, %@",
             preset.name, codec.rawValue, width, height, fps, frames, Double(frames) / Double(fps),
-            start, export.takeSeconds, look.name, steering))
+            start, export.videoSeconds, speed == nil ? "take" : "video", look.name, steering))
+    if let speed { print(trackLine(speed, export: export, start: start, frames: frames, fps: fps)) }
     var reported = 0
     reporter.start(detail: "frame 0/\(frames)")
     // `--stills <dir> --still-frames 12,300`: those frames of the video as PNGs, as the encoder
@@ -884,6 +897,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
             }
         })
     try SceneFolder.commit(out)
+    if let speed { try writeTrack(speed.file, beside: out) }
     let bytes =
         (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
     print(
@@ -914,11 +928,180 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     return 0
 }
 
+/// `--speed <x>` or `--speed <file>` (#305): the whole take at one speed, from 0.25 to 16, or a
+/// time track kept in a `.time.json`.
+func timeTrack(_ text: String, recording: Recording, capturedRate: Int) throws -> (
+    file: TimeTrackFile, track: TimeTrack, name: String
+) {
+    let file: TimeTrackFile
+    let name: String
+    if let speed = Double(text) {
+        file = TimeTrackFile(speed: speed)
+        name = String(format: "%gx", speed)
+    } else {
+        let url = URL(fileURLWithPath: text)
+        guard let data = try? Data(contentsOf: url) else {
+            throw SceneFolder.ExportError.badValue("speed", text)
+        }
+        file = try TimeTrackFile.decoded(from: data)
+        name = url.lastPathComponent
+    }
+    let track = try file.track(
+        megayears: TimeTrack.megayears(of: recording), capturedRate: capturedRate)
+    return (file, track, name)
+}
+
+/// `--speed story[:pace[:top]]` or `--speed visual[:top[:busiest]]` (#309): the speed of every
+/// captured frame read off the take's curves or off the take drawn small, and `--slow
+/// <from>:<to>:<speed>` holds a stretch, in Myr of the take, to at most that speed. The visual pace
+/// draws the take at 256 wide with the export's camera before the export starts.
+func pacedTrack(
+    _ spec: PaceSpec, name: String, folder: SceneFolder, loaded: RecordingFile.Loaded, look: LookFile,
+    capturedRate: Int, framing: RecordingFile.Loaded?, aspect: Double, slow: String?, csv: URL?,
+    drawings: (directory: URL, from: Double, to: Double, only: Bool)? = nil
+) throws -> (file: TimeTrackFile, track: TimeTrack, name: String) {
+    let megayears = TimeTrack.megayears(of: loaded.recording)
+    var made: PaceTrack.Made
+    switch spec {
+    case .story:
+        let read = try PaceTrack.fromCurves(
+            spec, folder: folder, scene: loaded.scene, megayears: megayears)
+        made = read.made
+        print(
+            String(
+                format: "pace       %@ from %@: first pass %@ Myr, engaged until %@ Myr", name,
+                read.curves.lastPathComponent, made.firstPassMyr.map { String(format: "%.0f", $0) } ?? "none",
+                made.engagedUntilMyr.map { String(format: "%.0f", $0) } ?? "never"))
+    case .visual(let settings):
+        let started = Date()
+        let drawn = try TakeExport(
+            take: loaded, look: look.forVisualPace(), capturedRate: capturedRate, framing: framing
+        )
+        .visualChanges(
+            width: 256, height: max(Int((256 * aspect).rounded()), 16),
+            only: drawings.flatMap { $0.only ? $0.from...$0.to : nil },
+            drawing: { myr, rgba in
+                guard let drawings, myr >= drawings.from, myr <= drawings.to else { return }
+                try FileManager.default.createDirectory(
+                    at: drawings.directory, withIntermediateDirectories: true)
+                try PNGWriter.write(
+                    PNGWriter.image(rgba, width: 256, height: max(Int((256 * aspect).rounded()), 16)),
+                    to: drawings.directory.appendingPathComponent(String(format: "%.2f.png", myr)))
+            })
+        made = PaceTrack.visual(settings, times: drawn.times, changes: drawn.changes, megayears: megayears)
+        print(
+            String(
+                format: "pace       %@: %d drawings in %.1f s", name, drawn.times.count,
+                Date().timeIntervalSince(started)))
+    }
+    if let slow {
+        let parts = slow.split(separator: ":").compactMap { Double($0) }
+        guard parts.count == 3, parts[2] > 0 else { throw SceneFolder.ExportError.badValue("slow", slow) }
+        made.speeds = PaceSpec.slowed(
+            made.speeds, megayears: megayears, from: parts[0], to: parts[1], speed: parts[2])
+    }
+    let file = TimeTrackFile(speeds: made.speeds)
+    let track = try file.track(megayears: megayears, capturedRate: capturedRate)
+    if let csv {
+        try made.traceCSV.write(
+            to: csv.deletingPathExtension().appendingPathExtension("trace.csv"), atomically: true,
+            encoding: .utf8)
+        try PaceTrack.videoCSV(track, megayears: megayears, framesPerSecond: capturedRate).write(
+            to: csv, atomically: true, encoding: .utf8)
+    }
+    return (file, track, slow.map { "\(name) slowed \($0)" } ?? name)
+}
+
+/// `pace <scene folder> --speed <story|visual...> [--slow from:to:speed] [--out <file>.time.json]`
+/// (#309): the track an automatic pace gives a take, written without drawing the video, for
+/// `export --speed <file>`; with `--csv <file>` the video's time against the take's, and the
+/// pace's own trace beside it as `.trace.csv`.
+func paceCommand(_ arguments: [String]) -> Int32 {
+    let usage =
+        "usage: sillage-render pace <scene folder> --speed <story[:pace[:top]]|visual[:top[:busiest]]>"
+        + " [--slow from:to:speed] [--take <file>] [--look <look>] [--out <file>] [--csv <file>]"
+        + " [--drawings <dir> --drawings-myr <from>:<to>]"
+    guard let path = arguments.first, !path.hasPrefix("--") else { fail(usage) }
+    let options = Array(arguments.dropFirst())
+    func option(_ name: String) -> String? {
+        options.firstIndex(of: "--\(name)").flatMap { $0 + 1 < options.count ? options[$0 + 1] : nil }
+    }
+    guard let text = option("speed"), let spec = PaceSpec(text) else { fail(usage) }
+    do {
+        let folder = SceneFolder(path: path)
+        let takeURL = option("take").map { URL(fileURLWithPath: $0) } ?? folder.take
+        let loaded = try RecordingFile.read(from: takeURL)
+        var look = try folder.exportLook(option("look"), catalogue: catalogueLooks())
+        if look.palette.isEmpty {
+            look.palette =
+                (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }?.palette
+                .nonEmpty ?? loaded.scene.galaxies.map { GalaxyColours($0.color) }
+        }
+        let capturedRate = try folder.capturedRate()
+        let paced = try pacedTrack(
+            spec, name: text, folder: folder, loaded: loaded, look: look, capturedRate: capturedRate,
+            framing: nil, aspect: 9.0 / 16, slow: option("slow"),
+            csv: option("csv").map { URL(fileURLWithPath: $0) },
+            drawings: option("drawings").flatMap { directory in
+                let range = (option("drawings-myr") ?? "").split(separator: ":").compactMap { Double($0) }
+                return range.count == 2
+                    ? (
+                        URL(fileURLWithPath: directory, isDirectory: true), range[0], range[1],
+                        options.contains("--drawings-only")
+                    ) : nil
+            })
+        let out = URL(fileURLWithPath: option("out") ?? "\(path)/exports/pace.time.json")
+        try FileManager.default.createDirectory(
+            at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try paced.file.encoded().write(to: out)
+        let seconds = paced.track.seconds
+        print(
+            String(
+                format: "pace       %.1f s of video for a %.1f s take (%.0f%%), top speed %.1fx", seconds,
+                Double(paced.track.capturedFrames - 1) / Double(capturedRate),
+                100 * seconds / (Double(paced.track.capturedFrames - 1) / Double(capturedRate)),
+                paced.file.speeds?.max() ?? 1))
+        print("track      \(out.path)")
+        return 0
+    } catch {
+        fail("pace: \(error)")
+    }
+}
+
+/// The video's length and the take's span, for an export along a time track.
+func trackLine(
+    _ speed: (file: TimeTrackFile, track: TimeTrack, name: String), export: TakeExport,
+    start: Double, frames: Int, fps: Int
+) -> String {
+    let shown = export.videoFrames(
+        framesPerSecond: fps, start: start, duration: Double(frames) / Double(fps))
+    let megayears = TimeTrack.megayears(of: export.take.recording)
+    func myr(_ position: Double) -> Double {
+        let index = min(max(Int(position), 0), megayears.count - 1)
+        let next = min(index + 1, megayears.count - 1)
+        return megayears[index] + (megayears[next] - megayears[index]) * (position - Double(index))
+    }
+    return String(
+        format: "speed      %@: %.1f s of video for %.1f to %.1f Myr of the take (frames %.1f to %.1f),"
+            + " a %.1f s video of a %.1f s take",
+        speed.name, Double(shown.count) / Double(fps), myr(shown.first?.captured ?? 0),
+        myr(shown.last?.captured ?? 0), shown.first?.captured ?? 0, shown.last?.captured ?? 0,
+        export.videoSeconds, export.takeSeconds)
+}
+
+/// The track an export drew along, beside it as `<name>.time.json`.
+func writeTrack(_ file: TimeTrackFile, beside out: URL) throws {
+    let url = out.deletingPathExtension().appendingPathExtension(TimeTrackFile.fileExtension)
+    try file.encoded().write(to: url)
+    print("track      \(url.path)")
+}
+
 /// `export <scene folder> --format webp|gif`: a looping preview, 960 wide at 16 fps for eight
 /// seconds unless told otherwise.
 func previewStage(
     _ folder: SceneFolder, export: TakeExport, format: AnimatedImage.Format, preset: VideoPreset?,
-    start: Double, reporter: StageReporter, option: (String) -> String?,
+    start: Double, speed: (file: TimeTrackFile, track: TimeTrack, name: String)?,
+    reporter: StageReporter, option: (String) -> String?,
     value: (String) throws -> Double?
 ) throws -> Int32 {
     let width = Int(try value("width") ?? 960)
@@ -945,15 +1128,21 @@ func previewStage(
         at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
     print(
         String(
-            format: "export     %@ %dx%d at %d fps, %.1f s from %.1f s of a %.1f s take, look %@%@",
-            format.rawValue, width, height, fps, duration, start, export.takeSeconds,
-            export.look.name, maximum.map { String(format: ", at most %.1f MB", Double($0) / 1e6) } ?? ""))
+            format: "export     %@ %dx%d at %d fps, %.1f s from %.1f s of a %.1f s %@, look %@%@",
+            format.rawValue, width, height, fps, duration, start, export.videoSeconds,
+            speed == nil ? "take" : "video", export.look.name,
+            maximum.map { String(format: ", at most %.1f MB", Double($0) / 1e6) } ?? ""))
+    if let speed {
+        let frames = export.positions(framesPerSecond: fps, start: start, duration: duration).count
+        print(trackLine(speed, export: export, start: start, frames: frames, fps: fps))
+    }
     reporter.start(detail: "\(format.rawValue) preview")
     let report = try export.writePreview(
         to: SceneFolder.partial(out), format: format, width: width, height: height,
         framesPerSecond: fps, start: start, duration: duration, maximumBytes: maximum,
         quality: Int((quality * 100).rounded()))
     try SceneFolder.commit(out)
+    if let speed { try writeTrack(speed.file, beside: out) }
     for attempt in report.attempts.dropLast() {
         print(
             String(
@@ -1044,9 +1233,9 @@ func storyCommand(_ arguments: [String]) -> Int32 {
             } ?? "no collision"
         print(
             String(
-                format: "%@  %d galaxies  curves %.0f-%.0f Myr  %@  story %.0f-%.0f Myr  %@",
+                format: "%@  %d galaxies  curves %.0f-%.0f Myr  %@  story %.0f-%.0f Myr, engaged to %.0f  %@",
                 folder.url.lastPathComponent, file.galaxies.count, first.timeMyr, last.timeMyr,
-                collision, span.startMyr, span.endMyr,
+                collision, span.startMyr, span.endMyr, tracker.engagedMyr ?? first.timeMyr,
                 span.complete
                     ? "over" : "going on: " + tracker.activity.map(\.description).joined(separator: "; ")))
     }
@@ -1063,7 +1252,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
         + " [--clumpiness X] [--toomre-q X] [--arm-strength X] [--arm-count N]"
         + " [--arm-irregularity X] [--disk-mass-fraction X] [--disk-thickness KPC] [--dissipation T]"
         + " [--mass-contrast X] [--streaming X] [--young-clumpiness X] [--dust-fraction X]"
-        + " [--dust-mass X] [--effective-q X] [--calm]"
+        + " [--dust-mass X] [--effective-q X] [--calm] [--sf-leaves FILE]"
     guard arguments.count >= 2, !arguments[0].hasPrefix("--"), let galaxy = Int(arguments[1]) else {
         fail(usage)
     }
@@ -1080,7 +1269,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
             "lag-myr", "stills", "dt-scale", "clumpiness", "toomre-q", "arm-strength", "arm-count",
             "arm-irregularity", "disk-mass-fraction", "disk-thickness", "dissipation", "mass-contrast",
             "streaming", "young-clumpiness", "dust-fraction", "dust-mass", "calm", "softening",
-            "effective-q",
+            "effective-q", "sf-leaves",
         ]
         guard known.contains(String(word.dropFirst(2))) else {
             fail("probe-disk: unknown option \(word)\n" + usage)
@@ -1114,6 +1303,7 @@ func probeDiskCommand(_ arguments: [String]) -> Int32 {
     options.dustFraction = float("dust-fraction")
     options.dustMassFraction = float("dust-mass")
     options.calm = rest.contains("--calm")
+    options.formationLeaves = value("sf-leaves")
     do {
         let report = try DiskProbe.run(options)
         let summary = report.summary
@@ -1232,6 +1422,9 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "night" {
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "status" {
     exit(StatusCommand.main(Array(CommandLine.arguments.dropFirst(2))))
 }
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "pace" {
+    exit(paceCommand(Array(CommandLine.arguments.dropFirst(2))))
+}
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "story" {
     exit(storyCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
@@ -1253,6 +1446,9 @@ var fullPass = false
 var exploreRun: SceneFolder?
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "probe-disk" {
     exit(probeDiskCommand(Array(CommandLine.arguments.dropFirst(2))))
+}
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "black-hole" {
+    exit(HoleCommand.main(Array(CommandLine.arguments.dropFirst(2))))
 }
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "costs" {
     exit(costsCommand(Array(CommandLine.arguments.dropFirst(2))))
@@ -1310,7 +1506,7 @@ if CommandLine.arguments.count > 1,
             begun.pass = fullPass ? "full" : record.pass?.rawValue
             run.record(begun)
             let costs = CostModel.current(library: folder.library)
-            let steps = record.settle + record.steps
+            let steps = record.stepsToRun
             var seconds = costs.hiresSeconds(
                 particles: record.particles, massive: record.massive, steps: steps)
             if fullPass, let index = plan.arguments.firstIndex(of: "--draw") {
@@ -1330,6 +1526,15 @@ if CommandLine.arguments.count > 1,
                     record.settle, record.steps, record.clipStartMyr, record.clipEndMyr,
                     seconds / 3600,
                     fullPass ? ", full pass" : record.pass == .massive ? ", massive pass" : ""))
+            if let schedule = record.stepSchedule, !fullPass {
+                print(
+                    "schedule   \(schedule), \(record.stepsToRun) steps planned for \(record.settle + record.steps)"
+                        + (schedule.margin.map {
+                            String(format: ", judged on the run's own centres with a margin of %g Myr", $0)
+                        } ?? ""))
+            } else if fullPass, let switches = record.stepSwitches, !switches.isEmpty {
+                print("schedule   the massive pass's switches, \(StepSwitches(switches))")
+            }
         } catch {
             fail("hires: \(error)")
         }
@@ -1367,6 +1572,9 @@ func number(_ name: String, _ fallback: Double) -> Double {
 
 // A full pass (#239) runs through the flow the Mac and the CUDA engine share (#278).
 if arguments.contains("--draw") {
+    if arguments.contains("--dt-schedule") {
+        fail("--dt-schedule: a full pass follows the steps its massive pass took, --dt-switches (#312)")
+    }
     do {
         try FullPassRun(
             arguments: arguments, engine: MetalFullPassMaker(), started: started, reporter: reporter,
@@ -1765,6 +1973,41 @@ if let sceneOutPath = argument("scene-out") ?? beside(".scene.json") {
 }
 
 let stepsPerFrame = max(steps / max(frames, 1), 1)
+// `--dt-schedule 0:2,162:1` (#307, #312): a coarser step for stretches of the run, switched on
+// frame boundaries; with `--dt-judge <Myr>` the run holds the fine step while its own centres
+// say a pair is engaged, or was within that margin. docs/notes/variable-time.md.
+let stepSchedule = try argument("dt-schedule").map(StepSchedule.init(parsing:)).map { given in
+    var given = given
+    given.margin = argument("dt-judge").flatMap(Double.init)
+    return given
+}
+try stepSchedule?.check(stepsPerFrame: stepsPerFrame)
+let scheduledSolver = gpuSolver as? MetalBarnesHutSolver
+if stepSchedule != nil && scheduledSolver == nil { fail("--dt-schedule needs the Barnes-Hut solver") }
+let ownStep = scene.timeStep
+var scheduler = stepSchedule.map {
+    StepScheduler(
+        schedule: $0, stepMyr: Double(ownStep) * Physics.megayearsPerTimeUnit,
+        story: Story(scene: scene))
+}
+/// Steps through `count` of the run's own steps, at the scale the schedule gives the stretch
+/// starting here, and shows the run's centres to its judge. Returns how many steps that took.
+@discardableResult
+func advance(_ count: Int, frame: Int?) -> Int {
+    guard var current = scheduler, let scheduledSolver else {
+        solver.step(count: count)
+        return count
+    }
+    let (run, switched) = current.step(count, frame: frame, on: scheduledSolver, ownStep: ownStep)
+    if switched, let last = current.switches.last {
+        print(
+            String(
+                format: "schedule   step x%d from t=%.2f Myr%@", last.scale, last.myr,
+                frame.map { " (frame \($0))" } ?? ", settling"))
+    }
+    scheduler = current
+    return run
+}
 let zoom = look.camera.zoom
 let clock = Date()
 
@@ -1842,6 +2085,15 @@ storySettings.horizon = storyCap
 var story =
     storyCap > 0 && curves != nil
     ? Story.Tracker(story: Story(scene: scene, settings: storySettings)) : nil
+// `--sf-leaves <path>` (#306): what the star formation pass reads on the leaves, summed, after
+// each frame's steps.
+let formationLeaves: FileHandle? = try argument("sf-leaves").map { path in
+    let url = try prepared(path)
+    FileManager.default.createFile(atPath: url.path, contents: nil)
+    let handle = try FileHandle(forWritingTo: url)
+    try handle.write(contentsOf: Data((StarFormationLeaves.csvHeader + "\n").utf8))
+    return handle
+}
 var previousTime = solver.time
 var curvesSeconds: Double = 0
 var takeSeconds: Double = 0
@@ -1868,21 +2120,32 @@ let settle = Int(number("settle", 0))
 // settling, from the pace of the steps; once frames come, from the pace of the frames, which
 // the drawing of each one is part of.
 let totalSteps = settle + stepsPerFrame * frames
+/// The run's steps done and left once `ownDone` of its own are done: a schedule's coarser steps
+/// cover more of its time, which the progress and the estimated end count.
+func runSteps(ownDone: Int) -> (done: Int, left: Int) {
+    guard let scheduler, let stepSchedule else { return (ownDone, max(totalSteps - ownDone, 0)) }
+    let left = stepSchedule.steps(
+        settle: settle, frames: frames, perFrame: stepsPerFrame, stepMyr: scheduler.stepMyr, from: ownDone)
+    return (scheduler.stepsRun, left)
+}
 if settle > 0 {
     let settleStart = Date()
-    // In chunks, so a settle of minutes still reports.
-    let chunk = max(settle / 50, 1)
+    // In chunks, so a settle of minutes still reports; a schedule's in frames, the last one
+    // ending where the first frame starts.
+    let chunk = stepSchedule == nil ? max(settle / 50, 1) : stepsPerFrame
     var settled = 0
     while settled < settle {
-        let count = min(chunk, settle - settled)
-        solver.step(count: count)
+        let count =
+            stepSchedule == nil || settled > 0
+            ? min(chunk, settle - settled) : (settle - 1) % stepsPerFrame + 1
+        advance(count, frame: nil)
         settled += count
         let elapsed = Date().timeIntervalSince(settleStart)
+        let (done, left) = runSteps(ownDone: settled)
+        let progress = Double(done) / Double(max(done + left, 1))
         reporter?.update(
-            progress: Double(settled) / Double(max(totalSteps, 1)), detail: "settle \(settled)/\(settle)",
-            eta: RunStatus.eta(
-                elapsed: elapsed, progress: Double(settled) / Double(max(totalSteps, 1)),
-                now: Date()))
+            progress: progress, detail: "settle \(settled)/\(settle)",
+            eta: RunStatus.eta(elapsed: elapsed, progress: progress, now: Date()))
     }
     print(
         String(
@@ -1892,6 +2155,7 @@ if settle > 0 {
     // Stars formed while settling are not the clip's, and would read as a burst on frame 0.
     previousTime = solver.time
 }
+let settleRun = scheduler?.stepsRun ?? settle
 
 /// Past the planned frames, whether the story still wants more.
 func storyGoesOn() -> Bool {
@@ -1970,8 +2234,14 @@ var frame = firstFrame
 while frame < frames || storyGoesOn() {
     defer { frame += 1 }
     let simulationStart = Date()
-    solver.step(count: stepsPerFrame)
+    let frameSteps = advance(stepsPerFrame, frame: frame)
     let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
+    if let formationLeaves, let barnesHut = gpuSolver as? MetalBarnesHutSolver {
+        let line = barnesHut.formationLeaves().csvLine(
+            frame: frame, timeMyr: Double(solver.time) * Physics.megayearsPerTimeUnit,
+            stepMyr: Double(scene.timeStep) * Physics.megayearsPerTimeUnit)
+        try formationLeaves.write(contentsOf: Data((line + "\n").utf8))
+    }
     if let walkDirectory, let label = walkDumps[frame], let tracerSolver {
         guard let dump = tracerSolver.walkDump() else { fail("--dump-walk: frame \(frame) not captured") }
         let timeMyr = Double(solver.time) * Physics.megayearsPerTimeUnit
@@ -2219,17 +2489,10 @@ while frame < frames || storyGoesOn() {
         let torn = scene.galaxies.indices.map {
             String(format: ",%.3f", $0 < states.count ? states[$0].torn : 0)
         }.joined()
-        var formed = 0
-        if let tracerSolver {
-            formed = tracerSolver.formed(after: previousTime, until: solver.time)
-        } else if let gpuSolver {
-            let times = gpuSolver.formation.contents().bindMemory(
-                to: Float.self, capacity: seeded.count)
-            for index in 0..<drawnCount
-            where times[index] > previousTime && times[index] <= solver.time {
-                formed += 1
-            }
-        }
+        // From the frame's start, the time its first step's knots carry, to just before now:
+        // counted from just after the start, that step never showed (#306).
+        let formed =
+            (gpuSolver as? MetalBarnesHutSolver)?.formed(since: previousTime, before: solver.time) ?? 0
         let myr = Double(solver.time) * Physics.megayearsPerTimeUnit
         let track = centres.map { String(format: ",%.4f,%.4f,%.4f", $0.x, $0.y, $0.z) }.joined()
         let line =
@@ -2243,9 +2506,13 @@ while frame < frames || storyGoesOn() {
     previousTime = solver.time
 
     if frame < frames {
-        let framesDone = Double(frame + 1 - firstFrame) / Double(max(frames - firstFrame, 1))
+        let (done, left) = runSteps(ownDone: settle + (frame + 1) * stepsPerFrame)
+        var framesDone = Double(frame + 1 - firstFrame) / Double(max(frames - firstFrame, 1))
+        if scheduler != nil {
+            framesDone = Double(done - settleRun) / Double(max(done - settleRun + left, 1))
+        }
         reporter?.update(
-            progress: Double(settle + (frame + 1) * stepsPerFrame) / Double(max(totalSteps, 1)),
+            progress: Double(done) / Double(max(done + left, 1)),
             detail: "frame \(frame + 1)/\(frames)",
             eta: RunStatus.eta(
                 elapsed: Date().timeIntervalSince(framesStart), progress: framesDone, now: Date()))
@@ -2272,7 +2539,7 @@ while frame < frames || storyGoesOn() {
                 "frame %04d  t=%.1f Myr  sim %7.1f ms (%.3f ms/step)  smoothing %6.1f ms"
                 + "  render %5.1f ms (gpu %5.2f)",
             frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
-            simulationMs / Double(stepsPerFrame), smoothingMs, renderMs,
+            simulationMs / Double(frameSteps), smoothingMs, renderMs,
             (videoWriter?.lastGPUTime ?? renderer.lastGPUTime) * 1000))
 }
 
@@ -2353,6 +2620,11 @@ if let (folder, done) = hiresRun {
     }
     var record = done
     record.seconds = Date().timeIntervalSince(started)
+    if let scheduler {
+        record.stepsRun = scheduler.stepsRun
+        record.stepSwitches = scheduler.switches
+        print("schedule   \(scheduler.stepsRun) steps run for \(scheduler.ownSteps) of the run's own")
+    }
     record.peakMemoryBytes = peakFootprint()
     record.takeBytes =
         (try? FileManager.default.attributesOfItem(atPath: folder.take.path)[.size] as? Int)

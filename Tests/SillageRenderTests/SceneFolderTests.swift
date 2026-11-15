@@ -284,6 +284,13 @@ struct SceneFolderTests {
         #expect(throws: SceneFolder.HiresError.self) {
             try hires(draw + ["--pass", "full", "--export", "webp"])
         }
+        // Only the full pass draws along a time track (#310).
+        let paced = try hires(draw + ["--pass", "full", "--speed", "pace.time.json"])
+        #expect(
+            value("--speed", in: paced.arguments) == "pace.time.json" && !full.arguments.contains("--speed"))
+        for options in [draw + ["--pass", "massive"], draw] {
+            #expect(throws: SceneFolder.HiresError.self) { try hires(options + ["--speed", "2"]) }
+        }
 
         // A massive pass stands for the first of two passes only, and a full pass is done once
         // it has drawn.
@@ -337,7 +344,10 @@ struct SceneFolderTests {
         let full = try hires(draw + ["--pass", "full"])
         #expect(value("--checkpoint", in: full.arguments) == folder.checkpoint.path)
         let model = CostModel.current(library: folder.library)
-        let step = model.hires.secondsPerUnit * 2e6 + model.tracers.secondsPerUnit * 6e6
+        // A step schedule's coarser steps cover more of the run's own, on average (#312).
+        let share = Double(full.record.stepsToRun) / Double(full.record.settle + full.record.steps)
+        #expect(share < 1)
+        let step = (model.hires.secondsPerUnit * 2e6 + model.tracers.secondsPerUnit * 6e6) * share
         let steps = try #require(value("--checkpoint-steps", in: full.arguments).flatMap(Int.init))
         let frames = try #require(value("--checkpoint-frames", in: full.arguments).flatMap(Int.init))
         #expect(abs(Double(steps) * step - 3_600) <= step)

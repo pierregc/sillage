@@ -92,6 +92,9 @@ public final class RunVideos {
     public let look: LookFile
     public let framing: RecordingFile.Loaded
     public let capturedRate: Int
+    /// The track the videos are drawn along (#310): their frames are asked for at its played and
+    /// captured positions. Nil plays one captured frame per frame.
+    public let track: TimeTrack?
     /// Where segments are written, one a checkpoint interval; nil writes each video whole.
     public let segments: URL?
     private let metadata: VideoMetadata?
@@ -113,10 +116,11 @@ public final class RunVideos {
 
     /// `drawing` makes each format's drawing. With `segments`, each video is written in pieces
     /// that `cut` closes and `join` puts together, and `resume` is where a checkpoint left them.
+    /// With a `track`, the cameras and shots move in the video's time, as an export's do (#305).
     public init(
         formats: [Format], look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int,
         metadata: VideoMetadata? = nil, segments: URL? = nil, resume: Progress? = nil,
-        drawing: Making, join: @escaping Joining
+        track: TimeTrack? = nil, drawing: Making, join: @escaping Joining
     ) throws {
         self.formats = formats
         self.look = look
@@ -124,10 +128,12 @@ public final class RunVideos {
         self.capturedRate = max(capturedRate, 1)
         self.segments = segments
         self.metadata = metadata
+        self.track = track
         joining = join
         let plan =
             look.camera.mode == .director
-            ? ShotPlan(take: framing, file: look, framesPerSecond: self.capturedRate) : nil
+            ? ShotPlan(take: framing, file: look, framesPerSecond: self.capturedRate, track: track)
+            : nil
         let exposure = ParticleAttributes.luminosityNormalisation(formation: framing.particles.formation)
         var progress = resume ?? Progress()
         if progress.seconds.count != formats.count {
@@ -144,7 +150,7 @@ public final class RunVideos {
             replays.append(
                 TakeFraming.replay(
                     look: look, framing: framing, capturedRate: self.capturedRate,
-                    width: format.width, height: format.height, plan: plan))
+                    width: format.width, height: format.height, plan: plan, track: track))
             try FileManager.default.createDirectory(
                 at: format.url.deletingLastPathComponent(), withIntermediateDirectories: true)
         }
@@ -186,13 +192,22 @@ public final class RunVideos {
         keeping: ((_ format: Format, _ still: any RunVideoStill) throws -> Void)? = nil
     ) throws {
         check(frame: frame, centres: centres)
+        try drawFrame(TimeTrack.Frame(played: Double(frame), captured: Double(frame)), keeping: keeping)
+    }
+
+    /// Draws the next frame of the videos in every format: the camera at its played position,
+    /// the look, the time and the arms at its captured one, the positions whatever the engine
+    /// draws from now, the solver's at a step or a copy drifted between two (#310).
+    public func drawFrame(
+        _ frame: TimeTrack.Frame,
+        keeping: ((_ format: Format, _ still: any RunVideoStill) throws -> Void)? = nil
+    ) throws {
         for index in formats.indices {
             let started = Date()
             let drawing = drawings[index]
             guard
                 let shot = TakeFraming.prepare(
-                    drawing.styling, look: look, replay: replays[index], framing: framing,
-                    at: Double(frame))
+                    drawing.styling, look: look, replay: replays[index], framing: framing, at: frame)
             else { throw RecordingFile.Failure.truncated }
             let format = formats[index]
             try drawing.append(
@@ -238,7 +253,9 @@ public final class RunVideos {
         }
     }
 
-    private func check(frame: Int, centres: [SIMD3<Float>]) {
+    /// Holds the solver's centres at captured frame `frame` to the massive take's, when the take
+    /// stored that frame, whether or not a video draws it.
+    public func check(frame: Int, centres: [SIMD3<Float>]) {
         let recording = framing.recording
         guard let blend = recording.blend(atCaptured: frame),
             blend.fraction == 0 || blend.fraction == 1

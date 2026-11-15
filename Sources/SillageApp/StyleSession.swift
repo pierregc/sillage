@@ -63,6 +63,8 @@ final class StyleSession: ObservableObject {
     private var proposing: Task<Void, Never>?
     private let sceneFile: SceneFile?
     private var watching: AnyCancellable?
+    /// The pace the playhead can follow (#311).
+    private(set) lazy var pace = PacePlayback(model: model, folder: scene.folder)
 
     init(
         scene: LibraryScene, model: SimulationModel,

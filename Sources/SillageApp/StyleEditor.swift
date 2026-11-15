@@ -23,7 +23,7 @@ struct StyleEditor: View {
                         .frame(minWidth: 560, minHeight: 360)
                     Divider()
                     CanvasLegend(session: session)
-                    TransportBar(model: session.model)
+                    TransportBar(model: session.model, pace: session.pace)
                         .disabled(!session.isOpen)
                 }
                 Divider()
@@ -39,6 +39,7 @@ struct StyleEditor: View {
             if let optionMonitor { NSEvent.removeMonitor(optionMonitor) }
             optionMonitor = nil
             session.showSaved(false)
+            session.pace.choice = .off
         }
     }
 
@@ -231,16 +232,20 @@ struct CanvasLegend: View {
     }
 }
 
-/// Play, pause, speed and the playhead. Watches the model, which moves on every frame.
+/// Play, pause, speed and the playhead. Watches the model, which moves on every frame. With a
+/// pace chosen, the playhead plays at the track's speed and the scrubber shows it.
 struct TransportBar: View {
     @ObservedObject var model: SimulationModel
+    @ObservedObject var pace: PacePlayback
+    /// Drawn offscreen by the checks, which cannot draw sliders and pickers.
+    var snapshot = false
 
     static let speeds: [(label: String, framesPerSecond: Float)] = [
         ("× 0.25", 7.5), ("× 0.5", 15), ("× 1", 30), ("× 2", 60), ("× 4", 120),
     ]
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             Button {
                 model.isPlaying.toggle()
             } label: {
@@ -248,18 +253,62 @@ struct TransportBar: View {
             }
             .keyboardShortcut(.space, modifiers: [])
             .help(model.isPlaying ? "Pause (space)" : "Play (space)")
-            Slider(
-                value: $model.playbackPosition,
-                in: 0...Double(max(model.capturedFrames - 1, 1)))
-            Text(String(format: "%.0f Myr", model.elapsedMyr))
-                .font(.callout.monospacedDigit())
-                .frame(minWidth: 70, alignment: .trailing)
-            Picker("Speed", selection: speed) {
-                ForEach(Self.speeds, id: \.framesPerSecond) { Text($0.label).tag($0.framesPerSecond) }
+            VStack(spacing: 2) {
+                if snapshot {
+                    GeometryReader { geometry in
+                        let along =
+                            model.playbackPosition / Double(max(model.capturedFrames - 1, 1))
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color(white: 0.3)).frame(height: 4)
+                            Circle().fill(Palette.label).frame(width: 14, height: 14)
+                                .offset(x: along * (geometry.size.width - 14))
+                        }
+                    }
+                    .frame(height: 16)
+                } else {
+                    Slider(
+                        value: $model.playbackPosition,
+                        in: 0...Double(max(model.capturedFrames - 1, 1)))
+                }
+                if let failure = pace.failure {
+                    Text(failure).font(.caption).foregroundStyle(Palette.warning)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if pace.isOn {
+                    PaceStrip(
+                        samples: pace.samples, span: pace.span,
+                        playhead: model.playbackPosition / Double(max(model.capturedFrames - 1, 1)))
+                }
             }
-            .labelsHidden()
-            .fixedSize()
-            .help("Playback speed, × 1 being 30 frames per second")
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(String(format: "%.0f Myr", model.elapsedMyr))
+                    .font(.callout.monospacedDigit())
+                if let now = pace.speedNow {
+                    Text(String(format: "×%.1f", now))
+                        .font(.caption.monospacedDigit()).foregroundStyle(Palette.secondary)
+                }
+            }
+            .frame(minWidth: 70, alignment: .trailing)
+            if snapshot {
+                Text("× 1 · pace: \(pace.choice.title)").font(.callout)
+            } else {
+                Picker("Speed", selection: speed) {
+                    ForEach(Self.speeds, id: \.framesPerSecond) { Text($0.label).tag($0.framesPerSecond) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .help("Playback speed, × 1 being 30 frames per second")
+                Picker("Pace", selection: $pace.choice) {
+                    Text("Take's own pace").tag(PacePlayback.Choice.off)
+                    Text("Auto pace").tag(PacePlayback.Choice.auto)
+                    ForEach(pace.files, id: \.self) {
+                        Text($0.lastPathComponent).tag(PacePlayback.Choice.file($0))
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .help(pace.failure ?? "Play at the pace an export at Auto would, or at a track file's")
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

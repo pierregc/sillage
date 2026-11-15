@@ -3,6 +3,7 @@ CheckpointTests.swift      # AVFoundation, Metal
 DiskProbeTests.swift       # DiskProbe.run, in DiskProbeRun, which draws on Metal
 EngineFixtureTests.swift   # Metal
 ExportTests.swift          # AVFoundation
+FullPassTrackTests.swift   # Metal
 GPUTreeTests.swift         # Metal
 GalaxyColoursTests.swift   # Metal
 KernelSourceTests.swift    # GPUTreeBuilder, which needs Metal
@@ -19,6 +20,8 @@ RecordingTests.swift       # Metal
 RunVideosTests.swift       # CoreGraphics, Metal
 SolverCheckTests.swift     # Metal
 StageJobsTests.swift       # ExportedFile, which reads videos with AVFoundation
+StepScheduleRunTests.swift # Metal
 StyleEditTests.swift       # CoreFoundation's CFGetTypeID
+TidalRunTests.swift        # Metal
 TracerCheckTests.swift     # Metal
 TracerWalkDumpTests.swift  # Metal

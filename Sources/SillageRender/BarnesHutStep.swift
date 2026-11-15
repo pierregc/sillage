@@ -23,6 +23,10 @@ public enum BarnesHutPass {
     case dissipation([DiskCoolingGPU]?)
     /// One dispatch of the tracers' fused pass over these slots of their walk order.
     case tracerStep(mode: UInt32, pieces: Range<Int>, disks: [DiskCoolingGPU]?)
+    /// Not a step's: the drawn particles copied `fraction` of the step in force past the last
+    /// step, along the next drift's straight line, for a frame between two steps (#310).
+    /// Nothing of the run moves.
+    case drawnDrift(fraction: Float)
 }
 
 /// CPU work a tree build leaves room for, with the phase it is timed as while profiling.
@@ -102,11 +106,27 @@ public enum BarnesHutStep {
                 submitForces(host, on: engine, disks: disks)
             }
             host.lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
-            host.time += host.scene.timeStep
+            host.time += host.timeStep
             if engine.profiling {
                 engine.stepped(milliseconds: Date().timeIntervalSince(stepClock) * 1000)
             }
         }
+    }
+
+    /// Changes the step between two steps, for a step schedule (#307). A massive particle closes
+    /// each step with its own half kick and opens the next with the step then in force, so it
+    /// needs nothing; a tracer opened the next step at the old one already, and is given the
+    /// difference, its acceleration walked again from the same tree.
+    public static func changeStep(
+        _ host: BarnesHutHost, on engine: some BarnesHutPasses, to step: Float
+    ) {
+        let old = host.timeStep
+        guard step != old else { return }
+        if host.tracerCount > 0 {
+            host.timeStep = step - old
+            engine.run(tracerSteps(host, mode: 0, disks: nil))
+        }
+        host.timeStep = step
     }
 
     /// What a new solver starts from: the first half kick needs an acceleration, so the tree and

@@ -129,6 +129,10 @@ public final class Renderer {
 
     /// The buffer holding particle positions, so a GPU solver can write into it directly.
     public var positions: MTLBuffer { positionBuffer }
+    /// Positions laid out as `positions`, light tracers included, that the next frames are
+    /// drawn from in its place: a full pass's copy drifted between two steps (#310).
+    public var drawnPositions: MTLBuffer?
+    private var drawnBuffer: MTLBuffer { drawnPositions ?? positionBuffer }
 
     /// `externalPositions` lets a GPU solver own the position buffer, so particle state
     /// never crosses the bus between the integrator and the rasteriser.
@@ -424,7 +428,7 @@ public final class Renderer {
 
     /// The tracers' buffers, at indices no massive draw binds, so one encoder serves both.
     private func bindTracers(_ encoder: MTLRenderCommandEncoder, _ source: TracerDrawing) {
-        encoder.setVertexBuffer(source.positions, offset: 0, index: 18)
+        encoder.setVertexBuffer(drawnPositions ?? source.positions, offset: 0, index: 18)
         encoder.setVertexBuffer(source.velocities, offset: 0, index: 19)
         var scales = tracerScales
         encoder.setVertexBytes(&scales, length: scales.count * 4, index: 17)
@@ -535,7 +539,7 @@ public final class Renderer {
         }
 
         func bindParticles(_ encoder: MTLRenderCommandEncoder) {
-            encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
+            encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
             encoder.setVertexBuffer(populationBuffer, offset: 0, index: 1)
             encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
             encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
@@ -583,7 +587,7 @@ public final class Renderer {
                         descriptor: descriptor([columnDensity]))
                 else { continue }
                 encoder.setRenderPipelineState(countPipeline)
-                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
+                encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
                 encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
                 encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
@@ -600,7 +604,7 @@ public final class Renderer {
                     let encoder = buffer.makeRenderCommandEncoder(
                         descriptor: descriptor([web.carrier, web.tags]))
                 else { continue }
-                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
+                encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
                 encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
                 encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
                 encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
@@ -663,7 +667,7 @@ public final class Renderer {
                 else { continue }
                 encoder.setRenderPipelineState(plainPipeline)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
-                encoder.setVertexBuffer(positionBuffer, offset: positionOffset, index: 0)
+                encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
                 encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
                 encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
                 encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
@@ -877,6 +881,23 @@ public final class Renderer {
         return readBack()
     }
 
+    /// A frame whose light another pass draws (#314): `draw` encodes into the light target,
+    /// which it clears, and the post stages make the picture as they do for the particles.
+    /// `present` takes it instead of the output, read back otherwise.
+    func render(
+        present: MTLTexture? = nil, into given: MTLCommandBuffer? = nil,
+        light draw: (MTLTexture, MTLCommandBuffer) -> Void
+    ) -> [UInt8] {
+        guard let buffer = given ?? queue.makeCommandBuffer() else { return [] }
+        draw(accumulation, buffer)
+        encodePost(into: buffer, present: present)
+        guard given == nil else { return [] }
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
+        return present == nil ? readBack() : []
+    }
+
     /// As `render`, with the splat cut into command buffers of `slice` particles at most, each
     /// waited for before the next and each first handed to `pacer` with what the one before
     /// took, so the canvas's frames can go between them (#114). Additive, in the same order, so
@@ -988,7 +1009,7 @@ public final class Renderer {
             file("galaxy.u32", "uint", galaxyBuffer, 4, drawnCount),
         ]
         var frame = [
-            file("positions.f32x4", "float3", positionBuffer, vector, drawnCount, offset: positionOffset)
+            file("positions.f32x4", "float3", drawnBuffer, vector, drawnCount, offset: positionOffset)
         ]
         let splat = plan.uniforms(for: settings.plain ? .plain : .stars)
         var target = [
@@ -1027,7 +1048,7 @@ public final class Renderer {
             let cells = spacing?.cells ?? tracerFallback
             let treeFrame = spacing?.frame ?? tracerFallback
             frame += [
-                file("states.f32x4", "float4", tracers.positions, 16, tracerCount),
+                file("states.f32x4", "float4", drawnPositions ?? tracers.positions, 16, tracerCount),
                 file("words.u32x4", "uint4", tracers.velocities, 16, tracerCount),
                 File(
                     "scales.f32", "float", 4, tracerScales.count,

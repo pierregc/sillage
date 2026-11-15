@@ -5,6 +5,8 @@ EngineFixtures.swift             # Metal
 ExportedFile.swift               # CoreMedia, ImageIO
 FullPassMetal.swift              # Metal
 GPUTreeBuilder.swift             # Metal
+HoleCommand.swift                # Metal
+HoleRenderer.swift               # Metal
 LookGrid.swift                   # CoreGraphics, CoreText
 LookSheet.swift                  # Metal
 MetalBarnesHutSolver.swift       # Metal
@@ -21,6 +23,7 @@ SmoothingField.swift             # Metal
 SnapshotStream.swift             # Metal
 StyleAuto+Sheet.swift            # LookSheet, which draws on Metal
 TakeExport.swift                 # CoreGraphics, Metal
+TidalRun.swift                   # Metal
 TracerWalkDump.swift             # TracerStepGPU, in MetalBarnesHutSolver, and Metal buffers
 VideoCodec+AVFoundation.swift    # AVFoundation, VideoToolbox
 VideoWriter.swift                # CoreVideo, Metal

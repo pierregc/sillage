@@ -139,6 +139,110 @@ nineteen stories reach 4x, on 2 to 27 % of their frames); a motion blur, drawing
 take into each video frame at speed k, would cost exactly what drawing that stretch at 1x costs.
 The spike decides whether it is needed.
 
+### The track file
+
+Built in #305. `TimeTrack` (portable, beside `TakeFraming`) counts the video's time in *played
+frames*: seconds of video times the captured rate. Without a track a played position is the
+captured one, so every camera keeps the clock it had and an export without `--speed` keeps its
+bytes. The track is integrated once at its making, into the played position each captured frame
+is reached at (speeds) or a cubic through its keys (times); `frames(framesPerSecond:start:duration:)`
+gives each frame of a video its played and captured positions, `table(framesPerSecond:)` the
+captured positions of the whole video, and `captured(atPlayed:)`, `played(atCaptured:)` and
+`speed(atPlayed:)` answer anything between.
+
+`export --speed <file>` reads it, and every export with `--speed` writes the track it drew along
+beside the video, `exports/<name>.time.json`. It is JSON, versioned and strict as a look file is:
+a field this build does not know is an error, and a file read and written again keeps its bytes.
+Exactly one of four ways of giving it:
+
+```json
+{ "version": 1, "speed": 2 }
+{ "version": 1, "ramp": 3, "keys": [{ "myr": 300, "speed": 1 }, { "myr": 420, "speed": 0.5 }] }
+{ "version": 1, "ramp": 3, "speeds": [1, 1, 1.02, 1.04] }
+{ "version": 1, "times": [{ "at": 0, "myr": 300 }, { "at": 4, "myr": 400 }, { "at": 6, "myr": 400 }] }
+```
+
+- **`speed`**: the whole take at one speed, 0.25 to 16.
+- **`keys`**: from each moment of the take in megayears (the take's clock, as in `curves.csv`), a
+  speed held until the next key; the first holds from the take's start. Speeds go from 0.25 to
+  16, and a key outside the take is refused with the take's span.
+- **`speeds`**: a speed for every captured frame, which an automatic pace (#309) hands over.
+- **`times`**: #295's keys, the take's moment at seconds of the video, on a monotone cubic (Fritsch
+  and Carlson): two keys at the same moment freeze the take between them, time slows into the
+  freeze and picks up after, and it never runs backwards (a key earlier in the take than the one
+  before is refused). The video lasts to the last key.
+- **`ramp`**, with `keys` or `speeds`: seconds of video over which a speed may double or halve,
+  1.5 when absent (3 until #311), 0 for none. The speeds are geometric between captured frames and held to the
+  largest that stays under the keys: a slower stretch is already at its speed when it begins
+  (the slowdown happens before it, in the stretch before), and a faster one picks up after its
+  key. The bound holds at every point of the video, not on average over a frame.
+
+**The cameras on the video's time.** `ShotReplay` takes the track: the auto camera and the
+immersed director move on once a played frame, framing the centres at that frame's moment of the
+take, and between played frames the camera is mixed as it always was between captured ones, so a
+video at 60 fps eases as one at 30; the fixed camera's turn and zoom keys follow the video's
+progress, the played position over the whole video's; and `ShotPlan` plans on the take resampled
+at the played frames (`ShotPlan.Track.resampled`), so a shot of 2.5 s and openings of 8 s at most
+stay seconds of video at any speed. An export at the same captured position as the frame before
+reuses its expanded positions and smoothing, so a freeze costs the drawing alone. The grain moves
+on every video frame.
+
+### The full pass along a track (#310)
+
+`hires --pass full --speed <x>|<file>` draws the full pass's videos along a track, read once
+against the massive take as an export reads it against its own: `RunVideos` hands it to
+`ShotPlan` and `ShotReplay`, so the cameras and the shots are the massive take's resampled at the
+video's frames, and the look, the time and the painted arms are read at each frame's captured
+position. What changes is where a frame's positions come from.
+
+- **Where a frame falls.** The massive pass took captured frame k (k + 1) frames of steps past
+  the settle, so a video frame at captured position c falls (c + 1) times the steps of a frame
+  past it (`FullPassRun.place`): on a captured frame, on a step inside one, or between two steps.
+  The run still steps a captured frame at a time, and inside a frame stops at the steps its
+  video frames ask for; a frame on a step is drawn from the solver's positions, a frame between
+  two from a copy drifted from the last step. A fast track skips captured frames, and their steps
+  are run whole. Without a track, and at 1x, every frame falls on a captured frame and the run
+  steps and draws as it did.
+- **The drift** is a kernel of the shared source (#281), `drawnDrift` in `BarnesHutShaders`, with
+  its Metal entry point `bhDrawnDrift`, its CUDA one in `cuda/src/solver.cu` and
+  `sc_solver_drawn_drift`, and a case of its own in `BarnesHutPass`, so an engine that does not
+  run it does not compile. Between two steps the leapfrog moves every particle along a straight
+  line: a massive particle at its velocity half kicked by the acceleration it holds,
+  x + τ (v + a Δt / 2), a light tracer at its stored velocity, which its fused pass leaves half a
+  kick ahead already. The kernel writes `[tracers | massive visible]`, the halo left out, into a
+  buffer of its own, with the next step's own arithmetic, so a copy drifted by a whole step is
+  that step's positions to the bit (`aCopyDriftedByAWholeStepIsWhereTheNextStepPutsIt`, on Metal
+  and on the CUDA CPU target). The solver's buffers are only read.
+- **The light tracers are drifted with the rest**, read where they are, their formation time
+  carried in w. How they are stored, stepped and kicked, and their kernels, are untouched. The
+  drawings read the copy in place of the solver's position buffer, for the massive particles and
+  for the tracers' states (`Renderer.drawnPositions`, `CUDARenderer.drawnPositions`), and the
+  tracers' words and the tree's spacing records from the solver as before; so the two
+  populations stand at the same moment in every frame.
+- **What a frame between two steps does not move**: the smoothing lengths and the tracers'
+  spacing are the last step's tree's, the next step's star formation has not happened yet, and the
+  centres, disks and key frames are the steps' own. It is at most a step from a state the solver
+  held.
+- **The checks stay on captured frames**: the drift against the massive take on every frame it
+  stored, and the key frames, whether or not the video draws them.
+- **A GPU that drops the work stops the run.** On 15/11, with three other runs sharing the GPU,
+  the demonstration's 8 M full pass was hit by GPU faults several times; after one, the GPU
+  ignores the process's command buffers, and the solver went on "stepping" in 6 ms a step on
+  positions that no longer moved. The drift's copy now throws when its command buffer failed,
+  and so does a Metal full pass after any step whose pass did (`MetalBarnesHutSolver.failure`,
+  read by `check()` as the CUDA engine's is), so the run stops and resumes from its checkpoint
+  instead of drawing a frozen scene.
+- **Recorded**: the track as read goes into `hires.json` (`full.track`) and beside each video
+  (`exports/<preset>.time.json`), `full.frames` counts the video's frames, and `--draw-stills`
+  counts them too. The checkpoint's identity carries the track as read (`identity.track`): a
+  resumed run follows it, and one whose track changed, even in a file of the same name, is
+  refused with "the time track" among what differs.
+- **For #312.** The drift is asked for a fraction of the step in force (`host.timeStep`, which
+  #307's `changeStep` sets), the one the next massive half kick and drift take; after a
+  `changeStep` the tracers' velocities are opened at the new step too, so a whole step still
+  lands on the next step's positions (tested with the step halved). `place` counts the run's own
+  steps, and #312 turns them into the frame's ([below](#step-schedules-in-hires-312)).
+
 ## Part 2: knowing when it is interesting
 
 ### From the curves: the story's pace
@@ -235,11 +339,8 @@ changes. Margins of 100 or 150 Myr instead of 250 would save 26 or 24 %.
 
 What a schedule needs:
 
-- **Star formation that does not depend on the step.** It falls by 15 % at twice the step in a
-  hires, a third at the explore count, and uniformly over the story, quiet disks included
-  ([a doubled step](doubled-step.md)): changing the step mid-run would change the rate of young
-  stars at the switch, which shows. Which of the rule's two readings moves, the leaf's density or
-  the convergence of its flow, was never measured; that comes first.
+- **Star formation that does not depend on the step.** It does not
+  ([below](#star-formation-and-the-step-306)): the drop #225 measured was in the curves' count.
 - **A schedule planned from the preview's curves** with margins (a hires diverges from its
   preview by a few megayears at a merger). The massive pass judges its own curves as it goes, as
   explore does, keeps the fine step while a pair is still engaged, and records in `hires.json`
@@ -249,6 +350,167 @@ What a schedule needs:
   curves stay uniform.
 - **The frames on either side of each switch compared** against a run at 3.5 throughout and its
   1 pc floor, as #225 did, with stills of the disks at the story's start and of the remnant.
+
+### Star formation and the step (#306)
+
+Measured, the rule's rate does not follow the step. The 15 % and the third #225 found at twice
+the step were the curves losing the first step of every frame. Counted in full off the takes, a
+hires at 7 forms 0.994 of 3.5's stars (its floor 1.000), every window within a percent but the
+merger's, which comes 0.8 Myr later; at the exploration's count 7 and 14 form 1.02 and 1.00 of
+3.5's (floor 1.01), the leaves' density and convergence unchanged within the floor
+([star formation](star-formation.md)). At 14 a hires moves the encounter itself, its pericentre
+half a kiloparsec wider and its merger 2.4 Myr earlier, and its quiet disks form 2.6 % fewer
+stars. For a schedule:
+
+- **A switch to 7 leaves the young stars alone.** To 14 it costs a hires' quiet disks 2.6 % of
+  their young stars, through a compression term the coarser step smooths: nothing a film shows,
+  but past the floor. The remnant's stay within it at both.
+- **Curves written since #306 count every step**, whatever a frame holds, so frames at the coarse
+  step and at the fine one count alike. Older curves show (k - 1)/k of the stars at k steps a
+  frame; corrected by k/(k - 1) they compare with a schedule's.
+- **A knot is stamped at the start of its step**, so a coarse step stamps it up to a step early:
+  0.4 Myr at 14 in a hires, against the 25 Myr its light takes to rise.
+
+### Measured: a coarser step on scene-0031 (#307)
+
+`--dt-schedule` (a spike option, [reference](../reference.md#high-resolution)) on the story #225
+ran: scene-0031 of 2026-10-30-b, 8 M drawn from 2 M massive, 923 frames from 157 to 887 Myr,
+8 steps a frame at 3.5. The run at 3.5 throughout and its 1 pc floor came out bit for bit as
+#225's (`assets/225-doubled-step`): nothing in the solver moved since. The story starts at
+162 Myr (`Story`) and the pair merges for good at 510 Myr; the schedules switched on the first
+frame boundary past 162, 760 (250 Myr after the merger) and 610 (100 Myr after). Each run alone
+on the GPU, its time the process's own:
+
+| run | schedule | steps | saved | time | saved |
+| --- | --- | ---: | ---: | ---: | ---: |
+| (a) 3.5 throughout | | 8 968 | | 39.8 min | |
+| (b) its 1 pc floor | | 8 968 | | 39.9 min | |
+| (c) 7 before the story | `0:2,162:1` | 8 148 | 9.1 % | 36.3 min | 8.7 % |
+| (d) 14 before the story | `0:4,162:1` | 7 738 | 13.7 % | 34.8 min | 12.5 % |
+| (e) 7 from the merger + 250 Myr | `760:2` | 8 328 | 7.1 % | 36.7 min | 7.7 % |
+| (f) 7 from the merger + 100 Myr | `610:2` | 7 568 | 15.6 % | 33.5 min | 15.7 % |
+| (g) (d) and (f) together | `0:4,162:1,610:2` | 6 338 | 29.3 % | 28.6 min | 28.2 % |
+
+A step costs the same at every scale (264 to 271 ms), so the time saved is the steps saved, and the
+savings add up: (g) saves what (d) and (f) save apart.
+
+**No seam at any switch.** On 4K stills (the Hubble look of #225, automatic camera), the change
+from one stored frame to the next across each switch is the run at 3.5's own change within 1 %:
+frames 4 to 8 around the switch at 162 Myr in (c), (d) and (g), 572 to 576 at 610 in (f), 760 to
+764 at 760 in (e); the floor's ratio wanders by 2 %. In (d) and (g) every frame of the remnant
+changes 6 % more than in (a), before the switch at 610 as after it: that is the remnant the
+settle at 14 left, not the switch. A frame does not jump: the leapfrog closes the
+old step and opens the new one, the light tracers' half kick included, and the switch only
+starts a divergence that grows as any other.
+
+**After the merger, the coarser step is invisible.** Until its switch a run is (a) to the bit, its
+curves included (the automatic camera frames the whole take, so its stills differ by 0.1 %).
+At the last frame, 887 Myr, (f) puts 0.20 % of the light elsewhere than (a) (Poisson noise alone
+0.73 %, the floor 4.45 %), (e) 0.06 %; the remnant keeps its one compact knot within a cell; tails,
+extent and centres agree to the printed digit. The remnant's orbits take 10 to 30 Myr, fifty
+steps or more even at 7.
+
+**Before the story, the disks arrive the same, the encounter a little less so.** At the story's
+start the disks' rms heights agree to the third decimal in every run (0.211 and 0.135 kpc), and
+their projected profiles at 2 to 15 kpc within 0.4 % at 7 and 2 % at 14. But a settle at a
+coarser step is a larger perturbation than the floor's 1 pc, and the encounter amplifies it like
+any other: at 887 Myr, 9.3 % of the light is elsewhere at 7 and 13.8 % at 14, against 4.45 % for
+the floor, as much at 7 as #225's whole run at 7 (9.31 %).
+
+| against (a) | floor | (c) 7 before | (d) 14 before |
+| --- | ---: | ---: | ---: |
+| first passage | 6.11 kpc, 311.8 Myr | 6.11 kpc, 311.0 Myr | 6.50 kpc, 311.8 Myr |
+| merged for good | 510.4 Myr | 511.2 Myr | 508.0 Myr |
+| pair's angular momentum while apart, median | 0.42 % | 2.24 % | 3.05 % |
+| tails at the end (0.3007) | 0.3006 | 0.3081 | 0.3061 |
+| 4K stills apart, 309 / 423 / 887 Myr (8 px blur) | 1.3 / 3.6 / 6.2 % | 2.3 / 7.8 / 8.0 % | 3.4 / 10.8 / 9.3 % |
+| compact knots in the remnant besides the nucleus ((a): 1) | 1 | 2 | 3 |
+
+At 14 the settle moves the orbit (half a kiloparsec wider at the first passage, as #306 found for
+a whole run at 14) and the remnant keeps knots (a) does not; at 7 the passage and the merger stay
+within the floor's frame or two, and one more knot shows.
+
+**Star formation, apart.** The curves of these runs were written before #306 and count
+(k - 1)/k of a frame's stars at k steps a frame, which reads as a 14 % drop at a switch to 7 and
+43 % to 14 that is the count, not a seam. Corrected frame by frame, every stretch at 7 forms what
+(a) forms within 2 % (the floor's own spread). After the settle at 14, the first frames form 6 %
+more and the burst through the merger 4 to 6 % more, with the orbit it moved.
+
+**What it means for #312.**
+
+- The aftermath is where a schedule is free: 7 from 100 Myr after the merger saves 15.6 % here,
+  with nothing a viewer could see. 250 Myr only saved 7 %, the clip ending 127 Myr later.
+- Before the story, 7 saves 9 % and leaves the disks as they were; the encounter it then shows is
+  as faithful as a run at 7 throughout, within twice the floor at its pericentre. 14 saves 4 %
+  more and moves the orbit.
+- "The last engagement" must be the merger, or the parting. `Story`'s own `engagedMyr` reads
+  657 Myr here: after the merger, the two disks' debris centres still count as a pair inside its
+  reach moving as two bodies until its pull test settles them, 147 Myr later. Planned from it, the
+  schedule of (f) would have switched at 757 Myr and saved half as much.
+- The switch logic is in `sillage-render`'s frame loop (`advance`), the step change in
+  `BarnesHutStep.changeStep`; `hires.json` keeps `stepSchedule`, `stepsRun` and `stepSwitches`
+  (the step, the time and the frame of each). A full pass and a resumed run do not follow a
+  schedule yet, and a checkpoint does not keep the step in force.
+- Recommended, for Pierre to choose on the frames: 7 before the story and 7 from 100 Myr after
+  the merger, about a quarter of the steps here (9.1 + 15.6 %), with the encounter as a run at 7
+  shows it; (g), 14 before, saves 29 % and moves the orbit. The runs, the comparisons, 4K stills
+  either side of each switch and (a) beside (g) are on the branch `assets/307-dt-schedule`
+  (`docs/spikes/dt-schedule/`).
+
+### Step schedules in hires (#312)
+
+Every hires now takes a schedule unless `--dt-schedule off` ([reference](../reference.md#high-resolution)).
+Pierre chose the default on 15/11, closing #307's question: 7 before the story, 3.5 through it, 7
+from 100 Myr after the merger or the parting. What decides it, and where:
+
+- **Planned from the preview** (`StepSchedule.planned`, from `SceneFolder.hiresArguments`): the
+  default, `story:2:2:100` (`StepSchedule.standard`, the one place to change it), is twice the
+  hires step through the settle up to the first captured frame, the hires step from there, and
+  twice again from 100 Myr after the preview's last engagement. A scale a frame does not hold
+  whole is halved until it does; an aftermath that would start after the story's end is left
+  out; a scene with no engagement keeps its own step after the settle.
+- **The last engagement is the pace's** (`StoryPace.Engagement`, shared with #309): the last
+  sample `Story` reads a pair inside its reach and still moving as two bodies, ended at the merger
+  once the centres stay within 10 kpc to the last sample. On scene-0031 it is the merger, not
+  `Story`'s 657 Myr. `Story.engaged(_:at:)` is that flag of `reading` alone, without the orbits:
+  planning reads a whole preview in a few milliseconds, and `reading` takes its flag from it.
+- **Judged by the run** (`StepJudge`, `StepScheduler`): the massive pass, and a hires in one
+  pass, show the judge their centres after every stretch, settle included, rounded as the curves
+  write them. A coarser stretch the plan asks for runs only if no pair has been engaged for 100
+  Myr, so the run keeps the fine step while its own pair is engaged whatever its preview did,
+  comes back to it if a pair engages again, and holds the settle at its own step if a pair comes
+  inside its reach early. Only the centres count, so a massive pass and a run with tracers judge
+  alike. An explicit `--dt-schedule <Myr>:<scale>,...` is followed as written.
+- **Recorded, then followed**: `hires.json` keeps the schedule, `stepsRun` and each switch (the
+  step of the run's own, the time, the scale, the frame). `hires --pass full` passes the switches
+  down (`--dt-switches`), and the full pass (`FullPassRun`, both engines) changes the step at
+  those steps exactly, whatever `--dt-schedule` it is asked. A checkpoint's solver state keeps the
+  step in force (`SolverState.timeStep`, absent at the scene's own, so a run without a schedule
+  writes what it wrote), the switches are part of its identity through the command line, and a
+  resumed run starts at the step its switches give, refusing a checkpoint whose step disagrees.
+  In the settle a coarser step crosses a checkpoint's step rather than splitting; without a
+  schedule the chunks are cut as before.
+- **A frame between two steps** (#310's trap): `FullPassRun.place` counts a captured position in
+  the run's own steps, and `Place.taking` turns it into the steps of its frame, a fraction of the
+  step in force, which the drift takes.
+- **Priced**: `Hires.stepsToRun` (the steps run once it ran, as planned before) is what
+  `CostModel.hiresSeconds`, the queue's estimates, a night's progress and the hires stage's own
+  estimate count, and a full pass's history sample counts its massive pass's `stepsRun`. A night
+  planned before its scenes are explored counts the settle's coarser step only
+  (`ExploreProbe.scene`). The progress and the estimated end of a run count its steps, not its
+  own.
+- **The light tracers** are untouched: a switch gives them the difference of the two half kicks
+  through the existing tracer pass (#307's mechanism), in the full pass and in a hires in one
+  pass alike.
+
+**Measured on scene-0031** (8 M from 2 M, `--take-interval 4`, alone on the GPU): 6 524 steps in
+29.4 min against (a)'s 8 968 in 39.8 min, 27 % saved. The aftermath starts at 560 Myr, not #307's
+610: the pace's merger is 459 Myr, when the centres come within 10 kpc for good, where #307 read
+510. The frame-to-frame change across that switch is (a)'s within 0.3 %. With the schedule off a
+hires, a massive pass and its full pass give origin/main's take, curves, stills and end state to
+the bit (800 k from 200 k), a scheduled full pass repeats its massive pass on every checked frame,
+and one killed and resumed twice, in the coarse settle and before the aftermath's switch, ends in
+the same state. Side by side and stills on `assets/312-step-schedules`.
 
 ### Light tracers on steps of their own
 
@@ -284,6 +546,164 @@ the rungs on a real run before anything is built.
 - **Tracers in their galaxy's analytic potential before the story.** They would not follow the
   massive disk's ringing and arms, and the two would disagree on screen at the switch.
 - **Thinning takes to the track** (above).
+
+## Spike #309: which automatic pace reads best
+
+Pierre chose (2026-11-15), on the recommendation: Auto is the story pace at 4 with a top of 8
+(`story:4:8`), a night's `speed` stays 1 unless the recipe says otherwise, and the default ramp is
+1.5 s a doubling.
+Videos and one sheet per take (the curves, the picture's change, each pace's speed, the video's
+time against the take's) are in `~/claude-workspace/epic-304-out/309/for-pierre/`.
+
+**What was built.** Two paces that give a speed to every captured frame, a `TimeTrack` from them
+(#305), and a spike option to export with either:
+
+- `StoryPace` (`SillageCore`, portable, tests on synthetic curves): the prototype of Part 2 ported.
+  A frame's activity is the largest of three changes over the 150 Myr around it, in `Story`'s
+  thresholds (tails 0.02, extent 15 %, disruption 0.05); frames up to the last moment a pair is
+  engaged, or where stars form at over twice their level before the story, play at 1x; elsewhere
+  the speed is `pace` over the activity from 1 to `top`. `story:4:8` is pace 4, top 8.
+- `VisualPace` (`SillageCore`, with the drawing in `TakeExport.visualChanges`): the take drawn at
+  256 wide with the export's camera, one drawing per megayear, the mean change of the log
+  luminance (+0.01) between drawings over the pixels lit in either, smoothed over 15 Myr; the speed
+  that keeps the change per frame of video at what the busiest quarter of the frames has at 1x,
+  from 1 to `top`. The field stars, the sky and the grain are left out of these drawings.
+- `export --speed story[:pace[:top]]|visual[:top[:busiest]]`, `--slow <from>:<to>:<speed>` (a
+  stretch held to at most that speed, in Myr of the take) and `sillage-render pace` (the track
+  without the video, and CSVs of the video's time and of what the pace read), in
+  [the reference](../reference.md). `TimeTrack` does the ramp, 3 s per doubling (1.5 s since #311).
+
+**What the prototype got wrong, and what changed.**
+
+- *Engagement* came from two constants (45 kpc, 10 kpc). It now is `Story`'s own (the pair inside
+  its reach and still moving as two bodies), ended at the merger once the centres stay within
+  10 kpc to the end of the take, because `Story` waits for nuclei to settle as two bodies, which
+  keeps the Antennae at 1x 200 Myr after a viewer sees a remnant. On the four takes it lands
+  where the prototype did (887, 520, 559 and 504 Myr), and the videos are within a point of its.
+- *The extent* counts only while the pair is inside its reach, as in `Story`: galaxies parting
+  stretch it whatever the stars do. It changed nothing on the pair that parts (below), where the
+  disruption decides.
+- *The window* slides inwards at either end of the take instead of shrinking, so the last frames
+  are not judged on a sliver that looks quiet; the extent is relative to the window's largest,
+  as `Story` has it.
+- *The curves and the take* have different frames (hires curves start a frame after the take),
+  so the speeds are interpolated in time (geometric) onto the take's frames.
+- *The ramp* is `TimeTrack`'s: a slowdown is over before the slow stretch begins, the prototype's
+  clamp moved both ways.
+
+**The takes** (readme-v4 look, 4K ProRes from an APFS clone, scaled to 1080p; length against
+1x, the highest speed reached after the ramp):
+
+| take (frames, Myr/frame) | 1x | story 4:8 | story 8:8 | visual | story 4:8, 0.5x at the first pass |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mice, scene-0067 (1525, 0.79) | 50.8 s | 38.8 s (76 %), 5.3x | 35.1 s (69 %), 6.1x | 35.3 s (70 %), 2.9x | 43.9 s (86 %) |
+| Antennae, scene-0099 (747, 0.79) | 24.9 s | 20.2 s (81 %), 2.6x | 19.4 s (78 %), 3.5x | 21.3 s (85 %), 1.6x | 25.2 s (101 %) |
+| ring, scene-0131 (916, 0.79) | 30.5 s | 24.8 s (81 %), 2.2x | 22.1 s (72 %), 3.6x | 27.0 s (89 %), 2.0x | 29.9 s (98 %) |
+| pair that parts, scene-0011 of 2026-11-13 (602, 1.02) | 20.1 s | 19.9 s (99 %), 1.2x | 18.7 s (93 %), 1.4x | 17.9 s (89 %), 1.5x | 24.2 s (121 %) |
+
+The Mice, the Antennae and the ring are 50 M drawn on 8 M massive (the youtube-4k nights); the
+pair that parts is the one take among the 2026-11-13 hires and the youtube-4k library whose story
+ends without a merger (they separate to 336 kpc after a pass at 1.6 kpc), 8 M drawn on 2 M
+massive. The Antennae and the ring use `night-v4`, the readme-v4 look with the camera fixed on the
+centres' paths; the pair that parts the same, framed on its host (`night_frame.py --host-only`).
+
+**What the pictures and curves show.** I did not watch the videos as a viewer would; this is from
+the curves, the pace's traces, stills and frame-to-frame measurements.
+
+- **The story pace plays every collision at 1x and the aftermath at 2x to 5x**, as the prototype
+  said: it saves a quarter of the Mice and a fifth of the Antennae and the ring. The saving is all
+  in the last half: the tails settle, the extent decays, and the speed climbs steadily to the
+  take's end (5.3x at 4:8, 6.1x at 8:8). The top of 8 is never reached: the takes end with the
+  extent still changing by 0.65 to 1 thresholds, which is 4 to 6x at pace 4 (8 to 12x at pace 8
+  would be capped by the top).
+- **Bolder (8) buys 3 to 9 points** (the ring from 81 to 72 %) and starts the speedup earlier, not
+  a different shape.
+- **The visual pace is a different animal.** It plays the pictures at a constant change, and
+  pictures change while a remnant turns: its speed stays under 3x everywhere, it speeds up the
+  quiet approach (1.9x at the Mice's start, where the story pace keeps 1x) and, like the story
+  pace, plays 1x from the first pass to the merger. It saves as much as 8:8 on the Mice (the pictures
+  quieten after the merger) and little on the ring (89 %).
+- **The pair that parts has nothing to speed up.** Its first pass leaves the disk of the host torn
+  (disruption 0.27 at 500 Myr, 0.70 at the end), so the activity stays above 4 thresholds to the end
+  and the story pace stays at 1x, and the pictures change more late (the streams spreading)
+  than early. A parting pair has no quiet aftermath: the curves do not see a disk heating on its
+  own, which `Story` already treats as the end of a story, 400 Myr after the last engagement.
+- **0.5x around the first pass** (80 Myr, 3.4 s at 1x, 6.8 s at 0.5x) adds 5 s (4 s on the pair
+  that parts) to the story pace's video: the ramp makes the slowdown start 3 s before (1.5 s since #311).
+- **The knots do not strobe**, at up to 6x on these remnants. In three consecutive frames of the
+  Mice at 5.5x the remnant is a smooth glow with lobes 50 pixels and more across that glide; the
+  compact things (field stars, a satellite) are static or slow, and the particles' fine speckle
+  is redrawn at every frame at any speed. By estimate a feature turning at 200 km/s moves 6 pixels
+  a frame at 1080p at 6x (4.7 Myr a frame, 6.4 px per kpc), whatever its radius. No remnant here
+  has the bright compact knots a motion blur would be for, so none was made: the blur above 4x
+  stays an idea, to try on a take whose remnant keeps knots (the ring's, before 600 Myr, are at
+  1x to 2x).
+- **The end at the top speed against the run stopped where the speed gets there** (the 8:8
+  video, stopped where its speed first stays at 75 % of the speed it ends at): the Mice lose
+  1.2 s of 35 and 155 Myr of 1200 (13 % of the take), the Antennae 1.2 s of 19 and 90 Myr (15 %),
+  the ring 2.2 s of 22 and 178 Myr (25 %). The last stretch at speed costs a seventh to a quarter
+  of a run for one or two seconds of video, which is what Part 3's schedules would save. The pair
+  that parts never reaches 2x, so it has none.
+
+**Recommendation.** The story pace at 4 with a top of 8 as the default, and 8 offered as a bolder
+setting: it is simple, it keeps every collision at 1x, it never goes under what the curves
+justify, and what it saves is the aftermath Pierre asked about. The visual pace is not worth the
+extra pass on its own (it plays a turning remnant at 1x to 3x), but its speedup of the quiet
+approach is the one thing the curves do not give; a pace that is the faster of the two where both
+call a frame quiet would be the next thing to try, not now. The 0.5x at a pericentre is a hand
+key (`--slow`), not part of a pace. A pair that parts stays at 1x whatever the pace; that is
+correct, not a defect.
+
+**For #311.**
+
+- The pre-pass needs `forVisualPace()` (no field stars, sky or grain): drawn at 256 px they were
+  most of the frame, soft blobs of 30 px, and their change drowned the take's. The galaxies are
+  50 px wide in the Mice's fixed wide frame; a director camera's pre-pass runs on the 1x track's
+  cameras, not the paced video's.
+- **Drawings go wrong now and then**: 14 of 1207 for the Mice, 3 for the ring, none in the
+  smaller takes, each a single drawing 100 times its neighbours' change, and not reproducible by
+  drawing it again. The 4K exports did not show it (checked frame to frame on every video), and
+  the GPU was shared. The visual pace drops them (a median over five intervals, and anything over
+  8 medians of the take's own); a pre-pass that is kept should check them.
+- Two 4K exports of the ring failed with "victim of GPU error/recovery" (another job on the GPU
+  faulted) and were drawn again: read an export's log before trusting its file.
+- The curves have a frame fewer than the take at the start and a different cadence from the
+  explore curves: always map by time. `formed` is per frame, not cumulative.
+- 1080p from a 4K master is H.264 two-pass `-preset slow -x264-params aq-mode=3`, 2.7 Mbit/s for
+  the Mice's 51 s (a faint tile pattern shows in the dark outskirts; a 10 Mbit/s copy of the 1x
+  is beside the videos), 5 to 7 Mbit/s for the others; very short clips overshoot the target
+  bitrate by up to 14 %.
+
+## #311: Auto, in exports, nights and the app
+
+What Auto means is **one constant**, `PaceSpec.auto` (`SillageCore/PaceSpec.swift`): Pierre's choice,
+#309's story pace at 4 with a top of 8 (`story:4:8`). Every way in reads it
+from there: `--speed auto` in `export`, in `hires --pass full` and in `pace`; a night's `speed`;
+the app's Speed; the queue's and the plan's counts of a video's frames
+(`PaceSpec.expectedShare`, 0.8, is what they use when a scene's curves are not there to say).
+Another pace is a one-line change of the constant, and `expectedShare` with it; the visual pace
+would also need its 256 px pre-pass in the full pass, which draws no take of its own (a full pass
+refuses it and says to make the track with `pace`).
+
+- **The default ramp is 1.5 s a doubling.** #305 set 3 s; the demonstration of #310 found that a
+  hand track reached 4x only at the end of the take with it. Files with no `ramp` read with the
+  new default, a ramp of 0 still turns ramping off, and the Auto videos of #309 come out a
+  little shorter for it (a speed picks up in half the time).
+- **Where the pace is read.** An export reads it from the take's curves when it starts (the
+  curves of the hires run, else the explore run's, mapped to the take by time), and writes the
+  track it drew along beside the video, a speed for every captured frame. The full pass reads the
+  massive pass's `curves-hires.csv` against the massive take before it starts, so the checkpoint's
+  identity holds the track it gave and `hires.json` keeps it (`full.track`).
+- **What the queue counts.** `VideoLength.share` is the share of a take's frames a `--speed`
+  keeps: `1/x` for a number, the curves' pace for `auto`, the track's own length for a file. It
+  feeds the queue's estimate of an export (the frames left after `--start`; `--duration` counts
+  video seconds as it did) and of a full pass's drawing, and a night's plan.
+- **The app.** The export sheet has a Speed (x0.25 to x8, Auto, a track file) above Advanced, and a
+  speed other than x1 writes a file of its own (`4k-auto.mp4`). The style editor's transport bar
+  has a Pace, the take's own or Auto or a file of the scene's `exports/`: the playhead then
+  advances the video's time and goes where the track puts it, the scrubber draws the speed along
+  the take with its first and last moments in megayears, and the bar reads the speed at the
+  playhead. `Sillage.app --pacecheck` draws both and runs an export at Auto through the queue.
 
 ## The plan
 

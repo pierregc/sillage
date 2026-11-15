@@ -55,10 +55,13 @@ public struct RunCheckpoint: Sendable {
         /// What runs it (#278): `metal`, `cuda-gpu` or `cuda-cpu`. Absent from a checkpoint
         /// written before, which Metal wrote.
         public var engine: String?
+        /// The time track the videos are drawn along, as read (#310); absent without one.
+        public var track: String?
 
         public init(
             arguments: [String], scene: String, look: String, framing: String, particles: Int,
-            massive: Int?, timeStep: Float, presets: [String], code: String, engine: String? = nil
+            massive: Int?, timeStep: Float, presets: [String], code: String, engine: String? = nil,
+            track: String? = nil
         ) {
             self.arguments = Self.kept(arguments)
             self.scene = scene
@@ -70,6 +73,7 @@ public struct RunCheckpoint: Sendable {
             self.presets = presets
             self.code = code
             self.engine = engine
+            self.track = track
         }
 
         /// Options that say where a check writes or how often to checkpoint, not what runs.
@@ -112,6 +116,7 @@ public struct RunCheckpoint: Sendable {
             if timeStep != other.timeStep { found.append("the step") }
             if presets != other.presets { found.append("the videos") }
             if (engine ?? "metal") != (other.engine ?? "metal") { found.append("the engine") }
+            if track != other.track { found.append("the time track") }
             return found
         }
     }

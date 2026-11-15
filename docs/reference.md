@@ -197,6 +197,12 @@ it at the run's softening), `--softening` overrides the scene's, and
 `scripts/probe-report.py` lays runs side by side. The columns and how to read
 them: [docs/notes/calm-disk-probe.md](notes/calm-disk-probe.md).
 
+**What star formation reads.** `--sf-leaves <file>`, on `probe-disk` or on any run, writes after
+each frame what the next step's star formation pass reads on the leaves of the tree, summed: the
+gas left, the density and compression terms in stars a megayear, and how the gas spreads over
+the convergence of the flow. `scripts/sf-leaves.py` lays runs side by side, window by window
+([docs/notes/star-formation.md](notes/star-formation.md), #306).
+
 ### High resolution
 
 `hires` runs the scene again from its `scene.json` at `--particles` and writes `take.sillage`,
@@ -226,6 +232,34 @@ tracers walk at the scene's opening angle, so `--theta-tracers` is refused. `hir
 `massive` beside `particles`, and a record without it is a run in which every particle carried
 mass. A night draws 8 M from 2 M (#211): the texture of 8 M for about a third of a real 8 M's
 time. `--particles N` without `--massive` is a real N, every particle carrying mass.
+
+**Step schedules** (#312). A hires takes a coarser step where nothing fast happens: twice its
+step through the settle, up to its first captured frame, its own step through the story, and
+twice again from 100 Myr after the last engagement, the merger or the parting, read off the
+preview's curves as the automatic pace reads it (`StoryPace.Engagement`). The run judges its own
+centres as it goes: it keeps its own step while one of its pairs is engaged and for 100 Myr after,
+whatever the preview did, and comes back to it if a pair engages again, the settle included.
+Every switch falls on a frame boundary, settle included, and the coarse step is a power of two
+times the run's own that divides a frame's steps, so the captured frames keep their cadence in
+megayears. The leapfrog stays whole across a switch: a massive particle closes the old step with
+its half kick and opens the new one with its own; a light tracer, which opened the next step
+already, gets the difference. `--dt-schedule` chooses:
+
+- `story[:<before>[:<after>[:<margin>]]]`, the planned schedule, `story:2:2:100` by default
+  (`StepSchedule.standard`): `story:4:2` steps four times coarser before the story, `story:1:2`
+  only in the aftermath;
+- `off`, the run's own step throughout, today's bits;
+- `<Myr>:<scale>,...`, entries followed as written, without judging: `0:4,162:1,610:2` steps four
+  times coarser up to 162 Myr, at the run's own step to 610, then twice as coarse.
+
+`hires.json` keeps the schedule (`stepSchedule`, with its `margin` when the run judges), the
+steps run (`stepsRun`, against `settle + steps` of the run's own) and every switch
+(`stepSwitches`: the step of the run's own, the time, the scale and the captured frame). A full
+pass follows its massive pass's switches to the bit whatever it is asked (`--dt-switches`, which
+`hires` passes down), and so does a run resumed from its checkpoint, whose solver state keeps the
+step in force and whose identity the switches are part of. The cost model, the queue and a
+night's plan price a hires at the steps its schedule plans. Measured in
+[variable time](notes/variable-time.md).
 
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for
 more is refused. It defaults to ten million on the M4 Max with 36 GB, the most measured, and
@@ -367,9 +401,16 @@ saved style for as long as it is held, **Cancel** puts it back, and **Use for sc
 (⌘S) promotes it as `--promote` does, after which **Export…** opens the export sheet. File > Open
 takes any take (⌘O) and any look file (⇧⌘O) over the picture, ⇧⌘S saves the look anywhere, and
 outside the editor ⌘S writes it back where it came from. A file opened and saved untouched is
-the same file; see [the note](notes/style-editor.md).
+the same file; see [the note](notes/style-editor.md). The transport bar has a Pace beside its
+speed (#311): the take's own, Auto, or a track file of the scene's `exports/`. With one, the
+playhead plays at the track's speed, the bar says it (x1.0 in a collision, x4.6 in the settling)
+and the scrubber draws the speed along the take, between its first and last moment in
+megayears, dashed at x1.
 `Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing;
-`Sillage.app --thumbcheck <take>` times the thumbnails and the canvas beside them.
+`Sillage.app --thumbcheck <take>` times the thumbnails and the canvas beside them;
+`Sillage.app --pacecheck <scene folder> [--out <folder>] [--export]` plays the take along Auto,
+draws the scrubber and the export sheet at Auto into pictures and, with `--export`, runs that
+export through the queue and compares its length with the queue's count.
 
 ### Export
 
@@ -389,6 +430,53 @@ the clip, and `--fps` defaults to the rate the take was captured at; any other r
 moments between captured frames through the same cubic the take's skipped frames use, and the
 camera between the two captured frames around them. `--look` takes a file, a look kept in
 the scene's `looks/` by name or a catalogue look, `--take` another take and `--out` another path.
+
+`--speed <x>` plays the take at a constant speed, from 0.25 to 16, in captured frames per video
+frame at the captured rate: 2 shows every other captured frame and lasts half as long, 0.5 draws
+a frame between each two. `--speed <file>` follows a time track kept in a `.time.json` (format in
+[time that runs faster](notes/variable-time.md#the-track-file)): speeds at moments of the take,
+held until the next and ramped by no more than a doubling or a halving over a second and a half
+of video (`ramp` in the file, 1.5 when absent, 0 for none), a speed for every captured frame, or a
+flight's keys of video seconds and megayears. `--speed auto` is the pace that follows the story
+(below).
+`--start`, `--duration`, `--fps`, `--stills`, `--still-frames` and the previews count in the
+video's time, the cameras move in it and look at the take's moment, and the track used is
+written beside the video as `exports/<name>.time.json`; the export's second line gives the
+video's length and the span of the take it shows. Without `--speed`, and with `--speed 1`, every
+frame is the one it always was.
+
+```bash
+./scripts/dev.sh export library/2026-10-23/scene-0001 --speed 2
+./scripts/dev.sh export library/2026-10-23/scene-0001 --preset 4k --speed pace.time.json
+```
+
+**Automatic pace (#309, #311).** `--speed auto` plays the collision at its own pace and the
+settling faster: the story pace at 4 with a top of 8 (`PaceSpec.auto`, the one place that says
+what Auto is), which keeps the frames up to the last moment a pair is engaged at 1x and speeds the
+aftermath up to 4 or 5x, shortening a video by a fifth on average. It is read off the take's
+curves when the export starts and written beside the video as a track of a speed per captured
+frame (`exports/<name>.time.json`), which can be edited, or replaced by a few keys, and drawn again
+with `--speed <file>`. The same word goes to a night's `speed`, to `hires --pass full --speed auto`
+(read off the massive pass's curves) and to the app's Speed. The pace's other names are what Auto
+was chosen among, and stay for trying them; `--slow <from>:<to>:<speed>` (megayears of the take)
+holds a stretch of any of them to at most that speed.
+
+- `story[:<pace>[:<top>]]` reads `curves-hires.csv` (or `curves.csv`, whichever starts and ends
+  where the take does): the largest change of the tails, the extent and the disruption over the
+  150 Myr around each frame, in `Story`'s thresholds, with the extent left out once the pair is
+  past its reach. Frames up to the last moment a pair is engaged (or has not yet merged), and
+  frames where stars form at more than twice their level before the story, play at 1x; elsewhere
+  the speed is `<pace>` over the activity, from 1 to `<top>` (4 and 8 when absent).
+- `visual[:<top>[:<busiest>]]` draws the take at 256 wide with the export's camera, one drawing
+  per megayear of the take, measures the mean change of the log luminance between drawings, and
+  sets the speed that keeps the change per frame of video at what the busiest quarter of the
+  frames (`<busiest>`, 0.25 when absent) has at 1x, from 1 to `<top>` (8 when absent).
+
+`sillage-render pace <scene folder> --speed <name> [--slow ...] [--look <look>] [--out <file>]
+[--csv <file>]` writes the track without drawing the video (the visual pace still draws its
+256 pixel pre-pass), to be read by `export --speed <file>`, and prints the length of the video it
+gives; `--csv` adds the video's time against the take's, and the pace's own trace beside it as
+`.trace.csv`.
 
 `--codec hevc|h264|prores` picks what the frames are compressed with, all on the media engine:
 
@@ -520,10 +608,11 @@ encounters and a night batch judges them. Run again at its own size, a scene com
 
 `--dt-scale 3.5` holds at high resolution: halving the step at 500 000 a galaxy moves the centres
 by less than 0.01 kpc and leaves 98 % of the stars in the same place, for twice the time.
-Doubling it does not hold for a hires: at 8 M drawn from 2 M, 7 keeps the passages, the merger
-and the tails, but forms 15 % fewer stars and parts ways on the compact knots past the
-encounter's own chaos, so hires stays at 3.5 and only exploration runs at 7
-([the note](notes/doubled-step.md), #225).
+Doubling it does not hold for a hires: at 8 M drawn from 2 M, 7 keeps the passages, the merger,
+the tails and the stars formed, but parts ways on the compact knots past the encounter's own
+chaos, so hires stays at 3.5 and only exploration runs at 7
+([the note](notes/doubled-step.md), #225). The 15 % fewer stars #225 saw at 7 were the curves
+losing the first step of every frame (#306).
 
 ### Exploration batches
 
@@ -633,7 +722,9 @@ before seven in the morning behind the queue, and each size says how many carry 
 count, every particle massive, stays on the command line: `sillage-render queue add hires
 <scene> --particles N`, without `--massive`. **Export…** opens a sheet of presets to tick
 (1080p, 4K, Vertical, Square, WhatsApp, animated WebP, GIF, with codec, range, frame rate and
-style under Advanced), each ticked card one `export` job. Both say how long each job takes and
+style under Advanced), a Speed above them (x0.25 to x8, Auto, or a track file; the sheet says how
+long the video comes to), each ticked card one `export` job. A speed other than x1 writes a file
+of its own (`4k-auto.mp4`, `4k-x2.mp4`), and the queue counts its frames from the track. Both say how long each job takes and
 when it will be ready, queue ahead included. A job waiting or running shows on its stage with
 its progress and Cancel. Redoing a stage touches nothing else: another format, style or range
 writes a new file, while the same export after a new take replaces its own. Kept and

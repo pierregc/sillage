@@ -129,14 +129,14 @@ public struct CostModel: Codable, Sendable, Equatable {
 
     /// A scene's own hires at `particles`, from `massive` when given: its story's steps at the
     /// step the massive count takes, settle included, so a short story costs less than the
-    /// clip it was explored in.
+    /// clip it was explored in, and as its step schedule plans them (#312).
     public func hiresSeconds(_ folder: SceneFolder, particles: Int, massive: Int? = nil) throws -> Double {
         let record = try folder.hiresArguments(
             ["--particles", String(particles)] + (massive.map { ["--massive", String($0)] } ?? []),
             maximumParticles: particles
         ).record
         return hiresSeconds(
-            particles: particles, massive: record.massive, steps: record.settle + record.steps)
+            particles: particles, massive: record.massive, steps: record.stepsToRun)
     }
 
     /// Drawing `frames` of `preset` over `particles` while a full pass runs.
@@ -471,7 +471,7 @@ public struct CostHistory: Sendable, Equatable {
     static func hiresSample(_ folder: SceneFolder) -> CostModel.Sample? {
         guard let record = folder.storedHires(), let seconds = record.seconds, seconds > 0
         else { return nil }
-        let steps = Double(record.settle + record.steps)
+        let steps = Double(record.stepsRun ?? record.settle + record.steps)
         return CostModel.Sample(
             units: Double(record.massiveParticles) * steps,
             tracerUnits: Double(record.simulatedTracers) * steps, seconds: seconds,
@@ -485,7 +485,8 @@ public struct CostHistory: Sendable, Equatable {
     )? {
         guard let record = folder.storedHires(), let full = record.full, full.seconds > 0, full.frames > 0
         else { return nil }
-        let steps = Double(record.settle + record.steps)
+        // It follows the steps its massive pass took.
+        let steps = Double(record.stepsRun ?? record.settle + record.steps)
         let date = modified(folder.hires) ?? .distantPast
         var draws: [String: CostModel.Sample] = [:]
         for (name, seconds) in full.drawSeconds where seconds > 0 {

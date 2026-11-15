@@ -62,6 +62,9 @@ public final class CUDARenderer: FrameStyling {
     /// The buffer holding the massive particles' positions, 16 bytes each from `positionOffset`.
     public let positions: CUDABuffer
     public let positionOffset: Int
+    /// Positions laid out as `positions` that the next pictures are drawn from in its place: a
+    /// full pass's copy drifted between two steps (#310).
+    public var drawnPositions: CUDABuffer?
     /// Pixels of a splat's square past which it is set aside and drawn a block of threads, the
     /// second way for large splats; 0 draws every splat from its particle's thread.
     public var largeSplatPixels = 0 {
@@ -424,7 +427,7 @@ public final class CUDARenderer: FrameStyling {
     /// Hands the frame's buffers and tables to the renderer.
     private func bind() throws {
         var massive = sc_render_massive(
-            positions: positions.handle, positions_offset: positionOffset,
+            positions: (drawnPositions ?? positions).handle, positions_offset: positionOffset,
             population: population.handle, formation: formation.handle,
             luminosity: luminosity.handle, component: component.handle, galaxy: galaxy.handle,
             smoothing: smoothing.handle, traits: traits.handle, ramp_keys: rampKeys.handle,

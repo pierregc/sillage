@@ -143,7 +143,10 @@ still going at the cap, so the night picks prefer the ones they can show whole.
   their megayears, and `complete`, false when the run reached the cap with the story going on.
 - `hires` settles through everything before the story's first frame and stops at its last;
   `--frames N` takes the first N frames of it. A `clip.json` from before has no story and
-  replays its whole clip.
+  replays its whole clip. Since #312 it settles at twice its step, takes its own step from the
+  story's first frame, and twice again from 100 Myr after the last engagement the preview's
+  curves show, the merger or the parting, judged again on its own centres as it runs
+  ([variable time](variable-time.md#step-schedules-in-hires-312)).
 - `export` already took the whole take unless `--start` or `--duration` say otherwise.
 - `interest.py` multiplies the score of a story still going at the cap by 0.5, so the night
   picks prefer scenes they can show whole; `interest.json` keeps `story_complete`.

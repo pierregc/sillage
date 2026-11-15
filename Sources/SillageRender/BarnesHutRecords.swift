@@ -51,6 +51,21 @@ public struct BHParams {
     public var pad1: Float = 0
 }
 
+/// A copy of the drawn particles between two steps (#310), as `DrawnDriftParams` reads it.
+public struct DrawnDriftGPU {
+    public var tracerCount: UInt32
+    public var massiveCount: UInt32
+    public var timeStep: Float
+    public var interval: Float
+
+    public init(tracerCount: UInt32, massiveCount: UInt32, timeStep: Float, interval: Float) {
+        self.tracerCount = tracerCount
+        self.massiveCount = massiveCount
+        self.timeStep = timeStep
+        self.interval = interval
+    }
+}
+
 /// The light tracers' fused force pass (#238), as `TracerStepParams` reads it.
 public struct TracerStepGPU {
     public var tracerCount: UInt32

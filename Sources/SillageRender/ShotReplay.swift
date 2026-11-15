@@ -11,6 +11,12 @@ import SillageCore
 /// `ShotPlan` of the whole take instead, which any frame can be asked of. The look grid and the
 /// export both draw through this, so a still of the grid and the same frame of a video are
 /// framed alike.
+///
+/// With a time track (#305) the camera moves in the video's time and looks at the take's:
+/// frames are asked for by played position, the auto camera and the immersed director move on
+/// once a played frame framing the centres at that frame's moment of the take, the orbit plan
+/// turns with the video's progress, and the director plans on the take resampled at the played
+/// frames, so its shots keep their length in seconds of video.
 public final class ShotReplay {
     public typealias Shot = (camera: Camera, look: RenderLook)
 
@@ -24,6 +30,8 @@ public final class ShotReplay {
     public let plan: ShotPlan?
     private let aspect: Float
     private let secondsPerFrame: Double
+    /// Nil without a track, or with one that plays every captured frame once.
+    private let track: TimeTrack?
     private var auto = AutoCamera()
     private var next = 0
     /// The last two frames replayed, enough to draw anywhere between them.
@@ -35,13 +43,16 @@ public final class ShotReplay {
     /// has measured it already, as a canvas replaying the plan after every edit does.
     public init(
         file: LookFile, take: RecordingFile.Loaded, capturedFrames: Int, framesPerSecond: Int,
-        aspect: Float = 16.0 / 9.0, plan: ShotPlan? = nil, radius: Float? = nil
+        aspect: Float = 16.0 / 9.0, plan: ShotPlan? = nil, radius: Float? = nil,
+        track: TimeTrack? = nil
     ) {
         self.file = file
         recording = take.recording
         let scene = take.scene
         self.scene = scene
-        span = Float(max(capturedFrames - 1, 1))
+        let track = track.flatMap { $0.isIdentity ? nil : $0 }
+        self.track = track
+        span = track.map { Float(max($0.length, 1)) } ?? Float(max(capturedFrames - 1, 1))
         self.radius = radius ?? file.camera.framedRadius(positions: take.particles.positions)
         reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
         let mode = file.camera.mode
@@ -49,13 +60,15 @@ public final class ShotReplay {
         director?.beginScene(seed: scene.seed, base: file.look, immersed: true)
         self.plan =
             mode == .director
-            ? plan ?? ShotPlan(take: take, file: file, framesPerSecond: framesPerSecond) : nil
+            ? plan ?? ShotPlan(take: take, file: file, framesPerSecond: framesPerSecond, track: track)
+            : nil
         self.aspect = aspect
         secondsPerFrame = 1 / Double(max(framesPerSecond, 1))
     }
 
-    /// Frames are asked for in order; one already left behind is replayed no more.
-    public func shot(atCaptured frame: Int) -> Shot {
+    /// Frames are asked for in order; one already left behind is replayed no more. Without a
+    /// track a played frame is a captured one.
+    public func shot(atPlayed frame: Int) -> Shot {
         if let plan { return (plan.camera(atCaptured: Double(frame), aspect: aspect), file.look) }
         while next <= frame {
             recent = Array((recent + [(next, advance(to: next))]).suffix(2))
@@ -66,13 +79,13 @@ public final class ShotReplay {
 
     /// Between two captured frames the camera and the look are mixed, so a frame rate above the
     /// take's glides rather than holding each shot twice.
-    public func shot(atCaptured position: Double) -> Shot {
+    public func shot(atPlayed position: Double) -> Shot {
         if let plan { return (plan.camera(atCaptured: position, aspect: aspect), file.look) }
         let lower = Int(max(position, 0).rounded(.down))
         let t = Float(max(position, 0) - Double(lower))
-        guard t > 0 else { return shot(atCaptured: lower) }
-        let after = shot(atCaptured: lower + 1)
-        let before = shot(atCaptured: lower)
+        guard t > 0 else { return shot(atPlayed: lower) }
+        let after = shot(atPlayed: lower + 1)
+        let before = shot(atPlayed: lower)
         var camera = before.camera
         camera.eye += (after.camera.eye - camera.eye) * t
         camera.target += (after.camera.target - camera.target) * t
@@ -81,9 +94,15 @@ public final class ShotReplay {
         return (camera, RenderLook.mix(before.look, after.look, t))
     }
 
+    /// For a replay without a time track, where the two clocks are one.
+    public func shot(atCaptured frame: Int) -> Shot { shot(atPlayed: frame) }
+    public func shot(atCaptured position: Double) -> Shot { shot(atPlayed: position) }
+
     private func advance(to frame: Int) -> Shot {
-        let around = scene.framedCentres(
-            recording.blend(atCaptured: frame).map { recording.centers(at: $0) } ?? [])
+        let blend =
+            track.map { recording.blend(atCaptured: $0.captured(atPlayed: Double(frame))) }
+            ?? recording.blend(atCaptured: frame)
+        let around = scene.framedCentres(blend.map { recording.centers(at: $0) } ?? [])
         if let director {
             director.advance(seconds: secondsPerFrame, of: Subject(centres: around, radius: radius))
             return (director.camera, director.look)
