@@ -495,7 +495,9 @@ the rungs on a real run before anything is built.
 
 ## Spike #309: which automatic pace reads best
 
-Pierre picks on the videos; his choice and its reasons are written here once he has made it.
+Pierre chose (2026-11-15), on the recommendation: Auto is the story pace at 4 with a top of 8
+(`story:4:8`), a night's `speed` stays 1 unless the recipe says otherwise, and the default ramp is
+1.5 s a doubling.
 Videos and one sheet per take (the curves, the picture's change, each pace's speed, the video's
 time against the take's) are in `~/claude-workspace/epic-304-out/309/for-pierre/`.
 
@@ -620,8 +622,8 @@ correct, not a defect.
 
 ## #311: Auto, in exports, nights and the app
 
-What Auto means is **one constant**, `PaceSpec.auto` (`SillageCore/PaceSpec.swift`): until Pierre
-chooses otherwise, #309's story pace at 4 with a top of 8 (`story:4:8`). Every way in reads it
+What Auto means is **one constant**, `PaceSpec.auto` (`SillageCore/PaceSpec.swift`): Pierre's choice,
+#309's story pace at 4 with a top of 8 (`story:4:8`). Every way in reads it
 from there: `--speed auto` in `export`, in `hires --pass full` and in `pace`; a night's `speed`;
 the app's Speed; the queue's and the plan's counts of a video's frames
 (`PaceSpec.expectedShare`, 0.8, is what they use when a scene's curves are not there to say).
