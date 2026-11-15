@@ -15,10 +15,14 @@ public enum PaceTrack {
     public enum Failure: Error, CustomStringConvertible {
         case noCurves(URL)
         case curvesOutsideTake(URL, curves: ClosedRange<Double>, take: ClosedRange<Double>)
+        case needsPictures(String)
 
         public var description: String {
             switch self {
             case .noCurves(let folder): "no curves.csv or curves-hires.csv in \(folder.path)"
+            case .needsPictures(let name):
+                "\(name) reads the take drawn small, which only an export does: make its track with"
+                    + " `pace` and give the file"
             case .curvesOutsideTake(let url, let curves, let take):
                 String(
                     format: "%@ runs from %.0f to %.0f Myr, the take from %.0f to %.0f",
@@ -77,6 +81,19 @@ public enum PaceTrack {
         return Made(
             speeds: speeds, traceCSV: csv, firstPassMyr: trace.firstPassMyr,
             engagedUntilMyr: trace.engagedUntilMyr)
+    }
+
+    /// The speeds of a pace that reads only the curves, for the full pass (#311) and the
+    /// estimates: what `export --speed` gives, without the drawings a visual pace needs.
+    public static func fromCurves(
+        _ spec: PaceSpec, folder: SceneFolder, scene: SceneConfig, megayears: [Double]
+    ) throws -> (made: Made, curves: URL) {
+        guard case .story(let settings) = spec else { throw Failure.needsPictures("this pace") }
+        let curves = try curves(of: folder, megayears: megayears)
+        return (
+            story(settings, samples: curves.samples, story: Story(scene: scene), megayears: megayears),
+            curves.url
+        )
     }
 
     public static func visual(

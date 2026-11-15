@@ -7,7 +7,20 @@ public enum PaceSpec: Sendable, Equatable {
     case story(StoryPace.Settings)
     case visual(VisualPace.Settings)
 
+    /// What `--speed auto` means (#311), the one place to change it: the story pace at 4 with a
+    /// top of 8, the collision at 1x and the aftermath rising to 4 or 5x. `visual` or another
+    /// `story` here changes every export, night and the app, and `expectedShare` with it.
+    public static let auto = PaceSpec.story(StoryPace.Settings(pace: 4, top: 8))
+    public static let autoName = "auto"
+    /// The share of a take's frames the pace keeps, when its curves are not at hand to say:
+    /// 81 % on the twenty stories of #309 (62 to 100 %).
+    public static let expectedShare = 0.8
+
     public init?(_ text: String) {
+        if text == Self.autoName {
+            self = Self.auto
+            return
+        }
         var parts = text.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
         var metric = VisualPace.Metric.lit
         // `visual-all`, `visual-moving`: the measure the speed follows.

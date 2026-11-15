@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 
 /// A card of the export sheet: a video preset, or an animated preview.
 public enum ExportChoice: String, CaseIterable, Sendable, Identifiable {
@@ -55,6 +56,47 @@ public struct StageLook: Sendable, Equatable, Hashable {
     }
 }
 
+/// How fast an export plays the take (#311): as it was, a constant speed, the automatic pace, or
+/// a time track kept in a `.time.json`.
+public enum ExportSpeed: Sendable, Equatable {
+    case constant(Double)
+    case auto
+    case track(URL)
+
+    /// The speeds the panel offers, from x0.25 to x8; any number up to 16 goes through `--speed`.
+    public static let choices = [0.25, 0.5, 1, 2, 4, 8]
+    public static let plain = ExportSpeed.constant(1)
+
+    /// What `--speed` is given; nil at 1x, where the export is what it always was.
+    public var argument: String? {
+        switch self {
+        case .constant(let value): value == 1 ? nil : String(format: "%g", value)
+        case .auto: PaceSpec.autoName
+        case .track(let url): url.path
+        }
+    }
+
+    /// What names the file beside the preset: `4k-auto.mp4`, `4k-x2.mp4`, `4k-pace.mp4`.
+    var stem: String? {
+        switch self {
+        case .constant(let value): value == 1 ? nil : "x" + String(format: "%g", value)
+        case .auto: PaceSpec.autoName
+        case .track(let url):
+            url.lastPathComponent.replacingOccurrences(
+                of: "." + TimeTrackFile.fileExtension, with: ""
+            ).replacingOccurrences(of: ".json", with: "")
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .constant(let value): "×\u{200A}" + String(format: "%g", value)
+        case .auto: "Auto"
+        case .track(let url): url.lastPathComponent
+        }
+    }
+}
+
 /// Advanced: what every ticked card shares. Absent, the stage's own default.
 public struct ExportSettings: Sendable, Equatable {
     public var codec: VideoCodec = .hevc
@@ -62,11 +104,14 @@ public struct ExportSettings: Sendable, Equatable {
     public var duration: Double?
     public var framesPerSecond: Int?
     public var look: StageLook?
+    public var speed = ExportSpeed.plain
 
     public init() {}
 
     /// Nothing but the codec set: such an export takes its file back once the take is redone.
-    var isPlain: Bool { start == nil && duration == nil && framesPerSecond == nil && look == nil }
+    var isPlain: Bool {
+        start == nil && duration == nil && framesPerSecond == nil && look == nil && speed == .plain
+    }
 }
 
 /// One job the page or a collection is about to queue, with what it costs.
@@ -226,6 +271,10 @@ public enum StageJobs {
         if let look = settings.look {
             options += ["--look", look.file.path]
             stem.append(look.name)
+        }
+        if let speed = settings.speed.argument, let name = settings.speed.stem {
+            options += ["--speed", speed]
+            stem.append(name)
         }
         if let start = settings.start { options += ["--start", number(start)] }
         if let duration = settings.duration { options += ["--duration", number(duration)] }
