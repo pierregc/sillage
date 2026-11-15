@@ -235,11 +235,8 @@ changes. Margins of 100 or 150 Myr instead of 250 would save 26 or 24 %.
 
 What a schedule needs:
 
-- **Star formation that does not depend on the step.** It falls by 15 % at twice the step in a
-  hires, a third at the explore count, and uniformly over the story, quiet disks included
-  ([a doubled step](doubled-step.md)): changing the step mid-run would change the rate of young
-  stars at the switch, which shows. Which of the rule's two readings moves, the leaf's density or
-  the convergence of its flow, was never measured; that comes first.
+- **Star formation that does not depend on the step.** It does not
+  ([below](#star-formation-and-the-step-306)): the drop #225 measured was in the curves' count.
 - **A schedule planned from the preview's curves** with margins (a hires diverges from its
   preview by a few megayears at a merger). The massive pass judges its own curves as it goes, as
   explore does, keeps the fine step while a pair is still engaged, and records in `hires.json`
@@ -249,6 +246,26 @@ What a schedule needs:
   curves stay uniform.
 - **The frames on either side of each switch compared** against a run at 3.5 throughout and its
   1 pc floor, as #225 did, with stills of the disks at the story's start and of the remnant.
+
+### Star formation and the step (#306)
+
+Measured, the rule's rate does not follow the step. The 15 % and the third #225 found at twice
+the step were the curves losing the first step of every frame. Counted in full off the takes, a
+hires at 7 forms 0.994 of 3.5's stars (its floor 1.000), every window within a percent but the
+merger's, which comes 0.8 Myr later; at the exploration's count 7 and 14 form 1.02 and 1.00 of
+3.5's (floor 1.01), the leaves' density and convergence unchanged within the floor
+([star formation](star-formation.md)). At 14 a hires moves the encounter itself, its pericentre
+half a kiloparsec wider and its merger 2.4 Myr earlier, and its quiet disks form 2.6 % fewer
+stars. For a schedule:
+
+- **A switch to 7 leaves the young stars alone.** To 14 it costs a hires' quiet disks 2.6 % of
+  their young stars, through a compression term the coarser step smooths: nothing a film shows,
+  but past the floor. The remnant's stay within it at both.
+- **Curves written since #306 count every step**, whatever a frame holds, so frames at the coarse
+  step and at the fine one count alike. Older curves show (k - 1)/k of the stars at k steps a
+  frame; corrected by k/(k - 1) they compare with a schedule's.
+- **A knot is stamped at the start of its step**, so a coarse step stamps it up to a step early:
+  0.4 Myr at 14 in a hires, against the 25 Myr its light takes to rise.
 
 ### Light tracers on steps of their own
 

@@ -7,7 +7,9 @@ to 100 M. This is the comparison it asked for first: the same story at 3.5 and a
 the encounter's own chaos.
 
 **Decision: hires stays at 3.5, exploration moves to 7.** At 7 the hires keeps the story but not
-its knots or its star formation; the exploration ranks the same scenes in half the time.
+its knots; the exploration ranks the same scenes in half the time. The star formation this note
+found lower at 7 was not: the curves lost the first step of every frame, and counted in full both
+steps form the same stars ([star formation](star-formation.md), #306).
 
 ## How it was measured
 
@@ -52,7 +54,8 @@ disks' thickness. Reports, stills and logs are on the branch `assets/225-doubled
 | tails at the end | 0.3006 against 0.3007 | 0.3094 |
 | extent, rms | 0.01 % | 0.14 % |
 | disks torn half way | same to 0.01 Myr | within 0.8 Myr |
-| stars formed | +0.09 % | -14.7 % |
+| stars formed, as the curves counted them | +0.09 % | -14.7 % |
+| stars formed, every step counted (#306) | +0.02 % | -0.6 % |
 | density at 887 Myr, light elsewhere (noise 0.74 %) | 4.45 % | 9.31 % |
 | same, chi-square a cell and on 4x4 cells | 7.9 and 18 | 26.6 and 114 |
 
@@ -61,10 +64,12 @@ runs (0.211 and 0.135 kpc rms height at the start of the clip, 1.49 to 1.50 and 
 pericentre), and so does every large feature: the passage, the merger, the tails, the remnant.
 What goes past the floor is what lives at the scale of the softening:
 
-- **Star formation is 15 % lower from the first frame on.** Per megayear, 623 against 530 before
-  the pericentre, 1 013 against 869 up to the second passage, 688 against 574 through the
-  merger, 363 against 312 in the remnant: 0.83 to 0.86 in every window, while the floor stays
-  within 0.7 %. The burst keeps its shape and only its level drops.
+- **Star formation looked 15 % lower from the first frame on, and was not.** The curves read 623
+  against 530 a megayear before the pericentre, 1 013 against 869 up to the second passage, 688
+  against 574 through the merger, 363 against 312 in the remnant: 0.83 to 0.86 in every window,
+  while the floor stays within 0.7 %. They showed seven steps of a frame's eight at 3.5 and three
+  of four at 7, which is 0.857 (#306); counted in full off the takes, 7 forms 0.97 to 1.01 of
+  3.5's stars in each window, 0.994 in all.
 - **Compact knots.** The 7 remnant keeps four compact knots where both 3.5 runs keep two, and the
   satellite on the bridge at 423 Myr sits elsewhere. Blurred by 8 px, the 4K stills of 7 differ
   from 3.5 by 1.8, 7.9, 7.4 and 8.3 % at 309, 423, 639 and 879 Myr, against 0.75, 3.6, 5.8 and
@@ -92,12 +97,11 @@ back at the same distance and time within the floor: scene 2 at 2.78 and 2.79 kp
 (floor 2.83), scene 15 at 3.62 and 3.66 at 252 (3.64), scene 11 at 1.55 and 1.52 at 431 (1.57).
 Mergers move as much as the floor moves them.
 
-Star formation is two thirds at 7, 0.66 to 0.68 in every window from 150 Myr to the end, against
-0.99 to 1.05 for the floor: the dependence the hires showed, larger at this count. It is uniform
-over the story, quiet disks included, so it is the rule's own response to the step rather than
-the encounter's: the rule reads a leaf's density and the convergence of its flow
-([star formation](star-formation.md)), both at the scale of the softening. Which of the two
-moves was not measured. The burst ratio `interest.py` scores is a ratio and stays within the
+Star formation read two thirds at 7, 0.66 to 0.68 in every window from 150 Myr to the end, against
+0.99 to 1.05 for the floor, uniformly over the story, quiet disks included. That was the count
+again: three steps of a frame's four at 3.5 and one of two at 7, which is 0.667 (#306). Counted in
+full, the median scene forms 1.01 times its 3.5 stars at 7 (10 to 90 %: 0.95 to 1.04), the
+floor's 1.01 (0.94 to 1.06). The burst ratio `interest.py` scores is a ratio and stays within the
 floor.
 
 The 20 scenes took 794 s at 7 against 1 636 s at 3.5. The first six scenes of the 3.5 batch shared
@@ -119,8 +123,8 @@ a hole are the fastest thing in a scene ([black holes](black-holes.md)) and were
 - **Exploration runs at 7.** `explore-batch.sh` and `ExploreProbe` default to 7 with a settle of
   375 steps, the same 150 Myr; a night's probe reads `dt_scale` from `batch.conf`, so a batch
   started before keeps its 3.5 and 750. The cost model counts particle steps, which cost the same
-  at both scales, so it needs no refit: a night plans half the steps. Previews form a third fewer
-  stars than they did.
+  at both scales, so it needs no refit: a night plans half the steps. Previews form the same
+  stars as they did; their curves showed a third fewer until #306.
 - **Left open.** An in-between step for hires (5 steps a frame, about 5.7) was not measured.
-  Star formation's dependence on the step is worth a ticket of its own: a preview and its hires
-  now run four times apart in step, and their star formation with them.
+  Star formation's dependence on the step got a ticket of its own, #306: there is none to speak
+  of, a preview four times the step of its hires forms the same stars.
