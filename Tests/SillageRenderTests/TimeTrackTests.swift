@@ -41,6 +41,22 @@ struct TimeTrackTests {
         ]
     }
 
+    /// 1.5 s a doubling when a file says nothing (#311); 0 still means none.
+    @Test func aFileWithoutARampReadsWithTheDefaultOne() throws {
+        #expect(TimeTrack.defaultRamp == 1.5)
+        let speeds = (0..<600).map { $0 < 300 ? 1.0 : 4.0 }
+        let plain = try TimeTrackFile(speeds: speeds).track(megayears: megayears, capturedRate: 30)
+        let explicit = try TimeTrackFile(ramp: 1.5, speeds: speeds).track(
+            megayears: megayears, capturedRate: 30)
+        let none = try TimeTrackFile(ramp: 0, speeds: speeds).track(megayears: megayears, capturedRate: 30)
+        let slow = try TimeTrackFile(ramp: 3, speeds: speeds).track(megayears: megayears, capturedRate: 30)
+        #expect(plain == explicit && plain != none && plain != slow)
+        // A doubling in 1.5 s: the step from 1x to 4x takes 3 s, and it starts before the jump.
+        #expect(plain.speed(atPlayed: plain.played(atCaptured: 299)) < 4)
+        #expect(none.seconds < plain.seconds && plain.seconds < slow.seconds)
+        #expect(try TimeTrackFile.decoded(from: Data(#"{"version": 1, "speeds": [1, 2]}"#.utf8)).ramp == nil)
+    }
+
     @Test func aTrackNeverRunsBackwards() throws {
         let tracks = [
             try keyed(demo),

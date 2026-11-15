@@ -205,6 +205,8 @@ final class SimulationModel: ObservableObject {
         }
     }
     @Published var playbackSpeed: Float = 30
+    /// The time track the playhead follows when it plays (#311); nil plays the take as it was.
+    var playbackTrack: TimeTrack?
     @Published var playbackPosition: Double = 0
     @Published var isPlaying = true {
         didSet {
@@ -1021,6 +1023,7 @@ final class SimulationModel: ObservableObject {
             length: loaded.recording.particleCount * MemoryLayout<SIMD3<Float>>.stride,
             options: .storageModeShared)
         playbackPosition = 0
+        playbackTrack = nil
         playbackCenters = loaded.recording.centers(at: 0)
         elapsedMyr = Double(loaded.recording.frames.first?.time ?? 0) * Physics.megayearsPerTimeUnit
         mode = .playback
@@ -1233,10 +1236,21 @@ final class SimulationModel: ObservableObject {
         else { return }
         let last = Double(recording.count - 1)
         if isPlaying {
-            // In captured frames, so a take that keeps one in several plays at the same pace
-            // as one that kept them all.
-            playbackPosition += Double(playbackSpeed) / 60 / Double(recording.interval)
-            if playbackPosition >= last { playbackPosition -= last }
+            if let track = playbackTrack {
+                // Along the track (#311): the video's time advances at the playback speed, and
+                // the take is wherever the track puts it; at its end, back to the start.
+                let played =
+                    track.played(atCaptured: recording.capturedPosition(atStored: playbackPosition))
+                    + Double(playbackSpeed) / 60
+                playbackPosition =
+                    played >= track.length
+                    ? 0 : recording.storedPosition(atCaptured: track.captured(atPlayed: played))
+            } else {
+                // In captured frames, so a take that keeps one in several plays at the same pace
+                // as one that kept them all.
+                playbackPosition += Double(playbackSpeed) / 60 / Double(recording.interval)
+                if playbackPosition >= last { playbackPosition -= last }
+            }
         }
         playbackPosition = min(max(playbackPosition, 0), last)
 

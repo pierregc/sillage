@@ -148,6 +148,49 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         }
     }
 
+    /// How fast the videos play (#311): `1` as ever, a number from 0.25 to 16, or `"auto"` for the
+    /// pace that follows the story, the collision at its own speed and the settling faster.
+    public enum Speed: Codable, Sendable, Equatable {
+        case constant(Double)
+        case auto
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let word = try? container.decode(String.self) {
+                guard word == PaceSpec.autoName else {
+                    throw Failure.badValue("speed", "\(word) is not auto or a number")
+                }
+                self = .auto
+            } else {
+                self = .constant(try container.decode(Double.self))
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case .auto: try container.encode(PaceSpec.autoName)
+            case .constant(let value): try container.encode(value)
+            }
+        }
+
+        /// What `--speed` is given, or nil for the plain 1x every export had.
+        public var argument: String? {
+            switch self {
+            case .auto: PaceSpec.autoName
+            case .constant(let value): value == 1 ? nil : String(format: "%g", value)
+            }
+        }
+
+        /// The share of a take's frames a video keeps, for the plan.
+        public var share: Double {
+            switch self {
+            case .auto: PaceSpec.expectedShare
+            case .constant(let value): 1 / value
+            }
+        }
+    }
+
     public var version = NightRecipe.version
     /// A clock time, `"07:00"`, for its next occurrence, or a whole ISO 8601 date.
     public var deliver: Setting<String> = .auto
@@ -159,6 +202,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
     public var style = Style()
     /// Video presets, and `webp` or `gif` for an animated preview.
     public var export: Setting<[String]> = .auto
+    /// The speed of the videos in `export`; absent, 1.
+    public var speed = Speed.constant(1)
 
     public init() {}
 
@@ -172,6 +217,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         hires = try c.decodeIfPresent(Hires.self, forKey: .hires) ?? Hires()
         style = try c.decodeIfPresent(Style.self, forKey: .style) ?? Style()
         export = try c.decodeIfPresent(Setting<[String]>.self, forKey: .export) ?? .auto
+        speed = try c.decodeIfPresent(Speed.self, forKey: .speed) ?? .constant(1)
     }
 }
 
@@ -286,7 +332,9 @@ extension NightRecipe {
     }
 
     static let keys: [String: Set<String>] = [
-        "": ["version", "deliver", "hours", "explore", "pick", "hires", "style", "export"],
+        "": [
+            "version", "deliver", "hours", "explore", "pick", "hires", "style", "export", "speed",
+        ],
         "explore": [
             "scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "pairShare", "galaxies", "seed",
         ],
@@ -385,6 +433,12 @@ extension NightRecipe {
         }
         if let share = style.freeShare.value, !(0...1).contains(share) {
             throw Failure.badValue("style.freeShare", "from 0 to 1")
+        }
+        if case .constant(let value) = speed, !TimeTrack.speeds.contains(value) {
+            throw Failure.badValue(
+                "speed",
+                "1, a number from \(TimeTrack.speeds.lowerBound) to \(TimeTrack.speeds.upperBound), or auto"
+            )
         }
         if let names = export.value {
             for name in names

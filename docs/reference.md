@@ -384,9 +384,16 @@ saved style for as long as it is held, **Cancel** puts it back, and **Use for sc
 (⌘S) promotes it as `--promote` does, after which **Export…** opens the export sheet. File > Open
 takes any take (⌘O) and any look file (⇧⌘O) over the picture, ⇧⌘S saves the look anywhere, and
 outside the editor ⌘S writes it back where it came from. A file opened and saved untouched is
-the same file; see [the note](notes/style-editor.md).
+the same file; see [the note](notes/style-editor.md). The transport bar has a Pace beside its
+speed (#311): the take's own, Auto, or a track file of the scene's `exports/`. With one, the
+playhead plays at the track's speed, the bar says it (x1.0 in a collision, x4.6 in the settling)
+and the scrubber draws the speed along the take, between its first and last moment in
+megayears, dashed at x1.
 `Sillage.app --lookcheck <take> [look]` checks all of that headless and times scrubbing;
-`Sillage.app --thumbcheck <take>` times the thumbnails and the canvas beside them.
+`Sillage.app --thumbcheck <take>` times the thumbnails and the canvas beside them;
+`Sillage.app --pacecheck <scene folder> [--out <folder>] [--export]` plays the take along Auto,
+draws the scrubber and the export sheet at Auto into pictures and, with `--export`, runs that
+export through the queue and compares its length with the queue's count.
 
 ### Export
 
@@ -411,8 +418,10 @@ the scene's `looks/` by name or a catalogue look, `--take` another take and `--o
 frame at the captured rate: 2 shows every other captured frame and lasts half as long, 0.5 draws
 a frame between each two. `--speed <file>` follows a time track kept in a `.time.json` (format in
 [time that runs faster](notes/variable-time.md#the-track-file)): speeds at moments of the take,
-held until the next and ramped by no more than a doubling or a halving over three seconds of
-video, a speed for every captured frame, or a flight's keys of video seconds and megayears.
+held until the next and ramped by no more than a doubling or a halving over a second and a half
+of video (`ramp` in the file, 1.5 when absent, 0 for none), a speed for every captured frame, or a
+flight's keys of video seconds and megayears. `--speed auto` is the pace that follows the story
+(below).
 `--start`, `--duration`, `--fps`, `--stills`, `--still-frames` and the previews count in the
 video's time, the cameras move in it and look at the take's moment, and the track used is
 written beside the video as `exports/<name>.time.json`; the export's second line gives the
@@ -424,10 +433,16 @@ frame is the one it always was.
 ./scripts/dev.sh export library/2026-10-23/scene-0001 --preset 4k --speed pace.time.json
 ```
 
-**Automatic paces (spike, #309).** `--speed` also takes the name of a pace, which is read off the
-take when the export starts and written beside the video like any other track; `--slow
-<from>:<to>:<speed>` (megayears of the take) holds a stretch of it to at most that speed. They
-are there for choosing, and #311 will replace them with the pace that was chosen.
+**Automatic pace (#309, #311).** `--speed auto` plays the collision at its own pace and the
+settling faster: the story pace at 4 with a top of 8 (`PaceSpec.auto`, the one place that says
+what Auto is), which keeps the frames up to the last moment a pair is engaged at 1x and speeds the
+aftermath up to 4 or 5x, shortening a video by a fifth on average. It is read off the take's
+curves when the export starts and written beside the video as a track of a speed per captured
+frame (`exports/<name>.time.json`), which can be edited, or replaced by a few keys, and drawn again
+with `--speed <file>`. The same word goes to a night's `speed`, to `hires --pass full --speed auto`
+(read off the massive pass's curves) and to the app's Speed. The pace's other names are what Auto
+was chosen among, and stay for trying them; `--slow <from>:<to>:<speed>` (megayears of the take)
+holds a stretch of any of them to at most that speed.
 
 - `story[:<pace>[:<top>]]` reads `curves-hires.csv` (or `curves.csv`, whichever starts and ends
   where the take does): the largest change of the tails, the extent and the disruption over the
@@ -690,7 +705,9 @@ before seven in the morning behind the queue, and each size says how many carry 
 count, every particle massive, stays on the command line: `sillage-render queue add hires
 <scene> --particles N`, without `--massive`. **Export…** opens a sheet of presets to tick
 (1080p, 4K, Vertical, Square, WhatsApp, animated WebP, GIF, with codec, range, frame rate and
-style under Advanced), each ticked card one `export` job. Both say how long each job takes and
+style under Advanced), a Speed above them (x0.25 to x8, Auto, or a track file; the sheet says how
+long the video comes to), each ticked card one `export` job. A speed other than x1 writes a file
+of its own (`4k-auto.mp4`, `4k-x2.mp4`), and the queue counts its frames from the track. Both say how long each job takes and
 when it will be ready, queue ahead included. A job waiting or running shows on its stage with
 its progress and Cancel. Redoing a stage touches nothing else: another format, style or range
 writes a new file, while the same export after a new take replaces its own. Kept and

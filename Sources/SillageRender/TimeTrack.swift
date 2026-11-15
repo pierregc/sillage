@@ -89,8 +89,9 @@ public struct TimeTrack: Sendable, Equatable {
 
     /// The speeds a track may take: slower draws between captured frames, faster skips them.
     public static let speeds: ClosedRange<Double> = 0.25...16
-    /// Seconds of video over which a speed may double or halve, at most.
-    public static let defaultRamp = 3.0
+    /// Seconds of video over which a speed may double or halve, at most. 3 s was too slow for a
+    /// hand track to reach 4x before the take's end (#310, #311).
+    public static let defaultRamp = 1.5
 
     public let capturedFrames: Int
     public let capturedRate: Int

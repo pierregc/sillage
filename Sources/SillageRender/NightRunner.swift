@@ -464,6 +464,7 @@ public final class NightRunner: @unchecked Sendable {
         let name = scene.url.lastPathComponent
         var options =
             folder.hiresOptions + ["--pass", "full", "--export", presets.joined(separator: ",")]
+            + speedOptions
         let resumes = scene.resumesFullPass(options, maximumParticles: folder.maximumParticles)
         if resumes { options.append("--resume") }
         say(
@@ -515,12 +516,15 @@ public final class NightRunner: @unchecked Sendable {
         record(event)
     }
 
+    /// `--speed` for the recipe's videos, none at 1x.
+    private var speedOptions: [String] { recipe.speed.argument.map { ["--speed", $0] } ?? [] }
+
     private func export(_ scene: SceneFolder, format: String) -> Outcome {
         let name = scene.url.lastPathComponent
         let option = VideoPreset.named(format) != nil ? "--preset" : "--format"
         say("night      export \(name) \(format)")
         let outcome = runChild(
-            executable.path, ["export", scene.url.path, option, format],
+            executable.path, ["export", scene.url.path, option, format] + speedOptions,
             log: logs.appendingPathComponent("\(name).export.log")
         ) { [self] in
             update(phase: "export", quiet: true)

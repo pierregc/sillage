@@ -191,6 +191,43 @@ struct FullPassTrackTests {
         )
     }
 
+    /// `--speed auto` reads the story pace off the massive pass's curves (#311), keeps the track
+    /// it gave in `hires.json` and beside each video, and a pace that needs the pictures is refused.
+    @Test func autoIsReadOffTheMassivePassesCurvesAndKept() throws {
+        let folder = try Self.massivePass()
+        defer { try? FileManager.default.removeItem(at: folder.batch.deletingLastPathComponent()) }
+        let take = try RecordingFile.read(from: folder.take)
+        let megayears = TimeTrack.megayears(of: take.recording)
+        var csv =
+            "time_myr,extent_kpc,tidal_fraction,formed,x_0,y_0,z_0,x_1,y_1,z_1,disruption_0,disruption_1\n"
+        for (frame, myr) in megayears.enumerated() {
+            let along = Double(frame) / Double(megayears.count - 1)
+            csv += String(
+                format: "%.4f,%.3f,%.4f,10,0,0,0,%.3f,0,0,0.2,0.2\n", myr, 50 + 5 * along, 0.3,
+                max(40 * (1 - along / 0.2), 0))
+        }
+        try csv.write(to: folder.hiresCurves, atomically: true, encoding: .utf8)
+        let file = try FullPassRun.speedFile("auto", folder: folder, framing: take)
+        let speeds = try #require(file.speeds)
+        #expect(speeds.count == megayears.count && speeds.allSatisfy { $0 >= 1 && $0 <= 8 })
+        #expect((speeds.max() ?? 0) > 1, "\(speeds)")
+        #expect(file.ramp == nil)
+        #expect(throws: PaceTrack.Failure.self) {
+            try FullPassRun.speedFile("visual", folder: folder, framing: take)
+        }
+        #expect(throws: (any Error).self) {
+            try FullPassRun.speedFile("/nowhere.time.json", folder: folder, framing: take)
+        }
+
+        try Self.fullPass(folder, options: ["--checkpoint-every", "0", "--speed", "auto"])
+        let record = try #require(folder.storedHires()?.full)
+        #expect(record.track == file)
+        let beside = folder.exports.appendingPathComponent("4k.time.json")
+        #expect(try TimeTrackFile.decoded(from: Data(contentsOf: beside)) == file)
+        let track = try file.track(megayears: megayears, capturedRate: 6)
+        #expect(record.frames == FullPassRun.videoFrames(track: track, frames: 8, framesPerSecond: 6).count)
+    }
+
     /// Along a track the run skips frames where it runs fast and draws between two steps where it
     /// runs slow, its massive part still repeating the massive pass to the bit. Stopped after a
     /// checkpoint and resumed, it draws the same frames; resumed along another track, it refuses.

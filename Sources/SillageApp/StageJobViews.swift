@@ -1,6 +1,7 @@
 import AppKit
 import SillageRender
 import SwiftUI
+import UniformTypeIdentifiers
 
 private struct QueueKey: EnvironmentKey {
     static let defaultValue: QueueModel? = nil
@@ -140,7 +141,7 @@ struct ExportSheet: View {
     var looks: [StageLook] = []
     var close: () -> Void
     @State var ticked: Set<ExportChoice> = [.hd]
-    @State private var settings = ExportSettings()
+    @State var settings = ExportSettings()
     @State private var advanced = false
     @State private var start = ""
     @State private var duration = ""
@@ -160,6 +161,7 @@ struct ExportSheet: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
                 ForEach(ExportChoice.allCases) { card($0) }
             }
+            speedSection
             advancedSection
             Divider()
             VStack(alignment: .leading, spacing: 4) {
@@ -199,6 +201,80 @@ struct ExportSheet: View {
     }
 
     static let linesShown = 8
+
+    /// Speed: the take as it was, a constant speed, Auto, or a track file (#311). Drawn by hand
+    /// like the cards, since the offscreen checks cannot draw a picker.
+    private var speedSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Speed").foregroundStyle(Palette.secondary)
+                ForEach(ExportSpeed.choices, id: \.self) { value in
+                    chip(ExportSpeed.constant(value).title, on: settings.speed == .constant(value)) {
+                        settings.speed = .constant(value)
+                    }
+                }
+                chip("Auto", on: settings.speed == .auto) { settings.speed = .auto }
+                if folders.count == 1 {
+                    chip(trackTitle, on: isTrack) { chooseTrack() }
+                }
+            }
+            if let line = speedLine {
+                Text(line).font(.caption).foregroundStyle(Palette.secondary)
+            }
+        }
+    }
+
+    private var isTrack: Bool {
+        if case .track = settings.speed { return true }
+        return false
+    }
+
+    private var trackTitle: String {
+        if case .track(let url) = settings.speed { return url.lastPathComponent }
+        return "Track file…"
+    }
+
+    /// "Auto plays the take in about 38 s instead of 51 s: the collision at its own pace, the
+    /// settling faster."
+    var speedLine: String? {
+        guard settings.speed != .plain, folders.count == 1, let folder = folders.first else {
+            return settings.speed == .auto
+                ? "The collision at its own pace, the settling faster, per scene." : nil
+        }
+        guard let frames = VideoLength.takeFrames(folder),
+            let rate = try? folder.capturedRate(), frames > 1
+        else { return nil }
+        let take = Double(frames) / Double(rate)
+        let video = take * VideoLength.share(of: settings.speed.argument, folder: folder)
+        let how =
+            settings.speed == .auto ? "The collision at its own pace, the settling faster: " : ""
+        return how + String(format: "about %.0f s of video for a %.0f s take", video, take)
+    }
+
+    private func chip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.callout.monospacedDigit())
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(on ? Color.accentColor.opacity(0.16) : Palette.card)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(on ? Color.accentColor : Color(white: 0.24), lineWidth: on ? 2 : 1)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func chooseTrack() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.directoryURL = folders.first?.exports
+        panel.message = "A time track (.time.json): speeds at moments of the take"
+        if panel.runModal() == .OK, let url = panel.url { settings.speed = .track(url) }
+    }
 
     private var subject: String {
         folders.count == 1 ? folders[0].sceneID : "\(folders.count) scenes"

@@ -68,6 +68,9 @@ struct SillageApp: App {
         if CommandLine.arguments.contains("--nightcheck") {
             MainActor.assumeIsolated { NightSheetCheck.run() }
         }
+        if CommandLine.arguments.contains("--pacecheck") {
+            MainActor.assumeIsolated { PaceCheck.run() }
+        }
         if CommandLine.arguments.contains("--nightpagecheck") {
             MainActor.assumeIsolated { NightPageCheck.run() }
         }

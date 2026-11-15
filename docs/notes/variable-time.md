@@ -172,7 +172,7 @@ Exactly one of four ways of giving it:
   freeze and picks up after, and it never runs backwards (a key earlier in the take than the one
   before is refused). The video lasts to the last key.
 - **`ramp`**, with `keys` or `speeds`: seconds of video over which a speed may double or halve,
-  3 when absent, 0 for none. The speeds are geometric between captured frames and held to the
+  1.5 when absent (3 until #311), 0 for none. The speeds are geometric between captured frames and held to the
   largest that stays under the keys: a slower stretch is already at its speed when it begins
   (the slowdown happens before it, in the stretch before), and a faster one picks up after its
   key. The bound holds at every point of the video, not on average over a frame.
@@ -495,7 +495,9 @@ the rungs on a real run before anything is built.
 
 ## Spike #309: which automatic pace reads best
 
-Pierre picks on the videos; his choice and its reasons are written here once he has made it.
+Pierre chose (2026-11-15), on the recommendation: Auto is the story pace at 4 with a top of 8
+(`story:4:8`), a night's `speed` stays 1 unless the recipe says otherwise, and the default ramp is
+1.5 s a doubling.
 Videos and one sheet per take (the curves, the picture's change, each pace's speed, the video's
 time against the take's) are in `~/claude-workspace/epic-304-out/309/for-pierre/`.
 
@@ -515,7 +517,7 @@ time against the take's) are in `~/claude-workspace/epic-304-out/309/for-pierre/
 - `export --speed story[:pace[:top]]|visual[:top[:busiest]]`, `--slow <from>:<to>:<speed>` (a
   stretch held to at most that speed, in Myr of the take) and `sillage-render pace` (the track
   without the video, and CSVs of the video's time and of what the pace read), in
-  [the reference](../reference.md). `TimeTrack` does the ramp, 3 s per doubling.
+  [the reference](../reference.md). `TimeTrack` does the ramp, 3 s per doubling (1.5 s since #311).
 
 **What the prototype got wrong, and what changed.**
 
@@ -573,7 +575,7 @@ the curves, the pace's traces, stills and frame-to-frame measurements.
   than early. A parting pair has no quiet aftermath: the curves do not see a disk heating on its
   own, which `Story` already treats as the end of a story, 400 Myr after the last engagement.
 - **0.5x around the first pass** (80 Myr, 3.4 s at 1x, 6.8 s at 0.5x) adds 5 s (4 s on the pair
-  that parts) to the story pace's video: the ramp makes the slowdown start 3 s before.
+  that parts) to the story pace's video: the ramp makes the slowdown start 3 s before (1.5 s since #311).
 - **The knots do not strobe**, at up to 6x on these remnants. In three consecutive frames of the
   Mice at 5.5x the remnant is a smooth glow with lobes 50 pixels and more across that glide; the
   compact things (field stars, a satellite) are static or slow, and the particles' fine speckle
@@ -617,6 +619,37 @@ correct, not a defect.
   the Mice's 51 s (a faint tile pattern shows in the dark outskirts; a 10 Mbit/s copy of the 1x
   is beside the videos), 5 to 7 Mbit/s for the others; very short clips overshoot the target
   bitrate by up to 14 %.
+
+## #311: Auto, in exports, nights and the app
+
+What Auto means is **one constant**, `PaceSpec.auto` (`SillageCore/PaceSpec.swift`): Pierre's choice,
+#309's story pace at 4 with a top of 8 (`story:4:8`). Every way in reads it
+from there: `--speed auto` in `export`, in `hires --pass full` and in `pace`; a night's `speed`;
+the app's Speed; the queue's and the plan's counts of a video's frames
+(`PaceSpec.expectedShare`, 0.8, is what they use when a scene's curves are not there to say).
+Another pace is a one-line change of the constant, and `expectedShare` with it; the visual pace
+would also need its 256 px pre-pass in the full pass, which draws no take of its own (a full pass
+refuses it and says to make the track with `pace`).
+
+- **The default ramp is 1.5 s a doubling.** #305 set 3 s; the demonstration of #310 found that a
+  hand track reached 4x only at the end of the take with it. Files with no `ramp` read with the
+  new default, a ramp of 0 still turns ramping off, and the Auto videos of #309 come out a
+  little shorter for it (a speed picks up in half the time).
+- **Where the pace is read.** An export reads it from the take's curves when it starts (the
+  curves of the hires run, else the explore run's, mapped to the take by time), and writes the
+  track it drew along beside the video, a speed for every captured frame. The full pass reads the
+  massive pass's `curves-hires.csv` against the massive take before it starts, so the checkpoint's
+  identity holds the track it gave and `hires.json` keeps it (`full.track`).
+- **What the queue counts.** `VideoLength.share` is the share of a take's frames a `--speed`
+  keeps: `1/x` for a number, the curves' pace for `auto`, the track's own length for a file. It
+  feeds the queue's estimate of an export (the frames left after `--start`; `--duration` counts
+  video seconds as it did) and of a full pass's drawing, and a night's plan.
+- **The app.** The export sheet has a Speed (x0.25 to x8, Auto, a track file) above Advanced, and a
+  speed other than x1 writes a file of its own (`4k-auto.mp4`). The style editor's transport bar
+  has a Pace, the take's own or Auto or a file of the scene's `exports/`: the playhead then
+  advances the video's time and goes where the track puts it, the scrubber draws the speed along
+  the take with its first and last moments in megayears, and the bar reads the speed at the
+  playhead. `Sillage.app --pacecheck` draws both and runs an export at Auto through the queue.
 
 ## The plan
 
