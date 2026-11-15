@@ -104,17 +104,22 @@ struct LookStageTests {
         #expect(added.allSatisfy { $0.look.spikeIntensity <= 0.2 })
     }
 
-    /// The telescope world renders as Hubble or Webb and nothing else; the free world keeps
-    /// the rest of the catalogue.
-    @Test func theTelescopeWorldIsHubbleAndWebb() throws {
+    /// The telescope world renders as Hubble, Webb or a photograph and nothing else; the free
+    /// world keeps the rest of the catalogue.
+    @Test func theTelescopeWorldIsHubbleWebbAndThePhotograph() throws {
         let catalogue = LookCatalogue.load(
             from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
                 .deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("looks"))
         let telescope = LookCatalogue.renderings(.telescope, in: catalogue)
-        #expect(telescope.map(\.name).sorted() == ["hubble", "webb"])
+        #expect(telescope.map(\.name).sorted() == ["hubble", "photograph", "webb"])
         let free = LookCatalogue.renderings(.free, in: catalogue)
-        #expect(free.count + 2 == catalogue.count && free.count >= 35)
+        #expect(free.count + 3 == catalogue.count && free.count >= 35)
+
+        // One colour scheme for every galaxy, as in a photograph of interacting ones (#315).
+        let photograph = try #require(telescope.first { $0.name == "photograph" })
+        #expect(photograph.palette.count == 5 && Set(photograph.palette.map(\.colour)).count == 1)
+        #expect(photograph.look.galaxyTint == 0)
 
         let hubble = try #require(telescope.first { $0.name == "hubble" })
         let webb = try #require(telescope.first { $0.name == "webb" })
@@ -124,7 +129,7 @@ struct LookStageTests {
         // which this renderer cannot draw, so it keeps a light web of filaments (#197).
         #expect(hubble.look.dustStrength > 2 * webb.look.dustStrength)
         #expect(hubble.look.bloomIntensity > webb.look.bloomIntensity)
-        for file in telescope {
+        for file in [hubble, webb] {
             #expect(file.palette.count == 5)
             #expect(PaletteGenerator.violations(file.palette.map(\.colour), monochrome: false).isEmpty)
         }

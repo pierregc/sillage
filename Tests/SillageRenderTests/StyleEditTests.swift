@@ -26,10 +26,11 @@ struct StyleEditTests {
         LookCatalogue.repository.first { $0.name == "webb" }!
     }
 
-    @Test func theRepositoryCatalogueHoldsTheFortyLooksAndBothTelescopes() {
+    @Test func theRepositoryCatalogueHoldsTheFortyLooksAndTheTelescopes() {
         let names = LookCatalogue.repository.map(\.name)
-        #expect(names.count == 42)
-        #expect(names.contains("hubble") && names.contains("webb") && !names.contains("raw"))
+        #expect(names.count == 43)
+        #expect(names.contains("hubble") && names.contains("webb") && names.contains("photograph"))
+        #expect(!names.contains("raw"))
         #expect(LookCatalogue.renderings(.free, in: LookCatalogue.repository).count == 40)
     }
 
