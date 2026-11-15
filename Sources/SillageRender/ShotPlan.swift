@@ -494,18 +494,51 @@ public struct ShotPlan: Sendable {
 }
 
 extension ShotPlan {
-    /// The plan for drawing `take` with `file`, each galaxy's light measured on the take.
-    public init(take: RecordingFile.Loaded, file: LookFile, framesPerSecond: Int) {
-        let track = Track(take: take)
+    /// The plan for drawing `take` with `file`, each galaxy's light measured on the take. With
+    /// a time track (#305) it plans on the take resampled at the played frames, the video's at
+    /// the captured rate `framesPerSecond`, so its frames are played ones and its shots keep
+    /// their seconds of video at any speed.
+    public init(
+        take: RecordingFile.Loaded, file: LookFile, framesPerSecond: Int, track time: TimeTrack? = nil
+    ) {
+        let positions = time.flatMap { time in
+            time.isIdentity
+                ? nil : (0...Int(time.length.rounded(.up))).map { time.captured(atPlayed: Double($0)) }
+        }
+        var track = Track(take: take)
+        if let positions { track = track.resampled(at: positions) }
+        let captured = { (frame: Int) in positions.map { Int($0[frame].rounded()) } ?? frame }
         let meter = LightMeter(take: take, reach: track.reach)
         self.init(
             track: track, camera: file.camera, fieldOfView: file.look.fieldOfView,
             framesPerSecond: framesPerSecond, seed: take.scene.seed
-        ) { frame, share in
+        ) { [track] frame, share in
             frame < track.frames
-                ? meter.measure(atCaptured: frame, centres: track.centres[frame], share: share)
+                ? meter.measure(atCaptured: captured(frame), centres: track.centres[frame], share: share)
                 : nil
         }
+    }
+}
+
+extension ShotPlan.Track {
+    /// The same take read at fractional captured positions: the centres between two captured
+    /// frames, and each disk's disruption at the nearer one.
+    public func resampled(at positions: [Double]) -> ShotPlan.Track {
+        let last = max(frames - 1, 0)
+        var centres: [[SIMD3<Float>]] = []
+        var disruption: [[Float]] = []
+        for position in positions {
+            let clamped = min(max(position, 0), Double(last))
+            let a = min(Int(clamped), last)
+            let b = min(a + 1, last)
+            let t = Float(clamped - Double(a))
+            centres.append(
+                zip(self.centres[a], self.centres[b]).map { simd_mix($0, $1, SIMD3(repeating: t)) })
+            disruption.append(self.disruption[t < 0.5 ? a : b])
+        }
+        return ShotPlan.Track(
+            centres: centres, disruption: disruption, reach: reach, margin: margin,
+            particles: particles, natal: natal)
     }
 }
 

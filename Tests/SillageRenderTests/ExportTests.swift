@@ -331,6 +331,84 @@ struct ExportTests {
                 < VideoCodec.h264.defaultBitRate(width: 1920, height: 1080)!)
     }
 
+    private func looks(_ base: LookFile) -> [LookFile] {
+        [LookFile.CameraPlan.Mode.fixed, .auto, .director, .immersed].map { mode in
+            var file = base
+            file.camera.mode = mode
+            return file
+        }
+    }
+
+    /// `--speed 1`, or a speed of one for every frame, draws what an export without a track
+    /// draws, in every camera mode (#305).
+    @Test func aTrackOfOneDrawsWhatNoTrackDraws() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let ones = [
+            try TimeTrack(capturedFrames: 12, capturedRate: 10, speed: 1),
+            try TimeTrack(speeds: Array(repeating: 1, count: 12), capturedRate: 10),
+        ]
+        for file in looks(autoLook) {
+            let plain = try TakeExport(take: loaded, look: file, capturedRate: 10)
+                .frames(width: 64, height: 36, framesPerSecond: 15)
+            for track in ones {
+                let tracked = try TakeExport(take: loaded, look: file, capturedRate: 10, track: track)
+                #expect(
+                    try tracked.frames(width: 64, height: 36, framesPerSecond: 15) == plain,
+                    "\(file.camera.mode)")
+            }
+        }
+    }
+
+    /// At twice the speed and with the fixed camera, frame k is frame 2k of the export at 1x.
+    @Test func atTwiceTheSpeedFrameKIsFrameTwoKOfOneX() throws {
+        let loaded = try take(frames: 13, interval: 3)
+        var file = autoLook
+        file.camera = LookFile.CameraPlan(
+            mode: .fixed, azimuth: 0, azimuthEnd: 1, zoomKeys: [SIMD2(0, 1), SIMD2(1, 2)])
+        let once = try TakeExport(take: loaded, look: file, capturedRate: 10)
+            .frames(width: 64, height: 36, framesPerSecond: 10)
+        let twice = try TakeExport(
+            take: loaded, look: file, capturedRate: 10,
+            track: TimeTrack(capturedFrames: 13, capturedRate: 10, speed: 2)
+        ).frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(once.count == 13 && twice.count == 7)
+        for (k, frame) in twice.enumerated() { #expect(frame == once[2 * k], "frame \(k)") }
+    }
+
+    /// The director plans in the video's time: at 4x its shortest shot still lasts 2.5 s of
+    /// video, where the plan of the take at 1x would last a quarter of that.
+    @Test func aDirectorAtFourTimesKeepsEveryShotTwoAndAHalfSeconds() throws {
+        let loaded = try take(frames: 320, interval: 4)
+        var file = autoLook
+        file.camera.mode = .director
+        let track = try TimeTrack(capturedFrames: 320, capturedRate: 10, speed: 4)
+        let export = try TakeExport(take: loaded, look: file, capturedRate: 10, track: track)
+        let plan = try #require(export.makeReplay(width: 64, height: 36).plan)
+        #expect(plan.shots.count > 1)
+        #expect(plan.shots.allSatisfy { Double($0.frames) / 10 >= ShotPlan.shortest })
+        #expect(plan.shots.last?.end == Int(track.length.rounded(.up)) + 1)
+        let untracked = try #require(
+            TakeExport(take: loaded, look: file, capturedRate: 10).makeReplay(width: 64, height: 36).plan)
+        #expect(untracked.shots.contains { Double($0.frames) / 10 / 4 < ShotPlan.shortest })
+    }
+
+    /// In a freeze every frame is at the same moment of the take, which is expanded once.
+    @Test func framesAtTheSameMomentAreExpandedOnce() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let megayears = TimeTrack.megayears(of: loaded.recording)
+        let track = try TimeTrack(
+            times: [
+                .init(at: 0, myr: megayears[0]), .init(at: 0.4, myr: megayears[4]),
+                .init(at: 0.8, myr: megayears[4]), .init(at: 1.1, myr: megayears[11]),
+            ], megayears: megayears, capturedRate: 10)
+        let export = try TakeExport(take: loaded, look: autoLook, capturedRate: 10, track: track)
+        let positions = export.positions(framesPerSecond: 10, start: 0, duration: nil)
+        #expect(positions.count == 12 && positions[4...8].allSatisfy { $0 == 4 })
+        let frames = try export.frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(export.expansions == Set(positions).count)
+        #expect(frames[4] != frames[8])
+    }
+
     /// A preview over its size budget is drawn again narrower, from the same take.
     @Test func aPreviewOverItsBudgetIsDrawnAgainNarrower() throws {
         let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)
