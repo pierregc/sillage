@@ -963,14 +963,14 @@ func pacedTrack(
     let megayears = TimeTrack.megayears(of: loaded.recording)
     var made: PaceTrack.Made
     switch spec {
-    case .story(let settings):
-        let curves = try PaceTrack.curves(of: folder, megayears: megayears)
-        made = PaceTrack.story(
-            settings, samples: curves.samples, story: Story(scene: loaded.scene), megayears: megayears)
+    case .story:
+        let read = try PaceTrack.fromCurves(
+            spec, folder: folder, scene: loaded.scene, megayears: megayears)
+        made = read.made
         print(
             String(
                 format: "pace       %@ from %@: first pass %@ Myr, engaged until %@ Myr", name,
-                curves.url.lastPathComponent, made.firstPassMyr.map { String(format: "%.0f", $0) } ?? "none",
+                read.curves.lastPathComponent, made.firstPassMyr.map { String(format: "%.0f", $0) } ?? "none",
                 made.engagedUntilMyr.map { String(format: "%.0f", $0) } ?? "never"))
     case .visual(let settings):
         let started = Date()

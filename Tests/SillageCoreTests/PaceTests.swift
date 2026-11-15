@@ -18,6 +18,13 @@ struct PaceTests {
         return (samples, try #require(pericentres.first))
     }
 
+    /// What Pierre chose is one constant (#311): the story pace at 4 with a top of 8.
+    @Test func autoIsTheStoryPaceAtFourWithATopOfEight() {
+        #expect(PaceSpec("auto") == PaceSpec.auto && PaceSpec.auto == PaceSpec("story:4:8"))
+        #expect(PaceSpec("auto") == PaceSpec("story"))
+        #expect(PaceSpec("autos") == nil && PaceSpec("auto:2") == nil)
+    }
+
     @Test func aPassKeepsItsPaceAndTheAftermathSpeedsUp() throws {
         let (samples, pericentre) = try Self.flyby()
         let times = samples.map(\.timeMyr)

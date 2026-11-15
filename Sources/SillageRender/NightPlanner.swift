@@ -213,11 +213,16 @@ public struct NightPlanner: Sendable {
             : model.hiresSeconds(units: scene.hiresUnits, tracerUnits: scene.hiresTracerUnits)
     }
 
+    /// The frames of a scene's videos: its take's, or the share the recipe's speed keeps (#311).
+    func videoFrames(_ scene: NightScene) -> Int {
+        Int((Double(scene.frames) * recipe.speed.share).rounded())
+    }
+
     /// A scene's full pass (#239): every particle run again, `presets` drawn as it goes.
     public func fullPassSeconds(_ scene: NightScene, presets: [String]) -> Double {
         model.hiresSeconds(units: scene.hiresUnits, tracerUnits: scene.hiresTracerUnits)
             + presets.compactMap(VideoPreset.named).reduce(0) {
-                $0 + model.drawSeconds(preset: $1, particles: hiresParticles, frames: scene.frames)
+                $0 + model.drawSeconds(preset: $1, particles: hiresParticles, frames: videoFrames(scene))
             }
     }
 
@@ -250,7 +255,7 @@ public struct NightPlanner: Sendable {
         return hiresSeconds(scene) + styleSeconds(pick: index)
             + (drawn.isEmpty ? 0 : fullPassSeconds(scene, presets: drawn))
             + recipe.exports.filter { !drawn.contains($0) }.reduce(0) {
-                $0 + exportSeconds($1, frames: scene.frames)
+                $0 + exportSeconds($1, frames: videoFrames(scene))
             }
     }
 
@@ -504,7 +509,7 @@ public struct NightPlanner: Sendable {
                 if drawn.contains(format) {
                     return format == drawn.first ? fullPassSeconds(scene, presets: drawn) : 0
                 }
-                return exportSeconds(format, frames: scene.frames)
+                return exportSeconds(format, frames: videoFrames(scene))
             }
             let finishEnd = clock.addingTimeInterval(
                 hiresTime + styleTime + exportTimes.reduce(0, +))
@@ -540,7 +545,7 @@ public struct NightPlanner: Sendable {
             for (format, seconds) in zip(exports, exportTimes) {
                 let done = progress.exported.contains("\(name)/\(format)")
                 add(.export, seconds, done: done, format: format, pass: drawn.contains(format) ? "full" : nil)
-                if starts, !done { disk += Self.videoBytes(format, frames: scene.frames) }
+                if starts, !done { disk += Self.videoBytes(format, frames: videoFrames(scene)) }
             }
             if starts, !drawn.isEmpty { disk += Double(hires) * Self.keyFrameBytesPerParticle }
         }

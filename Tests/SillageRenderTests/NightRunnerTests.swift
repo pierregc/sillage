@@ -159,6 +159,22 @@ struct NightRunnerTests {
         return store
     }
 
+    /// The recipe's speed goes to every export (#311), and a night without one asks for none.
+    @Test func theRecipesSpeedGoesToEveryExport() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var fast = recipe()
+        fast.speed = .auto
+        #expect(runner(fast).run() == 0)
+        let exports = logged().filter { $0.hasPrefix("export ") }
+        #expect(exports.count == 2 && exports.allSatisfy { $0.hasSuffix("--preset 1080p --speed auto") })
+    }
+
+    @Test func aNightWithoutASpeedExportsAsItAlwaysDid() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(runner(recipe()).run() == 0)
+        #expect(logged().filter { $0.hasPrefix("export ") }.allSatisfy { !$0.contains("--speed") })
+    }
+
     @Test func aNightRunsEveryStepThenResumesWithNothingLeftToDo() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         #expect(runner(recipe()).run() == 0)

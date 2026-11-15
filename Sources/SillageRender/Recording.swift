@@ -1,5 +1,6 @@
 import Foundation
 import SillageCore
+
 #if canImport(simd)
     import simd
 #endif
@@ -615,6 +616,20 @@ public final class Recording: @unchecked Sendable {
             let start = index * interval
             let end = index + 1 == last ? max(offered - 1, start + 1) : start + interval
             return Double(start) + (clamped - Double(index)) * Double(end - start)
+        }
+    }
+
+    /// Where a captured position falls along the stored frames: `capturedPosition(atStored:)`
+    /// read the other way.
+    public func storedPosition(atCaptured position: Double) -> Double {
+        locked {
+            guard !storedFrames.isEmpty else { return 0 }
+            let last = storedFrames.count - 1
+            let frame = max(position, 0)
+            let index = min(Int(frame) / interval, max(last - 1, 0))
+            let start = index * interval
+            let end = index + 1 == last ? max(offered - 1, start + 1) : start + interval
+            return min(Double(index) + (frame - Double(start)) / Double(end - start), Double(last))
         }
     }
 

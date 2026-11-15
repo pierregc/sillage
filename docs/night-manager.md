@@ -160,14 +160,17 @@ without sampling the scene again, and refuses a checkpoint of another run (anoth
 look or massive take); without one it starts from the beginning. `--checkpoint-every <minutes>` sets the interval, 0 for none. A night
 run again after a restart resumes its full pass by itself when the checkpoint is that run's.
 
-`--speed <x>` or `--speed <file>` draws the full pass's videos along a time track, as an
-export's `--speed` does (#310, [the note](notes/variable-time.md#the-full-pass-along-a-track-310)):
+`--speed <x>`, `--speed <file>` or `--speed auto` draws the full pass's videos along a time track,
+as an export's `--speed` does (#310, [the note](notes/variable-time.md#the-full-pass-along-a-track-310)):
 captured frames are skipped where the video runs fast, and where it runs slow the frames between
 two captured ones are drawn from the run itself, at a step or between two steps, every particle
 moved on along the straight line the integrator would take it. The track is read against the
 massive take, kept in `hires.json` (`full.track`) and beside each video
 (`exports/4k.time.json`), and it is part of the checkpoint's identity: a resumed run follows it,
-and a resume along another track is refused. Only the full pass takes one.
+and a resume along another track is refused. Only the full pass takes one. `auto` (#311) is read
+off the massive pass's curves (`curves-hires.csv`) when the run starts, the collision at 1x and
+the settling faster, and the track it gave is what is kept; a pace that needs the pictures drawn
+small (`visual`) is not taken here, `sillage-render pace` writes its file.
 
 ```bash
 ./scripts/dev.sh hires library/2026-10-24/scene-0001 --massive 2000000 --pass full --speed pace.time.json
@@ -189,6 +192,7 @@ take, and **Use for scene** (⌘S) promotes.
 ./scripts/dev.sh export library/2026-10-24/scene-0001 --preset 4k --fps 60
 ./scripts/dev.sh export library/2026-10-24/scene-0001 --format webp      # or gif, --max-size 5MB
 ./scripts/dev.sh export library/2026-10-24/scene-0001 --preset whatsapp  # 720p H.264 under 15 MB + caption .txt
+./scripts/dev.sh export library/2026-10-24/scene-0001 --speed auto       # the settling faster (#311)
 ```
 
 Presets: `1080p` (default), `4k`, `vertical`, `square`, `whatsapp`.
@@ -210,8 +214,8 @@ $R night tonight.night.json                 # queued, into library/<today>
 $R night tonight.night.json --out library/2026-10-28   # the same folder again resumes it
 ```
 
-The recipe is JSON. Every setting is `"auto"` or a value, and one left out is Auto; a misspelt
-name is an error.
+The recipe is JSON. Every setting is `"auto"` or a value, and one left out is Auto, except `speed`,
+which is 1; a misspelt name is an error.
 
 ```json
 {
@@ -222,7 +226,8 @@ name is an error.
   "pick": "auto",
   "hires": { "particles": "auto", "massive": "auto", "frames": "auto", "passes": "auto" },
   "style": { "world": "auto", "freeShare": "auto", "style": "auto", "palette": "auto" },
-  "export": "auto"
+  "export": "auto",
+  "speed": 1
 }
 ```
 
@@ -249,6 +254,7 @@ name is an error.
 | `style.multicolour` | `false` for one colour per galaxy | Auto: on, each galaxy gets a ramp of colours (#120) |
 | `style.camera` | `director`, `fixed`, `immersed`, or `scene` for the camera explore wrote | Auto: `director`, wide shots and shots that fill the frame with a disk and the pericentre (#186) |
 | `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
+| `speed` | how fast the videos of `export` play (#311): `1`, a number from 0.25 to 16, or `"auto"`, the pace that follows the story (the collision at 1x, the settling up to 4 or 5x, a fifth shorter on average); each video leaves its track beside it, `<preset>.time.json`; a night in two passes hands it to its full pass; the plan counts the frames the pace keeps (four in five) | `1`: only `"auto"` asks for the pace |
 
 The style step. A world asked for holds for every pick; else a named `style.style` or a
 `style.palette` family or file gives it; else Auto draws it for each pick: free with the chance

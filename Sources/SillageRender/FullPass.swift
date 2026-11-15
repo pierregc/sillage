@@ -269,6 +269,24 @@ public final class FullPassRun {
         return Scenes(file: file, scene: scene, drawn: drawn, massive: massive, look: look)
     }
 
+    /// What `--speed` gives the full pass: a track file or a speed as an export reads them, or a
+    /// pace (`auto`), computed from the massive pass's curves. A pace that reads the pictures
+    /// needs an export to draw them: `pace` writes its file.
+    static func speedFile(_ text: String, folder: SceneFolder, framing: RecordingFile.Loaded) throws
+        -> TimeTrackFile
+    {
+        guard let spec = PaceSpec(text) else { return try TimeTrackFile.given(text) }
+        let read = try PaceTrack.fromCurves(
+            spec, folder: folder, scene: framing.scene, megayears: TimeTrack.megayears(of: framing.recording))
+        print(
+            String(
+                format: "pace       %@ from %@: first pass %@ Myr, engaged until %@ Myr", text,
+                read.curves.lastPathComponent,
+                read.made.firstPassMyr.map { String(format: "%.0f", $0) } ?? "none",
+                read.made.engagedUntilMyr.map { String(format: "%.0f", $0) } ?? "never"))
+        return TimeTrackFile(speeds: read.made.speeds)
+    }
+
     /// The run, to its end: videos, key frames, `hires.json`.
     public func run() throws {
         try engineMaker.refuseUnchecked()
@@ -282,9 +300,14 @@ public final class FullPassRun {
         let settle = Int(number("settle", 0))
         let framesPerSecond = Int(number("fps", 30))
         let stepsPerFrame = max(steps / max(frames, 1), 1)
-        // `--speed <x>|<file>` (#310): the videos drawn along a time track, read once against the
-        // massive take below.
-        let speed = try argument("speed").map { try TimeTrackFile.given($0) }
+        // `--speed <x>|<file>|auto` (#310, #311): the videos drawn along a time track, read once
+        // against the massive take. A pace is read off the massive pass's curves here, so that the
+        // checkpoint's identity holds the track it gives.
+        let framing = try RecordingFile.read(from: framingURL)
+        let speed = try argument("speed").map {
+            try Self.speedFile(
+                $0, folder: SceneFolder(framingURL.deletingLastPathComponent()), framing: framing)
+        }
         // `--dt-switches <step>:<scale>,...` (#312): the steps its massive pass took, followed to
         // the bit, as is a resumed run.
         let switches = try argument("dt-switches").map { try StepSwitches(parsing: $0) }
@@ -441,7 +464,6 @@ public final class FullPassRun {
         let resumes = resumed.map { $0.resumes + 1 } ?? 0
 
         // The videos, framed, painted and exposed as an export of the massive take is (#239).
-        let framing = try RecordingFile.read(from: framingURL)
         let track = try speed.map {
             try $0.track(megayears: TimeTrack.megayears(of: framing.recording), capturedRate: framesPerSecond)
         }
