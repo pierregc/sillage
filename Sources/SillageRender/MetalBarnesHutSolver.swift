@@ -977,8 +977,10 @@ public final class MetalBarnesHutSolver: Solver {
         return system
     }
 
-    /// Drawn particles whose stars formed after `start` and by `end`, tracers included.
-    public func formed(after start: Float, until end: Float) -> Int {
+    /// Drawn particles whose stars formed from `start` to before `end`, tracers included. A
+    /// knot carries the time at the start of the step that lit it, so the steps from `start`
+    /// to `end` lit exactly these.
+    public func formed(since start: Float, before end: Float) -> Int {
         let block = 1 << 20
         let tracers = tracerCount
         let drawn = tracers + massiveVisible
@@ -994,12 +996,32 @@ public final class MetalBarnesHutSolver: Solver {
                         index < tracers
                         ? states.load(fromByteOffset: index * 16 + 12, as: Float.self)
                         : times.load(fromByteOffset: (index - tracers) * 4, as: Float.self)
-                    if time > start && time <= end { formed += 1 }
+                    if time >= start && time < end { formed += 1 }
                 }
                 counts[chunk] = formed
             }
         }
         return counts.reduce(0, +)
+    }
+
+    /// What the next step's star formation pass will read on each leaf, summed (#306).
+    public func formationLeaves() -> StarFormationLeaves {
+        guard nodeCount > 0, let componentBuffer else { return StarFormationLeaves() }
+        func view<T>(_ buffer: MTLBuffer, _ type: T.Type, offset: Int = 0, count: Int)
+            -> UnsafeBufferPointer<T>
+        {
+            UnsafeBufferPointer(
+                start: (buffer.contents() + offset).bindMemory(to: T.self, capacity: count), count: count)
+        }
+        return StarFormationLeaves.read(
+            nodes: view(builder.nodes, BHNode.self, count: nodeCount),
+            order: view(builder.order, UInt32.self, count: massive),
+            positions: view(positionBuffer, SIMD3<Float>.self, offset: tracerCount * 16, count: massive),
+            velocities: view(velocityBuffer, SIMD3<Float>.self, offset: tracerCount * 16, count: massive),
+            mass: view(massBuffer, Float.self, count: massive),
+            component: view(componentBuffer, UInt32.self, count: massive),
+            formation: view(formationBuffer, Float.self, count: massive),
+            params: host.formationParams(nodeCount: nodeCount))
     }
 
     /// The distance from the origin of one particle in `step`, tracers first, dark matter

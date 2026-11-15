@@ -393,8 +393,8 @@ showing them, for checks.
 - `explore-batch.sh` runs 4 scenes at once, each at a low particle count with a plain look.
   Batches are resumable; settings are kept in `batch.conf`. It steps at seven times the
   recommended step (`--dt-scale 7`, 375 steps of settle) since #225: the same scenes come out
-  on top as at 3.5, in half the time, with a third fewer young stars in the previews. A batch
-  started before keeps its 3.5 and 750.
+  on top as at 3.5, with the same young stars, in half the time. A batch started before keeps
+  its 3.5 and 750.
 - Four scenes in five have exactly two galaxies, a globular or a dwarf companion counting as one
   and a black hole as none, in every stretch of ten (`--pair-share`, `pair_share` in
   `batch.conf`). A batch started before the share (#176) goes on with the draw it started with.

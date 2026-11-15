@@ -950,6 +950,51 @@ struct BarnesHutTests {
         }
     }
 
+    /// A frame counts every star its own steps lit, however many steps it holds (#306). Counted
+    /// from just after the frame's start, the first step's never showed: the curves had a third
+    /// fewer stars at twice the step, and none at one step a frame.
+    @Test func aFrameCountsEveryStarItsStepsLit() throws {
+        var scene = SceneConfig.isolatedDisk(particleCount: 30_000)
+        scene.galaxies[0].kind = .spiral
+        scene.timeStepScale = 8
+        scene.retune()
+        let sampled = RestrictedSolver.sampleParticles(for: scene)
+        for stepsPerFrame in [1, 3] {
+            let solver = try MetalBarnesHutSolver(scene: scene, particles: sampled)
+            var previous = solver.time
+            var counted = 0
+            for _ in 0..<(120 / stepsPerFrame) {
+                solver.step(count: stepsPerFrame)
+                counted += solver.formed(since: previous, before: solver.time)
+                previous = solver.time
+            }
+            let lit = solver.particles.formation.count { $0 >= 0 && $0 < 1e8 }
+            #expect(lit > 0)
+            #expect(counted == lit)
+        }
+    }
+
+    /// What `--sf-leaves` reads off the tree is what the pass forms from (#306): the gas the
+    /// leaves hold falls by exactly the stars formed, and the rate they give is the rate seen.
+    @Test func theLeavesGiveTheRateThatForms() throws {
+        var scene = SceneConfig.isolatedDisk(particleCount: 30_000)
+        scene.galaxies[0].kind = .spiral
+        scene.timeStepScale = 8
+        scene.retune()
+        let solver = try MetalBarnesHutSolver(
+            scene: scene, particles: RestrictedSolver.sampleParticles(for: scene))
+        let gas = solver.formationLeaves().gas
+        var expected = 0.0
+        for _ in 0..<240 {
+            expected += solver.formationLeaves().drawnRate * Double(scene.timeStep)
+            solver.step()
+        }
+        let lit = solver.particles.formation.count { $0 >= 0 && $0 < 1e8 }
+        #expect(gas - solver.formationLeaves().gas == lit)
+        #expect(expected > 20)
+        #expect(abs(Double(lit) - expected) < 4 * expected.squareRoot())
+    }
+
     /// A take written after a run holds the stars that formed during it (#150). The solver
     /// writes formation times only to its own buffer, so the sampled system a take is written
     /// from still has the start state's.
