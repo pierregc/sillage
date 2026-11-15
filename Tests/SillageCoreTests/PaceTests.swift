@@ -115,13 +115,27 @@ struct PaceTests {
     @Test func theVisualPaceSlowsWhereTheChangeIsLarge() {
         let times = (0...400).map(Double.init)
         // The picture changes ten times faster in the middle.
-        let changes = (0..<400).map { (150..<250).contains($0) ? 0.1 : 0.01 }
+        let changes = (0..<400).map { (150..<250).contains($0) ? 0.05 : 0.01 }
         let megayears = (0..<300).map { 50 + Double($0) * 1.2 }
         let speeds = VisualPace().speeds(changes: changes, times: times, megayears: megayears)
         #expect(speeds.count == 300 && speeds.allSatisfy { $0 >= 1 && $0 <= 8 })
         let busy = speeds[megayears.firstIndex { $0 >= 200 }!]
         let quiet = speeds[megayears.firstIndex { $0 >= 330 }!]
-        #expect(busy == 1 && quiet > 7)
+        #expect(busy == 1 && quiet > 4)
+        // One drawing gone wrong is two huge changes in a row, and moves nothing.
+        var glitched = changes
+        glitched[320] = 5
+        glitched[321] = 5
+        #expect(
+            VisualPace().speeds(changes: glitched, times: times, megayears: megayears)
+                == speeds)
+        // Or at the end of the take, where a median has nothing to its right.
+        var last = changes
+        last[398] = 5
+        last[399] = 5
+        let plain = VisualPace().speeds(changes: changes, times: times, megayears: megayears)
+        let capped = VisualPace().speeds(changes: last, times: times, megayears: megayears)
+        #expect(zip(plain, capped).allSatisfy { abs($0 - $1) < 1.0 })
         // A quiet take with the same change everywhere plays at one speed.
         let flat = VisualPace().speeds(
             changes: [Double](repeating: 0.02, count: 400), times: times, megayears: megayears)

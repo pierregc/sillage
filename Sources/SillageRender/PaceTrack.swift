@@ -108,3 +108,16 @@ public enum PaceTrack {
         return csv
     }
 }
+
+extension LookFile {
+    /// The look the visual pace draws with (#309): the export's own, without what is not the
+    /// take. The field stars, the sky and the grain would be most of a 256 pixel frame and, drawn
+    /// as soft blobs of a few dozen pixels, change from frame to frame for nothing the take does.
+    public func forVisualPace() -> LookFile {
+        var file = self
+        file.starCount = 0
+        file.look.skyLevel = 0
+        file.look.noiseLevel = 0
+        return file
+    }
+}

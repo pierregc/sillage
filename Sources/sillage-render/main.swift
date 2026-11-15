@@ -957,7 +957,8 @@ func timeTrack(_ text: String, recording: Recording, capturedRate: Int) throws -
 /// draws the take at 256 wide with the export's camera before the export starts.
 func pacedTrack(
     _ spec: PaceSpec, name: String, folder: SceneFolder, loaded: RecordingFile.Loaded, look: LookFile,
-    capturedRate: Int, framing: RecordingFile.Loaded?, aspect: Double, slow: String?, csv: URL?
+    capturedRate: Int, framing: RecordingFile.Loaded?, aspect: Double, slow: String?, csv: URL?,
+    drawings: (directory: URL, from: Double, to: Double, only: Bool)? = nil
 ) throws -> (file: TimeTrackFile, track: TimeTrack, name: String) {
     let megayears = TimeTrack.megayears(of: loaded.recording)
     var made: PaceTrack.Made
@@ -973,8 +974,20 @@ func pacedTrack(
                 made.engagedUntilMyr.map { String(format: "%.0f", $0) } ?? "never"))
     case .visual(let settings):
         let started = Date()
-        let drawn = try TakeExport(take: loaded, look: look, capturedRate: capturedRate, framing: framing)
-            .visualChanges(width: 256, height: max(Int((256 * aspect).rounded()), 16))
+        let drawn = try TakeExport(
+            take: loaded, look: look.forVisualPace(), capturedRate: capturedRate, framing: framing
+        )
+        .visualChanges(
+            width: 256, height: max(Int((256 * aspect).rounded()), 16),
+            only: drawings.flatMap { $0.only ? $0.from...$0.to : nil },
+            drawing: { myr, rgba in
+                guard let drawings, myr >= drawings.from, myr <= drawings.to else { return }
+                try FileManager.default.createDirectory(
+                    at: drawings.directory, withIntermediateDirectories: true)
+                try PNGWriter.write(
+                    PNGWriter.image(rgba, width: 256, height: max(Int((256 * aspect).rounded()), 16)),
+                    to: drawings.directory.appendingPathComponent(String(format: "%.2f.png", myr)))
+            })
         made = PaceTrack.visual(settings, times: drawn.times, changes: drawn.changes, megayears: megayears)
         print(
             String(
@@ -1007,6 +1020,7 @@ func paceCommand(_ arguments: [String]) -> Int32 {
     let usage =
         "usage: sillage-render pace <scene folder> --speed <story[:pace[:top]]|visual[:top[:busiest]]>"
         + " [--slow from:to:speed] [--take <file>] [--look <look>] [--out <file>] [--csv <file>]"
+        + " [--drawings <dir> --drawings-myr <from>:<to>]"
     guard let path = arguments.first, !path.hasPrefix("--") else { fail(usage) }
     let options = Array(arguments.dropFirst())
     func option(_ name: String) -> String? {
@@ -1027,7 +1041,15 @@ func paceCommand(_ arguments: [String]) -> Int32 {
         let paced = try pacedTrack(
             spec, name: text, folder: folder, loaded: loaded, look: look, capturedRate: capturedRate,
             framing: nil, aspect: 9.0 / 16, slow: option("slow"),
-            csv: option("csv").map { URL(fileURLWithPath: $0) })
+            csv: option("csv").map { URL(fileURLWithPath: $0) },
+            drawings: option("drawings").flatMap { directory in
+                let range = (option("drawings-myr") ?? "").split(separator: ":").compactMap { Double($0) }
+                return range.count == 2
+                    ? (
+                        URL(fileURLWithPath: directory, isDirectory: true), range[0], range[1],
+                        options.contains("--drawings-only")
+                    ) : nil
+            })
         let out = URL(fileURLWithPath: option("out") ?? "\(path)/exports/pace.time.json")
         try FileManager.default.createDirectory(
             at: out.deletingLastPathComponent(), withIntermediateDirectories: true)

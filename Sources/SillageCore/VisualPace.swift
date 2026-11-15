@@ -26,6 +26,8 @@ public struct VisualPace: Sendable {
     /// Luminances below this, relative to white, are the sky: the logarithm of a pixel that dark
     /// would only show the noise of the drawing.
     static let floor = 0.01
+    /// A change of more than this many medians of the take's own is a drawing gone wrong.
+    static let spike = 8.0
 
     /// How much two RGBA frames of one size differ, measured three ways on the log luminance.
     public struct Change: Sendable, Equatable {
@@ -101,7 +103,17 @@ public struct VisualPace: Sendable {
         }
         // Change per Myr, at the middle of each interval.
         let middles = changes.indices.map { (times[$0] + times[$0 + 1]) / 2 }
-        let rates = changes.indices.map { changes[$0] / max(times[$0 + 1] - times[$0], 1e-9) }
+        let raw = changes.indices.map { changes[$0] / max(times[$0 + 1] - times[$0], 1e-9) }
+        // A drawing that came out wrong, as a GPU under load gives now and then, is two huge
+        // changes in a row: a median over five intervals drops it, and a change of more than
+        // `spike` medians of the take's own counts as the median, which catches one at the very
+        // end where there is nothing to its right.
+        let typical = raw.sorted()[raw.count / 2]
+        let rates = raw.indices.map { index -> Double in
+            let around = raw[max(index - 2, 0)...min(index + 2, raw.count - 1)].sorted()
+            let value = around[around.count / 2]
+            return value > Self.spike * typical ? typical : value
+        }
         let smooth = middles.indices.map { index -> Double in
             var sum = 0.0
             var count = 0.0
