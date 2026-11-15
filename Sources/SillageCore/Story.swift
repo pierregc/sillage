@@ -1,4 +1,5 @@
 import Foundation
+
 #if canImport(simd)
     import simd
 #endif
@@ -15,16 +16,19 @@ public struct Story: Sendable {
         public var extent: Double
         public var tails: Double
         public var disruption: [Double]
+        /// Stars formed since the frame before.
+        public var formed: Double
 
         public init(
             timeMyr: Double, centres: [SIMD3<Double>], extent: Double, tails: Double,
-            disruption: [Double]
+            disruption: [Double], formed: Double = 0
         ) {
             self.timeMyr = timeMyr
             self.centres = centres
             self.extent = extent
             self.tails = tails
             self.disruption = disruption
+            self.formed = formed
         }
     }
 
@@ -415,8 +419,8 @@ public struct Story: Sendable {
         }
     }
 
-    /// Reads `curves.csv` by column name: time, extent, tails, each disk's disruption and each
-    /// galaxy's centre.
+    /// Reads `curves.csv` by column name: time, extent, tails, stars formed, each disk's
+    /// disruption and each galaxy's centre.
     public static func samples(csv: String) -> [Sample] {
         let lines = csv.split(whereSeparator: \.isNewline)
         guard let header = lines.first?.split(separator: ",").map(String.init) else { return [] }
@@ -432,6 +436,7 @@ public struct Story: Sendable {
             return (x, y, z)
         }
         let disruption = (0..<galaxies).compactMap { column("disruption_\($0)") }
+        let formed = column("formed")
         return lines.dropFirst().compactMap { line in
             let fields = line.split(separator: ",", omittingEmptySubsequences: false)
             guard fields.count == header.count, let t = Double(fields[time]),
@@ -445,7 +450,8 @@ public struct Story: Sendable {
             guard positions.count == centres.count else { return nil }
             return Sample(
                 timeMyr: t, centres: positions, extent: e, tails: f,
-                disruption: disruption.map { Double(fields[$0]) ?? 0 })
+                disruption: disruption.map { Double(fields[$0]) ?? 0 },
+                formed: formed.flatMap { Double(fields[$0]) } ?? 0)
         }
     }
 

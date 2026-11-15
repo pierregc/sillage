@@ -424,6 +424,28 @@ frame is the one it always was.
 ./scripts/dev.sh export library/2026-10-23/scene-0001 --preset 4k --speed pace.time.json
 ```
 
+**Automatic paces (spike, #309).** `--speed` also takes the name of a pace, which is read off the
+take when the export starts and written beside the video like any other track; `--slow
+<from>:<to>:<speed>` (megayears of the take) holds a stretch of it to at most that speed. They
+are there for choosing, and #311 will replace them with the pace that was chosen.
+
+- `story[:<pace>[:<top>]]` reads `curves-hires.csv` (or `curves.csv`, whichever starts and ends
+  where the take does): the largest change of the tails, the extent and the disruption over the
+  150 Myr around each frame, in `Story`'s thresholds, with the extent left out once the pair is
+  past its reach. Frames up to the last moment a pair is engaged (or has not yet merged), and
+  frames where stars form at more than twice their level before the story, play at 1x; elsewhere
+  the speed is `<pace>` over the activity, from 1 to `<top>` (4 and 8 when absent).
+- `visual[:<top>[:<busiest>]]` draws the take at 256 wide with the export's camera, one drawing
+  per megayear of the take, measures the mean change of the log luminance between drawings, and
+  sets the speed that keeps the change per frame of video at what the busiest quarter of the
+  frames (`<busiest>`, 0.25 when absent) has at 1x, from 1 to `<top>` (8 when absent).
+
+`sillage-render pace <scene folder> --speed <name> [--slow ...] [--look <look>] [--out <file>]
+[--csv <file>]` writes the track without drawing the video (the visual pace still draws its
+256 pixel pre-pass), to be read by `export --speed <file>`, and prints the length of the video it
+gives; `--csv` adds the video's time against the take's, and the pace's own trace beside it as
+`.trace.csv`.
+
 `--codec hevc|h264|prores` picks what the frames are compressed with, all on the media engine:
 
 | codec | file | for | rate |

@@ -742,8 +742,17 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     // `--framing <take>`: the camera, the painted arms, the time and the exposure of another take
     // of the same run, as a full pass draws them from the massive take (#239).
     let framing = try option("framing").map { try RecordingFile.read(from: URL(fileURLWithPath: $0)) }
-    let speed = try option("speed").map {
-        try timeTrack($0, recording: loaded.recording, capturedRate: capturedRate)
+    let speed = try option("speed").map { text in
+        if let spec = PaceSpec(text) {
+            let drawn = (
+                width: try value("width") ?? Double(preset.width),
+                height: try value("height") ?? Double(preset.height)
+            )
+            return try pacedTrack(
+                spec, name: text, folder: folder, loaded: loaded, look: look, capturedRate: capturedRate,
+                framing: framing, aspect: drawn.height / drawn.width, slow: option("slow"), csv: nil)
+        }
+        return try timeTrack(text, recording: loaded.recording, capturedRate: capturedRate)
     }
     let export = try TakeExport(
         take: loaded, look: look, capturedRate: capturedRate, framing: framing, track: speed?.track)
@@ -940,6 +949,123 @@ func timeTrack(_ text: String, recording: Recording, capturedRate: Int) throws -
     let track = try file.track(
         megayears: TimeTrack.megayears(of: recording), capturedRate: capturedRate)
     return (file, track, name)
+}
+
+/// `--speed story[:pace[:top]]` or `--speed visual[:top[:busiest]]` (#309): the speed of every
+/// captured frame read off the take's curves or off the take drawn small, and `--slow
+/// <from>:<to>:<speed>` holds a stretch, in Myr of the take, to at most that speed. The visual pace
+/// draws the take at 256 wide with the export's camera before the export starts.
+func pacedTrack(
+    _ spec: PaceSpec, name: String, folder: SceneFolder, loaded: RecordingFile.Loaded, look: LookFile,
+    capturedRate: Int, framing: RecordingFile.Loaded?, aspect: Double, slow: String?, csv: URL?,
+    drawings: (directory: URL, from: Double, to: Double, only: Bool)? = nil
+) throws -> (file: TimeTrackFile, track: TimeTrack, name: String) {
+    let megayears = TimeTrack.megayears(of: loaded.recording)
+    var made: PaceTrack.Made
+    switch spec {
+    case .story(let settings):
+        let curves = try PaceTrack.curves(of: folder, megayears: megayears)
+        made = PaceTrack.story(
+            settings, samples: curves.samples, story: Story(scene: loaded.scene), megayears: megayears)
+        print(
+            String(
+                format: "pace       %@ from %@: first pass %@ Myr, engaged until %@ Myr", name,
+                curves.url.lastPathComponent, made.firstPassMyr.map { String(format: "%.0f", $0) } ?? "none",
+                made.engagedUntilMyr.map { String(format: "%.0f", $0) } ?? "never"))
+    case .visual(let settings):
+        let started = Date()
+        let drawn = try TakeExport(
+            take: loaded, look: look.forVisualPace(), capturedRate: capturedRate, framing: framing
+        )
+        .visualChanges(
+            width: 256, height: max(Int((256 * aspect).rounded()), 16),
+            only: drawings.flatMap { $0.only ? $0.from...$0.to : nil },
+            drawing: { myr, rgba in
+                guard let drawings, myr >= drawings.from, myr <= drawings.to else { return }
+                try FileManager.default.createDirectory(
+                    at: drawings.directory, withIntermediateDirectories: true)
+                try PNGWriter.write(
+                    PNGWriter.image(rgba, width: 256, height: max(Int((256 * aspect).rounded()), 16)),
+                    to: drawings.directory.appendingPathComponent(String(format: "%.2f.png", myr)))
+            })
+        made = PaceTrack.visual(settings, times: drawn.times, changes: drawn.changes, megayears: megayears)
+        print(
+            String(
+                format: "pace       %@: %d drawings in %.1f s", name, drawn.times.count,
+                Date().timeIntervalSince(started)))
+    }
+    if let slow {
+        let parts = slow.split(separator: ":").compactMap { Double($0) }
+        guard parts.count == 3, parts[2] > 0 else { throw SceneFolder.ExportError.badValue("slow", slow) }
+        made.speeds = PaceSpec.slowed(
+            made.speeds, megayears: megayears, from: parts[0], to: parts[1], speed: parts[2])
+    }
+    let file = TimeTrackFile(speeds: made.speeds)
+    let track = try file.track(megayears: megayears, capturedRate: capturedRate)
+    if let csv {
+        try made.traceCSV.write(
+            to: csv.deletingPathExtension().appendingPathExtension("trace.csv"), atomically: true,
+            encoding: .utf8)
+        try PaceTrack.videoCSV(track, megayears: megayears, framesPerSecond: capturedRate).write(
+            to: csv, atomically: true, encoding: .utf8)
+    }
+    return (file, track, slow.map { "\(name) slowed \($0)" } ?? name)
+}
+
+/// `pace <scene folder> --speed <story|visual...> [--slow from:to:speed] [--out <file>.time.json]`
+/// (#309): the track an automatic pace gives a take, written without drawing the video, for
+/// `export --speed <file>`; with `--csv <file>` the video's time against the take's, and the
+/// pace's own trace beside it as `.trace.csv`.
+func paceCommand(_ arguments: [String]) -> Int32 {
+    let usage =
+        "usage: sillage-render pace <scene folder> --speed <story[:pace[:top]]|visual[:top[:busiest]]>"
+        + " [--slow from:to:speed] [--take <file>] [--look <look>] [--out <file>] [--csv <file>]"
+        + " [--drawings <dir> --drawings-myr <from>:<to>]"
+    guard let path = arguments.first, !path.hasPrefix("--") else { fail(usage) }
+    let options = Array(arguments.dropFirst())
+    func option(_ name: String) -> String? {
+        options.firstIndex(of: "--\(name)").flatMap { $0 + 1 < options.count ? options[$0 + 1] : nil }
+    }
+    guard let text = option("speed"), let spec = PaceSpec(text) else { fail(usage) }
+    do {
+        let folder = SceneFolder(path: path)
+        let takeURL = option("take").map { URL(fileURLWithPath: $0) } ?? folder.take
+        let loaded = try RecordingFile.read(from: takeURL)
+        var look = try folder.exportLook(option("look"), catalogue: catalogueLooks())
+        if look.palette.isEmpty {
+            look.palette =
+                (try? Data(contentsOf: folder.look)).flatMap { try? LookFile.decoded(from: $0) }?.palette
+                .nonEmpty ?? loaded.scene.galaxies.map { GalaxyColours($0.color) }
+        }
+        let capturedRate = try folder.capturedRate()
+        let paced = try pacedTrack(
+            spec, name: text, folder: folder, loaded: loaded, look: look, capturedRate: capturedRate,
+            framing: nil, aspect: 9.0 / 16, slow: option("slow"),
+            csv: option("csv").map { URL(fileURLWithPath: $0) },
+            drawings: option("drawings").flatMap { directory in
+                let range = (option("drawings-myr") ?? "").split(separator: ":").compactMap { Double($0) }
+                return range.count == 2
+                    ? (
+                        URL(fileURLWithPath: directory, isDirectory: true), range[0], range[1],
+                        options.contains("--drawings-only")
+                    ) : nil
+            })
+        let out = URL(fileURLWithPath: option("out") ?? "\(path)/exports/pace.time.json")
+        try FileManager.default.createDirectory(
+            at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try paced.file.encoded().write(to: out)
+        let seconds = paced.track.seconds
+        print(
+            String(
+                format: "pace       %.1f s of video for a %.1f s take (%.0f%%), top speed %.1fx", seconds,
+                Double(paced.track.capturedFrames - 1) / Double(capturedRate),
+                100 * seconds / (Double(paced.track.capturedFrames - 1) / Double(capturedRate)),
+                paced.file.speeds?.max() ?? 1))
+        print("track      \(out.path)")
+        return 0
+    } catch {
+        fail("pace: \(error)")
+    }
 }
 
 /// The video's length and the take's span, for an export along a time track.
@@ -1295,6 +1421,9 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "night" {
 }
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "status" {
     exit(StatusCommand.main(Array(CommandLine.arguments.dropFirst(2))))
+}
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "pace" {
+    exit(paceCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "story" {
     exit(storyCommand(Array(CommandLine.arguments.dropFirst(2))))

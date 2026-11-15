@@ -493,6 +493,131 @@ the rungs on a real run before anything is built.
   massive disk's ringing and arms, and the two would disagree on screen at the switch.
 - **Thinning takes to the track** (above).
 
+## Spike #309: which automatic pace reads best
+
+Pierre picks on the videos; his choice and its reasons are written here once he has made it.
+Videos and one sheet per take (the curves, the picture's change, each pace's speed, the video's
+time against the take's) are in `~/claude-workspace/epic-304-out/309/for-pierre/`.
+
+**What was built.** Two paces that give a speed to every captured frame, a `TimeTrack` from them
+(#305), and a spike option to export with either:
+
+- `StoryPace` (`SillageCore`, portable, tests on synthetic curves): the prototype of Part 2 ported.
+  A frame's activity is the largest of three changes over the 150 Myr around it, in `Story`'s
+  thresholds (tails 0.02, extent 15 %, disruption 0.05); frames up to the last moment a pair is
+  engaged, or where stars form at over twice their level before the story, play at 1x; elsewhere
+  the speed is `pace` over the activity from 1 to `top`. `story:4:8` is pace 4, top 8.
+- `VisualPace` (`SillageCore`, with the drawing in `TakeExport.visualChanges`): the take drawn at
+  256 wide with the export's camera, one drawing per megayear, the mean change of the log
+  luminance (+0.01) between drawings over the pixels lit in either, smoothed over 15 Myr; the speed
+  that keeps the change per frame of video at what the busiest quarter of the frames has at 1x,
+  from 1 to `top`. The field stars, the sky and the grain are left out of these drawings.
+- `export --speed story[:pace[:top]]|visual[:top[:busiest]]`, `--slow <from>:<to>:<speed>` (a
+  stretch held to at most that speed, in Myr of the take) and `sillage-render pace` (the track
+  without the video, and CSVs of the video's time and of what the pace read), in
+  [the reference](../reference.md). `TimeTrack` does the ramp, 3 s per doubling.
+
+**What the prototype got wrong, and what changed.**
+
+- *Engagement* came from two constants (45 kpc, 10 kpc). It now is `Story`'s own (the pair inside
+  its reach and still moving as two bodies), ended at the merger once the centres stay within
+  10 kpc to the end of the take, because `Story` waits for nuclei to settle as two bodies, which
+  keeps the Antennae at 1x 200 Myr after a viewer sees a remnant. On the four takes it lands
+  where the prototype did (887, 520, 559 and 504 Myr), and the videos are within a point of its.
+- *The extent* counts only while the pair is inside its reach, as in `Story`: galaxies parting
+  stretch it whatever the stars do. It changed nothing on the pair that parts (below), where the
+  disruption decides.
+- *The window* slides inwards at either end of the take instead of shrinking, so the last frames
+  are not judged on a sliver that looks quiet; the extent is relative to the window's largest,
+  as `Story` has it.
+- *The curves and the take* have different frames (hires curves start a frame after the take),
+  so the speeds are interpolated in time (geometric) onto the take's frames.
+- *The ramp* is `TimeTrack`'s: a slowdown is over before the slow stretch begins, the prototype's
+  clamp moved both ways.
+
+**The takes** (readme-v4 look, 4K ProRes from an APFS clone, scaled to 1080p; length against
+1x, the highest speed reached after the ramp):
+
+| take (frames, Myr/frame) | 1x | story 4:8 | story 8:8 | visual | story 4:8, 0.5x at the first pass |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mice, scene-0067 (1525, 0.79) | 50.8 s | 38.8 s (76 %), 5.3x | 35.1 s (69 %), 6.1x | 35.3 s (70 %), 2.9x | 43.9 s (86 %) |
+| Antennae, scene-0099 (747, 0.79) | 24.9 s | 20.2 s (81 %), 2.6x | 19.4 s (78 %), 3.5x | 21.3 s (85 %), 1.6x | 25.2 s (101 %) |
+| ring, scene-0131 (916, 0.79) | 30.5 s | 24.8 s (81 %), 2.2x | 22.1 s (72 %), 3.6x | 27.0 s (89 %), 2.0x | 29.9 s (98 %) |
+| pair that parts, scene-0011 of 2026-11-13 (602, 1.02) | 20.1 s | 19.9 s (99 %), 1.2x | 18.7 s (93 %), 1.4x | 17.9 s (89 %), 1.5x | 24.2 s (121 %) |
+
+The Mice, the Antennae and the ring are 50 M drawn on 8 M massive (the youtube-4k nights); the
+pair that parts is the one take among the 2026-11-13 hires and the youtube-4k library whose story
+ends without a merger (they separate to 336 kpc after a pass at 1.6 kpc), 8 M drawn on 2 M
+massive. The Antennae and the ring use `night-v4`, the readme-v4 look with the camera fixed on the
+centres' paths; the pair that parts the same, framed on its host (`night_frame.py --host-only`).
+
+**What the pictures and curves show.** I did not watch the videos as a viewer would; this is from
+the curves, the pace's traces, stills and frame-to-frame measurements.
+
+- **The story pace plays every collision at 1x and the aftermath at 2x to 5x**, as the prototype
+  said: it saves a quarter of the Mice and a fifth of the Antennae and the ring. The saving is all
+  in the last half: the tails settle, the extent decays, and the speed climbs steadily to the
+  take's end (5.3x at 4:8, 6.1x at 8:8). The top of 8 is never reached: the takes end with the
+  extent still changing by 0.65 to 1 thresholds, which is 4 to 6x at pace 4 (8 to 12x at pace 8
+  would be capped by the top).
+- **Bolder (8) buys 3 to 9 points** (the ring from 81 to 72 %) and starts the speedup earlier, not
+  a different shape.
+- **The visual pace is a different animal.** It plays the pictures at a constant change, and
+  pictures change while a remnant turns: its speed stays under 3x everywhere, it speeds up the
+  quiet approach (1.9x at the Mice's start, where the story pace keeps 1x) and, like the story
+  pace, plays 1x from the first pass to the merger. It saves as much as 8:8 on the Mice (the pictures
+  quieten after the merger) and little on the ring (89 %).
+- **The pair that parts has nothing to speed up.** Its first pass leaves the disk of the host torn
+  (disruption 0.27 at 500 Myr, 0.70 at the end), so the activity stays above 4 thresholds to the end
+  and the story pace stays at 1x, and the pictures change more late (the streams spreading)
+  than early. A parting pair has no quiet aftermath: the curves do not see a disk heating on its
+  own, which `Story` already treats as the end of a story, 400 Myr after the last engagement.
+- **0.5x around the first pass** (80 Myr, 3.4 s at 1x, 6.8 s at 0.5x) adds 5 s (4 s on the pair
+  that parts) to the story pace's video: the ramp makes the slowdown start 3 s before.
+- **The knots do not strobe**, at up to 6x on these remnants. In three consecutive frames of the
+  Mice at 5.5x the remnant is a smooth glow with lobes 50 pixels and more across that glide; the
+  compact things (field stars, a satellite) are static or slow, and the particles' fine speckle
+  is redrawn at every frame at any speed. By estimate a feature turning at 200 km/s moves 6 pixels
+  a frame at 1080p at 6x (4.7 Myr a frame, 6.4 px per kpc), whatever its radius. No remnant here
+  has the bright compact knots a motion blur would be for, so none was made: the blur above 4x
+  stays an idea, to try on a take whose remnant keeps knots (the ring's, before 600 Myr, are at
+  1x to 2x).
+- **The end at the top speed against the run stopped where the speed gets there** (the 8:8
+  video, stopped where its speed first stays at 75 % of the speed it ends at): the Mice lose
+  1.2 s of 35 and 155 Myr of 1200 (13 % of the take), the Antennae 1.2 s of 19 and 90 Myr (15 %),
+  the ring 2.2 s of 22 and 178 Myr (25 %). The last stretch at speed costs a seventh to a quarter
+  of a run for one or two seconds of video, which is what Part 3's schedules would save. The pair
+  that parts never reaches 2x, so it has none.
+
+**Recommendation.** The story pace at 4 with a top of 8 as the default, and 8 offered as a bolder
+setting: it is simple, it keeps every collision at 1x, it never goes under what the curves
+justify, and what it saves is the aftermath Pierre asked about. The visual pace is not worth the
+extra pass on its own (it plays a turning remnant at 1x to 3x), but its speedup of the quiet
+approach is the one thing the curves do not give; a pace that is the faster of the two where both
+call a frame quiet would be the next thing to try, not now. The 0.5x at a pericentre is a hand
+key (`--slow`), not part of a pace. A pair that parts stays at 1x whatever the pace; that is
+correct, not a defect.
+
+**For #311.**
+
+- The pre-pass needs `forVisualPace()` (no field stars, sky or grain): drawn at 256 px they were
+  most of the frame, soft blobs of 30 px, and their change drowned the take's. The galaxies are
+  50 px wide in the Mice's fixed wide frame; a director camera's pre-pass runs on the 1x track's
+  cameras, not the paced video's.
+- **Drawings go wrong now and then**: 14 of 1207 for the Mice, 3 for the ring, none in the
+  smaller takes, each a single drawing 100 times its neighbours' change, and not reproducible by
+  drawing it again. The 4K exports did not show it (checked frame to frame on every video), and
+  the GPU was shared. The visual pace drops them (a median over five intervals, and anything over
+  8 medians of the take's own); a pre-pass that is kept should check them.
+- Two 4K exports of the ring failed with "victim of GPU error/recovery" (another job on the GPU
+  faulted) and were drawn again: read an export's log before trusting its file.
+- The curves have a frame fewer than the take at the start and a different cadence from the
+  explore curves: always map by time. `formed` is per frame, not cumulative.
+- 1080p from a 4K master is H.264 two-pass `-preset slow -x264-params aq-mode=3`, 2.7 Mbit/s for
+  the Mice's 51 s (a faint tile pattern shows in the dark outskirts; a 10 Mbit/s copy of the 1x
+  is beside the videos), 5 to 7 Mbit/s for the others; very short clips overshoot the target
+  bitrate by up to 14 %.
+
 ## The plan
 
 Epic #304, sub-issues in waves:
