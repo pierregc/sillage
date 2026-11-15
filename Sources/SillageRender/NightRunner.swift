@@ -98,7 +98,7 @@ public struct NightFolder: Sendable {
             let record = try? scene.hiresArguments(
                 hiresOptions, maximumParticles: max(particles, maximumParticles)
             ).record
-            let steps = Double((record?.settle ?? 0) + (record?.steps ?? 0))
+            let steps = Double(record?.stepsToRun ?? 0)
             let file = (try? Data(contentsOf: scene.scene)).flatMap { try? SceneFile.decoded(from: $0) }
             progress.explored.append(
                 NightScene(

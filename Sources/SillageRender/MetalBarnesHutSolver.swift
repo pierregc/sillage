@@ -69,7 +69,7 @@ public protocol TracerDrawing: AnyObject {
 /// none of the inertia, so there is no dynamical friction against it and two galaxies keep
 /// orbiting instead of settling into a merger. Live halos would fix that at the cost of five
 /// to ten times more particles, none of which are visible.
-public final class MetalBarnesHutSolver: Solver {
+public final class MetalBarnesHutSolver: StepChangingSolver {
     public let kind: SolverKind = .barnesHut
     public var scene: SceneConfig { host.scene }
     public var time: Float { host.time }

@@ -80,13 +80,11 @@ public struct StoryPace: Sendable {
         }
         let approach = story.firstApproach(samples)
         trace.firstPassMyr = approach?.timeMyr
-        // The last moment a pair was inside its reach and moving as two bodies, as `Tracker`
-        // follows it; everything before is the approach and the passes, which play as they are.
-        var engaged: Double?
-        for index in samples.indices where story.reading(samples, at: index).engaged {
-            engaged = times[index]
-        }
-        if let storyEnd = engaged, let merge = mergeMoment(samples) { engaged = min(storyEnd, merge) }
+        // Everything before the last engagement is the approach and the passes, which play as
+        // they are.
+        var engagement = Engagement(story: story, merged: settings.merged)
+        for sample in samples { engagement.append(sample) }
+        let engaged = engagement.untilMyr
         trace.engagedUntilMyr = engaged
 
         let thresholds = story.settings
@@ -134,23 +132,55 @@ public struct StoryPace: Sendable {
         return trace
     }
 
-    /// The moment every pair that came within its reach stays within `merged` kpc to the end of
-    /// the take, nil if one of them does not: `Story` waits for the nuclei to settle as two
-    /// bodies, which a viewer takes for a remnant long before.
     func mergeMoment(_ samples: [Story.Sample]) -> Double? {
-        guard let last = samples.last else { return nil }
-        var moment: Double?
-        for pair in Self.pairLimits(story, galaxies: last.centres.count) {
-            let distances = samples.map { simd_distance($0.centres[pair.i], $0.centres[pair.j]) }
-            guard distances.contains(where: { $0 < pair.limit }) else { continue }
-            guard let apart = distances.lastIndex(where: { $0 >= settings.merged }) else {
-                moment = max(moment ?? 0, samples[0].timeMyr)
-                continue
-            }
-            guard apart + 1 < samples.count else { return nil }
-            moment = max(moment ?? 0, samples[apart + 1].timeMyr)
+        Engagement.mergeMoment(samples, story: story, merged: settings.merged)
+    }
+
+    /// When a pair stops being engaged, the one reading the pace (#309) and step schedules
+    /// (#312) share: the last sample `Story` reads a pair inside its reach and still moving as
+    /// two bodies, ended at the merger once the centres stay within `merged` kpc to the last
+    /// sample. Fed a sample at a time, so a run can follow it as its curves come.
+    public struct Engagement: Sendable {
+        public let story: Story
+        public let merged: Double
+        public private(set) var samples: [Story.Sample] = []
+        /// The last sample a pair was inside its reach and moving as two bodies.
+        public private(set) var lastEngagedMyr: Double?
+
+        public init(story: Story, merged: Double = Settings().merged) {
+            self.story = story
+            self.merged = merged
         }
-        return moment
+
+        public mutating func append(_ sample: Story.Sample) {
+            samples.append(sample)
+            if story.engaged(samples, at: samples.count - 1) { lastEngagedMyr = sample.timeMyr }
+        }
+
+        /// The last moment a pair was engaged so far, nil when none ever was.
+        public var untilMyr: Double? {
+            guard let engaged = lastEngagedMyr else { return nil }
+            return Self.mergeMoment(samples, story: story, merged: merged).map { min(engaged, $0) } ?? engaged
+        }
+
+        /// The moment every pair that came within its reach stays within `merged` kpc to the last
+        /// sample, nil if one of them does not: `Story` waits for the nuclei to settle as two
+        /// bodies, which a viewer takes for a remnant long before.
+        static func mergeMoment(_ samples: [Story.Sample], story: Story, merged: Double) -> Double? {
+            guard let last = samples.last else { return nil }
+            var moment: Double?
+            for pair in StoryPace.pairLimits(story, galaxies: last.centres.count) {
+                let distances = samples.map { simd_distance($0.centres[pair.i], $0.centres[pair.j]) }
+                guard distances.contains(where: { $0 < pair.limit }) else { continue }
+                guard let apart = distances.lastIndex(where: { $0 >= merged }) else {
+                    moment = max(moment ?? 0, samples[0].timeMyr)
+                    continue
+                }
+                guard apart + 1 < samples.count else { return nil }
+                moment = max(moment ?? 0, samples[apart + 1].timeMyr)
+            }
+            return moment
+        }
     }
 
     /// One speed for each of the moments `megayears`, the captured frames of a take: each curve

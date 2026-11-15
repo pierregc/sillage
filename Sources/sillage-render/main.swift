@@ -1506,7 +1506,7 @@ if CommandLine.arguments.count > 1,
             begun.pass = fullPass ? "full" : record.pass?.rawValue
             run.record(begun)
             let costs = CostModel.current(library: folder.library)
-            let steps = record.settle + record.steps
+            let steps = record.stepsToRun
             var seconds = costs.hiresSeconds(
                 particles: record.particles, massive: record.massive, steps: steps)
             if fullPass, let index = plan.arguments.firstIndex(of: "--draw") {
@@ -1526,6 +1526,15 @@ if CommandLine.arguments.count > 1,
                     record.settle, record.steps, record.clipStartMyr, record.clipEndMyr,
                     seconds / 3600,
                     fullPass ? ", full pass" : record.pass == .massive ? ", massive pass" : ""))
+            if let schedule = record.stepSchedule, !fullPass {
+                print(
+                    "schedule   \(schedule), \(record.stepsToRun) steps planned for \(record.settle + record.steps)"
+                        + (schedule.margin.map {
+                            String(format: ", judged on the run's own centres with a margin of %g Myr", $0)
+                        } ?? ""))
+            } else if fullPass, let switches = record.stepSwitches, !switches.isEmpty {
+                print("schedule   the massive pass's switches, \(StepSwitches(switches))")
+            }
         } catch {
             fail("hires: \(error)")
         }
@@ -1564,7 +1573,7 @@ func number(_ name: String, _ fallback: Double) -> Double {
 // A full pass (#239) runs through the flow the Mac and the CUDA engine share (#278).
 if arguments.contains("--draw") {
     if arguments.contains("--dt-schedule") {
-        fail("--dt-schedule: a spike option, not for a full pass (#312)")
+        fail("--dt-schedule: a full pass follows the steps its massive pass took, --dt-switches (#312)")
     }
     do {
         try FullPassRun(
@@ -1964,40 +1973,40 @@ if let sceneOutPath = argument("scene-out") ?? beside(".scene.json") {
 }
 
 let stepsPerFrame = max(steps / max(frames, 1), 1)
-// `--dt-schedule 0:2,162:1` (#307): a coarser step for stretches of the run, switched on frame
-// boundaries. A spike option; docs/notes/variable-time.md.
-let stepSchedule = try argument("dt-schedule").map(StepSchedule.init(parsing:))
+// `--dt-schedule 0:2,162:1` (#307, #312): a coarser step for stretches of the run, switched on
+// frame boundaries; with `--dt-judge <Myr>` the run holds the fine step while its own centres
+// say a pair is engaged, or was within that margin. docs/notes/variable-time.md.
+let stepSchedule = try argument("dt-schedule").map(StepSchedule.init(parsing:)).map { given in
+    var given = given
+    given.margin = argument("dt-judge").flatMap(Double.init)
+    return given
+}
 try stepSchedule?.check(stepsPerFrame: stepsPerFrame)
 let scheduledSolver = gpuSolver as? MetalBarnesHutSolver
 if stepSchedule != nil && scheduledSolver == nil { fail("--dt-schedule needs the Barnes-Hut solver") }
 let ownStep = scene.timeStep
-var ownStepsDone = 0
-var stepsRun = 0
-var stepScale = 1
-var stepSwitches: [StepSchedule.Switch] = []
+var scheduler = stepSchedule.map {
+    StepScheduler(
+        schedule: $0, stepMyr: Double(ownStep) * Physics.megayearsPerTimeUnit,
+        story: Story(scene: scene))
+}
 /// Steps through `count` of the run's own steps, at the scale the schedule gives the stretch
-/// starting here. Returns how many steps that took.
+/// starting here, and shows the run's centres to its judge. Returns how many steps that took.
 @discardableResult
 func advance(_ count: Int, frame: Int?) -> Int {
-    var scale = 1
-    if let stepSchedule, let scheduledSolver {
-        let myr = Double(ownStepsDone) * Double(ownStep) * Physics.megayearsPerTimeUnit
-        scale = stepSchedule.scale(atMyr: myr)
-        if count % scale != 0 { scale = 1 }
-        if scale != stepScale {
-            scheduledSolver.changeStep(to: ownStep * Float(scale))
-            stepScale = scale
-            stepSwitches.append(.init(step: ownStepsDone, myr: myr, scale: scale, frame: frame))
-            print(
-                String(
-                    format: "schedule   step x%d from t=%.2f Myr%@", scale, myr,
-                    frame.map { " (frame \($0))" } ?? ", settling"))
-        }
+    guard var current = scheduler, let scheduledSolver else {
+        solver.step(count: count)
+        return count
     }
-    solver.step(count: count / scale)
-    ownStepsDone += count
-    stepsRun += count / scale
-    return count / scale
+    let (run, switched) = current.step(count, frame: frame, on: scheduledSolver, ownStep: ownStep)
+    if switched, let last = current.switches.last {
+        print(
+            String(
+                format: "schedule   step x%d from t=%.2f Myr%@", last.scale, last.myr,
+                frame.map { " (frame \($0))" } ?? ", settling"))
+    }
+    scheduler = current
+    return run
 }
 let zoom = look.camera.zoom
 let clock = Date()
@@ -2111,6 +2120,14 @@ let settle = Int(number("settle", 0))
 // settling, from the pace of the steps; once frames come, from the pace of the frames, which
 // the drawing of each one is part of.
 let totalSteps = settle + stepsPerFrame * frames
+/// The run's steps done and left once `ownDone` of its own are done: a schedule's coarser steps
+/// cover more of its time, which the progress and the estimated end count.
+func runSteps(ownDone: Int) -> (done: Int, left: Int) {
+    guard let scheduler, let stepSchedule else { return (ownDone, max(totalSteps - ownDone, 0)) }
+    let left = stepSchedule.steps(
+        settle: settle, frames: frames, perFrame: stepsPerFrame, stepMyr: scheduler.stepMyr, from: ownDone)
+    return (scheduler.stepsRun, left)
+}
 if settle > 0 {
     let settleStart = Date()
     // In chunks, so a settle of minutes still reports; a schedule's in frames, the last one
@@ -2124,11 +2141,11 @@ if settle > 0 {
         advance(count, frame: nil)
         settled += count
         let elapsed = Date().timeIntervalSince(settleStart)
+        let (done, left) = runSteps(ownDone: settled)
+        let progress = Double(done) / Double(max(done + left, 1))
         reporter?.update(
-            progress: Double(settled) / Double(max(totalSteps, 1)), detail: "settle \(settled)/\(settle)",
-            eta: RunStatus.eta(
-                elapsed: elapsed, progress: Double(settled) / Double(max(totalSteps, 1)),
-                now: Date()))
+            progress: progress, detail: "settle \(settled)/\(settle)",
+            eta: RunStatus.eta(elapsed: elapsed, progress: progress, now: Date()))
     }
     print(
         String(
@@ -2138,6 +2155,7 @@ if settle > 0 {
     // Stars formed while settling are not the clip's, and would read as a burst on frame 0.
     previousTime = solver.time
 }
+let settleRun = scheduler?.stepsRun ?? settle
 
 /// Past the planned frames, whether the story still wants more.
 func storyGoesOn() -> Bool {
@@ -2488,9 +2506,13 @@ while frame < frames || storyGoesOn() {
     previousTime = solver.time
 
     if frame < frames {
-        let framesDone = Double(frame + 1 - firstFrame) / Double(max(frames - firstFrame, 1))
+        let (done, left) = runSteps(ownDone: settle + (frame + 1) * stepsPerFrame)
+        var framesDone = Double(frame + 1 - firstFrame) / Double(max(frames - firstFrame, 1))
+        if scheduler != nil {
+            framesDone = Double(done - settleRun) / Double(max(done - settleRun + left, 1))
+        }
         reporter?.update(
-            progress: Double(settle + (frame + 1) * stepsPerFrame) / Double(max(totalSteps, 1)),
+            progress: Double(done) / Double(max(done + left, 1)),
             detail: "frame \(frame + 1)/\(frames)",
             eta: RunStatus.eta(
                 elapsed: Date().timeIntervalSince(framesStart), progress: framesDone, now: Date()))
@@ -2598,10 +2620,10 @@ if let (folder, done) = hiresRun {
     }
     var record = done
     record.seconds = Date().timeIntervalSince(started)
-    if stepSchedule != nil {
-        record.stepsRun = stepsRun
-        record.stepSwitches = stepSwitches
-        print("schedule   \(stepsRun) steps run for \(ownStepsDone) of the run's own")
+    if let scheduler {
+        record.stepsRun = scheduler.stepsRun
+        record.stepSwitches = scheduler.switches
+        print("schedule   \(scheduler.stepsRun) steps run for \(scheduler.ownSteps) of the run's own")
     }
     record.peakMemoryBytes = peakFootprint()
     record.takeBytes =

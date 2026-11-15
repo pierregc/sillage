@@ -56,7 +56,7 @@ public final class CUDALightTracerStore {
 /// Deterministic: no float atomic feeds the motion, the black holes' reactions are summed a
 /// block at a time and the blocks in a fixed order, and nothing is built with fast math, so two
 /// runs give the same bits, and so does a run resumed from a checkpoint.
-public final class CUDABarnesHutSolver: Solver {
+public final class CUDABarnesHutSolver: StepChangingSolver {
     public let kind: SolverKind = .barnesHut
     public var scene: SceneConfig { host.scene }
     public var time: Float { host.time }
@@ -271,6 +271,12 @@ public final class CUDABarnesHutSolver: Solver {
     public func step(count steps: Int) {
         guard failure == nil else { return }
         BarnesHutStep.run(host, on: self, steps: steps)
+    }
+
+    /// The step from the next one on, in simulation units, as a step schedule asks (#312).
+    public func changeStep(to step: Float) {
+        guard failure == nil else { return }
+        BarnesHutStep.changeStep(host, on: self, to: step)
     }
 
     /// The drawn particles, `[tracers | massive visible]` as `positions` holds them, `fraction`

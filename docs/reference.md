@@ -233,15 +233,32 @@ tracers walk at the scene's opening angle, so `--theta-tracers` is refused. `hir
 mass. A night draws 8 M from 2 M (#211): the texture of 8 M for about a third of a real 8 M's
 time. `--particles N` without `--massive` is a real N, every particle carrying mass.
 
-`--dt-schedule <Myr>:<scale>,...` is a spike option (#307), until step schedules come to hires
-for good (#312): from each moment on, the step is `scale` times the run's own, a power of two that
-divides a frame's steps, and a switch waits for the next frame boundary, settle included, so the
-captured frames keep their cadence in megayears. `0:4,162:1,610:2` steps four times coarser up to
-162 Myr, at the run's own step to 610, then twice as coarse. The leapfrog stays whole across a
-switch: a massive particle closes the old step with its half kick and opens the new one with its
-own; a light tracer, which opened the next step already, gets the difference. `hires.json` keeps
-the schedule, the steps run (`stepsRun`, against `settle + steps` of the run's own) and where it
-switched; a full pass and a massive pass refuse it. Measured in
+**Step schedules** (#312). A hires takes a coarser step where nothing fast happens: twice its
+step through the settle, up to its first captured frame, its own step through the story, and
+twice again from 100 Myr after the last engagement, the merger or the parting, read off the
+preview's curves as the automatic pace reads it (`StoryPace.Engagement`). The run judges its own
+centres as it goes: it keeps its own step while one of its pairs is engaged and for 100 Myr after,
+whatever the preview did, and comes back to it if a pair engages again, the settle included.
+Every switch falls on a frame boundary, settle included, and the coarse step is a power of two
+times the run's own that divides a frame's steps, so the captured frames keep their cadence in
+megayears. The leapfrog stays whole across a switch: a massive particle closes the old step with
+its half kick and opens the new one with its own; a light tracer, which opened the next step
+already, gets the difference. `--dt-schedule` chooses:
+
+- `story[:<before>[:<after>[:<margin>]]]`, the planned schedule, `story:2:2:100` by default
+  (`StepSchedule.standard`): `story:4:2` steps four times coarser before the story, `story:1:2`
+  only in the aftermath;
+- `off`, the run's own step throughout, today's bits;
+- `<Myr>:<scale>,...`, entries followed as written, without judging: `0:4,162:1,610:2` steps four
+  times coarser up to 162 Myr, at the run's own step to 610, then twice as coarse.
+
+`hires.json` keeps the schedule (`stepSchedule`, with its `margin` when the run judges), the
+steps run (`stepsRun`, against `settle + steps` of the run's own) and every switch
+(`stepSwitches`: the step of the run's own, the time, the scale and the captured frame). A full
+pass follows its massive pass's switches to the bit whatever it is asked (`--dt-switches`, which
+`hires` passes down), and so does a run resumed from its checkpoint, whose solver state keeps the
+step in force and whose identity the switches are part of. The cost model, the queue and a
+night's plan price a hires at the steps its schedule plans. Measured in
 [variable time](notes/variable-time.md).
 
 The maximum is a setting of the machine, `SILLAGE_MAX_PARTICLES`, not of the scene; asking for

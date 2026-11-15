@@ -46,7 +46,8 @@ struct CUDAFullPassTests {
     /// the engines' fixtures drawn at `particles` from `massive`, a look with the director, the
     /// massive take, `massive.bin` and `hires.json`. The massive pass is the CUDA solver's here.
     static func massivePass(
-        particles: Int = 3_000, massive: Int = 1_500, frames: Int = 8, context: CUDAContext
+        particles: Int = 3_000, massive: Int = 1_500, frames: Int = 8, context: CUDAContext,
+        options: [String] = [], schedule: ((SceneFolder.Hires) -> String)? = nil
     ) throws -> SceneFolder {
         let folder = SceneFolder(
             FileManager.default.temporaryDirectory.appendingPathComponent("full-pass-\(UUID().uuidString)")
@@ -68,11 +69,15 @@ struct CUDAFullPassTests {
         look.camera.mode = .director
         try look.encoded().write(to: folder.look)
 
-        let plan = try folder.hiresArguments(
+        let asked =
             [
                 "--particles", String(particles), "--massive", String(massive), "--frames", String(frames),
                 "--pass", "massive",
-            ], maximumParticles: 1_000_000_000)
+            ] + options
+        let base = try folder.hiresArguments(
+            asked + ["--dt-schedule", "off"], maximumParticles: 1_000_000_000)
+        let plan = try folder.hiresArguments(
+            asked + ["--dt-schedule", schedule?(base.record) ?? "off"], maximumParticles: 1_000_000_000)
         let run = FullPassRun(arguments: plan.arguments, engine: maker(context))
         let scenes = try run.scenes()
         let split = try CUDABarnesHutSolver.lightTracers(
@@ -83,10 +88,31 @@ struct CUDAFullPassTests {
         let interval = Int(run.number("take-interval", 1))
         let take = Recording(
             particleCount: visible, galaxyCount: scenes.scene.galaxies.count, interval: interval)
-        try solver.advance(steps: plan.record.settle)
         let perFrame = max(plan.record.steps / max(frames, 1), 1)
-        for _ in 0..<frames {
-            try solver.advance(steps: perFrame)
+        var record = plan.record
+        // Stepped as `sillage-render` steps a massive pass under a schedule (#312).
+        var scheduler = record.stepSchedule.map {
+            StepScheduler(
+                schedule: $0, stepMyr: Double(scenes.scene.timeStep) * Physics.megayearsPerTimeUnit,
+                story: Story(scene: scenes.scene))
+        }
+        func advance(_ count: Int, frame: Int?) throws {
+            if scheduler != nil {
+                scheduler!.step(count, frame: frame, on: solver, ownStep: scenes.scene.timeStep)
+                try solver.advance(steps: 0)
+            } else {
+                try solver.advance(steps: count)
+            }
+        }
+        if scheduler != nil {
+            for count in StepSchedule.settleChunks(settle: record.settle, perFrame: perFrame) {
+                try advance(count, frame: nil)
+            }
+        } else {
+            try solver.advance(steps: record.settle)
+        }
+        for frame in 0..<frames {
+            try advance(perFrame, frame: frame)
             let positions = try solver.positions.download(SIMD3<Float>.self, count: visible)
             positions.withUnsafeBufferPointer {
                 take.offer(
@@ -94,8 +120,12 @@ struct CUDAFullPassTests {
                     disks: solver.diskFrames, budget: 0)
             }
         }
+        if let scheduler {
+            record.stepsRun = scheduler.stepsRun
+            record.stepSwitches = scheduler.switches
+        }
         try RecordingFile.write(take, scene: scenes.scene, particles: solver.particles, to: folder.take)
-        try plan.record.encoded().write(to: folder.hires)
+        try record.encoded().write(to: folder.hires)
         return folder
     }
 
@@ -243,6 +273,51 @@ struct CUDAFullPassTests {
             #expect(!a.isEmpty && a == b, "\(name)")
         }
         #expect(stopped.storedHires()?.full?.resumes == 1)
+    }
+
+    /// A step schedule (#312): the full pass takes the switches its massive pass took, through
+    /// the settle and at a frame, its massive part repeating the massive pass to the bit; stopped
+    /// after a checkpoint before the frame switch and resumed, it draws the same frames and ends
+    /// in the same state. As `StepScheduleRunTests` holds Metal's.
+    @Test func aFullPassFollowsItsMassivePassAcrossTheSwitchesAndResumesAcrossOne() throws {
+        let context = try CUDAContext()
+        let straight = try Self.massivePass(context: context, options: ["--take-interval", "1"]) { record in
+            let frame = (record.clipEndMyr - record.clipStartMyr) / Double(record.frames)
+            return String(
+                format: "0:2,%.4f:1,%.4f:2", record.clipStartMyr - frame / 2,
+                record.clipStartMyr + 3.5 * frame)
+        }
+        defer { try? FileManager.default.removeItem(at: straight.batch.deletingLastPathComponent()) }
+        let record = try #require(straight.storedHires())
+        let perFrame = record.steps / record.frames
+        try #require(perFrame % 2 == 0, "\(perFrame) steps a frame")
+        #expect(record.stepSwitches?.map(\.scale) == [2, 1, 2])
+        #expect(record.stepSwitches?.last?.frame == 4)
+        let stopped = try Self.copy(straight)
+        let options = ["--take-interval", "1", "--checkpoint-frames", "3", "--checkpoint-steps", "5"]
+        try Self.fullPass(
+            straight, context: context, options: options + ["--state-out", straight.url.path + "/state.bin"])
+        let full = try #require(straight.storedHires()?.full)
+        #expect(full.drift == 0 && full.checkedFrames == 8)
+        #expect(throws: FullPassRun.Failure.self) {
+            try Self.fullPass(stopped, context: context, options: options) { frame, checkpoints in
+                checkpoints >= 1 && frame == 4
+            }
+        }
+        try Self.fullPass(
+            stopped, context: context,
+            options: options + ["--resume", "--state-out", stopped.url.path + "/state.bin"])
+        for name in ["4k.mp4", "vertical.mp4"] {
+            let a = try Self.decoded(straight.exports.appendingPathComponent(name))
+            let b = try Self.decoded(stopped.exports.appendingPathComponent(name))
+            #expect(!a.isEmpty && a == b, "\(name)")
+        }
+        for name in ["state.bin", "state.bin.json"] {
+            #expect(
+                try Data(contentsOf: straight.url.appendingPathComponent(name))
+                    == Data(contentsOf: stopped.url.appendingPathComponent(name)), "\(name)")
+        }
+        #expect(stopped.storedHires()?.full?.resumes == 1 && stopped.storedHires()?.full?.drift == 0)
     }
 
     /// The encoder's path: each codec through ffmpeg, segments joined without encoding them

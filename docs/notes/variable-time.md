@@ -240,9 +240,8 @@ position. What changes is where a frame's positions come from.
 - **For #312.** The drift is asked for a fraction of the step in force (`host.timeStep`, which
   #307's `changeStep` sets), the one the next massive half kick and drift take; after a
   `changeStep` the tracers' velocities are opened at the new step too, so a whole step still
-  lands on the next step's positions (tested with the step halved). What a schedule still has
-  to change is `place`, which counts the steps of a captured frame as a constant: a frame whose
-  step changed holds another number of them.
+  lands on the next step's positions (tested with the step halved). `place` counts the run's own
+  steps, and #312 turns them into the frame's ([below](#step-schedules-in-hires-312)).
 
 ## Part 2: knowing when it is interesting
 
@@ -457,6 +456,52 @@ more and the burst through the merger 4 to 6 % more, with the orbit it moved.
   shows it; (g), 14 before, saves 29 % and moves the orbit. The runs, the comparisons, 4K stills
   either side of each switch and (a) beside (g) are on the branch `assets/307-dt-schedule`
   (`docs/spikes/dt-schedule/`).
+
+### Step schedules in hires (#312)
+
+Every hires now takes a schedule unless `--dt-schedule off` ([reference](../reference.md#high-resolution)).
+Pierre chose the default on 15/11, closing #307's question: 7 before the story, 3.5 through it, 7
+from 100 Myr after the merger or the parting. What decides it, and where:
+
+- **Planned from the preview** (`StepSchedule.planned`, from `SceneFolder.hiresArguments`): the
+  default, `story:2:2:100` (`StepSchedule.standard`, the one place to change it), is twice the
+  hires step through the settle up to the first captured frame, the hires step from there, and
+  twice again from 100 Myr after the preview's last engagement. A scale a frame does not hold
+  whole is halved until it does; an aftermath that would start after the story's end is left
+  out; a scene with no engagement keeps its own step after the settle.
+- **The last engagement is the pace's** (`StoryPace.Engagement`, shared with #309): the last
+  sample `Story` reads a pair inside its reach and still moving as two bodies, ended at the merger
+  once the centres stay within 10 kpc to the last sample. On scene-0031 it is the merger, not
+  `Story`'s 657 Myr. `Story.engaged(_:at:)` is that flag of `reading` alone, without the orbits:
+  planning reads a whole preview in a few milliseconds, and `reading` takes its flag from it.
+- **Judged by the run** (`StepJudge`, `StepScheduler`): the massive pass, and a hires in one
+  pass, show the judge their centres after every stretch, settle included, rounded as the curves
+  write them. A coarser stretch the plan asks for runs only if no pair has been engaged for 100
+  Myr, so the run keeps the fine step while its own pair is engaged whatever its preview did,
+  comes back to it if a pair engages again, and holds the settle at its own step if a pair comes
+  inside its reach early. Only the centres count, so a massive pass and a run with tracers judge
+  alike. An explicit `--dt-schedule <Myr>:<scale>,...` is followed as written.
+- **Recorded, then followed**: `hires.json` keeps the schedule, `stepsRun` and each switch (the
+  step of the run's own, the time, the scale, the frame). `hires --pass full` passes the switches
+  down (`--dt-switches`), and the full pass (`FullPassRun`, both engines) changes the step at
+  those steps exactly, whatever `--dt-schedule` it is asked. A checkpoint's solver state keeps the
+  step in force (`SolverState.timeStep`, absent at the scene's own, so a run without a schedule
+  writes what it wrote), the switches are part of its identity through the command line, and a
+  resumed run starts at the step its switches give, refusing a checkpoint whose step disagrees.
+  In the settle a coarser step crosses a checkpoint's step rather than splitting; without a
+  schedule the chunks are cut as before.
+- **A frame between two steps** (#310's trap): `FullPassRun.place` counts a captured position in
+  the run's own steps, and `Place.taking` turns it into the steps of its frame, a fraction of the
+  step in force, which the drift takes.
+- **Priced**: `Hires.stepsToRun` (the steps run once it ran, as planned before) is what
+  `CostModel.hiresSeconds`, the queue's estimates, a night's progress and the hires stage's own
+  estimate count, and a full pass's history sample counts its massive pass's `stepsRun`. A night
+  planned before its scenes are explored counts the settle's coarser step only
+  (`ExploreProbe.scene`). The progress and the estimated end of a run count its steps, not its
+  own.
+- **The light tracers** are untouched: a switch gives them the difference of the two half kicks
+  through the existing tracer pass (#307's mechanism), in the full pass and in a hires in one
+  pass alike.
 
 ### Light tracers on steps of their own
 
