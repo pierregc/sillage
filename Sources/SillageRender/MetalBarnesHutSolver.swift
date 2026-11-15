@@ -446,6 +446,8 @@ public final class MetalBarnesHutSolver: Solver {
         encode(.drawnDrift(interval: interval), into: buffer)
         buffer.commit()
         buffer.waitUntilCompleted()
+        // A copy the GPU dropped would draw the frame before's positions without a word.
+        if let error = buffer.error { throw error }
         return drawnCopy
     }
 
