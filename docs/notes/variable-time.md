@@ -187,6 +187,63 @@ stay seconds of video at any speed. An export at the same captured position as t
 reuses its expanded positions and smoothing, so a freeze costs the drawing alone. The grain moves
 on every video frame.
 
+### The full pass along a track (#310)
+
+`hires --pass full --speed <x>|<file>` draws the full pass's videos along a track, read once
+against the massive take as an export reads it against its own: `RunVideos` hands it to
+`ShotPlan` and `ShotReplay`, so the cameras and the shots are the massive take's resampled at the
+video's frames, and the look, the time and the painted arms are read at each frame's captured
+position. What changes is where a frame's positions come from.
+
+- **Where a frame falls.** The massive pass took captured frame k (k + 1) frames of steps past
+  the settle, so a video frame at captured position c falls (c + 1) times the steps of a frame
+  past it (`FullPassRun.place`): on a captured frame, on a step inside one, or between two steps.
+  The run still steps a captured frame at a time, and inside a frame stops at the steps its
+  video frames ask for; a frame on a step is drawn from the solver's positions, a frame between
+  two from a copy drifted from the last step. A fast track skips captured frames, and their steps
+  are run whole. Without a track, and at 1x, every frame falls on a captured frame and the run
+  steps and draws as it did.
+- **The drift** is a kernel of the shared source (#281), `drawnDrift` in `BarnesHutShaders`, with
+  its Metal entry point `bhDrawnDrift`, its CUDA one in `cuda/src/solver.cu` and
+  `sc_solver_drawn_drift`, and a case of its own in `BarnesHutPass`, so an engine that does not
+  run it does not compile. Between two steps the leapfrog moves every particle along a straight
+  line: a massive particle at its velocity half kicked by the acceleration it holds,
+  x + τ (v + a Δt / 2), a light tracer at its stored velocity, which its fused pass leaves half a
+  kick ahead already. The kernel writes `[tracers | massive visible]`, the halo left out, into a
+  buffer of its own, with the next step's own arithmetic, so a copy drifted by a whole step is
+  that step's positions to the bit (`aCopyDriftedByAWholeStepIsWhereTheNextStepPutsIt`, on Metal
+  and on the CUDA CPU target). The solver's buffers are only read.
+- **The light tracers are drifted with the rest**, read where they are, their formation time
+  carried in w. How they are stored, stepped and kicked, and their kernels, are untouched. The
+  drawings read the copy in place of the solver's position buffer, for the massive particles and
+  for the tracers' states (`Renderer.drawnPositions`, `CUDARenderer.drawnPositions`), and the
+  tracers' words and the tree's spacing records from the solver as before; so the two
+  populations stand at the same moment in every frame.
+- **What a frame between two steps does not move**: the smoothing lengths and the tracers'
+  spacing are the last step's tree's, the next step's star formation has not happened yet, and the
+  centres, disks and key frames are the steps' own. It is at most a step from a state the solver
+  held.
+- **The checks stay on captured frames**: the drift against the massive take on every frame it
+  stored, and the key frames, whether or not the video draws them.
+- **A GPU that drops the work stops the run.** On 15/11, with three other runs sharing the GPU,
+  the demonstration's 8 M full pass was hit by GPU faults several times; after one, the GPU
+  ignores the process's command buffers, and the solver went on "stepping" in 6 ms a step on
+  positions that no longer moved. The drift's copy now throws when its command buffer failed,
+  and so does a Metal full pass after any step whose pass did (`MetalBarnesHutSolver.failure`,
+  read by `check()` as the CUDA engine's is), so the run stops and resumes from its checkpoint
+  instead of drawing a frozen scene.
+- **Recorded**: the track as read goes into `hires.json` (`full.track`) and beside each video
+  (`exports/<preset>.time.json`), `full.frames` counts the video's frames, and `--draw-stills`
+  counts them too. The checkpoint's identity carries the track as read (`identity.track`): a
+  resumed run follows it, and one whose track changed, even in a file of the same name, is
+  refused with "the time track" among what differs.
+- **For #312.** The drift is asked for a fraction of the step in force (`host.timeStep`, which
+  #307's `changeStep` sets), the one the next massive half kick and drift take; after a
+  `changeStep` the tracers' velocities are opened at the new step too, so a whole step still
+  lands on the next step's positions (tested with the step halved). What a schedule still has
+  to change is `place`, which counts the steps of a captured frame as a constant: a frame whose
+  step changed holds another number of them.
+
 ## Part 2: knowing when it is interesting
 
 ### From the curves: the story's pace

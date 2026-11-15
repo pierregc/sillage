@@ -26,6 +26,7 @@ BarnesHutShaders bhHoleSettle cuda
 BarnesHutShaders bhAcceleration cuda
 BarnesHutShaders bhTracerDrift cuda
 BarnesHutShaders bhTracerStep cuda
+BarnesHutShaders bhDrawnDrift cuda
 
 GPUTreeShaders gtReset cuda
 GPUTreeShaders gtBounds cuda gpu-only

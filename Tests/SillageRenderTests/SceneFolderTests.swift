@@ -284,6 +284,13 @@ struct SceneFolderTests {
         #expect(throws: SceneFolder.HiresError.self) {
             try hires(draw + ["--pass", "full", "--export", "webp"])
         }
+        // Only the full pass draws along a time track (#310).
+        let paced = try hires(draw + ["--pass", "full", "--speed", "pace.time.json"])
+        #expect(
+            value("--speed", in: paced.arguments) == "pace.time.json" && !full.arguments.contains("--speed"))
+        for options in [draw + ["--pass", "massive"], draw] {
+            #expect(throws: SceneFolder.HiresError.self) { try hires(options + ["--speed", "2"]) }
+        }
 
         // A massive pass stands for the first of two passes only, and a full pass is done once
         // it has drawn.

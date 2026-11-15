@@ -17,6 +17,7 @@ SILLAGE_STRUCT(BarnesHutShaders, DiskCooling, 64);
 SILLAGE_STRUCT(BarnesHutShaders, SFParams, 36);
 SILLAGE_STRUCT(BarnesHutShaders, HoleGPU, 32);
 SILLAGE_STRUCT(BarnesHutShaders, TracerStepParams, 48);
+SILLAGE_STRUCT(BarnesHutShaders, DrawnDriftParams, 16);
 SILLAGE_STRUCT(GPUTreeShaders, BHNode, 32);
 SILLAGE_STRUCT(GPUTreeShaders, TreeParams, 36);
 

@@ -250,6 +250,8 @@ extension SceneFolder {
             /// and the gap past which the run warned (#278).
             public var gaps: [CentreGap]?
             public var driftBound: Float?
+            /// The time track the videos were drawn along (#310); absent without one.
+            public var track: TimeTrackFile?
 
             public init(
                 presets: [String], frames: Int, seconds: Double, drawSeconds: [String: Double],
@@ -313,6 +315,7 @@ extension SceneFolder {
         case noMassivePass(URL)
         case notAVideo(String)
         case badCheckpoint
+        case speedWithoutFullPass
         case scheduleWithPass
 
         public var description: String {
@@ -336,6 +339,9 @@ extension SceneFolder {
                 "--export \(name): a full pass draws video presets, "
                     + VideoPreset.all.map(\.name).joined(separator: ", ")
             case .badCheckpoint: "--checkpoint-every is minutes, 0 for none"
+            case .speedWithoutFullPass:
+                "--speed: only the full pass draws along a time track (--pass full); export the"
+                    + " take with --speed otherwise"
             case .scheduleWithPass: "--dt-schedule: a spike option, for a hires in one pass (#307)"
             }
         }
@@ -507,7 +513,9 @@ extension SceneFolder {
         }
         let pass = cut("pass")
         let checkpointMinutes = cut("checkpoint-every").map { Double($0) ?? -1 }
+        let speed = cut("speed")
         if let pass, pass != "massive", pass != "full" { throw HiresError.badPass(pass) }
+        if speed != nil, pass != "full" { throw HiresError.speedWithoutFullPass }
         let presets = try cut("export").map { list in
             try list.split(separator: ",").map(String.init).map { name in
                 guard VideoPreset.named(name) != nil else { throw HiresError.notAVideo(name) }
@@ -573,6 +581,7 @@ extension SceneFolder {
                 "--key-frames", Self.partial(keyFrames).path, "--key-frame-list", keyFrameList.path,
                 "--key-frame-curves", hiresCurves.path, "--no-sidecars",
             ]
+            if let speed { arguments += ["--speed", speed] }
             let minutes = checkpointMinutes ?? Self.checkpointMinutes
             guard minutes >= 0 else { throw HiresError.badCheckpoint }
             if minutes > 0 {

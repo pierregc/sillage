@@ -61,6 +61,8 @@ public final class CUDAFullPassEngine: FullPassEngine {
     private let lengths: CUDABuffer
     private let massiveDrawn: Int
     private let attributes: ParticleAttributes
+    /// The drawn particles between two steps while frames there are drawn (#310).
+    private(set) var drifted: CUDABuffer?
 
     init(context: CUDAContext, start: FullPassRun.Start, threads: Int) throws {
         self.context = context
@@ -132,13 +134,17 @@ public final class CUDAFullPassEngine: FullPassEngine {
         _ = try barnesHut.writeSmoothing(into: lengths, drawn: massiveDrawn)
     }
 
+    public func drawDrifted(by fraction: Float?) throws {
+        drifted = try fraction.map { try barnesHut.drawnDrift(by: $0) }
+    }
+
     /// The light tracers as the renderer reads them, with the spacing records of the tree as
     /// it stands: a new buffer after the tree grows.
     var tracers: CUDARenderer.Tracers? {
         guard tracerCount > 0 else { return nil }
         let spacing = barnesHut.tracerSpacing
         return CUDARenderer.Tracers(
-            states: barnesHut.positions, motions: barnesHut.velocities, count: tracerCount,
+            states: drifted ?? barnesHut.positions, motions: barnesHut.velocities, count: tracerCount,
             cells: spacing?.cells, treeFrame: spacing?.frame, depth: spacing?.depth ?? 0)
     }
 
@@ -266,6 +272,7 @@ final class CUDARunVideoDrawing: RunVideoDrawing {
 
     func append(camera: Camera, still: ((any RunVideoStill) throws -> Void)?) throws {
         renderer.setTracers(engine.tracers)
+        renderer.drawnPositions = engine.drifted
         let pixels = try renderer.picture(camera: camera, format: .rgb, threads: engine.threads)
         try writer?.append(pixels)
         if let still {

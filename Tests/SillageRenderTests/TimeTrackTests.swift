@@ -185,4 +185,30 @@ struct TimeTrackTests {
         #expect(resampled.centres.map { $0[0].x } == [0, 1, 3.5, 4, 4])
         #expect(resampled.disruption.map { $0[0] } == [0, 0.2, 1, 1, 1])
     }
+
+    /// Where each frame of a full pass's videos falls in its run (#310): on a captured frame, on
+    /// a step inside one, or between two steps.
+    @Test func eachFrameOfAFullPassFallsOnAStepOrBetweenTwo() {
+        // Captured frame k stands (k + 1) frames of steps past the settle.
+        #expect(FullPassRun.place(captured: 0, stepsPerFrame: 8) == .init(frame: 0, step: 8, fraction: 0))
+        #expect(FullPassRun.place(captured: 5, stepsPerFrame: 8) == .init(frame: 5, step: 8, fraction: 0))
+        #expect(FullPassRun.place(captured: 5.5, stepsPerFrame: 8) == .init(frame: 6, step: 4, fraction: 0))
+        let between = FullPassRun.place(captured: 5.3, stepsPerFrame: 8)
+        #expect(between.frame == 6 && between.step == 2 && abs(between.fraction - 0.4) < 1e-9)
+        let one = FullPassRun.place(captured: 2.25, stepsPerFrame: 1)
+        #expect(one.frame == 3 && one.step == 0 && abs(one.fraction - 0.25) < 1e-9)
+        // A rounding away from a step is that step.
+        #expect(
+            FullPassRun.place(captured: 6 - 1e-12, stepsPerFrame: 8) == .init(frame: 6, step: 8, fraction: 0))
+        #expect(
+            FullPassRun.place(captured: 6 + 1e-12, stepsPerFrame: 8) == .init(frame: 6, step: 8, fraction: 0))
+
+        let plain = FullPassRun.videoFrames(track: nil, frames: 5, framesPerSecond: 30)
+        #expect(plain.map(\.captured) == [0, 1, 2, 3, 4] && plain.map(\.played) == [0, 1, 2, 3, 4])
+        let doubled = try? TimeTrack(capturedFrames: 9, capturedRate: 30, speed: 2)
+        let fast = FullPassRun.videoFrames(track: doubled, frames: 9, framesPerSecond: 30)
+        #expect(fast.map { $0.captured.rounded() } == [0, 2, 4, 6, 8])
+        // A run shorter than its take draws the frames it reaches.
+        #expect(FullPassRun.videoFrames(track: doubled, frames: 6, framesPerSecond: 30).count == 3)
+    }
 }

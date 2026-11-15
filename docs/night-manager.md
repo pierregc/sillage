@@ -160,6 +160,19 @@ without sampling the scene again, and refuses a checkpoint of another run (anoth
 look or massive take); without one it starts from the beginning. `--checkpoint-every <minutes>` sets the interval, 0 for none. A night
 run again after a restart resumes its full pass by itself when the checkpoint is that run's.
 
+`--speed <x>` or `--speed <file>` draws the full pass's videos along a time track, as an
+export's `--speed` does (#310, [the note](notes/variable-time.md#the-full-pass-along-a-track-310)):
+captured frames are skipped where the video runs fast, and where it runs slow the frames between
+two captured ones are drawn from the run itself, at a step or between two steps, every particle
+moved on along the straight line the integrator would take it. The track is read against the
+massive take, kept in `hires.json` (`full.track`) and beside each video
+(`exports/4k.time.json`), and it is part of the checkpoint's identity: a resumed run follows it,
+and a resume along another track is refused. Only the full pass takes one.
+
+```bash
+./scripts/dev.sh hires library/2026-10-24/scene-0001 --massive 2000000 --pass full --speed pace.time.json
+```
+
 **4. Look** – choose the scene's style:
 
 ```bash

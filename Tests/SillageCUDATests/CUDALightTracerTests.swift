@@ -257,6 +257,37 @@ extension CUDABarnesHutSolverTests {
                     luminosity: split.luminosity[7], birthRadius: split.birthRadius[7]))
     }
 
+    /// A copy drifted by a whole step is where the next step puts every drawn particle, to the
+    /// bit, tracers included; by part of one, it lies on the segment between the two; and
+    /// nothing of the run moves (#310), as `FullPassTrackTests` holds Metal's.
+    @Test func aCopyDriftedByAWholeStepIsWhereTheNextStepPutsIt() throws {
+        let (drawn, massive) = (tracedDisk(12_000), tracedDisk(3_000))
+        let (split, tracers) = ParticleSystem.lightTracers(drawn: drawn, massive: massive)
+        let solver = try CUDABarnesHutSolver(
+            context: CUDAContext(), scene: massive, particles: split, tracers: tracers)
+        let count = split.visibleCount
+        try solver.advance(steps: 6)
+        let before = solver.particles
+        func xyz(_ states: [SIMD4<Float>]) -> [SIMD3<Float>] { states.map { SIMD3($0.x, $0.y, $0.z) } }
+        let whole = xyz(try solver.drawnDrift(by: 1).download(SIMD4<Float>.self, count: count))
+        let part = xyz(try solver.drawnDrift(by: 0.37).download(SIMD4<Float>.self, count: count))
+        let still = solver.particles
+        #expect(bits(still.positions) == bits(before.positions))
+        #expect(bits(still.velocities) == bits(before.velocities))
+        try solver.advance(steps: 1)
+        let after = Array(solver.particles.positions.prefix(count))
+        let start = Array(before.positions.prefix(count))
+        #expect(tracers > 0 && bits(whole) == bits(after))
+        var furthest: Float = 0
+        for index in start.indices {
+            let line = start[index] + (after[index] - start[index]) * 0.37
+            let scale = max(simd_length(start[index]), simd_length(after[index]), 1)
+            furthest = max(furthest, simd_length(part[index] - line) / scale)
+        }
+        #expect(furthest < 1e-6, "\(furthest)")
+        #expect(zip(part, start).contains { $0 != $1 })
+    }
+
     /// With tracers the smoothing lengths and the spacing records come from the solver's tree,
     /// each massive particle standing for its share of everything drawn, as on Metal (#238).
     @Test func theSpacingRecordsComeFromTheSolversTree() throws {
