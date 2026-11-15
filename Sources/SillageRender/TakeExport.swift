@@ -218,6 +218,35 @@ public final class TakeExport {
         return nil
     }
 
+    /// The pictures' side of the visual pace (#309): the take drawn small with the export's
+    /// camera at moments `spacingMyr` apart, and the change of the log luminance between each
+    /// drawing and the next (`VisualPace.change`). `changes[i]` lies between `times[i]` and
+    /// `times[i + 1]`. The cameras move on the track's time, so this is meant for an export
+    /// without one.
+    public func visualChanges(
+        width: Int, height: Int, spacingMyr: Double = 1,
+        progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
+    ) throws -> (times: [Double], changes: [VisualPace.Change]) {
+        let megayears = TimeTrack.megayears(of: take.recording)
+        guard let first = megayears.first, let last = megayears.last, spacingMyr > 0 else {
+            return ([], [])
+        }
+        let times = Array(stride(from: first, through: last, by: spacingMyr))
+        let renderer = try makeRenderer(width: width, height: height)
+        let replay = makeReplay(width: width, height: height)
+        var changes: [VisualPace.Change] = []
+        var previous: [UInt8]?
+        for (index, time) in times.enumerated() {
+            let position = try TimeTrack.position(of: time, in: megayears)
+            let shot = try prepare(renderer, at: Self.untracked(position), replay: replay)
+            let pixels = renderer.render(camera: shot.camera)
+            if let previous { changes.append(VisualPace.change(previous, pixels)) }
+            previous = pixels
+            progress(index + 1, times.count)
+        }
+        return (times, changes)
+    }
+
     /// One frame as the export draws it, read back as RGBA. Captured and played are one
     /// without a track.
     func still(atCaptured frame: Int, width: Int, height: Int) throws -> [UInt8] {
@@ -242,7 +271,11 @@ public final class TakeExport {
     }
 
     private static func untracked(_ frame: Int) -> TimeTrack.Frame {
-        TimeTrack.Frame(played: Double(frame), captured: Double(frame))
+        untracked(Double(frame))
+    }
+
+    private static func untracked(_ frame: Double) -> TimeTrack.Frame {
+        TimeTrack.Frame(played: frame, captured: frame)
     }
 
     /// What the frame `renderer` has just drawn at `frame` left in its targets.

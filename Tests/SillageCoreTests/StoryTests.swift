@@ -189,7 +189,7 @@ struct StoryTests {
         #expect(samples.count == 2)
         let first = try #require(samples.first)
         #expect(first.timeMyr == 71.658 && first.extent == 29.3923 && first.tails == 0.0218)
-        #expect(first.disruption == [0, 0.5])
+        #expect(first.disruption == [0, 0.5] && first.formed == 10)
         #expect(first.centres[1] == SIMD3(-49.3954, -67.1756, 39.1947))
     }
 }
