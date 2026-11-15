@@ -27,6 +27,8 @@ public final class MetalFullPassEngine: FullPassEngine {
     private let renderer: Renderer
     private let smoothing: SmoothingField
     private let heldCount: Int
+    /// Every preset's renderer, which a frame between two steps points at the drifted copy.
+    private var drawings: [Renderer] = []
 
     init(_ start: FullPassRun.Start) throws {
         var store: LightTracerStore?
@@ -75,6 +77,11 @@ public final class MetalFullPassEngine: FullPassEngine {
 
     public func refreshSmoothing() throws { smoothing.update(from: barnesHut) }
 
+    public func drawDrifted(by interval: Float?) throws {
+        let copy = try interval.map { try barnesHut.drawnDrift(by: $0) }
+        for drawing in drawings { drawing.drawnPositions = copy }
+    }
+
     public func drawing(
         for format: RunVideos.Format, look: LookFile, exposure: Float, drawn: Int, framesPerSecond: Int,
         metadata: VideoMetadata?
@@ -84,6 +91,7 @@ public final class MetalFullPassEngine: FullPassEngine {
         drawing.setSmoothing(smoothing.buffer)
         drawing.luminosityNormalisation = exposure
         drawing.skipFrames(drawn)
+        drawings.append(drawing)
         return MetalRunVideoDrawing(
             renderer: drawing, format: format, framesPerSecond: framesPerSecond, metadata: metadata)
     }

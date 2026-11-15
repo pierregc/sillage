@@ -66,12 +66,12 @@ extension RunVideos {
     public convenience init(
         formats: [Format], look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int,
         drawing: Renderer, smoothing: MTLBuffer?, metadata: VideoMetadata? = nil,
-        segments: URL? = nil, resume: Progress? = nil
+        segments: URL? = nil, resume: Progress? = nil, track: TimeTrack? = nil
     ) throws {
         let rate = max(capturedRate, 1)
         try self.init(
             formats: formats, look: look, framing: framing, capturedRate: capturedRate,
-            metadata: metadata, segments: segments, resume: resume,
+            metadata: metadata, segments: segments, resume: resume, track: track,
             drawing: { format, exposure, drawn in
                 let renderer = try Renderer(
                     sharing: drawing,
@@ -90,8 +90,16 @@ extension RunVideos {
         frame: Int, centres: [SIMD3<Float>],
         still: ((_ format: Format, _ image: CGImage) throws -> Void)?
     ) throws {
+        check(frame: frame, centres: centres)
+        try draw(frame: TimeTrack.Frame(played: Double(frame), captured: Double(frame)), still: still)
+    }
+
+    /// `drawFrame(_:keeping:)` with each kept frame as an image.
+    public func draw(
+        frame: TimeTrack.Frame, still: ((_ format: Format, _ image: CGImage) throws -> Void)?
+    ) throws {
         try drawFrame(
-            frame, centres: centres,
+            frame,
             keeping: still.map { grab in
                 { format, kept in
                     if let kept = kept as? MetalRunVideoStill { try grab(format, kept.image) }

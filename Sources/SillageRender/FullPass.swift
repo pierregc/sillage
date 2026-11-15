@@ -15,6 +15,11 @@ public protocol FullPassEngine: AnyObject {
     var device: String { get }
     /// Refreshes the smoothing lengths the drawings read, from the solver's tree.
     func refreshSmoothing() throws
+    /// Draws the frames that follow from a copy of the drawn particles `interval` past the last
+    /// step, on the straight line the next step's drift moves them along, which is what the
+    /// integrator gives a frame between two steps (#310); nil draws from the solver's own again.
+    /// Nothing of the run moves.
+    func drawDrifted(by interval: Float?) throws
     /// A preset's drawing over the solver's buffers and the smoothing, its exposure
     /// `exposure` and its grain moved on by `drawn` frames.
     func drawing(
@@ -141,6 +146,52 @@ public final class FullPassRun {
         argument(name).map { URL(fileURLWithPath: $0, isDirectory: directory) }
     }
 
+    /// Where a frame of the videos falls in the run (#310): `step` steps into the steps that lead
+    /// to captured frame `frame`, from the solver's positions, then `fraction` of a step on from
+    /// a copy drifted that far. Captured frame k stands (k + 1) times the steps of a frame past
+    /// the settle, where the massive pass took it, so a frame on it is `step` a whole frame.
+    public struct Place: Equatable, Sendable {
+        public var frame: Int
+        public var step: Int
+        public var fraction: Double
+
+        public init(frame: Int, step: Int, fraction: Double) {
+            self.frame = frame
+            self.step = step
+            self.fraction = fraction
+        }
+    }
+
+    /// Where captured position `captured` falls, at `stepsPerFrame` steps a captured frame. A
+    /// step that changes from frame to frame (#312) would count them here.
+    public static func place(captured: Double, stepsPerFrame: Int) -> Place {
+        let each = max(stepsPerFrame, 1)
+        let steps = (max(captured, 0) + 1) * Double(each)
+        var whole = steps.rounded(.down)
+        var fraction = steps - whole
+        // A track's arithmetic a rounding away from a step is that step.
+        if fraction > 1 - 1e-6 {
+            whole += 1
+            fraction = 0
+        } else if fraction < 1e-6 {
+            fraction = 0
+        }
+        let count = Int(whole)
+        let frame = fraction == 0 ? (count - 1) / each : count / each
+        return Place(frame: frame, step: count - frame * each, fraction: fraction)
+    }
+
+    /// Every frame of the videos, at its played and captured positions, as far as the run goes:
+    /// along `track`, or a frame a captured frame without one.
+    public static func videoFrames(track: TimeTrack?, frames: Int, framesPerSecond: Int) -> [TimeTrack.Frame]
+    {
+        guard let track else {
+            return (0..<max(frames, 0)).map { TimeTrack.Frame(played: Double($0), captured: Double($0)) }
+        }
+        let last = Double(max(frames - 1, 0)) + 1e-9
+        return track.frames(framesPerSecond: framesPerSecond).filter { $0.captured <= last }
+    }
+
     /// The scenes of the run, built from the scene file as `sillage-render` builds a run's.
     public struct Scenes {
         public var file: SceneFile
@@ -215,6 +266,9 @@ public final class FullPassRun {
         let settle = Int(number("settle", 0))
         let framesPerSecond = Int(number("fps", 30))
         let stepsPerFrame = max(steps / max(frames, 1), 1)
+        // `--speed <x>|<file>` (#310): the videos drawn along a time track, read once against the
+        // massive take below.
+        let speed = try argument("speed").map { try TimeTrackFile.given($0) }
 
         let built = try scenes()
         let scene = built.scene
@@ -256,7 +310,8 @@ public final class FullPassRun {
                 look: argument("look").flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
                 framing: RunCheckpoint.stamp(framingURL), particles: particles, massive: built.massive,
                 timeStep: scene.timeStep, presets: list.split(separator: ",").map(String.init),
-                code: RunCheckpoint.codeVersion(), engine: engineMaker.engine)
+                code: RunCheckpoint.codeVersion(), engine: engineMaker.engine,
+                track: speed.flatMap { try? String(decoding: $0.encoded(), as: UTF8.self) })
         }
         var resuming: (run: RunCheckpoint.Run, particles: FileHandle)?
         if let checkpoint, let identity {
@@ -347,6 +402,10 @@ public final class FullPassRun {
 
         // The videos, framed, painted and exposed as an export of the massive take is (#239).
         let framing = try RecordingFile.read(from: framingURL)
+        let track = try speed.map {
+            try $0.track(megayears: TimeTrack.megayears(of: framing.recording), capturedRate: framesPerSecond)
+        }
+        let wanted = Self.videoFrames(track: track, frames: frames, framesPerSecond: framesPerSecond)
         var drawnLook =
             try url("look").map { try LookFile.decoded(from: Data(contentsOf: $0)) } ?? .standard
         if drawnLook.palette.isEmpty {
@@ -355,7 +414,7 @@ public final class FullPassRun {
         let formats = try list.split(separator: ",").map { name in
             guard let preset = VideoPreset.named(String(name)) else { throw Failure.noPreset(String(name)) }
             return try RunVideos.Format(
-                preset: preset, frames: frames, framesPerSecond: framesPerSecond,
+                preset: preset, frames: wanted.count, framesPerSecond: framesPerSecond,
                 url: out.appendingPathComponent("\(preset.name).\(preset.defaultCodec.fileExtension)"),
                 divisor: Int(number("draw-divisor", 1)))
         }
@@ -363,7 +422,7 @@ public final class FullPassRun {
         let look = drawnLook
         let videos = try RunVideos(
             formats: formats, look: look, framing: framing, capturedRate: framesPerSecond,
-            metadata: metadata, segments: checkpoint?.segments, resume: resumed?.videos,
+            metadata: metadata, segments: checkpoint?.segments, resume: resumed?.videos, track: track,
             drawing: { format, exposure, drawn in
                 try engine.drawing(
                     for: format, look: look, exposure: exposure, drawn: drawn,
@@ -377,6 +436,13 @@ public final class FullPassRun {
                 + formats.map { "\($0.preset.name) \($0.width)x\($0.height)" }.joined(separator: ", ")
                 + " with \(look.name), framed on \(framingPath)")
         for line in videos.shots { print("shot       \(line)") }
+        if let track {
+            print(
+                String(
+                    format: "speed      %@: a %.1f s video of a %.1f s take, %d frames",
+                    argument("speed") ?? "", track.seconds,
+                    Double(max(frames - 1, 0)) / Double(max(framesPerSecond, 1)), wanted.count))
+        }
         fflush(nil)
 
         // `--draw-stills 12,300 --draw-stills-dir <dir>`: those frames of every preset as PNGs,
@@ -449,24 +515,69 @@ public final class FullPassRun {
         let framesStart = Date()
         let firstFrame = resumed?.frame ?? 0
         var warned = false
+        // The next frame of the videos, and whether the drawings read a drifted copy.
+        var next = videos.frames
+        var drifted = false
         for frame in firstFrame..<max(frames, firstFrame) {
-            let simulationStart = Date()
-            solver.step(count: stepsPerFrame)
-            try engine.check()
-            let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
-            let smoothingStart = Date()
-            try engine.refreshSmoothing()
-            let smoothingMs = Date().timeIntervalSince(smoothingStart) * 1000
-            try videos.drawFrame(
-                frame, centres: solver.centers,
-                keeping: stills.contains(frame) && stillsDirectory != nil
-                    ? { format, still in
-                        let url = stillsDirectory!.appendingPathComponent(
-                            String(format: "%@-%04d.png", format.preset.name, frame))
-                        try FileManager.default.createDirectory(
-                            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                        try still.writePNG(to: url)
-                    } : nil)
+            var simulationMs = 0.0
+            var smoothingMs = 0.0
+            var stepped = 0
+            var smoothed = false
+            var drawnHere = 0
+            func advance(to step: Int) throws {
+                guard step > stepped else { return }
+                let started = Date()
+                solver.step(count: step - stepped)
+                try engine.check()
+                simulationMs += Date().timeIntervalSince(started) * 1000
+                stepped = step
+                smoothed = false
+            }
+            func draw(_ index: Int, fraction: Double) throws {
+                if !smoothed {
+                    let started = Date()
+                    try engine.refreshSmoothing()
+                    smoothingMs += Date().timeIntervalSince(started) * 1000
+                    smoothed = true
+                }
+                if fraction > 0 {
+                    try engine.drawDrifted(by: Float(fraction) * scene.timeStep)
+                    drifted = true
+                } else if drifted {
+                    try engine.drawDrifted(by: nil)
+                    drifted = false
+                }
+                try videos.drawFrame(
+                    wanted[index],
+                    keeping: stills.contains(index) && stillsDirectory != nil
+                        ? { format, still in
+                            let url = stillsDirectory!.appendingPathComponent(
+                                String(format: "%@-%04d.png", format.preset.name, index))
+                            try FileManager.default.createDirectory(
+                                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                            try still.writePNG(to: url)
+                        } : nil)
+                drawnHere += 1
+            }
+            // A slow track's frames between the captured frame before and this one, each drawn
+            // between two steps.
+            while next < wanted.count {
+                let place = Self.place(captured: wanted[next].captured, stepsPerFrame: stepsPerFrame)
+                guard place.frame == frame, place.step < stepsPerFrame else { break }
+                try advance(to: place.step)
+                try draw(next, fraction: place.fraction)
+                next += 1
+            }
+            try advance(to: stepsPerFrame)
+            videos.check(frame: frame, centres: solver.centers)
+            // This captured frame, once or several times in a freeze; a fast track skips some.
+            while next < wanted.count,
+                Self.place(captured: wanted[next].captured, stepsPerFrame: stepsPerFrame)
+                    == Place(frame: frame, step: stepsPerFrame, fraction: 0)
+            {
+                try draw(next, fraction: 0)
+                next += 1
+            }
             if let gap = videos.gaps.last, gap.frame == frame, gap.kpc > Self.driftBound, !warned {
                 warned = true
                 print(
@@ -495,9 +606,12 @@ public final class FullPassRun {
                 }
                 print("profile    " + phases.joined(separator: ", "))
             }
-            let drawing = zip(videos.formats, videos.lastSeconds).map {
-                String(format: "%@ %.1f ms", $0.preset.name, $1 * 1000)
-            }
+            let drawing =
+                drawnHere == 0
+                ? ["none"]
+                : zip(videos.formats, videos.lastSeconds).map {
+                    String(format: "%@ %.1f ms", $0.preset.name, $1 * 1000)
+                } + (drawnHere > 1 ? ["\(drawnHere) frames"] : [])
             let eta = Date().timeIntervalSince(framesStart) / max(done, 1e-9) * (1 - done)
             print(
                 String(
@@ -559,7 +673,7 @@ public final class FullPassRun {
             try finish(
                 folder: folder, record: done, reports: reports, videos: videos,
                 keyFrames: keyFrameTake?.entries.map(\.frame) ?? [], resumed: resumed, resumes: resumes,
-                memory: engine.peakMemory)
+                memory: engine.peakMemory, track: speed)
         }
         // The run is whole: its checkpoint has nothing left to give.
         checkpoint?.clear()
@@ -567,9 +681,18 @@ public final class FullPassRun {
 
     private func finish(
         folder: SceneFolder, record done: SceneFolder.Hires, reports: [RunVideos.Report], videos: RunVideos,
-        keyFrames: [Int], resumed: RunCheckpoint.Run?, resumes: Int, memory: (host: Int?, device: Int?)
+        keyFrames: [Int], resumed: RunCheckpoint.Run?, resumes: Int, memory: (host: Int?, device: Int?),
+        track: TimeTrackFile?
     ) throws {
         try folder.commitFullPass(reports.map(\.format.url))
+        // Beside each video as an export writes it, so it can be drawn again exactly.
+        if let track {
+            for report in reports {
+                try track.encoded().write(
+                    to: report.format.url.deletingPathExtension().appendingPathExtension(
+                        TimeTrackFile.fileExtension))
+            }
+        }
         var record = done
         // The run's time kept across its resumes, the intervals a restart lost left out.
         let seconds = (resumed?.elapsed ?? 0) + Date().timeIntervalSince(started)
@@ -583,6 +706,7 @@ public final class FullPassRun {
         full.peakDeviceBytes = memory.device
         full.gaps = videos.gaps
         full.driftBound = Self.driftBound
+        full.track = track
         record.full = full
         try record.encoded().write(to: folder.hires)
         print(

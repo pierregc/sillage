@@ -22,6 +22,7 @@ struct KernelSourceTests {
         "BarnesHutShaders.SFParams": MemoryLayout<StarFormationGPU>.stride,
         "BarnesHutShaders.HoleGPU": MemoryLayout<HoleGPU>.stride,
         "BarnesHutShaders.TracerStepParams": MemoryLayout<TracerStepGPU>.stride,
+        "BarnesHutShaders.DrawnDriftParams": MemoryLayout<DrawnDriftGPU>.stride,
         "GPUTreeShaders.BHNode": MemoryLayout<BHNode>.stride,
         "GPUTreeShaders.TreeParams": MemoryLayout<GPUTreeBuilder.Params>.stride,
         "Shaders.SplatUniforms": MemoryLayout<SplatUniforms>.stride,

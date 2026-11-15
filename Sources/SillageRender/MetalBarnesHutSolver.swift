@@ -146,6 +146,9 @@ public final class MetalBarnesHutSolver: Solver {
     private let builder: GPUTreeBuilder
     private var componentBuffer: MTLBuffer?
     private var galaxyBuffer: MTLBuffer?
+    /// The drawn particles between two steps, and its kernel, made on first use (#310).
+    private var drawnCopy: MTLBuffer?
+    private var drawnDriftPipeline: MTLComputePipelineState?
 
     private var particleMass: [Float] { host.particleMass }
     private var holes: [HoleGPU] { host.holes }
@@ -422,6 +425,47 @@ public final class MetalBarnesHutSolver: Solver {
     public func step() { step(count: 1) }
 
     public func step(count steps: Int) { BarnesHutStep.run(host, on: self, steps: steps) }
+
+    /// The drawn particles, `[tracers | massive visible]` as `positions` holds them, `interval`
+    /// past the last step on the straight line the next step's drift moves them along: what
+    /// the integrator gives a frame between two steps (#310). Written into a buffer of its own,
+    /// the same on every call; the run's own buffers are only read.
+    public func drawnDrift(by interval: Float) throws -> MTLBuffer {
+        if drawnDriftPipeline == nil {
+            let library = try ShaderCache.library(BarnesHutShaders.source, on: device)
+            guard let function = library.makeFunction(name: "bhDrawnDrift") else {
+                throw RenderError.pipelineCreation("missing kernel bhDrawnDrift")
+            }
+            drawnDriftPipeline = try device.makeComputePipelineState(function: function)
+        }
+        if drawnCopy == nil {
+            drawnCopy = device.makeBuffer(
+                length: max(tracerCount + massiveVisible, 1) * 16, options: .storageModeShared)
+        }
+        guard let drawnCopy, let buffer = queue.makeCommandBuffer() else { throw RenderError.noDevice }
+        encode(.drawnDrift(interval: interval), into: buffer)
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        return drawnCopy
+    }
+
+    private func encodeDrawnDrift(into buffer: MTLCommandBuffer, interval: Float) {
+        guard let drawnDriftPipeline, let drawnCopy else { return }
+        var p = DrawnDriftGPU(
+            tracerCount: UInt32(tracerCount), massiveCount: UInt32(massiveVisible),
+            timeStep: host.params.timeStep, interval: interval)
+        let first = tracerCount * 16
+        encode(into: buffer, drawnDriftPipeline, threads: tracerCount + massiveVisible) { encoder in
+            encoder.setBuffer(drawnCopy, offset: 0, index: 0)
+            encoder.setBuffer(drawnCopy, offset: first, index: 1)
+            encoder.setBuffer(positionBuffer, offset: 0, index: 2)
+            encoder.setBuffer(velocityBuffer, offset: 0, index: 3)
+            encoder.setBuffer(positionBuffer, offset: first, index: 4)
+            encoder.setBuffer(velocityBuffer, offset: first, index: 5)
+            encoder.setBuffer(accelerationBuffer, offset: 0, index: 6)
+            encoder.setBytes(&p, length: MemoryLayout<DrawnDriftGPU>.stride, index: 7)
+        }
+    }
 
     /// Turns gas into stars where the tree says it has been compressed.
     ///
@@ -1135,6 +1179,7 @@ extension MetalBarnesHutSolver: BarnesHutPasses {
         case .dissipation(let disks): encodeShedRandomMotion(into: buffer, disks: disks)
         case .tracerStep(let mode, let pieces, let disks):
             encodeTracerStep(into: buffer, mode: mode, pieces: pieces, disks: disks)
+        case .drawnDrift(let interval): encodeDrawnDrift(into: buffer, interval: interval)
         }
     }
 }

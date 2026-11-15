@@ -27,8 +27,9 @@ let usage = """
     section of hires.json there, as sillage-render hires --pass full does. Options:
     --checkpoint-every <minutes>, --checkpoint-frames N, --checkpoint-steps N, --resume,
     --tracer-sort N, --tracer-sort-chunk N, --draw-stills 0,12 [--draw-stills-dir <dir>],
-    --draw-divisor N, --profile, --threads N (the CPU target's drawing). It refuses to start on
-    an engine whose check did not pass for this build.
+    --draw-divisor N, --profile, --threads N (the CPU target's drawing), --speed <x>|<file> (the
+    videos along a time track, #310). It refuses to start on an engine whose check did not pass
+    for this build.
 
     check builds the reference tree and draws the reference frames of Tests/Fixtures/engines
     with this build, and records the outcome beside the libraries (engine-check.json).

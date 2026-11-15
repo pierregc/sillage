@@ -3,6 +3,7 @@ CheckpointTests.swift      # AVFoundation, Metal
 DiskProbeTests.swift       # DiskProbe.run, in DiskProbeRun, which draws on Metal
 EngineFixtureTests.swift   # Metal
 ExportTests.swift          # AVFoundation
+FullPassTrackTests.swift   # Metal
 GPUTreeTests.swift         # Metal
 GalaxyColoursTests.swift   # Metal
 KernelSourceTests.swift    # GPUTreeBuilder, which needs Metal

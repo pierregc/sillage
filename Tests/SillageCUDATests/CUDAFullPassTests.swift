@@ -192,6 +192,59 @@ struct CUDAFullPassTests {
         #expect(try stopped.storedHires()?.full?.resumes == 1)
     }
 
+    /// Along a time track (#310), slow then fast: the frames the track asks, those of the slow
+    /// part between two steps, the massive part still repeating the massive pass to the bit.
+    /// Stopped after a checkpoint and resumed, the same frames; resumed along another track,
+    /// refused. As `FullPassTrackTests` holds Metal's.
+    @Test func aRunAlongATrackResumesToTheSameFramesAndRefusesAnotherTrack() throws {
+        let context = try CUDAContext()
+        let straight = try Self.massivePass(context: context)
+        defer { try? FileManager.default.removeItem(at: straight.batch.deletingLastPathComponent()) }
+        let stopped = try Self.copy(straight)
+        let url = straight.batch.deletingLastPathComponent().appendingPathComponent(
+            "slow-then-fast.time.json")
+        let file = TimeTrackFile(ramp: 0, speeds: [0.3, 0.3, 0.3, 1, 2, 2, 2, 2])
+        try file.encoded().write(to: url)
+        let options = ["--checkpoint-frames", "3", "--checkpoint-steps", "5", "--speed", url.path]
+        try Self.fullPass(straight, context: context, options: options)
+
+        let take = try RecordingFile.read(from: straight.take)
+        let track = try file.track(megayears: TimeTrack.megayears(of: take.recording), capturedRate: 6)
+        let wanted = FullPassRun.videoFrames(track: track, frames: 8, framesPerSecond: 6)
+        let record = try #require(straight.storedHires())
+        let full = try #require(record.full)
+        #expect(wanted.count > 8 && full.frames == wanted.count && full.track == file)
+        #expect(full.drift == 0 && full.checkedFrames >= 2)
+        let perFrame = max(record.steps / max(record.frames, 1), 1)
+        #expect(
+            wanted.contains { FullPassRun.place(captured: $0.captured, stepsPerFrame: perFrame).fraction > 0 }
+        )
+        for name in ["4k.mp4", "vertical.mp4"] {
+            #expect(try FFmpegVideo.frameCount(straight.exports.appendingPathComponent(name)) == wanted.count)
+        }
+
+        #expect(throws: FullPassRun.Failure.self) {
+            try Self.fullPass(stopped, context: context, options: options) { frame, checkpoints in
+                checkpoints >= 1 && frame == 4
+            }
+        }
+        try TimeTrackFile(ramp: 0, speeds: [0.3, 0.3, 0.3, 1, 1, 2, 2, 2]).encoded().write(to: url)
+        do {
+            try Self.fullPass(stopped, context: context, options: options + ["--resume"])
+            Issue.record("a resume along another track ran")
+        } catch let FullPassRun.Failure.otherRun(why) {
+            #expect(why.contains("the time track"))
+        }
+        try file.encoded().write(to: url)
+        try Self.fullPass(stopped, context: context, options: options + ["--resume"])
+        for name in ["4k.mp4", "vertical.mp4"] {
+            let a = try Self.decoded(straight.exports.appendingPathComponent(name))
+            let b = try Self.decoded(stopped.exports.appendingPathComponent(name))
+            #expect(!a.isEmpty && a == b, "\(name)")
+        }
+        #expect(stopped.storedHires()?.full?.resumes == 1)
+    }
+
     /// The encoder's path: each codec through ffmpeg, segments joined without encoding them
     /// again, the frame count checked, and a join that comes short refused.
     @Test(arguments: [VideoCodec.hevc, .h264, .prores])

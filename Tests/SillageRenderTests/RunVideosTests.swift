@@ -5,6 +5,7 @@ import Testing
 
 @testable import SillageCore
 @testable import SillageRender
+
 #if canImport(simd)
     import simd
 #endif
@@ -131,6 +132,75 @@ struct RunVideosTests {
         }
         // The centres given are the take's own: nothing strayed.
         #expect(videos.checkedFrames == 12 && videos.drift == 0 && videos.firstDrift == nil)
+    }
+
+    /// Along a time track (#310), fed the take's own positions at each frame's captured position,
+    /// as the solver or its drifted copy would hold them, the full pass draws every frame as
+    /// `export` draws it along the same track: frames skipped at 2x, and between captured frames
+    /// on a slow track, its cameras moving in the video's time.
+    @Test(arguments: [LookFile.CameraPlan.Mode.auto, .fixed, .immersed, .director])
+    func aRunAlongATrackDrawsWhatTheExportAlongItDraws(_ mode: LookFile.CameraPlan.Mode) throws {
+        let loaded = try take(frames: 12)
+        let file = look(mode, loaded)
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("run-track-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let preset = VideoPreset(name: "wide", width: 96, height: 54)
+        let tracks = [
+            try TimeTrack(capturedFrames: 12, capturedRate: 10, speed: 2),
+            try TimeTrack(speeds: [0.4, 0.4, 0.4, 0.4, 1, 1, 2, 2, 4, 4, 4, 4], capturedRate: 10, ramp: 0.2),
+        ]
+        for (number, track) in tracks.enumerated() {
+            let wanted = track.frames(framesPerSecond: 10)
+            #expect(number == 0 ? wanted.count == 6 : wanted.count > 12)
+            // Read back rather than encoded, on both sides (`UnencodedDrawing`).
+            let exported = try TakeExport(
+                take: loaded, look: file, capturedRate: 10, device: device, track: track
+            ).frames(width: preset.width, height: preset.height, framesPerSecond: 10)
+
+            let count = loaded.recording.particleCount
+            let positions = try #require(
+                device.makeBuffer(
+                    length: count * MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared))
+            let expander = try SnapshotExpander(device: device, recording: loaded.recording)
+            let stream = try #require(SnapshotStream(device: device, recording: loaded.recording))
+            let smoothing = try SmoothingField(device: device, particleCount: count)
+            let drawing = try Renderer(
+                device: device, particles: loaded.particles,
+                settings: file.renderSettings(width: 16, height: 16), externalPositions: positions)
+            let kept = KeptFrames()
+            let videos = try RunVideos(
+                formats: [
+                    try RunVideos.Format(
+                        preset: preset, frames: wanted.count, framesPerSecond: 10,
+                        url: folder.appendingPathComponent("run-\(number).mp4"))
+                ],
+                look: file, framing: loaded, capturedRate: 10, track: track,
+                drawing: { format, exposure, drawn in
+                    let renderer = try Renderer(
+                        sharing: drawing,
+                        settings: file.renderSettings(width: format.width, height: format.height))
+                    renderer.setSmoothing(smoothing.buffer)
+                    renderer.luminosityNormalisation = exposure
+                    renderer.skipFrames(drawn)
+                    return UnencodedDrawing(renderer: renderer, name: format.preset.name, kept: kept)
+                }, join: { _, _, _, _, _ in })
+            for frame in wanted {
+                let blend = try #require(loaded.recording.blend(atCaptured: frame.captured))
+                #expect(expander.expand(blend, of: loaded.recording, through: stream, into: positions))
+                smoothing.update(from: positions)
+                try videos.drawFrame(frame)
+            }
+            #expect(try videos.finish().map(\.frames) == [wanted.count])
+            let mine = try #require(kept.frames["wide"])
+            #expect(mine.count == wanted.count && exported.count == wanted.count)
+            for index in wanted.indices {
+                #expect(mine[index] == exported[index], "\(mode) track \(number) frame \(index)")
+                #expect(mine[index].contains { $0 > 0 && $0 < 255 })
+            }
+        }
     }
 
     /// A renderer over another's particles draws what one of its own does, at any size.

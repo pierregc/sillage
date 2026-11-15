@@ -92,6 +92,11 @@ sc_status sc_solver_tracer_step(sc_solver *solver, sc_tree *tree, const void *pa
                                 const void *holes, uint32_t hole_count, const void *disks,
                                 uint32_t disk_count, sc_buffer *probe);
 
+/* bhDrawnDrift (#310): the drawn particles, `DrawnDriftParams.tracerCount` light tracers then
+ * `massiveCount` massive ones, moved `interval` past the last step along the next drift's line
+ * into `copy`, laid out as the position buffer's front. The solver's buffers are only read. */
+sc_status sc_solver_drawn_drift(sc_solver *solver, sc_buffer *copy, const void *params, size_t bytes);
+
 #ifdef __cplusplus
 }
 #endif

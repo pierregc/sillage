@@ -479,6 +479,12 @@ public struct TimeTrackFile: Codable, Sendable, Equatable {
         }
     }
 
+    /// What `--speed` gives: a number, the whole take at that speed, or a `.time.json`'s path.
+    public static func given(_ text: String) throws -> TimeTrackFile {
+        if let speed = Double(text) { return TimeTrackFile(speed: speed) }
+        return try decoded(from: Data(contentsOf: URL(fileURLWithPath: text)))
+    }
+
     public func encoded() throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

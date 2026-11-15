@@ -94,6 +94,13 @@ __global__ void bhTracerStep(float4 *states, uint4 *motions, const float4 *sorte
                quadrupole, opensHoldingCells, gid);
 }
 
+__global__ void bhDrawnDrift(float4 *drawnStates, float3 *drawnMassive, const float4 *states, const uint4 *motions,
+                             const float3 *positions, const float3 *velocities, const float3 *accelerations,
+                             DrawnDriftParams p) {
+    drawnDrift(drawnStates, drawnMassive, states, motions, positions, velocities, accelerations, p,
+               blockIdx.x * blockDim.x + threadIdx.x);
+}
+
 }  // namespace BarnesHutShaders
 }  // namespace metal
 
@@ -443,6 +450,28 @@ sc_status sc_solver_tracer_step(sc_solver *solver, sc_tree *tree, const void *pa
            pointer<const bh::HaloGPU>(solver->halos), pointer<const bh::HoleGPU>(solver->holes), positions(solver),
            pointer<const bh::DiskCooling>(solver->disks), p,
            pointer<metal::float3>(p.mode == 2u ? probe : b.accelerations), slots);
+    return SC_OK;
+}
+
+// MARK: - A frame between two steps (#310)
+
+sc_status sc_solver_drawn_drift(sc_solver *solver, sc_buffer *copy, const void *params, size_t bytes) {
+    bh::DrawnDriftParams p;
+    if (sc_status status = read(solver, params, bytes, p, "DrawnDriftParams")) { return status; }
+    if (p.tracerCount != solver->config.first || p.massiveCount > solver->config.massive) {
+        return fail(SC_INVALID_ARGUMENT, "a copy of %u light tracers and %u massive particles, the solver holds %u and %u",
+                    p.tracerCount, p.massiveCount, solver->config.first, solver->config.massive);
+    }
+    size_t drawn = size_t(p.tracerCount) + p.massiveCount;
+    if (!holds(copy, 0u, drawn * 16u)) {
+        return fail(SC_INVALID_ARGUMENT, "sc_solver_drawn_drift: the copy does not hold %zu particles", drawn);
+    }
+    if (drawn == 0u) { return SC_OK; }
+    const sc_solver_buffers &b = solver->buffers;
+    LAUNCH(bh::bhDrawnDrift, blocks(uint32_t(drawn)), width, pointer<metal::float4>(copy),
+           pointer<metal::float3>(copy, size_t(p.tracerCount) * 16u), pointer<const metal::float4>(b.positions),
+           pointer<const metal::uint4>(b.velocities), positions(solver), velocities(solver),
+           pointer<const metal::float3>(b.accelerations), p);
     return SC_OK;
 }
 
