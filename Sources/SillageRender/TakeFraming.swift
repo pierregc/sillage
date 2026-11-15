@@ -37,15 +37,16 @@ public enum TakeFraming {
     }
 
     /// The camera an export of `framing` follows at `width` by `height`. `plan`, the director's
-    /// for that take and look, is made once for every format when given.
+    /// for that take and look, is made once for every format when given; with a time `track`,
+    /// it must have been planned on it.
     public static func replay(
         look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int, width: Int, height: Int,
-        plan: ShotPlan? = nil
+        plan: ShotPlan? = nil, track: TimeTrack? = nil
     ) -> ShotReplay {
         ShotReplay(
             file: look, take: framing, capturedFrames: framing.recording.capturedFrames,
             framesPerSecond: max(capturedRate, 1), aspect: Float(width) / Float(max(height, 1)),
-            plan: plan)
+            plan: plan, track: track)
     }
 
     /// Everything of a frame but the positions and the smoothing: the shot at a captured
@@ -55,8 +56,19 @@ public enum TakeFraming {
         _ renderer: some FramePreparing, look: LookFile, replay: ShotReplay,
         framing: RecordingFile.Loaded, at position: Double
     ) -> ShotReplay.Shot? {
-        guard let blend = framing.recording.blend(atCaptured: position) else { return nil }
-        let shot = replay.shot(atCaptured: position)
+        prepare(
+            renderer, look: look, replay: replay, framing: framing,
+            at: TimeTrack.Frame(played: position, captured: position))
+    }
+
+    /// The same for a frame of a video with a time track: the camera at its played position,
+    /// the rest at its captured one.
+    public static func prepare(
+        _ renderer: some FramePreparing, look: LookFile, replay: ShotReplay,
+        framing: RecordingFile.Loaded, at frame: TimeTrack.Frame
+    ) -> ShotReplay.Shot? {
+        guard let blend = framing.recording.blend(atCaptured: frame.captured) else { return nil }
+        let shot = replay.shot(atPlayed: frame.played)
         renderer.prepare(look, shot: shot, take: framing, at: blend)
         return shot
     }

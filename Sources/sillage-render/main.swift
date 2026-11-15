@@ -742,8 +742,11 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     // `--framing <take>`: the camera, the painted arms, the time and the exposure of another take
     // of the same run, as a full pass draws them from the massive take (#239).
     let framing = try option("framing").map { try RecordingFile.read(from: URL(fileURLWithPath: $0)) }
+    let speed = try option("speed").map {
+        try timeTrack($0, recording: loaded.recording, capturedRate: capturedRate)
+    }
     let export = try TakeExport(
-        take: loaded, look: look, capturedRate: capturedRate, framing: framing)
+        take: loaded, look: look, capturedRate: capturedRate, framing: framing, track: speed?.track)
     let start = try value("start") ?? 0
     if let name = option("format") {
         guard let format = AnimatedImage.Format(rawValue: name.lowercased()) else {
@@ -751,7 +754,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         }
         return try previewStage(
             folder, export: export, format: format, preset: options.contains("--preset") ? preset : nil,
-            start: start, reporter: reporter, option: option, value: value)
+            start: start, speed: speed, reporter: reporter, option: option, value: value)
     }
 
     // H.264 wants even sides.
@@ -791,10 +794,11 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         } ?? "ProRes 422 HQ"
     print(
         String(
-            format: "export     %@ %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s take),"
+            format: "export     %@ %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s %@),"
                 + " look %@, %@",
             preset.name, codec.rawValue, width, height, fps, frames, Double(frames) / Double(fps),
-            start, export.takeSeconds, look.name, steering))
+            start, export.videoSeconds, speed == nil ? "take" : "video", look.name, steering))
+    if let speed { print(trackLine(speed, export: export, start: start, frames: frames, fps: fps)) }
     var reported = 0
     reporter.start(detail: "frame 0/\(frames)")
     // `--stills <dir> --still-frames 12,300`: those frames of the video as PNGs, as the encoder
@@ -884,6 +888,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
             }
         })
     try SceneFolder.commit(out)
+    if let speed { try writeTrack(speed.file, beside: out) }
     let bytes =
         (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
     print(
@@ -914,11 +919,63 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     return 0
 }
 
+/// `--speed <x>` or `--speed <file>` (#305): the whole take at one speed, from 0.25 to 16, or a
+/// time track kept in a `.time.json`.
+func timeTrack(_ text: String, recording: Recording, capturedRate: Int) throws -> (
+    file: TimeTrackFile, track: TimeTrack, name: String
+) {
+    let file: TimeTrackFile
+    let name: String
+    if let speed = Double(text) {
+        file = TimeTrackFile(speed: speed)
+        name = String(format: "%gx", speed)
+    } else {
+        let url = URL(fileURLWithPath: text)
+        guard let data = try? Data(contentsOf: url) else {
+            throw SceneFolder.ExportError.badValue("speed", text)
+        }
+        file = try TimeTrackFile.decoded(from: data)
+        name = url.lastPathComponent
+    }
+    let track = try file.track(
+        megayears: TimeTrack.megayears(of: recording), capturedRate: capturedRate)
+    return (file, track, name)
+}
+
+/// The video's length and the take's span, for an export along a time track.
+func trackLine(
+    _ speed: (file: TimeTrackFile, track: TimeTrack, name: String), export: TakeExport,
+    start: Double, frames: Int, fps: Int
+) -> String {
+    let shown = export.videoFrames(
+        framesPerSecond: fps, start: start, duration: Double(frames) / Double(fps))
+    let megayears = TimeTrack.megayears(of: export.take.recording)
+    func myr(_ position: Double) -> Double {
+        let index = min(max(Int(position), 0), megayears.count - 1)
+        let next = min(index + 1, megayears.count - 1)
+        return megayears[index] + (megayears[next] - megayears[index]) * (position - Double(index))
+    }
+    return String(
+        format: "speed      %@: %.1f s of video for %.1f to %.1f Myr of the take (frames %.1f to %.1f),"
+            + " a %.1f s video of a %.1f s take",
+        speed.name, Double(shown.count) / Double(fps), myr(shown.first?.captured ?? 0),
+        myr(shown.last?.captured ?? 0), shown.first?.captured ?? 0, shown.last?.captured ?? 0,
+        export.videoSeconds, export.takeSeconds)
+}
+
+/// The track an export drew along, beside it as `<name>.time.json`.
+func writeTrack(_ file: TimeTrackFile, beside out: URL) throws {
+    let url = out.deletingPathExtension().appendingPathExtension(TimeTrackFile.fileExtension)
+    try file.encoded().write(to: url)
+    print("track      \(url.path)")
+}
+
 /// `export <scene folder> --format webp|gif`: a looping preview, 960 wide at 16 fps for eight
 /// seconds unless told otherwise.
 func previewStage(
     _ folder: SceneFolder, export: TakeExport, format: AnimatedImage.Format, preset: VideoPreset?,
-    start: Double, reporter: StageReporter, option: (String) -> String?,
+    start: Double, speed: (file: TimeTrackFile, track: TimeTrack, name: String)?,
+    reporter: StageReporter, option: (String) -> String?,
     value: (String) throws -> Double?
 ) throws -> Int32 {
     let width = Int(try value("width") ?? 960)
@@ -945,15 +1002,21 @@ func previewStage(
         at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
     print(
         String(
-            format: "export     %@ %dx%d at %d fps, %.1f s from %.1f s of a %.1f s take, look %@%@",
-            format.rawValue, width, height, fps, duration, start, export.takeSeconds,
-            export.look.name, maximum.map { String(format: ", at most %.1f MB", Double($0) / 1e6) } ?? ""))
+            format: "export     %@ %dx%d at %d fps, %.1f s from %.1f s of a %.1f s %@, look %@%@",
+            format.rawValue, width, height, fps, duration, start, export.videoSeconds,
+            speed == nil ? "take" : "video", export.look.name,
+            maximum.map { String(format: ", at most %.1f MB", Double($0) / 1e6) } ?? ""))
+    if let speed {
+        let frames = export.positions(framesPerSecond: fps, start: start, duration: duration).count
+        print(trackLine(speed, export: export, start: start, frames: frames, fps: fps))
+    }
     reporter.start(detail: "\(format.rawValue) preview")
     let report = try export.writePreview(
         to: SceneFolder.partial(out), format: format, width: width, height: height,
         framesPerSecond: fps, start: start, duration: duration, maximumBytes: maximum,
         quality: Int((quality * 100).rounded()))
     try SceneFolder.commit(out)
+    if let speed { try writeTrack(speed.file, beside: out) }
     for attempt in report.attempts.dropLast() {
         print(
             String(

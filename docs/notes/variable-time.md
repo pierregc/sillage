@@ -139,6 +139,54 @@ nineteen stories reach 4x, on 2 to 27 % of their frames); a motion blur, drawing
 take into each video frame at speed k, would cost exactly what drawing that stretch at 1x costs.
 The spike decides whether it is needed.
 
+### The track file
+
+Built in #305. `TimeTrack` (portable, beside `TakeFraming`) counts the video's time in *played
+frames*: seconds of video times the captured rate. Without a track a played position is the
+captured one, so every camera keeps the clock it had and an export without `--speed` keeps its
+bytes. The track is integrated once at its making, into the played position each captured frame
+is reached at (speeds) or a cubic through its keys (times); `frames(framesPerSecond:start:duration:)`
+gives each frame of a video its played and captured positions, `table(framesPerSecond:)` the
+captured positions of the whole video, and `captured(atPlayed:)`, `played(atCaptured:)` and
+`speed(atPlayed:)` answer anything between.
+
+`export --speed <file>` reads it, and every export with `--speed` writes the track it drew along
+beside the video, `exports/<name>.time.json`. It is JSON, versioned and strict as a look file is:
+a field this build does not know is an error, and a file read and written again keeps its bytes.
+Exactly one of four ways of giving it:
+
+```json
+{ "version": 1, "speed": 2 }
+{ "version": 1, "ramp": 3, "keys": [{ "myr": 300, "speed": 1 }, { "myr": 420, "speed": 0.5 }] }
+{ "version": 1, "ramp": 3, "speeds": [1, 1, 1.02, 1.04] }
+{ "version": 1, "times": [{ "at": 0, "myr": 300 }, { "at": 4, "myr": 400 }, { "at": 6, "myr": 400 }] }
+```
+
+- **`speed`**: the whole take at one speed, 0.25 to 16.
+- **`keys`**: from each moment of the take in megayears (the take's clock, as in `curves.csv`), a
+  speed held until the next key; the first holds from the take's start. Speeds go from 0.25 to
+  16, and a key outside the take is refused with the take's span.
+- **`speeds`**: a speed for every captured frame, which an automatic pace (#309) hands over.
+- **`times`**: #295's keys, the take's moment at seconds of the video, on a monotone cubic (Fritsch
+  and Carlson): two keys at the same moment freeze the take between them, time slows into the
+  freeze and picks up after, and it never runs backwards (a key earlier in the take than the one
+  before is refused). The video lasts to the last key.
+- **`ramp`**, with `keys` or `speeds`: seconds of video over which a speed may double or halve,
+  3 when absent, 0 for none. The speeds are geometric between captured frames and held to the
+  largest that stays under the keys: a slower stretch is already at its speed when it begins
+  (the slowdown happens before it, in the stretch before), and a faster one picks up after its
+  key. The bound holds at every point of the video, not on average over a frame.
+
+**The cameras on the video's time.** `ShotReplay` takes the track: the auto camera and the
+immersed director move on once a played frame, framing the centres at that frame's moment of the
+take, and between played frames the camera is mixed as it always was between captured ones, so a
+video at 60 fps eases as one at 30; the fixed camera's turn and zoom keys follow the video's
+progress, the played position over the whole video's; and `ShotPlan` plans on the take resampled
+at the played frames (`ShotPlan.Track.resampled`), so a shot of 2.5 s and openings of 8 s at most
+stay seconds of video at any speed. An export at the same captured position as the frame before
+reuses its expanded positions and smoothing, so a freeze costs the drawing alone. The grain moves
+on every video frame.
+
 ## Part 2: knowing when it is interesting
 
 ### From the curves: the story's pace
