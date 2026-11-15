@@ -160,10 +160,26 @@ public final class FullPassRun {
             self.step = step
             self.fraction = fraction
         }
+
+        /// The same moment in a frame whose steps are `scale` of the run's own (#312): between
+        /// two of them unless it falls on one, the fraction being of the step in force.
+        public func taking(_ scale: Int) -> Place {
+            guard scale > 1 else { return self }
+            let steps = (Double(step) + fraction) / Double(scale)
+            var whole = steps.rounded(.down)
+            var part = steps - whole
+            if part > 1 - 1e-6 {
+                whole += 1
+                part = 0
+            } else if part < 1e-6 {
+                part = 0
+            }
+            return Place(frame: frame, step: Int(whole), fraction: part)
+        }
     }
 
-    /// Where captured position `captured` falls, at `stepsPerFrame` steps a captured frame. A
-    /// step that changes from frame to frame (#312) would count them here.
+    /// Where captured position `captured` falls, at `stepsPerFrame` of the run's own steps a
+    /// captured frame; `taking` turns it into the steps of a frame a schedule coarsened (#312).
     public static func place(captured: Double, stepsPerFrame: Int) -> Place {
         let each = max(stepsPerFrame, 1)
         let steps = (max(captured, 0) + 1) * Double(each)
@@ -292,6 +308,10 @@ public final class FullPassRun {
             try Self.speedFile(
                 $0, folder: SceneFolder(framingURL.deletingLastPathComponent()), framing: framing)
         }
+        // `--dt-switches <step>:<scale>,...` (#312): the steps its massive pass took, followed to
+        // the bit, as is a resumed run.
+        let switches = try argument("dt-switches").map { try StepSwitches(parsing: $0) }
+        try switches?.check(settle: settle, frames: frames, perFrame: stepsPerFrame)
 
         let built = try scenes()
         let scene = built.scene
@@ -419,6 +439,26 @@ public final class FullPassRun {
             }
             fflush(nil)
         }
+        // The step in force where the run starts: a switch at that very step is still to come.
+        let stepper = engine.solver as? StepChangingSolver
+        if switches != nil && stepper == nil { throw Failure.notBarnesHut }
+        let hiresStep = scene.timeStep
+        let resumedAt = resumed.map { $0.frame > 0 ? settle + $0.frame * stepsPerFrame : $0.settled } ?? 0
+        var scale = resumedAt > 0 ? switches?.scale(forStep: resumedAt - 1) ?? 1 : 1
+        if let resumed, (resumed.solver.timeStep ?? hiresStep) != hiresStep * Float(scale) {
+            throw Failure.otherRun("the checkpoint's step is not the one its switches give")
+        }
+        /// Takes the step own step `own` runs at, as the massive pass changed it.
+        func align(to own: Int) {
+            guard let switches, let stepper else { return }
+            let wanted = switches.scale(forStep: own)
+            guard wanted != scale else { return }
+            stepper.changeStep(to: hiresStep * Float(wanted))
+            scale = wanted
+            print(String(format: "schedule   step x%d from step %d", wanted, own))
+        }
+        /// The steps run up to own step `own`, and in all.
+        func runSteps(to own: Int) -> Int { switches?.steps(from: 0, to: own) ?? own }
         let everyFrames = resumed?.everyFrames ?? max(Int(number("checkpoint-frames", 0)), 0)
         let everySteps = resumed?.everySteps ?? max(Int(number("checkpoint-steps", 0)), 0)
         let resumes = resumed.map { $0.resumes + 1 } ?? 0
@@ -506,23 +546,28 @@ public final class FullPassRun {
 
         let solver = engine.solver
         // The cost of a step is flat (#19): the pace so far says what is left.
-        let totalSteps = settle + stepsPerFrame * frames
+        let totalSteps = runSteps(to: settle + stepsPerFrame * frames)
         if settle > 0 && (resumed?.frame ?? 0) == 0 {
             let settleStart = Date()
-            // In chunks, so a settle of minutes still reports, cut at the checkpoints' steps.
+            // In chunks, so a settle of minutes still reports, cut at the checkpoints' steps and
+            // the switches; a coarser step crosses a checkpoint's step rather than splitting.
             let chunk = max(settle / 50, 1)
             var settled = resumed?.settled ?? 0
             while settled < settle {
+                align(to: settled)
                 var count = min(chunk, settle - settled)
+                if let next = switches?.next(after: settled) { count = min(count, next - settled) }
                 if everySteps > 0 { count = min(count, everySteps - settled % everySteps) }
-                solver.step(count: count)
+                count = max(count / scale, 1) * scale
+                solver.step(count: count / scale)
                 try engine.check()
+                let before = settled
                 settled += count
-                if everySteps > 0, settled % everySteps == 0, settled < settle {
+                if everySteps > 0, settled / everySteps > before / everySteps, settled < settle {
                     try save(frame: 0, settled: settled)
                 }
                 let elapsed = Date().timeIntervalSince(settleStart)
-                let progress = Double(settled) / Double(max(totalSteps, 1))
+                let progress = Double(runSteps(to: settled)) / Double(max(totalSteps, 1))
                 reporter?.update(
                     progress: progress, detail: "settle \(settled)/\(settle)",
                     eta: RunStatus.eta(elapsed: elapsed, progress: progress, now: Date()))
@@ -541,6 +586,13 @@ public final class FullPassRun {
         var next = videos.frames
         var drifted = false
         for frame in firstFrame..<max(frames, firstFrame) {
+            align(to: settle + frame * stepsPerFrame)
+            let frameSteps = stepsPerFrame / scale
+            /// Where video frame `index` falls, in the steps this frame takes.
+            func placed(_ index: Int) -> Place {
+                let place = Self.place(captured: wanted[index].captured, stepsPerFrame: stepsPerFrame)
+                return place.taking(switches?.scale(forStep: settle + place.frame * stepsPerFrame) ?? 1)
+            }
             var simulationMs = 0.0
             var smoothingMs = 0.0
             var stepped = 0
@@ -584,19 +636,16 @@ public final class FullPassRun {
             // A slow track's frames between the captured frame before and this one, each drawn
             // between two steps.
             while next < wanted.count {
-                let place = Self.place(captured: wanted[next].captured, stepsPerFrame: stepsPerFrame)
-                guard place.frame == frame, place.step < stepsPerFrame else { break }
+                let place = placed(next)
+                guard place.frame == frame, place.step < frameSteps else { break }
                 try advance(to: place.step)
                 try draw(next, fraction: place.fraction)
                 next += 1
             }
-            try advance(to: stepsPerFrame)
+            try advance(to: frameSteps)
             videos.check(frame: frame, centres: solver.centers)
             // This captured frame, once or several times in a freeze; a fast track skips some.
-            while next < wanted.count,
-                Self.place(captured: wanted[next].captured, stepsPerFrame: stepsPerFrame)
-                    == Place(frame: frame, step: stepsPerFrame, fraction: 0)
-            {
+            while next < wanted.count, placed(next) == Place(frame: frame, step: frameSteps, fraction: 0) {
                 try draw(next, fraction: 0)
                 next += 1
             }
@@ -617,7 +666,8 @@ public final class FullPassRun {
             }
             let done = Double(frame + 1 - firstFrame) / Double(max(frames - firstFrame, 1))
             reporter?.update(
-                progress: Double(settle + (frame + 1) * stepsPerFrame) / Double(max(totalSteps, 1)),
+                progress: Double(runSteps(to: settle + (frame + 1) * stepsPerFrame))
+                    / Double(max(totalSteps, 1)),
                 detail: "frame \(frame + 1)/\(frames)",
                 eta: RunStatus.eta(
                     elapsed: Date().timeIntervalSince(framesStart), progress: done, now: Date()))
@@ -640,7 +690,7 @@ public final class FullPassRun {
                     format: "frame %04d  t=%.1f Myr  sim %7.1f ms (%.3f ms/step)  smoothing %6.1f ms  draw %@"
                         + "  %.0f %%, %.0f s left",
                     frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
-                    simulationMs / Double(stepsPerFrame), smoothingMs, drawing.joined(separator: ", "),
+                    simulationMs / Double(frameSteps), smoothingMs, drawing.joined(separator: ", "),
                     done * 100, eta))
             fflush(nil)
             if everyFrames > 0, (frame + 1) % everyFrames == 0, frame + 1 < frames {

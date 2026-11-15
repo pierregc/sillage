@@ -604,7 +604,8 @@ public final class BarnesHutHost {
         return SolverState(
             count: count, tracers: tracerCount, time: time, stepsSinceTree: stepsSinceTree,
             stepsSinceFormation: stepsSinceFormation, haloCenters: haloCenters,
-            massCenters: massCenters, galaxyMotion: galaxyMotion, diskStates: diskStates)
+            massCenters: massCenters, galaxyMotion: galaxyMotion, diskStates: diskStates,
+            timeStep: timeStep != scene.timeStep ? timeStep : nil)
     }
 
     /// Refuses the state of another run, before anything of it is read.
@@ -618,6 +619,7 @@ public final class BarnesHutHost {
     /// Takes a checkpoint's counters, centres and disks, once its buffers are read back.
     public func take(_ state: SolverState) {
         time = state.time
+        timeStep = state.timeStep ?? scene.timeStep
         stepsSinceTree = state.stepsSinceTree
         stepsSinceFormation = state.stepsSinceFormation
         centersLock.lock()

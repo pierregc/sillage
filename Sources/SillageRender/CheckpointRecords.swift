@@ -13,6 +13,8 @@ public struct SolverState: Codable, Sendable {
     public var massCenters: [SIMD3<Float>]
     public var galaxyMotion: [SIMD3<Float>]
     public var diskStates: [DiskState]
+    /// The step in force when a step schedule changed it (#312); absent at the scene's own.
+    public var timeStep: Float?
 }
 
 /// Where the drawing stands, for a checkpoint (#240): what a resumed run carries on from.

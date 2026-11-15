@@ -3,6 +3,10 @@ import Testing
 
 @testable import SillageCore
 
+#if canImport(simd)
+    import simd
+#endif
+
 @Suite("Pace")
 struct PaceTests {
     static let pace = StoryPace(story: StoryTests.story)
@@ -49,6 +53,78 @@ struct PaceTests {
         // A pair that parts has no merger.
         let (parting, _) = try Self.flyby()
         #expect(Self.pace.mergeMoment(parting) == nil)
+    }
+
+    /// The engagement fed a sample at a time, as a run follows it, says on each prefix what the
+    /// pace reads on the whole of it.
+    @Test func theEngagementFollowedAsSamplesComeIsThePacesOwn() throws {
+        let (samples, _) = StoryTests.run(
+            from: [30, 5, 0], velocity: [-0.5, 0, 0], drag: 0.02, untilMyr: 1_400)
+        var engagement = StoryPace.Engagement(story: StoryTests.story)
+        for (index, sample) in samples.enumerated() {
+            engagement.append(sample)
+            if index % 97 == 0 || index == samples.count - 1 {
+                #expect(
+                    engagement.untilMyr == Self.pace.trace(Array(samples[...index])).engagedUntilMyr,
+                    "\(sample.timeMyr) Myr")
+            }
+        }
+        #expect(engagement.untilMyr != nil)
+    }
+
+    /// A step schedule's judge (#312) holds the fine step while the pair is engaged and for its
+    /// margin after the merger, then lets the coarser step run to the end.
+    @Test func aRunHoldsTheFineStepUntilAMarginAfterItsMerger() throws {
+        let (samples, _) = StoryTests.run(
+            from: [30, 5, 0], velocity: [-0.5, 0, 0], drag: 0.02, untilMyr: 2_000)
+        let until = try #require(Self.pace.trace(samples).engagedUntilMyr)
+        var judge = StepJudge(story: StoryTests.story, margin: 100)
+        var held = 0
+        for (index, sample) in samples.enumerated() {
+            judge.observe(timeMyr: sample.timeMyr, centres: sample.centres.map { SIMD3<Float>($0) })
+            let allowed = judge.allowsCoarse(atMyr: sample.timeMyr)
+            // Engaged and not merged: never coarser.
+            if StoryTests.story.reading(samples, at: index).engaged,
+                simd_distance(sample.centres[0], sample.centres[1]) >= 10
+            {
+                #expect(!allowed, "\(sample.timeMyr) Myr")
+                held += 1
+            }
+            if sample.timeMyr > until + 101 { #expect(allowed, "\(sample.timeMyr) Myr") }
+            if sample.timeMyr > until, sample.timeMyr < until + 99 {
+                #expect(!allowed, "\(sample.timeMyr) Myr")
+            }
+        }
+        #expect(held > 0 && until + 101 < 2_000)
+    }
+
+    /// A bound pair that leaves its reach for long is let through, and held again once it comes
+    /// back; a pair that parts is let through a margin after it left.
+    @Test func aRunComesBackToTheFineStepWhenItsPairReturns() throws {
+        // Apocentre 40 kpc, pericentre 5: the reach is 30 kpc.
+        let (bound, pericentres) = StoryTests.run(
+            from: [40, 0, 0], velocity: [0, (60.0 * 5 / (40 * 45)).squareRoot(), 0], untilMyr: 3_400)
+        #expect(pericentres.count >= 2)
+        var judge = StepJudge(story: StoryTests.story, margin: 100)
+        var allowedBetween = false
+        var heldAtTheReturn = false
+        for sample in bound {
+            judge.observe(timeMyr: sample.timeMyr, centres: sample.centres.map { SIMD3<Float>($0) })
+            let allowed = judge.allowsCoarse(atMyr: sample.timeMyr)
+            if sample.timeMyr > pericentres[0] + 50, sample.timeMyr < pericentres[1] - 50, allowed {
+                allowedBetween = true
+            }
+            if abs(sample.timeMyr - pericentres[1]) < 1 { heldAtTheReturn = !allowed }
+        }
+        #expect(allowedBetween && heldAtTheReturn)
+
+        let (parting, _) = try Self.flyby()
+        let left = try #require(Self.pace.trace(parting).engagedUntilMyr)
+        judge = StepJudge(story: StoryTests.story, margin: 100)
+        for sample in parting {
+            judge.observe(timeMyr: sample.timeMyr, centres: sample.centres.map { SIMD3<Float>($0) })
+        }
+        #expect(judge.allowsCoarse(atMyr: left + 101) && !judge.allowsCoarse(atMyr: left + 99))
     }
 
     @Test func partingGalaxiesDoNotKeepTheTakeSlowThroughTheirExtent() throws {

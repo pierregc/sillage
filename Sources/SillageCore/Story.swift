@@ -184,7 +184,6 @@ public struct Story: Sendable {
                 let momentum = simd_length(simd_cross(offset, velocity))
                 let energy = simd_length_squared(velocity) / 2 + potential(i, j, r)
                 let settled = energy < 0 && settled(i, j, window, at: r)
-                if r < limit && !settled { reading.engaged = true }
                 // Parted for good, or merged.
                 if energy >= 0 && radial >= 0 || settled { continue }
                 let orbit = Orbit(story: self, i, j, energy: energy, momentum: momentum, from: r)
@@ -216,7 +215,31 @@ public struct Story: Sendable {
                 reading.window.append(.disruption(galaxy, high - low))
             }
         }
+        reading.engaged = engaged(samples, at: index)
         return reading
+    }
+
+    /// Whether some pair is inside its reach and still moving as two bodies at `index`, judged
+    /// on the samples up to it: `reading`'s `engaged` without the rest, cheap enough to read a
+    /// whole run's curves with (#312).
+    public func engaged(_ samples: [Sample], at index: Int) -> Bool {
+        let now = samples[index]
+        guard let first = samples.first, now.timeMyr - first.timeMyr >= settings.window else { return false }
+        let window = samples[Self.start(of: now.timeMyr - settings.window, in: samples, upTo: index)...index]
+        let fit = samples[
+            Self.start(of: now.timeMyr - settings.velocityFit, in: samples, upTo: index)...index]
+        guard fit.count >= 3 else { return false }
+        let count = min(now.centres.count, profiles.count)
+        for i in 0..<count {
+            for j in (i + 1)..<count {
+                let r = max(simd_length(now.centres[j] - now.centres[i]), 1e-6)
+                guard r < limit(i, j) else { continue }
+                let velocity = Self.slope(fit.map { ($0.timeMyr, $0.centres[j] - $0.centres[i]) }) * Self.unit
+                let energy = simd_length_squared(velocity) / 2 + potential(i, j, r)
+                if !(energy < 0 && settled(i, j, window, at: r)) { return true }
+            }
+        }
+        return false
     }
 
     /// What still goes on: a collision to come keeps the story going; otherwise whatever still

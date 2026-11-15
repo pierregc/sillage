@@ -104,7 +104,19 @@ public struct ExploreProbe: Sendable {
         let storyFrames = Int((Double(frames) * (1 + Story.extraShare)).rounded())
         let span = clip.spanning(
             previewStep: draw.timeStep, maximumStep: target, frames: hiresFrames ?? storyFrames)
-        let steps = Double(span.settle + span.steps)
+        // Its story is not known yet: only the settle's coarser step is counted (#312).
+        let perFrame = max(span.steps / max(hiresFrames ?? storyFrames, 1), 1)
+        let myr = Physics.megayearsPerTimeUnit
+        let schedule = StepSchedule.standard.flatMap {
+            StepSchedule.planned(
+                $0, clipStartMyr: Double(span.settle) * span.timeStep * myr,
+                clipEndMyr: Double(span.settle + span.steps) * span.timeStep * myr,
+                frameMyr: Double(perFrame) * span.timeStep * myr, perFrame: perFrame, lastEngagementMyr: nil)
+        }
+        let steps = Double(
+            schedule?.steps(
+                settle: span.settle, frames: hiresFrames ?? storyFrames, perFrame: perFrame,
+                stepMyr: span.timeStep * myr) ?? span.settle + span.steps)
         return NightScene(
             name: nil, score: nil,
             exploreUnits: Double(draw.particles)

@@ -218,8 +218,9 @@ extension SceneFolder {
         public var pass: Pass?
         /// The full pass, once it has drawn the videos.
         public var full: FullPass?
-        /// A step schedule (#307, a spike option): what was asked, the steps it ran in all
-        /// against `settle + steps` of the run's own, and where it switched. Absent without one.
+        /// A step schedule (#312): what was planned or asked, the steps it ran in all against
+        /// `settle + steps` of the run's own, and where it switched, which the full pass and a
+        /// resumed run follow. Absent without one.
         public var stepSchedule: StepSchedule?
         public var stepsRun: Int?
         public var stepSwitches: [StepSchedule.Switch]?
@@ -279,6 +280,16 @@ extension SceneFolder {
             return try encoder.encode(self)
         }
 
+        /// The steps the run takes, settle included: as it ran them once it has, as its schedule
+        /// plans them before.
+        public var stepsToRun: Int {
+            if let stepsRun { return stepsRun }
+            guard let stepSchedule else { return settle + steps }
+            return stepSchedule.steps(
+                settle: settle, frames: frames, perFrame: max(steps / max(frames, 1), 1),
+                stepMyr: timeStepMyr)
+        }
+
         /// Every particle drawn, unless the others were light tracers.
         public var massiveParticles: Int { massive ?? particles }
         public var tracers: Int { particles - massiveParticles }
@@ -316,7 +327,6 @@ extension SceneFolder {
         case notAVideo(String)
         case badCheckpoint
         case speedWithoutFullPass
-        case scheduleWithPass
 
         public var description: String {
             switch self {
@@ -342,7 +352,6 @@ extension SceneFolder {
             case .speedWithoutFullPass:
                 "--speed: only the full pass draws along a time track (--pass full); export the"
                     + " take with --speed otherwise"
-            case .scheduleWithPass: "--dt-schedule: a spike option, for a hires in one pass (#307)"
             }
         }
     }
@@ -434,9 +443,11 @@ extension SceneFolder {
     static func checkpointInterval(minutes: Double, record: Hires, presets: [String], model: CostModel)
         -> (frames: Int, steps: Int)
     {
+        // A schedule's coarser steps cover more of the run's own: counted on average.
+        let share = Double(record.stepsToRun) / Double(max(record.settle + record.steps, 1))
         let step =
-            model.hires.secondsPerUnit * Double(record.massiveParticles)
-            + model.tracers.secondsPerUnit * Double(record.tracers)
+            (model.hires.secondsPerUnit * Double(record.massiveParticles)
+                + model.tracers.secondsPerUnit * Double(record.tracers)) * share
         let perFrame =
             step * Double(max(record.steps / max(record.frames, 1), 1))
             + presets.compactMap(VideoPreset.named).reduce(0) {
@@ -512,6 +523,7 @@ extension SceneFolder {
             return value
         }
         let pass = cut("pass")
+        let schedule = rest.contains("--dt-schedule") ? cut("dt-schedule") ?? "" : nil
         let checkpointMinutes = cut("checkpoint-every").map { Double($0) ?? -1 }
         let speed = cut("speed")
         if let pass, pass != "massive", pass != "full" { throw HiresError.badPass(pass) }
@@ -539,7 +551,8 @@ extension SceneFolder {
         {
             hiresFile.timeStepScale = scale
         }
-        let previewStep = Double(file.scene(particleCount: preview.particles).timeStep)
+        let previewScene = file.scene(particleCount: preview.particles)
+        let previewStep = Double(previewScene.timeStep)
         let target = hiresFile.scene(particleCount: massive ?? asked.particles)
         let span = preview.spanning(
             previewStep: previewStep, maximumStep: Double(target.timeStep), frames: asked.frames)
@@ -553,9 +566,21 @@ extension SceneFolder {
             clipStartMyr: Double(span.settle) * span.timeStep * myr,
             clipEndMyr: Double(span.settle + span.steps) * span.timeStep * myr)
         if pass != nil, massive == nil { throw HiresError.passWithoutTracers }
-        if let index = rest.firstIndex(of: "--dt-schedule") {
-            if pass != nil { throw HiresError.scheduleWithPass }
-            record.stepSchedule = try StepSchedule(parsing: index + 1 < rest.count ? rest[index + 1] : "")
+        // A full pass follows the steps its massive pass took, whatever it is asked.
+        if pass != "full" {
+            switch try StepSchedule.Asked(schedule) {
+            case .off: break
+            case .entries(let given): record.stepSchedule = given
+            case .story(let plan):
+                let perFrame = max(span.steps / max(asked.frames, 1), 1)
+                let engaged = (try? String(contentsOf: curves, encoding: .utf8)).flatMap {
+                    StepSchedule.lastEngagement(csv: $0, story: Story(scene: previewScene))
+                }
+                record.stepSchedule = StepSchedule.planned(
+                    plan, clipStartMyr: record.clipStartMyr, clipEndMyr: record.clipEndMyr,
+                    frameMyr: Double(perFrame) * span.timeStep * myr, perFrame: perFrame,
+                    lastEngagementMyr: engaged)
+            }
         }
 
         var arguments = [
@@ -565,6 +590,10 @@ extension SceneFolder {
         if pass == "massive" {
             record.pass = .massive
             arguments += ["--massive-only", "--massive-set", Self.partial(massiveSet).path]
+        }
+        if let given = record.stepSchedule {
+            arguments += ["--dt-schedule", given.description]
+            if let margin = given.margin { arguments += ["--dt-judge", String(format: "%g", margin)] }
         }
         // The full pass writes no take, no curves and no video of its own: the massive pass's
         // frame its videos, drawn into `exports/` as the run goes, and a few key frames of
@@ -582,6 +611,9 @@ extension SceneFolder {
                 "--key-frame-curves", hiresCurves.path, "--no-sidecars",
             ]
             if let speed { arguments += ["--speed", speed] }
+            if let switches = stored.stepSwitches, !switches.isEmpty {
+                arguments += ["--dt-switches", StepSwitches(switches).description]
+            }
             let minutes = checkpointMinutes ?? Self.checkpointMinutes
             guard minutes >= 0 else { throw HiresError.badCheckpoint }
             if minutes > 0 {
