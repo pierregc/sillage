@@ -11,6 +11,7 @@ LookGrid.swift                   # CoreGraphics, CoreText
 LookSheet.swift                  # Metal
 MetalBarnesHutSolver.swift       # Metal
 MetalSolver.swift                # Metal
+OverlayPainter.swift             # CoreGraphics, CoreText, CoreVideo
 PNGWriter.swift                  # CoreGraphics, CoreVideo, ImageIO, UniformTypeIdentifiers
 PaletteSheet.swift               # CoreGraphics
 RecordingMetal.swift             # Metal

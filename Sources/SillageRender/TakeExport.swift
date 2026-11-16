@@ -13,6 +13,9 @@ public final class TakeExport {
         public var seconds: Double
         public var framesPerSecond: Int
 
+        /// The overlay's captions and what it could not do, for the log.
+        public var overlay: [String] = []
+
         public var renderedPerSecond: Double { Double(frames) / max(seconds, 1e-9) }
         public var speed: Double { renderedPerSecond / Double(max(framesPerSecond, 1)) }
     }
@@ -22,6 +25,8 @@ public final class TakeExport {
     /// or another take of the same run, the massive one a full pass is framed on (#239).
     public let framing: RecordingFile.Loaded
     public let look: LookFile
+    /// Written over every frame after the post-processing (#317); nil draws the picture alone.
+    public var overlay: OverlayRequest?
     /// The rate the run was captured at, which decides how long the take plays.
     public let capturedRate: Int
     /// From the video's time to the take's (#305): one captured frame per played one unless
@@ -112,6 +117,8 @@ public final class TakeExport {
         let wanted = videoFrames(framesPerSecond: framesPerSecond, start: start, duration: duration)
         let renderer = try makeRenderer(width: width, height: height)
         let replay = makeReplay(width: width, height: height)
+        let plan = overlayPlan(at: wanted, framesPerSecond: framesPerSecond, width: width, height: height)
+        let painter = OverlayPainter()
         let writer = try VideoWriter(
             width: width, height: height, framesPerSecond: Int32(framesPerSecond), codec: codec,
             bitsPerSecond: bitsPerSecond, quality: quality, metadata: metadata, to: url)
@@ -123,6 +130,7 @@ public final class TakeExport {
                 drawing: { target, buffer in
                     renderer.encode(camera: shot.camera, into: buffer, present: target)
                 },
+                over: plan.map { plan in { painter.draw(plan.frames[index], into: $0) } },
                 read: stills.contains(index)
                     ? { pixels in if let image = PNGWriter.image(bgra: pixels) { try still(index, image) } }
                     : nil)
@@ -134,7 +142,20 @@ public final class TakeExport {
         try writer.finish()
         return Report(
             frames: wanted.count, seconds: Date().timeIntervalSince(started),
-            framesPerSecond: framesPerSecond)
+            framesPerSecond: framesPerSecond,
+            overlay: plan?.summary(framesPerSecond: framesPerSecond) ?? [])
+    }
+
+    /// The overlay of a video showing `positions`, laid out for every frame before the first is
+    /// drawn; nil when none is asked.
+    public func overlayPlan(at frames: [TimeTrack.Frame], framesPerSecond: Int, width: Int, height: Int)
+        -> OverlayPlan?
+    {
+        guard let overlay, !overlay.overlay.isEmpty else { return nil }
+        let replay = makeReplay(width: width, height: height)
+        return OverlayPlan(
+            overlay, take: framing, positions: frames.map(\.captured), framesPerSecond: framesPerSecond,
+            cameras: frames.map { replay.shot(atPlayed: $0.played).camera }, width: width, height: height)
     }
 
     /// Every frame a video at `framesPerSecond` would show, drawn as the video draws them and
@@ -146,10 +167,16 @@ public final class TakeExport {
         let wanted = videoFrames(framesPerSecond: framesPerSecond, start: start, duration: duration)
         let renderer = try makeRenderer(width: width, height: height)
         let replay = makeReplay(width: width, height: height)
+        let plan = overlayPlan(at: wanted, framesPerSecond: framesPerSecond, width: width, height: height)
+        let painter = OverlayPainter()
         return try wanted.enumerated().map { index, frame in
             let shot = try prepare(renderer, at: frame, replay: replay)
             defer { progress(index + 1, wanted.count) }
-            return renderer.render(camera: shot.camera)
+            var pixels = renderer.render(camera: shot.camera)
+            if let plan {
+                painter.draw(plan.frames[index], intoRGBA: &pixels, width: width, height: height)
+            }
+            return pixels
         }
     }
 

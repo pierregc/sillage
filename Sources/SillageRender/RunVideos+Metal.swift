@@ -12,6 +12,7 @@ public final class MetalRunVideoDrawing: RunVideoDrawing {
     private let framesPerSecond: Int
     private let metadata: VideoMetadata?
     private var writer: VideoWriter?
+    private let painter = OverlayPainter()
 
     public init(
         renderer: Renderer, format: RunVideos.Format, framesPerSecond: Int, metadata: VideoMetadata?
@@ -30,14 +31,24 @@ public final class MetalRunVideoDrawing: RunVideoDrawing {
             codec: format.codec, bitsPerSecond: format.bitsPerSecond, metadata: metadata, to: url)
     }
 
+    public var drawsOverlay: Bool { true }
+
     public func append(camera: Camera, still: ((any RunVideoStill) throws -> Void)?) throws {
+        try append(camera: camera, overlay: nil, still: still)
+    }
+
+    public func append(
+        camera: Camera, overlay: OverlayFrame?, still: ((any RunVideoStill) throws -> Void)?
+    ) throws {
         guard let writer else { return }
         let renderer = renderer
+        let painter = painter
         try writer.append(
             on: renderer.device,
             drawing: { target, buffer in
                 renderer.encode(camera: camera, into: buffer, present: target)
             },
+            over: overlay.map { frame in { painter.draw(frame, into: $0) } },
             read: still.map { grab in
                 { pixels in
                     if let image = PNGWriter.image(bgra: pixels) {
@@ -66,12 +77,13 @@ extension RunVideos {
     public convenience init(
         formats: [Format], look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int,
         drawing: Renderer, smoothing: MTLBuffer?, metadata: VideoMetadata? = nil,
-        segments: URL? = nil, resume: Progress? = nil, track: TimeTrack? = nil
+        segments: URL? = nil, resume: Progress? = nil, track: TimeTrack? = nil,
+        overlay: OverlayRequest? = nil
     ) throws {
         let rate = max(capturedRate, 1)
         try self.init(
             formats: formats, look: look, framing: framing, capturedRate: capturedRate,
-            metadata: metadata, segments: segments, resume: resume, track: track,
+            metadata: metadata, segments: segments, resume: resume, track: track, overlay: overlay,
             drawing: { format, exposure, drawn in
                 let renderer = try Renderer(
                     sharing: drawing,

@@ -529,6 +529,87 @@ of 300 frames (10 s), one export at a time:
 | hevc | 205 | 15.9 MB | 77 | 63.9 MB |
 | prores | 201 | 282 MB | 78 | 1126 MB |
 
+#### Overlay
+
+```bash
+./scripts/dev.sh export library/2026-10-23/scene-0001 --overlay all                # title, clock, scale bar, captions
+./scripts/dev.sh export library/2026-10-23/scene-0001 --overlay clock,scale
+./scripts/dev.sh export library/2026-10-23/scene-0001 --overlay overlay.json --preset vertical
+```
+
+Four elements can be written over the picture (#317), each off unless asked, so an export that
+asks for none draws the frames it always drew:
+
+- **A title** over the first five seconds, fading in and out at the bottom left: the scene's
+  name, or for a generated scene (named `Archetype` or `Free`) "A collision of galaxies", and a
+  line under it saying how many galaxies, of what kind and how large ("Two spiral galaxies, each
+  about 120,000 light years across", from twice the radius where each disk's light ends). It holds
+  for less when the first passage's caption comes early, two seconds at the least.
+- **A clock** in millions of years at the bottom right, from the take's first frame, or from the
+  first passage, negative before it. It reads the take's time at each frame, so it follows any
+  time track and stops where time stops. It counts in steps of 1, 2, 5, 10, 20, 50... million
+  years, the one that changes about three times a second at the video's usual pace.
+- **A scale bar** under the clock: a length of 1, 2 or 5 times a power of ten (light years, or
+  kiloparsecs), measured at the depth of the camera's target, between a tenth and a quarter of
+  the frame's width. It keeps its length while it stays in that range; when it leaves it, the new
+  length fades in over 0.8 s as the old one fades out, each drawn true. A cut changes it at once.
+- **Captions** at the story's events, in the title's place, one at a time: the approach, the first
+  passage, the tails, the return (the second passage) and the merger, found on the take's own
+  centres and the share of stars in tails of `curves-hires.csv` (see
+  [the note](notes/overlay.md)). Each fades in over 0.7 s, holds 2.8 s and fades out over 1 s, a
+  little before its moment for a passage. One that would overlap the title or another waits for
+  it to go, 1.5 s at most, or is left out: the passage, then the merger, the tails, the return and
+  the approach keep their place.
+
+`--overlay` takes `all`, a list of elements, or a file. Otherwise the scene's `overlay.json` is
+used, and otherwise the look's `overlay` field; `--no-overlay` draws none. The full pass of a
+hires draws the scene's overlay into its videos through the same code. The file:
+
+```json
+{
+  "title": {"text": "The Mice", "subtitle": "Two spiral galaxies colliding", "seconds": 4},
+  "clock": {"from": "passage", "corner": "top-right"},
+  "scale": {"unit": "kiloparsecs"},
+  "captions": {"passage": "Through each other", "approach": ""},
+  "size": 1.2,
+  "opacity": 0.8,
+  "font": "AvenirNext-Regular",
+  "texts": "fr.json"
+}
+```
+
+An element is on when it is named, `{}` with its defaults. `from` is `start` or `passage`;
+`corner` is `top-left`, `top-right`, `bottom-left` or `bottom-right`; `unit` is `light-years` or
+`kiloparsecs`. A caption given a text says it instead of the default, and an empty one removes
+it. `size` scales every element, `opacity` is the white's at its strongest (0.9), `font` a
+PostScript name (the system's at a light weight by default). A field this build does not know is
+an error, as in a look.
+
+Every word comes from one table, `OverlayTexts`, in English. Another language is a file of the
+same fields named by `texts`, relative to the scene folder; a field it leaves out is read in
+English:
+
+```json
+{
+  "title": "Une collision de galaxies",
+  "subtitleEach": "{count} galaxies {kind}, chacune d'environ {size} années-lumière",
+  "counts": ["Aucune", "Une", "Deux", "Trois"],
+  "kinds": {"spiral": "spirales"},
+  "clock": "{n} millions d'années",
+  "lightYears": "{n} années-lumière",
+  "thousands": "\u202f",
+  "captions": {"passage": "Elles se traversent", "merger": "Elles n'en font plus qu'une"}
+}
+```
+
+The text is white without a box, under a soft dark halo, drawn after the tone curve, the bloom
+and the grain and at the video's own size, so it is never blurred or grainy and 4k text is set at
+4k. Sizes follow the frame's short side; a 9:16 or square video is watched on a phone and gets
+them a quarter larger, its title and captions at the top and its clock and bar at the bottom left,
+clear of what Shorts, Reels and TikTok draw down the right and over the bottom fifth. It costs
+0.7 ms a 4k frame on the CPU. On the CUDA engine the full pass refuses an overlay: the text is
+set with Core Text, which Linux does not have.
+
 #### Previews
 
 ```bash

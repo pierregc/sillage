@@ -80,6 +80,7 @@ session. Read the note for an area before changing it.
 - [A web of dust that turns without tearing](dust-web.md): spike #173, the web carried round and renewed, finer grains, the web where the disk is intact; #200, the lace baked and paid once per pixel; #197, on in the shipped and generated styles
 - [Ten times the particles](ten-times-the-particles.md): fifty million a galaxy, what it looks like, the softening floor, the halo, the take's grid, tracers
 - [Director shots that fill the frame](director-shots.md): `ShotPlan`, the cuts, the core and plane measured on the take, the disk states takes never carried
+- [Words on the picture](overlay.md): the title, the clock, the scale bar and the captions, where they are asked, how the story's events are found, why after the post-processing and on the CPU, why not on CUDA (#317)
 
 ## The CUDA engine (#269)
 

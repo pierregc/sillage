@@ -17,6 +17,20 @@ public protocol RunVideoDrawing: AnyObject {
     func append(camera: Camera, still: ((any RunVideoStill) throws -> Void)?) throws
     /// Closes the video begun.
     func end() throws
+    /// Whether it can draw an overlay (#317) over its frames.
+    var drawsOverlay: Bool { get }
+    /// `append(camera:still:)` with `overlay` drawn over the finished frame.
+    func append(camera: Camera, overlay: OverlayFrame?, still: ((any RunVideoStill) throws -> Void)?) throws
+}
+
+extension RunVideoDrawing {
+    public var drawsOverlay: Bool { false }
+
+    public func append(
+        camera: Camera, overlay: OverlayFrame?, still: ((any RunVideoStill) throws -> Void)?
+    ) throws {
+        try append(camera: camera, still: still)
+    }
 }
 
 /// A frame of a run's video as its encoder took it.
@@ -80,10 +94,15 @@ public final class RunVideos {
 
     public enum Failure: Error, CustomStringConvertible {
         case join(String)
+        case overlay
 
         public var description: String {
             switch self {
             case .join(let why): "the video segments did not join: \(why)"
+            case .overlay:
+                "this engine draws no overlay (#317): its text is set with Core Text, which Linux"
+                    + " does not have. Draw the run without one (no \"overlay\" in the look, no"
+                    + " overlay.json in the scene) and export the massive take with it on the Mac"
             }
         }
     }
@@ -100,6 +119,10 @@ public final class RunVideos {
     private let metadata: VideoMetadata?
     private let drawings: [any RunVideoDrawing]
     private let replays: [ShotReplay]
+    /// Each format's overlay, every captured frame of the framing take laid out at the start.
+    private let overlays: [OverlayPlan?]
+    /// The overlay's captions and what it could not do, for the log.
+    public let overlayNotes: [String]
     private let joining: Joining
     private var progress: Progress
     public var frames: Int { progress.frames }
@@ -117,10 +140,12 @@ public final class RunVideos {
     /// `drawing` makes each format's drawing. With `segments`, each video is written in pieces
     /// that `cut` closes and `join` puts together, and `resume` is where a checkpoint left them.
     /// With a `track`, the cameras and shots move in the video's time, as an export's do (#305).
+    /// `overlay` is written over every frame, by a drawing that can (`drawsOverlay`).
     public init(
         formats: [Format], look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int,
         metadata: VideoMetadata? = nil, segments: URL? = nil, resume: Progress? = nil,
-        track: TimeTrack? = nil, drawing: Making, join: @escaping Joining
+        track: TimeTrack? = nil, overlay: OverlayRequest? = nil, drawing: Making,
+        join: @escaping Joining
     ) throws {
         self.formats = formats
         self.look = look
@@ -157,6 +182,26 @@ public final class RunVideos {
         if let segments {
             try FileManager.default.createDirectory(at: segments, withIntermediateDirectories: true)
         }
+        let asked = overlay.flatMap { $0.overlay.isEmpty ? nil : $0 }
+        if asked != nil, drawings.contains(where: { !$0.drawsOverlay }) { throw Failure.overlay }
+        let rate = self.capturedRate
+        let videoFrames = FullPassRun.videoFrames(
+            track: track, frames: framing.recording.capturedFrames, framesPerSecond: rate)
+        let overlays = formats.map { format in
+            asked.map { request in
+                // A replay of its own, so the ones drawing start from the first frame.
+                let replay = TakeFraming.replay(
+                    look: look, framing: framing, capturedRate: rate, width: format.width,
+                    height: format.height, plan: plan, track: track)
+                return OverlayPlan(
+                    request, take: framing, positions: videoFrames.map(\.captured),
+                    framesPerSecond: rate,
+                    cameras: videoFrames.map { replay.shot(atPlayed: $0.played).camera }, width: format.width,
+                    height: format.height)
+            }
+        }
+        self.overlays = overlays
+        overlayNotes = overlays.first.flatMap { $0?.summary(framesPerSecond: max(capturedRate, 1)) } ?? []
         self.drawings = drawings
         self.replays = replays
         self.progress = progress
@@ -210,8 +255,13 @@ public final class RunVideos {
                     drawing.styling, look: look, replay: replays[index], framing: framing, at: frame)
             else { throw RecordingFile.Failure.truncated }
             let format = formats[index]
+            // The frames drawn so far count the video's frames, along a track or not.
+            let overlay = overlays[index].flatMap {
+                progress.frames < $0.frames.count ? $0.frames[progress.frames] : nil
+            }
             try drawing.append(
-                camera: shot.camera, still: keeping.map { keep in { try keep(format, $0) } })
+                camera: shot.camera, overlay: overlay,
+                still: keeping.map { keep in { try keep(format, $0) } })
             lastSeconds[index] = Date().timeIntervalSince(started)
             progress.seconds[index] += lastSeconds[index]
         }

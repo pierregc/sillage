@@ -12,6 +12,7 @@ MetalSolverTests.swift     # Metal
 NightPageTests.swift       # ProcessProbe, which only knows macOS
 NightRunnerTests.swift     # starts processes through Spawn, which only knows macOS
 NoticesTests.swift         # the queue runner
+OverlayPainterTests.swift  # CoreGraphics, Core Text, Metal
 PlainRenderTests.swift     # Metal
 PlanPlayheadTests.swift    # TakeExport, which needs a Metal device
 PreviewTests.swift         # ImageIO
