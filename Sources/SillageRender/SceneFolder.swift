@@ -124,6 +124,15 @@ public struct SceneFolder: Sendable, Equatable {
     /// Where a full pass keeps its checkpoint, video segments and key frames until it ends (#240).
     public var checkpoint: URL { url.appendingPathComponent(".checkpoint", isDirectory: true) }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
+    /// Camera paths drawn by `export --flight` (#295).
+    public var flights: URL { url.appendingPathComponent("flights", isDirectory: true) }
+
+    /// A flight by name in `flights/`, or a file's path.
+    public func flight(_ name: String) -> URL {
+        name.hasSuffix(".json")
+            ? URL(fileURLWithPath: name)
+            : flights.appendingPathComponent("\(name).\(FlightFile.fileExtension)")
+    }
     public var lookGrid: URL { looks.appendingPathComponent("grid.png") }
     /// What `palettes` draws: `sheet.png`, `swatches.png` and one look file per palette.
     public var palettes: URL { url.appendingPathComponent("palettes", isDirectory: true) }

@@ -409,6 +409,61 @@ struct ExportTests {
         #expect(frames[4] != frames[8])
     }
 
+    /// A flight draws as many frames as it lasts, and inside its freeze every frame draws from
+    /// the one expansion of the take while the camera moves on (#295).
+    @Test func aFlightDrawsItsFramesAndItsFreezeFromOnePosition() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let megayears = TimeTrack.megayears(of: loaded.recording)
+        let flight = FlightFile(keys: [
+            .init(at: 0, myr: megayears[0], eye: .world(SIMD3(0, -60, 20)), aim: .world(.zero)),
+            .init(at: 0.4, myr: megayears[4], eye: .galaxy(1, offset: SIMD3(0, -30, 10), disk: false)),
+            .init(at: 0.8, myr: megayears[4], eye: .world(SIMD3(30, 0, 20)), exposure: -1),
+            .init(at: 1.1, myr: megayears[11], eye: .world(SIMD3(0, 60, 20))),
+        ])
+        let export = try TakeExport(take: loaded, look: autoLook, capturedRate: 10, flight: flight)
+        #expect(abs(export.videoSeconds - 1.1) < 1e-9)
+        let positions = export.positions(framesPerSecond: 10, start: 0, duration: nil)
+        #expect(positions.count == 12 && positions[4...8].allSatisfy { $0 == 4 })
+        let frames = try export.frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(frames.count == 12)
+        #expect(export.expansions == Set(positions).count)
+        #expect(frames[4] != frames[6] && frames[6] != frames[8])
+        let keys = try export.flightKeys(width: 64, height: 36)
+        #expect(keys.map(\.seconds) == [0, 0.4, 0.8, 1.1])
+        #expect(keys[0].rgba == frames[0] && keys[2].rgba == frames[8])
+        #expect(throws: TakeExport.Failure.flightAndTrack) {
+            try TakeExport(
+                take: loaded, look: self.autoLook, capturedRate: 10,
+                track: TimeTrack(capturedFrames: 12, capturedRate: 10), flight: flight)
+        }
+    }
+
+    /// A flight that opens on look keys draws there what the export draws without one, the
+    /// look's own camera moving as it does, and then leaves it.
+    @Test func aFlightOnLookKeysDrawsThePlainExport() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let megayears = TimeTrack.megayears(of: loaded.recording)
+        for mode in [LookFile.CameraPlan.Mode.fixed, .auto] {
+            var file = autoLook
+            file.camera.mode = mode
+            let plain = try TakeExport(take: loaded, look: file, capturedRate: 10)
+                .frames(width: 64, height: 36, framesPerSecond: 10)
+            let flight = FlightFile(keys: [
+                .init(at: 0, myr: megayears[0], look: true),
+                .init(at: 0.6, myr: megayears[6], look: true),
+                .init(at: 1.1, myr: megayears[11], eye: .world(SIMD3(0, -20, 5)), aim: .world(.zero)),
+            ])
+            let flown = try TakeExport(take: loaded, look: file, capturedRate: 10, flight: flight)
+                .frames(width: 64, height: 36, framesPerSecond: 10)
+            #expect(flown.count == plain.count)
+            for index in 0...6 {
+                let most = zip(flown[index], plain[index]).map { abs(Int($0) - Int($1)) }.max() ?? 0
+                #expect(most <= 2, "\(mode) frame \(index): \(most)")
+            }
+            #expect(flown[11] != plain[11])
+        }
+    }
+
     /// A preview over its size budget is drawn again narrower, from the same take.
     @Test func aPreviewOverItsBudgetIsDrawnAgainNarrower() throws {
         let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)

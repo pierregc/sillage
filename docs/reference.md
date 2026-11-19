@@ -450,6 +450,27 @@ frame is the one it always was.
 ./scripts/dev.sh export library/2026-10-23/scene-0001 --preset 4k --speed pace.time.json
 ```
 
+**Flights (#295).** `--flight <name>` draws the camera path kept in the scene's
+`flights/<name>.flight.json` (or `--flight <file>.json`) instead of the look's camera plan: keys at
+seconds of the video, each placing the eye and the aim (in kiloparsecs, or anchored on a galaxy),
+the field of view, a roll and an exposure trim, and pinning the take's time where it gives `myr`;
+two keys at one moment freeze time between them while the camera moves on. A key with
+`"look": true` is the camera the export draws without a flight at that moment, so a flight can open
+on the scene's framing. The video lasts to the last key and is written as
+`exports/<flight>-<preset>.mp4`, beside the plain exports; colours, kernels and the rest come from
+the look as ever, `--fps`, `--preset`, `--codec`, `--stills`, `--still-frames` and the previews
+work as without a flight, and `--speed` does not go with it. `--flight-keys <dir>` draws only the
+frame at each key, as PNGs, and encodes nothing: a flight seen in seconds. `sillage-render flight
+<scene> --at <myr,...> [--look <look>]` prints, at those moments, each galaxy's centre and disk
+axes and the export's camera, which is what keys are written from. Format, interpolation and a
+worked example in [flights](notes/flights.md).
+
+```bash
+./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph
+./scripts/dev.sh export library/2026-11-04/scene-0067 --look photograph --flight dive --flight-keys out/dive
+./scripts/dev.sh export library/2026-11-04/scene-0067 --look photograph --flight dive   # exports/dive-1080p.mp4
+```
+
 **Automatic pace (#309, #311).** `--speed auto` plays the collision at its own pace and the
 settling faster: the story pace at 4 with a top of 8 (`PaceSpec.auto`, the one place that says
 what Auto is), which keeps the frames up to the last moment a pair is engaged at 1x and speeds the

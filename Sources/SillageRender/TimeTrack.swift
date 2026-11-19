@@ -330,7 +330,7 @@ public struct TimeTrack: Sendable, Equatable {
     }
 
     /// Where a moment falls among the captured frames; outside the take, refused with its span.
-    static func position(of myr: Double, in megayears: [Double]) throws -> Double {
+    public static func position(of myr: Double, in megayears: [Double]) throws -> Double {
         guard let first = megayears.first, let last = megayears.last, myr.isFinite else {
             throw Failure.outsideTake(myr: myr, first: 0, last: 0)
         }
