@@ -1,0 +1,650 @@
+{
+ "antennae/auto/calm": {
+  "L50": 0.469,
+  "L99": 0.929,
+  "grain": 0.136,
+  "lit": 0.449,
+  "saturated": 0.244,
+  "shadow": 0.052,
+  "sky": 0.146
+ },
+ "antennae/auto/passage": {
+  "L50": 0.468,
+  "L99": 0.928,
+  "grain": 0.081,
+  "lit": 0.468,
+  "saturated": 0.113,
+  "shadow": 0.027,
+  "sky": 0.14
+ },
+ "antennae/auto/tails": {
+  "L50": 0.47,
+  "L99": 0.934,
+  "grain": 0.09,
+  "lit": 0.356,
+  "saturated": 0.006,
+  "shadow": 0.037,
+  "sky": 0.144
+ },
+ "antennae/fixed/calm": {
+  "L50": 0.433,
+  "L99": 0.857,
+  "grain": 0.148,
+  "lit": 0.409,
+  "saturated": 0.23,
+  "shadow": 0.056,
+  "sky": 0.154
+ },
+ "antennae/fixed/passage": {
+  "L50": 0.476,
+  "L99": 0.873,
+  "grain": 0.079,
+  "lit": 0.463,
+  "saturated": 0.095,
+  "shadow": 0.019,
+  "sky": 0.152
+ },
+ "antennae/fixed/tails": {
+  "L50": 0.413,
+  "L99": 0.851,
+  "grain": 0.092,
+  "lit": 0.34,
+  "saturated": 0.002,
+  "shadow": 0.038,
+  "sky": 0.15
+ },
+ "antennae/h-b1.3-w2.2/calm": {
+  "L50": 0.456,
+  "L99": 0.877,
+  "grain": 0.14,
+  "lit": 0.43,
+  "saturated": 0.233,
+  "shadow": 0.052,
+  "sky": 0.154
+ },
+ "antennae/h-b1.3-w2.2/passage": {
+  "L50": 0.5,
+  "L99": 0.892,
+  "grain": 0.072,
+  "lit": 0.476,
+  "saturated": 0.094,
+  "shadow": 0.029,
+  "sky": 0.153
+ },
+ "antennae/h-b1.3-w2.2/tails": {
+  "L50": 0.439,
+  "L99": 0.873,
+  "grain": 0.09,
+  "lit": 0.348,
+  "saturated": 0.003,
+  "shadow": 0.035,
+  "sky": 0.15
+ },
+ "antennae/h-b1.3-w3/calm": {
+  "L50": 0.454,
+  "L99": 0.849,
+  "grain": 0.138,
+  "lit": 0.43,
+  "saturated": 0.231,
+  "shadow": 0.05,
+  "sky": 0.154
+ },
+ "antennae/h-b1.3-w3/passage": {
+  "L50": 0.498,
+  "L99": 0.862,
+  "grain": 0.07,
+  "lit": 0.476,
+  "saturated": 0.09,
+  "shadow": 0.028,
+  "sky": 0.153
+ },
+ "antennae/h-b1.3-w3/tails": {
+  "L50": 0.438,
+  "L99": 0.846,
+  "grain": 0.089,
+  "lit": 0.348,
+  "saturated": 0.003,
+  "shadow": 0.034,
+  "sky": 0.15
+ },
+ "antennae/h-b1.3-w4.5/calm": {
+  "L50": 0.454,
+  "L99": 0.83,
+  "grain": 0.136,
+  "lit": 0.429,
+  "saturated": 0.23,
+  "shadow": 0.049,
+  "sky": 0.154
+ },
+ "antennae/h-b1.3-w4.5/passage": {
+  "L50": 0.496,
+  "L99": 0.841,
+  "grain": 0.068,
+  "lit": 0.476,
+  "saturated": 0.088,
+  "shadow": 0.028,
+  "sky": 0.153
+ },
+ "antennae/h-b1.3-w4.5/tails": {
+  "L50": 0.437,
+  "L99": 0.827,
+  "grain": 0.088,
+  "lit": 0.348,
+  "saturated": 0.003,
+  "shadow": 0.033,
+  "sky": 0.15
+ },
+ "antennae/h-b1.6-w2.2/calm": {
+  "L50": 0.474,
+  "L99": 0.891,
+  "grain": 0.133,
+  "lit": 0.446,
+  "saturated": 0.237,
+  "shadow": 0.049,
+  "sky": 0.154
+ },
+ "antennae/h-b1.6-w2.2/passage": {
+  "L50": 0.52,
+  "L99": 0.906,
+  "grain": 0.067,
+  "lit": 0.485,
+  "saturated": 0.094,
+  "shadow": 0.028,
+  "sky": 0.154
+ },
+ "antennae/h-b1.6-w2.2/tails": {
+  "L50": 0.461,
+  "L99": 0.889,
+  "grain": 0.088,
+  "lit": 0.353,
+  "saturated": 0.004,
+  "shadow": 0.033,
+  "sky": 0.15
+ },
+ "antennae/h-b1.6-w3/calm": {
+  "L50": 0.473,
+  "L99": 0.861,
+  "grain": 0.131,
+  "lit": 0.446,
+  "saturated": 0.235,
+  "shadow": 0.047,
+  "sky": 0.154
+ },
+ "antennae/h-b1.6-w3/passage": {
+  "L50": 0.517,
+  "L99": 0.873,
+  "grain": 0.065,
+  "lit": 0.485,
+  "saturated": 0.091,
+  "shadow": 0.027,
+  "sky": 0.154
+ },
+ "antennae/h-b1.6-w3/tails": {
+  "L50": 0.459,
+  "L99": 0.859,
+  "grain": 0.086,
+  "lit": 0.353,
+  "saturated": 0.005,
+  "shadow": 0.031,
+  "sky": 0.15
+ },
+ "antennae/h-b1.6-w4.5/calm": {
+  "L50": 0.472,
+  "L99": 0.84,
+  "grain": 0.129,
+  "lit": 0.446,
+  "saturated": 0.233,
+  "shadow": 0.046,
+  "sky": 0.154
+ },
+ "antennae/h-b1.6-w4.5/passage": {
+  "L50": 0.516,
+  "L99": 0.851,
+  "grain": 0.064,
+  "lit": 0.485,
+  "saturated": 0.089,
+  "shadow": 0.027,
+  "sky": 0.154
+ },
+ "antennae/h-b1.6-w4.5/tails": {
+  "L50": 0.459,
+  "L99": 0.838,
+  "grain": 0.085,
+  "lit": 0.353,
+  "saturated": 0.004,
+  "shadow": 0.031,
+  "sky": 0.15
+ },
+ "antennae/h-b2.0-w2.2/calm": {
+  "L50": 0.495,
+  "L99": 0.906,
+  "grain": 0.126,
+  "lit": 0.462,
+  "saturated": 0.243,
+  "shadow": 0.045,
+  "sky": 0.155
+ },
+ "antennae/h-b2.0-w2.2/passage": {
+  "L50": 0.542,
+  "L99": 0.921,
+  "grain": 0.063,
+  "lit": 0.495,
+  "saturated": 0.097,
+  "shadow": 0.027,
+  "sky": 0.154
+ },
+ "antennae/h-b2.0-w2.2/tails": {
+  "L50": 0.485,
+  "L99": 0.904,
+  "grain": 0.085,
+  "lit": 0.358,
+  "saturated": 0.007,
+  "shadow": 0.031,
+  "sky": 0.15
+ },
+ "antennae/h-b2.0-w3/calm": {
+  "L50": 0.493,
+  "L99": 0.873,
+  "grain": 0.124,
+  "lit": 0.462,
+  "saturated": 0.241,
+  "shadow": 0.044,
+  "sky": 0.155
+ },
+ "antennae/h-b2.0-w3/passage": {
+  "L50": 0.539,
+  "L99": 0.885,
+  "grain": 0.061,
+  "lit": 0.495,
+  "saturated": 0.094,
+  "shadow": 0.027,
+  "sky": 0.154
+ },
+ "antennae/h-b2.0-w3/tails": {
+  "L50": 0.483,
+  "L99": 0.871,
+  "grain": 0.083,
+  "lit": 0.358,
+  "saturated": 0.007,
+  "shadow": 0.03,
+  "sky": 0.15
+ },
+ "antennae/h-b2.0-w4.5/calm": {
+  "L50": 0.492,
+  "L99": 0.85,
+  "grain": 0.122,
+  "lit": 0.462,
+  "saturated": 0.238,
+  "shadow": 0.042,
+  "sky": 0.155
+ },
+ "antennae/h-b2.0-w4.5/passage": {
+  "L50": 0.537,
+  "L99": 0.86,
+  "grain": 0.059,
+  "lit": 0.494,
+  "saturated": 0.092,
+  "shadow": 0.026,
+  "sky": 0.154
+ },
+ "antennae/h-b2.0-w4.5/tails": {
+  "L50": 0.482,
+  "L99": 0.849,
+  "grain": 0.082,
+  "lit": 0.358,
+  "saturated": 0.007,
+  "shadow": 0.029,
+  "sky": 0.15
+ },
+ "mice/auto/calm": {
+  "L50": 0.471,
+  "L99": 0.928,
+  "grain": 0.12,
+  "lit": 0.387,
+  "saturated": 0.14,
+  "shadow": 0.041,
+  "sky": 0.16
+ },
+ "mice/auto/passage": {
+  "L50": 0.472,
+  "L99": 0.933,
+  "grain": 0.109,
+  "lit": 0.447,
+  "saturated": 0.152,
+  "shadow": 0.041,
+  "sky": 0.146
+ },
+ "mice/auto/tails": {
+  "L50": 0.468,
+  "L99": 0.93,
+  "grain": 0.061,
+  "lit": 0.415,
+  "saturated": 0.004,
+  "shadow": 0.064,
+  "sky": 0.165
+ },
+ "mice/fixed/calm": {
+  "L50": 0.416,
+  "L99": 0.925,
+  "grain": 0.138,
+  "lit": 0.371,
+  "saturated": 0.156,
+  "shadow": 0.051,
+  "sky": 0.151
+ },
+ "mice/fixed/passage": {
+  "L50": 0.474,
+  "L99": 0.911,
+  "grain": 0.108,
+  "lit": 0.445,
+  "saturated": 0.145,
+  "shadow": 0.039,
+  "sky": 0.151
+ },
+ "mice/fixed/tails": {
+  "L50": 0.413,
+  "L99": 0.935,
+  "grain": 0.071,
+  "lit": 0.368,
+  "saturated": 0.002,
+  "shadow": 0.063,
+  "sky": 0.154
+ },
+ "mice/h-b1.3-w2.2/calm": {
+  "L50": 0.442,
+  "L99": 0.94,
+  "grain": 0.129,
+  "lit": 0.38,
+  "saturated": 0.152,
+  "shadow": 0.047,
+  "sky": 0.152
+ },
+ "mice/h-b1.3-w2.2/passage": {
+  "L50": 0.497,
+  "L99": 0.927,
+  "grain": 0.098,
+  "lit": 0.461,
+  "saturated": 0.137,
+  "shadow": 0.039,
+  "sky": 0.151
+ },
+ "mice/h-b1.3-w2.2/tails": {
+  "L50": 0.429,
+  "L99": 0.948,
+  "grain": 0.07,
+  "lit": 0.39,
+  "saturated": 0.003,
+  "shadow": 0.066,
+  "sky": 0.154
+ },
+ "mice/h-b1.3-w3/calm": {
+  "L50": 0.44,
+  "L99": 0.899,
+  "grain": 0.127,
+  "lit": 0.38,
+  "saturated": 0.15,
+  "shadow": 0.045,
+  "sky": 0.152
+ },
+ "mice/h-b1.3-w3/passage": {
+  "L50": 0.495,
+  "L99": 0.889,
+  "grain": 0.095,
+  "lit": 0.461,
+  "saturated": 0.134,
+  "shadow": 0.038,
+  "sky": 0.151
+ },
+ "mice/h-b1.3-w3/tails": {
+  "L50": 0.428,
+  "L99": 0.905,
+  "grain": 0.069,
+  "lit": 0.39,
+  "saturated": 0.003,
+  "shadow": 0.063,
+  "sky": 0.154
+ },
+ "mice/h-b1.3-w4.5/calm": {
+  "L50": 0.44,
+  "L99": 0.873,
+  "grain": 0.125,
+  "lit": 0.38,
+  "saturated": 0.148,
+  "shadow": 0.043,
+  "sky": 0.152
+ },
+ "mice/h-b1.3-w4.5/passage": {
+  "L50": 0.493,
+  "L99": 0.864,
+  "grain": 0.093,
+  "lit": 0.461,
+  "saturated": 0.132,
+  "shadow": 0.036,
+  "sky": 0.151
+ },
+ "mice/h-b1.3-w4.5/tails": {
+  "L50": 0.428,
+  "L99": 0.878,
+  "grain": 0.068,
+  "lit": 0.39,
+  "saturated": 0.003,
+  "shadow": 0.062,
+  "sky": 0.154
+ },
+ "mice/h-b1.6-w2.2/calm": {
+  "L50": 0.463,
+  "L99": 0.951,
+  "grain": 0.122,
+  "lit": 0.387,
+  "saturated": 0.149,
+  "shadow": 0.044,
+  "sky": 0.153
+ },
+ "mice/h-b1.6-w2.2/passage": {
+  "L50": 0.516,
+  "L99": 0.939,
+  "grain": 0.091,
+  "lit": 0.472,
+  "saturated": 0.131,
+  "shadow": 0.04,
+  "sky": 0.152
+ },
+ "mice/h-b1.6-w2.2/tails": {
+  "L50": 0.444,
+  "L99": 0.957,
+  "grain": 0.067,
+  "lit": 0.405,
+  "saturated": 0.003,
+  "shadow": 0.069,
+  "sky": 0.154
+ },
+ "mice/h-b1.6-w3/calm": {
+  "L50": 0.461,
+  "L99": 0.908,
+  "grain": 0.12,
+  "lit": 0.387,
+  "saturated": 0.146,
+  "shadow": 0.041,
+  "sky": 0.153
+ },
+ "mice/h-b1.6-w3/passage": {
+  "L50": 0.514,
+  "L99": 0.898,
+  "grain": 0.088,
+  "lit": 0.472,
+  "saturated": 0.128,
+  "shadow": 0.038,
+  "sky": 0.152
+ },
+ "mice/h-b1.6-w3/tails": {
+  "L50": 0.443,
+  "L99": 0.913,
+  "grain": 0.066,
+  "lit": 0.405,
+  "saturated": 0.003,
+  "shadow": 0.066,
+  "sky": 0.154
+ },
+ "mice/h-b1.6-w4.5/calm": {
+  "L50": 0.46,
+  "L99": 0.88,
+  "grain": 0.118,
+  "lit": 0.387,
+  "saturated": 0.144,
+  "shadow": 0.04,
+  "sky": 0.153
+ },
+ "mice/h-b1.6-w4.5/passage": {
+  "L50": 0.512,
+  "L99": 0.871,
+  "grain": 0.086,
+  "lit": 0.472,
+  "saturated": 0.125,
+  "shadow": 0.037,
+  "sky": 0.152
+ },
+ "mice/h-b1.6-w4.5/tails": {
+  "L50": 0.443,
+  "L99": 0.884,
+  "grain": 0.065,
+  "lit": 0.405,
+  "saturated": 0.003,
+  "shadow": 0.065,
+  "sky": 0.154
+ },
+ "mice/h-b2.0-w2.2/calm": {
+  "L50": 0.486,
+  "L99": 0.961,
+  "grain": 0.114,
+  "lit": 0.395,
+  "saturated": 0.143,
+  "shadow": 0.04,
+  "sky": 0.154
+ },
+ "mice/h-b2.0-w2.2/passage": {
+  "L50": 0.537,
+  "L99": 0.95,
+  "grain": 0.084,
+  "lit": 0.483,
+  "saturated": 0.125,
+  "shadow": 0.039,
+  "sky": 0.153
+ },
+ "mice/h-b2.0-w2.2/tails": {
+  "L50": 0.462,
+  "L99": 0.965,
+  "grain": 0.063,
+  "lit": 0.421,
+  "saturated": 0.004,
+  "shadow": 0.072,
+  "sky": 0.154
+ },
+ "mice/h-b2.0-w3/calm": {
+  "L50": 0.484,
+  "L99": 0.916,
+  "grain": 0.112,
+  "lit": 0.395,
+  "saturated": 0.14,
+  "shadow": 0.038,
+  "sky": 0.154
+ },
+ "mice/h-b2.0-w3/passage": {
+  "L50": 0.535,
+  "L99": 0.907,
+  "grain": 0.081,
+  "lit": 0.483,
+  "saturated": 0.121,
+  "shadow": 0.037,
+  "sky": 0.153
+ },
+ "mice/h-b2.0-w3/tails": {
+  "L50": 0.46,
+  "L99": 0.921,
+  "grain": 0.062,
+  "lit": 0.421,
+  "saturated": 0.004,
+  "shadow": 0.069,
+  "sky": 0.154
+ },
+ "mice/h-b2.0-w4.5/calm": {
+  "L50": 0.483,
+  "L99": 0.887,
+  "grain": 0.11,
+  "lit": 0.395,
+  "saturated": 0.139,
+  "shadow": 0.036,
+  "sky": 0.154
+ },
+ "mice/h-b2.0-w4.5/passage": {
+  "L50": 0.533,
+  "L99": 0.879,
+  "grain": 0.079,
+  "lit": 0.483,
+  "saturated": 0.119,
+  "shadow": 0.036,
+  "sky": 0.153
+ },
+ "mice/h-b2.0-w4.5/tails": {
+  "L50": 0.46,
+  "L99": 0.89,
+  "grain": 0.061,
+  "lit": 0.421,
+  "saturated": 0.004,
+  "shadow": 0.068,
+  "sky": 0.154
+ },
+ "ref/antennae/calm": {
+  "L50": 0.554,
+  "L99": 0.982,
+  "grain": 0.125,
+  "lit": 0.443,
+  "saturated": 0.09,
+  "shadow": 0.021,
+  "sky": 0.249
+ },
+ "ref/antennae/passage": {
+  "L50": 0.62,
+  "L99": 1.0,
+  "grain": 0.13,
+  "lit": 0.559,
+  "saturated": 0.09,
+  "shadow": 0.032,
+  "sky": 0.245
+ },
+ "ref/antennae/tails": {
+  "L50": 0.443,
+  "L99": 0.998,
+  "grain": 0.286,
+  "lit": 0.138,
+  "saturated": 0.123,
+  "shadow": 0.055,
+  "sky": 0.237
+ },
+ "ref/mice/calm": {
+  "L50": 0.554,
+  "L99": 0.982,
+  "grain": 0.125,
+  "lit": 0.443,
+  "saturated": 0.09,
+  "shadow": 0.021,
+  "sky": 0.249
+ },
+ "ref/mice/passage": {
+  "L50": 0.62,
+  "L99": 1.0,
+  "grain": 0.13,
+  "lit": 0.559,
+  "saturated": 0.09,
+  "shadow": 0.032,
+  "sky": 0.245
+ },
+ "ref/mice/tails": {
+  "L50": 0.428,
+  "L99": 0.985,
+  "grain": 0.162,
+  "lit": 0.279,
+  "saturated": 0.073,
+  "shadow": 0.012,
+  "sky": 0.238
+ }
+}
