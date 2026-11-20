@@ -34,7 +34,9 @@ public struct HoleLens: Sendable {
     public let entries: [SIMD4<Float>]
 
     /// The angle from the hole within which nothing from behind it can be seen.
-    public var shadowAngle: Float {
+    public var shadowAngle: Float { Self.shadowAngle(cameraDistance: cameraDistance) }
+
+    public static func shadowAngle(cameraDistance: Float) -> Float {
         let b = 1.5 * 3.0.squareRoot()
         let ro = Double(cameraDistance)
         return Float(asin(b * (1 - 1 / ro).squareRoot() / ro))
@@ -74,6 +76,10 @@ public struct HoleLens: Sendable {
     /// The angle a point at `angle` from the camera's direction, `radius` from the hole, would
     /// show at without the hole.
     public func straightAngle(radius: Float, angle: Float) -> Float {
+        Self.straightAngle(radius: radius, angle: angle, cameraDistance: cameraDistance)
+    }
+
+    public static func straightAngle(radius: Float, angle: Float, cameraDistance: Float) -> Float {
         atan2(radius * sin(angle), cameraDistance - radius * cos(angle))
     }
 

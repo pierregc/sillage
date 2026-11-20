@@ -201,3 +201,125 @@ struct HoleLensTests {
         }
     }
 }
+
+@Suite("Hole lens set")
+struct HoleLensSetTests {
+    static func make(_ distance: Float) -> HoleLens {
+        HoleLens(
+            cameraDistance: distance, radiusCount: 128, angleCount: 128, uniformRays: 3000,
+            criticalRays: 3000)
+    }
+
+    @Test func onATablesDistanceItIsThatTable() {
+        let set = HoleLensSet(make: Self.make)
+        let distance = set.distance(ofLevel: 30)
+        let table = Self.make(distance)
+        for image in 0..<3 {
+            for (radius, angle): (Float, Float) in [(4, 2.5), (12, 1.0), (30, 3.0), (60, 0.4)] {
+                let own = table.lookup(image: image, radius: radius, angle: angle)
+                let blended = set.lookup(image: image, radius: radius, angle: angle, distance: distance)
+                #expect(abs(own.x - blended.x) < 1e-5, "\(image) \(radius) \(angle)")
+                #expect(abs(own.w - blended.w) < 1e-5)
+            }
+        }
+        #expect(set.built == [distance])
+    }
+
+    @Test func betweenTablesItIsCloseToTheTableThere() {
+        // Half way between two tables, where the blend is furthest from either, against the
+        // table built at that distance: the bend within a ten-thousandth of a radian on the
+        // whole and the photon ring as close to the shadow's edge as the table puts it.
+        let set = HoleLensSet(make: Self.make)
+        for level in [15, 33, 44] {
+            let distance = set.distance(ofLevel: level) * set.ratio.squareRoot()
+            let exact = Self.make(distance)
+            var errors: [Float] = []
+            for image in 0..<3 {
+                for radius in stride(from: Float(2.5), to: 80, by: 3.5) {
+                    for angle in stride(from: Float(0.15), to: 3.0, by: 0.1) {
+                        let gap = (radius * radius + distance * distance - 2 * radius * distance * cos(angle))
+                            .squareRoot()
+                        guard gap > 0.2 * distance else { continue }
+                        let truth = exact.lookup(image: image, radius: radius, angle: angle)
+                        let blended = set.lookup(
+                            image: image, radius: radius, angle: angle, distance: distance)
+                        guard truth.w > 0, blended.w > 0 else { continue }
+                        errors.append(abs(truth.x - blended.x))
+                        if image == 2 { #expect(blended.x > exact.shadowAngle) }
+                    }
+                }
+            }
+            let mean = errors.reduce(0, +) / Float(errors.count)
+            #expect(errors.count > 1000)
+            #expect(mean < 3e-4, "\(distance): \(mean)")
+            #expect(errors.max()! < 0.03 * exact.shadowAngle, "\(distance)")
+        }
+    }
+
+    @Test func aCameraMovingThroughATablesDistanceDoesNotJump() {
+        let set = HoleLensSet(make: Self.make)
+        let level = 30
+        let at = set.distance(ofLevel: level)
+        for image in 0..<3 {
+            for (radius, angle): (Float, Float) in [(4, 2.5), (12, 1.0), (30, 3.0)] {
+                // The point moves on screen as the camera does, but evenly: no step at the table.
+                let below = set.lookup(image: image, radius: radius, angle: angle, distance: at * 0.9999)
+                let on = set.lookup(image: image, radius: radius, angle: angle, distance: at)
+                let above = set.lookup(image: image, radius: radius, angle: angle, distance: at * 1.0001)
+                #expect(abs(below.x + above.x - 2 * on.x) < 1e-5, "\(image) \(radius) \(angle)")
+                #expect(abs(below.w + above.w - 2 * on.w) < 1e-3 * on.w)
+            }
+        }
+    }
+
+    @Test func theLensTestsHoldBetweenTables() {
+        // `HoleLensTests` at distances no table was built at.
+        let set = HoleLensSet(make: Self.make)
+        for distance: Float in [9.5, 23, 51] {
+            let shadow = HoleLens.shadowAngle(cameraDistance: distance)
+            for angle in stride(from: Float(1.8), through: 3.1, by: 0.2) {
+                for radius: Float in [2.5, 4, 8, 16, 40] {
+                    let direct = set.lookup(image: 0, radius: radius, angle: angle, distance: distance)
+                    let behind = set.lookup(image: 1, radius: radius, angle: angle, distance: distance)
+                    let ring = set.lookup(image: 2, radius: radius, angle: angle, distance: distance)
+                    #expect(direct.w > 0 && behind.w > 0 && ring.w > 0, "\(distance) \(radius) \(angle)")
+                    #expect(direct.x > shadow)
+                    #expect(behind.x > shadow)
+                    #expect(ring.x > shadow)
+                    #expect(ring.x - shadow < behind.x - shadow)
+                    #expect(ring.w < behind.w)
+                }
+            }
+            for radius in [distance * 0.6, distance * 0.9] {
+                let angle: Float = 1.2
+                let direct = set.lookup(image: 0, radius: radius, angle: angle, distance: distance)
+                let straight = HoleLens.straightAngle(radius: radius, angle: angle, cameraDistance: distance)
+                #expect(direct.x > straight)
+                #expect(direct.x - straight < 0.05 * straight + 2 / radius, "\(distance) \(radius)")
+            }
+        }
+    }
+
+    @Test func aPointFarBehindTheHoleMakesAnEinsteinRingBetweenTables() {
+        let set = HoleLensSet(ratio: 1.1) {
+            HoleLens(
+                cameraDistance: $0, maximumRadius: 1200, radiusCount: 128, angleCount: 256, images: 2,
+                uniformRays: 4000, criticalRays: 1000)
+        }
+        let distance: Float = 400
+        let level = log(distance) / log(set.ratio)
+        #expect(abs(level - level.rounded()) > 0.1)
+        let einstein = (Float(2 * 800) / Float(distance * 1200)).squareRoot()
+        let angle = Float.pi * (1 - 0.5 / 256)
+        let beta = HoleLens.straightAngle(radius: 800, angle: angle, cameraDistance: distance)
+        let root = (beta * beta + 4 * einstein * einstein).squareRoot()
+        let u = beta / einstein
+        let magnified = (u * u + 2) / (2 * u * (u * u + 4).squareRoot())
+        let direct = set.lookup(image: 0, radius: 800, angle: angle, distance: distance)
+        let behind = set.lookup(image: 1, radius: 800, angle: angle, distance: distance)
+        #expect(abs(direct.x / ((beta + root) / 2) - 1) < 0.04, "\(direct.x)")
+        #expect(abs(behind.x / ((root - beta) / 2) - 1) < 0.04, "\(behind.x)")
+        #expect(abs(direct.w / (magnified + 0.5) - 1) < 0.05, "\(direct.w)")
+        #expect(abs(behind.w / (magnified - 0.5) - 1) < 0.05, "\(behind.w)")
+    }
+}

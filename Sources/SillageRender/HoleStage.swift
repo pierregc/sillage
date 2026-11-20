@@ -14,6 +14,7 @@ extension HoleLookFile {
         look.exposure = Float(exposure)
         look.ambient = Float(ambient)
         look.particleSize = Float(particleSize)
+        look.thinning = Float(thinning)
         look.stars = stars
         look.starBrightness = Float(starBrightness)
         return look

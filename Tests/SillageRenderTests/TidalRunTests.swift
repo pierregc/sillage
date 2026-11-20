@@ -219,4 +219,53 @@ struct TidalRunTests {
             #expect(report.url.lastPathComponent == (look == nil ? "1080p.mp4" : "film-1080p.mp4"))
         }
     }
+
+    /// A hot disk round the hole, every tracer at its circular speed.
+    static func disk(_ count: Int) -> TidalFrame {
+        var generator = SeededGenerator(seed: 333)
+        var positions: [SIMD4<Float>] = []
+        var velocities: [SIMD4<Float>] = []
+        for _ in 0..<count {
+            let r = 3.5 + 12 * generator.uniform()
+            let angle = generator.uniform() * 2 * .pi
+            let speed = r.squareRoot() / (r - 1)
+            positions.append(SIMD4(r * cos(angle), r * sin(angle), 0.05 * (generator.uniform() - 0.5), 1 / r))
+            velocities.append(SIMD4(-speed * sin(angle), speed * cos(angle), 0, 1))
+        }
+        return TidalFrame(time: 0, positions: positions, velocities: velocities)
+    }
+
+    @Test func theThinnedImagesLookAsAllOfThem() throws {
+        // The images that go round the hole drawn for a share of the tracers, each brighter,
+        // against all of them: they add a grey level on the whole, thinned they move it by a
+        // twentieth.
+        let frame = Self.disk(400_000)
+        var settings = HoleLook.settings(width: 320, height: 180, supersample: 1)
+        settings.noiseLevel = 0
+        let renderer = try HoleRenderer(settings: settings)
+        renderer.lenses = HoleLensSet { HoleLens(cameraDistance: $0, radiusCount: 256, angleCount: 256) }
+        renderer.upload(frame)
+        let camera = Camera(
+            eye: SIMD3<Float>(0, -30 * cos(0.2), 30 * sin(0.2)), target: .zero, up: SIMD3<Float>(0, 0, 1),
+            fieldOfView: 0.6, near: 0.1, far: 1e5)
+        var look = HoleLook()
+        look.stars = 0
+        look.exposure = 0.05
+        look.images = 3
+        func mean(_ pixels: [UInt8]) -> Double {
+            Double(pixels.reduce(0) { $0 + Int($1) }) / Double(pixels.count)
+        }
+        look.thinning = 0
+        let all = renderer.render(frame, camera: camera, look: look)
+        look.thinning = 0.5
+        let thinned = renderer.render(frame, camera: camera, look: look)
+        look.images = 1
+        let direct = renderer.render(frame, camera: camera, look: look)
+        func difference(_ a: [UInt8], _ b: [UInt8]) -> Double {
+            Double(zip(a, b).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }) / Double(a.count)
+        }
+        #expect(difference(all, direct) > 1)
+        #expect(difference(all, thinned) < 0.1, "\(difference(all, thinned))")
+        #expect(abs(mean(thinned) / mean(all) - 1) < 0.002)
+    }
 }
