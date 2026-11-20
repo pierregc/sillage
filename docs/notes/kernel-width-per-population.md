@@ -42,7 +42,10 @@ column smoothing), so a uniform tested at run time would not have kept the pictu
 
 The CUDA engine always has the code: it builds without fast math or contraction, so a factor
 of one leaves a kernel exactly as it was. `SplatUniforms` grows from 176 to 192 bytes; a dump of
-targets written before reads as four widths of one (`CUDARenderChecks`).
+targets written before reads as four widths of one (`CUDARenderChecks`). The reference frame
+`widths` of `Tests/Fixtures/engines` (`red-vs-cyan` with all four set) holds the two engines
+together: on the CPU target the CUDA engine draws it at 67.7 dB from Metal, the largest difference
+two levels, as `red-vs-cyan` (68.0 dB).
 
 ## On the photograph look
 
