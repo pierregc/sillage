@@ -185,3 +185,50 @@ public final class CUDAHoleRenderer {
         return try post.pack(format)
     }
 }
+
+/// `sillage-cuda black-hole still` (#336): one moment of a close up's take, drawn as
+/// `sillage-render black-hole still` draws it, the run stepped on CUDA from the frame the take
+/// kept before it.
+public enum CUDAHoleStill {
+    public struct Picture: Sendable {
+        /// 8-bit RGB, rows from the top.
+        public var pixels: [UInt8]
+        public var width: Int
+        public var height: Int
+        /// The moment drawn, in the hole's time units.
+        public var time: Double
+    }
+
+    /// `options` as `black-hole still` takes them: the folder second, `--at`, `--look`,
+    /// `--width`, `--height` and the view's options. `gas` is the grid the run was made with.
+    public static func draw(
+        _ options: HoleOptions, folder: SceneFolder, context: CUDAContext, gas: GasGrid = GasGrid()
+    ) throws -> Picture {
+        let take = try HoleTakeFile.Loaded(contentsOf: folder.take)
+        let lookFile = try options.look(folder: folder)
+        let run = try CUDATidalRun(context: context, scene: take.header.scene.blackHole, gas: gas)
+        guard run.releaseTime == take.header.releaseTime else {
+            throw HoleTakeFile.Failure.wrongFrame("the scene releases at another time than the take's")
+        }
+        var frame = take.frame(0)
+        run.resume(from: frame, step: 0)
+        func seek(_ step: Int) throws -> TidalFrame {
+            frame = take.seek(step, run: run, held: frame)
+            if let failure = run.failure { throw failure }
+            return frame
+        }
+        let width = options.int("width") ?? 1920
+        let height = options.int("height") ?? 1080
+        let renderer = try CUDAHoleRenderer(
+            context: context, settings: lookFile.settings(width: width, height: height))
+        if let at = lookFile.exposureAt {
+            renderer.exposure.fixed = true
+            try renderer.upload(seek(take.step(at: at)))
+        }
+        let shown = try seek(options.double("at").map(take.step(at:)) ?? take.header.steps.last ?? 0)
+        try renderer.upload(shown)
+        let pixels = try renderer.render(
+            camera: lookFile.camera.camera(progress: 0), look: lookFile.renderLook)
+        return Picture(pixels: [UInt8](pixels), width: width, height: height, time: shown.time)
+    }
+}

@@ -60,9 +60,15 @@ struct CUDAHoleTests {
         try HoleLookFile.decoded(from: Data(contentsOf: folder.appendingPathComponent(view.look)))
     }
 
-    /// What CUDA's run is held to after Metal's steps: the same tracers swallowed, the positions
-    /// and velocities within a share of their size, the light within a share of the brightest.
-    static let runTolerance: Float = 1e-3
+    /// What CUDA's run is held to after Metal's 40 steps: the same tracers swallowed, the
+    /// positions and velocities within a share of their size (measured 5.5e-7 and 4.7e-6), and
+    /// the light looser. The viscosity's heat is `1 - keep²` with `keep = exp(-ε)` and ε about
+    /// 1e-6, the difference of two floats near one, which two maths libraries round apart by a
+    /// few percent of it: the light's largest difference was 1.2 % of the brightest, its mean
+    /// 2.9 % of the mean light (docs/notes/cuda-engine.md).
+    static let positionTolerance: Float = 1e-5
+    static let velocityTolerance: Float = 1e-4
+    static let lightTolerance: (largest: Float, mean: Double) = (0.05, 0.1)
 
     @Test func theRunStepsAsMetalsWithinTheTolerance() throws {
         let manifest = try Self.manifest()
@@ -104,17 +110,23 @@ struct CUDAHoleTests {
             "tracers 1 % off",
             lightOff, "swallowed", swallowed)
         #expect(swallowed.cuda == swallowed.metal)
-        #expect(position < Self.runTolerance && velocity < Self.runTolerance, "\(position), \(velocity)")
-        #expect(light <= Self.runTolerance * brightest, "\(light) of \(brightest)")
+        #expect(
+            position < Self.positionTolerance && velocity < Self.velocityTolerance, "\(position), \(velocity)"
+        )
+        #expect(light <= Self.lightTolerance.largest * brightest, "\(light) of \(brightest)")
+        #expect(
+            lightDifference <= Self.lightTolerance.mean * lightTotal, "\(lightDifference) of \(lightTotal)")
         #expect(brightest > 0, "a run with no heat checks nothing of the gas")
     }
 
     /// What a still is held to against Metal's: its PSNR, its largest difference in levels, and
-    /// the share of its pixels more than 8 levels off.
+    /// the share of its pixels more than 8 levels off. Measured 54.7 to 55.2 dB, 17 to 31 levels
+    /// and 0.084 %: the film grain's hash landing the other side of a rounding on a few pixels,
+    /// as in #277's stills, and Metal's half floats.
     static let stillTolerances: [String: (psnr: Double, largest: Int, overEight: Double)] = [
-        "physics": (40, 255, 0.01),
-        "ring": (40, 255, 0.01),
-        "straight": (40, 255, 0.01),
+        "physics": (50, 48, 0.002),
+        "ring": (50, 48, 0.002),
+        "straight": (50, 48, 0.002),
     ]
 
     @Test func theStillsAreMetalsWithinTheTolerance() throws {
@@ -155,5 +167,47 @@ struct CUDAHoleTests {
                 [UInt8](try renderer.render(camera: look.camera.camera(progress: 0), look: look.renderLook)))
         }
         #expect(pictures[0] == pictures[1])
+    }
+
+    /// `sillage-cuda black-hole still` from a take of the fixture's two moments: the later one
+    /// read from the take and drawn as Metal drew it, and a moment between the two stepped to.
+    @Test func theCommandDrawsAMomentOfATake() throws {
+        let manifest = try Self.manifest()
+        let start = try Self.frame("start.bin", tracers: manifest.tracers)
+        let end = try Self.frame("end.bin", tracers: manifest.tracers)
+        let work = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cuda-hole-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let folder = SceneFolder(work)
+        let scene = try JSONDecoder().decode(
+            HoleSceneFile.self, from: Data(contentsOf: Self.folder.appendingPathComponent("scene.json")))
+        try folder.create(scene)
+        let header = HoleTakeFile.Header(
+            scene: scene, tracers: manifest.tracers, releaseTime: scene.blackHole.released().time,
+            steps: [manifest.startStep, manifest.startStep + manifest.steps])
+        let writer = try HoleTakeFile.Writer(header: header, to: folder.take)
+        try writer.append(start)
+        try writer.append(end)
+        try writer.finish()
+        let context = try CUDAContext()
+        func still(at step: Int) throws -> CUDAHoleStill.Picture {
+            try CUDAHoleStill.draw(
+                HoleOptions([
+                    "still", folder.url.path, "out.png", "--look",
+                    Self.folder.appendingPathComponent(manifest.views[0].look).path, "--at",
+                    String(header.time(step: step)), "--width", String(manifest.width), "--height",
+                    String(manifest.height),
+                ]), folder: folder, context: context, gas: manifest.gas)
+        }
+        let last = try still(at: manifest.startStep + manifest.steps)
+        let reference = [UInt8](
+            try Data(contentsOf: Self.folder.appendingPathComponent(manifest.views[0].file)))
+        let measure = CUDAStillChecks.measure(last.pixels, channels: 3, reference, channels: 3)
+        print("CUDAHOLE command", measure)
+        #expect(last.time == header.time(step: manifest.startStep + manifest.steps))
+        #expect(measure.psnr >= 50, "\(measure)")
+        let between = try still(at: manifest.startStep + manifest.steps / 2)
+        #expect(between.time == header.time(step: manifest.startStep + manifest.steps / 2))
+        #expect(between.pixels.contains { $0 > 64 } && between.pixels != last.pixels)
     }
 }

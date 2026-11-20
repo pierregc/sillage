@@ -109,39 +109,15 @@ if command == "black-hole" {
     }
     do {
         let started = Date()
-        let folder = SceneFolder(path: options.words[1])
-        let take = try HoleTakeFile.Loaded(contentsOf: folder.take)
-        let lookFile = try options.look(folder: folder)
         let context = try CUDAContext()
-        let run = try CUDATidalRun(context: context, scene: take.header.scene.blackHole)
-        guard run.releaseTime == take.header.releaseTime else {
-            fail("the scene releases at another time than the take's")
-        }
-        var frame = take.frame(0)
-        run.resume(from: frame, step: 0)
-        func seek(_ step: Int) throws -> TidalFrame {
-            frame = take.seek(step, run: run, held: frame)
-            if let failure = run.failure { throw failure }
-            return frame
-        }
-        let width = options.int("width") ?? 1920
-        let height = options.int("height") ?? 1080
-        let renderer = try CUDAHoleRenderer(
-            context: context, settings: lookFile.settings(width: width, height: height))
-        if let at = lookFile.exposureAt {
-            renderer.exposure.fixed = true
-            try renderer.upload(seek(take.step(at: at)))
-        }
-        let shown = try seek(options.double("at").map(take.step(at:)) ?? take.header.steps.last ?? 0)
-        try renderer.upload(shown)
-        let pixels = try renderer.render(
-            camera: lookFile.camera.camera(progress: 0), look: lookFile.renderLook)
+        let picture = try CUDAHoleStill.draw(
+            options, folder: SceneFolder(path: options.words[1]), context: context)
         try PNG.write(
-            PNG.Image(width: width, height: height, channels: 3, bytes: [UInt8](pixels)),
+            PNG.Image(width: picture.width, height: picture.height, channels: 3, bytes: picture.pixels),
             to: URL(fileURLWithPath: options.words[2]))
         print(
             String(
-                format: "t = %.1f, %.2f s on %@ (%@)", shown.time, Date().timeIntervalSince(started),
+                format: "t = %.1f, %.2f s on %@ (%@)", picture.time, Date().timeIntervalSince(started),
                 CUDAContext.target == .gpu ? "the GPU" : "the CPU target", context.name))
     } catch {
         fail("black-hole: \(error)")
