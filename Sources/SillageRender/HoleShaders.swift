@@ -365,27 +365,7 @@ enum HoleShaders {
             if (vw.w < 0.0f && u.stars == 0u) { return holeCulled(); }
             float3 p = pw.xyz;
             float r = length(p);
-            float kelvin;
-            float light;
-            if (u.stars != 0u) {
-                kelvin = vw.w;
-                light = pw.w;
-            } else if (u.temperature == 0u) {
-                // Shakura and Sunyaev: T falls as r to the -3/4 past the last stable orbit,
-                // where the torque vanishes and the disk with it.
-                float x = u.innerEdge / max(r, 1e-3f);
-                float shape = x >= 1.0f ? 0.0f : pow(x, 0.75f) * pow(1.0f - sqrt(x), 0.25f) / u.edgePeak;
-                kelvin = u.hottest * shape;
-                light = shape * shape * shape * shape * u.lightScale + u.ambient;
-            } else {
-                // From the run: the light a tracer gives is the heat it radiates, and the
-                // temperature goes as the fourth root of that light per unit area.
-                float flux = max(pw.w, 0.0f) * max(vw.w, 0.0f) * u.crossingScale;
-                kelvin = u.hottest * sqrt(sqrt(flux));
-                light = max(pw.w, 0.0f) * u.lightScale + u.ambient;
-            }
-            if (light <= 0.0f) { return holeCulled(); }
-
+            // Where the lens puts it first: most of the further images' tracers stop there.
             float3 eye = u.camera.xyz;
             float ro = u.camera.w;
             float3 axis = normalize(eye);
@@ -420,6 +400,27 @@ enum HoleShaders {
                 float3 toward = -axis;
                 if (dot(sight, toward) / distance > cos(u.shadowAngle)) { return holeCulled(); }
             }
+
+            float kelvin;
+            float light;
+            if (u.stars != 0u) {
+                kelvin = vw.w;
+                light = pw.w;
+            } else if (u.temperature == 0u) {
+                // Shakura and Sunyaev: T falls as r to the -3/4 past the last stable orbit,
+                // where the torque vanishes and the disk with it.
+                float x = u.innerEdge / max(r, 1e-3f);
+                float shape = x >= 1.0f ? 0.0f : pow(x, 0.75f) * pow(1.0f - sqrt(x), 0.25f) / u.edgePeak;
+                kelvin = u.hottest * shape;
+                light = shape * shape * shape * shape * u.lightScale + u.ambient;
+            } else {
+                // From the run: the light a tracer gives is the heat it radiates, and the
+                // temperature goes as the fourth root of that light per unit area.
+                float flux = max(pw.w, 0.0f) * max(vw.w, 0.0f) * u.crossingScale;
+                kelvin = u.hottest * sqrt(sqrt(flux));
+                light = max(pw.w, 0.0f) * u.lightScale + u.ambient;
+            }
+            if (light <= 0.0f) { return holeCulled(); }
 
             // Paczyński and Wiita's speeds pass light's inside the last stable orbit, where gas
             // plunges: held at what general relativity gives there, about 0.6 c.
