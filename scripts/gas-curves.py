@@ -7,6 +7,7 @@ height over its radius, and the share of the bound within 2 and 6 pericentres.
 """
 
 import csv
+import math
 import sys
 
 import matplotlib
@@ -32,9 +33,10 @@ def main():
         with open(path) as handle:
             rows = list(csv.DictReader(handle))
         for axis, (key, title, limits) in zip(axes.flat, PANELS):
-            axis.plot(
-                [float(row["periods"]) for row in rows], [float(row[key]) for row in rows], label=label
-            )
+            # Nothing within 6 R_p yet, before the first return: no value, not zero.
+            blank = key in ("circularised", "eccentricity", "thickness")
+            values = [float(row[key]) or (math.nan if blank else 0.0) for row in rows]
+            axis.plot([float(row["periods"]) for row in rows], values, label=label)
             axis.set_title(title, fontsize=10)
             axis.set_xlabel("time in P*")
             if limits:

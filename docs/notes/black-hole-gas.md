@@ -39,18 +39,18 @@ Read for this ticket, from their text (arXiv), not from memory. Units: R_g = GM/
 | Andalman, Liska, Tchekhovskoy, Coughlin & Stone 2022 ([2008.04922](https://arxiv.org/abs/2008.04922)), MNRAS 510, 1627 | General relativistic hydrodynamics, β = 7, R_p = 7 R_g, a hole spinning at 0.94, parabolic, realistic mass ratio | A disk forms by five violent self-intersections about 12 hours apart, then stream-disk shocks at the pericentre; about 20 % of the infalling mass reaches the hole; mean eccentricity 0.88; the disk's scale height over its radius 0.069 at 1.4 days and 0.132 at 5.7; the debris' pericentre moves from 7 to about 12 R_g |
 | Liptai, Price, Mandel & Lodato 2019 ([1910.10154](https://arxiv.org/abs/1910.10154)) | General relativistic SPH, Kerr, bound orbits, e = 0.8 and 0.95, β = 1 and 5 | Without cooling a thick torus, H/R about 1, surface density as r⁻³, out to the star's apocentre; with efficient cooling a narrow ring near the pericentre |
 
-Hayasaki et al. 2013 and 2016, Piran et al. 2015 and Lu and Bonnerot 2020, which the three
-first ones lean on, were not read here.
+Hayasaki et al. 2013 and 2016, Piran et al. 2015 and Lu and Bonnerot 2020, which the papers
+above lean on, were not read here.
 
 **Where the scene sits among them.** The closest is Bonnerot et al.'s RI5e.8: a\* = 47 R_g
 against the cloud's a_min = 23.5 r_s = 47 R_g, pericentre 12 R_g against 9.4. The cloud's most bound
 orbit has e = 0.75 and general relativity would turn it by 52° a turn, between RI5e.8's 90° and
 RI1e.8's 14°; Paczyński and Wiita's potential gives about 85 % of general relativity's (36°
-against 43° at the spike's own check). It is a
-parabolic disruption, as Shiokawa's and Andalman's, with a_min / R_p = 3.9, near Shiokawa's 5 and
-far from a real star's 250 at β = 5: the cloud's radius is 0.25 of its pericentre, a star's 0.05
-to 0.07, so it is fat. Its gas, which radiates what it dissipates at once, is Bonnerot's and Liptai's cooling
-case: a thin ring, not a torus.
+against 43° at the spike's own check). It is a parabolic disruption, as Shiokawa's and
+Andalman's, with a_min / R_p = 3.9, near Shiokawa's 5 and far from a real star's 250 at β = 5:
+the cloud's radius is 0.25 of its pericentre, a star's 0.05 to 0.07, so it is fat. Its gas, which
+radiates what it dissipates at once, is Bonnerot's and Liptai's cooling case: a thin ring, not a
+torus.
 
 ## The gas
 
@@ -65,9 +65,10 @@ flow round them where they cross; what changed is the grid and the numbers.
   the column, summed over the layers by a new kernel (`holeColumn`). `--grid-heights 1` is the
   spike's grid.
 - **Stickiness 50 e-foldings an orbit** (was 2): see the sweep.
-- **Crossing speed 0.1** of the circular speed (was 0.3): the motion against the mean that counts,
-  and so the gas's sound speed, and what its disk is as thick as. 0.1 is in the 0.07 to 0.13 that
-  Andalman et al. measure.
+- **Crossing speed 0.1** of the circular speed (was 0.3): the motion against the mean flow that
+  counts as a crossing, so the gas's sound speed. A disk with that sound speed would be 0.1 of its
+  radius tall, in the 0.07 to 0.13 that Andalman et al. measure; this one settles thinner, 0.02,
+  since nothing keeps it hot (see the end).
 - **Viscosity 2500 orbits** (was 40): a thin disk's is 1 / (2π α (H/R)²) orbits, 4000 for α = 0.1
   and H/R = 0.02, and a run of 7 P\* is 24 orbits at 11 r_s. Bonnerot et al. put the ring's at
   3 × 10³ P\*.
@@ -100,15 +101,14 @@ tracers. `scripts/gas-curves.py` draws the curves.
   crossing.
 - **The crossing speed** matters at the first pericentre only below 0.1: the cloud is squeezed
   through the plane there with vertical speeds of 0.05 to 0.25 of the circular speed, and at 0.05
-  the nozzle shock, real but small, binds two points (Guillochon et al. and Shiokawa et al. put
-  what it dissipates at θ² of the orbital energy, θ the stream's angular thickness: Kochanek 1994, as
-  Shiokawa et al. quote it). From 0.1 to
-  0.3 the disk is the same within the scatter between runs, 0.05 in the late columns.
+  the nozzle shock, real but small, binds two points (Kochanek 1994, as Shiokawa et al. quote it,
+  puts what it dissipates at θ² of the orbital energy, θ the stream's angular thickness). From 0.1
+  to 0.3 the disk is the same within the scatter between runs, 0.05 in the late columns.
 - **Viscosity** is the one that moves the story: 40 orbits binds 18 points at the first
   pericentre, 160 five, 400 two; 40 also swallows a third of the cloud by 7 P\* and drains
   the ring to 6 r_s. From 400 up it changes nothing a viewer sees in 7 P\*.
-- **Heating**: the gas starts to heat at 1.3 to 1.4 P\* in every run that circularises, 0.3 to 0.4
-  P\* after the most bound debris come back, and peaks at 3.1 to 4.1 P\*; in the reference run a
+- **Heating**: the gas starts to heat at 1.3 to 1.4 P\* in every run that circularises (1.3 at
+  6 M), 0.3 to 0.4 P\* after the most bound debris come back, and peaks at 3.1 to 4.1 P\*; in the reference run a
   second burst follows at 5.5 to 6.5 P\* (`heating` in the CSV).
 
 ### The first passage, in three dimensions or not
@@ -140,7 +140,7 @@ of the heat in the grid with height that the plane's grid makes.
 | 250 000 tracers | 0.58, 0.64 | 0.86, 0.35 |
 | 1 000 000 | 0.84, 0.37 | 0.91, 0.28 |
 | 4 000 000 | 0.85, 0.36 | 0.90, 0.30 |
-| 6 000 000, the scene's | SIX_FOUR | SIX_SEVEN |
+| 6 000 000, the scene's | 0.85, 0.36 | 0.90, 0.30 |
 | 16 layers of height | 0.85, 0.35 | 0.90, 0.30 |
 | 32, the default | 0.84, 0.37 | 0.91, 0.28 |
 | 64 | 0.77, 0.45 | 0.86, 0.35 |
@@ -148,7 +148,8 @@ of the heat in the grid with height that the plane's grid makes.
 One million tracers and more draw the same disk, and so do 16 and 32 layers. Fewer tracers or
 thinner layers leave fewer tracers in a cell, a cell needs another tracer's worth of neighbours
 to feel any, and the gas takes hold later: at 250 000 the disk is a third of the way at 4 P\*.
-The grid is summed with float atomics, so two runs differ by about 0.05 in the late columns.
+The sweeps ran before #332's fixed-point sums, with float atomics, so two of them differ by about
+0.05 in the late columns; a run now repeats to the bit.
 
 ## Against the papers
 
@@ -191,7 +192,24 @@ were not compared.
 
 ## Stills
 
-<!-- STILLS -->
+![The stream and the ring from above, the spike's gas and this one](https://raw.githubusercontent.com/pierregc/sillage/assets/334-gas/docs/spikes/black-hole-gas/sheet-wide.jpg)
+
+6 M tracers from 60° over the plane at 150 r_s, drawn straight, at 1.8, 4.3 and 7.1 P\*, the
+spike's gas on the left. The spike's is a wide nest of ellipses that builds up into a disc round the
+hole; this one is the picture of Bonnerot et al.'s ring: at 1.8 P\* the head of the stream has come
+back and crosses the tail, at 4.3 P\* a ring has formed at 8 to 14 r_s with the stream still
+falling on it, at 7.1 P\* the ring is rounder and the stream's far part arrives behind it.
+
+![The same moments from 20° over the plane with the light bent](https://raw.githubusercontent.com/pierregc/sillage/assets/334-gas/docs/spikes/black-hole-gas/sheet-close.jpg)
+
+From 20° and 60 r_s with the light bent, the look's default: the ring is thin and the hot spot
+is where the stream hits it, which the spike's blob has no place for.
+
+![The curves of five runs](https://raw.githubusercontent.com/pierregc/sillage/assets/334-gas/docs/spikes/black-hole-gas/curves.png)
+
+The curves of the table's runs: the spike's viscosity binds the first passage and drains the disk
+into the hole, stickiness 2 forms nothing, and the plane's grid with the new numbers forms the
+disk a little faster than the grid with height.
 
 ## For a flight through the scene
 
@@ -203,17 +221,23 @@ The epic's end is flying inside a scene with a hole. What the gas gives a flight
 - **The light**: the heating that the Physics look draws peaks at 3 to 4 P\* and falls to a fifth of
   its peak by 7 P\*, so a flight that holds the exposure of one moment (`exposureAt` in the look)
   sees the settled ring dim against the crossings.
-- **Cost**: the step costs TIMING.
+- **Cost**: over the first 1000 time units, 4084 steps at 6 M tracers take 37.2 s, 9.1 ms a
+  step, with the 32 layers and 24.0 s with one: 53 % more for the eight cells of #332's
+  fixed-point sums where there were four. The whole run takes 111 s, where the spike's took 64 s
+  with float atomics and its plane grid. A positive bias on the deposited velocities would
+  save most of the second word's atomics; not tried.
 - **State**: the grid is rebuilt from the tracers each step, so a take's frames (positions and
   velocities) are enough to go on from, as #332's export does when a frame sits between two.
 
 ## How to run it
 
     DYLD_LIBRARY_PATH=.build/dev .build/dev/sillage-render black-hole run out/hole \
-        --tracers 1000000 --metrics out/hole/metrics.csv --metrics-interval 50 --no-frames
+        --tracers 1000000 --frame-interval 100000 --metrics out/hole/metrics.csv --metrics-interval 50
     scripts/gas-curves.py out/hole/curves.png "this=out/hole/metrics.csv"
 
 `--metrics` writes a row of `TidalMeasure` every interval: the time in P\*, the swallowed share,
 the bound share, `circ`, the eccentricity, the plunging share, the height over the radius, the
 heating, the shares of the bound half within 2, 6 and 16 R_p and the radius of the flow's first
-quartile, median and last quartile. `--grid-heights` and `--height-cell` change the grid.
+quartile, median and last quartile. A large `--frame-interval` keeps the take to its first and
+last frames. `--grid-heights` and `--height-cell` change the grid; `--grid-heights 1` is the
+spike's plane. The `hires` stage does not take them: the default grid is the one the exports use.
