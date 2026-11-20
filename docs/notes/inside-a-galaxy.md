@@ -603,8 +603,8 @@ average with no structure, before as after. The clip of frames 400 to 700, befor
 ![Camera held at frame 540](https://raw.githubusercontent.com/pierregc/sillage/assets/354-dust-perspective/docs/spikes/inside-354/held-540.jpg)
 
 **What it costs**: four taps instead of one, once a pixel. Alone on the GPU, one render of each of
-six moments of the dive (15 to 40 s), two rounds within 3 ms of each other: 2 to 3 ms more a
-render in 1080p (136 to 176 ms before), 6 to 12 in 4K (315 to 424 before), 1 to 3 %.
+six moments of the dive (15 to 40 s), against main with #357, two rounds: 2 to 3 ms more a render
+in 1080p (137 to 179 ms before), 2 to 12 in 4K (317 to 425 before), 1 to 3 %.
 
 **Not fixed: one web for two disks.** Where the companion's carried dust shares a slab of a pixel
 with the larger disk's (#353), the resolve still reads the web of the later galaxy for both: the
