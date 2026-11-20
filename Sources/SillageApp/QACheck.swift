@@ -400,6 +400,7 @@ enum QACheck {
             report.check(
                 "a scene's take offers Video… on its scene",
                 model.isOpenedTake && model.takeFolder == folder, model.takeFolder?.sceneID ?? "none")
+            await flightChecks(model, folder: folder, report, settle)
             try? FileManager.default.removeItem(at: sceneURL.deletingLastPathComponent())
             try? FileManager.default.removeItem(at: takeURL)
 
@@ -498,5 +499,235 @@ enum QACheck {
             print(text)
             exit(report.failures == 0 ? 0 : 1)
         }
+    }
+
+    /// A flight flown in the app, recorded with a pause in it, saved and read back, played on the
+    /// canvas, set key by key, renamed, and drawn by the export (#298).
+    @MainActor
+    private static func flightChecks(
+        _ model: SimulationModel, folder: SceneFolder, _ report: Report,
+        _ settle: @MainActor (Double) async -> Void
+    ) async {
+        let flights = model.flights
+        flights.removal = { try FileManager.default.removeItem(at: $0) }
+        report.check("a scene's take keeps flights", flights.canKeep && flights.listings.isEmpty)
+        // 12 frames a second from the tenth, so that the take does not loop under a recording.
+        model.playbackSpeed = 12
+        model.isPlaying = true
+        model.playbackPosition = 10
+        await settle(0.4)
+        model.playbackPosition = 10
+        await settle(0.1)
+
+        // The throttle goes down in steps, to a few parsecs a second.
+        let start = model.activeCamera
+        flights.startRecording()
+        report.check(
+            "Record starts free flight from the view on the canvas",
+            flights.isRecording && model.isFlying && simd_length(model.activeCamera.eye - start.eye) < 0.01)
+        let fastest = model.flight.speed
+        flights.stepThrottle(-1)
+        report.check(
+            "a step of the throttle goes down the ladder",
+            model.flight.speed < fastest
+                && flights.speedLabel == FlyCamera.describe(speed: model.flight.speed),
+            flights.speedLabel)
+        for _ in 0..<14 { flights.stepThrottle(-1) }
+        report.check(
+            "the throttle reaches a few parsecs a second", model.flight.speed <= 0.01,
+            flights.speedLabel)
+        model.flight.speed = 90
+
+        // Flown by held keys, turning with banking, then time paused while the camera goes on, then
+        // time running again.
+        flights.banking = true
+        model.hold(key: CanvasView.Key.w, true)
+        model.hold(key: CanvasView.Key.left, true)
+        await settle(0.7)
+        let banked = model.flight.roll
+        model.hold(key: CanvasView.Key.left, false)
+        await settle(0.4)
+        model.isPlaying = false
+        await settle(1.0)
+        model.isPlaying = true
+        await settle(0.7)
+        model.hold(key: CanvasView.Key.w, false)
+        report.check(
+            "banking leans the camera into a turn", abs(banked) > 0.05, String(format: "%.2f rad", banked))
+        report.check(
+            "the recording clock runs", flights.recordedSeconds > 1.5,
+            String(format: "%.1f s", flights.recordedSeconds))
+        flights.stopRecording()
+        await flights.saved()
+        report.check(
+            "the recording is saved as the scene's first flight", folder.flightNames() == ["flight-1"],
+            folder.flightNames().joined(separator: ", "))
+        report.check(
+            "the panel lists it", flights.listings.map(\.name) == ["flight-1"], flights.notice ?? "")
+
+        guard let file = try? FlightFile.decoded(from: Data(contentsOf: folder.flight("flight-1"))) else {
+            report.check("the saved flight reads back", false)
+            return
+        }
+        report.check(
+            "the saved flight reads back", file.keys.count >= 2, "\(file.keys.count) keys, \(file.seconds) s")
+        report.check(
+            "it is as long as the recording", file.seconds > 2.4 && file.seconds < 4.5,
+            String(format: "%.1f s", file.seconds))
+        // Keys at one moment, as many as the camera moving through it needs, for most of a second.
+        var longest = 0.0
+        var run = file.keys[0].at
+        for (a, b) in zip(file.keys, file.keys.dropFirst()) {
+            if a.myr != b.myr { run = b.at }
+            longest = max(longest, b.at - run)
+        }
+        report.check(
+            "the pause is a freeze in the flight", longest > 0.7,
+            String(format: "%.1f s at one moment", longest))
+        report.check(
+            "it flew",
+            file.keys.last.map { last in
+                guard case .world(let eye)? = last.eye, case .world(let from)? = file.keys[0].eye else {
+                    return false
+                }
+                return simd_length(eye - from) > 5
+            } ?? false)
+        report.check("the camera rolled while it turned", file.keys.contains { abs($0.roll ?? 0) > 0.02 })
+        flights.banking = false
+        await settle(1.5)
+
+        // Scrubbing ends a recording, and keeps what it has.
+        model.playbackPosition = 10
+        await settle(0.2)
+        flights.startRecording()
+        await settle(0.6)
+        model.playbackPosition += 7
+        await settle(0.3)
+        await flights.saved()
+        report.check(
+            "moving the playhead ends the recording", !flights.isRecording,
+            flights.notice ?? "")
+        report.check(
+            "and keeps it", folder.flightNames().contains("flight-2"),
+            folder.flightNames().joined(separator: ", "))
+        model.isPlaying = true
+
+        // Played on the canvas: the camera its keys give, the playhead its time gives.
+        flights.play("flight-1")
+        report.check("a flight plays", flights.isPlaying && flights.drivesPlayhead, flights.notice ?? "")
+        // Held where it is put, so that the frames drawn do not move it.
+        flights.togglePause()
+        let at = { (seconds: Double) -> (position: Double, eye: SIMD3<Float>) in
+            flights.seek(to: seconds)
+            model.drawOnce()
+            return (model.playbackPosition, model.activeCamera.eye)
+        }
+        let before = at(0.3)
+        let held = (at(1.3), at(1.7))
+        let after = at(file.seconds - 0.1)
+        report.check(
+            "its time holds through the freeze", held.0.position == held.1.position,
+            "\(held.0.position) and \(held.1.position)")
+        report.check(
+            "and runs either side of it",
+            before.position < held.0.position && held.1.position < after.position)
+        report.check("while the camera goes on", simd_length(held.0.eye - held.1.eye) > 1e-4)
+        report.check("the canvas draws the flight", model.failure == nil)
+
+        // Near matter the canvas draws from inside, as the export draws a flight.
+        if let centre = model.playbackCenters.first {
+            flights.takeOver()
+            model.flight.position = centre + SIMD3<Float>(0.05, 0.02, 0.01)
+            model.drawOnce()
+            model.drawOnce()
+            report.check(
+                "near matter the canvas draws from inside",
+                model.renderer?.inside != nil && (model.nearness ?? 1e9) < 1,
+                String(format: "%.3f kpc", model.nearness ?? -1))
+            report.check(
+                "without failing to", model.renderer?.insideFailure == nil && model.failure == nil,
+                model.renderer?.insideFailure ?? "")
+            // The canvas holds the frame under the exposure a flight's frames are: a look far too
+            // bright for the disk is trimmed, and the trim goes back once the eye is away from it.
+            let brightness = model.look.brightness
+            model.look.brightness = brightness * 20
+            let readings = model.exposureReadings
+            await settle(1.2)
+            report.check(
+                "near matter a bright frame is trimmed",
+                model.exposureTrim > 1 && model.exposureReadings > readings,
+                String(
+                    format: "%.1f stops, %d readings", model.exposureTrim, model.exposureReadings - readings))
+            model.look.brightness = brightness
+            model.flight.position = centre + SIMD3<Float>(0, -400, 0)
+            model.drawOnce()
+            model.drawOnce()
+            report.check("and far from it as it always did", model.renderer?.inside == nil)
+            await settle(2.0)
+            report.check(
+                "with the trim gone", model.exposureTrim < 0.05,
+                String(format: "%.2f stops", model.exposureTrim))
+        }
+
+        // Keys set by hand, with time paused.
+        model.isPlaying = false
+        flights.clearWaypoints()
+        flights.addWaypoint()
+        model.hold(key: CanvasView.Key.w, true)
+        await settle(0.5)
+        model.hold(key: CanvasView.Key.w, false)
+        await settle(0.8)
+        flights.addWaypoint()
+        report.check("K sets keys", flights.waypointCount == 2, flights.notice ?? "")
+        report.check(
+            "the second after the first", flights.waypointSeconds >= FlightWaypoints.shortest,
+            "\(flights.waypointSeconds) s")
+        flights.saveWaypoints()
+        report.check(
+            "the keys are saved as a path", folder.flightNames().contains("path-1"),
+            folder.flightNames().joined(separator: ", "))
+        if let path = try? FlightFile.decoded(from: Data(contentsOf: folder.flight("path-1"))) {
+            report.check(
+                "with time held still across them",
+                path.keys.count == 2 && path.keys[0].myr == path.keys[1].myr)
+        } else {
+            report.check("with time held still across them", false)
+        }
+
+        // Named by hand, put away.
+        flights.rename("path-1", to: "first dive")
+        report.check(
+            "a flight is renamed",
+            folder.flightNames().contains("first-dive") && !folder.flightNames().contains("path-1"),
+            folder.flightNames().joined(separator: ", "))
+        flights.rename("first-dive", to: "flight-1")
+        report.check(
+            "a name taken is refused", folder.flightNames().contains("first-dive"), flights.notice ?? "")
+        flights.delete("first-dive")
+        report.check("a flight is deleted", !folder.flightNames().contains("first-dive"))
+
+        // Drawn by the export, which Video… and the queue ask for.
+        guard let loaded = model.playedTake else {
+            report.check("the take is there to export", false)
+            return
+        }
+        do {
+            let export = try TakeExport(
+                take: loaded, look: model.lookFile, capturedRate: model.capturedRate, flight: file)
+            let video = FileManager.default.temporaryDirectory
+                .appendingPathComponent("qa-flight-\(UUID().uuidString).mp4")
+            defer { try? FileManager.default.removeItem(at: video) }
+            let made = try export.write(
+                to: video, width: 320, height: 180, framesPerSecond: 30, duration: 0.2)
+            let size = (try? FileManager.default.attributesOfItem(atPath: video.path)[.size] as? Int) ?? 0
+            report.check(
+                "the export draws the flight", made.frames == 6 && size > 0,
+                "\(made.frames) frames, \(size) bytes")
+        } catch {
+            report.check("the export draws the flight", false, "\(error)")
+        }
+        flights.reset()
+        if model.isFlying { model.toggleFlight() }
+        model.isPlaying = true
     }
 }

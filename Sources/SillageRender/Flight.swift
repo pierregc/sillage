@@ -428,17 +428,26 @@ public final class Flight {
             return (drawn, exposure)
         }
         let (eye, aim) = (point(\.eye, seconds, position), point(\.aim, seconds, position))
-        let next = keys[min(i + 1, keys.count - 1)]
-        let tangent = { (fov: Double) in log(tan(fov / 2)) }
-        let fov = 2 * atan(exp(eased(tangent(keys[i].fov), tangent(next.fov), u)))
+        let (roll, fov) = attitude(atSeconds: seconds)
         let forward = Self.normalised(aim - eye) ?? SIMD3(0, 1, 0)
-        let up = rolled(
-            up(at: seconds, forward: forward), forward: forward, by: eased(keys[i].roll, next.roll, u))
+        let up = rolled(up(at: seconds, forward: forward), forward: forward, by: roll)
         return (
             Camera(
                 eye: Self.float(eye), target: Self.float(aim), up: Self.float(up), fieldOfView: Float(fov),
                 near: near),
             exposure
+        )
+    }
+
+    /// The roll and the vertical field of view the keys give at `seconds`, each eased from key to
+    /// key. What a recorded flight's thinned keys are checked against (#298).
+    func attitude(atSeconds seconds: Double) -> (roll: Double, fov: Double) {
+        let (i, u) = segment(seconds)
+        let next = keys[min(i + 1, keys.count - 1)]
+        let tangent = { (fov: Double) in log(tan(fov / 2)) }
+        return (
+            eased(keys[i].roll, next.roll, u),
+            2 * atan(exp(eased(tangent(keys[i].fov), tangent(next.fov), u)))
         )
     }
 

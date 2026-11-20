@@ -248,7 +248,9 @@ final class SimulationModel: ObservableObject {
     /// release of a slider.
     static let previewBudget = 350_000
     private var playbackPositions: MTLBuffer?
-    private var playbackCenters: [SIMD3<Float>] = []
+    /// Where `advancePlayback` left the playhead, to tell its own moves from a scrub's.
+    private var playbackAfterAdvance = 0.0
+    private(set) var playbackCenters: [SIMD3<Float>] = []
     var playbackDisks: [DiskState] = []
     /// Empty for the tracer solver, which measures nothing of the kind.
     var solverDisks: [DiskState] {
@@ -339,7 +341,11 @@ final class SimulationModel: ObservableObject {
     @Published private(set) var sceneFolder: SceneFolder?
     /// The scene folder the take opened is the take of, by any way it was opened: what Video…
     /// exports, through the queue.
-    @Published private(set) var takeFolder: SceneFolder?
+    @Published private(set) var takeFolder: SceneFolder? {
+        didSet { flights.refresh() }
+    }
+    /// The flights recorded, played and exported over the take on the canvas (#298).
+    lazy var flights = FlightSession(model: self)
     /// On playback, draw through the file's camera plan rather than the orbit rig, so the
     /// picture is the one the render will make, in every mode.
     @Published var followsPlan = false
@@ -350,6 +356,7 @@ final class SimulationModel: ObservableObject {
     private var planPlayhead: PlanPlayhead?
     /// The renderer holds the light the director chose for the frame rather than the file's.
     private var drawsShotLook = false
+    private var lastShotLook: RenderLook?
     private var installingLook = false
 
     /// The number of diffraction arms, as a slider can hold it. `RenderLook` counts them as an
@@ -402,6 +409,7 @@ final class SimulationModel: ObservableObject {
         }
         if lookFile.look.fieldOfView != old.look.fieldOfView {
             camera.fieldOfView = lookFile.look.fieldOfView
+            flight.fieldOfView = lookFile.look.fieldOfView
         }
         if lookFile.rebuildsRenderer(from: old) {
             rebuildRenderer()
@@ -487,41 +495,99 @@ final class SimulationModel: ObservableObject {
     /// The shot the export draws at the playhead, in every mode (#177): the auto camera eased
     /// and the immersed director played from the first frame as the export replays them, the
     /// director's planned shots, and the light the immersed one modulates.
-    var planShot: ShotReplay.Shot? {
+    var planShot: ShotReplay.Shot? { planShot(atCaptured: capturedPlayhead) }
+
+    /// The same at any captured position, which a flight's look keys ask for in the order of the
+    /// take's time (#298).
+    func planShot(atCaptured position: Double) -> ShotReplay.Shot? {
         guard mode == .playback, let recording, recording.count >= 2 else { return nil }
         if planPlayhead?.take.recording !== recording {
             guard let take = playedTake else { return nil }
             planPlayhead = PlanPlayhead(take: take, capturedRate: capturedRate)
         }
         return planPlayhead?.shot(
-            lookFile, atCaptured: capturedPlayhead,
+            lookFile, atCaptured: position,
             aspect: Float(drawableSize.width / max(drawableSize.height, 1)))
     }
 
     var planCamera: Camera? { planShot?.camera }
 
     /// The rate the take on the canvas was captured at, which an export replays the plan at.
-    private var capturedRate: Int {
+    var capturedRate: Int {
         ((takeFolder ?? sceneFolder).flatMap { try? $0.capturedRate() }) ?? SceneFolder.Clip().fps
     }
 
     /// The immersed director modulates the light as it plays, and the export draws what it
     /// chose.
     private func applyShotLook() {
-        if followsPlan, !isFlying, let shot = planShot, shot.look != look {
-            renderer?.apply(shot.look)
+        var wanted: RenderLook?
+        if let shot = flights.playedShot {
+            // A flight on the canvas draws with its own key trims of the look (#298).
+            wanted = shot.look
+        } else if followsPlan, !isFlying, let shot = planShot, shot.look != look {
+            wanted = shot.look
+        }
+        // Near matter the frame is held under the exposure a flight's frames are (#298).
+        if liveExposure.stops > 0, mode == .playback, isFlying || flights.isPlaying {
+            wanted = InsideExposure.trimmed(wanted ?? look, stops: liveExposure.stops)
+        }
+        if let wanted {
+            if wanted != lastShotLook { renderer?.apply(wanted) }
+            lastShotLook = wanted
             drawsShotLook = true
         } else if drawsShotLook {
             renderer?.apply(look)
+            lastShotLook = nil
             drawsShotLook = false
         }
     }
+
+    /// The exposure trim the canvas holds while a camera of the pilot's is near matter, from the
+    /// frames it draws: a reading of one every few frames, and the trim eased towards what each
+    /// misses of the target (`InsideExposure.Live`).
+    private var liveExposure = InsideExposure.Live()
+    /// The trim now, in stops, and how many readings of the canvas it has been moved by.
+    var exposureTrim: Double { liveExposure.stops }
+    private(set) var exposureReadings = 0
+    private var meterFrames = 0
+    private var lastReading: CFTimeInterval?
+
+    /// The meter this frame is read by, when the trim wants a reading; it is also where the trim
+    /// goes back to nothing, away from matter or when nobody is flying.
+    private func meterForFrame(at now: CFTimeInterval) -> (@Sendable (Double) -> Void)? {
+        defer { lastReading = now }
+        let seconds = now - (lastReading ?? now)
+        guard mode == .playback, isFlying || flights.isPlaying, renderer?.inside != nil else {
+            liveExposure.relax(seconds: seconds)
+            return nil
+        }
+        let target = Double(flights.insideSettings.exposure)
+        guard target > 0 else {
+            liveExposure.relax(seconds: seconds)
+            return nil
+        }
+        meterFrames += 1
+        guard meterFrames % 3 == 0 else { return nil }
+        return { [weak self] mean in
+            Task { @MainActor in
+                guard let self else { return }
+                let at = CACurrentMediaTime()
+                self.liveExposure.update(
+                    mean: mean, target: target, seconds: at - (self.lastMean ?? at - 0.05))
+                self.lastMean = at
+                self.exposureReadings += 1
+            }
+        }
+    }
+
+    private var lastMean: CFTimeInterval?
 
     /// Pushes the whole look at both renderers. The preview is redrawn unconditionally because
     /// it draws on demand, and every field here changes what it shows.
     private func applyLook() {
         renderer?.apply(look)
         drawsShotLook = false
+        lastShotLook = nil
         previewRenderer?.apply(look)
         redrawPreview()
     }
@@ -724,6 +790,7 @@ final class SimulationModel: ObservableObject {
     }
 
     func returnToSetup() {
+        flights.reset()
         stopLiveStepping()
         // A launch may still be sampling. Retire it, or it lands after the user has left.
         preparation &+= 1
@@ -1001,6 +1068,7 @@ final class SimulationModel: ObservableObject {
     }
 
     private func installTake(_ loaded: RecordingFile.Loaded, expander: SnapshotExpander) {
+        flights.reset()
         failure = nil
         isPreparing = false
         solver = nil
@@ -1037,6 +1105,7 @@ final class SimulationModel: ObservableObject {
     /// Throws the capture away and starts a new one from where the run stands.
     func restartCapture() {
         guard solver != nil else { return }
+        flights.reset()
         stopLiveStepping()
         playbackPositions = nil
         expander = nil
@@ -1218,6 +1287,7 @@ final class SimulationModel: ObservableObject {
             renderer?.pacer = canvasPacer
             renderer?.apply(look)
             drawsShotLook = false
+            lastShotLook = nil
             renderer?.setGalaxyColours(lookFile.palette)
             // Due on the next frame rather than now: a replay's positions buffer is still empty
             // here, and lengths taken from it would hold until the next refresh.
@@ -1235,13 +1305,17 @@ final class SimulationModel: ObservableObject {
             recording.count >= 2
         else { return }
         let last = Double(recording.count - 1)
-        if isPlaying {
+        // Moved by anything but this function, a slider or Restart: a scrub, which a recorded
+        // flight cannot go through, since its time never jumps (#298).
+        var jumped = playbackPosition != playbackAfterAdvance
+        if isPlaying, !flights.drivesPlayhead {
             if let track = playbackTrack {
                 // Along the track (#311): the video's time advances at the playback speed, and
                 // the take is wherever the track puts it; at its end, back to the start.
                 let played =
                     track.played(atCaptured: recording.capturedPosition(atStored: playbackPosition))
                     + Double(playbackSpeed) / 60
+                if played >= track.length { jumped = true }
                 playbackPosition =
                     played >= track.length
                     ? 0 : recording.storedPosition(atCaptured: track.captured(atPlayed: played))
@@ -1249,10 +1323,15 @@ final class SimulationModel: ObservableObject {
                 // In captured frames, so a take that keeps one in several plays at the same pace
                 // as one that kept them all.
                 playbackPosition += Double(playbackSpeed) / 60 / Double(recording.interval)
-                if playbackPosition >= last { playbackPosition -= last }
+                if playbackPosition >= last {
+                    playbackPosition -= last
+                    jumped = true
+                }
             }
         }
         playbackPosition = min(max(playbackPosition, 0), last)
+        playbackAfterAdvance = playbackPosition
+        if jumped { flights.playheadJumped() }
 
         guard let blend = recording.blend(at: playbackPosition) else { return }
         let keys = (0..<4).map { Int(blend.keys[$0]) }
@@ -1286,6 +1365,59 @@ final class SimulationModel: ObservableObject {
         }
     }
 
+    /// Puts the playhead where a captured position is, for a flight that drives it (#298).
+    func setPlayhead(captured position: Double) {
+        guard let recording, recording.count >= 2 else { return }
+        playbackPosition = min(
+            max(recording.storedPosition(atCaptured: position), 0), Double(recording.count - 1))
+    }
+
+    /// How far the eye is from matter, in kiloparsecs, at the last frame the canvas drew from
+    /// inside (`Nearness`); nil when it was not measured.
+    private(set) var nearness: Double?
+    private var nearnessAt: (eye: SIMD3<Float>, playhead: Double, distance: Float)?
+    private var nearnessAge = 0
+
+    /// Past this, in kiloparsecs, a frame has nothing the inside of a galaxy changes: the near
+    /// field ends at 8, the slabs and the web's lace at 6 and 10.
+    static let insideReach: Float = 12
+
+    /// The canvas draws from inside a galaxy while a camera of the user's, free flight or a
+    /// flight, is near matter (#298), as the export draws a flight: the near plane at a parsec,
+    /// point stars, the dust slabs from the eye. Away from matter it draws as it always did.
+    private func applyInside(_ camera: Camera) {
+        guard let renderer else { return }
+        guard mode == .playback, isFlying || flights.isPlaying, let positions = playbackPositions else {
+            if renderer.inside != nil { renderer.inside = nil }
+            nearness = nil
+            nearnessAt = nil
+            return
+        }
+        // The distance to the nearest matter cannot change faster than the eye or the particles
+        // move: a frozen frame, and an eye that moved a twentieth of it, keep the last reading,
+        // and with time running one in three frames reads it, which costs 5 ms at 8 M.
+        var distance: Float
+        nearnessAge += 1
+        if let known = nearnessAt,
+            known.playhead == playbackPosition || nearnessAge < 3,
+            simd_length(camera.eye - known.eye) < known.distance * 0.05
+        {
+            distance = known.distance
+        } else {
+            distance = Nearness.distance(
+                from: camera.eye, to: UnsafeRawPointer(positions.contents()), count: drawnCount)
+            nearnessAt = (camera.eye, playbackPosition, distance)
+            nearnessAge = 0
+        }
+        nearness = Double(distance)
+        let settings = flights.insideSettings
+        if distance < Self.insideReach {
+            renderer.inside = InsideFrame(settings: settings, nearness: distance)
+        } else if renderer.inside != nil {
+            renderer.inside = nil
+        }
+    }
+
     /// One played-back frame, rendered offscreen: the same cursor step, the same blend and
     /// the same encode a displayed frame does, without a drawable.
     ///
@@ -1296,6 +1428,7 @@ final class SimulationModel: ObservableObject {
         guard mode == .playback, let renderer else { return nil }
         advancePlayback()
         applyShotLook()
+        applyInside(activeCamera)
         tickSmoothing()
         let centers =
             playbackCenters.isEmpty ? scene.galaxies.map(\.position) : playbackCenters
@@ -1363,6 +1496,8 @@ final class SimulationModel: ObservableObject {
         case .playback:
             advancePlayback()
             applyShotLook()
+            applyInside(activeCamera)
+            flights.sample()
         }
         tickSmoothing()
         // Where the galaxies were on the frame being shown, so the spiral pattern is painted
@@ -1381,7 +1516,9 @@ final class SimulationModel: ObservableObject {
                 scene: scene, centers: centers,
                 time: renderer.time,
                 strength: diskStrength, disks: disks))
-        renderer.present(camera: activeCamera, drawable: drawable)
+        renderer.present(
+            camera: activeCamera, drawable: drawable,
+            meter: mode == .playback ? meterForFrame(at: start) : nil)
         if renderer.lastGPUMilliseconds > 0 {
             gpuTimes.append(renderer.lastGPUMilliseconds)
             if gpuTimes.count > 2000 { gpuTimes.removeFirst() }
