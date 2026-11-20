@@ -467,6 +467,12 @@ axes and the export's camera, which is what keys are written from; `--arms <kpc,
 each disk is densest at those radii, an arm to fly into. Format, interpolation and a worked example
 in [flights](notes/flights.md).
 
+**Flying a flight in the app (#298).** Over a take of a scene, free flight (`F`) has Record (`R`),
+which keeps the camera and the playhead as a flight (a pause is a freeze, moving the playhead ends
+it), `K` for a key by hand, `[` and `]` for a step of the throttle down to 5 pc/s, and a banking
+toggle; the scene's flights are listed in the panel to play, rename or delete, and Video… offers
+them, as the queue's `--flight`. [flights](notes/flights.md#in-the-app) has the rest.
+
 **Inside a galaxy (#297).** A flight's camera comes within a parsec, and near matter its frames
 are drawn for it: nothing is cut at the near plane, a capped kernel does not flare, the near
 particles turn into point stars (128 each), the dust is ordered in depth from the eye, the exposure

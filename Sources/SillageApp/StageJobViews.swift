@@ -161,7 +161,10 @@ struct ExportSheet: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
                 ForEach(ExportChoice.allCases) { card($0) }
             }
+            if !flights.isEmpty { cameraSection }
             speedSection
+                .opacity(settings.flight == nil ? 1 : 0.4)
+                .allowsHitTesting(settings.flight == nil)
             advancedSection
             Divider()
             VStack(alignment: .leading, spacing: 4) {
@@ -201,6 +204,41 @@ struct ExportSheet: View {
     }
 
     static let linesShown = 8
+
+    /// The scene's flights, which a single scene's video may be drawn along (#298).
+    private var flights: [FlightListing] {
+        guard folders.count == 1, let folder = folders.first else { return [] }
+        return (quotes?.exports[folder.url.path]?.flights ?? []).filter { $0.seconds != nil }
+    }
+
+    /// Camera: the scene's own plan, or a flight, whose keys are the video's length and pace.
+    private var cameraSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Camera").foregroundStyle(Palette.secondary)
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 96), spacing: 8, alignment: .leading)],
+                    alignment: .leading, spacing: 8
+                ) {
+                    chip("The scene's", on: settings.flight == nil) { settings.flight = nil }
+                    ForEach(flights) { flight in
+                        chip(flight.name, on: settings.flight?.name == flight.name) {
+                            settings.flight = StageFlight(name: flight.name, seconds: flight.seconds ?? 0)
+                        }
+                    }
+                }
+            }
+            if let flight = settings.flight {
+                Text(
+                    String(
+                        format: "The video is the flight: %.0f s, with its own camera and time. "
+                            + "Speed does not apply; a flight's frames take longer to draw near matter.",
+                        flight.seconds)
+                )
+                .font(.caption).foregroundStyle(Palette.secondary)
+            }
+        }
+    }
 
     /// Speed: the take as it was, a constant speed, Auto, or a track file (#311). Drawn by hand
     /// like the cards, since the offscreen checks cannot draw a picker.
@@ -377,6 +415,7 @@ struct ExportSheet: View {
         if let duration = settings.duration { parts.append("duration \(duration) s") }
         if let fps = settings.framesPerSecond { parts.append("\(fps) frames/s") }
         if let look = settings.look { parts.append("style \(look.name)") }
+        if let flight = settings.flight { parts.append("flight \(flight.name)") }
         return parts.joined(separator: " · ")
     }
 

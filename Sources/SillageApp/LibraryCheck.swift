@@ -415,7 +415,11 @@ enum LibraryCheck {
                 && ExportedFile.names(of: "1080p-h264") == ("1080p", nil)
                 && ExportedFile.names(of: "1080p-gold-leaf-hevc") == ("1080p", "gold-leaf")
                 && ExportedFile.names(of: "1080p-2") == ("1080p", nil)
-                && ExportedFile.names(of: "montage").preset == nil)
+                && ExportedFile.names(of: "montage").preset == nil
+                && ExportedFile.flightExport(of: "first-dive-1080p-2")?.flight == "first-dive"
+                && ExportedFile.flightExport(of: "dive-4k-hevc")?.preset == "4k"
+                && ExportedFile.flightExport(of: "4k-aurora") == nil
+                && ExportedFile.flightExport(of: "montage") == nil)
         model.copyCaption(try found(files.first { $0.caption != nil }?.caption))
         check(
             "copying the caption puts its text on the pasteboard",
