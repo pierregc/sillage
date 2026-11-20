@@ -1,0 +1,218 @@
+{
+ "branch/nodust-y3/calm": {
+  "L50": 0.463,
+  "L99": 0.954,
+  "grain": 0.039,
+  "lit": 0.376,
+  "saturated": 0.0,
+  "shadow": 0.038,
+  "sky": 0.151
+ },
+ "branch/nodust-y3/passage": {
+  "L50": 0.499,
+  "L99": 0.973,
+  "grain": 0.042,
+  "lit": 0.45,
+  "saturated": 0.019,
+  "shadow": 0.091,
+  "sky": 0.151
+ },
+ "branch/nodust-y3/tails": {
+  "L50": 0.415,
+  "L99": 0.961,
+  "grain": 0.039,
+  "lit": 0.373,
+  "saturated": 0.001,
+  "shadow": 0.094,
+  "sky": 0.154
+ },
+ "branch/nodust-y3g06/calm": {
+  "L50": 0.469,
+  "L99": 0.955,
+  "grain": 0.045,
+  "lit": 0.378,
+  "saturated": 0.0,
+  "shadow": 0.035,
+  "sky": 0.151
+ },
+ "branch/nodust-y3g06/passage": {
+  "L50": 0.504,
+  "L99": 0.974,
+  "grain": 0.047,
+  "lit": 0.454,
+  "saturated": 0.02,
+  "shadow": 0.089,
+  "sky": 0.151
+ },
+ "branch/nodust-y3g06/tails": {
+  "L50": 0.418,
+  "L99": 0.962,
+  "grain": 0.045,
+  "lit": 0.378,
+  "saturated": 0.002,
+  "shadow": 0.092,
+  "sky": 0.154
+ },
+ "branch/nodust/calm": {
+  "L50": 0.463,
+  "L99": 0.954,
+  "grain": 0.069,
+  "lit": 0.375,
+  "saturated": 0.001,
+  "shadow": 0.042,
+  "sky": 0.151
+ },
+ "branch/nodust/passage": {
+  "L50": 0.5,
+  "L99": 0.974,
+  "grain": 0.071,
+  "lit": 0.446,
+  "saturated": 0.022,
+  "shadow": 0.097,
+  "sky": 0.151
+ },
+ "branch/nodust/tails": {
+  "L50": 0.415,
+  "L99": 0.962,
+  "grain": 0.07,
+  "lit": 0.368,
+  "saturated": 0.002,
+  "shadow": 0.1,
+  "sky": 0.154
+ },
+ "branch/photo/calm": {
+  "L50": 0.416,
+  "L99": 0.925,
+  "grain": 0.138,
+  "lit": 0.371,
+  "saturated": 0.156,
+  "shadow": 0.051,
+  "sky": 0.151
+ },
+ "branch/photo/passage": {
+  "L50": 0.474,
+  "L99": 0.911,
+  "grain": 0.108,
+  "lit": 0.445,
+  "saturated": 0.145,
+  "shadow": 0.039,
+  "sky": 0.151
+ },
+ "branch/photo/tails": {
+  "L50": 0.413,
+  "L99": 0.935,
+  "grain": 0.071,
+  "lit": 0.368,
+  "saturated": 0.002,
+  "shadow": 0.063,
+  "sky": 0.154
+ },
+ "branch/y3/calm": {
+  "L50": 0.417,
+  "L99": 0.924,
+  "grain": 0.122,
+  "lit": 0.372,
+  "saturated": 0.153,
+  "shadow": 0.049,
+  "sky": 0.151
+ },
+ "branch/y3/passage": {
+  "L50": 0.474,
+  "L99": 0.91,
+  "grain": 0.086,
+  "lit": 0.449,
+  "saturated": 0.14,
+  "shadow": 0.034,
+  "sky": 0.151
+ },
+ "branch/y3/tails": {
+  "L50": 0.412,
+  "L99": 0.933,
+  "grain": 0.04,
+  "lit": 0.372,
+  "saturated": 0.001,
+  "shadow": 0.053,
+  "sky": 0.154
+ },
+ "branch/y3g06/calm": {
+  "L50": 0.423,
+  "L99": 0.925,
+  "grain": 0.123,
+  "lit": 0.374,
+  "saturated": 0.154,
+  "shadow": 0.048,
+  "sky": 0.151
+ },
+ "branch/y3g06/passage": {
+  "L50": 0.48,
+  "L99": 0.912,
+  "grain": 0.088,
+  "lit": 0.452,
+  "saturated": 0.14,
+  "shadow": 0.034,
+  "sky": 0.151
+ },
+ "branch/y3g06/tails": {
+  "L50": 0.415,
+  "L99": 0.934,
+  "grain": 0.046,
+  "lit": 0.377,
+  "saturated": 0.002,
+  "shadow": 0.054,
+  "sky": 0.154
+ },
+ "branch/y3k3/calm": {
+  "L50": 0.417,
+  "L99": 0.924,
+  "grain": 0.12,
+  "lit": 0.372,
+  "saturated": 0.151,
+  "shadow": 0.049,
+  "sky": 0.151
+ },
+ "branch/y3k3/passage": {
+  "L50": 0.475,
+  "L99": 0.91,
+  "grain": 0.08,
+  "lit": 0.45,
+  "saturated": 0.137,
+  "shadow": 0.034,
+  "sky": 0.151
+ },
+ "branch/y3k3/tails": {
+  "L50": 0.412,
+  "L99": 0.933,
+  "grain": 0.037,
+  "lit": 0.372,
+  "saturated": 0.001,
+  "shadow": 0.052,
+  "sky": 0.154
+ },
+ "main/photo/calm": {
+  "L50": 0.416,
+  "L99": 0.925,
+  "grain": 0.138,
+  "lit": 0.371,
+  "saturated": 0.156,
+  "shadow": 0.051,
+  "sky": 0.151
+ },
+ "main/photo/passage": {
+  "L50": 0.474,
+  "L99": 0.911,
+  "grain": 0.108,
+  "lit": 0.445,
+  "saturated": 0.145,
+  "shadow": 0.039,
+  "sky": 0.151
+ },
+ "main/photo/tails": {
+  "L50": 0.413,
+  "L99": 0.935,
+  "grain": 0.071,
+  "lit": 0.368,
+  "saturated": 0.002,
+  "shadow": 0.063,
+  "sky": 0.154
+ }
+}
