@@ -386,7 +386,8 @@ Why that tolerance, from what is known to differ:
 
 Measured on the CPU target built on the Mac with Apple clang: **62.3 dB at 2 s and 60.2 dB at
 3.5 s**, the largest difference 8 and 9 levels, 0 and 0.011 % of the pixels over 8, against
-51.0 dB and 30 levels for `webb` outside. The tolerance keeps `webb`'s, 12 dB under what the CPU
+51.0 dB and 30 levels for `webb` outside; built on Linux in the workflow, 62.3 and 60.7 dB, 6
+and 9 levels. The tolerance keeps `webb`'s, 12 dB under what the CPU
 gives, for the GPU's own roundings. **The run on an NVIDIA GPU is owed to #283**: no frame has
 been drawn by `nvcc`'s code yet, the inside ones no more than the others, and the first box
 runs this check first thing.
