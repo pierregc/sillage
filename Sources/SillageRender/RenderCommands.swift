@@ -118,6 +118,19 @@ public enum RenderCommands {
         ],
         words: ["scene folder"], options: options(text: "at look take arms"))
 
+    static let match = CommandSpec(
+        "match",
+        summary: "Finds the moment and the view where a take overlaps a real picture best.",
+        usage: [
+            "usage: sillage-render match <scene folder> <picture.map.json> [--take <file>] [--at <myr>] "
+                + "[--within <myr>] [--view <elevation,azimuth,roll>] [--span <degrees>] "
+                + "[--kpc-across <kpc>] [--stars N] [--ceiling <decades>] [--measure <name>] [--fresh]"
+        ],
+        words: ["scene folder", "picture map"],
+        options: options(
+            flags: "fresh", text: "take view measure", whole: "stars",
+            number: "at within span kpc-across ceiling"))
+
     static let story = CommandSpec(
         "story",
         summary: "Judges the story of a scene, or of every scene of a batch, from its curves.",
@@ -161,6 +174,7 @@ public enum RenderCommands {
     /// `black-hole` read their own.
     public static let all: [CommandSpec] = [
         explore, hires, look, export, palettes, story, probeDisk, costs, event, pace, flight, fixtures,
+        match,
     ]
 
     /// Commands with a parser of their own: asked for help, they answer it.

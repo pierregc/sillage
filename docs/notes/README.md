@@ -75,6 +75,7 @@ session. Read the note for an area before changing it.
 - [Flying rather than orbiting](fly-camera.md): `FlyCamera`
 - [Flights](flights.md): camera paths for exports, written by hand or flown in the app and recorded, eye and aim on a spline against the video's time, anchors on galaxies, look keys, time frozen while the camera moves (#295, #298)
 - [Inside a galaxy](inside-a-galaxy.md): spike #296 and what #297 built from it for flights, the near plane, capped kernels, point stars, dust slabs from the eye, automatic exposure, motion blur and what they cost inside a disk at 8 M; and why two disks that cross cut each other in #297's flight (#353: the matter, not the drawing)
+- [A match that is measured](photo-match.md): a real picture reduced to its extended light, the take as a histogram of its stars, the score (isophotes against correlations), the search, the mirror, the floor an archetype gets on the Antennae and the Mice (#320)
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first
