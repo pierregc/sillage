@@ -1,0 +1,10 @@
+gpu.sh: lock held, waiting for other GPU jobs to end:
+92120 ./scripts/dev.sh check
+92386 ./scripts/dev.sh check
+93591 ./scripts/dev.sh check
+photo round 1: export     60 frames in 22.8 s, 2.6 frames a second, 0.09x real time, 12.1 MB
+y3 round 1: export     60 frames in 25.4 s, 2.4 frames a second, 0.08x real time, 11.4 MB
+y3g06 round 1: export     60 frames in 25.6 s, 2.3 frames a second, 0.08x real time, 11.6 MB
+photo round 2: export     60 frames in 23.3 s, 2.6 frames a second, 0.09x real time, 12.1 MB
+y3 round 2: export     60 frames in 27.6 s, 2.2 frames a second, 0.07x real time, 11.4 MB
+y3g06 round 2: export     60 frames in 28.5 s, 2.1 frames a second, 0.07x real time, 11.6 MB
