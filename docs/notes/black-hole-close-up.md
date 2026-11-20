@@ -273,6 +273,69 @@ A frame is about 50 ms of stepping and 140 to 190 ms of drawing. The videos and 
 the first return (t 729) and the settled disk (t 2979) from 10° and 35 r_s in both looks, are on
 the branch `assets/332-black-hole`, under `docs/spikes/black-hole-exports/`.
 
+## A camera that moves, and a cheaper second image (#333)
+
+**Tables over distances.** `HoleLensSet` keeps the tables at camera distances 1.1^n r_s apart,
+builds each the first time a camera comes near it, keeps the twelve last used (150 MB), and a
+camera between two reads both. What it blends is not α. The direct image blends its bend, α
+less the angle the point would show at without the hole, and adds back the straight angle at
+the camera's own distance: a point the camera passes by moves as it should, and only the small
+bend is interpolated. The images round the hole blend the light's impact parameter,
+b = r_o sin α / √(1 - 1/r_o), which hardly moves with the camera and is 3√3/2 on the shadow's
+edge whatever it is, so the photon ring stays on the edge. An image one table has and the other
+not fades in with the first one's share. Closer than 2 r_s the camera reads the tables at 2.
+
+Half way between two tables, against the table built there (256 × 256, 60 radii by 90 angles,
+leaving out points within a fifth of the camera's distance and on the axis):
+
+| camera | direct image: mean, worst | image 1 worst | image 2 worst | α blended instead, worst |
+| --- | --- | --- | --- | --- |
+| 4 r_s | 3.7e-4, 6.0e-3 rad | 1.6e-4 | 4.5e-6 | 3.5e-2 |
+| 9.4 | 1.5e-4, 2.5e-3 | 5.3e-5 | 1.4e-6 | 3.0e-2 |
+| 24 | 6.2e-5, 6.6e-4 | 1.5e-5 | 2.9e-7 | 2.6e-2 |
+| 70 | 2.3e-5, 2.2e-4 | 1.1e-5 | 4.5e-8 | 2.7e-2 |
+
+A pixel at 1080p and 45° is 7e-4 rad: the mean is a tenth of one, the worst few pixels at 4 r_s
+for points beside the camera. At a ratio of 1.2 the errors grow about four times, at 1.4 ten. The
+brightness of the further images is within 9 to 15 % near the axis, where it changes fastest.
+`HoleLensTests` hold at distances between tables (`HoleLensSetTests`).
+
+**The test clip.** The settled disk, time all but frozen, the camera flying from 200 to 20 r_s
+in 10 s at 10° and a quarter turn, exported in ProRes through a look whose camera has
+`toDistance`. Mean change frame to frame over the grey levels, 480 × 270: blended, the largest
+change of that change between neighbouring frames is 0.07 grey levels and no frame differs from
+its ten neighbours by more than 1 %; with the nearest table instead, 2.7 grey levels and 45 %,
+where the camera crosses from one table to the next. A flight from 60 to 4 r_s at 70° draws
+without a jump too (0.2), the ring opening round the camera as it comes in.
+
+**The further images, thinned.** Every tracer's image round the hole lands in the thin ring round
+the shadow, each a hundredth as bright as its direct image, and drawing them all cost twenty
+times the direct image on the settled disk, not three as the spike measured on a first frame.
+One tracer in k, k times brighter, makes the ring sparse dots wherever image 1 is not squeezed,
+close up above all (PSNR 26 dB at 12 r_s for k = 8). So the share follows the table: an image the
+table makes fainter than `thinning`, 0.5 by default, is drawn for that share of the tracers, as
+many times brighter, chosen by a hash of the tracer's index so that it does not flicker. Its
+splats then lie at least twice as close as the direct image's, and none is brighter than half a
+direct splat. Images that are not squeezed are all drawn.
+
+At 1080p supersampled twice, 6 M tracers, 35 r_s and 45°, alone on the GPU, median of 25 frames
+(the first frame of a still costs 4 to 18 ms more, building pipelines and touching the tables):
+
+| frame, elevation | one image | two, all tracers | two, thinned 0.5 | ratio |
+| --- | --- | --- | --- | --- |
+| settled (t 2979), 10° | 2.5 ms | 50 ms | 3.4 ms | 1.36 |
+| settled, 30° | 2.3 | 38 | 3.1 | 1.35 |
+| settled, 80° | 2.2 | 23 | 2.8 | 1.27 |
+| first return (t 729), 10° | 1.1-1.3 | 55 | 1.7-2.7 | 1.3-2.4 |
+| first return, 30° | 1.0-1.4 | 30 | 1.7-2.3 | 1.6-1.7 |
+| first return, 80° | 0.9-1.0 | 22-26 | 1.5-1.6 | 1.6-1.7 |
+
+On the first return the direct image is a millisecond, and the further images' half
+millisecond is the vertex pass over every tracer, culled after its table lookup and before its
+colour. Against all tracers, the thinned stills differ by 0.01 to 0.2 grey levels on the mean
+(PSNR 42 to 59 dB), 0.18 at 12 r_s with the photon ring and 0.15 at 5 r_s; 0.25 takes a third
+off those for a little more cost, 1 doubles them.
+
 ## Risks
 
 - **The gas was a sketch.** A grid over the orbit's plane, a pull towards the mean flow above a
@@ -281,9 +344,9 @@ the branch `assets/332-black-hole`, under `docs/spikes/black-hole-exports/`.
   disruptions ([A gas that can be trusted](black-hole-gas.md)); what still differs is there too.
   Sticky particles done properly (recommendation 10 of
   [What would give Sillage its dimension](next-dimension.md)) would serve both subjects.
-- **The table is per camera distance.** Half a second on the CPU each. An orbit is one table; a
-  camera that comes in or goes away needs one per distance, a few interpolated, or the table
-  built on the GPU.
+- **The tables are built on the CPU** (#333), half a second each as a camera first comes near
+  their distance: 24 between 200 and 20 r_s. An export pays it inside its frames; a camera
+  steered live would want them built ahead, on a background queue or from a cache on disk.
 - **Near the camera.** A splat's flux is spread over its size, which stops at 24 pixels, so a
   tracer near the camera is a dim blob rather than a flare (#296); a camera inside the disk was
   not tried.
@@ -310,7 +373,7 @@ What the stills suggest it would hold, in the order a viewer would see it:
    interpolated between a few.
 3. **The gas.** A better crossing than the grid's: three dimensions and a calibration against a
    published disruption (done, #334), or sticky particles shared with the galaxies.
-4. **The cheap second image**, drawn for a share of the tracers.
+4. **The cheap second image**, drawn for a share of the tracers (done, #333).
 5. **CUDA**, through the one kernel source.
 6. Later: a spinning hole, and the time the light takes round it.
 
