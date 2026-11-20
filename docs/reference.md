@@ -733,6 +733,18 @@ chaos, so hires stays at 3.5 and only exploration runs at 7
 ([the note](notes/doubled-step.md), #225). The 15 % fewer stars #225 saw at 7 were the curves
 losing the first step of every frame (#306).
 
+### Where the repository is found
+
+The app and `sillage-render` read `looks/`, `palettes/`, `references/telescope`, `library/` and
+`scripts/explore-batch.sh` from the repository, not from the path they were compiled from, so a
+build made in a worktree keeps working once the worktree is removed. The root is, in order,
+`SILLAGE_ROOT`; the one `dev.sh` writes into the app's `Info.plist` (`SillageRoot`) and into
+`sillage-root` beside `sillage-render`; then the checkout the sources were compiled from. When
+none of them holds a checkout, the CLI stops and the style editor shows what is missing and how
+to set `SILLAGE_ROOT`, instead of offering a short catalogue. A queue or a night runs
+`explore-batch.sh --bin PATH` with its own `sillage-render`, not the one built in the checkout the
+script sits in.
+
 ### Exploration batches
 
 ```bash

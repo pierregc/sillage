@@ -26,10 +26,8 @@ public enum NightCommand {
     }
 
     /// The repository's looks, which a recipe's style names.
-    public static var catalogue: [LookFile] {
-        LookCatalogue.load(
-            from: QueueRunner.exploreScript.deletingLastPathComponent().deletingLastPathComponent()
-                .appendingPathComponent("looks", isDirectory: true))
+    public static func catalogue() throws -> [LookFile] {
+        try LookCatalogue.fromRepository()
     }
 
     public static func main(
@@ -81,8 +79,10 @@ public enum NightCommand {
                 #if canImport(Darwin)
                     setvbuf(stdout, nil, _IOLBF, 0)
                 #endif
-                return NightRunner(folder: folder, executable: executable, catalogue: catalogue, say: say)
-                    .run()
+                return NightRunner(
+                    folder: folder, executable: executable, catalogue: try catalogue(), say: say
+                )
+                .run()
             }
             try submit(recipe: recipeURL, batch: batch, executable: executable, say: say)
             return 0
@@ -95,7 +95,8 @@ public enum NightCommand {
     /// A recipe this Mac can run.
     public static func checked(_ recipe: NightRecipe) throws -> NightRecipe {
         _ = try NightStyle.resolve(
-            recipe.style, pick: 0, seed: 0, catalogue: catalogue, references: TelescopeReference.repository)
+            recipe.style, pick: 0, seed: 0, catalogue: try catalogue(),
+            references: try TelescopeReference.fromRepository())
         let maximum = SceneFolder.maximumParticles()
         if let particles = recipe.hires.particles.value, particles > maximum {
             throw Failure.tooManyParticles(particles, maximum)

@@ -6,7 +6,7 @@ import Foundation
 /// stops it when it is cancelled.
 public final class QueueRunner: @unchecked Sendable {
     /// The command line a job runs, its executable first.
-    public typealias Command = (QueueJob) -> [String]
+    public typealias Command = (QueueJob) throws -> [String]
 
     public let store: QueueStore
     private let command: Command
@@ -51,17 +51,17 @@ public final class QueueRunner: @unchecked Sendable {
     public static func stages(executable: String) -> Command {
         { job in
             switch job.kind {
-            case .hires, .export: [executable, job.kind.rawValue, job.path] + job.options
-            case .night: [executable, "night"] + job.options + ["--out", job.path]
+            case .hires, .export: return [executable, job.kind.rawValue, job.path] + job.options
+            case .night: return [executable, "night"] + job.options + ["--out", job.path]
             case .explore:
-                ["/bin/bash", exploreScript.path, "--no-build", "--out", job.path] + job.options
+                return try ["/bin/bash", exploreScript().path, "--no-build", "--bin", executable]
+                    + ["--out", job.path] + job.options
             }
         }
     }
 
-    public static var exploreScript: URL {
-        URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent("scripts/explore-batch.sh")
+    public static func exploreScript() throws -> URL {
+        try RepositoryRoot.file("scripts/explore-batch.sh")
     }
 
     private enum Step {
@@ -116,8 +116,8 @@ public final class QueueRunner: @unchecked Sendable {
                         return .stop
                     }
                     let log = store.log(for: job.id)
-                    let line = command(job)
                     do {
+                        let line = try command(job)
                         let pid = try Spawn.child(line[0], Array(line.dropFirst()), log: log)
                         try queue.start(
                             job.id, pid: pid, pidStarted: ProcessProbe.started(pid), log: log.path,

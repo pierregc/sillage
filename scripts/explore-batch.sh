@@ -5,7 +5,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$ROOT/.build/dev"
+BIN_PATH="$ROOT/.build/dev/sillage-render"
+export SILLAGE_ROOT="$ROOT"
 LOOK="$ROOT/looks/raw.look.json"
 
 # Both measured by --benchmark on an M4 Max, see "Exploration batches" in docs/reference.md; run it
@@ -32,7 +33,7 @@ usage() {
     echo "usage: ${BASH_SOURCE[0]} [--scenes N] [--hours H] [--jobs N] [--seed S] [--out DIR]"
     echo "       [--per-galaxy N] [--span MYR | --steps N] [--dt-scale X] [--width W] [--height H]"
     echo "       [--frames N] [--fps N] [--settle N] [--galaxies MIN-MAX] [--only-archetypes A,B]"
-    echo "       [--pair-share X|off] [--plan] [-- explore options...]"
+    echo "       [--pair-share X|off] [--bin PATH] [--plan] [-- explore options...]"
     echo "       ${BASH_SOURCE[0]} --benchmark [--scenes N] [--seed S] [--per-galaxy N] [--span MYR]"
 }
 
@@ -73,6 +74,7 @@ while [ $# -gt 0 ]; do
         --only-archetypes) only_archetypes="$2"; shift 2 ;;
         --pair-share) pair_share="$2"; shift 2 ;;
         --benchmark)  benchmark=1; shift ;;
+        --bin)        BIN_PATH="$2"; build=0; shift 2 ;;
         --no-build)   build=0; shift ;;
         --quiet)      quiet=1; shift ;;
         --plan)       plan=1; shift ;;
@@ -83,7 +85,7 @@ while [ $# -gt 0 ]; do
 done
 
 say() { [ "$quiet" -eq 1 ] || echo "$@"; }
-render() { DYLD_LIBRARY_PATH="$BIN" "$BIN/sillage-render" "$@"; }
+render() { DYLD_LIBRARY_PATH="$(dirname "$BIN_PATH")" "$BIN_PATH" "$@"; }
 
 # The galaxy count and the time step of scene `n` at `particles` in all, from the generator
 # alone: the batch is replayed up to the index without a particle, in a few milliseconds.
