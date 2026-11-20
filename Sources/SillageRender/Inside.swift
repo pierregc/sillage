@@ -331,6 +331,69 @@ public enum InsideExposure {
         return sum / Double(max(rgba.count / 4, 1))
     }
 
+    /// The mean luminance of every `step`-th pixel of every `step`-th row of an 8-bit sRGB
+    /// picture, linearised, 0 to 1; `bgra` for a drawable's byte order. The canvas reads its frames
+    /// this way, a sixteenth of them (#298).
+    public static func meanLuminance(
+        pixels: UnsafeRawPointer, width: Int, height: Int, bytesPerRow: Int, bgra: Bool, step: Int
+    ) -> Double {
+        var linear = [Double](repeating: 0, count: 256)
+        for level in 0..<256 {
+            let c = Double(level) / 255
+            linear[level] = c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        let step = max(step, 1)
+        let (red, blue) = bgra ? (2, 0) : (0, 2)
+        var (sum, count) = (0.0, 0)
+        for y in Swift.stride(from: 0, to: height, by: step) {
+            let row = pixels.advanced(by: y * bytesPerRow)
+            for x in Swift.stride(from: 0, to: width, by: step) {
+                let p = row.advanced(by: x * 4)
+                sum +=
+                    0.2126 * linear[Int(p.load(fromByteOffset: red, as: UInt8.self))]
+                    + 0.7152 * linear[Int(p.load(fromByteOffset: 1, as: UInt8.self))]
+                    + 0.0722 * linear[Int(p.load(fromByteOffset: blue, as: UInt8.self))]
+                count += 1
+            }
+        }
+        return count > 0 ? sum / Double(count) : 0
+    }
+
+    /// The trim a canvas holds while a camera of the pilot's is near matter (#298): the frames
+    /// are not solved along the whole flight as an export's are, so each reading of the frame
+    /// moves the trim by what it misses of the target, a little more than the miss itself (the
+    /// mean falls by less than a stop for a stop of trim), eased, never under 0 and never
+    /// past `deepest`.
+    public struct Live: Sendable, Equatable {
+        /// Seconds the trim takes to follow most of the way.
+        public static let ease = 0.25
+        /// The miss, in stops, under which a reading is left alone.
+        public static let deadband = log2(1 + InsideExposure.tolerance)
+        public static let gain = 1.25
+
+        public private(set) var stops = 0.0
+
+        public init() {}
+
+        /// The frame had `mean` luminance, drawn at the trim held, `seconds` after the last reading.
+        public mutating func update(mean: Double, target: Double, seconds: Double) {
+            guard target > 0, mean.isFinite else { return }
+            let miss = log2(max(mean, 1e-6) / target)
+            guard abs(miss) > Self.deadband else { return }
+            let wanted = min(max(stops + miss * Self.gain, 0), InsideExposure.deepest)
+            stops += (wanted - stops) * (1 - exp(-max(seconds, 0) / Self.ease))
+            if stops < 1e-3 { stops = 0 }
+        }
+
+        /// Away from matter the trim goes back to nothing, as the photograph is left alone.
+        public mutating func relax(seconds: Double) {
+            stops *= exp(-max(seconds, 0) / Self.ease)
+            if stops < 1e-3 { stops = 0 }
+        }
+
+        public mutating func reset() { stops = 0 }
+    }
+
     /// The trim that brings the frame's mean luminance down to `target`: 0 when it is under
     /// already. `draw` gives the mean at a trim; `guess` is the trim of the moment before, which
     /// is usually within a draw of this one's.

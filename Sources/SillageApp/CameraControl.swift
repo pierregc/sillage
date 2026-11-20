@@ -12,6 +12,7 @@ extension SimulationModel {
     /// touched the camera recently — then it is theirs, and the director takes it back once
     /// they have stopped.
     var activeCamera: Camera {
+        if let shot = flights.playedShot { return shot.camera }
         if contemplating, !cameraIsManual { return director.camera }
         if followsPlan, !isFlying, let planned = planCamera { return planned }
         return isFlying ? flight.camera : camera.camera
@@ -24,6 +25,7 @@ extension SimulationModel {
     /// A drag on the canvas: the flight's aim, the plan's angles, or the orbit rig. The
     /// director chooses its own angles, so a drag leaves its plan alone.
     func drag(_ dx: CGFloat, _ dy: CGFloat) {
+        flights.takeOver()
         takeCamera()
         if isFlying {
             flight.look(deltaYaw: Float(dx) * 0.005, deltaPitch: Float(-dy) * 0.005)
@@ -39,10 +41,12 @@ extension SimulationModel {
     /// The wheel: the flight's throttle, the plan's zoom, the director's shots included, or the
     /// rig's distance.
     func scroll(_ dy: CGFloat) {
+        flights.takeOver()
         takeCamera()
         // In flight the wheel is the throttle: there is no distance to a target to change.
         if isFlying {
             flight.changeSpeed(factor: Float(1 - dy * 0.02))
+            flights.speedChanged()
         } else if steersPlan {
             lookFile.camera = lookFile.camera.zoomed(by: exp(Float(dy) * 0.01))
         } else {
@@ -81,13 +85,20 @@ extension SimulationModel {
 
     /// Swaps rigs without the view jumping: each takes up where the other left off.
     func toggleFlight() {
+        flights.takeOver()
         if isFlying {
+            // A recording is of the camera in flight: leaving it ends it.
+            flights.stopRecording()
             flight.handBack(&camera)
+        } else if followsPlan, mode == .playback, let planned = planCamera {
+            // What the canvas shows is the plan's camera, not the rig's.
+            flight.adopt(planned)
         } else {
             flight.adopt(camera)
         }
         isFlying.toggle()
         lastDrawTime = nil
+        if isFlying { renderer?.prepareInside() }
     }
 
     /// One frame of held-key flight. Reads the keys the canvas is holding rather than acting
@@ -95,6 +106,11 @@ extension SimulationModel {
     func flyOneFrame(_ view: MTKView, seconds: Float) {
         guard let canvas = view as? CanvasView else { return }
         let held = canvas.held
+        // A flight on the canvas is the pilot's the moment a movement key is pressed.
+        if flights.isPlaying, held.contains(where: CanvasView.Key.movement.contains) {
+            flights.takeOver()
+        }
+        flights.advance(seconds: Double(seconds))
         // In contemplation the movement keys are the way in: pressing one takes the camera
         // from the director rather than needing a mode to be turned on first.
         if contemplating, !held.isEmpty, !isFlying,
@@ -106,6 +122,11 @@ extension SimulationModel {
         }
         guard isFlying else { return }
         if !held.isEmpty { takeCamera() }
+        flight.banking = flights.banking ? FlightSession.bankingStrength : 0
+        // A camera flown through a take's inside takes a parsec for its near plane, and aims
+        // at the matter it looks towards, as an export's does, so the dust is ordered there.
+        flight.near = mode == .playback ? Float(FlightFile.near) : 1
+        if mode == .playback { flight.aimDistance = aimDistance() }
         func axis(_ positive: UInt16, _ negative: UInt16) -> Float {
             (held.contains(positive) ? 1 : 0) - (held.contains(negative) ? 1 : 0)
         }
@@ -116,12 +137,21 @@ extension SimulationModel {
             axis(CanvasView.Key.space, CanvasView.Key.c)
                 + axis(CanvasView.Key.e, CanvasView.Key.q))
         demand.turn = SIMD2<Float>(
-            axis(CanvasView.Key.left, CanvasView.Key.right) * 1.4,
+            axis(CanvasView.Key.right, CanvasView.Key.left) * 1.4,
             axis(CanvasView.Key.up, CanvasView.Key.down) * 1.4)
         let modifiers = canvas.modifiers
         if modifiers.contains(.shift) { demand.boost = 5 }
         if modifiers.contains(.control) { demand.boost = 0.2 }
         flight.advance(demand, seconds: seconds)
+    }
+
+    /// Kiloparsecs from the eye to the nearest galaxy's centre, held to what the aim point can
+    /// be: the dust's depth slabs are centred on it.
+    private func aimDistance() -> Float {
+        guard let nearest = playbackCenters.map({ simd_length($0 - flight.position) }).min() else {
+            return 1
+        }
+        return min(max(nearest, 0.01), 1000)
     }
 
     func frameCamera() {

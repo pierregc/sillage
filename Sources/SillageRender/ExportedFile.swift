@@ -10,6 +10,8 @@ public struct ExportedFile: Sendable, Equatable, Identifiable {
     public var preset: String?
     /// The look in the file name, when the name carries one.
     public var style: String?
+    /// The flight a video was drawn along, when the name says (`dive-1080p`).
+    public var flight: String?
     /// `H.264`, `HEVC`, `ProRes`, `WebP` or `GIF`.
     public var codec: String
     /// `1080p`, `4K`, or the pixels when the size has no name.
@@ -47,9 +49,15 @@ public struct ExportedFile: Sendable, Equatable, Identifiable {
 
     public static func read(_ url: URL, caption: URL? = nil) async -> ExportedFile {
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-        let (preset, style) = names(of: url.deletingPathExtension().lastPathComponent)
+        let stem = url.deletingPathExtension().lastPathComponent
+        let named = names(of: stem)
+        var preset = named.preset
+        var flight: String?
+        if preset == nil, let flown = flightExport(of: stem) {
+            (preset, flight) = (flown.preset, flown.flight)
+        }
         var file = ExportedFile(
-            url: url, preset: preset, style: style,
+            url: url, preset: preset, style: named.style, flight: flight,
             codec: url.pathExtension.lowercased() == "mov" ? "ProRes" : "",
             size: nil, seconds: nil, bytes: (attributes?[.size] as? Int) ?? 0,
             date: (attributes?[.modificationDate] as? Date) ?? .distantPast, caption: caption)
@@ -89,6 +97,16 @@ public struct ExportedFile: Sendable, Equatable, Identifiable {
         if let last = parts.last, VideoCodec(rawValue: last) != nil { parts.removeLast() }
         if let last = parts.last, Int(last) != nil { parts.removeLast() }
         return (first, parts.isEmpty ? nil : parts.joined(separator: "-"))
+    }
+
+    /// `dive-1080p` is a flight's video, its name and then its preset, as `export --flight` and the
+    /// export sheet name it (#298); a codec or a number may follow.
+    public static func flightExport(of stem: String) -> (flight: String, preset: String)? {
+        var parts = stem.split(separator: "-").map(String.init)
+        if let last = parts.last, VideoCodec(rawValue: last) != nil { parts.removeLast() }
+        if let last = parts.last, Int(last) != nil { parts.removeLast() }
+        guard parts.count >= 2, let preset = parts.last, VideoPreset.named(preset) != nil else { return nil }
+        return (parts.dropLast().joined(separator: "-"), preset)
     }
 
     static func sizeName(width: Int, height: Int) -> String {

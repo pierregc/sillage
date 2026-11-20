@@ -795,17 +795,27 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         export.overlay = try folder.overlayRequest(look: look, asked: option("overlay"))
     }
     let start = try value("start") ?? 0
-    // `--flight-keys <dir>`: the frame at every key of the flight as a PNG, and no video.
+    // `--flight-keys <dir>`: the frame at every key of the flight as a PNG, and no video;
+    // `--flight-at <s,...>` draws those seconds of the flight instead of its keys.
     if let directory = option("flight-keys") {
         guard flight != nil else {
             throw SceneFolder.ExportError.badValue("flight-keys", "it goes with --flight")
+        }
+        let moments = try option("flight-at").map { text in
+            try text.split(separator: ",").map { part in
+                guard let seconds = Double(part), seconds >= 0 else {
+                    throw SceneFolder.ExportError.badValue("flight-at", text)
+                }
+                return seconds
+            }
         }
         let width = Int(try value("width") ?? Double(preset.width))
         let height = Int(try value("height") ?? Double(preset.height))
         let out = URL(fileURLWithPath: directory, isDirectory: true)
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         let started = Date()
-        for (index, key) in try export.flightKeys(width: width, height: height).enumerated() {
+        let keys = try export.flightKeys(width: width, height: height, at: moments)
+        for (index, key) in keys.enumerated() {
             let url = out.appendingPathComponent(String(format: "key-%02d-%06.2fs.png", index, key.seconds))
             try PNGWriter.write(
                 PNGWriter.image(key.rgba, width: width, height: height), maximumWidth: nil, to: url)

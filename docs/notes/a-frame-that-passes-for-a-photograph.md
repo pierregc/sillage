@@ -30,7 +30,7 @@ is a look, `looks/photograph.look.json`.
 ## The board
 
 The twelve Hubble and Webb images of [What Hubble and Webb pictures are made of](telescope-colour.md)
-are the reference for colour, with their credits there. `scripts/telescope-colours.py fetch` now
+are the reference for colour, with their credits there. `scripts/spikes/telescope-colours.py fetch` now
 gets a 403 from `cdn.esahubble.org` through Python's `urllib`; `curl` on the same URLs works.
 
 An 8 M take has about the resolution of a deep photograph from the ground, so three of those are

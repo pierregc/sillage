@@ -79,8 +79,6 @@ public struct NightPage: Sendable, Equatable {
         public var stopAfterAsked = false
         public var stoppingNow = false
         public var canSkip = false
-
-        public var canSteer: Bool { job != nil }
     }
 
     public var id: String

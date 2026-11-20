@@ -91,19 +91,6 @@ public enum DiskProbe {
         }
     }
 
-    public static func withParticles<T>(
-        positions: [SIMD3<Float>], velocities: [SIMD3<Float>], component: [UInt32],
-        _ body: (Particles) throws -> T
-    ) rethrows -> T {
-        try positions.withUnsafeBufferPointer { p in
-            try velocities.withUnsafeBufferPointer { v in
-                try component.withUnsafeBufferPointer { c in
-                    try body(Particles(positions: p, velocities: v, component: c))
-                }
-            }
-        }
-    }
-
     /// The disk's own frame: its nucleus, the bulk motion of the material around it, the axis
     /// its material turns about, and in-plane axes carried over from the natal ones so the
     /// frame never rolls about the axis on its own (`DiskFrame.planeAxes`). `v` is `axis x u`,

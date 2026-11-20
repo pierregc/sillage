@@ -97,6 +97,19 @@ public enum ExportSpeed: Sendable, Equatable {
     }
 }
 
+/// A camera path an export draws instead of the look's camera plan (#298): one of the scene's
+/// `flights/`.
+public struct StageFlight: Sendable, Equatable, Hashable {
+    public var name: String
+    /// How long the flight is, which is how long the video is.
+    public var seconds: Double
+
+    public init(name: String, seconds: Double) {
+        self.name = name
+        self.seconds = seconds
+    }
+}
+
 /// Advanced: what every ticked card shares. Absent, the stage's own default.
 public struct ExportSettings: Sendable, Equatable {
     public var codec: VideoCodec = .hevc
@@ -105,12 +118,15 @@ public struct ExportSettings: Sendable, Equatable {
     public var framesPerSecond: Int?
     public var look: StageLook?
     public var speed = ExportSpeed.plain
+    /// A flight keeps its own time, so a speed goes with none.
+    public var flight: StageFlight?
 
     public init() {}
 
     /// Nothing but the codec set: such an export takes its file back once the take is redone.
     var isPlain: Bool {
         start == nil && duration == nil && framesPerSecond == nil && look == nil && speed == .plain
+            && flight == nil
     }
 }
 
@@ -138,10 +154,13 @@ public struct ExportFolderState: Sendable, Equatable {
     public var files: [String: Date]
     /// When the scene's look last changed.
     public var lookChanged: Date?
+    /// The scene's flights, which an export may draw (#298).
+    public var flights: [FlightListing]
 
-    public init(files: [String: Date] = [:], lookChanged: Date? = nil) {
+    public init(files: [String: Date] = [:], lookChanged: Date? = nil, flights: [FlightListing] = []) {
         self.files = files
         self.lookChanged = lookChanged
+        self.flights = flights
     }
 
     public static func read(_ folder: SceneFolder) -> ExportFolderState {
@@ -154,7 +173,8 @@ public struct ExportFolderState: Sendable, Equatable {
         for name in names where !name.hasPrefix(".") {
             files[name] = date(folder.exports.appendingPathComponent(name).path)
         }
-        return ExportFolderState(files: files, lookChanged: date(folder.look.path))
+        return ExportFolderState(
+            files: files, lookChanged: date(folder.look.path), flights: folder.flightListings())
     }
 }
 
@@ -245,6 +265,17 @@ public enum StageJobs {
         return best
     }
 
+    /// What a flight's frames cost beyond the export's own (#298): measured on #297's demo flight,
+    /// an 8 M take, 2 521 frames in 1080p in 34 minutes, 0.8 s a frame, where a plain frame costs
+    /// a few hundredths. Near matter a frame is averaged from several renders, so this is a
+    /// forecast to the half, scaled by the picture's pixels.
+    public static let flightSecondsPerFrame1080p = 0.8
+
+    public static func flightSeconds(preset: VideoPreset, frames: Int) -> Double {
+        flightSecondsPerFrame1080p * Double(preset.width * preset.height) / (1920 * 1080)
+            * Double(frames)
+    }
+
     public static func export(
         _ choice: ExportChoice, _ settings: ExportSettings, folder: SceneFolder,
         state: ExportFolderState, cost: CostModel, queue: JobQueue
@@ -268,11 +299,16 @@ public enum StageJobs {
             stem = [preset.name]
             ext = codec.fileExtension
         }
+        if let flight = settings.flight {
+            // The file `export --flight` names without `--out`: `<flight>-<preset>`.
+            options += ["--flight", flight.name]
+            stem.insert(flight.name, at: 0)
+        }
         if let look = settings.look {
             options += ["--look", look.file.path]
             stem.append(look.name)
         }
-        if let speed = settings.speed.argument, let name = settings.speed.stem {
+        if settings.flight == nil, let speed = settings.speed.argument, let name = settings.speed.stem {
             options += ["--speed", speed]
             stem.append(name)
         }

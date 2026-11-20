@@ -23,29 +23,3 @@ extension Solver {
         for _ in 0..<count { step() }
     }
 }
-
-public enum SolverFactory {
-    public static func make(_ scene: SceneConfig) throws -> any Solver {
-        switch scene.solver {
-        case .restricted:
-            return RestrictedSolver(scene: scene)
-        case .barnesHut:
-            // Needs a Metal device, so it is built through SillageRender instead.
-            throw SillageError.solverNeedsGPU(.barnesHut)
-        }
-    }
-}
-
-public enum SillageError: Error, CustomStringConvertible {
-    case solverNeedsGPU(SolverKind)
-    case emptyScene
-
-    public var description: String {
-        switch self {
-        case .solverNeedsGPU(let kind):
-            "Solver \(kind.rawValue) runs on the GPU, build it through SillageRender"
-        case .emptyScene:
-            "Scene contains no galaxies"
-        }
-    }
-}

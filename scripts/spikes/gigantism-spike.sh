@@ -2,11 +2,11 @@
 # The grain spike (docs/notes/gigantism.md): look variants on a scene's hires take, grain
 # against particle count at t = 0, and the render cost of each, in one folder.
 #
-#     scripts/gigantism-spike.sh <scene folder> <out dir> [frames]
+#     scripts/spikes/gigantism-spike.sh <scene folder> <out dir> [frames]
 #
 # frames: captured frame numbers for the stills, comma separated; left out, the key frames.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCENE="$1"
 OUT="$2"
 FRAMES="${3:-}"
