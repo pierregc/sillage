@@ -675,7 +675,7 @@ enum Shaders {
         // the settings give, and past `nearFrom` more as the square of the size, as a real
         // field shows more of its faint stars the nearer they are, up to `nearStars`.
         SHARED float insideStarTotal(float raw, constant InsideUniforms &i) {
-            float grown = raw > i.nearFrom ? (raw * raw) / (i.nearFrom * i.nearFrom) : 1.0f;
+            float grown = i.nearFrom > 0.0f && raw > i.nearFrom ? (raw * raw) / (i.nearFrom * i.nearFrom) : 1.0f;
             return min(float(i.starCount) * grown, max(i.nearStars, float(i.starCount)));
         }
 
@@ -694,6 +694,8 @@ enum Shaders {
 
         // The share of a particle's light its drawn stars carry, which its splat gives up.
         SHARED float insideStarLight(float starred, float raw, constant InsideUniforms &i) {
+            // The CUDA engine reads this on every frame, most of them with no near field at all.
+            if (starred <= 0.0f) { return 0.0f; }
             float total = insideStarTotal(raw, i);
             return starred * insideShareSum(insideStarsDrawn(starred, total), i.starShareExponent)
                 * insideShareNorm(total, i);
@@ -1300,7 +1302,7 @@ enum Shaders {
             Star out;
             out.position = float4((from + 0.5f * moved / extent) * star.position.w, star.position.zw);
             // The square holds every pixel the star's box touches, turned along its streak.
-            out.pointSize = drawn > 0.0f ? drawn + 2.0f * size + 1.0f : size + 1.0f;
+            out.pointSize = drawn > 0.0f ? drawn + 2.0f * size + 1.5f : size + 1.5f;
             // All of the light `splat` gives a profile of this size, which the pixels then share.
             out.color = half3(float3(star.color) * (0.1736f * size * size));
             out.slab = star.slab;

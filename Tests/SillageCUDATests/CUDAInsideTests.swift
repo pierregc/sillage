@@ -350,6 +350,6 @@ struct CUDAInsideTests {
         #expect(measure.psnr >= tolerance.psnr, "\(measure)")
         #expect(measure.largest <= tolerance.largest, "\(measure)")
         #expect(measure.overEight <= tolerance.overEight, "\(measure)")
-        #expect(abs(measure.meanA - measure.meanB) < 0.1, "the exposure moved")
+        #expect(abs(measure.meanA - measure.meanB) < tolerance.mean, "the exposure moved")
     }
 }

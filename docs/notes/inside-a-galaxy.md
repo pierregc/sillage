@@ -422,7 +422,10 @@ the GPU alone (ms a render):
 | 4K, after | 425 | 353 | 335 | 277 | 240 | 219 | 31.7 M |
 
 Half as many stars again, at the same cost in 1080p and a tenth more in 4K: the points are
-smaller. Frame 700 is unchanged to the eye: its particles are far and mostly splats. Tried and
+smaller. Frames 1000 to 1200 as a video, 8 renders a frame at most (1 608 in all): 223 s before
+and 238 s after in 1080p, 436 and 474 s in 4K, the after runs sharing the Mac with tests, 32.1 M
+stars a render at the most. Stills, crops and the 1080p clips are on the branch
+`assets/357-inside-stars` under `docs/spikes/inside-357/`. Frame 700 is unchanged to the eye: its particles are far and mostly splats. Tried and
 left: growing from a tenth of the frame (78 M stars, a milky carpet), fewer stars a far particle
 (64 or 32, with a cap of 6: the light goes back to fewer, brighter stars and the halos return).
 
