@@ -1428,7 +1428,9 @@ Mac only.
 three reference frames of `Tests/Fixtures/engines/frames` with the libraries the command was
 linked with, and holds them to what #281 holds the CPU target to: the tree's order, cells,
 masses, moments, frame and levels to the bit, its lengths within 1e-6 and its spacing links to
-the bit; the frames to 60 dB (`red-vs-cyan`) and 48 dB (`ember`, `webb`) of Metal's. It writes
+the bit; the frames to 60 dB (`red-vs-cyan`) and 48 dB (`ember`, `webb`) of Metal's, and two frames of a
+flight from inside the take's disk to 48 dB as well (#369,
+[one-kernel-source.md](one-kernel-source.md#the-frames-from-inside-a-galaxy-369)). It writes
 the outcome to `engine-check.json` beside the libraries, with the engine (`cuda-cpu` or
 `cuda-gpu`), the device and a digest of `libSillageCore.so`, `libSillageRender.so` and
 `libSillageCUDA.so`. **`sillage-cuda hires` refuses to start** without a record that passed, or

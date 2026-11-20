@@ -82,8 +82,12 @@ Each `<look>.rgba` is that frame as `export` draws it with `<look>.look.json`: 2
 | `widths` | `red-vs-cyan` with a kernel width for each population (#339) |
 
 `inside.flight.json` is a flight from the look's camera into that take's disk (#347), written
-by hand. `sillage-cuda still --flight` draws its frames; Metal's are not among the reference
-outputs yet.
+by hand. `inside-2.00s.rgba` and `inside-3.50s.rgba` (#369) are two moments of it in `webb`,
+2.3 kpc and 194 pc from the nearest matter: 128 x 72 pixels, RGBA as above, 36,864 bytes each.
+Each is the video's frame at 30 a second (60 and 105), three and four renders, with point stars,
+at its own automatic exposure, the grain set to that frame: what
+`TakeExport.flightStill` draws on Metal and `CUDATakeStills.flightStill` on CUDA. The manifest
+lists them under `frames.inside`, with the flight, the look, the size and each frame's index.
 
 ## `raster/`: Metal's rasteriser on one point
 

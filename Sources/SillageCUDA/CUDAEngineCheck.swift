@@ -4,7 +4,7 @@ import SillageRender
 
 /// Whether this build of the CUDA engine gives the reference outputs (#281), checked by the
 /// engine itself before a full pass may run on it (#278). `sillage-cuda check` builds the
-/// fixture's tree and draws the four reference frames of `Tests/Fixtures/engines` with the
+/// fixture's tree and draws the reference frames of `Tests/Fixtures/engines` with the
 /// libraries it was linked with, on the GPU or on the CPU target, and records the outcome
 /// beside them with a digest of those libraries; `sillage-cuda hires` refuses to start without
 /// a record that passed for the same libraries and the same engine. The walk fixture is held
@@ -92,8 +92,92 @@ public enum CUDAEngineCheck {
                 return (passed, "\(measure)")
             }
         }
+        do {
+            for image in try insideImages(fixtures) {
+                attempt(String(format: "inside %.2f s", image.seconds)) {
+                    try inside(image, context: context, fixtures: fixtures, threads: threads)
+                }
+            }
+        } catch {
+            items.append(Item(name: "inside", passed: false, detail: "\(error)"))
+        }
         return Record(
             engine: engine, device: context.name, build: buildDigest(), date: Date(), items: items)
+    }
+
+    /// The frames of a flight drawn from inside the take's disk (#369), held as `webb`, the look
+    /// they are drawn in: the CPU target gives 60 to 62 dB, 9 levels at most, and the margin is
+    /// the GPU's own roundings (docs/notes/one-kernel-source.md).
+    public static let insideTolerance = (psnr: 48.0, largest: 40, overEight: 0.003)
+
+    struct InsideImage: Decodable {
+        var seconds: Double
+        var frame: Int
+        var file: String
+    }
+
+    struct InsideSection: Decodable {
+        var flight: String
+        var look: String
+        var framesPerSecond: Int
+        var width: Int
+        var height: Int
+        var images: [InsideImage]
+    }
+
+    private struct Manifest: Decodable {
+        struct Frames: Decodable {
+            var take: String
+            var inside: InsideSection
+        }
+
+        var frames: Frames
+    }
+
+    static func insideSection(_ fixtures: URL) throws -> (take: String, inside: InsideSection) {
+        let manifest = try JSONDecoder().decode(
+            Manifest.self, from: Data(contentsOf: fixtures.appendingPathComponent("manifest.json")))
+        return (manifest.frames.take, manifest.frames.inside)
+    }
+
+    static func insideImages(_ fixtures: URL) throws -> [InsideImage] {
+        try insideSection(fixtures).inside.images
+    }
+
+    /// One frame of the flight drawn by this engine and measured against Metal's.
+    public static func insideMeasure(
+        seconds: Double, context: CUDAContext, fixtures: URL,
+        threads: Int = ProcessInfo.processInfo.activeProcessorCount
+    ) throws -> (drawn: [UInt8], measure: CUDAStillChecks.Measure) {
+        let (take, section) = try insideSection(fixtures)
+        guard let image = section.images.first(where: { $0.seconds == seconds }) else {
+            throw Refusal(description: "no inside frame at \(seconds) s in the fixtures")
+        }
+        func url(_ path: String) -> URL { fixtures.appendingPathComponent(path) }
+        let drawing = try CUDATakeStills(
+            context: context, take: RecordingFile.read(from: url(take)),
+            look: LookFile.decoded(from: Data(contentsOf: url(section.look))),
+            capturedRate: section.framesPerSecond, width: section.width, height: section.height,
+            flight: FlightFile.decoded(from: Data(contentsOf: url(section.flight))))
+        let drawn = [UInt8](
+            try drawing.flightStill(
+                atSeconds: image.seconds, frame: image.frame,
+                interval: 1 / Double(section.framesPerSecond), format: .rgb, threads: threads))
+        let reference = [UInt8](try Data(contentsOf: url(image.file)))
+        return (drawn, CUDAStillChecks.measure(drawn, channels: 3, reference, channels: 4))
+    }
+
+    static func inside(_ image: InsideImage, context: CUDAContext, fixtures: URL, threads: Int) throws -> (
+        Bool, String
+    ) {
+        let measure = try insideMeasure(
+            seconds: image.seconds, context: context, fixtures: fixtures, threads: threads
+        ).measure
+        let tolerance = insideTolerance
+        let passed =
+            measure.psnr >= tolerance.psnr && measure.largest <= tolerance.largest
+            && measure.overEight <= tolerance.overEight && abs(measure.meanA - measure.meanB) < 0.1
+        return (passed, "\(measure)")
     }
 
     /// The fixture's tree built by this engine: its order, cells, masses, moments, frame and

@@ -23,6 +23,27 @@
         "look" : "frames/widths.look.json"
       }
     ],
+    "inside" : {
+      "flight" : "frames/inside.flight.json",
+      "framesPerSecond" : 30,
+      "height" : 72,
+      "images" : [
+        {
+          "file" : "frames/inside-2.00s.rgba",
+          "frame" : 60,
+          "seconds" : 2
+        },
+        {
+          "file" : "frames/inside-3.50s.rgba",
+          "frame" : 105,
+          "seconds" : 3.5
+        }
+      ],
+      "look" : "frames/webb.look.json",
+      "pixels" : "rgba8",
+      "rows" : "top first",
+      "width" : 128
+    },
     "pixels" : "rgba8",
     "rows" : "top first",
     "take" : "frames/take.sillage",

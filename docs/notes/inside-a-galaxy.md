@@ -463,7 +463,12 @@ entry points only call them. On CUDA:
 two ways of laying a star give the same bits. `Tests/Fixtures/engines/frames/inside.flight.json`
 is a flight into the fixture take's disk; the workflow draws two of its frames.
 
-Not done, and not checked here: the Metal side of the move could only be compiled on a Mac, and
-Metal's frame of that flight is not among the reference outputs yet, so the two engines have
-not been compared on an inside frame. The CUDA engine has no flight video export either; the
-full pass draws no flight on either engine.
+Checked on the Mac (#369): the move left Metal's bytes alone. Three moments of the Mice's
+`dive` flight (23.3, 33.3 and 36.8 s, 1920 x 1080, `photograph` and `readme-v4`, 261 pc from
+matter and up to 19.8 M point stars) and three frames of its video at 33.3 s (seven renders a
+frame) are the same bytes from main and from the commit before #347, and `InsideRenderTests`,
+`KernelSourceTests` and `EngineFixtureTests` pass. Two moments of `inside.flight.json` are now
+among the reference outputs, and `sillage-cuda check` holds the CUDA engine to them
+([one-kernel-source.md](one-kernel-source.md#the-frames-from-inside-a-galaxy-369)): within
+60 dB of Metal's on the CPU target, not yet run on an NVIDIA GPU (#283). The CUDA engine has no
+flight video export; the full pass draws no flight on either engine.
