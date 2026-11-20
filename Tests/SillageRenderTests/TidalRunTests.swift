@@ -65,16 +65,72 @@ struct TidalRunTests {
         #expect(inside > scene.tracers / 20)
     }
 
-    @Test func aFrameReadsBackAsItWasWritten() throws {
-        let frame = TidalFrame(
-            time: 12.5, positions: [SIMD4<Float>(1, 2, 3, 4), SIMD4<Float>(5, 6, 7, 8)],
-            velocities: [SIMD4<Float>(-1, -2, -3, -4), SIMD4<Float>(0, 0, 0, 0.5)])
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tidal-\(UUID()).bin")
-        defer { try? FileManager.default.removeItem(at: url) }
-        try frame.write(to: url)
-        let read = try TidalFrame(contentsOf: url)
-        #expect(read.time == 12.5)
-        #expect(read.positions == frame.positions)
-        #expect(read.velocities == frame.velocities)
+    /// The grid of the mean flow is summed in fixed point, so two runs of the same scene give
+    /// the same tracers to the bit, through the first passage and the crossings after (#332).
+    @Test func aRunRepeatsToTheBit() throws {
+        var scene = TidalDisruption()
+        scene.tracers = 30000
+        let steps = Int(1000 / scene.timeStep)
+        let first = try TidalRun(scene: scene)
+        first.step(steps)
+        let second = try TidalRun(scene: scene)
+        second.step(steps / 2)
+        second.step(steps - steps / 2)
+        let (a, b) = (first.frame, second.frame)
+        #expect(a.time == b.time)
+        #expect(a.positions == b.positions)
+        #expect(a.velocities == b.velocities)
+        // Something happened: the gas heated part of the stream.
+        #expect(a.positions.contains { $0.w > 0 })
+    }
+
+    /// A run that goes on from a frame it kept ends where a run that never stopped does, which is
+    /// what lets an export draw any moment from a sparse take.
+    @Test func aRunGoesOnFromAFrameAsIfItNeverStopped() throws {
+        var scene = TidalDisruption()
+        scene.tracers = 20000
+        let whole = try TidalRun(scene: scene)
+        whole.step(1200)
+        let resumed = try TidalRun(scene: scene)
+        resumed.step(700)
+        let kept = resumed.frame
+        let again = try TidalRun(scene: scene)
+        again.resume(from: kept, step: 700)
+        again.step(500)
+        #expect(again.time == whole.time)
+        #expect(again.frame == whole.frame)
+    }
+
+    /// A close up goes from its folder to videos through `hires` and `export`, in both shipped
+    /// looks, and a moment between two frames of the take is the one the run had there.
+    @Test func aCloseUpGoesFromItsFolderToVideos() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("hole-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = SceneFolder(root.appendingPathComponent("batch/hole-0001", isDirectory: true))
+        var scene = TidalDisruption()
+        scene.tracers = 4000
+        scene.duration = 200
+        scene.frameInterval = 100
+        try folder.create(HoleSceneFile(name: "test", blackHole: scene))
+        let header = try HoleStage.run(folder, say: { _ in })
+        #expect(Array(header.steps.prefix(3)) == [0, 400, 800] && header.steps.count == 4)
+        let take = try HoleTakeFile.Loaded(contentsOf: folder.take)
+        let replay = try HoleStage.Replay(take: take)
+        #expect(replay.seek(800) == take.frame(2))
+        #expect(replay.seek(400) == take.frame(1))
+        let run = try TidalRun(scene: scene)
+        run.step(600)
+        #expect(replay.seek(600) == run.frame)
+
+        for look in [nil, "film"] {
+            var options = try HoleExportOptions([
+                "--width", "160", "--height", "90", "--seconds", "0.5", "--fps", "8",
+            ])
+            options.look = look
+            let report = try HoleStage.export(folder, options: options, say: { _ in })
+            #expect(report.frames == 4)
+            #expect(report.bytes > 0)
+            #expect(report.url.lastPathComponent == (look == nil ? "1080p.mp4" : "film-1080p.mp4"))
+        }
     }
 }

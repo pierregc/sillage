@@ -183,4 +183,21 @@ struct HoleLensTests {
         #expect(abs(direct.w / (magnified + 0.5) - 1) < 0.05, "\(direct.w)")
         #expect(abs(behind.w / (magnified - 0.5) - 1) < 0.05, "\(behind.w)")
     }
+
+    /// A close up's scene file reads back whole, and a reader of galaxies refuses it by name.
+    @Test func aSceneFileOfItsOwnKind() throws {
+        var scene = TidalDisruption()
+        scene.tracers = 6_000_000
+        scene.pericentre = 7
+        let file = HoleSceneFile(name: "close up", blackHole: scene)
+        let data = try file.encoded()
+        #expect(SceneKind.of(data) == .blackHole)
+        #expect(try HoleSceneFile.decoded(from: data) == file)
+        #expect(throws: SceneFile.ReadError.self) { try SceneFile.decoded(from: data) }
+        let galaxies = try SceneFile(SceneConfig.merger(particleCount: 1000)).encoded()
+        #expect(SceneKind.of(galaxies) == .galaxies)
+        #expect(throws: HoleSceneFile.ReadError.notABlackHole(.galaxies)) {
+            try HoleSceneFile.decoded(from: galaxies)
+        }
+    }
 }
