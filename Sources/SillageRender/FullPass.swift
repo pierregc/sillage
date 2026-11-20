@@ -234,53 +234,13 @@ public final class FullPassRun {
     }
 
     public func scenes() throws -> Scenes {
-        guard let path = argument("scene") else { throw Failure.missing("--scene") }
-        var file = try SceneFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: path)))
-        var look =
-            try url("look").map { try LookFile.decoded(from: Data(contentsOf: $0)) } ?? .standard
-        let particles = Int(number("particles", 1_000_000))
-        if arguments.contains("--calm") {
-            for index in file.galaxies.indices { file.galaxies[index].adoptCalmDisk() }
-        }
-        if let seed = argument("seed").flatMap(UInt64.init) { file.seed = seed }
-        let placedFor = (file.solver, file.galaxies.map(\.haloParticleRatio))
-        guard
-            (argument("solver") ?? (file.solver == .restricted ? "restricted" : "barnes-hut")) == "barnes-hut"
-        else { throw Failure.notBarnesHut }
-        file.solver = .barnesHut
-        if let ratio = argument("halo").flatMap(Float.init) {
-            for index in file.galaxies.indices where file.galaxies[index].kind != .blackHole {
-                file.galaxies[index].haloParticleRatio = ratio
-            }
-        }
-        if let scale = argument("dt-scale").flatMap(Float.init) { file.timeStepScale = scale }
-        if let dissipation = argument("dissipation").flatMap(Float.init) {
-            for index in file.galaxies.indices { file.galaxies[index].dissipationTime = dissipation }
-        }
-        if let dt = argument("dt").flatMap(Float.init) { file.timeStep = dt }
-        if let theta = argument("theta").flatMap(Float.init) { file.openingAngle = theta }
-        if let value = argument("softening").flatMap(Float.init) { file.softening = value }
-        let palette = look.palette.map(\.colour)
-        var scene = file.scene(particleCount: particles, palette: palette)
-        if !scene.encounters.isEmpty,
-            placedFor.0 != file.solver || placedFor.1 != file.galaxies.map(\.haloParticleRatio)
-        {
-            scene.placeEncountersGivingWay()
-            let kept = file
-            file = SceneFile(scene)
-            file.softening = kept.softening
-            file.timeStep = kept.timeStep
-        }
-        look.palette = scene.galaxies.enumerated().map { index, galaxy in
-            index < look.palette.count ? look.palette[index] : GalaxyColours(galaxy.color)
-        }
-        let massive = SceneFolder.massive(in: arguments).map { min($0, particles) }
-        var drawn = scene
-        if let massive {
-            scene = file.scene(particleCount: massive, palette: palette)
-            drawn.solveToomreQ(softening: scene.softening)
-        }
-        return Scenes(file: file, scene: scene, drawn: drawn, massive: massive, look: look)
+        guard argument("scene") != nil else { throw Failure.missing("--scene") }
+        // Built as the take pass builds its scenes (#376).
+        let built = try RunScenes(arguments, look: try RunScenes.look(arguments))
+        guard built.backend == "barnes-hut" else { throw Failure.notBarnesHut }
+        return Scenes(
+            file: built.file, scene: built.scene, drawn: built.drawn, massive: built.massive,
+            look: built.painted)
     }
 
     /// What `--speed` gives the full pass: a track file or a speed as an export reads them, or a

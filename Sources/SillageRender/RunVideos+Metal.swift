@@ -5,30 +5,49 @@ import Metal
 import SillageCore
 
 /// A format of a run's videos drawn by Metal into VideoToolbox's encoder: a renderer over the
-/// run's own (`Renderer(sharing:)`), drawn straight into the encoder's pixel buffers.
+/// run's own (`Renderer(sharing:)`), drawn straight into the encoder's pixel buffers; or the run's
+/// own video, which the take pass draws with its own renderer (#376).
 public final class MetalRunVideoDrawing: RunVideoDrawing {
     public let renderer: Renderer
-    private let format: RunVideos.Format
+    private let width: Int
+    private let height: Int
+    private let codec: VideoCodec
+    private let bitsPerSecond: Int?
     private let framesPerSecond: Int
     private let metadata: VideoMetadata?
     private var writer: VideoWriter?
     private let painter = OverlayPainter()
 
-    public init(
+    public convenience init(
         renderer: Renderer, format: RunVideos.Format, framesPerSecond: Int, metadata: VideoMetadata?
     ) {
+        self.init(
+            renderer: renderer, width: format.width, height: format.height, codec: format.codec,
+            bitsPerSecond: format.bitsPerSecond, framesPerSecond: framesPerSecond, metadata: metadata)
+    }
+
+    public init(
+        renderer: Renderer, width: Int, height: Int, codec: VideoCodec, bitsPerSecond: Int?,
+        framesPerSecond: Int, metadata: VideoMetadata?
+    ) {
         self.renderer = renderer
-        self.format = format
+        self.width = width
+        self.height = height
+        self.codec = codec
+        self.bitsPerSecond = bitsPerSecond
         self.framesPerSecond = framesPerSecond
         self.metadata = metadata
     }
 
     public var styling: any FramePreparing { renderer }
 
+    /// The GPU time of the last frame the encoder took, in seconds.
+    public var lastGPUTime: Double { writer?.lastGPUTime ?? 0 }
+
     public func begin(_ url: URL) throws {
         writer = try VideoWriter(
-            width: format.width, height: format.height, framesPerSecond: Int32(framesPerSecond),
-            codec: format.codec, bitsPerSecond: format.bitsPerSecond, metadata: metadata, to: url)
+            width: width, height: height, framesPerSecond: Int32(framesPerSecond), codec: codec,
+            bitsPerSecond: bitsPerSecond, metadata: metadata, to: url)
     }
 
     public var drawsOverlay: Bool { true }

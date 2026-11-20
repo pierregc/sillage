@@ -67,7 +67,9 @@ The full pass, by default about every hour of its run as the cost model prices i
 (`--checkpoint-every <minutes>`, 0 for none; `--checkpoint-frames` and `--checkpoint-steps` give
 the interval exactly), its settle included. A run that writes a take does not: the massive pass
 holds its take in memory until it ends and costs 18 minutes at 8 M drawn (20 to 40 at 200 M), and
-a night's one-pass hires about an hour, which a restart loses whole as before.
+a night's one-pass hires about an hour, which a restart loses whole as before. That run is
+`TakePassRun` since #376, the flow both engines run (`docs/notes/scenes-on-rented-gpus.md`,
+"Where it lives"), where #377 adds its checkpoints.
 
 A night run again after a restart picks its full pass up from its checkpoint when the checkpoint
 is that run's own (`SceneFolder.resumesFullPass`), and starts it over otherwise, which clears it.

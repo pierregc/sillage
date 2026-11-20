@@ -87,6 +87,21 @@ massive pass to the bit: the drift is 0 on one engine, which
 `aFullPassWritesWhatTheMacsWritesAndRepeatsItsMassivePass` already holds on the CPU target with
 a take the CUDA solver made.
 
+**Where it lives (#376).** The move is made, on Metal: every run that writes a take or a
+plain render goes through the flow, the full pass alone through `FullPassRun`.
+
+| where | what |
+| --- | --- |
+| `Sources/SillageRender/TakePass.swift` | `TakePassRun`, the flow: the scene and the look from the command line, the check of a generated scene, the settle, the frames through the step schedule and its judge, the director or the look's camera, the framing radius, the run's video and stills, the take with its memory budget and spill, the curves, the story followed past the planned frames, `--state-out`, `--massive-only` and `--massive-set`, the explored clip, `commitHires`, `hires.json` and the events; `TakePassEngine` and `TakePassEngineMaker`, what an engine gives it; `TakePassMeasures`, the measuring options of an engine |
+| `Sources/SillageRender/TakePassMetal.swift` | `MetalTakePassEngine`, what `sillage-render` ran in its loop, moved: the sampling, `MetalBarnesHutSolver`, the factory's solver or the restricted one on the CPU, the run renderer, the smoothing, the run's video through `MetalRunVideoDrawing` with VideoToolbox's defaults |
+| `Sources/SillageRender/RunScenes.swift` | `RunScenes`, the look with its flags and the scenes built from the options (presets, `--calm`, the solver and the halo, the step, `--span`, the encounters placed again, the massive count's scene), which `FullPassRun.scenes()` reads too |
+| `Sources/sillage-render/Measures.swift` | `MetalMeasures`: `--sf-leaves`, `--dump-walk`, `--dump-targets`, `--take-v6`, `--take-massive` and `--density`, Metal's alone, at the moments of the frame they always ran at |
+| `Sources/sillage-render/main.swift` | the commands, then the full pass (`--draw`) or the take pass |
+
+A CUDA engine (#378) gives a `TakePassEngine`; checkpoints (#377) go into `TakePassRun`, once
+for every engine. The measuring options are not an engine's business: `sillage-cuda` runs
+without them.
+
 **What must hold.**
 
 - The Mac keeps its bits: a short hires of the reference scene gives the same take, curves,
