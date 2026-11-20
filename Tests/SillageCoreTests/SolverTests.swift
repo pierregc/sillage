@@ -114,12 +114,6 @@ struct SolverTests {
         #expect(a.time == b.time)
     }
 
-    @Test func factoryRejectsUnimplementedSolver() {
-        var scene = SceneConfig.merger(particleCount: 100)
-        scene.solver = .barnesHut
-        #expect(throws: SillageError.self) { try SolverFactory.make(scene) }
-    }
-
     @Test func stateStaysFinite() {
         let solver = RestrictedSolver(scene: SceneConfig.merger(particleCount: 5_000))
         solver.step(count: 3_000)

@@ -7,7 +7,7 @@ the reference that replaces it.
 
 ## The images
 
-Not committed. `scripts/telescope-colours.py fetch` downloads them into `out/telescope-images/`.
+Not committed. `scripts/spikes/telescope-colours.py fetch` downloads them into `out/telescope-images/`.
 All twelve are CC BY 4.0 and must be credited as below wherever they are shown.
 
 | Set | Image | Subject | Credit |

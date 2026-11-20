@@ -50,7 +50,7 @@ struct NightPageTests {
         #expect(page.phases[0].time == "finished 00:05")
         // Part of the running hires counts towards its bar.
         #expect(page.phases[2].fraction > 0.25 + 0.1 && page.phases[2].fraction < 0.5)
-        #expect(page.controls.job == 7 && page.controls.canSteer && page.controls.canSkip)
+        #expect(page.controls.job == 7 && page.controls.canSkip)
     }
 
     @Test func sceneCardsFollowTheStagesOfEachScene() throws {

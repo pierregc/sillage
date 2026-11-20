@@ -3,12 +3,12 @@
 # then drawn today and with the web, face-on, at 60 degrees and edge-on, and followed round by
 # a camera turning with its material at two scale lengths.
 #
-#     scripts/dust-web-spike.sh <library> <out dir>
+#     scripts/spikes/dust-web-spike.sh <library> <out dir>
 #
 # <library> holds 2026-10-30-b/scene-0031, whose first galaxy is the disk. The run takes about
-# ten minutes alone on the M4 Max; the stills a few more. Sheets: scripts/dust-web-sheet.py.
+# ten minutes alone on the M4 Max; the stills a few more. Sheets: scripts/spikes/dust-web-sheet.py.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LIBRARY="$1"
 OUT="$2"
 R="$ROOT/.build/dev/sillage-render"

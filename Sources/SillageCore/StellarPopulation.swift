@@ -43,13 +43,6 @@ public enum StellarPopulation {
         return (sequence[sequence.count - 1].kelvin, pow(10, sequence[sequence.count - 1].logLuminosity))
     }
 
-    /// Main-sequence lifetime in megayears. The fuel available goes as the mass and the rate
-    /// it burns at as the luminosity, and the luminosity goes as roughly the three-and-a-half
-    /// power of the mass over most of the sequence, which leaves this. Floored because the
-    /// exponent flattens above about twenty solar masses and the law would otherwise give an
-    /// O star well under a megayear.
-    private static func lifetime(_ mass: Double) -> Double { max(10_000 * pow(mass, -2.5), 3) }
-
     /// Kroupa (2001), by number.
     private static func initialMassFunction(_ mass: Double) -> Double {
         mass < 0.5 ? pow(mass, -1.3) * pow(0.5, -1.0) : pow(mass, -2.3)
@@ -170,8 +163,13 @@ public enum StellarPopulation {
         return (colourTemperature(blue: blue, green: green), green / mass / sun)
     }
 
-    /// Mass whose main-sequence life is this long, the inverse of `lifetime`. Below the floor
-    /// that relation stops being invertible, so nothing above sixty solar masses is resolved.
+    /// Mass whose main-sequence life is this long, from a lifetime of 10,000 Myr times the mass to
+    /// the minus two and a half: the fuel available goes as the mass, the rate it burns at as the
+    /// luminosity, and the luminosity goes as roughly the three-and-a-half power of the mass over
+    /// most of the sequence. The life is floored at 3 Myr, because the exponent flattens above
+    /// about twenty solar masses and the law would otherwise give an O star well under a megayear;
+    /// below that floor the relation stops being invertible, so nothing above sixty solar masses
+    /// is resolved.
     private static func mainSequenceMass(ageMyr: Double) -> Double {
         ageMyr <= 3 ? .infinity : pow(10_000 / ageMyr, 1 / 2.5)
     }

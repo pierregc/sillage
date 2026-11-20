@@ -165,7 +165,7 @@ choice on a contact sheet, M a few sessions and a few choices, L an epic.
    What settings cannot do becomes a short list of renderer changes; the likely ones are a
    kernel width per population and a tone curve with headroom. In the telescope world the
    scores should stop rewarding separation and colourfulness and compare the frame's regions
-   with the references' instead, as `scripts/telescope-colours.py` measures them.
+   with the references' instead, as `scripts/spikes/telescope-colours.py` measures them.
 2. **A video that says what it shows** (S). On the picture: a clock in millions of years, a
    scale bar in light years, a title, and captions at the story's events (approach, first
    passage, tails, merger), which `Story` and the curves already find. Nothing is drawn on the
