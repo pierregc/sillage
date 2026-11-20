@@ -15,6 +15,10 @@ final class CanvasView: MTKView {
     var onEscape: (() -> Void)?
     var onSpace: (() -> Void)?
     var onReadout: (() -> Void)?
+    /// The pilot's keys (#298): a waypoint, the recorder, and the throttle's steps.
+    var onWaypoint: (() -> Void)?
+    var onRecord: (() -> Void)?
+    var onThrottle: ((Int) -> Void)?
 
     private(set) var held: Set<UInt16> = []
     private(set) var modifiers: NSEvent.ModifierFlags = []
@@ -29,6 +33,11 @@ final class CanvasView: MTKView {
         static let c: UInt16 = 8
         static let f: UInt16 = 3
         static let i: UInt16 = 34
+        static let k: UInt16 = 40
+        static let r: UInt16 = 15
+        /// `[` and `]`, the throttle one step down and one up.
+        static let throttleDown: UInt16 = 33
+        static let throttleUp: UInt16 = 30
         static let space: UInt16 = 49
         static let escape: UInt16 = 53
         /// Everything that moves the camera, for deciding when a viewer has taken hold.
@@ -92,6 +101,15 @@ final class CanvasView: MTKView {
         if event.keyCode == Key.escape { onEscape?() }
         if !event.isARepeat, event.keyCode == Key.i { onReadout?() }
         if !event.isARepeat, event.keyCode == Key.space { onSpace?() }
+        if !event.isARepeat {
+            switch event.keyCode {
+            case Key.k: onWaypoint?()
+            case Key.r: onRecord?()
+            case Key.throttleDown: onThrottle?(-1)
+            case Key.throttleUp: onThrottle?(1)
+            default: break
+            }
+        }
         held.insert(event.keyCode)
     }
 
@@ -146,6 +164,9 @@ struct MetalCanvas: NSViewRepresentable {
         view.onDrag = { dx, dy in model.drag(dx, dy) }
         view.onScroll = { dy in model.scroll(dy) }
         view.onToggleFlight = { model.toggleFlight() }
+        view.onWaypoint = { model.flights.addWaypoint() }
+        view.onRecord = { model.flights.toggleRecording() }
+        view.onThrottle = { model.flights.stepThrottle($0) }
         view.onEscape = {
             guard model.contemplating else { return }
             // Never from inside the key handler. Leaving contemplation changes `stage`, which

@@ -244,8 +244,14 @@ public enum JobEstimate {
             let captured = Double(hires?.fps ?? clip?.fps ?? 30)
             let fps = number("--fps") ?? captured
             let frames: Int?
+            let flown = option("--flight", in: job.options).flatMap {
+                (try? FlightFile.decoded(from: Data(contentsOf: folder.flight($0))))?.seconds
+            }
             if let duration = number("--duration") {
                 frames = Int(duration * fps)
+            } else if let flown {
+                // A flight is as long as its keys say, whatever the take is.
+                frames = Int(max(flown - (number("--start") ?? 0), 0) * fps)
             } else if let taken = hires?.frames ?? clip?.frames {
                 // Along a track the video is the share of the take's frames the track keeps.
                 let share = VideoLength.share(of: option("--speed", in: job.options), folder: folder)
@@ -256,6 +262,7 @@ public enum JobEstimate {
             }
             return frames.map {
                 cost.exportSeconds(preset: preset, codec: codec ?? preset.defaultCodec, frames: $0)
+                    + (flown == nil ? 0 : StageJobs.flightSeconds(preset: preset, frames: $0))
             }
         case .explore, .night:
             return nil

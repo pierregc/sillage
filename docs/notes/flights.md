@@ -211,6 +211,85 @@ renders.
 `scripts/linux.sh`, so the CUDA engine's stills (#277) and full pass (#278, #300) can follow a
 flight by asking `Flight.shot(atSeconds:look:)` and `Flight.captured(atSeconds:)`.
 
+## In the app
+
+#298. The app flies already (`FlyCamera`, `docs/notes/fly-camera.md`); over a take of a scene it
+also records the flight, plays it back on the canvas and hands it to Video… (the Camera section's
+Flights, beside free flight). Nothing is written by hand: `flights/<name>.flight.json` is the
+file above, with world points for the eye and the aim.
+
+| key | does |
+|---|---|
+| `F` | free flight, from the view on the canvas (the plan's camera when the canvas follows it) |
+| `W A S D`, `Space C`, `Q E`, arrows, drag, `⇧` `⌃` | fly, as before; `←` now turns left |
+| `[` `]` | one step down or up the throttle: 5, 10, 20, 50 pc/s, 0.1, 0.2, 0.5, 1, 2, 5 ... 4 000 kpc/s |
+| scroll | the throttle, continuously, from 5 pc/s to 4 000 kpc/s (it stopped at 2 kpc/s before) |
+| `R` | Record, Stop |
+| `K` | a key where the camera and the playhead are |
+
+**Record.** The camera (eye, aim, field of view, roll) and the take's moment are sampled at every
+frame the canvas draws, in real time, and laid on a grid of 30 a second when the recording stops.
+A paused playhead is a freeze in the flight; playing again lets time run at the play rate.
+Anything that moves the playhead, the slider, Restart or the take looping, ends the recording
+there and keeps what it has: a flight's time never jumps. Leaving free flight ends it too. Record
+from orbit starts free flight from the view on the canvas, so nothing jumps.
+
+**Smoothing and keys** (`FlightRecorder`). Eye, aim, roll and field of view are smoothed under a
+raised cosine half a second wide, which takes the hard starts and stops of held keys out; the
+moment of the take is left as it was. The keys are then chosen against the flight they make, not
+against a stand-in: the grid is cut every second (and where a freeze starts and ends), a flight
+is made of those keys, and wherever it is further from the smoothed recording than the tolerance
+it gets a key at the worst sample of that stretch, never closer than a tenth of a second, until
+none is. So a straight stretch keeps a key a second, a bend, a freeze's edges or a camera moving
+within a few parsecs of the stars come closer. The tolerance is
+
+- the eye: half a percent of the distance to the nearest matter (`Nearness`, which the canvas
+  measures anyway while flying; the distance to the aim when it is not known), never finer than 0.2
+  pc;
+- the line of sight 0.002 rad, the roll 0.02 rad, the field of view 1 % on the tangent of its half
+  angle;
+- the moment a quarter of a captured frame.
+
+Roll and field of view are eased from key to key (smoothstep), which the smoothed recording is
+not: a steady turn asks for more keys than a straight line. The aim is not a kiloparsec ahead of
+the eye, as `FlyCamera` aims in orbit: it is as far ahead as the nearest galaxy's centre, so that
+the dust's depth slabs, which are centred on the aim, are ordered as an export's are. The result
+is written as the scene's next `flight-N`.
+
+**Keys by hand.** `K` adds the camera and the playhead as a key, its `at` after the last by the
+distance flown at the throttle's speed (the boost keys do not count), by the turn of the view at
+0.8 rad a second when that is longer, and never under half a second. A path can be set paused,
+with time frozen between two keys at one moment; time cannot run backwards from one key to the
+next (the key is refused, with the two moments). Save path writes it as `path-N`, as it is, with
+no smoothing: the keys are the ones chosen.
+
+**Banking** (a toggle, off at first): the roll follows the view's turn about the vertical,
+0.35 rad of bank for each rad a second, 0.6 at most, eased over a third of a second, and levels
+when the turn stops. It is the roll a flight key writes, so a recorded bank is exported as flown.
+
+**Play.** A flight plays on the canvas by its own time: the camera its keys give, the playhead
+where its time puts the take (`SimulationModel.setPlayhead`), so the window shows what the
+export draws; the slider scrubs it and Pause holds it. A key or a drag takes the controls from it
+where it is, and so does its end. The canvas draws near matter as the export draws a flight, the
+near plane at a parsec, the capped kernels without flare, point stars and the dust slabs from the
+eye (`Renderer.inside`, set while the eye is within 12 kpc of matter and nil past it, where the
+frame is the one drawn without it), and darkens the frame as the automatic exposure does, from the
+frame itself rather than from a pass over the whole flight (`InsideExposure.Live`): a trim in
+stops, eased, that only ever darkens, held to the file's `inside.exposure`. What the window does
+not do is the motion blur (a frame is drawn once), the eased kernel lengths and the exposure's
+anticipation of a dive, so a fast pass near the stars looks sharper there than in the video.
+
+**Not built.** A draft quality while flying (less supersampling, the full one paused): the window
+draws a frame near matter in the time #297 measured for an export's, a few tens of milliseconds at
+the arm's edge to a few hundred in the bulge at 8 M, and the canvas's pixels are fewer than the
+video's. It waits for a take of 8 M flown by hand to say whether it is needed.
+
+**Video….** The export sheet lists the scene's flights next to the scene's own camera. A flight
+chosen sets the video's length, the Speed row does not apply, and the job is the queue's export
+with `--flight <name>`, written as `exports/<flight>-<preset>.mp4`. Its forecast counts a frame at
+0.8 s in 1080p (the demo flight of #297 below, 2 521 frames in 34 minutes), scaled by the pixels:
+a flight's frames cost ten or twenty times a plain export's.
+
 ## A worked example: the Mice
 
 The README's Mice take (`scene-0067` of the 2026-11-04 batch, 8 M drawn), with the `photograph` look.

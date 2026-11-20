@@ -418,6 +418,20 @@ struct ControlPanelContent: View {
                         Text("faster, slower")
                     }
                     GridRow {
+                        Text("[ ]").monospaced()
+                        Text("a step of the throttle")
+                    }
+                    if model.mode == .playback {
+                        GridRow {
+                            Text("R").monospaced()
+                            Text("record, stop")
+                        }
+                        GridRow {
+                            Text("K").monospaced()
+                            Text("a key of the path")
+                        }
+                    }
+                    GridRow {
                         Text("F").monospaced()
                         Text("back to orbit")
                     }
@@ -426,9 +440,7 @@ struct ControlPanelContent: View {
                 .foregroundStyle(Palette.secondary)
                 // Not bound to the rig: it moves on every frame, and a binding would rebuild
                 // this panel sixty times a second.
-                Text(String(format: "speed %.0f kpc/s", model.flight.speed))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(Palette.secondary)
+                FlySpeedLabel(session: model.flights)
             } else {
                 Text("Drag to rotate, scroll to zoom · F to fly")
                     .font(.caption)
@@ -447,6 +459,10 @@ struct ControlPanelContent: View {
                 model.frameCamera()
             }
             .buttonStyle(.bordered)
+            if model.mode == .playback {
+                Divider()
+                FlightPanel(model: model, session: model.flights)
+            }
         }
     }
 

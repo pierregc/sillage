@@ -19,3 +19,19 @@ The flight advance sits ahead of every guard in `draw` that can decline to rende
 window hands back no drawable, and a camera that stopped dead whenever that happened would be
 worse than one that flies with nothing to show for a frame. That is also why the `--qa` checks
 can see it at all, since the window there is always occluded.
+
+## What #298 added
+
+- **Roll.** `FlyCamera.roll` and `up`, as a flight key's roll, moved by banking only: the roll
+  follows the view's turn rate, eased, and levels again. The camera's `up` is the one `Flight`
+  draws for that roll (`PilotingTests`).
+- **The throttle** goes down to 5 pc/s (`slowest`, it was 2 kpc/s, 67 pc a frame at 30 fps, more
+  than the spacing of an arm's particles at 8 M) and has steps on a 1-2-5 ladder (`throttle`,
+  `stepThrottle`, `[` and `]`).
+- **Near and aim.** `near` is a parsec over a take (`FlightFile.near`) and `aimDistance` is the
+  distance to the nearest galaxy's centre, so that a flown camera has the near plane and the dust
+  slabs an exported flight has. Orbit and live runs keep a kiloparsec and a kiloparsec.
+- **`←` turns left.** `←` and `→` were the other way round: `←` raised the yaw, which turns the
+  view to the right.
+
+Recording, playing and the keys are in [flights](flights.md#in-the-app).

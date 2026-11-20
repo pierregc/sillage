@@ -533,6 +533,10 @@ public final class Renderer {
         encodePost(into: buffer, present: present, resolved: true)
     }
 
+    /// Builds what a frame drawn from inside needs now, so that the first frame that is does not
+    /// wait for it (#298).
+    public func prepareInside() { _ = insideResources() }
+
     /// Nil when the inside of a galaxy cannot be drawn here, and the frame is then drawn as any
     /// other; `insideFailure` says why.
     private func insideResources() -> InsidePass? {
@@ -1015,16 +1019,68 @@ public final class Renderer {
         }
     }
 
-    public func present(camera: Camera, drawable: CAMetalDrawable) {
+    public func present(
+        camera: Camera, drawable: CAMetalDrawable, meter: (@Sendable (Double) -> Void)? = nil
+    ) {
         guard let buffer = queue.makeCommandBuffer() else { return }
         encode(camera: camera, into: buffer, present: drawable.texture)
         let (clock, pacer) = (gpuClock, pacer)
+        // A copy of the picture for the CPU to read, when the canvas asks for the frame's mean
+        // luminance (#298).
+        let copy = meter == nil ? nil : meterTexture(like: drawable.texture)
+        if let copy, let blit = buffer.makeBlitCommandEncoder() {
+            blit.copy(
+                from: drawable.texture, sourceSlice: 0, sourceLevel: 0,
+                sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                sourceSize: MTLSize(width: copy.width, height: copy.height, depth: 1),
+                to: copy, destinationSlice: 0, destinationLevel: 0,
+                destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+            blit.endEncoding()
+        }
+        let reading = copy.map(MeterTexture.init)
         buffer.addCompletedHandler { finished in
             clock.milliseconds = (finished.gpuEndTime - finished.gpuStartTime) * 1000
             pacer?.frameFinished(gpuSeconds: finished.gpuEndTime - finished.gpuStartTime)
+            if let meter, let texture = reading?.texture {
+                var pixels = [UInt8](repeating: 0, count: texture.width * texture.height * 4)
+                pixels.withUnsafeMutableBytes { destination in
+                    texture.getBytes(
+                        destination.baseAddress!, bytesPerRow: texture.width * 4,
+                        from: MTLRegionMake2D(0, 0, texture.width, texture.height), mipmapLevel: 0)
+                    meter(
+                        InsideExposure.meanLuminance(
+                            pixels: UnsafeRawPointer(destination.baseAddress!), width: texture.width,
+                            height: texture.height, bytesPerRow: texture.width * 4,
+                            bgra: texture.pixelFormat == .bgra8Unorm, step: 4))
+                }
+            }
         }
         buffer.present(drawable)
         buffer.commit()
+    }
+
+    /// A shared texture the size and format of the drawable, which the CPU reads a frame from.
+    private var meterCopy: MTLTexture?
+
+    private func meterTexture(like drawable: MTLTexture) -> MTLTexture? {
+        if let held = meterCopy, held.width == drawable.width, held.height == drawable.height,
+            held.pixelFormat == drawable.pixelFormat
+        {
+            return held
+        }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: drawable.pixelFormat, width: drawable.width, height: drawable.height,
+            mipmapped: false)
+        descriptor.storageMode = .shared
+        descriptor.usage = [.shaderRead]
+        meterCopy = device.makeTexture(descriptor: descriptor)
+        return meterCopy
+    }
+
+    /// A texture handed to a completion handler, which only reads it once its blit has run.
+    private struct MeterTexture: @unchecked Sendable {
+        let texture: MTLTexture
+        init(_ texture: MTLTexture) { self.texture = texture }
     }
 
     /// Told when each presented frame finishes, so background work can fit between frames.

@@ -730,6 +730,7 @@ struct ExportRow: View {
         var parts: [String] = []
         parts.append(file.preset.map { "Preset \($0)" } ?? "Custom preset")
         if let style = file.style { parts.append("Style \(style)") }
+        if let flight = file.flight { parts.append("Flight \(flight)") }
         if !file.codec.isEmpty { parts.append(file.codec) }
         if let size = file.size { parts.append(size) }
         if let seconds = file.seconds { parts.append(String(format: "%.1f s", seconds)) }
