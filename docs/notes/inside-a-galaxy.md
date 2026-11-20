@@ -412,22 +412,23 @@ fine grains.
   (`starTail`), its mean kept: one star in fifty five times brighter or more, as giants stand out.
 
 **Stills**, the frozen dive at 23.3, 33.3, 35, 36.8 (frame 1104), 38.5 and 40 s, one render each,
-the GPU alone (ms a render):
+the GPU alone on a timed run (ms a render):
 
 | | 23.3 s | 33.3 | 35 | 36.8 | 38.5 | 40 | stars, most |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1080p, before | 254 | 166 | 169 | 148 | 135 | 124 | 20.5 M |
-| 1080p, after | 179 | 166 | 161 | 143 | 129 | 119 | 31.7 M |
-| 4K, before | 422 | 326 | 316 | 259 | 220 | 200 | 20.6 M |
-| 4K, after | 425 | 353 | 335 | 277 | 240 | 219 | 31.7 M |
+| 1080p, before | 179 | 158 | 152 | 134 | 119 | 110 | 20.5 M |
+| 1080p, after | 180 | 166 | 163 | 143 | 129 | 120 | 31.7 M |
+| 4K, before | 422 | 326 | 316 | 259 | 219 | 201 | 20.6 M |
+| 4K, after | 425 | 354 | 337 | 278 | 241 | 219 | 31.7 M |
 
-Half as many stars again, at the same cost in 1080p and a tenth more in 4K: the points are
-smaller. Frames 1000 to 1200 as a video, 8 renders a frame at most (1 608 in all): 223 s before
-and 238 s after in 1080p, 436 and 474 s in 4K, the after runs sharing the Mac with tests, 32.1 M
-stars a render at the most. Stills, crops and the 1080p clips are on the branch
-`assets/357-inside-stars` under `docs/spikes/inside-357/`. Frame 700 is unchanged to the eye: its particles are far and mostly splats. Tried and
-left: growing from a tenth of the frame (78 M stars, a milky carpet), fewer stars a far particle
-(64 or 32, with a cap of 6: the light goes back to fewer, brighter stars and the halos return).
+Half as many stars again, for 5 to 9 % more a render inside the arm and nothing at frame 700,
+which is unchanged to the eye: its particles are far and mostly splats. Frames 1000 to 1200 as a
+video, 8 renders a frame at most (1 608 in all), 32.1 M stars a render at the most: 223 s before
+and 238 s after in 1080p, 436 and 474 s in 4K, the after runs sharing the Mac with tests. Stills,
+crops and the 1080p clips are on the branch `assets/357-inside-stars` under
+`docs/spikes/inside-357/`. Tried and left: growing from a tenth of the frame (78 M stars, a milky
+carpet), fewer stars a far particle (64 or 32, with a cap of 6: the light goes back to fewer,
+brighter stars and the halos return).
 
 What the stars cannot fix: the dust is grains the size of the look's kernel ceiling, in output
 pixels, so 4K draws finer dust than 1080p (#356).
