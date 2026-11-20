@@ -1,26 +1,32 @@
 import Foundation
 import Metal
 import SillageCore
-import simd
 
-/// `sillage-render black-hole`, the spike of #314 (docs/notes/black-hole-close-up.md):
+/// `sillage-render black-hole`, a black hole close up (#314, #332, docs/notes/black-hole-close-up.md):
 ///
-///     black-hole run <folder> [scene options] [--video <file> --elevation <deg> --distance <r>]
-///     black-hole still <frame> <png> [view options]
-///     black-hole orbit <frame> <video> [view options] [--seconds 10] [--turns 1] [--scene <json>]
+///     black-hole new <folder> [scene options]       a scene folder holding a close up
+///     black-hole run <folder> [scene options]       the same, then its run, as `hires` does
+///     black-hole still <folder> <png> [--at t] [--look name] [view options]
 ///
-/// `run` writes the scene, then a take: a frame every `--frame-interval` under `frames/`.
-/// `orbit` goes round the frame's disk, at its elevation and distance, frozen, or with
-/// `--scene` stepping the run on from the frame, one step a video frame.
+/// The scene folder then goes through `hires` and `export` as a galaxy scene's does, and the
+/// queue runs them alike.
 public enum HoleCommand {
     public static func main(_ arguments: [String]) -> Int32 {
         guard let verb = arguments.first else { return usage() }
         let options = Options(Array(arguments.dropFirst()))
         do {
             switch verb {
-            case "run": try run(options)
+            case "new": try create(options)
+            case "run":
+                var gas = GasGrid()
+                if let value = options.int("grid-heights") { gas.heights = value }
+                if let value = options.float("height-cell") { gas.heightCell = value }
+                let metrics = options.values["metrics"].map {
+                    HoleStage.Metrics(
+                        url: URL(fileURLWithPath: $0), interval: options.float("metrics-interval") ?? 25)
+                }
+                try HoleStage.run(try create(options), gas: gas, metrics: metrics)
             case "still": try still(options)
-            case "orbit": try orbit(options)
             default: return usage()
             }
         } catch {
@@ -34,19 +40,18 @@ public enum HoleCommand {
         FileHandle.standardError.write(
             Data(
                 """
-                usage: sillage-render black-hole run <folder> [--tracers N] [--pericentre r] [--cloud r]
-                           [--release r] [--stickiness x] [--viscous-orbits x] [--cooling-time t]
-                           [--duration t] [--frame-interval t] [--step t] [--seed n]
-                           [--video file --elevation deg --distance r --azimuth deg --reference frame]
-                           [--metrics file.csv --metrics-interval t --no-frames]
-                           [--grid-heights n --height-cell h]
-                       sillage-render black-hole still <frame> <png> [view options]
-                       sillage-render black-hole orbit <frame> <video> [view options] [--seconds s]
-                           [--turns n] [--scene scene.json]
-                view options: --elevation deg --azimuth deg --distance r --fov deg --width w
-                       --height h --straight --images n --temperature radius|crossing --hottest K
-                       --beaming x --exposure x --ambient x --stars n --size r --stretch x
-                       --bloom x --white x --reference frame
+                usage: sillage-render black-hole new|run <folder> [--tracers N] [--pericentre r]
+                           [--cloud r] [--release r] [--stickiness x] [--crossing-speed x]
+                           [--viscous-orbits x] [--cooling-time t] [--duration t]
+                           [--frame-interval t] [--step t] [--seed n] [--name text]
+                       run also takes [--metrics file.csv --metrics-interval t] and the gas's grid,
+                           [--grid-heights n --height-cell h] (1 layer is the spike's plane grid)
+                       sillage-render black-hole still <folder> <png> [--at t] [--look name]
+                           [--elevation deg] [--azimuth deg] [--distance r] [--fov deg]
+                           [--width w] [--height h] [--straight] [--images n]
+                           [--temperature radius|crossing] [--hottest K] [--beaming x]
+                           [--exposure x] [--stars n]
+                then: sillage-render hires <folder>, sillage-render export <folder> [--look film]
 
                 """.utf8))
         return 2
@@ -77,6 +82,7 @@ public enum HoleCommand {
         }
 
         func float(_ name: String) -> Float? { values[name].flatMap(Float.init) }
+        func double(_ name: String) -> Double? { values[name].flatMap(Double.init) }
         func int(_ name: String) -> Int? { values[name].flatMap(Int.init) }
     }
 
@@ -102,204 +108,67 @@ public enum HoleCommand {
         return scene
     }
 
-    static func look(_ options: Options) -> HoleLook {
-        var look = HoleLook()
+    /// Writes the scene; a folder that holds a scene already is refused rather than written over.
+    @discardableResult
+    static func create(_ options: Options) throws -> SceneFolder {
+        guard let path = options.words.first else { throw Failure(description: "a folder") }
+        let folder = SceneFolder(path: path)
+        guard !FileManager.default.fileExists(atPath: folder.scene.path) else {
+            throw Failure(description: "\(folder.scene.path) exists already")
+        }
+        let file = HoleSceneFile(
+            name: options.values["name"] ?? folder.url.lastPathComponent, blackHole: scene(options))
+        try folder.create(file)
+        print("scene      \(folder.scene.path)")
+        return folder
+    }
+
+    /// The look asked, with the view's options over it.
+    static func look(_ options: Options, folder: SceneFolder) throws -> HoleLookFile {
+        var look = try folder.holeLook(options.values["look"])
         if options.flags.contains("straight") { look.lensed = false }
         if let value = options.int("images") { look.images = value }
-        if let value = options.values["temperature"].flatMap(HoleLook.Temperature.init) {
+        if let value = options.values["temperature"].flatMap(HoleLookFile.Temperature.init) {
             look.temperature = value
         }
-        if let value = options.float("hottest") { look.hottest = value }
-        if let value = options.float("beaming") { look.beaming = value }
-        if let value = options.float("exposure") { look.exposure = value }
-        if let value = options.float("size") { look.particleSize = value }
-        if let value = options.float("ambient") { look.ambient = value }
+        if let value = options.double("hottest") { look.hottest = value }
+        if let value = options.double("beaming") { look.beaming = value }
+        if let value = options.double("exposure") { look.exposure = value }
         if let value = options.int("stars") { look.stars = value }
-        if let value = options.float("star-brightness") { look.starBrightness = value }
+        if let value = options.double("elevation") { look.camera.elevation = value }
+        if let value = options.double("azimuth") { look.camera.azimuth = value }
+        if let value = options.double("distance") { look.camera.distance = value }
+        if let value = options.double("fov") { look.camera.fieldOfView = value }
+        try look.validate()
         return look
     }
 
-    static func settings(_ options: Options) -> RenderSettings {
-        var settings = HoleLook.settings(
-            width: options.int("width") ?? 1920, height: options.int("height") ?? 1080)
-        if let value = options.float("stretch") { settings.stretch = value }
-        if let value = options.float("bloom") { settings.bloomIntensity = value }
-        if let value = options.float("white") { settings.whitePoint = value }
-        if let value = options.float("saturation") { settings.saturation = value }
-        return settings
-    }
-
-    /// The camera at `elevation` above the disk's plane and `azimuth` round it, `distance`
-    /// from the hole, looking at it.
-    static func camera(_ options: Options, azimuthOffset: Float = 0) -> Camera {
-        let elevation = (options.float("elevation") ?? 20) * .pi / 180
-        let azimuth = (options.float("azimuth") ?? 0) * .pi / 180 + azimuthOffset
-        let distance = options.float("distance") ?? 40
-        let eye =
-            SIMD3<Float>(cos(elevation) * sin(azimuth), -cos(elevation) * cos(azimuth), sin(elevation))
-            * distance
-        return Camera(
-            eye: eye, target: .zero, up: SIMD3<Float>(0, 0, 1),
-            fieldOfView: (options.float("fov") ?? 40) * .pi / 180, near: 0.1, far: 100_000)
-    }
-
-    /// `--reference <frame>` sets the exposure and the temperatures from that frame and keeps
-    /// them, so that a video's light rises and falls with the run's instead of being made even.
-    static func fixExposure(_ renderer: HoleRenderer, _ options: Options) throws {
-        guard let path = options.values["reference"] else { return }
-        renderer.fixedExposure = true
-        renderer.upload(try TidalFrame(contentsOf: URL(fileURLWithPath: path)))
-    }
-
-    static func run(_ options: Options) throws {
-        guard let path = options.words.first else { throw Failure(description: "run needs a folder") }
-        let folder = URL(fileURLWithPath: path, isDirectory: true)
-        let frames = folder.appendingPathComponent("frames", isDirectory: true)
-        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
-        let scene = scene(options)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(scene).write(to: folder.appendingPathComponent("scene.json"))
-
-        let started = Date()
-        var gas = GasGrid()
-        if let value = options.int("grid-heights") { gas.heights = value }
-        if let value = options.float("height-cell") { gas.heightCell = value }
-        let run = try TidalRun(scene: scene, gas: gas)
-        print(String(format: "released at t = %.1f, %d tracers", run.releaseTime, scene.tracers))
-        var video: (writer: VideoWriter, renderer: HoleRenderer, look: HoleLook, every: Int)?
-        if let file = options.values["video"] {
-            let settings = settings(options)
-            let renderer = try HoleRenderer(settings: settings, device: run.device)
-            renderer.exposureEasing = 0.9
-            try fixExposure(renderer, options)
-            let writer = try VideoWriter(
-                width: settings.width, height: settings.height, framesPerSecond: 30, codec: .h264,
-                quality: 0.8, to: URL(fileURLWithPath: file))
-            let every = max(Int(((options.float("video-interval") ?? 2) / scene.timeStep).rounded()), 1)
-            video = (writer, renderer, look(options), every)
-        }
-        let camera = camera(options)
-        var metrics: (measure: TidalMeasure, file: FileHandle, every: Int)?
-        if let path = options.values["metrics"] {
-            FileManager.default.createFile(atPath: path, contents: nil)
-            let file = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
-            try file.write(contentsOf: Data((TidalMeasure.Row.header + "\n").utf8))
-            let measure = run.measure()
-            print(
-                String(
-                    format: "P* %.0f, circular radius %.2f, of the bound's mean momentum %.2f",
-                    measure.period, measure.circularRadius, measure.boundRing))
-            let every = max(Int(((options.float("metrics-interval") ?? 25) / scene.timeStep).rounded()), 1)
-            metrics = (measure, file, every)
-            try file.write(contentsOf: Data((run.row(measure).line + "\n").utf8))
-        }
-        let stepsPerFrame = max(Int((scene.frameInterval / scene.timeStep).rounded()), 1)
-        let totalSteps = Int(((Double(scene.duration) - run.releaseTime) / Double(scene.timeStep)).rounded())
-        var done = 0
-        var kept = 0
-        var stepping = 0.0
-        func keep() throws {
-            let frame = run.frame
-            try frame.write(to: frames.appendingPathComponent(String(format: "frame-%04d.bin", kept)))
-            let alive = frame.velocities.filter { $0.w >= 0 }.count
-            print(
-                String(
-                    format: "frame %d at t = %.1f: %d tracers left, %.1f s of steps", kept, frame.time,
-                    alive, stepping))
-            kept += 1
-        }
-        let writeFrames = !options.flags.contains("no-frames")
-        if writeFrames { try keep() }
-        while done < totalSteps {
-            var chunk = min(
-                video?.every ?? stepsPerFrame, stepsPerFrame - done % stepsPerFrame, totalSteps - done)
-            if let metrics { chunk = min(chunk, metrics.every - done % metrics.every) }
-            let before = Date()
-            run.step(chunk)
-            stepping += Date().timeIntervalSince(before)
-            done += chunk
-            if let video {
-                let frame = run.frame
-                video.renderer.upload(frame)
-                try video.writer.append(on: run.device) { target, buffer in
-                    _ = video.renderer.render(
-                        frame, camera: camera, look: video.look, present: target, into: buffer)
-                }
-            }
-            if let metrics, done % metrics.every == 0 {
-                try metrics.file.write(contentsOf: Data((run.row(metrics.measure).line + "\n").utf8))
-            }
-            if writeFrames, done % stepsPerFrame == 0 { try keep() }
-        }
-        try video?.writer.finish()
-        print(
-            String(
-                format: "%d steps in %.1f s, %.1f s stepping", done, Date().timeIntervalSince(started),
-                stepping))
-    }
-
+    /// One moment of the take, `--at` in the hole's time units, the end of the run by default.
     static func still(_ options: Options) throws {
-        guard options.words.count == 2 else { throw Failure(description: "still needs a frame and a png") }
-        let frame = try TidalFrame(contentsOf: URL(fileURLWithPath: options.words[0]))
-        let renderer = try HoleRenderer(settings: settings(options))
+        guard options.words.count == 2 else { throw Failure(description: "still needs a folder and a png") }
+        let folder = SceneFolder(path: options.words[0])
+        let take = try HoleTakeFile.Loaded(contentsOf: folder.take)
+        let lookFile = try look(options, folder: folder)
+        let replay = try HoleStage.Replay(take: take)
+        let step = options.double("at").map(replay.step(at:)) ?? take.header.steps.last ?? 0
+        let width = options.int("width") ?? 1920
+        let height = options.int("height") ?? 1080
+        let renderer = try HoleRenderer(
+            settings: lookFile.settings(width: width, height: height), device: replay.run.device)
+        if let at = lookFile.exposureAt {
+            renderer.fixedExposure = true
+            renderer.upload(replay.seek(replay.step(at: at)))
+        }
+        let frame = replay.seek(step)
         renderer.upload(frame)
         let started = Date()
-        let pixels = renderer.render(frame, camera: camera(options), look: look(options))
-        try PNGWriter.write(
-            pixels, width: renderer.settings.width, height: renderer.settings.height,
-            to: URL(fileURLWithPath: options.words[1]))
+        let pixels = renderer.render(
+            frame, camera: lookFile.camera.camera(progress: 0), look: lookFile.renderLook)
+        try PNGWriter.write(pixels, width: width, height: height, to: URL(fileURLWithPath: options.words[1]))
         print(
             String(
                 format: "t = %.1f, %.1f ms on the GPU, %.2f s in all", frame.time,
                 renderer.lastGPUTime * 1000,
                 Date().timeIntervalSince(started)))
-    }
-
-    static func orbit(_ options: Options) throws {
-        guard options.words.count == 2 else { throw Failure(description: "orbit needs a frame and a video") }
-        var frame = try TidalFrame(contentsOf: URL(fileURLWithPath: options.words[0]))
-        let settings = settings(options)
-        let renderer = try HoleRenderer(settings: settings)
-        let seconds = options.float("seconds") ?? 10
-        let fps = options.int("fps") ?? 30
-        let turns = options.float("turns") ?? 1
-        let count = Int(seconds * Float(fps))
-        var run: TidalRun?
-        if let path = options.values["scene"] {
-            let scene = try JSONDecoder().decode(
-                TidalDisruption.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
-            run = try TidalRun(scene: scene, frame: frame)
-        }
-        let writer = try VideoWriter(
-            width: settings.width, height: settings.height, framesPerSecond: Int32(fps), codec: .h264,
-            quality: 0.85, to: URL(fileURLWithPath: options.words[1]))
-        let look = look(options)
-        renderer.fixedExposure = true
-        try fixExposure(renderer, options)
-        renderer.upload(frame)
-        let started = Date()
-        for index in 0..<count {
-            if let run {
-                run.step(options.int("steps-per-frame") ?? 1)
-                frame = run.frame
-                renderer.upload(frame)
-            }
-            let turn = Float(index) / Float(count) * turns * 2 * .pi
-            let camera = camera(options, azimuthOffset: turn)
-            try writer.append(on: renderer.renderer.device) { target, buffer in
-                _ = renderer.render(frame, camera: camera, look: look, present: target, into: buffer)
-            }
-        }
-        try writer.finish()
-        print(String(format: "%d frames in %.1f s", count, Date().timeIntervalSince(started)))
-    }
-}
-
-extension TidalRun {
-    /// A run that goes on from a frame of a take, with the scene that made it.
-    public convenience init(scene: TidalDisruption, frame: TidalFrame, device: MTLDevice? = nil) throws {
-        try self.init(scene: scene, device: device)
-        resume(from: frame)
     }
 }

@@ -1,0 +1,22 @@
+{
+  "ambient" : 0.02,
+  "beaming" : 0,
+  "camera" : {
+    "azimuth" : 0,
+    "distance" : 75,
+    "elevation" : 25,
+    "fieldOfView" : 40,
+    "turns" : 0
+  },
+  "exposure" : 1,
+  "exposureAt" : 3000,
+  "hottest" : 6500,
+  "images" : 2,
+  "lensed" : true,
+  "name" : "film",
+  "particleSize" : 0.05,
+  "starBrightness" : 1,
+  "stars" : 8000,
+  "temperature" : "radius",
+  "version" : 1
+}

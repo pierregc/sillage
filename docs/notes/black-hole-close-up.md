@@ -6,7 +6,8 @@ that Pierre can choose whether it becomes an epic. Nothing it adds changes an ex
 the scene, the run and the drawing are new files behind `sillage-render black-hole`, and the
 renderer only gained a way to run its post stages over a light target another pass draws.
 The stills, the clip and the story video are on the branch `assets/314-black-hole`, under
-`docs/spikes/black-hole/`.
+`docs/spikes/black-hole/`. Since #332 the close up is a scene folder that `hires` runs and
+`export` draws, as a galaxy scene is: see [In the exports](#in-the-exports-332).
 
 **In short.**
 
@@ -75,8 +76,9 @@ units, so a crossing glows where it happens and a stream flung out goes dark.
 sub-steps by radius: a fiftieth of a radian of the orbit at the tracer's radius, up to 512, which
 `TidalDisruption.advance` takes on the CPU and the Metal kernel takes for each tracer on its own.
 A circular orbit at 4 r_s keeps its radius within 0.5 % over ten turns, and an eccentric one
-precesses as the potential has it by quadrature, within 1 %. The grid is summed with atomic
-adds, so a run does not repeat to the bit.
+precesses as the potential has it by quadrature, within 1 %. The grid is summed in 64-bit fixed
+point, 2^24 to the unit, with integer atomics: integers add the same in any order, so a run
+repeats to the bit (#332), where the spike's float atomics did not.
 
 | | |
 | --- | --- |
@@ -219,6 +221,56 @@ edge: in the middle 480 × 360 pixels, frame to frame, the mean change stays bet
 grey levels over the 300 frames, the grain of the particles and the camera's own motion, with no
 frame standing out. 300 frames in 15 s, stepping included.
 
+## In the exports (#332)
+
+The close up is a scene folder like a galaxy scene's, and goes through the same stages:
+
+- **The scene**, `scene.json`, holds a `TidalDisruption` under `"kind": "blackHole"`
+  (`HoleSceneFile`). A file of galaxies has no kind and reads as it always did; a reader of
+  galaxies refuses a close up by name. Unlike a galaxy scene, the tracer count is the scene's:
+  a run repeats only at the count it ran at.
+- **The take**, `take.sillage`, is written by `hires` (`HoleStage.run`): a header with the scene
+  and the step of each frame kept, then the frames whole, every tracer's position and light and
+  its velocity and density as the run holds them (`HoleTakeFile`). A frame every 250 time units,
+  22 frames with the last, 192 MB each at 6 M: 4.2 GB. They are not quantised as a galaxy take's
+  positions are, because an export draws a moment between two of them by going on from the one
+  before and stepping the run to it, which gives the run's own frame only if nothing was rounded
+  on the way. That is what the run repeating to the bit is for, and a test holds it: a run that
+  goes on from a frame it kept ends where one that never stopped does, to the bit.
+- **The look**, `look.json` in the folder, else `physics`, or `--look`: a file, a look kept in
+  the folder's `looks/<name>.hole.json`, or one of the two shipped in `looks/`, `physics.hole.json`
+  and `film.hole.json` (`HoleLookFile`, strict as a galaxy look file). It holds the temperature
+  law, the hottest, beaming, the images, the stars, the exposure, the moment whose light sets the
+  exposure and the temperatures for the whole video (`exposureAt`, 3000 by default: the settled
+  disk, so the light rises with it; null normalises each frame on its own), the post stages'
+  tone, and the camera: elevation, azimuth, distance, field of view and turns round the hole.
+
+  | | physics, the default | film |
+  | --- | --- | --- |
+  | temperature | the run's, from the crossings | the thin disk's, from the radius |
+  | hottest | 6500 K | 6500 K |
+  | beaming and redshift | on | off, as Interstellar |
+  | images | 3, the photon ring with them | 2 |
+
+  Both keep 6500 K at the hottest, the gold Pierre chose: physics is about where the light
+  comes from and how the motion shifts it, not about the far ultraviolet a real disk peaks in.
+- **The export**, `export <folder>`, draws `exports/<preset>.mp4`, or `<look>-<preset>.mp4` for
+  a look other than the scene's, with `--preset`, `--codec`, `--from` and `--to` in the hole's
+  time units (the whole run by default), `--seconds` (40) and `--fps` (30). The galaxies'
+  `--speed`, `--flight`, `--palette` and `--overlay` are refused rather than ignored. Each frame
+  lands on a step of the run: a video of the whole run at 40 s is 4 time units, 16 steps, a
+  frame. The lens table is rebuilt when the camera's distance changes, so a camera that comes in
+  or goes away already works, at half a second a frame until #333 builds the table on the GPU.
+- **The queue** runs `hires` and `export` on a close up's folder as on a galaxy scene's, and
+  checks them when they are added. A night does not make one yet.
+
+**The sample** (M4 Max, 6 M tracers, the default scene, alone on the GPU): `hires` 114 s, the
+spike's minute of stepping and the frames copied out and written; `export` of the whole run at
+1080p, 1200 frames, 295 s with physics, three images, and 239 s with film, two, 62.6 MB each.
+A frame is about 50 ms of stepping and 140 to 190 ms of drawing. The videos and four stills,
+the first return (t 729) and the settled disk (t 2979) from 10° and 35 r_s in both looks, are on
+the branch `assets/332-black-hole`, under `docs/spikes/black-hole-exports/`.
+
 ## Risks
 
 - **The gas is a sketch.** A grid over the orbit's plane, a pull towards the mean flow above a
@@ -241,9 +293,9 @@ frame standing out. 300 frames in 15 s, stepping included.
 - **The step near the hole** is the restricted solver's with sub-steps by radius, and the gas
   plunging inside 2 r_s takes the most; the whole run is still a minute.
 - **A second subject.** About 1600 lines outside the galaxies' pipeline, and 250 of tests: its
-  own scene, take format, kernels and renderer pass, no look file, no app, no queue or nights.
-  The grid is summed with atomic adds, so a run does not repeat to the bit, as Sillage's other
-  runs do. Metal only: the five kernels are listed `metal-only` in `cuda/kernels.txt`.
+  own scene, take format, kernels and renderer pass. Since #332 it has a scene file, a take, look
+  files and the `hires` and `export` stages, so the queue runs it; no app and no nights yet.
+  Metal only: the six kernels are listed `metal-only` in `cuda/kernels.txt`.
 
 ## If it becomes an epic
 
@@ -263,22 +315,19 @@ What the stills suggest it would hold, in the order a viewer would see it:
 ## How to run it
 
     ./scripts/dev.sh build
-    DYLD_LIBRARY_PATH=.build/dev .build/dev/sillage-render black-hole run out/hole \
-        --tracers 6000000 --video out/hole/story.mp4 --temperature crossing
-    DYLD_LIBRARY_PATH=.build/dev .build/dev/sillage-render black-hole still \
-        out/hole/frames/frame-0012.bin out/hole/10.png --elevation 10 --distance 35 --fov 45 \
-        --temperature radius --hottest 6500
-    DYLD_LIBRARY_PATH=.build/dev .build/dev/sillage-render black-hole orbit \
-        out/hole/frames/frame-0012.bin out/hole/orbit.mp4 --scene out/hole/scene.json \
-        --elevation 10 --distance 35 --fov 45 --temperature crossing --hottest 6500
+    SR="env DYLD_LIBRARY_PATH=.build/dev .build/dev/sillage-render"
+    $SR black-hole new library/holes/hole-0001 --tracers 6000000
+    $SR hires library/holes/hole-0001
+    $SR export library/holes/hole-0001
+    $SR export library/holes/hole-0001 --look film --preset 4k
+    $SR black-hole still library/holes/hole-0001 out/10.png --at 2979 --elevation 10 --distance 35
 
-`run` takes the scene's options (`--pericentre`, `--cloud`, `--release`, `--stickiness`,
-`--crossing-speed`, `--viscous-orbits`, `--cooling-time`, `--duration`, `--frame-interval`), and
-a video of the whole run with a view's options. `still` and `orbit` take the view: elevation
-above the disk's plane, azimuth, distance, field of view in degrees, `--straight`, `--images`,
-`--temperature`, `--hottest`, `--beaming`, `--exposure`, `--stars`. `orbit` goes round once in
-`--seconds`, the time frozen, or with `--scene` stepping the run on from the frame, a step a
-video frame.
+`black-hole new` takes the scene's options (`--tracers`, `--pericentre`, `--cloud`, `--release`,
+`--stickiness`, `--crossing-speed`, `--viscous-orbits`, `--cooling-time`, `--duration`,
+`--frame-interval`, `--step`, `--seed`), and `black-hole run` is `new` then `hires`. `still`
+draws one moment, `--at` in the hole's time units, with the look's camera or `--elevation`,
+`--azimuth`, `--distance` and `--fov` over it, and `--straight`, `--images`, `--temperature`,
+`--hottest`, `--beaming`, `--exposure`, `--stars`.
 
 ## Sources
 
