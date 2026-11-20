@@ -113,14 +113,22 @@ public struct FlightFile: Codable, Sendable, Equatable {
         var placesCamera: Bool { look == true || eye != nil || aim != nil }
     }
 
+    /// The near distance of a flight's camera when the file gives none: a parsec, where every
+    /// other camera keeps `Camera`'s kiloparsec (#297).
+    public static let near = 0.001
+
     public var version: Int
-    /// The camera's near distance in kiloparsecs; absent, `Camera`'s 1.
+    /// The camera's near distance in kiloparsecs; absent, `FlightFile.near`.
     public var near: Double?
+    /// What the frames are drawn with once inside a galaxy (#297); absent, `InsideSettings`'s
+    /// own values.
+    public var inside: InsideSettings?
     public var keys: [Key]
 
-    public init(near: Double? = nil, keys: [Key]) {
+    public init(near: Double? = nil, inside: InsideSettings? = nil, keys: [Key]) {
         version = Self.currentVersion
         self.near = near
+        self.inside = inside
         self.keys = keys
     }
 
@@ -129,6 +137,7 @@ public struct FlightFile: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             near: try c.decodeIfPresent(Double.self, forKey: .near),
+            inside: try c.decodeIfPresent(InsideSettings.self, forKey: .inside),
             keys: try c.decode([Key].self, forKey: .keys))
         version = try c.decode(Int.self, forKey: .version)
     }
@@ -168,6 +177,7 @@ public struct FlightFile: Codable, Sendable, Equatable {
             throw fail("the first and the last keys give myr")
         }
         if let near, !(near > 0 && near.isFinite) { throw fail("near \(near) kpc: it is above zero") }
+        if let fault = inside?.fault { throw fail("inside: \(fault)") }
         let first = keys[0]
         guard first.look == true || (first.eye != nil && first.aim != nil) else {
             throw fail("the first key places the camera: look, or eye and aim")
@@ -276,6 +286,8 @@ public final class Flight {
     public let file: FlightFile
     public let track: TimeTrack
     public let near: Float
+    /// What its frames are drawn with from inside a galaxy (#297).
+    public let inside: InsideSettings
     private let take: FlightTake
     private let keys: [Resolved]
     /// The look's camera at every captured frame a stretch between two look keys crosses.
@@ -314,7 +326,8 @@ public final class Flight {
         self.file = file
         self.take = take
         track = try file.timeTrack(megayears: take.megayears, capturedRate: take.capturedRate)
-        near = Float(file.near ?? 1)
+        near = Float(file.near ?? FlightFile.near)
+        inside = file.inside ?? InsideSettings()
         let rate = Double(take.capturedRate)
         let track = self.track
         func captured(_ seconds: Double) -> Double { track.captured(atPlayed: seconds * rate) }
@@ -413,6 +426,41 @@ public final class Flight {
     public func shot(atSeconds seconds: Double, look: RenderLook) -> ShotReplay.Shot {
         let (camera, exposure) = camera(atSeconds: seconds)
         return (camera, Self.trimmed(look, stops: exposure))
+    }
+
+    /// The cameras the renders of the frame at `seconds` are drawn through (#297): one, or
+    /// several spread over the time the shutter is open, about the frame's own moment, when
+    /// the near matter would cross more than a pixel of a picture `height` high between them.
+    /// `interval` is the seconds between two frames of the video.
+    public func cameras(atSeconds seconds: Double, interval: Double, frame: InsideFrame, height: Int)
+        -> [Camera]
+    {
+        let half = interval * inside.shutter / 2
+        let (from, to) = (max(seconds - half, 0), min(seconds + half, self.seconds))
+        // On the look's own camera the frame is the export's, drawn once as the export draws it.
+        guard inside.subframes > 1, to > from, !lookSpans.contains(where: { $0.contains(seconds) })
+        else { return [camera(atSeconds: seconds).camera] }
+        let count = InsideBlur.subframes(
+            from: camera(atSeconds: from).camera, to: camera(atSeconds: to).camera, frame: frame,
+            height: height)
+        guard count > 1 else { return [camera(atSeconds: seconds).camera] }
+        return (0..<count).map { index in
+            camera(atSeconds: from + (to - from) * (Double(index) + 0.5) / Double(count)).camera
+        }
+    }
+
+    /// The seconds of the video where the camera is the look's: each look key, and the whole
+    /// stretch between two that follow each other. There a frame is the plain export's.
+    public var lookSpans: [ClosedRange<Double>] {
+        var spans: [ClosedRange<Double>] = []
+        for (index, key) in keys.enumerated() where key.look {
+            if index > 0, keys[index - 1].look, let last = spans.last {
+                spans[spans.count - 1] = last.lowerBound...key.at
+            } else {
+                spans.append(key.at...key.at)
+            }
+        }
+        return spans
     }
 
     /// The video seconds of every key, the ones that only pin time included.
