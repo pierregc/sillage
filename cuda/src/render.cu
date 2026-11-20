@@ -320,6 +320,51 @@ __global__ void starfieldVertex(const BackgroundStar *stars, Frame f, Range rang
     drawSplat(starfieldSplat(stars[vid], f.u), layStarfield, targets, large);
 }
 
+// The point stars of a frame drawn from inside a galaxy (#347). The near particles' stars are
+// listed in the order of their indices as Metal lists them, a block of particles a thread: the
+// counts, one thread that turns them into where each block's entries start, then the entries.
+__global__ void insideCount(Massive m, Frame f, uint *counts, uint3 span) {
+    uint block = blockIdx.x * blockDim.x + threadIdx.x;
+    insideCounted(block, m.positions, m.luminosity, m.component, f.u, m.galaxy, m.smoothing, m.formation, m.traits,
+                  counts, span, f.column);
+}
+
+__global__ void insideOffsets(uint *counts, uint3 span, uint *draw) {
+    if (blockIdx.x != 0u || threadIdx.x != 0u) { return; }
+    insideOffset(counts, span, draw);
+}
+
+__global__ void insideFill(Massive m, Frame f, const uint *offsets, uint3 span, uint2 *list) {
+    uint block = blockIdx.x * blockDim.x + threadIdx.x;
+    insideFilled(block, m.positions, m.luminosity, m.component, f.u, m.galaxy, m.smoothing, m.formation, m.traits,
+                 offsets, span, list, f.column);
+}
+
+// A pixel of a star's point: Metal's pointStarFragment, which discards past the streak's edge.
+static __device__ __forceinline__ void layStar(const Star &star, int x, int y, float2 coord,
+                                               const Targets &targets) {
+    float r2 = starRadius2(coord, star.half_streak, star.radius);
+    if (r2 > 1.0f) { return; }
+    size_t pixel = size_t(y) * targets.width + size_t(x);
+    add4(targets.light + pixel * 4u, lightPixel(star.color, star.slab, targets.finishedDust[pixel], r2), fixedUnit,
+         targets.halves);
+}
+
+// A thread a star, where Metal draws the list's entries as points, eight instances each.
+__global__ void pointStarVertex(Massive m, Frame f, const uint2 *list, uint stars, Targets targets, Large large) {
+    uint index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= stars) { return; }
+    Star star = pointStar(index / insideGroup, index % insideGroup, m.positions, m.population, m.formation,
+                          m.luminosity, m.component, f.u, m.galaxy, f.frames, m.smoothing, f.stellar, m.traits,
+                          m.rampKeys, f.ramps, list, f.column);
+    Square square;
+    if (!pointSquare(star.position, star.pointSize, targets.width, targets.height, square)) { return; }
+    if (setAside(large, square, star)) { return; }
+    for (int y = square.top; y < square.bottom; ++y) {
+        for (int x = square.left; x < square.right; ++x) { layStar(star, x, y, pointCoord(square, x, y), targets); }
+    }
+}
+
 // The dust under the web: what the painted strands lay.
 __global__ void dustWebVertex(Massive m, Frame f, Range range, Targets targets, Large large) {
     uint vid;
@@ -440,6 +485,20 @@ __global__ void largeSplats(const Splat *splats, uint count, uint lay, Targets t
     }
 }
 
+__global__ void largeStars(const Star *stars, uint count, Targets targets) {
+    if (blockIdx.x >= count) { return; }
+    Star star = stars[blockIdx.x];
+    Square square;
+    if (!pointSquare(star.position, star.pointSize, targets.width, targets.height, square)) { return; }
+    uint wide = uint(square.right - square.left);
+    uint pixels = wide * uint(square.bottom - square.top);
+    for (uint pixel = threadIdx.x; pixel < pixels; pixel += blockDim.x) {
+        int x = square.left + int(pixel % wide);
+        int y = square.top + int(pixel / wide);
+        layStar(star, x, y, pointCoord(square, x, y), targets);
+    }
+}
+
 __global__ void largeCarriers(const WebCarrier *grains, uint count, CarrierTargets targets) {
     if (blockIdx.x >= count) { return; }
     WebCarrier grain = grains[blockIdx.x];
@@ -498,6 +557,11 @@ struct sc_renderer {
     sc_buffer *frames;
     sc_buffer *ramps;
     sc_buffer *fallback;
+    // The list of the point stars (#347), made the first time a frame draws some.
+    sc_buffer *starCounts;
+    sc_buffer *starList;
+    sc_buffer *starDraw;
+    uint32_t starsListed;
 };
 
 namespace sillage {
@@ -544,7 +608,7 @@ static void releaseAll(sc_renderer *renderer) {
          {&renderer->lightFixed, &renderer->dustFixed, &renderer->light, &renderer->dust, &renderer->columnFixed,
           &renderer->column, &renderer->carrierFixed, &renderer->carrier, &renderer->tags, &renderer->lace,
           &renderer->large, &renderer->largeCounter, &renderer->stellar, &renderer->stars, &renderer->frames,
-          &renderer->ramps, &renderer->fallback}) {
+          &renderer->ramps, &renderer->fallback, &renderer->starCounts, &renderer->starList, &renderer->starDraw}) {
         release(*buffer);
     }
 }
@@ -672,6 +736,59 @@ static sc_status drawCarriers(sc_renderer *renderer, const sh::Frame &frame, sh:
     return draw<sh::WebCarrier>(renderer, vertices, blocks);
 }
 
+// Particles a thread of the listing kernels goes through, and the most entries a list holds,
+// eight stars each: `InsidePass.block` and `InsidePass.mostEntries` of the Metal renderer.
+constexpr uint32_t starBlock = 1024u;
+constexpr uint32_t mostStarEntries = 16000000u;
+
+// A buffer of the star list, grown to `length` bytes when it holds fewer.
+static sc_status room(sc_renderer *renderer, sc_buffer **buffer, size_t length) {
+    if (*buffer && (*buffer)->length >= length) { return SC_OK; }
+    sc_status status = SC_OK;
+    sc_buffer *grown = allocate(renderer->context, length, &status);
+    if (status != SC_OK) { return status; }
+    release(*buffer);
+    *buffer = grown;
+    return SC_OK;
+}
+
+// The point stars of the massive particles near the eye: listed, then drawn a thread a star.
+static sc_status drawStars(sc_renderer *renderer, const sh::Frame &frame) {
+    renderer->starsListed = 0u;
+    uint32_t count = renderer->hasMassive ? renderer->massive.count : 0u;
+    if (count == 0u || frame.u.inside.starCount == 0u) { return SC_OK; }
+    uint32_t blocks = (count + starBlock - 1u) / starBlock;
+    uint64_t wanted = uint64_t(count) * 16u;
+    uint32_t entries = wanted < mostStarEntries ? uint32_t(wanted) : mostStarEntries;
+    if (sc_status status = room(renderer, &renderer->starCounts, size_t(blocks) * 4u)) { return status; }
+    if (sc_status status = room(renderer, &renderer->starList, size_t(entries) * 8u)) { return status; }
+    if (sc_status status = room(renderer, &renderer->starDraw, 16u)) { return status; }
+    metal::uint3 span(count, starBlock, entries);
+    auto counts = pointer<metal::uint>(renderer->starCounts);
+    auto list = pointer<metal::uint2>(renderer->starList);
+    LAUNCH(insideCount, groups(blocks), width, massive(renderer), frame, counts, span);
+    LAUNCH(insideOffsets, 1u, 1u, counts, span, pointer<metal::uint>(renderer->starDraw));
+    LAUNCH(insideFill, groups(blocks), width, massive(renderer), frame, counts, span, list);
+    uint32_t listed = 0u;
+    if (sc_status status = check(cudaMemcpy(&listed, renderer->starDraw->device, 4u, cudaMemcpyDeviceToHost),
+                                 "reading the point stars' count")) {
+        return status;
+    }
+    uint32_t stars = listed * sh::insideGroup;
+    renderer->starsListed = stars;
+    if (stars == 0u) { return SC_OK; }
+    sh::Targets onto = targets(renderer);
+    auto vertices = [&](sh::Large large) -> sc_status {
+        LAUNCH(pointStarVertex, groups(stars), width, massive(renderer), frame, list, stars, onto, large);
+        return SC_OK;
+    };
+    auto aside = [&](const sh::Star *held, uint32_t some) -> sc_status {
+        LAUNCH(largeStars, some, width, held, some, onto);
+        return SC_OK;
+    };
+    return draw<sh::Star>(renderer, vertices, aside);
+}
+
 static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_render_pass pass, sh::Range some,
                           sh::Range traced) {
     const sc_render_config &config = renderer->config;
@@ -693,6 +810,7 @@ static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_rend
         case SC_RENDER_DUST:
         case SC_RENDER_PAINTED_DUST:
         case SC_RENDER_STARS: return drawSplats(renderer, frame, pass, some, traced);
+        case SC_RENDER_POINT_STARS: return drawStars(renderer, frame);
         case SC_RENDER_WEB_RESOLVE: {
             auto lace = metal::texels2d_of(pointer<const float>(renderer->lace), config.lace_texels,
                                            config.lace_texels, 1u, renderer->laceLevels);
@@ -723,7 +841,7 @@ static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_rend
 // What a finish divides the light, the dust and the carrier by: nothing when they hold halves.
 static float unit(const sc_renderer *renderer) { return renderer->halves ? 0.0f : sh::fixedUnit; }
 
-static bool known(sc_render_pass pass) { return pass >= SC_RENDER_COLUMN && pass <= SC_RENDER_PLAIN; }
+static bool known(sc_render_pass pass) { return pass >= SC_RENDER_COLUMN && pass <= SC_RENDER_POINT_STARS; }
 
 static bool needsWeb(sc_render_pass pass) {
     return pass == SC_RENDER_WEB_CARRIER || pass == SC_RENDER_PAINTED_DUST || pass == SC_RENDER_WEB_RESOLVE;
@@ -731,7 +849,7 @@ static bool needsWeb(sc_render_pass pass) {
 
 static bool drawsDust(sc_render_pass pass) {
     return pass == SC_RENDER_DUST || pass == SC_RENDER_PAINTED_DUST || pass == SC_RENDER_WEB_RESOLVE
-        || pass == SC_RENDER_STARS;
+        || pass == SC_RENDER_STARS || pass == SC_RENDER_POINT_STARS;
 }
 
 }  // namespace render
@@ -775,6 +893,7 @@ sc_status sc_renderer_create(sc_context *context, const sc_render_config *config
     size_t carried = coarse(renderer);
     size_t aside = renderer->config.large_capacity;
     size_t entry = sizeof(sh::Splat) > sizeof(sh::WebCarrier) ? sizeof(sh::Splat) : sizeof(sh::WebCarrier);
+    if (sizeof(sh::Star) > entry) { entry = sizeof(sh::Star); }
     struct Wanted {
         sc_buffer **buffer;
         size_t length;
@@ -987,7 +1106,8 @@ sc_status sc_render_begin(sc_renderer *renderer, sc_render_pass pass) {
         case SC_RENDER_DUST:
         case SC_RENDER_PAINTED_DUST:
         case SC_RENDER_WEB_RESOLVE:
-        case SC_RENDER_STARS: break;
+        case SC_RENDER_STARS:
+        case SC_RENDER_POINT_STARS: break;
     }
     // A splat sizes its kernel from the column's cells, the resolve reads the carrier, and a
     // star reads the finished dust.
@@ -1004,7 +1124,7 @@ sc_status sc_render_begin(sc_renderer *renderer, sc_render_pass pass) {
         }
         renderer->carrierStale = false;
     }
-    if (pass != SC_RENDER_STARS) {
+    if (pass != SC_RENDER_STARS && pass != SC_RENDER_POINT_STARS) {
         renderer->dustStale = true;
         return SC_OK;
     }
@@ -1040,7 +1160,7 @@ sc_status sc_render_draw(sc_renderer *renderer, sc_render_pass pass, const void 
         }
         memcpy(&frame.w, web_uniforms, sizeof frame.w);
     }
-    bool particles = pass != SC_RENDER_STARFIELD && pass != SC_RENDER_WEB_RESOLVE;
+    bool particles = pass != SC_RENDER_STARFIELD && pass != SC_RENDER_WEB_RESOLVE && pass != SC_RENDER_POINT_STARS;
     if (particles && massive_count > 0u
         && (!renderer->hasMassive || massive_first > renderer->massive.count
             || massive_count > renderer->massive.count - massive_first)) {
@@ -1109,5 +1229,7 @@ sc_buffer *sc_render_target_of(sc_renderer *renderer, sc_render_target which) {
 uint64_t sc_render_fixed_unit(void) { return uint64_t(sh::fixedUnit); }
 
 uint32_t sc_render_large_count(const sc_renderer *renderer) { return renderer ? renderer->largeCount : 0u; }
+
+uint32_t sc_render_stars_listed(const sc_renderer *renderer) { return renderer ? renderer->starsListed : 0u; }
 
 }  // extern "C"

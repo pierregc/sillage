@@ -26,7 +26,8 @@ build_render() {
         -emit-module-path "$BUILD/SillageRender.swiftmodule" \
         -o "$BUILD/libSillageRender.dylib"
     swiftc -O -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender \
-        "$ROOT"/Sources/sillage-render/main.swift -o "$BUILD/sillage-render"
+        "$ROOT"/Sources/sillage-render/*.swift -o "$BUILD/sillage-render"
+    printf '%s\n' "$ROOT" > "$BUILD/sillage-root"
 }
 
 run_tests() {
@@ -59,6 +60,7 @@ build_app() {
     cp "$BUILD/Sillage" "$app/Contents/MacOS/Sillage"
     # The queue's runner, which the app starts in a session of its own.
     cp "$BUILD/sillage-render" "$app/Contents/MacOS/sillage-render"
+    cp "$BUILD/sillage-root" "$app/Contents/MacOS/sillage-root"
     cp "$BUILD"/libSillage*.dylib "$app/Contents/MacOS/"
     # Every reference has to be rewritten, including the ones between the copied dylibs,
     # or dyld loads both the bundled copy and the one left in the build directory.
@@ -86,6 +88,7 @@ build_app() {
     <key>CFBundleShortVersionString</key><string>0.1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>SillageRoot</key><string>$ROOT</string>
 </dict>
 </plist>
 PLIST

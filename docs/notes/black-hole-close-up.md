@@ -337,6 +337,65 @@ colour. Against all tracers, the thinned stills differ by 0.01 to 0.2 grey level
 (PSNR 42 to 59 dB), 0.18 at 12 r_s with the photon ring and 0.15 at 5 r_s; 0.25 takes a third
 off those for a little more cost, 1 doubles them.
 
+## Cameras that fly (#335)
+
+**A flight round the hole is a galaxy's flight file.** `export <folder> --flight <name>` draws
+`flights/<name>.flight.json` from the close up's folder, the format #295 gave the galaxies, so
+that the free flight the epic aims at, and the flights #298 records in the app, have one file.
+Two things differ: its points are in Schwarzschild radii round the hole, fixed in the world, and
+its keys pin the hole's `time` rather than `myr`. A file gives one or the other, and a reader
+refuses a galaxy's flight for a close up and a close up's for galaxies, as it does galaxy anchors
+and `inside` round the hole. The run's steps stand for the take's captured frames, so #305's
+track does the rest: time runs between two keys, slows, or holds where two keys give the same
+moment, and every frame lands on a step that stepping on from a kept frame reaches exactly. A
+`look` key takes the look's camera where an export of the whole run would have it. The video
+is `<flight>-<preset>.mp4`, after the look's name when it is not the scene's; `--from`, `--to`
+and `--seconds` are refused with a flight, which has its own. `black-hole still --flight <name>
+--second s` draws one moment of it, to write one by hand.
+
+**Between two steps.** A frame of a flight is drawn at the moment its time has, not on the step
+before it: the renderer carries each tracer on from that step along its velocity for the fraction
+of a step left, a quarter of a time unit at most, whose curve is a few thousandths of a radius at
+the last stable orbit. On steps alone, time slowing into a hold moved the disk one frame in two:
+on the descent's last second, in ProRes at 960 × 540, the change from frame to frame went 2.1, 3.0,
+2.1, 3.0 grey levels, a stutter, and its largest second difference was 1.56; carried, it falls
+evenly from 3.3 to 1.2, and the largest second difference over the whole descent is 0.39, no
+frame differing from its ten neighbours by more than 16 %, through 26 lens tables.
+
+**Three samples**, which `black-hole new` writes in the folder's `flights/` (`HoleFlight.samples`)
+and leaves alone once there, each looking at the hole:
+
+| flight | path | time |
+| --- | --- | --- |
+| `orbit` | once round at 35 r_s, from 8° over the plane up to 20° and back, 17 keys | runs, t 2600 to 3400, the settled disk turning |
+| `descent` | from 300 r_s and 40° down to just over the disk's edge, 24 r_s out and 1.5 above the plane, a quarter turn in 34 s | the story, from the first return (t 700) to the settled disk (3000), then held for 6 s |
+| `plane` | from 47 r_s and 20° over the plane down through the disk 14 r_s from the hole and out below it, 24 s | frozen at t 3000 |
+
+![The three flights in both looks](https://raw.githubusercontent.com/pierregc/sillage/assets/335-hole-flights/docs/spikes/hole-flights/flights-sheet.jpg)
+
+The videos, at 1080p in both looks, are on the branch `assets/335-hole-flights` under
+`docs/spikes/hole-flights/`. Each took 18 to 89 s for 721 to 1201 frames on the M4 Max, the
+descent the dearest for its 9200 steps of the run and its 26 lens tables; up to twice that with
+another export on the GPU.
+
+**Through the plane.** The pass crosses the disk's plane 14 r_s from the hole at about 1.3 r_s a
+second, 1.1 of it downward, so some 0.6 s within the disk's ±0.33 r_s there. Edge on, it is the
+classic picture: the disk a line through the shadow, the image of its far side a full ring round
+it. At the
+crossing the nearest tracer is 0.54 r_s from the camera, 57 lie within one r_s, 300 within two
+and 1.8 % of the light within five. A splat that near would be some 240 pixels wide and stops at
+24 with its flux spread, so the near disk is a dim haze along the horizon, with neither a flare
+nor a flicker: in ProRes at 960 × 540, the change from frame to frame stays between 1.3 and 4.1
+grey levels, no frame differs from its ten neighbours by more than 14 %, and the largest change
+of that change is 0.7, two frames before the crossing. A camera deeper in a thicker disk would
+see more of it as haze; what it would want is a splat whose flux falls with its size, as #297
+gave the galaxies, not tried.
+
+**What looks like a fault and is not.** The descent's first frame and the orbit's quarter show a
+large soft orange arc: the unbound half of the stream, 230 r_s from the camera at the start of
+the descent and 23 at the orbit's quarter, wide, cold and drawn at the ambient light. Nothing in
+the samples comes within 20 r_s of the camera but the plane pass.
+
 ## Risks
 
 - **The gas was a sketch.** A grid over the orbit's plane, a pull towards the mean flow above a
@@ -349,8 +408,8 @@ off those for a little more cost, 1 doubles them.
   their distance: 24 between 200 and 20 r_s. An export pays it inside its frames; a camera
   steered live would want them built ahead, on a background queue or from a cache on disk.
 - **Near the camera.** A splat's flux is spread over its size, which stops at 24 pixels, so a
-  tracer near the camera is a dim blob rather than a flare (#296); a camera inside the disk was
-  not tried.
+  tracer near the camera is a dim blob rather than a flare (#296); a camera through the disk
+  sees it as a haze along the horizon, without a flicker (#335).
 - **What the lens leaves out.** The images of a tracer are drawn at the same moment, though light
   that goes round the hole arrives a few time units after the direct light: invisible on a disk
   that turns slowly, wrong on a fast flare. The hole does not spin: a Kerr hole flattens one side
@@ -372,7 +431,7 @@ What the stills suggest it would hold, in the order a viewer would see it:
    in the takes' format, a look file with the temperature law, the hottest, beaming and images,
    and `export` and the queue drawing it, so a night can make one.
 2. **The camera.** Orbits and flights from #295, with a table per distance, built on the GPU or
-   interpolated between a few.
+   interpolated between a few (done, #333 and #335).
 3. **The gas.** A better crossing than the grid's: three dimensions and a calibration against a
    published disruption (done, #334), or sticky particles shared with the galaxies.
 4. **The cheap second image**, drawn for a share of the tracers (done, #333).
@@ -388,13 +447,16 @@ What the stills suggest it would hold, in the order a viewer would see it:
     $SR export library/holes/hole-0001
     $SR export library/holes/hole-0001 --look film --preset 4k
     $SR black-hole still library/holes/hole-0001 out/10.png --at 2979 --elevation 10 --distance 35
+    $SR export library/holes/hole-0001 --flight descent --look film
+    $SR black-hole still library/holes/hole-0001 out/plane.png --flight plane --second 12
 
 `black-hole new` takes the scene's options (`--tracers`, `--pericentre`, `--cloud`, `--release`,
 `--stickiness`, `--crossing-speed`, `--viscous-orbits`, `--cooling-time`, `--duration`,
 `--frame-interval`, `--step`, `--seed`), and `black-hole run` is `new` then `hires`. `still`
 draws one moment, `--at` in the hole's time units, with the look's camera or `--elevation`,
 `--azimuth`, `--distance` and `--fov` over it, and `--straight`, `--images`, `--temperature`,
-`--hottest`, `--beaming`, `--exposure`, `--stars`.
+`--hottest`, `--beaming`, `--exposure`, `--stars`, or `--flight` and `--second` for a flight's
+camera and moment.
 
 ## Sources
 

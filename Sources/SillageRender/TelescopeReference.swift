@@ -98,10 +98,15 @@ public struct TelescopeReference: Sendable, Equatable {
     }
 
     /// The sets in this repository's `references/telescope`.
-    public static let repository = load(
-        from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("references/telescope"))
+    public static var repository: [TelescopeReference] {
+        RepositoryRoot.loaded("references/telescope") { load(from: $0) }
+    }
+
+    /// The same, or why the folder is not found.
+    public static func fromRepository() throws -> [TelescopeReference] {
+        _ = try RepositoryRoot.folder("references/telescope")
+        return repository
+    }
 
     /// Every `*.json` in `directory` that is a colour set, by file name; `marks.json` and
     /// anything else that is not one is skipped.

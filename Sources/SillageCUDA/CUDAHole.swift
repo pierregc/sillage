@@ -112,13 +112,14 @@ public final class CUDAHoleRenderer {
     }
 
     /// Hands the frame's tracers to the engine, and measures what their light is normalised by.
-    public func upload(_ frame: TidalFrame) throws {
+    /// `drift` carries them on along their velocities, as `HoleRenderer.upload` does.
+    public func upload(_ frame: TidalFrame, drift: Float = 0) throws {
         if positions == nil || uploaded != frame.count {
             positions = try context.makeBuffer(length: max(frame.count, 1) * 16)
             velocities = try context.makeBuffer(length: max(frame.count, 1) * 16)
             uploaded = frame.count
         }
-        try positions?.upload(frame.positions)
+        try positions?.upload(drift != 0 ? frame.positions(drifted: drift) : frame.positions)
         try velocities?.upload(frame.velocities)
         exposure.measure(frame)
     }
@@ -200,7 +201,7 @@ public enum CUDAHoleStill {
     }
 
     /// `options` as `black-hole still` takes them: the folder second, `--at`, `--look`,
-    /// `--width`, `--height` and the view's options. `gas` is the grid the run was made with;
+    /// `--flight` and `--second` (#335), `--width`, `--height` and the view's options. `gas` is the grid the run was made with;
     /// `lenses`, tables built already.
     public static func draw(
         _ options: HoleOptions, folder: SceneFolder, context: CUDAContext, gas: GasGrid = GasGrid(),
@@ -219,6 +220,17 @@ public enum CUDAHoleStill {
             if let failure = run.failure { throw failure }
             return frame
         }
+        let flight = try options.values["flight"].map {
+            try HoleFlight.resolve(
+                FlightFile.decoded(from: Data(contentsOf: folder.flight($0))), header: take.header,
+                camera: lookFile.camera)
+        }
+        let second = options.double("second") ?? 0
+        let moment = flight.map { $0.captured(atSeconds: second) }
+        let step =
+            options.double("at").map(take.step(at:))
+            ?? moment.map { Int($0.rounded(.down)) } ?? take.header.steps.last ?? 0
+        let drift = options.double("at") == nil ? (moment ?? 0) - (moment?.rounded(.down) ?? 0) : 0
         let width = options.int("width") ?? 1920
         let height = options.int("height") ?? 1080
         let renderer = try CUDAHoleRenderer(
@@ -228,10 +240,16 @@ public enum CUDAHoleStill {
             renderer.exposure.fixed = true
             try renderer.upload(seek(take.step(at: at)))
         }
-        let shown = try seek(options.double("at").map(take.step(at:)) ?? take.header.steps.last ?? 0)
-        try renderer.upload(shown)
-        let pixels = try renderer.render(
-            camera: lookFile.camera.camera(progress: 0), look: lookFile.renderLook)
+        let shown = try seek(step)
+        try renderer.upload(shown, drift: Float(drift * take.header.timeStep))
+        var camera = lookFile.camera.camera(progress: 0)
+        var renderLook = lookFile.renderLook
+        if let flight {
+            let shot = flight.camera(atSeconds: second)
+            camera = shot.camera
+            renderLook.exposure *= Float(pow(2, shot.exposure))
+        }
+        let pixels = try renderer.render(camera: camera, look: renderLook)
         return Picture(pixels: [UInt8](pixels), width: width, height: height, time: shown.time)
     }
 }

@@ -7,6 +7,7 @@ import SillageCore
 ///     black-hole new <folder> [scene options]       a scene folder holding a close up
 ///     black-hole run <folder> [scene options]       the same, then its run, as `hires` does
 ///     black-hole still <folder> <png> [--at t] [--look name] [view options]
+///     black-hole still <folder> <png> --flight name --second s [--at t] [--look name]
 ///
 /// The scene folder then goes through `hires` and `export` as a galaxy scene's does, and the
 /// queue runs them alike.
@@ -51,6 +52,7 @@ public enum HoleCommand {
                            [--width w] [--height h] [--straight] [--images n]
                            [--temperature radius|crossing] [--hottest K] [--beaming x]
                            [--exposure x] [--stars n] [--thinning x] [--repeat n]
+                           [--flight name|file --second s]: the flight's camera and moment there
                 then: sillage-render hires <folder>, sillage-render export <folder> [--look film]
 
                 """.utf8))
@@ -92,6 +94,7 @@ public enum HoleCommand {
         let file = HoleSceneFile(
             name: options.values["name"] ?? folder.url.lastPathComponent, blackHole: scene(options))
         try folder.create(file)
+        try HoleFlight.writeSamples(in: folder)
         print("scene      \(folder.scene.path)")
         return folder
     }
@@ -100,14 +103,25 @@ public enum HoleCommand {
         try options.look(folder: folder)
     }
 
-    /// One moment of the take, `--at` in the hole's time units, the end of the run by default.
+    /// One moment of the take, `--at` in the hole's time units, the end of the run by default;
+    /// with `--flight`, the flight's camera and moment `--second` seconds into it (#335).
     static func still(_ options: Options) throws {
         guard options.words.count == 2 else { throw Failure(description: "still needs a folder and a png") }
         let folder = SceneFolder(path: options.words[0])
         let take = try HoleTakeFile.Loaded(contentsOf: folder.take)
         let lookFile = try look(options, folder: folder)
         let replay = try HoleStage.Replay(take: take)
-        let step = options.double("at").map(replay.step(at:)) ?? take.header.steps.last ?? 0
+        let flight = try options.values["flight"].map {
+            try HoleFlight.resolve(
+                FlightFile.decoded(from: Data(contentsOf: folder.flight($0))), header: take.header,
+                camera: lookFile.camera)
+        }
+        let second = options.double("second") ?? 0
+        let moment = flight.map { $0.captured(atSeconds: second) }
+        let step =
+            options.double("at").map(replay.step(at:))
+            ?? moment.map { Int($0.rounded(.down)) } ?? take.header.steps.last ?? 0
+        let drift = options.double("at") == nil ? (moment ?? 0) - (moment?.rounded(.down) ?? 0) : 0
         let width = options.int("width") ?? 1920
         let height = options.int("height") ?? 1080
         let renderer = try HoleRenderer(
@@ -117,16 +131,22 @@ public enum HoleCommand {
             renderer.upload(replay.seek(replay.step(at: at)))
         }
         let frame = replay.seek(step)
-        renderer.upload(frame)
+        renderer.upload(frame, drift: Float(drift * take.header.timeStep))
         let started = Date()
-        let camera = lookFile.camera.camera(progress: 0)
+        var camera = lookFile.camera.camera(progress: 0)
+        var renderLook = lookFile.renderLook
+        if let flight {
+            let shot = flight.camera(atSeconds: second)
+            camera = shot.camera
+            renderLook.exposure *= Float(pow(2, shot.exposure))
+        }
         // The first frame builds the lens tables and warms the GPU: the median of `--repeat`
         // more is the cost.
-        var pixels = renderer.render(frame, camera: camera, look: lookFile.renderLook)
+        var pixels = renderer.render(frame, camera: camera, look: renderLook)
         let first = renderer.lastGPUTime
         var times: [Double] = []
         for _ in 0..<max(options.int("repeat") ?? 0, 0) {
-            pixels = renderer.render(frame, camera: camera, look: lookFile.renderLook)
+            pixels = renderer.render(frame, camera: camera, look: renderLook)
             times.append(renderer.lastGPUTime)
         }
         try PNGWriter.write(pixels, width: width, height: height, to: URL(fileURLWithPath: options.words[1]))

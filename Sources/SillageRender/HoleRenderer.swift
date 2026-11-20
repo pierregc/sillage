@@ -82,15 +82,17 @@ public final class HoleRenderer {
 
     /// Hands the frame's tracers to the GPU, with what their light is normalised by: each law's
     /// mean over the tracers left, and the run's flux at which the brightest few per thousand
-    /// reach the hottest.
-    public func upload(_ frame: TidalFrame) {
+    /// reach the hottest. `drift`, in the hole's time units, carries the tracers on from the
+    /// frame's step along their velocities, for a moment between two steps.
+    public func upload(_ frame: TidalFrame, drift: Float = 0) {
         let length = max(frame.count, 1) * MemoryLayout<SIMD4<Float>>.stride
         if positions == nil || uploaded != frame.count {
             positions = device.makeBuffer(length: length, options: .storageModeShared)
             velocities = device.makeBuffer(length: length, options: .storageModeShared)
             uploaded = frame.count
         }
-        frame.positions.withUnsafeBytes {
+        let shown = drift != 0 ? frame.positions(drifted: drift) : frame.positions
+        shown.withUnsafeBytes {
             positions?.contents().copyMemory(from: $0.baseAddress!, byteCount: $0.count)
         }
         frame.velocities.withUnsafeBytes {

@@ -144,10 +144,22 @@ public enum HoleStage {
         let codec = options.codec ?? options.preset.defaultCodec
         let width = (options.width ?? options.preset.width) / 2 * 2
         let height = (options.height ?? options.preset.height) / 2 * 2
-        let plan = try HolePlan(
-            header: take.header, from: options.from, to: options.to, seconds: options.seconds,
-            framesPerSecond: options.framesPerSecond)
-        let name = options.look == nil ? options.preset.name : "\(lookFile.name)-\(options.preset.name)"
+        let flightURL = options.flight.map { folder.flight($0) }
+        let flight = try flightURL.map {
+            try HoleFlight.resolve(
+                FlightFile.decoded(from: Data(contentsOf: $0)), header: take.header, camera: lookFile.camera)
+        }
+        let plan =
+            try flight.map { try HolePlan(flight: $0, framesPerSecond: options.framesPerSecond) }
+            ?? HolePlan(
+                header: take.header, from: options.from, to: options.to, seconds: options.seconds,
+                framesPerSecond: options.framesPerSecond)
+        let flightName = flightURL.map {
+            $0.lastPathComponent.replacingOccurrences(of: ".\(FlightFile.fileExtension)", with: "")
+        }
+        let name =
+            ([options.look == nil ? nil : lookFile.name, flightName].compactMap { $0 } + [options.preset.name])
+            .joined(separator: "-")
         let out =
             options.out
             ?? folder.export(preset: name, codec: codec == options.preset.defaultCodec ? nil : codec)
@@ -176,6 +188,12 @@ public enum HoleStage {
                 options.preset.name, codec.rawValue, width, height, plan.framesPerSecond, plan.frames,
                 take.header.time(step: plan.steps.first ?? 0), take.header.time(step: plan.steps.last ?? 0),
                 lookFile.name))
+        if let flight, let flightName {
+            say(
+                String(
+                    format: "flight     %@: %d keys over %.1f s; the look's camera only for look keys",
+                    flightName, flight.file.keys.count, flight.seconds))
+        }
         reporter?.start(detail: "frame 0/\(plan.frames)")
         let partial = SceneFolder.partial(out)
         let writer = try VideoWriter(
@@ -183,8 +201,14 @@ public enum HoleStage {
             bitsPerSecond: bitRate, metadata: VideoMetadata(sceneID: folder.sceneID), to: partial)
         for (index, step) in plan.steps.enumerated() {
             let frame = replay.seek(step)
-            renderer.upload(frame)
-            let camera = lookFile.camera.camera(progress: plan.progress(index))
+            renderer.upload(frame, drift: Float(plan.fraction(index) * take.header.timeStep))
+            var camera = lookFile.camera.camera(progress: plan.progress(index))
+            var look = look
+            if let flight {
+                let shot = flight.camera(atSeconds: plan.seconds(index))
+                camera = shot.camera
+                look.exposure *= Float(pow(2, shot.exposure))
+            }
             if let stills = options.stills, index % max(plan.frames / 8, 1) == 0 {
                 let pixels = renderer.render(frame, camera: camera, look: look)
                 try PNGWriter.write(

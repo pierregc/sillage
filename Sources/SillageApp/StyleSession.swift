@@ -103,6 +103,7 @@ final class StyleSession: ObservableObject {
         // The canvas shows what the export frames, whatever the mode (#177).
         model.followsPlan = true
         propose()
+        if let problem = RepositoryRoot.problem() { note = problem }
     }
 
     /// The scene's take is the one on the canvas, loaded and ready to edit.

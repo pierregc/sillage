@@ -115,6 +115,10 @@ struct alignas(sizeof(T) * 4) vec4 {
         struct { T x, y, z, w; };
         struct { T r, g, b, a; };
         swizzle<vec2<T>, T, 2> xy;
+        struct {
+            T before_zw[2];
+            swizzle<vec2<T>, T, 2> zw;
+        };
         swizzle<vec3<T>, T, 3> xyz;
         swizzle<vec3<T>, T, 3> rgb;
         // The two in the middle, over y and z.

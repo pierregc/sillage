@@ -29,6 +29,16 @@ __global__ void resolve(texels2d light, float *dst, uint width, uint height, uin
     put(dst, width, gid, resolvePixel(light, gid, factor));
 }
 
+// One of the renders a frame drawn from inside a galaxy is averaged from (#347), on top of
+// what `dst` holds of the renders before it.
+__global__ void insideResolve(texels2d light, float *dst, uint width, uint height, uint factor, float2 share) {
+    uint2 gid = pixelOfThread();
+    if (gid.x >= width || gid.y >= height) { return; }
+    const float *held = dst + (size_t(gid.y) * width + gid.x) * 4u;
+    float3 before = share.y > 0.5f ? float3(held[0], held[1], held[2]) : float3(0.0f);
+    put(dst, width, gid, insideResolvePixel(light, gid, factor, share, before));
+}
+
 __global__ void plainComposite(texels2d light, float *output, uint width, uint height, uint factor,
                                float fade) {
     uint2 gid = pixelOfThread();
@@ -171,6 +181,20 @@ sc_status sc_post_resolve(const sc_post_image *light, const sc_post_image *dst, 
     if (sc_status status = use(dst->texels->context)) { return status; }
     LAUNCH(resolve, dst->width, dst->height, texture(light), pointer<float>(dst->texels), dst->width,
            dst->height, factor);
+    return SC_OK;
+}
+
+sc_status sc_post_inside_resolve(const sc_post_image *light, const sc_post_image *dst, uint32_t factor,
+                                 float share, int32_t adds) {
+    if (sc_status status = valid(light, "sc_post_inside_resolve", "light")) { return status; }
+    if (sc_status status = valid(dst, "sc_post_inside_resolve", "destination")) { return status; }
+    if (factor == 0u || light->width != dst->width * factor || light->height != dst->height * factor) {
+        return fail(SC_INVALID_ARGUMENT, "sc_post_inside_resolve: %u by %u is not %u times %u by %u", light->width,
+                    light->height, factor, dst->width, dst->height);
+    }
+    if (sc_status status = use(dst->texels->context)) { return status; }
+    LAUNCH(insideResolve, dst->width, dst->height, texture(light), pointer<float>(dst->texels), dst->width,
+           dst->height, factor, metal::float2(share, adds != 0 ? 1.0f : 0.0f));
     return SC_OK;
 }
 

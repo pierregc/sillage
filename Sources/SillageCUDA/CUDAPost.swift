@@ -65,9 +65,24 @@ public final class CUDAPost {
             texels: buffer.handle, width: UInt32(size.width), height: UInt32(size.height))
     }
 
+    /// One of the renders a frame drawn from inside a galaxy is averaged from (#347), into
+    /// `resolved`: the box average of `light` times `share`, on top of the renders before when
+    /// `adds`, as `insideResolve` does on Metal.
+    public func insideResolve(light: CUDABuffer, factor: Int, share: Float, adds: Bool) throws {
+        guard light.length >= sizes.light.width * sizes.light.height * 16 else {
+            throw CUDAError(.invalidArgument, "the light is smaller than the plan's")
+        }
+        var source = try handle(.light, light: light)
+        var target = try handle(.resolved, light: nil)
+        try check(
+            sc_post_inside_resolve(&source, &target, UInt32(factor), share, adds ? 1 : 0),
+            "insideResolve")
+    }
+
     /// Runs the passes of `plan` over `light`, the renderer's supersampled accumulation, and
-    /// leaves the picture in `output`.
-    public func run(_ plan: PostPlan, light: CUDABuffer) throws {
+    /// leaves the picture in `output`. `resolved` says `insideResolve` averaged the light down
+    /// already.
+    public func run(_ plan: PostPlan, light: CUDABuffer, resolved done: Bool = false) throws {
         guard plan.sizes == sizes else {
             throw CUDAError(.invalidArgument, "a post-processing plan for other sizes")
         }
@@ -80,6 +95,7 @@ public final class CUDAPost {
         for pass in plan.passes {
             switch pass {
             case .resolve(let factor):
+                guard !done else { continue }
                 var source = try image(.light)
                 var target = try image(.resolved)
                 try check(sc_post_resolve(&source, &target, UInt32(factor)), "resolve")

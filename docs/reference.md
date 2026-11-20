@@ -733,6 +733,68 @@ chaos, so hires stays at 3.5 and only exploration runs at 7
 ([the note](notes/doubled-step.md), #225). The 15 % fewer stars #225 saw at 7 were the curves
 losing the first step of every frame (#306).
 
+### Where the repository is found
+
+The app and `sillage-render` read `looks/`, `palettes/`, `references/telescope`, `library/` and
+`scripts/explore-batch.sh` from the repository, not from the path they were compiled from, so a
+build made in a worktree keeps working once the worktree is removed. The root is, in order,
+`SILLAGE_ROOT`; the one `dev.sh` writes into the app's `Info.plist` (`SillageRoot`) and into
+`sillage-root` beside `sillage-render`; then the checkout the sources were compiled from. When
+none of them holds a checkout, the CLI stops and the style editor shows what is missing and how
+to set `SILLAGE_ROOT`, instead of offering a short catalogue. A queue or a night runs
+`explore-batch.sh --bin PATH` with its own `sillage-render`, not the one built in the checkout the
+script sits in.
+
+### The command line
+
+`sillage-render --help` prints the commands, and `sillage-render <command> --help` the usage and options of one. The options of every command are held in `Sources/SillageRender/RenderCommands.swift`: an option nothing reads, a value that does not parse (`--particles 2M`) or a stray word is refused with a message, the command's usage, and exit status 2, before anything renders. A test holds the tables to the options the sources read. With no argument at all, `sillage-render` still draws its default render.
+
+`sillage-render explore <folder>` alone takes the batch's defaults: 960x540, 900 frames at 30 fps, a step scale of 7 and `--span 700` (Myr, as many steps as cover it at the scene's step, a whole number a frame). `--steps` or `--span` says how long, and a folder explored before keeps its own clip. Each command lives in its own file under `Sources/sillage-render/`; `main.swift` holds the dispatch and the plain render.
+
+### Photo match
+
+How well a take overlaps a real picture, and the moment and the view where it overlaps best
+(#320). Two steps on the CPU, on the Mac or on Linux: the picture reduced to a map of its
+extended light, then the search over the take. [The note](notes/photo-match.md) has the method
+and the numbers.
+
+```bash
+scripts/photo-match.py picture out/ground-images/antennae-ls.jpg   # writes antennae-ls.map.json beside it
+sillage-render match library/2026-11-20/scene-0004 out/ground-images/antennae-ls.map.json
+scripts/photo-match.py sheet library/2026-11-20/scene-0004/match/antennae-ls.sheet.json
+```
+
+`picture` reads the image at 1 200 px wide, masks the compact sources (foreground stars, their
+spikes and bleed trails, small background galaxies) outside the galaxies' bodies, bins it to
+256 px wide (`--width`), removes the sky and writes the light, its depth in decades and, when
+given, the nuclei: `--nuclei x,y,x,y` in fractions of the image width, x right and y down, or
+`--marks <id>` from `references/telescope/marks.json`. `--preview <png>` draws the map with the
+masked bins in red, to check the mask by eye; `--out` names the map.
+
+`match` takes a scene folder and a map; `sillage-cuda match` is the same on Linux.
+
+| option | |
+| --- | --- |
+| `--at <myr>` | the moment to start from; the search looks `--within <myr>` either side (150) |
+| `--view <e,a[,r]>` | the direction to start from: the look camera's elevation and azimuth, and the roll on the picture, in degrees; the search looks `--span <degrees>` around it (45) |
+| `--kpc-across <kpc>` | the picture's width in kiloparsecs, when its distance is known: the scale is held and the moment comes out sharper |
+| `--stars <n>` | stars projected a frame in the fine pass (200 000) |
+| `--ceiling <decades>` | the level, below the reference light, above which the bodies count as flat (-1) |
+| `--measure` | `isophotes` (the default), `correlation` or `balanced`, as the note compares them |
+| `--take <file>` | another take than the folder's |
+| `--fresh` | ignore the folder's earlier match for this picture |
+
+With neither `--at` nor `--view` and no earlier match, it looks over the whole take and every
+direction: about a minute for 200 frames on four cores. It writes in the folder's `match/`:
+
+- `<picture>.json`: the score, the moment (`megayears`, `storedFrame`, `capturedFrame`) and the
+  view (`elevation`, `azimuth`, `roll`, `kpcPerWidth`, and `origin`, where the scene's origin
+  lands on the picture in fractions of its width). The next match of the same picture starts
+  from it, 30 degrees and 100 Myr around, unless `--fresh`.
+- `<picture>.sheet.json`: both maps and the score along time (the direction held, the placement
+  fitted again) and along each angle (all else held). `photo-match.py sheet` draws the picture,
+  the take from the best view, the two overlaid and the four curves into a PNG beside it.
+
 ### Exploration batches
 
 ```bash

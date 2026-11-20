@@ -78,6 +78,15 @@ public struct GasGrid: Sendable, Equatable, Codable {
     public var columns: Int { radii * angles }
 }
 
+extension TidalFrame {
+    /// The positions carried on along their velocities for `drift` of the hole's time units, the
+    /// tracers swallowed left where they are: a moment between two steps (#335), a fraction of a
+    /// step whose curve is a few thousandths of a radius at the last stable orbit.
+    public func positions(drifted drift: Float) -> [SIMD4<Float>] {
+        zip(positions, velocities).map { p, w in w.w >= 0 ? p + SIMD4(w.x, w.y, w.z, 0) * drift : p }
+    }
+}
+
 /// A run of a tidal disruption on a GPU, Metal's `TidalRun` or CUDA's, as a take's replay steps it.
 public protocol TidalStepping: AnyObject {
     var stepsTaken: Int { get }

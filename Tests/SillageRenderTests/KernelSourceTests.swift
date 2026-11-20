@@ -25,7 +25,9 @@ struct KernelSourceTests {
         "BarnesHutShaders.DrawnDriftParams": MemoryLayout<DrawnDriftGPU>.stride,
         "GPUTreeShaders.BHNode": MemoryLayout<BHNode>.stride,
         "GPUTreeShaders.TreeParams": MemoryLayout<GPUTreeBuilder.Params>.stride,
-        "Shaders.SplatUniforms": MemoryLayout<SplatUniforms>.stride,
+        // As the CUDA engine reads it, the inside of a galaxy behind it (#347).
+        "Shaders.SplatUniforms": MemoryLayout<InsideSplatUniforms>.stride,
+        "Shaders.InsideUniforms": MemoryLayout<InsideUniforms>.stride,
         "Shaders.WebUniforms": MemoryLayout<WebUniforms>.stride,
         "Shaders.DiskFrame": MemoryLayout<DiskFrame>.stride,
         "Shaders.GalaxyRamp": MemoryLayout<GalaxyRamp>.stride,
