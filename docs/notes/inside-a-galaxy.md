@@ -358,11 +358,80 @@ four times that. A still at a key is a fifth of a second.
   leaves the frame when its centre does; at that distance it is faint against the stars in front.
 
 **What stays a limit of 8 M.** The stars are drawn, not simulated: each particle stands for
-about 6 000 suns and its k stars are scattered at random in its kernel, so up close the field
+about 29 000 suns (below) and its stars are scattered in its kernel, so up close the field
 is uniform at the particle's scale (about 50 pc in an arm) and the dust is grains of the same
 size. Structure finer than that (a cluster, a filament of young stars, a dust lane's edge) is
 not in the take; a frozen visit at a full pass's key frames could show it at 50 M, which Pierre
 has set aside.
+
+## What a point is (#357)
+
+Pierre, on the frozen demo flight: around frame 700 "fine grains, like dust, exactly the sense of
+scale I was after"; inside the arm, frame 1104, stars "rather large and rather close together",
+few of them in the arm's thickness. Is it what one would see, and what is a point?
+
+**On the Mice take** (scene-0067, 8 M visible particles on 12 M of dark matter): a galaxy's
+visible particles share its disk's mass, `potential.mass x diskMassFraction`, 1.36 and 0.96 x
+10^11 suns over 4.70 and 3.30 M particles, so **a particle is 29 000 suns** (the 6 000 written
+here before was not this scene's), some 50 000 real stars at the half sun a star of an old disk
+weighs on average. In an arm the particles stand about 50 pc apart; real stars there stand 1.3 pc
+apart. A particle's light went to 128 points, each the light of about 400 real stars, 10 pc
+apart: 7 times too far apart and 400 times too bright. Up close they were brighter still, every
+star at its own distance, so the nearest few hundred particles' points reached 30 000 in the light
+(the half-float cap), a hundred times the energy that is white, and the look's bloom (threshold
+0.26) spread each into a disc 10 to 20 pixels wide: the large stars of frame 1104. Frame 700 is
+the same points seen from 3 to 8 kpc, each a hundred times fainter, under the bloom's threshold:
+fine grains.
+
+**What changed.** Four things, all on the stars of a flight, nothing on any other frame:
+
+- **A near particle stands for more stars.** Once its kernel covers more than `nearFrom` of the
+  frame's height (0.3), it draws `stars` times the square of how much more, up to `nearStars`
+  (4096): 128 beyond 600 pc, 500 at 300, 1 200 at 200, 4 096 within 110 pc. The shares follow the
+  same rank to minus one, so the extra stars are the faint end of the particle's field, as a real
+  field shows more of its faint stars the nearer they are; at 4 096 a point is 12 real stars and
+  they stand 3 pc apart.
+- **A star stays a point.** Its light is held under `starPeak` (2) times what the tone curve takes
+  one output pixel to white, softly (`light x cap / (cap + light)`), so past that it brightens
+  ever less and the bloom gives it a glint, not a disc. The cap follows the frame's stretch and
+  white point, the automatic exposure's trim with them.
+- **Sizes against the frame's height.** `starSize` is pixels of a frame 2160 high (1.5), and the
+  cross-fade from splat to stars is set on the kernel ceiling of a frame 1080 high: 1080p and 4K
+  draw the same stars, as many (31.7 M at the most on the stills below in both) and as fine. A star
+  narrower than a pixel lays its light on the pixels its box touches, each its share of the box
+  (`starShare`), so it keeps all of it wherever it falls among them. The old profile, a gaussian
+  a sixth of the point wide, varied by a tenth at 3 pixels, the 1080p stars' accumulation size
+  before; shrunk to 1.5 it would have laid from 7 % to all of its peak's light as the point slid
+  across the grid, and the stars would twinkle as the camera moved. A streak is the same box
+  drawn out.
+- **Scattered evenly, thinning out.** A particle's stars walk Roberts' three dimensional golden
+  sequence from a start of its own, so its first few, the brightest, are spread through the
+  kernel rather than in random clumps, and they thin out as a Plummer sphere (half within 0.8
+  kernel lengths, the last tenth out to 2.2) into the neighbours' rather than ending on a sphere's
+  edge. Each star's share is also drawn around its rank's from a Pareto tail of index 1.5
+  (`starTail`), its mean kept: one star in fifty five times brighter or more, as giants stand out.
+
+**Stills**, the frozen dive at 23.3, 33.3, 35, 36.8 (frame 1104), 38.5 and 40 s, one render each,
+the GPU alone on a timed run (ms a render):
+
+| | 23.3 s | 33.3 | 35 | 36.8 | 38.5 | 40 | stars, most |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1080p, before | 179 | 158 | 152 | 134 | 119 | 110 | 20.5 M |
+| 1080p, after | 180 | 166 | 163 | 143 | 129 | 120 | 31.7 M |
+| 4K, before | 422 | 326 | 316 | 259 | 219 | 201 | 20.6 M |
+| 4K, after | 425 | 354 | 337 | 278 | 241 | 219 | 31.7 M |
+
+Half as many stars again, for 5 to 9 % more a render inside the arm and nothing at frame 700,
+which is unchanged to the eye: its particles are far and mostly splats. Frames 1000 to 1200 as a
+video, 8 renders a frame at most (1 608 in all), 32.1 M stars a render at the most: 223 s before
+and 238 s after in 1080p, 436 and 474 s in 4K, the after runs sharing the Mac with tests. Stills,
+crops and the 1080p clips are on the branch `assets/357-inside-stars` under
+`docs/spikes/inside-357/`. Tried and left: growing from a tenth of the frame (78 M stars, a milky
+carpet), fewer stars a far particle (64 or 32, with a cap of 6: the light goes back to fewer,
+brighter stars and the halos return).
+
+What the stars cannot fix: the dust is grains the size of the look's kernel ceiling, in output
+pixels, so 4K draws finer dust than 1080p (#356).
 
 ## Two disks that cross (#353)
 
@@ -442,7 +511,7 @@ out, so its fixed point light is the one it had (the four reference frames and
 
 The bodies of `insideCount`, `insideOffsets`, `insideFill`, `pointStarVertex`,
 `pointStarFragment` and `insideResolve` moved into shared functions (`insideCounted`,
-`insideOffset`, `insideFilled`, `pointStar`, `starRadius2`, `insideResolvePixel`); the Metal
+`insideOffset`, `insideFilled`, `pointStar`, `starShare` and `starPixel` since #357, `insideResolvePixel`); the Metal
 entry points only call them. On CUDA:
 
 - `SC_RENDER_POINT_STARS` runs the three listing kernels, reads the count back, and draws eight

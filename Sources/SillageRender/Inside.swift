@@ -12,13 +12,27 @@ import SillageCore
 public struct InsideSettings: Codable, Sendable, Equatable {
     /// Point stars a near particle's light is handed to; 0 draws none.
     public var stars = 128
+    /// The most a particle draws once its kernel covers more of the frame than `nearFrom`: its
+    /// count grows as the square of the kernel's size past that, as a star field resolves more
+    /// of its faint stars the nearer it is (#357).
+    public var nearStars = 4096
+    /// The kernel's size on screen, as a share of the frame's height, past which a particle
+    /// draws more than `stars`.
+    public var nearFrom: Float = 0.3
     /// A star's share of the light falls as its rank to minus this: 1 gives a few bright stars
     /// over a crowd of faint ones, 0 equal shares.
     public var starShare: Float = 1
+    /// Each star's share is drawn around its rank's from a Pareto tail of this index, its mean
+    /// kept: most stars a little fainter, two in a hundred five times brighter or more, as rare
+    /// giants stand out of a population (#357). 0 for the rank's share alone.
+    public var starTail: Float = 1.5
     /// How far the stars' colours are drawn around their population's, 0 for the particle's own.
     public var starColours: Float = 1
-    /// Output pixels.
+    /// Pixels of a frame 2160 high: a star covers the same share of the frame at any size (#357).
     public var starSize: Float = 1.5
+    /// The most light a star lays, against what the tone curve takes to white: past it a star
+    /// keeps its size and gains a glint, not a disk of bloom (#357).
+    public var starPeak: Float = 2
     /// Kernel lengths the stars of a particle are scattered over.
     public var starSpread: Float = 1
     /// The shares of the look's kernel ceiling between which a particle's light goes over from
@@ -55,9 +69,13 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init()
         stars = try c.value(.stars, or: stars)
+        nearStars = try c.value(.nearStars, or: nearStars)
+        nearFrom = try c.value(.nearFrom, or: nearFrom)
         starShare = try c.value(.starShare, or: starShare)
+        starTail = try c.value(.starTail, or: starTail)
         starColours = try c.value(.starColours, or: starColours)
         starSize = try c.value(.starSize, or: starSize)
+        starPeak = try c.value(.starPeak, or: starPeak)
         starSpread = try c.value(.starSpread, or: starSpread)
         starFrom = try c.value(.starFrom, or: starFrom)
         starFull = try c.value(.starFull, or: starFull)
@@ -79,9 +97,15 @@ public struct InsideSettings: Codable, Sendable, Equatable {
                 && zip(values, values.dropFirst()).allSatisfy { $0 < $1 }
         }
         if !(0...1024).contains(stars) { return "stars \(stars): 0 to 1024" }
+        if !(stars...16_384).contains(nearStars) { return "nearStars \(nearStars): stars to 16384" }
+        if !(nearFrom > 0 && nearFrom <= 4) { return "nearFrom \(nearFrom): above 0, to 4" }
         if !(starShare >= 0 && starShare <= 2) { return "starShare \(starShare): 0 to 2" }
+        if !(starTail == 0 || (starTail >= 1.1 && starTail <= 8)) {
+            return "starTail \(starTail): 0, or 1.1 to 8"
+        }
         if !(starColours >= 0 && starColours <= 2) { return "starColours \(starColours): 0 to 2" }
         if !(starSize >= 0.5 && starSize <= 16) { return "starSize \(starSize) px: 0.5 to 16" }
+        if !(starPeak > 0 && starPeak <= 1000) { return "starPeak \(starPeak): above 0, to 1000" }
         if !(starSpread > 0 && starSpread <= 8) { return "starSpread \(starSpread): above 0, to 8" }
         if !(starFrom >= 0 && starFrom < starFull && starFull <= 1) {
             return "starFrom \(starFrom) and starFull \(starFull): shares of the ceiling, the first lower"
@@ -137,6 +161,12 @@ public struct InsideUniforms: Sendable {
     public var starCount: UInt32
     public var projectionX: Float
     public var projectionY: Float
+    /// The most stars a particle draws, and the kernel's size in accumulation pixels past which
+    /// it draws more than `starCount`.
+    public var nearStars: Float
+    public var nearFrom: Float
+    /// The Pareto index each star's share is drawn with, 0 for none.
+    public var starTail: Float
 
     /// How far inside the eye is for the slabs: 0 past `slabsWithin`'s far distance from any
     /// matter, 1 nearer than its near one.
@@ -172,15 +202,23 @@ public struct InsideUniforms: Sendable {
         fadeLengths = inside.fade
         windowNear = inside.field[0]
         windowFar = inside.field[1]
-        let ceiling = settings.maximumKernel * scale
+        // Against the frame's height, so that 1080p and 4K turn the same particles to the same
+        // stars (#357): the ceiling of a frame 1080 high, the size of one 2160 high.
+        let lines = Float(settings.height) * scale
+        let ceiling = settings.maximumKernel * lines / 1080
         starStart = inside.starFrom * ceiling
         starEnd = inside.starFull * ceiling
         starSpread = inside.starSpread
-        starPointSize = max(inside.starSize * scale, 1)
+        // A star narrower than a pixel shares its light among the pixels it touches.
+        starPointSize = max(inside.starSize * lines / 2160, 0.5)
         starShareExponent = inside.starShare
         starShareNorm = Self.shareNorm(stars: inside.stars, exponent: inside.starShare)
         starColours = inside.starColours
+        starCap = Self.cap(peak: inside.starPeak, size: starPointSize, scale: scale, settings: settings)
         starCount = UInt32(max(inside.stars, 0))
+        nearStars = Float(max(inside.nearStars, inside.stars))
+        nearFrom = inside.nearFrom * lines
+        starTail = inside.starTail
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
@@ -208,6 +246,19 @@ public struct InsideUniforms: Sendable {
         starCount = 0
         projectionX = 1
         projectionY = 1
+        nearStars = 0
+        nearFrom = 0
+        starTail = 0
+    }
+
+    /// The most light a star's pixel takes, in the light of the accumulation, so that the one
+    /// output pixel it falls in reaches `peak` times the energy the tone curve takes to white.
+    /// Its profile over a point `size` pixels across holds 0.1736 of its centre times its area.
+    public static func cap(peak: Float, size: Float, scale: Float, settings: RenderSettings) -> Float {
+        let white = max(settings.whitePoint, 1)
+        let stretch = settings.stretch
+        let energy = stretch > 0 ? (pow(1 + stretch, white) - 1) / stretch : white
+        return peak * energy * scale * scale / (0.1736 * size * size)
     }
 
     /// The sum of the first `count` stars' shares before the norm, for any count, as the shader's

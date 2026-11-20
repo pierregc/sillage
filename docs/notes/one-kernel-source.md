@@ -370,7 +370,7 @@ found a bug.
 
 `sillage-cuda check` draws the two inside frames with `CUDATakeStills.flightStill` and holds
 them to Metal's as it holds `webb`, the look they are drawn in: **48 dB, 40 levels at most, 0.3 %
-of the pixels over 8, the mean within 0.1 level** (`CUDAEngineCheck.insideTolerance`, also
+of the pixels over 8, the mean within half a level** (`CUDAEngineCheck.insideTolerance`, also
 `CUDAInsideTests`). Metal draws them with `TakeExport.flightStill`, the same steps in the same
 order: the exposure measured on the flight's look key, the trim solved at that moment alone,
 then the grain set to the video's frame and the frame's renders averaged. Setting the grain is what
@@ -381,7 +381,12 @@ Why that tolerance, from what is known to differ:
 
 - **The accumulation.** CUDA adds the light in fixed point where Metal blends in fp16, as on
   every frame; the inside frames add point stars and three or four renders averaged by `insideResolve`,
-  which on CUDA reads the fixed point light of each.
+  which on CUDA reads the fixed point light of each. Since #357 a near particle stands for up to
+  4 096 stars, most of them too faint for a half float to add to a lit pixel: Metal drops them
+  and CUDA keeps them, so CUDA's frames are brighter, by 0.09 and 0.37 level on the mean of the
+  two frames (one level on a third of the pixels at 3.5 s, almost none darker; 0.1 was the bound
+  before). On the CPU target they then measure 57.9 and 52.1 dB, 12 levels at most, 0.011 and
+  0.043 % of the pixels over 8.
 - **The per splat ceiling of 6e4** is left out on CUDA only for a frame outside a galaxy. Both
   inside frames have it on both engines, so it moves nothing here; the four outside frames and
   `aPixelSaturatesRatherThanWrap` hold the other case.
