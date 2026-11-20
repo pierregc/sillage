@@ -14,6 +14,8 @@ struct InsidePass {
     /// holds: a hundred and twenty-eight million stars, more than a frame can afford to draw.
     static let group = 8
     static let mostEntries = 16_000_000
+    /// The most entries a particle takes: `nearStars` at its most (#357).
+    static let particleEntries = 2048
 
     let library: MTLLibrary
     let dust: MTLRenderPipelineState
@@ -72,7 +74,7 @@ struct InsidePass {
         fill = try compute("insideFill")
         self.particles = max(particles, 1)
         let blocks = (self.particles + Self.block - 1) / Self.block
-        entries = min(self.particles * 16, Self.mostEntries)
+        entries = min(self.particles * Self.particleEntries, Self.mostEntries)
         guard let counts = device.makeBuffer(length: blocks * 4, options: .storageModePrivate),
             let list = device.makeBuffer(length: entries * 8, options: .storageModePrivate),
             let draw = device.makeBuffer(length: 16, options: .storageModeShared)

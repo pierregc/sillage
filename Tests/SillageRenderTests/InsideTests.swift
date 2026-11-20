@@ -87,7 +87,16 @@ struct InsideTests {
         let inside = uniforms(1, camera: camera).inside
         #expect(inside.nearPlane == 0.001 && inside.starCount == 128)
         #expect(abs(inside.starStart - 0.05 * 92 * 2) < 1e-4 && abs(inside.starEnd - 0.2 * 92 * 2) < 1e-4)
-        #expect(inside.starPointSize == 3)
+        // A star is 1.5 pixels of a frame 2160 high: 1.5 of the 2160 lines this one accumulates.
+        #expect(inside.starPointSize == 1.5)
+        #expect(inside.nearStars == 4096 && abs(inside.nearFrom - 0.3 * 2160) < 1e-3)
+        // Its light is held to what takes one output pixel to twice its white: a stretch of 10
+        // and a white point of 2.2 put white at an energy of 19.4.
+        var look = RenderSettings(width: 1920, height: 1080, supersample: 2, maximumKernel: 92)
+        look.stretch = 10
+        look.whitePoint = 2.2
+        let cap = InsideUniforms.cap(peak: 2, size: 1.5, scale: 2, settings: look)
+        #expect(abs(cap * 0.1736 * 1.5 * 1.5 / 4 - 2 * 19.445) < 0.05, "\(cap)")
         #expect(abs(inside.projectionY - 1 / tan(0.3)) < 1e-5)
         #expect(abs(inside.projectionX - inside.projectionY * 1080 / 1920) < 1e-5)
         // The shares add up to the particle's light.

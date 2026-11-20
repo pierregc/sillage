@@ -59,6 +59,12 @@ enum Shaders {
             /// The projection's scales across and up.
             float projectionX;
             float projectionY;
+            /// The most stars a particle draws, and the kernel's size past which it draws more
+            /// than `starCount` (#357).
+            float nearStars;
+            float nearFrom;
+            /// The Pareto index a star's share is drawn with around its rank's, 0 for none.
+            float starTail;
         };
         #endif
 
@@ -665,20 +671,37 @@ enum Shaders {
                 - e * (e + 1.0f) * (e + 2.0f) / 720.0f * (1.0f - pow(n, -e - 3.0f));
         }
 
+        // How many stars a particle stands for at its kernel's size on screen (#357): as many as
+        // the settings give, and past `nearFrom` more as the square of the size, as a real
+        // field shows more of its faint stars the nearer they are, up to `nearStars`.
+        SHARED float insideStarTotal(float raw, constant InsideUniforms &i) {
+            float grown = i.nearFrom > 0.0f && raw > i.nearFrom ? (raw * raw) / (i.nearFrom * i.nearFrom) : 1.0f;
+            return min(float(i.starCount) * grown, max(i.nearStars, float(i.starCount)));
+        }
+
+        // One over the sum of the shares of `total` stars, so that they add up to the light.
+        SHARED float insideShareNorm(float total, constant InsideUniforms &i) {
+            return total <= float(i.starCount) ? i.starShareNorm
+                : 1.0f / insideShareSum(total, i.starShareExponent);
+        }
+
         // How many of its stars a particle draws: all of them once its light is wholly theirs,
         // the brightest first on the way there. The faint ones of a particle that has only
         // started to turn would cost as much to draw as the bright ones and show nothing.
-        SHARED float insideStarsDrawn(float starred, constant InsideUniforms &i) {
-            return float(i.starCount) * starred;
+        SHARED float insideStarsDrawn(float starred, float total) {
+            return total * starred;
         }
 
         // The share of a particle's light its drawn stars carry, which its splat gives up.
-        SHARED float insideStarLight(float starred, constant InsideUniforms &i) {
-            return starred * insideShareSum(insideStarsDrawn(starred, i), i.starShareExponent)
-                * i.starShareNorm;
+        SHARED float insideStarLight(float starred, float raw, constant InsideUniforms &i) {
+            // The CUDA engine reads this on every frame, most of them with no near field at all.
+            if (starred <= 0.0f) { return 0.0f; }
+            float total = insideStarTotal(raw, i);
+            return starred * insideShareSum(insideStarsDrawn(starred, total), i.starShareExponent)
+                * insideShareNorm(total, i);
         }
 
-        SHARED float2 insideHash(uint2 v) {
+        SHARED uint2 insideHashBits(uint2 v) {
             v = v * 1664525u + 1013904223u;
             v.x += v.y * 1664525u;
             v.y += v.x * 1664525u;
@@ -686,7 +709,30 @@ enum Shaders {
             v.x += v.y * 1664525u;
             v.y += v.x * 1664525u;
             v = v ^ (v >> 16u);
-            return float2(v) * (1.0f / 4294967296.0f);
+            return v;
+        }
+
+        SHARED float2 insideHash(uint2 v) {
+            return float2(insideHashBits(v)) * (1.0f / 4294967296.0f);
+        }
+
+        // Where star `rank` of a particle stands against it, in kernel lengths (#357): the
+        // ranks walk Roberts' three dimensional golden sequence from a place of the particle's
+        // own, so that a particle's stars, and its brightest few first, fill its kernel evenly
+        // rather than in random clumps; and they thin out as a Plummer sphere does, half of them
+        // within 0.8 kernel lengths and the last tenth out to 2.2, so that one particle's stars
+        // merge into its neighbours' instead of reading as a ball.
+        SHARED float3 insideScatter(uint index, uint rank) {
+            uint2 start = insideHashBits(uint2(index, 0x51ed270bu));
+            uint3 at = uint3(start.x, start.y, start.x ^ start.y)
+                + rank * uint3(0xd1b54a33u, 0xabc98389u, 0x8cb92ba7u);
+            float3 u = float3(at) * (1.0f / 4294967296.0f);
+            float z = 2.0f * u.x - 1.0f;
+            float phi = 6.2831853f * u.y;
+            float ring = sqrt(max(1.0f - z * z, 0.0f));
+            float c = pow(max(0.9f * u.z, 1e-9f), 1.0f / 3.0f);
+            float radius = 0.6f * c / sqrt(1.0f - c * c);
+            return float3(ring * cos(phi), ring * sin(phi), z) * radius;
         }
 
         // The size of an emitting particle's kernel on screen where `clip` puts it, in
@@ -931,7 +977,7 @@ enum Shaders {
                 }
                 out.pointSize = span * (alive > 0.15f ? 1.3f : 1.0f);
                 #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
-                float kept = fade * (1.0f - insideStarLight(starred, u.inside));
+                float kept = fade * (1.0f - insideStarLight(starred, raw, u.inside));
                 if (starDraw) {
                     // A point star: its share of the particle's light at its own distance, on a
                     // few pixels, its colour drawn around its population's (an old star about
@@ -943,11 +989,13 @@ enum Shaders {
                         emitted = chromaticity(emitted * blackbody(drawn) / blackbody(mean));
                     }
                     float near = u.projectionScale / max(out.position.w, u.inside.starNearest);
-                    float size = max(u.inside.starPointSize, 1.0f);
+                    float size = u.inside.starPointSize;
                     float3 light = emitted * (u.brightness * weight * gain * u.referenceArea * near * near
                                               * p.starShare * fade / (size * size));
+                    // Past the cap a star brightens ever less and stays a point (#357): the light
+                    // the bloom would have spread into a disk is not laid.
                     float top = max(max(light.x, light.y), light.z);
-                    light *= top > u.inside.starCap ? u.inside.starCap / top : 1.0f;
+                    light *= u.inside.starCap / (u.inside.starCap + top);
                     out.pointSize = size;
                     out.color = half3(light);
                 } else if (kept <= 0.0f) {
@@ -1104,9 +1152,11 @@ enum Shaders {
                 || abs(clip.y) > room + reach * u.inside.projectionY) { return 0u; }
             Drawn p = massiveDrawn(index, positions, formation, luminosity, component, galaxy,
                                    smoothing, traits);
-            float starred = insideStarred(insideRaw(p, clip, u, column), clip.w, u.inside);
+            float raw = insideRaw(p, clip, u, column);
+            float starred = insideStarred(raw, clip.w, u.inside);
             if (starred <= 0.0f) { return 0u; }
-            return (uint(ceil(insideStarsDrawn(starred, u.inside))) + insideGroup - 1u) / insideGroup;
+            float drawn = insideStarsDrawn(starred, insideStarTotal(raw, u.inside));
+            return (uint(ceil(drawn)) + insideGroup - 1u) / insideGroup;
         }
 
         // The stars to draw, listed in the order of their particles' indices so that two
@@ -1176,10 +1226,11 @@ enum Shaders {
             float pointSize;
             half3 color;
             half4 slab;
-            /// Half of the streak, and the star's own radius, both in the point's square, which
-            /// is one across.
+            /// Half of the streak, half the star's own width and a pixel, all in the point's
+            /// square, which is one across.
             float2 half_streak;
             float radius;
+            float pixel;
         };
 
         SHARED Star culledStar() {
@@ -1190,6 +1241,7 @@ enum Shaders {
             out.slab = half4(half(0.0f));
             out.half_streak = float2(0.0f);
             out.radius = 0.5f;
+            out.pixel = 1.0f;
             return out;
         }
 
@@ -1209,20 +1261,24 @@ enum Shaders {
             p.population = population[index];
             p.rampKey = rampKeys[index];
             float4 clip = u.viewProjection * float4(p.position, 1.0f);
-            float starred = insideStarred(insideRaw(p, clip, u, column), clip.w, u.inside);
+            float raw = insideRaw(p, clip, u, column);
+            float starred = insideStarred(raw, clip.w, u.inside);
+            float total = insideStarTotal(raw, u.inside);
             // The last star a particle draws comes in as the particle turns.
-            float present = saturate(insideStarsDrawn(starred, u.inside) - float(rank));
+            float present = saturate(insideStarsDrawn(starred, total) - float(rank));
             if (present <= 0.0f) { return culledStar(); }
-            float2 a = insideHash(uint2(index, rank * 2u + 1u));
             float2 b = insideHash(uint2(index ^ 0x9e3779b9u, rank * 2u + 2u));
-            float z = 2.0f * a.x - 1.0f;
-            float phi = 6.2831853f * a.y;
-            float ring = sqrt(max(1.0f - z * z, 0.0f));
-            float radius = insideLength(p.spacing, p.kernelScale, u) * u.inside.starSpread
-                * pow(max(b.x, 1e-6f), 1.0f / 3.0f);
-            p.position += float3(ring * cos(phi), ring * sin(phi), z) * radius;
-            p.starShare = pow(float(rank + 1u), -u.inside.starShareExponent) * u.inside.starShareNorm
-                * present * starred;
+            p.position += insideScatter(index, rank) * insideLength(p.spacing, p.kernelScale, u)
+                * u.inside.starSpread;
+            p.starShare = pow(float(rank + 1u), -u.inside.starShareExponent)
+                * insideShareNorm(total, u.inside) * present * starred;
+            if (u.inside.starTail > 0.0f) {
+                // A Pareto draw cut at 30, over its mean so that the shares still add up.
+                float tail = u.inside.starTail;
+                float least = (tail - 1.0f) / tail;
+                float mean = 1.0f - pow(least, tail) * pow(30.0f, 1.0f - tail) / (tail - 1.0f);
+                p.starShare *= min(pow(max(b.x, 1e-9f), -1.0f / tail) * least, 30.0f) / mean;
+            }
             p.starHash = b.y;
             Splat star = splat(p, u, frames, stellar, ramps, column);
             if (star.pointSize <= 0.0f) { return culledStar(); }
@@ -1245,24 +1301,38 @@ enum Shaders {
             float size = star.pointSize;
             Star out;
             out.position = float4((from + 0.5f * moved / extent) * star.position.w, star.position.zw);
-            out.pointSize = size + drawn;
-            // The light of the star's disc over the disc and the band between its two ends.
-            out.color = half3(float3(star.color) / (1.0f + 2.407f * drawn / size));
+            // The square holds every pixel the star's box touches, turned along its streak.
+            out.pointSize = drawn > 0.0f ? drawn + 2.0f * size + 1.5f : size + 1.5f;
+            // All of the light `splat` gives a profile of this size, which the pixels then share.
+            out.color = half3(float3(star.color) * (0.1736f * size * size));
             out.slab = star.slab;
             // The square's y runs down the screen, the clip space's up.
             out.half_streak = 0.5f * float2(moved.x, -moved.y) / out.pointSize;
             out.radius = 0.5f * size / out.pointSize;
+            out.pixel = 1.0f / out.pointSize;
             return out;
         }
 
-        // A pixel of a point star's streak (#297), in the star's own radii from the line that
-        // runs from its first place to its last: the star's profile across it.
-        SHARED float starRadius2(float2 coord, float2 half_streak, float radius) {
+        // The share of a point star's light a pixel of its square holds (#357): how much of the
+        // pixel the star's box covers, `size` wide and drawn out along its streak, over the box's
+        // area. A star narrower than a pixel lays all of its light on the few pixels it touches,
+        // wherever it falls among them, and the same star is one picture at any frame size.
+        SHARED float starShare(float2 coord, float2 half_streak, float radius, float pixel) {
             float2 d = coord - 0.5f;
-            float along = dot(half_streak, half_streak);
-            float t = along > 1e-12f ? clamp(dot(d, half_streak) / along, -1.0f, 1.0f) : 0.0f;
-            float2 off = (d - half_streak * t) / radius;
-            return dot(off, off);
+            float half_length = length(half_streak);
+            float2 along = half_length > 1e-9f ? half_streak / half_length : float2(1.0f, 0.0f);
+            float a = dot(d, along);
+            float c = dot(d, float2(-along.y, along.x));
+            float reach = half_length + radius;
+            float covered = clamp(min(a + 0.5f * pixel, reach) - max(a - 0.5f * pixel, -reach), 0.0f, pixel)
+                * clamp(min(c + 0.5f * pixel, radius) - max(c - 0.5f * pixel, -radius), 0.0f, pixel);
+            return covered / (4.0f * reach * radius);
+        }
+
+        SHARED half4 starPixel(half3 color, half4 slab, half4 dust, float share) {
+            float column = dot(float4(dust), float4(slab));
+            float3 extinction = exp(-column * reddening);
+            return half4(half3(float3(color) * extinction * share), half(share));
         }
         #endif
 
@@ -1315,6 +1385,7 @@ enum Shaders {
             half4 slab;
             float2 half_streak;
             float radius;
+            float pixel;
         };
 
         vertex StarOut pointStarVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
@@ -1343,6 +1414,7 @@ enum Shaders {
             out.slab = star.slab;
             out.half_streak = star.half_streak;
             out.radius = star.radius;
+            out.pixel = star.pixel;
             return out;
         }
         #endif
@@ -2048,11 +2120,11 @@ enum Shaders {
         fragment LightTarget pointStarFragment(StarOut in [[stage_in]],
                                                float2 coord [[point_coord]],
                                                SplatFetch prior) {
-            float r2 = starRadius2(coord, in.half_streak, in.radius);
-            if (r2 > 1.0f) { discard_fragment(); }
+            float share = starShare(coord, in.half_streak, in.radius, in.pixel);
+            if (share <= 0.0f) { discard_fragment(); }
 
             LightTarget out;
-            out.light = lightPixel(in.color, in.slab, prior.dust, r2);
+            out.light = starPixel(in.color, in.slab, prior.dust, share);
             return out;
         }
         #endif

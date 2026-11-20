@@ -106,9 +106,11 @@ public enum CUDAEngineCheck {
     }
 
     /// The frames of a flight drawn from inside the take's disk (#369), held as `webb`, the look
-    /// they are drawn in: the CPU target gives 60 to 62 dB, 9 levels at most, and the margin is
-    /// the GPU's own roundings (docs/notes/one-kernel-source.md).
-    public static let insideTolerance = (psnr: 48.0, largest: 40, overEight: 0.003)
+    /// they are drawn in: the CPU target gives 52 to 58 dB, 12 levels at most, and the margin is
+    /// the GPU's own roundings. The mean is held to half a level: since #357 a near particle has
+    /// thousands of faint stars, too faint for Metal's half floats to add to a lit pixel, which
+    /// CUDA's fixed point keeps (docs/notes/one-kernel-source.md).
+    public static let insideTolerance = (psnr: 48.0, largest: 40, overEight: 0.003, mean: 0.5)
 
     struct InsideImage: Decodable {
         var seconds: Double
@@ -176,7 +178,7 @@ public enum CUDAEngineCheck {
         let tolerance = insideTolerance
         let passed =
             measure.psnr >= tolerance.psnr && measure.largest <= tolerance.largest
-            && measure.overEight <= tolerance.overEight && abs(measure.meanA - measure.meanB) < 0.1
+            && measure.overEight <= tolerance.overEight && abs(measure.meanA - measure.meanB) < tolerance.mean
         return (passed, "\(measure)")
     }
 
