@@ -235,3 +235,218 @@ public enum CUDAHoleStill {
         return Picture(pixels: [UInt8](pixels), width: width, height: height, time: shown.time)
     }
 }
+
+/// The close up held to Metal's reference outputs of `Tests/Fixtures/hole` (#336): the run 40
+/// steps on from a moment, three stills of the moment Metal reached, and the command's path from
+/// a take. Part of `sillage-cuda check`, which runs it in an optimised build: on the CPU of a test
+/// build a lens table takes most of a minute (docs/notes/cuda-engine.md).
+public enum CUDAHoleCheck {
+    public struct Manifest: Decodable, Sendable {
+        public struct View: Decodable, Sendable {
+            public var look: String
+            public var file: String
+        }
+
+        public var tracers: Int
+        public var gas: GasGrid
+        public var startStep: Int
+        public var steps: Int
+        public var width: Int
+        public var height: Int
+        public var views: [View]
+    }
+
+    /// The run's tolerances after Metal's 40 steps: positions and velocities as a share of their
+    /// size (measured 5.5e-7 and 4.7e-6), and the light, whose viscous heat is `1 - keep²` with
+    /// `keep = exp(-ε)` and ε about 1e-6, the difference of two floats near one that two maths
+    /// libraries round apart by a few percent of it (measured 1.2 % of the brightest at most, 2.9 %
+    /// of the light on the mean).
+    public static let position: Float = 1e-5
+    public static let velocity: Float = 1e-4
+    public static let light: (largest: Float, mean: Double) = (0.05, 0.1)
+    /// A still's against Metal's (measured 54.7 to 55.2 dB, 17 to 31 levels, 0.084 % over 8).
+    public static let still: (psnr: Double, largest: Int, overEight: Double) = (50, 48, 0.002)
+
+    public static func manifest(_ folder: URL) throws -> Manifest {
+        try JSONDecoder().decode(
+            Manifest.self, from: Data(contentsOf: folder.appendingPathComponent("manifest.json")))
+    }
+
+    public static func scene(_ folder: URL) throws -> HoleSceneFile {
+        try JSONDecoder().decode(
+            HoleSceneFile.self, from: Data(contentsOf: folder.appendingPathComponent("scene.json")))
+    }
+
+    public static func frame(_ folder: URL, _ name: String, tracers: Int) throws -> TidalFrame {
+        let data = try Data(contentsOf: folder.appendingPathComponent(name))
+        let values = data.withUnsafeBytes { Array($0.bindMemory(to: SIMD4<Float>.self)) }
+        guard values.count == 2 * tracers else {
+            throw CUDAError(.invalidArgument, "\(name) holds \(values.count / 2) tracers, not \(tracers)")
+        }
+        return TidalFrame(
+            time: 0, positions: Array(values[0..<tracers]), velocities: Array(values[tracers..<(2 * tracers)])
+        )
+    }
+
+    /// How far CUDA's run lands from Metal's after the fixture's steps.
+    public struct RunMeasure: Sendable, CustomStringConvertible {
+        public var position: Float = 0
+        public var velocity: Float = 0
+        public var light: Float = 0
+        public var brightest: Float = 0
+        public var lightMean = 0.0
+        public var swallowed = (cuda: 0, metal: 0)
+
+        public var passed: Bool {
+            swallowed.cuda == swallowed.metal && position < CUDAHoleCheck.position
+                && velocity < CUDAHoleCheck.velocity && light <= CUDAHoleCheck.light.largest * brightest
+                && lightMean <= CUDAHoleCheck.light.mean && brightest > 0
+        }
+
+        public var description: String {
+            String(
+                format: "positions %.2g, velocities %.2g, light %.3f of the brightest and %.3f on the mean,"
+                    + " %d swallowed (Metal %d)", position, velocity, light / max(brightest, 1e-30),
+                lightMean,
+                swallowed.cuda, swallowed.metal)
+        }
+    }
+
+    public static func run(context: CUDAContext, folder: URL) throws -> RunMeasure {
+        let manifest = try manifest(folder)
+        let start = try frame(folder, "start.bin", tracers: manifest.tracers)
+        let end = try frame(folder, "end.bin", tracers: manifest.tracers)
+        let run = try CUDATidalRun(context: context, scene: scene(folder).blackHole, gas: manifest.gas)
+        run.resume(from: start, step: manifest.startStep)
+        run.step(manifest.steps)
+        if let failure = run.failure { throw failure }
+        let stepped = run.frame
+        var measure = RunMeasure()
+        var difference = 0.0
+        var total = 0.0
+        for index in 0..<manifest.tracers {
+            let (a, b) = (stepped.positions[index], end.positions[index])
+            let (va, vb) = (stepped.velocities[index], end.velocities[index])
+            if va.w < 0 { measure.swallowed.cuda += 1 }
+            if vb.w < 0 { measure.swallowed.metal += 1 }
+            let at = SIMD3<Float>(b.x, b.y, b.z)
+            let moving = SIMD3<Float>(vb.x, vb.y, vb.z)
+            measure.position = max(
+                measure.position, simd_length(SIMD3<Float>(a.x, a.y, a.z) - at) / max(simd_length(at), 1))
+            measure.velocity = max(
+                measure.velocity,
+                simd_length(SIMD3<Float>(va.x, va.y, va.z) - moving) / max(simd_length(moving), 0.01))
+            measure.light = max(measure.light, abs(a.w - b.w))
+            measure.brightest = max(measure.brightest, b.w)
+            difference += Double(abs(a.w - b.w))
+            total += Double(b.w)
+        }
+        measure.lightMean = difference / max(total, 1e-30)
+        return measure
+    }
+
+    /// A view of the fixture drawn from Metal's later moment, twice, against Metal's still.
+    public static func still(
+        context: CUDAContext, folder: URL, view: Manifest.View, lenses: HoleLensSet
+    ) throws -> (measure: CUDAStillChecks.Measure, repeats: Bool) {
+        let manifest = try manifest(folder)
+        let end = try frame(folder, "end.bin", tracers: manifest.tracers)
+        let look = try HoleLookFile.decoded(from: Data(contentsOf: folder.appendingPathComponent(view.look)))
+        var pictures: [[UInt8]] = []
+        for _ in 0..<2 {
+            let renderer = try CUDAHoleRenderer(
+                context: context, settings: look.settings(width: manifest.width, height: manifest.height))
+            renderer.lenses = lenses
+            try renderer.upload(end)
+            pictures.append(
+                [UInt8](try renderer.render(camera: look.camera.camera(progress: 0), look: look.renderLook)))
+        }
+        let reference = [UInt8](try Data(contentsOf: folder.appendingPathComponent(view.file)))
+        return (
+            CUDAStillChecks.measure(pictures[0], channels: 3, reference, channels: 3),
+            pictures[0] == pictures[1]
+        )
+    }
+
+    /// `sillage-cuda black-hole still` from a take of the fixture's two moments: the later one
+    /// read from the take and drawn as Metal drew the first view, and a moment between the two
+    /// stepped to.
+    public static func command(context: CUDAContext, folder: URL, lenses: HoleLensSet) throws -> (
+        measure: CUDAStillChecks.Measure, stepped: Bool
+    ) {
+        let manifest = try manifest(folder)
+        let scene = try scene(folder)
+        let work = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cuda-hole-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: work) }
+        let take = SceneFolder(work)
+        try take.create(scene)
+        let header = HoleTakeFile.Header(
+            scene: scene, tracers: manifest.tracers, releaseTime: scene.blackHole.released().time,
+            steps: [manifest.startStep, manifest.startStep + manifest.steps])
+        let writer = try HoleTakeFile.Writer(header: header, to: take.take)
+        try writer.append(frame(folder, "start.bin", tracers: manifest.tracers))
+        try writer.append(frame(folder, "end.bin", tracers: manifest.tracers))
+        try writer.finish()
+        func still(at step: Int) throws -> CUDAHoleStill.Picture {
+            try CUDAHoleStill.draw(
+                HoleOptions([
+                    "still", work.path, "out.png", "--look",
+                    folder.appendingPathComponent(manifest.views[0].look).path,
+                    "--at", String(header.time(step: step)), "--width", String(manifest.width), "--height",
+                    String(manifest.height),
+                ]), folder: take, context: context, gas: manifest.gas, lenses: lenses)
+        }
+        let last = try still(at: manifest.startStep + manifest.steps)
+        let reference = [UInt8](try Data(contentsOf: folder.appendingPathComponent(manifest.views[0].file)))
+        let between = try still(at: manifest.startStep + manifest.steps / 2)
+        let stepped =
+            last.time == header.time(step: manifest.startStep + manifest.steps)
+            && between.time == header.time(step: manifest.startStep + manifest.steps / 2)
+            && between.pixels.contains { $0 > 64 } && between.pixels != last.pixels
+        return (CUDAStillChecks.measure(last.pixels, channels: 3, reference, channels: 3), stepped)
+    }
+
+    /// The items `sillage-cuda check` records for the close up.
+    public static func items(context: CUDAContext, folder: URL) -> [CUDAEngineCheck.Item] {
+        var items: [CUDAEngineCheck.Item] = []
+        func attempt(_ name: String, _ body: () throws -> (Bool, String)) {
+            do {
+                let (passed, detail) = try body()
+                items.append(CUDAEngineCheck.Item(name: name, passed: passed, detail: detail))
+            } catch {
+                items.append(CUDAEngineCheck.Item(name: name, passed: false, detail: "\(error)"))
+            }
+        }
+        let lenses = HoleLensSet()
+        attempt("hole run") {
+            let measure = try run(context: context, folder: folder)
+            return (measure.passed, "\(measure)")
+        }
+        func acceptable(_ measure: CUDAStillChecks.Measure) -> Bool {
+            measure.psnr >= still.psnr && measure.largest <= still.largest
+                && measure.overEight <= still.overEight
+        }
+        do {
+            for view in try manifest(folder).views {
+                attempt("hole \(view.file)") {
+                    let (measure, repeats) = try self.still(
+                        context: context, folder: folder, view: view, lenses: lenses)
+                    return (
+                        acceptable(measure) && repeats, "\(measure)\(repeats ? "" : ", not the same twice")"
+                    )
+                }
+            }
+        } catch {
+            items.append(CUDAEngineCheck.Item(name: "hole stills", passed: false, detail: "\(error)"))
+        }
+        attempt("hole command") {
+            let (measure, stepped) = try command(context: context, folder: folder, lenses: lenses)
+            return (
+                acceptable(measure) && stepped,
+                "\(measure)\(stepped ? "" : ", the moment between not stepped to")"
+            )
+        }
+        return items
+    }
+}

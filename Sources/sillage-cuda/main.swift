@@ -85,9 +85,14 @@ func fixtures() -> URL {
 if command == "check" {
     do {
         let context = try CUDAContext()
-        let record = CUDAEngineCheck.run(
+        var record = CUDAEngineCheck.run(
             context: context, fixtures: fixtures(),
             threads: integer("threads") ?? ProcessInfo.processInfo.activeProcessorCount)
+        // The black hole close up's, beside the engines' fixtures (#336).
+        let hole = fixtures().deletingLastPathComponent().appendingPathComponent("hole")
+        if FileManager.default.fileExists(atPath: hole.appendingPathComponent("manifest.json").path) {
+            record.items += CUDAHoleCheck.items(context: context, folder: hole)
+        }
         let url = option("record").map { URL(fileURLWithPath: $0) } ?? CUDAEngineCheck.defaultRecord
         try CUDAEngineCheck.write(record, to: url)
         for item in record.items {

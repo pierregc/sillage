@@ -46,6 +46,13 @@ public enum HoleTakeFile {
         /// The steps of `scene.blackHole.timeStep` from the release to each frame kept.
         public var steps: [Int]
 
+        public init(scene: HoleSceneFile, tracers: Int, releaseTime: Double, steps: [Int]) {
+            self.scene = scene
+            self.tracers = tracers
+            self.releaseTime = releaseTime
+            self.steps = steps
+        }
+
         public var frameCount: Int { steps.count }
         public var timeStep: Double { Double(scene.blackHole.timeStep) }
 

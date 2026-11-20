@@ -17,5 +17,6 @@ run, the run 40 steps on from it, and three stills of that later moment. `manife
   20 r_s with a thin disk's temperatures, and the hole drawn straight with its shadow.
 
 `./scripts/dev.sh fixtures` writes them again on the Mac (`sillage-render hole-fixtures`), and
-`TidalRunTests` requires Metal to give each again to the bit. `CUDAHoleTests` holds the CUDA
-engine to them on the CPU target within the tolerances of `docs/notes/cuda-engine.md`.
+`TidalRunTests` requires Metal to give each again to the bit. `CUDAHoleTests` (the run) and
+`sillage-cuda check` (the run, the stills and the command, `CUDAHoleCheck`) hold the CUDA engine
+to them within the tolerances of `docs/notes/cuda-engine.md`.

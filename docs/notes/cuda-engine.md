@@ -1655,7 +1655,7 @@ on CUDA: its run, the gas's grid, the lens and the splat, through the one kernel
 | `Sources/SillageRender/HoleSplats.swift` | what both engines compute on the CPU: `HoleStepParams`, `GasGrid`, `HoleSplatUniforms`, `HoleLook`, `HoleExposure`, `HoleSplats` (the draws of a frame and their uniforms), the field stars, `TidalStepping` and a take's `seek` |
 | `cuda/include/sillage_cuda_hole.h`, `cuda/src/hole.cu` | three calls (`sc_hole_step`, `sc_hole_splat`, `sc_hole_finish`), the six entry points and their launches |
 | `cuda/src/fixed.h` | the 64-bit fixed point the renderer's light accumulates in, now shared with the splat |
-| `Sources/SillageCUDA/CUDAHole.swift` | `CUDATidalRun`, `CUDAHoleRenderer`, `CUDAHoleStill` |
+| `Sources/SillageCUDA/CUDAHole.swift` | `CUDATidalRun`, `CUDAHoleRenderer`, `CUDAHoleStill`, and `CUDAHoleCheck`, the comparison with `Tests/Fixtures/hole` that `sillage-cuda check` records |
 | `Sources/sillage-cuda/main.swift` | `sillage-cuda black-hole still` |
 | `Tests/Fixtures/hole/` | Metal's reference: a moment, the run 40 steps on, three stills |
 | `cuda/tests/hole_passes.cu`, `Tests/SillageCUDATests/CUDAHoleTests.swift` | the tests |
@@ -1698,7 +1698,9 @@ on a grid of 64 by 128 by 16 cells so that the CPU target steps it in seconds), 
 the release, past the stream's first return; Metal's run 40 steps on; and three stills of that
 later moment at 256 by 144: the physics look with three images, the photon ring at 19 r_s with a
 thin disk's temperatures, and the hole drawn straight. Metal gives them again to the bit
-(`TidalRunTests`); on the CPU target, in the workflow:
+(`TidalRunTests`). The CPU target is held to them in the workflow by `CUDAHoleTests` (the run)
+and by `sillage-cuda check` (`CUDAHoleCheck`: the run, each still drawn twice, and the command
+from a take of the two moments), which a GPU box runs first too:
 
 | | measured | held to |
 | --- | --- | --- |
@@ -1721,6 +1723,12 @@ thin disk's temperatures, and the hole drawn straight. Metal gives them again to
   up to 17 to 31, the share #277 found in its looks with grain and traced to the grain's hash
   landing the other side of a rounding; here it was not traced further. Metal also blends in half
   floats where CUDA accumulates in fixed point.
+- **The stills are not in the Swift tests.** A lens table takes most of a minute on the CPU of a
+  test build (half a second optimised), with every core, and while the stills ran there the CUDA
+  full pass's tests failed to repeat their massive pass in 4 runs of 7 (never without them, nor
+  on main). The cause was not found: neither poisoned pinned memory nor `MALLOC_PERTURB_` made
+  them fail alone. In `sillage-cuda check`, an optimised process of its own, the stills cost
+  seconds and run beside nothing.
 - **Metal's own bytes did not move.** A close up of 200 k tracers run and stilled eight ways
   (`physics` and `film` at three moments, `--straight --temperature radius`, three images
   without thinning) gives the same take and PNGs, to the byte, before the change, with the MSL
