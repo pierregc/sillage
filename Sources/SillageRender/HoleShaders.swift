@@ -17,8 +17,10 @@ enum HoleShaders {
             uint maximumSubSteps;
             uint gridRadii;
             uint gridAngles;
+            uint gridHeights;
             float logInner;
             float logScale;
+            float heightCell;
             float stickiness;
             float crossing;
             float viscosity;
@@ -33,19 +35,42 @@ enum HoleShaders {
             return -x / (r * d * d);
         }
 
-        // Where a point falls on the grid of the mean flow, a ring of cells in log r by angle
-        // over the orbit's plane, in cells; false outside it.
-        static bool holeCell(float3 x, constant HoleStepParams &p, thread float2 &cell) {
+        // Where a point falls on the grid of the mean flow, in cells: log of the cylindrical
+        // radius, the angle round the hole, and the height over the radius, so that a cell is as
+        // tall as it is wide; false outside it. One layer of height is the plane's grid alone.
+        static bool holeCell(float3 x, constant HoleStepParams &p, thread float3 &cell) {
             float r = length(x.xy);
             if (r <= 0.0f) { return false; }
             float u = (log(r) - p.logInner) * p.logScale - 0.5f;
             if (u < 0.0f || u >= float(p.gridRadii) - 1.0f) { return false; }
             float v = (atan2(x.y, x.x) / (2.0f * M_PI_F) + 0.5f) * float(p.gridAngles) - 0.5f;
-            cell = float2(u, v);
+            float w = 0.0f;
+            if (p.gridHeights > 1u) {
+                w = x.z / (r * p.heightCell) + 0.5f * float(p.gridHeights) - 0.5f;
+                if (w < 0.0f || w >= float(p.gridHeights) - 1.0f) { return false; }
+            }
+            cell = float3(u, v, w);
             return true;
         }
 
         static uint holeWrap(int j, uint n) { return uint((j % int(n) + int(n)) % int(n)); }
+
+        // The eight cells round a point, trilinear, as an index and a weight each.
+        static uint holeCorner(float3 cell, constant HoleStepParams &p, uint corner,
+                               thread float &weight) {
+            float3 base = floor(cell);
+            float3 f = cell - base;
+            uint di = corner & 1u;
+            uint dj = (corner >> 1) & 1u;
+            uint dk = corner >> 2;
+            weight = (di == 1u ? f.x : 1.0f - f.x) * (dj == 1u ? f.y : 1.0f - f.y)
+                * (dk == 1u ? f.z : 1.0f - f.z);
+            uint k = uint(base.z) + dk;
+            return ((uint(base.x) + di) * p.gridAngles + holeWrap(int(base.y) + int(dj), p.gridAngles))
+                * p.gridHeights + k;
+        }
+
+        static uint holeCorners(constant HoleStepParams &p) { return p.gridHeights > 1u ? 8u : 4u; }
 
         // The grid's sums are kept as 64-bit fixed point, 2^24 to the unit, in two 32-bit words a
         // value, low first. Integers add the same in any order, so a run repeats to the bit,
@@ -80,7 +105,7 @@ enum HoleShaders {
             grid[id] = sum;
         }
 
-        // Each tracer's velocity, and one for the count, shared among the four cells around it.
+        // Each tracer's velocity, and one for the count, shared among the eight cells around it.
         kernel void holeDeposit(device const float4 *positions [[buffer(0)]],
                                 device const float4 *velocities [[buffer(1)]],
                                 device atomic_uint *grid [[buffer(2)]],
@@ -89,17 +114,11 @@ enum HoleShaders {
             if (id >= p.count) { return; }
             float4 v = velocities[id];
             if (v.w < 0.0f) { return; }
-            float2 cell;
+            float3 cell;
             if (!holeCell(positions[id].xyz, p, cell)) { return; }
-            float2 base = floor(cell);
-            float2 f = cell - base;
-            uint i0 = uint(base.x);
-            int j0 = int(base.y);
-            for (uint corner = 0; corner < 4u; ++corner) {
-                uint di = corner & 1u;
-                uint dj = corner >> 1;
-                float w = (di == 1u ? f.x : 1.0f - f.x) * (dj == 1u ? f.y : 1.0f - f.y);
-                uint index = ((i0 + di) * p.gridAngles + holeWrap(j0 + int(dj), p.gridAngles)) * 4u;
+            for (uint corner = 0; corner < holeCorners(p); ++corner) {
+                float w;
+                uint index = holeCorner(cell, p, corner, w) * 4u;
                 holeAddFixed(&grid[(index + 0u) * 2u], w * v.x);
                 holeAddFixed(&grid[(index + 1u) * 2u], w * v.y);
                 holeAddFixed(&grid[(index + 2u) * 2u], w * v.z);
@@ -107,16 +126,27 @@ enum HoleShaders {
             }
         }
 
+        // The tracers in each column of the grid, over every height.
+        kernel void holeColumn(device const float4 *grid [[buffer(0)]],
+                               device float *column [[buffer(1)]],
+                               constant HoleStepParams &p [[buffer(2)]],
+                               uint id [[thread_position_in_grid]]) {
+            if (id >= p.gridRadii * p.gridAngles) { return; }
+            float sum = 0.0f;
+            for (uint k = 0; k < p.gridHeights; ++k) { sum += grid[id * p.gridHeights + k].w; }
+            column[id] = sum;
+        }
+
         // One step of a tracer: the gas's stickiness pulls its velocity towards the mean flow
-        // round it where streams cross, and the viscosity takes some of its turning, both into
-        // heat; the heat it
-        // radiates, kept as a light that fades over a fraction of an orbit; then the hole's pull
-        // in as many leapfrog sub-steps as its radius asks for, as `TidalDisruption.advance`.
-        // Position w holds the light, velocity w the tracers per unit area round it, or -1 once
-        // the tracer is swallowed.
+        // of the others round it where streams cross, and the viscosity takes some of its
+        // turning, both into heat; the heat it radiates, kept as a light that fades over a
+        // fraction of an orbit; then the hole's pull in as many leapfrog sub-steps as its
+        // radius asks for, as `TidalDisruption.advance`. Position w holds the light, velocity w
+        // the tracers per unit area round it, or -1 once the tracer is swallowed.
         kernel void holeStep(device float4 *positions [[buffer(0)]],
                              device float4 *velocities [[buffer(1)]],
                              device const float4 *grid [[buffer(2)]],
+                             device const float *column [[buffer(4)]],
                              constant HoleStepParams &p [[buffer(3)]],
                              uint id [[thread_position_in_grid]]) {
             if (id >= p.count) { return; }
@@ -130,21 +160,30 @@ enum HoleShaders {
             float orbit = 2.0f * M_PI_F * holeDynamical(r);
             float heat = 0.0f;
             float density = 0.0f;
-            float2 cell;
+            float3 cell;
             if (holeCell(x, p, cell)) {
-                float2 base = floor(cell);
-                float2 f = cell - base;
-                uint i0 = uint(base.x);
-                int j0 = int(base.y);
                 float4 sum = float4(0.0f);
+                float own = 0.0f;
+                for (uint corner = 0; corner < holeCorners(p); ++corner) {
+                    float w;
+                    uint index = holeCorner(cell, p, corner, w);
+                    sum += w * grid[index];
+                    own += w * w;
+                }
+                // What the tracer deposited itself is not a neighbour's motion.
+                sum -= own * float4(v, 1.0f);
+                float3 base = floor(cell);
+                float3 f = cell - base;
+                float area = 0.0f;
                 for (uint corner = 0; corner < 4u; ++corner) {
                     uint di = corner & 1u;
                     uint dj = corner >> 1;
                     float w = (di == 1u ? f.x : 1.0f - f.x) * (dj == 1u ? f.y : 1.0f - f.y);
-                    sum += w * grid[(i0 + di) * p.gridAngles + holeWrap(j0 + int(dj), p.gridAngles)];
+                    area += w * column[(uint(base.x) + di) * p.gridAngles
+                                       + holeWrap(int(base.y) + int(dj), p.gridAngles)];
                 }
                 float rc = exp(p.logInner + (cell.x + 0.5f) / p.logScale);
-                density = sum.w / (rc * rc / p.logScale * 2.0f * M_PI_F / float(p.gridAngles));
+                density = area / (rc * rc / p.logScale * 2.0f * M_PI_F / float(p.gridAngles));
                 if (p.stickiness > 0.0f && sum.w > 1.0f) {
                     // Only motion against the mean flow faster than a share of the orbit's own
                     // speed is a crossing. A stream's own stretch and shear is slower than that

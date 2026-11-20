@@ -39,12 +39,13 @@ public enum HoleStage {
     @discardableResult
     public static func run(
         _ folder: SceneFolder, device: MTLDevice? = nil, reporter: StageReporter? = nil,
-        say: (String) -> Void = { print($0) }
+        gas: GasGrid = GasGrid(), metrics: Metrics? = nil, say: (String) -> Void = { print($0) }
     ) throws -> HoleTakeFile.Header {
         let file = try folder.holeScene()
         let scene = file.blackHole
         let started = Date()
-        let run = try TidalRun(scene: scene, device: device)
+        let run = try TidalRun(scene: scene, gas: gas, device: device)
+        let rows = try metrics.map { try MetricsWriter(run: run, metrics: $0, say: say) }
         let (total, kept) = HoleTakeFile.Header.planned(scene, releaseTime: run.releaseTime)
         let header = HoleTakeFile.Header(
             scene: file, tracers: scene.tracers, releaseTime: run.releaseTime, steps: kept)
@@ -59,7 +60,9 @@ public enum HoleStage {
         for step in kept {
             // Steps in pieces of a few hundred, so the progress moves and no command buffer runs long.
             while run.stepsTaken < step {
-                run.step(min(step - run.stepsTaken, 400))
+                let next = min(step - run.stepsTaken, 400)
+                run.step(rows.map { min(next, $0.stepsToNextRow(run.stepsTaken)) } ?? next)
+                try rows?.record(run)
                 reporter?.update(
                     progress: Double(run.stepsTaken) / Double(max(total, 1)),
                     detail: "step \(run.stepsTaken)/\(total)")
@@ -83,6 +86,43 @@ public enum HoleStage {
         reporter?.record(done)
         say(String(format: "take       %@, %.1f s", folder.take.path, Date().timeIntervalSince(started)))
         return header
+    }
+
+    /// A row of `TidalMeasure` every `interval` time units into a CSV, beside the take (#334).
+    public struct Metrics {
+        public var url: URL
+        public var interval: Float
+
+        public init(url: URL, interval: Float = 25) {
+            self.url = url
+            self.interval = interval
+        }
+    }
+
+    final class MetricsWriter {
+        let measure: TidalMeasure
+        let file: FileHandle
+        let every: Int
+
+        init(run: TidalRun, metrics: Metrics, say: (String) -> Void) throws {
+            FileManager.default.createFile(atPath: metrics.url.path, contents: nil)
+            file = try FileHandle(forWritingTo: metrics.url)
+            measure = run.measure()
+            every = max(Int((metrics.interval / run.scene.timeStep).rounded()), 1)
+            say(
+                String(
+                    format: "metrics    P* %.0f, circular radius %.2f, of the bound's mean momentum %.2f",
+                    measure.period, measure.circularRadius, measure.boundRing))
+            try file.write(contentsOf: Data((TidalMeasure.Row.header + "\n").utf8))
+            try record(run)
+        }
+
+        func stepsToNextRow(_ taken: Int) -> Int { every - taken % every }
+
+        func record(_ run: TidalRun) throws {
+            guard run.stepsTaken % every == 0 else { return }
+            try file.write(contentsOf: Data((run.row(measure).line + "\n").utf8))
+        }
     }
 
     /// The run of a take, ready to go on from any of its moments, and the frame it holds.

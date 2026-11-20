@@ -18,7 +18,14 @@ public enum HoleCommand {
             switch verb {
             case "new": try create(options)
             case "run":
-                try HoleStage.run(try create(options))
+                var gas = GasGrid()
+                if let value = options.int("grid-heights") { gas.heights = value }
+                if let value = options.float("height-cell") { gas.heightCell = value }
+                let metrics = options.values["metrics"].map {
+                    HoleStage.Metrics(
+                        url: URL(fileURLWithPath: $0), interval: options.float("metrics-interval") ?? 25)
+                }
+                try HoleStage.run(try create(options), gas: gas, metrics: metrics)
             case "still": try still(options)
             default: return usage()
             }
@@ -37,6 +44,8 @@ public enum HoleCommand {
                            [--cloud r] [--release r] [--stickiness x] [--crossing-speed x]
                            [--viscous-orbits x] [--cooling-time t] [--duration t]
                            [--frame-interval t] [--step t] [--seed n] [--name text]
+                       run also takes [--metrics file.csv --metrics-interval t] and the gas's grid,
+                           [--grid-heights n --height-cell h] (1 layer is the spike's plane grid)
                        sillage-render black-hole still <folder> <png> [--at t] [--look name]
                            [--elevation deg] [--azimuth deg] [--distance r] [--fov deg]
                            [--width w] [--height h] [--straight] [--images n]

@@ -21,7 +21,8 @@ The stills, the clip and the story video are on the branch `assets/314-black-hol
   of the mean flow that each tracer is pulled towards when it moves against it faster than a
   share of the orbit's speed, its loss turned into heat, and a slow viscosity that carries the
   ring in to the last stable orbit. Crude, cheap, and enough to show the story; it is the part
-  of the model most worth a better one.
+  of the model most worth a better one, and #334 made it
+  [one that is calibrated](black-hole-gas.md): that viscosity bound the first passage on its own.
 - **The bent images stay in the particle renderer.** A table computed once per camera distance,
   half a second on the CPU and 12.6 MB, gives each tracer where it shows directly, round the
   far side of the hole and once more round; the pass draws every tracer once per image. The far
@@ -58,7 +59,8 @@ tracers do not have, holds a cloud together until the tide wins, and the spread 
 set there. Released closer, the debris is more bound and the disk smaller. 48 % of the tracers
 are bound at the release.
 
-**The gas** is what tracers lack: they pass through each other, so a stream that crosses itself
+**The gas** of the spike, as #314 left it (#334 changed it: see [A gas that can be trusted](black-hole-gas.md)),
+is what tracers lack: they pass through each other, so a stream that crosses itself
 only winds round and never settles. Each step, the tracers deposit their velocities on a grid of
 the mean flow, 192 rings in log r from 1.5 to 200 r_s by 384 sectors, over the orbit's plane, and
 each is pulled towards the mean flow round it at two e-foldings an orbit, but only for the part
@@ -273,11 +275,11 @@ the branch `assets/332-black-hole`, under `docs/spikes/black-hole-exports/`.
 
 ## Risks
 
-- **The gas is a sketch.** A grid over the orbit's plane, a pull towards the mean flow above a
-  speed and an angular momentum loss: the threshold decides how much the first passage binds
-  (66 % against 81 %), the stickiness how fast the disk forms, and nothing is calibrated against
-  a hydrodynamic simulation of a disruption. It is what the scene's credibility rests on, more than
-  the lens. Sticky particles done properly (recommendation 10 of
+- **The gas was a sketch.** A grid over the orbit's plane, a pull towards the mean flow above a
+  speed and an angular momentum loss, calibrated against nothing: what the scene's credibility
+  rests on, more than the lens. #334 has it in three dimensions and set against four published
+  disruptions ([A gas that can be trusted](black-hole-gas.md)); what still differs is there too.
+  Sticky particles done properly (recommendation 10 of
   [What would give Sillage its dimension](next-dimension.md)) would serve both subjects.
 - **The table is per camera distance.** Half a second on the CPU each. An orbit is one table; a
   camera that comes in or goes away needs one per distance, a few interpolated, or the table
@@ -307,7 +309,7 @@ What the stills suggest it would hold, in the order a viewer would see it:
 2. **The camera.** Orbits and flights from #295, with a table per distance, built on the GPU or
    interpolated between a few.
 3. **The gas.** A better crossing than the grid's: three dimensions and a calibration against a
-   published disruption, or sticky particles shared with the galaxies.
+   published disruption (done, #334), or sticky particles shared with the galaxies.
 4. **The cheap second image**, drawn for a share of the tracers.
 5. **CUDA**, through the one kernel source.
 6. Later: a spinning hole, and the time the light takes round it.
