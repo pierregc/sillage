@@ -76,6 +76,24 @@ struct EngineFixtureTests {
         #expect(expected.contains { $0 > 32 }, "\(look): a black frame checks nothing")
     }
 
+    /// The inside library compiles and draws the flight's frames as before: a shader that fails
+    /// to compile there would throw through `TakeExport.noteInside`, not fall back.
+    @Test(arguments: EngineFixtures.insideSeconds)
+    func metalDrawsTheInsideFrame(seconds: Double) throws {
+        let frames = Self.folder.appendingPathComponent("frames")
+        let drawn = try EngineFixtures.insideFrame(
+            take: frames.appendingPathComponent("take.sillage"),
+            look: frames.appendingPathComponent("\(EngineFixtures.insideLook).look.json"),
+            flight: frames.appendingPathComponent("inside.flight.json"), seconds: seconds)
+        let expected = try file(EngineFixtures.insideFile(seconds))
+        #expect(expected.count == EngineFixtures.insideWidth * EngineFixtures.insideHeight * 4)
+        let differing = zip(drawn, expected).filter { $0 != $1 }.count
+        #expect(
+            drawn.count == expected.count && differing == 0,
+            "\(seconds) s: \(differing) bytes differ: \(Self.meant)")
+        #expect(expected.contains { $0 > 32 }, "\(seconds) s: a black frame checks nothing")
+    }
+
     @Test func theFixturesStayUnderTwoMegabytes() throws {
         let files = FileManager.default.enumerator(
             at: Self.folder, includingPropertiesForKeys: [.fileSizeKey])

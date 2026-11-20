@@ -3,7 +3,8 @@ import Metal
 import SillageCore
 
 /// The reference outputs both engines must give (#281), kept in `Tests/Fixtures/engines/` and
-/// described in the README there: a tree, the accelerations of a small walk dump, four frames.
+/// described in the README there: a tree, the accelerations of a small walk dump, four frames,
+/// and two frames of a flight from inside a disk.
 /// Metal writes them (`./scripts/dev.sh fixtures`) and has to give them again in every check.
 public enum EngineFixtures {
     public enum Failure: Error, CustomStringConvertible {
@@ -344,6 +345,38 @@ public enum EngineFixtures {
             capturedRate: 30, device: device)
         return Data(try export.still(atCaptured: capturedFrame, width: width, height: height))
     }
+
+    // MARK: - Inside a galaxy
+
+    /// Moments of `frames/inside.flight.json` drawn from inside the take's disk (#369), small
+    /// to keep the fixtures under 2 MB: as `CUDATakeStills.flightStill` draws them, each the
+    /// video's frame at 30 a second, averaged from its renders, at its own exposure.
+    public static let insideLook = "webb"
+    public static let insideSeconds: [Double] = [2, 3.5]
+    public static let insideWidth = 128
+    public static let insideHeight = 72
+    public static let insideRate = 30
+
+    public static func insideFile(_ seconds: Double) -> String {
+        String(format: "frames/inside-%.2fs.rgba", seconds)
+    }
+
+    public static func insideIndex(_ seconds: Double) -> Int {
+        Int((seconds * Double(insideRate)).rounded())
+    }
+
+    /// A moment of a flight as `CUDATakeStills.flightStill` draws it: 8-bit RGBA, rows from the top.
+    public static func insideFrame(
+        take: URL, look: URL, flight: URL, seconds: Double, device: MTLDevice? = nil
+    ) throws -> Data {
+        let export = try TakeExport(
+            take: RecordingFile.read(from: take), look: LookFile.decoded(from: Data(contentsOf: look)),
+            capturedRate: 30, device: device, flight: FlightFile.decoded(from: Data(contentsOf: flight)))
+        return Data(
+            try export.flightStill(
+                atSeconds: seconds, frame: insideIndex(seconds), interval: 1 / Double(insideRate),
+                width: insideWidth, height: insideHeight))
+    }
 }
 
 // MARK: - Writing them
@@ -384,6 +417,23 @@ extension EngineFixtures {
             var file: String
         }
 
+        struct InsideImage: Encodable {
+            var seconds: Double
+            var frame: Int
+            var file: String
+        }
+
+        struct InsideSection: Encodable {
+            var flight = "frames/inside.flight.json"
+            var look = "frames/\(EngineFixtures.insideLook).look.json"
+            var framesPerSecond = EngineFixtures.insideRate
+            var width = EngineFixtures.insideWidth
+            var height = EngineFixtures.insideHeight
+            var pixels = "rgba8"
+            var rows = "top first"
+            var images: [InsideImage]
+        }
+
         struct FramesSection: Encodable {
             var take = "frames/take.sillage"
             var capturedFrame = EngineFixtures.capturedFrame
@@ -392,6 +442,7 @@ extension EngineFixtures {
             var pixels = "rgba8"
             var rows = "top first"
             var images: [Image]
+            var inside: InsideSection
         }
 
         var format = "sillage-engine-fixtures"
@@ -487,6 +538,16 @@ extension EngineFixtures {
             try put(drawn, "frames/\(look).rgba")
             images.append(.init(look: file, file: "frames/\(look).rgba"))
         }
+        var inside: [Manifest.InsideImage] = []
+        for seconds in insideSeconds {
+            let drawn = try insideFrame(
+                take: scene.take,
+                look: directory.appendingPathComponent("frames/\(insideLook).look.json"),
+                flight: directory.appendingPathComponent("frames/inside.flight.json"), seconds: seconds,
+                device: device)
+            try put(drawn, insideFile(seconds))
+            inside.append(.init(seconds: seconds, frame: insideIndex(seconds), file: insideFile(seconds)))
+        }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -499,7 +560,7 @@ extension EngineFixtures {
                     system: "macOS \(system.majorVersion).\(system.minorVersion).\(system.patchVersion)",
                     tree: .init(particles: positions.count, nodes: tree.nodeCount, buffers: entries),
                     walk: .init(tracers: dump.tracers, command: command),
-                    frames: .init(images: images))),
+                    frames: .init(images: images, inside: .init(images: inside)))),
             "manifest.json")
     }
 }

@@ -335,4 +335,21 @@ struct CUDAInsideTests {
         try stage.renderer.finish()
         #expect(try stage.lastLight() == plain)
     }
+
+    /// Metal's frames of the fixture's flight from inside its disk (#369), within the tolerance
+    /// `sillage-cuda check` holds them to.
+    @Test(arguments: [2.0, 3.5])
+    func theInsideFramesAreMetalsWithinTheTolerance(seconds: Double) throws {
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fixtures/engines")
+        let measure = try CUDAEngineCheck.insideMeasure(
+            seconds: seconds, context: CUDAContext(), fixtures: fixtures
+        ).measure
+        let tolerance = CUDAEngineCheck.insideTolerance
+        print("CUDAINSIDE", seconds, "s:", measure)
+        #expect(measure.psnr >= tolerance.psnr, "\(measure)")
+        #expect(measure.largest <= tolerance.largest, "\(measure)")
+        #expect(measure.overEight <= tolerance.overEight, "\(measure)")
+        #expect(abs(measure.meanA - measure.meanB) < 0.1, "the exposure moved")
+    }
 }

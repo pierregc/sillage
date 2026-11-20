@@ -388,6 +388,12 @@ public final class Renderer {
         grain.skip(count)
     }
 
+    /// Puts the grain where the video's frame `index` finds it, as `CUDARenderer.setGrain` does.
+    public func setGrain(frame index: Int) {
+        grain = FrameGrain()
+        skipFrames(index)
+    }
+
     /// Draws the light tracers `source` holds beside the massive particles (#238), each with
     /// the kernel the massive tree around it gives; nil draws none.
     public func setTracers(_ source: TracerDrawing?) throws {
