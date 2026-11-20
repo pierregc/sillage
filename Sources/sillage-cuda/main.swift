@@ -17,6 +17,7 @@ let usage = """
     usage: sillage-cuda hires <scene folder> --pass full [--export 4k,vertical] [options]
            sillage-cuda check [--fixtures <dir>] [--record <file>]
            sillage-cuda status <scene folder>
+           sillage-cuda match <scene folder> <picture.map.json> [options]
            sillage-cuda still <take> --look <look> [--framing <massive take>]
                [--preset 1080p|4k|vertical|square|whatsapp] [--width W --height H]
                --frames 0,200,900 [--fps N] [--rate N] [--threads N] --out <dir>
@@ -44,10 +45,13 @@ let usage = """
     With --flight, a flight file (docs/notes/flights.md), --seconds lists moments of the flight
     in place of --frames: each is the frame the video shows there at --fps, drawn from inside a
     galaxy where the eye is near matter (point stars, motion blur) at its own automatic exposure.
+
+    match finds the moment and the view where the take overlaps a real picture best, on the CPU,
+    as sillage-render match does (#320); `sillage-cuda match` alone gives its options.
     """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
-guard let command = arguments.first, ["still", "hires", "check", "status"].contains(command) else {
+guard let command = arguments.first, ["still", "hires", "check", "status", "match"].contains(command) else {
     print(usage)
     exit(arguments.isEmpty || arguments.first == "help" ? 0 : 2)
 }
@@ -76,6 +80,10 @@ func fixtures() -> URL {
         }
     }
     fail("no Tests/Fixtures/engines beside the build or here: give --fixtures")
+}
+
+if command == "match" {
+    exit(PhotoMatchCommand.main(rest))
 }
 
 if command == "check" {
