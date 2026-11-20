@@ -81,13 +81,14 @@ struct CUDAInsideTests {
     }
 
     @Test func theUniformsLieWhereTheKernelsReadThem() {
-        #expect(MemoryLayout<InsideSplatUniforms>.stride == 352)
+        #expect(MemoryLayout<InsideSplatUniforms>.stride == 368)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 160 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 176 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starCount) == 140)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.projectionY) == 148)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.starTail) == 160)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every
@@ -187,8 +188,11 @@ struct CUDAInsideTests {
         let starred = Self.inside(0.8) { settings in
             settings.starFrom = 0.001
             settings.starFull = 0.002
-            settings.starSize = 4
+            settings.starSize = 96  // 8 pixels of the 180 lines drawn: sizes are of a frame 2160 high
             settings.starColours = 0
+            // No star held under white, nor drawn around its rank's share.
+            settings.starPeak = 1000
+            settings.starTail = 0
         }
         stage.renderer.inside = starred
         let first = try stage.light(view)
@@ -228,7 +232,7 @@ struct CUDAInsideTests {
             settings.stars = 16
             settings.starFrom = 0.001
             settings.starFull = 0.002
-            settings.starSize = 3
+            settings.starSize = 72  // 3 pixels of the 90 lines drawn
         }
         let (from, to) = (camera(1), Camera(eye: SIMD3(0.1, -1, 0), target: SIMD3(0.1, 100, 0), near: 0.001))
         func light(largeCapacity: Int) throws -> (bits: [UInt64], aside: Int) {
@@ -296,7 +300,7 @@ struct CUDAInsideTests {
             settings.starFrom = 0.001
             settings.starFull = 0.002
             settings.starSpread = 0.01
-            settings.starSize = 3
+            settings.starSize = 72  // 3 pixels of the 90 lines drawn
             settings.starColours = 0
         }
         let from = camera(1)

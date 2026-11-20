@@ -70,12 +70,13 @@ struct InsideRenderTests {
 
     @Test func theUniformsLieWhereTheShaderReadsThem() {
         #expect(MemoryLayout<SplatUniforms>.stride == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 160 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 176 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starCount) == 140)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.projectionY) == 148)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.starTail) == 160)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every
@@ -176,8 +177,11 @@ struct InsideRenderTests {
         let starred = Self.inside(0.8) { settings in
             settings.starFrom = 0.001
             settings.starFull = 0.002
-            settings.starSize = 4
+            settings.starSize = 96  // 8 pixels of the 180 lines drawn: sizes are of a frame 2160 high
             settings.starColours = 0
+            // No star held under white, nor drawn around its rank's share.
+            settings.starPeak = 1000
+            settings.starTail = 0
         }
         stage.renderer.inside = starred
         let first = try stage.light(view)
@@ -193,6 +197,15 @@ struct InsideRenderTests {
         // pixels: the totals agree within a few per cent, not to the bit.
         let ratio = Self.total(first) / Self.total(splats)
         #expect(abs(ratio - 1) < 0.1, "stars over splats \(ratio)")
+        // Drawn around their ranks' shares, the same light on the whole; held under white, less.
+        var drawn = starred
+        drawn.settings.starTail = 1.5
+        stage.renderer.inside = drawn
+        let tail = Self.total(try stage.light(view)) / Self.total(splats)
+        #expect(abs(tail - 1) < 0.1, "with the tail \(tail)")
+        drawn.settings.starPeak = 0.5
+        stage.renderer.inside = drawn
+        #expect(Self.total(try stage.light(view)) < 0.9 * Self.total(first))
 
         // Past the field's far edge, the stars change nothing.
         let far = camera(12)
@@ -201,6 +214,64 @@ struct InsideRenderTests {
         #expect(stage.renderer.starsDrawn == 0)
         stage.renderer.inside = Self.inside(0.8) { $0.stars = 0 }
         #expect(try stage.light(far) == beyond)
+    }
+
+    /// A particle whose kernel covers more of the frame than `nearFrom` stands for more stars, as
+    /// the square of its size up to `nearStars`, and they carry the same light (#357).
+    @Test func aNearParticleBreaksIntoMoreStars() throws {
+        let stage = try Stage([.zero], maximumKernel: 64, supersample: 2)
+        func drawn(nearFrom: Float, nearStars: Int = 16_384) throws -> (stars: Int, light: Double) {
+            stage.renderer.inside = Self.inside(0.8) { settings in
+                settings.starFrom = 0.001
+                settings.starFull = 0.002
+                settings.nearFrom = nearFrom
+                settings.nearStars = nearStars
+                settings.starTail = 0
+                settings.starColours = 0
+            }
+            let light = try stage.light(camera(1))
+            return (stage.renderer.starsDrawn, Self.total(light))
+        }
+        // 50 pc at 1 kpc is a few of the 180 lines drawn: far under a third of them.
+        let far = try drawn(nearFrom: 0.3)
+        #expect(far.stars == 128)
+        // Half the size to grow from, four times the stars.
+        let (some, more) = (try drawn(nearFrom: 0.02), try drawn(nearFrom: 0.01))
+        #expect(some.stars > 128 && more.stars < 16_384, "\(some.stars) \(more.stars)")
+        #expect(abs(Double(more.stars) / Double(some.stars) - 4) < 0.1, "\(some.stars) \(more.stars)")
+        // No more than allowed, and every count the light of the one particle.
+        let held = try drawn(nearFrom: 0.01, nearStars: 1024)
+        #expect(held.stars == 1024)
+        for light in [some.light, more.light, held.light] {
+            #expect(abs(light / far.light - 1) < 0.05, "\(light) against \(far.light)")
+        }
+    }
+
+    /// A star narrower than a pixel lays all of its light on the pixels it touches, wherever it
+    /// falls among them (#357): the light of a frame does not flicker as the stars slide across
+    /// the pixel grid.
+    @Test func aSmallStarKeepsItsLightAnywhereOnThePixels() throws {
+        let stage = try Stage([.zero], maximumKernel: 64)
+        var totals: [Double] = []
+        for step in 0..<8 {
+            stage.renderer.inside = Self.inside(0.5) { settings in
+                settings.stars = 1
+                settings.starTail = 0
+                settings.starFrom = 0.001
+                settings.starFull = 0.002
+                settings.starSpread = 0.0001
+                settings.starSize = 18  // 0.75 of the 90 lines drawn
+                settings.starColours = 0
+            }
+            // An eighth of a pixel further across each time: 1 kpc away, 1 pixel is 7 pc.
+            let shift = Float(step) * 0.007 / 8
+            let view = Camera(eye: SIMD3(shift, -1, 0), target: SIMD3(shift, 100, 0), near: 0.001)
+            let light = try stage.light(view)
+            #expect(light.filter { $0.x > 0 }.count <= 4)
+            totals.append(Self.total(light))
+        }
+        let (low, high) = (totals.min() ?? 0, totals.max() ?? 0)
+        #expect(low > 0 && high / low < 1.01, "\(totals)")
     }
 
     /// A frame through several cameras is the mean of a render through each but the last: of
@@ -243,7 +314,7 @@ struct InsideRenderTests {
             settings.starFrom = 0.001
             settings.starFull = 0.002
             settings.starSpread = 0.01
-            settings.starSize = 3
+            settings.starSize = 72  // 3 pixels of the 90 lines drawn
             settings.starColours = 0
         }
         let from = camera(1)
