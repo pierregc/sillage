@@ -15,6 +15,7 @@ NoticesTests.swift         # the queue runner
 OverlayPainterTests.swift  # CoreGraphics, Core Text, Metal
 PlainRenderTests.swift     # Metal
 PlanPlayheadTests.swift    # TakeExport, which needs a Metal device
+PopulationWidthTests.swift # Metal
 PreviewTests.swift         # ImageIO
 QueueRunnerTests.swift     # ProcessProbe and Spawn, which only know macOS
 RecordingTests.swift       # Metal

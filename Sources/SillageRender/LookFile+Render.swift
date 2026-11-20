@@ -41,6 +41,10 @@ extension LookFile {
         settings.columnSmoothing = look.columnSmoothing
         settings.glint = look.glint
         settings.dustWeb = look.dustWeb
+        settings.oldWidth = look.oldWidth
+        settings.bulgeWidth = look.bulgeWidth
+        settings.youngWidth = look.youngWidth
+        settings.knotWidth = look.knotWidth
         return settings
     }
 

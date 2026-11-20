@@ -17,6 +17,10 @@
       {
         "file" : "frames/webb.rgba",
         "look" : "frames/webb.look.json"
+      },
+      {
+        "file" : "frames/widths.rgba",
+        "look" : "frames/widths.look.json"
       }
     ],
     "pixels" : "rgba8",

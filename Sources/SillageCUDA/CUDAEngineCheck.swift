@@ -4,7 +4,7 @@ import SillageRender
 
 /// Whether this build of the CUDA engine gives the reference outputs (#281), checked by the
 /// engine itself before a full pass may run on it (#278). `sillage-cuda check` builds the
-/// fixture's tree and draws the three reference frames of `Tests/Fixtures/engines` with the
+/// fixture's tree and draws the four reference frames of `Tests/Fixtures/engines` with the
 /// libraries it was linked with, on the GPU or on the CPU target, and records the outcome
 /// beside them with a digest of those libraries; `sillage-cuda hires` refuses to start without
 /// a record that passed for the same libraries and the same engine. The walk fixture is held
@@ -60,6 +60,7 @@ public enum CUDAEngineCheck {
         ("red-vs-cyan", 60, 6, 0.0001),
         ("ember", 48, 40, 0.003),
         ("webb", 48, 40, 0.003),
+        ("widths", 60, 6, 0.0001),
     ]
 
     /// Runs every comparison the engine can run here.

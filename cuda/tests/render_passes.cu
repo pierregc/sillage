@@ -76,6 +76,10 @@ static SplatUniforms uniforms(float scale, uint count, uint side) {
     u.slabScale = 1.0f / 40.0f;
     u.columnCell = 8.0f;
     u.glint = 1.0f;
+    u.oldWidth = 1.0f;
+    u.bulgeWidth = 1.0f;
+    u.youngWidth = 1.0f;
+    u.knotWidth = 1.0f;
     return u;
 }
 

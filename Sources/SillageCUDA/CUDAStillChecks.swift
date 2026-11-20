@@ -61,7 +61,7 @@ public enum CUDAStillChecks {
     }
 
     /// Frame 0 of a one-frame take in a look, 256 by 144 as `EngineFixtures` draws them with
-    /// Metal, as 8-bit RGB: the three reference frames of `Tests/Fixtures/engines/frames`.
+    /// Metal, as 8-bit RGB: the four reference frames of `Tests/Fixtures/engines/frames`.
     public static func fixtureFrame(
         context: CUDAContext, take: URL, look: URL, width: Int = 256, height: Int = 144,
         halfFloats: Bool = false, threads: Int = ProcessInfo.processInfo.activeProcessorCount

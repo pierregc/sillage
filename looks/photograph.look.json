@@ -34,7 +34,8 @@
     "spikeSharpness": 1,
     "starSize": 0.5,
     "stretch": 10,
-    "whitePoint": 2.2
+    "whitePoint": 2.2,
+    "youngWidth": 3
   },
   "name": "photograph",
   "palette": [
