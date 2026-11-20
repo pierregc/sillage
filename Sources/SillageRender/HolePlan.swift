@@ -7,6 +7,9 @@ import SillageCore
 public struct HolePlan: Sendable, Equatable {
     /// The run's step at each frame, counted from the release.
     public var steps: [Int]
+    /// How far past its step each frame is, in steps, from 0 up to 1: a flight's time that slows
+    /// or holds between two steps (#335). Empty, every frame is on its step.
+    public var fractions: [Double] = []
     public var framesPerSecond: Int
 
     public enum Failure: Error, CustomStringConvertible, Equatable {
@@ -111,12 +114,14 @@ extension SceneFolder {
 
 /// What `export` is asked for a black hole close up: `--preset`, `--codec`,
 /// `--look physics|film|<name>|<file>`, `--from t --to t` in the hole's time units, `--seconds`,
-/// `--fps`, `--width`, `--height`, `--out`, `--stills <dir>`. A galaxy's options that mean
-/// nothing here are refused rather than ignored.
+/// or `--flight <name|file>` in their place (#335), `--fps`, `--width`, `--height`, `--out`,
+/// `--stills <dir>`. A galaxy's options that mean nothing here are refused rather than ignored.
 public struct HoleExportOptions: Sendable {
     public var preset = VideoPreset.named("1080p")!
     public var codec: VideoCodec?
     public var look: String?
+    /// A camera path from the folder's `flights/`, or a file, over its own time (#335).
+    public var flight: String?
     public var from: Double?
     public var to: Double?
     /// The whole run of the default scene, 5000 time units, in 40 s: 4 time units a frame.
@@ -130,7 +135,7 @@ public struct HoleExportOptions: Sendable {
     public init() {}
 
     public static let galaxyOptions = [
-        "speed", "flight", "framing", "format", "palette", "world", "overlay", "take",
+        "speed", "framing", "format", "palette", "world", "overlay", "take",
     ]
 
     public init(_ arguments: [String]) throws {
@@ -165,8 +170,12 @@ public struct HoleExportOptions: Sendable {
             throw SceneFolder.ExportError.codecNotAllowed(preset: preset.name, codec: pinned)
         }
         look = option("look")
+        flight = option("flight")
         from = try number("from")
         to = try number("to")
+        for name in ["from", "to", "seconds"] where flight != nil && arguments.contains("--\(name)") {
+            throw SceneFolder.ExportError.badValue(name, "a flight keeps its own time and length")
+        }
         if let seconds = try number("seconds") {
             guard seconds > 0 else { throw SceneFolder.ExportError.badValue("seconds", String(seconds)) }
             self.seconds = seconds

@@ -102,12 +102,14 @@ public final class TakeExport {
     public enum Failure: Error, CustomStringConvertible, Equatable {
         case trackForAnotherTake(track: Int, take: Int)
         case flightAndTrack
+        case holeFlight
 
         public var description: String {
             switch self {
             case .trackForAnotherTake(let track, let take):
                 "a time track of \(track) captured frames for a take of \(take)"
             case .flightAndTrack: "a flight keeps its own time: it takes no other track"
+            case .holeFlight: "a flight that gives the hole's time is for a black hole close up"
             }
         }
     }
@@ -126,6 +128,7 @@ public final class TakeExport {
         let frames = take.recording.capturedFrames
         self.flight = flight
         if flight != nil, track != nil { throw Failure.flightAndTrack }
+        if flight?.isBlackHole == true { throw Failure.holeFlight }
         let track =
             try flight?.timeTrack(
                 megayears: TimeTrack.megayears(of: (framing ?? take).recording),

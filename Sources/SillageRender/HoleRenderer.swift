@@ -164,16 +164,31 @@ public final class HoleRenderer {
 
     /// Hands the frame's tracers to the GPU, with what their light is normalised by: each law's
     /// mean over the tracers left, and the run's flux at which the brightest few per thousand
-    /// reach the hottest.
-    public func upload(_ frame: TidalFrame) {
+    /// reach the hottest. `drift`, in the hole's time units, carries the tracers on from the
+    /// frame's step along their velocities, for a moment between two steps.
+    public func upload(_ frame: TidalFrame, drift: Float = 0) {
         let length = max(frame.count, 1) * MemoryLayout<SIMD4<Float>>.stride
         if positions == nil || uploaded != frame.count {
             positions = device.makeBuffer(length: length, options: .storageModeShared)
             velocities = device.makeBuffer(length: length, options: .storageModeShared)
             uploaded = frame.count
         }
-        frame.positions.withUnsafeBytes {
-            positions?.contents().copyMemory(from: $0.baseAddress!, byteCount: $0.count)
+        if drift != 0, let positions {
+            // Between two steps of the run (#335): each tracer carried on along its velocity, a
+            // fraction of a step whose curve is a few thousandths of a radius at the last stable orbit.
+            let out = positions.contents().bindMemory(to: SIMD4<Float>.self, capacity: frame.count)
+            frame.positions.withUnsafeBufferPointer { p in
+                frame.velocities.withUnsafeBufferPointer { v in
+                    for i in 0..<frame.count {
+                        let w = v[i]
+                        out[i] = w.w >= 0 ? p[i] + SIMD4(w.x, w.y, w.z, 0) * drift : p[i]
+                    }
+                }
+            }
+        } else {
+            frame.positions.withUnsafeBytes {
+                positions?.contents().copyMemory(from: $0.baseAddress!, byteCount: $0.count)
+            }
         }
         frame.velocities.withUnsafeBytes {
             velocities?.contents().copyMemory(from: $0.baseAddress!, byteCount: $0.count)
