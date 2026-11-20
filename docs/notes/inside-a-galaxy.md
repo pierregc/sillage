@@ -585,7 +585,8 @@ flattening gave, so the frames inside the disk (1 104 to 1 800) are the frames t
   frames 270 and 400 (77 to 36 kpc from the larger disk), while the disks grow in the frame; the frames at the look keys
   and up to frame 200 are the same bytes as before, and so are exports without a flight.
 - **The CUDA engine** draws it from the same text. The two inside fixtures changed and were drawn
-  again; on the CPU target they are 61.4 and 60.1 dB from Metal's.
+  again; on the CPU target they are 58.6 and 52.0 dB from Metal's with #357's stars (61.4 and
+  60.1 before them).
 
 ![Frames 440 to 650, before and after](https://raw.githubusercontent.com/pierregc/sillage/assets/354-dust-perspective/docs/spikes/inside-354/frames-440-650.jpg)
 
