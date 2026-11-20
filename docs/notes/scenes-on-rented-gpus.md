@@ -352,22 +352,23 @@ the mass; 42 or 92 M more are drawn from the same distribution and move in their
 
 ## The work, in order
 
-The epic's tickets, with what each waits for:
+Epic #375, with what each ticket waits for:
 
-1. **The take pass in the shared flow** (Mac, Metal's bytes kept). Nothing before it.
-2. **Checkpoints and `--resume` for the take pass** (Mac for Metal, the CPU target in the
-   workflow). After 1.
-3. **The take pass on CUDA**: `sillage-cuda hires` without `--pass full`. After 2. A cloud
-   session can write and test it on the CPU target.
-4. **#283, bring-up and timings on a rented GPU**, updated for today's scenes. Independent of 1
-   to 3; only on Pierre's go, 10 €.
-5. **A whole scene on an interruptible box**: restart on its own, results pulled, the first
-   scene compared with the Mac's. After 3 and 4, 5 €.
-6. **Key frames where asked, and a visit drawn from them.** After 1; needed by 7 for tracers.
-7. **The ladder**: one scene at 8 M, at 32 M massive and with tracers, Pierre's verdict. After 5,
-   6 and #357, 10 €.
-8. **A flight's video on CUDA.** After #369. Needed once a flight is drawn at 50 M or more, or
-   from a take the Mac does not hold.
+1. **#376, the take pass in the shared flow** (Mac, Metal's bytes kept). Nothing before it.
+2. **#377, checkpoints and `--resume` for the take pass** (Mac for Metal, the portable parts in
+   the workflow). After #376.
+3. **#378, the take pass on CUDA**: `sillage-cuda hires` without `--pass full`. After #377. A
+   cloud session can write and test it on the CPU target.
+4. **#379, key frames where asked, an extract of a take, and a visit drawn from them.** After
+   #376; #381 needs it to see tracers from inside.
+5. **#283, bring-up and timings on a rented GPU**, updated for today's scenes. Independent of the
+   four above; only on Pierre's go, 10 €.
+6. **#380, a whole scene on an interruptible box**: it restarts on its own, its take comes back,
+   the first scene is compared with the Mac's. After #378 and #283, 5 €.
+7. **#381, the ladder**: one scene at 8 M, at 32 M massive and with tracers, Pierre's verdict.
+   After #380, #379 and #357, 10 €.
+8. **#382, a flight's video on CUDA.** After #369. Needed once a flight is drawn at 50 M or
+   more, or from a take the Mac does not hold.
 
 #357 is not part of the epic: it is the free camera's, it needs no GPU but the Mac's, and it
 should start first.
