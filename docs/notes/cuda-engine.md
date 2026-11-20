@@ -1347,7 +1347,9 @@ of pixels over 8 levels to 0.01 %, 0.3 % and 0.3 %.
 
 The second pass of a hires (#239) on Linux: the run with its light tracers, each frame drawn in
 every preset asked straight into its encoder, the key frames kept, a checkpoint about every hour
-(#240) and `--resume`. The massive pass and the style stay on the Mac; the scene folder goes to
+(#240) and `--resume`. The massive pass and the style stay on the Mac (the massive pass runs
+through `TakePassRun` since #376, ready for a CUDA engine: `docs/notes/scenes-on-rented-gpus.md`,
+"Where it lives"); the scene folder goes to
 the Linux machine and the videos come back. In phase 1 it runs end to end on the CPU target, at a
 small scale; on a GPU it runs first in #283.
 

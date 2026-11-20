@@ -28,6 +28,7 @@ SmoothingField.swift             # Metal
 SnapshotStream.swift             # Metal
 StyleAuto+Sheet.swift            # LookSheet, which draws on Metal
 TakeExport.swift                 # CoreGraphics, Metal
+TakePassMetal.swift              # Metal
 TidalRun.swift                   # Metal
 TracerWalkDump.swift             # TracerStepGPU, in MetalBarnesHutSolver, and Metal buffers
 VideoCodec+AVFoundation.swift    # AVFoundation, VideoToolbox
