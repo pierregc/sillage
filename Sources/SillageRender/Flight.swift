@@ -454,7 +454,8 @@ public final class Flight {
                 if axes == nil { axes = take.disks(position) }
                 guard let frame = axes, galaxy < frame.count else { return centre + offset }
                 let (x, y, z) = (frame[galaxy][0], frame[galaxy][1], frame[galaxy][2])
-                return centre + x * offset.x + y * offset.y + z * offset.z
+                let inPlane: SIMD3<Double> = x * offset.x + y * offset.y
+                return centre + inPlane + z * offset.z
             }
         }
         var points: [Int: SIMD3<Double>] = [:]
@@ -467,7 +468,10 @@ public final class Flight {
         let u2 = u * u
         let u3 = u2 * u
         // From `a`, so two keys at one point hold it to the bit.
-        return a + (b - a) * (-2 * u3 + 3 * u2) + (ma * (u3 - 2 * u2 + u) + mb * (u3 - u2)) * h
+        let blend: Double = -2 * u3 + 3 * u2
+        let leaving: SIMD3<Double> = ma * ((u3 - 2 * u2 + u) * h)
+        let arriving: SIMD3<Double> = mb * ((u3 - u2) * h)
+        return a + (b - a) * blend + leaving + arriving
     }
 
     /// The velocity at key `k`, kiloparsecs a second: the centripetal Catmull-Rom tangent
@@ -485,9 +489,13 @@ public final class Flight {
         guard d0 > 1e-9, d1 > 1e-9 else { return .zero }
         let (h0, h1) = (keys[k].at - keys[k - 1].at, keys[k + 1].at - keys[k].at)
         let (t0, t1) = (d0.squareRoot(), d1.squareRoot())
-        let along = (p1 - p0) / t0 - (p2 - p0) / (t0 + t1) + (p2 - p1) / t1
+        let before: SIMD3<Double> = (p1 - p0) / t0
+        let across: SIMD3<Double> = (p2 - p0) / (t0 + t1)
+        let after: SIMD3<Double> = (p2 - p1) / t1
+        let along: SIMD3<Double> = before - across + after
         let (r0, r1) = (t0 / h0, t1 / h1)
-        var velocity = along * (2 * r0 * r1 / (r0 + r1))
+        let rate: Double = 2 * r0 * r1 / (r0 + r1)
+        var velocity: SIMD3<Double> = along * rate
         let most = min(3 * d0 / h0, 3 * d1 / h1)
         let speed = simd_length(velocity)
         if speed > most { velocity *= most / speed }
@@ -606,11 +614,20 @@ public final class Flight {
         let cosine = simd_dot(a, b)
         guard sine > 1e-12 else { return v }
         let k = axis / sine
-        return v * cosine + simd_cross(k, v) * sine + k * (simd_dot(k, v) * (1 - cosine))
+        return rotated(v, about: k, cosine: cosine, sine: sine)
     }
 
     static func turned(_ v: SIMD3<Double>, about k: SIMD3<Double>, by angle: Double) -> SIMD3<Double> {
-        v * cos(angle) + simd_cross(k, v) * sin(angle) + k * (simd_dot(k, v) * (1 - cos(angle)))
+        rotated(v, about: k, cosine: cos(angle), sine: sin(angle))
+    }
+
+    /// Rodrigues' rotation of `v` about the unit axis `k`.
+    private static func rotated(_ v: SIMD3<Double>, about k: SIMD3<Double>, cosine: Double, sine: Double)
+        -> SIMD3<Double>
+    {
+        let along: SIMD3<Double> = k * (simd_dot(k, v) * (1 - cosine))
+        let across: SIMD3<Double> = simd_cross(k, v) * sine
+        return v * cosine + across + along
     }
 
     static func rejected(_ v: SIMD3<Double>, _ unit: SIMD3<Double>) -> SIMD3<Double> {
