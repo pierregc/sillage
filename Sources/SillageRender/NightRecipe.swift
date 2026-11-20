@@ -204,6 +204,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
     public var export: Setting<[String]> = .auto
     /// The speed of the videos in `export`; absent, 1.
     public var speed = Speed.constant(1)
+    /// How many black hole close ups the night makes after its picks (#349); Auto is none.
+    public var closeUps: Setting<Int> = .auto
 
     public init() {}
 
@@ -218,6 +220,7 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         style = try c.decodeIfPresent(Style.self, forKey: .style) ?? Style()
         export = try c.decodeIfPresent(Setting<[String]>.self, forKey: .export) ?? .auto
         speed = try c.decodeIfPresent(Speed.self, forKey: .speed) ?? .constant(1)
+        closeUps = try c.decodeIfPresent(Setting<Int>.self, forKey: .closeUps) ?? .auto
     }
 }
 
@@ -253,6 +256,17 @@ extension NightRecipe {
     }
 
     public var exports: [String] { export.value ?? Self.defaultExports }
+
+    /// The most close ups a night makes: each takes a take of 4 GB.
+    public static let closeUpRange = 0...4
+    /// The tracers of a close up, the scene the notes measure (docs/notes/black-hole-close-up.md).
+    public static let closeUpTracers = 6_000_000
+
+    /// How many close ups the night makes; Auto is none.
+    public var closeUpCount: Int { closeUps.value ?? 0 }
+
+    /// The recipe's video presets: the close up draws no animated preview.
+    public var closeUpVideos: [String] { exports.filter { VideoPreset.named($0) != nil } }
 
     /// Past this many drawn, Auto draws the videos in a second pass: the take of every
     /// particle no longer fits a night's disk (12 to 18 GB a scene at 8 M, 75 at 50 M).
@@ -334,6 +348,7 @@ extension NightRecipe {
     static let keys: [String: Set<String>] = [
         "": [
             "version", "deliver", "hours", "explore", "pick", "hires", "style", "export", "speed",
+            "closeUps",
         ],
         "explore": [
             "scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "pairShare", "galaxies", "seed",
@@ -439,6 +454,16 @@ extension NightRecipe {
                 "speed",
                 "1, a number from \(TimeTrack.speeds.lowerBound) to \(TimeTrack.speeds.upperBound), or auto"
             )
+        }
+        if let count = closeUps.value {
+            guard Self.closeUpRange.contains(count) else {
+                throw Failure.badValue(
+                    "closeUps",
+                    "auto or \(Self.closeUpRange.lowerBound) to \(Self.closeUpRange.upperBound)")
+            }
+        }
+        if closeUpCount > 0, closeUpVideos.isEmpty {
+            throw Failure.badValue("closeUps", "needs a video preset in export")
         }
         if let names = export.value {
             for name in names

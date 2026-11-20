@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 
 /// The events of a night sorted by what they say, shared by the report, the status digest and
 /// the night page. Only what the night's own runs wrote counts.
@@ -9,6 +10,8 @@ struct NightEvents {
     let picks: [RunEvent]
     /// One a scene: a full pass's own is in `fullPasses`.
     let hires: [RunEvent]
+    /// The runs of black hole close ups (#349), which are no scene's high resolution.
+    let closeUps: [RunEvent]
     let fullPasses: [RunEvent]
     let videos: [RunEvent]
     let skipped: [RunEvent]
@@ -21,7 +24,8 @@ struct NightEvents {
         self.events = events
         explored = of(RunEvent.Kind.exploreScene)
         picks = of(RunEvent.Kind.pick).filter { $0.chosen != false }
-        hires = of(RunEvent.Kind.hiresDone).filter { $0.pass != "full" }
+        hires = of(RunEvent.Kind.hiresDone).filter { $0.pass != "full" && $0.subject == nil }
+        closeUps = of(RunEvent.Kind.hiresDone).filter { $0.subject == SceneKind.blackHole.rawValue }
         fullPasses = of(RunEvent.Kind.hiresDone).filter { $0.pass == "full" }
         videos = of(RunEvent.Kind.exportDone)
         skipped = Self.standingSkips(events)
@@ -67,7 +71,7 @@ struct NightEvents {
         switch stage {
         case "hires": RunEvent.Kind.hiresDone
         case "style": RunEvent.Kind.style
-        case "export": RunEvent.Kind.exportDone
+        case "export", "closeup": RunEvent.Kind.exportDone
         default: nil
         }
     }
@@ -124,6 +128,12 @@ public enum NightReport {
                 + (found.videos.isEmpty ? "" : " (\(Words.size(megabytes: weight)))"),
             "- Left out: \(found.skipped.count) · errors: \(found.errors.count)",
         ]
+        if let planned = phases["closeup"]?.planned, planned > 0 || !found.closeUps.isEmpty {
+            let videos = found.videos.filter { $0.subject == SceneKind.blackHole.rawValue }.count
+            lines.insert(
+                "- Close ups: \(found.closeUps.count) done of \(planned) planned, \(videos) video\(videos == 1 ? "" : "s")",
+                at: (lines.firstIndex { $0.hasPrefix("- Videos") } ?? lines.count - 1))
+        }
         if !found.hires.isEmpty {
             lines += ["", "## High resolution", ""]
             lines += (found.hires + found.fullPasses).map {
@@ -132,6 +142,13 @@ public enum NightReport {
                 let minutes = Int(($0.minutes ?? 0).rounded())
                 let pass = $0.pass.map { ", \($0) pass" } ?? ""
                 return "- \($0.scene ?? ""): \(particles)\(massive) in \(minutes) min\(pass)"
+            }
+        }
+        if !found.closeUps.isEmpty {
+            lines += ["", "## Close ups", ""]
+            lines += found.closeUps.map {
+                let tracers = Words.thousands($0.particles ?? 0) + " tracers"
+                return "- \($0.scene ?? ""): \(tracers) in \(Words.duration($0.seconds ?? 0))"
             }
         }
         if !found.videos.isEmpty {

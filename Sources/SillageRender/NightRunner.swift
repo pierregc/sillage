@@ -115,6 +115,15 @@ public struct NightFolder: Sendable {
                 progress.exported.insert("\(name)/\(format)")
             }
         }
+        for index in 0..<recipe.closeUpCount {
+            let name = NightPlanner.closeUpName(index)
+            let hole = SceneFolder(batch.appendingPathComponent(name, isDirectory: true))
+            if FileManager.default.fileExists(atPath: hole.take.path) { progress.closeUpRuns.insert(name) }
+            for format in recipe.closeUpVideos
+            where FileManager.default.fileExists(atPath: exportFile(hole, format: format).path) {
+                progress.closeUpExported.insert("\(name)/\(format)")
+            }
+        }
         let phases = Set(events.filter { $0.kind == RunEvent.Kind.phaseDone }.compactMap(\.phase))
         progress.exploreDone = phases.contains("explore") || phases.contains("pick")
         if phases.contains("pick") {
@@ -301,7 +310,9 @@ public final class NightRunner: @unchecked Sendable {
         }
         if stop.isRaised { return finish(.stopped) }
         if stopAfterStep { return finish(.stopped) }
-        if case .none = recipe.pick { return finish(.done) }
+        if case .none = recipe.pick {
+            return closeUps() ? finish(.done) : finish(.stopped)
+        }
 
         // The pick.
         if folder.progress().picks == nil { pick() }
@@ -316,7 +327,36 @@ public final class NightRunner: @unchecked Sendable {
             if stopAfterStep { return finish(.stopped) }
             if !finishScene(scene, pick: index) { return finish(.stopped) }
         }
+        // Then the close ups.
+        if !closeUps() { return finish(.stopped) }
         return finish(stop.isRaised || stopAfterStep ? .stopped : .done)
+    }
+
+    /// What a step's outcome means for the scene it ran on: nil when the night goes on to the
+    /// scene's next step, else whether it goes on to the next scene (false: the night stops).
+    private func ends(_ outcome: Outcome, scene name: String, phase: NightPlan.Phase) -> Bool? {
+        switch outcome {
+        case .finished(0): return nil
+        case .finished(let status):
+            count(phase.rawValue, failed: 1)
+            leftOut.insert(name)
+            say("night      \(name) \(phase.rawValue) failed with status \(status)")
+            if status > 128 {
+                var event = RunEvent(RunEvent.Kind.error, scene: name)
+                event.stage = phase.rawValue
+                event.message = "ended by signal \(status - 128)"
+                record(event)
+            }
+            return true
+        case .skipped:
+            leaveOut(name, phase: phase, why: "skipped by hand")
+            return true
+        case .late:
+            leaveOut(name, phase: phase, why: "stopped at the delivery time")
+            return true
+        case .stopped:
+            return false
+        }
     }
 
     /// Hires, style and exports of one scene. False when the night is to stop.
@@ -354,28 +394,51 @@ public final class NightRunner: @unchecked Sendable {
                     }.compactMap(\.format))
             default: outcome = export(scene, format: format ?? "1080p")
             }
-            switch outcome {
-            case .finished(0): break
-            case .finished(let status):
-                count(phase.rawValue, failed: 1)
-                leftOut.insert(name)
-                say("night      \(name) \(phase.rawValue) failed with status \(status)")
-                if status > 128 {
-                    var event = RunEvent(RunEvent.Kind.error, scene: name)
-                    event.stage = phase.rawValue
-                    event.message = "ended by signal \(status - 128)"
-                    record(event)
-                }
+            if let over = ends(outcome, scene: name, phase: phase) { return over }
+            if stopAfterStep { return false }
+        }
+        return true
+    }
+
+    /// The close ups the recipe asks for, one after another (#349). False when the night is to
+    /// stop.
+    private func closeUps() -> Bool {
+        for index in 0..<recipe.closeUpCount {
+            skipNext = false
+            readControls()
+            if stop.isRaised || stopAfterStep { return false }
+            if !finishCloseUp(index) { return false }
+        }
+        return true
+    }
+
+    /// One close up: its scene and run, then each video of the recipe's presets, drawn with the
+    /// scene's look. False when the night is to stop.
+    private func finishCloseUp(_ index: Int) -> Bool {
+        let name = NightPlanner.closeUpName(index)
+        let scene = SceneFolder(batch.appendingPathComponent(name, isDirectory: true))
+        let steps: [String?] = [nil] + recipe.closeUpVideos
+        for format in steps {
+            readControls()
+            if stop.isRaised { return false }
+            if skipNext || leftOut.contains(name) {
+                if skipNext { leaveOut(name, phase: .closeUp, why: "skipped by hand") }
                 return true
-            case .skipped:
-                leaveOut(name, phase: phase, why: "skipped by hand")
-                return true
-            case .late:
-                leaveOut(name, phase: phase, why: "stopped at the delivery time")
-                return true
-            case .stopped:
-                return false
             }
+            let plan = update(phase: NightPlan.Phase.closeUp.rawValue)
+            guard
+                let step = plan.steps.first(where: {
+                    $0.phase == .closeUp && $0.scene == name && $0.format == format
+                })
+            else { continue }
+            if step.done { continue }
+            guard step.fits else {
+                leaveOut(name, phase: .closeUp, why: "would end after the delivery time")
+                return true
+            }
+            let outcome =
+                format.map { closeUpVideo(scene, format: $0) } ?? closeUpRun(scene, index: index)
+            if let over = ends(outcome, scene: name, phase: .closeUp) { return over }
             if stopAfterStep { return false }
         }
         return true
@@ -516,6 +579,46 @@ public final class NightRunner: @unchecked Sendable {
         record(event)
     }
 
+    /// The close up's scene, its seed drawn from the night's, then its run into a take.
+    private func closeUpRun(_ scene: SceneFolder, index: Int) -> Outcome {
+        let name = scene.url.lastPathComponent
+        if !FileManager.default.fileExists(atPath: scene.scene.path) {
+            let drawn = NightPlanner.closeUpSeed(index, seed: seed)
+            say("night      close up \(name), seed \(drawn)")
+            let made = runChild(
+                executable.path,
+                [
+                    "black-hole", "new", scene.url.path, "--tracers", String(NightRecipe.closeUpTracers),
+                    "--seed", String(drawn), "--name", name,
+                ],
+                log: logs.appendingPathComponent("\(name).new.log")
+            ) {}
+            if made != .finished(0) { return made }
+        }
+        say("night      hires \(name), \(NightRecipe.closeUpTracers) tracers")
+        let outcome = runChild(
+            executable.path, ["hires", scene.url.path],
+            log: logs.appendingPathComponent("\(name).hires.log")
+        ) { [self] in
+            update(phase: NightPlan.Phase.closeUp.rawValue, quiet: true)
+        }
+        if outcome != .finished(0) { scene.removePartialOutputs() }
+        return outcome
+    }
+
+    private func closeUpVideo(_ scene: SceneFolder, format: String) -> Outcome {
+        let name = scene.url.lastPathComponent
+        say("night      export \(name) \(format)")
+        let outcome = runChild(
+            executable.path, ["export", scene.url.path, "--preset", format],
+            log: logs.appendingPathComponent("\(name).export.log")
+        ) { [self] in
+            update(phase: NightPlan.Phase.closeUp.rawValue, quiet: true)
+        }
+        if outcome != .finished(0) { scene.removePartialOutputs() }
+        return outcome
+    }
+
     /// `--speed` for the recipe's videos, none at 1x.
     private var speedOptions: [String] { recipe.speed.argument.map { ["--speed", $0] } ?? [] }
 
@@ -642,7 +745,7 @@ public final class NightRunner: @unchecked Sendable {
                 estimatedStart: summary?.start, estimatedEnd: summary?.end)
         }
         let finishing = progress.picks.map { $0.count } ?? plan.picks
-        night.phases = [
+        var phases = [
             entry(
                 .explore, planned: plan.scenes, done: explored,
                 failed: index.values.filter { $0["status"]?.hasPrefix("failed") == true }.count),
@@ -655,6 +758,19 @@ public final class NightRunner: @unchecked Sendable {
                     total + recipe.exports.filter { progress.exported.contains("\(name)/\($0)") }.count
                 }),
         ]
+        if recipe.closeUpCount > 0 {
+            let names = (0..<recipe.closeUpCount).map(NightPlanner.closeUpName)
+            phases.append(
+                entry(
+                    .closeUp, planned: names.count,
+                    done: names.filter { name in
+                        progress.closeUpRuns.contains(name)
+                            && recipe.closeUpVideos.allSatisfy {
+                                progress.closeUpExported.contains("\(name)/\($0)")
+                            }
+                    }.count))
+        }
+        night.phases = phases
         night.recipe = resolved(plan)
         night.deliverBy = deliverBy
         night.estimatedEnd = plan.end
@@ -684,6 +800,10 @@ public final class NightRunner: @unchecked Sendable {
             "multicolour": String(recipe.style.multicolour.value ?? true),
             "camera": recipe.style.camera.value ?? "director",
         ]
+        if let count = plan.closeUps {
+            values["closeUps"] = String(count)
+            values["closeUpVideos"] = recipe.closeUpVideos.joined(separator: ",")
+        }
         if let massive = plan.hiresMassive { values["hiresMassive"] = String(massive) }
         if let passes = plan.hiresPasses { values["hiresPasses"] = String(passes) }
         if let frames = recipe.hires.frames.value { values["hiresFrames"] = String(frames) }

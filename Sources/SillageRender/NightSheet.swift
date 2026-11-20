@@ -187,6 +187,8 @@ public struct NightSheetPlan: Sendable, Equatable {
             return ("Style", scenes(summary.count))
         case .export:
             return ("Videos", summary.count == 1 ? "1 video" : "\(summary.count) videos")
+        case .closeUp:
+            return ("Close ups", summary.count == 1 ? "1 black hole" : "\(summary.count) black holes")
         }
     }
 
