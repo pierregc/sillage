@@ -1,4 +1,5 @@
 import Foundation
+import SillageCore
 
 /// A night in the sidebar: "25 Oct · 35 scenes · 4 videos".
 public struct NightListItem: Sendable, Equatable, Identifiable {
@@ -110,6 +111,7 @@ public struct NightPage: Sendable, Equatable {
         case "hires": "High resolution"
         case "style", "look": "Style"
         case "export": "Videos"
+        case "closeup": "Close ups"
         default: name.prefix(1).uppercased() + name.dropFirst()
         }
     }
@@ -333,9 +335,12 @@ extension NightPage {
             "hires": found.hires.last?.t ?? .distantPast,
             "export": found.videos.last?.t ?? .distantPast,
             "style": events.last { $0.kind == RunEvent.Kind.style }?.t ?? .distantPast,
+            "closeup": found.closeUps.last?.t ?? .distantPast,
         ]
         let running = live ? activity?.night?.phase : nil
-        return Self.phaseNames.map { name in
+        // The close ups' bar is there for a night that makes some.
+        let names = Self.phaseNames + (file.phases.contains { $0.name == "closeup" } ? ["closeup"] : [])
+        return names.map { name in
             guard let phase = file.phases.first(where: { $0.name == name }) else {
                 var bar = emptyBar(name)
                 if !live, file.state != .done, bar.state == .waiting { bar.state = .left }
@@ -348,7 +353,7 @@ extension NightPage {
                 finished ? .done : (running == name ? .current : (live ? .waiting : .left))
             var fraction = phase.planned > 0 ? Double(phase.done) / Double(phase.planned) : 0
             if state == .current, name != "explore", let job, phase.planned > 0,
-                Self.phase(of: job.kind) == name
+                Self.phase(of: job.kind, scene: job.scene) == name
             {
                 fraction += job.progress / Double(phase.planned)
             }
@@ -378,8 +383,9 @@ extension NightPage {
     }
 
     /// The phase of the night a stage belongs to.
-    static func phase(of kind: String) -> String {
-        kind == "look" ? "style" : kind
+    static func phase(of kind: String, scene: String? = nil) -> String {
+        if scene?.hasPrefix("hole-") == true { return "closeup" }
+        return kind == "look" ? "style" : kind
     }
 
     // MARK: Scenes
@@ -399,9 +405,21 @@ extension NightPage {
             var styled = false
             var videos = 0
             var leftOut: String?
+            /// A black hole close up (#349), which no pick made.
+            var closeUp = false
         }
+        let holeVideos = max(
+            file.recipe["closeUpVideos"].map { $0.split(separator: ",").count } ?? 1, 1)
+        let hole = SceneKind.blackHole.rawValue
         var seen: [String: Seen] = [:]
         var order = 0
+        /// Close ups come after the picks, in the order they were made.
+        func closeUp(_ name: String, at date: Date) {
+            if seen[name]?.closeUp != true { order += 1 }
+            seen[name, default: Seen()].pickOrder = 1_000 + order
+            seen[name, default: Seen()].closeUp = true
+            if seen[name]?.arrived == Date.distantPast { seen[name]?.arrived = date }
+        }
         let standing = NightEvents.standingSkips(events)
         for event in events {
             guard let name = event.scene.map({ $0.hasPrefix(".") ? String($0.dropFirst()) : $0 })
@@ -418,6 +436,12 @@ extension NightPage {
                 seen[name]?.pickOrder = order
                 if let score = event.score { seen[name]?.score = score }
             case RunEvent.Kind.hiresStart: seen[name]?.hiresStarted = true
+            case RunEvent.Kind.hiresDone where event.subject == hole:
+                closeUp(name, at: event.t)
+                seen[name]?.minutes = (event.seconds ?? 0) / 60
+            case RunEvent.Kind.exportDone where event.subject == hole:
+                closeUp(name, at: event.t)
+                seen[name]?.videos += 1
             case RunEvent.Kind.hiresDone where event.pass != "full":
                 seen[name]?.hiresStarted = true
                 seen[name]?.minutes = event.minutes ?? 0
@@ -442,16 +466,20 @@ extension NightPage {
                 default: break
                 }
             }
+            if scene.closeUp {
+                stage = scene.videos > 0 ? "Videos \(scene.videos)/\(holeVideos)" : "Close up"
+                if scene.videos >= holeVideos { stage = "Done" }
+            }
             if scene.leftOut != nil { stage = "Left out" }
             var detail: [String] = []
             if let score = scene.score { detail.append("score " + Words.decimal(score, digits: 2)) }
             if let minutes = scene.minutes, minutes > 0 {
-                detail.append("high resolution " + Words.duration(minutes * 60))
+                detail.append((scene.closeUp ? "run " : "high resolution ") + Words.duration(minutes * 60))
             }
             if let why = scene.leftOut, !why.isEmpty { detail.append(why) }
             return SceneCard(
                 name: name, score: scene.score, stage: stage, detail: detail.joined(separator: " · "),
-                picked: scene.picked, current: name == current?.scene, videos: scene.videos,
+                picked: scene.picked || scene.closeUp, current: name == current?.scene, videos: scene.videos,
                 arrived: scene.arrived)
         }
         let order2 = seen.mapValues(\.pickOrder)

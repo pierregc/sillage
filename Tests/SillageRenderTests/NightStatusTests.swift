@@ -190,6 +190,57 @@ struct NightStatusTests {
         #expect(try RunEvent(RunEvent.Kind.hiresStart, options: ["--massive", "2e6"]).massive == 2_000_000)
     }
 
+    /// A black hole close up (#349) is counted apart from the picks' high resolution, its videos
+    /// are the night's, and the page has a card and a bar for it.
+    @Test func aCloseUpHasItsOwnLineInTheReportAndACardOnThePage() throws {
+        let start = RunStatus.date("2026-11-20T21:00:00+01:00")!
+        var night = NightFile(
+            id: "2026-11-20",
+            phases: [
+                NightFile.Phase(name: "hires", planned: 1, done: 1, failed: 0, skipped: nil),
+                NightFile.Phase(name: "closeup", planned: 1, done: 0, failed: 0, skipped: nil),
+            ], state: .done, startedAt: start)
+        night.recipe = ["exports": "4k,vertical", "closeUps": "1", "closeUpVideos": "4k,vertical"]
+        var hires = RunEvent(RunEvent.Kind.hiresDone, scene: "scene-0031", at: start.addingTimeInterval(600))
+        hires.particles = 8_000_000
+        hires.minutes = 38
+        var run = RunEvent(RunEvent.Kind.hiresDone, scene: "hole-01", at: start.addingTimeInterval(1_200))
+        run.subject = "blackHole"
+        run.particles = 6_000_000
+        run.seconds = 114
+        var video = RunEvent(RunEvent.Kind.exportDone, scene: "hole-01", at: start.addingTimeInterval(1_800))
+        video.subject = "blackHole"
+        video.preset = "4k"
+        video.megabytes = 80
+        video.path = "/library/2026-11-20/hole-01/exports/4k.mp4"
+        let events = [RunEvent(RunEvent.Kind.nightStart, at: start), hires, run, video]
+
+        let found = NightEvents(events, end: nil)
+        #expect(found.hires.count == 1 && found.closeUps.count == 1 && found.videos.count == 1)
+        let report = NightReport.markdown(
+            night, events: events, now: start.addingTimeInterval(7_200), timeZone: Self.paris)
+        #expect(report.contains("- High resolution: 1 done of 1 planned"))
+        #expect(report.contains("- Close ups: 1 done of 1 planned, 1 video"))
+        #expect(report.contains("- hole-01: 6,000,000 tracers in 1 min"))
+        #expect(!report.contains("hole-01: 6,000,000 particles"))
+
+        let cards = NightPage.cards(events, file: night, current: nil)
+        let card = try #require(cards.first { $0.name == "hole-01" })
+        #expect(card.stage == "Videos 1/2" && card.picked && card.videos == 1)
+        #expect(card.detail.contains("run 1 min"))
+        #expect(cards.contains { $0.name == "scene-0031" } == false)
+        night.phases[1].done = 1
+        let done = NightEvents(events + [video], end: nil)
+        #expect(done.videos.count == 2)
+        #expect(
+            NightPage.cards(events + [video], file: night, current: nil).first { $0.name == "hole-01" }?.stage
+                == "Done")
+        #expect(NightPage.phaseTitle("closeup") == "Close ups")
+        #expect(NightPage.phase(of: "hires", scene: "hole-01") == "closeup")
+        #expect(NightPage.phase(of: "hires", scene: "scene-0001") == "hires")
+        #expect(NightEvents.doneKind("closeup") == RunEvent.Kind.exportDone)
+    }
+
     /// 2026-10-30-b again: a hires of scene-0031 at 08:20 and its whatsapp export at 08:46, run
     /// by hand after the night ended at 07:51.
     @Test func workRunInTheFolderAfterTheEndIsNotTheNights() throws {

@@ -462,6 +462,7 @@ extension QueueStatus {
         case "explore": "previews"
         case "pick": "selection"
         case "hires": "high resolution"
+        case "closeup": "close ups"
         case "look", "style": "style"
         case "export": "videos"
         default: name

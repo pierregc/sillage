@@ -52,13 +52,21 @@ public struct NightProgress: Sendable, Equatable {
     public var exported: Set<String> = []
     /// Scenes skipped by hand or for want of time: nothing more is done to them tonight.
     public var skipped: Set<String> = []
+    /// The close ups (#349) whose run is done, by folder name: their take is whole.
+    public var closeUpRuns: Set<String> = []
+    /// `<close up>/<format>`.
+    public var closeUpExported: Set<String> = []
 
     public init() {}
 }
 
 /// Every step of a night with its duration, start and end, and when the whole night is done.
 public struct NightPlan: Codable, Sendable, Equatable {
-    public enum Phase: String, Codable, Sendable, CaseIterable { case explore, pick, hires, style, export }
+    public enum Phase: String, Codable, Sendable, CaseIterable {
+        case explore, pick, hires, style, export
+        /// A black hole close up (#349): its run, then each of its videos.
+        case closeUp = "closeup"
+    }
 
     public struct Step: Codable, Sendable, Equatable {
         public var phase: Phase
@@ -66,11 +74,11 @@ public struct NightPlan: Codable, Sendable, Equatable {
         public var scene: String?
         /// Explore: the scenes. Pick: how many.
         public var count: Int?
-        /// Explore: a galaxy. Hires: in all.
+        /// Explore: a galaxy. Hires: in all. Close up: the tracers.
         public var particles: Int?
         /// Hires: those that carry the mass, when the others are light tracers.
         public var massive: Int?
-        /// Export: the preset, `webp` or `gif`.
+        /// Export: the preset, `webp` or `gif`. Close up: the preset of a video, none for its run.
         public var format: String?
         /// Of a scene drawn in two passes (#239): `massive` for its hires, `full` for the video
         /// presets its full pass draws, the first of them carrying the whole pass.
@@ -114,6 +122,8 @@ public struct NightPlan: Codable, Sendable, Equatable {
     public var hiresMassive: Int?
     /// 2 when the videos are drawn in a full pass (#239).
     public var hiresPasses: Int?
+    /// The black hole close ups the night makes after its picks (#349); absent for none.
+    public var closeUps: Int?
     public var exports: [String]
     public var steps: [Step]
     /// What the steps left will write, previews, takes and videos.
@@ -129,6 +139,7 @@ public struct NightPlan: Codable, Sendable, Equatable {
                 switch phase {
                 case .explore: first.count ?? 0
                 case .pick: first.count ?? 0
+                case .closeUp: mine.filter { $0.format == nil }.count
                 default: mine.count
                 }
             return Summary(
@@ -167,6 +178,16 @@ public struct NightPlanner: Sendable {
     public static let freeStyleSeconds = 400.0
     /// An animated WebP or GIF of eight seconds.
     public static let previewSeconds = 30.0
+    /// A close up's run at 6 M tracers, `hires` on the M4 Max alone on the GPU
+    /// (docs/notes/black-hole-close-up.md).
+    public static let closeUpRunSeconds = 114.0
+    /// A 1080p frame of a close up, drawing and encoding; a frame of another size takes as long
+    /// as it has pixels.
+    public static let closeUpFrameSeconds = 0.25
+    /// The frames of a close up's video: the whole run in 40 s at 30 fps, as `export` draws it.
+    public static let closeUpFrames = 1_200
+    /// The take of 6 M tracers, 22 frames of 192 MB.
+    public static let closeUpTakeBytes = 4.2e9
 
     public var recipe: NightRecipe
     /// The batch's seed, which draws each pick's world as the night will.
@@ -294,6 +315,43 @@ public struct NightPlanner: Sendable {
             frames: Int((Double(found.reduce(0) { $0 + $1.frames }) / count).rounded()))
     }
 
+    // MARK: Close ups
+
+    /// The folder of the close up at `index` in the night's batch; it is no `scene-` folder, so
+    /// that nothing picks it.
+    public static func closeUpName(_ index: Int) -> String { String(format: "hole-%02d", index + 1) }
+
+    /// The stream of the close ups' seeds, "HOLESEED".
+    static let closeUpStream: UInt64 = 0x484F_4C45_5345_4544
+
+    /// The seed of the close up at `index`, drawn from the batch seed so that a resumed night
+    /// makes the same scene.
+    public static func closeUpSeed(_ index: Int, seed: UInt64) -> Int {
+        1 + Int(NightRecipe.pickDraw(index, seed: seed, stream: closeUpStream) * Double(1 << 30))
+    }
+
+    /// A close up's video: its frames at the preset's size.
+    public static func closeUpExportSeconds(_ format: String) -> Double {
+        guard let preset = VideoPreset.named(format) else { return 0 }
+        return Double(closeUpFrames) * closeUpFrameSeconds * Double(preset.width * preset.height)
+            / Double(1_920 * 1_080)
+    }
+
+    /// What the close ups still to make take, from their runs to their videos.
+    func closeUpSeconds() -> Double {
+        (0..<recipe.closeUpCount).reduce(0) { total, index in
+            let name = Self.closeUpName(index)
+            return total + (progress.skipped.contains(name) ? 0 : closeUpSeconds(name))
+        }
+    }
+
+    func closeUpSeconds(_ name: String) -> Double {
+        (progress.closeUpRuns.contains(name) ? 0 : Self.closeUpRunSeconds)
+            + recipe.closeUpVideos.reduce(0) {
+                $0 + (progress.closeUpExported.contains("\(name)/\($1)") ? 0 : Self.closeUpExportSeconds($1))
+            }
+    }
+
     /// What is kept back from a night for estimates gone wrong: a twentieth, five to twenty
     /// minutes.
     public static func margin(_ seconds: TimeInterval) -> TimeInterval {
@@ -343,7 +401,7 @@ public struct NightPlanner: Sendable {
     /// Auto: between one and four scenes, as many of the best as can be finished from `start`
     /// before the delivery time.
     public func autoPicks(_ ranked: [NightScene], from start: Date, deliverBy: Date) -> Int {
-        let available = deliverBy.timeIntervalSince(start)
+        let available = deliverBy.timeIntervalSince(start) - closeUpSeconds()
         for count in NightRecipe.pickRange.reversed() where count <= ranked.count {
             if finishSeconds(picks: picks(ranked, count: count)) <= available {
                 return count
@@ -369,7 +427,7 @@ public struct NightPlanner: Sendable {
         let fixedCount = progress.perGalaxy ?? recipe.explore.particlesPerGalaxy.value
         let fixedScenes = recipe.explore.scenes.value
         let total = deliverBy.timeIntervalSince(now)
-        let available = total - Self.margin(total)
+        let available = total - Self.margin(total) - closeUpSeconds()
         let ladder = NightRecipe.perGalaxyLadder
         let counts: [Int] =
             switch recipe.pick {
@@ -550,6 +608,43 @@ public struct NightPlanner: Sendable {
             if starts, !drawn.isEmpty { disk += Double(hires) * Self.keyFrameBytesPerParticle }
         }
 
+        // The close ups, after the picks: each run into a take, then its videos.
+        let videos = recipe.closeUpVideos
+        for index in 0..<recipe.closeUpCount {
+            let name = Self.closeUpName(index)
+            let skipped = progress.skipped.contains(name)
+            let runDone = progress.closeUpRuns.contains(name)
+            let runTime = runDone ? 0 : Self.closeUpRunSeconds
+            let videoTimes = videos.map {
+                progress.closeUpExported.contains("\(name)/\($0)") ? 0 : Self.closeUpExportSeconds($0)
+            }
+            let finishEnd = clock.addingTimeInterval(runTime + videoTimes.reduce(0, +))
+            var starts = !skipped && (runDone || finishEnd <= deliverBy)
+            if !starts && !skipped {
+                warnings.append(
+                    .init(
+                        kind: "late",
+                        message: "\(name) cannot be finished before the delivery time: left out"))
+            }
+            func add(_ seconds: Double, done: Bool, format: String? = nil) {
+                if starts, !done, format != nil, clock.addingTimeInterval(seconds) > hard { starts = false }
+                steps.append(
+                    NightPlan.Step(
+                        phase: .closeUp, scene: name,
+                        particles: format == nil ? NightRecipe.closeUpTracers : nil, format: format,
+                        seconds: seconds, start: clock, end: clock.addingTimeInterval(seconds), done: done,
+                        fits: starts))
+                if starts { clock = clock.addingTimeInterval(seconds) }
+            }
+            add(runTime, done: runDone)
+            if starts, !runDone { disk += Self.closeUpTakeBytes }
+            for (format, seconds) in zip(videos, videoTimes) {
+                let done = progress.closeUpExported.contains("\(name)/\(format)")
+                add(seconds, done: done, format: format)
+                if starts, !done { disk += Self.videoBytes(format, frames: Self.closeUpFrames) }
+            }
+        }
+
         if let freeBytes, disk > freeBytes {
             warnings.append(
                 .init(
@@ -561,7 +656,8 @@ public struct NightPlanner: Sendable {
             start: now, deliverBy: deliverBy, end: clock, scenes: scenes,
             particlesPerGalaxy: sized.perGalaxy, exploreBudget: max(sized.budget, 0),
             picks: finishing.count, hiresParticles: hires, hiresMassive: massive,
-            hiresPasses: hiresPasses == 2 ? 2 : nil, exports: exports,
+            hiresPasses: hiresPasses == 2 ? 2 : nil,
+            closeUps: recipe.closeUpCount > 0 ? recipe.closeUpCount : nil, exports: exports,
             steps: steps, diskBytes: disk, freeBytes: freeBytes, warnings: warnings)
     }
 }

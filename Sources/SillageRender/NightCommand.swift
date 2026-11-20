@@ -161,6 +161,10 @@ public enum NightCommand {
             case .export:
                 let pass = step.pass == "full" ? " · full pass" : ""
                 line = "export     \(step.scene ?? "") \(step.format ?? "")\(pass) · \(state)"
+            case .closeUp:
+                line =
+                    step.format.map { "closeup    \(step.scene ?? "") \($0) · \(state)" }
+                    ?? "closeup    \(step.scene ?? "") · \(thousands(step.particles ?? 0)) tracers · \(state)"
             }
             lines.append(line)
         }
