@@ -8,6 +8,7 @@ FullPassMetal.swift              # Metal
 GPUTreeBuilder.swift             # Metal
 HoleCommand.swift                # Metal
 HoleRenderer.swift               # Metal
+HoleStage.swift                  # Metal
 InsideMetal.swift                # Metal
 LookGrid.swift                   # CoreGraphics, CoreText
 LookSheet.swift                  # Metal

@@ -522,6 +522,8 @@ public struct CostHistory: Sendable, Equatable {
                 object["kind"] as? String == "export.done",
                 // A full pass's videos are priced by `draws`.
                 object["pass"] as? String != "full",
+                // A black hole close up is drawn by another renderer (#332).
+                object["subject"] == nil,
                 let preset = object["preset"] as? String,
                 let frames = (object["frames"] as? NSNumber)?.doubleValue,
                 let seconds = (object["seconds"] as? NSNumber)?.doubleValue, frames > 0, seconds > 0

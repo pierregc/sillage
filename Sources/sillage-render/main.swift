@@ -1587,6 +1587,28 @@ if CommandLine.arguments.count > 1,
     }
     let folder = SceneFolder(path: CommandLine.arguments[2])
     let options = Array(CommandLine.arguments.dropFirst(3))
+    // A black hole close up (#332) runs and draws through stages of its own.
+    if folder.isBlackHole {
+        let run = StageReporter(stage: stage.rawValue, folder: folder)
+        do {
+            switch stage {
+            case .hires:
+                guard options.isEmpty else {
+                    fail("hires: a black hole close up runs as its scene.json says, without options")
+                }
+                try HoleStage.run(folder, reporter: run)
+            case .export:
+                _ = try HoleStage.export(folder, options: HoleExportOptions(options), reporter: run)
+            default:
+                throw SceneFolder.HoleError.galaxyStage(stage.rawValue)
+            }
+        } catch {
+            run.finish()
+            fail("\(stage.rawValue): \(error)")
+        }
+        run.finish()
+        exit(0)
+    }
     switch stage {
     case .look:
         do {

@@ -172,6 +172,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
         case unsupportedVersion(Int)
         case noGalaxies
         case sharesDoNotSumToOne(Double)
+        case otherKind(SceneKind)
 
         public var description: String {
             switch self {
@@ -179,6 +180,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
                 "scene file version \(version), this build reads \(SceneFile.currentVersion)"
             case .noGalaxies: "scene file has no galaxies"
             case .sharesDoNotSumToOne(let sum): "particle shares sum to \(sum), not 1"
+            case .otherKind(let kind): "a \(kind.rawValue) scene, not one of galaxies"
             }
         }
     }
@@ -235,6 +237,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
     }
 
     public static func decoded(from data: Data) throws -> SceneFile {
+        if let kind = SceneKind.of(data), kind != .galaxies { throw ReadError.otherKind(kind) }
         let file = try JSONDecoder().decode(SceneFile.self, from: data)
         guard file.version == currentVersion else {
             throw ReadError.unsupportedVersion(file.version)
