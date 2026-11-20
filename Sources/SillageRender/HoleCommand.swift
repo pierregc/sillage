@@ -38,6 +38,8 @@ public enum HoleCommand {
                            [--release r] [--stickiness x] [--viscous-orbits x] [--cooling-time t]
                            [--duration t] [--frame-interval t] [--step t] [--seed n]
                            [--video file --elevation deg --distance r --azimuth deg --reference frame]
+                           [--metrics file.csv --metrics-interval t --no-frames]
+                           [--grid-heights n --height-cell h]
                        sillage-render black-hole still <frame> <png> [view options]
                        sillage-render black-hole orbit <frame> <video> [view options] [--seconds s]
                            [--turns n] [--scene scene.json]
@@ -160,7 +162,10 @@ public enum HoleCommand {
         try encoder.encode(scene).write(to: folder.appendingPathComponent("scene.json"))
 
         let started = Date()
-        let run = try TidalRun(scene: scene)
+        var gas = GasGrid()
+        if let value = options.int("grid-heights") { gas.heights = value }
+        if let value = options.float("height-cell") { gas.heightCell = value }
+        let run = try TidalRun(scene: scene, gas: gas)
         print(String(format: "released at t = %.1f, %d tracers", run.releaseTime, scene.tracers))
         var video: (writer: VideoWriter, renderer: HoleRenderer, look: HoleLook, every: Int)?
         if let file = options.values["video"] {
@@ -175,6 +180,20 @@ public enum HoleCommand {
             video = (writer, renderer, look(options), every)
         }
         let camera = camera(options)
+        var metrics: (measure: TidalMeasure, file: FileHandle, every: Int)?
+        if let path = options.values["metrics"] {
+            FileManager.default.createFile(atPath: path, contents: nil)
+            let file = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
+            try file.write(contentsOf: Data((TidalMeasure.Row.header + "\n").utf8))
+            let measure = run.measure()
+            print(
+                String(
+                    format: "P* %.0f, circular radius %.2f, of the bound's mean momentum %.2f",
+                    measure.period, measure.circularRadius, measure.boundRing))
+            let every = max(Int(((options.float("metrics-interval") ?? 25) / scene.timeStep).rounded()), 1)
+            metrics = (measure, file, every)
+            try file.write(contentsOf: Data((run.row(measure).line + "\n").utf8))
+        }
         let stepsPerFrame = max(Int((scene.frameInterval / scene.timeStep).rounded()), 1)
         let totalSteps = Int(((Double(scene.duration) - run.releaseTime) / Double(scene.timeStep)).rounded())
         var done = 0
@@ -190,10 +209,12 @@ public enum HoleCommand {
                     alive, stepping))
             kept += 1
         }
-        try keep()
+        let writeFrames = !options.flags.contains("no-frames")
+        if writeFrames { try keep() }
         while done < totalSteps {
-            let chunk = min(
+            var chunk = min(
                 video?.every ?? stepsPerFrame, stepsPerFrame - done % stepsPerFrame, totalSteps - done)
+            if let metrics { chunk = min(chunk, metrics.every - done % metrics.every) }
             let before = Date()
             run.step(chunk)
             stepping += Date().timeIntervalSince(before)
@@ -206,7 +227,10 @@ public enum HoleCommand {
                         frame, camera: camera, look: video.look, present: target, into: buffer)
                 }
             }
-            if done % stepsPerFrame == 0 { try keep() }
+            if let metrics, done % metrics.every == 0 {
+                try metrics.file.write(contentsOf: Data((run.row(metrics.measure).line + "\n").utf8))
+            }
+            if writeFrames, done % stepsPerFrame == 0 { try keep() }
         }
         try video?.writer.finish()
         print(

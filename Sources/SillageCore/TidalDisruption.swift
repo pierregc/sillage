@@ -25,14 +25,18 @@ public struct TidalDisruption: Codable, Sendable, Equatable {
     /// it stands, with the centre's velocity, which is what spreads their energies.
     public var release: Float = 10
     /// Gas: the rate at which a tracer's motion against the mean flow around it turns into
-    /// heat, in e-foldings per orbit at its radius. 0 leaves the tracers collisionless.
-    public var stickiness: Float = 2
+    /// heat, in e-foldings per orbit at its radius. 0 leaves the tracers collisionless. A shock
+    /// is over in a crossing, a small share of an orbit: from 20 up the disk forms the same, at
+    /// 2 it does not (#334).
+    public var stickiness: Float = 50
     /// The slowest motion against the mean flow that counts as streams crossing, as a share of
     /// the circular speed at the tracer's radius: below it, a stream's own stretch stays cold.
-    public var crossingSpeed: Float = 0.3
+    /// Also the gas's sound speed, which sets how thick its disk is.
+    public var crossingSpeed: Float = 0.1
     /// The disk's viscosity, as a loss of angular momentum: orbits to lose 1/e of it, 0 for none.
-    /// What carries the ring the stream settles into down to the last stable orbit.
-    public var viscousOrbits: Float = 40
+    /// A thin disk's is 1 / (2π α (H/R)²), thousands of orbits for α = 0.1 and this gas's height;
+    /// the spike's 40 bound 18 % more of the cloud at its first pericentre, which no simulation sees.
+    public var viscousOrbits: Float = 2500
     /// How long the light of a heating lasts, a short time against any orbit worth watching, so
     /// that a crossing glows where it happens and a stream flung out goes dark.
     public var coolingTime: Float = 10
