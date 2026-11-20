@@ -32,6 +32,8 @@ public final class TakeExport {
     /// From the video's time to the take's (#305): one captured frame per played one unless
     /// given.
     public let track: TimeTrack
+    /// A camera path of its own (#295), over its own time track; nil follows the look's plan.
+    public let flight: FlightFile?
     private let device: MTLDevice
     private let positions: MTLBuffer
     private let expander: SnapshotExpander
@@ -43,20 +45,22 @@ public final class TakeExport {
     /// How many times the take was expanded, for the tests.
     private(set) var expansions = 0
 
-    public enum Failure: Error, CustomStringConvertible {
+    public enum Failure: Error, CustomStringConvertible, Equatable {
         case trackForAnotherTake(track: Int, take: Int)
+        case flightAndTrack
 
         public var description: String {
             switch self {
             case .trackForAnotherTake(let track, let take):
                 "a time track of \(track) captured frames for a take of \(take)"
+            case .flightAndTrack: "a flight keeps its own time: it takes no other track"
             }
         }
     }
 
     public init(
         take: RecordingFile.Loaded, look: LookFile, capturedRate: Int, device: MTLDevice? = nil,
-        framing: RecordingFile.Loaded? = nil, track: TimeTrack? = nil
+        framing: RecordingFile.Loaded? = nil, track: TimeTrack? = nil, flight: FlightFile? = nil
     ) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
             throw RenderError.noDevice
@@ -66,6 +70,13 @@ public final class TakeExport {
         self.look = look
         self.capturedRate = max(capturedRate, 1)
         let frames = take.recording.capturedFrames
+        self.flight = flight
+        if flight != nil, track != nil { throw Failure.flightAndTrack }
+        let track =
+            try flight?.timeTrack(
+                megayears: TimeTrack.megayears(of: (framing ?? take).recording),
+                capturedRate: self.capturedRate)
+            ?? track
         if let track, track.capturedFrames != frames || track.capturedRate != self.capturedRate {
             throw Failure.trackForAnotherTake(track: track.capturedFrames, take: frames)
         }
@@ -116,15 +127,15 @@ public final class TakeExport {
     ) throws -> Report {
         let wanted = videoFrames(framesPerSecond: framesPerSecond, start: start, duration: duration)
         let renderer = try makeRenderer(width: width, height: height)
-        let replay = makeReplay(width: width, height: height)
-        let plan = overlayPlan(at: wanted, framesPerSecond: framesPerSecond, width: width, height: height)
+        let cameras = try makeCameras(width: width, height: height)
+        let plan = try overlayPlan(at: wanted, framesPerSecond: framesPerSecond, width: width, height: height)
         let painter = OverlayPainter()
         let writer = try VideoWriter(
             width: width, height: height, framesPerSecond: Int32(framesPerSecond), codec: codec,
             bitsPerSecond: bitsPerSecond, quality: quality, metadata: metadata, to: url)
         let started = Date()
         for (index, frame) in wanted.enumerated() {
-            let shot = try prepare(renderer, at: frame, replay: replay)
+            let shot = try prepare(renderer, at: frame, cameras: cameras)
             try writer.append(
                 on: device,
                 drawing: { target, buffer in
@@ -134,7 +145,7 @@ public final class TakeExport {
                 read: stills.contains(index)
                     ? { pixels in if let image = PNGWriter.image(bgra: pixels) { try still(index, image) } }
                     : nil)
-            if dumps.contains(index), let capture = capture(renderer, at: frame, shot, replay) {
+            if dumps.contains(index), let capture = capture(renderer, at: frame, shot, cameras.plan) {
                 try dump(index, capture)
             }
             progress(index + 1, wanted.count)
@@ -149,13 +160,13 @@ public final class TakeExport {
     /// The overlay of a video showing `positions`, laid out for every frame before the first is
     /// drawn; nil when none is asked.
     public func overlayPlan(at frames: [TimeTrack.Frame], framesPerSecond: Int, width: Int, height: Int)
-        -> OverlayPlan?
+        throws -> OverlayPlan?
     {
         guard let overlay, !overlay.overlay.isEmpty else { return nil }
-        let replay = makeReplay(width: width, height: height)
+        let cameras = try makeCameras(width: width, height: height)
         return OverlayPlan(
             overlay, take: framing, positions: frames.map(\.captured), framesPerSecond: framesPerSecond,
-            cameras: frames.map { replay.shot(atPlayed: $0.played).camera }, width: width, height: height)
+            cameras: frames.map { cameras.shot(at: $0).camera }, width: width, height: height)
     }
 
     /// Every frame a video at `framesPerSecond` would show, drawn as the video draws them and
@@ -166,11 +177,11 @@ public final class TakeExport {
     ) throws -> [[UInt8]] {
         let wanted = videoFrames(framesPerSecond: framesPerSecond, start: start, duration: duration)
         let renderer = try makeRenderer(width: width, height: height)
-        let replay = makeReplay(width: width, height: height)
-        let plan = overlayPlan(at: wanted, framesPerSecond: framesPerSecond, width: width, height: height)
+        let cameras = try makeCameras(width: width, height: height)
+        let plan = try overlayPlan(at: wanted, framesPerSecond: framesPerSecond, width: width, height: height)
         let painter = OverlayPainter()
         return try wanted.enumerated().map { index, frame in
-            let shot = try prepare(renderer, at: frame, replay: replay)
+            let shot = try prepare(renderer, at: frame, cameras: cameras)
             defer { progress(index + 1, wanted.count) }
             var pixels = renderer.render(camera: shot.camera)
             if let plan {
@@ -268,7 +279,7 @@ public final class TakeExport {
         var previous: [UInt8]?
         for (index, time) in times.enumerated() {
             let position = try TimeTrack.position(of: time, in: megayears)
-            let shot = try prepare(renderer, at: Self.untracked(position), replay: replay)
+            let shot = try prepare(renderer, at: Self.untracked(position), cameras: .replay(replay))
             let pixels = renderer.render(camera: shot.camera)
             try drawing(time, pixels)
             if let previous { changes.append(VisualPace.change(previous, pixels)) }
@@ -283,7 +294,7 @@ public final class TakeExport {
     func still(atCaptured frame: Int, width: Int, height: Int) throws -> [UInt8] {
         let renderer = try makeRenderer(width: width, height: height)
         let shot = try prepare(
-            renderer, at: Self.untracked(frame), replay: makeReplay(width: width, height: height))
+            renderer, at: Self.untracked(frame), cameras: .replay(makeReplay(width: width, height: height)))
         return renderer.render(camera: shot.camera)
     }
 
@@ -293,9 +304,9 @@ public final class TakeExport {
     ) {
         let renderer = try makeRenderer(width: width, height: height)
         let replay = makeReplay(width: width, height: height)
-        let shot = try prepare(renderer, at: Self.untracked(frame), replay: replay)
+        let shot = try prepare(renderer, at: Self.untracked(frame), cameras: .replay(replay))
         let pixels = renderer.render(camera: shot.camera)
-        guard let capture = capture(renderer, at: Self.untracked(frame), shot, replay) else {
+        guard let capture = capture(renderer, at: Self.untracked(frame), shot, replay.plan) else {
             throw RenderError.textureAllocation
         }
         return (pixels, capture)
@@ -311,12 +322,12 @@ public final class TakeExport {
 
     /// What the frame `renderer` has just drawn at `frame` left in its targets.
     private func capture(
-        _ renderer: Renderer, at frame: TimeTrack.Frame, _ shot: ShotReplay.Shot, _ replay: ShotReplay
+        _ renderer: Renderer, at frame: TimeTrack.Frame, _ shot: ShotReplay.Shot, _ plan: ShotPlan?
     ) -> RenderTargetManifest.Capture? {
         renderer.particleTargets().map {
             RenderTargetManifest.Capture(
                 captured: frame.captured, time: renderer.time,
-                shot: replay.plan?.shot(atCaptured: frame.played)?.subject.description,
+                shot: plan?.shot(atCaptured: frame.played)?.subject.description,
                 camera: shot.camera, targets: $0)
         }
     }
@@ -334,6 +345,62 @@ public final class TakeExport {
             track: track)
     }
 
+    /// Where every frame's camera comes from: the look's plan, or a flight.
+    enum Cameras {
+        case replay(ShotReplay)
+        case flight(Flight, look: RenderLook, capturedRate: Int)
+
+        func shot(at frame: TimeTrack.Frame) -> ShotReplay.Shot {
+            switch self {
+            case .replay(let replay): replay.shot(atPlayed: frame.played)
+            case .flight(let flight, let look, let rate):
+                flight.shot(atSeconds: frame.played / Double(rate), look: look)
+            }
+        }
+
+        var plan: ShotPlan? {
+            if case .replay(let replay) = self { replay.plan } else { nil }
+        }
+    }
+
+    func makeCameras(width: Int, height: Int) throws -> Cameras {
+        guard let flight = try makeFlight(width: width, height: height) else {
+            return .replay(makeReplay(width: width, height: height))
+        }
+        return .flight(flight, look: look.look, capturedRate: capturedRate)
+    }
+
+    /// The flight resolved for frames of `width` by `height`, its `look` keys on the camera the
+    /// export draws without it.
+    public func makeFlight(width: Int, height: Int) throws -> Flight? {
+        guard let flight else { return nil }
+        var replay: ShotReplay?
+        return try Flight(
+            flight, take: FlightTake(take: framing, capturedRate: capturedRate),
+            look: { [look, framing, capturedRate] position in
+                let cameras =
+                    replay
+                    ?? TakeFraming.replay(
+                        look: look, framing: framing, capturedRate: capturedRate, width: width, height: height
+                    )
+                replay = cameras
+                return cameras.shot(atCaptured: position).camera
+            })
+    }
+
+    /// The frame at every key of the flight, as RGBA: a flight seen in seconds, nothing encoded.
+    public func flightKeys(width: Int, height: Int) throws -> [(seconds: Double, rgba: [UInt8])] {
+        guard let flight = try makeFlight(width: width, height: height) else { return [] }
+        let renderer = try makeRenderer(width: width, height: height)
+        let cameras = Cameras.flight(flight, look: look.look, capturedRate: capturedRate)
+        let rate = Double(capturedRate)
+        return try flight.keySeconds.map { seconds in
+            let frame = TimeTrack.Frame(played: seconds * rate, captured: flight.captured(atSeconds: seconds))
+            let shot = try prepare(renderer, at: frame, cameras: cameras)
+            return (seconds, renderer.render(camera: shot.camera))
+        }
+    }
+
     private func makeRenderer(width: Int, height: Int) throws -> Renderer {
         let renderer = try Renderer(
             device: device, particles: take.particles,
@@ -347,7 +414,7 @@ public final class TakeExport {
         return renderer
     }
 
-    private func prepare(_ renderer: Renderer, at frame: TimeTrack.Frame, replay: ShotReplay) throws
+    private func prepare(_ renderer: Renderer, at frame: TimeTrack.Frame, cameras: Cameras) throws
         -> ShotReplay.Shot
     {
         if expanded != frame.captured {
@@ -364,7 +431,7 @@ public final class TakeExport {
         }
         guard
             let shot = TakeFraming.prepare(
-                renderer, look: look, replay: replay, framing: framing, at: frame)
+                renderer, look: look, shot: cameras.shot(at: frame), framing: framing, at: frame)
         else { throw RecordingFile.Failure.truncated }
         return shot
     }
