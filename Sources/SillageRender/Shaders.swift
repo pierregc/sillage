@@ -1390,8 +1390,8 @@ enum Shaders {
             /// baked lace's mean.
             float4 target;
             /// How many times coarser the carrier is drawn, and the smallest grain it takes, in
-            /// its own pixels; from inside a galaxy (#297), the distances from a disk between which
-            /// its lace flattens out.
+            /// its own pixels; from inside a galaxy (#354), the disk radii within which its lace is
+            /// carried through the dust layer's depth.
             float4 carrier;
         };
 
@@ -1557,6 +1557,91 @@ enum Shaders {
         }
         #endif
 
+        #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+        // From near a disk (#354) the lace is not read where the ray meets the mid-plane but
+        // averaged along the stretch of ray that crosses the dust's layer, `layer` either side
+        // of the plane: the lace is the dust's structure carried through the layer's depth.
+        // Face on that stretch is shorter than a pixel and it is the mid-plane's lace; at a
+        // grazing angle it runs over many cells and the lace evens out by itself, scale by
+        // scale, with no angle at which it stops. Each tap reads the lace over its share of
+        // the stretch, folded into the pixel's footprint.
+        SHARED_CONSTANT int webTaps = 4;
+
+        SHARED float webThrough(DiskFrame frame, constant WebUniforms &w, float3 ray, float3 stepX,
+                                float3 stepY, Lace lace, float3 rel, float3 axis, float layer) {
+            float height = dot(rel, axis);
+            float least = 0.05f * length(ray);
+            float along = dot(ray, axis);
+            along = along < 0.0f ? min(along, -least) : max(along, least);
+            float t0 = (-layer - height) / along;
+            float t1 = (layer - height) / along;
+            float enter = max(min(t0, t1), 0.0f);
+            float leave = max(t0, t1);
+            if (leave <= enter) { return 1.0f; }
+            float h = max(frame.center.w, 1e-3f);
+            float cell = clamp(w.params.y * h, w.params.z, w.params.w);
+            float scale = 1.0f / (cell * float(laceTile));
+            float3 u3 = frame.axisU.xyz;
+            float3 v3 = frame.axisV.xyz;
+            float share = (leave - enter) / float(webTaps);
+            float2 stride = float2(dot(ray, u3), dot(ray, v3)) * share;
+            float3 sx = stepX - ray * (dot(stepX, axis) / along);
+            float3 sy = stepY - ray * (dot(stepY, axis) / along);
+            float period = frame.web.y;
+            float weights[2];
+            float ages[2];
+            float2 offsets[2];
+            float norm = 0.0f;
+            for (int k = 0; k < 2; ++k) {
+                float s = w.up.w / period + frame.web.z + 0.5f * float(k);
+                float cycle = floor(s);
+                float phase = s - cycle;
+                float weight = sinpi(phase);
+                weights[k] = weight * weight;
+                ages[k] = (phase - w.params.x) * period;
+                offsets[k] = webHash(uint2(int2(int(cycle) * 2 + k, int(frame.pattern.w * 10.0f)))) * 400.0f;
+                norm += weights[k] * weights[k];
+            }
+            float total = 0.0f;
+            for (int i = 0; i < webTaps; ++i) {
+                float t = enter + (float(i) + 0.5f) * share;
+                float3 meet = rel + ray * t;
+                float2 p = float2(dot(meet, u3), dot(meet, v3));
+                float2 dx = float2(dot(sx, u3), dot(sx, v3)) * t;
+                float2 dy = float2(dot(sy, u3), dot(sy, v3)) * t;
+                float pixel = max(length(dx), length(dy));
+                float detail = smoothstep(0.6f, 2.0f, 0.1f * cell / max(pixel, 1e-6f));
+                if (detail <= 0.0f) { continue; }
+                // The tap's stretch of ray lengthens whichever axis of the footprint lies nearer it.
+                float ax = abs(dot(dx, stride)) * length(dy);
+                float ay = abs(dot(dy, stride)) * length(dx);
+                if (ax > ay) {
+                    dx += dot(dx, stride) < 0.0f ? -stride : stride;
+                } else {
+                    dy += dot(dy, stride) < 0.0f ? -stride : stride;
+                }
+                float radius = length(p);
+                float omega = webOmega(frame, radius);
+                float shear = webOmegaSlope(frame, radius) / max(radius, 1e-4f);
+                float sum = 0.0f;
+                for (int k = 0; k < 2; ++k) {
+                    float angle = omega * ages[k];
+                    float c = cos(angle);
+                    float n = sin(angle);
+                    float2 q = float2(c * p.x + n * p.y, n * -p.x + c * p.y);
+                    float2 turn = float2(n * -p.x + c * p.y, -c * p.x - n * p.y) * (shear * ages[k]);
+                    float2 qx = float2(c * dx.x + n * dx.y, n * -dx.x + c * dx.y) + turn * dot(p, dx);
+                    float2 qy = float2(c * dy.x + n * dy.y, n * -dy.x + c * dy.y) + turn * dot(p, dy);
+                    float value = laceRead(lace, (q / cell + offsets[k]) / float(laceTile), qx * scale,
+                                           qy * scale);
+                    sum += weights[k] * (value * w.target.w - 1.0f);
+                }
+                total += detail * sum;
+            }
+            return max(1.0f + webDepth * total / float(webTaps) * rsqrt(max(norm, 1e-4f)), 0.0f);
+        }
+        #endif
+
         // The web where this pixel's ray meets the disk's mid-plane, which is the same point
         // whichever grain the dust came from, so an inclined disk shows it foreshortened. Each
         // copy is carried round from where it rests, a share of its life in, and fades in and
@@ -1568,6 +1653,16 @@ enum Shaders {
             if (period <= 0.0f) { return 1.0f; }
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
             float3 rel = w.eye.xyz - frame.center.xyz;
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            if (w.carrier.w > 0.0f) {
+                float radius = 7.0f * max(frame.center.w, 1e-3f);
+                float above = dot(rel, axis);
+                float beyond = max(length(rel - axis * above) - radius, 0.0f);
+                float away = sqrt(above * above + beyond * beyond);
+                float layer = frame.web.w * (1.0f - smoothstep(w.carrier.z * radius, w.carrier.w * radius, away));
+                if (layer > 0.0f) { return webThrough(frame, w, ray, stepX, stepY, lace, rel, axis, layer); }
+            }
+            #endif
             float least = 0.05f * length(ray);
             float along = dot(ray, axis);
             along = along < 0.0f ? min(along, -least) : max(along, least);
@@ -1584,22 +1679,6 @@ enum Shaders {
             // The thinnest wall is a tenth of a cell: under a pixel it would only shimmer.
             float pixel = max(length(dx), length(dy));
             float detail = smoothstep(0.6f, 2.0f, 0.1f * cell / max(pixel, 1e-6f));
-            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
-            // The lace flattens out for an eye near the disk (#297): it lies in the mid-plane,
-            // and from a few kiloparsecs above it or less its walls run to the horizon as long
-            // straight streaks, a tiled floor seen in perspective. The dust it carries stays, as
-            // the even layer the web makes of the grains. The disk is its plane out to the web's
-            // own edge; `carrier.zw` are the distances from it between which the lace goes.
-            // From twice the far distance in, a ray that grazes the plane loses it first.
-            if (w.carrier.w > 0.0f) {
-                float above = dot(rel, axis);
-                float beyond = max(length(rel - axis * above) - 7.0f * h, 0.0f);
-                float away = sqrt(above * above + beyond * beyond);
-                float graze = abs(dot(ray, axis)) / max(length(ray), 1e-6f);
-                detail *= smoothstep(w.carrier.z, w.carrier.w, away)
-                    * smoothstep(0.25f, 0.6f, graze + smoothstep(w.carrier.w, 2.0f * w.carrier.w, away));
-            }
-            #endif
             if (detail <= 0.0f) { return 1.0f; }
             float radius = length(p);
             float omega = webOmega(frame, radius);

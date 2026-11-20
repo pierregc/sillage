@@ -35,9 +35,10 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// The distances to the nearest matter between which the slabs slide from the eye's layout
     /// (nearer than the first) to the one around the aim point every export has (past the second).
     public var slabsWithin: [Float] = [1.5, 6]
-    /// The lace of a disk's dust web is flat for an eye within the first of the disk, whole past
-    /// the second, in kiloparsecs.
-    public var web: [Float] = [3, 10]
+    /// How near a disk, in its radii (seven scale lengths), the lace of its dust web is carried
+    /// through the depth of its dust layer: wholly within the first, not at all past the second,
+    /// where it lies in the mid-plane as every export draws it (#354).
+    public var web: [Float] = [1, 2]
     /// The mean luminance the automatic exposure holds a frame under; 0 turns it off.
     public var exposure: Float = 0.16
     /// Seconds of video the automatic exposure is eased over.
@@ -92,7 +93,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !rising(slabsWithin, 2) {
             return "slabsWithin \(slabsWithin): two distances in kpc, the first nearer"
         }
-        if !rising(web, 2) { return "web \(web): two distances in kpc, the first nearer" }
+        if !rising(web, 2) { return "web \(web): two distances in disk radii, the first nearer" }
         if !(exposure >= 0 && exposure < 1) { return "exposure \(exposure): a mean luminance, 0 to 1" }
         if !(exposureEase >= 0 && exposureEase <= 30) { return "exposureEase \(exposureEase) s: 0 to 30" }
         if !(1...64).contains(subframes) { return "subframes \(subframes): 1 to 64" }

@@ -541,7 +541,8 @@ public final class CUDARenderer: FrameStyling {
                     $0.frame, camera: $0.camera, next: $0.next, settings: settings, splat: splat)
             } ?? InsideUniforms(outside: splat))
         var web = plan.web
-        // The lace flattens out near a disk, between the distances the settings give.
+        // Near a disk the lace is carried through its dust layer's depth, within the radii the
+        // settings give.
         if let deep {
             web?.carrier.z = deep.frame.settings.web[0]
             web?.carrier.w = deep.frame.settings.web[1]

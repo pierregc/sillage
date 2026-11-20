@@ -14,7 +14,8 @@ public struct WebUniforms: Sendable {
     /// lace's mean.
     public var target: SIMD4<Float>
     /// How many times coarser the carrier is drawn, and the smallest grain it takes, in its
-    /// own pixels.
+    /// own pixels; from inside a galaxy (#354), the disk radii within which its lace is carried
+    /// through the dust layer's depth.
     public var carrier: SIMD4<Float>
 }
 
@@ -38,4 +39,9 @@ public enum DustWeb {
     /// grain it takes in its own pixels, under which a grain would fall between them.
     static let carrierCoarse = 2
     static let carrierSmallest: Float = 3
+    /// From near a disk, the lace is carried this many of its thicknesses either side of the
+    /// plane (#354). The sampler lays dust a sech-squared layer of 0.45 thicknesses with strands
+    /// lifted up to 0.8 out of it; 0.3 still drew thin streaks at grazing angles, 1 lost the
+    /// threads seen at 45 degrees.
+    static let layer: Float = 0.6
 }
