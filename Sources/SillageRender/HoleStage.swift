@@ -2,35 +2,6 @@ import Foundation
 import Metal
 import SillageCore
 
-extension HoleLookFile {
-    /// What the renderer draws with.
-    public var renderLook: HoleLook {
-        var look = HoleLook()
-        look.lensed = lensed
-        look.images = images
-        look.temperature = temperature == .radius ? .radius : .crossing
-        look.hottest = Float(hottest)
-        look.beaming = Float(beaming)
-        look.exposure = Float(exposure)
-        look.ambient = Float(ambient)
-        look.particleSize = Float(particleSize)
-        look.thinning = Float(thinning)
-        look.stars = stars
-        look.starBrightness = Float(starBrightness)
-        return look
-    }
-
-    /// The post stages at a size: `HoleLook.settings`, with the look's tone where it gives one.
-    public func settings(width: Int, height: Int) -> RenderSettings {
-        var settings = HoleLook.settings(width: width, height: height)
-        if let stretch { settings.stretch = Float(stretch) }
-        if let bloom { settings.bloomIntensity = Float(bloom) }
-        if let whitePoint { settings.whitePoint = Float(whitePoint) }
-        if let saturation { settings.saturation = Float(saturation) }
-        return settings
-    }
-}
-
 /// A black hole close up through the stages of a scene folder (#332): `hires` runs it into
 /// `take.sillage`, `export` draws the take into `exports/`, as for galaxies, and the queue and
 /// a night call them alike.
@@ -146,25 +117,11 @@ public enum HoleStage {
         /// `step` lies behind; the frame there, as the run had it.
         @discardableResult
         public func seek(_ step: Int) -> TidalFrame {
-            let index = take.frameIndex(before: step)
-            let kept = take.header.steps[index]
-            if step < run.stepsTaken || kept > run.stepsTaken {
-                frame = take.frame(index)
-                run.resume(from: frame, step: kept)
-            }
-            if step > run.stepsTaken {
-                run.step(step - run.stepsTaken)
-                frame = run.frame
-            }
+            frame = take.seek(step, run: run, held: frame)
             return frame
         }
 
-        public func step(at time: Double) -> Int {
-            let header = take.header
-            return min(
-                max(Int(((time - header.releaseTime) / header.timeStep).rounded()), 0), header.steps.last ?? 0
-            )
-        }
+        public func step(at time: Double) -> Int { take.step(at: time) }
     }
 
     public struct ExportReport {

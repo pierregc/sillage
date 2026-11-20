@@ -121,6 +121,8 @@ struct alignas(sizeof(T) * 4) vec4 {
         };
         swizzle<vec3<T>, T, 3> xyz;
         swizzle<vec3<T>, T, 3> rgb;
+        // The two in the middle, over y and z.
+        struct { T yzOffset; swizzle<vec2<T>, T, 2> yz; };
     };
     vec4() = default;
     MSL_API constexpr explicit vec4(T s) : x(s), y(s), z(s), w(s) {}
@@ -129,6 +131,7 @@ struct alignas(sizeof(T) * 4) vec4 {
     MSL_API constexpr vec4(T a, const vec3<T> &v) : x(a), y(v.x), z(v.y), w(v.z) {}
     MSL_API constexpr vec4(const vec2<T> &u, const vec2<T> &v) : x(u.x), y(u.y), z(v.x), w(v.y) {}
     MSL_API constexpr vec4(const vec2<T> &v, T c, T d) : x(v.x), y(v.y), z(c), w(d) {}
+    MSL_API constexpr vec4(T a, const vec2<T> &v, T d) : x(a), y(v.x), z(v.y), w(d) {}
     template <class U>
     MSL_API constexpr explicit vec4(const vec4<U> &v)
         : x(T(v.x)), y(T(v.y)), z(T(v.z)), w(T(v.w)) {}
@@ -352,9 +355,12 @@ MSL_API float sin(float x) { return sinf(x); }
 MSL_API float cos(float x) { return cosf(x); }
 MSL_API float tan(float x) { return tanf(x); }
 MSL_API float atan2(float y, float x) { return atan2f(y, x); }
+MSL_API float acos(float x) { return acosf(x); }
+MSL_API float asin(float x) { return asinf(x); }
 MSL_API float floor(float x) { return floorf(x); }
 MSL_API float ceil(float x) { return ceilf(x); }
 MSL_API float round(float x) { return roundf(x); }
+MSL_API float rint(float x) { return rintf(x); }
 MSL_API float trunc(float x) { return truncf(x); }
 MSL_API float fma(float a, float b, float c) { return fmaf(a, b, c); }
 MSL_API float ldexp(float x, int k) { return ldexpf(x, k); }
@@ -371,6 +377,9 @@ MSL_API constexpr float smoothstep(float edge0, float edge1, float x) {
 MSL_API bool isnan(float x) { return (as_type<uint>(x) & 0x7FFFFFFFu) > 0x7F800000u; }
 MSL_API bool isinf(float x) { return (as_type<uint>(x) & 0x7FFFFFFFu) == 0x7F800000u; }
 MSL_API bool isfinite(float x) { return (as_type<uint>(x) & 0x7F800000u) != 0x7F800000u; }
+MSL_API bool2 isnan(const float2 &v) { return bool2(isnan(v.x), isnan(v.y)); }
+MSL_API bool3 isnan(const float3 &v) { return bool3(isnan(v.x), isnan(v.y), isnan(v.z)); }
+MSL_API bool4 isnan(const float4 &v) { return bool4(isnan(v.x), isnan(v.y), isnan(v.z), isnan(v.w)); }
 
 // A host and device function is compiled once for each, and __CUDA_ARCH__ says which.
 #if defined(__CUDA_ARCH__)

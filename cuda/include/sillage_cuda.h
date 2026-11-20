@@ -80,5 +80,6 @@ void sc_host_free(void *memory);
 #include "sillage_cuda_solver.h"
 #include "sillage_cuda_render.h"
 #include "sillage_cuda_post.h"
+#include "sillage_cuda_hole.h"
 
 #endif

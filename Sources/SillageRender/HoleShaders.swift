@@ -6,8 +6,14 @@ enum HoleShaders {
         #include <metal_stdlib>
         using namespace metal;
 
-        // Metal only (docs/notes/black-hole-close-up.md).
+        // What is outside `#if defined(__METAL_VERSION__)` is shared with the CUDA engine, which
+        // compiles it through cuda/include/msl_compat.h after Shaders, whose black body it calls
+        // (#336, docs/notes/one-kernel-source.md).
+        // kernel-sources: after Shaders
         #if defined(__METAL_VERSION__)
+        #define SHARED static
+        #define SHARED_CONSTANT constant
+        #endif
 
         struct HoleStepParams {
             uint count;
@@ -27,9 +33,9 @@ enum HoleShaders {
             float cooling;
         };
 
-        static float holeDynamical(float r) { return max(r - 1.0f, 1e-3f) * sqrt(r); }
+        SHARED float holeDynamical(float r) { return max(r - 1.0f, 1e-3f) * sqrt(r); }
 
-        static float3 holePull(float3 x) {
+        SHARED float3 holePull(float3 x) {
             float r = length(x);
             float d = max(r - 1.0f, 1e-3f);
             return -x / (r * d * d);
@@ -38,7 +44,7 @@ enum HoleShaders {
         // Where a point falls on the grid of the mean flow, in cells: log of the cylindrical
         // radius, the angle round the hole, and the height over the radius, so that a cell is as
         // tall as it is wide; false outside it. One layer of height is the plane's grid alone.
-        static bool holeCell(float3 x, constant HoleStepParams &p, thread float3 &cell) {
+        SHARED bool holeCell(float3 x, constant HoleStepParams &p, thread float3 &cell) {
             float r = length(x.xy);
             if (r <= 0.0f) { return false; }
             float u = (log(r) - p.logInner) * p.logScale - 0.5f;
@@ -53,10 +59,10 @@ enum HoleShaders {
             return true;
         }
 
-        static uint holeWrap(int j, uint n) { return uint((j % int(n) + int(n)) % int(n)); }
+        SHARED uint holeWrap(int j, uint n) { return uint((j % int(n) + int(n)) % int(n)); }
 
         // The eight cells round a point, trilinear, as an index and a weight each.
-        static uint holeCorner(float3 cell, constant HoleStepParams &p, uint corner,
+        SHARED uint holeCorner(float3 cell, constant HoleStepParams &p, uint corner,
                                thread float &weight) {
             float3 base = floor(cell);
             float3 f = cell - base;
@@ -70,18 +76,16 @@ enum HoleShaders {
                 * p.gridHeights + k;
         }
 
-        static uint holeCorners(constant HoleStepParams &p) { return p.gridHeights > 1u ? 8u : 4u; }
+        SHARED uint holeCorners(constant HoleStepParams &p) { return p.gridHeights > 1u ? 8u : 4u; }
 
         // The grid's sums are kept as 64-bit fixed point, 2^24 to the unit, in two 32-bit words a
         // value, low first. Integers add the same in any order, so a run repeats to the bit,
         // which float atomics summed in whatever order the threads come do not (#332).
-        kernel void holeClear(device uint4 *fixed [[buffer(0)]],
-                              constant uint &cells [[buffer(1)]],
-                              uint id [[thread_position_in_grid]]) {
+        SHARED void holeClearCell(device uint4 *fixed, uint cells, uint id) {
             if (id < 2u * cells) { fixed[id] = uint4(0u); }
         }
 
-        static void holeAddFixed(device atomic_uint *slot, float value) {
+        SHARED void holeAddFixed(device atomic_uint *slot, float value) {
             ulong bits = as_type<ulong>(long(rint(value * 16777216.0f)));
             uint low = uint(bits & 0xffffffffUL);
             uint high = uint(bits >> 32);
@@ -91,10 +95,7 @@ enum HoleShaders {
         }
 
         // The fixed point sums back as the floats `holeStep` reads.
-        kernel void holeResolve(device const uint *fixed [[buffer(0)]],
-                                device float4 *grid [[buffer(1)]],
-                                constant uint &cells [[buffer(2)]],
-                                uint id [[thread_position_in_grid]]) {
+        SHARED void holeResolveCell(device const uint *fixed, device float4 *grid, uint cells, uint id) {
             if (id >= cells) { return; }
             float4 sum;
             for (uint c = 0; c < 4u; ++c) {
@@ -106,11 +107,8 @@ enum HoleShaders {
         }
 
         // Each tracer's velocity, and one for the count, shared among the eight cells around it.
-        kernel void holeDeposit(device const float4 *positions [[buffer(0)]],
-                                device const float4 *velocities [[buffer(1)]],
-                                device atomic_uint *grid [[buffer(2)]],
-                                constant HoleStepParams &p [[buffer(3)]],
-                                uint id [[thread_position_in_grid]]) {
+        SHARED void holeDepositTracer(device const float4 *positions, device const float4 *velocities,
+                                      device atomic_uint *grid, constant HoleStepParams &p, uint id) {
             if (id >= p.count) { return; }
             float4 v = velocities[id];
             if (v.w < 0.0f) { return; }
@@ -127,10 +125,8 @@ enum HoleShaders {
         }
 
         // The tracers in each column of the grid, over every height.
-        kernel void holeColumn(device const float4 *grid [[buffer(0)]],
-                               device float *column [[buffer(1)]],
-                               constant HoleStepParams &p [[buffer(2)]],
-                               uint id [[thread_position_in_grid]]) {
+        SHARED void holeColumnSum(device const float4 *grid, device float *column, constant HoleStepParams &p,
+                                  uint id) {
             if (id >= p.gridRadii * p.gridAngles) { return; }
             float sum = 0.0f;
             for (uint k = 0; k < p.gridHeights; ++k) { sum += grid[id * p.gridHeights + k].w; }
@@ -143,12 +139,9 @@ enum HoleShaders {
         // fraction of an orbit; then the hole's pull in as many leapfrog sub-steps as its
         // radius asks for, as `TidalDisruption.advance`. Position w holds the light, velocity w
         // the tracers per unit area round it, or -1 once the tracer is swallowed.
-        kernel void holeStep(device float4 *positions [[buffer(0)]],
-                             device float4 *velocities [[buffer(1)]],
-                             device const float4 *grid [[buffer(2)]],
-                             device const float *column [[buffer(4)]],
-                             constant HoleStepParams &p [[buffer(3)]],
-                             uint id [[thread_position_in_grid]]) {
+        SHARED void holeStepTracer(device float4 *positions, device float4 *velocities,
+                                   device const float4 *grid, device const float *column,
+                                   constant HoleStepParams &p, uint id) {
             if (id >= p.count) { return; }
             float4 pw = positions[id];
             float4 vw = velocities[id];
@@ -261,15 +254,16 @@ enum HoleShaders {
             float thinning;
         };
 
-        struct HoleSplatOut {
-            float4 position [[position]];
-            float pointSize [[point_size]];
+        // What a tracer's point carries, without the attributes Metal's stage struct adds.
+        struct HoleSplat {
+            float4 position;
+            float pointSize;
             half3 color;
         };
 
         // The lens table as `HoleLens.lookup` reads it: bilinear between the four cells round
         // the point, and no image where one of them has none.
-        static float4 holeLens(device const float4 *lens, constant HoleSplatUniforms &u, uint image,
+        SHARED float4 holeLens(device const float4 *lens, constant HoleSplatUniforms &u, uint image,
                                float r, float phi) {
             float column = clamp(phi / M_PI_F * float(u.angleCount) - 0.5f, 0.0f,
                                  float(u.angleCount - 1u));
@@ -290,19 +284,19 @@ enum HoleShaders {
             return mix(mix(a, b, tj), mix(c, d, tj), ti);
         }
 
-        static float holeStraight(float r, float phi, float ro) {
+        SHARED float holeStraight(float r, float phi, float ro) {
             return atan2(r * sin(phi), ro - r * cos(phi));
         }
 
         // What `HoleLensSet.blend` interpolates between tables: the direct image's bend, the
         // others' impact parameter.
-        static float holeAlong(float4 entry, float ro, uint image, float r, float phi) {
+        SHARED float holeAlong(float4 entry, float ro, uint image, float r, float phi) {
             return image == 0u ? entry.x - holeStraight(r, phi, ro)
                                : sin(entry.x) * ro / sqrt(1.0f - 1.0f / ro);
         }
 
         // The two tables round the camera's distance blended as `HoleLensSet.blend` does.
-        static float4 holeLensBlend(device const float4 *nearLens, device const float4 *farLens,
+        SHARED float4 holeLensBlend(device const float4 *nearLens, device const float4 *farLens,
                                     constant HoleSplatUniforms &u, uint image, float r, float phi) {
             float t = u.lensBlend;
             float4 a = t < 1.0f ? holeLens(nearLens, u, image, r, phi) : float4(0.0f);
@@ -334,7 +328,7 @@ enum HoleShaders {
         }
 
         // A number in [0, 1) fixed by `seed`, so a tracer's draw does not flicker between frames.
-        static float holeChance(uint seed) {
+        SHARED float holeChance(uint seed) {
             seed ^= seed >> 16;
             seed *= 0x7feb352du;
             seed ^= seed >> 15;
@@ -343,23 +337,20 @@ enum HoleShaders {
             return float(seed >> 8) * (1.0f / 16777216.0f);
         }
 
-        static HoleSplatOut holeCulled() {
-            HoleSplatOut out;
+        SHARED HoleSplat holeCulled() {
+            HoleSplat out;
             out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
             out.pointSize = 0.0f;
-            out.color = half3(0.0h);
+            out.color = half3(half(0.0f));
             return out;
         }
 
         // A tracer where the hole shows it: its temperature, from its radius as a thin disk has
         // it or from the heat the run gave it; the image the table puts it at; the Doppler shift
         // of its motion along the light's last direction and the redshift of climbing out.
-        vertex HoleSplatOut holeSplatVertex(uint vid [[vertex_id]],
-                                            device const float4 *positions [[buffer(0)]],
-                                            device const float4 *velocities [[buffer(1)]],
-                                            constant HoleSplatUniforms &u [[buffer(2)]],
-                                            device const float4 *lens [[buffer(3)]],
-                                            device const float4 *farLens [[buffer(4)]]) {
+        SHARED HoleSplat holeSplat(uint vid, device const float4 *positions, device const float4 *velocities,
+                                   constant HoleSplatUniforms &u, device const float4 *lens,
+                                   device const float4 *farLens) {
             float4 pw = positions[vid];
             float4 vw = velocities[vid];
             if (vw.w < 0.0f && u.stars == 0u) { return holeCulled(); }
@@ -431,7 +422,7 @@ enum HoleShaders {
             float climb = sqrt(max(1.0f - 1.0f / r, 1e-3f) / (1.0f - 1.0f / ro));
             float shift = mix(1.0f, doppler * climb, u.beaming);
 
-            HoleSplatOut out;
+            HoleSplat out;
             out.position = u.viewProjection * float4(shown, 1.0f);
             if (out.position.w <= 0.0f) { return holeCulled(); }
             float span = clamp(u.particleSize * u.projectionScale / out.position.w, u.minimumSize,
@@ -447,12 +438,77 @@ enum HoleShaders {
             return out;
         }
 
+        SHARED float holeRadius2(float2 coord) {
+            float2 d = coord - 0.5f;
+            return dot(d, d) * 4.0f;
+        }
+
+        SHARED half4 holeSplatPixel(half3 color, float r2) {
+            return half4(color * half(exp(-4.5f * r2)), half(0.0f));
+        }
+        #if defined(__METAL_VERSION__)
+        kernel void holeClear(device uint4 *fixed [[buffer(0)]],
+                              constant uint &cells [[buffer(1)]],
+                              uint id [[thread_position_in_grid]]) {
+            holeClearCell(fixed, cells, id);
+        }
+
+        kernel void holeResolve(device const uint *fixed [[buffer(0)]],
+                                device float4 *grid [[buffer(1)]],
+                                constant uint &cells [[buffer(2)]],
+                                uint id [[thread_position_in_grid]]) {
+            holeResolveCell(fixed, grid, cells, id);
+        }
+
+        kernel void holeDeposit(device const float4 *positions [[buffer(0)]],
+                                device const float4 *velocities [[buffer(1)]],
+                                device atomic_uint *grid [[buffer(2)]],
+                                constant HoleStepParams &p [[buffer(3)]],
+                                uint id [[thread_position_in_grid]]) {
+            holeDepositTracer(positions, velocities, grid, p, id);
+        }
+
+        kernel void holeColumn(device const float4 *grid [[buffer(0)]],
+                               device float *column [[buffer(1)]],
+                               constant HoleStepParams &p [[buffer(2)]],
+                               uint id [[thread_position_in_grid]]) {
+            holeColumnSum(grid, column, p, id);
+        }
+
+        kernel void holeStep(device float4 *positions [[buffer(0)]],
+                             device float4 *velocities [[buffer(1)]],
+                             device const float4 *grid [[buffer(2)]],
+                             device const float *column [[buffer(4)]],
+                             constant HoleStepParams &p [[buffer(3)]],
+                             uint id [[thread_position_in_grid]]) {
+            holeStepTracer(positions, velocities, grid, column, p, id);
+        }
+
+        struct HoleSplatOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            half3 color;
+        };
+
+        vertex HoleSplatOut holeSplatVertex(uint vid [[vertex_id]],
+                                            device const float4 *positions [[buffer(0)]],
+                                            device const float4 *velocities [[buffer(1)]],
+                                            constant HoleSplatUniforms &u [[buffer(2)]],
+                                            device const float4 *lens [[buffer(3)]],
+                                            device const float4 *farLens [[buffer(4)]]) {
+            HoleSplat splat = holeSplat(vid, positions, velocities, u, lens, farLens);
+            HoleSplatOut out;
+            out.position = splat.position;
+            out.pointSize = splat.pointSize;
+            out.color = splat.color;
+            return out;
+        }
+
         fragment half4 holeSplatFragment(HoleSplatOut in [[stage_in]],
                                          float2 coord [[point_coord]]) {
-            float2 d = coord - 0.5f;
-            float r2 = dot(d, d) * 4.0f;
+            float r2 = holeRadius2(coord);
             if (r2 > 1.0f) { discard_fragment(); }
-            return half4(in.color * half(exp(-4.5f * r2)), 0.0h);
+            return holeSplatPixel(in.color, r2);
         }
         #endif
         """

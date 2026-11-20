@@ -158,7 +158,8 @@ case "${1:-check}" in
     app)    build_app ;;
     fixtures)
             build_render
-            DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" fixtures "$ROOT/Tests/Fixtures/engines" ;;
+            DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" fixtures "$ROOT/Tests/Fixtures/engines"
+            DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" hole-fixtures "$ROOT/Tests/Fixtures/hole" ;;
     render) shift || true; build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
     explore|hires|look|export|palettes|probe-disk)

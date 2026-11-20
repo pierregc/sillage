@@ -5,11 +5,11 @@ phase 1. #273 laid the frame the next steps build in: the C API, the Swift modul
 build for the GPU and for the CPU target, and the tree builder, the first engine in it. #274
 added the solver of the massive particles, #275 its light tracers, #276 the renderer's particle
 passes, #277 its post-processing and a first command that draws frames of a take, and #278 the
-full pass of a hires on Linux, which have sections of their own
+full pass of a hires on Linux, and #336 the black hole close up, which have sections of their own
 ([the massive particles](#the-massive-particles-solver-274),
 [the light tracers](#the-light-tracers-275), [the particle passes](#the-renderers-particle-passes-276),
 [the post-processing and the stills](#the-post-processing-and-the-stills-277),
-[the full pass](#the-full-pass-278)). [Every test that waits for a GPU](#what-waits-for-a-gpu-283)
+[the full pass](#the-full-pass-278), [the black hole close up](#the-black-hole-close-up-336)). [Every test that waits for a GPU](#what-waits-for-a-gpu-283)
 is listed at the end, for #283.
 How a kernel's text is shared with Metal is in [one-kernel-source.md](one-kernel-source.md); this
 note is how the CUDA side around it is built, run and tested.
@@ -1646,6 +1646,96 @@ still above 25 dB and the drift under the bound.
   min 45 s, then 6 min 45 s): too near the ten minutes. So the CUDA engine's tests and command
   have a job of their own, `swift-cuda`, beside `swift-checks` (the formatter and the typecheck).
 - **`scripts/linux.sh check`** passes with 490 tests in 53 suites, in 16 minutes on four cores.
+
+## The black hole close up (#336)
+
+The close up of #314 (a star torn by a black hole, [black-hole-close-up.md](black-hole-close-up.md))
+on CUDA: its run, the gas's grid, the lens and the splat, through the one kernel source.
+
+| where | what |
+| --- | --- |
+| `Sources/SillageRender/HoleShaders.swift` | the work of the seven functions as shared functions: `holeClearCell`, `holeDepositTracer`, `holeResolveCell`, `holeColumnSum`, `holeStepTracer`, `holeSplat`, `holeSplatPixel` |
+| `Sources/SillageRender/HoleSplats.swift` | what both engines compute on the CPU: `HoleStepParams`, `GasGrid`, `HoleSplatUniforms`, `HoleLook`, `HoleExposure`, `HoleSplats` (the draws of a frame and their uniforms), the field stars, `TidalStepping` and a take's `seek` |
+| `cuda/include/sillage_cuda_hole.h`, `cuda/src/hole.cu` | three calls (`sc_hole_step`, `sc_hole_splat`, `sc_hole_finish`), the six entry points and their launches |
+| `cuda/src/fixed.h` | the 64-bit fixed point the renderer's light accumulates in, now shared with the splat |
+| `Sources/SillageCUDA/CUDAHole.swift` | `CUDATidalRun`, `CUDAHoleRenderer`, `CUDAHoleStill`, and `CUDAHoleCheck`, the comparison with `Tests/Fixtures/hole` that `sillage-cuda check` records |
+| `Sources/sillage-cuda/main.swift` | `sillage-cuda black-hole still` |
+| `Tests/Fixtures/hole/` | Metal's reference: a moment, the run 40 steps on, three stills |
+| `cuda/tests/hole_passes.cu`, `Tests/SillageCUDATests/CUDAHoleTests.swift` | the tests |
+
+- **The step** is `TidalRun.step` call for call: the grid emptied, each tracer deposited on the
+  eight cells round it, the sums resolved to floats and summed by column, then each tracer
+  stepped. The grid's sums were already 64-bit fixed point in the MSL itself (#332), two 32-bit
+  atomics a value with the carry: integers add the same in any order, so a run repeats to the bit
+  on a GPU as on the CPU target, whatever the threads.
+- **The splat** is Metal's point done by hand, as the galaxies' passes are (#276): a thread a
+  tracer calls `holeSplat` (the vertex function's work, the lens tables read and blended as
+  `HoleLensSet` blends them), covers the point's square by the rasteriser's rules of `raster.h`,
+  leaves a pixel alone where Metal's fragment discards, and adds `holeSplatPixel`'s value into
+  the light in the renderer's fixed point. The draws (the tracers once an image, then the field
+  stars once an image) and their uniforms are `HoleSplats`', which `HoleRenderer` and
+  `CUDAHoleRenderer` both execute; the post-processing is `PostPlan`'s over that light.
+- **`HoleShaders` reads `Shaders`**: Metal compiles it after `Shaders`, whose `blackbody` it
+  calls, so its header includes `Shaders.h` and reads its names
+  (`// kernel-sources: after Shaders`, [one-kernel-source.md](one-kernel-source.md)).
+- **The lens tables are built on the CPU** (`HoleLensSet`, #333) for both engines and uploaded:
+  half a second each in an optimised build, many seconds in a test build, which is why the
+  fixture's views sit on a table's own distance.
+
+### `sillage-cuda black-hole still`
+
+```
+scripts/linux.sh tool
+.build/linux/sillage-cuda black-hole still <folder> out.png --at 2979 [--look film] [--width 1920 --height 1080]
+```
+
+One moment of the take of a scene folder made on the Mac (`black-hole run`, then `hires`), with
+the view's options of `sillage-render black-hole still`: the run resumes from the frame the take
+kept before `--at` and steps to it on CUDA, the exposure is the look's (`exposureAt`) or the
+frame's own, and the picture goes to a PNG.
+
+### Against Metal
+
+`Tests/Fixtures/hole` holds a close up of 4,000 tracers (seed 336, the default scene otherwise,
+on a grid of 64 by 128 by 16 cells so that the CPU target steps it in seconds), 6,000 steps after
+the release, past the stream's first return; Metal's run 40 steps on; and three stills of that
+later moment at 256 by 144: the physics look with three images, the photon ring at 19 r_s with a
+thin disk's temperatures, and the hole drawn straight. Metal gives them again to the bit
+(`TidalRunTests`). The CPU target is held to them in the workflow by `CUDAHoleTests` (the run)
+and by `sillage-cuda check` (`CUDAHoleCheck`: the run, each still drawn twice, and the command
+from a take of the two moments), which a GPU box runs first too:
+
+| | measured | held to |
+| --- | --- | --- |
+| positions after 40 steps | 5.5e-7 of their distance, at most | 1e-5 |
+| velocities | 4.7e-6 of their speed, at most | 1e-4 |
+| the light a tracer gives | 1.2 % of the brightest at most, 2.9 % of the light on the mean | 5 % and 10 % |
+| tracers swallowed | the same (none) | the same |
+| still, physics | 55.0 dB, the largest difference 31 levels, 0.084 % of the pixels over 8 | 50 dB, 48, 0.2 % |
+| still, ring | 55.2 dB, 17 levels, 0.084 % | the same |
+| still, straight | 54.7 dB, 17 levels, 0.084 % | the same |
+
+- **The light is the run's one loose number, and the MSL's arithmetic is why.** The viscosity
+  takes `1 - keep` of a tracer's turning and gives `1 - keep²` of its energy to heat, with
+  `keep = exp(-dt / (viscousOrbits · orbit))`: about `1 - 1e-6`. That difference of two floats
+  near one keeps a bit or two of `exp`'s result, which Metal's fast maths and the C library round
+  apart, so the heat of a tracer differs by a few percent from one engine to the other while its
+  position agrees to 5e-7. Written with `expm1` the two would agree; Metal's bytes would change,
+  so it is left to a ticket of the gas's own.
+- **The stills are where #277's are.** About 0.08 % of the pixels are more than 8 levels off, by
+  up to 17 to 31, the share #277 found in its looks with grain and traced to the grain's hash
+  landing the other side of a rounding; here it was not traced further. Metal also blends in half
+  floats where CUDA accumulates in fixed point.
+- **The stills are not in the Swift tests.** A lens table takes most of a minute on the CPU of a
+  test build (half a second optimised), with every core, and while the stills ran there the CUDA
+  full pass's tests failed to repeat their massive pass in 4 runs of 7 (never without them, nor
+  on main). The cause was not found: neither poisoned pinned memory nor `MALLOC_PERTURB_` made
+  them fail alone. In `sillage-cuda check`, an optimised process of its own, the stills cost
+  seconds and run beside nothing.
+- **Metal's own bytes did not move.** A close up of 200 k tracers run and stilled eight ways
+  (`physics` and `film` at three moments, `--straight --temperature radius`, three images
+  without thinning) gives the same take and PNGs, to the byte, before the change, with the MSL
+  shared, and with the Swift moved into `HoleSplats`.
 
 ## What waits for a GPU (#283)
 

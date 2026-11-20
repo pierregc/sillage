@@ -1,0 +1,20 @@
+{
+  "blackHole" : {
+    "cloudRadius" : 1.5,
+    "coolingTime" : 10,
+    "crossingSpeed" : 0.1,
+    "duration" : 5000,
+    "frameInterval" : 250,
+    "pericentre" : 6,
+    "release" : 10,
+    "seed" : 336,
+    "stickiness" : 50,
+    "swallow" : 1.5,
+    "timeStep" : 0.25,
+    "tracers" : 4000,
+    "viscousOrbits" : 2500
+  },
+  "kind" : "blackHole",
+  "name" : "fixture",
+  "version" : 1
+}

@@ -59,34 +59,7 @@ public enum HoleCommand {
         return 2
     }
 
-    struct Options {
-        var words: [String] = []
-        var values: [String: String] = [:]
-        var flags: Set<String> = []
-
-        init(_ arguments: [String]) {
-            var index = 0
-            while index < arguments.count {
-                let word = arguments[index]
-                if word.hasPrefix("--") {
-                    let name = String(word.dropFirst(2))
-                    if index + 1 < arguments.count, !arguments[index + 1].hasPrefix("--") {
-                        values[name] = arguments[index + 1]
-                        index += 2
-                        continue
-                    }
-                    flags.insert(name)
-                } else {
-                    words.append(word)
-                }
-                index += 1
-            }
-        }
-
-        func float(_ name: String) -> Float? { values[name].flatMap(Float.init) }
-        func double(_ name: String) -> Double? { values[name].flatMap(Double.init) }
-        func int(_ name: String) -> Int? { values[name].flatMap(Int.init) }
-    }
+    typealias Options = HoleOptions
 
     struct Failure: Error, CustomStringConvertible {
         let description: String
@@ -126,25 +99,8 @@ public enum HoleCommand {
         return folder
     }
 
-    /// The look asked, with the view's options over it.
     static func look(_ options: Options, folder: SceneFolder) throws -> HoleLookFile {
-        var look = try folder.holeLook(options.values["look"])
-        if options.flags.contains("straight") { look.lensed = false }
-        if let value = options.int("images") { look.images = value }
-        if let value = options.values["temperature"].flatMap(HoleLookFile.Temperature.init) {
-            look.temperature = value
-        }
-        if let value = options.double("hottest") { look.hottest = value }
-        if let value = options.double("beaming") { look.beaming = value }
-        if let value = options.double("exposure") { look.exposure = value }
-        if let value = options.int("stars") { look.stars = value }
-        if let value = options.double("thinning") { look.thinning = value }
-        if let value = options.double("elevation") { look.camera.elevation = value }
-        if let value = options.double("azimuth") { look.camera.azimuth = value }
-        if let value = options.double("distance") { look.camera.distance = value }
-        if let value = options.double("fov") { look.camera.fieldOfView = value }
-        try look.validate()
-        return look
+        try options.look(folder: folder)
     }
 
     /// One moment of the take, `--at` in the hole's time units, the end of the run by default;

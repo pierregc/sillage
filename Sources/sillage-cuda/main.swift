@@ -22,6 +22,10 @@ let usage = """
                [--preset 1080p|4k|vertical|square|whatsapp] [--width W --height H]
                --frames 0,200,900 [--fps N] [--rate N] [--threads N] --out <dir>
            sillage-cuda still <take> --look <look> --flight <file> --seconds 0,2.5,9 [...] --out <dir>
+           sillage-cuda black-hole still <folder> <png> [--at t] [--look name] [--width W --height H]
+               [--elevation deg] [--azimuth deg] [--distance r] [--fov deg] [--straight] [--images n]
+               [--temperature radius|crossing] [--hottest K] [--beaming x] [--exposure x] [--stars n]
+               [--thinning x] [--flight name|file --second s]
 
     hires runs the full pass of a scene whose massive pass and style were done on the Mac: it
     reads scene.json, look.json, take.sillage, curves-hires.csv, hires.json and massive.bin from
@@ -48,10 +52,16 @@ let usage = """
 
     match finds the moment and the view where the take overlaps a real picture best, on the CPU,
     as sillage-render match does (#320); `sillage-cuda match` alone gives its options.
+
+    black-hole still draws one moment of a black hole close up's take as sillage-render
+    black-hole still does (#336): --at in the hole's time units, the end of the run by default,
+    stepped on from the frame the take kept before it.
     """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
-guard let command = arguments.first, ["still", "hires", "check", "status", "match"].contains(command) else {
+guard let command = arguments.first,
+    ["still", "hires", "check", "status", "match", "black-hole"].contains(command)
+else {
     print(usage)
     exit(arguments.isEmpty || arguments.first == "help" ? 0 : 2)
 }
@@ -89,9 +99,14 @@ if command == "match" {
 if command == "check" {
     do {
         let context = try CUDAContext()
-        let record = CUDAEngineCheck.run(
+        var record = CUDAEngineCheck.run(
             context: context, fixtures: fixtures(),
             threads: integer("threads") ?? ProcessInfo.processInfo.activeProcessorCount)
+        // The black hole close up's, beside the engines' fixtures (#336).
+        let hole = fixtures().deletingLastPathComponent().appendingPathComponent("hole")
+        if FileManager.default.fileExists(atPath: hole.appendingPathComponent("manifest.json").path) {
+            record.items += CUDAHoleCheck.items(context: context, folder: hole)
+        }
         let url = option("record").map { URL(fileURLWithPath: $0) } ?? CUDAEngineCheck.defaultRecord
         try CUDAEngineCheck.write(record, to: url)
         for item in record.items {
@@ -104,6 +119,29 @@ if command == "check" {
     } catch {
         fail("\(error)")
     }
+}
+
+if command == "black-hole" {
+    let options = HoleOptions(rest)
+    guard options.words.first == "still", options.words.count == 3 else {
+        fail("black-hole still <folder> <png>\n\n\(usage)")
+    }
+    do {
+        let started = Date()
+        let context = try CUDAContext()
+        let picture = try CUDAHoleStill.draw(
+            options, folder: SceneFolder(path: options.words[1]), context: context)
+        try PNG.write(
+            PNG.Image(width: picture.width, height: picture.height, channels: 3, bytes: picture.pixels),
+            to: URL(fileURLWithPath: options.words[2]))
+        print(
+            String(
+                format: "t = %.1f, %.2f s on %@ (%@)", picture.time, Date().timeIntervalSince(started),
+                CUDAContext.target == .gpu ? "the GPU" : "the CPU target", context.name))
+    } catch {
+        fail("black-hole: \(error)")
+    }
+    exit(0)
 }
 
 if command == "status" {

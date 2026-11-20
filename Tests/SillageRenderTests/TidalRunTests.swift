@@ -268,4 +268,20 @@ struct TidalRunTests {
         #expect(difference(all, thinned) < 0.1, "\(difference(all, thinned))")
         #expect(abs(mean(thinned) / mean(all) - 1) < 0.002)
     }
+
+    /// The CUDA engine is held to these (#336): Metal must give them again to the bit.
+    @Test func metalGivesTheHoleFixturesToTheBit() throws {
+        let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fixtures/hole")
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+        let (first, last) = try HoleFixtures.frames(device: device)
+        let start = try Data(contentsOf: folder.appendingPathComponent("start.bin"))
+        let end = try Data(contentsOf: folder.appendingPathComponent("end.bin"))
+        #expect(HoleFixtures.bytes(first.positions) + HoleFixtures.bytes(first.velocities) == start)
+        #expect(HoleFixtures.bytes(last.positions) + HoleFixtures.bytes(last.velocities) == end)
+        for (name, look) in HoleFixtures.views {
+            let drawn = try HoleFixtures.still(last, look: look, device: device)
+            #expect(drawn == (try Data(contentsOf: folder.appendingPathComponent("\(name).rgb"))), "\(name)")
+        }
+    }
 }

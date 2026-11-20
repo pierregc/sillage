@@ -134,6 +134,13 @@ static void testVectors() {
     float3 chosen = v.w > 0.0f ? v.xyz : float3(0.0f);
     CHECK(chosen.z == 13.0f);
     CHECK(float4(a, 1.0f).w == 1.0f && float4(xy, xy).z == 7.0f && float3(xy, 3.0f).z == 3.0f);
+    float4 middle(1.0f, 2.0f, 3.0f, 4.0f);
+    float2 yz = middle.yz;
+    CHECK(yz.x == 2.0f && yz.y == 3.0f);
+    middle.yz = float2(8.0f, 9.0f);
+    CHECK(middle.x == 1.0f && middle.y == 8.0f && middle.z == 9.0f && middle.w == 4.0f);
+    float4 around(5.0f, yz, 6.0f);
+    CHECK(around.x == 5.0f && around.y == 2.0f && around.z == 3.0f && around.w == 6.0f);
 
     float3 lower(3.0f, -1.0f, 2.0f);
     lower[1] = -4.0f;
@@ -182,6 +189,10 @@ static void testFunctions() {
     CHECK(exp2(3.0f) == 8.0f && log2(8.0f) == 3.0f && pow(2.0f, 10.0f) == 1024.0f);
     CHECK(ldexp(3.0f, -2) == 0.75f && fma(2.0f, 3.0f, 1.0f) == 7.0f && step(1.0f, 2.0f) == 1.0f);
     CHECK(isfinite(1.0f) && !isfinite(INFINITY) && !isfinite(NAN) && isnan(NAN) && isinf(-INFINITY));
+    CHECK(any(isnan(float3(0.0f, NAN, 1.0f))) && !any(isnan(float3(0.0f, 1.0f, 2.0f))));
+    CHECK(isnan(float4(NAN, 0.0f, 0.0f, NAN)).w && !isnan(float2(1.0f, 2.0f)).x);
+    CHECK(acos(1.0f) == 0.0f && abs(asin(1.0f) - M_PI_2_F) < 1e-6f && abs(acos(-1.0f) - M_PI_F) < 1e-6f);
+    CHECK(rint(2.5f) == 2.0f && rint(3.5f) == 4.0f && rint(-1.5f) == -2.0f);
     CHECK(popcount(0xF0F0u) == 8u && clz(1u) == 31u && ctz(8u) == 3u && clz(0u) == 32u);
     CHECK(as_type<uint>(1.0f) == 0x3F800000u && as_type<float>(0x40000000u) == 2.0f);
     CHECK(as_type<int>(as_type<float>(-7)) == -7);

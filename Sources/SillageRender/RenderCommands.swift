@@ -170,11 +170,16 @@ public enum RenderCommands {
         summary: "Writes the reference outputs both engines must give.",
         usage: ["usage: sillage-render fixtures <directory>"], words: ["directory"])
 
+    static let holeFixtures = CommandSpec(
+        "hole-fixtures",
+        summary: "Writes the black hole close up's reference outputs (#336).",
+        usage: ["usage: sillage-render hole-fixtures <directory>"], words: ["directory"])
+
     /// The commands this table holds to their options. `queue`, `night`, `status` and
     /// `black-hole` read their own.
     public static let all: [CommandSpec] = [
         explore, hires, look, export, palettes, story, probeDisk, costs, event, pace, flight, fixtures,
-        match,
+        holeFixtures, match,
     ]
 
     /// Commands with a parser of their own: asked for help, they answer it.
