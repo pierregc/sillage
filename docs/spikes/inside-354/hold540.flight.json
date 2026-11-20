@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "keys": [
+    {"at": 0, "myr": 452, "eye": {"galaxy": 0, "offset": [6, -14, 12], "disk": true}, "aim": {"galaxy": 0, "offset": [-3, 2, 0], "disk": true}},
+    {"at": 3, "myr": 452, "eye": {"galaxy": 0, "offset": [6, -14, 12], "disk": true}, "aim": {"galaxy": 0, "offset": [-3, 2, 0], "disk": true}}
+  ]
+}
