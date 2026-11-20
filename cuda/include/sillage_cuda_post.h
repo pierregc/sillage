@@ -23,6 +23,11 @@ typedef struct sc_post_image {
 
 /* resolve: the box average of `factor` by `factor` light texels a texel of `dst`. */
 sc_status sc_post_resolve(const sc_post_image *light, const sc_post_image *dst, uint32_t factor);
+/* insideResolve (#347): the box average of one of the renders a frame drawn from inside a
+ * galaxy is averaged from, times `share`, each sample held under what a half float carries; on
+ * top of what `dst` holds when `adds` is not 0. */
+sc_status sc_post_inside_resolve(const sc_post_image *light, const sc_post_image *dst,
+                                 uint32_t factor, float share, int32_t adds);
 /* plainComposite: the average and the raw look's exposure curve, times `fade`. */
 sc_status sc_post_plain_composite(const sc_post_image *light, const sc_post_image *dst,
                                   uint32_t factor, float fade);

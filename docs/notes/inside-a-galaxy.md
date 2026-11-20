@@ -235,8 +235,8 @@ it costs.
 around what the inside of a galaxy adds, compiled by Metal into a library of its own the first
 time a flight is drawn, as #339 did for the population widths: with fast math, code that never
 runs still moves the roundings of a frame drawn without it. The frame's `InsideUniforms` lie
-behind its `SplatUniforms` in that library alone, so the CUDA engine, which does not define the
-symbol, compiles and draws what it drew (its entry points are #347). Checked: with the symbol
+behind its `SplatUniforms` in that library alone. The CUDA engine has one library and compiles
+the same lines into it (below). Checked: with the symbol
 undefined the shader's text is main's but for comments, and three frames of the Mice's export in
 `photograph` and in the README's look are the same bytes from this branch and from main.
 
@@ -429,3 +429,41 @@ the cut is the encounter itself; freeze near 430 Myr once the dust lets one disk
 another; or let time flow from 425 to 452 Myr over the pair, so that the cut is seen being made.
 
 ![Frames 440 to 580 frozen at 452 and at 430 Myr](https://raw.githubusercontent.com/pierregc/sillage/assets/353-crossing-disks/docs/spikes/inside-353/freeze-452-430.jpg)
+
+## On the CUDA engine (#347)
+
+The CUDA engine draws the same frames from the same text. Every guard reads
+`#if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)`: Metal still compiles the lines only
+into a flight's library, and the other engines always have them. A frame that is not inside a
+galaxy sends `InsideUniforms(outside:)` behind its `SplatUniforms`: a near field that ends
+before it starts, no star, no fade, no slab from the eye, and the per splat ceiling of 6e4 left
+out, so its fixed point light is the one it had (the four reference frames and
+`aPixelSaturatesRatherThanWrap` hold it).
+
+The bodies of `insideCount`, `insideOffsets`, `insideFill`, `pointStarVertex`,
+`pointStarFragment` and `insideResolve` moved into shared functions (`insideCounted`,
+`insideOffset`, `insideFilled`, `pointStar`, `starRadius2`, `insideResolvePixel`); the Metal
+entry points only call them. On CUDA:
+
+- `SC_RENDER_POINT_STARS` runs the three listing kernels, reads the count back, and draws eight
+  instances an entry through the rasteriser's rules, large stars by the second way, as a splat.
+  `sc_render_stars_listed` gives the count. The list holds at most 16 M entries.
+- `sc_post_inside_resolve` adds one render's share to the resolved picture, with the 6e4 clamp.
+- `CUDARenderer.inside` takes the frame's `InsideFrame`; `picture(cameras:)` draws one render a
+  camera and averages them. A frame drawn in parts (the full pass's batches) leaves the inside
+  out, as Metal's does.
+- `CUDATakeStills.flightStill` draws a moment of a flight: the camera and the moment
+  `Flight` gives, the smoothing lengths eased between the two captured frames around it, the
+  nearness, and the exposure from the pre-pass of `TakeExport.measureTrims` (a small frame
+  every half second of the flight, cached on the first call).
+  `sillage-cuda still <take> --look <look> --flight <file> --seconds 0,2.5,9` writes them as
+  `<preset>-flight-<seconds>s.png`.
+
+`CUDAInsideTests` holds on the CPU target what `InsideRenderTests` holds on Metal, and that the
+two ways of laying a star give the same bits. `Tests/Fixtures/engines/frames/inside.flight.json`
+is a flight into the fixture take's disk; the workflow draws two of its frames.
+
+Not done, and not checked here: the Metal side of the move could only be compiled on a Mac, and
+Metal's frame of that flight is not among the reference outputs yet, so the two engines have
+not been compared on an inside frame. The CUDA engine has no flight video export either; the
+full pass draws no flight on either engine.

@@ -20,6 +20,7 @@ let usage = """
            sillage-cuda still <take> --look <look> [--framing <massive take>]
                [--preset 1080p|4k|vertical|square|whatsapp] [--width W --height H]
                --frames 0,200,900 [--fps N] [--rate N] [--threads N] --out <dir>
+           sillage-cuda still <take> --look <look> --flight <file> --seconds 0,2.5,9 [...] --out <dir>
 
     hires runs the full pass of a scene whose massive pass and style were done on the Mac: it
     reads scene.json, look.json, take.sillage, curves-hires.csv, hires.json and massive.bin from
@@ -39,6 +40,10 @@ let usage = """
     film grain stands where that frame finds it. <look> is a look file, or the name of one in
     looks/ beside the take or in the current directory. The captured rate is read from
     hires.json or clip.json beside the take unless --rate gives it.
+
+    With --flight, a flight file (docs/notes/flights.md), --seconds lists moments of the flight
+    in place of --frames: each is the frame the video shows there at --fps, drawn from inside a
+    galaxy where the eye is near matter (point stars, motion blur) at its own automatic exposure.
     """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -168,11 +173,22 @@ if command == "hires" {
 guard let takePath = rest.first, !takePath.hasPrefix("--") else { fail("no take\n\n\(usage)") }
 let takeURL = URL(fileURLWithPath: takePath)
 guard let lookName = option("look") else { fail("--look is needed\n\n\(usage)") }
-guard let framesText = option("frames") else { fail("--frames is needed\n\n\(usage)") }
+let flightPath = option("flight")
+guard let framesText = option(flightPath == nil ? "frames" : "seconds") else {
+    fail("\(flightPath == nil ? "--frames" : "--seconds") is needed\n\n\(usage)")
+}
 guard let outPath = option("out") else { fail("--out is needed\n\n\(usage)") }
-let frames = framesText.split(separator: ",").compactMap { Int($0) }
-guard !frames.isEmpty, frames.count == framesText.split(separator: ",").count, frames.allSatisfy({ $0 >= 0 })
-else { fail("--frames is a list of frame numbers, as 0,200,900") }
+let frames = flightPath == nil ? framesText.split(separator: ",").compactMap { Int($0) } : []
+let moments = flightPath == nil ? [] : framesText.split(separator: ",").compactMap { Double($0) }
+if flightPath == nil {
+    guard !frames.isEmpty, frames.count == framesText.split(separator: ",").count,
+        frames.allSatisfy({ $0 >= 0 })
+    else { fail("--frames is a list of frame numbers, as 0,200,900") }
+} else {
+    guard !moments.isEmpty, moments.count == framesText.split(separator: ",").count,
+        moments.allSatisfy({ $0 >= 0 })
+    else { fail("--seconds is a list of seconds of the flight, as 0,2.5,9") }
+}
 
 let presetName = option("preset") ?? "1080p"
 guard let preset = VideoPreset.named(presetName) else {
@@ -216,9 +232,12 @@ do {
     let framing = try option("framing").map { try RecordingFile.read(from: URL(fileURLWithPath: $0)) }
     let look = try lookFile(lookName)
     let context = try CUDAContext()
+    let flight = try flightPath.map {
+        try FlightFile.decoded(from: Data(contentsOf: URL(fileURLWithPath: $0)))
+    }
     let drawing = try CUDATakeStills(
         context: context, take: take, look: look, capturedRate: rate, width: width,
-        height: height, framing: framing)
+        height: height, framing: framing, flight: flight)
     let framesPerSecond = integer("fps") ?? rate
     let threads = integer("threads") ?? ProcessInfo.processInfo.activeProcessorCount
     let out = URL(fileURLWithPath: outPath, isDirectory: true)
@@ -227,6 +246,24 @@ do {
         "still      \(preset.name) \(width)x\(height), look \(look.name), \(take.recording.particleCount)"
             + " particles, \(drawing.capturedFrames) captured frames at \(rate) a second, on "
             + "\(CUDAContext.target == .gpu ? "the GPU" : "the CPU target") (\(context.name))")
+    for seconds in moments {
+        let started = Date()
+        let index = Int((seconds * Double(framesPerSecond)).rounded())
+        let pixels = try drawing.flightStill(
+            atSeconds: seconds, frame: index, interval: 1 / Double(framesPerSecond), format: .rgb,
+            threads: threads)
+        let image = PNG.Image(width: width, height: height, channels: 3, bytes: [UInt8](pixels))
+        let url = out.appendingPathComponent(String(format: "%@-flight-%07.2fs.png", preset.name, seconds))
+        try PNG.write(image, to: url)
+        var line = String(
+            format: "still      %@  %.2f s", url.lastPathComponent, Date().timeIntervalSince(started))
+        if let drawn = drawing.lastFlightFrame {
+            line += String(
+                format: ", nearest matter %.3f kpc, exposure down %.1f stops, %d renders, %d point stars",
+                drawn.nearness, drawn.stops, drawn.renders, drawn.stars)
+        }
+        print(line)
+    }
     for index in frames {
         let started = Date()
         let position = drawing.position(ofFrame: index, framesPerSecond: framesPerSecond)
