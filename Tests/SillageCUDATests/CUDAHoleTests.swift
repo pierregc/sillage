@@ -11,8 +11,9 @@ import Testing
 
 /// The black hole close up on CUDA (#336), run here on the CPU target against what Metal gave
 /// in `Tests/Fixtures/hole`: the run stepped on from a moment of it, and three stills of the
-/// moment Metal reached. docs/notes/cuda-engine.md gives the measures.
-@Suite("CUDA black hole")
+/// moment Metal reached. docs/notes/cuda-engine.md gives the measures. One test at a time: their
+/// lens tables and steps are long on the CPU of a test build, and the suites beside run too.
+@Suite("CUDA black hole", .serialized)
 struct CUDAHoleTests {
     static let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent()
@@ -197,7 +198,7 @@ struct CUDAHoleTests {
                     Self.folder.appendingPathComponent(manifest.views[0].look).path, "--at",
                     String(header.time(step: step)), "--width", String(manifest.width), "--height",
                     String(manifest.height),
-                ]), folder: folder, context: context, gas: manifest.gas)
+                ]), folder: folder, context: context, gas: manifest.gas, lenses: Self.lenses)
         }
         let last = try still(at: manifest.startStep + manifest.steps)
         let reference = [UInt8](

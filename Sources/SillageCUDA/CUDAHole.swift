@@ -200,9 +200,11 @@ public enum CUDAHoleStill {
     }
 
     /// `options` as `black-hole still` takes them: the folder second, `--at`, `--look`,
-    /// `--width`, `--height` and the view's options. `gas` is the grid the run was made with.
+    /// `--width`, `--height` and the view's options. `gas` is the grid the run was made with;
+    /// `lenses`, tables built already.
     public static func draw(
-        _ options: HoleOptions, folder: SceneFolder, context: CUDAContext, gas: GasGrid = GasGrid()
+        _ options: HoleOptions, folder: SceneFolder, context: CUDAContext, gas: GasGrid = GasGrid(),
+        lenses: HoleLensSet? = nil
     ) throws -> Picture {
         let take = try HoleTakeFile.Loaded(contentsOf: folder.take)
         let lookFile = try options.look(folder: folder)
@@ -221,6 +223,7 @@ public enum CUDAHoleStill {
         let height = options.int("height") ?? 1080
         let renderer = try CUDAHoleRenderer(
             context: context, settings: lookFile.settings(width: width, height: height))
+        if let lenses { renderer.lenses = lenses }
         if let at = lookFile.exposureAt {
             renderer.exposure.fixed = true
             try renderer.upload(seek(take.step(at: at)))
