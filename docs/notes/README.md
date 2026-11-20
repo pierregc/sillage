@@ -52,6 +52,7 @@ session. Read the note for an area before changing it.
 - [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Telescope world
 - [Scoring a palette, and the Auto palette](palette-score.md): the five parts, the reference tones, what Auto picks
 - [A frame that passes for a photograph](a-frame-that-passes-for-a-photograph.md): the six cues taken in order on an 8 M take against deep ground photographs, `scripts/photo-ruler.py`, the `photograph` look, what settings cannot do and what the telescope scores reward (#315)
+- [Exposure per scene](exposure-per-scene.md): a look's brightness and stretch measured on the frames it draws, so every scene lands its median and its top where `photograph` set them, held over a video (#340)
 - [A kernel width per population](kernel-width-per-population.md): the young stars drawn wider than the old ones, four look fields compiled into Metal only when a look asks, what it does to the photograph look's grain and what it costs (#339)
 - [A black hole close up](black-hole-close-up.md): spike #314, a cloud torn apart in the hole's own units, gas that sticks where the stream crosses itself, the light bent per particle from a table, what it costs and what it risks
 

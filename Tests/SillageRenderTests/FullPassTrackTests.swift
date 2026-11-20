@@ -191,6 +191,21 @@ struct FullPassTrackTests {
         )
     }
 
+    /// A look that measures its exposure (#340) has it measured on the massive take and draws
+    /// every preset with it.
+    @Test func aLookThatMeasuresItsExposureDrawsTheFullPassWithIt() throws {
+        let plain = try Self.massivePass()
+        defer { try? FileManager.default.removeItem(at: plain.batch.deletingLastPathComponent()) }
+        let exposed = try Self.copy(plain)
+        var look = try LookFile.decoded(from: Data(contentsOf: exposed.look))
+        look.exposure = LookExposure()
+        try look.encoded().write(to: exposed.look)
+        let a = try Self.fullPass(plain, options: ["--checkpoint-every", "0"])
+        let b = try Self.fullPass(exposed, options: ["--checkpoint-every", "0"])
+        #expect(a["4k"]?.count == 8 && b["4k"]?.count == 8 && b["vertical"]?.count == 8)
+        #expect(a["4k"] != b["4k"] && a["vertical"] != b["vertical"])
+    }
+
     /// `--speed auto` reads the story pace off the massive pass's curves (#311), keeps the track
     /// it gave in `hires.json` and beside each video, and a pace that needs the pictures is refused.
     @Test func autoIsReadOffTheMassivePassesCurvesAndKept() throws {
@@ -321,6 +336,15 @@ final class UnencodedFullPass: FullPassEngineMaker {
     func refuseUnchecked() throws {}
     func make(_ start: FullPassRun.Start) throws -> any FullPassEngine {
         Engine(base: try MetalFullPassEngine(start), kept: kept)
+    }
+    func exposure(
+        of look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int, track: TimeTrack?,
+        frames: [TimeTrack.Frame], width: Int, height: Int
+    ) throws -> ClipExposure? {
+        try MetalFullPassMaker().exposure(
+            of: look, framing: framing, capturedRate: capturedRate, track: track, frames: frames,
+            width: width,
+            height: height)
     }
 
     final class Engine: FullPassEngine {

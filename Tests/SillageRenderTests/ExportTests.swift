@@ -4,6 +4,7 @@ import Testing
 
 @testable import SillageCore
 @testable import SillageRender
+
 #if canImport(simd)
     import simd
 #endif
@@ -479,5 +480,35 @@ struct ExportTests {
         #expect(fitted.attempts.count >= 2 && fitted.width < 640)
         #expect(fitted.height == Int((Double(fitted.width) * 9 / 16).rounded()))
         #expect(fitted.bytes <= free.bytes / 2 || fitted.width == TakeExport.previewFloor.width)
+    }
+
+    /// A look that measures its exposure (#340) draws a clip with one, on target where it was
+    /// measured; without one, the frames are the look's own.
+    @Test func aMeasuredExposureIsHeldOverTheClip() throws {
+        let loaded = try take(frames: 12)
+        var look = autoLook
+        look.camera.mode = .fixed
+        look.camera.radius = 14
+        let plain = try TakeExport(take: loaded, look: look, capturedRate: 10)
+        let before = try plain.frames(width: 320, height: 180, framesPerSecond: 10, start: 0.4, duration: 0.3)
+        #expect(plain.exposure == nil)
+        // A target a little above the take's own light.
+        let own = try #require(ExposureMeter.read(rgba: before[1], width: 320, height: 180))
+        let target = LookExposure(median: own.median + 0.02, top: own.top + 0.02)
+        look.exposure = target
+        let exposed = try TakeExport(take: loaded, look: look, capturedRate: 10)
+        let frames = try exposed.frames(
+            width: 320, height: 180, framesPerSecond: 10, start: 0.4, duration: 0.3)
+        let held = try #require(exposed.exposure)
+        #expect(held.samples.map(\.captured) == [4, 5, 6])
+        #expect(held.scale != .unit && frames != before)
+        // A frame this small and this even moves its median little; its top follows.
+        let alone = held.samples[1].solution.reading
+        func off(_ r: ExposureReading) -> Float {
+            max(abs(r.median - target.median), abs(r.top - target.top))
+        }
+        #expect(abs(alone.top - target.top) < 0.01 && off(alone) < off(own))
+        let middle = try #require(ExposureMeter.read(rgba: frames[1], width: 320, height: 180))
+        #expect(abs(middle.top - target.top) < abs(own.top - target.top))
     }
 }

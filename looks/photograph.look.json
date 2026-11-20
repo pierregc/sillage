@@ -3,6 +3,10 @@
   "camera": {
     "mode": "fixed"
   },
+  "exposure": {
+    "median": 0.47,
+    "top": 0.93
+  },
   "look": {
     "armPersistence": 1.6,
     "bloomIntensity": 0.5,
