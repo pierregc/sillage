@@ -1,9 +1,10 @@
-# Checkpoints: a long run that survives a restart (#240)
+# Checkpoints: a long run that survives a restart (#240, #377)
 
 Step 4 of epic #236. A full pass at 200 M runs 10 to 20 hours, and until now a restart or a
 shutdown of the Mac lost all of it: nothing could resume a hires. A full pass now saves itself
 about every hour, and `hires --resume` picks it up from its last checkpoint, to the bit, with
-the same videos.
+the same videos. Since #377 (epic #375) the pass that writes a take does too:
+[its section](#the-pass-that-writes-a-take-377) says what its checkpoint holds on top.
 
 ## What is kept, and what is rebuilt
 
@@ -61,19 +62,66 @@ and date of the massive take, and a digest of the binary. `--resume` refuses a c
 command line, scene, look or massive take differ, rather than resuming another step or another
 style; a binary rebuilt since is told, not refused, since it is most often the same code.
 
+## The pass that writes a take (#377)
+
+A scene of today is one pass of every particle, 8 M visible on 12 M of dark matter: 2 to 4 hours
+on the M4 Max, all of it lost to a restart while only the full pass checkpointed. That pass is
+`TakePassRun` since #376, the flow every engine runs
+([scenes-on-rented-gpus.md](scenes-on-rented-gpus.md), "Where it lives"), and its checkpoints
+are written there, once for all of them. The checkpoint sits where the full pass's does, in the
+scene's `.checkpoint/`, and holds on top of it what a run that writes a take carries:
+
+- **The solver: nothing new.** `state`, `writeParticles`, `restore` and `massive.bin`, as above:
+  a resumed run samples nothing. The massive set a massive pass leaves in its folder (#278) is
+  written again from the checkpoint's.
+- **The take, on disk as it is taken.** Without a checkpoint a take fills a quarter of the
+  machine's memory, then spills to a scratch file. With one, each kept frame's quantised
+  positions are appended to `take.positions` as the frame is taken (`Recording(file:)`), and
+  only their records stay in memory (time, box, centres, disks: a few tens of bytes a frame).
+  A checkpoint flushes the file and records the frames offered, the kept frames' records and
+  the file's length; a resumed run cuts the file back to that length and carries on, and
+  refuses a file that holds less. A frame the interval passed over is not kept: the run goes on
+  past it. At the end `RecordingFile.write` puts the take together as it always did, the
+  positions streamed in after the header: the file of a take held in memory, byte for byte past
+  its JSON header.
+- **The curves** are written beside the checkpoint (`curves.csv`) and flushed with it; the
+  checkpoint records their length, a resumed run cuts them back to it, and the end copies them
+  where the run was asked them. A run that follows its story (`--story-cap`) reads them again
+  to judge it.
+- **A journal of the stretches done** (`FrameJournal`): for each chunk of the settle and each
+  captured frame, the run's own steps and its time, centres and disks once stepped, exactly. A
+  resumed run replays over it what the CPU carries from frame to frame, rather than saving the
+  inside of each: the step scheduler takes each stretch again (`StepScheduler.replay`: the same
+  scale, the same switch, the centres shown to its judge), and the cameras move on a frame at a
+  time (`TakePassFraming.replay`: the director, or `AutoCamera`). The radius the scene is
+  framed at, fixed on the particles of the first frame, is kept as a number, and the time star
+  formation counts from is the solver's. The curves could not serve: they print four decimals.
+- **`hires.mov` in segments**, one closed at each checkpoint, joined without encoding again at
+  the end (`RunVideoSegments`, with the join the full pass's videos use); the renderer's grain is
+  moved on by the frames a resumed run drew before.
+- **The identity** is #240's: the command line (the counts, the step, its schedule and its
+  judge's margin, the take interval), the scene and the look as read, the engine, and the
+  binary's digest, told when it changed. `--resume` refuses another run's checkpoint and says
+  what differs; a full pass's checkpoint is not a take pass's.
+
+A run with a measuring option (`--density`, `--dump-walk`, `--dump-targets`, `--take-v6`,
+`--take-massive`, `--sf-leaves`) is refused with a checkpoint rather than half saved, as is a
+solver that keeps no state.
+
 ## Which runs checkpoint
 
-The full pass, by default about every hour of its run as the cost model prices it
+Every pass of a hires from a scene folder: the full pass, and the pass that writes a take, one
+pass or `--pass massive`. By default about every hour of its run as the cost model prices it
 (`--checkpoint-every <minutes>`, 0 for none; `--checkpoint-frames` and `--checkpoint-steps` give
-the interval exactly), its settle included. A run that writes a take does not: the massive pass
-holds its take in memory until it ends and costs 18 minutes at 8 M drawn (20 to 40 at 200 M), and
-a night's one-pass hires about an hour, which a restart loses whole as before. That run is
-`TakePassRun` since #376, the flow both engines run (`docs/notes/scenes-on-rented-gpus.md`,
-"Where it lives"), where #377 adds its checkpoints.
+the interval exactly), its settle included. In its settle a take pass checkpoints at the end of
+the chunk that crosses the interval: the chunks are where a step schedule switches and shows
+its judge the centres, so they stay those of a run without checkpoints. Exploration does not
+checkpoint (minutes), nor a plain render that is not given `--checkpoint <dir>`.
 
-A night run again after a restart picks its full pass up from its checkpoint when the checkpoint
-is that run's own (`SceneFolder.resumesFullPass`), and starts it over otherwise, which clears it.
-A full pass that ends removes its checkpoint.
+A night run again after a restart, and a hires put in the queue again, pick a pass up from its
+checkpoint when the checkpoint is that run's own (`SceneFolder.resumesHires`), and start it
+over otherwise, which clears it, as does a hires run by hand without `--resume`. A pass that
+ends removes its checkpoint.
 
 ## Whether it holds, and what it costs
 

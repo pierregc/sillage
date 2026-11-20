@@ -513,13 +513,18 @@ public final class NightRunner: @unchecked Sendable {
     private func hires(_ scene: SceneFolder, pass: String? = nil) -> Outcome {
         let name = scene.url.lastPathComponent
         let (particles, massive) = (folder.hiresParticles, folder.hiresMassive)
+        // From its last checkpoint when a restart or a stop cut it short (#377).
+        var options = folder.hiresOptions + (pass.map { ["--pass", $0] } ?? [])
+        let resumes = scene.resumesHires(options, maximumParticles: folder.maximumParticles)
+        if resumes { options.append("--resume") }
         say(
             "night      hires \(name), \(particles) particles"
                 + (massive < particles ? " from \(massive) massive" : "")
-                + (pass == "massive" ? ", the massive pass" : ""))
+                + (pass == "massive" ? ", the massive pass" : "")
+                + (resumes ? ", from its checkpoint" : ""))
         let outcome = runChild(
             executable.path,
-            ["hires", scene.url.path] + folder.hiresOptions + (pass.map { ["--pass", $0] } ?? []),
+            ["hires", scene.url.path] + options,
             log: logs.appendingPathComponent("\(name).hires.log")
         ) { [self] in
             update(phase: "hires", quiet: true)
@@ -535,7 +540,7 @@ public final class NightRunner: @unchecked Sendable {
         var options =
             folder.hiresOptions + ["--pass", "full", "--export", presets.joined(separator: ",")]
             + speedOptions
-        let resumes = scene.resumesFullPass(options, maximumParticles: folder.maximumParticles)
+        let resumes = scene.resumesHires(options, maximumParticles: folder.maximumParticles)
         if resumes { options.append("--resume") }
         say(
             "night      full pass \(name), drawing \(presets.joined(separator: ", "))"

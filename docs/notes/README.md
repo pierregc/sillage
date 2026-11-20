@@ -62,7 +62,7 @@ session. Read the note for an area before changing it.
 - [Takes on disk](takes-on-disk.md): `RecordingFile` format and memory peaks, the curves a take without disk states reads them from, 21 bits an axis since version 7 (#237), the header's keys sorted so a run writes the same bytes (#281)
 - [What a played-back frame costs](playback-frame-cost.md): `SnapshotStream`
 - [Two things that made a replay a slideshow](replay-slideshow.md): `--replayswitch`, `--replay`
-- [Checkpoints: a long run that survives a restart](checkpoints.md): what the solver keeps and rebuilds, segments joined without encoding, the run's identity, the cost at 8 M and 200 M (#240)
+- [Checkpoints: a long run that survives a restart](checkpoints.md): what the solver keeps and rebuilds, segments joined without encoding, the run's identity, the cost at 8 M and 200 M (#240); the pass that writes a take: its take on disk as it is taken, a journal of its frames replayed on resume, what a checkpoint costs at 20 M particles (#377)
 - [Previews at 200 M](200m-preview.md): an hour at 200 M drawn on 2 M massive, then at 100 M on 8 M (20 M with their halo), what they cost, why the shapes are the massive count's, a whole story extrapolated (#241)
 - [The videos drawn during the hires run](render-during-hires.md): two passes, the massive part repeated to the bit, the take's exposure, frame for frame against `export`, what drawing costs (#239)
 - [Time that runs faster when nothing happens](variable-time.md): where a story's simulated time goes, a time track for exports, a pace read off the curves, why a faster video is not a cheaper run, a coarser step before the story and late in the aftermath, tracers on their own steps

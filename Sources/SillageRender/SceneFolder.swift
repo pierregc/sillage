@@ -145,7 +145,8 @@ public struct SceneFolder: Sendable, Equatable {
     /// The massive particles a massive pass sampled, as a checkpoint keeps them (#240): a full
     /// pass on another machine reads them rather than sampling them again (#278).
     public var massiveSet: URL { file("massive.bin") }
-    /// Where a full pass keeps its checkpoint, video segments and key frames until it ends (#240).
+    /// Where a hires keeps its checkpoint until it ends: a full pass's with its video segments
+    /// and key frames (#240), a take pass's with its take, curves and video so far (#377).
     public var checkpoint: URL { url.appendingPathComponent(".checkpoint", isDirectory: true) }
     public var exports: URL { url.appendingPathComponent("exports", isDirectory: true) }
     /// Camera paths drawn by `export --flight` (#295).
@@ -276,6 +277,9 @@ extension SceneFolder {
         public var stepSchedule: StepSchedule?
         public var stepsRun: Int?
         public var stepSwitches: [StepSchedule.Switch]?
+        /// How many times the run that wrote the take was resumed from a checkpoint (#377);
+        /// absent when never.
+        public var resumes: Int?
 
         public enum Pass: String, Codable, Sendable { case massive }
 
@@ -488,18 +492,19 @@ extension SceneFolder {
     /// The scene's video presets a full pass draws (#239).
     public static let fullPassPresets = NightRecipe.defaultExports
 
-    /// How often a full pass checkpoints by default, in minutes of its run (#240).
+    /// How often a hires checkpoints by default, in minutes of its run (#240, #377).
     public static let checkpointMinutes = 60.0
 
-    /// Frames, and settle steps, of about `minutes` of a full pass, as the cost model prices them.
-    static func checkpointInterval(minutes: Double, record: Hires, presets: [String], model: CostModel)
-        -> (frames: Int, steps: Int)
-    {
+    /// Frames, and settle steps, of about `minutes` of a hires that steps `tracers` light tracers
+    /// and draws `presets` as it runs, as the cost model prices them.
+    static func checkpointInterval(
+        minutes: Double, record: Hires, tracers: Int, presets: [String], model: CostModel
+    ) -> (frames: Int, steps: Int) {
         // A schedule's coarser steps cover more of the run's own: counted on average.
         let share = Double(record.stepsToRun) / Double(max(record.settle + record.steps, 1))
         let step =
             (model.hires.secondsPerUnit * Double(record.massiveParticles)
-                + model.tracers.secondsPerUnit * Double(record.tracers)) * share
+                + model.tracers.secondsPerUnit * Double(tracers)) * share
         let perFrame =
             step * Double(max(record.steps / max(record.frames, 1), 1))
             + presets.compactMap(VideoPreset.named).reduce(0) {
@@ -509,15 +514,17 @@ extension SceneFolder {
         return (max(Int(seconds / max(perFrame, 1e-9)), 1), max(Int(seconds / max(step, 1e-9)), 1))
     }
 
-    /// Whether a full pass asked with `options` would pick up the checkpoint here: one of the same
-    /// run, scene, look and massive take (#240).
-    public func resumesFullPass(_ options: [String], maximumParticles: Int) -> Bool {
+    /// Whether a hires asked with `options` would pick up the checkpoint here: one of the same
+    /// run, scene and look, and for a full pass of the same massive take (#240, #377). A hires
+    /// run again without `--resume` starts over and clears it.
+    public func resumesHires(_ options: [String], maximumParticles: Int) -> Bool {
         guard
             let arguments = try? hiresArguments(options, maximumParticles: maximumParticles).arguments,
             arguments.contains("--checkpoint")
         else { return false }
         return RunCheckpoint(directory: checkpoint).resumable(
-            arguments: arguments, scene: scene, look: exists(look) ? look : nil, framing: take)
+            arguments: arguments, scene: scene, look: exists(look) ? look : nil,
+            framing: Self.pass(in: options) == "full" ? take : nil)
     }
 
     /// The scenes of a batch folder marked yes in its ratings.
@@ -639,6 +646,7 @@ extension SceneFolder {
             "--video", Self.partial(hiresVideo).path, "--curves", Self.partial(hiresCurves).path,
             "--take", Self.partial(take).path, "--no-sidecars",
         ]
+        var drawn: [String] = []
         if pass == "massive" {
             record.pass = .massive
             arguments += ["--massive-only", "--massive-set", Self.partial(massiveSet).path]
@@ -655,7 +663,7 @@ extension SceneFolder {
                 throw HiresError.noMassivePass(url)
             }
             record = stored
-            let drawn = presets ?? Self.fullPassPresets
+            drawn = presets ?? Self.fullPassPresets
             arguments = [
                 "--draw", drawn.joined(separator: ","),
                 "--draw-take", take.path, "--draw-out", exports.path,
@@ -666,19 +674,20 @@ extension SceneFolder {
             if let switches = stored.stepSwitches, !switches.isEmpty {
                 arguments += ["--dt-switches", StepSwitches(switches).description]
             }
-            let minutes = checkpointMinutes ?? Self.checkpointMinutes
-            guard minutes >= 0 else { throw HiresError.badCheckpoint }
-            if minutes > 0 {
-                arguments += ["--checkpoint", checkpoint.path]
-                if !rest.contains("--checkpoint-frames") && !rest.contains("--checkpoint-steps") {
-                    let every = Self.checkpointInterval(
-                        minutes: minutes, record: record, presets: drawn,
-                        model: CostModel.current(library: library))
-                    arguments += [
-                        "--checkpoint-frames", String(every.frames), "--checkpoint-steps",
-                        String(every.steps),
-                    ]
-                }
+        }
+        // Every pass saves itself about every hour of its run (#240, #377).
+        let minutes = checkpointMinutes ?? Self.checkpointMinutes
+        guard minutes >= 0 else { throw HiresError.badCheckpoint }
+        if minutes > 0 {
+            arguments += ["--checkpoint", checkpoint.path]
+            if !rest.contains("--checkpoint-frames") && !rest.contains("--checkpoint-steps") {
+                let every = Self.checkpointInterval(
+                    minutes: minutes, record: record, tracers: pass == "massive" ? 0 : record.tracers,
+                    presets: drawn, model: CostModel.current(library: library))
+                arguments += [
+                    "--checkpoint-frames", String(every.frames), "--checkpoint-steps",
+                    String(every.steps),
+                ]
             }
         }
         arguments += ["--particles", String(asked.particles)]

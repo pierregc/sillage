@@ -51,7 +51,13 @@ public final class QueueRunner: @unchecked Sendable {
     public static func stages(executable: String) -> Command {
         { job in
             switch job.kind {
-            case .hires, .export: return [executable, job.kind.rawValue, job.path] + job.options
+            case .export: return [executable, job.kind.rawValue, job.path] + job.options
+            case .hires:
+                // From its checkpoint when the one its scene holds is this run's own (#377).
+                let resumes = SceneFolder(path: job.path).resumesHires(
+                    job.options, maximumParticles: SceneFolder.maximumParticles())
+                return [executable, job.kind.rawValue, job.path] + job.options
+                    + (resumes && !job.options.contains("--resume") ? ["--resume"] : [])
             case .night: return [executable, "night"] + job.options + ["--out", job.path]
             case .explore:
                 return try ["/bin/bash", exploreScript().path, "--no-build", "--bin", executable]

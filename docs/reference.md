@@ -151,8 +151,9 @@ library/<batch>/
                            only after a massive pass, #239)
         keyframes.sillage  every particle of a full pass at a few key frames, listed in
                            keyframes.json
-        .checkpoint/       a full pass's last checkpoint, its massive particles as sampled and its
-                           video segments, until it ends (#240)
+        .checkpoint/       a hires's last checkpoint until it ends, with its massive particles
+                           as sampled: a full pass's video segments (#240), or the take, the
+                           curves and the video segments of a pass that writes a take (#377)
         looks/             the looks the scene has been through, one .look.json each
         look-raw.json      the look explore wrote, once another is promoted over it
         exports/           the finished videos
@@ -210,7 +211,8 @@ the convergence of the flow. `scripts/sf-leaves.py` lays runs side by side, wind
 `--particles` it draws what a night draws (#243): 8 M of which 2 M carry the mass (`--massive`,
 below), or this Mac's maximum when that is lower. Given a batch folder instead of a scene, it
 runs every scene marked yes in `ratings.json`, one after another, skipping those already done at
-that size.
+that size. It saves itself about every hour (`--checkpoint-every <minutes>`, 0 for none) and
+`--resume` picks it up after a restart, to the bit ([docs/notes/checkpoints.md](notes/checkpoints.md), #377).
 
 Only the particle count and what follows from it change. The geometry is the scene file's. The
 step scale is 3.5 whatever the preview explored at (#225), unless `--dt-scale` overrides it.

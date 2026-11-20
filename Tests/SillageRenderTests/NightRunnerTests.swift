@@ -95,6 +95,7 @@ struct NightRunnerTests {
                         sed -i '' 's/}$/, "full": {"presets": [], "frames": 1, "seconds": 1, "drawSeconds": {}, "keyFrames": [], "drift": 0, "checkedFrames": 0}}/' "$scene/hires.json"
                         exit 0
                     fi
+                    [ -f '\(root.path)/fail-hires' ] && exit 1
                     touch "$scene/take.sillage"
                     echo "{$extra\\"particles\\": $particles, \\"previewParticles\\": 40000, \\"width\\": 960,
                       \\"height\\": 540, \\"frames\\": $frames, \\"fps\\": 30, \\"settle\\": 1, \\"steps\\": 1,
@@ -514,6 +515,43 @@ struct NightRunnerTests {
         #expect(fulls.count == 2)
         #expect(!fulls[0].contains("--resume") && fulls[1].hasSuffix("--pass full --export 1080p --resume"))
         #expect(FileManager.default.fileExists(atPath: scene.export(preset: "1080p").path))
+    }
+
+    /// A hires cut short leaves its checkpoint too (#377): the night run again resumes the pass
+    /// that writes the take when the checkpoint is that run's.
+    @Test func aNightResumesAHiresFromItsCheckpoint() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var recipe = recipe()
+        recipe.pick = .count(1)
+        try Data().write(to: root.appendingPathComponent("fail-hires"))
+        #expect(runner(recipe).run() == 0)
+        let folder = NightFolder(batch: batch, recipe: recipe, maximumParticles: 10_000_000)
+        let scene = SceneFolder(batch.appendingPathComponent("scene-0002"))
+        let plan = try scene.hiresArguments(folder.hiresOptions, maximumParticles: 10_000_000)
+        let identity = RunCheckpoint.Identity(
+            arguments: plan.arguments, scene: try String(contentsOf: scene.scene, encoding: .utf8),
+            look: try String(contentsOf: scene.look, encoding: .utf8), framing: "", particles: 100_000,
+            massive: nil, timeStep: 0.01, presets: [], code: "")
+        let checkpoint = RunCheckpoint(directory: scene.checkpoint)
+        try checkpoint.saveMassive(ParticleSystem())
+        try checkpoint.save(
+            RunCheckpoint.Run(
+                identity: identity, index: 1, frame: 20, settled: 1, elapsed: 30, resumes: 0, everyFrames: 10,
+                everySteps: 100,
+                solver: SolverState(
+                    count: 1, tracers: 0, time: 0, stepsSinceTree: 0, stepsSinceFormation: 0,
+                    haloCenters: [], massCenters: [], galaxyMotion: [], diskStates: []),
+                videos: nil, keyFrames: [],
+                take: TakePassProgress(
+                    journal: FrameJournal(), radius: 0, take: nil, curvesBytes: nil, video: nil,
+                    droppedTracers: 0, takeSeconds: 0, curvesSeconds: 0))
+        ) { _ in }
+        try FileManager.default.removeItem(at: root.appendingPathComponent("fail-hires"))
+        #expect(runner(recipe).run() == 0)
+        let runs = logged().filter { $0.hasPrefix("hires ") }
+        #expect(runs.count == 2)
+        #expect(!runs[0].contains("--resume") && runs[1].hasSuffix(" --resume"))
+        #expect(FileManager.default.fileExists(atPath: scene.take.path))
     }
 
     @Test func stopAfterTheStepEndsTheNightStopped() throws {
