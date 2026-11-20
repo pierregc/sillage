@@ -227,7 +227,8 @@ which is 1; a misspelt name is an error.
   "hires": { "particles": "auto", "massive": "auto", "frames": "auto", "passes": "auto" },
   "style": { "world": "auto", "freeShare": "auto", "style": "auto", "palette": "auto" },
   "export": "auto",
-  "speed": 1
+  "speed": 1,
+  "closeUps": "auto"
 }
 ```
 
@@ -254,7 +255,20 @@ which is 1; a misspelt name is an error.
 | `style.multicolour` | `false` for one colour per galaxy | Auto: on, each galaxy gets a ramp of colours (#120) |
 | `style.camera` | `director`, `fixed`, `immersed`, or `scene` for the camera explore wrote | Auto: `director`, wide shots and shots that fill the frame with a disk and the pericentre (#186) |
 | `export` | presets (`1080p`, `4k`, `vertical`, `square`, `whatsapp`), `webp`, `gif` | `["4k", "vertical"]` |
+| `closeUps` | `0` to `4`: the black hole close ups the night makes after its picks (#349); each needs a video preset in `export` | none |
 | `speed` | how fast the videos of `export` play (#311): `1`, a number from 0.25 to 16, or `"auto"`, the pace that follows the story (the collision at 1x, the settling up to 4 or 5x, a fifth shorter on average); each video leaves its track beside it, `<preset>.time.json`; a night in two passes hands it to its full pass; the plan counts the frames the pace keeps (four in five) | `1`: only `"auto"` asks for the pace |
+
+Black hole close ups (#349). A night with `closeUps: 2` makes, after the last of its picks (or after
+exploring when `pick` is `"none"`), two scenes of [a black hole close up](notes/black-hole-close-up.md):
+`black-hole new` in the night's folder as `hole-01`, `hole-02`, 6 M tracers and a seed drawn from the
+night's seed (a resumed night makes the same ones), `hires` into a take, then a video of each of the
+recipe's presets, drawn with the scene's look, `physics` unless the folder keeps another. The animated
+previews, which the exports of a close up do not know, and `speed` are left out. The plan prices each at
+114 s for the run (6 M tracers, the M4 Max alone on the GPU) and 0.25 s a frame at 1080p for the 1200 frames
+of a video, in proportion to the pixels of a larger preset, 4.2 GB for the take; the exploration keeps
+room for them as it does for the picks, and one that cannot end before the delivery time is left out as a
+scene is. They are no `scene-` folders, so no pick takes them; the library shows them, the report counts them
+under Close ups, and the night's page gives them a bar and a card.
 
 The style step. A world asked for holds for every pick; else a named `style.style` or a
 `style.palette` family or file gives it; else Auto draws it for each pick: free with the chance

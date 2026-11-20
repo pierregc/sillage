@@ -68,6 +68,23 @@ struct NightRecipeTests {
         }
     }
 
+    /// Close ups (#349): none unless asked, up to four, and with a video to draw.
+    @Test func closeUpsAreNoneUnlessAskedAndNeedAVideoPreset() throws {
+        #expect(NightRecipe().closeUps == .auto && NightRecipe().closeUpCount == 0)
+        let asked = try recipe(#"{"closeUps": 2, "export": ["1080p", "webp"]}"#)
+        #expect(asked.closeUpCount == 2 && asked.closeUpVideos == ["1080p"])
+        #expect(try NightRecipe.decoded(from: asked.encoded()) == asked)
+        #expect(try recipe(#"{"closeUps": "auto"}"#).closeUpCount == 0)
+        // The defaults, 4k and vertical, are videos.
+        #expect(try recipe(#"{"closeUps": 1}"#).closeUpVideos == ["4k", "vertical"])
+        for bad in [
+            #"{"closeUps": 5}"#, #"{"closeUps": -1}"#, #"{"closeUps": "many"}"#,
+            #"{"closeUps": 1, "export": ["webp", "gif"]}"#,
+        ] {
+            #expect(throws: NightRecipe.Failure.self) { try recipe(bad) }
+        }
+    }
+
     @Test func aMisspeltOrWrongSettingIsAnError() {
         #expect(throws: NightRecipe.Failure.unknownKey("explore.particles")) {
             try recipe(#"{"explore": {"particles": 5}}"#)
@@ -361,6 +378,116 @@ struct NightPlannerTests {
         #expect(plan.steps.filter(\.done).allSatisfy { $0.seconds == 0 })
         #expect(plan.end.timeIntervalSince(start) == planner(recipe()).styleSeconds(pick: 0))
         #expect(plan.diskBytes == 0)
+    }
+
+    // MARK: Close ups (#349)
+
+    private func closeUpRecipe(count: Int = 2) -> NightRecipe {
+        var recipe = recipe()
+        recipe.pick = .count(1)
+        recipe.export = .value(["1080p", "4k"])
+        recipe.closeUps = .value(count)
+        return recipe
+    }
+
+    private func pickedProgress() -> NightProgress {
+        var progress = NightProgress()
+        progress.exploreDone = true
+        progress.explored = [Self.drawn(200_000, 3_600, score: 0.9, name: "scene-0001")]
+        progress.picks = ["scene-0001"]
+        return progress
+    }
+
+    @Test func closeUpsFollowThePicksEachWithItsRunThenItsVideos() throws {
+        let progress = pickedProgress()
+        let deliver = start.addingTimeInterval(24 * 3600)
+        let with = planner(closeUpRecipe(), progress: progress).plan(now: start, deliverBy: deliver)
+        var plain = closeUpRecipe()
+        plain.closeUps = .auto
+        let without = planner(plain, progress: progress).plan(now: start, deliverBy: deliver)
+        #expect(without.closeUps == nil && without.steps.allSatisfy { $0.phase != .closeUp })
+        #expect(with.steps.filter { $0.phase != .closeUp } == without.steps)
+
+        let holes = with.steps.filter { $0.phase == .closeUp }
+        #expect(with.closeUps == 2 && holes.allSatisfy(\.fits))
+        #expect(holes.map(\.scene) == ["hole-01", "hole-01", "hole-01", "hole-02", "hole-02", "hole-02"])
+        #expect(holes.map(\.format) == [nil, "1080p", "4k", nil, "1080p", "4k"])
+        // The run of the notes, 114 s, then 1200 frames at 0.25 s at 1080p and four times as much
+        // at 4K.
+        #expect(holes[0].seconds == 114 && holes[0].particles == 6_000_000)
+        #expect(holes[1].seconds == 300 && abs(holes[2].seconds / holes[1].seconds - 4) < 1e-9)
+        // After the last of the pick's own steps, one after another.
+        #expect(holes[0].start == without.end)
+        #expect(zip(holes, holes.dropFirst()).allSatisfy { $0.end == $1.start })
+        #expect(with.end == holes.last?.end)
+        let summary = try #require(with.summaries.first { $0.phase == .closeUp })
+        #expect(summary.count == 2 && summary.seconds == 2 * (114 + 300 + 1_200))
+        // Two takes of 4.2 GB and their videos.
+        let videos = ["1080p", "4k"].reduce(0) {
+            $0 + NightPlanner.videoBytes($1, frames: NightPlanner.closeUpFrames)
+        }
+        #expect(abs(with.diskBytes - without.diskBytes - 2 * (4.2e9 + videos)) < 1)
+    }
+
+    @Test func theExplorationLeavesRoomForTheCloseUps() {
+        let deliver = start.addingTimeInterval(9 * 3600)
+        var plain = closeUpRecipe(count: 0)
+        plain.closeUps = .auto
+        let without = planner(plain).plan(now: start, deliverBy: deliver)
+        let with = planner(closeUpRecipe()).plan(now: start, deliverBy: deliver)
+        #expect(without.exploreBudget > 0)
+        #expect(abs(with.exploreBudget - (without.exploreBudget - 2 * (114 + 300 + 1_200))) < 1e-6)
+    }
+
+    @Test func aNightThatPicksNothingStillMakesItsCloseUps() throws {
+        var progress = pickedProgress()
+        progress.picks = nil
+        var recipe = closeUpRecipe(count: 1)
+        recipe.pick = NightRecipe.Selection.none
+        let plan = planner(recipe, progress: progress).plan(
+            now: start, deliverBy: start.addingTimeInterval(3_600))
+        #expect(plan.picks == 0 && plan.steps.filter { $0.phase == .hires }.isEmpty)
+        let holes = plan.steps.filter { $0.phase == .closeUp }
+        #expect(holes.count == 3 && holes.allSatisfy(\.fits))
+    }
+
+    @Test func whatIsDoneOfACloseUpCostsNothingAndOneThatCannotEndIsLeftOut() throws {
+        var progress = pickedProgress()
+        progress.hiresDone = ["scene-0001"]
+        progress.styled = ["scene-0001"]
+        progress.exported = ["scene-0001/1080p", "scene-0001/4k"]
+        progress.closeUpRuns = ["hole-01"]
+        progress.closeUpExported = ["hole-01/1080p"]
+        let deliver = start.addingTimeInterval(24 * 3600)
+        let recipe = closeUpRecipe(count: 1)
+        let plan = planner(recipe, progress: progress).plan(now: start, deliverBy: deliver)
+        let holes = plan.steps.filter { $0.phase == .closeUp }
+        #expect(holes.map(\.done) == [true, true, false])
+        #expect(holes.filter(\.done).allSatisfy { $0.seconds == 0 })
+        #expect(abs(plan.diskBytes - NightPlanner.videoBytes("4k", frames: 1_200)) < 1)
+
+        // Not even the run fits before the delivery: the whole close up is left out.
+        var late = pickedProgress()
+        late.hiresDone = progress.hiresDone
+        late.styled = progress.styled
+        late.exported = progress.exported
+        let tight = planner(recipe, progress: late).plan(
+            now: start, deliverBy: start.addingTimeInterval(600))
+        #expect(tight.steps.filter { $0.phase == .closeUp }.allSatisfy { !$0.fits && !$0.done })
+        #expect(tight.warnings.contains { $0.kind == "late" && $0.message.hasPrefix("hole-01") })
+        // One left out by hand is not planned again.
+        late.skipped = ["hole-01"]
+        let skipped = planner(recipe, progress: late).plan(
+            now: start, deliverBy: start.addingTimeInterval(600))
+        #expect(skipped.warnings.allSatisfy { !$0.message.hasPrefix("hole-01") })
+    }
+
+    @Test func eachCloseUpIsMadeFromASeedOfTheNightsOwn() {
+        let seeds = (0..<4).map { NightPlanner.closeUpSeed($0, seed: 20_261_120) }
+        #expect(Set(seeds).count == 4 && seeds.allSatisfy { $0 > 0 })
+        #expect(seeds == (0..<4).map { NightPlanner.closeUpSeed($0, seed: 20_261_120) })
+        #expect(seeds[0] != NightPlanner.closeUpSeed(0, seed: 20_261_121))
+        #expect(NightPlanner.closeUpName(0) == "hole-01" && NightPlanner.closeUpName(3) == "hole-04")
     }
 
     @Test func eachStyleIsPlannedInTheWorldItsPickIsDrawn() {
