@@ -32,3 +32,7 @@ SILLAGE_STRUCT(Shaders, BackgroundStar, 32);
 SILLAGE_STRUCT(Shaders, BloomParams, 16);
 SILLAGE_STRUCT(Shaders, CompositeParams, 48);
 SILLAGE_STRUCT(Shaders, SpikeParams, 32);
+
+// The black hole close up (#336).
+SILLAGE_STRUCT(HoleShaders, HoleStepParams, 60);
+SILLAGE_STRUCT(HoleShaders, HoleSplatUniforms, 192);

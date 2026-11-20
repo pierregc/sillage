@@ -1,0 +1,32 @@
+{
+  "byteOrder" : "little",
+  "device" : "Apple M4 Max",
+  "end" : "end.bin",
+  "format" : "sillage-hole-fixtures",
+  "height" : 144,
+  "pixels" : "rgb8",
+  "rows" : "top first",
+  "scene" : "scene.json",
+  "source" : "Metal, ./scripts/dev.sh fixtures",
+  "start" : "start.bin",
+  "startStep" : 6000,
+  "steps" : 40,
+  "system" : "macOS 26.5.1",
+  "tracers" : 4000,
+  "version" : 1,
+  "views" : [
+    {
+      "file" : "physics.rgb",
+      "look" : "physics.hole.json"
+    },
+    {
+      "file" : "ring.rgb",
+      "look" : "ring.hole.json"
+    },
+    {
+      "file" : "straight.rgb",
+      "look" : "straight.hole.json"
+    }
+  ],
+  "width" : 256
+}

@@ -1,0 +1,23 @@
+{
+  "ambient" : 0.02,
+  "beaming" : 1,
+  "camera" : {
+    "azimuth" : 0,
+    "distance" : 60,
+    "elevation" : 12,
+    "fieldOfView" : 40,
+    "turns" : 0
+  },
+  "exposure" : 0.05,
+  "exposureAt" : null,
+  "hottest" : 6500,
+  "images" : 3,
+  "lensed" : false,
+  "name" : "straight",
+  "particleSize" : 0.05,
+  "starBrightness" : 1,
+  "stars" : 8000,
+  "temperature" : "crossing",
+  "thinning" : 0.5,
+  "version" : 1
+}

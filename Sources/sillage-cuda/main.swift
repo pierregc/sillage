@@ -20,6 +20,10 @@ let usage = """
            sillage-cuda still <take> --look <look> [--framing <massive take>]
                [--preset 1080p|4k|vertical|square|whatsapp] [--width W --height H]
                --frames 0,200,900 [--fps N] [--rate N] [--threads N] --out <dir>
+           sillage-cuda black-hole still <folder> <png> [--at t] [--look name] [--width W --height H]
+               [--elevation deg] [--azimuth deg] [--distance r] [--fov deg] [--straight] [--images n]
+               [--temperature radius|crossing] [--hottest K] [--beaming x] [--exposure x] [--stars n]
+               [--thinning x]
 
     hires runs the full pass of a scene whose massive pass and style were done on the Mac: it
     reads scene.json, look.json, take.sillage, curves-hires.csv, hires.json and massive.bin from
@@ -39,10 +43,15 @@ let usage = """
     film grain stands where that frame finds it. <look> is a look file, or the name of one in
     looks/ beside the take or in the current directory. The captured rate is read from
     hires.json or clip.json beside the take unless --rate gives it.
+
+    black-hole still draws one moment of a black hole close up's take as sillage-render
+    black-hole still does (#336): --at in the hole's time units, the end of the run by default,
+    stepped on from the frame the take kept before it.
     """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
-guard let command = arguments.first, ["still", "hires", "check", "status"].contains(command) else {
+guard let command = arguments.first, ["still", "hires", "check", "status", "black-hole"].contains(command)
+else {
     print(usage)
     exit(arguments.isEmpty || arguments.first == "help" ? 0 : 2)
 }
@@ -91,6 +100,53 @@ if command == "check" {
     } catch {
         fail("\(error)")
     }
+}
+
+if command == "black-hole" {
+    let options = HoleOptions(rest)
+    guard options.words.first == "still", options.words.count == 3 else {
+        fail("black-hole still <folder> <png>\n\n\(usage)")
+    }
+    do {
+        let started = Date()
+        let folder = SceneFolder(path: options.words[1])
+        let take = try HoleTakeFile.Loaded(contentsOf: folder.take)
+        let lookFile = try options.look(folder: folder)
+        let context = try CUDAContext()
+        let run = try CUDATidalRun(context: context, scene: take.header.scene.blackHole)
+        guard run.releaseTime == take.header.releaseTime else {
+            fail("the scene releases at another time than the take's")
+        }
+        var frame = take.frame(0)
+        run.resume(from: frame, step: 0)
+        func seek(_ step: Int) throws -> TidalFrame {
+            frame = take.seek(step, run: run, held: frame)
+            if let failure = run.failure { throw failure }
+            return frame
+        }
+        let width = options.int("width") ?? 1920
+        let height = options.int("height") ?? 1080
+        let renderer = try CUDAHoleRenderer(
+            context: context, settings: lookFile.settings(width: width, height: height))
+        if let at = lookFile.exposureAt {
+            renderer.exposure.fixed = true
+            try renderer.upload(seek(take.step(at: at)))
+        }
+        let shown = try seek(options.double("at").map(take.step(at:)) ?? take.header.steps.last ?? 0)
+        try renderer.upload(shown)
+        let pixels = try renderer.render(
+            camera: lookFile.camera.camera(progress: 0), look: lookFile.renderLook)
+        try PNG.write(
+            PNG.Image(width: width, height: height, channels: 3, bytes: [UInt8](pixels)),
+            to: URL(fileURLWithPath: options.words[2]))
+        print(
+            String(
+                format: "t = %.1f, %.2f s on %@ (%@)", shown.time, Date().timeIntervalSince(started),
+                CUDAContext.target == .gpu ? "the GPU" : "the CPU target", context.name))
+    } catch {
+        fail("black-hole: \(error)")
+    }
+    exit(0)
 }
 
 if command == "status" {

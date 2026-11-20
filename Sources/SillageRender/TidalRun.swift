@@ -2,45 +2,10 @@ import Foundation
 import Metal
 import SillageCore
 
-/// What `holeStep` reads; mirrors `HoleStepParams` in `HoleShaders`.
-struct HoleStepParams {
-    var count: UInt32
-    var timeStep: Float
-    var swallow: Float
-    var subStepAngle: Float
-    var maximumSubSteps: UInt32
-    var gridRadii: UInt32
-    var gridAngles: UInt32
-    var gridHeights: UInt32
-    var logInner: Float
-    var logScale: Float
-    var heightCell: Float
-    var stickiness: Float
-    var crossing: Float
-    var viscosity: Float
-    var cooling: Float
-}
-
-/// The grid of the mean flow the gas is made of: cells in log r by angle by height over the
-/// radius, as tall as wide. One layer is the spike's (#314), where a stream squeezed through the
-/// plane counts as streams crossing.
-public struct GasGrid: Sendable, Equatable {
-    public var radii = 192
-    public var angles = 384
-    public var heights = 32
-    /// How tall a cell is, over its distance from the axis.
-    public var heightCell: Float = 1.0 / 64
-    public var outer: Float = 200
-
-    public init() {}
-
-    var cells: Int { radii * angles * heights }
-}
-
 /// A `TidalDisruption` stepped on the GPU (#314). The tracers are those of `RestrictedSolver`,
 /// massless in a rigid potential, and the gas is a grid of the mean flow they deposit each step,
 /// that the step pulls them towards where streams cross.
-public final class TidalRun {
+public final class TidalRun: TidalStepping {
     public let scene: TidalDisruption
     public let device: MTLDevice
     public let releaseTime: Double
@@ -105,19 +70,7 @@ public final class TidalRun {
         self.column = column
     }
 
-    var parameters: HoleStepParams {
-        let inner = log(scene.swallow)
-        return HoleStepParams(
-            count: UInt32(count), timeStep: scene.timeStep, swallow: scene.swallow,
-            subStepAngle: TidalDisruption.subStepAngle,
-            maximumSubSteps: UInt32(TidalDisruption.maximumSubSteps),
-            gridRadii: UInt32(gas.radii), gridAngles: UInt32(gas.angles),
-            gridHeights: UInt32(gas.heights), logInner: inner,
-            logScale: Float(gas.radii) / (log(gas.outer) - inner), heightCell: gas.heightCell,
-            stickiness: scene.stickiness, crossing: scene.crossingSpeed,
-            viscosity: scene.viscousOrbits > 0 ? 1 / scene.viscousOrbits : 0,
-            cooling: scene.coolingTime)
-    }
+    var parameters: HoleStepParams { HoleStepParams(scene: scene, gas: gas, count: count) }
 
     /// `steps` steps of the scene's time step, in one command buffer.
     public func step(_ steps: Int) {
@@ -166,7 +119,7 @@ public final class TidalRun {
     }
 
     /// Goes on from a frame of a take of the same scene, `step` steps after the release.
-    func resume(from frame: TidalFrame, step: Int) {
+    public func resume(from frame: TidalFrame, step: Int) {
         precondition(frame.count == count, "a frame of another scene")
         frame.positions.withUnsafeBytes {
             positions.contents().copyMemory(from: $0.baseAddress!, byteCount: $0.count)

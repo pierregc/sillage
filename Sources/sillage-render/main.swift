@@ -1566,6 +1566,16 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "fixtures" {
     }
     exit(0)
 }
+// `hole-fixtures <directory>`: the black hole close up's reference outputs (#336).
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "hole-fixtures" {
+    guard CommandLine.arguments.count == 3 else { fail("usage: sillage-render hole-fixtures <directory>") }
+    do {
+        try HoleFixtures.write(into: URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true))
+    } catch {
+        fail("hole-fixtures: \(error)")
+    }
+    exit(0)
+}
 var hiresRun: (folder: SceneFolder, record: SceneFolder.Hires)?
 /// The second of a hires's two passes, which draws the videos rather than a take (#239).
 var fullPass = false

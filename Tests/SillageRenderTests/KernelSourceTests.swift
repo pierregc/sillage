@@ -33,6 +33,8 @@ struct KernelSourceTests {
         "Shaders.BloomParams": MemoryLayout<BloomParams>.stride,
         "Shaders.CompositeParams": MemoryLayout<CompositeParams>.stride,
         "Shaders.SpikeParams": MemoryLayout<SpikeParams>.stride,
+        "HoleShaders.HoleStepParams": MemoryLayout<HoleStepParams>.stride,
+        "HoleShaders.HoleSplatUniforms": MemoryLayout<HoleSplatUniforms>.stride,
     ]
 
     @Test func swiftMirrorsHaveTheSizesOfTheirMSLStructs() throws {

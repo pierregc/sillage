@@ -7,6 +7,10 @@
 #
 #   scripts/kernel-sources.sh [output directory]
 #
+# A library Metal compiles after another, whose functions it calls, says so on a line of its
+# own, `// kernel-sources: after <library>`: its header includes that library's and reads its
+# names (#336, HoleShaders after Shaders).
+#
 # Refuses a string it cannot hand over as Metal sees it: one with a backslash (an
 # interpolation or an escape), a raw string, a `source` put together from several pieces, or
 # MSL found anywhere else. Plain bash and awk, the same on macOS and Linux.
@@ -56,6 +60,11 @@ for file in $files; do
         }
         state == 1 {
             if (index($0, "\\") > 0) { refuse("a backslash in the MSL: an interpolation or an escape") }
+            if ($0 ~ /^ *\/\/ kernel-sources: after [A-Za-z_][A-Za-z0-9_]* *$/) {
+                after = $0
+                sub(/^ *\/\/ kernel-sources: after /, "", after)
+                sub(/ *$/, "", after)
+            }
             if (index($0, "\"\"\"") > 0) { refuse("the string does not close on a line of its own") }
             lines[++count] = $0
             next
@@ -68,7 +77,9 @@ for file in $files; do
             printf "// Written by scripts/kernel-sources.sh from %s. Do not edit.\n", file
             printf "#ifndef SILLAGE_KERNELS_%s_H\n#define SILLAGE_KERNELS_%s_H\n", library, library
             printf "#include \"msl_compat.h\"\n"
+            if (after != "") { printf "#include \"%s.h\"\n", after }
             printf "namespace metal {\nnamespace %s {\n", library
+            if (after != "") { printf "using namespace %s;\n", after }
             printf "#include \"msl_begin.h\"\n"
             printf "#line %d \"%s\"\n", first, file
             for (i = 1; i <= count; ++i) {

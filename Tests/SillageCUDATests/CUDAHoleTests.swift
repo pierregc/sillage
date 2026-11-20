@@ -1,0 +1,145 @@
+import Foundation
+import Testing
+
+@testable import SillageCUDA
+@testable import SillageCore
+@testable import SillageRender
+
+#if canImport(simd)
+    import simd
+#endif
+
+/// The black hole close up on CUDA (#336), run here on the CPU target against what Metal gave
+/// in `Tests/Fixtures/hole`: the run stepped on from a moment of it, and three stills of the
+/// moment Metal reached. docs/notes/cuda-engine.md gives the measures.
+@Suite("CUDA black hole")
+struct CUDAHoleTests {
+    static let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Tests/Fixtures/hole")
+
+    struct Manifest: Decodable {
+        struct View: Decodable {
+            var look: String
+            var file: String
+        }
+
+        var tracers: Int
+        var startStep: Int
+        var steps: Int
+        var width: Int
+        var height: Int
+        var views: [View]
+    }
+
+    static func manifest() throws -> Manifest {
+        try JSONDecoder().decode(
+            Manifest.self, from: Data(contentsOf: folder.appendingPathComponent("manifest.json")))
+    }
+
+    static func scene() throws -> TidalDisruption {
+        try JSONDecoder().decode(
+            HoleSceneFile.self, from: Data(contentsOf: folder.appendingPathComponent("scene.json"))
+        ).blackHole
+    }
+
+    static func frame(_ name: String, tracers: Int) throws -> TidalFrame {
+        let data = try Data(contentsOf: folder.appendingPathComponent(name))
+        let values = data.withUnsafeBytes { Array($0.bindMemory(to: SIMD4<Float>.self)) }
+        #expect(values.count == 2 * tracers)
+        return TidalFrame(
+            time: 0, positions: Array(values[0..<tracers]), velocities: Array(values[tracers..<(2 * tracers)])
+        )
+    }
+
+    static func look(_ view: Manifest.View) throws -> HoleLookFile {
+        try HoleLookFile.decoded(from: Data(contentsOf: folder.appendingPathComponent(view.look)))
+    }
+
+    /// What CUDA's run is held to after Metal's steps: the same tracers swallowed, the positions
+    /// and velocities within a share of their size, the light within a share of the brightest.
+    static let runTolerance: Float = 1e-3
+
+    @Test func theRunStepsAsMetalsWithinTheTolerance() throws {
+        let manifest = try Self.manifest()
+        let start = try Self.frame("start.bin", tracers: manifest.tracers)
+        let end = try Self.frame("end.bin", tracers: manifest.tracers)
+        let run = try CUDATidalRun(context: CUDAContext(), scene: Self.scene())
+        run.resume(from: start, step: manifest.startStep)
+        run.step(manifest.steps)
+        #expect(run.failure == nil)
+        let stepped = run.frame
+        var position: Float = 0
+        var velocity: Float = 0
+        var light: Float = 0
+        var brightest: Float = 0
+        var swallowed = (cuda: 0, metal: 0)
+        for index in 0..<manifest.tracers {
+            let (a, b) = (stepped.positions[index], end.positions[index])
+            let (va, vb) = (stepped.velocities[index], end.velocities[index])
+            if va.w < 0 { swallowed.cuda += 1 }
+            if vb.w < 0 { swallowed.metal += 1 }
+            let at = SIMD3<Float>(b.x, b.y, b.z)
+            let moving = SIMD3<Float>(vb.x, vb.y, vb.z)
+            position = max(position, simd_length(SIMD3<Float>(a.x, a.y, a.z) - at) / max(simd_length(at), 1))
+            velocity = max(
+                velocity,
+                simd_length(SIMD3<Float>(va.x, va.y, va.z) - moving) / max(simd_length(moving), 0.01))
+            light = max(light, abs(a.w - b.w))
+            brightest = max(brightest, b.w)
+        }
+        print(
+            "CUDAHOLE run", manifest.steps, "steps:", "position", position, "velocity", velocity, "light",
+            light / max(brightest, 1e-30), "swallowed", swallowed)
+        #expect(swallowed.cuda == swallowed.metal)
+        #expect(position < Self.runTolerance && velocity < Self.runTolerance, "\(position), \(velocity)")
+        #expect(light <= Self.runTolerance * brightest, "\(light) of \(brightest)")
+        #expect(brightest > 0, "a run with no heat checks nothing of the gas")
+    }
+
+    /// What a still is held to against Metal's: its PSNR, its largest difference in levels, and
+    /// the share of its pixels more than 8 levels off.
+    static let stillTolerances: [String: (psnr: Double, largest: Int, overEight: Double)] = [
+        "physics": (40, 255, 0.01),
+        "ring": (40, 255, 0.01),
+        "straight": (40, 255, 0.01),
+    ]
+
+    @Test func theStillsAreMetalsWithinTheTolerance() throws {
+        let manifest = try Self.manifest()
+        let end = try Self.frame("end.bin", tracers: manifest.tracers)
+        let context = try CUDAContext()
+        for view in manifest.views {
+            let look = try Self.look(view)
+            let renderer = try CUDAHoleRenderer(
+                context: context, settings: look.settings(width: manifest.width, height: manifest.height))
+            try renderer.upload(end)
+            let drawn = [UInt8](
+                try renderer.render(camera: look.camera.camera(progress: 0), look: look.renderLook))
+            let reference = [UInt8](try Data(contentsOf: Self.folder.appendingPathComponent(view.file)))
+            let measure = CUDAStillChecks.measure(drawn, channels: 3, reference, channels: 3)
+            print("CUDAHOLE still", look.name, measure)
+            let tolerance = try #require(Self.stillTolerances[look.name])
+            #expect(measure.psnr >= tolerance.psnr, "\(look.name): \(measure)")
+            #expect(measure.largest <= tolerance.largest, "\(look.name): \(measure)")
+            #expect(measure.overEight <= tolerance.overEight, "\(look.name): \(measure)")
+            #expect(reference.contains { $0 > 64 }, "\(look.name): a black still checks nothing")
+        }
+    }
+
+    @Test func aStillDrawnTwiceIsTheSameBytes() throws {
+        let manifest = try Self.manifest()
+        let end = try Self.frame("end.bin", tracers: manifest.tracers)
+        let look = try Self.look(manifest.views[0])
+        let context = try CUDAContext()
+        var pictures: [[UInt8]] = []
+        for _ in 0..<2 {
+            let renderer = try CUDAHoleRenderer(
+                context: context, settings: look.settings(width: 96, height: 54))
+            try renderer.upload(end)
+            pictures.append(
+                [UInt8](try renderer.render(camera: look.camera.camera(progress: 0), look: look.renderLook)))
+        }
+        #expect(pictures[0] == pictures[1])
+    }
+}
