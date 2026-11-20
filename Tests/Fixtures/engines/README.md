@@ -1,14 +1,14 @@
 # The engines' reference outputs (#281)
 
 Small outputs the Metal engine gives and the CUDA engine has to give too: a tree, the
-accelerations of one walk, three frames. Under 2 MB in all.
+accelerations of one walk, four frames. Under 2 MB in all.
 
 Everything is little endian, byte for byte as Metal holds it: a `float3` takes 16 bytes, its
 fourth float 0. `manifest.json` (`sillage-engine-fixtures`, version 1) lists the tree's files
 with their type, stride and count, as a walk dump's manifest does; a C++ reader needs nothing
 else.
 
-`./scripts/dev.sh fixtures` writes them again on the Mac, from `scene/` and the three look files
+`./scripts/dev.sh fixtures` writes them again on the Mac, from `scene/` and the four look files
 of `frames/`. The same code gives the same bytes: nothing in them depends on the run, the date or
 the commit. On every `./scripts/dev.sh check`, `EngineFixtureTests` requires Metal to give each
 output again to the bit, and `TreeLayoutTests` requires it of the portable `BarnesHutTree`, on
@@ -68,7 +68,7 @@ in 1,314 nodes, 63 steps in, with both disks cooling. The halos are live and the
 black hole, so `haloCount` and `holeCount` are 0: the walk reads neither `halos.bin` nor
 `holes.bin`.
 
-## `frames/`: three frames of 256 x 144
+## `frames/`: four frames of 256 x 144
 
 `take.sillage` is the take of that same run, one captured frame of its 3,013 drawn particles.
 Each `<look>.rgba` is that frame as `export` draws it with `<look>.look.json`: 256 x 144 pixels,
@@ -79,6 +79,7 @@ Each `<look>.rgba` is that frame as `export` draws it with `<look>.look.json`: 2
 | `red-vs-cyan` | each galaxy in its own colour, bloom, no noise, no sky |
 | `ember` | the dust web, the stars of the sky, noise |
 | `webb` | the telescope world: Webb's spikes and its sky |
+| `widths` | `red-vs-cyan` with a kernel width for each population (#339) |
 
 ## `raster/`: Metal's rasteriser on one point
 

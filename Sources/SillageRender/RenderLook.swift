@@ -69,6 +69,13 @@ public struct RenderLook: Sendable, Equatable {
     /// by its rotation and renewed before the shear winds it up (#173, docs/notes/dust-web.md).
     /// Zero, the default, draws the dust as its grains and the painted strands give it.
     public var dustWeb: Float
+    /// How much wider than the tree gives them each population's kernels are drawn: the old
+    /// disk, the bulge, the stars under 300 Myr and the knots gas formed under 50 Myr (#339).
+    /// One, the default, draws them as every look did before.
+    public var oldWidth: Float
+    public var bulgeWidth: Float
+    public var youngWidth: Float
+    public var knotWidth: Float
 
     /// The glint every shipped and generated style draws with: the sparkle gone, the knots
     /// kept (#184, docs/notes/gigantism.md).
@@ -105,7 +112,11 @@ public struct RenderLook: Sendable, Equatable {
         holeShadow: Float = 0,
         columnSmoothing: Float = 0,
         glint: Float = 1,
-        dustWeb: Float = 0
+        dustWeb: Float = 0,
+        oldWidth: Float = 1,
+        bulgeWidth: Float = 1,
+        youngWidth: Float = 1,
+        knotWidth: Float = 1
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -134,6 +145,10 @@ public struct RenderLook: Sendable, Equatable {
         self.columnSmoothing = columnSmoothing
         self.glint = glint
         self.dustWeb = dustWeb
+        self.oldWidth = oldWidth
+        self.bulgeWidth = bulgeWidth
+        self.youngWidth = youngWidth
+        self.knotWidth = knotWidth
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -172,6 +187,10 @@ public struct RenderLook: Sendable, Equatable {
         out.columnSmoothing = f(a.columnSmoothing, b.columnSmoothing)
         out.glint = f(a.glint, b.glint)
         out.dustWeb = f(a.dustWeb, b.dustWeb)
+        out.oldWidth = f(a.oldWidth, b.oldWidth)
+        out.bulgeWidth = f(a.bulgeWidth, b.bulgeWidth)
+        out.youngWidth = f(a.youngWidth, b.youngWidth)
+        out.knotWidth = f(a.knotWidth, b.knotWidth)
         return out
     }
 
@@ -280,6 +299,10 @@ extension RenderLook: Codable {
             holeShadow: try c.value(.holeShadow, or: d.holeShadow),
             columnSmoothing: try c.value(.columnSmoothing, or: d.columnSmoothing),
             glint: try c.value(.glint, or: d.glint),
-            dustWeb: try c.value(.dustWeb, or: d.dustWeb))
+            dustWeb: try c.value(.dustWeb, or: d.dustWeb),
+            oldWidth: try c.value(.oldWidth, or: d.oldWidth),
+            bulgeWidth: try c.value(.bulgeWidth, or: d.bulgeWidth),
+            youngWidth: try c.value(.youngWidth, or: d.youngWidth),
+            knotWidth: try c.value(.knotWidth, or: d.knotWidth))
     }
 }

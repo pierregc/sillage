@@ -48,6 +48,11 @@ public final class Renderer {
     /// What a frame with the dust web draws with, built the first time one is drawn.
     private var webPass: DustWeb.Pass?
     private var webUnavailable = false
+    /// The stars' pipelines of a look that widens some population (#339), from a library of
+    /// their own, built the first time one is drawn.
+    private var widened: (library: MTLLibrary, massive: MTLRenderPipelineState)?
+    private var widenedTracers: MTLRenderPipelineState?
+    private var widenedUnavailable = false
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
@@ -658,7 +663,11 @@ public final class Renderer {
                 guard let encoder = frameEncoder() else { continue }
                 bindParticles(encoder)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
-                drawParts(encoder, massive: splatPipeline, tracers: traced?.pipelines.splat)
+                if uniforms.widens, let wide = widenedPipelines(tracing: traced != nil) {
+                    drawParts(encoder, massive: wide.massive, tracers: wide.tracers)
+                } else {
+                    drawParts(encoder, massive: splatPipeline, tracers: traced?.pipelines.splat)
+                }
 
             case .plain:
                 guard
@@ -681,6 +690,38 @@ public final class Renderer {
             }
         }
         frame?.endEncoding()
+    }
+
+    /// The source a look that widens some population compiles: the same text, with the
+    /// widths in it (#339).
+    static let widenedSource = "#define SILLAGE_POPULATION_WIDTHS 1\n" + Shaders.source
+
+    /// Nil when they could not be built, and every population is then drawn at the tree's
+    /// width.
+    private func widenedPipelines(tracing: Bool) -> (
+        massive: MTLRenderPipelineState, tracers: MTLRenderPipelineState?
+    )? {
+        guard !widenedUnavailable else { return nil }
+        do {
+            if widened == nil {
+                let library = try ShaderCache.library(Self.widenedSource, on: device)
+                widened = (
+                    library,
+                    try Self.additive(
+                        "splatVertex", "splatFragment", writing: 0, attachments: 2,
+                        format: .rgba16Float, library: library, device: device)
+                )
+            }
+            if tracing, widenedTracers == nil, let library = widened?.library {
+                widenedTracers = try Self.additive(
+                    "splatTracerVertex", "splatFragment", writing: 0, attachments: 2,
+                    format: .rgba16Float, library: library, device: device)
+            }
+        } catch {
+            widenedUnavailable = true
+            return nil
+        }
+        return widened.map { ($0.massive, tracing ? widenedTracers : nil) }
     }
 
     /// Nil when the web could not be built, and the dust is then drawn as it always was.

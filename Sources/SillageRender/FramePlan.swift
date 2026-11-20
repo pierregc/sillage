@@ -36,6 +36,15 @@ public struct SplatUniforms: Sendable {
     public var columnSmoothing: Float = 0
     public var columnCell: Float = 8
     public var glint: Float = 1
+    /// Each population's kernel against the tree's (#339).
+    public var oldWidth: Float = 1
+    public var bulgeWidth: Float = 1
+    public var youngWidth: Float = 1
+    public var knotWidth: Float = 1
+
+    /// Whether some population is drawn at another width than the tree's, which Metal draws
+    /// from a library of its own.
+    public var widens: Bool { oldWidth != 1 || bulgeWidth != 1 || youngWidth != 1 || knotWidth != 1 }
 }
 
 /// The passes of one frame that draw particles and what they are given, worked out once for
@@ -182,7 +191,8 @@ public struct FramePlan: Sendable {
             slabScale: 1 / max(2 * halfExtent, 1e-3),
             pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow,
             columnSmoothing: settings.columnSmoothing, columnCell: Float(Self.columnCell),
-            glint: settings.glint)
+            glint: settings.glint, oldWidth: settings.oldWidth, bulgeWidth: settings.bulgeWidth,
+            youngWidth: settings.youngWidth, knotWidth: settings.knotWidth)
 
         // Its own passes, so a look without the web draws what it always drew.
         let webbed = Self.drawsWeb(settings, stages: stages) && laceScale != nil

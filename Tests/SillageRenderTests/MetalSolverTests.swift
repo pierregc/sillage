@@ -61,6 +61,10 @@ struct MetalSolverTests {
         ] {
             #expect(render.makeFunction(name: name) != nil, "missing \(name)")
         }
+        let widened = try device.makeLibrary(source: Renderer.widenedSource, options: nil)
+        for name in ["splatVertex", "splatTracerVertex", "splatFragment"] {
+            #expect(widened.makeFunction(name: name) != nil, "missing \(name)")
+        }
         let solver = try device.makeLibrary(source: SolverShaders.source, options: nil)
         #expect(solver.makeFunction(name: "integrate") != nil)
     }

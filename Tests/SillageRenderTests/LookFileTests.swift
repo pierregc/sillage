@@ -142,6 +142,10 @@ struct LookFileTests {
         file.look.spikeSharpness = 0.8
         file.look.skyColour = SIMD3(0.5, 0.45, 0.4)
         file.look.dustWeb = 0.7
+        file.look.oldWidth = 1.2
+        file.look.bulgeWidth = 0.8
+        file.look.youngWidth = 3
+        file.look.knotWidth = 0.5
         let s = file.renderSettings(width: 320, height: 200)
         let look = file.look
         #expect(s.width == 320 && s.height == 200)
@@ -161,7 +165,8 @@ struct LookFileTests {
                 galaxyTint: s.galaxyTint, starSize: s.starSize,
                 armPersistence: look.armPersistence, fieldOfView: look.fieldOfView,
                 holeShadow: s.holeShadow, columnSmoothing: s.columnSmoothing, glint: s.glint,
-                dustWeb: s.dustWeb) == look)
+                dustWeb: s.dustWeb, oldWidth: s.oldWidth, bulgeWidth: s.bulgeWidth,
+                youngWidth: s.youngWidth, knotWidth: s.knotWidth) == look)
     }
 
     @Test func onlyTheFieldsThatOwnBuffersRebuildTheRenderer() {

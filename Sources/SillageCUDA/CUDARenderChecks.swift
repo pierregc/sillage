@@ -477,7 +477,14 @@ extension CUDARenderChecks {
                 tracerCount: tracers, luminosityNormalisation: target.luminosityNormalisation,
                 mapped: target.mapped, laceScale: webbed ? 1 / max(target.laceMean ?? 1, 1e-6) : nil)
             let uniforms = try data(entry("splat-uniforms"), in: folder)
-            plan.splat = uniforms.withUnsafeBytes { $0.loadUnaligned(as: SplatUniforms.self) }
+            // A dump from before #339 is 176 bytes, and draws every population at the tree's width.
+            var splat = plan.splat
+            withUnsafeMutableBytes(of: &splat) { into in
+                uniforms.withUnsafeBytes {
+                    into.copyMemory(from: UnsafeRawBufferPointer(rebasing: $0.prefix(into.count)))
+                }
+            }
+            plan.splat = splat
             plan.splat.pass = 0
             if webbed {
                 plan.web = try data(entry("web-uniforms"), in: folder).withUnsafeBytes {
