@@ -77,3 +77,5 @@ Toomre (1964) for its stability.
 
 Code: MIT. Renders and videos: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
 so reuse them freely as long as the credit comes along.
+
+To cite the software, see [CITATION.cff](CITATION.cff).
