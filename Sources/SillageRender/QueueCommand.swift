@@ -186,6 +186,18 @@ public enum QueueCommand {
     )] {
         let folder = SceneFolder(path: path)
         let maximum = SceneFolder.maximumParticles()
+        if folder.isBlackHole {
+            do {
+                _ = try folder.holeScene()
+            } catch {
+                throw Failure.invalid("hires: \(error)")
+            }
+            guard options.isEmpty else {
+                throw Failure.invalid(
+                    "hires: a black hole close up runs as its scene.json says, without options")
+            }
+            return [(folder.url.path, options, folder.library)]
+        }
         if folder.isExplored {
             do {
                 _ = try folder.hiresArguments(options, maximumParticles: maximum)
@@ -227,6 +239,13 @@ public enum QueueCommand {
         }
         if let preset = value("preset"), VideoPreset.named(preset) == nil {
             throw Failure.invalid("export: \(SceneFolder.ExportError.noSuchPreset(preset))")
+        }
+        if folder.isBlackHole {
+            do {
+                _ = try HoleExportOptions(options)
+            } catch {
+                throw Failure.invalid("export: \(error)")
+            }
         }
         if let format = value("format"), AnimatedImage.Format(rawValue: format.lowercased()) == nil {
             throw Failure.invalid("export: --format \(format) is neither webp nor gif")

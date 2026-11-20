@@ -247,6 +247,8 @@ public struct RunEvent: Codable, Sendable, Equatable {
     public var takeGB: Double?
     /// hires.done and export.done of a scene drawn in two passes (#239): `massive` or `full`.
     public var pass: String?
+    /// hires.done and export.done of a scene that is not galaxies: `blackHole` (#332).
+    public var subject: String?
     /// export.done.
     public var preset: String?
     public var style: String?

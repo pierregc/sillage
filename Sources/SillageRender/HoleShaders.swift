@@ -6,7 +6,7 @@ enum HoleShaders {
         #include <metal_stdlib>
         using namespace metal;
 
-        // Metal only: a spike, which no export runs (docs/notes/black-hole-close-up.md).
+        // Metal only (docs/notes/black-hole-close-up.md).
         #if defined(__METAL_VERSION__)
 
         struct HoleStepParams {
@@ -47,16 +47,43 @@ enum HoleShaders {
 
         static uint holeWrap(int j, uint n) { return uint((j % int(n) + int(n)) % int(n)); }
 
-        kernel void holeClear(device float4 *grid [[buffer(0)]],
+        // The grid's sums are kept as 64-bit fixed point, 2^24 to the unit, in two 32-bit words a
+        // value, low first. Integers add the same in any order, so a run repeats to the bit,
+        // which float atomics summed in whatever order the threads come do not (#332).
+        kernel void holeClear(device uint4 *fixed [[buffer(0)]],
                               constant uint &cells [[buffer(1)]],
                               uint id [[thread_position_in_grid]]) {
-            if (id < cells) { grid[id] = float4(0.0f); }
+            if (id < 2u * cells) { fixed[id] = uint4(0u); }
+        }
+
+        static void holeAddFixed(device atomic_uint *slot, float value) {
+            ulong bits = as_type<ulong>(long(rint(value * 16777216.0f)));
+            uint low = uint(bits & 0xffffffffUL);
+            uint high = uint(bits >> 32);
+            uint before = atomic_fetch_add_explicit(&slot[0], low, memory_order_relaxed);
+            if (before + low < before) { high += 1u; }
+            if (high != 0u) { atomic_fetch_add_explicit(&slot[1], high, memory_order_relaxed); }
+        }
+
+        // The fixed point sums back as the floats `holeStep` reads.
+        kernel void holeResolve(device const uint *fixed [[buffer(0)]],
+                                device float4 *grid [[buffer(1)]],
+                                constant uint &cells [[buffer(2)]],
+                                uint id [[thread_position_in_grid]]) {
+            if (id >= cells) { return; }
+            float4 sum;
+            for (uint c = 0; c < 4u; ++c) {
+                uint at = (id * 4u + c) * 2u;
+                ulong bits = ulong(fixed[at]) | (ulong(fixed[at + 1u]) << 32);
+                sum[c] = float(as_type<long>(bits)) / 16777216.0f;
+            }
+            grid[id] = sum;
         }
 
         // Each tracer's velocity, and one for the count, shared among the four cells around it.
         kernel void holeDeposit(device const float4 *positions [[buffer(0)]],
                                 device const float4 *velocities [[buffer(1)]],
-                                device atomic_float *grid [[buffer(2)]],
+                                device atomic_uint *grid [[buffer(2)]],
                                 constant HoleStepParams &p [[buffer(3)]],
                                 uint id [[thread_position_in_grid]]) {
             if (id >= p.count) { return; }
@@ -73,10 +100,10 @@ enum HoleShaders {
                 uint dj = corner >> 1;
                 float w = (di == 1u ? f.x : 1.0f - f.x) * (dj == 1u ? f.y : 1.0f - f.y);
                 uint index = ((i0 + di) * p.gridAngles + holeWrap(j0 + int(dj), p.gridAngles)) * 4u;
-                atomic_fetch_add_explicit(&grid[index + 0u], w * v.x, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grid[index + 1u], w * v.y, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grid[index + 2u], w * v.z, memory_order_relaxed);
-                atomic_fetch_add_explicit(&grid[index + 3u], w, memory_order_relaxed);
+                holeAddFixed(&grid[(index + 0u) * 2u], w * v.x);
+                holeAddFixed(&grid[(index + 1u) * 2u], w * v.y);
+                holeAddFixed(&grid[(index + 2u) * 2u], w * v.z);
+                holeAddFixed(&grid[(index + 3u) * 2u], w);
             }
         }
 
