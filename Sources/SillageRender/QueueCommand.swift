@@ -36,8 +36,7 @@ public enum QueueCommand {
         if let path = environment["SILLAGE_LIBRARY"], !path.isEmpty {
             return URL(fileURLWithPath: path, isDirectory: true)
         }
-        return QueueRunner.exploreScript.deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("library", isDirectory: true)
+        return RepositoryRoot.place("library")
     }
 
     /// `arguments` follow `queue`; `executable` is the `sillage-render` a runner is started from.

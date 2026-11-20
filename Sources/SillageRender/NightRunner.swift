@@ -203,7 +203,7 @@ public final class NightRunner: @unchecked Sendable {
 
     public let folder: NightFolder
     let executable: URL
-    let exploreScript: URL
+    let exploreScript: URL?
     let catalogue: [LookFile]
     let say: (String) -> Void
     let poll: TimeInterval
@@ -239,7 +239,7 @@ public final class NightRunner: @unchecked Sendable {
     }
 
     public init(
-        folder: NightFolder, executable: URL, exploreScript: URL = QueueRunner.exploreScript,
+        folder: NightFolder, executable: URL, exploreScript: URL? = nil,
         catalogue: [LookFile], poll: TimeInterval = 1, handlesSignals: Bool = true,
         draws: (@Sendable (Int) -> [NightScene])? = nil, say: @escaping (String) -> Void = { print($0) }
     ) {
@@ -386,9 +386,16 @@ public final class NightRunner: @unchecked Sendable {
     private func explore(_ plan: NightPlan) -> Outcome {
         let explore = plan.steps.first { $0.phase == .explore }
         let seconds = max(plan.exploreBudget, (explore?.seconds ?? 0) * 1.25, 300)
+        let script: URL
+        do {
+            script = try exploreScript ?? QueueRunner.exploreScript()
+        } catch {
+            say("night      \(error)")
+            return .finished(2)
+        }
         var arguments = [
-            exploreScript.path, "--no-build", "--out", batch.path, "--scenes", String(plan.scenes),
-            "--hours", String(format: "%.3f", seconds / 3600),
+            script.path, "--no-build", "--bin", executable.path, "--out", batch.path,
+            "--scenes", String(plan.scenes), "--hours", String(format: "%.3f", seconds / 3600),
         ]
         if !FileManager.default.fileExists(atPath: batch.appendingPathComponent("batch.conf").path) {
             arguments += [

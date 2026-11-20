@@ -60,9 +60,7 @@ func hiresBatch(_ batch: URL, options: [String]) -> Int32 {
 
 /// The repository's own looks, `looks/*.look.json`, with the built in catalogue first.
 func catalogueLooks() -> [LookFile] {
-    LookCatalogue.load(
-        from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("looks"))
+    do { return try LookCatalogue.fromRepository() } catch { fail("\(error)") }
 }
 
 /// The mode `--camera` names, for the style it promotes; nil when not given.
@@ -297,10 +295,7 @@ func exposureLine(_ solved: ExposureSolver.Solution) -> String {
 
 /// The measured Hubble and Webb colour sets of `references/telescope`.
 func telescopeReferences() -> [TelescopeReference] {
-    TelescopeReference.load(
-        from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("references/telescope"))
+    do { return try TelescopeReference.fromRepository() } catch { fail("\(error)") }
 }
 
 /// What a scene's palette is drawn from: the seed in its `scene.json`.

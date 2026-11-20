@@ -20,9 +20,7 @@ public enum FavouritePalettes {
         }
     }
 
-    public static let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        .deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("palettes", isDirectory: true)
+    public static var directory: URL { RepositoryRoot.place("palettes") }
 
     public static let suffix = ".palette.json"
 

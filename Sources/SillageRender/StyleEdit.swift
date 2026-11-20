@@ -179,9 +179,15 @@ extension LookFile.CameraPlan {
 }
 
 extension LookCatalogue {
-    /// The looks of this repository's `looks/`, which the style editor offers as renderings.
-    public static let repository = load(
-        from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("looks", isDirectory: true))
+    /// The looks of this repository's `looks/`, which the style editor offers as renderings;
+    /// the built in five when the folder is not found, which `RepositoryRoot.problem()` says.
+    public static var repository: [LookFile] {
+        RepositoryRoot.loaded("looks") { load(from: $0) }
+    }
+
+    /// The same, or why the folder is not found.
+    public static func fromRepository() throws -> [LookFile] {
+        _ = try RepositoryRoot.folder("looks")
+        return repository
+    }
 }
