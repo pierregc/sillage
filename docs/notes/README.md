@@ -71,6 +71,7 @@ session. Read the note for an area before changing it.
 - [What the window costs](what-the-window-costs.md)
 - [Two scintillations, and which slider reaches which](scintillation.md): `--flicker`
 - [Flying rather than orbiting](fly-camera.md): `FlyCamera`
+- [Inside a galaxy](inside-a-galaxy.md): spike #296, the near plane, capped kernels, point stars, dust slabs from the eye, exposure and speed from inside a disk at 8 M
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first
