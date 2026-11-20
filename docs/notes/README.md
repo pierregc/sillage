@@ -74,7 +74,7 @@ session. Read the note for an area before changing it.
 - [Two scintillations, and which slider reaches which](scintillation.md): `--flicker`
 - [Flying rather than orbiting](fly-camera.md): `FlyCamera`
 - [Flights](flights.md): camera paths written by hand for exports, eye and aim on a spline against the video's time, anchors on galaxies, look keys, time frozen while the camera moves (#295)
-- [Inside a galaxy](inside-a-galaxy.md): spike #296, the near plane, capped kernels, point stars, dust slabs from the eye, exposure and speed from inside a disk at 8 M
+- [Inside a galaxy](inside-a-galaxy.md): spike #296 and what #297 built from it for flights, the near plane, capped kernels, point stars, dust slabs from the eye, automatic exposure, motion blur and what they cost inside a disk at 8 M
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first

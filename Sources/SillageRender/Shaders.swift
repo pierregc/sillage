@@ -17,6 +17,51 @@ enum Shaders {
         constexpr sampler bilinear(filter::linear, address::clamp_to_edge, coord::normalized);
         #endif
 
+        // What a frame drawn from inside a galaxy reads on top (#297,
+        // docs/notes/inside-a-galaxy.md). Metal compiles it, and every line it adds to the passes,
+        // only into the library of a frame that asks for it, as it does a population's width:
+        // every other frame draws from the text it always had.
+        #if defined(SILLAGE_INSIDE)
+        struct InsideUniforms {
+            /// The camera at the end of the time this render stands for, a moment after the one
+            /// the frame is drawn through: a point star is drawn as the streak it leaves from one
+            /// to the other.
+            float4x4 nextViewProjection;
+            /// The view depths where the four slabs of dust start, and where the last ends.
+            float4 slabKnots;
+            float slabEnd;
+            /// 0 keeps a grain in its slab and a star behind half of its own, as every frame
+            /// does; 1 spreads a grain over a slab's depth and a star's dimming with it.
+            float slabSoft;
+            /// The camera's near distance, and the kernel lengths a particle fades over before it.
+            float nearPlane;
+            float fadeLengths;
+            /// The near field, in view depth: all of it nearer than the first, none of it past
+            /// the second.
+            float windowNear;
+            float windowFar;
+            /// The kernel sizes, in accumulation pixels, between which a particle's light goes
+            /// over to its point stars.
+            float starStart;
+            float starEnd;
+            /// Kernel lengths the stars are scattered over, and their size in accumulation pixels.
+            float starSpread;
+            float starPointSize;
+            /// A star's share of its particle's light: its rank to minus this, times the norm.
+            float starShareExponent;
+            float starShareNorm;
+            /// How far the stars' colours are drawn around their population's, 0 for its own.
+            float starColours;
+            /// The depth under which a star stops brightening, and the most light one lays.
+            float starNearest;
+            float starCap;
+            uint starCount;
+            /// The projection's scales across and up.
+            float projectionX;
+            float projectionY;
+        };
+        #endif
+
         struct SplatUniforms {
             float4x4 viewProjection;
             float time;
@@ -60,6 +105,9 @@ enum Shaders {
             float bulgeWidth;
             float youngWidth;
             float knotWidth;
+            #if defined(SILLAGE_INSIDE)
+            InsideUniforms inside;
+            #endif
         };
 
         struct GalaxyRamp {
@@ -396,6 +444,12 @@ enum Shaders {
             float warming;
             float population;
             float rampKey;
+            #if defined(SILLAGE_INSIDE)
+            /// A point star's share of its particle's light, 0 for the particle itself, and
+            /// what its colour is drawn from.
+            float starShare;
+            float starHash;
+            #endif
         };
 
         SHARED Drawn massiveDrawn(uint vid, device const float3 *positions,
@@ -413,6 +467,10 @@ enum Shaders {
             p.warming = 1.0f;
             p.population = 0.5f;
             p.rampKey = 1.7f;
+            #if defined(SILLAGE_INSIDE)
+            p.starShare = 0.0f;
+            p.starHash = 0.0f;
+            #endif
             return p;
         }
 
@@ -438,6 +496,10 @@ enum Shaders {
             p.rampKey = scale > 0.0f ? radius / scale : 1.7f;
             p.population = 0.5f;
             p.spacing = 0.0f;
+            #if defined(SILLAGE_INSIDE)
+            p.starShare = 0.0f;
+            p.starHash = 0.0f;
+            #endif
             return p;
         }
 
@@ -522,6 +584,132 @@ enum Shaders {
         }
         #endif
 
+        #if defined(SILLAGE_INSIDE)
+        // Where a view depth falls in the stack of four dust slabs, 0 to 4: straight between
+        // the knots. Around the aim point they are evenly spaced, which is the stack every
+        // frame has; from inside they are placed from the eye, a factor apart.
+        SHARED float insideSlabAt(float depth, constant SplatUniforms &u) {
+            // Far from any matter, the very expression every frame places its slabs with.
+            if (u.inside.slabSoft <= 0.0f) {
+                return clamp((depth - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f;
+            }
+            float4 k = u.inside.slabKnots;
+            if (depth <= k.x) { return 0.0f; }
+            if (depth < k.y) { return (depth - k.x) / (k.y - k.x); }
+            if (depth < k.z) { return 1.0f + (depth - k.y) / (k.z - k.y); }
+            if (depth < k.w) { return 2.0f + (depth - k.z) / (k.w - k.z); }
+            return min(3.0f + (depth - k.w) / (u.inside.slabEnd - k.w), 3.999f);
+        }
+
+        // The slabs a grain writes into. Soft, it is spread over a slab's depth, half either
+        // side of where it stands, so nothing switches when a boundary passes through a lane.
+        SHARED half4 insideDustSlabs(float x, constant InsideUniforms &i) {
+            uint s = uint(x);
+            float4 hard = float4(float(s == 0u), float(s == 1u), float(s == 2u), float(s == 3u));
+            float a = x - 0.5f;
+            float b = x + 0.5f;
+            float4 soft = float4(saturate(1.0f - a), max(min(b, 2.0f) - max(a, 1.0f), 0.0f),
+                                 max(min(b, 3.0f) - max(a, 2.0f), 0.0f), saturate(b - 3.0f));
+            return half4(mix(hard, soft, i.slabSoft));
+        }
+
+        // The share of each slab a star stands behind. Soft, it is how far through the slab
+        // the star is, where every frame takes half of the star's own slab.
+        SHARED half4 insideStarSlabs(float x, constant InsideUniforms &i) {
+            uint s = uint(x);
+            float4 hard = float4(s > 0u ? 1.0f : 0.5f, s > 1u ? 1.0f : (s == 1u ? 0.5f : 0.0f),
+                                 s > 2u ? 1.0f : (s == 2u ? 0.5f : 0.0f), s == 3u ? 0.5f : 0.0f);
+            float4 soft = float4(saturate(x), saturate(x - 1.0f), saturate(x - 2.0f),
+                                 saturate(x - 3.0f));
+            return half4(mix(hard, soft, i.slabSoft));
+        }
+
+        // How much a particle belongs to the near field: all of it nearer than the window,
+        // none of it past, so that a frame with nothing that near draws as it always did.
+        SHARED float insideNear(float depth, constant InsideUniforms &i) {
+            return 1.0f - smoothstep(i.windowNear, i.windowFar, depth);
+        }
+
+        // A kernel the ceiling caps keeps all its light on fewer pixels, and from inside that
+        // is a flare: the nearer a particle, the brighter its blob. In the near field it keeps
+        // the surface brightness of its own size instead, for a star and for a grain of dust,
+        // whose optical depth is spread the same way.
+        SHARED float insideSpread(float spread, float raw, float span, float depth,
+                                  constant InsideUniforms &i) {
+            if (raw <= span) { return spread; }
+            return spread * mix(1.0f, (span * span) / (raw * raw), insideNear(depth, i));
+        }
+
+        // To nothing over the last kernel lengths before the near plane, so nothing pops there.
+        SHARED float insideFade(float depth, float length, constant InsideUniforms &i) {
+            if (i.fadeLengths <= 0.0f) { return 1.0f; }
+            return saturate((depth - i.nearPlane) / (i.fadeLengths * max(length, 1e-6f)));
+        }
+
+        // How much of a particle's light its point stars carry, from its kernel's size on
+        // screen where it stands: none while the kernel is small, all of it once the kernel is
+        // large, and only in the near field. Keyed on the size alone, the wide kernels of a
+        // disk's sparse edge seen from tens of kiloparsecs would turn to stars too.
+        SHARED float insideStarred(float raw, float depth, constant InsideUniforms &i) {
+            if (i.starCount == 0u || i.starEnd <= 0.0f) { return 0.0f; }
+            return smoothstep(i.starStart, i.starEnd, raw) * insideNear(depth, i);
+        }
+
+        // The sum of the first `n` stars' shares before the norm, rank to minus `e` each, for any
+        // `n`, whole or not: the integral, with the first three terms of Euler and Maclaurin's
+        // correction. Within 1 % of the sum for an exponent up to 2.
+        SHARED float insideShareSum(float n, float e) {
+            if (n <= 1.0f) { return max(n, 0.0f); }
+            float integral = abs(e - 1.0f) < 1e-3f ? log(n) : (pow(n, 1.0f - e) - 1.0f) / (1.0f - e);
+            return integral + 0.5f * (1.0f + pow(n, -e)) + e / 12.0f * (1.0f - pow(n, -e - 1.0f))
+                - e * (e + 1.0f) * (e + 2.0f) / 720.0f * (1.0f - pow(n, -e - 3.0f));
+        }
+
+        // How many of its stars a particle draws: all of them once its light is wholly theirs,
+        // the brightest first on the way there. The faint ones of a particle that has only
+        // started to turn would cost as much to draw as the bright ones and show nothing.
+        SHARED float insideStarsDrawn(float starred, constant InsideUniforms &i) {
+            return float(i.starCount) * starred;
+        }
+
+        // The share of a particle's light its drawn stars carry, which its splat gives up.
+        SHARED float insideStarLight(float starred, constant InsideUniforms &i) {
+            return starred * insideShareSum(insideStarsDrawn(starred, i), i.starShareExponent)
+                * i.starShareNorm;
+        }
+
+        SHARED float2 insideHash(uint2 v) {
+            v = v * 1664525u + 1013904223u;
+            v.x += v.y * 1664525u;
+            v.y += v.x * 1664525u;
+            v = v ^ (v >> 16u);
+            v.x += v.y * 1664525u;
+            v.y += v.x * 1664525u;
+            v = v ^ (v >> 16u);
+            return float2(v) * (1.0f / 4294967296.0f);
+        }
+
+        // The size of an emitting particle's kernel on screen where `clip` puts it, in
+        // accumulation pixels and before the floor and the ceiling, as `splat` works it out.
+        SHARED float insideRaw(Drawn p, float4 clip, constant SplatUniforms &u,
+                               ColumnDensity column) {
+            float kernelScale = p.kernelScale < 0.8f ? mix(0.9f, p.kernelScale, u.glint) : p.kernelScale;
+            float depth = max(clip.w, 1e-3f);
+            float raw = max(p.spacing * u.smoothingScale * kernelScale, 1e-4f) * u.projectionScale / depth;
+            if (u.columnSmoothing > 0.0f) {
+                float2 uv = float2(0.5f, 0.5f) + float2(0.5f, -0.5f) * clip.xy / depth;
+                float count = max(columnRead(column, uv), 0.25f);
+                float density = count / (u.columnCell * u.columnCell);
+                raw = max(raw, 2.0f * sqrt(u.columnSmoothing / (M_PI_F * density)));
+            }
+            bool nursery = p.kind == 1u || p.kind == 2u;
+            float ageMyr = (nursery || p.born >= 0.0f)
+                ? (u.time - p.born) * u.megayearsPerUnit : -p.born * u.megayearsPerUnit;
+            bool knot = p.born > -1e8f && p.born < 1e8f && ageMyr >= 0.0f;
+            return raw * populationWidth(p.kind, nursery, knot, ageMyr, u);
+        }
+        #endif
+
         SHARED Splat splat(Drawn p, constant SplatUniforms &u, constant DiskFrame *frames,
                            device const float2 *stellar, constant GalaxyRamp *ramps,
                            ColumnDensity column) {
@@ -575,7 +763,11 @@ enum Shaders {
             // Which slab of view depth this point falls in. `position.w` is the view depth for
             // a standard perspective projection, and the stack is centred on the camera's
             // target and as deep as the frame is wide, so a disk seen at an angle spans it.
+            #if defined(SILLAGE_INSIDE)
+            float slabAt = insideSlabAt(out.position.w, u);
+            #else
             float slabAt = clamp((out.position.w - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f;
+            #endif
             uint slabIndex = uint(slabAt);
             if (u.pass == 0u) {
                 // Dust writes into its own slab and nowhere else.
@@ -591,6 +783,9 @@ enum Shaders {
                     slabIndex > 2u ? half(1.0f) : (slabIndex == 2u ? half(0.5f) : half(0.0f)),
                     slabIndex == 3u ? half(0.5f) : half(0.0f));
             }
+            #if defined(SILLAGE_INSIDE)
+            out.slab = u.pass == 0u ? insideDustSlabs(slabAt, u.inside) : insideStarSlabs(slabAt, u.inside);
+            #endif
             float2 pattern = armWave(position, frame);
             float wave = pattern.x;
 
@@ -630,6 +825,15 @@ enum Shaders {
             // area gives surface brightness, which is what a telescope actually measures and
             // what stays put when the camera moves.
             float spread = u.referenceArea / (length * length);
+            #if defined(SILLAGE_INSIDE)
+            // From inside (#297): no flare from a capped kernel, nothing left of a particle at
+            // the near plane, and the light of a near particle handed to its point stars, which
+            // are drawn through here too, each with its share.
+            bool starDraw = p.starShare > 0.0f;
+            float fade = insideFade(out.position.w, raw / perPixel, u.inside);
+            float starred = (absorbing || starDraw) ? 0.0f : insideStarred(raw, out.position.w, u.inside);
+            spread = insideSpread(spread, raw, span, out.position.w, u.inside);
+            #endif
 
             // Gas that has made its stars is no longer a dust lane. That is not a rendering
             // convenience: the cloud a cluster forms out of is the cloud it consumes, and a
@@ -654,7 +858,12 @@ enum Shaders {
                 float lane = 1.0f + 7.0f * pow(wave, 2.0f) * pattern.y * laneDetail(position, frame);
                 out.pointSize = span * 1.3f;
                 out.color = half3(half(0.0f));
+                #if defined(SILLAGE_INSIDE)
+                out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3f * fade);
+                if (fade <= 0.0f && !hole) { return culledSplat(); }
+                #else
                 out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3f);
+                #endif
                 if (hole) {
                     // Twice the radius, since the kernel falls to a hundredth at its edge.
                     out.pointSize = max(4.0f * u.holeShadow * perPixel, 2.0f);
@@ -721,7 +930,35 @@ enum Shaders {
                     }
                 }
                 out.pointSize = span * (alive > 0.15f ? 1.3f : 1.0f);
+                #if defined(SILLAGE_INSIDE)
+                float kept = fade * (1.0f - insideStarLight(starred, u.inside));
+                if (starDraw) {
+                    // A point star: its share of the particle's light at its own distance, on a
+                    // few pixels, its colour drawn around its population's (an old star about
+                    // 4 800 K, a young one 9 000 K).
+                    if (u.inside.starColours > 0.0f) {
+                        bool young = knot || nursery || kind == 1u;
+                        float mean = young ? 9000.0f : 4800.0f;
+                        float drawn = mean * exp2((p.starHash - 0.5f) * 1.6f * u.inside.starColours);
+                        emitted = chromaticity(emitted * blackbody(drawn) / blackbody(mean));
+                    }
+                    float near = u.projectionScale / max(out.position.w, u.inside.starNearest);
+                    float size = max(u.inside.starPointSize, 1.0f);
+                    float3 light = emitted * (u.brightness * weight * gain * u.referenceArea * near * near
+                                              * p.starShare * fade / (size * size));
+                    float top = max(max(light.x, light.y), light.z);
+                    light *= top > u.inside.starCap ? u.inside.starCap / top : 1.0f;
+                    out.pointSize = size;
+                    out.color = half3(light);
+                } else if (kept <= 0.0f) {
+                    // All of its light is its stars', or it stands at the near plane.
+                    return culledSplat();
+                } else {
+                    out.color = half3(min(emitted * (u.brightness * weight * gain * spread * kept), 6.0e4f));
+                }
+                #else
                 out.color = half3(emitted * (u.brightness * weight * gain * spread));
+                #endif
                 out.opticalDepth = half(0.0f);
             }
             return out;
@@ -830,6 +1067,212 @@ enum Shaders {
                                         cells, treeFrame, depth, scales, column));
         }
 
+        #if defined(SILLAGE_INSIDE)
+        // A particle's kernel length, which its point stars are scattered over.
+        static float insideLength(float spacing, float kernelScale, constant SplatUniforms &u) {
+            float scale = kernelScale < 0.8f ? mix(0.9f, kernelScale, u.glint) : kernelScale;
+            return max(spacing * u.smoothingScale * scale, 1e-4f);
+        }
+
+        // Stars are drawn eight to a list entry: a particle takes an entry for every eight stars
+        // it draws.
+        constant uint insideGroup = 8u;
+
+        // How many entries a particle takes in the list of the stars to draw: none when it does
+        // not emit, stands past the near field, has given its stars none of its light yet, or
+        // when the sphere they are scattered in misses the view.
+        static uint insideGroups(uint index, device const float3 *positions,
+                                 device const float *luminosity, device const uint *component,
+                                 device const uint *galaxy, device const float *formation,
+                                 device const float *smoothing, device const float2 *traits,
+                                 constant SplatUniforms &u,
+                                 texture2d<float, access::sample> column) {
+            if (splatSkips(component[index], formation[index], u)) { return 0u; }
+            float4 clip = u.viewProjection * float4(positions[index], 1.0f);
+            float reach = insideLength(smoothing[index], traits[index].y, u) * u.inside.starSpread;
+            if (clip.w > u.inside.windowFar || clip.w < -reach) { return 0u; }
+            float room = clip.w + reach;
+            if (abs(clip.x) > room + reach * u.inside.projectionX
+                || abs(clip.y) > room + reach * u.inside.projectionY) { return 0u; }
+            Drawn p = massiveDrawn(index, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            float starred = insideStarred(insideRaw(p, clip, u, column), clip.w, u.inside);
+            if (starred <= 0.0f) { return 0u; }
+            return (uint(ceil(insideStarsDrawn(starred, u.inside))) + insideGroup - 1u) / insideGroup;
+        }
+
+        // The stars to draw, listed in the order of their particles' indices so that two
+        // drawings of a frame lay them in the same order (#297): each block of particles counts
+        // its entries, one thread turns the counts into where each block's entries start and
+        // writes the draw's arguments, and each block writes its entries there, a particle's
+        // index and which eight of its stars. `span` is the particles, the particles a block
+        // and the entries the list holds.
+        kernel void insideCount(device const float3 *positions [[buffer(0)]],
+                                device const float *luminosity [[buffer(2)]],
+                                device const uint *component [[buffer(3)]],
+                                constant SplatUniforms &u [[buffer(4)]],
+                                device const uint *galaxy [[buffer(5)]],
+                                device const float *smoothing [[buffer(7)]],
+                                device const float *formation [[buffer(8)]],
+                                device const float2 *traits [[buffer(10)]],
+                                device uint *counts [[buffer(20)]],
+                                constant uint3 &span [[buffer(21)]],
+                                texture2d<float, access::sample> column [[texture(0)]],
+                                uint block [[thread_position_in_grid]]) {
+            uint from = block * span.y;
+            if (from >= span.x) { return; }
+            uint to = min(from + span.y, span.x);
+            uint count = 0u;
+            for (uint index = from; index < to; ++index) {
+                count += insideGroups(index, positions, luminosity, component, galaxy, formation,
+                                      smoothing, traits, u, column);
+            }
+            counts[block] = count;
+        }
+
+        kernel void insideOffsets(device uint *counts [[buffer(20)]],
+                                  constant uint3 &span [[buffer(21)]],
+                                  device uint *draw [[buffer(22)]],
+                                  uint first [[thread_position_in_grid]]) {
+            if (first != 0u) { return; }
+            uint blocks = (span.x + span.y - 1u) / span.y;
+            uint total = 0u;
+            for (uint block = 0u; block < blocks; ++block) {
+                uint count = counts[block];
+                counts[block] = total;
+                total += count;
+            }
+            // MTLDrawPrimitivesIndirectArguments: vertices, instances, first vertex and instance.
+            draw[0] = min(total, span.z);
+            draw[1] = insideGroup;
+            draw[2] = 0u;
+            draw[3] = 0u;
+        }
+
+        kernel void insideFill(device const float3 *positions [[buffer(0)]],
+                               device const float *luminosity [[buffer(2)]],
+                               device const uint *component [[buffer(3)]],
+                               constant SplatUniforms &u [[buffer(4)]],
+                               device const uint *galaxy [[buffer(5)]],
+                               device const float *smoothing [[buffer(7)]],
+                               device const float *formation [[buffer(8)]],
+                               device const float2 *traits [[buffer(10)]],
+                               device const uint *offsets [[buffer(20)]],
+                               constant uint3 &span [[buffer(21)]],
+                               device uint2 *list [[buffer(23)]],
+                               texture2d<float, access::sample> column [[texture(0)]],
+                               uint block [[thread_position_in_grid]]) {
+            uint from = block * span.y;
+            if (from >= span.x) { return; }
+            uint to = min(from + span.y, span.x);
+            uint at = offsets[block];
+            for (uint index = from; index < to; ++index) {
+                uint groups = insideGroups(index, positions, luminosity, component, galaxy,
+                                           formation, smoothing, traits, u, column);
+                for (uint group = 0u; group < groups && at < span.z; ++group) {
+                    list[at] = uint2(index, group);
+                    at += 1u;
+                }
+            }
+        }
+
+        // Star `iid` of the eight a list entry stands for (#297): the light a near particle's
+        // splat gives up goes to a few bright stars over a crowd of faint ones, scattered in its
+        // kernel from a hash of its index and the star's rank, so the same particle always has
+        // the same stars, wherever the camera is.
+        struct StarOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            half3 color;
+            half4 slab;
+            /// Half of the streak, and the star's own radius, both in the point's square, which
+            /// is one across.
+            float2 half_streak;
+            float radius;
+        };
+
+        static StarOut culledStar() {
+            StarOut out;
+            out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
+            out.pointSize = 0.0f;
+            out.color = half3(half(0.0f));
+            out.slab = half4(half(0.0f));
+            out.half_streak = float2(0.0f);
+            out.radius = 0.5f;
+            return out;
+        }
+
+        vertex StarOut pointStarVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
+                                        device const float3 *positions [[buffer(0)]],
+                                        device const float *population [[buffer(1)]],
+                                        device const float *formation [[buffer(8)]],
+                                        device const float *luminosity [[buffer(2)]],
+                                        device const uint *component [[buffer(3)]],
+                                        constant SplatUniforms &u [[buffer(4)]],
+                                        device const uint *galaxy [[buffer(5)]],
+                                        constant DiskFrame *frames [[buffer(6)]],
+                                        device const float *smoothing [[buffer(7)]],
+                                        device const float2 *stellar [[buffer(9)]],
+                                        device const float2 *traits [[buffer(10)]],
+                                        device const float *rampKeys [[buffer(11)]],
+                                        constant GalaxyRamp *ramps [[buffer(12)]],
+                                        device const uint2 *list [[buffer(23)]],
+                                        texture2d<float, access::sample> column [[texture(0)]]) {
+            uint index = list[vid].x;
+            uint rank = list[vid].y * insideGroup + iid;
+            Drawn p = massiveDrawn(index, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            p.warming = traits[index].x;
+            p.population = population[index];
+            p.rampKey = rampKeys[index];
+            float4 clip = u.viewProjection * float4(p.position, 1.0f);
+            float starred = insideStarred(insideRaw(p, clip, u, column), clip.w, u.inside);
+            // The last star a particle draws comes in as the particle turns.
+            float present = saturate(insideStarsDrawn(starred, u.inside) - float(rank));
+            if (present <= 0.0f) { return culledStar(); }
+            float2 a = insideHash(uint2(index, rank * 2u + 1u));
+            float2 b = insideHash(uint2(index ^ 0x9e3779b9u, rank * 2u + 2u));
+            float z = 2.0f * a.x - 1.0f;
+            float phi = 6.2831853f * a.y;
+            float ring = sqrt(max(1.0f - z * z, 0.0f));
+            float radius = insideLength(p.spacing, p.kernelScale, u) * u.inside.starSpread
+                * pow(max(b.x, 1e-6f), 1.0f / 3.0f);
+            p.position += float3(ring * cos(phi), ring * sin(phi), z) * radius;
+            p.starShare = pow(float(rank + 1u), -u.inside.starShareExponent) * u.inside.starShareNorm
+                * present * starred;
+            p.starHash = b.y;
+            Splat star = splat(p, u, frames, stellar, ramps, column);
+            if (star.pointSize <= 0.0f) { return culledStar(); }
+            // The streak the star leaves while the shutter is open (#297): from where this
+            // camera puts it to where the next one does, in pixels. The point grows to hold it,
+            // the light is spread along it, and the fragment draws the star's own profile
+            // across it. A string of renders then draws one unbroken streak, not a row of dots.
+            float4 next = u.inside.nextViewProjection * float4(p.position, 1.0f);
+            float2 extent = float2(u.projectionScale / u.inside.projectionX,
+                                   u.projectionScale / u.inside.projectionY);
+            float2 from = star.position.xy / star.position.w;
+            float2 moved = float2(0.0f);
+            if (next.w > u.inside.nearPlane && star.position.w > u.inside.nearPlane) {
+                moved = (next.xy / next.w - from) * extent;
+            }
+            float travel = length(moved);
+            // No point is wider than 511 pixels: a longer streak is cut short and keeps its light.
+            float drawn = min(travel, 480.0f);
+            if (travel > drawn) { moved *= drawn / travel; }
+            float size = star.pointSize;
+            StarOut out;
+            out.position = float4((from + 0.5f * moved / extent) * star.position.w, star.position.zw);
+            out.pointSize = size + drawn;
+            // The light of the star's disc over the disc and the band between its two ends.
+            out.color = half3(float3(star.color) / (1.0f + 2.407f * drawn / size));
+            out.slab = star.slab;
+            // The square's y runs down the screen, the clip space's up.
+            out.half_streak = 0.5f * float2(moved.x, -moved.y) / out.pointSize;
+            out.radius = 0.5f * size / out.pointSize;
+            return out;
+        }
+        #endif
+
         vertex SplatOut starfieldVertex(uint vid [[vertex_id]],
                                         device const BackgroundStar *stars [[buffer(0)]],
                                         constant SplatUniforms &u [[buffer(4)]]) {
@@ -872,7 +1315,8 @@ enum Shaders {
             /// baked lace's mean.
             float4 target;
             /// How many times coarser the carrier is drawn, and the smallest grain it takes, in
-            /// its own pixels.
+            /// its own pixels; from inside a galaxy (#297), the distances from a disk between which
+            /// its lace flattens out.
             float4 carrier;
         };
 
@@ -1065,6 +1509,22 @@ enum Shaders {
             // The thinnest wall is a tenth of a cell: under a pixel it would only shimmer.
             float pixel = max(length(dx), length(dy));
             float detail = smoothstep(0.6f, 2.0f, 0.1f * cell / max(pixel, 1e-6f));
+            #if defined(SILLAGE_INSIDE)
+            // The lace flattens out for an eye near the disk (#297): it lies in the mid-plane,
+            // and from a few kiloparsecs above it or less its walls run to the horizon as long
+            // straight streaks, a tiled floor seen in perspective. The dust it carries stays, as
+            // the even layer the web makes of the grains. The disk is its plane out to the web's
+            // own edge; `carrier.zw` are the distances from it between which the lace goes.
+            // From twice the far distance in, a ray that grazes the plane loses it first.
+            if (w.carrier.w > 0.0f) {
+                float above = dot(rel, axis);
+                float beyond = max(length(rel - axis * above) - 7.0f * h, 0.0f);
+                float away = sqrt(above * above + beyond * beyond);
+                float graze = abs(dot(ray, axis)) / max(length(ray), 1e-6f);
+                detail *= smoothstep(w.carrier.z, w.carrier.w, away)
+                    * smoothstep(0.25f, 0.6f, graze + smoothstep(w.carrier.w, 2.0f * w.carrier.w, away));
+            }
+            #endif
             if (detail <= 0.0f) { return 1.0f; }
             float radius = length(p);
             float omega = webOmega(frame, radius);
@@ -1130,9 +1590,13 @@ enum Shaders {
             grain.hole = kind == 6u;
             bool absorbing = (kind == 2u && !knot) || grain.hole;
             if (kind == 3u || (grain.hole && u.holeShadow <= 0.0f) || !absorbing) { return false; }
+            #if defined(SILLAGE_INSIDE)
+            grain.slab = insideDustSlabs(insideSlabAt(grain.position.w, u), u.inside);
+            #else
             float slabAt = clamp((grain.position.w - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f;
             uint slabIndex = uint(slabAt);
             grain.slab = half4(slabIndex == 0u, slabIndex == 1u, slabIndex == 2u, slabIndex == 3u);
+            #endif
             grain.perPixel = u.projectionScale / max(grain.position.w, 1e-3f);
             grain.amount = 0.0f;
             if (grain.hole) { return true; }
@@ -1175,7 +1639,12 @@ enum Shaders {
                                 * mix(1.0f, w.right.w, grain.amount), 1e-4f) * grain.perPixel;
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             float reach = span / grain.perPixel;
+            #if defined(SILLAGE_INSIDE)
+            float spread = insideSpread(u.referenceArea / (reach * reach), raw, span, grain.position.w, u.inside)
+                * insideFade(grain.position.w, raw / grain.perPixel, u.inside);
+            #else
             float spread = u.referenceArea / (reach * reach);
+            #endif
             float2 pattern = armWave(position, frame);
             float lane = 1.0f + 7.0f * pow(pattern.x, 2.0f) * pattern.y * laneDetail(position, frame);
             out.pointSize = span * 1.3f;
@@ -1279,7 +1748,12 @@ enum Shaders {
             // Never under a few of its own pixels, or the coarse target would drop part of it.
             float span = clamp(raw, max(u.minimumSize, w.carrier.y * coarse / 1.3f), u.maximumSize);
             float reach = span / grain.perPixel;
+            #if defined(SILLAGE_INSIDE)
+            float spread = insideSpread(u.referenceArea / (reach * reach), raw, span, grain.position.w, u.inside)
+                * insideFade(grain.position.w, raw / grain.perPixel, u.inside);
+            #else
             float spread = u.referenceArea / (reach * reach);
+            #endif
             float2 pattern = armWave(position, frame);
             // The painted strands' own mean under the web, so the web moves no exposure.
             float lane = 1.0f + 7.0f * pow(pattern.x, 2.0f) * pattern.y * 0.855f;
@@ -1329,7 +1803,12 @@ enum Shaders {
         }
 
         SHARED half4 webTagPixel(half tag, half4 slab) {
+            #if defined(SILLAGE_INSIDE)
+            // A grain spread over two slabs tags both.
+            return tag * half4(slab > half4(half(0.0f)));
+            #else
             return tag * slab;
+            #endif
         }
 
         #if defined(__METAL_VERSION__)
@@ -1480,6 +1959,25 @@ enum Shaders {
                                            float2 coord [[point_coord]],
                                            SplatFetch prior) {
             float r2 = splatRadius2(coord);
+            if (r2 > 1.0f) { discard_fragment(); }
+
+            LightTarget out;
+            out.light = lightPixel(in.color, in.slab, prior.dust, r2);
+            return out;
+        }
+        #endif
+
+        #if defined(SILLAGE_INSIDE) && defined(__METAL_VERSION__)
+        // A pixel of a point star's streak (#297): the star's own profile across the line from
+        // its first place to its last.
+        fragment LightTarget pointStarFragment(StarOut in [[stage_in]],
+                                               float2 coord [[point_coord]],
+                                               SplatFetch prior) {
+            float2 d = coord - 0.5f;
+            float along = dot(in.half_streak, in.half_streak);
+            float t = along > 1e-12f ? clamp(dot(d, in.half_streak) / along, -1.0f, 1.0f) : 0.0f;
+            float2 off = (d - in.half_streak * t) / in.radius;
+            float r2 = dot(off, off);
             if (r2 > 1.0f) { discard_fragment(); }
 
             LightTarget out;
@@ -1870,6 +2368,28 @@ enum Shaders {
             if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
             dst.write(resolvePixel(light, gid, factor), gid);
         }
+
+        #if defined(SILLAGE_INSIDE)
+        // One of the renders a frame is averaged from, into the picture's light (#297): the box
+        // average `resolve` makes, times this render's share, on top of the renders before when
+        // `share.y` says so. Every sample is held under what a half float carries, so that a few
+        // near stars on one pixel cannot turn it to infinity and the bloom to nothing.
+        kernel void insideResolve(texture2d<float, access::read> light [[texture(0)]],
+                                  texture2d<float, access::read_write> dst [[texture(2)]],
+                                  constant uint &factor [[buffer(0)]],
+                                  constant float2 &share [[buffer(1)]],
+                                  uint2 gid [[thread_position_in_grid]]) {
+            if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) { return; }
+            float3 emitted = float3(0.0f);
+            for (uint y = 0; y < factor; ++y) {
+                for (uint x = 0; x < factor; ++x) {
+                    emitted += min(light.read(gid * factor + uint2(x, y)).rgb, float3(6.0e4f));
+                }
+            }
+            float3 before = share.y > 0.5f ? dst.read(gid).rgb : float3(0.0f);
+            dst.write(float4(before + emitted / float(factor * factor) * share.x, 1.0f), gid);
+        }
+        #endif
 
         kernel void plainComposite(texture2d<float, access::read> light [[texture(0)]],
                                    texture2d<float, access::write> output [[texture(2)]],

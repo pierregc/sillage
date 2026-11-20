@@ -704,6 +704,8 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 /// HEVC unless the preset or `--codec` says otherwise; another codec adds its name, as
 /// `<preset>-h264.mp4` and `<preset>-prores.mov`.
 func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReporter) throws -> Int32 {
+    // A line at a time even into a file, so that a long export started detached can be followed.
+    setvbuf(stdout, nil, _IOLBF, 0)
     func option(_ name: String) -> String? {
         options.firstIndex(of: "--\(name)").flatMap {
             $0 + 1 < options.count ? options[$0 + 1] : nil
@@ -807,8 +809,9 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
             let url = out.appendingPathComponent(String(format: "key-%02d-%06.2fs.png", index, key.seconds))
             try PNGWriter.write(
                 PNGWriter.image(key.rgba, width: width, height: height), maximumWidth: nil, to: url)
-            print("key        \(url.path)")
+            print(String(format: "key        %@  %.0f ms", url.path, key.milliseconds))
         }
+        if let inside = export.inside { print("inside     \(inside.summary)") }
         print(String(format: "flight     keys drawn in %.1f s", Date().timeIntervalSince(started)))
         return 0
     }
@@ -958,6 +961,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
     for line in report.overlay { print("overlay    \(line)") }
     if let exposure = report.exposure { print("exposure   \(exposure.summary)") }
+    if let inside = report.inside { print("inside     \(inside.summary)") }
     print(
         String(
             format: "export     %d frames in %.1f s, %.1f frames a second, %.2fx real time, %.1f MB",
@@ -1255,7 +1259,9 @@ func eventCommand(_ arguments: [String]) -> Int32 {
 /// keys are written from, at each moment: every galaxy's centre and disk axes as the take holds
 /// them, and the camera the export draws there, as a key ready to paste.
 func flightCommand(_ arguments: [String]) -> Int32 {
-    let usage = "usage: sillage-render flight <scene folder> --at <myr,...> [--look <name>] [--take <file>]"
+    let usage =
+        "usage: sillage-render flight <scene folder> --at <myr,...> [--look <name>] [--take <file>]"
+        + " [--arms <kpc,...>]"
     guard let path = arguments.first, !path.hasPrefix("--") else { fail(usage) }
     func option(_ name: String) -> String? {
         arguments.firstIndex(of: "--\(name)").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
@@ -1278,13 +1284,24 @@ func flightCommand(_ arguments: [String]) -> Int32 {
                 look.camera.mode.rawValue))
         func text(_ v: SIMD3<Double>) -> String { String(format: "[%.2f, %.2f, %.2f]", v.x, v.y, v.z) }
         func text(_ v: SIMD3<Float>) -> String { text(SIMD3<Double>(Double(v.x), Double(v.y), Double(v.z))) }
+        // `--arms <kpc,...>` (#297): where each disk is densest at those radii, a place to fly into.
+        let radii = option("arms")?.split(separator: ",").compactMap { Double($0) } ?? []
+        let export = try radii.isEmpty ? nil : TakeExport(take: loaded, look: look, capturedRate: rate)
         for myr in times.sorted() {
             let position = try TimeTrack.position(of: myr, in: take.megayears)
             print(String(format: "\n%.1f Myr   captured frame %.2f", myr, position))
+            let arms = try export?.densest(atCaptured: position, radii: radii)
             for (galaxy, (centre, axes)) in zip(take.centres(position), take.disks(position)).enumerated() {
                 print(
                     "galaxy \(galaxy)   centre \(text(centre))  disk x \(text(axes[0])) y \(text(axes[1])) spin \(text(axes[2]))"
                 )
+                for arm in arms?[galaxy] ?? [] {
+                    print(
+                        String(
+                            format:
+                                "  densest at %.1f kpc   {\"galaxy\": %d, \"offset\": %@, \"disk\": true}, %.1f times the ring's mean",
+                            simd_length(arm.offset), galaxy, text(arm.offset), arm.contrast))
+                }
             }
             let camera = replay.shot(atCaptured: position).camera
             print(

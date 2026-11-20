@@ -462,8 +462,18 @@ the look as ever, `--fps`, `--preset`, `--codec`, `--stills`, `--still-frames` a
 work as without a flight, and `--speed` does not go with it. `--flight-keys <dir>` draws only the
 frame at each key, as PNGs, and encodes nothing: a flight seen in seconds. `sillage-render flight
 <scene> --at <myr,...> [--look <look>]` prints, at those moments, each galaxy's centre and disk
-axes and the export's camera, which is what keys are written from. Format, interpolation and a
-worked example in [flights](notes/flights.md).
+axes and the export's camera, which is what keys are written from; `--arms <kpc,...>` adds where
+each disk is densest at those radii, an arm to fly into. Format, interpolation and a worked example
+in [flights](notes/flights.md).
+
+**Inside a galaxy (#297).** A flight's camera comes within a parsec, and near matter its frames
+are drawn for it: nothing is cut at the near plane, a capped kernel does not flare, the near
+particles turn into point stars (128 each), the dust is ordered in depth from the eye, the exposure
+follows by itself and a fast pass is averaged from several renders. All of it is keyed on distances,
+so the photograph a flight leaves from stays the export's, and an export without a flight draws
+the same bytes as before. The file's optional `inside` block sets each piece; the export's last
+lines say what the flight took. What each does and costs in
+[inside a galaxy](notes/inside-a-galaxy.md).
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph

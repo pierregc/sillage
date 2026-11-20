@@ -415,12 +415,18 @@ struct ExportTests {
     @Test func aFlightDrawsItsFramesAndItsFreezeFromOnePosition() throws {
         let loaded = try take(frames: 12, interval: 3)
         let megayears = TimeTrack.megayears(of: loaded.recording)
-        let flight = FlightFile(keys: [
-            .init(at: 0, myr: megayears[0], eye: .world(SIMD3(0, -60, 20)), aim: .world(.zero)),
-            .init(at: 0.4, myr: megayears[4], eye: .galaxy(1, offset: SIMD3(0, -30, 10), disk: false)),
-            .init(at: 0.8, myr: megayears[4], eye: .world(SIMD3(30, 0, 20)), exposure: -1),
-            .init(at: 1.1, myr: megayears[11], eye: .world(SIMD3(0, 60, 20))),
-        ])
+        // Each frame drawn once at the exposure its keys give: a key's still is then its frame.
+        var inside = InsideSettings()
+        inside.exposure = 0
+        inside.subframes = 1
+        let flight = FlightFile(
+            inside: inside,
+            keys: [
+                .init(at: 0, myr: megayears[0], eye: .world(SIMD3(0, -60, 20)), aim: .world(.zero)),
+                .init(at: 0.4, myr: megayears[4], eye: .galaxy(1, offset: SIMD3(0, -30, 10), disk: false)),
+                .init(at: 0.8, myr: megayears[4], eye: .world(SIMD3(30, 0, 20)), exposure: -1),
+                .init(at: 1.1, myr: megayears[11], eye: .world(SIMD3(0, 60, 20))),
+            ])
         let export = try TakeExport(take: loaded, look: autoLook, capturedRate: 10, flight: flight)
         #expect(abs(export.videoSeconds - 1.1) < 1e-9)
         let positions = export.positions(framesPerSecond: 10, start: 0, duration: nil)
@@ -463,6 +469,40 @@ struct ExportTests {
             }
             #expect(flown[11] != plain[11])
         }
+    }
+
+    /// A flight that dives among the particles draws their stars, is averaged from several
+    /// renders where it passes them fast, and says what it took (#297).
+    @Test func aFlightAmongTheParticlesDrawsTheirStarsAndBlurs() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let megayears = TimeTrack.megayears(of: loaded.recording)
+        let flight = FlightFile(keys: [
+            .init(at: 0, myr: megayears[0], look: true),
+            .init(at: 0.5, myr: megayears[5], eye: .world(SIMD3(0, -3, 0.2)), aim: .world(.zero)),
+            .init(at: 1.1, myr: megayears[5], eye: .world(SIMD3(3, 0, 0.2)), aim: .world(.zero)),
+        ])
+        var file = autoLook
+        file.camera.mode = .fixed
+        let export = try TakeExport(take: loaded, look: file, capturedRate: 10, flight: flight)
+        let frames = try export.frames(width: 64, height: 36, framesPerSecond: 10)
+        let report = try #require(export.inside)
+        #expect(frames.count == 12 && frames.allSatisfy { $0.contains { $0 > 0 } })
+        #expect(report.nearest < 1 && report.mostStars > 0)
+        #expect(report.mostRenders == InsideSettings().subframes && report.renders > frames.count)
+        #expect(report.deepestTrim >= 0 && report.deepestTrim <= InsideExposure.deepest)
+        // The same flight again is the same frames, to the bit.
+        let again = try TakeExport(take: loaded, look: file, capturedRate: 10, flight: flight)
+            .frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(again == frames)
+        // The first frame is the look's own: the export's, drawn once and left at its exposure.
+        let plain = try TakeExport(take: loaded, look: file, capturedRate: 10)
+            .frames(width: 64, height: 36, framesPerSecond: 10)
+        let most = zip(frames[0], plain[0]).map { abs(Int($0) - Int($1)) }.max() ?? 0
+        #expect(most <= 2, "\(most) levels from the export's first frame")
+        // No export without a flight has anything of it.
+        let quiet = try TakeExport(take: loaded, look: file, capturedRate: 10)
+        _ = try quiet.frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(quiet.inside == nil)
     }
 
     /// A preview over its size budget is drawn again narrower, from the same take.

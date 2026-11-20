@@ -62,6 +62,11 @@ RecordingShaders expandSnapshots21 metal-only: take playback
 Shaders splatVertex cuda
 Shaders splatTracerVertex cuda
 Shaders starfieldVertex cuda
+Shaders insideCount pending #347
+Shaders insideOffsets pending #347
+Shaders insideFill pending #347
+Shaders pointStarVertex pending #347
+Shaders pointStarFragment pending #347
 Shaders dustFragment cuda in splatVertex splatTracerVertex dustWebVertex dustWebTracerVertex
 Shaders bakeLace cuda
 Shaders dustWebVertex cuda
@@ -78,6 +83,7 @@ Shaders countFragment cuda in countVertex countTracerVertex
 Shaders plainVertex cuda
 Shaders plainTracerVertex cuda
 Shaders plainFragment cuda in plainVertex plainTracerVertex
+Shaders insideResolve pending #347
 Shaders starfieldFragment cuda in starfieldVertex
 Shaders resolve cuda
 Shaders plainComposite cuda

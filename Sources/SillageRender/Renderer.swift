@@ -53,6 +53,15 @@ public final class Renderer {
     private var widened: (library: MTLLibrary, massive: MTLRenderPipelineState)?
     private var widenedTracers: MTLRenderPipelineState?
     private var widenedUnavailable = false
+    /// What a flight's frame is drawn with from inside a galaxy (#297), and through which a
+    /// frame set to it is drawn wherever the camera is; nil, the default, draws as every frame
+    /// did.
+    public var inside: InsideFrame?
+    private var insidePass: InsidePass?
+    /// Why a frame asked for from inside was drawn without it, when it was.
+    public private(set) var insideFailure: String?
+    /// The point stars the last frame drew, to the eight, once it has run.
+    public var starsDrawn: Int { insidePass?.listed ?? 0 }
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
@@ -405,7 +414,7 @@ public final class Renderer {
         tracerFallback = device.makeBuffer(bytes: &fallback, length: 16, options: .storageModeShared)
     }
 
-    private static func additive(
+    static func additive(
         _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
         attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice
     ) throws -> MTLRenderPipelineState {
@@ -490,8 +499,51 @@ public final class Renderer {
 
     /// Encodes the whole frame. Pass a drawable texture to present, or nil to render offscreen.
     public func encode(camera: Camera, into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
-        encodeSplat(camera: camera, into: buffer)
-        encodePost(into: buffer, present: present)
+        encode(cameras: [camera], into: buffer, present: present)
+    }
+
+    /// One frame through the cameras its shutter passes (#297): the motion blur of a flight
+    /// near matter. With several, the frame is the mean of a render through each but the last,
+    /// the light averaged before the tone curve, and each render draws the point stars as the
+    /// streaks they leave on the way to the next camera. Only a frame drawn from inside is; any
+    /// other draws through the middle camera.
+    public func encode(cameras: [Camera], into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
+        guard !cameras.isEmpty else { return }
+        guard inside != nil, !settings.plain, let pass = insideResources() else {
+            encodeSplat(camera: cameras[cameras.count / 2], into: buffer)
+            encodePost(into: buffer, present: present)
+            return
+        }
+        let renders = max(cameras.count - 1, 1)
+        for index in 0..<renders {
+            encodeSplat(
+                camera: cameras[index], into: buffer,
+                next: index + 1 < cameras.count ? cameras[index + 1] : nil)
+            guard let compute = buffer.makeComputeCommandEncoder() else { continue }
+            var factor = UInt32(settings.supersample)
+            var share = SIMD2<Float>(1 / Float(renders), index > 0 ? 1 : 0)
+            dispatch(compute, pass.resolve, into: resolved) { encoder in
+                encoder.setTexture(accumulation, index: 0)
+                encoder.setTexture(resolved, index: 2)
+                encoder.setBytes(&factor, length: 4, index: 0)
+                encoder.setBytes(&share, length: 8, index: 1)
+            }
+            compute.endEncoding()
+        }
+        encodePost(into: buffer, present: present, resolved: true)
+    }
+
+    /// Nil when the inside of a galaxy cannot be drawn here, and the frame is then drawn as any
+    /// other; `insideFailure` says why.
+    private func insideResources() -> InsidePass? {
+        if insidePass == nil, insideFailure == nil {
+            do {
+                insidePass = try InsidePass(device: device, particles: drawnCount)
+            } catch {
+                insideFailure = "\(error)"
+            }
+        }
+        return insidePass
     }
 
     /// The particle passes of a frame, as its plan lists them (`FramePlan`, which the CUDA
@@ -500,10 +552,19 @@ public final class Renderer {
     /// star field.
     private func encodeSplat(
         camera: Camera, into buffer: MTLCommandBuffer, particles: Range<Int>? = nil,
-        stages: ClosedRange<UInt32> = 0...1, first: Bool = true
+        stages: ClosedRange<UInt32> = 0...1, first: Bool = true, next: Camera? = nil
     ) {
+        // From inside a galaxy (#297): the passes its text changes come from its own library.
+        // Not for a frame drawn in parts, which the canvas alone asks for.
+        let within = settings.plain || particles != nil ? nil : inside
+        var deep = within.flatMap { _ in insideResources() }
         // Its own pipelines, so a look without the web draws what it always drew.
-        let web = FramePlan.drawsWeb(settings, stages: stages) ? webResources() : nil
+        let wide = (settings.width * settings.supersample, settings.height * settings.supersample)
+        let web =
+            FramePlan.drawsWeb(settings, stages: stages)
+            ? (deep == nil
+                ? webResources() : deep?.webPass(device: device, width: wide.0, height: wide.1))
+            : nil
         let plan = FramePlan(
             settings: settings, camera: camera, time: time, drawnCount: drawnCount,
             tracerCount: tracerCount, luminosityNormalisation: luminosityNormalisation,
@@ -516,6 +577,47 @@ public final class Renderer {
             : nil
         let uniformsLength = MemoryLayout<SplatUniforms>.stride
         let webLength = MemoryLayout<WebUniforms>.stride
+        let deepTracers = traced == nil ? nil : deep?.tracerPipelines(device: device)
+        // The lace flattens out near a disk, between the distances the settings give.
+        var webbed = plan.web
+        if let within, deep != nil {
+            webbed?.carrier.z = within.settings.web[0]
+            webbed?.carrier.w = within.settings.web[1]
+        }
+        insidePass = deep ?? insidePass
+
+        // The uniforms of a pass that reads the inside of a galaxy behind them.
+        func bindDeep(_ encoder: MTLRenderCommandEncoder, _ uniforms: SplatUniforms) {
+            guard let within else { return }
+            var both = InsideSplatUniforms(
+                splat: uniforms,
+                inside: InsideUniforms(
+                    within, camera: camera, next: next, settings: settings, splat: uniforms))
+            encoder.setVertexBytes(&both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
+        }
+
+        // The stars to draw are listed once the column density they read is counted, before
+        // the passes that draw: they go with the stars.
+        let starred = stages.contains(1) && (within?.settings.stars ?? 0) > 0 && drawnCount > 0
+        func listStars() {
+            guard starred, let within, let deep else { return }
+            let uniforms = plan.uniforms(for: .stars)
+            var both = InsideSplatUniforms(
+                splat: uniforms,
+                inside: InsideUniforms(
+                    within, camera: camera, next: next, settings: settings, splat: uniforms))
+            deep.encodeList(into: buffer) { encoder in
+                encoder.setBuffer(drawnBuffer, offset: positionOffset, index: 0)
+                encoder.setBuffer(luminosityBuffer, offset: 0, index: 2)
+                encoder.setBuffer(componentBuffer, offset: 0, index: 3)
+                encoder.setBytes(&both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
+                encoder.setBuffer(galaxyBuffer, offset: 0, index: 5)
+                encoder.setBuffer(smoothingBuffer, offset: 0, index: 7)
+                encoder.setBuffer(formationBuffer, offset: 0, index: 8)
+                encoder.setBuffer(traitBuffer, offset: 0, index: 10)
+                encoder.setTexture(columnDensity, index: 0)
+            }
+        }
 
         func descriptor(_ targets: [MTLTexture], load: MTLLoadAction = .clear)
             -> MTLRenderPassDescriptor
@@ -536,6 +638,7 @@ public final class Renderer {
         var frame: MTLRenderCommandEncoder?
         func frameEncoder() -> MTLRenderCommandEncoder? {
             if frame == nil {
+                listStars()
                 frame = buffer.makeRenderCommandEncoder(
                     descriptor: descriptor(
                         [accumulation, dustAccumulation], load: plan.clears ? .clear : .load))
@@ -605,7 +708,7 @@ public final class Renderer {
                 encoder.endEncoding()
 
             case .webCarrier:
-                guard let web, var webUniforms = plan.web,
+                guard let web, var webUniforms = webbed,
                     let encoder = buffer.makeRenderCommandEncoder(
                         descriptor: descriptor([web.carrier, web.tags]))
                 else { continue }
@@ -618,6 +721,14 @@ public final class Renderer {
                 encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
                 encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                if let within {
+                    var both = InsideSplatUniforms(
+                        splat: uniforms,
+                        inside: InsideUniforms(
+                            within, camera: camera, next: next, settings: settings, splat: uniforms))
+                    encoder.setVertexBytes(
+                        &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
+                }
                 encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
                 if let traced { bindTracers(encoder, traced.source) }
                 drawParts(
@@ -637,19 +748,25 @@ public final class Renderer {
                 guard let encoder = frameEncoder() else { continue }
                 bindParticles(encoder)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
-                drawParts(encoder, massive: dustPipeline, tracers: traced?.pipelines.dust)
+                if let deep {
+                    bindDeep(encoder, uniforms)
+                    drawParts(encoder, massive: deep.dust, tracers: deepTracers?.dust)
+                } else {
+                    drawParts(encoder, massive: dustPipeline, tracers: traced?.pipelines.dust)
+                }
 
             case .paintedDust:
-                guard let web, var webUniforms = plan.web, let encoder = frameEncoder()
+                guard let web, var webUniforms = webbed, let encoder = frameEncoder()
                 else { continue }
                 bindParticles(encoder)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                bindDeep(encoder, uniforms)
                 encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
                 drawParts(
                     encoder, massive: web.painted, tracers: traced == nil ? nil : web.tracerPainted)
 
             case .webResolve:
-                guard let web, var webUniforms = plan.web, let encoder = frameEncoder()
+                guard let web, var webUniforms = webbed, let encoder = frameEncoder()
                 else { continue }
                 encoder.setRenderPipelineState(web.resolve)
                 encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
@@ -663,7 +780,16 @@ public final class Renderer {
                 guard let encoder = frameEncoder() else { continue }
                 bindParticles(encoder)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
-                if uniforms.widens, let wide = widenedPipelines(tracing: traced != nil) {
+                if let deep {
+                    bindDeep(encoder, uniforms)
+                    drawParts(encoder, massive: deep.splat, tracers: deepTracers?.splat)
+                    if starred {
+                        encoder.setRenderPipelineState(deep.stars)
+                        encoder.setVertexBuffer(deep.list, offset: 0, index: 23)
+                        encoder.drawPrimitives(
+                            type: .point, indirectBuffer: deep.draw, indirectBufferOffset: 0)
+                    }
+                } else if uniforms.widens, let wide = widenedPipelines(tracing: traced != nil) {
                     drawParts(encoder, massive: wide.massive, tracers: wide.tracers)
                 } else {
                     drawParts(encoder, massive: splatPipeline, tracers: traced?.pipelines.splat)
@@ -741,7 +867,11 @@ public final class Renderer {
 
     /// The post-processing of a frame, as its plan lists the passes (`PostPlan`, which the CUDA
     /// renderer executes too).
-    private func encodePost(into buffer: MTLCommandBuffer, present: MTLTexture?) {
+    /// `resolved` says the light is averaged down already, as a frame drawn from inside
+    /// leaves it (#297).
+    private func encodePost(
+        into buffer: MTLCommandBuffer, present: MTLTexture?, resolved done: Bool = false
+    ) {
         guard let compute = buffer.makeComputeCommandEncoder() else { return }
         let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
         let target = present ?? output
@@ -762,6 +892,7 @@ public final class Renderer {
         for pass in plan.passes {
             switch pass {
             case .resolve(let factor):
+                guard !done else { continue }
                 var factor = UInt32(factor)
                 dispatch(compute, resolvePipeline, into: resolved) { encoder in
                     encoder.setTexture(accumulation, index: 0)
@@ -905,9 +1036,15 @@ public final class Renderer {
     public private(set) var lastSplatTime: Double = 0
 
     /// Renders offscreen and reads the result back as 8-bit RGBA.
-    public func render(camera: Camera) -> [UInt8] {
-        guard let buffer = queue.makeCommandBuffer() else { return [] }
-        if timesSplatPass, let splat = queue.makeCommandBuffer() {
+    public func render(camera: Camera) -> [UInt8] { render(cameras: [camera]) }
+
+    /// As `encode(cameras:into:present:)`, read back.
+    public func render(cameras: [Camera]) -> [UInt8] {
+        guard let buffer = queue.makeCommandBuffer(), !cameras.isEmpty else { return [] }
+        let camera = cameras[cameras.count / 2]
+        if inside != nil {
+            encode(cameras: cameras, into: buffer)
+        } else if timesSplatPass, let splat = queue.makeCommandBuffer() {
             encodeSplat(camera: camera, into: splat)
             splat.commit()
             splat.waitUntilCompleted()
