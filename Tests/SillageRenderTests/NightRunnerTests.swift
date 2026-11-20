@@ -65,6 +65,10 @@ struct NightRunnerTests {
             """
             #!/bin/bash
             echo "$*" >> '\(calls.path)'
+            if [ "$1" = black-hole ]; then
+                [ -f '\(root.path)/fail-hole' ] && exit 1
+                mkdir -p "$3"; echo '{"kind": "blackHole"}' > "$3/scene.json"; exit 0
+            fi
             command="$1"; scene="$2"; shift 2
             particles=0; frames=0; preset=""; format=""; world=""; extra=""; pass=""; export=""
             while [ $# -gt 0 ]; do
@@ -173,6 +177,77 @@ struct NightRunnerTests {
         defer { try? FileManager.default.removeItem(at: root) }
         #expect(runner(recipe()).run() == 0)
         #expect(logged().filter { $0.hasPrefix("export ") }.allSatisfy { !$0.contains("--speed") })
+    }
+
+    private func holeCalls(_ calls: [String]) -> [String] {
+        calls.filter { $0.contains("hole-0") }.map {
+            $0.replacingOccurrences(of: #"\S*/(hole-\d\d)"#, with: "$1", options: .regularExpression)
+        }
+    }
+
+    /// A close up (#349) comes after the picks: its scene made from the night's seed, its run,
+    /// then a video of each preset, the animated previews and the speed left out.
+    @Test func aNightMakesItsCloseUpsAfterItsPicksAndResumesWithNothingLeftToDo() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var asked = recipe()
+        asked.closeUps = .value(2)
+        asked.speed = .auto
+        asked.export = .value(["1080p", "webp"])
+        #expect(runner(asked).run() == 0)
+        let calls = logged()
+        let seeds = (0..<2).map { NightPlanner.closeUpSeed($0, seed: 1) }
+        #expect(
+            holeCalls(calls) == [
+                "black-hole new hole-01 --tracers 6000000 --seed \(seeds[0]) --name hole-01",
+                "hires hole-01", "export hole-01 --preset 1080p",
+                "black-hole new hole-02 --tracers 6000000 --seed \(seeds[1]) --name hole-02",
+                "hires hole-02", "export hole-02 --preset 1080p",
+            ])
+        // After the last of the picks' own calls.
+        let first = try #require(calls.firstIndex { $0.contains("hole-01") })
+        #expect(calls[..<first].filter { $0.hasPrefix("export ") }.count == 4)
+        #expect(calls.filter { $0.hasPrefix("hires ") && !$0.contains("hole-") }.count == 2)
+
+        for name in ["hole-01", "hole-02"] {
+            let hole = SceneFolder(batch.appendingPathComponent(name))
+            #expect(FileManager.default.fileExists(atPath: hole.take.path))
+            #expect(FileManager.default.fileExists(atPath: hole.export(preset: "1080p").path))
+        }
+        // No pick, no scene to explore: the close ups are neither.
+        #expect(SceneRatings.read(batch: batch).chosen == ["scene-0002", "scene-0003"])
+        let night = try #require(NightFile.read(from: RunStatusFiles.night(batch: batch)))
+        #expect(night.state == .done)
+        #expect(night.phases.map(\.name) == ["explore", "pick", "hires", "style", "export", "closeup"])
+        #expect(night.phases.last?.done == 2 && night.phases.last?.planned == 2)
+        #expect(night.recipe["closeUps"] == "2" && night.recipe["closeUpVideos"] == "1080p")
+
+        #expect(runner(asked).run() == 0)
+        #expect(logged() == calls)
+    }
+
+    @Test func aNightThatPicksNothingStillMakesItsCloseUps() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var asked = recipe()
+        asked.pick = NightRecipe.Selection.none
+        asked.closeUps = .value(1)
+        #expect(runner(asked).run() == 0)
+        let calls = logged()
+        #expect(calls.filter { $0.hasPrefix("hires ") }.count == 1)
+        #expect(holeCalls(calls).count == 3 && holeCalls(calls)[1] == "hires hole-01")
+        #expect(NightFile.read(from: RunStatusFiles.night(batch: batch))?.state == .done)
+    }
+
+    @Test func aCloseUpThatFailsIsLeftOutAndTheNightGoesOn() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write(root.appendingPathComponent("fail-hole"), "")
+        var asked = recipe()
+        asked.closeUps = .value(2)
+        #expect(runner(asked).run() == 0)
+        // Each failed at its scene: nothing of it ran, and the second was tried all the same.
+        #expect(holeCalls(logged()).map { $0.split(separator: " ")[0] } == ["black-hole", "black-hole"])
+        let night = try #require(NightFile.read(from: RunStatusFiles.night(batch: batch)))
+        #expect(night.phases.last?.name == "closeup" && night.phases.last?.failed == 2)
+        #expect(night.state == .done)
     }
 
     @Test func aNightRunsEveryStepThenResumesWithNothingLeftToDo() throws {

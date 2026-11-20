@@ -264,7 +264,8 @@ The close up is a scene folder like a galaxy scene's, and goes through the same 
   frame. The lens table is rebuilt when the camera's distance changes, so a camera that comes in
   or goes away already works, at half a second a frame until #333 builds the table on the GPU.
 - **The queue** runs `hires` and `export` on a close up's folder as on a galaxy scene's, and
-  checks them when they are added. A night does not make one yet.
+  checks them when they are added. A night makes them with the recipe's `closeUps` (#349, see
+  [the night manager](../night-manager.md)).
 
 **The sample** (M4 Max, 6 M tracers, the default scene, alone on the GPU): `hires` 114 s, the
 spike's minute of stepping and the frames copied out and written; `export` of the whole run at
