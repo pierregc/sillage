@@ -1,0 +1,232 @@
+# Inside a galaxy (#296)
+
+What the renderer does when the camera goes into a disk, tried on real frames before #297
+changes anything: the README's Mice take (2026-11-04 scene-0067, 8 M visible particles on 12 M
+of dark matter, no light tracers) with `looks/photograph.look.json`, at frame 48 (disks whole,
+"calm") and frame 232 (first passage). Frames, sheets and clips are on the branch
+`assets/296-inside` under `docs/spikes/inside/`; the throwaway code on `spike/296-inside-code`.
+
+**In short.** From inside, today's renderer draws bokeh: every particle within a few kpc is
+capped at the kernel ceiling and keeps all its light, and the near plane at 1 kpc cuts the disk
+with a straight edge and leaves a black hole ahead of the eye. Handing the light of the near
+particles to **point stars** (each particle drawn as a small cluster of stars) is what turns the
+same 8 M particles into a star field you fly through; with the near plane at 1 pc, a fade before
+it, depth slabs placed from the eye and an exposure trim of 0 to 5 stops, the dive from the
+photograph into an arm holds together. The settings recommended for #297 are at the end.
+
+## The tool
+
+`sillage-render inside <job.json>` (branch `spike/296-inside-code`, not merged) draws a take at
+any captured position through any camera, with the variants below as `InsideSettings` on the
+renderer and look trims, and writes each frame with its measurements; `clips` draw camera paths
+in a disk's own axes (anchored on the galaxy, optionally carried round at the disk's angular
+rate at a radius) through ffmpeg, with an exposure per frame and optional sub-frames.
+
+Views, from the export's framing into an arm of the larger disk (R 9 kpc at frame 48, R 6 at
+232, the crest of the face-on density): `photo` (the export), `above40` to `above1` (kpc above
+the disk's plane, looking down at 35°), and in the plane 50 pc above the arm: `along` it,
+toward the `bulge`, at the `companion`; `inbulge`, 2 kpc from the centre. 4K, supersampling 2.
+
+## Variants
+
+1. as drawn today;
+2. near plane at 1 pc;
+3. 2, with a capped kernel keeping the surface brightness of its own size (`spread × (cap /
+   raw)²`) and a fade over the last 3 kernel lengths before the near plane, stars and dust;
+4. 3, with point stars: k points scattered in the kernel from a hash of the index, cross-faded
+   in from half the cap to the cap, sharing the light the splat gives up, at the star's own
+   distance (inverse square, each star capped at a half-float-safe value);
+5. 4, with the four dust slabs from the eye, log-spaced at 0.3, 1 and 3.3 kpc;
+6. 5, with an exposure trim per view: brightness × 2^−s and stretch × 2^−1.46 s (the ratio
+   contemplation's closeness trim uses), s chosen on 4K frames for a mean luminance near 0.16
+   with under 2 % clipped.
+
+![Calm, every view and variant](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/matrix-calm.jpg)
+
+![Calm, 1:1 crops](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/matrix-calm-crops.jpg)
+
+What each does, on the frames:
+
+- **Outside nothing changes** (photo to `above20`): variants 2 and 3 draw the same frames as 1
+  (0.1 % of pixels by more than 8 levels at 20 kpc); from 8 kpc the cap law of 3 starts to dim
+  the nearest capped kernels (26 % of the pixels).
+- **2, the near plane at 1 pc**, fills the blind zone, and the flare shows: in the plane 56 to
+  80 % of the frame's light comes from particles nearer than 1 kpc, as big bright blobs, and
+  dust grains near the eye turn into black disks (variant 2, `bulge` and `companion`).
+- **3** ends the flare (the near light falls to 13 to 39 %) and the black disks; what is left
+  is a soft veil of capped kernels at the right surface brightness. It is the cheapest fix and
+  it reads as fog.
+- **4** turns the veil into stars: in the plane the frame is a dense star field with dark dust
+  between, toward the bulge the bulge glows behind the lane at the horizon, as the Milky Way does
+  from inside. Point stars keep the light (76 % of it from within 1 kpc in `along`, which is the
+  inverse square law), so the frame is two to four times too bright until 6.
+- **5** keeps the dust ordered in depth from inside (the lanes in front of the bulge break into
+  patches at the right distances). With the last boundary at 3.3 kpc a lane 5 to 9 kpc away
+  falls in the last slab with the bulge behind it and is halved: boundaries at 0.3, 1.5 and
+  7.5 kpc (`slab5` below) keep it.
+- **6** brings every view to a photograph's exposure. The trims picked: 0 down to `above8`,
+  1 at 3 kpc, 2 at 1 kpc, 2 to 3 in the plane at frame 48, 4 to 5 in the plane at the passage
+  (denser, brighter), 5 in the bulge. Five stops between two views a few seconds apart in a
+  flight: **an automatic exposure is needed**, not hand trims.
+
+Measured (GPU time of the timed frame, nothing else on the GPU; light share and painted pixels
+worked out on the CPU from the positions and smoothing the frame was drawn with, before dust):
+
+| view, frame 48 | variant | GPU ms | mean | clipped % | in view | capped % | light < 1 kpc % | star points |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| photo | 1 / 4 | 115 / 175 | 0.01 | 0.0 | 7.0 M | 2 | 0 | 9.7 M |
+| above8 | 1 / 4 | 174 / 294 | 0.20 | 1.0 | 2.7 M | 6 | 0 | 14.7 M |
+| above3 | 1 / 4 / 6 | 91 / 156 / 151 | 0.21 / 0.26 / 0.12 | 0.0 | 0.39 M | 43 | 0 | 9.9 M |
+| above1 | 1 / 4 / 6 | 31 / 73 / 74 | 0.23 / 0.50 / 0.17 | 0.1 / 0.2 / 0.7 | 0.09 M | 98 | 1 | 2.7 M |
+| along | 1 / 2 / 3 / 4 / 6 | 39 / 43 / 41 / 84 / 87 | 0.08 / 0.14 / 0.06 / 0.46 / 0.14 | 0.0 / 0.5 / 0.0 / 1.4 / 1.5 | 0.09 M | 77 | 0 / 80 / 39 / 76 / 76 | 2.8 M |
+| bulge | 1 / 2 / 3 / 4 / 6 | 268 / 266 / 273 / 470 / 446 | 0.21 / 0.27 / 0.16 / 0.42 / 0.19 | 0.6 / 0.8 / 1.3 / 1.4 / 1.1 | 2.4 M | 15 | 0 / 22 / 1 / 18 / 18 | 33 M |
+| inbulge | 1 / 6 | 158 / 286 | 0.86 / 0.09 | 58.8 / 0.5 | 0.6 M | 61 | 0 / 4 | 18 M |
+
+At the passage the same views are denser: `bulge` and `companion` take 430 ms today and 840 ms
+with point stars (45 M star points at k 32). Painted pixels hardly change between variants
+(the splats keep their size): 3 to 40 G accumulation pixels a frame, the most in the bulge views.
+
+## Point stars, tested hard
+
+On variant 4 then at each view's exposure (6), 1:1 crops of the 4K frames: k 8, 32, 128; equal
+shares against rank^−1 (a few stars carry most of the light); the particle's colour against
+colours drawn around its population's (old about 4800 K, young 9000 K, ±0.8 stop in temperature);
+spread 0.5, 1, 2 kernel lengths; 1, 1.5, 3 px; the cross-fade from half the cap (variant 4),
+from 0.15 to 0.4 of it (`mid`) or from 0.05 to 0.2 (`far`, the whole near arm turns to stars);
+an inverse-square floor of 20 pc; and `combo` (k 128, rank^−1, colours, `far`).
+
+![Point stars at the view's exposure](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/stars2-crops-a.jpg)
+
+![Point stars, continued](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/stars2-crops-b.jpg)
+
+- **k** sets the texture: 8 gives big clumpy stars (each particle reads as a little cluster),
+  128 a fine dense field that reads as a galaxy of stars rather than of clusters. Cost goes with
+  k: in `bulge` at frame 48, 312 ms at k 8, 470 at 32, 2 250 at 128 (every particle drawn k times
+  and culled in the vertex stage; #297 should list the near particles on the GPU first).
+- **Shares**: rank^−1 is what makes it look like a photograph of stars, a few bright ones over a
+  crowd of faint ones; equal shares look uniform.
+- **Colours** drawn around the population add the orange and blue-white mix of a real field;
+  the particle's own colour is flatter.
+- **Spread, size, inverse-square floor**: small differences at 1:1; 2 kernel lengths blurs the
+  dust's edges, 3 px thickens the field. Kept at 1 length, 1.5 px, 1 pc.
+- **Where the cross-fade starts**: `far` removes the last capped blobs between the stars.
+- **Outside, the cap is the wrong key.** Keyed on the kernel's size on screen, point stars also
+  replace the large kernels of the sparse outskirts seen from 20 to 40 kpc: there the disk's
+  edge turns from a smooth glow into sprinkled stars (24 % of the pixels of `above20` change by
+  more than 8 levels). Stars belong to the near field: the recommended settings add a distance
+  window (all stars nearer than 3 kpc, none beyond 8), and with it the photograph and the
+  approach draw as today: with the window and today's slabs, the photograph and the views from 40
+  and 20 kpc are the same frames within rounding (under 1.3 % of pixels by more than 8 levels);
+  from 8 kpc the cap law starts to dim the nearest capped kernels (26 to 32 %), which is where
+  the entry begins.
+- **Eye slabs belong to the near field too.** Placed from the eye for every camera, they put a
+  whole galaxy seen from 20 kpc or more in the last slab, where soft slabs dim each star by all
+  of it rather than half: the lanes of the photograph darken (mean level 61 against 51 at
+  20 kpc). #297 should keep today's slabs around the aim point outside and slide the boundaries
+  to the eye's layout as the camera comes within a few kpc of a disk; soft slabs make the
+  boundaries free to move.
+
+![Recommended settings on every view](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/matrix-recommended.jpg)
+
+What #297 could build, at each view's exposure: today, A a veil (variant 3, no stars, darker
+here because it is exposed as B and C are; an automatic exposure would lift it), B simple stars
+(variant 6) and C rich stars (the recommended settings). Full 4K frames of six views, today and
+C, are in `frames/` on the assets branch.
+
+![What #297 could build](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/choice-whole.jpg)
+
+![The same, 1:1 crops](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/choice-crops.jpg)
+
+![The approach: the photograph must not change](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/approach-crops.jpg)
+
+## Other settings, on variant 6
+
+![Smoothing, ceiling, column smoothing, web, slabs](https://raw.githubusercontent.com/pierregc/sillage/assets/296-inside/docs/spikes/inside/extras.jpg)
+
+- **Smoothing 1** against the look's 2.18: the dust breaks into dark blotches everywhere. Keep
+  the look's.
+- **Kernel ceiling** 64 / 92 (the look) / 128 / 256 px: a higher ceiling draws fewer point stars
+  and bigger dust blotches, and costs more (186 against 74 ms in `above1`); 64 is a little
+  smoother and cheaper. Keep the look's.
+- **Column smoothing** 0 against 300: no visible change inside; nothing to do.
+- **Dust web** off: from 3 kpc above the lanes lose their lace and turn to grains; inside it
+  changes little. Keep it.
+- **Slabs** at 0.3 / 1.5 / 7.5 kpc keep the lane in front of the bulge; at 0.1 / 0.5 / 2.5 the
+  far lanes are halved again.
+
+## Motion
+
+Clips in 1080p at 30 fps, 5 s, on frame 48 unless said. Side-by-side copies are on the assets
+branch (`compare/`): the dive, the glide, the turn, the pass, the speeds, the 10 s dive from the
+photograph (today against C) and time flowing slowly.
+
+- **From the photograph into the arm** (`6-photo-dive-v1-vs-C`, 10 s): the photograph is the
+  export's frame, the disk comes up, the lanes pass, and the camera ends 50 pc above the arm among
+  its stars; today it ends in bokeh.
+
+- **Dive from 20 kpc into the arm**: today ends in bokeh, and the near plane draws a straight
+  line across the disk as it enters it; with the variants the disk comes up and turns into stars
+  without a seam (exposure ramped from 0 to 3 stops with the height).
+- **Glide 0.5 kpc above the arm, turn in the plane**: point stars hold up in motion; nothing
+  pops at the near plane (the fade), and no splat pops at the frame's edge at these sizes.
+- **The #295 flight's defects** (Pierre, 2026-11-19: cut galaxies, sweeping, streaks) are the
+  near plane and the slabs. A pass 4 kpc above the disk as that flight makes it shows them: with
+  the slabs around the aim point the lanes in front of the bulge fade out as the camera moves
+  (the slab that holds them slides over the bulge's), the frame washes out without a trim, and
+  the near plane cuts the companion's disk with a straight edge. With the slabs from the eye the
+  lanes stay put; soft slabs (a grain spread over a slab's depth, a star behind the share of
+  each slab in front of it) remove the last switch when a boundary crosses a lane, with no
+  visible change on stills.
+- **Speed.** A star at distance d crossing the frame moves about 1 750 × v / d px a frame in
+  1080p (v in kpc a frame): 2 pc a frame is smooth, 20 pc a frame makes the nearest stars jump
+  tens of pixels, 100 pc a frame turns the field to noise. Eight sub-frames turn that into
+  streaks, a warp-speed look that reads well; **motion blur is needed for anything faster than
+  about 10 pc a frame near matter**, or the camera slows down as it nears it.
+- **Time flowing slowly** (`7-time-flowing`): the glide again with the take's time at 1/10 of
+  the export's speed (12 Myr in 5 s) and 1/100. Fixed in the galaxy's frame, the camera sees the
+  disk turn under it at about 200 km/s (2.4 kpc in those 5 s at 1/10) and the stars stream past
+  as in a fast glide; carried round at the disk's angular rate at 9 kpc, the arm drifts slowly
+  as the material flows through it, and at 1/100 the frame is a still that breathes. The take
+  keeps one frame in four and draws the others on a cubic (3.2 Myr apart here): with the camera
+  parked, the change from frame to frame is flat, with no peak where a stored frame is crossed.
+  It is not small: at 1/10, 8.1 % of the pixels change by more than 24 levels each frame, the
+  nearest stars darting (a dispersion of 30 km/s is about 2.5 pc a frame, tens of pixels for a
+  star 100 pc away), so near matter time wants 1/100 or slower. With the stars' scatter radius
+  fixed rather than following the smoothing, which is read off a tree built again every frame
+  and jumps, it is 5.8 %: a quarter of the shimmer is the kernel length. #297 should scatter the
+  stars and cross-fade them on a length that is smooth in time (fixed per particle, or the
+  smoothing eased). Seen from 0.5 kpc above the plane, the dust web's lace is almost edge on and
+  draws long straight streaks that slide as it turns: the web should fade out near a disk's plane.
+
+## Recommended for #297
+
+**Pierre chose C on 2026-11-20** ("rich stars, the best rendering"), with the goal for #297:
+the most immersive rendering, as if travelling inside the galaxy in a transparent spaceship.
+#297 builds what follows.
+The settings the `R` frames and clips use; neutral defaults, flights only.
+
+- **Near plane 1 pc** for flight cameras, every other camera keeps 1 kpc.
+- **Capped kernels keep the surface brightness of their own size**, stars and dust, and **fade
+  over 3 kernel lengths before the near plane**.
+- **Point stars**: k 128 (64 if cost bites), shares rank^−1, colours drawn around the
+  population's, scattered over 1 kernel length, 1.5 output px, cross-faded in from 0.05 to 0.2
+  of the cap, **within a distance window** (all of them nearer than 3 kpc, none beyond 8), each
+  star capped. The near particles listed on the GPU first, then one instanced draw: at k 128 the
+  brute-force spike costs 2.3 to 2.5 s a 4K frame in the bulge views of frame 48 (0.45 s at
+  k 32, 0.27 s today) and 0.3 to 0.4 s in the arm views (timed while other sessions' tests
+  shared the GPU). Scatter radius and cross-fade on a length smooth in time.
+- **Dust slabs from the eye** inside, log-spaced at 0.3, 1.5 and 7.5 kpc, **soft**; around the
+  aim point as today outside, the boundaries sliding from one layout to the other on the way in.
+- **Automatic exposure**: the frame's mean luminance held near 0.16 by a trim in stops
+  (brightness × 2^−s, stretch × 2^−1.46 s), eased over about a second; 0 to 5 stops on this take.
+- **Motion blur** by sub-frames for fast passes, or a speed limit near matter; time at 1/100
+  or slower near matter.
+- **The dust web fades out** near a disk's plane.
+- Kernel ceiling, smoothing, column smoothing and the dust web: the look's.
+
+**What stays a limit of 8 M.** The stars are drawn, not simulated: each particle stands for
+about 6 000 suns and its k stars are scattered at random in its kernel, so up close the field
+is uniform at the particle's scale (about 50 pc in an arm) and the dust is grains of the same
+size. Structure finer than that (a cluster, a filament of young stars, a dust lane's edge) is
+not in the take; a frozen visit at a full pass's key frames could show it at 50 M, which Pierre
+has set aside.
