@@ -7,6 +7,9 @@ import SillageCore
 public struct HolePlan: Sendable, Equatable {
     /// The run's step at each frame, counted from the release.
     public var steps: [Int]
+    /// How far past its step each frame is, in steps, from 0 up to 1: a flight's time that slows
+    /// or holds between two steps (#335). Empty, every frame is on its step.
+    public var fractions: [Double] = []
     public var framesPerSecond: Int
 
     public enum Failure: Error, CustomStringConvertible, Equatable {

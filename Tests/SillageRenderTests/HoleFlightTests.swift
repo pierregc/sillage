@@ -64,10 +64,18 @@ struct HoleFlightTests {
         let flight = try HoleFlight.resolve(file, header: header, camera: .init())
         let plan = try HolePlan(flight: flight, framesPerSecond: 10)
         #expect(plan.frames == 151)
+        func time(_ index: Int) -> Double {
+            header.time(step: plan.steps[index]) + plan.fraction(index) * header.timeStep
+        }
         #expect(header.time(step: plan.steps[0]) == 100)
-        #expect(abs(header.time(step: plan.steps[100]) - 600) <= header.timeStep / 2)
+        #expect(plan.fraction(0) == 0)
+        #expect(abs(time(100) - 600) < 1e-6)
         #expect(Set(plan.steps[100...]).count == 1)
-        #expect(zip(plan.steps, plan.steps.dropFirst()).allSatisfy { $0 <= $1 })
+        #expect(plan.fractions.allSatisfy { (0..<1).contains($0) })
+        // Slowing into the hold, time glides: it never runs back, and frames between two steps
+        // are drawn there rather than on the step before.
+        #expect((1..<plan.frames).allSatisfy { time($0) >= time($0 - 1) })
+        #expect(plan.fractions[90..<100].contains { $0 > 0.01 })
         // The camera holds the last key that places it.
         let end = flight.camera(atSeconds: 15).camera
         #expect(simd_distance(end.eye, SIMD3<Float>(0, -20, 2)) < 1e-4)
@@ -81,6 +89,7 @@ struct HoleFlightTests {
         let flight = try HoleFlight.resolve(file, header: header(), camera: .init())
         let plan = try HolePlan(flight: flight, framesPerSecond: 30)
         #expect(Set(plan.steps).count == 1)
+        #expect(Set(plan.fractions).count == 1)
     }
 
     @Test func aMomentOutsideTheRunIsRefused() throws {

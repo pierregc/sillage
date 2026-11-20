@@ -121,16 +121,23 @@ extension HoleFlight {
 }
 
 extension HolePlan {
-    /// The frames of a flight at `framesPerSecond`, from its first key to its last, each on the
-    /// step nearest the moment the flight has there.
+    /// The frames of a flight at `framesPerSecond`, from its first key to its last: each on the
+    /// step before the moment the flight has there and the fraction of a step past it, so that
+    /// time slowing into a hold glides rather than moving one frame in two.
     public init(flight: Flight, framesPerSecond: Int) throws {
         let count = Int((flight.seconds * Double(framesPerSecond)).rounded()) + 1
         guard count >= 1 else { throw Failure.tooShort }
-        steps = (0..<count).map { index in
-            Int(flight.captured(atSeconds: Double(index) / Double(framesPerSecond)).rounded())
+        let positions = (0..<count).map { flight.captured(atSeconds: Double($0) / Double(framesPerSecond)) }
+        steps = positions.map { position in
+            let near = position.rounded()
+            return Int(abs(position - near) < 1e-6 ? near : position.rounded(.down))
         }
+        fractions = zip(positions, steps).map { max($0 - Double($1), 0) }
         self.framesPerSecond = framesPerSecond
     }
+
+    /// How far past its step frame `index` is, in steps.
+    public func fraction(_ index: Int) -> Double { index < fractions.count ? fractions[index] : 0 }
 
     /// Seconds into the video of frame `index`.
     public func seconds(_ index: Int) -> Double { Double(index) / Double(framesPerSecond) }

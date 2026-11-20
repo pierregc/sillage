@@ -352,6 +352,15 @@ is `<flight>-<preset>.mp4`, after the look's name when it is not the scene's; `-
 and `--seconds` are refused with a flight, which has its own. `black-hole still --flight <name>
 --second s` draws one moment of it, to write one by hand.
 
+**Between two steps.** A frame of a flight is drawn at the moment its time has, not on the step
+before it: the renderer carries each tracer on from that step along its velocity for the fraction
+of a step left, a quarter of a time unit at most, whose curve is a few thousandths of a radius at
+the last stable orbit. On steps alone, time slowing into a hold moved the disk one frame in two:
+on the descent's last second, in ProRes at 960 × 540, the change from frame to frame went 2.1, 3.0,
+2.1, 3.0 grey levels, a stutter, and its largest second difference was 1.56; carried, it falls
+evenly from 3.3 to 1.2, and the largest second difference over the whole descent is 0.39, no
+frame differing from its ten neighbours by more than 16 %, through 26 lens tables.
+
 **Three samples**, which `black-hole new` writes in the folder's `flights/` (`HoleFlight.samples`)
 and leaves alone once there, each looking at the hole:
 

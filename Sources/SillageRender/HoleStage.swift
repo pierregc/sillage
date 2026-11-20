@@ -244,7 +244,7 @@ public enum HoleStage {
             bitsPerSecond: bitRate, metadata: VideoMetadata(sceneID: folder.sceneID), to: partial)
         for (index, step) in plan.steps.enumerated() {
             let frame = replay.seek(step)
-            renderer.upload(frame)
+            renderer.upload(frame, drift: Float(plan.fraction(index) * take.header.timeStep))
             var camera = lookFile.camera.camera(progress: plan.progress(index))
             var look = look
             if let flight {

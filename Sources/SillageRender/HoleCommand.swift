@@ -161,9 +161,11 @@ public enum HoleCommand {
                 camera: lookFile.camera)
         }
         let second = options.double("second") ?? 0
+        let moment = flight.map { $0.captured(atSeconds: second) }
         let step =
             options.double("at").map(replay.step(at:))
-            ?? flight.map { Int($0.captured(atSeconds: second).rounded()) } ?? take.header.steps.last ?? 0
+            ?? moment.map { Int($0.rounded(.down)) } ?? take.header.steps.last ?? 0
+        let drift = options.double("at") == nil ? (moment ?? 0) - (moment?.rounded(.down) ?? 0) : 0
         let width = options.int("width") ?? 1920
         let height = options.int("height") ?? 1080
         let renderer = try HoleRenderer(
@@ -173,7 +175,7 @@ public enum HoleCommand {
             renderer.upload(replay.seek(replay.step(at: at)))
         }
         let frame = replay.seek(step)
-        renderer.upload(frame)
+        renderer.upload(frame, drift: Float(drift * take.header.timeStep))
         let started = Date()
         var camera = lookFile.camera.camera(progress: 0)
         var renderLook = lookFile.renderLook
