@@ -373,8 +373,9 @@ and leaves alone once there, each looking at the hole:
 ![The three flights in both looks](https://raw.githubusercontent.com/pierregc/sillage/assets/335-hole-flights/docs/spikes/hole-flights/flights-sheet.jpg)
 
 The videos, at 1080p in both looks, are on the branch `assets/335-hole-flights` under
-`docs/spikes/hole-flights/`. Each took 27 to 193 s for 721 to 1201 frames on the M4 Max (not alone
-on the GPU), the descent the dearest for its 9200 steps of the run and its 26 lens tables.
+`docs/spikes/hole-flights/`. Each took 18 to 89 s for 721 to 1201 frames on the M4 Max, the
+descent the dearest for its 9200 steps of the run and its 26 lens tables; up to twice that with
+another export on the GPU.
 
 **Through the plane.** The pass crosses the disk's plane 14 r_s from the hole at about 1.3 r_s a
 second, 1.1 of it downward, so some 0.6 s within the disk's ±0.33 r_s there. Edge on, it is the
