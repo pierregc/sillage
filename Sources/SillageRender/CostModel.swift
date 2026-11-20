@@ -108,11 +108,6 @@ public struct CostModel: Codable, Sendable, Equatable {
         Double(max(jobs, 1)) * explore.seconds(Double(particles) * Double(steps))
     }
 
-    /// A batch of scenes at `jobs` at once, ignoring the tail where fewer run.
-    public func exploreBatchSeconds(scenes: [(particles: Int, steps: Int)]) -> Double {
-        scenes.reduce(0) { $0 + explore.seconds(Double($1.particles) * Double($1.steps)) }
-    }
-
     /// `units` steps of the particles that carry the mass, `tracerUnits` of light tracers.
     public func hiresSeconds(units: Double, tracerUnits: Double = 0) -> Double {
         hires.seconds(units) + (tracerUnits > 0 ? tracers.seconds(tracerUnits) : 0)

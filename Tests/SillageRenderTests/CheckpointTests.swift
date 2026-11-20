@@ -11,7 +11,7 @@ import Testing
 #endif
 
 /// Checkpoints of long runs (#240): a run stopped and resumed goes on as if it never stopped.
-@Suite("Checkpoints")
+@Suite("Checkpoints", .serialized)
 struct CheckpointTests {
     private func temporary(_ name: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory

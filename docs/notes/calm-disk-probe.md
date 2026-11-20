@@ -11,7 +11,11 @@ and the dust spike (#173) measure with it, so the definitions live here.
 ./scripts/dev.sh probe-disk library/2026-10-30-b/scene-0031 1 --clumpiness 0.12 --out out/probe/calm
 python3 scripts/probe-report.py table library/2026-10-30-b/scene-0031/probe/*
 python3 scripts/probe-report.py compare <run a> <run b>
+python3 scripts/probe-sheet.py out/probe/sheet.jpg <run dir>... --myr 0,100,300,500,1000
 ```
+
+`probe-sheet.py` lays the stills out as a contact sheet, one row per run and one column per instant,
+small enough to judge a look without reading every pixel.
 
 Options: `--particles N` (the scene's visible count; the galaxy takes its share), `--myr T`
 (1000), `--frame-myr T` (4), `--seed S`, `--dt-scale X`, `--softening KPC` (the scene's

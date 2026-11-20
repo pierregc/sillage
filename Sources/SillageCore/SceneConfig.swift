@@ -13,8 +13,6 @@ public enum SolverKind: String, Codable, Sendable, CaseIterable {
         }
     }
 
-    public var isImplemented: Bool { true }
-
     /// Level 2 needs disks in Toomre equilibrium and a much smaller time step.
     public var isSelfGravitating: Bool { self == .barnesHut }
 }

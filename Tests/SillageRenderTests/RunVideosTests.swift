@@ -11,7 +11,7 @@ import Testing
 #endif
 
 /// The videos a full pass draws as it runs (#239), against what `export` draws from a take.
-@Suite("Videos drawn during the run")
+@Suite("Videos drawn during the run", .serialized)
 struct RunVideosTests {
     /// Two galaxies drifting apart over `frames` captured frames, written and read back as a
     /// real take is.

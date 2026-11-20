@@ -462,22 +462,24 @@ public final class TakeExport {
             })
     }
 
-    /// The frame at every key of the flight, as RGBA: a flight seen in seconds, nothing encoded.
+    /// The frame at every key of the flight, or at `moments` (its seconds), as RGBA: a flight
+    /// seen in seconds, nothing encoded.
     /// Each is one render at its own exposure, with the time the GPU took to draw it.
-    public func flightKeys(width: Int, height: Int) throws -> [(
+    public func flightKeys(width: Int, height: Int, at moments: [Double]? = nil) throws -> [(
         seconds: Double, rgba: [UInt8], milliseconds: Double
     )] {
         guard let flight = try makeFlight(width: width, height: height) else { return [] }
         let renderer = try makeRenderer(width: width, height: height)
         let cameras = Cameras.flight(flight, look: look.look, capturedRate: capturedRate)
         let rate = Double(capturedRate)
-        let frames = flight.keySeconds.map { seconds in
+        let moments = moments?.map { min(max($0, 0), flight.seconds) } ?? flight.keySeconds
+        let frames = moments.map { seconds in
             TimeTrack.Frame(played: seconds * rate, captured: flight.captured(atSeconds: seconds))
         }
         let scale = try measureExposure(frames, width: width, height: height)
         let target = try trimTarget(renderer, cameras, exposure: scale)
         let spans = flight.lookSpans
-        return try zip(flight.keySeconds, frames).map { seconds, frame in
+        return try zip(moments, frames).map { seconds, frame in
             let (shot, _) = try prepare(renderer, at: frame, cameras: cameras, exposure: scale)
             // A still has no moments around it to ease its exposure over: it takes its own.
             let stops =

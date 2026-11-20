@@ -1,4 +1,4 @@
-# Inside a galaxy (#296, #297)
+# Inside a galaxy (#296, #297, #353)
 
 What the renderer does when the camera goes into a disk, tried on real frames before #297
 changes anything: the README's Mice take (2026-11-04 scene-0067, 8 M visible particles on 12 M
@@ -363,3 +363,69 @@ is uniform at the particle's scale (about 50 pc in an arm) and the dust is grain
 size. Structure finer than that (a cluster, a filament of young stars, a dust lane's edge) is
 not in the take; a frozen visit at a full pass's key frames could show it at 50 M, which Pierre
 has set aside.
+
+## Two disks that cross (#353)
+
+Pierre, on #297's frozen flight: where the two disks cross, a galaxy is cut along straight lines
+and "disappears where it comes too near the other", when he expected the stars of one to pass
+between the stars of the other. Frames 440 to 580 at 30 a second, the camera 20 to 40 kpc above
+the pair. The sheets are on the branch `assets/353-crossing-disks` under `docs/spikes/inside-353/`.
+
+**The cut is in the matter, not in the drawing.** Frame 550 four ways: as the flight draws it;
+with `dustStrength` 0, where every edge is still there; as plain points coloured by galaxy (a
+look with `"plain": true` and a palette `colour` per galaxy: one point a particle, added, no
+kernel and no dust); and the larger galaxy's points alone (the companion's colour black). The
+whole side of the larger disk toward the companion is missing from its own matter, along the same
+straight edges. The take's positions read without the renderer, as a histogram in the disk's
+axes, give the same shapes.
+
+![Frame 550: as drawn, without dust, the matter by galaxy, galaxy 0 alone](https://raw.githubusercontent.com/pierregc/sillage/assets/353-crossing-disks/docs/spikes/inside-353/cause-550.jpg)
+
+**Why.** The flight freezes at 452 Myr, and that is the closest approach: the nuclei are 12.9 kpc
+apart from 449 to 452 Myr (the scene file planned 445). The orbit lies 5° from the larger disk's
+plane, so from 430 Myr on the companion's nucleus goes through that disk, in its plane, 13 to
+16 kpc from its centre. What lies within 6 to 8 kpc of its track is pulled off its orbit and
+gathered into a ridge, which is the straight edge; the larger galaxy's nucleus passes 6 kpc
+above the companion's disk and bends its near side into a lobe. Read off the take: a patch of the
+larger disk 10 kpc out on that side turns about its centre at 277 km/s at 427 Myr and at 443 at
+455, rising smoothly as it passes 4 to 10 kpc from the companion's nucleus, about
+5 700 (km/s)² a kiloparsec, the size of that nucleus's pull (a Hernquist potential of
+4.3 × 10¹¹ suns and 4.2 kpc: 6 300 at 13 kpc, 10 700 at 9). Past 8 kpc on that side a 30° sector
+holds a fifth to a quarter of what it held at 436 Myr, and the next one twice as much. Nothing in the solver
+does this but gravity: the disk cooling closes 5 % of a gap in the same time.
+
+![From above the larger disk, 420 to 452 Myr](https://raw.githubusercontent.com/pierregc/sillage/assets/353-crossing-disks/docs/spikes/inside-353/history.jpg)
+
+At 420 and 430 Myr the two disks do go through each other whole, as Pierre pictured it.
+
+**Where the disks cross whole, the dust does cut.** Nothing above changes at 452 Myr. Frozen at
+430 instead, the same frames show two things that are the drawing's, both in the dust:
+
+- The part of the companion's disk that has gone through the larger disk's plane ends on a sharp
+  tip. Without dust it carries on behind the disk, faint. Where it vanishes, 10 to 14 kpc from
+  the larger galaxy's centre, the dust in front of it has an optical depth of 1.7 along the line
+  of sight (median; 0.8 to 6), which lets 13 % of the light through in V, and 1.1 over the outer
+  disk at large, when the inner 4 kpc are at 0.08 (the frame's dust target, `--dump-targets`).
+  The look's dust is thickest in the outer disk, where a real spiral's is thinnest: from 280 kpc
+  that reads as lanes, from 20 kpc with another disk behind it is a screen.
+- Where the companion's carried dust shares a slab of a pixel with the larger disk's, the
+  companion's web serves both (`webResolved`: the tags keep the later galaxy), so the larger
+  disk's lace turns to an even layer inside a scalloped edge, the outline of the companion's
+  outermost grains in the coarse tag target. The stack around the aim point also holds all of
+  that frame's dust in its last two slabs (31 % and 67 %), so the two disks are hardly ordered.
+
+![Frozen at 430 Myr: the scalloped edge, and the dust's optical depth](https://raw.githubusercontent.com/pierregc/sillage/assets/353-crossing-disks/docs/spikes/inside-353/dust-430.jpg)
+
+Both are the dust of a flight, which #354 and #356 rework: nothing is changed here, and the
+numbers are on those issues.
+
+**Any second of a flight as a still.** `export --flight <name> --flight-keys <dir> --flight-at
+14.67,18.33` draws those seconds instead of the keys, one render each at its own exposure: four
+frames of this flight in ten seconds, where a clip of one frame took a minute and a half. Every
+sheet here is drawn with it.
+
+**What is left is the flight's choice** (#358): keep the freeze at the closest approach, where
+the cut is the encounter itself; freeze near 430 Myr once the dust lets one disk show through
+another; or let time flow from 425 to 452 Myr over the pair, so that the cut is seen being made.
+
+![Frames 440 to 580 frozen at 452 and at 430 Myr](https://raw.githubusercontent.com/pierregc/sillage/assets/353-crossing-disks/docs/spikes/inside-353/freeze-452-430.jpg)

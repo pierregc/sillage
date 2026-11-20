@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 
 Image.MAX_IMAGE_PIXELS = None
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REFS = os.path.join(ROOT, "references", "telescope")
 MARKS = os.path.join(REFS, "marks.json")
 IMAGES = os.path.join(ROOT, "out", "telescope-images")

@@ -210,7 +210,8 @@ look keys, and the export says so. The video is `exports/<flight>-<preset>.mp4`,
 exports; `--speed` does not go with a flight, which has its own time.
 
 `--flight-keys <dir>` draws only the frame at each key as a PNG and encodes nothing, and prints
-what the GPU took for each. A still is one render at its own exposure, solved for that moment
+what the GPU took for each; `--flight-at <s,...>` with it draws those seconds of the flight
+instead of its keys (#353). A still is one render at its own exposure, solved for that moment
 alone: the video's frame there is eased with its neighbours and may be averaged from several
 renders.
 

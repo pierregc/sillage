@@ -422,8 +422,6 @@ public struct Story: Sendable {
 
         public init(story: Story) { self.story = story }
 
-        public var isOver: Bool { activity.isEmpty }
-
         public mutating func append(_ sample: Sample) {
             samples.append(sample)
             let reading = story.reading(samples, at: samples.count - 1)

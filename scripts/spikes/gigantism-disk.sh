@@ -3,9 +3,9 @@
 # shows. Renders an isolated disk at t = 0 in 4K for several counts and looks, scores them and
 # lays them out.
 #
-#     scripts/gigantism-disk.sh <base look.json> <out dir>
+#     scripts/spikes/gigantism-disk.sh <base look.json> <out dir>
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASE="$1"
 OUT="$2"
 R="$ROOT/scripts/dev.sh"

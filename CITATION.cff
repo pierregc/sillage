@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Sillage"
+type: software
+abstract: "Galaxy collisions, simulated and filmed on an Apple Silicon Mac: a Barnes-Hut N-body solver that builds and walks its tree on the GPU, and a renderer for tens of millions of particles."
+authors:
+  - family-names: "Gunet-Caplain"
+    given-names: "Pierre"
+version: "1.0.0"
+date-released: "2026-11-20"
+repository-code: "https://github.com/pierregc/sillage"
+url: "https://github.com/pierregc/sillage"
+license: MIT
+keywords:
+  - n-body
+  - galaxy merger
+  - Barnes-Hut
+  - GPU
+  - Metal
