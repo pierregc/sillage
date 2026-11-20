@@ -26,6 +26,30 @@ public struct SceneFolder: Sendable, Equatable {
 
         public init() {}
 
+        /// What `scripts/explore-batch.sh` runs a preview at, which `explore` takes when it is
+        /// given nothing else: 960x540, 900 frames at 30 fps, 150 Myr of settling at its step.
+        public static var batch: Clip {
+            var clip = Clip()
+            clip.width = 960
+            clip.height = 540
+            clip.settle = 375
+            return clip
+        }
+
+        /// The span in Myr the batch's previews cover, past the settling.
+        public static let batchSpanMyr = 700.0
+        /// The step scale a batch draws its scenes at (#225).
+        public static let batchTimeStepScale = 7.0
+
+        /// A whole number of steps per frame, enough to cover `spanMyr` at `stepMyr`.
+        public static func steps(spanMyr: Double, stepMyr: Double, frames: Int) -> Int {
+            let frames = max(frames, 1)
+            guard stepMyr > 0, spanMyr > 0 else { return frames }
+            var perFrame = Int((spanMyr / stepMyr / Double(frames)).rounded(.down))
+            if Double(perFrame * frames) * stepMyr < spanMyr { perFrame += 1 }
+            return max(perFrame, 1) * frames
+        }
+
         public static let options = [
             "particles", "width", "height", "frames", "fps", "steps", "settle",
         ]
@@ -154,6 +178,23 @@ public struct SceneFolder: Sendable, Equatable {
     /// The clip last explored here, or the default one.
     public func storedClip() throws -> Clip {
         exists(clip) ? try JSONDecoder().decode(Clip.self, from: Data(contentsOf: clip)) : Clip()
+    }
+
+    /// Where an `explore` starts: the clip, and the options left for the render. A folder with
+    /// nothing in it takes the batch's defaults, and covers `Clip.batchSpanMyr` at the step
+    /// scale of a batch unless `--steps` or `--span` says how long.
+    public func exploreStart(_ options: [String]) throws -> (clip: Clip, rest: [String]) {
+        let fresh = !exists(clip) && !exists(scene)
+        var (started, rest) = try (fresh ? Clip.batch : storedClip()).updated(with: options)
+        if fresh {
+            if !options.contains("--steps"), !options.contains("--span") {
+                rest += ["--span", String(Clip.batchSpanMyr)]
+            }
+            if !options.contains("--dt-scale") {
+                rest += ["--dt-scale", String(Clip.batchTimeStepScale)]
+            }
+        }
+        return (started, rest)
     }
 
     /// The `sillage-render` command line `explore` runs. The first occurrence of a flag wins,
