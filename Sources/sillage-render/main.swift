@@ -1453,6 +1453,9 @@ var exploreRun: SceneFolder?
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "probe-disk" {
     exit(probeDiskCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "inside" {
+    exit(InsideSpike.main(Array(CommandLine.arguments.dropFirst(2))))
+}
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "black-hole" {
     exit(HoleCommand.main(Array(CommandLine.arguments.dropFirst(2))))
 }

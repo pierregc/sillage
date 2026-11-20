@@ -54,6 +54,25 @@ enum Shaders {
             float columnCell;
             /// Light kept by the compact bright minority: 1 as sampled, 0 as ordinary stars.
             float glint;
+            /// Spike #296: drawing from inside a galaxy.
+            float nearPlane;
+            float nearFadeLengths;
+            uint capLaw;
+            float starStart;
+            float starEnd;
+            float starSpread;
+            float starPointSize;
+            float starShareExponent;
+            float starShareNorm;
+            float starColours;
+            float starNearest;
+            uint starCount;
+            uint slabLog;
+            float starCap;
+            float starRadius;
+            uint slabSoft;
+            float starNearKpc;
+            float starFarKpc;
         };
 
         struct GalaxyRamp {
@@ -390,6 +409,9 @@ enum Shaders {
             float warming;
             float population;
             float rampKey;
+            /// Spike #296: a point star's share of its particle's light, 0 for the particle.
+            float starShare;
+            float starHash;
         };
 
         SHARED Drawn massiveDrawn(uint vid, device const float3 *positions,
@@ -407,6 +429,8 @@ enum Shaders {
             p.warming = 1.0f;
             p.population = 0.5f;
             p.rampKey = 1.7f;
+            p.starShare = 0.0f;
+            p.starHash = 0.0f;
             return p;
         }
 
@@ -432,6 +456,8 @@ enum Shaders {
             p.rampKey = scale > 0.0f ? radius / scale : 1.7f;
             p.population = 0.5f;
             p.spacing = 0.0f;
+            p.starShare = 0.0f;
+            p.starHash = 0.0f;
             return p;
         }
 
@@ -458,6 +484,68 @@ enum Shaders {
                 if (here > 0.0f) { length = here; }
             }
             return length;
+        }
+
+        // Spike #296. Which slab of view depth a point falls in: around the aim point, or
+        // log-spaced from the eye.
+        SHARED float slabPosition(float depth, constant SplatUniforms &u) {
+            if (u.slabLog != 0u) {
+                return clamp(1.0f + log(max(depth, 1e-6f) / u.slabNear) * u.slabScale, 0.0f, 3.999f);
+            }
+            return clamp((depth - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f;
+        }
+
+        // Spike #296. Soft slabs: a grain spread over a slab's depth either side of it, and a
+        // star behind the share of each slab that stands in front of it, so nothing switches
+        // when a boundary crosses a lane.
+        SHARED half4 dustSlabs(float x, constant SplatUniforms &u) {
+            if (u.slabSoft == 0u) {
+                uint i = uint(x);
+                return half4(i == 0u, i == 1u, i == 2u, i == 3u);
+            }
+            float a = x - 0.5f;
+            float b = x + 0.5f;
+            return half4(saturate(1.0f - a), max(min(b, 2.0f) - max(a, 1.0f), 0.0f),
+                         max(min(b, 3.0f) - max(a, 2.0f), 0.0f), saturate(b - 3.0f));
+        }
+
+        SHARED half4 starSlabs(float x, constant SplatUniforms &u) {
+            if (u.slabSoft == 0u) {
+                uint i = uint(x);
+                return half4(i > 0u ? 1.0f : 0.5f, i > 1u ? 1.0f : (i == 1u ? 0.5f : 0.0f),
+                             i > 2u ? 1.0f : (i == 2u ? 0.5f : 0.0f), i == 3u ? 0.5f : 0.0f);
+            }
+            return half4(saturate(x), saturate(x - 1.0f), saturate(x - 2.0f), saturate(x - 3.0f));
+        }
+
+        // Spike #296. A capped kernel keeping the surface brightness of its own size.
+        SHARED float cappedSpread(float spread, float raw, float span, constant SplatUniforms &u) {
+            return (u.capLaw == 1u && raw > span) ? spread * (span * span) / (raw * raw) : spread;
+        }
+
+        // Spike #296. To nothing over the last few kernel lengths before the near plane.
+        SHARED float nearFade(float depth, float length, constant SplatUniforms &u) {
+            if (u.nearFadeLengths <= 0.0f) { return 1.0f; }
+            return saturate((depth - u.nearPlane) / (u.nearFadeLengths * max(length, 1e-6f)));
+        }
+
+        SHARED float2 insideHash(uint2 v) {
+            v = v * 1664525u + 1013904223u;
+            v.x += v.y * 1664525u;
+            v.y += v.x * 1664525u;
+            v = v ^ (v >> 16u);
+            v.x += v.y * 1664525u;
+            v.y += v.x * 1664525u;
+            v = v ^ (v >> 16u);
+            return float2(v) * (1.0f / 4294967296.0f);
+        }
+
+        // Spike #296. How much of a particle's light goes to its point stars.
+        SHARED float starWeight(float raw, float depth, constant SplatUniforms &u) {
+            if (u.starEnd <= 0.0f) { return 0.0f; }
+            float w = smoothstep(u.starStart * u.maximumSize, u.starEnd * u.maximumSize, raw);
+            if (u.starFarKpc > 0.0f) { w *= 1.0f - smoothstep(u.starNearKpc, u.starFarKpc, depth); }
+            return w;
         }
 
         SHARED Splat culledSplat() {
@@ -549,11 +637,13 @@ enum Shaders {
             // Which slab of view depth this point falls in. `position.w` is the view depth for
             // a standard perspective projection, and the stack is centred on the camera's
             // target and as deep as the frame is wide, so a disk seen at an angle spans it.
-            float slabAt = clamp((out.position.w - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f;
+            float slabAt = slabPosition(out.position.w, u);
             uint slabIndex = uint(slabAt);
             if (u.pass == 0u) {
                 // Dust writes into its own slab and nowhere else.
-                out.slab = half4(slabIndex == 0u, slabIndex == 1u, slabIndex == 2u, slabIndex == 3u);
+                out.slab = dustSlabs(slabAt, u);
+            } else if (u.slabSoft != 0u) {
+                out.slab = starSlabs(slabAt, u);
             } else {
                 // A star is dimmed by everything in front of it, and by half of its own slab:
                 // it sits somewhere inside that one, so on average half of the slab's dust is
@@ -601,6 +691,10 @@ enum Shaders {
             // area gives surface brightness, which is what a telescope actually measures and
             // what stays put when the camera moves.
             float spread = u.referenceArea / (length * length);
+            bool starDraw = p.starShare > 0.0f;
+            float fade = nearFade(out.position.w, raw / perPixel, u);
+            float starred = starDraw ? 0.0f : starWeight(raw, out.position.w, u);
+            spread = cappedSpread(spread, raw, span, u);
 
             // Gas that has made its stars is no longer a dust lane. That is not a rendering
             // convenience: the cloud a cluster forms out of is the cloud it consumes, and a
@@ -625,7 +719,7 @@ enum Shaders {
                 float lane = 1.0f + 7.0f * pow(wave, 2.0f) * pattern.y * laneDetail(position, frame);
                 out.pointSize = span * 1.3f;
                 out.color = half3(half(0.0f));
-                out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3f);
+                out.opticalDepth = half(weight * u.dustStrength * lane * spread * 1.3f * fade);
                 if (hole) {
                     // Twice the radius, since the kernel falls to a hundredth at its edge.
                     out.pointSize = max(4.0f * u.holeShadow * perPixel, 2.0f);
@@ -692,8 +786,25 @@ enum Shaders {
                     }
                 }
                 out.pointSize = span * (alive > 0.15f ? 1.3f : 1.0f);
-                out.color = half3(emitted * (u.brightness * weight * gain * spread));
+                out.color = half3(emitted * (u.brightness * weight * gain * spread * fade * (1.0f - starred)));
                 out.opticalDepth = half(0.0f);
+                if (starDraw) {
+                    // The particle's whole light at the star's own distance, on a small point.
+                    if (u.starColours > 0.0f) {
+                        bool young = knot || nursery || kind == 1u;
+                        float mean = young ? 9000.0f : 4800.0f;
+                        float drawn = mean * exp2((p.starHash - 0.5f) * 1.6f * u.starColours);
+                        emitted = chromaticity(emitted * blackbody(drawn) / blackbody(mean));
+                    }
+                    float near = u.projectionScale / max(out.position.w, u.starNearest);
+                    float size = max(u.starPointSize, 1.0f);
+                    float3 light = emitted * (u.brightness * weight * gain * u.referenceArea * near * near
+                                              * p.starShare * fade / (size * size));
+                    float top = max(max(light.x, light.y), light.z);
+                    light *= top > u.starCap ? u.starCap / top : 1.0f;
+                    out.pointSize = size;
+                    out.color = half3(light);
+                }
             }
             return out;
         }
@@ -780,6 +891,60 @@ enum Shaders {
             return splatOut(massiveSplat(vid, positions, population, formation, luminosity,
                                          component, u, galaxy, frames, smoothing, stellar, traits,
                                          rampKeys, ramps, column));
+        }
+
+        // Spike #296: instance `iid` of a particle's k point stars, scattered in its kernel from
+        // a hash of its index, sharing the light its splat gives up as the eye nears.
+        vertex SplatOut pointStarVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
+                                        device const float3 *positions [[buffer(0)]],
+                                        device const float *population [[buffer(1)]],
+                                        device const float *formation [[buffer(8)]],
+                                        device const float *luminosity [[buffer(2)]],
+                                        device const uint *component [[buffer(3)]],
+                                        constant SplatUniforms &u [[buffer(4)]],
+                                        device const uint *galaxy [[buffer(5)]],
+                                        constant DiskFrame *frames [[buffer(6)]],
+                                        device const float *smoothing [[buffer(7)]],
+                                        device const float2 *stellar [[buffer(9)]],
+                                        device const float2 *traits [[buffer(10)]],
+                                        device const float *rampKeys [[buffer(11)]],
+                                        constant GalaxyRamp *ramps [[buffer(12)]],
+                                        texture2d<float, access::sample> column [[texture(0)]]) {
+            Drawn p = massiveDrawn(vid, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            if (splatSkips(p.kind, p.born, u)) { return splatOut(culledSplat()); }
+            float4 clip = u.viewProjection * float4(p.position, 1.0f);
+            float depth = clip.w;
+            float kernelScale = p.kernelScale < 0.8f ? mix(0.9f, p.kernelScale, u.glint) : p.kernelScale;
+            float length = max(p.spacing * u.smoothingScale * kernelScale, 1e-4f);
+            if (depth < -length * u.starSpread) { return splatOut(culledSplat()); }
+            float perPixel = u.projectionScale / max(depth, 1e-3f);
+            float raw = length * perPixel;
+            if (u.columnSmoothing > 0.0f && depth > 1e-3f) {
+                float2 uv = float2(0.5f, 0.5f) + float2(0.5f, -0.5f) * clip.xy / depth;
+                float count = max(column.sample(bilinear, uv).r, 0.25f);
+                float density = count / (u.columnCell * u.columnCell);
+                raw = max(raw, 2.0f * sqrt(u.columnSmoothing / (M_PI_F * density)));
+            }
+            float w = depth <= 1e-3f ? 1.0f : starWeight(raw, depth, u);
+            if (w <= 0.0f) { return splatOut(culledSplat()); }
+            float2 a = insideHash(uint2(vid, iid * 2u + 1u));
+            float2 b = insideHash(uint2(vid ^ 0x9e3779b9u, iid * 2u + 2u));
+            float z = 2.0f * a.x - 1.0f;
+            float phi = 6.2831853f * a.y;
+            float ring = sqrt(max(1.0f - z * z, 0.0f));
+            float reach = u.starRadius > 0.0f ? u.starRadius : length * u.starSpread;
+            float radius = reach * pow(max(b.x, 1e-6f), 1.0f / 3.0f);
+            p.position += float3(ring * cos(phi), ring * sin(phi), z) * radius;
+            float share = u.starShareExponent > 0.0f
+                ? pow(float(iid + 1u), -u.starShareExponent) * u.starShareNorm
+                : 1.0f / float(max(u.starCount, 1u));
+            p.starShare = share * w;
+            p.starHash = b.y;
+            p.warming = traits[vid].x;
+            p.population = population[vid];
+            p.rampKey = rampKeys[vid];
+            return splatOut(splat(p, u, frames, stellar, ramps, column));
         }
 
         // A light tracer (#238): positions with their formation times from buffer 18, velocities
@@ -1101,9 +1266,9 @@ enum Shaders {
             grain.hole = kind == 6u;
             bool absorbing = (kind == 2u && !knot) || grain.hole;
             if (kind == 3u || (grain.hole && u.holeShadow <= 0.0f) || !absorbing) { return false; }
-            float slabAt = clamp((grain.position.w - u.slabNear) * u.slabScale, 0.0f, 0.999f) * 4.0f;
+            float slabAt = slabPosition(grain.position.w, u);
             uint slabIndex = uint(slabAt);
-            grain.slab = half4(slabIndex == 0u, slabIndex == 1u, slabIndex == 2u, slabIndex == 3u);
+            grain.slab = dustSlabs(slabAt, u);
             grain.perPixel = u.projectionScale / max(grain.position.w, 1e-3f);
             grain.amount = 0.0f;
             if (grain.hole) { return true; }
@@ -1146,7 +1311,8 @@ enum Shaders {
                                 * mix(1.0f, w.right.w, grain.amount), 1e-4f) * grain.perPixel;
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             float reach = span / grain.perPixel;
-            float spread = u.referenceArea / (reach * reach);
+            float spread = cappedSpread(u.referenceArea / (reach * reach), raw, span, u)
+                * nearFade(grain.position.w, raw / grain.perPixel, u);
             float2 pattern = armWave(position, frame);
             float lane = 1.0f + 7.0f * pow(pattern.x, 2.0f) * pattern.y * laneDetail(position, frame);
             out.pointSize = span * 1.3f;
@@ -1250,7 +1416,8 @@ enum Shaders {
             // Never under a few of its own pixels, or the coarse target would drop part of it.
             float span = clamp(raw, max(u.minimumSize, w.carrier.y * coarse / 1.3f), u.maximumSize);
             float reach = span / grain.perPixel;
-            float spread = u.referenceArea / (reach * reach);
+            float spread = cappedSpread(u.referenceArea / (reach * reach), raw, span, u)
+                * nearFade(grain.position.w, raw / grain.perPixel, u);
             float2 pattern = armWave(position, frame);
             // The painted strands' own mean under the web, so the web moves no exposure.
             float lane = 1.0f + 7.0f * pow(pattern.x, 2.0f) * pattern.y * 0.855f;
@@ -1300,7 +1467,7 @@ enum Shaders {
         }
 
         SHARED half4 webTagPixel(half tag, half4 slab) {
-            return tag * slab;
+            return tag * half4(slab > half(0.0f));
         }
 
         #if defined(__METAL_VERSION__)

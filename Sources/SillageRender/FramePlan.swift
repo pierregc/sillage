@@ -36,6 +36,25 @@ public struct SplatUniforms: Sendable {
     public var columnSmoothing: Float = 0
     public var columnCell: Float = 8
     public var glint: Float = 1
+    /// Spike #296.
+    public var nearPlane: Float = 1
+    public var nearFadeLengths: Float = 0
+    public var capLaw: UInt32 = 0
+    public var starStart: Float = 0
+    public var starEnd: Float = 0
+    public var starSpread: Float = 1
+    public var starPointSize: Float = 3
+    public var starShareExponent: Float = 0
+    public var starShareNorm: Float = 1
+    public var starColours: Float = 0
+    public var starNearest: Float = 0.001
+    public var starCount: UInt32 = 0
+    public var slabLog: UInt32 = 0
+    public var starCap: Float = 30_000
+    public var starRadius: Float = 0
+    public var slabSoft: UInt32 = 0
+    public var starNearKpc: Float = 0
+    public var starFarKpc: Float = 0
 }
 
 /// The passes of one frame that draw particles and what they are given, worked out once for

@@ -33,6 +33,9 @@ public final class Renderer {
     private let queue: MTLCommandQueue
     private let dustPipeline: MTLRenderPipelineState
     private let splatPipeline: MTLRenderPipelineState
+    private let pointStarPipeline: MTLRenderPipelineState
+    /// Spike #296: drawing from inside a galaxy; neutral by default.
+    public var inside = InsideSettings()
     private let starfieldPipeline: MTLRenderPipelineState
     private let plainPipeline: MTLRenderPipelineState
     private let plainCompositePipeline: MTLComputePipelineState
@@ -201,6 +204,7 @@ public final class Renderer {
         }
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
         splatPipeline = try additive("splatVertex", "splatFragment", writing: 0)
+        pointStarPipeline = try additive("pointStarVertex", "splatFragment", writing: 0)
         starfieldPipeline = try additive("starfieldVertex", "starfieldFragment", writing: 0)
         plainPipeline = try additive(
             "plainVertex", "plainFragment", writing: 0, attachments: 1)
@@ -580,6 +584,7 @@ public final class Renderer {
 
         for pass in plan.passes {
             var uniforms = plan.uniforms(for: pass)
+            inside.apply(to: &uniforms, camera: camera, supersample: settings.supersample)
             switch pass {
             case .column:
                 guard
@@ -659,6 +664,12 @@ public final class Renderer {
                 bindParticles(encoder)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
                 drawParts(encoder, massive: splatPipeline, tracers: traced?.pipelines.splat)
+                if inside.starEnd > 0, inside.starCount > 0, !parts.massive.isEmpty {
+                    encoder.setRenderPipelineState(pointStarPipeline)
+                    encoder.drawPrimitives(
+                        type: .point, vertexStart: parts.massive.lowerBound,
+                        vertexCount: parts.massive.count, instanceCount: inside.starCount)
+                }
 
             case .plain:
                 guard
