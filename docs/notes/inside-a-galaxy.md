@@ -47,8 +47,9 @@ toward the `bulge`, at the `companion`; `inbulge`, 2 kpc from the centre. 4K, su
 
 What each does, on the frames:
 
-- **Outside nothing changes** (photo to `above8`): variants 2 and 3 draw the same frames as 1
-  (0.1 % of pixels by more than 8 levels at 20 kpc).
+- **Outside nothing changes** (photo to `above20`): variants 2 and 3 draw the same frames as 1
+  (0.1 % of pixels by more than 8 levels at 20 kpc); from 8 kpc the cap law of 3 starts to dim
+  the nearest capped kernels (26 % of the pixels).
 - **2, the near plane at 1 pc**, fills the blind zone, and the flare shows: in the plane 56 to
   80 % of the frame's light comes from particles nearer than 1 kpc, as big bright blobs, and
   dust grains near the eye turn into black disks (variant 2, `bulge` and `companion`).
