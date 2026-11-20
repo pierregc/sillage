@@ -380,14 +380,18 @@ public enum PhotoMatch {
                     let level = levels[Int(index)]
                     return level <= sky ? 0 : level <= ceiling ? 1 : 2
                 }
-                let counts = (0..<3).map { c in classes.filter { $0 == c }.count }
-                let present = counts.filter { $0 > 0 }.count
-                weights = classes.map { Float(1) / Float(max(present * counts[$0], 1)) }
+                var counts: [Int] = [0, 0, 0]
+                for c in classes { counts[c] += 1 }
+                let present: Int = counts.filter { $0 > 0 }.count
+                weights = classes.map { (c: Int) -> Float in 1 / Float(max(present * counts[c], 1)) }
             }
-            let capped = seen.map { min(levels[Int($0)], ceiling) }
-            let mean = zip(capped, weights).reduce(Float(0)) { $0 + $1.0 * $1.1 }
-            centred = capped.map { $0 - mean }
-            norm = zip(centred, weights).reduce(Float(0)) { $0 + $1.0 * $1.0 * $1.1 }.squareRoot()
+            let capped: [Float] = seen.map { (index: Int32) -> Float in min(levels[Int(index)], ceiling) }
+            var mean: Float = 0
+            for (value, weight) in zip(capped, weights) { mean += value * weight }
+            centred = capped.map { (value: Float) -> Float in value - mean }
+            var square: Float = 0
+            for (value, weight) in zip(centred, weights) { square += value * value * weight }
+            norm = square.squareRoot()
         }
 
         /// How well the take's light goes with the picture's, from 0 to 1.
@@ -468,8 +472,12 @@ public enum PhotoMatch {
 
     static func gaussian(_ sigma: Float) -> [Float] {
         let radius = max(Int((3 * sigma).rounded(.up)), 1)
-        let weights = (-radius...radius).map { exp(-Float($0 * $0) / (2 * sigma * sigma)) }
-        let total = weights.reduce(0, +)
+        let spread: Float = 2 * sigma * sigma
+        let weights: [Float] = (-radius...radius).map { (offset: Int) -> Float in
+            let square = Float(offset * offset)
+            return exp(-square / spread)
+        }
+        let total: Float = weights.reduce(0, +)
         return weights.map { $0 / total }
     }
 
@@ -505,9 +513,12 @@ public enum PhotoMatch {
             return down
         }
         guard let mask else { return pass(values) }
-        let weights = pass(mask.map { $0 ? 1 : 0 })
-        let light = pass(zip(values, mask).map { $1 ? $0 : 0 })
-        return zip(light, weights).map { $1 > 1e-3 ? $0 / $1 : 0 }
+        let weights: [Float] = pass(mask.map { (seen: Bool) -> Float in seen ? 1 : 0 })
+        let light: [Float] = pass(
+            zip(values, mask).map { (value: Float, seen: Bool) -> Float in seen ? value : 0 })
+        return zip(light, weights).map { (value: Float, weight: Float) -> Float in
+            weight > 1e-3 ? value / weight : 0
+        }
     }
 
     /// Stars already turned to the screen before the roll, in kiloparsecs.
@@ -596,9 +607,10 @@ public enum PhotoMatch {
             centre += SIMD2(Double(point.x), Double(point.y)) * Double(light)
         }
         centre /= max(total, 1e-12)
-        let radii = screen.points.map { p -> Float in
-            let d = SIMD2(Double(p.x), Double(p.y)) - centre
-            return Float((d.x * d.x + d.y * d.y).squareRoot())
+        let radii: [Float] = screen.points.map { (p: SIMD2<Float>) -> Float in
+            let d: SIMD2<Double> = SIMD2<Double>(Double(p.x), Double(p.y)) - centre
+            let radius: Double = (d.x * d.x + d.y * d.y).squareRoot()
+            return Float(radius)
         }
         let takeRadius = Double(percentile(radii, 0.9))
         var pictureTotal: Double = 0
@@ -615,12 +627,17 @@ public enum PhotoMatch {
             lit.append((at, value))
         }
         pictureCentre /= max(pictureTotal, 1e-12)
-        let sorted = lit.map { ($0.0 - pictureCentre, $0.1) }.map {
-            (($0.0.x * $0.0.x + $0.0.y * $0.0.y).squareRoot(), $0.1)
-        }.sorted { $0.0 < $1.0 }
+        var reach: [(radius: Double, value: Double)] = []
+        reach.reserveCapacity(lit.count)
+        for (at, value) in lit {
+            let d: SIMD2<Double> = at - pictureCentre
+            let radius: Double = (d.x * d.x + d.y * d.y).squareRoot()
+            reach.append((radius, value))
+        }
+        reach.sort { $0.radius < $1.radius }
         var running: Double = 0
         var pictureRadius = 0.25
-        for (radius, value) in sorted {
+        for (radius, value) in reach {
             running += value
             if running >= 0.9 * pictureTotal {
                 pictureRadius = radius
@@ -672,9 +689,11 @@ public enum PhotoMatch {
         let count = max(Int((4 * .pi / (radians * radians)).rounded()), 12)
         let golden = Double.pi * (3 - 5.0.squareRoot())
         return (0..<count).map { index in
-            let z = 1 - 2 * (Double(index) + 0.5) / Double(count)
-            let azimuth = (Double(index) * golden).truncatingRemainder(dividingBy: 2 * .pi)
-            return SIMD2(asin(z) * 180 / .pi, azimuth * 180 / .pi)
+            let share: Double = (Double(index) + 0.5) / Double(count)
+            let z: Double = 1 - 2 * share
+            let azimuth: Double = (Double(index) * golden).truncatingRemainder(dividingBy: 2 * .pi)
+            let degrees: Double = 180 / .pi
+            return SIMD2<Double>(asin(z) * degrees, azimuth * degrees)
         }
     }
 
