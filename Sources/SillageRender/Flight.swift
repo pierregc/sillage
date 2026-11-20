@@ -428,10 +428,10 @@ public final class Flight {
         return (camera, Self.trimmed(look, stops: exposure))
     }
 
-    /// The cameras the renders of the frame at `seconds` are drawn through (#297): one, or
-    /// several spread over the time the shutter is open, about the frame's own moment, when
-    /// the near matter would cross more than a pixel of a picture `height` high between them.
-    /// `interval` is the seconds between two frames of the video.
+    /// The cameras the frame at `seconds` is drawn through (#297): its own, or, when the near
+    /// matter moves across a picture `height` high while the shutter is open, the cameras at the
+    /// ends of the equal shares of that time the frame's renders stand for, one more than the
+    /// renders. `interval` is the seconds between two frames of the video.
     public func cameras(atSeconds seconds: Double, interval: Double, frame: InsideFrame, height: Int)
         -> [Camera]
     {
@@ -443,9 +443,9 @@ public final class Flight {
         let count = InsideBlur.subframes(
             from: camera(atSeconds: from).camera, to: camera(atSeconds: to).camera, frame: frame,
             height: height)
-        guard count > 1 else { return [camera(atSeconds: seconds).camera] }
-        return (0..<count).map { index in
-            camera(atSeconds: from + (to - from) * (Double(index) + 0.5) / Double(count)).camera
+        guard count > 0 else { return [camera(atSeconds: seconds).camera] }
+        return (0...count).map { index in
+            camera(atSeconds: from + (to - from) * Double(index) / Double(count)).camera
         }
     }
 

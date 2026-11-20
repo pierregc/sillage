@@ -722,8 +722,8 @@ public final class TakeExport {
             shot.look = InsideExposure.trimmed(shot.look, stops: stops)
             if interval > 0, var report = inside {
                 report.deepestTrim = max(report.deepestTrim, stops)
-                report.mostRenders = max(report.mostRenders, views.count)
-                report.renders += views.count
+                report.mostRenders = max(report.mostRenders, views.count - 1)
+                report.renders += max(views.count - 1, 1)
                 // Against the frame before, when it is the one before in the video.
                 let step = interval * Double(rate)
                 if let before, within.nearness < 1, abs(frame.played - before.played - step) < 1e-6 * step {

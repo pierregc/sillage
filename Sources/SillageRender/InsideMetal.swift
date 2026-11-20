@@ -72,7 +72,7 @@ struct InsidePass {
         }
         dust = try additive("splatVertex", "dustFragment", writing: 1)
         splat = try additive("splatVertex", "splatFragment", writing: 0)
-        stars = try additive("pointStarVertex", "splatFragment", writing: 0)
+        stars = try additive("pointStarVertex", "pointStarFragment", writing: 0)
         resolve = try compute("insideResolve")
         count = try compute("insideCount")
         offsets = try compute("insideOffsets")

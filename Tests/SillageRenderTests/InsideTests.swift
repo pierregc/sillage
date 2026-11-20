@@ -127,22 +127,23 @@ struct InsideTests {
             Camera(eye: SIMD3(x, 0, 0), target: SIMD3(x, 0, 0) + aim, near: 0.001)
         }
         let near = frame(0.2)
-        // At rest, one render.
-        #expect(InsideBlur.subframes(from: camera(0), to: camera(0), frame: near, height: 1080) == 1)
-        // A parsec during the shutter, 200 pc from matter: 1 745 px a radian, 9 pixels.
+        // At rest, none: the frame is drawn once through its own camera.
+        #expect(InsideBlur.subframes(from: camera(0), to: camera(0), frame: near, height: 1080) == 0)
+        // A tenth of a parsec during the shutter, 200 pc from matter: 1 745 px a radian, under
+        // a pixel, one render with its streaks. A parsec, 9 pixels: five.
         let slow = InsideBlur.subframes(from: camera(0), to: camera(0.0001), frame: near, height: 1080)
         let fast = InsideBlur.subframes(from: camera(0), to: camera(0.001), frame: near, height: 1080)
-        #expect(slow == 2 && fast == 8)
-        // The same move far from everything is a single render, and so is a turn out there.
+        #expect(slow == 1 && fast == 5)
+        // The same move far from everything is the frame itself, and so is a turn out there.
         let far = frame(60)
-        #expect(InsideBlur.subframes(from: camera(0), to: camera(0.001), frame: far, height: 1080) == 1)
+        #expect(InsideBlur.subframes(from: camera(0), to: camera(0.001), frame: far, height: 1080) == 0)
         let turned = camera(0, aim: SIMD3(2, 100, 0))
-        #expect(InsideBlur.subframes(from: camera(0), to: turned, frame: far, height: 1080) == 1)
+        #expect(InsideBlur.subframes(from: camera(0), to: turned, frame: far, height: 1080) == 0)
         #expect(InsideBlur.subframes(from: camera(0), to: turned, frame: near, height: 1080) == 8)
         var settings = InsideSettings()
         settings.subframes = 1
         let single = InsideFrame(settings: settings, nearness: 0.2)
-        #expect(InsideBlur.subframes(from: camera(0), to: camera(1), frame: single, height: 1080) == 1)
+        #expect(InsideBlur.subframes(from: camera(0), to: camera(1), frame: single, height: 1080) == 0)
     }
 
     /// A frame under the target keeps its exposure; one over it is brought down to it in a few
@@ -228,13 +229,13 @@ struct InsideTests {
         let near = InsideFrame(settings: flight.inside, nearness: 0.1)
         // On the look's camera, one render whatever moves.
         #expect(flight.cameras(atSeconds: 1, interval: 1.0 / 30, frame: near, height: 1080).count == 1)
-        // Flying past matter, several, spread about the frame's own moment.
+        // Flying past matter, the ends of eight shares of the shutter, about the frame's moment.
         let views = flight.cameras(atSeconds: 5, interval: 1.0 / 30, frame: near, height: 1080)
-        #expect(views.count == 8)
+        #expect(views.count == 9)
         let middle = flight.camera(atSeconds: 5).camera.eye
-        let mean = views.reduce(SIMD3<Float>.zero) { $0 + $1.eye } / Float(views.count)
-        #expect(simd_length(mean - middle) < 1e-3)
-        #expect(simd_length(views[0].eye - views[7].eye) > 0)
+        #expect(simd_length(views[4].eye - middle) < 1e-6)
+        let open = flight.camera(atSeconds: 5 - 1.0 / 120).camera.eye
+        #expect(simd_length(views[0].eye - open) < 1e-6 && simd_length(views[0].eye - views[8].eye) > 0)
         var kept = file
         kept.near = 0.5
         #expect(try Flight(kept, take: take(), look: { _ in look }).near == 0.5)

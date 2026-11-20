@@ -502,9 +502,11 @@ public final class Renderer {
         encode(cameras: [camera], into: buffer, present: present)
     }
 
-    /// One frame averaged from a render through each of `cameras` (#297): the motion blur of
-    /// a flight that passes near matter, the light of the renders averaged before the tone
-    /// curve. Only a frame drawn from inside is; any other draws through the middle camera.
+    /// One frame through the cameras its shutter passes (#297): the motion blur of a flight
+    /// near matter. With several, the frame is the mean of a render through each but the last,
+    /// the light averaged before the tone curve, and each render draws the point stars as the
+    /// streaks they leave on the way to the next camera. Only a frame drawn from inside is; any
+    /// other draws through the middle camera.
     public func encode(cameras: [Camera], into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
         guard !cameras.isEmpty else { return }
         guard inside != nil, !settings.plain, let pass = insideResources() else {
@@ -512,11 +514,14 @@ public final class Renderer {
             encodePost(into: buffer, present: present)
             return
         }
-        for (index, camera) in cameras.enumerated() {
-            encodeSplat(camera: camera, into: buffer)
+        let renders = max(cameras.count - 1, 1)
+        for index in 0..<renders {
+            encodeSplat(
+                camera: cameras[index], into: buffer,
+                next: index + 1 < cameras.count ? cameras[index + 1] : nil)
             guard let compute = buffer.makeComputeCommandEncoder() else { continue }
             var factor = UInt32(settings.supersample)
-            var share = SIMD2<Float>(1 / Float(cameras.count), index > 0 ? 1 : 0)
+            var share = SIMD2<Float>(1 / Float(renders), index > 0 ? 1 : 0)
             dispatch(compute, pass.resolve, into: resolved) { encoder in
                 encoder.setTexture(accumulation, index: 0)
                 encoder.setTexture(resolved, index: 2)
@@ -547,7 +552,7 @@ public final class Renderer {
     /// star field.
     private func encodeSplat(
         camera: Camera, into buffer: MTLCommandBuffer, particles: Range<Int>? = nil,
-        stages: ClosedRange<UInt32> = 0...1, first: Bool = true
+        stages: ClosedRange<UInt32> = 0...1, first: Bool = true, next: Camera? = nil
     ) {
         // From inside a galaxy (#297): the passes its text changes come from its own library.
         // Not for a frame drawn in parts, which the canvas alone asks for.
@@ -586,7 +591,8 @@ public final class Renderer {
             guard let within else { return }
             var both = InsideSplatUniforms(
                 splat: uniforms,
-                inside: InsideUniforms(within, camera: camera, settings: settings, splat: uniforms))
+                inside: InsideUniforms(
+                    within, camera: camera, next: next, settings: settings, splat: uniforms))
             encoder.setVertexBytes(&both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
         }
 
@@ -598,7 +604,8 @@ public final class Renderer {
             let uniforms = plan.uniforms(for: .stars)
             var both = InsideSplatUniforms(
                 splat: uniforms,
-                inside: InsideUniforms(within, camera: camera, settings: settings, splat: uniforms))
+                inside: InsideUniforms(
+                    within, camera: camera, next: next, settings: settings, splat: uniforms))
             deep.encodeList(into: buffer) { encoder in
                 encoder.setBuffer(drawnBuffer, offset: positionOffset, index: 0)
                 encoder.setBuffer(luminosityBuffer, offset: 0, index: 2)
@@ -718,7 +725,7 @@ public final class Renderer {
                     var both = InsideSplatUniforms(
                         splat: uniforms,
                         inside: InsideUniforms(
-                            within, camera: camera, settings: settings, splat: uniforms))
+                            within, camera: camera, next: next, settings: settings, splat: uniforms))
                     encoder.setVertexBytes(
                         &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
                 }

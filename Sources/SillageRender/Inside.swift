@@ -116,7 +116,8 @@ public struct InsideFrame: Sendable, Equatable {
 
 /// Mirrors `InsideUniforms` in `Shaders`, which a frame drawn from inside reads behind its
 /// `SplatUniforms`.
-public struct InsideUniforms: Sendable, Equatable {
+public struct InsideUniforms: Sendable {
+    public var nextViewProjection: simd_float4x4
     public var slabKnots: SIMD4<Float>
     public var slabEnd: Float
     public var slabSoft: Float
@@ -146,8 +147,15 @@ public struct InsideUniforms: Sendable, Equatable {
     }
 
     /// `splat` is the frame's own, whose slab stack around the aim point the knots start from.
-    public init(_ frame: InsideFrame, camera: Camera, settings: RenderSettings, splat: SplatUniforms) {
+    /// `next` is the camera a moment later, to where the point stars' streaks run; nil, or the
+    /// same camera, draws them as points.
+    public init(
+        _ frame: InsideFrame, camera: Camera, next: Camera? = nil, settings: RenderSettings,
+        splat: SplatUniforms
+    ) {
         let inside = frame.settings
+        nextViewProjection = (next ?? camera).viewProjection(
+            aspectRatio: Float(settings.width) / Float(max(settings.height, 1)))
         let scale = Float(settings.supersample)
         // The stack every export has: four slabs of a quarter of its thickness from its near face.
         let thickness = 1 / max(splat.slabScale, 1e-9)
@@ -253,19 +261,23 @@ public enum Nearness {
 }
 
 /// How many renders a frame is averaged from (#297): one for each `step` pixels the matter at
-/// `nearness` crosses while the shutter is open, as the eye moves and the camera turns. Only in
-/// the near field, where there are point stars to jump: one, a single render, wherever the
-/// camera is slow, or farther from matter than the field reaches.
+/// `nearness` crosses while the shutter is open, as the eye moves and the camera turns. Every
+/// render draws the point stars as the streaks they leave during its share of that time, so the
+/// renders are for what is not a point, a dust lane's edge or a splat, and a few are enough. Only
+/// in the near field, where there are stars to streak: none, the frame drawn once through its
+/// own camera, wherever the camera is at rest, or farther from matter than the field reaches.
 public enum InsideBlur {
     /// Output pixels the near matter may cross between two renders.
-    public static let step: Float = 0.75
+    public static let step: Float = 4
+    /// Under this many pixels over the whole shutter, the frame is still.
+    public static let still: Float = 0.1
 
     public static func subframes(
         from opening: Camera, to closing: Camera, frame: InsideFrame, height: Int
     ) -> Int {
         let most = frame.settings.subframes
         let (near, far) = (frame.settings.field[0], frame.settings.field[1])
-        guard most > 1, frame.nearness < far else { return 1 }
+        guard most > 1, frame.nearness < far else { return 0 }
         let t = min(max((frame.nearness - near) / (far - near), 0), 1)
         let within = 1 - t * t * (3 - 2 * t)
         let scale = Float(height) / (2 * tan(opening.fieldOfView / 2))
@@ -276,6 +288,7 @@ public enum InsideBlur {
         if la > 0, lb > 0 { turned = acos(min(max(simd_dot(a, b) / (la * lb), -1), 1)) }
         let pixels = scale * (moved + turned) * within
         guard pixels.isFinite else { return most }
+        guard pixels >= still else { return 0 }
         return min(max(Int((pixels / step).rounded(.up)), 1), most)
     }
 }

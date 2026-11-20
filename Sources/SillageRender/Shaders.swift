@@ -23,6 +23,10 @@ enum Shaders {
         // every other frame draws from the text it always had.
         #if defined(SILLAGE_INSIDE)
         struct InsideUniforms {
+            /// The camera at the end of the time this render stands for, a moment after the one
+            /// the frame is drawn through: a point star is drawn as the streak it leaves from one
+            /// to the other.
+            float4x4 nextViewProjection;
             /// The view depths where the four slabs of dust start, and where the last ends.
             float4 slabKnots;
             float slabEnd;
@@ -1176,7 +1180,29 @@ enum Shaders {
         // splat gives up goes to a few bright stars over a crowd of faint ones, scattered in its
         // kernel from a hash of its index and the star's rank, so the same particle always has
         // the same stars, wherever the camera is.
-        vertex SplatOut pointStarVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
+        struct StarOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            half3 color;
+            half4 slab;
+            /// Half of the streak, and the star's own radius, both in the point's square, which
+            /// is one across.
+            float2 half_streak;
+            float radius;
+        };
+
+        static StarOut culledStar() {
+            StarOut out;
+            out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
+            out.pointSize = 0.0f;
+            out.color = half3(half(0.0f));
+            out.slab = half4(half(0.0f));
+            out.half_streak = float2(0.0f);
+            out.radius = 0.5f;
+            return out;
+        }
+
+        vertex StarOut pointStarVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
                                         device const float3 *positions [[buffer(0)]],
                                         device const float *population [[buffer(1)]],
                                         device const float *formation [[buffer(8)]],
@@ -1203,7 +1229,7 @@ enum Shaders {
             float starred = insideStarred(insideRaw(p, clip, u, column), clip.w, u.inside);
             // The last star a particle draws comes in as the particle turns.
             float present = saturate(insideStarsDrawn(starred, u.inside) - float(rank));
-            if (present <= 0.0f) { return splatOut(culledSplat()); }
+            if (present <= 0.0f) { return culledStar(); }
             float2 a = insideHash(uint2(index, rank * 2u + 1u));
             float2 b = insideHash(uint2(index ^ 0x9e3779b9u, rank * 2u + 2u));
             float z = 2.0f * a.x - 1.0f;
@@ -1215,7 +1241,35 @@ enum Shaders {
             p.starShare = pow(float(rank + 1u), -u.inside.starShareExponent) * u.inside.starShareNorm
                 * present * starred;
             p.starHash = b.y;
-            return splatOut(splat(p, u, frames, stellar, ramps, column));
+            Splat star = splat(p, u, frames, stellar, ramps, column);
+            if (star.pointSize <= 0.0f) { return culledStar(); }
+            // The streak the star leaves while the shutter is open (#297): from where this
+            // camera puts it to where the next one does, in pixels. The point grows to hold it,
+            // the light is spread along it, and the fragment draws the star's own profile
+            // across it. A string of renders then draws one unbroken streak, not a row of dots.
+            float4 next = u.inside.nextViewProjection * float4(p.position, 1.0f);
+            float2 extent = float2(u.projectionScale / u.inside.projectionX,
+                                   u.projectionScale / u.inside.projectionY);
+            float2 from = star.position.xy / star.position.w;
+            float2 moved = float2(0.0f);
+            if (next.w > u.inside.nearPlane && star.position.w > u.inside.nearPlane) {
+                moved = (next.xy / next.w - from) * extent;
+            }
+            float travel = length(moved);
+            // No point is wider than 511 pixels: a longer streak is cut short and keeps its light.
+            float drawn = min(travel, 480.0f);
+            if (travel > drawn) { moved *= drawn / travel; }
+            float size = star.pointSize;
+            StarOut out;
+            out.position = float4((from + 0.5f * moved / extent) * star.position.w, star.position.zw);
+            out.pointSize = size + drawn;
+            // The light of the star's disc over the disc and the band between its two ends.
+            out.color = half3(float3(star.color) / (1.0f + 2.407f * drawn / size));
+            out.slab = star.slab;
+            // The square's y runs down the screen, the clip space's up.
+            out.half_streak = 0.5f * float2(moved.x, -moved.y) / out.pointSize;
+            out.radius = 0.5f * size / out.pointSize;
+            return out;
         }
         #endif
 
@@ -1905,6 +1959,25 @@ enum Shaders {
                                            float2 coord [[point_coord]],
                                            SplatFetch prior) {
             float r2 = splatRadius2(coord);
+            if (r2 > 1.0f) { discard_fragment(); }
+
+            LightTarget out;
+            out.light = lightPixel(in.color, in.slab, prior.dust, r2);
+            return out;
+        }
+        #endif
+
+        #if defined(SILLAGE_INSIDE) && defined(__METAL_VERSION__)
+        // A pixel of a point star's streak (#297): the star's own profile across the line from
+        // its first place to its last.
+        fragment LightTarget pointStarFragment(StarOut in [[stage_in]],
+                                               float2 coord [[point_coord]],
+                                               SplatFetch prior) {
+            float2 d = coord - 0.5f;
+            float along = dot(in.half_streak, in.half_streak);
+            float t = along > 1e-12f ? clamp(dot(d, in.half_streak) / along, -1.0f, 1.0f) : 0.0f;
+            float2 off = (d - in.half_streak * t) / in.radius;
+            float r2 = dot(off, off);
             if (r2 > 1.0f) { discard_fragment(); }
 
             LightTarget out;

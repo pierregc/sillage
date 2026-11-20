@@ -43,6 +43,7 @@ struct InsideRenderTests {
         /// The light as RGB, pixel by pixel, after a frame through `camera`.
         func light(_ camera: Camera) throws -> [SIMD3<Float>] {
             _ = renderer.render(camera: camera)
+            #expect(renderer.insideFailure == nil)
             let file = try #require(renderer.particleTargets()?.target.first { $0.name == "light.f16" })
             let halves = file.bytes.withUnsafeBytes { Array($0.bindMemory(to: Float16.self)) }
             return stride(from: 0, to: halves.count, by: 4).map {
@@ -69,11 +70,12 @@ struct InsideRenderTests {
 
     @Test func theUniformsLieWhereTheShaderReadsThem() {
         #expect(MemoryLayout<SplatUniforms>.stride == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 96 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 160 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
-        #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 16)
-        #expect(MemoryLayout<InsideUniforms>.offset(of: \.starCount) == 76)
-        #expect(MemoryLayout<InsideUniforms>.offset(of: \.projectionY) == 84)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.starCount) == 140)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.projectionY) == 148)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every
@@ -201,24 +203,21 @@ struct InsideRenderTests {
         #expect(try stage.light(far) == beyond)
     }
 
-    /// A frame averaged from several renders is the mean of them: of one camera, the frame
-    /// itself; of two, the light of both at half each.
+    /// A frame through several cameras is the mean of a render through each but the last: of
+    /// one camera again and again, the frame itself; of two, the light of both at half each.
     @Test func aFrameIsTheMeanOfItsRenders() throws {
         var generator = SeededGenerator(seed: 9)
         let positions = (0..<300).map { _ in
             SIMD3<Float>(generator.uniform() - 0.5, generator.uniform() * 0.2, generator.uniform() - 0.5) * 2
         }
         let stage = try Stage(positions)
-        stage.renderer.inside = Self.inside(1) { settings in
-            settings.stars = 16
-            settings.starColours = 0
-        }
+        stage.renderer.inside = Self.inside(1) { $0.stars = 0 }
         let (a, b) = (camera(3), Camera(eye: SIMD3(0.4, -3, 0), target: SIMD3(0.4, 100, 0), near: 0.001))
         let single = stage.renderer.render(camera: a)
-        let thrice = stage.renderer.render(cameras: [a, a, a])
+        let thrice = stage.renderer.render(cameras: [a, a, a, a])
         #expect((zip(thrice, single).map { abs(Int($0) - Int($1)) }.max() ?? 9) <= 1)
         let other = stage.renderer.render(camera: b)
-        let both = stage.renderer.render(cameras: [a, b])
+        let both = stage.renderer.render(cameras: [a, b, b])
         #expect(both != single && both != other)
         // The light of every pixel lies between the two renders', so its picture does too.
         func level(_ pixels: [UInt8], _ at: Int) -> Int {
@@ -226,12 +225,43 @@ struct InsideRenderTests {
         }
         var (lit, outside) = (0, 0)
         for at in stride(from: 0, to: both.count, by: 4) {
-            let (low, high) = (
-                min(level(single, at), level(other, at)), max(level(single, at), level(other, at))
-            )
+            let (low, high) = (min(level(single, at), level(other, at)), max(level(single, at), level(other, at)))
             if high > 0 { lit += 1 }
             if level(both, at) < low - 3 || level(both, at) > high + 3 { outside += 1 }
         }
         #expect(lit > 100 && outside == 0, "\(outside) of \(lit)")
+    }
+
+    /// While the shutter is open a point star is the streak it leaves from one camera to the
+    /// next: the same light on more pixels, unbroken from the star's first place to its last.
+    @Test func aPointStarIsTheStreakItLeaves() throws {
+        let stage = try Stage([.zero], maximumKernel: 64)
+        stage.renderer.inside = Self.inside(0.5) { settings in
+            settings.stars = 1
+            settings.starFrom = 0.001
+            settings.starFull = 0.002
+            settings.starSpread = 0.01
+            settings.starSize = 3
+            settings.starColours = 0
+        }
+        let from = camera(1)
+        // The camera slides 150 pc across a star a kiloparsec away: about 22 pixels of 160.
+        let to = Camera(eye: SIMD3(0.15, -1, 0), target: SIMD3(0.15, 100, 0), near: 0.001)
+        let point = try stage.light(from)
+        _ = stage.renderer.render(cameras: [from, to])
+        let file = try #require(
+            stage.renderer.particleTargets()?.target.first { $0.name == "light.f16" })
+        let halves = file.bytes.withUnsafeBytes { Array($0.bindMemory(to: Float16.self)) }
+        let streak = stride(from: 0, to: halves.count, by: 4).map { Float(halves[$0]) }
+        let (still, moving) = (point.map(\.x), streak)
+        let lit = (still.filter { $0 > 0 }.count, moving.filter { $0 > 0 }.count)
+        #expect(lit.0 >= 4 && lit.1 > 4 * lit.0, "\(lit)")
+        let totals = (still.reduce(0, +), moving.reduce(0, +))
+        #expect(abs(totals.1 / totals.0 - 1) < 0.15, "\(totals)")
+        // Along the row through its middle, no gap between its two ends.
+        let row = stage.height / 2
+        let columns = (0..<stage.width).filter { moving[row * stage.width + $0] > 0 }
+        let (first, last) = (try #require(columns.first), try #require(columns.last))
+        #expect(last - first >= 18 && columns.count == last - first + 1, "\(columns)")
     }
 }
