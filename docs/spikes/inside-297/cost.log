@@ -1,0 +1,64 @@
+gpu.sh: waiting for the lock: t334 timing 2026-11-20T16:12:36 pid=81763
+== t1 3840x2160
+key-00-000.00s.png  138 ms
+key-01-004.00s.png  246 ms
+key-02-008.00s.png  221 ms
+key-03-010.00s.png  178 ms
+key-04-012.00s.png  143 ms
+key-05-014.00s.png  103 ms
+key-06-016.00s.png  47 ms
+key-07-018.00s.png  32 ms
+key-08-020.00s.png  94 ms
+key-09-024.00s.png  360 ms
+key-10-028.00s.png  217 ms
+inside     nearest matter 199 pc from the eye, exposure down by up to 2.7 stops, up to 20.1 M point stars a render
+== t1 1920x1080
+key-00-000.00s.png  79 ms
+key-01-004.00s.png  113 ms
+key-02-008.00s.png  103 ms
+key-03-010.00s.png  99 ms
+key-04-012.00s.png  86 ms
+key-05-014.00s.png  71 ms
+key-06-016.00s.png  33 ms
+key-07-018.00s.png  25 ms
+key-08-020.00s.png  58 ms
+key-09-024.00s.png  175 ms
+key-10-028.00s.png  121 ms
+inside     nearest matter 199 pc from the eye, exposure down by up to 2.6 stops, up to 19.9 M point stars a render
+== dive 3840x2160
+key-00-000.00s.png  162 ms
+key-01-004.00s.png  171 ms
+key-02-012.00s.png  290 ms
+key-03-018.00s.png  483 ms
+key-04-024.00s.png  483 ms
+key-05-030.00s.png  371 ms
+key-06-036.00s.png  289 ms
+key-07-042.00s.png  196 ms
+key-08-054.00s.png  163 ms
+key-09-062.00s.png  395 ms
+key-10-070.00s.png  377 ms
+key-11-078.00s.png  281 ms
+key-12-084.00s.png  259 ms
+inside     nearest matter 178 pc from the eye, exposure down by up to 3.7 stops, up to 66.9 M point stars a render
+== dive 1920x1080
+key-00-000.00s.png  121 ms
+key-01-004.00s.png  108 ms
+key-02-012.00s.png  145 ms
+key-03-018.00s.png  188 ms
+key-04-024.00s.png  206 ms
+key-05-030.00s.png  184 ms
+key-06-036.00s.png  148 ms
+key-07-042.00s.png  115 ms
+key-08-054.00s.png  110 ms
+key-09-062.00s.png  215 ms
+key-10-070.00s.png  188 ms
+key-11-078.00s.png  192 ms
+key-12-084.00s.png  204 ms
+inside     nearest matter 178 pc from the eye, exposure down by up to 3.5 stops, up to 64.0 M point stars a render
+== same bytes as main
+same      photograph 1080p-0000.png
+same      photograph 1080p-0003.png
+same      photograph 1080p-0005.png
+same      readme-v4 1080p-0000.png
+same      readme-v4 1080p-0003.png
+same      readme-v4 1080p-0005.png
