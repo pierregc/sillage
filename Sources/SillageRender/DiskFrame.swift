@@ -23,8 +23,9 @@ public struct DiskFrame {
     /// the dust web round (#173).
     public var omegaInner: SIMD4<Float> = .zero
     public var omegaOuter: SIMD4<Float> = .zero
-    /// How intact the disk is (0 with no disk), the web's renewal period in time units and
-    /// its phase.
+    /// How intact the disk is (0 with no disk), the web's renewal period in time units, its
+    /// phase, and how far either side of the plane its lace is carried for an eye near the disk
+    /// (#354), in kpc.
     public var web: SIMD4<Float> = .zero
 
     /// The web's renewal period, as a share of a turn at two scale lengths.
@@ -126,7 +127,8 @@ public struct DiskFrame {
                 omegaOuter: SIMD4<Float>(omega[4], omega[5], omega[6], omega[7]),
                 web: SIMD4<Float>(
                     galaxy.kind.isRotating ? intact : 0, period,
-                    (Float(index) * 0.618).truncatingRemainder(dividingBy: 1), 0))
+                    (Float(index) * 0.618).truncatingRemainder(dividingBy: 1),
+                    galaxy.diskThickness * DustWeb.layer))
         }
     }
 }

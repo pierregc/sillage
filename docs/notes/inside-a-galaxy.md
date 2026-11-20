@@ -1,4 +1,4 @@
-# Inside a galaxy (#296, #297, #353)
+# Inside a galaxy (#296, #297, #353, #354, #357)
 
 What the renderer does when the camera goes into a disk, tried on real frames before #297
 changes anything: the README's Mice take (2026-11-04 scene-0067, 8 M visible particles on 12 M
@@ -271,7 +271,9 @@ draws the streaks is the lace alone, a pattern lying in the mid-plane whose wall
 horizon like a tiled floor. So the web keeps carrying the dust, as the even layer it makes of the
 grains, and the lace's contrast goes to nothing as the eye comes within 10 to 3 kpc of the disk
 (its plane out to seven scale lengths), the rays that graze the plane losing it first, from 20 kpc.
-From 3 kpc down a lane is a soft dark band with the stars coming out in front of it.
+From 3 kpc down a lane is a soft dark band with the stars coming out in front of it. #354 replaced
+the flattening ([below](#the-lace-through-the-dust-layer-354)): its edge was a band that moved with
+the camera.
 
 **A splat that has given all its light to its stars is not drawn**, nor a particle faded out at
 the near plane. The spike drew them black, at the ceiling's size; inside an arm they were most of
@@ -541,3 +543,85 @@ among the reference outputs, and `sillage-cuda check` holds the CUDA engine to t
 ([one-kernel-source.md](one-kernel-source.md#the-frames-from-inside-a-galaxy-369)): within
 60 dB of Metal's on the CPU target, not yet run on an NVIDIA GPU (#283). The CUDA engine has no
 flight video export; the full pass draws no flight on either engine.
+
+## The lace through the dust layer (#354)
+
+Pierre, on #297's dive: on the way down to the centre, "blades" that advance with the camera while
+the galaxy stands still, almost horizontal, clearest on frames 500 to 550. Two things drew them,
+both in the dust web's lace, the flat pattern each disk carries in its mid-plane:
+
+- **The lace seen at a grazing angle.** A wall of the lace is a band of no height lying in the
+  plane, so seen at an elevation θ its width shrinks by sin θ: walls a hundred parsecs wide came
+  out as crisp lines one or two pixels tall running across the disk, a tiled floor in
+  perspective, and the slightest change of height sent them sliding up or down the frame.
+- **#297's flattening.** It took the lace away near a disk, the rays that graze the plane first,
+  past a threshold on the ray's angle. The line where a ray's angle crossed it was a band fixed to
+  the camera, not to the disk, and as the eye came down from 20 to 10 kpc the threshold rose and
+  the band swept across the disk toward the camera: the blade.
+
+**What replaced the flattening.** Near a disk the lace is no longer read where a pixel's ray meets
+the mid-plane: it is averaged along the stretch of ray that lies inside the disk's dust layer, the
+lace standing for the dust's structure through the layer's depth (`webThrough`). Four taps along
+that stretch each read the lace over their quarter of it, folded into the pixel's footprint, so the
+filter is the stretch and the pixel together. Seen from above the stretch is shorter than a pixel
+and the lace is the mid-plane's; at an elevation θ it runs 2a / tan θ across the plane (a the
+layer's half thickness), so the threads, a tenth of a cell wide, fade out first, the walls next,
+and the clear holes only toward the horizon. Each scale goes at its own angle and nothing stops at
+any: there is no line to draw, and nothing in it is keyed on where the camera looks, so the
+pattern moves with the disk and a camera held still draws a still. Along the plane from inside the
+layer the stretch runs kiloparsecs and the lace evens out by itself into the layer #297's
+flattening gave, so the frames inside the disk (1 104 to 1 800) are the frames they were.
+
+- **The layer** is 0.6 of the galaxy's disk thickness either side of the plane (`DustWeb.layer`,
+  carried in `DiskFrame.web.w`: 96 and 115 pc for the Mice). The sampler lays the dust in a
+  sech-squared layer of 0.45 thicknesses with its strands lifted up to 0.8 out of it. Tried on
+  frames 440 to 700: at 0.3 (threads as tall as they are wide) thin streaks were left on the far
+  side of the larger disk and across the companion seen nearly edge on; at 1 (the strands' whole
+  lift) the threads went from the near side too, seen at 45°.
+- **Only near a disk**: within two of its radii (seven scale lengths each), wholly within one
+  (`web` in the flight's `inside` block, `[1, 2]`, now in radii). Past that the lace lies in the
+  mid-plane as every export draws it, and a framing that shows a whole disk is always farther (3.2
+  radii for a disk filling a field of 0.6 rad). On the Mice's dive the layer comes in between
+  frames 270 and 400 (77 to 36 kpc from the larger disk), while the disks grow in the frame; the frames at the look keys
+  and up to frame 200 are the same bytes as before, and so are exports without a flight.
+- **The CUDA engine** draws it from the same text. The two inside fixtures changed and were drawn
+  again; on the CPU target they are 58.6 and 52.0 dB from Metal's with #357's stars (61.4 and
+  60.1 before them).
+
+![Frames 440 to 650, before and after](https://raw.githubusercontent.com/pierregc/sillage/assets/354-dust-perspective/docs/spikes/inside-354/frames-440-650.jpg)
+
+The layer at 0.3, 0.6 and 1 of the disk's thickness, on frames 525 and 650:
+
+![The layer's thickness](https://raw.githubusercontent.com/pierregc/sillage/assets/354-dust-perspective/docs/spikes/inside-354/layers-525-650.jpg)
+
+**The camera held still** at frame 540's place (`hold540.flight.json` on the assets branch, the
+flight's key at 18 s for two seconds, time frozen): before, the streaks of the far side are there
+in a still too; after, none. Its first and last frames differ by the grain alone, 1.5 levels on
+average with no structure, before as after. The clip of frames 400 to 700, before then after, is
+`before-after-400-700.mp4` on the assets branch.
+
+![Camera held at frame 540](https://raw.githubusercontent.com/pierregc/sillage/assets/354-dust-perspective/docs/spikes/inside-354/held-540.jpg)
+
+**What it costs**: four taps instead of one, once a pixel. Alone on the GPU, one render of each of
+six moments of the dive (15 to 40 s), against main with #357, two rounds: 2 to 3 ms more a render
+in 1080p (137 to 179 ms before), 2 to 12 in 4K (317 to 425 before), 1 to 3 %.
+
+**Not fixed: one web for two disks.** Where the companion's carried dust shares a slab of a pixel
+with the larger disk's (#353), the resolve still reads the web of the later galaxy for both: the
+carrier holds each slab's dust summed over galaxies and its tag only the highest galaxy, blended by
+maximum, so the scalloped outline of the companion's outermost grains is still there on frames 500
+to 550, softer. Nothing in the layer gives the split. What would: in the inside library, the carrier
+pass writing the dust of even and of odd galaxies into two carriers with a tag each, and the
+resolve multiplying each by its own galaxy's web, exact for two galaxies; both engines' carrier
+passes and the CUDA check's comparison of the carrier targets change with it. Nor is the order of
+two disks in the slabs touched (the aim point's stack puts all of frame 550's dust in its last two
+slabs at 430 Myr), which belongs with #355's slab placement.
+
+**For #356.** `webThrough` already walks each pixel's ray through each disk's dust layer, from
+where it enters (the eye, when the eye is in the layer) to where it leaves, at `rel + ray * t`,
+kiloparsecs from the disk's centre in the frame's axes. Structure finer than a grain belongs at
+those points: a 3D noise read there, near the eye only, multiplied into each tap's lace. Two things
+it will want: taps spaced by distance from the eye rather than four even ones, which grow to
+kiloparsecs along the plane; and a factor per slab rather than one per disk and pixel, so that a
+near filament darkens the near slabs and not the far lane behind it (the resolve already loops
+over the slabs).

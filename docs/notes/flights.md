@@ -175,8 +175,10 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
 - **Dust slabs from the eye** once inside (`slabs`, `[0.3, 1.5, 7.5]` kpc), soft, and around the
   aim point as every export has them far away; they slide from one layout to the other as the eye
   comes within `slabsWithin` (`[1.5, 6]` kpc) of matter.
-- **The dust web's lace flattens out** as the eye comes within `web` (`[3, 10]` kpc) of a disk,
-  the rays that graze the plane first; the dust it carries stays, as an even layer.
+- **The dust web's lace is carried through the dust layer's depth** as the eye comes within
+  `web` (`[1, 2]` radii, seven scale lengths each) of a disk (#354): a pixel's lace is its mean
+  along the stretch of ray inside the layer, so it evens out where the rays graze the plane, with
+  no angle at which it stops.
 - **Motion blur**: while the shutter is open (`shutter`, half of the frame's interval) a point
   star is drawn as the streak it leaves, and the frame is averaged from up to `subframes` renders
   (8), one for every four pixels the near matter crosses meanwhile, each drawing its share of
