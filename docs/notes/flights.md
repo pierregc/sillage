@@ -61,6 +61,13 @@ cannot be read the one way it means.
   (#297, "Inside a galaxy" below). Every field is optional and the block itself is; absent, the
   settings Pierre chose on #296's frames.
 
+**Round a black hole close up (#335)** a flight is the same file with two differences: its keys
+give `time`, the hole's moment in its own time units, in place of `myr`, and its points are
+fixed in the world, in Schwarzschild radii round the hole. A file gives `myr` or `time`, never
+both; galaxy anchors and `inside` are refused there, and an export of galaxies refuses a file
+that gives `time`. Three samples come with every new close up
+([the close up's note](black-hole-close-up.md#cameras-that-fly-335)).
+
 ## Where to read coordinates
 
 `sillage-render flight <scene> --at <myr,...> [--look <look>]` prints, at each moment, every

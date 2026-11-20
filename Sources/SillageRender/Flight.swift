@@ -70,6 +70,9 @@ public struct FlightFile: Codable, Sendable, Equatable {
         public var at: Double
         /// The take's moment then; absent, the time is left to the keys around.
         public var myr: Double?
+        /// A black hole close up's moment then, in the hole's time units (#335), where a flight
+        /// through galaxies gives `myr`.
+        public var time: Double?
         /// The camera the export draws without a flight at this moment.
         public var look: Bool?
         public var eye: Point?
@@ -82,11 +85,12 @@ public struct FlightFile: Codable, Sendable, Equatable {
         public var exposure: Double?
 
         public init(
-            at: Double, myr: Double? = nil, look: Bool? = nil, eye: Point? = nil, aim: Point? = nil,
-            fov: Double? = nil, roll: Double? = nil, exposure: Double? = nil
+            at: Double, myr: Double? = nil, time: Double? = nil, look: Bool? = nil, eye: Point? = nil,
+            aim: Point? = nil, fov: Double? = nil, roll: Double? = nil, exposure: Double? = nil
         ) {
             self.at = at
             self.myr = myr
+            self.time = time
             self.look = look
             self.eye = eye
             self.aim = aim
@@ -101,6 +105,7 @@ public struct FlightFile: Codable, Sendable, Equatable {
             self.init(
                 at: try c.decode(Double.self, forKey: .at),
                 myr: try c.decodeIfPresent(Double.self, forKey: .myr),
+                time: try c.decodeIfPresent(Double.self, forKey: .time),
                 look: try c.decodeIfPresent(Bool.self, forKey: .look),
                 eye: try c.decodeIfPresent(Point.self, forKey: .eye),
                 aim: try c.decodeIfPresent(Point.self, forKey: .aim),
@@ -111,6 +116,9 @@ public struct FlightFile: Codable, Sendable, Equatable {
 
         /// A key that places the camera; one that does not only pins the time.
         var placesCamera: Bool { look == true || eye != nil || aim != nil }
+
+        /// The moment it pins, in the take's time or the close up's.
+        var moment: Double? { myr ?? time }
     }
 
     /// The near distance of a flight's camera when the file gives none: a parsec, where every
@@ -173,11 +181,16 @@ public struct FlightFile: Codable, Sendable, Equatable {
         func fail(_ detail: String) -> ReadError { .shape(detail) }
         guard keys.count >= 2 else { throw fail("two keys at least") }
         guard keys[0].at == 0 else { throw fail("the first key is at 0 s") }
-        guard keys[0].myr != nil, keys[keys.count - 1].myr != nil else {
-            throw fail("the first and the last keys give myr")
+        let hole = isBlackHole
+        guard keys[0].moment != nil, keys[keys.count - 1].moment != nil else {
+            throw fail("the first and the last keys give \(hole ? "time" : "myr")")
+        }
+        if hole, keys.contains(where: { $0.myr != nil }) {
+            throw fail("a key gives myr and another time: myr for galaxies, time for a black hole")
         }
         if let near, !(near > 0 && near.isFinite) { throw fail("near \(near) kpc: it is above zero") }
         if let fault = inside?.fault { throw fail("inside: \(fault)") }
+        if hole, inside != nil { throw fail("inside is for galaxies, not a black hole close up") }
         let first = keys[0]
         guard first.look == true || (first.eye != nil && first.aim != nil) else {
             throw fail("the first key places the camera: look, or eye and aim")
@@ -197,6 +210,9 @@ public struct FlightFile: Codable, Sendable, Equatable {
             }
             if let fov = key.fov, !(fov > 0 && fov < .pi) { throw fail("\(name): fov \(fov) rad") }
             if let roll = key.roll, !roll.isFinite { throw fail("\(name): roll is a number") }
+            for case .galaxy? in [key.eye, key.aim] where hole {
+                throw fail("\(name): a black hole close up has no galaxy to hold on to")
+            }
             if let exposure = key.exposure, !Flight.exposures.contains(exposure) {
                 throw fail(
                     "\(name): exposure \(exposure) is outside \(Flight.exposures.lowerBound)"
@@ -208,11 +224,15 @@ public struct FlightFile: Codable, Sendable, Equatable {
     /// The take's time along the video: #305's track through the keys that give `myr`.
     public func timeTrack(megayears: [Double], capturedRate: Int) throws -> TimeTrack {
         try TimeTrack(
-            times: keys.compactMap { key in key.myr.map { TimeTrack.TimeKey(at: key.at, myr: $0) } },
+            times: keys.compactMap { key in key.moment.map { TimeTrack.TimeKey(at: key.at, myr: $0) } },
             megayears: megayears, capturedRate: capturedRate)
     }
 
     public var seconds: Double { keys.last?.at ?? 0 }
+
+    /// A flight round a black hole close up (#335): its keys give the hole's `time`, its points
+    /// are in Schwarzschild radii round the hole, and it holds on to no galaxy.
+    public var isBlackHole: Bool { keys.contains { $0.time != nil } }
 }
 
 /// What a flight reads of a take: its moments, and where its galaxies and their disks are at
