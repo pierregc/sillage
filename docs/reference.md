@@ -745,6 +745,12 @@ to set `SILLAGE_ROOT`, instead of offering a short catalogue. A queue or a night
 `explore-batch.sh --bin PATH` with its own `sillage-render`, not the one built in the checkout the
 script sits in.
 
+### The command line
+
+`sillage-render --help` prints the commands, and `sillage-render <command> --help` the usage and options of one. The options of every command are held in `Sources/SillageRender/RenderCommands.swift`: an option nothing reads, a value that does not parse (`--particles 2M`) or a stray word is refused with a message, the command's usage, and exit status 2, before anything renders. A test holds the tables to the options the sources read. With no argument at all, `sillage-render` still draws its default render.
+
+`sillage-render explore <folder>` alone takes the batch's defaults: 960x540, 900 frames at 30 fps, a step scale of 7 and `--span 700` (Myr, as many steps as cover it at the scene's step, a whole number a frame). `--steps` or `--span` says how long, and a folder explored before keeps its own clip. Each command lives in its own file under `Sources/sillage-render/`; `main.swift` holds the dispatch and the plain render.
+
 ### Exploration batches
 
 ```bash

@@ -144,8 +144,10 @@ struct RenderCommandsTests {
             for file in try FileManager.default.contentsOfDirectory(atPath: url.path)
             where file.hasSuffix(".swift") {
                 let isOwn =
-                    ["Night", "Queue", "Status", "Hole", "Notices", "Scene", "Look", "Style"]
-                    .contains { file.hasPrefix($0) } && file != "SceneFolder.swift"
+                    folder == "Sources/SillageRender"
+                    && ["Night", "Queue", "Status", "Hole", "Notices", "Scene", "Look", "Style"]
+                        .contains { file.hasPrefix($0) }
+                    && file != "SceneFolder.swift"
                 if isOwn || ["RenderCommands.swift", "CommandSpec.swift"].contains(file) { continue }
                 let text = try String(contentsOf: url.appendingPathComponent(file), encoding: .utf8)
                 let range = NSRange(text.startIndex..., in: text)

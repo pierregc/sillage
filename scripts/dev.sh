@@ -26,7 +26,7 @@ build_render() {
         -emit-module-path "$BUILD/SillageRender.swiftmodule" \
         -o "$BUILD/libSillageRender.dylib"
     swiftc -O -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender \
-        "$ROOT"/Sources/sillage-render/main.swift -o "$BUILD/sillage-render"
+        "$ROOT"/Sources/sillage-render/*.swift -o "$BUILD/sillage-render"
     printf '%s\n' "$ROOT" > "$BUILD/sillage-root"
 }
 
