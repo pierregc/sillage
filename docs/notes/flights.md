@@ -161,10 +161,15 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
 - **No flare.** A kernel the look's ceiling caps keeps the surface brightness of its own size
   in the near field, for stars and for dust.
 - **Point stars** (`stars`, 128 a particle): the light of a near particle goes over from its splat
-  to a few bright stars over a crowd of faint ones (`starShare`, rank to minus one), scattered in
-  its kernel (`starSpread`, in kernel lengths) from a hash of its index, coloured around its
-  population (`starColours`), 1.5 output pixels each (`starSize`). The cross-fade runs from `starFrom` to `starFull` of the kernel
-  ceiling (0.05 to 0.2), in the near field only.
+  to a few bright stars over a crowd of faint ones (`starShare`, rank to minus one, each drawn
+  around its rank's share from a Pareto tail of index `starTail`, 1.5), scattered evenly through
+  its kernel and thinning past it (`starSpread`, in kernel lengths), coloured around its
+  population (`starColours`). The cross-fade runs from `starFrom` to `starFull` of the kernel
+  ceiling (0.05 to 0.2, of a frame 1080 high), in the near field only. Since #357 a particle whose
+  kernel covers more than `nearFrom` of the frame's height (0.3) stands for more stars, as the
+  square of its size, up to `nearStars` (4096); a star is `starSize` pixels of a frame 2160 high
+  (1.5), its light shared among the pixels its box touches, and held under `starPeak` (2) times
+  what the tone curve takes to white, so that it stays a point.
 - **The near field** (`field`, `[3, 8]` kpc of view depth): all of the above applies wholly nearer
   than the first distance and not at all past the second.
 - **Dust slabs from the eye** once inside (`slabs`, `[0.3, 1.5, 7.5]` kpc), soft, and around the
@@ -189,8 +194,9 @@ of the drawn particles lie (`Nearness`, 800 of 8 M), which cannot change faster 
 The export's last lines say what a flight took: the nearest it came, the deepest trim, the most
 renders a frame was averaged from and the most particles drawn as stars.
 
-Sizes in pixels are output pixels, as the look's are: a flight drawn in 4K and scaled down has
-finer stars than the same flight drawn in 1080p.
+The point stars are set against the frame's height (#357): a flight drawn in 1080p has the stars
+of the same flight drawn in 4K and scaled down, as many and as fine. The look's own sizes, its
+kernel ceiling among them, are output pixels still, so the dust's grains are finer in 4K.
 
 **Speed is the author's.** A star at distance d crosses 1 750 x v / d pixels a frame in 1080p
 (v the eye's path in a frame): at 2 pc a frame the stars 300 pc away drift by a dozen pixels and

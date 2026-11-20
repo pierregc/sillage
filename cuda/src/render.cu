@@ -340,13 +340,13 @@ __global__ void insideFill(Massive m, Frame f, const uint *offsets, uint3 span, 
                  offsets, span, list, f.column);
 }
 
-// A pixel of a star's point: Metal's pointStarFragment, which discards past the streak's edge.
+// A pixel of a star's point: Metal's pointStarFragment, which discards past the star's box.
 static __device__ __forceinline__ void layStar(const Star &star, int x, int y, float2 coord,
                                                const Targets &targets) {
-    float r2 = starRadius2(coord, star.half_streak, star.radius);
-    if (r2 > 1.0f) { return; }
+    float share = starShare(coord, star.half_streak, star.radius, star.pixel);
+    if (share <= 0.0f) { return; }
     size_t pixel = size_t(y) * targets.width + size_t(x);
-    add4(targets.light + pixel * 4u, lightPixel(star.color, star.slab, targets.finishedDust[pixel], r2), fixedUnit,
+    add4(targets.light + pixel * 4u, starPixel(star.color, star.slab, targets.finishedDust[pixel], share), fixedUnit,
          targets.halves);
 }
 
@@ -740,6 +740,8 @@ static sc_status drawCarriers(sc_renderer *renderer, const sh::Frame &frame, sh:
 // eight stars each: `InsidePass.block` and `InsidePass.mostEntries` of the Metal renderer.
 constexpr uint32_t starBlock = 1024u;
 constexpr uint32_t mostStarEntries = 16000000u;
+// The most entries a particle takes, `InsidePass.particleEntries`: `nearStars` at its most (#357).
+constexpr uint32_t particleStarEntries = 2048u;
 
 // A buffer of the star list, grown to `length` bytes when it holds fewer.
 static sc_status room(sc_renderer *renderer, sc_buffer **buffer, size_t length) {
@@ -758,7 +760,7 @@ static sc_status drawStars(sc_renderer *renderer, const sh::Frame &frame) {
     uint32_t count = renderer->hasMassive ? renderer->massive.count : 0u;
     if (count == 0u || frame.u.inside.starCount == 0u) { return SC_OK; }
     uint32_t blocks = (count + starBlock - 1u) / starBlock;
-    uint64_t wanted = uint64_t(count) * 16u;
+    uint64_t wanted = uint64_t(count) * particleStarEntries;
     uint32_t entries = wanted < mostStarEntries ? uint32_t(wanted) : mostStarEntries;
     if (sc_status status = room(renderer, &renderer->starCounts, size_t(blocks) * 4u)) { return status; }
     if (sc_status status = room(renderer, &renderer->starList, size_t(entries) * 8u)) { return status; }
