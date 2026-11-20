@@ -50,7 +50,7 @@ public enum HoleCommand {
                            [--elevation deg] [--azimuth deg] [--distance r] [--fov deg]
                            [--width w] [--height h] [--straight] [--images n]
                            [--temperature radius|crossing] [--hottest K] [--beaming x]
-                           [--exposure x] [--stars n]
+                           [--exposure x] [--stars n] [--thinning x] [--repeat n]
                 then: sillage-render hires <folder>, sillage-render export <folder> [--look film]
 
                 """.utf8))
@@ -135,6 +135,7 @@ public enum HoleCommand {
         if let value = options.double("beaming") { look.beaming = value }
         if let value = options.double("exposure") { look.exposure = value }
         if let value = options.int("stars") { look.stars = value }
+        if let value = options.double("thinning") { look.thinning = value }
         if let value = options.double("elevation") { look.camera.elevation = value }
         if let value = options.double("azimuth") { look.camera.azimuth = value }
         if let value = options.double("distance") { look.camera.distance = value }
@@ -162,13 +163,21 @@ public enum HoleCommand {
         let frame = replay.seek(step)
         renderer.upload(frame)
         let started = Date()
-        let pixels = renderer.render(
-            frame, camera: lookFile.camera.camera(progress: 0), look: lookFile.renderLook)
+        let camera = lookFile.camera.camera(progress: 0)
+        // The first frame builds the lens tables and warms the GPU: the median of `--repeat`
+        // more is the cost.
+        var pixels = renderer.render(frame, camera: camera, look: lookFile.renderLook)
+        let first = renderer.lastGPUTime
+        var times: [Double] = []
+        for _ in 0..<max(options.int("repeat") ?? 0, 0) {
+            pixels = renderer.render(frame, camera: camera, look: lookFile.renderLook)
+            times.append(renderer.lastGPUTime)
+        }
         try PNGWriter.write(pixels, width: width, height: height, to: URL(fileURLWithPath: options.words[1]))
+        let median = times.isEmpty ? first : times.sorted()[times.count / 2]
         print(
             String(
-                format: "t = %.1f, %.1f ms on the GPU, %.2f s in all", frame.time,
-                renderer.lastGPUTime * 1000,
-                Date().timeIntervalSince(started)))
+                format: "t = %.1f, %.1f ms on the GPU (%.1f ms the first frame), %.2f s in all", frame.time,
+                median * 1000, first * 1000, Date().timeIntervalSince(started)))
     }
 }

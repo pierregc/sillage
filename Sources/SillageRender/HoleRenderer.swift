@@ -29,6 +29,10 @@ struct HoleSplatUniforms {
     var edgePeak: Float
     var supersample: Float
     var stars: UInt32 = 0
+    var lensNear: Float = 0
+    var lensFar: Float = 0
+    var lensBlend: Float = 0
+    var thinning: Float = 0
 }
 
 /// How a tidal disruption's frame is drawn (#314).
@@ -45,6 +49,12 @@ public struct HoleLook: Sendable {
     /// Images drawn: 1 the direct one, 2 with the one that passes behind the hole, 3 with the
     /// next, in the photon ring.
     public var images = 2
+    /// The images that go round the hole are squeezed into the thin ring round the shadow, a
+    /// hundredth as bright as the direct one, where drawing every tracer cost three times the
+    /// direct image. Where the table makes an image fainter than this, it is drawn for that
+    /// share of the tracers, each as many times brighter, so its splats lie no sparser than
+    /// the direct image's and none is brighter than this share of a direct splat; 0 draws all.
+    public var thinning: Float = 0.5
     public var temperature = Temperature.crossing
     /// Kelvin at the hottest: the thin disk's peak, or the run's brightest few per thousand.
     public var hottest: Float = 6500
@@ -84,8 +94,9 @@ public final class HoleRenderer {
     let renderer: Renderer
     private let pipeline: MTLRenderPipelineState
     private let device: MTLDevice
-    private var lens: HoleLens?
-    private var lensBuffer: MTLBuffer?
+    /// The lens tables over camera distances, which renderers can share.
+    public var lenses = HoleLensSet()
+    private var lensBuffers: [Float: MTLBuffer] = [:]
     private var positions: MTLBuffer?
     private var velocities: MTLBuffer?
     private var uploaded = 0
@@ -131,15 +142,24 @@ public final class HoleRenderer {
         }
     }
 
-    /// The lens table for a camera at `distance` from the hole, built once per distance.
-    public func lens(at distance: Float) -> HoleLens {
-        if let lens, abs(lens.cameraDistance - distance) < 1e-4 * distance { return lens }
-        let built = HoleLens(cameraDistance: distance)
-        lens = built
-        lensBuffer = built.entries.withUnsafeBytes {
-            device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)
+    /// The two lens tables round a camera at `distance` from the hole, on the GPU, with the
+    /// far one's share; each table is built the first time a camera comes near its distance.
+    func lensPair(at distance: Float) -> (
+        near: HoleLens, far: HoleLens, buffers: (MTLBuffer?, MTLBuffer?), blend: Float, distance: Float
+    ) {
+        let (near, far, blend, ro) = lenses.pair(at: distance)
+        func buffer(_ lens: HoleLens) -> MTLBuffer? {
+            if let buffer = lensBuffers[lens.cameraDistance] { return buffer }
+            let buffer = lens.entries.withUnsafeBytes {
+                device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)
+            }
+            lensBuffers[lens.cameraDistance] = buffer
+            return buffer
         }
-        return built
+        let buffers = (buffer(near), buffer(far))
+        let kept = Set(lenses.built)
+        lensBuffers = lensBuffers.filter { kept.contains($0.key) }
+        return (near, far, buffers, blend, ro)
     }
 
     /// Hands the frame's tracers to the GPU, with what their light is normalised by: each law's
@@ -228,8 +248,7 @@ public final class HoleRenderer {
         _ frame: TidalFrame, camera: Camera, look: HoleLook, present: MTLTexture? = nil,
         into buffer: MTLCommandBuffer? = nil
     ) -> [UInt8] {
-        let distance = simd_length(camera.eye)
-        let lens = self.lens(at: distance)
+        let (lens, far, buffers, blend, distance) = lensPair(at: simd_length(camera.eye))
         let scale = Float(settings.supersample)
         let aspect = Float(settings.width) / Float(settings.height)
         var uniforms = HoleSplatUniforms(
@@ -242,10 +261,12 @@ public final class HoleRenderer {
             lensed: look.lensed ? 1 : 0, radiusCount: UInt32(lens.radiusCount),
             angleCount: UInt32(lens.angleCount), lensInner: lens.minimumRadius,
             lensSpan: log(lens.maximumRadius / lens.minimumRadius), beaming: look.beaming,
-            shadowAngle: lens.shadowAngle, temperature: look.temperature == .radius ? 0 : 1,
+            shadowAngle: HoleLens.shadowAngle(cameraDistance: distance),
+            temperature: look.temperature == .radius ? 0 : 1,
             crossingScale: crossingScale, lightScale: 1 / (meanLight[look.temperature] ?? 1),
             ambient: look.ambient, innerEdge: Self.innerEdge,
-            edgePeak: Self.edgePeak, supersample: scale)
+            edgePeak: Self.edgePeak, supersample: scale, lensNear: lens.cameraDistance,
+            lensFar: far.cameraDistance, lensBlend: blend, thinning: max(look.thinning, 0))
         let images = look.lensed ? min(max(look.images, 1), lens.images) : 1
         placeStars(look.stars)
         return renderer.render(present: present, into: buffer) { target, buffer in
@@ -258,7 +279,8 @@ public final class HoleRenderer {
             encoder.setRenderPipelineState(pipeline)
             encoder.setVertexBuffer(positions, offset: 0, index: 0)
             encoder.setVertexBuffer(velocities, offset: 0, index: 1)
-            encoder.setVertexBuffer(lensBuffer, offset: 0, index: 3)
+            encoder.setVertexBuffer(buffers.0, offset: 0, index: 3)
+            encoder.setVertexBuffer(buffers.1, offset: 0, index: 4)
             for image in 0..<images {
                 uniforms.image = UInt32(image)
                 encoder.setVertexBytes(&uniforms, length: MemoryLayout<HoleSplatUniforms>.stride, index: 2)
@@ -270,6 +292,7 @@ public final class HoleRenderer {
                 field.beaming = 0
                 field.particleSize = 0
                 field.brightness = look.starBrightness * look.exposure
+                field.thinning = 0
                 encoder.setVertexBuffer(starPositions, offset: 0, index: 0)
                 encoder.setVertexBuffer(starColours, offset: 0, index: 1)
                 for image in 0..<images {

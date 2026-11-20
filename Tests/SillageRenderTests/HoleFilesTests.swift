@@ -111,6 +111,27 @@ struct HoleFilesTests {
         #expect(try HoleLookFile.decoded(from: look.encoded()).exposureAt == nil)
     }
 
+    @Test func aCameraFliesInEvenlyInItsDistancesLogarithm() throws {
+        var look = HoleLookFile.physics
+        look.camera.distance = 200
+        look.camera.toDistance = 20
+        let read = try HoleLookFile.decoded(from: look.encoded())
+        #expect(read.camera.toDistance == 20)
+        #expect(read.camera.distance(progress: 0) == 200)
+        #expect(abs(read.camera.distance(progress: 1) - 20) < 1e-9)
+        #expect(abs(read.camera.distance(progress: 0.5) - 200 * 0.1.squareRoot()) < 1e-9)
+        let distances = (0...100).map { read.camera.distance(progress: Double($0) / 100) }
+        #expect(zip(distances, distances.dropFirst()).allSatisfy { $0 > $1 })
+        let eye = read.camera.camera(progress: 0.5).eye
+        let length = (eye.x * eye.x + eye.y * eye.y + eye.z * eye.z).squareRoot()
+        #expect(abs(length - Float(200 * 0.1.squareRoot())) < 1e-3)
+        look.camera.toDistance = 1
+        #expect(throws: HoleLookFile.ReadError.self) { try HoleLookFile.decoded(from: look.encoded()) }
+        look.thinning = -1
+        look.camera.toDistance = nil
+        #expect(throws: HoleLookFile.ReadError.self) { try HoleLookFile.decoded(from: look.encoded()) }
+    }
+
     @Test func aFolderDrawsWithItsLookElsePhysics() throws {
         let folder = try temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder.batch.deletingLastPathComponent()) }

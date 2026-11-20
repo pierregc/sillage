@@ -32,6 +32,9 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
         public var fieldOfView: Double = 40
         /// Turns round the hole over the video, 0 for a camera that stays.
         public var turns: Double = 0
+        /// Where a camera that comes in or goes away ends, from `distance`: evenly in the
+        /// distance's logarithm, eased at both ends. Absent, it stays at `distance`.
+        public var toDistance: Double?
 
         public init() {}
 
@@ -44,6 +47,14 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
             distance = try c.decodeIfPresent(Double.self, forKey: .distance) ?? d.distance
             fieldOfView = try c.decodeIfPresent(Double.self, forKey: .fieldOfView) ?? d.fieldOfView
             turns = try c.decodeIfPresent(Double.self, forKey: .turns) ?? d.turns
+            toDistance = try c.decodeIfPresent(Double.self, forKey: .toDistance)
+        }
+
+        /// From the hole, `progress` of the way through the video.
+        public func distance(progress: Double) -> Double {
+            guard let toDistance else { return distance }
+            let s = min(max(progress, 0), 1)
+            return distance * pow(toDistance / distance, s * s * (3 - 2 * s))
         }
 
         /// The camera `progress` of the way through the video, from 0 to 1.
@@ -52,7 +63,7 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
             let azimuth = Float((self.azimuth + 360 * turns * progress) * .pi / 180)
             let eye =
                 SIMD3<Float>(cos(elevation) * sin(azimuth), -cos(elevation) * cos(azimuth), sin(elevation))
-                * Float(distance)
+                * Float(distance(progress: progress))
             return Camera(
                 eye: eye, target: .zero, up: SIMD3<Float>(0, 0, 1),
                 fieldOfView: Float(fieldOfView * .pi / 180), near: 0.1, far: 100_000)
@@ -80,6 +91,10 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
     public var ambient: Double = 0.02
     /// A tracer's kernel, in Schwarzschild radii.
     public var particleSize: Double = 0.05
+    /// The images round the hole are squeezed into the thin ring round the shadow, where drawing
+    /// every tracer cost twenty times the direct image (#333): fainter than this, they are drawn
+    /// for that share of the tracers, as many times brighter. 0 draws them all.
+    public var thinning: Double = 0.5
     /// Field stars far behind the hole, bent by it as the disk is.
     public var stars = 8000
     public var starBrightness: Double = 1
@@ -108,6 +123,7 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
             ? try c.decodeIfPresent(Double.self, forKey: .exposureAt) : file.exposureAt
         file.ambient = try c.decodeIfPresent(Double.self, forKey: .ambient) ?? file.ambient
         file.particleSize = try c.decodeIfPresent(Double.self, forKey: .particleSize) ?? file.particleSize
+        file.thinning = try c.decodeIfPresent(Double.self, forKey: .thinning) ?? file.thinning
         file.stars = try c.decodeIfPresent(Int.self, forKey: .stars) ?? file.stars
         file.starBrightness =
             try c.decodeIfPresent(Double.self, forKey: .starBrightness) ?? file.starBrightness
@@ -133,6 +149,7 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
         try c.encode(exposureAt, forKey: .exposureAt)
         try c.encode(ambient, forKey: .ambient)
         try c.encode(particleSize, forKey: .particleSize)
+        try c.encode(thinning, forKey: .thinning)
         try c.encode(stars, forKey: .stars)
         try c.encode(starBrightness, forKey: .starBrightness)
         try c.encodeIfPresent(stretch, forKey: .stretch)
@@ -144,7 +161,7 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case version, name, lensed, images, temperature, hottest, beaming, exposure, exposureAt,
-            ambient, particleSize, stars, starBrightness, stretch, bloom, whitePoint, saturation,
+            ambient, particleSize, thinning, stars, starBrightness, stretch, bloom, whitePoint, saturation,
             camera
     }
 
@@ -167,7 +184,10 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
             throw ReadError.badValue("hottest, exposure and particleSize are above 0")
         }
         guard (0...1).contains(beaming) else { throw ReadError.badValue("beaming is from 0 to 1") }
-        guard camera.distance > 1.5, camera.fieldOfView > 0, camera.fieldOfView < 180 else {
+        guard thinning >= 0 else { throw ReadError.badValue("thinning is 0 or above") }
+        guard camera.distance > 1.5, (camera.toDistance ?? 2) > 1.5, camera.fieldOfView > 0,
+            camera.fieldOfView < 180
+        else {
             throw ReadError.badValue("the camera stands outside the hole and sees less than 180°")
         }
     }

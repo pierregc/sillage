@@ -251,6 +251,14 @@ enum HoleShaders {
             float supersample;
             /// Field stars instead of tracers: their light in position w, kelvin in velocity w.
             uint stars;
+            /// The camera distances of the two lens tables round the camera's, and the far
+            /// one's share.
+            float lensNear;
+            float lensFar;
+            float lensBlend;
+            /// Below this brightness, the images that go round the hole are drawn for that share
+            /// of the tracers, as many times brighter.
+            float thinning;
         };
 
         struct HoleSplatOut {
@@ -282,6 +290,59 @@ enum HoleShaders {
             return mix(mix(a, b, tj), mix(c, d, tj), ti);
         }
 
+        static float holeStraight(float r, float phi, float ro) {
+            return atan2(r * sin(phi), ro - r * cos(phi));
+        }
+
+        // What `HoleLensSet.blend` interpolates between tables: the direct image's bend, the
+        // others' impact parameter.
+        static float holeAlong(float4 entry, float ro, uint image, float r, float phi) {
+            return image == 0u ? entry.x - holeStraight(r, phi, ro)
+                               : sin(entry.x) * ro / sqrt(1.0f - 1.0f / ro);
+        }
+
+        // The two tables round the camera's distance blended as `HoleLensSet.blend` does.
+        static float4 holeLensBlend(device const float4 *nearLens, device const float4 *farLens,
+                                    constant HoleSplatUniforms &u, uint image, float r, float phi) {
+            float t = u.lensBlend;
+            float4 a = t < 1.0f ? holeLens(nearLens, u, image, r, phi) : float4(0.0f);
+            float4 b = t > 0.0f ? holeLens(farLens, u, image, r, phi) : float4(0.0f);
+            bool hasA = a.w > 0.0f && t < 1.0f;
+            bool hasB = b.w > 0.0f && t > 0.0f;
+            if (!hasA && !hasB) { return float4(0.0f); }
+            float q;
+            float2 direction;
+            float weight;
+            if (hasA && hasB) {
+                q = mix(holeAlong(a, u.lensNear, image, r, phi), holeAlong(b, u.lensFar, image, r, phi), t);
+                float2 mixed = mix(a.yz, b.yz, t);
+                direction = mixed / max(length(mixed), 1e-12f);
+                weight = mix(a.w, b.w, t);
+            } else if (hasA) {
+                q = holeAlong(a, u.lensNear, image, r, phi);
+                direction = a.yz;
+                weight = a.w * (1.0f - t);
+            } else {
+                q = holeAlong(b, u.lensFar, image, r, phi);
+                direction = b.yz;
+                weight = b.w * t;
+            }
+            float ro = u.camera.w;
+            float alpha = image == 0u ? q + holeStraight(r, phi, ro)
+                                      : asin(clamp(q * sqrt(1.0f - 1.0f / ro) / ro, 0.0f, 1.0f));
+            return float4(alpha, direction, weight);
+        }
+
+        // A number in [0, 1) fixed by `seed`, so a tracer's draw does not flicker between frames.
+        static float holeChance(uint seed) {
+            seed ^= seed >> 16;
+            seed *= 0x7feb352du;
+            seed ^= seed >> 15;
+            seed *= 0x846ca68bu;
+            seed ^= seed >> 16;
+            return float(seed >> 8) * (1.0f / 16777216.0f);
+        }
+
         static HoleSplatOut holeCulled() {
             HoleSplatOut out;
             out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
@@ -297,12 +358,49 @@ enum HoleShaders {
                                             device const float4 *positions [[buffer(0)]],
                                             device const float4 *velocities [[buffer(1)]],
                                             constant HoleSplatUniforms &u [[buffer(2)]],
-                                            device const float4 *lens [[buffer(3)]]) {
+                                            device const float4 *lens [[buffer(3)]],
+                                            device const float4 *farLens [[buffer(4)]]) {
             float4 pw = positions[vid];
             float4 vw = velocities[vid];
             if (vw.w < 0.0f && u.stars == 0u) { return holeCulled(); }
             float3 p = pw.xyz;
             float r = length(p);
+            // Where the lens puts it first: most of the further images' tracers stop there.
+            float3 eye = u.camera.xyz;
+            float ro = u.camera.w;
+            float3 axis = normalize(eye);
+            float3 sight = p - eye;
+            float distance = length(sight);
+            float3 shown = p;
+            float weight = 1.0f;
+            float3 leaving = -sight / distance;
+            if (u.lensed != 0u) {
+                float phi = acos(clamp(dot(axis, p) / r, -1.0f, 1.0f));
+                float3 across = p - dot(p, axis) * axis;
+                float aside = length(across);
+                float3 e = aside > 1e-6f * r ? across / aside
+                         : normalize(cross(axis, abs(axis.z) < 0.9f ? float3(0.0f, 0.0f, 1.0f)
+                                                                     : float3(1.0f, 0.0f, 0.0f)));
+                float4 entry = holeLensBlend(lens, farLens, u, u.image, r, phi);
+                if (entry.w <= 0.0f) { return holeCulled(); }
+                weight = entry.w;
+                if (u.image > 0u && u.thinning > 0.0f) {
+                    float share = min(entry.w / u.thinning, 1.0f);
+                    if (holeChance(vid * 3u + u.image) >= share) { return holeCulled(); }
+                    weight = entry.w / share;
+                }
+                float side = u.image == 1u ? -1.0f : 1.0f;
+                float3 direction = -axis * cos(entry.x) + e * (side * sin(entry.x));
+                shown = eye + direction * distance;
+                float3 outward = p / r;
+                float3 along = (-sin(phi) * axis + cos(phi) * e) * side;
+                leaving = entry.y * outward + entry.z * along;
+            } else if (distance > ro) {
+                // Drawn straight, the hole hides what is behind it within the shadow.
+                float3 toward = -axis;
+                if (dot(sight, toward) / distance > cos(u.shadowAngle)) { return holeCulled(); }
+            }
+
             float kelvin;
             float light;
             if (u.stars != 0u) {
@@ -323,36 +421,6 @@ enum HoleShaders {
                 light = max(pw.w, 0.0f) * u.lightScale + u.ambient;
             }
             if (light <= 0.0f) { return holeCulled(); }
-
-            float3 eye = u.camera.xyz;
-            float ro = u.camera.w;
-            float3 axis = eye / ro;
-            float3 sight = p - eye;
-            float distance = length(sight);
-            float3 shown = p;
-            float weight = 1.0f;
-            float3 leaving = -sight / distance;
-            if (u.lensed != 0u) {
-                float phi = acos(clamp(dot(axis, p) / r, -1.0f, 1.0f));
-                float3 across = p - dot(p, axis) * axis;
-                float aside = length(across);
-                float3 e = aside > 1e-6f * r ? across / aside
-                         : normalize(cross(axis, abs(axis.z) < 0.9f ? float3(0.0f, 0.0f, 1.0f)
-                                                                     : float3(1.0f, 0.0f, 0.0f)));
-                float4 entry = holeLens(lens, u, u.image, r, phi);
-                if (entry.w <= 0.0f) { return holeCulled(); }
-                float side = u.image == 1u ? -1.0f : 1.0f;
-                float3 direction = -axis * cos(entry.x) + e * (side * sin(entry.x));
-                shown = eye + direction * distance;
-                weight = entry.w;
-                float3 outward = p / r;
-                float3 along = (-sin(phi) * axis + cos(phi) * e) * side;
-                leaving = entry.y * outward + entry.z * along;
-            } else if (distance > ro) {
-                // Drawn straight, the hole hides what is behind it within the shadow.
-                float3 toward = -axis;
-                if (dot(sight, toward) / distance > cos(u.shadowAngle)) { return holeCulled(); }
-            }
 
             // Paczyński and Wiita's speeds pass light's inside the last stable orbit, where gas
             // plunges: held at what general relativity gives there, about 0.6 c.
