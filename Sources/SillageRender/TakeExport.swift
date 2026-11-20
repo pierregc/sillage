@@ -492,6 +492,33 @@ public final class TakeExport {
         }
     }
 
+    /// The frame `CUDATakeStills.flightStill` draws (#369): a moment of the flight at its own
+    /// exposure, averaged from the renders of a frame `interval` seconds long, with the grain of
+    /// the video's frame `index`. As RGBA.
+    func flightStill(atSeconds seconds: Double, frame index: Int, interval: Double, width: Int, height: Int)
+        throws -> [UInt8]
+    {
+        guard let flight = try makeFlight(width: width, height: height) else {
+            throw RenderError.unsupported("a flight still without a flight")
+        }
+        let renderer = try makeRenderer(width: width, height: height)
+        let cameras = Cameras.flight(flight, look: look.look, capturedRate: capturedRate)
+        let frame = TimeTrack.Frame(
+            played: seconds * Double(capturedRate), captured: flight.captured(atSeconds: seconds))
+        let scale = try measureExposure([frame], width: width, height: height)
+        let target = try trimTarget(renderer, cameras, exposure: scale)
+        let (shot, views) = try prepare(
+            renderer, at: frame, cameras: cameras, exposure: scale, interval: interval)
+        let stops =
+            target > 0 && !flight.lookSpans.contains(where: { $0.contains(seconds) })
+            ? solveTrim(renderer, shot, exposure: scale, target: target, guess: 0) : 0
+        renderer.apply(Self.exposed(shot.look, stops: stops, scale))
+        renderer.setGrain(frame: index)
+        let pixels = renderer.render(cameras: views)
+        try noteInside(renderer, stops: stops)
+        return pixels
+    }
+
     /// Where a flight finds an arm to go into (#297): for each galaxy at a captured position
     /// and each of `radii`, in kiloparsecs, the place on that circle of its disk where the
     /// emitting particles near its plane are densest, as an offset in the disk's axes, with how

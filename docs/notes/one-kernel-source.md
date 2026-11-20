@@ -337,6 +337,9 @@ Swift.
   For that take to regenerate to the same bytes, a take's JSON header is now written with its
   keys sorted ([takes-on-disk.md](takes-on-disk.md)): the header's bytes change from main, the
   data do not, and a take written before reads as it did.
+  Beside them (#369), two moments of `inside.flight.json`, a flight into that take's disk, at
+  2 and 3.5 s in `webb`, 128 x 72 to keep the fixtures under 2 MB: three and four renders, point
+  stars and the dust slabs from the eye, which no other reference output draws (below).
 - **`Tests/Fixtures/hole/`** (#336, beside the others to keep them under 2 MB): a moment of a
   black hole close up of 4,000 tracers, Metal's run 40 steps on from it, and three stills of that
   later moment, with a README of its own. Metal must give them to the bit; CUDA's step and stills
@@ -357,6 +360,37 @@ Who compares with them:
 `./scripts/dev.sh fixtures` regenerates them on the Mac. A PR that changes them on purpose
 regenerates them and says so in its description; a PR that changes them without meaning to has
 found a bug.
+
+### The frames from inside a galaxy (#369)
+
+`sillage-cuda check` draws the two inside frames with `CUDATakeStills.flightStill` and holds
+them to Metal's as it holds `webb`, the look they are drawn in: **48 dB, 40 levels at most, 0.3 %
+of the pixels over 8, the mean within 0.1 level** (`CUDAEngineCheck.insideTolerance`, also
+`CUDAInsideTests`). Metal draws them with `TakeExport.flightStill`, the same steps in the same
+order: the exposure measured on the flight's look key, the trim solved at that moment alone,
+then the grain set to the video's frame and the frame's renders averaged. Setting the grain is what
+makes the two comparable: Metal moves it on at every render, and the trim takes a number of
+renders that a last bit of luminance can change.
+
+Why that tolerance, from what is known to differ:
+
+- **The accumulation.** CUDA adds the light in fixed point where Metal blends in fp16, as on
+  every frame; the inside frames add point stars and three or four renders averaged by `insideResolve`,
+  which on CUDA reads the fixed point light of each.
+- **The per splat ceiling of 6e4** is left out on CUDA only for a frame outside a galaxy. Both
+  inside frames have it on both engines, so it moves nothing here; the four outside frames and
+  `aPixelSaturatesRatherThanWrap` hold the other case.
+- **The automatic exposure** is solved on each engine from its own pixels: a difference of
+  luminance moves the trim, and every pixel with it. On the CPU target it stays within 0.05
+  level on the mean.
+
+Measured on the CPU target built on the Mac with Apple clang: **62.3 dB at 2 s and 60.2 dB at
+3.5 s**, the largest difference 8 and 9 levels, 0 and 0.011 % of the pixels over 8, against
+51.0 dB and 30 levels for `webb` outside; built on Linux in the workflow, 62.3 and 60.7 dB, 6
+and 9 levels. The tolerance keeps `webb`'s, 12 dB under what the CPU
+gives, for the GPU's own roundings. **The run on an NVIDIA GPU is owed to #283**: no frame has
+been drawn by `nvcc`'s code yet, the inside ones no more than the others, and the first box
+runs this check first thing.
 
 ## What catches what
 
