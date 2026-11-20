@@ -25,6 +25,7 @@ struct CUDAHoleTests {
         }
 
         var tracers: Int
+        var gas: GasGrid
         var startStep: Int
         var steps: Int
         var width: Int
@@ -52,6 +53,9 @@ struct CUDAHoleTests {
         )
     }
 
+    /// The lens tables, built once for every test: on the CPU of a test build they take seconds.
+    static let lenses = HoleLensSet()
+
     static func look(_ view: Manifest.View) throws -> HoleLookFile {
         try HoleLookFile.decoded(from: Data(contentsOf: folder.appendingPathComponent(view.look)))
     }
@@ -64,7 +68,7 @@ struct CUDAHoleTests {
         let manifest = try Self.manifest()
         let start = try Self.frame("start.bin", tracers: manifest.tracers)
         let end = try Self.frame("end.bin", tracers: manifest.tracers)
-        let run = try CUDATidalRun(context: CUDAContext(), scene: Self.scene())
+        let run = try CUDATidalRun(context: CUDAContext(), scene: Self.scene(), gas: manifest.gas)
         run.resume(from: start, step: manifest.startStep)
         run.step(manifest.steps)
         #expect(run.failure == nil)
@@ -74,6 +78,9 @@ struct CUDAHoleTests {
         var light: Float = 0
         var brightest: Float = 0
         var swallowed = (cuda: 0, metal: 0)
+        var lightDifference = 0.0
+        var lightTotal = 0.0
+        var lightOff = 0
         for index in 0..<manifest.tracers {
             let (a, b) = (stepped.positions[index], end.positions[index])
             let (va, vb) = (stepped.velocities[index], end.velocities[index])
@@ -87,10 +94,15 @@ struct CUDAHoleTests {
                 simd_length(SIMD3<Float>(va.x, va.y, va.z) - moving) / max(simd_length(moving), 0.01))
             light = max(light, abs(a.w - b.w))
             brightest = max(brightest, b.w)
+            lightDifference += Double(abs(a.w - b.w))
+            lightTotal += Double(b.w)
+            if abs(a.w - b.w) > 0.01 * max(b.w, 1e-30) { lightOff += 1 }
         }
         print(
             "CUDAHOLE run", manifest.steps, "steps:", "position", position, "velocity", velocity, "light",
-            light / max(brightest, 1e-30), "swallowed", swallowed)
+            light / max(brightest, 1e-30), "mean light", lightDifference / max(lightTotal, 1e-30),
+            "tracers 1 % off",
+            lightOff, "swallowed", swallowed)
         #expect(swallowed.cuda == swallowed.metal)
         #expect(position < Self.runTolerance && velocity < Self.runTolerance, "\(position), \(velocity)")
         #expect(light <= Self.runTolerance * brightest, "\(light) of \(brightest)")
@@ -113,6 +125,7 @@ struct CUDAHoleTests {
             let look = try Self.look(view)
             let renderer = try CUDAHoleRenderer(
                 context: context, settings: look.settings(width: manifest.width, height: manifest.height))
+            renderer.lenses = Self.lenses
             try renderer.upload(end)
             let drawn = [UInt8](
                 try renderer.render(camera: look.camera.camera(progress: 0), look: look.renderLook))
@@ -136,6 +149,7 @@ struct CUDAHoleTests {
         for _ in 0..<2 {
             let renderer = try CUDAHoleRenderer(
                 context: context, settings: look.settings(width: 96, height: 54))
+            renderer.lenses = Self.lenses
             try renderer.upload(end)
             pictures.append(
                 [UInt8](try renderer.render(camera: look.camera.camera(progress: 0), look: look.renderLook)))

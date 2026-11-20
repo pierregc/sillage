@@ -3,7 +3,7 @@
   "beaming" : 1,
   "camera" : {
     "azimuth" : 0,
-    "distance" : 20,
+    "distance" : 19.1944,
     "elevation" : 5,
     "fieldOfView" : 40,
     "turns" : 0

@@ -3,6 +3,13 @@
   "device" : "Apple M4 Max",
   "end" : "end.bin",
   "format" : "sillage-hole-fixtures",
+  "gas" : {
+    "angles" : 128,
+    "heightCell" : 0.03125,
+    "heights" : 16,
+    "outer" : 200,
+    "radii" : 64
+  },
   "height" : 144,
   "pixels" : "rgb8",
   "rows" : "top first",

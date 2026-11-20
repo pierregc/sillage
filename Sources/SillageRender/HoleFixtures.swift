@@ -13,6 +13,17 @@ public enum HoleFixtures {
     public static let start = 6000
     public static let steps = 40
 
+    /// A grid of 131,072 cells rather than the default's 2.4 million, so that the CPU target
+    /// steps it in seconds and 4,000 tracers find neighbours in it.
+    public static var gas: GasGrid {
+        var gas = GasGrid()
+        gas.radii = 64
+        gas.angles = 128
+        gas.heights = 16
+        gas.heightCell = 1.0 / 32
+        return gas
+    }
+
     public static var scene: HoleSceneFile {
         var scene = TidalDisruption()
         scene.tracers = 4000
@@ -29,16 +40,18 @@ public enum HoleFixtures {
         // 4,000 tracers each stand for 1,500 of a run's 6 million: a twentieth of the light
         // keeps their splats off the white.
         physics.exposure = 0.05
+        // On the distance of a lens table, 1.1^45, so that one table is built, not two.
+        physics.camera.distance = 72.8908
         var ring = physics
         ring.name = "ring"
         ring.temperature = .radius
         ring.thinning = 0
-        ring.camera.distance = 20
+        ring.camera.distance = 19.1944
         ring.camera.elevation = 5
         var straight = physics
         straight.name = "straight"
         straight.lensed = false
-        straight.camera.distance = 60
+        straight.camera.distance = 60.2404
         straight.camera.elevation = 12
         return [("physics", physics), ("ring", ring), ("straight", straight)]
     }
@@ -56,7 +69,7 @@ public enum HoleFixtures {
 
     /// The run's moments: the one kept, and Metal's `steps` steps on from it.
     public static func frames(device: MTLDevice) throws -> (start: TidalFrame, end: TidalFrame) {
-        let run = try TidalRun(scene: scene.blackHole, device: device)
+        let run = try TidalRun(scene: scene.blackHole, gas: gas, device: device)
         run.step(start)
         let first = run.frame
         run.step(steps)
@@ -79,6 +92,7 @@ public enum HoleFixtures {
         var system: String
         var scene = "scene.json"
         var tracers: Int
+        var gas = HoleFixtures.gas
         var startStep = HoleFixtures.start
         var steps = HoleFixtures.steps
         var start = "start.bin"

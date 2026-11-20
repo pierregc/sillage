@@ -360,7 +360,8 @@ off those for a little more cost, 1 doubles them.
 - **A second subject.** About 1600 lines outside the galaxies' pipeline, and 250 of tests: its
   own scene, take format, kernels and renderer pass. Since #332 it has a scene file, a take, look
   files and the `hires` and `export` stages, so the queue runs it; no app and no nights yet.
-  Metal only: the six kernels are listed `metal-only` in `cuda/kernels.txt`.
+  Its kernels run on CUDA too since #336 ([cuda-engine.md](cuda-engine.md#the-black-hole-close-up-336)):
+  `sillage-cuda black-hole still` draws a moment of a take on Linux.
 
 ## If it becomes an epic
 
@@ -374,7 +375,7 @@ What the stills suggest it would hold, in the order a viewer would see it:
 3. **The gas.** A better crossing than the grid's: three dimensions and a calibration against a
    published disruption (done, #334), or sticky particles shared with the galaxies.
 4. **The cheap second image**, drawn for a share of the tracers (done, #333).
-5. **CUDA**, through the one kernel source.
+5. **CUDA**, through the one kernel source (done, #336).
 6. Later: a spinning hole, and the time the light takes round it.
 
 ## How to run it

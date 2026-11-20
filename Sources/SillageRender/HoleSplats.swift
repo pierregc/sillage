@@ -64,7 +64,7 @@ public struct HoleStepParams: Sendable {
 /// The grid of the mean flow the gas is made of: cells in log r by angle by height over the
 /// radius, as tall as wide. One layer is the spike's (#314), where a stream squeezed through the
 /// plane counts as streams crossing.
-public struct GasGrid: Sendable, Equatable {
+public struct GasGrid: Sendable, Equatable, Codable {
     public var radii = 192
     public var angles = 384
     public var heights = 32

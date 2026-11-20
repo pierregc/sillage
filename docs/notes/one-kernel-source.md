@@ -20,9 +20,9 @@ every push by a GitHub workflow that compiles the CUDA code and runs it on the C
 #281 shared the tree (`GPUTreeShaders`, 20 kernels), #274 the massive particles' kernels of
 `BarnesHutShaders` (8 of its 11), #275 its light tracers' three, #276 the particle passes of the
 renderer (`Shaders`, 19 vertex and fragment functions and the lace's kernel) and #277 its
-post-processing kernels (eight more). What is left is still inside
-`#if defined(__METAL_VERSION__)`: `RecordingShaders` (take playback) and `SolverShaders` (the
-restricted solver), which stay Metal only.
+post-processing kernels (eight more), and #336 the black hole close up's seven (`HoleShaders`).
+What is left is still inside `#if defined(__METAL_VERSION__)`: `RecordingShaders` (take playback)
+and `SolverShaders` (the restricted solver), which stay Metal only.
 
 ## Changing the engine from now on
 
@@ -168,12 +168,13 @@ What `msl_compat.h` gives the text, with MSL's meaning: `float2`, `float3`, `flo
 `int`, `uint` and `bool` twins and `float2x2`, `float3x3`, `float4x4`, laid out as in a Metal
 buffer (a `float3` is 16 bytes aligned to 16; `packed_float3` is 12); every constructor, operator
 and comparison the libraries use; the swizzles `.xyz`, `.rgb` and `.xy`, readable and writable,
-as union members over `x y z w`; `as_type<T>`; `half`, `half2`, `half3` and `half4` as float
+as union members over `x y z w`, and `.yz` of a `float4` (#336); `as_type<T>`; `half`, `half2`, `half3` and `half4` as float
 types, so the CUDA renderer computes in fp32 where Metal computes in fp16; `min`, `max`,
 `clamp`, `saturate`, `mix`, `step`, `smoothstep`, `select`, `sign`, `abs`, `fract`, `floor`,
 `ceil`, `round`, `trunc`, `sqrt`, `rsqrt`, `exp`, `exp2`, `log`, `log2`, `pow`, `sin`, `cos`,
 `tan`, `sinpi`, `cospi`, `atan2`, `fma`, `ldexp`, `dot`, `cross`, `length`, `distance`,
-`normalize`, `all`, `any`, `isfinite`, `isnan`, `isinf`, `popcount`, `clz`, `ctz`, and `M_PI_F`
+`normalize`, `all`, `any`, `isfinite`, `isnan` (of a vector too), `isinf`, `acos`, `asin`,
+`rint`, `popcount`, `clz`, `ctz`, and `M_PI_F`
 and its kin. `min` and `max` are the specification's (`y < x ? y : x`), not `fmin`. A function
 or a swizzle that is missing goes into `msl_compat.h`, with a line in `cuda/tests/compat.cu`,
 never into a CUDA copy of the arithmetic.
@@ -207,6 +208,10 @@ namespace GPUTreeShaders {
   is written inside `namespace metal { namespace <library> {`**, entry points included.
 - **A namespace a library**, because two libraries define the same names (`BHNode` is in
   `GPUTreeShaders` and in `BarnesHutShaders`).
+- **A library Metal compiles after another** says so on a line of its MSL,
+  `// kernel-sources: after Shaders`: its header includes the other's first and reads its names
+  with `using namespace Shaders;`, as Metal reads them in the one text it compiles
+  (`HoleShaders`, whose splat calls `blackbody`, #336).
 - **`msl_begin.h` and `msl_end.h`** define and undefine the address space keywords and the two
   macros. `device` and `thread` are common words: no header may be included between the two, and
   `cuda/include/metal_stdlib`, which the MSL's first line includes, is empty. Under `nvcc`,
@@ -267,7 +272,7 @@ with `-O2 -ffp-contract=off -Wall -Wextra -Werror`, whose tests it runs. `cuda/b
 builds the two libraries the Swift links from the same files (#273,
 [cuda-engine.md](cuda-engine.md)).
 
-`cuda/tests/compat.cu` tests the two headers on the CPU target, 109 checks: the launch reaches
+`cuda/tests/compat.cu` tests the two headers on the CPU target, 116 checks: the launch reaches
 every thread of every block once, the atomics, the memory calls, the vector types and their
 swizzles, the functions, and a few of the tree's shared functions run from their own MSL text
 (the root cell and its frame, the Morton codes, the gather, both ways of `octantStarts`).
@@ -300,7 +305,8 @@ After #281: 62 functions, 59 pending (20 of the tree for #273, 8 of the massive 
 `cuda`, 7 `cuda gpu-only`, 31 pending. After #275: 24 `cuda`, 7 `cuda gpu-only`, 28 pending.
 After #276 the 20 particle passes are 13 `cuda`, 6 `cuda in` and one Metal only
 (`webResolveVertex`, the triangle that covers the frame), which leaves 8 pending: the eight of the
-post-processing. After #277 the eight are `cuda` and no line is pending: phase 1 is over.
+post-processing. After #277 the eight are `cuda` and no line is pending: phase 1 is over. After
+#336 the seven of `HoleShaders` are six `cuda` and `holeSplatFragment`, `cuda in holeSplatVertex`.
 
 ## The reference outputs
 
@@ -331,6 +337,10 @@ Swift.
   For that take to regenerate to the same bytes, a take's JSON header is now written with its
   keys sorted ([takes-on-disk.md](takes-on-disk.md)): the header's bytes change from main, the
   data do not, and a take written before reads as it did.
+- **`Tests/Fixtures/hole/`** (#336, beside the others to keep them under 2 MB): a moment of a
+  black hole close up of 4,000 tracers, Metal's run 40 steps on from it, and three stills of that
+  later moment, with a README of its own. Metal must give them to the bit; CUDA's step and stills
+  are held to the tolerances of [cuda-engine.md](cuda-engine.md#the-black-hole-close-up-336).
 
 Who compares with them:
 
