@@ -651,6 +651,29 @@ enum Shaders {
             return smoothstep(i.starStart, i.starEnd, raw) * insideNear(depth, i);
         }
 
+        // The sum of the first `n` stars' shares before the norm, rank to minus `e` each, for any
+        // `n`, whole or not: the integral, with the first three terms of Euler and Maclaurin's
+        // correction. Within 1 % of the sum for an exponent up to 2.
+        SHARED float insideShareSum(float n, float e) {
+            if (n <= 1.0f) { return max(n, 0.0f); }
+            float integral = abs(e - 1.0f) < 1e-3f ? log(n) : (pow(n, 1.0f - e) - 1.0f) / (1.0f - e);
+            return integral + 0.5f * (1.0f + pow(n, -e)) + e / 12.0f * (1.0f - pow(n, -e - 1.0f))
+                - e * (e + 1.0f) * (e + 2.0f) / 720.0f * (1.0f - pow(n, -e - 3.0f));
+        }
+
+        // How many of its stars a particle draws: all of them once its light is wholly theirs,
+        // the brightest first on the way there. The faint ones of a particle that has only
+        // started to turn would cost as much to draw as the bright ones and show nothing.
+        SHARED float insideStarsDrawn(float starred, constant InsideUniforms &i) {
+            return float(i.starCount) * starred;
+        }
+
+        // The share of a particle's light its drawn stars carry, which its splat gives up.
+        SHARED float insideStarLight(float starred, constant InsideUniforms &i) {
+            return starred * insideShareSum(insideStarsDrawn(starred, i), i.starShareExponent)
+                * i.starShareNorm;
+        }
+
         SHARED float2 insideHash(uint2 v) {
             v = v * 1664525u + 1013904223u;
             v.x += v.y * 1664525u;
@@ -904,7 +927,7 @@ enum Shaders {
                 }
                 out.pointSize = span * (alive > 0.15f ? 1.3f : 1.0f);
                 #if defined(SILLAGE_INSIDE)
-                float kept = fade * (1.0f - starred);
+                float kept = fade * (1.0f - insideStarLight(starred, u.inside));
                 if (starDraw) {
                     // A point star: its share of the particle's light at its own distance, on a
                     // few pixels, its colour drawn around its population's (an old star about
@@ -1047,43 +1070,58 @@ enum Shaders {
             return max(spacing * u.smoothingScale * scale, 1e-4f);
         }
 
-        // Whether some point star of this particle may reach the frame: it emits, it stands
-        // in the near field, and the sphere its stars are scattered in touches the view.
-        static bool insideListed(uint index, device const float3 *positions,
-                                 device const uint *component, device const float *formation,
+        // Stars are drawn eight to a list entry: a particle takes an entry for every eight stars
+        // it draws.
+        constant uint insideGroup = 8u;
+
+        // How many entries a particle takes in the list of the stars to draw: none when it does
+        // not emit, stands past the near field, has given its stars none of its light yet, or
+        // when the sphere they are scattered in misses the view.
+        static uint insideGroups(uint index, device const float3 *positions,
+                                 device const float *luminosity, device const uint *component,
+                                 device const uint *galaxy, device const float *formation,
                                  device const float *smoothing, device const float2 *traits,
-                                 constant SplatUniforms &u) {
-            if (splatSkips(component[index], formation[index], u)) { return false; }
+                                 constant SplatUniforms &u,
+                                 texture2d<float, access::sample> column) {
+            if (splatSkips(component[index], formation[index], u)) { return 0u; }
             float4 clip = u.viewProjection * float4(positions[index], 1.0f);
             float reach = insideLength(smoothing[index], traits[index].y, u) * u.inside.starSpread;
-            if (clip.w > u.inside.windowFar || clip.w < -reach) { return false; }
+            if (clip.w > u.inside.windowFar || clip.w < -reach) { return 0u; }
             float room = clip.w + reach;
-            return abs(clip.x) <= room + reach * u.inside.projectionX
-                && abs(clip.y) <= room + reach * u.inside.projectionY;
+            if (abs(clip.x) > room + reach * u.inside.projectionX
+                || abs(clip.y) > room + reach * u.inside.projectionY) { return 0u; }
+            Drawn p = massiveDrawn(index, positions, formation, luminosity, component, galaxy,
+                                   smoothing, traits);
+            float starred = insideStarred(insideRaw(p, clip, u, column), clip.w, u.inside);
+            if (starred <= 0.0f) { return 0u; }
+            return (uint(ceil(insideStarsDrawn(starred, u.inside))) + insideGroup - 1u) / insideGroup;
         }
 
-        // The near particles, listed in the order of their indices so that two drawings of a
-        // frame lay their stars in the same order (#297): each block of particles counts its
-        // own, one thread turns the counts into where each block's list starts and writes the
-        // draw's arguments, and each block writes its list there. `span` is the particles, the
-        // particles a block, and the stars a particle.
+        // The stars to draw, listed in the order of their particles' indices so that two
+        // drawings of a frame lay them in the same order (#297): each block of particles counts
+        // its entries, one thread turns the counts into where each block's entries start and
+        // writes the draw's arguments, and each block writes its entries there, a particle's
+        // index and which eight of its stars. `span` is the particles, the particles a block
+        // and the entries the list holds.
         kernel void insideCount(device const float3 *positions [[buffer(0)]],
+                                device const float *luminosity [[buffer(2)]],
                                 device const uint *component [[buffer(3)]],
                                 constant SplatUniforms &u [[buffer(4)]],
+                                device const uint *galaxy [[buffer(5)]],
                                 device const float *smoothing [[buffer(7)]],
                                 device const float *formation [[buffer(8)]],
                                 device const float2 *traits [[buffer(10)]],
                                 device uint *counts [[buffer(20)]],
                                 constant uint3 &span [[buffer(21)]],
+                                texture2d<float, access::sample> column [[texture(0)]],
                                 uint block [[thread_position_in_grid]]) {
             uint from = block * span.y;
             if (from >= span.x) { return; }
             uint to = min(from + span.y, span.x);
             uint count = 0u;
             for (uint index = from; index < to; ++index) {
-                if (insideListed(index, positions, component, formation, smoothing, traits, u)) {
-                    count += 1u;
-                }
+                count += insideGroups(index, positions, luminosity, component, galaxy, formation,
+                                      smoothing, traits, u, column);
             }
             counts[block] = count;
         }
@@ -1101,38 +1139,43 @@ enum Shaders {
                 total += count;
             }
             // MTLDrawPrimitivesIndirectArguments: vertices, instances, first vertex and instance.
-            draw[0] = total;
-            draw[1] = span.z;
+            draw[0] = min(total, span.z);
+            draw[1] = insideGroup;
             draw[2] = 0u;
             draw[3] = 0u;
         }
 
         kernel void insideFill(device const float3 *positions [[buffer(0)]],
+                               device const float *luminosity [[buffer(2)]],
                                device const uint *component [[buffer(3)]],
                                constant SplatUniforms &u [[buffer(4)]],
+                               device const uint *galaxy [[buffer(5)]],
                                device const float *smoothing [[buffer(7)]],
                                device const float *formation [[buffer(8)]],
                                device const float2 *traits [[buffer(10)]],
                                device const uint *offsets [[buffer(20)]],
                                constant uint3 &span [[buffer(21)]],
-                               device uint *list [[buffer(23)]],
+                               device uint2 *list [[buffer(23)]],
+                               texture2d<float, access::sample> column [[texture(0)]],
                                uint block [[thread_position_in_grid]]) {
             uint from = block * span.y;
             if (from >= span.x) { return; }
             uint to = min(from + span.y, span.x);
             uint at = offsets[block];
             for (uint index = from; index < to; ++index) {
-                if (insideListed(index, positions, component, formation, smoothing, traits, u)) {
-                    list[at] = index;
+                uint groups = insideGroups(index, positions, luminosity, component, galaxy,
+                                           formation, smoothing, traits, u, column);
+                for (uint group = 0u; group < groups && at < span.z; ++group) {
+                    list[at] = uint2(index, group);
                     at += 1u;
                 }
             }
         }
 
-        // Star `iid` of the particle `vid` lists (#297): the light a near particle's splat gives
-        // up goes to a few bright stars over a crowd of faint ones, scattered in its kernel from
-        // a hash of its index and the star's rank, so the same particle always has the same
-        // stars, wherever the camera is.
+        // Star `iid` of the eight a list entry stands for (#297): the light a near particle's
+        // splat gives up goes to a few bright stars over a crowd of faint ones, scattered in its
+        // kernel from a hash of its index and the star's rank, so the same particle always has
+        // the same stars, wherever the camera is.
         vertex SplatOut pointStarVertex(uint vid [[vertex_id]], uint iid [[instance_id]],
                                         device const float3 *positions [[buffer(0)]],
                                         device const float *population [[buffer(1)]],
@@ -1147,9 +1190,10 @@ enum Shaders {
                                         device const float2 *traits [[buffer(10)]],
                                         device const float *rampKeys [[buffer(11)]],
                                         constant GalaxyRamp *ramps [[buffer(12)]],
-                                        device const uint *list [[buffer(23)]],
+                                        device const uint2 *list [[buffer(23)]],
                                         texture2d<float, access::sample> column [[texture(0)]]) {
-            uint index = list[vid];
+            uint index = list[vid].x;
+            uint rank = list[vid].y * insideGroup + iid;
             Drawn p = massiveDrawn(index, positions, formation, luminosity, component, galaxy,
                                    smoothing, traits);
             p.warming = traits[index].x;
@@ -1157,19 +1201,19 @@ enum Shaders {
             p.rampKey = rampKeys[index];
             float4 clip = u.viewProjection * float4(p.position, 1.0f);
             float starred = insideStarred(insideRaw(p, clip, u, column), clip.w, u.inside);
-            if (starred <= 0.0f) { return splatOut(culledSplat()); }
-            float2 a = insideHash(uint2(index, iid * 2u + 1u));
-            float2 b = insideHash(uint2(index ^ 0x9e3779b9u, iid * 2u + 2u));
+            // The last star a particle draws comes in as the particle turns.
+            float present = saturate(insideStarsDrawn(starred, u.inside) - float(rank));
+            if (present <= 0.0f) { return splatOut(culledSplat()); }
+            float2 a = insideHash(uint2(index, rank * 2u + 1u));
+            float2 b = insideHash(uint2(index ^ 0x9e3779b9u, rank * 2u + 2u));
             float z = 2.0f * a.x - 1.0f;
             float phi = 6.2831853f * a.y;
             float ring = sqrt(max(1.0f - z * z, 0.0f));
             float radius = insideLength(p.spacing, p.kernelScale, u) * u.inside.starSpread
                 * pow(max(b.x, 1e-6f), 1.0f / 3.0f);
             p.position += float3(ring * cos(phi), ring * sin(phi), z) * radius;
-            float share = u.inside.starShareExponent > 0.0f
-                ? pow(float(iid + 1u), -u.inside.starShareExponent) * u.inside.starShareNorm
-                : 1.0f / float(max(u.inside.starCount, 1u));
-            p.starShare = share * starred;
+            p.starShare = pow(float(rank + 1u), -u.inside.starShareExponent) * u.inside.starShareNorm
+                * present * starred;
             p.starHash = b.y;
             return splatOut(splat(p, u, frames, stellar, ramps, column));
         }

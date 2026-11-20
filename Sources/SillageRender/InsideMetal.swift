@@ -17,6 +17,10 @@ struct InsidePass {
         "#define SILLAGE_POPULATION_WIDTHS 1\n#define SILLAGE_INSIDE 1\n" + Shaders.source
     /// Particles a thread of the listing kernels goes through.
     static let block = 1024
+    /// Stars a list entry stands for, `insideGroup` in the shader, and the most entries a list
+    /// holds: a hundred and twenty-eight million stars, more than a frame can afford to draw.
+    static let group = 8
+    static let mostEntries = 16_000_000
 
     let library: MTLLibrary
     let dust: MTLRenderPipelineState
@@ -27,8 +31,9 @@ struct InsidePass {
     private let offsets: MTLComputePipelineState
     private let fill: MTLComputePipelineState
     private let counts: MTLBuffer
-    /// The near particles' indices, in order.
+    /// The stars to draw, eight to an entry: a particle's index and which eight of its stars.
     let list: MTLBuffer
+    let entries: Int
     /// The stars' draw, as `MTLDrawPrimitivesIndirectArguments`.
     let draw: MTLBuffer
     let particles: Int
@@ -74,8 +79,9 @@ struct InsidePass {
         fill = try compute("insideFill")
         self.particles = max(particles, 1)
         let blocks = (self.particles + Self.block - 1) / Self.block
+        entries = min(self.particles * 16, Self.mostEntries)
         guard let counts = device.makeBuffer(length: blocks * 4, options: .storageModePrivate),
-            let list = device.makeBuffer(length: self.particles * 4, options: .storageModePrivate),
+            let list = device.makeBuffer(length: entries * 8, options: .storageModePrivate),
             let draw = device.makeBuffer(length: 16, options: .storageModeShared)
         else { throw RenderError.textureAllocation }
         self.counts = counts
@@ -83,14 +89,12 @@ struct InsidePass {
         self.draw = draw
     }
 
-    /// Lists the particles whose point stars may reach the frame and writes their draw, `stars`
-    /// instances of each. `bind` gives the kernels the particles and the frame's uniforms where
-    /// the vertex stage reads them.
-    func encodeList(
-        into buffer: MTLCommandBuffer, stars: Int, bind: (MTLComputeCommandEncoder) -> Void
-    ) {
+    /// Lists the stars that may reach the frame and writes their draw. `bind` gives the kernels
+    /// the particles, the frame's uniforms and its column density where the vertex stage reads
+    /// them.
+    func encodeList(into buffer: MTLCommandBuffer, bind: (MTLComputeCommandEncoder) -> Void) {
         guard let encoder = buffer.makeComputeCommandEncoder() else { return }
-        var span = SIMD4<UInt32>(UInt32(particles), UInt32(Self.block), UInt32(max(stars, 0)), 0)
+        var span = SIMD4<UInt32>(UInt32(particles), UInt32(Self.block), UInt32(entries), 0)
         let blocks = (particles + Self.block - 1) / Self.block
         bind(encoder)
         encoder.setBuffer(counts, offset: 0, index: 20)
@@ -107,8 +111,8 @@ struct InsidePass {
         encoder.endEncoding()
     }
 
-    /// The particles the last frame listed, once its commands have run.
-    var listed: Int { Int(draw.contents().load(as: UInt32.self)) }
+    /// The stars the last frame drew, to the eight, once its commands have run.
+    var listed: Int { Int(draw.contents().load(as: UInt32.self)) * Self.group }
 
     mutating func webPass(device: MTLDevice, width: Int, height: Int) -> DustWeb.Pass? {
         if web == nil, !webUnavailable {

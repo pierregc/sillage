@@ -79,7 +79,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
                 && zip(values, values.dropFirst()).allSatisfy { $0 < $1 }
         }
         if !(0...1024).contains(stars) { return "stars \(stars): 0 to 1024" }
-        if !(starShare >= 0 && starShare <= 4) { return "starShare \(starShare): 0 to 4" }
+        if !(starShare >= 0 && starShare <= 2) { return "starShare \(starShare): 0 to 2" }
         if !(starColours >= 0 && starColours <= 2) { return "starColours \(starColours): 0 to 2" }
         if !(starSize >= 0.5 && starSize <= 16) { return "starSize \(starSize) px: 0.5 to 16" }
         if !(starSpread > 0 && starSpread <= 8) { return "starSpread \(starSpread): above 0, to 8" }
@@ -177,11 +177,20 @@ public struct InsideUniforms: Sendable, Equatable {
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
 
-    /// One over the sum of the stars' shares, so they add up to their particle's light.
+    /// The sum of the first `count` stars' shares before the norm, for any count, as the shader's
+    /// `insideShareSum` works it out.
+    public static func shareSum(_ count: Float, exponent: Float) -> Float {
+        guard count > 1 else { return max(count, 0) }
+        let integral =
+            abs(exponent - 1) < 1e-3 ? log(count) : (pow(count, 1 - exponent) - 1) / (1 - exponent)
+        let third = exponent * (exponent + 1) * (exponent + 2) / 720 * (1 - pow(count, -exponent - 3))
+        return integral + 0.5 * (1 + pow(count, -exponent)) + exponent / 12 * (1 - pow(count, -exponent - 1))
+            - third
+    }
+
+    /// One over the sum of every star's share, so they add up to their particle's light.
     public static func shareNorm(stars: Int, exponent: Float) -> Float {
-        guard stars > 0 else { return 1 }
-        guard exponent > 0 else { return 1 / Float(stars) }
-        return 1 / (1...stars).reduce(Float(0)) { $0 + pow(Float($1), -exponent) }
+        stars > 0 ? 1 / shareSum(Float(stars), exponent: exponent) : 1
     }
 }
 
@@ -244,8 +253,9 @@ public enum Nearness {
 }
 
 /// How many renders a frame is averaged from (#297): one for each `step` pixels the matter at
-/// `nearness` crosses while the shutter is open, as the eye moves and, once in the near field,
-/// as the camera turns. One, a single render, wherever the camera is slow or far.
+/// `nearness` crosses while the shutter is open, as the eye moves and the camera turns. Only in
+/// the near field, where there are point stars to jump: one, a single render, wherever the
+/// camera is slow, or farther from matter than the field reaches.
 public enum InsideBlur {
     /// Output pixels the near matter may cross between two renders.
     public static let step: Float = 0.75
@@ -254,19 +264,17 @@ public enum InsideBlur {
         from opening: Camera, to closing: Camera, frame: InsideFrame, height: Int
     ) -> Int {
         let most = frame.settings.subframes
-        guard most > 1 else { return 1 }
+        let (near, far) = (frame.settings.field[0], frame.settings.field[1])
+        guard most > 1, frame.nearness < far else { return 1 }
+        let t = min(max((frame.nearness - near) / (far - near), 0), 1)
+        let within = 1 - t * t * (3 - 2 * t)
         let scale = Float(height) / (2 * tan(opening.fieldOfView / 2))
         let moved = simd_length(closing.eye - opening.eye) / max(frame.nearness, 1e-4)
         let (a, b) = (opening.target - opening.eye, closing.target - closing.eye)
         let (la, lb) = (simd_length(a), simd_length(b))
         var turned: Float = 0
-        if la > 0, lb > 0 {
-            let cosine = min(max(simd_dot(a, b) / (la * lb), -1), 1)
-            let (near, far) = (frame.settings.field[0], frame.settings.field[1])
-            let t = min(max((frame.nearness - near) / (far - near), 0), 1)
-            turned = acos(cosine) * (1 - t * t * (3 - 2 * t))
-        }
-        let pixels = scale * (moved + turned)
+        if la > 0, lb > 0 { turned = acos(min(max(simd_dot(a, b) / (la * lb), -1), 1)) }
+        let pixels = scale * (moved + turned) * within
         guard pixels.isFinite else { return most }
         return min(max(Int((pixels / step).rounded(.up)), 1), most)
     }

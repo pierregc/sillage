@@ -487,7 +487,7 @@ struct ExportTests {
         let frames = try export.frames(width: 64, height: 36, framesPerSecond: 10)
         let report = try #require(export.inside)
         #expect(frames.count == 12 && frames.allSatisfy { $0.contains { $0 > 0 } })
-        #expect(report.nearest < 1 && report.mostStarParticles > 0)
+        #expect(report.nearest < 1 && report.mostStars > 0)
         #expect(report.mostRenders == InsideSettings().subframes && report.renders > frames.count)
         #expect(report.deepestTrim >= 0 && report.deepestTrim <= InsideExposure.deepest)
         // The same flight again is the same frames, to the bit.

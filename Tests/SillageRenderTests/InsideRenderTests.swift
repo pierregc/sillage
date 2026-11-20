@@ -98,7 +98,7 @@ struct InsideRenderTests {
         renderer.inside = Self.inside(60)
         let within = renderer.render(camera: camera)
         #expect(renderer.insideFailure == nil)
-        #expect(renderer.starParticles == 0)
+        #expect(renderer.starsDrawn == 0)
         let most = zip(plain, within).map { abs(Int($0) - Int($1)) }.max() ?? 0
         #expect(plain.contains { $0 > 40 } && most <= 1, "\(most) levels apart")
     }
@@ -179,7 +179,7 @@ struct InsideRenderTests {
         }
         stage.renderer.inside = starred
         let first = try stage.light(view)
-        #expect(stage.renderer.starParticles == 400)
+        #expect(stage.renderer.starsDrawn == 400 * 128)
         let again = try stage.light(view)
         #expect(first == again)
         #expect(stage.renderer.render(camera: view) == stage.renderer.render(camera: view))
@@ -196,7 +196,7 @@ struct InsideRenderTests {
         let far = camera(12)
         stage.renderer.inside = starred
         let beyond = try stage.light(far)
-        #expect(stage.renderer.starParticles == 0)
+        #expect(stage.renderer.starsDrawn == 0)
         stage.renderer.inside = Self.inside(0.8) { $0.stars = 0 }
         #expect(try stage.light(far) == beyond)
     }

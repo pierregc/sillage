@@ -96,7 +96,7 @@ struct InsideTests {
             let total = (1...128).reduce(Float(0)) {
                 $0 + (exponent > 0 ? pow(Float($1), -exponent) : 1) * norm
             }
-            #expect(abs(total - 1) < 1e-5)
+            #expect(abs(total - 1) < 0.01, "exponent \(exponent): \(total)")
         }
     }
 

@@ -33,8 +33,37 @@ public final class TakeExport {
         /// The most renders a frame was averaged from, and all the renders drawn.
         public var mostRenders = 1
         public var renders = 0
-        /// The most particles whose point stars a frame drew.
-        public var mostStarParticles = 0
+        /// The most point stars a frame drew.
+        public var mostStars = 0
+        /// Within a kiloparsec of matter: the most the eye moved between two frames, in parsecs,
+        /// and the fastest the take's time ran, against the speed it was captured at.
+        public var fastestNear = 0.0
+        public var fastestTimeNear = 0.0
+
+        public var summary: String {
+            let near =
+                nearest.isFinite
+                ? (nearest < 1
+                    ? String(format: "%.0f pc", nearest * 1000) : String(format: "%.1f kpc", nearest))
+                : "nothing"
+            var text = "nearest matter \(near) from the eye"
+            text += String(format: ", exposure down by up to %.1f stops", deepestTrim)
+            if mostStars > 0 {
+                text += String(format: ", up to %.1f M point stars a render", Double(mostStars) / 1e6)
+            }
+            if mostRenders > 1 { text += ", up to \(mostRenders) renders a frame (\(renders) in all)" }
+            if fastestNear > 0 {
+                text += String(
+                    format: "; within 1 kpc of matter the eye moves up to %.1f pc a frame", fastestNear)
+            }
+            // Past a hundredth of its speed the nearest stars dart from their own motions.
+            if fastestTimeNear > 0.0125 {
+                text += String(
+                    format: " and time runs at up to 1/%.0f of the take's speed: the nearest stars will dart",
+                    1 / fastestTimeNear)
+            }
+            return text
+        }
     }
 
     public let take: RecordingFile.Loaded
@@ -67,6 +96,8 @@ public final class TakeExport {
     private let eased: EasedSmoothing?
     /// What the frames of the flight last drawn took of the inside of a galaxy.
     public private(set) var inside: InsideReport?
+    /// The frame of a video drawn before this one, for the speeds the report gives.
+    private var before: (played: Double, captured: Double, eye: SIMD3<Float>)?
 
     public enum Failure: Error, CustomStringConvertible, Equatable {
         case trackForAnotherTake(track: Int, take: Int)
@@ -429,7 +460,10 @@ public final class TakeExport {
     }
 
     /// The frame at every key of the flight, as RGBA: a flight seen in seconds, nothing encoded.
-    public func flightKeys(width: Int, height: Int) throws -> [(seconds: Double, rgba: [UInt8])] {
+    /// Each is one render at its own exposure, with the time the GPU took to draw it.
+    public func flightKeys(width: Int, height: Int) throws -> [(
+        seconds: Double, rgba: [UInt8], milliseconds: Double
+    )] {
         guard let flight = try makeFlight(width: width, height: height) else { return [] }
         let renderer = try makeRenderer(width: width, height: height)
         let cameras = Cameras.flight(flight, look: look.look, capturedRate: capturedRate)
@@ -449,7 +483,7 @@ public final class TakeExport {
             renderer.apply(Self.exposed(shot.look, stops: stops, scale))
             let pixels = renderer.render(camera: shot.camera)
             try noteInside(renderer, stops: stops)
-            return (seconds, pixels)
+            return (seconds, pixels, renderer.lastGPUTime * 1000)
         }
     }
 
@@ -514,6 +548,7 @@ public final class TakeExport {
         -> InsideExposure.Track?
     {
         inside = nil
+        before = nil
         guard case .flight(let flight, _, let rate) = cameras else { return nil }
         inside = InsideReport()
         guard flight.inside.exposure > 0 else { return nil }
@@ -579,7 +614,7 @@ public final class TakeExport {
         }
         var report = inside ?? InsideReport()
         report.nearest = min(report.nearest, frame.nearness)
-        report.mostStarParticles = max(report.mostStarParticles, renderer.starParticles)
+        report.mostStars = max(report.mostStars, renderer.starsDrawn)
         if let stops { report.deepestTrim = max(report.deepestTrim, stops) }
         inside = report
     }
@@ -689,6 +724,15 @@ public final class TakeExport {
                 report.deepestTrim = max(report.deepestTrim, stops)
                 report.mostRenders = max(report.mostRenders, views.count)
                 report.renders += views.count
+                // Against the frame before, when it is the one before in the video.
+                let step = interval * Double(rate)
+                if let before, within.nearness < 1, abs(frame.played - before.played - step) < 1e-6 * step {
+                    report.fastestNear = max(
+                        report.fastestNear, Double(simd_length(shot.camera.eye - before.eye)) * 1000)
+                    report.fastestTimeNear = max(
+                        report.fastestTimeNear, abs(frame.captured - before.captured) / step)
+                }
+                before = (frame.played, frame.captured, shot.camera.eye)
                 inside = report
             }
         }

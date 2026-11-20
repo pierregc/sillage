@@ -60,8 +60,8 @@ public final class Renderer {
     private var insidePass: InsidePass?
     /// Why a frame asked for from inside was drawn without it, when it was.
     public private(set) var insideFailure: String?
-    /// The particles whose point stars the last frame drew, once it has run.
-    public var starParticles: Int { insidePass?.listed ?? 0 }
+    /// The point stars the last frame drew, to the eight, once it has run.
+    public var starsDrawn: Int { insidePass?.listed ?? 0 }
 
     private let accumulation: MTLTexture
     private let dustAccumulation: MTLTexture
@@ -590,21 +590,25 @@ public final class Renderer {
             encoder.setVertexBytes(&both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
         }
 
-        // The near particles, listed before the passes that draw: their point stars go with
-        // the stars.
+        // The stars to draw are listed once the column density they read is counted, before
+        // the passes that draw: they go with the stars.
         let starred = stages.contains(1) && (within?.settings.stars ?? 0) > 0 && drawnCount > 0
-        if starred, let within, let deep {
+        func listStars() {
+            guard starred, let within, let deep else { return }
             let uniforms = plan.uniforms(for: .stars)
             var both = InsideSplatUniforms(
                 splat: uniforms,
                 inside: InsideUniforms(within, camera: camera, settings: settings, splat: uniforms))
-            deep.encodeList(into: buffer, stars: within.settings.stars) { encoder in
+            deep.encodeList(into: buffer) { encoder in
                 encoder.setBuffer(drawnBuffer, offset: positionOffset, index: 0)
+                encoder.setBuffer(luminosityBuffer, offset: 0, index: 2)
                 encoder.setBuffer(componentBuffer, offset: 0, index: 3)
                 encoder.setBytes(&both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
+                encoder.setBuffer(galaxyBuffer, offset: 0, index: 5)
                 encoder.setBuffer(smoothingBuffer, offset: 0, index: 7)
                 encoder.setBuffer(formationBuffer, offset: 0, index: 8)
                 encoder.setBuffer(traitBuffer, offset: 0, index: 10)
+                encoder.setTexture(columnDensity, index: 0)
             }
         }
 
@@ -627,6 +631,7 @@ public final class Renderer {
         var frame: MTLRenderCommandEncoder?
         func frameEncoder() -> MTLRenderCommandEncoder? {
             if frame == nil {
+                listStars()
                 frame = buffer.makeRenderCommandEncoder(
                     descriptor: descriptor(
                         [accumulation, dustAccumulation], load: plan.clears ? .clear : .load))

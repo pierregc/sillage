@@ -704,6 +704,8 @@ func paletteStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
 /// HEVC unless the preset or `--codec` says otherwise; another codec adds its name, as
 /// `<preset>-h264.mp4` and `<preset>-prores.mov`.
 func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReporter) throws -> Int32 {
+    // A line at a time even into a file, so that a long export started detached can be followed.
+    setvbuf(stdout, nil, _IOLBF, 0)
     func option(_ name: String) -> String? {
         options.firstIndex(of: "--\(name)").flatMap {
             $0 + 1 < options.count ? options[$0 + 1] : nil
@@ -807,8 +809,9 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
             let url = out.appendingPathComponent(String(format: "key-%02d-%06.2fs.png", index, key.seconds))
             try PNGWriter.write(
                 PNGWriter.image(key.rgba, width: width, height: height), maximumWidth: nil, to: url)
-            print("key        \(url.path)")
+            print(String(format: "key        %@  %.0f ms", url.path, key.milliseconds))
         }
+        if let inside = export.inside { print("inside     \(inside.summary)") }
         print(String(format: "flight     keys drawn in %.1f s", Date().timeIntervalSince(started)))
         return 0
     }
@@ -958,6 +961,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
     for line in report.overlay { print("overlay    \(line)") }
     if let exposure = report.exposure { print("exposure   \(exposure.summary)") }
+    if let inside = report.inside { print("inside     \(inside.summary)") }
     print(
         String(
             format: "export     %d frames in %.1f s, %.1f frames a second, %.2fx real time, %.1f MB",
