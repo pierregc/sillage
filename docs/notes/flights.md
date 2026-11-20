@@ -8,6 +8,7 @@ starts again.
 
 ```bash
 ./scripts/dev.sh render flight <scene> --at 300,430,452,520 --look photograph   # coordinates to write keys from
+./scripts/dev.sh render flight <scene> --at 452 --look photograph --arms 6,9    # and where the arms are
 ./scripts/dev.sh export <scene> --look photograph --flight dive --flight-keys out/dive   # one PNG a key, in seconds
 ./scripts/dev.sh export <scene> --look photograph --flight dive                  # exports/dive-1080p.mp4
 ```
@@ -21,7 +22,8 @@ cannot be read the one way it means.
 ```json
 {
   "version": 1,
-  "near": 1,
+  "near": 0.001,
+  "inside": {"stars": 128, "exposure": 0.16, "subframes": 8},
   "keys": [
     {"at": 0, "myr": 300, "look": true},
     {"at": 10, "myr": 430, "eye": [-10, -50, 110], "aim": [-0.5, -1, 0.3]},
@@ -52,9 +54,12 @@ cannot be read the one way it means.
   without one keeps the value before; the first key starts from 0.6, 0 and 0.
 - A key with none of `eye`, `aim` and `look` only pins time, and may not carry `fov`, `roll` or
   `exposure`.
-- `near`, for the whole file: the camera's near distance in kiloparsecs, 1 when absent, as every
-  camera has. Particles nearer than it in depth are dropped; #297 decides what a flight inside a
-  disk needs.
+- `near`, for the whole file: the camera's near distance in kiloparsecs. A flight's camera takes a
+  parsec when the file gives none (#297); every other camera keeps its kiloparsec. Particles fade
+  out before it rather than being cut (below).
+- `inside`, for the whole file: what the frames are drawn with once the camera is near matter
+  (#297, "Inside a galaxy" below). Every field is optional and the block itself is; absent, the
+  settings Pierre chose on #296's frames.
 
 ## Where to read coordinates
 
@@ -71,6 +76,12 @@ world point read off a still instead, until a key asks for it often enough to be
 
 The disk axes are the disk states the take holds (`DiskFrame`'s plane carried from the natal
 pair), or the natal plane for a take written before disk states were kept.
+
+`--arms <kpc,...>` adds, for each galaxy and each radius, the place on that circle of its disk where
+the emitting particles within 300 pc of its plane are densest (over nine degrees of the circle), as
+a point ready to paste, `{"galaxy": 0, "offset": [-7.42, 5.10, 0.00], "disk": true}`, with how many
+times the circle's mean it holds: an arm to fly into. On the Mice at 452 Myr the tidal arm of
+galaxy 0 holds nine times its circle's mean at 9 kpc.
 
 ## Interpolation
 
@@ -116,6 +127,70 @@ closeness^1.3 and the stretch as closeness^1.9, because the logarithmic stretch 
 when a disk fills the frame, and this is the same law in stops. Up close a disk needs -1.5 to -2.5
 (the worked example below); without it the frame turns to the white paste contemplation measured.
 
+A flight also has an **automatic exposure** (#297): from the photograph to the inside of an arm
+the frame brightens by up to five stops within seconds, which no trim written by hand follows. It
+is a second trim, by the same law without the floor, that only ever darkens: the frame's mean
+luminance (linear, of the 8-bit picture) is held under `inside.exposure`, 0.16 unless given, and a
+frame already under it is left alone. It is solved every quarter of a second along the whole
+flight before the first frame is drawn, by a renderer of its own (`TakeExport.measureTrims`,
+two to four draws a moment), and eased under a raised cosine `inside.exposureEase` seconds wide
+either side (1 s), so it anticipates a dive as much as it follows it. On the look's own camera
+there is none: at a look key and between two of them the frame is the export's, and when the
+photograph itself is brighter than the target, the target is raised to it. The keys' `exposure`
+stays on top. A look that measures its exposure on the frames (#340) measures it on the flight's
+look keys, or on its first frame without any: measured along the whole flight, the inside of a disk
+would darken the photograph.
+
+## Inside a galaxy
+
+#297, from #296's frames (`docs/notes/inside-a-galaxy.md` has them, the numbers and what each
+piece costs). A flight's frames are drawn by a Metal library of their own, the renderer's text
+with `SILLAGE_INSIDE` defined, so that an export without a flight compiles and draws what it
+always did, to the bit. What that library adds is keyed on distances, and far from any matter it
+adds nothing: on the photograph's framing a flight's frame is the export's within a level in 255.
+
+- **Near plane at a parsec**, and a particle fades to nothing over the last three kernel lengths
+  before it (`fade`), so nothing is cut and nothing pops.
+- **No flare.** A kernel the look's ceiling caps keeps the surface brightness of its own size
+  in the near field, for stars and for dust.
+- **Point stars** (`stars`, 128 a particle): the light of a near particle goes over from its splat
+  to a few bright stars over a crowd of faint ones (`starShare`, rank to minus one), scattered in
+  its kernel from a hash of its index, coloured around its population (`starColours`), 1.5 output
+  pixels each (`starSize`). The cross-fade runs from `starFrom` to `starFull` of the kernel
+  ceiling (0.05 to 0.2), in the near field only.
+- **The near field** (`field`, `[3, 8]` kpc of view depth): all of the above applies wholly nearer
+  than the first distance and not at all past the second.
+- **Dust slabs from the eye** once inside (`slabs`, `[0.3, 1.5, 7.5]` kpc), soft, and around the
+  aim point as every export has them far away; they slide from one layout to the other as the eye
+  comes within `slabsWithin` (`[1.5, 6]` kpc) of matter.
+- **The dust web's lace flattens out** as the eye comes within `web` (`[3, 10]` kpc) of a disk,
+  the rays that graze the plane first; the dust it carries stays, as an even layer.
+- **Motion blur**: while the shutter is open (`shutter`, half of the frame's interval) a point
+  star is drawn as the streak it leaves, and the frame is averaged from up to `subframes` renders
+  (8), one for every four pixels the near matter crosses meanwhile, each drawing its share of
+  every streak: one unbroken line a star, not a row of dots. A camera at rest, farther from matter
+  than the near field reaches, or on the look's own path draws the frame once, as a still. The
+  renders share the frame's moment of the take: only the camera moves.
+- **Kernel lengths eased in time**: a flight's kernels are read off trees built at the take's
+  captured frames and taken between them, so that time running a hundred times slower does not
+  make them shimmer.
+
+"Near matter" is measured, not written: the distance from the eye within which a ten-thousandth
+of the drawn particles lie (`Nearness`, 800 of 8 M), which cannot change faster than the eye moves.
+The export's last lines say what a flight took: the nearest it came, the deepest trim, the most
+renders a frame was averaged from and the most particles drawn as stars.
+
+Sizes in pixels are output pixels, as the look's are: a flight drawn in 4K and scaled down has
+finer stars than the same flight drawn in 1080p.
+
+**Speed is the author's.** A star at distance d crosses 1 750 x v / d pixels a frame in 1080p
+(v the eye's path in a frame): at 2 pc a frame the stars 300 pc away drift by a dozen pixels and
+the nearest streak past, at 5 the whole near field streaks, at 50 it is a tunnel of lines. Keys
+50 to 150 pc of path apart for every second of video are a drift to a glide among the stars. Time
+near matter wants a hundredth of the take's speed or less: at a tenth the nearest stars dart from
+their own motions. The export's last line gives both, the most the eye moved in a frame within a
+kiloparsec of matter and, when time ran faster than that there, how fast.
+
 ## The export
 
 `export --flight` resolves the flight once per size (`TakeExport.makeFlight`): a look key asks the
@@ -127,8 +202,10 @@ has, are not applied), and the camera from the flight. The look's camera plan is
 look keys, and the export says so. The video is `exports/<flight>-<preset>.mp4`, beside the plain
 exports; `--speed` does not go with a flight, which has its own time.
 
-`--flight-keys <dir>` draws only the frame at each key as a PNG and encodes nothing: on the 8 M
-Mice take, the 11 keys of the example at 960 x 540 in 2.3 s.
+`--flight-keys <dir>` draws only the frame at each key as a PNG and encodes nothing, and prints
+what the GPU took for each. A still is one render at its own exposure, solved for that moment
+alone: the video's frame there is eased with its neighbours and may be averaged from several
+renders.
 
 `Flight`, `FlightFile` and `FlightTake` are portable Swift beside `TakeFraming`, built by
 `scripts/linux.sh`, so the CUDA engine's stills (#277) and full pass (#278, #300) can follow a

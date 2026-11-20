@@ -130,10 +130,10 @@ struct InsideTests {
         // At rest, none: the frame is drawn once through its own camera.
         #expect(InsideBlur.subframes(from: camera(0), to: camera(0), frame: near, height: 1080) == 0)
         // A tenth of a parsec during the shutter, 200 pc from matter: 1 745 px a radian, under
-        // a pixel, one render with its streaks. A parsec, 9 pixels: five.
+        // a pixel, one render with its streaks. A parsec, 9 pixels: three.
         let slow = InsideBlur.subframes(from: camera(0), to: camera(0.0001), frame: near, height: 1080)
         let fast = InsideBlur.subframes(from: camera(0), to: camera(0.001), frame: near, height: 1080)
-        #expect(slow == 1 && fast == 5)
+        #expect(slow == 1 && fast == 3)
         // The same move far from everything is the frame itself, and so is a turn out there.
         let far = frame(60)
         #expect(InsideBlur.subframes(from: camera(0), to: camera(0.001), frame: far, height: 1080) == 0)

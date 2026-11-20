@@ -1,4 +1,4 @@
-# Inside a galaxy (#296)
+# Inside a galaxy (#296, #297)
 
 What the renderer does when the camera goes into a disk, tried on real frames before #297
 changes anything: the README's Mice take (2026-11-04 scene-0067, 8 M visible particles on 12 M
@@ -223,6 +223,110 @@ The settings the `R` frames and clips use; neutral defaults, flights only.
   or slower near matter.
 - **The dust web fades out** near a disk's plane.
 - Kernel ceiling, smoothing, column smoothing and the dust web: the look's.
+
+## What #297 built
+
+A flight's frames are drawn with all of the above (`docs/notes/flights.md` has the file's
+`inside` block and its defaults, which are the settings of the last section). What was built as
+recommended is not told again; what follows is where the building found something else, and what
+it costs.
+
+**One text, two libraries.** The passes are the renderer's own with `#if defined(SILLAGE_INSIDE)`
+around what the inside of a galaxy adds, compiled by Metal into a library of its own the first
+time a flight is drawn, as #339 did for the population widths: with fast math, code that never
+runs still moves the roundings of a frame drawn without it. The frame's `InsideUniforms` lie
+behind its `SplatUniforms` in that library alone, so the CUDA engine, which does not define the
+symbol, compiles and draws what it drew (its entry points are #347). Checked: three frames of the
+Mice's export in `photograph` and in the README's look are the same bytes from this branch and
+from main.
+
+**The photograph is the export's.** Everything is keyed on a distance, and past it nothing is
+added:
+
+- the capped kernels' law and the stars apply in the near field (view depth under 3 kpc, fading
+  to nothing at 8), the law too, which the spike applied everywhere: a kernel of the sparse
+  outskirts seen from 180 kpc is capped as well, and dimming it changed the photograph a little;
+- the slabs are placed by the very expression every export uses until the eye comes within 6 kpc
+  of matter, then slide to the eye's layout (wholly at 1.5 kpc), their softness with them. Soft
+  slabs for every camera would have changed the stars past the stack's far end, which stand
+  behind half of the last slab when hard and all of it when soft;
+- the automatic exposure only darkens, never on the look's own camera, and its target is raised
+  to the photograph's mean when the photograph is brighter;
+- a look that measures its exposure (#340) measures it on the flight's look keys.
+
+On a 20 000 particle disk seen from 100 kpc, a frame set to the inside of a galaxy is within one
+level in 255 of the same frame without it (`InsideRenderTests`).
+
+**"Near matter" is measured**: the distance from the eye within which a ten-thousandth of the
+drawn particles lie (`Nearness`, 800 of 8 M: a histogram of the squared distances by their float
+bits, then the exact rank in the one bin, XX ms a frame on eight cores). A count cannot change
+faster than the eye moves, so what is keyed on it, the slabs' layout and the number of renders a
+frame is averaged from, never jumps. The disks the take tracks were the other candidate; a tidal
+arm or a bridge is not one of them.
+
+**The dust web is not removed near a disk: its lace flattens.** The issue asked for the web to
+fade out near the plane. Without the web the dust is its grains again, capped at the kernel
+ceiling: black blotches a hundred pixels wide from one to three kiloparsecs above a lane. What
+draws the streaks is the lace alone, a pattern lying in the mid-plane whose walls run to the
+horizon like a tiled floor. So the web keeps carrying the dust, as the even layer it makes of the
+grains, and the lace's contrast goes to nothing as the eye comes within 10 to 3 kpc of the disk
+(its plane out to seven scale lengths), the rays that graze the plane losing it first, from 20 kpc.
+From 3 kpc down a lane is a soft dark band with the stars coming out in front of it.
+
+**A splat that has given all its light to its stars is not drawn**, nor a particle faded out at
+the near plane. The spike drew them black, at the ceiling's size; inside an arm they were most of
+the pixels painted.
+
+**Only the stars a particle's light has reached are drawn, the brightest first.** The spike drew
+all 128 stars of every particle in the near field, each at the share of the light the cross-fade
+had given the stars so far: a particle at 6 kpc, a tenth of the way, cost 128 points that showed
+nothing. A particle now draws its first `128 × w` stars, w being how far its light has gone over
+(the kernel's size on screen times the near field's window), and its splat keeps the light of the
+others, a closed form of the partial sum of the shares (`insideShareSum`, within 1 % of it). A
+particle wholly turned draws all of them, so the inside of an arm is the frame Pierre chose; on
+the way in the count of stars drawn falls by 2.6 (122 M to 47 M points in an arm at 452 Myr) and
+the frames are the same: 0.01 % of the pixels differ by more than 24 levels.
+
+**The stars are listed on the GPU in the order of their particles' indices**, eight to an entry:
+each block of 1 024 particles counts its entries, one thread turns the counts into each block's
+place in the list and writes the draw's arguments, each block writes its entries, and one indirect
+draw of eight instances lays the stars (`insideCount`, `insideOffsets`, `insideFill`,
+`pointStarVertex`). An atomic counter would have listed them in whatever order the threads ran,
+and the half-float sum of a pixel's stars would then round differently from one drawing to the
+next: the same flight drawn twice is the same bytes (`ExportTests`). The list holds 16 M entries,
+128 M stars, more than a frame can afford.
+
+**Kernel lengths are eased in time** (`EasedSmoothing`): trees are built at the take's captured
+frames only, and a moment between two takes the lengths between theirs. A frozen flight builds
+one or two trees for the whole freeze; with time flowing at a hundredth of the take's speed a tree
+is built every hundred frames, where the export builds one a frame.
+
+**Motion blur: streaks for the stars, the mean of a few renders for the rest.** The spike
+averaged eight 8-bit pictures a frame, and a star that crosses thirty pixels in a frame came out as
+a row of eight dots. A point star is now drawn as the streak it leaves: the vertex stage projects
+it through the render's camera and through the next one, the point grows to hold the line between
+the two, and the fragment draws the star's own profile across that line, its light spread along
+it. A frame's renders (one for every four pixels the matter at `Nearness` crosses while the
+shutter is open, eight at most) each draw their share of every streak, end to end, and are
+averaged down to the picture's size before bloom and the tone curve (`insideResolve`, which also
+holds every sample under what a half float carries: a few near stars on one pixel would otherwise
+sum to infinity, and the bloom of an infinity is a NaN). A camera at rest, past the near field or
+on the look's camera draws the frame once. Only the camera moves between a frame's renders; the
+take's time is the frame's.
+
+**Sizes are output pixels**, as the look's are. The 4K frames Pierre chose on have stars half as
+wide, against the frame, as the same flight drawn in 1080p: the demo is drawn in 4K and scaled down.
+
+### What it costs
+
+XXCOST
+
+### Not built
+
+- A slider in the style editor: the settings are the flight file's, where a flight's other
+  choices are.
+- The CUDA engine's side (#347).
+- Splats popping at the frame's edge were looked for again in the demo: XXEDGES
 
 **What stays a limit of 8 M.** The stars are drawn, not simulated: each particle stands for
 about 6 000 suns and its k stars are scattered at random in its kernel, so up close the field
