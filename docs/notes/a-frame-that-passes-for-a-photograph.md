@@ -15,7 +15,8 @@ is a look, `looks/photograph.look.json`.
 - **What settings cannot do** is in the young stars and the knots. Both are scattered evenly
   through the disks: as colours they tint the whole body, as compact sources they are sand, and
   no setting tells them from the old stars. A kernel width per population (measured with a
-  throwaway change) gives the continuum; beads would need the young stars grouped.
+  throwaway change, then made a setting by #339 and set in the look) gives the continuum; beads
+  would need the young stars grouped.
 - **The look does not carry over unchanged**: on the Antennae take the same settings stop the
   cores at L 0.85 to 0.87 and darken a disk seen nearer edge on with dust, and at 200 000
   particles the column smoothing turns into bokeh.
@@ -143,7 +144,9 @@ What remains is the young stars in the denser parts. A width per population, tri
 change (`SILLAGE_315_WIDTHS` in `ShaderCache`, diff on the assets branch), widens the stars under
 300 Myr three times: the stipple is gone at 1080p (grain 0.06 at 960 px) and `glint` 0.6 can then
 put compact sources back on a smooth continuum, which is the two scales the issue asked for. The
-look keeps the settings-only version; the width per population is the first change proposed below.
+look kept the settings-only version until #339 made the width per population a setting
+([kernel-width-per-population.md](kernel-width-per-population.md)): `photograph` now draws its
+young stars three times wider.
 
 After this step the continuum is smoother than the photographs (0.07 against 0.12 to 0.16): their
 grain is structure (knots, clusters, dust), which steps 4 and 5 put back to 0.11 to 0.14.
@@ -239,8 +242,8 @@ and let Auto keep a rendering's own palette when it gives every galaxy one schem
 Proposed as follow-up tickets, not created:
 
 1. **A kernel width per population**: young stars wider than old ones, from the take's ages. The
-   throwaway change measured it (step 3); the real one belongs in the shared shader source, per
-   [one-kernel-source.md](one-kernel-source.md).
+   throwaway change measured it (step 3); #339 made it four settings in the shared shader source
+   ([kernel-width-per-population.md](kernel-width-per-population.md)).
 2. **Knots that read as beads**: the run's young stars grouped into associations when drawn, or
    formed in clusters, so that a few hundred bright compact knots sit along the arcs instead of a
    haze.

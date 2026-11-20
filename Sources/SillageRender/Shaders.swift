@@ -54,6 +54,12 @@ enum Shaders {
             float columnCell;
             /// Light kept by the compact bright minority: 1 as sampled, 0 as ordinary stars.
             float glint;
+            /// Each population's kernel against the tree's (#339): the old disk, the bulge, the
+            /// stars under 300 Myr and the knots gas formed under 50 Myr.
+            float oldWidth;
+            float bulgeWidth;
+            float youngWidth;
+            float knotWidth;
         };
 
         struct GalaxyRamp {
@@ -471,6 +477,26 @@ enum Shaders {
             return out;
         }
 
+        // How much wider than its kernel a population is drawn (#339). A young population has up
+        // to fifty times the light per mass of an old one, so at the old stars' width its few
+        // per cent read as sand. Ages blend over a factor of two either side, so that a star
+        // the run formed narrows over many frames as it ages. Metal compiles it only into the
+        // library of a look that asks for it: with fast math, code that never runs still moves
+        // the roundings of a frame drawn without it.
+        #if defined(SILLAGE_POPULATION_WIDTHS) || !defined(__METAL_VERSION__)
+        SHARED float populationWidth(uint kind, bool nursery, bool knot, float ageMyr,
+                                     constant SplatUniforms &u) {
+            if (kind == 4u) { return u.bulgeWidth; }
+            if (!knot) { return u.oldWidth; }
+            float age = max(ageMyr, 1.0f);
+            float old = smoothstep(-1.0f, 1.0f, log2(age / 300.0f));
+            float width = u.youngWidth + (u.oldWidth - u.youngWidth) * old;
+            if (!nursery) { return width; }
+            float grown = smoothstep(-1.0f, 1.0f, log2(age / 50.0f));
+            return u.knotWidth + (width - u.knotWidth) * grown;
+        }
+        #endif
+
         // Whether this pass leaves the particle out, as `splat` decides it.
         SHARED bool splatSkips(uint kind, float born, constant SplatUniforms &u) {
             bool nursery = kind == 1u || kind == 2u;
@@ -590,6 +616,9 @@ enum Shaders {
                 float projected = 2.0f * sqrt(u.columnSmoothing / (M_PI_F * density));
                 raw = max(raw, projected);
             }
+            #if defined(SILLAGE_POPULATION_WIDTHS) || !defined(__METAL_VERSION__)
+            if (!absorbing) { raw *= populationWidth(kind, nursery, knot, ageMyr, u); }
+            #endif
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             // Take the length back from the clamped span. Dividing by the unclamped one would
             // brighten every particle the floor caught, which made the softness control shift

@@ -3,7 +3,7 @@ import Metal
 import SillageCore
 
 /// The reference outputs both engines must give (#281), kept in `Tests/Fixtures/engines/` and
-/// described in the README there: a tree, the accelerations of a small walk dump, three frames.
+/// described in the README there: a tree, the accelerations of a small walk dump, four frames.
 /// Metal writes them (`./scripts/dev.sh fixtures`) and has to give them again in every check.
 public enum EngineFixtures {
     public enum Failure: Error, CustomStringConvertible {
@@ -20,8 +20,8 @@ public enum EngineFixtures {
 
     public static let width = 256
     public static let height = 144
-    public static let looks = ["red-vs-cyan", "ember", "webb"]
-    /// The captured frame of the take the three frames draw, and the one the walk is dumped at.
+    public static let looks = ["red-vs-cyan", "ember", "webb", "widths"]
+    /// The captured frame of the take the four frames draw, and the one the walk is dumped at.
     public static let capturedFrame = 0
     /// The small hires run the walk dump and the take come from: 1,000 light tracers.
     public static let runOptions = [

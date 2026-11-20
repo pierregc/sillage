@@ -101,6 +101,10 @@ extension LookFile {
             file.look.maximumKernel = from.maximumKernel
             file.look.columnSmoothing = from.columnSmoothing
             file.look.glint = from.glint
+            file.look.oldWidth = from.oldWidth
+            file.look.bulgeWidth = from.bulgeWidth
+            file.look.youngWidth = from.youngWidth
+            file.look.knotWidth = from.knotWidth
             file.look.holeShadow = from.holeShadow
             file.look.bloomIntensity = from.bloomIntensity
             file.look.bloomThreshold = from.bloomThreshold

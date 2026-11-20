@@ -329,6 +329,10 @@ struct ControlPanelContent: View {
                 title: "Stars under the kernel (projection)", value: $model.look.columnSmoothing,
                 range: 0...120, format: "%.0f")
             ParameterSlider(title: "Compact sources", value: $model.look.glint, range: 0...1)
+            ParameterSlider(title: "Young star width", value: $model.look.youngWidth, range: 0.25...4)
+            ParameterSlider(title: "Knot width", value: $model.look.knotWidth, range: 0.25...4)
+            ParameterSlider(title: "Old disk width", value: $model.look.oldWidth, range: 0.25...4)
+            ParameterSlider(title: "Bulge width", value: $model.look.bulgeWidth, range: 0.25...4)
             ParameterSlider(title: "Glow", value: $model.look.bloomIntensity, range: 0...2)
             ParameterSlider(
                 title: "Diffraction spikes", value: $model.look.spikeIntensity, range: 0...1.5)

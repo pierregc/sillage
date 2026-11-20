@@ -30,6 +30,14 @@ restricted solver), which stay Metal only.
 engine has the change at its next build. `./scripts/dev.sh check` says at once if the new text
 is not also C++ (below).
 
+**Add a path that a look turns on, without moving a bit of the looks that leave it off**: guard
+it with `#if defined(SILLAGE_<WHAT>) || !defined(__METAL_VERSION__)`, and let Metal draw with a
+second library of the same text with the macro defined, only for a frame that asks for it
+(#339's `Renderer.widenedSource`, [kernel-width-per-population.md](kernel-width-per-population.md)).
+A uniform tested at run time is not enough: with fast math, code that never runs moves roundings
+elsewhere. The CUDA engine always has the code, built without fast math, so the neutral value has
+to leave the arithmetic exact (a factor of one written `a + (b - a) * t`, not through `mix`).
+
 **Add a kernel, a shader or a pass**: write its work as a shared function; give it its Metal
 entry point inside `#if defined(__METAL_VERSION__)`, and its CUDA entry point of the same name
 in `cuda/src`, or mark it `pending #<issue>` or `metal-only: <reason>` in `cuda/kernels.txt`.

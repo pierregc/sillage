@@ -50,7 +50,8 @@ so the bloom keeps its share of a core; the sky's light is added after and does 
 
 ## Two takes, three moments
 
-The moments and cameras of the #315 note, 4K stills reduced to 960 px, the ruler's numbers
+The moments and cameras of the #315 note, 4K stills reduced to 960 px, the ruler's numbers, drawn
+before #339 widened the young stars (the exposure is measured again on whatever the look draws)
 ([sheets](https://github.com/pierregc/sillage/blob/a257eade4699ee56f1d6349ca1d16bc4b41937a8/mice.jpg),
 [numbers](https://github.com/pierregc/sillage/blob/a257eade4699ee56f1d6349ca1d16bc4b41937a8/numbers/ruler.json)):
 

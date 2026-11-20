@@ -427,7 +427,7 @@ struct CUDARenderTests {
         plain.plain = true
         #expect(passes(plain) == [.plain])
         #expect(FramePlan.Pass.allCases.count == 8)
-        #expect(MemoryLayout<SplatUniforms>.stride == 176 && MemoryLayout<WebUniforms>.stride == 112)
+        #expect(MemoryLayout<SplatUniforms>.stride == 192 && MemoryLayout<WebUniforms>.stride == 112)
     }
 
     /// A pixel that takes more than the target holds stays at its ceiling: 2^24 units of light.

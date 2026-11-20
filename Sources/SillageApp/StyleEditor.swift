@@ -910,6 +910,12 @@ struct InstrumentControls: View {
             title: "Stars under the kernel (projection)", value: session.binding(\.look.columnSmoothing),
             range: 0...120, format: "%.0f")
         ParameterSlider(title: "Compact sources", value: session.binding(\.look.glint), range: 0...1)
+        ParameterSlider(
+            title: "Young star width", value: session.binding(\.look.youngWidth), range: 0.25...4)
+        ParameterSlider(title: "Knot width", value: session.binding(\.look.knotWidth), range: 0.25...4)
+        ParameterSlider(
+            title: "Old disk width", value: session.binding(\.look.oldWidth), range: 0.25...4)
+        ParameterSlider(title: "Bulge width", value: session.binding(\.look.bulgeWidth), range: 0.25...4)
         ParameterSlider(title: "Glow", value: session.binding(\.look.bloomIntensity), range: 0...2)
         ParameterSlider(
             title: "Glow threshold", value: session.binding(\.look.bloomThreshold), range: 0.05...1.5)
