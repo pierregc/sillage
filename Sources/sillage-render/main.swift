@@ -1534,6 +1534,16 @@ func refreshCosts(_ folder: SceneFolder) {
 // derived from the folder. Anything else is a plain render driven by its flags.
 let started = Date()
 let arguments: [String]
+switch RenderCommands.check(Array(CommandLine.arguments.dropFirst())) {
+case .run:
+    break
+case .help(let text):
+    print(text)
+    exit(0)
+case .refused(let message):
+    FileHandle.standardError.write(Data((message + "\n").utf8))
+    exit(2)
+}
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "event" {
     exit(eventCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
@@ -1692,7 +1702,7 @@ if CommandLine.arguments.count > 1,
             fail("hires: \(error)")
         }
     default:
-        var (clip, rest) = try folder.storedClip().updated(with: options)
+        var (clip, rest) = try folder.exploreStart(options)
         // Written again once the run has followed the story to its end.
         clip.story = nil
         try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
@@ -1744,7 +1754,7 @@ if arguments.contains("--draw") {
 
 let presetName = argument("preset", default: "merger")!
 let particles = Int(number("particles", 1_000_000))
-let steps = Int(number("steps", 3_000))
+var steps = Int(number("steps", 3_000))
 let frames = Int(number("frames", 1))
 let width = Int(number("width", 1920))
 let height = Int(number("height", 1080))
@@ -1923,6 +1933,11 @@ for (index, entry) in look.palette.enumerated() {
     if index < palette.count { palette[index] = entry.colour } else { palette.append(entry.colour) }
 }
 var scene = file.scene(particleCount: particles, palette: palette)
+// `--span Myr` runs as many steps as cover it at the step this scene has, a whole number a frame.
+if let span = argument("span").flatMap(Double.init) {
+    steps = SceneFolder.Clip.steps(
+        spanMyr: span, stepMyr: Double(scene.timeStep) * Physics.megayearsPerTimeUnit, frames: frames)
+}
 // Encounters are placed for a solver and a halo; a flag that changes either places them again.
 if !scene.encounters.isEmpty,
     generatedHaste != nil || placedFor.0 != file.solver
@@ -1932,7 +1947,7 @@ if !scene.encounters.isEmpty,
         scene.retimeEncounters(
             from: SceneConfig.contemplationWindow(haste: generatedHaste),
             to: scene.encounterWindow(
-                settleSteps: Int(number("settle", 0)), steps: Int(number("steps", 3_000))))
+                settleSteps: Int(number("settle", 0)), steps: steps))
     }
     scene.placeEncountersGivingWay()
     let kept = file
@@ -1969,7 +1984,7 @@ if generatedHaste != nil && !arguments.contains("--no-check")
 {
     let checkStart = Date()
     let verdict = scene.sanityCheck(
-        settleSteps: Int(number("settle", 0)), steps: Int(number("steps", 3_000)))
+        settleSteps: Int(number("settle", 0)), steps: steps)
     if arguments.contains("--check-only") {
         print(
             String(
