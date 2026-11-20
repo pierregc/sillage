@@ -1214,6 +1214,9 @@ linked. On the CPU target a 480 by 270 frame of 200 k takes 0.2 to 1.6 s without
 the first frame of a look with the web 35 s, the lace's bake; a frame of the fixture take's
 3,013 particles takes 41 s at 1080p and 63 s at 4K.
 
+With `--flight <file> --seconds 0,2.5,9` the frames are moments of a flight (#347), inside a
+galaxy when it goes there: see [inside a galaxy](inside-a-galaxy.md).
+
 ### Tests
 
 **Now, on the CPU target**, in every Linux check and on every push:

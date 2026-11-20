@@ -185,6 +185,31 @@ public struct InsideUniforms: Sendable {
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
 
+    /// What a frame that is not drawn from inside reads there, on an engine whose passes always
+    /// hold the inside of a galaxy (#347): no near field, no stars, no fade, the slabs of `splat`.
+    /// Every line the inside adds to a pass then leaves its arithmetic as it was.
+    public init(outside splat: SplatUniforms) {
+        nextViewProjection = splat.viewProjection
+        slabKnots = .zero
+        slabEnd = 0
+        slabSoft = 0
+        nearPlane = 0
+        fadeLengths = 0
+        // Every depth is past the window.
+        windowNear = -2e38
+        windowFar = -1e38
+        starStart = 0
+        starEnd = 0
+        starSpread = 0
+        starPointSize = 0
+        starShareExponent = 0
+        starShareNorm = 0
+        starColours = 0
+        starCount = 0
+        projectionX = 1
+        projectionY = 1
+    }
+
     /// The sum of the first `count` stars' shares before the norm, for any count, as the shader's
     /// `insideShareSum` works it out.
     public static func shareSum(_ count: Float, exponent: Float) -> Float {
@@ -199,6 +224,18 @@ public struct InsideUniforms: Sendable {
     /// One over the sum of every star's share, so they add up to their particle's light.
     public static func shareNorm(stars: Int, exponent: Float) -> Float {
         stars > 0 ? 1 / shareSum(Float(stars), exponent: exponent) : 1
+    }
+}
+
+/// `SplatUniforms` with `InsideUniforms` behind it, as the passes of a frame drawn from inside
+/// read them (#297): Metal's library of such a frame, and every pass of the CUDA engine (#347).
+public struct InsideSplatUniforms: Sendable {
+    public var splat: SplatUniforms
+    public var inside: InsideUniforms
+
+    public init(splat: SplatUniforms, inside: InsideUniforms) {
+        self.splat = splat
+        self.inside = inside
     }
 }
 

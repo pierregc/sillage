@@ -1,13 +1,6 @@
 import Foundation
 import Metal
 
-/// `SplatUniforms` with `InsideUniforms` behind it, as the library of a frame drawn from inside
-/// reads them (#297).
-struct InsideSplatUniforms {
-    var splat: SplatUniforms
-    var inside: InsideUniforms
-}
-
 /// What Metal draws a frame from inside a galaxy with (#297): a library of its own, the text
 /// every frame compiles with the inside of a galaxy in it, so that a frame without it draws
 /// from the library it always had; the pipelines of the passes that text changes; and the list

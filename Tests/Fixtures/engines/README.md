@@ -81,6 +81,10 @@ Each `<look>.rgba` is that frame as `export` draws it with `<look>.look.json`: 2
 | `webb` | the telescope world: Webb's spikes and its sky |
 | `widths` | `red-vs-cyan` with a kernel width for each population (#339) |
 
+`inside.flight.json` is a flight from the look's camera into that take's disk (#347), written
+by hand. `sillage-cuda still --flight` draws its frames; Metal's are not among the reference
+outputs yet.
+
 ## `raster/`: Metal's rasteriser on one point
 
 `probe.txt`: what an Apple M4 Max does with a point at 131 clip positions and sizes, one case a

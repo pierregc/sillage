@@ -94,5 +94,12 @@ jobs:
             --look Tests/Fixtures/engines/frames/webb.look.json --rate 30 --width 128 --height 72 \
             --frames 0 --out "$RUNNER_TEMP/stills"
           test -s "$RUNNER_TEMP/stills/1080p-0000.png"
+      - name: sillage-cuda draws the frames of a flight inside a disk
+        run: |
+          .build/linux/sillage-cuda still Tests/Fixtures/engines/frames/take.sillage \
+            --look Tests/Fixtures/engines/frames/webb.look.json --rate 30 --width 128 --height 72 \
+            --flight Tests/Fixtures/engines/frames/inside.flight.json --seconds 0,3.5 \
+            --out "$RUNNER_TEMP/stills"
+          test -s "$RUNNER_TEMP/stills/1080p-flight-0003.50s.png"
       - name: sillage-cuda holds the engine to the reference outputs, as a full pass requires
         run: .build/linux/sillage-cuda check --fixtures Tests/Fixtures/engines

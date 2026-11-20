@@ -41,7 +41,10 @@ typedef enum sc_render_pass {
     SC_RENDER_PAINTED_DUST = 4,
     SC_RENDER_WEB_RESOLVE = 5,
     SC_RENDER_STARS = 6,
-    SC_RENDER_PLAIN = 7
+    SC_RENDER_PLAIN = 7,
+    /* The point stars of a frame drawn from inside a galaxy (#347), after SC_RENDER_STARS and
+     * with its uniforms: the near particles' stars are listed, then drawn. */
+    SC_RENDER_POINT_STARS = 8
 } sc_render_pass;
 
 typedef enum sc_render_target {
@@ -125,9 +128,11 @@ sc_status sc_render_clear(sc_renderer *renderer);
  * emptied, the ones it reads brought up to date. */
 sc_status sc_render_begin(sc_renderer *renderer, sc_render_pass pass);
 /* Draws a pass over a range of the massive particles, then of the tracers: SplatUniforms with
- * its length, WebUniforms with its length for the web's passes. The column, the field stars,
- * the web's resolve and the plain points take no range of their own: the column and the plain
- * points draw the ranges given, which their callers make everything. After sc_render_begin,
+ * its length, which ends on the InsideUniforms of a frame drawn from inside a galaxy (#347),
+ * and WebUniforms with its length for the web's passes. The column, the field stars, the web's
+ * resolve, the point stars and the plain points take no range of their own: the column and
+ * the plain points draw the ranges given, which their callers make everything, and the point
+ * stars are those of every massive particle. After sc_render_begin,
  * calls for parts of one pass may run at once from several threads on the first way. */
 sc_status sc_render_draw(sc_renderer *renderer, sc_render_pass pass, const void *splat_uniforms,
                          size_t splat_length, const void *web_uniforms, size_t web_length,
@@ -141,6 +146,8 @@ sc_buffer *sc_render_target_of(sc_renderer *renderer, sc_render_target which);
 uint64_t sc_render_fixed_unit(void);
 /* Splats set aside by the last pass drawn the second way, those past the capacity included. */
 uint32_t sc_render_large_count(const sc_renderer *renderer);
+/* The point stars the last SC_RENDER_POINT_STARS listed, to the eight. */
+uint32_t sc_render_stars_listed(const sc_renderer *renderer);
 
 #ifdef __cplusplus
 }
