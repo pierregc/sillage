@@ -67,8 +67,16 @@ public enum TakeFraming {
         _ renderer: some FramePreparing, look: LookFile, replay: ShotReplay,
         framing: RecordingFile.Loaded, at frame: TimeTrack.Frame
     ) -> ShotReplay.Shot? {
+        prepare(renderer, look: look, shot: replay.shot(atPlayed: frame.played), framing: framing, at: frame)
+    }
+
+    /// The same with the shot given, as a flight gives it (#295).
+    public static func prepare(
+        _ renderer: some FramePreparing, look: LookFile, shot: @autoclosure () -> ShotReplay.Shot,
+        framing: RecordingFile.Loaded, at frame: TimeTrack.Frame
+    ) -> ShotReplay.Shot? {
         guard let blend = framing.recording.blend(atCaptured: frame.captured) else { return nil }
-        let shot = replay.shot(atPlayed: frame.played)
+        let shot = shot()
         renderer.prepare(look, shot: shot, take: framing, at: blend)
         return shot
     }
