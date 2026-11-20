@@ -767,14 +767,51 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         }
         return try timeTrack(text, recording: loaded.recording, capturedRate: capturedRate)
     }
+    // `--flight <name | file>` (#295): a camera path of its own, `flights/<name>.flight.json`
+    // in the scene folder, over its own time.
+    let flightURL = option("flight").map { folder.flight($0) }
+    let flight = try flightURL.map { try FlightFile.decoded(from: Data(contentsOf: $0)) }
+    if flight != nil, speed != nil {
+        throw SceneFolder.ExportError.badValue("speed", "a flight keeps its own time, without --speed")
+    }
     let export = try TakeExport(
-        take: loaded, look: look, capturedRate: capturedRate, framing: framing, track: speed?.track)
+        take: loaded, look: look, capturedRate: capturedRate, framing: framing, track: speed?.track,
+        flight: flight)
+    let flightName = flightURL.map {
+        $0.lastPathComponent.replacingOccurrences(of: ".\(FlightFile.fileExtension)", with: "")
+    }
+    if let flight, let flightName {
+        print(
+            String(
+                format:
+                    "flight     %@: %d keys over %.1f s; the look's %@ camera is ignored but for look keys",
+                flightName, flight.keys.count, flight.seconds, look.camera.mode.rawValue))
+    }
     // `--overlay all|title,clock,scale,captions|<file>.json` (#317), over the scene's overlay.json
     // and the look's; `--no-overlay` draws none.
     if !options.contains("--no-overlay") {
         export.overlay = try folder.overlayRequest(look: look, asked: option("overlay"))
     }
     let start = try value("start") ?? 0
+    // `--flight-keys <dir>`: the frame at every key of the flight as a PNG, and no video.
+    if let directory = option("flight-keys") {
+        guard flight != nil else {
+            throw SceneFolder.ExportError.badValue("flight-keys", "it goes with --flight")
+        }
+        let width = Int(try value("width") ?? Double(preset.width))
+        let height = Int(try value("height") ?? Double(preset.height))
+        let out = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        let started = Date()
+        for (index, key) in try export.flightKeys(width: width, height: height).enumerated() {
+            let url = out.appendingPathComponent(String(format: "key-%02d-%06.2fs.png", index, key.seconds))
+            try PNGWriter.write(
+                PNGWriter.image(key.rgba, width: width, height: height), maximumWidth: nil, to: url)
+            print("key        \(url.path)")
+        }
+        print(String(format: "flight     keys drawn in %.1f s", Date().timeIntervalSince(started)))
+        return 0
+    }
     if let name = option("format") {
         guard let format = AnimatedImage.Format(rawValue: name.lowercased()) else {
             throw SceneFolder.ExportError.badValue("format", name)
@@ -802,7 +839,8 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     let out =
         option("out").map { URL(fileURLWithPath: $0) }
         ?? folder.export(
-            preset: preset.name, codec: codec == preset.defaultCodec ? nil : codec)
+            preset: flightName.map { "\($0)-\(preset.name)" } ?? preset.name,
+            codec: codec == preset.defaultCodec ? nil : codec)
     try FileManager.default.createDirectory(
         at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
     let partial = SceneFolder.partial(out)
@@ -1213,6 +1251,54 @@ func eventCommand(_ arguments: [String]) -> Int32 {
 /// `story <scene folder | batch folder>`: the story judged again on curves already written,
 /// one line a scene: the first collision, and where the story starts and ends or what still goes
 /// on when the curves stop.
+/// `flight <scene folder> --at <myr,...> [--look <name>] [--take <file>]` (#295): what a flight's
+/// keys are written from, at each moment: every galaxy's centre and disk axes as the take holds
+/// them, and the camera the export draws there, as a key ready to paste.
+func flightCommand(_ arguments: [String]) -> Int32 {
+    let usage = "usage: sillage-render flight <scene folder> --at <myr,...> [--look <name>] [--take <file>]"
+    guard let path = arguments.first, !path.hasPrefix("--") else { fail(usage) }
+    func option(_ name: String) -> String? {
+        arguments.firstIndex(of: "--\(name)").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
+    }
+    let times = option("at")?.split(separator: ",").compactMap { Double($0) } ?? []
+    guard !times.isEmpty else { fail(usage) }
+    let folder = SceneFolder(path: path)
+    do {
+        let loaded = try RecordingFile.read(
+            from: option("take").map { URL(fileURLWithPath: $0) } ?? folder.take)
+        let look = try folder.exportLook(option("look"), catalogue: catalogueLooks())
+        let rate = try folder.capturedRate()
+        let take = FlightTake(take: loaded, capturedRate: rate)
+        let replay = TakeFraming.replay(
+            look: look, framing: loaded, capturedRate: rate, width: 1920, height: 1080)
+        print(
+            String(
+                format: "take       %.1f to %.1f Myr, %d galaxies; look %@ (%@ camera)",
+                take.megayears.first ?? 0, take.megayears.last ?? 0, take.galaxies, look.name,
+                look.camera.mode.rawValue))
+        func text(_ v: SIMD3<Double>) -> String { String(format: "[%.2f, %.2f, %.2f]", v.x, v.y, v.z) }
+        func text(_ v: SIMD3<Float>) -> String { text(SIMD3<Double>(Double(v.x), Double(v.y), Double(v.z))) }
+        for myr in times.sorted() {
+            let position = try TimeTrack.position(of: myr, in: take.megayears)
+            print(String(format: "\n%.1f Myr   captured frame %.2f", myr, position))
+            for (galaxy, (centre, axes)) in zip(take.centres(position), take.disks(position)).enumerated() {
+                print(
+                    "galaxy \(galaxy)   centre \(text(centre))  disk x \(text(axes[0])) y \(text(axes[1])) spin \(text(axes[2]))"
+                )
+            }
+            let camera = replay.shot(atCaptured: position).camera
+            print(
+                String(
+                    format: "look       {\"eye\": %@, \"aim\": %@, \"fov\": %.3f}, %.1f kpc from its aim",
+                    text(camera.eye), text(camera.target), camera.fieldOfView,
+                    simd_length(camera.eye - camera.target)))
+        }
+    } catch {
+        fail("flight: \(error)")
+    }
+    return 0
+}
+
 func storyCommand(_ arguments: [String]) -> Int32 {
     guard let path = arguments.first, !path.hasPrefix("--") else {
         fail("usage: sillage-render story <scene folder | batch folder>")
@@ -1447,6 +1533,9 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "pace" {
 }
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "story" {
     exit(storyCommand(Array(CommandLine.arguments.dropFirst(2))))
+}
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "flight" {
+    exit(flightCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
 // `fixtures <directory>`: Metal writes the reference outputs both engines must give (#281).
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "fixtures" {
