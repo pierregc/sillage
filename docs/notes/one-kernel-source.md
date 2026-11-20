@@ -50,6 +50,11 @@ The check fails on a Metal function missing from `cuda/kernels.txt`, and says wh
 **Change the full pass of a hires**: `FullPassRun` (`Sources/SillageRender/FullPass.swift`),
 which `sillage-render` and `sillage-cuda` both run since #278; what differs between the two
 engines is a `FullPassEngine` each ([cuda-engine.md](cuda-engine.md#the-full-pass-278)).
+**Change the pass that writes a take** (a one pass hires, a massive pass, an exploration, a plain
+render): `TakePassRun` (`Sources/SillageRender/TakePass.swift`) since #376, which takes its
+scenes from `RunScenes` as the full pass does; what an engine does is a `TakePassEngine`, Metal's
+measuring options `MetalMeasures` in `sillage-render`
+([scenes-on-rented-gpus.md](scenes-on-rented-gpus.md#the-pass-that-writes-a-take-on-both-engines)).
 
 **Change a struct a kernel reads**: change it in the MSL and in its Swift mirror. If
 `cuda/src/kernels.cu` holds it to a size (`SILLAGE_STRUCT`), change the size there:
