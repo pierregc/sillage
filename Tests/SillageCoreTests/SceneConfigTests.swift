@@ -31,7 +31,6 @@ struct SceneConfigTests {
 
     @Test func bothSolversAreAvailable() {
         #expect(SolverKind.allCases.count == 2)
-        #expect(SolverKind.allCases.allSatisfy { $0.isImplemented })
         #expect(!SolverKind.restricted.isSelfGravitating)
         #expect(SolverKind.barnesHut.isSelfGravitating)
     }

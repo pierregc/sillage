@@ -56,7 +56,7 @@ frame where six were, for a step 32 times finer, and as far as three axes go in 
 of versions 1 to 6 read at 16 bits and play as before. `sillage-render hires --take-v6 <path>`
 writes the same run's take at 16 bits beside the other, for comparing.
 
-Measured with `scripts/take-quantum.py` on `2026-10-30-b/scene-0030` at 8 M drawn from 2 M
+Measured with `scripts/spikes/take-quantum.py` on `2026-10-30-b/scene-0030` at 8 M drawn from 2 M
 massive, 1 514 frames kept one in four, both takes written by the same run:
 
 | | version 6, 16 bits | version 7, 21 bits |

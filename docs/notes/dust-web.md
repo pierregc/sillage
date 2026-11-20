@@ -44,8 +44,8 @@ time and cross-faded with a fresh one (Max and Becker 1995, Neyret 2003).
 - **Hand-made looks**: `hubble` (dust 0.45), `webb` (0.08) and `ember-dust` (0.35), drawn at
   4K. #174 keeps dust out of the generated styles meanwhile.
 
-`scripts/dust-web-spike.sh` runs the disk and draws it today and with the web,
-`scripts/dust-web-sheet.py` lays the stills out, `scripts/dust-web-metrics.py` splits a still's
+`scripts/spikes/dust-web-spike.sh` runs the disk and draws it today and with the web,
+`scripts/spikes/dust-web-sheet.py` lays the stills out, `scripts/spikes/dust-web-metrics.py` splits a still's
 dust structure by scale against the same still drawn with no dust.
 
 ## Candidate 1: the web
@@ -240,7 +240,7 @@ web per grain; read per pixel, it is the true foreshortened plane, faded by the 
 measurable, so widening only where the grains are too sparse to merge was not needed. Drawn at
 full resolution, the same carrier cost 5.5 ms on the calm disk, 4.4 of them for the widening.
 
-**The same look.** The structure by scale of `scripts/dust-web-metrics.py`, over the frames 0,
+**The same look.** The structure by scale of `scripts/spikes/dust-web-metrics.py`, over the frames 0,
 150 and 299 of the calm disk drawn at 3840 (`disk.jpg`, `disk-crops.jpg` on the branch
 `assets/200-baked-dust-web`):
 

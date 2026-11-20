@@ -138,9 +138,6 @@ public final class Renderer {
     /// particles when a run is drawn as a take of it would be (#239).
     public var luminosityNormalisation: Float
 
-    /// Framing at which the brightness and dust settings are calibrated, in kpc per pixel.
-    static let referenceKpcPerPixel: Float = 0.0436
-
     /// The buffer holding particle positions, so a GPU solver can write into it directly.
     public var positions: MTLBuffer { positionBuffer }
     /// Positions laid out as `positions`, light tracers included, that the next frames are

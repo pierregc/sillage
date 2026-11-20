@@ -115,7 +115,7 @@ and the working set allowed is 30.2 GB.
 ## A take snaps its particles to a grid
 
 `Recording.appendLocked` quantises each frame to 16 bits an axis over the box of every visible
-particle, and the box grows with the story as material is thrown out. `scripts/take-quantum.py`
+particle, and the box grows with the story as material is thrown out. `scripts/spikes/take-quantum.py`
 reads it back from the takes themselves, on the first, middle and last stored frames:
 
 | take | extent, first to last | quantum | sharing a cell, first / middle / last | most in one cell |

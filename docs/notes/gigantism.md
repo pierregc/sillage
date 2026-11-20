@@ -77,7 +77,7 @@ at full size, and `scripts/grain.py score` measures them. Over the body of the g
 than two pixels (`grain`), the relative rms of what lies between four and sixteen pixels
 (`structure`, the arms and lanes a smoothing must not take away), and the share of body
 pixels standing a quarter above their surroundings (`points`, the sparkle).
-`scripts/gigantism-spike.sh` runs the scene comparison, `scripts/gigantism-disk.sh` the
+`scripts/spikes/gigantism-spike.sh` runs the scene comparison, `scripts/spikes/gigantism-disk.sh` the
 single disk below.
 
 ## The scene: ten looks at five key frames

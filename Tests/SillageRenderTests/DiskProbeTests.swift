@@ -7,6 +7,21 @@ import Testing
     import simd
 #endif
 
+extension DiskProbe {
+    static func withParticles<T>(
+        positions: [SIMD3<Float>], velocities: [SIMD3<Float>], component: [UInt32],
+        _ body: (Particles) throws -> T
+    ) rethrows -> T {
+        try positions.withUnsafeBufferPointer { p in
+            try velocities.withUnsafeBufferPointer { v in
+                try component.withUnsafeBufferPointer { c in
+                    try body(Particles(positions: p, velocities: v, component: c))
+                }
+            }
+        }
+    }
+}
+
 @Suite("Disk probe")
 struct DiskProbeTests {
     static let scaleLength: Float = 4
