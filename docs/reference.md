@@ -460,7 +460,8 @@ on the scene's framing. The video lasts to the last key and is written as
 `exports/<flight>-<preset>.mp4`, beside the plain exports; colours, kernels and the rest come from
 the look as ever, `--fps`, `--preset`, `--codec`, `--stills`, `--still-frames` and the previews
 work as without a flight, and `--speed` does not go with it. `--flight-keys <dir>` draws only the
-frame at each key, as PNGs, and encodes nothing: a flight seen in seconds. `sillage-render flight
+frame at each key, as PNGs, and encodes nothing: a flight seen in seconds; with `--flight-at
+<s,...>` it draws those seconds of the flight instead. `sillage-render flight
 <scene> --at <myr,...> [--look <look>]` prints, at those moments, each galaxy's centre and disk
 axes and the export's camera, which is what keys are written from; `--arms <kpc,...>` adds where
 each disk is densest at those radii, an arm to fly into. Format, interpolation and a worked example

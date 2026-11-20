@@ -438,6 +438,10 @@ struct ExportTests {
         let keys = try export.flightKeys(width: 64, height: 36)
         #expect(keys.map(\.seconds) == [0, 0.4, 0.8, 1.1])
         #expect(keys[0].rgba == frames[0] && keys[2].rgba == frames[8])
+        // Any second of the flight as a still (#353), held to its length.
+        let stills = try export.flightKeys(width: 64, height: 36, at: [0.6, 5])
+        #expect(stills.map(\.seconds) == [0.6, 1.1])
+        #expect(stills[0].rgba == frames[6] && stills[1].rgba == frames[11])
         #expect(throws: TakeExport.Failure.flightAndTrack) {
             try TakeExport(
                 take: loaded, look: self.autoLook, capturedRate: 10,
