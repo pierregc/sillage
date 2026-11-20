@@ -19,6 +19,10 @@ public final class LookSheet {
     /// stage draws dozens of looks that share a camera, and a plan reads the take.
     private var plans: [String: ShotPlan] = [:]
     private var renderers: [(file: LookFile, renderer: Renderer)] = []
+    /// What each cell of a look that measures its own exposure was drawn with (#340), in the
+    /// order drawn.
+    public private(set) var exposures: [(look: String, frame: Int, solution: ExposureSolver.Solution)] =
+        []
 
     public init(take: RecordingFile.Loaded, device: MTLDevice? = nil) throws {
         guard let device = device ?? MTLCreateSystemDefaultDevice() else {
@@ -116,6 +120,17 @@ public final class LookSheet {
                 let renderer = try renderer(for: file, width: width, height: height)
                 let shot = shots[row][column]
                 renderer.prepare(file, shot: shot, take: take, at: blend)
+                if slice == nil, let exposure = file.exposure {
+                    let solved = ExposureSolver.solve(
+                        target: exposure, stretches: shot.look.stretch > 0,
+                        draw: { scale in
+                            renderer.apply(scale.applied(to: shot.look))
+                            return ExposureMeter.read(
+                                rgba: renderer.render(camera: shot.camera), width: width, height: height)
+                        })
+                    renderer.apply((solved?.scale ?? .unit).applied(to: shot.look))
+                    if let solved { exposures.append((file.name, frame, solved)) }
+                }
                 let drawn =
                     slice.map { renderer.render(camera: shot.camera, slice: $0, pacer: pacer) }
                     ?? renderer.render(camera: shot.camera)

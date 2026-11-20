@@ -247,7 +247,7 @@ Proposed as follow-up tickets, not created:
 3. **Background galaxies**, a sky layer drawn like the field stars (step 6).
 4. **Exposure per scene**: the same look leaves one take's cores at 0.93 and another's at 0.86; an
    exposure set from the frame's own light (its 99th centile on the white point), or a tone curve
-   with headroom, would hold the hierarchy across scenes.
+   with headroom, would hold the hierarchy across scenes. Done in #340, [Exposure per scene](exposure-per-scene.md).
 5. **Smoothing and dust that hold at any count and in motion**: a column smoothing given as a
    width rather than a number of stars, dust grains widened with the stars, and a dust web that
    stays coherent while a disk is torn.

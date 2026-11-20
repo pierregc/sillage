@@ -15,6 +15,8 @@ public final class TakeExport {
 
         /// The overlay's captions and what it could not do, for the log.
         public var overlay: [String] = []
+        /// What the look measured and drew with when it takes its exposure from the frames (#340).
+        public var exposure: ClipExposure?
 
         public var renderedPerSecond: Double { Double(frames) / max(seconds, 1e-9) }
         public var speed: Double { renderedPerSecond / Double(max(framesPerSecond, 1)) }
@@ -42,6 +44,8 @@ public final class TakeExport {
     private var expanded: Double?
     /// How many times the take was expanded, for the tests.
     private(set) var expansions = 0
+    /// The exposure the last frames drawn were held to, when the look measures its own (#340).
+    public private(set) var exposure: ClipExposure?
 
     public enum Failure: Error, CustomStringConvertible {
         case trackForAnotherTake(track: Int, take: Int)
@@ -119,12 +123,13 @@ public final class TakeExport {
         let replay = makeReplay(width: width, height: height)
         let plan = overlayPlan(at: wanted, framesPerSecond: framesPerSecond, width: width, height: height)
         let painter = OverlayPainter()
+        let scale = try measureExposure(wanted, width: width, height: height)
         let writer = try VideoWriter(
             width: width, height: height, framesPerSecond: Int32(framesPerSecond), codec: codec,
             bitsPerSecond: bitsPerSecond, quality: quality, metadata: metadata, to: url)
         let started = Date()
         for (index, frame) in wanted.enumerated() {
-            let shot = try prepare(renderer, at: frame, replay: replay)
+            let shot = try prepare(renderer, at: frame, replay: replay, exposure: scale)
             try writer.append(
                 on: device,
                 drawing: { target, buffer in
@@ -143,7 +148,7 @@ public final class TakeExport {
         return Report(
             frames: wanted.count, seconds: Date().timeIntervalSince(started),
             framesPerSecond: framesPerSecond,
-            overlay: plan?.summary(framesPerSecond: framesPerSecond) ?? [])
+            overlay: plan?.summary(framesPerSecond: framesPerSecond) ?? [], exposure: exposure)
     }
 
     /// The overlay of a video showing `positions`, laid out for every frame before the first is
@@ -169,8 +174,9 @@ public final class TakeExport {
         let replay = makeReplay(width: width, height: height)
         let plan = overlayPlan(at: wanted, framesPerSecond: framesPerSecond, width: width, height: height)
         let painter = OverlayPainter()
+        let scale = try measureExposure(wanted, width: width, height: height)
         return try wanted.enumerated().map { index, frame in
-            let shot = try prepare(renderer, at: frame, replay: replay)
+            let shot = try prepare(renderer, at: frame, replay: replay, exposure: scale)
             defer { progress(index + 1, wanted.count) }
             var pixels = renderer.render(camera: shot.camera)
             if let plan {
@@ -268,7 +274,7 @@ public final class TakeExport {
         var previous: [UInt8]?
         for (index, time) in times.enumerated() {
             let position = try TimeTrack.position(of: time, in: megayears)
-            let shot = try prepare(renderer, at: Self.untracked(position), replay: replay)
+            let shot = try prepare(renderer, at: Self.untracked(position), replay: replay, exposure: nil)
             let pixels = renderer.render(camera: shot.camera)
             try drawing(time, pixels)
             if let previous { changes.append(VisualPace.change(previous, pixels)) }
@@ -282,8 +288,10 @@ public final class TakeExport {
     /// without a track.
     func still(atCaptured frame: Int, width: Int, height: Int) throws -> [UInt8] {
         let renderer = try makeRenderer(width: width, height: height)
+        let scale = try measureExposure([Self.untracked(frame)], width: width, height: height)
         let shot = try prepare(
-            renderer, at: Self.untracked(frame), replay: makeReplay(width: width, height: height))
+            renderer, at: Self.untracked(frame), replay: makeReplay(width: width, height: height),
+            exposure: scale)
         return renderer.render(camera: shot.camera)
     }
 
@@ -293,7 +301,8 @@ public final class TakeExport {
     ) {
         let renderer = try makeRenderer(width: width, height: height)
         let replay = makeReplay(width: width, height: height)
-        let shot = try prepare(renderer, at: Self.untracked(frame), replay: replay)
+        let scale = try measureExposure([Self.untracked(frame)], width: width, height: height)
+        let shot = try prepare(renderer, at: Self.untracked(frame), replay: replay, exposure: scale)
         let pixels = renderer.render(camera: shot.camera)
         guard let capture = capture(renderer, at: Self.untracked(frame), shot, replay) else {
             throw RenderError.textureAllocation
@@ -347,9 +356,35 @@ public final class TakeExport {
         return renderer
     }
 
-    private func prepare(_ renderer: Renderer, at frame: TimeTrack.Frame, replay: ShotReplay) throws
-        -> ShotReplay.Shot
+    /// One exposure for `frames`, measured on a few of them by a renderer of its own, so the
+    /// grain of the one that draws them is not moved on. Nil when the look keeps its own.
+    func measureExposure(_ frames: [TimeTrack.Frame], width: Int, height: Int) throws
+        -> ExposureScale?
     {
+        exposure = nil
+        guard let target = look.exposure, !frames.isEmpty else { return nil }
+        let renderer = try makeRenderer(width: width, height: height)
+        let replay = makeReplay(width: width, height: height)
+        var samples: [ClipExposure.Sample] = []
+        for index in ClipExposure.samples(of: frames.count) {
+            let shot = try prepare(renderer, at: frames[index], replay: replay, exposure: nil)
+            let solved = ExposureSolver.solve(
+                target: target, stretches: shot.look.stretch > 0,
+                draw: { scale in
+                    renderer.apply(scale.applied(to: shot.look))
+                    return ExposureMeter.read(
+                        rgba: renderer.render(camera: shot.camera), width: width, height: height)
+                })
+            if let solved { samples.append(.init(captured: frames[index].captured, solution: solved)) }
+        }
+        guard !samples.isEmpty else { return nil }
+        exposure = ClipExposure(scale: ExposureSolver.held(samples.map(\.solution)), samples: samples)
+        return exposure?.scale
+    }
+
+    private func prepare(
+        _ renderer: Renderer, at frame: TimeTrack.Frame, replay: ShotReplay, exposure: ExposureScale?
+    ) throws -> ShotReplay.Shot {
         if expanded != frame.captured {
             let recording = take.recording
             expanded = nil
@@ -366,6 +401,7 @@ public final class TakeExport {
             let shot = TakeFraming.prepare(
                 renderer, look: look, replay: replay, framing: framing, at: frame)
         else { throw RecordingFile.Failure.truncated }
+        if let exposure { renderer.apply(exposure.applied(to: shot.look)) }
         return shot
     }
 }

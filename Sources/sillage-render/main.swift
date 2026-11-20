@@ -227,6 +227,7 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     if let stillsDirectory {
         try FileManager.default.createDirectory(at: stillsDirectory, withIntermediateDirectories: true)
         var last = Date()
+        var exposures = 0
         try sheet.draw(
             looks: looks, frames: keys.map(\.frame), width: renderWidth, height: renderHeight,
             cellWidth: cellWidth, cellHeight: cellHeight, framesPerSecond: hires?.fps ?? clip.fps
@@ -236,6 +237,10 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
                 "\(looks[row].name)-\(keys[column].frame).png")
             try PNGWriter.write(cell.pixels, width: cellWidth, height: cellHeight, to: url)
             print(String(format: "still      %@  %.2f s", url.lastPathComponent, drawn))
+            if let (_, _, solved) = sheet.exposures.last, sheet.exposures.count > exposures {
+                exposures = sheet.exposures.count
+                print(exposureLine(solved))
+            }
             last = Date()
         }
         print(
@@ -280,6 +285,14 @@ func lookStage(_ folder: SceneFolder, options: [String]) throws -> Int32 {
     for url in written { print("grid       \(url.path)") }
     print("promote    sillage-render look \(folder.url.path) --promote <name>")
     return 0
+}
+
+/// What a still that measures its own exposure (#340) was drawn with.
+func exposureLine(_ solved: ExposureSolver.Solution) -> String {
+    String(
+        format: "exposure   brightness x%.3f, stretch x%.3f: L50 %.3f, L99 %.3f, lit %.0f %%, %d draws",
+        solved.scale.brightness, solved.scale.stretch, solved.reading.median, solved.reading.top,
+        solved.reading.lit * 100, solved.draws)
 }
 
 /// The measured Hubble and Webb colour sets of `references/telescope`.
@@ -906,6 +919,7 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
     let bytes =
         (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
     for line in report.overlay { print("overlay    \(line)") }
+    if let exposure = report.exposure { print("exposure   \(exposure.summary)") }
     print(
         String(
             format: "export     %d frames in %.1f s, %.1f frames a second, %.2fx real time, %.1f MB",

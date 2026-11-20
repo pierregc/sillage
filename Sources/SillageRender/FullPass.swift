@@ -53,6 +53,20 @@ public protocol FullPassEngineMaker {
     /// reference outputs failed or did not run (#281).
     func refuseUnchecked() throws
     func make(_ start: FullPassRun.Start) throws -> any FullPassEngine
+    /// The exposure a look that measures its own (#340) draws `frames` of `framing` with at
+    /// `width` by `height`; nil draws the look's own.
+    func exposure(
+        of look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int, track: TimeTrack?,
+        frames: [TimeTrack.Frame], width: Int, height: Int
+    ) throws -> ClipExposure?
+}
+
+extension FullPassEngineMaker {
+    /// An engine that cannot draw the massive take apart draws the look's own exposure.
+    public func exposure(
+        of look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int, track: TimeTrack?,
+        frames: [TimeTrack.Frame], width: Int, height: Int
+    ) throws -> ClipExposure? { nil }
 }
 
 /// The full pass of a hires (#239), run from the command line `SceneFolder.hiresArguments`
@@ -392,6 +406,38 @@ public final class FullPassRun {
             BarnesHutHost.tracerSortChunk = chunk
         }
 
+        // The videos, framed, painted and exposed as an export of the massive take is (#239).
+        let track = try speed.map {
+            try $0.track(megayears: TimeTrack.megayears(of: framing.recording), capturedRate: framesPerSecond)
+        }
+        let wanted = Self.videoFrames(track: track, frames: frames, framesPerSecond: framesPerSecond)
+        var drawnLook =
+            try url("look").map { try LookFile.decoded(from: Data(contentsOf: $0)) } ?? .standard
+        if drawnLook.palette.isEmpty {
+            drawnLook.palette = framing.scene.galaxies.map { GalaxyColours($0.color) }
+        }
+        let formats = try list.split(separator: ",").map { name in
+            guard let preset = VideoPreset.named(String(name)) else { throw Failure.noPreset(String(name)) }
+            return try RunVideos.Format(
+                preset: preset, frames: wanted.count, framesPerSecond: framesPerSecond,
+                url: out.appendingPathComponent("\(preset.name).\(preset.defaultCodec.fileExtension)"),
+                divisor: Int(number("draw-divisor", 1)))
+        }
+        let framingFolder = SceneFolder(framingURL.deletingLastPathComponent())
+        let metadata = VideoMetadata(sceneID: framingFolder.sceneID)
+        // A look that measures its exposure (#340) takes it from the massive take's frames, once
+        // for every preset, at the first one's size.
+        if let first = formats.first,
+            let measured = try engineMaker.exposure(
+                of: drawnLook, framing: framing, capturedRate: framesPerSecond, track: track,
+                frames: wanted, width: first.width, height: first.height)
+        {
+            drawnLook.look = measured.scale.applied(to: drawnLook.look)
+            print("exposure   \(measured.summary), at \(first.preset.name)")
+        }
+        drawnLook.exposure = nil
+        let look = drawnLook
+
         let reading = Date()
         let resumedSet = try resuming.map { stored -> (massive: ParticleSystem, tracers: Int) in
             (try checkpoint!.massiveSet(), stored.run.solver.tracers)
@@ -463,26 +509,6 @@ public final class FullPassRun {
         let everySteps = resumed?.everySteps ?? max(Int(number("checkpoint-steps", 0)), 0)
         let resumes = resumed.map { $0.resumes + 1 } ?? 0
 
-        // The videos, framed, painted and exposed as an export of the massive take is (#239).
-        let track = try speed.map {
-            try $0.track(megayears: TimeTrack.megayears(of: framing.recording), capturedRate: framesPerSecond)
-        }
-        let wanted = Self.videoFrames(track: track, frames: frames, framesPerSecond: framesPerSecond)
-        var drawnLook =
-            try url("look").map { try LookFile.decoded(from: Data(contentsOf: $0)) } ?? .standard
-        if drawnLook.palette.isEmpty {
-            drawnLook.palette = framing.scene.galaxies.map { GalaxyColours($0.color) }
-        }
-        let formats = try list.split(separator: ",").map { name in
-            guard let preset = VideoPreset.named(String(name)) else { throw Failure.noPreset(String(name)) }
-            return try RunVideos.Format(
-                preset: preset, frames: wanted.count, framesPerSecond: framesPerSecond,
-                url: out.appendingPathComponent("\(preset.name).\(preset.defaultCodec.fileExtension)"),
-                divisor: Int(number("draw-divisor", 1)))
-        }
-        let framingFolder = SceneFolder(framingURL.deletingLastPathComponent())
-        let metadata = VideoMetadata(sceneID: framingFolder.sceneID)
-        let look = drawnLook
         let videos = try RunVideos(
             formats: formats, look: look, framing: framing, capturedRate: framesPerSecond,
             metadata: metadata, segments: checkpoint?.segments, resume: resumed?.videos, track: track,

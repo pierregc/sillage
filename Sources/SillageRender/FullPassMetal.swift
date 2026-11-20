@@ -14,6 +14,16 @@ public struct MetalFullPassMaker: FullPassEngineMaker {
     public func make(_ start: FullPassRun.Start) throws -> any FullPassEngine {
         try MetalFullPassEngine(start)
     }
+
+    public func exposure(
+        of look: LookFile, framing: RecordingFile.Loaded, capturedRate: Int, track: TimeTrack?,
+        frames: [TimeTrack.Frame], width: Int, height: Int
+    ) throws -> ClipExposure? {
+        guard look.exposure != nil else { return nil }
+        let export = try TakeExport(take: framing, look: look, capturedRate: capturedRate, track: track)
+        _ = try export.measureExposure(frames, width: width, height: height)
+        return export.exposure
+    }
 }
 
 /// A full pass on Metal (#239), as `sillage-render` ran it before the flow was shared (#278):
