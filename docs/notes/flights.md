@@ -215,16 +215,20 @@ flight by asking `Flight.shot(atSeconds:look:)` and `Flight.captured(atSeconds:)
 
 The README's Mice take (`scene-0067` of the 2026-11-04 batch, 8 M drawn), with the `photograph` look.
 From the curves the pair is 68 kpc apart at 297 Myr and closest, 13 kpc, at about 452 Myr.
-`flight --at 300,430,452,520 --look photograph` gave the photograph framing (eye 178 kpc above and
-south of the origin, aim the origin, 0.6 rad) and the centres and spins at each.
+`flight --at 300,452 --look photograph --arms 8,9,10` gave the photograph framing (eye 178 kpc
+above and south of the origin, aim the origin, 0.6 rad), the centres and spins, and galaxy 0's
+tidal arm at 452 Myr: nine times its circle's mean at `[-7.42, 5.10, 0]` in its disk's axes,
+running out towards `[-7.93, 6.09, 0]`. In those axes the companion's centre is at about
+`[-12.3, 4.0, -0.4]`, five kiloparsecs past the arm and almost in the plane.
 
 - 0 to 4 s, two look keys from 300 to 360 Myr: the photograph export itself.
-- 4 to 14 s: in from 178 to about 70 kpc, from above the pair (looking along the mean of the two
-  spins less its part along the separation, so neither disk is edge on), time slowing into 452 Myr.
-- 14 to 33 s, time frozen at 452 Myr: round the pair from below the plane of the encounter, then in
-  on galaxy 0's disk, keys in its disk's axes, 16 then 7 kpc from its centre, 3.5 kpc above its
-  plane, exposure -1.5 to -2.5.
-- 33 to 46 s: out to 160 kpc while time runs again, to 620 Myr.
+- 4 to 12 s: in from 178 to 55 kpc above galaxy 0, time slowing into 452 Myr.
+- 12 to 70 s, time frozen at 452 Myr, every key in galaxy 0's disk axes. Down across the disk to
+  1.3 kpc above the bulge, the companion rising over the dust (30 s); into the arm, 80 pc above
+  the plane, looking along it (42 s); a glide of 1.6 kpc along the arm in 12 s, 4.6 pc a frame,
+  the near field streaking past; a drift of 440 pc in 8 s while the camera turns to the
+  companion (62 s); up to 2.5 kpc above the plane, looking back at the bulge edge on (70 s).
+- 70 to 84 s: out to 160 kpc while time runs again, to 620 Myr.
 
 The whole file, `flights/dive.flight.json`:
 
@@ -232,154 +236,35 @@ The whole file, `flights/dive.flight.json`:
 {
   "version": 1,
   "keys": [
-    {
-      "at": 0,
-      "myr": 300,
-      "look": true
-    },
-    {
-      "at": 4,
-      "myr": 360,
-      "look": true
-    },
-    {
-      "at": 10,
-      "myr": 430,
-      "eye": [
-        -10,
-        -50,
-        110
-      ],
-      "aim": [
-        -0.5,
-        -1,
-        0.3
-      ]
-    },
-    {
-      "at": 14,
-      "myr": 452,
-      "eye": [
-        -25,
-        -32,
-        62
-      ],
-      "aim": [
-        -0.3,
-        -1.1,
-        0.4
-      ]
-    },
-    {
-      "at": 18,
-      "eye": [
-        -55,
-        15,
-        22
-      ]
-    },
-    {
-      "at": 22,
-      "eye": [
-        -25,
-        40,
-        15
-      ]
-    },
-    {
-      "at": 26,
-      "eye": {
-        "galaxy": 0,
-        "offset": [
-          0,
-          -14,
-          9
-        ],
-        "disk": true
-      },
-      "aim": {
-        "galaxy": 0
-      },
-      "exposure": -1.5
-    },
-    {
-      "at": 30,
-      "eye": {
-        "galaxy": 0,
-        "offset": [
-          3,
-          -5,
-          3.5
-        ],
-        "disk": true
-      },
-      "aim": {
-        "galaxy": 0,
-        "offset": [
-          -2,
-          2,
-          0
-        ],
-        "disk": true
-      },
-      "exposure": -2.5
-    },
-    {
-      "at": 33,
-      "myr": 452,
-      "eye": {
-        "galaxy": 0,
-        "offset": [
-          6,
-          2,
-          4
-        ],
-        "disk": true
-      },
-      "aim": {
-        "galaxy": 0
-      },
-      "exposure": -2
-    },
-    {
-      "at": 39,
-      "myr": 520,
-      "eye": {
-        "galaxy": 0,
-        "offset": [
-          -10,
-          -60,
-          45
-        ]
-      },
-      "aim": [
-        1,
-        -1,
-        0
-      ],
-      "exposure": 0
-    },
-    {
-      "at": 46,
-      "myr": 620,
-      "eye": [
-        0,
-        -110,
-        120
-      ],
-      "aim": [
-        2,
-        -1,
-        0
-      ]
-    }
+    {"at": 0, "myr": 300, "look": true},
+    {"at": 4, "myr": 360, "look": true},
+    {"at": 12, "myr": 452, "eye": {"galaxy": 0, "offset": [10, -30, 45], "disk": true}, "aim": {"galaxy": 0}},
+    {"at": 18, "eye": {"galaxy": 0, "offset": [6, -14, 12], "disk": true}, "aim": {"galaxy": 0, "offset": [-3, 2, 0], "disk": true}},
+    {"at": 24, "eye": {"galaxy": 0, "offset": [3, -6, 4], "disk": true}, "aim": {"galaxy": 0, "offset": [-7.42, 5.10, 0], "disk": true}},
+    {"at": 30, "eye": {"galaxy": 0, "offset": [-1, 0.5, 1.3], "disk": true}, "aim": {"galaxy": 1}},
+    {"at": 36, "eye": {"galaxy": 0, "offset": [-4.5, 3.0, 0.4], "disk": true}, "aim": {"galaxy": 0, "offset": [-7.42, 5.10, 0], "disk": true}},
+    {"at": 42, "eye": {"galaxy": 0, "offset": [-6.3, 3.9, 0.08], "disk": true}, "aim": {"galaxy": 0, "offset": [-7.93, 6.09, 0.05], "disk": true}},
+    {"at": 54, "eye": {"galaxy": 0, "offset": [-7.42, 5.10, 0.05], "disk": true}, "aim": {"galaxy": 0, "offset": [-8.5, 7.2, 0.1], "disk": true}},
+    {"at": 62, "eye": {"galaxy": 0, "offset": [-7.6, 5.5, 0.06], "disk": true}, "aim": {"galaxy": 1}},
+    {"at": 70, "myr": 452, "eye": {"galaxy": 0, "offset": [-10.5, 7, 2.5], "disk": true}, "aim": {"galaxy": 0}},
+    {"at": 78, "myr": 520, "eye": {"galaxy": 0, "offset": [-10, -60, 45]}, "aim": [1, -1, 0]},
+    {"at": 84, "myr": 620, "eye": [0, -110, 120], "aim": [2, -1, 0]}
   ]
 }
 ```
 
-Drawn in 1080p at 30 fps, 1 381 frames in 206 s (6.7 a second, the GPU shared with #296's spike),
-64 MB of HEVC.
+Drawn in 1080p at 30 fps: 2 521 frames in 34 min (1.2 a second), 123 MB of HEVC. The export's
+last lines: nearest matter 165 pc from the eye, exposure down by up to 3.6 stops, up to 64 M point
+stars a render, up to 8 renders a frame (11 797 in all), the eye moving up to 50 pc a frame within
+a kiloparsec of matter (on the way into the arm). #295's first version of this flight stayed 3.5 kpc
+above the disk with trims of -1.5 to -2.5 written by hand; this one writes none.
 
-The first try looked from the south-west and found galaxy 1 edge on across galaxy 0 at 430 and
-452 Myr; the up-close keys at -0.5 and -1.2 stops were paste. Both were seen on the key stills and
-changed in a minute.
+**The same flight with time flowing.** `dive-flowing.flight.json` keeps the keys and lets time run
+from 452 to 456.8 Myr between 12 and 70 s, about 1/285 of the take's speed. The tidal arm turns by
+2.7 degrees a megayear meanwhile (`--arms` at 452, 454 and 456.5 Myr), so each key in the disk's
+axes is turned about the spin by the share of 12.9 degrees the arm has turned by then: the path
+stays in the arm while the companion drifts three kiloparsecs across the sky.
+
+Seen on the key stills first (`--flight-keys`, 13 keys in 1080p in a few seconds): an earlier
+version aimed at the companion for the whole glide, and its core filled the frame for sixteen
+seconds; aiming along the arm is what puts the camera among the stars.

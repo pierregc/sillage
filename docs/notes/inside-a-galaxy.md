@@ -259,7 +259,7 @@ level in 255 of the same frame without it (`InsideRenderTests`).
 
 **"Near matter" is measured**: the distance from the eye within which a ten-thousandth of the
 drawn particles lie (`Nearness`, 800 of 8 M: a histogram of the squared distances by their float
-bits, then the exact rank in the one bin, XX ms a frame on eight cores). A count cannot change
+bits, then the exact rank in the one bin: 6 ms a frame at 8 M). A count cannot change
 faster than the eye moves, so what is keyed on it, the slabs' layout and the number of renders a
 frame is averaged from, never jumps. The disks the take tracks were the other candidate; a tidal
 arm or a bridge is not one of them.
@@ -319,14 +319,43 @@ wide, against the frame, as the same flight drawn in 1080p: the demo is drawn in
 
 ### What it costs
 
-XXCOST
+The Mice take (8 M drawn), `photograph`, the GPU alone on a timed run, one render of each view
+through `export --flight-keys`, which prints them. At 335 Myr, the views of the first table
+(frame 48), in 4K with supersampling 2, against what #296 measured for the frame as drawn before
+and for C by brute force:
+
+| view | before (#296) | C, brute force (#296) | #297 | 1080p |
+|---|---:|---:|---:|---:|
+| the photograph | 115 ms | | 138 ms | 79 ms |
+| 20 kpc above | | | 246 ms | 113 ms |
+| 8 kpc above | 174 ms | | 221 ms | 103 ms |
+| 3 kpc above | 91 ms | | 143 ms | 86 ms |
+| 1 kpc above | 31 ms | | 47 ms | 33 ms |
+| in the arm, along it | 39 ms | 300 to 400 ms | 94 ms | 58 ms |
+| in the arm, at the bulge | 268 ms | 2 250 to 2 500 ms | 360 ms | 175 ms |
+| in the arm, at the companion | | | 217 ms | 121 ms |
+
+Up to 20 M point stars a render there. At the passage (452 Myr, the demo flight's keys) a render
+takes 160 to 480 ms in 4K and 110 to 215 ms in 1080p, with up to 67 M stars. So a frame with
+the eye inside a disk draws in 4K at 8 M in under half a second, against 2.3 to 2.5 s for the
+spike's C; the far frames cost a fifth to a half more than before (the inside library's text,
+and the column and web passes drawn through it).
+
+A flight costs its renders: the demo, 84 s in 1080p (2 521 frames), took 34 minutes with time
+frozen and 43 with time flowing, 11 800 renders, 4.7 a frame, and before them the automatic
+exposure's pass over the flight, 337 moments of two to four draws. The same flight in 4K is about
+four times that. A still at a key is a fifth of a second.
 
 ### Not built
 
 - A slider in the style editor: the settings are the flight file's, where a flight's other
   choices are.
 - The CUDA engine's side (#347).
-- Splats popping at the frame's edge were looked for again in the demo: XXEDGES
+- Splats popping at the frame's edge were looked for again in the demo flight: the change from
+  each frame to the next has no peak over its 84 s (the mean absolute difference of two frames
+  never passes twice the median of the six around it), and near the eye there is nothing left to
+  pop, a particle wholly turned to stars drawing no splat. A splat of the 3 to 8 kpc shell still
+  leaves the frame when its centre does; at that distance it is faint against the stars in front.
 
 **What stays a limit of 8 M.** The stars are drawn, not simulated: each particle stands for
 about 6 000 suns and its k stars are scattered at random in its kernel, so up close the field
