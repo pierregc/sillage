@@ -236,9 +236,9 @@ around what the inside of a galaxy adds, compiled by Metal into a library of its
 time a flight is drawn, as #339 did for the population widths: with fast math, code that never
 runs still moves the roundings of a frame drawn without it. The frame's `InsideUniforms` lie
 behind its `SplatUniforms` in that library alone, so the CUDA engine, which does not define the
-symbol, compiles and draws what it drew (its entry points are #347). Checked: three frames of the
-Mice's export in `photograph` and in the README's look are the same bytes from this branch and
-from main.
+symbol, compiles and draws what it drew (its entry points are #347). Checked: with the symbol
+undefined the shader's text is main's but for comments, and three frames of the Mice's export in
+`photograph` and in the README's look are the same bytes from this branch and from main.
 
 **The photograph is the export's.** Everything is keyed on a distance, and past it nothing is
 added:

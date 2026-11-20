@@ -155,8 +155,8 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   in the near field, for stars and for dust.
 - **Point stars** (`stars`, 128 a particle): the light of a near particle goes over from its splat
   to a few bright stars over a crowd of faint ones (`starShare`, rank to minus one), scattered in
-  its kernel from a hash of its index, coloured around its population (`starColours`), 1.5 output
-  pixels each (`starSize`). The cross-fade runs from `starFrom` to `starFull` of the kernel
+  its kernel (`starSpread`, in kernel lengths) from a hash of its index, coloured around its
+  population (`starColours`), 1.5 output pixels each (`starSize`). The cross-fade runs from `starFrom` to `starFull` of the kernel
   ceiling (0.05 to 0.2), in the near field only.
 - **The near field** (`field`, `[3, 8]` kpc of view depth): all of the above applies wholly nearer
   than the first distance and not at all past the second.
