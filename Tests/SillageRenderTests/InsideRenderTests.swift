@@ -225,7 +225,9 @@ struct InsideRenderTests {
         }
         var (lit, outside) = (0, 0)
         for at in stride(from: 0, to: both.count, by: 4) {
-            let (low, high) = (min(level(single, at), level(other, at)), max(level(single, at), level(other, at)))
+            let (low, high) = (
+                min(level(single, at), level(other, at)), max(level(single, at), level(other, at))
+            )
             if high > 0 { lit += 1 }
             if level(both, at) < low - 3 || level(both, at) > high + 3 { outside += 1 }
         }
