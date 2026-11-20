@@ -156,7 +156,12 @@ C, are in `frames/` on the assets branch.
 ## Motion
 
 Clips in 1080p at 30 fps, 5 s, on frame 48 unless said. Side-by-side copies are on the assets
-branch (`compare/`).
+branch (`compare/`): the dive, the glide, the turn, the pass, the speeds, the 10 s dive from the
+photograph (today against C) and time flowing slowly.
+
+- **From the photograph into the arm** (`6-photo-dive-v1-vs-C`, 10 s): the photograph is the
+  export's frame, the disk comes up, the lanes pass, and the camera ends 50 pc above the arm among
+  its stars; today it ends in bokeh.
 
 - **Dive from 20 kpc into the arm**: today ends in bokeh, and the near plane draws a straight
   line across the disk as it enters it; with the variants the disk comes up and turns into stars
@@ -176,10 +181,27 @@ branch (`compare/`).
   tens of pixels, 100 pc a frame turns the field to noise. Eight sub-frames turn that into
   streaks, a warp-speed look that reads well; **motion blur is needed for anything faster than
   about 10 pc a frame near matter**, or the camera slows down as it nears it.
-- **Time flowing slowly**: TIME
+- **Time flowing slowly** (`7-time-flowing`): the glide again with the take's time at 1/10 of
+  the export's speed (12 Myr in 5 s) and 1/100. Fixed in the galaxy's frame, the camera sees the
+  disk turn under it at about 200 km/s (2.4 kpc in those 5 s at 1/10) and the stars stream past
+  as in a fast glide; carried round at the disk's angular rate at 9 kpc, the arm drifts slowly
+  as the material flows through it, and at 1/100 the frame is a still that breathes. The take
+  keeps one frame in four and draws the others on a cubic (3.2 Myr apart here): with the camera
+  parked, the change from frame to frame is flat, with no peak where a stored frame is crossed.
+  It is not small: at 1/10, 8.1 % of the pixels change by more than 24 levels each frame, the
+  nearest stars darting (a dispersion of 30 km/s is about 2.5 pc a frame, tens of pixels for a
+  star 100 pc away), so near matter time wants 1/100 or slower. With the stars' scatter radius
+  fixed rather than following the smoothing, which is read off a tree built again every frame
+  and jumps, it is 5.8 %: a quarter of the shimmer is the kernel length. #297 should scatter the
+  stars and cross-fade them on a length that is smooth in time (fixed per particle, or the
+  smoothing eased). Seen from 0.5 kpc above the plane, the dust web's lace is almost edge on and
+  draws long straight streaks that slide as it turns: the web should fade out near a disk's plane.
 
 ## Recommended for #297
 
+**Pierre chose C on 2026-11-20** ("rich stars, the best rendering"), with the goal for #297:
+the most immersive rendering, as if travelling inside the galaxy in a transparent spaceship.
+#297 builds what follows.
 The settings the `R` frames and clips use; neutral defaults, flights only.
 
 - **Near plane 1 pc** for flight cameras, every other camera keeps 1 kpc.
@@ -190,12 +212,15 @@ The settings the `R` frames and clips use; neutral defaults, flights only.
   of the cap, **within a distance window** (all of them nearer than 3 kpc, none beyond 8), each
   star capped. The near particles listed on the GPU first, then one instanced draw: at k 128 the
   brute-force spike costs 2.3 to 2.5 s a 4K frame in the bulge views of frame 48 (0.45 s at
-  k 32, 0.27 s today) and 0.3 to 0.4 s in the arm views.
+  k 32, 0.27 s today) and 0.3 to 0.4 s in the arm views (timed while other sessions' tests
+  shared the GPU). Scatter radius and cross-fade on a length smooth in time.
 - **Dust slabs from the eye** inside, log-spaced at 0.3, 1.5 and 7.5 kpc, **soft**; around the
   aim point as today outside, the boundaries sliding from one layout to the other on the way in.
 - **Automatic exposure**: the frame's mean luminance held near 0.16 by a trim in stops
   (brightness × 2^−s, stretch × 2^−1.46 s), eased over about a second; 0 to 5 stops on this take.
-- **Motion blur** by sub-frames for fast passes, or a speed limit near matter.
+- **Motion blur** by sub-frames for fast passes, or a speed limit near matter; time at 1/100
+  or slower near matter.
+- **The dust web fades out** near a disk's plane.
 - Kernel ceiling, smoothing, column smoothing and the dust web: the look's.
 
 **What stays a limit of 8 M.** The stars are drawn, not simulated: each particle stands for
