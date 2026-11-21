@@ -162,17 +162,20 @@ struct StyleEditTests {
 
     /// Every field a group's controls edit goes back with that group's reset (#209), and the
     /// four together give back every field but the palette, its world and the name. The
-    /// controls are the app's, which no test can build: what they bind is read from the
-    /// editor's source, the `binding(\.…)` calls of the view each `FineGroup` shows.
+    /// controls are the app's, which no test can build: what they bind is read from source,
+    /// the table of `LookControls.swift` for Light and Instrument, which both panels draw
+    /// (#226), and the `binding(\.…)` calls of the view each other `FineGroup` shows.
     @Test func aResetPutsBackEveryFieldItsGroupsControlsEdit() throws {
         let source = try String(contentsOf: Self.editor, encoding: .utf8)
+        let table = try String(contentsOf: Self.controls, encoding: .utf8)
         var baseline = base
         baseline.camera.elevationEnd = 0.2
         baseline.camera.azimuthEnd = 0.1
         let edited = try Self.moved(baseline)
         var all = edited
         for group in LookFile.Group.allCases {
-            let paths = try #require(Self.bound(group, in: source), "the controls of \(group)")
+            let paths = try #require(
+                Self.bound(group, in: source, table: table), "the controls of \(group)")
             #expect(paths.count >= 5, "\(group): \(paths)")
             let reset = edited.resetting(group, to: baseline)
             for path in paths {
@@ -193,8 +196,23 @@ struct StyleEditTests {
         .deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Sources/SillageApp/StyleEditor.swift")
 
+    static let controls = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Sources/SillageRender/LookControls.swift")
+
     /// The key paths the controls of `group` bind, as "look.glint".
-    static func bound(_ group: LookFile.Group, in source: String) -> [String]? {
+    static func bound(_ group: LookFile.Group, in source: String, table: String) -> [String]? {
+        if group == .light || group == .instrument {
+            let name = group == .light ? "case .light:" : "case .instrument:"
+            guard let start = table.range(of: name),
+                let end = table.range(of: "case .", range: start.upperBound..<table.endIndex)
+            else { return nil }
+            let block = table[start.upperBound..<end.lowerBound]
+            var paths = block.components(separatedBy: "\\.").dropFirst()
+                .map { "look." + String($0.prefix { $0.isLetter }) }
+            if block.contains("kind: .webbSpikes") { paths.append("look.spikePattern") }
+            return paths
+        }
         guard let opening = source.range(of: "group: .\(group.rawValue)) {") else { return nil }
         let view = source[opening.upperBound...].drop { $0.isWhitespace }.prefix { $0.isLetter }
         guard !view.isEmpty, let start = source.range(of: "struct \(view): View {") else { return nil }
