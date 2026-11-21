@@ -305,6 +305,77 @@ struct InsideRenderTests {
         #expect(change < 0.01, "\(change) of the column changed")
     }
 
+    /// Two disks one behind the other, their grains spread over the same slabs (#399): each
+    /// galaxy's dust is multiplied by its own web, so the frame's dust is the sum of what each
+    /// disk draws alone. With one carrier for both, the web of the later galaxy served both.
+    @Test func twoDisksOneBehindTheOtherEachKeepTheirOwnWeb() throws {
+        var generator = SeededGenerator(seed: 11)
+        // Face on, 3 and 4 kpc from the eye, half over each other across the frame.
+        let centres = [SIMD3<Float>(-0.4, 0, 0), SIMD3<Float>(0.4, 1, 0)]
+        let grains = centres.map { centre in
+            (0..<500).map { _ in
+                let radius = 1.2 * generator.uniform().squareRoot()
+                let angle = 2 * Float.pi * generator.uniform()
+                let height = 0.02 * (generator.uniform() - 0.5)
+                return centre + SIMD3(radius * cos(angle), height, radius * sin(angle))
+            }
+        }
+        let frames = centres.enumerated().map { index, centre in
+            DiskFrame(
+                center: SIMD4(centre, 1), axisU: SIMD4(1, 0, 0, 2), axisV: SIMD4(0, 0, 1, 0),
+                pattern: SIMD4(0, 0, 0, Float(index) * 37.4 + 5.1), tint: .zero,
+                web: SIMD4(1, 10, Float(index) * 0.618, 0.1))
+        }
+        // A disk left out keeps its particles where they are, as stars without light, so that
+        // the other's grains are drawn with the same kernels in every frame.
+        func column(_ galaxies: [Int]) throws -> [Float] {
+            var system = ParticleSystem()
+            for galaxy in 0..<2 {
+                for position in grains[galaxy] {
+                    system.append(
+                        position: position, velocity: .zero, galaxy: UInt32(galaxy), radius: 1,
+                        population: 0.5, luminosity: galaxies.contains(galaxy) ? 1 : 0,
+                        component: galaxies.contains(galaxy) ? .dust : .star)
+                }
+            }
+            var settings = RenderSettings(
+                width: 160, height: 90, supersample: 2, brightness: 2e-4, dustStrength: 1e-3,
+                starCount: 0, smoothingScale: 1, minimumKernel: 1, maximumKernel: 64, bloomIntensity: 0,
+                stretch: 0, saturation: 1, spikeArms: 0, skyLevel: 0, noiseLevel: 0)
+            settings.dustWeb = 1
+            settings.columnSmoothing = 0
+            let renderer = try Renderer(particles: system, settings: settings)
+            let field = try SmoothingField(device: renderer.device, particleCount: system.count)
+            field.update(from: renderer.positions)
+            renderer.setSmoothing(field.buffer)
+            renderer.setDiskFrames(frames)
+            // The eye within the slabs' near distance of matter: the slabs are laid from it, soft.
+            renderer.inside = Self.inside(0.1) { settings in
+                settings.dustFine = 0
+                settings.dustInside = 1
+            }
+            _ = renderer.render(camera: Camera(eye: SIMD3(0, -3, 0), target: SIMD3(0, 100, 0), near: 0.001))
+            #expect(renderer.insideFailure == nil)
+            let file = try #require(renderer.particleTargets()?.target.first { $0.name == "dust.f16" })
+            let halves = file.bytes.withUnsafeBytes { Array($0.bindMemory(to: Float16.self)) }
+            return stride(from: 0, to: halves.count, by: 4).map {
+                Float(halves[$0]) + Float(halves[$0 + 1]) + Float(halves[$0 + 2]) + Float(halves[$0 + 3])
+            }
+        }
+        let both = try column([0, 1])
+        let first = try column([0])
+        let second = try column([1])
+        let total = both.reduce(0) { $0 + Double($1) }
+        var apart = 0.0
+        var shared = 0
+        for index in both.indices {
+            apart += Double(abs(both[index] - first[index] - second[index]))
+            if first[index] > 0 && second[index] > 0 { shared += 1 }
+        }
+        #expect(total > 0 && shared > 500, "\(shared) pixels hold both disks")
+        #expect(apart / total < 0.01, "\(apart / total) of the dust is not its own disk's")
+    }
+
     /// A particle whose kernel covers more of the frame than `nearFrom` stands for more stars, as
     /// the square of its size up to `nearStars`, and they carry the same light (#357).
     @Test func aNearParticleBreaksIntoMoreStars() throws {

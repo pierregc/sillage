@@ -2378,9 +2378,10 @@ enum Shaders {
 
         // Once per pixel, after the painted dust and before the stars: each slab's carried dust
         // times the web of the disk that filled it. Where two disks carry dust into one slab of
-        // one pixel, the later galaxy's web serves both. `carrier` and `tagged` are the coarse
-        // targets read at `uv`, the first filtered and the second not. Where nothing was carried
-        // (`webCarried` false) the pixel keeps the dust it has.
+        // one pixel, the later galaxy's web serves both, unless the frame carries each galaxy's
+        // dust apart (#399). `carrier` and `tagged` are the coarse targets read at `uv`, the
+        // first filtered and the second not. Where nothing was carried (`webCarried` false) the
+        // pixel keeps the dust it has.
         SHARED bool webCarried(float4 carrier) {
             return !all(carrier <= 0.0f);
         }

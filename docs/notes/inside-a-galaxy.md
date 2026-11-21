@@ -1,4 +1,4 @@
-# Inside a galaxy (#296, #297, #353, #354, #355, #356, #357, #394)
+# Inside a galaxy (#296, #297, #353, #354, #355, #356, #357, #394, #399)
 
 What the renderer does when the camera goes into a disk, tried on real frames before #297
 changes anything: the README's Mice take (2026-11-04 scene-0067, 8 M visible particles on 12 M
@@ -607,16 +607,14 @@ average with no structure, before as after. The clip of frames 400 to 700, befor
 six moments of the dive (15 to 40 s), against main with #357, two rounds: 2 to 3 ms more a render
 in 1080p (137 to 179 ms before), 2 to 12 in 4K (317 to 425 before), 1 to 3 %.
 
-**Not fixed: one web for two disks.** Where the companion's carried dust shares a slab of a pixel
-with the larger disk's (#353), the resolve still reads the web of the later galaxy for both: the
-carrier holds each slab's dust summed over galaxies and its tag only the highest galaxy, blended by
-maximum, so the scalloped outline of the companion's outermost grains is still there on frames 500
-to 550, softer. Nothing in the layer gives the split. What would: in the inside library, the carrier
-pass writing the dust of even and of odd galaxies into two carriers with a tag each, and the
-resolve multiplying each by its own galaxy's web, exact for two galaxies; both engines' carrier
-passes and the CUDA check's comparison of the carrier targets change with it. Nor is the order of
-two disks in the slabs touched (the aim point's stack puts all of frame 550's dust in its last two
-slabs at 430 Myr), which belongs with #355's slab placement.
+**Not fixed here: one web for two disks** (fixed by #399, [below](#a-web-for-each-disk-399)).
+Where the companion's carried dust shares a slab of a pixel with the larger disk's (#353), the
+resolve still reads the web of the later galaxy for both: the carrier holds each slab's dust
+summed over galaxies and its tag only the highest galaxy, blended by maximum, so the scalloped
+outline of the companion's outermost grains is still there on frames 500 to 550, softer. Nothing
+in the layer gives the split. Nor is the order of two disks in the slabs touched (the aim point's
+stack puts all of frame 550's dust in its last two slabs at 430 Myr), which belongs with #355's
+slab placement.
 
 **For #356.** `webThrough` already walks each pixel's ray through each disk's dust layer, from
 where it enters (the eye, when the eye is in the layer) to where it leaves, at `rel + ray * t`,
@@ -709,6 +707,35 @@ Metal's.
 knots in `InsideUniforms.slabKnots` and `slabEnd`, `slabSoft` 1 for every frame of a flight off its
 look keys. Only where the knots stand changed, on the CPU (`InsideUniforms.init`). A factor per
 slab can lean on the slabs being soft and in the matter at every distance.
+
+## A web for each disk (#399)
+
+Pierre, on the redrawn Mice flight (#358): on the approach, frames 150 to 250 of `dive-flowing`,
+when one galaxy's arm passes in front of the other the overlap has a "double opacity", like a
+curved pane of glass or a film of water. It is the web the two disks share, left open by #354
+(above), and #355 made it common: a flight's grains are spread over two slabs (`slabSoft`), so
+two disks one behind the other share a slab of a pixel wherever they overlap on screen, even
+19 kpc apart in depth as at frame 200 (399 Myr). There the carrier held the dust of both and
+its tag the later galaxy, so the companion's web, read on the companion's plane, was laid on the
+larger disk's dust as well: inside the outline of the companion's outermost carried grains the
+larger disk lost its own lace for the other's, and the two columns were multiplied by one
+pattern. The outline moves with the companion: the pane of glass.
+
+What is built, in a frame whose grains are spread (`InsideUniforms.websApart`, `slabSoft` above
+zero) and only there: each galaxy's dust goes into a carrier of its own (`webOnly` in the inside
+uniforms makes the carrier pass take one galaxy), and the resolve multiplies each by its own
+web. Metal draws a carrier pass a galaxy into coarse targets of their own before the frame's
+passes and resolves them one after the other; the CUDA engine fills and resolves its one carrier
+a galaxy at a time. Exact for any number of galaxies; the carrier pass is drawn once a galaxy
+(vertex work at a quarter of the pixels) and a pixel pays the web once for each disk over it.
+Hard slabs keep the one carrier, as every export without a flight does: stills of frames 60 to
+122 (the look keys and the second their slabs take to soften) are the same pixels as before,
+nothing being shared there on this flight, and the change comes in without a step (0.001 level
+of mean difference at frame 125, 0.03 at 150).
+
+On frame 200 the dust target changes on 14.6 % of the pixels that hold dust (by more than a
+quarter of their column) and keeps its total (0.993). Frames 500 to 550, where #353 and #354
+saw the scalloped edge, go through the same path.
 
 ## The near dust (#356)
 
