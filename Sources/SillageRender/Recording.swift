@@ -773,7 +773,10 @@ public final class Recording: @unchecked Sendable {
                     let v2 = o2 + Self.cell(b2, index, bitsPerAxis: bits) * s2
                     let v3 = o3 + Self.cell(b3, index, bitsPerAxis: bits) * s3
                     // `Blend.mix`, term for term.
-                    out[index] = weights[0] * v0 + weights[1] * v1 + weights[2] * v2 + weights[3] * v3
+                    // In the same order, in pieces the type checker gets through.
+                    let near = weights[0] * v0 + weights[1] * v1
+                    let third = weights[2] * v2
+                    out[index] = near + third + weights[3] * v3
                 }
             }
         }

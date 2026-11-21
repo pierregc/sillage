@@ -7,13 +7,30 @@ carried by the tree's own cells for a few percent of a step, gives the lanes bac
 deserves an epic.
 
 Everything here ran on the M4 Max, on the Mice of the flight (`scene-0067` of batch 20261104), cut
-at 708 Myr: twelve runs at 400,000 visible particles and a pair at 4 M, with and without. Times are
+at 708 Myr: fifteen runs at 400,000 visible particles and a pair at 4 M, with and without. Times are
 from the scene's start. The first passage is at 450 Myr, and 620 Myr, the flight's frame 2516, is
 170 Myr after it, the moment the real Mice are seen at.
 
 **In short.**
 
-TBD
+- **It works, at 2.3 % of a step, once the rule is changed.** Behind `--sticky-gas`, the gas that
+  stayed in the disks sinks toward the nuclei after the passage and keeps thin dark lanes there and
+  in the tails, where without it the gas spreads into a veil. A quiet disk is left as it was.
+- **The note's rule fails on a quiet disk.** Holding each particle against its cell's mean velocity
+  on every axis reads the disk's own shear as a collision: the gas layer goes from 63 pc to 7, and
+  two thirds of the gas turns into stars before the galaxies meet.
+- **What runs instead**: an inelastic collision along the line to the cell's other gas, a pressure
+  floor that holds dense gas up over 2 kpc, and a gentle rate, one e-folding in 4 Myr. Without the
+  floor, or at four times the rate, cold gas knots into beads.
+- **The two numbers rule, and so does the count.** The rate sets how much gas reaches the nuclei,
+  with no plateau. At 4 M the effect is about half what it is at 400,000: gas within 2 kpc of the
+  nuclei at 620 Myr goes from 1.1 and 2.4 % to 3.0 and 4.4 %, where at 400,000 it went from 3.3 and
+  6.0 % to 11.5 and 15.8 %. By the note's criteria that is drawing, not modelling.
+- **Frame 2516 gets part of its lane back**: at 4 M the pixels over an optical depth of 2 from its
+  camera go from 2,860 to 5,348, 72 % of what they were at 520 Myr (7,445).
+- **Recommended next**: not the epic as written. A neighbour walk that keeps momentum and a floor
+  set from the resolution would be the test of whether the count can stop ruling; until then the
+  option is a look, worth keeping behind its flag for films of the Mice.
 
 ## What runs
 
@@ -184,7 +201,37 @@ is left as it was.
 
 ### At 4 M
 
-M4TABLE
+The same pair of runs as a hires does them, 4 M visible and 6 M of halo, the step schedule on.
+
+| at 4 M | without | sticky gas |
+| --- | ---: | ---: |
+| **300 Myr, quiet disks** | | |
+| gas left | 88.9 % | 89.8 % |
+| the layer | 54, 57 pc | 45, 49 pc |
+| knots | 0.0 % | 0.0 % |
+| **620 Myr** | | |
+| gas left | 76.9 % | 71.9 % |
+| gas inside 2 kpc of its nucleus | 1.1, 2.4 % | 3.0, 4.4 % |
+| the layer | 424, 375 pc | 219, 281 pc |
+| median distance of the gas from its nucleus | 47, 21 kpc | 43, 19 kpc |
+| knots | 0.0 % | 0.2 % |
+| the tails | 74.9, 71.3 kpc | 74.4, 70.9 kpc |
+| dark pixels from frame 2516's camera | 2,860 | 5,348 |
+| the same without sticky gas at 520 Myr | 7,445 | |
+| **700 Myr** | | |
+| dark pixels from the measuring camera | 24 | 3,631 |
+
+The quiet disks are left alone and the tails keep their length, as at 400,000. But the gas that
+reaches the nuclei is a quarter of what it is at 400,000, and the companion's gas half-mass radius
+is 19 kpc where it was 8: **the count rules**, against the note's criterion of the same curve within
+15 %. Two reasons are likely and neither was separated: a cell of sixteen gas particles is three
+times narrower at 4 M, so the gas meets less of the shear and less of the other stream in each, and
+the floor's length is fixed in kpc while the gas a cell holds is not. The images show it: thin dark
+lanes at 4 M where the 400,000 run has thick ones, and in the tails a few filaments rather than a
+band (the clips below).
+
+Without sticky gas the dust at 700 Myr is all but gone from the measuring camera (24 pixels over an
+optical depth of 2); with it, 3,631 remain.
 
 ## The cost
 
@@ -238,4 +285,10 @@ Outside the repository, on the Mac: `~/claude-workspace/epic-401-out`.
   stills and clips of a flight. `timing.sh`, `profile.py`: the cost.
 - `dumps/`, `stills/`, `clips/`, `logs/`.
 
-The clips are on the VPS: CLIPS
+The 4K clips of the 4 M pair are on the VPS, in `~/sillage-video/`, `avant` without and `apres`
+with sticky gas:
+
+- `mice-401-recul-2100-2520-{avant,apres}-4k.mp4`: frames 2100 to 2520 of the flight with time
+  flowing (`dive-flowing`), the pull-out where the lanes went out.
+- `mice-401-suivi-440-700-{avant,apres}-4k.mp4`: 440 to 700 Myr from a camera that follows the
+  larger galaxy from 70 kpc below and 80 above (`tools/follow.flight.json`).
