@@ -116,6 +116,9 @@ without them.
 
 ## Checkpoints for the take pass
 
+Done in #377: [checkpoints.md](checkpoints.md#the-pass-that-writes-a-take-377) says what was
+built and measured. What follows is the study it was built from.
+
 Today "a run that writes a take does not" checkpoint
 ([checkpoints.md](checkpoints.md#which-runs-checkpoint)): when that was written the massive pass
 took 18 minutes. A scene of today takes hours, on a laptop that sleeps and on boxes that can be
@@ -189,7 +192,7 @@ With checkpoints that is survivable, given three things `gpu-box.sh` has to do:
 - **Start the run so that it restarts itself.** The instance's start command (to be checked on
   the day, with the rest of the provider's CLI) runs the same `sillage-cuda hires ... --resume`
   line: it resumes the run's own checkpoint when there is one and starts the run otherwise, as a
-  night does on the Mac (`SceneFolder.resumesFullPass`).
+  night does on the Mac (`SceneFolder.resumesHires`).
 - **Bound what a paused box costs.** A paused instance still pays for its disk, and may wait
   hours for its GPU. The watchdog counts wall time since the rental, not the run's time, and the
   ledger records the pauses.

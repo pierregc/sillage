@@ -38,7 +38,15 @@ public final class MetalTakePassEngine: TakePassEngine {
         var tracerStore: LightTracerStore?
         // With tracers `seeded` is the massive set alone: the tracers go straight into the
         // solver's buffers as they are sampled, 32 bytes each (#238).
-        if start.massive != nil {
+        if let resumed = start.resumed {
+            // A resumed run samples nothing (#377): its massive set as its first run sampled it,
+            // its tracers' buffers left for the checkpoint to fill.
+            (seeded, tracerCount) = (resumed.massive, resumed.tracers)
+            if tracerCount > 0 {
+                tracerStore = try LightTracerStore(
+                    capacity: tracerCount + seeded.count, awaiting: tracerCount)
+            }
+        } else if start.massive != nil {
             let splitStart = Date()
             if start.massiveOnly {
                 // `--massive-only` (#239): the massive particles of that draw run alone, which the
@@ -64,7 +72,7 @@ public final class MetalTakePassEngine: TakePassEngine {
         } else {
             seeded = RestrictedSolver.sampleParticles(for: start.drawn)
         }
-        droppedTracers = start.massiveOnly ? tracerCount : 0
+        droppedTracers = start.resumed?.dropped ?? (start.massiveOnly ? tracerCount : 0)
         if start.massiveOnly { tracerCount = 0 }
         let gpuSolver: (any GPUSolver)? =
             start.backend == "cpu"
@@ -169,6 +177,17 @@ public final class MetalTakePassEngine: TakePassEngine {
     public var state: SolverState? { barnesHut?.state }
 
     public func writeParticles(to handle: FileHandle) throws { try barnesHut?.writeParticles(to: handle) }
+
+    public func restore(_ state: SolverState, from handle: FileHandle) throws {
+        guard let barnesHut else { throw TakePassRun.Failure.message("this solver restores no checkpoint") }
+        try barnesHut.restore(state, from: handle)
+    }
+
+    public func skipFrames(_ count: Int) { renderer.skipFrames(count) }
+
+    public func join(_ parts: [URL], into url: URL, frames: Int, framesPerSecond: Int) throws {
+        try RunVideos.join(parts, into: url, frames: frames, framesPerSecond: framesPerSecond, metadata: nil)
+    }
 
     public func takeProfile() -> StepProfile? {
         guard let barnesHut, barnesHut.profiling else { return nil }

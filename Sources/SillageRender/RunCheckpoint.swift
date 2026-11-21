@@ -17,8 +17,8 @@ public enum RunCheckpointError: Error, CustomStringConvertible {
     }
 }
 
-/// A long run's checkpoint (#240), so a restart costs at most an interval of it rather than the
-/// run. A directory holding, for checkpoint `n`, `particles-n.bin` (what changes of every
+/// A long run's checkpoint (#240, #377), so a restart costs at most an interval of it rather
+/// than the run. A directory holding, for checkpoint `n`, `particles-n.bin` (what changes of every
 /// particle) and `state-n.json` (the rest: the solver's counters, where the frames and the
 /// videos stand, the key frames taken), with `current` naming the last whole one, and
 /// `massive.bin`, the massive particles as sampled, written once; the video segments and key
@@ -31,6 +31,9 @@ public struct RunCheckpoint: Sendable {
 
     public var segments: URL { directory.appendingPathComponent("segments", isDirectory: true) }
     public var keyFrames: URL { directory.appendingPathComponent("keyframes", isDirectory: true) }
+    /// A take pass's take and curves as they are written (#377).
+    public var takePositions: URL { directory.appendingPathComponent("take.positions") }
+    public var curves: URL { directory.appendingPathComponent("curves.csv") }
     var current: URL { directory.appendingPathComponent("current") }
     var massive: URL { directory.appendingPathComponent("massive.bin") }
     func particles(_ index: Int) -> URL { directory.appendingPathComponent("particles-\(index).bin") }
@@ -139,11 +142,14 @@ public struct RunCheckpoint: Sendable {
         public var videos: VideoProgress?
         public var keyFrames: [KeyFrameEntry]
         public var saved: Date
+        /// What a take pass keeps (#377); absent from a full pass's checkpoint.
+        public var take: TakePassProgress?
 
         public init(
             identity: Identity, index: Int, frame: Int, settled: Int, elapsed: Double,
             resumes: Int, everyFrames: Int, everySteps: Int, solver: SolverState,
-            videos: VideoProgress?, keyFrames: [KeyFrameEntry], saved: Date = Date()
+            videos: VideoProgress?, keyFrames: [KeyFrameEntry], saved: Date = Date(),
+            take: TakePassProgress? = nil
         ) {
             self.identity = identity
             self.index = index
@@ -157,6 +163,7 @@ public struct RunCheckpoint: Sendable {
             self.videos = videos
             self.keyFrames = keyFrames
             self.saved = saved
+            self.take = take
         }
     }
 
@@ -372,14 +379,15 @@ extension RunCheckpoint {
         return hash.finalize().prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Whether a full pass run with `arguments` would resume the checkpoint here: the same
-    /// command line, scene, look and framing take.
-    public func resumable(arguments: [String], scene: URL, look: URL?, framing: URL) -> Bool {
+    /// Whether a run with `arguments` would resume the checkpoint here: the same command line,
+    /// scene and look, and for a full pass the same framing take; a take pass has none (#377).
+    public func resumable(arguments: [String], scene: URL, look: URL?, framing: URL?) -> Bool {
         guard let run = stored() else { return false }
         let identity = run.identity
         return identity.arguments == Identity.kept(arguments)
             && identity.scene == ((try? String(contentsOf: scene, encoding: .utf8)) ?? "")
             && identity.look == (look.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "")
-            && identity.framing == Self.stamp(framing)
+            && identity.framing == (framing.map(Self.stamp) ?? "")
+            && (run.take != nil) == (framing == nil)
     }
 }

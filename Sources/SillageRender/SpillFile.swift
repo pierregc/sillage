@@ -46,6 +46,33 @@ final class SpillFile {
         descriptor = handle
     }
 
+    /// A file that keeps its name (#377): the take of a run that checkpoints, which a resumed run
+    /// opens again, cut back to the `kept` bytes its checkpoint recorded. Nil when the file holds
+    /// fewer.
+    init?(url: URL, kept: Int = 0) throws {
+        let handle = open(url.path, O_RDWR | O_CREAT, 0o644)
+        guard handle >= 0 else { throw Failure.create(String(cString: strerror(errno))) }
+        guard lseek(handle, 0, SEEK_END) >= off_t(kept) else {
+            close(handle)
+            return nil
+        }
+        guard ftruncate(handle, off_t(kept)) == 0 else {
+            let why = String(cString: strerror(errno))
+            close(handle)
+            throw Failure.create(why)
+        }
+        descriptor = handle
+        byteCount = kept
+    }
+
+    /// Flushes what was written to the disk itself, as a checkpoint's files are.
+    func synchronize() throws {
+        #if canImport(Darwin)
+            if fcntl(descriptor, F_FULLFSYNC) == 0 { return }
+        #endif
+        guard fsync(descriptor) == 0 else { throw Failure.write(String(cString: strerror(errno))) }
+    }
+
     deinit { close(descriptor) }
 
     /// Appends a whole block, however large, retrying what a single write would not take.

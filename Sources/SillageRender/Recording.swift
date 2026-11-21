@@ -17,7 +17,7 @@ import SillageCore
 /// past three megaparsecs late in a story, where the three 16-bit words of every take before
 /// version 7 left a grid of 49 pc and the 21 bits leave 1.5 pc (#237).
 public final class Recording: @unchecked Sendable {
-    public struct Frame: Sendable {
+    public struct Frame: Sendable, Codable {
         public var time: Float
         /// Box origin, and the extent that maps onto the whole grid.
         public var origin: SIMD3<Float>
@@ -115,6 +115,50 @@ public final class Recording: @unchecked Sendable {
         self.storedCenters = centers
         self.storedDisks = disks
         self.mapped = mapped
+    }
+
+    /// Where a take kept on disk stands, for a checkpoint (#377): every frame offered, the
+    /// records of those kept and the bytes of their positions in its file.
+    public struct Progress: Codable, Sendable {
+        public var offered: Int
+        public var frames: [Frame]
+        public var centers: [SIMD3<Float>]
+        public var disks: [DiskState]
+        public var bytes: Int
+    }
+
+    /// A take whose kept frames go to `file` as they are taken rather than to memory (#377),
+    /// the file a run's checkpoint keeps: begun empty, or cut back to where `resume` left it,
+    /// and refused when it holds less.
+    public convenience init(
+        particleCount: Int, galaxyCount: Int = 1, interval: Int = 1,
+        bitsPerAxis: Int = Recording.defaultBitsPerAxis, file: URL, resume: Progress? = nil
+    ) throws {
+        self.init(
+            particleCount: particleCount, galaxyCount: galaxyCount, interval: interval,
+            bitsPerAxis: bitsPerAxis)
+        guard let spill = try SpillFile(url: file, kept: resume?.bytes ?? 0) else {
+            throw ResumedFile.CutShort(url: file, recorded: resume?.bytes ?? 0)
+        }
+        self.spill = spill
+        spilledFrom = 0
+        if let resume {
+            offered = resume.offered
+            storedFrames = resume.frames
+            storedCenters = resume.centers
+            storedDisks = resume.disks
+        }
+    }
+
+    /// What a checkpoint keeps of a take on disk, its file flushed first. A frame the interval
+    /// passed over is left out: the run goes on past it.
+    public func checkpoint() throws -> Progress {
+        try locked {
+            try spill?.synchronize()
+            return Progress(
+                offered: offered, frames: storedFrames, centers: storedCenters, disks: storedDisks,
+                bytes: spill?.byteCount ?? 0)
+        }
     }
 
     /// Room for a whole run up front. Growing into it a frame at a time doubles the array
@@ -264,10 +308,10 @@ public final class Recording: @unchecked Sendable {
         locked { (storedFrames, storedCenters, storedDisks) }
     }
 
-    private func locked<T>(_ body: () -> T) -> T {
+    private func locked<T>(_ body: () throws -> T) rethrows -> T {
         lock.lock()
         defer { lock.unlock() }
-        return body()
+        return try body()
     }
 
     public var frames: [Frame] { locked { storedFrames } }

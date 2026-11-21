@@ -49,6 +49,12 @@ public protocol TakePassEngine: AnyObject {
     /// The solver's state, nil for one that keeps none.
     var state: SolverState? { get }
     func writeParticles(to handle: FileHandle) throws
+    /// Puts the solver back where a checkpoint left it (#377).
+    func restore(_ state: SolverState, from handle: FileHandle) throws
+    /// Moves the drawing's grain on as `count` frames drawn would, for a run that resumes.
+    func skipFrames(_ count: Int)
+    /// Joins a video's segments without encoding them again, and checks it holds `frames`.
+    func join(_ parts: [URL], into url: URL, frames: Int, framesPerSecond: Int) throws
     /// The steps' profile since the last call, when the run is profiled.
     func takeProfile() -> StepProfile?
     /// The most the process held, and the device apart when it has memory of its own.
@@ -82,8 +88,9 @@ public protocol TakePassMeasures: AnyObject {
 /// sampled, the settle, the frames stepped through the step schedule, framed by the director or
 /// the camera the look asks for, drawn into the run's video and stills, offered to the take and
 /// written as curves, the story followed past the planned frames, and at the end the take,
-/// `hires.json` and what the status files say. `sillage-render` runs it on Metal; a change here is
-/// a change on every engine.
+/// `hires.json` and what the status files say. With `--checkpoint <dir>` it saves itself there as
+/// it goes and `--resume` picks it up (#377, docs/notes/checkpoints.md). `sillage-render` runs it
+/// on Metal; a change here is a change on every engine.
 public final class TakePassRun {
     /// What an engine starts from.
     public struct Start {
@@ -97,6 +104,9 @@ public final class TakePassRun {
         public var massiveOnly: Bool
         public var tracerOpeningAngle: Float?
         public var profiling: Bool
+        /// A resumed run's massive set, from its checkpoint, with its tracers' count and those
+        /// its first run dropped (#377): nothing is sampled again.
+        public var resumed: (massive: ParticleSystem, tracers: Int, dropped: Int)?
     }
 
     public enum Outcome: Equatable {
@@ -109,10 +119,13 @@ public final class TakePassRun {
 
     public enum Failure: Error, CustomStringConvertible {
         case message(String)
+        /// A test stopped the run, as a kill would.
+        case stopped(frame: Int?)
 
         public var description: String {
             switch self {
             case .message(let text): text
+            case .stopped(let frame): "stopped \(frame.map { "after frame \($0)" } ?? "in the settle")"
             }
         }
     }
@@ -125,6 +138,10 @@ public final class TakePassRun {
     public let reporter: StageReporter?
     public let hires: (folder: SceneFolder, record: SceneFolder.Hires)?
     public let explore: SceneFolder?
+    /// Called after each stretch of the settle (`frame` nil) and each frame, with the checkpoints
+    /// written so far: true stops the run there without closing anything, as a kill would. For
+    /// tests.
+    public var stop: ((_ frame: Int?, _ checkpoints: Int) -> Bool)?
 
     // What the run is, once `run()` has built it, for the measures.
     public private(set) var built: RunScenes!
@@ -173,6 +190,9 @@ public final class TakePassRun {
         reel.reserve(frames: min(frames / takeInterval + 1, takeBudget / reel.frameBytes + 1))
         return reel
     }
+
+    /// The options that measure a run, which a run that checkpoints refuses.
+    static let measuring = ["density", "dump-walk", "dump-targets", "take-v6", "take-massive", "sf-leaves"]
 
     /// A path's file, its folder made.
     public static func prepared(_ path: String) throws -> URL {
@@ -234,13 +254,54 @@ public final class TakePassRun {
             "scene      \(scene.name), \(drawnScene.totalParticleCount) visible"
                 + (scene.hasLiveHalos
                     ? ", \(scene.simulatedParticleCount - scene.totalParticleCount) halo" : ""))
-        // Only the full pass checkpoints (#240), and it does not run here.
-        if options.contains("--checkpoint") {
-            throw Failure.message("--checkpoint: only the full pass checkpoints, with --draw")
-        }
         if built.massive != nil, built.backend != "barnes-hut" {
             throw Failure.message("--massive needs the Barnes-Hut solver")
         }
+        // `--checkpoint <dir>` (#377): saved there every `--checkpoint-frames` frames and
+        // `--checkpoint-steps` steps of the settle, the take and the curves written there as they
+        // come and the video in segments; `--resume` picks the last checkpoint up and refuses
+        // one of another run.
+        let checkpoint = argument("checkpoint").map {
+            RunCheckpoint(directory: URL(fileURLWithPath: $0, isDirectory: true))
+        }
+        let identity = checkpoint.map { _ in
+            RunCheckpoint.Identity(
+                arguments: arguments,
+                scene: argument("scene").flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
+                look: argument("look").flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? "",
+                framing: "", particles: drawnScene.totalParticleCount, massive: built.massive,
+                timeStep: scene.timeStep, presets: [], code: RunCheckpoint.codeVersion(),
+                engine: engineMaker.engine)
+        }
+        var resuming: (run: RunCheckpoint.Run, take: TakePassProgress, particles: FileHandle)?
+        if let checkpoint, let identity {
+            guard built.backend == "barnes-hut" else {
+                throw Failure.message("--checkpoint needs the Barnes-Hut solver")
+            }
+            // A run that measures is not half saved.
+            for flag in Self.measuring where options.contains("--\(flag)") {
+                throw Failure.message("--checkpoint: a run with --\(flag) does not checkpoint")
+            }
+            if options.contains("--resume"), let stored = try checkpoint.load() {
+                var differences = stored.run.identity.differences(from: identity)
+                if stored.run.take == nil { differences.insert("its pass", at: 0) }
+                guard differences.isEmpty, let progress = stored.run.take else {
+                    throw Failure.message(
+                        "--resume: the checkpoint in \(checkpoint.directory.path) is of another run, its "
+                            + differences.joined(separator: ", ") + " differ")
+                }
+                if stored.run.identity.code != identity.code {
+                    print("warning    the code changed since the checkpoint: the run goes on, not to the bit")
+                }
+                resuming = (stored.run, progress, stored.particles)
+            } else {
+                if options.contains("--resume") {
+                    print("resume     no checkpoint in \(checkpoint.directory.path): from the start")
+                }
+                checkpoint.clear()
+            }
+        }
+        let resumed = resuming?.run
         // `--tracer-sort N` and `--tracer-sort-chunk N`: how often the tracers' walk order is
         // sorted, and how many are sorted together, to measure them.
         if let interval = argument("tracer-sort").flatMap(Int.init) {
@@ -250,13 +311,40 @@ public final class TakePassRun {
             BarnesHutHost.tracerSortChunk = chunk
         }
         let massiveOnly = options.contains("--massive-only")
+        let reading = Date()
         let engine = try engineMaker.make(
             Start(
                 scene: scene, drawn: drawnScene, massive: built.massive, backend: built.backend,
                 settings: settings, look: look, massiveOnly: massiveOnly,
                 tracerOpeningAngle: argument("theta-tracers").flatMap(Float.init),
-                profiling: options.contains("--profile")))
+                profiling: options.contains("--profile"),
+                resumed: try resuming.map {
+                    (try checkpoint!.massiveSet(), $0.run.solver.tracers, $0.take.droppedTracers)
+                }))
         self.engine = engine
+        if let checkpoint {
+            if let (run, _, handle) = resuming {
+                try engine.restore(run.solver, from: handle)
+                try handle.close()
+                print(
+                    String(
+                        format: "resume     checkpoint %d: frame %d, settle %d, t=%.1f Myr, read and"
+                            + " restored in %.2f s",
+                        run.index, run.frame, run.settled,
+                        Double(run.solver.time) * Physics.megayearsPerTimeUnit,
+                        Date().timeIntervalSince(reading)))
+            } else {
+                guard engine.state != nil else {
+                    throw Failure.message("--checkpoint: this solver keeps no state")
+                }
+                let saved = try checkpoint.saveMassive(engine.massive)
+                print(
+                    String(
+                        format: "checkpoint the massive set, once: %.2f GB in %.2f s",
+                        Double(saved.bytes) / 1e9, saved.seconds))
+            }
+            fflush(nil)
+        }
         let seeded = engine.massive
         if massiveOnly, engine.droppedTracers > 0 {
             drawnScene = scene
@@ -324,11 +412,28 @@ public final class TakePassRun {
                 schedule: $0, stepMyr: Double(ownStep) * Physics.megayearsPerTimeUnit,
                 story: Story(scene: scene))
         }
+        // A resumed run takes the stretches of its journal again: the same switches, the same
+        // judge.
+        var journal = resuming?.take.journal ?? FrameJournal()
+        for entry in journal.entries { scheduler?.replay(entry) }
+        if resumed != nil, let state = engine.state,
+            (state.timeStep ?? ownStep) != ownStep * Float(scheduler?.scale ?? 1)
+        {
+            throw Failure.message("--resume: the checkpoint's step is not the one its schedule gives")
+        }
         /// Steps through `count` of the run's own steps, at the scale the schedule gives the
         /// stretch starting here, and shows the run's centres to its judge. Returns how many steps
         /// that took.
         @discardableResult
         func advance(_ count: Int, frame: Int?) -> Int {
+            defer {
+                if checkpoint != nil {
+                    journal.append(
+                        .init(
+                            steps: count, frame: frame, time: solver.time, centres: solver.centers,
+                            disks: engine.diskFrames))
+                }
+            }
             guard var current = scheduler, let stepper else {
                 solver.step(count: count)
                 return count
@@ -343,11 +448,7 @@ public final class TakePassRun {
             scheduler = current
             return run
         }
-        let zoom = look.camera.zoom
         let clock = Date()
-
-        // Framing is fixed once so the camera does not drift as the tails grow.
-        var frozenRadius = look.camera.radius
 
         framesPerSecond = Int(number("fps", 30))
         let framesPerSecond = self.framesPerSecond
@@ -357,25 +458,40 @@ public final class TakePassRun {
         // silently ignored.
         engine.apply(look.look)
 
-        // The director places the camera and lights the scene on its own. Without it a hundred
-        // generated scenes come out framed identically, which is the thing that makes a library
-        // dull.
-        let directed = look.camera.mode == .director || look.camera.mode == .immersed
-        let director: Cinematographer? = directed ? Cinematographer(seed: scene.seed) : nil
-        var autoCamera = AutoCamera()
         reach = scene.galaxies.map { max($0.diskScaleLength * $0.diskTruncation, 0.1) }
         let reach = self.reach
-        director?.beginScene(seed: scene.seed, base: look.look, immersed: look.camera.mode == .immersed)
+        // The cameras, which a resumed run moves on by the frames its journal holds.
+        let framing = TakePassFraming(
+            scene: scene, look: look, frames: frames, framesPerSecond: framesPerSecond, reach: reach)
+        let director = framing.director
+        if let progress = resuming?.take {
+            framing.radius = progress.radius
+            framing.replay(progress.journal)
+        }
 
         if let lookOutPath = argument("look-out") ?? beside(".look.json") {
             try (director?.lookFile(look) ?? look).encoded().write(to: Self.prepared(lookOutPath))
             print("look file  \(lookOutPath)")
         }
 
-        let video = try videoPath.map {
-            try engine.video(
-                url: Self.prepared($0), width: width, height: height, framesPerSecond: framesPerSecond)
+        // A run that checkpoints writes its video in segments beside the checkpoint.
+        let segments: RunVideoSegments? = try checkpoint.flatMap { checkpoint in
+            try videoPath.map { path in
+                var name = URL(fileURLWithPath: path).lastPathComponent
+                name.removeFirst(name.prefix { $0 == "." }.count)
+                return try RunVideoSegments(
+                    directory: checkpoint.segments, name: name, resume: resuming?.take.video
+                ) {
+                    try engine.video(url: $0, width: width, height: height, framesPerSecond: framesPerSecond)
+                }
+            }
         }
+        let video =
+            try segments?.drawing
+            ?? videoPath.map {
+                try engine.video(
+                    url: Self.prepared($0), width: width, height: height, framesPerSecond: framesPerSecond)
+            }
         drawsVideo = video != nil
 
         // A take holds the run rather than the picture, so a scene can be rendered again at
@@ -388,7 +504,13 @@ public final class TakePassRun {
         // `--take-interval n` keeps one frame in n, and whatever draws the take again
         // interpolates the rest.
         takeInterval = max(Int(number("take-interval", 1)), 1)
-        let take: Recording? = argument("take").map { _ in reel(drawnCount) }
+        let take: Recording? = try argument("take").map { _ in
+            guard let checkpoint else { return reel(drawnCount) }
+            // On disk as it is taken, where a resumed run finds it cut back to its checkpoint.
+            return try Recording(
+                particleCount: drawnCount, galaxyCount: scene.galaxies.count, interval: takeInterval,
+                file: checkpoint.takePositions, resume: resuming?.take.take)
+        }
 
         /// Per frame scalars, written for whoever scores the result later: a curve to drive a
         /// filter with is worth more than a picture of one.
@@ -398,10 +520,10 @@ public final class TakePassRun {
             + scene.galaxies.indices.map { ",x_\($0),y_\($0),z_\($0)" }.joined()
             + scene.galaxies.indices.map { ",torn_\($0)" }.joined() + "\n"
         let curves: FileHandle? = try argument("curves").map { path in
-            let url = try Self.prepared(path)
-            FileManager.default.createFile(atPath: url.path, contents: nil)
-            let handle = try FileHandle(forWritingTo: url)
-            try handle.write(contentsOf: Data(curvesHeader.utf8))
+            // Beside the checkpoint until the run ends, and cut back to its frames on resume.
+            let kept = resuming?.take.curvesBytes
+            let handle = try ResumedFile.open(try checkpoint?.curves ?? Self.prepared(path), kept: kept)
+            if kept == nil { try handle.write(contentsOf: Data(curvesHeader.utf8)) }
             return handle
         }
         // `--story-cap <Myr>` keeps capturing past the planned frames while the story goes on, up
@@ -415,9 +537,14 @@ public final class TakePassRun {
         var story =
             storyCap > 0 && curves != nil
             ? Story.Tracker(story: Story(scene: scene, settings: storySettings)) : nil
+        if resumed != nil, story != nil, let checkpoint,
+            let written = try? String(contentsOf: checkpoint.curves, encoding: .utf8)
+        {
+            for sample in Story.samples(csv: written) { story?.append(sample) }
+        }
         var previousTime = solver.time
-        var curvesSeconds: Double = 0
-        var takeSeconds: Double = 0
+        var curvesSeconds = resuming?.take.curvesSeconds ?? 0
+        var takeSeconds = resuming?.take.takeSeconds ?? 0
         // A sampled star farther than this from every centre is in a tail or a bridge, not a
         // disk. A black hole holds no disk, so the stars it carries off count as torn from the
         // host.
@@ -446,25 +573,66 @@ public final class TakePassRun {
             outputURL != nil || (thumbnailURL != nil && frame == thumbnailFrame)
         }
         stillFrames = wantsStillAt
+        let firstFrame = journal.frames
+        // The grain of the frames a resumed run drew before.
+        engine.skipFrames((0..<firstFrame).filter { video != nil || wantsStillAt($0) }.count)
+
+        var checkpointIndex = resumed?.index ?? 0
+        let everyFrames = resumed?.everyFrames ?? max(Int(number("checkpoint-frames", 0)), 0)
+        let everySteps = resumed?.everySteps ?? max(Int(number("checkpoint-steps", 0)), 0)
+        let resumes = resumed.map { $0.resumes + 1 } ?? 0
+        /// Closes the video's segment, flushes the take and the curves and saves the run, the
+        /// next frame to draw `frame`.
+        func save(frame: Int, settled: Int) throws {
+            guard let checkpoint, let identity, let state = engine.state else { return }
+            let saving = Date()
+            try segments?.cut()
+            if let curves { try ResumedFile.synchronize(curves) }
+            checkpointIndex += 1
+            let progress = TakePassProgress(
+                journal: journal, radius: framing.radius, take: try take?.checkpoint(),
+                curvesBytes: try curves.map { Int(try $0.offset()) }, video: segments?.state,
+                droppedTracers: engine.droppedTracers, takeSeconds: takeSeconds,
+                curvesSeconds: curvesSeconds)
+            let run = RunCheckpoint.Run(
+                identity: identity, index: checkpointIndex, frame: frame, settled: settled,
+                elapsed: (resumed?.elapsed ?? 0) + Date().timeIntervalSince(started), resumes: resumes,
+                everyFrames: everyFrames, everySteps: everySteps, solver: state, videos: nil,
+                keyFrames: [], take: progress)
+            let saved = try checkpoint.save(run) { try engine.writeParticles(to: $0) }
+            print(
+                String(
+                    format: "checkpoint %d before frame %d, settle %d: %.2f GB, %.2f s in all",
+                    checkpointIndex, frame, settled, Double(saved.bytes) / 1e9,
+                    Date().timeIntervalSince(saving)))
+            // A log cut by a restart still says where the run was saved.
+            fflush(nil)
+        }
+
         try measures?.started(self)
-        if settle > 0 {
+        var settled = journal.settled
+        if settled < settle {
             let settleStart = Date()
             // In chunks, so a settle of minutes still reports; a schedule's in frames, the last
-            // one ending where the first frame starts.
+            // one ending where the first frame starts. A checkpoint waits for the end of one.
             let chunk = stepSchedule == nil ? max(settle / 50, 1) : stepsPerFrame
-            var settled = 0
             while settled < settle {
                 let count =
                     stepSchedule == nil || settled > 0
                     ? min(chunk, settle - settled) : (settle - 1) % stepsPerFrame + 1
                 advance(count, frame: nil)
+                let before = settled
                 settled += count
+                if everySteps > 0, settled / everySteps > before / everySteps, settled < settle {
+                    try save(frame: 0, settled: settled)
+                }
                 let elapsed = Date().timeIntervalSince(settleStart)
                 let (done, left) = runSteps(ownDone: settled)
                 let progress = Double(done) / Double(max(done + left, 1))
                 reporter?.update(
                     progress: progress, detail: "settle \(settled)/\(settle)",
                     eta: RunStatus.eta(elapsed: elapsed, progress: progress, now: Date()))
+                if let stop, stop(nil, checkpointIndex) { throw Failure.stopped(frame: nil) }
             }
             print(
                 String(
@@ -474,6 +642,8 @@ public final class TakePassRun {
             // Stars formed while settling are not the clip's, and would read as a burst on frame 0.
             previousTime = solver.time
         }
+        // The steps run before the frames this run draws: the settle's, and a resumed run's
+        // frames before.
         let settleRun = scheduler?.stepsRun ?? settle
 
         /// Past the planned frames, whether the story still wants more.
@@ -484,7 +654,6 @@ public final class TakePassRun {
         }
 
         let framesStart = Date()
-        let firstFrame = 0
         var frame = firstFrame
         while frame < frames || storyGoesOn() {
             defer { frame += 1 }
@@ -493,8 +662,8 @@ public final class TakePassRun {
             let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
             try measures?.afterSteps(self, frame: frame)
 
-            if frozenRadius <= 0 && look.camera.mode != .auto {
-                frozenRadius = engine.framedRadius(look.camera)
+            if framing.radius <= 0 && look.camera.mode != .auto {
+                framing.radius = engine.framedRadius(look.camera)
             }
 
             let smoothingStart = Date()
@@ -506,31 +675,16 @@ public final class TakePassRun {
                 diskFrames: DiskFrame.make(
                     scene: scene, centers: solver.centers, time: solver.time,
                     strength: LookFile.diskStrength(look.armStrength, director?.look ?? look.look)))
-            let camera: Camera
-            if let director {
-                // Advanced by one frame of playback rather than by wall clock, so the move reads
-                // the same however long the frame took to compute.
-                director.advance(
-                    seconds: 1 / Double(framesPerSecond),
-                    of: Subject(centres: scene.framedCentres(solver.centers), radius: frozenRadius))
-                engine.apply(director.look)
-                camera = director.camera
-            } else {
-                var framed = (center: look.camera.center ?? .zero, radius: frozenRadius)
-                if look.camera.mode == .auto {
-                    framed = autoCamera.frame(centres: scene.framedCentres(solver.centers), margins: reach)
-                    framed.radius /= zoom
-                }
-                camera = look.camera.camera(
-                    progress: Float(frame) / Float(max(frames - 1, 1)), radius: framed.radius,
-                    center: framed.center, fieldOfView: look.look.fieldOfView)
-            }
+            let camera = framing.camera(frame: frame, centres: solver.centers)
+            if let director { engine.apply(director.look) }
             let renderStart = Date()
             // The video is drawn straight into the encoder's buffers; a still is read off the same
             // frame rather than drawn twice.
             let wantsStill = wantsStillAt(frame)
             var still: (any RunVideoStill)?
-            if let video {
+            if let segments {
+                try segments.append(camera: camera, still: wantsStill ? { still = $0 } : nil)
+            } else if let video {
                 try video.append(camera: camera, still: wantsStill ? { still = $0 } : nil)
             } else if wantsStill {
                 still = try engine.still(camera: camera)
@@ -558,6 +712,10 @@ public final class TakePassRun {
                         disks: engine.diskFrames, budget: takeBudget)
                 }
                 takeSeconds += Date().timeIntervalSince(takeStart)
+                // A take on disk that could not be written is not carried on in memory.
+                if checkpoint != nil, let failure = take.spillFailure {
+                    throw Failure.message("take: \(failure)")
+                }
             }
             try measures?.afterTake(self, frame: frame)
 
@@ -651,11 +809,27 @@ public final class TakePassRun {
                         + "  render %5.1f ms (gpu %5.2f)",
                     frame, Double(solver.time) * Physics.megayearsPerTimeUnit, simulationMs,
                     simulationMs / Double(frameSteps), smoothingMs, renderMs, engine.lastGPUTime * 1000))
+            if everyFrames > 0, (frame + 1) % everyFrames == 0, frame + 1 < frames {
+                try save(frame: frame + 1, settled: settle)
+            }
+            if let stop, stop(frame, checkpointIndex) { throw Failure.stopped(frame: frame) }
         }
 
         reporter?.update(progress: 1, detail: "finishing", eta: Date())
-        try video?.end()
+        if let segments, let videoPath {
+            try segments.finish(into: Self.prepared(videoPath)) { parts, url, count in
+                try engine.join(parts, into: url, frames: count, framesPerSecond: framesPerSecond)
+            }
+        } else {
+            try video?.end()
+        }
         try curves?.close()
+        // The curves a checkpointed run kept beside its checkpoint, where the run was asked them.
+        if let checkpoint, let path = argument("curves") {
+            let url = try Self.prepared(path)
+            try? FileManager.default.removeItem(at: url)
+            try FileManager.default.copyItem(at: checkpoint.curves, to: url)
+        }
         // `--state-out <path>`: what a checkpoint keeps of the particles at the end, and the
         // solver's state beside it as `<path>.json`, to compare two runs to the bit.
         if let path = argument("state-out"), let state = engine.state {
@@ -700,8 +874,15 @@ public final class TakePassRun {
                 String(
                     format: "take       %.1f ms a frame quantising, %d bits an axis",
                     takeSeconds * 1000 / Double(max(take.capturedCount, 1)), take.bitsPerAxis))
+            let writing = Date()
             try RecordingFile.write(
                 take, scene: drawnScene, particles: engine.capturedParticles(), to: Self.prepared(path))
+            if checkpoint != nil {
+                print(
+                    String(
+                        format: "take       put together from the checkpoint's in %.1f s",
+                        Date().timeIntervalSince(writing)))
+            }
         }
         if let (folder, done) = hires {
             do {
@@ -710,7 +891,9 @@ public final class TakePassRun {
                 throw Failure.message("hires: could not put the take in place: \(error)")
             }
             var record = done
-            record.seconds = Date().timeIntervalSince(started)
+            // The run's time kept across its resumes, the intervals a restart lost left out.
+            record.seconds = (resumed?.elapsed ?? 0) + Date().timeIntervalSince(started)
+            record.resumes = resumes > 0 ? resumes : nil
             if let scheduler {
                 record.stepsRun = scheduler.stepsRun
                 record.stepSwitches = scheduler.switches
@@ -734,6 +917,8 @@ public final class TakePassRun {
             finished.pass = record.pass?.rawValue
             reporter?.record(finished)
         }
+        // The run is whole: its checkpoint has nothing left to give.
+        checkpoint?.clear()
         print(String(format: "done in %.1f s", Date().timeIntervalSince(clock)))
         return .done
     }

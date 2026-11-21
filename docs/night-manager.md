@@ -148,17 +148,22 @@ of them. It also keeps every particle at the curves' key frames in `keyframes.si
 It refuses to run without a massive pass of the same draw and steps. A take of the full pass is
 still a flag away for whoever wants one (`--take <path> --take-interval 8`).
 
-A full pass saves itself about every hour of its run (#240, [the note](notes/checkpoints.md)), in
-`.checkpoint/` in the scene folder, its videos in segments there until it ends:
+Every pass of a hires saves itself about every hour of its run (#240, #377,
+[the note](notes/checkpoints.md)), in `.checkpoint/` in the scene folder: a full pass with its
+videos in segments, a pass that writes a take (one pass, or `--pass massive`) with its take, its
+curves and `hires.mov` so far, until it ends:
 
 ```bash
+./scripts/dev.sh hires library/2026-10-24/scene-0001 --resume
 ./scripts/dev.sh hires library/2026-10-24/scene-0001 --massive 2000000 --pass full --resume
 ```
 
-`--resume` picks the run up from its last checkpoint, to the bit and with the same videos,
+`--resume` picks the run up from its last checkpoint, to the bit and with the same files,
 without sampling the scene again, and refuses a checkpoint of another run (another step, count,
-look or massive take); without one it starts from the beginning. `--checkpoint-every <minutes>` sets the interval, 0 for none. A night
-run again after a restart resumes its full pass by itself when the checkpoint is that run's.
+look or massive take); without one it starts from the beginning, and so does a hires run
+without `--resume`, which clears the checkpoint. `--checkpoint-every <minutes>` sets the
+interval, 0 for none. A night run again after a restart, and a hires put in the queue again,
+resume by themselves when the checkpoint is that run's.
 
 `--speed <x>`, `--speed <file>` or `--speed auto` draws the full pass's videos along a time track,
 as an export's `--speed` does (#310, [the note](notes/variable-time.md#the-full-pass-along-a-track-310)):
@@ -344,9 +349,9 @@ stopped. A step that fails or is left out leaves the scene out for the night, an
 on with the next one. The same command on the same folder resumes: explored scenes, done hires,
 promoted looks and existing exports are skipped; what was left out is tried again.
 
-After a restart, a night is resumed by running it again on its folder: a full pass cut short
-picks up from its checkpoint (#240) rather than starting over; a massive pass or a one-pass
-hires, which write a take, start over.
+After a restart, a night is resumed by running it again on its folder: a hires cut short picks
+up from its checkpoint rather than starting over, a full pass (#240) and a massive pass or a
+one-pass hires, which write a take (#377).
 
 In two passes (`hires.passes`, #239) the hires step is the massive pass, the style is chosen on
 its take, and the first video preset's export step is the full pass, which draws every video
