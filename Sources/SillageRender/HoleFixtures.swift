@@ -40,6 +40,10 @@ public enum HoleFixtures {
         // 4,000 tracers each stand for 1,500 of a run's 6 million: a twentieth of the light
         // keeps their splats off the white.
         physics.exposure = 0.05
+        // The bloom the stills were drawn with before #404: they hold the engines to each
+        // other, not the look.
+        physics.bloom = 0.35
+        physics.bloomLevels = 6
         // On the distance of a lens table, 1.1^45, so that one table is built, not two.
         physics.camera.distance = 72.8908
         var ring = physics

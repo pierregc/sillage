@@ -247,6 +247,12 @@ The close up is a scene folder like a galaxy scene's, and goes through the same 
   disk, so the light rises with it; null normalises each frame on its own), the post stages'
   tone, and the camera: elevation, azimuth, distance, field of view and turns round the hole.
 
+  The bloom is an optic's wings, not a halo (#404): 4 levels at 0.03 (`bloom`, `bloomLevels`).
+  The pyramid adds each level back whole, so intensity times levels is the share of the light
+  over the threshold laid back as glow. The first close ups had 6 levels at 0.35: twice that
+  light, as wide as the disk, which the stretch lifted to a third of white 30 px off it (Pierre,
+  20 November: far too much halo). Now about 6 %, gone within 30 px at 1080p.
+
   | | physics, the default | film |
   | --- | --- | --- |
   | temperature | the run's, from the crossings | the thin disk's, from the radius |

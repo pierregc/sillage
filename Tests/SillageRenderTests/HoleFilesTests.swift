@@ -111,6 +111,28 @@ struct HoleFilesTests {
         #expect(try HoleLookFile.decoded(from: look.encoded()).exposureAt == nil)
     }
 
+    @Test func theGlowIsAnOpticsWingsNotAHalo() throws {
+        // #404: the pyramid adds each level back whole, so intensity times levels is the share
+        // of the light over the threshold laid back as glow: a few percent, not twice it.
+        let settings = HoleLookFile.physics.settings(width: 3840, height: 2160)
+        #expect(settings.bloomIntensity * Float(settings.bloomLevels) < 0.15)
+        #expect(settings.bloomLevels <= 4)
+        let film = HoleLookFile.film.settings(width: 1920, height: 1080)
+        #expect(film.bloomIntensity == settings.bloomIntensity)
+        var look = HoleLookFile.film
+        look.bloom = 0.35
+        look.bloomLevels = 6
+        let read = try HoleLookFile.decoded(from: look.encoded())
+        #expect(read == look)
+        #expect(read.settings(width: 1920, height: 1080).bloomLevels == 6)
+        #expect(read.settings(width: 1920, height: 1080).bloomIntensity == 0.35)
+        look.bloomLevels = 0
+        #expect(throws: HoleLookFile.ReadError.self) { try HoleLookFile.decoded(from: look.encoded()) }
+        look.bloomLevels = nil
+        look.bloom = -0.1
+        #expect(throws: HoleLookFile.ReadError.self) { try HoleLookFile.decoded(from: look.encoded()) }
+    }
+
     @Test func aCameraFliesInEvenlyInItsDistancesLogarithm() throws {
         var look = HoleLookFile.physics
         look.camera.distance = 200
