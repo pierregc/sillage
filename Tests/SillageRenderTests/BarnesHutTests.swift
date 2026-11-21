@@ -3,6 +3,7 @@ import Testing
 
 @testable import SillageCore
 @testable import SillageRender
+
 #if canImport(simd)
     import simd
 #else
@@ -499,6 +500,31 @@ struct BarnesHutTests {
         let megayears: Float = 40
         solver.step(count: Int(megayears / (scene.timeStep * Float(Physics.megayearsPerTimeUnit))))
         #expect(abs(meanRadius() - before) / before < 0.04)
+    }
+
+    /// A command buffer the GPU loses stops the run where it is and surfaces (#301): no step
+    /// after it runs or counts its time, and no checkpoint is written of what it left.
+    @Test func aCommandBufferTheGPULosesStopsTheRunAndSurfaces() throws {
+        let scene = SceneConfig.isolatedDisk(particleCount: 2_000)
+        let solver = try MetalBarnesHutSolver(
+            scene: scene, particles: RestrictedSolver.sampleParticles(for: scene))
+        try solver.advance(steps: 2)
+        let (time, positions) = (solver.time, solver.particles.positions)
+        solver.failsNextCommandBuffer = RenderError.commandBuffer("a pass lost on purpose")
+        solver.step(count: 3)
+        #expect(solver.failure != nil)
+        #expect(solver.time == time)
+        #expect(solver.particles.positions == positions)
+        #expect(throws: RenderError.self) { try solver.advance(steps: 1) }
+        #expect(throws: RenderError.self) { try solver.drawnDrift(by: 0.5) }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "sillage-solver-\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: file) }
+        _ = FileManager.default.createFile(atPath: file.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: file)
+        #expect(throws: RenderError.self) { try solver.writeParticles(to: handle) }
+        try handle.close()
+        #expect(try Data(contentsOf: file).isEmpty)
     }
 
     /// A bulge is flattened because it rotates, and it has to still be flattened later.

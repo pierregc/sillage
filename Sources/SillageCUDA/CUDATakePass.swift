@@ -244,12 +244,12 @@ public final class CUDATakePassEngine: TakePassEngine, CUDARunDrawn {
     /// The last frame's drawing, in seconds: the CPU target's or the GPU's, from the CPU.
     public var lastGPUTime: Double { video?.lastSeconds ?? stillSeconds }
 
-    public func capturedParticles() -> ParticleSystem {
-        if tracerCount > 0, let drawn = try? barnesHut.drawnAttributes(massive: massive) { return drawn }
+    /// Throws rather than keep a take whose tracers or formation times did not come back (#301).
+    public func capturedParticles() throws -> ParticleSystem {
+        try check()
+        if tracerCount > 0 { return try barnesHut.drawnAttributes(massive: massive) }
         var captured = massive
-        if let times = try? barnesHut.formation.download(Float.self, count: massive.count) {
-            captured.formation = times
-        }
+        captured.formation = try barnesHut.formation.download(Float.self, count: massive.count)
         return captured
     }
 
@@ -278,6 +278,8 @@ public final class CUDATakePassEngine: TakePassEngine, CUDARunDrawn {
     public func check() throws {
         if let failure = barnesHut.failure { throw failure }
         if let downloadFailure { throw downloadFailure }
+        // A kernel's fault surfaces at the next synchronisation: here, not at a later download (#301).
+        try context.synchronize()
     }
 }
 
