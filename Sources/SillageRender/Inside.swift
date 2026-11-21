@@ -49,9 +49,10 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// The distances to the nearest matter between which the slabs slide from the eye's layout
     /// (nearer than the first) to the one around the aim point every export has (past the second).
     public var slabsWithin: [Float] = [1.5, 6]
-    /// The lace of a disk's dust web is flat for an eye within the first of the disk, whole past
-    /// the second, in kiloparsecs.
-    public var web: [Float] = [3, 10]
+    /// How near a disk, in its radii (seven scale lengths), the lace of its dust web is carried
+    /// through the depth of its dust layer: wholly within the first, not at all past the second,
+    /// where it lies in the mid-plane as every export draws it (#354).
+    public var web: [Float] = [1, 2]
     /// The mean luminance the automatic exposure holds a frame under; 0 turns it off.
     public var exposure: Float = 0.16
     /// Seconds of video the automatic exposure is eased over.
@@ -116,7 +117,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !rising(slabsWithin, 2) {
             return "slabsWithin \(slabsWithin): two distances in kpc, the first nearer"
         }
-        if !rising(web, 2) { return "web \(web): two distances in kpc, the first nearer" }
+        if !rising(web, 2) { return "web \(web): two distances in disk radii, the first nearer" }
         if !(exposure >= 0 && exposure < 1) { return "exposure \(exposure): a mean luminance, 0 to 1" }
         if !(exposureEase >= 0 && exposureEase <= 30) { return "exposureEase \(exposureEase) s: 0 to 30" }
         if !(1...64).contains(subframes) { return "subframes \(subframes): 1 to 64" }
@@ -131,10 +132,18 @@ public struct InsideFrame: Sendable, Equatable {
     public var settings: InsideSettings
     /// Kiloparsecs from the eye to the nearest matter (`Nearness`).
     public var nearness: Float
+    /// Where a flight's frame lays its slabs past the near field (`MatterDepth`), empty for the
+    /// stack around the aim point.
+    public var matter: [Float]
+    /// How much the camera is still the look's: 1 at a flight's look keys, where the frame is
+    /// the export's, 0 from `Flight.slabEase` seconds away (#355).
+    public var look: Float
 
-    public init(settings: InsideSettings, nearness: Float) {
+    public init(settings: InsideSettings, nearness: Float, matter: [Float] = [], look: Float = 0) {
         self.settings = settings
         self.nearness = nearness
+        self.matter = matter
+        self.look = look
     }
 }
 
@@ -193,11 +202,18 @@ public struct InsideUniforms: Sendable {
         // From the eye: the three boundaries given, and a slab's worth before and after.
         let ratio = (inside.slabs[2] / inside.slabs[0]).squareRoot()
         let eye = [inside.slabs[0] / ratio] + inside.slabs + [inside.slabs[2] * ratio]
+        func blend(_ a: [Float], _ b: [Float], _ t: Float) -> [Float] {
+            t > 0 ? zip(a, b).map { exp(log($0) + (log($1) - log($0)) * t) } : a
+        }
         let within = Self.depth(frame)
-        let knots = within > 0 ? zip(aim, eye).map { exp(log($0) + (log($1) - log($0)) * within) } : aim
+        // A flight's frame keeps its slabs in the matter and soft at every distance, nothing
+        // switching as the camera moves, but on the look's own camera (#355).
+        let away = frame.matter.count == 5 ? 1 - min(max(frame.look, 0), 1) : 0
+        let far = away > 0 ? blend(aim, frame.matter, away) : aim
+        let knots = blend(far, eye, within)
         slabKnots = SIMD4(knots[0], knots[1], knots[2], knots[3])
         slabEnd = knots[4]
-        slabSoft = within
+        slabSoft = max(within, away)
         nearPlane = camera.near
         fadeLengths = inside.fade
         windowNear = inside.field[0]
@@ -345,6 +361,76 @@ public enum Nearness {
         held.sort()
         let at = min(max(rank - seen - 1, 0), max(held.count - 1, 0))
         return held.isEmpty ? .infinity : held[at].squareRoot()
+    }
+}
+
+/// Where a flight lays its slabs of dust once the eye is out of the near field (#355): around
+/// the matter in the frame rather than the aim point, each slab `slabShare` times as deep as that
+/// matter, from its second to its ninety-eighth percentile of view depth. The stack every export
+/// has is centred on the aim point and as deep as the frame is wide, so receding from a disk seen
+/// edge on it grew and slid through the disk, and a lane went in and out of its bulge's slab;
+/// laid on the matter, the slabs keep their place in it at every distance and wherever the
+/// camera aims, and soft, nothing switches as a boundary passes.
+public enum MatterDepth {
+    /// The shares of the drawn particles in the frame the matter's depth is read between.
+    public static let shares: (near: Float, far: Float) = (0.02, 0.98)
+    /// A slab's depth against the matter's: about what the export's stack gives a galaxy it
+    /// frames, the near side of a disk seen from 100 kpc a slab ahead of the far side.
+    public static let slabShare: Float = 0.75
+    /// The thinnest the matter is taken to be, as a share of its distance.
+    public static let thinnest: Float = 0.01
+
+    /// The five knots, nil with nothing in the frame. The depths' histogram by their float bits,
+    /// 128 bins an octave, read through linearly: a particle crossing a bin's edge or the frame's
+    /// moves a knot by a share of a bin over the bin's count, so the knots move as smoothly as
+    /// the camera does.
+    public static func knots(
+        camera: Camera, aspectRatio: Float, points: UnsafeRawPointer, count: Int
+    ) -> [Float]? {
+        guard count > 0 else { return nil }
+        let matrix = camera.viewProjection(aspectRatio: aspectRatio)
+        let stride = MemoryLayout<SIMD3<Float>>.stride
+        let near = max(camera.near, 1e-6)
+        func bin(_ depth: Float) -> Int { Int(depth.bitPattern >> 16) }
+        let bins = Int(Float.greatestFiniteMagnitude.bitPattern >> 16) + 1
+        let chunks = max(min(ProcessInfo.processInfo.activeProcessorCount, count / 65_536), 1)
+        var histograms = [Int32](repeating: 0, count: chunks * bins)
+        histograms.withUnsafeMutableBufferPointer { buffer in
+            nonisolated(unsafe) let all = buffer
+            concurrentPerform(iterations: chunks) { chunk in
+                let base = chunk * bins
+                for index in (chunk * count / chunks)..<((chunk + 1) * count / chunks) {
+                    let p = points.load(fromByteOffset: index * stride, as: SIMD3<Float>.self)
+                    let clip = matrix * SIMD4(p, 1)
+                    guard clip.w > near, clip.w.isFinite, abs(clip.x) <= clip.w, abs(clip.y) <= clip.w
+                    else { continue }
+                    all[base + bin(clip.w)] += 1
+                }
+            }
+        }
+        var counts = [Int](repeating: 0, count: bins)
+        for b in 0..<bins {
+            for chunk in 0..<chunks { counts[b] += Int(histograms[chunk * bins + b]) }
+        }
+        let total = counts.reduce(0, +)
+        guard total > 0 else { return nil }
+        var (b, seen) = (0, 0)
+        func depth(at share: Float) -> Float {
+            let rank = Double(share) * Double(total)
+            while b < bins - 1, Double(seen + counts[b]) < rank {
+                seen += counts[b]
+                b += 1
+            }
+            let low = Float(bitPattern: UInt32(b) << 16)
+            let high = Float(bitPattern: UInt32(b + 1) << 16)
+            let t = counts[b] > 0 ? Float(min(max((rank - Double(seen)) / Double(counts[b]), 0), 1)) : 0
+            return low + (high - low) * t
+        }
+        let (front, back) = (depth(at: shares.near), depth(at: shares.far))
+        let middle = (front + back) / 2
+        let slab = max(back - front, middle * thinnest) * slabShare
+        let start = max(middle - 2 * slab, near)
+        return (0...4).map { start + Float($0) * slab }
     }
 }
 

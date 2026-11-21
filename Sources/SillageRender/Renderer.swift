@@ -585,7 +585,8 @@ public final class Renderer {
         let uniformsLength = MemoryLayout<SplatUniforms>.stride
         let webLength = MemoryLayout<WebUniforms>.stride
         let deepTracers = traced == nil ? nil : deep?.tracerPipelines(device: device)
-        // The lace flattens out near a disk, between the distances the settings give.
+        // Near a disk the lace is carried through its dust layer's depth, within the radii the
+        // settings give.
         var webbed = plan.web
         if let within, deep != nil {
             webbed?.carrier.z = within.settings.web[0]

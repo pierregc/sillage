@@ -183,13 +183,19 @@ public final class CUDATakeStills {
         else { throw RecordingFile.Failure.truncated }
         try renderer.upload(positions: decoded)
         try renderer.setSmoothing(lengths)
+        let aspect = Float(renderer.settings.width) / Float(max(renderer.settings.height, 1))
+        let (nearness, matter) = decoded.withUnsafeBytes { bytes in
+            bytes.baseAddress.map {
+                (
+                    Nearness.distance(from: shot.camera.eye, to: $0, count: renderer.drawnCount),
+                    MatterDepth.knots(
+                        camera: shot.camera, aspectRatio: aspect, points: $0, count: renderer.drawnCount)
+                )
+            } ?? (.infinity, nil)
+        }
         let within = InsideFrame(
-            settings: flight.inside,
-            nearness: decoded.withUnsafeBytes { bytes in
-                bytes.baseAddress.map {
-                    Nearness.distance(from: shot.camera.eye, to: $0, count: renderer.drawnCount)
-                } ?? .infinity
-            })
+            settings: flight.inside, nearness: nearness, matter: matter ?? [],
+            look: flight.look(atSeconds: seconds))
         renderer.inside = within
         return (shot, within)
     }

@@ -172,11 +172,15 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   what the tone curve takes to white, so that it stays a point.
 - **The near field** (`field`, `[3, 8]` kpc of view depth): all of the above applies wholly nearer
   than the first distance and not at all past the second.
-- **Dust slabs from the eye** once inside (`slabs`, `[0.3, 1.5, 7.5]` kpc), soft, and around the
-  aim point as every export has them far away; they slide from one layout to the other as the eye
-  comes within `slabsWithin` (`[1.5, 6]` kpc) of matter.
-- **The dust web's lace flattens out** as the eye comes within `web` (`[3, 10]` kpc) of a disk,
-  the rays that graze the plane first; the dust it carries stays, as an even layer.
+- **Dust slabs from the eye** once inside (`slabs`, `[0.3, 1.5, 7.5]` kpc), soft; farther out,
+  soft too, laid on the matter in the frame, each slab three quarters as deep as that matter
+  (#355); they slide from one layout to the other as the eye comes within `slabsWithin`
+  (`[1.5, 6]` kpc) of matter. On the look's own camera the slabs are the export's, around the aim
+  point and hard, and they go over to the matter's in the second after it.
+- **The dust web's lace is carried through the dust layer's depth** as the eye comes within
+  `web` (`[1, 2]` radii, seven scale lengths each) of a disk (#354): a pixel's lace is its mean
+  along the stretch of ray inside the layer, so it evens out where the rays graze the plane, with
+  no angle at which it stops.
 - **Motion blur**: while the shutter is open (`shutter`, half of the frame's interval) a point
   star is drawn as the streak it leaves, and the frame is averaged from up to `subframes` renders
   (8), one for every four pixels the near matter crosses meanwhile, each drawing its share of
