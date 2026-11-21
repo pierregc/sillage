@@ -8,7 +8,7 @@ import Testing
 /// A scene's preview on CUDA (#430): `sillage-cuda explore` on scene-0031 of the fixtures at
 /// 3,000 particles leaves the folder a Mac's explore leaves, and `sillage-cuda hires` takes it
 /// from there. Serialized: the solver's settings are global, and the videos go through ffmpeg.
-@Suite("CUDA explore", .serialized)
+@Suite("CUDA explore", .serialized, .solverSettings)
 struct CUDAExploreTests {
     static let options = [
         "--particles", "3000", "--width", "256", "--height", "144", "--frames", "12", "--fps", "6",

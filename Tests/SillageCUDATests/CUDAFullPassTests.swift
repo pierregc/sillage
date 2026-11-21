@@ -22,7 +22,7 @@ private let macFullPass8M = ProcessInfo.processInfo.environment["SILLAGE_CUDA_FU
 /// Mac's `sillage-render` runs (`FullPassRun`), on a scene folder whose massive pass is made here
 /// by `sillage-cuda hires --pass massive` (#378), as on Metal.
 /// Serialized: the solver's settings are global, and the videos go through ffmpeg.
-@Suite("CUDA full pass", .serialized)
+@Suite("CUDA full pass", .serialized, .solverSettings)
 struct CUDAFullPassTests {
     static let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent()

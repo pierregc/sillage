@@ -175,6 +175,13 @@ CPU target (#275).
 
 **Now, in every Linux check and on every push**, on the CPU target:
 
+The solver's settings (`BarnesHutHost.treeReuse`, `forceChunk`, the tracers' sort) are global.
+The suites that move them or run a solver (`CUDA solver`, `CUDA full pass`, `CUDA take pass`,
+`CUDA explore`) carry the `.solverSettings` trait, which holds those settings for one test at a
+time across them: without it, a test of the solver's suite moved the tree's reuse under a full
+pass running beside it, which then drifted from its massive pass or resumed to other bytes
+(#441).
+
 - `cuda/tests/tree_entries.cu`, with `g++` and `clang++`: on the fixture tree of 20,000
   particles, `gtReset`, `gtRoot`, `gtMorton` and `gtCloseLevel` launched one by one (the frame
   and the order to the bit); through the C API over the fixture's cells, the masses, moments and

@@ -19,7 +19,7 @@ private let needsMetalRuns: Comment =
 /// The CUDA solver of the massive particles (#274), with `BarnesHutTests`' and
 /// `CheckpointTests`' checks of the Metal solver. On the CPU target every pass runs, slowly, over
 /// the CPU's own tree. Serialized: some tests move the solver's settings, which are global.
-@Suite("CUDA solver", .serialized)
+@Suite("CUDA solver", .serialized, .solverSettings)
 struct CUDABarnesHutSolverTests {
     func cluster(count: Int, seed: UInt64 = 3) -> (
         positions: [SIMD3<Float>], mass: [Float]
