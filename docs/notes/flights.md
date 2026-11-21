@@ -170,6 +170,15 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   square of its size, up to `nearStars` (4096); a star is `starSize` pixels of a frame 2160 high
   (1.5), its light shared among the pixels its box touches, and held under `starPeak` (2) times
   what the tone curve takes to white, so that it stays a point.
+- **Young stars in clusters** (#405, recommendation 1 of `immensity-inside-an-arm.md`): stars are
+  born in clusters and associations that come apart over tens of megayears (Lada and Lada 2003,
+  Grasha et al. 2017), so a particle with a real age puts `clusterShare` (0.8) of its stars in
+  `clusters` (4) clusters of its own, laid in its kernel as its stars are, each a Plummer sphere
+  of radius `clusterBirth` (3 pc) at birth growing by `clusterGrowth` (1 pc) a megayear. Once a
+  cluster is as wide as the stars' spread (about 50 Myr for a kernel of 50 pc) the stars stand
+  where they stand for an old particle, to the bit, so the old field and its look are unchanged
+  and the blue stars come in knots along an arm. The age is the splat's: what the run formed
+  ages as it goes, a sampled star keeps the age it was drawn with. `clusters: 0` turns it off.
 - **The near field** (`field`, `[3, 8]` kpc of view depth): all of the above applies wholly nearer
   than the first distance and not at all past the second.
 - **Dust slabs from the eye** once inside (`slabs`, `[0.3, 1.5, 7.5]` kpc), soft; farther out,

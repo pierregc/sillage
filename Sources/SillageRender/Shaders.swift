@@ -71,6 +71,12 @@ enum Shaders {
             float dustFine;
             float dustCell;
             float dustThin;
+            /// The clusters a young particle's stars gather in, 0 for none, their radius at birth
+            /// in kiloparsecs and its growth a megayear, and the share of stars in them (#405).
+            float clusterCentres;
+            float clusterBirth;
+            float clusterGrowth;
+            float clusterShare;
         };
         #endif
 
@@ -950,6 +956,27 @@ enum Shaders {
             return float3(ring * cos(phi), ring * sin(phi), z) * radius;
         }
 
+        // Where star `rank` of a particle stands, in lengths of its stars' spread, its young
+        // gathered (#405): stars are born in clusters and associations that come apart over tens
+        // of megayears (Lada and Lada 2003, Grasha et al. 2017). A star of a young particle
+        // stands, at `share`, in one of a few clusters of the particle's own, laid in its kernel
+        // as its stars are, the cluster's own stars thinned out as a Plummer sphere `radius`
+        // spreads wide. The radius grows with the age until it is the spread itself, where the
+        // star stands where an old particle's would, to the bit: an old field is even.
+        SHARED float3 insideClustered(uint index, uint rank, float ageMyr, bool aged, float spread,
+                                      constant InsideUniforms &i) {
+            float3 even = insideScatter(index, rank);
+            if (!aged || i.clusterCentres < 1.0f) { return even; }
+            float radius = (i.clusterBirth + i.clusterGrowth * ageMyr) / max(spread, 1e-9f);
+            if (radius >= 1.0f) { return even; }
+            float2 h = insideHash(uint2(index ^ 0x7f4a7c15u, rank * 2u + 1u));
+            if (h.x >= i.clusterShare) { return even; }
+            uint centres = uint(i.clusterCentres);
+            uint centre = min(uint(h.y * i.clusterCentres), centres - 1u);
+            float3 at = insideScatter(index ^ 0x2545f491u, centre);
+            return at * (1.0f - radius) + even * radius;
+        }
+
         // The size of an emitting particle's kernel on screen where `clip` puts it, in
         // accumulation pixels and before the floor and the ceiling, as `splat` works it out.
         SHARED float insideRaw(Drawn p, float4 clip, constant SplatUniforms &u,
@@ -1497,8 +1524,13 @@ enum Shaders {
             float present = saturate(insideStarsDrawn(starred, total) - float(rank));
             if (present <= 0.0f) { return culledStar(); }
             float2 b = insideHash(uint2(index ^ 0x9e3779b9u, rank * 2u + 2u));
-            p.position += insideScatter(index, rank) * insideLength(p.spacing, p.kernelScale, u)
-                * u.inside.starSpread;
+            float spread = insideLength(p.spacing, p.kernelScale, u) * u.inside.starSpread;
+            bool nursery = p.kind == 1u || p.kind == 2u;
+            float ageMyr = (nursery || p.born >= 0.0f)
+                ? (u.time - p.born) * u.megayearsPerUnit : -p.born * u.megayearsPerUnit;
+            bool aged = p.born > -1e8f && p.born < 1e8f && ageMyr >= 0.0f;
+            p.position += insideClustered(index, rank, ageMyr, aged, spread, u.inside)
+                * insideLength(p.spacing, p.kernelScale, u) * u.inside.starSpread;
             p.starShare = pow(float(rank + 1u), -u.inside.starShareExponent)
                 * insideShareNorm(total, u.inside) * present * starred;
             if (u.inside.starTail > 0.0f) {

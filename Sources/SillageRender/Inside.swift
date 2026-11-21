@@ -35,6 +35,16 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     public var starPeak: Float = 2
     /// Kernel lengths the stars of a particle are scattered over.
     public var starSpread: Float = 1
+    /// The clusters a young particle's stars gather in (#405), as real young stars are born in
+    /// clusters and associations that come apart over tens of megayears; 0 spreads every
+    /// particle's stars evenly through its kernel.
+    public var clusters = 4
+    /// A cluster's radius at birth in parsecs, and how many it grows by each megayear: once it
+    /// is as wide as the stars' spread, they stand where an old particle's stand.
+    public var clusterBirth: Float = 3
+    public var clusterGrowth: Float = 1
+    /// The share of a young particle's stars born in its clusters; the rest are spread evenly.
+    public var clusterShare: Float = 0.8
     /// The shares of the look's kernel ceiling between which a particle's light goes over from
     /// its splat to its stars.
     public var starFrom: Float = 0.05
@@ -93,6 +103,10 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         starSize = try c.value(.starSize, or: starSize)
         starPeak = try c.value(.starPeak, or: starPeak)
         starSpread = try c.value(.starSpread, or: starSpread)
+        clusters = try c.value(.clusters, or: clusters)
+        clusterBirth = try c.value(.clusterBirth, or: clusterBirth)
+        clusterGrowth = try c.value(.clusterGrowth, or: clusterGrowth)
+        clusterShare = try c.value(.clusterShare, or: clusterShare)
         starFrom = try c.value(.starFrom, or: starFrom)
         starFull = try c.value(.starFull, or: starFull)
         field = try c.value(.field, or: field)
@@ -127,6 +141,14 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !(starSize >= 0.5 && starSize <= 16) { return "starSize \(starSize) px: 0.5 to 16" }
         if !(starPeak > 0 && starPeak <= 1000) { return "starPeak \(starPeak): above 0, to 1000" }
         if !(starSpread > 0 && starSpread <= 8) { return "starSpread \(starSpread): above 0, to 8" }
+        if !(0...8).contains(clusters) { return "clusters \(clusters): 0 to 8" }
+        if !(clusterBirth > 0 && clusterBirth <= 100) {
+            return "clusterBirth \(clusterBirth) pc: above 0, to 100"
+        }
+        if !(clusterGrowth >= 0 && clusterGrowth <= 100) {
+            return "clusterGrowth \(clusterGrowth) pc a megayear: 0 to 100"
+        }
+        if !(clusterShare >= 0 && clusterShare <= 1) { return "clusterShare \(clusterShare): 0 to 1" }
         if !(starFrom >= 0 && starFrom < starFull && starFull <= 1) {
             return "starFrom \(starFrom) and starFull \(starFull): shares of the ceiling, the first lower"
         }
@@ -222,6 +244,13 @@ public struct InsideUniforms: Sendable {
     public var dustFine: Float
     public var dustCell: Float
     public var dustThin: Float
+    /// The clusters a young particle's stars gather in, 0 for none, their radius at birth in
+    /// kiloparsecs and its growth in kiloparsecs a megayear, and the share of stars in them
+    /// (#405).
+    public var clusterCentres: Float = 0
+    public var clusterBirth: Float = 0
+    public var clusterGrowth: Float = 0
+    public var clusterShare: Float = 0
 
     /// How far inside the eye is for the slabs: 0 past `slabsWithin`'s far distance from any
     /// matter, 1 nearer than its near one.
@@ -300,6 +329,10 @@ public struct InsideUniforms: Sendable {
         dustFine = inside.dustFine
         dustCell = inside.dustCell
         dustThin = (1 - inside.dustInside) * Self.dustDepth(frame)
+        clusterCentres = Float(inside.clusters)
+        clusterBirth = inside.clusterBirth / 1000
+        clusterGrowth = inside.clusterGrowth / 1000
+        clusterShare = inside.clusterShare
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
