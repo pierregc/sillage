@@ -5,10 +5,11 @@ import SillageCore
     import simd
 #endif
 
-/// What an engine gives the frames of a flight (#382): the renderer a frame is prepared on, the
-/// take's positions at a moment with their kernel lengths, and a render read back for the
-/// measures. `FlightFrames` works out everything else, the same for every engine.
-public protocol FlightStage: AnyObject {
+/// What an engine gives the frames of a take, along a flight (#382) or not (#429): the renderer a
+/// frame is prepared on, the take's positions at a moment with their kernel lengths, and a render
+/// read back for the measures. `FlightFrames` and `TakeFrames` work out everything else, the same
+/// for every engine.
+public protocol FrameStage: AnyObject {
     /// What a frame's look, palette, time and painted arms are set on.
     var styling: any FrameStyling { get }
     var drawnCount: Int { get }
@@ -16,9 +17,10 @@ public protocol FlightStage: AnyObject {
     var inside: InsideFrame? { get set }
     /// The point stars the last render drew.
     var starsDrawn: Int { get }
-    /// Puts the take's positions at `place` and their eased kernel lengths (#297) on the engine,
-    /// and gives the positions sixteen bytes apart, valid until the next call.
-    func stage(_ place: FlightFrames.Place) throws -> UnsafeRawPointer
+    /// Puts the take's positions at `place` and their kernel lengths on the engine, and gives the
+    /// positions sixteen bytes apart, valid until the next call. A flight's lengths are `eased`
+    /// between the take's own frames (#297); a take's video builds them at every moment.
+    func stage(_ place: FlightFrames.Place, eased: Bool) throws -> UnsafeRawPointer
     /// Puts the film grain where frame `index` of a video finds it.
     func setGrain(frame index: Int)
     /// One render through `camera` with what is set, read back as RGBA.
@@ -284,10 +286,10 @@ public final class FlightFrames {
     /// seconds between two frames of the video, the cameras are the ones the frame's renders go
     /// through, and the report takes the frame in.
     public func prepare(
-        on stage: some FlightStage, at frame: TimeTrack.Frame, exposure: ExposureScale?,
+        on stage: some FrameStage, at frame: TimeTrack.Frame, exposure: ExposureScale?,
         trims: InsideExposure.Track? = nil, interval: Double = 0
     ) throws -> Frame {
-        let points = try stage.stage(place(atCaptured: frame.captured))
+        let points = try stage.stage(place(atCaptured: frame.captured), eased: true)
         let seconds = frame.played / Double(capturedRate)
         let styling = stage.styling
         guard
@@ -337,7 +339,7 @@ public final class FlightFrames {
     }
 
     /// Keeps what the frame `stage` has just drawn took of the inside of a galaxy.
-    public func note(_ stage: some FlightStage, stops: Double? = nil) {
+    public func note(_ stage: some FrameStage, stops: Double? = nil) {
         guard let frame = stage.inside else { return }
         report.nearest = min(report.nearest, frame.nearness)
         report.mostStars = max(report.mostStars, stage.starsDrawn)
@@ -356,7 +358,7 @@ public final class FlightFrames {
     /// the photograph it leaves from: on its look keys, or on its first frame when it has none,
     /// whatever part of it is drawn. Measured over the whole of it, the inside of a disk would
     /// darken the photograph. Nil when the look keeps its own.
-    public func measureScale(on stage: some FlightStage) throws -> ClipExposure? {
+    public func measureScale(on stage: some FrameStage) throws -> ClipExposure? {
         guard let target = look.exposure else { return nil }
         stage.setGrain(frame: 0)
         let keys = lookKeys
@@ -380,7 +382,7 @@ public final class FlightFrames {
     /// The mean luminance the flight's frames are held under: the settings', or the brightest of
     /// the frames at its look keys when that is more, since the photograph is exposed as the
     /// export exposes it. 0 with the automatic exposure off.
-    public func measureTarget(on stage: some FlightStage, scale: ExposureScale?) throws -> Float {
+    public func measureTarget(on stage: some FrameStage, scale: ExposureScale?) throws -> Float {
         guard flight.inside.exposure > 0 else { return 0 }
         stage.setGrain(frame: 0)
         var target = Double(flight.inside.exposure)
@@ -396,7 +398,7 @@ public final class FlightFrames {
     /// frame under the target, solved every `trimStep` seconds along the whole flight, whatever
     /// part of it is drawn, and eased. `progress` hears of each moment solved.
     public func measure(
-        on stage: some FlightStage, progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
+        on stage: some FrameStage, progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }
     ) throws -> (exposure: Exposure, clip: ClipExposure?) {
         let clip = try measureScale(on: stage)
         let scale = clip?.scale
@@ -421,7 +423,7 @@ public final class FlightFrames {
     }
 
     private func solveTrim(
-        on stage: some FlightStage, _ shot: ShotReplay.Shot, scale: ExposureScale?, target: Float,
+        on stage: some FrameStage, _ shot: ShotReplay.Shot, scale: ExposureScale?, target: Float,
         guess: Double
     ) throws -> Double {
         var failure: (any Error)?
@@ -448,7 +450,7 @@ public final class FlightFrames {
     /// A moment of the flight set up at its own exposure, a still having no moments around it to
     /// ease it over: the look's scale and the target measured once, then the trim of that moment
     /// alone. With `interval`, the cameras of the renders a frame that long is averaged from.
-    public func still(on stage: some FlightStage, atSeconds seconds: Double, interval: Double = 0) throws
+    public func still(on stage: some FrameStage, atSeconds seconds: Double, interval: Double = 0) throws
         -> Frame
     {
         guard seconds >= 0, seconds <= flight.seconds else {

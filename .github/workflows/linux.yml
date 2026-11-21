@@ -118,6 +118,15 @@ jobs:
           test ! -e "$RUNNER_TEMP/flight/.inside.mp4.segments"
           .build/linux/sillage-cuda export $frames/take.sillage $options --resume > "$RUNNER_TEMP/again.log"
           grep -q 'nothing to draw' "$RUNNER_TEMP/again.log"
+      - name: sillage-cuda export draws a take's video without a flight, along a time track
+        run: |
+          frames=Tests/Fixtures/engines/frames
+          .build/linux/sillage-cuda export $frames/take.sillage --look $frames/webb.look.json --rate 30 \
+            --width 64 --height 36 --fps 4 --speed 2 --out "$RUNNER_TEMP/take/take.mp4" > "$RUNNER_TEMP/take.log"
+          cat "$RUNNER_TEMP/take.log"
+          grep -q '^speed      2x' "$RUNNER_TEMP/take.log"
+          test -s "$RUNNER_TEMP/take/take.mp4"
+          test -s "$RUNNER_TEMP/take/take.time.json"
       - name: sillage-cuda holds the engine to the reference outputs, as a full pass requires
         run: .build/linux/sillage-cuda check --fixtures Tests/Fixtures/engines
       - name: sillage-cuda hires computes a scene folder explored on the Mac, killed after a checkpoint and resumed
