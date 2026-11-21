@@ -425,6 +425,10 @@ public final class CUDABarnesHutSolver: StepChangingSolver {
     /// What the renderer reads to size a tracer's kernel (#238): the massive tree's spacing
     /// records, a `uint2` a node, the frame its codes are taken in and its depth. Nil without
     /// tracers or before `writeSmoothing`, and a new buffer after the tree grows.
+    /// The massive tree's cells as its last build left them, in the order the build's atomics gave
+    /// each level (#283's test of the spacing records compares them in the level order).
+    public var treeNodes: CUDABuffer { builder.nodes }
+
     public var tracerSpacing: (cells: CUDABuffer, frame: CUDABuffer, depth: Int)? {
         guard tracerCount > 0, let spacing = builder.spacing else { return nil }
         return (spacing, builder.frame, builder.maximumDepth)

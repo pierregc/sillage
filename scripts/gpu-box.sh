@@ -18,7 +18,7 @@
 #   up [gpu]            rents the cheapest suitable offer, waits for SSH, arms the deadline
 #   status              the box's state, price, age and the time left before its deadline
 #   setup               installs Swift 6.2, ffmpeg and tools, checks nvidia-smi and nvcc
-#   ship                rsyncs the local checkout (without .build) to /work/sillage
+#   ship                rsyncs the local checkout (without .build and .git) to /work/sillage
 #   run <command>       runs it in /work/sillage in tmux, output in /work/logs/<n>.log
 #   tail [n]            the end of the last (or n-th) run's log, and whether it has finished
 #   wait                waits for the last run to finish, then shows its tail
@@ -217,8 +217,11 @@ SH
 ship() {
     need_box
     on_box 'mkdir -p /work/sillage'
-    rsync -az --delete --exclude .build --exclude '.DS_Store' -e "ssh $(ssh_args)" \
+    # Without .git (over a gigabyte): the commit shipped is written in /work/sillage/.shipped.
+    git -C "$ROOT" rev-parse HEAD > "$STATE_DIR/shipped"
+    rsync -az --delete --exclude .build --exclude .git --exclude '.DS_Store' -e "ssh $(ssh_args)" \
         "$ROOT/" "root@$(state_get host):/work/sillage/"
+    rsync -az -e "ssh $(ssh_args)" "$STATE_DIR/shipped" "root@$(state_get host):/work/sillage/.shipped"
     echo "shipped $(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo ' with local changes') to /work/sillage"
 }
 
