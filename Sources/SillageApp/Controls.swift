@@ -83,6 +83,103 @@ struct CheckToggle: View {
     }
 }
 
+/// A segmented picker, drawn as a row of labels offscreen.
+struct SegmentedChoice<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(title: String, value: Value)]
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 2) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(options[index].value == selection ? Color(white: 0.42) : Color.clear))
+                }
+            }
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color(white: 0.2)))
+        } else {
+            Picker("", selection: $selection) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title).tag(options[index].value)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+    }
+}
+
+/// A pop-up menu, drawn as its current choice offscreen.
+struct MenuChoice<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(title: String, value: Value)]
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 6) {
+                Text(options.first { $0.value == selection }?.title ?? "")
+                Image(systemName: "chevron.up.chevron.down").font(.caption2)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color(white: 0.24)))
+        } else {
+            Picker("", selection: $selection) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title).tag(options[index].value)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+        }
+    }
+}
+
+/// A text field's text in a box, as `ImageRenderer` can draw it.
+struct OffscreenField: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(white: 0.35)))
+    }
+}
+
+/// A stepper, drawn as its two halves offscreen.
+struct CountStepper: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 8) {
+                Text(title)
+                Text("−   +")
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(white: 0.24)))
+            }
+            .font(.caption)
+        } else {
+            Stepper(title, value: $value, in: range).font(.caption)
+        }
+    }
+}
+
 struct VectorEditor: View {
     let title: String
     @Binding var value: SIMD3<Float>

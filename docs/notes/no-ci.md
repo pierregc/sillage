@@ -90,3 +90,29 @@ real bug on 4 September that every targeted probe had missed, because it ran inv
 rest of the code holds rather than the ones being looked at. `check` runs the same suite, so
 it would have caught that one too — but nothing here will catch something that depends on a
 fresh checkout or a different toolchain.
+
+## Where the suite's time goes (#234)
+
+Swift Testing reports a test's duration from its start to its end while the other tests run
+beside it, so in a whole run dozens of tests read 17 s and say nothing about which ones cost.
+Each of the 104 suites was run alone on 2026-11-21 (`./scripts/dev.sh test --filter
+"\.<Suite>/"`, M4 Max, other work on the GPU at the same time, so the GPU suites read a little
+high): 353 s summed, all passing. The whole run takes about 216 s, the suites overlapping.
+
+| Suite | Alone (s) | Its slowest tests (s, inside the suite's own parallel run) |
+|---|---:|---|
+| BarnesHutTests | 96.6 | theQuadrupoleKeepsAMergersOrbit 95.6, anEncounterBurstsAndAQuietDiskDoesNot 71.7, liveHalosConserveMomentumFarBetterThanARigidOne 57.4 |
+| EncounterTests | 38.5 | generatedScenesStartWithinTheLimits 37.6 (3 cases), fiveGalaxiesArePlaced 11.0 |
+| TidalRunTests | 30.5 | aCloseUpGoesFromItsFolderToVideos 29.5, metalGivesTheHoleFixturesToTheBit 27.1 |
+| PaletteGeneratorTests | 27.2 | |
+| ArchetypeTests | 25.2 | |
+| FreeDrawTests | 11.1 | |
+| NightRunnerTests | 7.7 | |
+| CheckpointTests | 5.0 | |
+| SolverTests | 4.6 | |
+| ExportTests | 3.5 | |
+
+Every other suite takes under 3.5 s. The first five are 62 % of the summed time, and one test,
+`theQuadrupoleKeepsAMergersOrbit`, sets the length of the whole run: the rest finishes around
+it. It is the one worth making cheaper first (fewer particles or a shorter orbit, holding what
+it measures), then the merger and encounter runs of `BarnesHutTests`.

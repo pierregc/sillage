@@ -218,6 +218,12 @@ enum ThumbnailCheck {
         try? report.write(
             to: URL(fileURLWithPath: "/tmp/sillage-thumbcheck.log"), atomically: true, encoding: .utf8)
         print(report)
+        // exit() skips every defer: the folder goes here, and stays for a look when a check failed.
+        if failed {
+            print("kept \(folder.batch.path)")
+        } else {
+            try? FileManager.default.removeItem(at: folder.batch)
+        }
         exit(failed ? 1 : 0)
     }
 

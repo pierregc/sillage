@@ -20,6 +20,7 @@ struct ControlPanel: View {
 struct ControlPanelContent: View {
     @ObservedObject var model: SimulationModel
     @Environment(\.queue) private var queue
+    @Environment(\.offscreen) private var offscreen
     @State private var exporting = false
 
     private var exportFolder: SceneFolder? { model.isOpenedTake ? model.takeFolder : nil }
@@ -73,7 +74,11 @@ struct ControlPanelContent: View {
 
             if let activity = model.fileActivity {
                 HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
+                    if offscreen {
+                        Image(systemName: "hourglass")
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
                     Text(activity).font(.caption)
                 }
             }
@@ -101,7 +106,11 @@ struct ControlPanelContent: View {
                             Double(model.capturedBytes) / 1_073_741_824)
                 )
                 .font(.caption.monospacedDigit())
-                ProgressView(value: model.captureFraction)
+                if offscreen {
+                    OffscreenTrack(fraction: Float(model.captureFraction))
+                } else {
+                    ProgressView(value: model.captureFraction)
+                }
 
                 if let why = model.captureSpillFailure {
                     Text("Cannot spill to disk, the take carries on in memory. \(why)")
@@ -138,8 +147,7 @@ struct ControlPanelContent: View {
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
 
-                Toggle("Show while computing", isOn: $model.showCanvasWhileRunning)
-                    .font(.caption)
+                CheckToggle(title: "Show while computing", isOn: $model.showCanvasWhileRunning)
                 Text(
                     "Drawing a few million particles takes a real share of the GPU the computation runs on."
                 )
@@ -178,16 +186,13 @@ struct ControlPanelContent: View {
                         .buttonStyle(.bordered)
                 }
 
-                Toggle("Quit when finished", isOn: $model.quitWhenFinished)
-                    .font(.caption)
+                CheckToggle(title: "Quit when finished", isOn: $model.quitWhenFinished)
                     .disabled(model.stopAtMyr <= 0)
 
                 Divider()
-                Stepper(
-                    "Steps per frame: \(model.stepsPerFrame)",
-                    value: $model.stepsPerFrame, in: 1...64
-                )
-                .font(.caption)
+                CountStepper(
+                    title: "Steps per frame: \(model.stepsPerFrame)",
+                    value: $model.stepsPerFrame, range: 1...64)
                 Text("Higher, the take spans more time for the same memory.")
                     .font(.caption2)
                     .foregroundStyle(Palette.secondary)
@@ -205,9 +210,14 @@ struct ControlPanelContent: View {
                 )
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Palette.secondary)
-                Slider(
-                    value: $model.playbackPosition,
-                    in: 0...Double(max(model.capturedFrames - 1, 1)))
+                if offscreen {
+                    OffscreenTrack(
+                        fraction: Float(model.playbackPosition / Double(max(model.capturedFrames - 1, 1))))
+                } else {
+                    Slider(
+                        value: $model.playbackPosition,
+                        in: 0...Double(max(model.capturedFrames - 1, 1)))
+                }
                 ParameterSlider(
                     title: "Speed (frames/s)", value: $model.playbackSpeed, range: 1...120,
                     format: "%.0f")
@@ -272,13 +282,8 @@ struct ControlPanelContent: View {
             Text("Rendering").font(.headline)
             // A whole look in one press, from the honest telescope to the frankly invented.
             // The sliders below stay live afterwards: a look is a place to start, not a mode.
-            Picker("", selection: lookBinding) {
-                ForEach(RenderLook.catalogue) { named in
-                    Text(named.name).tag(named.id)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
+            MenuChoice(
+                selection: lookBinding, options: RenderLook.catalogue.map { ($0.name, $0.id) })
             Text(lookDescription)
                 .font(.caption)
                 .foregroundStyle(Palette.secondary)
@@ -309,12 +314,8 @@ struct ControlPanelContent: View {
     private var view: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Camera").font(.headline)
-            Picker("", selection: flightBinding) {
-                Text("Orbit").tag(false)
-                Text("Free flight").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            SegmentedChoice(
+                selection: flightBinding, options: [("Orbit", false), ("Free flight", true)])
 
             if model.isFlying {
                 Text("Drag to look, scroll for speed")

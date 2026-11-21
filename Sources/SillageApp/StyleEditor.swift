@@ -438,6 +438,9 @@ struct RenderingSection: View {
                     .overlay {
                         if let image = thumbnails.images[file.name] {
                             Image(decorative: image, scale: 2).resizable().scaledToFill()
+                        } else if offscreen {
+                            // The thumbnails draw a played take, which the checks may not have.
+                            Text("no take").font(.caption2).foregroundStyle(Palette.secondary)
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 3))

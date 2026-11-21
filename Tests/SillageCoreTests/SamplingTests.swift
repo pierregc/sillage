@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import SillageCore
+
 #if canImport(simd)
     import simd
 #endif
@@ -327,7 +328,7 @@ struct SamplingTests {
         #expect(outskirts / total < 0.008)
     }
 
-    @Test func theBulgeIsPressureSupportedNotRotating() {
+    @Test func theBulgeIsPressureSupportedNotRotating() throws {
         let config = Self.spiral(bulge: 0.4)
         let system = Self.sampled(config)
         let limit = 2 * config.bulgeExtent * config.diskScaleLength
@@ -344,7 +345,7 @@ struct SamplingTests {
             dispersion += Double(simd_length_squared(v))
             n += 1
         }
-        guard n > 0 else { return }
+        try #require(n > 0)
         let mean = abs(rotation / Double(n))
         let sigma = (dispersion / Double(n)).squareRoot()
         #expect(sigma > 0)

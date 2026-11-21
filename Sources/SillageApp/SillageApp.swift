@@ -354,9 +354,14 @@ struct SillageApp: App {
         guard let model = SimulationModel() else { exit(1) }
         NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
         model.start(waiting: true)
-        write(AnyView(SetupContent(model: model).padding(20).frame(width: 720)), to: "out/ui-setup.png")
         write(
-            AnyView(ControlPanelContent(model: model).padding(14).frame(width: 276)), to: "out/ui-panel.png")
+            AnyView(SetupContent(model: model).padding(20).frame(width: 720).environment(\.offscreen, true)),
+            to: "out/ui-setup.png")
+        write(
+            AnyView(
+                ControlPanelContent(model: model).padding(14).frame(width: 276).environment(\.offscreen, true)
+            ),
+            to: "out/ui-panel.png")
         // The oscillator readout, over black. It is hosted inside the Metal view at runtime,
         // where it cannot be looked at on this machine; here it can.
         model.contemplating = true
@@ -369,7 +374,8 @@ struct SillageApp: App {
                     .background(Color.black)),
             to: "out/ui-oscillators.png")
         write(
-            AnyView(SettingsForm(settings: NotificationSettings(library: nil))),
+            AnyView(
+                SettingsForm(settings: NotificationSettings(library: nil)).environment(\.offscreen, true)),
             to: "out/ui-settings.png")
         writeStyleEditor(model)
         var activity = ActivityFile(state: .running, updated: Date())
