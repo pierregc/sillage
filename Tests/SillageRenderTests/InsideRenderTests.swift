@@ -85,7 +85,7 @@ struct InsideRenderTests {
 
     @Test func theUniformsLieWhereTheShaderReadsThem() {
         #expect(MemoryLayout<SplatUniforms>.stride == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 176 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 192 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)
@@ -94,6 +94,7 @@ struct InsideRenderTests {
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starTail) == 160)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustFine) == 164)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustThin) == 172)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.webOnly) == 176)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every

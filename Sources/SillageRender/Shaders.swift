@@ -71,6 +71,9 @@ enum Shaders {
             float dustFine;
             float dustCell;
             float dustThin;
+            /// The one galaxy whose dust the web's carrier takes in this pass, plus one; 0 for
+            /// every galaxy's, as every frame carries it (#399).
+            float webOnly;
         };
         #endif
 
@@ -2183,6 +2186,11 @@ enum Shaders {
                                      constant WebUniforms &w) {
             WebCarrier out;
             uint g = p.galaxy;
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            // A frame whose grains are spread over two slabs carries each galaxy's dust apart,
+            // a pass a galaxy, so that each is multiplied by its own web (#399).
+            if (u.inside.webOnly > 0.0f && float(g + 1u) != u.inside.webOnly) { dust = false; }
+            #endif
             if (!dust || grain.hole || grain.amount <= 0.0f) {
                 out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
                 out.pointSize = 0.0f;
