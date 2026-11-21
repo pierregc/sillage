@@ -1,4 +1,4 @@
-# Inside a galaxy (#296, #297, #353, #354, #355, #356, #357, #396)
+# Inside a galaxy (#296, #297, #353, #354, #355, #356, #357, #394, #396)
 
 What the renderer does when the camera goes into a disk, tried on real frames before #297
 changes anything: the README's Mice take (2026-11-04 scene-0067, 8 M visible particles on 12 M
@@ -783,10 +783,35 @@ grains then keep a spread of 0.85 of the mean from pixel to pixel, against 0.11 
 noise. The cells are `dustCell` (120 pc) along the disk's plane and half that across it, so that
 the filaments lie along a lane, as a disk's do. An octave whose walls (a tenth of its cell) are
 under two pixels fades out rather than shimmer, and the whole comes in with the near field
-(`field`), as the stars do: past 8 kpc a grain is drawn as before. The grain carries where it
-stands in the noise and the noise's steps across its point through the vertex stage; the
-fragment reads it (`insideDustPixel`), in the inside library only, and the CUDA engine from the
-same text.
+(`field`), as the stars do: past 8 kpc a grain is drawn as before. The grain carries the piece
+of the noise it reads (below) and the noise's steps across its point through the vertex stage;
+the fragment reads it (`insideDustPixel`), in the inside library only, and the CUDA engine from
+the same text.
+
+**A grain carries its own piece of the noise (#394).** Laid in the galaxy's frame, the noise
+stood still and the grains moved through it. With time frozen nothing shows. With time running,
+Pierre on the redrawn Mice flight (#358): between frames 1600 and 1900 of `dive-flowing` the dust
+"changes shape very fast from one frame to the next, like bat wings flapping", the worst defect
+of the flight. Measured between frames 1650 and 1750 (0.0039 Myr a frame, 459 Myr, 14 Myr after
+the pericentre) on the 4 267 grains within 1 kpc of the eye, in their galaxy's frame: a grain
+moves 1.9 pc a frame through the noise (median), where the finest octave's walls are 1.5 to 3 pc
+and its cells 15 to 30 pc. So every cloud drew another structure every few frames while it
+stayed where it was on screen, the camera following the arm. Turning the noise with the disk's
+rotation (the table the dust web is carried round by) would leave 1.15 pc a frame: after the
+passage the matter also moves outwards, 1.1 pc a frame. The grains move against the mean of
+their neighbours at 0.2 pc a frame (50 km/s), so no field shared by neighbours holds still for
+all of them either.
+
+What a grain reads is now its own: the middle of its point reads the noise at a place drawn from
+the particle's index (`dustAnchor`), the same at every moment of a take, and its pixels around
+it as before, along the galaxy's axes. A cloud carries its structure wherever it goes. Nothing
+is lost to see: a pixel's dust was already the sum of grains reading the noise in other cells
+(above), and the structure of one grain is all a neighbour ever shared with it. Frame 1700's
+column keeps its mean (2.28 against 2.30) and its spread over the pixels (0.37 against 0.39).
+From one frame to the next, the camera's turn taken out by one shift of the frame, the column's
+structure correlates at 0.989 against 0.951, and at 0.905 against 0.746 four frames apart; what
+is left is the parallax a single shift does not take out. Measured with
+`--dump-targets` on frames 1700, 1701 and 1704.
 
 ![Frames 1000 and 1100 at 1:1, the dust at a quarter: the mild noise, log-normal and even, then log-normal with cells of 80 and 120 pc along the plane](https://raw.githubusercontent.com/pierregc/sillage/assets/356-near-dust/docs/spikes/inside-356/noise-variants.jpg)
 
