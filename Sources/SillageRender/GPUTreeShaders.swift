@@ -830,3 +830,17 @@ enum GPUTreeShaders {
         #endif
         """
 }
+
+/// The Swift mirror of the MSL's `TreeParams`, outside the Metal builder so that
+/// `KernelSourceTests` holds it to its size on Linux too.
+struct GPUTreeParams {
+    var count: UInt32
+    var leafCapacity: UInt32
+    var maximumDepth: UInt32
+    var nodeCapacity: UInt32
+    var level: UInt32 = 0
+    var shift: UInt32 = 0
+    var tiles: UInt32
+    var tableLength: UInt32
+    var moments: UInt32
+}
