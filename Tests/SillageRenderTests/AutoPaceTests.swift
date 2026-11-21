@@ -35,7 +35,7 @@ struct AutoPaceTests {
             var recipe = NightRecipe()
             recipe.speed = speed
             return NightPlanner(recipe: recipe, model: model, maximumParticles: 10_000_000, freeBytes: 500e9)
-            { _ in [scene] }
+            { [scene] _ in [scene] }
         }
         #expect(planner(.constant(1)).videoFrames(scene) == 900)
         #expect(planner(.constant(2)).videoFrames(scene) == 450)

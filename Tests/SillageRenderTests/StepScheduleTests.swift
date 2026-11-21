@@ -105,8 +105,10 @@ struct StepScheduleTests {
         var scheduler = StepScheduler(
             schedule: try StepSchedule(parsing: "0:2,20:1,60:2"), stepMyr: 1, story: nil)
         #expect(scheduler.judge == nil)
-        for count in StepSchedule.settleChunks(settle: 21, perFrame: 8) { scheduler.next(count, frame: nil) }
-        for frame in 0..<10 { scheduler.next(8, frame: frame) }
+        for count in StepSchedule.settleChunks(settle: 21, perFrame: 8) {
+            _ = scheduler.next(count, frame: nil)
+        }
+        for frame in 0..<10 { _ = scheduler.next(8, frame: frame) }
         #expect(scheduler.stepsRun == 73 && scheduler.ownSteps == 101)
         #expect(
             scheduler.switches.map(\.step) == [5, 21, 61] && scheduler.switches.map(\.scale) == [2, 1, 2])

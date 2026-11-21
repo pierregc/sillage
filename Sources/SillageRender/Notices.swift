@@ -142,7 +142,7 @@ public enum Notifier {
     }
 
     private static func create(_ path: String) -> FileHandle? {
-        FileManager.default.createFile(atPath: path, contents: nil)
+        _ = FileManager.default.createFile(atPath: path, contents: nil)
         return FileHandle(forWritingAtPath: path)
     }
 

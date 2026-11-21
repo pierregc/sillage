@@ -49,7 +49,7 @@ struct KeyFrameVisitTests {
         // The middle frame, as without curves, and the two spans asked for.
         #expect(kept.map(\.frame) == [1, 2, 3, 8, 13, 14, 15])
         #expect(kept.filter { $0.role == "chosen" }.map(\.frame) == [1, 2, 3, 13, 14, 15])
-        #expect(try straight.storedHires()?.full?.keyFrames == [1, 2, 3, 8, 13, 14, 15])
+        #expect(straight.storedHires()?.full?.keyFrames == [1, 2, 3, 8, 13, 14, 15])
 
         // Stopped after a checkpoint and resumed: the same frames, to the byte.
         #expect(throws: FullPassRun.Failure.self) {
@@ -81,7 +81,7 @@ struct KeyFrameVisitTests {
             "extract", straight.keyFrames.path, "--at", "\(megayears[1])", "--span", "3", span.path,
         ])
         #expect(try Data(contentsOf: span) == Data(contentsOf: early.keyFrames))
-        #expect(try early.storedHires()?.full == nil)
+        #expect(early.storedHires()?.full == nil)
         let left = (try? FileManager.default.contentsOfDirectory(atPath: early.exports.path)) ?? []
         #expect(left.isEmpty, "\(left)")
 

@@ -170,7 +170,7 @@ struct CUDAFullPassTests {
             cut.path,
         ])
         #expect(try Data(contentsOf: cut) == Data(contentsOf: early.keyFrames))
-        #expect(try early.storedHires()?.full == nil)
+        #expect(early.storedHires()?.full == nil)
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: early.exports.path)) ?? []).isEmpty)
     }
 
@@ -203,7 +203,7 @@ struct CUDAFullPassTests {
             try Data(contentsOf: straight.url.appendingPathComponent("state.bin"))
                 == Data(contentsOf: stopped.url.appendingPathComponent("state.bin")))
         #expect(try Data(contentsOf: straight.keyFrameList) == Data(contentsOf: stopped.keyFrameList))
-        #expect(try stopped.storedHires()?.full?.resumes == 1)
+        #expect(stopped.storedHires()?.full?.resumes == 1)
     }
 
     /// Along a time track (#310), slow then fast: the frames the track asks, those of the slow

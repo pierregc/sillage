@@ -212,7 +212,7 @@ public enum ResumedFile {
     /// `url` opened for appending: begun empty, or cut back to the `kept` bytes a checkpoint
     /// recorded, and refused when it holds fewer.
     public static func open(_ url: URL, kept: Int?) throws -> FileHandle {
-        if kept == nil { FileManager.default.createFile(atPath: url.path, contents: nil) }
+        if kept == nil { _ = FileManager.default.createFile(atPath: url.path, contents: nil) }
         let handle = try FileHandle(forWritingTo: url)
         if let kept {
             guard try handle.seekToEnd() >= UInt64(kept) else {

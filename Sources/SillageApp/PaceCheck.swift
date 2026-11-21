@@ -94,7 +94,7 @@ enum PaceCheck {
         let running = arguments.contains("--export")
         if !running { queue.runnerURL = nil }
         let quotes = StageQuotes.read([folder], library: queue.store.library)
-        var sheet = ExportSheet(
+        let sheet = ExportSheet(
             queue: queue, folders: [folder], close: {}, ticked: [.hd], settings: ExportSettings(),
             quotes: quotes)
         sheet.settings.speed = .auto

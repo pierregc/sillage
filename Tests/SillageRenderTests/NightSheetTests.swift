@@ -41,7 +41,7 @@ final class NightSheetTests {
     private func planner(_ library: URL, free: Double? = 500e9) -> NightSheetPlanner {
         NightSheetPlanner(
             library: library, now: Self.evening, model: Self.model, maximumParticles: 10_000_000,
-            freeBytes: free, timeZone: Self.paris, draws: Self.draws)
+            freeBytes: free, timeZone: Self.paris, draws: { Self.draws($0) })
     }
 
     @Test func aSheetLeftAloneIsAnAutoNightForSevenInTheMorning() throws {
