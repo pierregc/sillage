@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "keys": [
+    {
+      "at": 0,
+      "myr": 300,
+      "look": true
+    },
+    {
+      "at": 4,
+      "myr": 360,
+      "look": true
+    },
+    {
+      "at": 12,
+      "myr": 452.0,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          10.0,
+          -30.0,
+          45
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 0
+      }
+    },
+    {
+      "at": 18,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          6.668,
+          -13.695,
+          12
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 0,
+        "offset": [
+          -3.093,
+          1.853,
+          0
+        ],
+        "disk": true
+      }
+    },
+    {
+      "at": 24,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          3.564,
+          -5.683,
+          4
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 0,
+        "offset": [
+          -7.876,
+          4.362,
+          0
+        ],
+        "disk": true
+      }
+    },
+    {
+      "at": 30,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          -1.062,
+          0.351,
+          1.3
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 1
+      }
+    },
+    {
+      "at": 36,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          -4.992,
+          2.082,
+          0.4
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 0,
+        "offset": [
+          -8.26,
+          3.584,
+          0
+        ],
+        "disk": true
+      }
+    },
+    {
+      "at": 42,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          -7.049,
+          2.283,
+          0.08
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 0,
+        "offset": [
+          -9.154,
+          4.021,
+          0.05
+        ],
+        "disk": true
+      }
+    },
+    {
+      "at": 54,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          -8.69,
+          2.356,
+          0.05
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 0,
+        "offset": [
+          -10.404,
+          3.98,
+          0.1
+        ],
+        "disk": true
+      }
+    },
+    {
+      "at": 62,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          -9.145,
+          2.09,
+          0.06
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 1
+      }
+    },
+    {
+      "at": 70,
+      "myr": 462.0,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          -12.526,
+          1.536,
+          2.5
+        ],
+        "disk": true
+      },
+      "aim": {
+        "galaxy": 0
+      }
+    },
+    {
+      "at": 78,
+      "myr": 520,
+      "eye": {
+        "galaxy": 0,
+        "offset": [
+          -10,
+          -60,
+          45
+        ]
+      },
+      "aim": [
+        1,
+        -1,
+        0
+      ]
+    },
+    {
+      "at": 84,
+      "myr": 620,
+      "eye": [
+        0,
+        -110,
+        120
+      ],
+      "aim": [
+        2,
+        -1,
+        0
+      ]
+    }
+  ]
+}
