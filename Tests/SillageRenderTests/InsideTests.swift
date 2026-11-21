@@ -132,6 +132,45 @@ struct InsideTests {
             InsideFrame(settings: InsideSettings(), nearness: 0.2, matter: near),
             camera: camera, settings: settings, splat: plan.splat)
         #expect(abs(within.slabKnots[2] - 1.5) < 1e-4 && within.slabSoft == 1)
+
+        // Near enough that the matter reaches the eye, the stack still follows it: its first
+        // knot behind the eye rather than stopped at the near plane (#396).
+        let close = knots(Camera(eye: SIMD3(0, -12, 0), target: .zero, fieldOfView: 0.6, near: 0.001))
+        #expect(close[0] < 0 && close[2] > 10 && close[2] < 22, "\(close)")
+        for index in 1..<5 {
+            #expect(abs((close[index] - close[index - 1]) - (close[1] - close[0])) < 1e-3, "\(close)")
+        }
+    }
+
+    /// Between the matter's slabs and the eye's, a render is drawn with either stack as asked,
+    /// for the renderer to dissolve them, and never slides one into the other (#396).
+    @Test func aFrameBetweenTheStacksIsDrawnWithEither() {
+        let settings = RenderSettings(width: 1920, height: 1080, supersample: 2, maximumKernel: 92)
+        let camera = Camera(eye: SIMD3(0, -12, 0), target: .zero, near: 0.001)
+        let plan = FramePlan(
+            settings: settings, camera: camera, time: 0, drawnCount: 1000, tracerCount: 0,
+            luminosityNormalisation: 1, mapped: false, laceScale: nil)
+        let matter: [Float] = [-16.8, -2.4, 12, 26.4, 40.8]
+        func inside(_ eyeSlabs: Float?) -> InsideUniforms {
+            InsideUniforms(
+                InsideFrame(settings: InsideSettings(), nearness: 3, matter: matter, eyeSlabs: eyeSlabs),
+                camera: camera, settings: settings, splat: plan.splat)
+        }
+        let theMatters = inside(0)
+        #expect(theMatters.slabKnots == SIMD4(matter[0], matter[1], matter[2], matter[3]))
+        #expect(theMatters.slabEnd == matter[4] && theMatters.slabSoft == 1)
+        let theEyes = inside(1)
+        #expect(theEyes.slabKnots[1] == 0.3 && theEyes.slabKnots[2] == 1.5 && theEyes.slabKnots[3] == 7.5)
+        #expect(theEyes.slabSoft == 1)
+        let depth = InsideUniforms.depth(InsideFrame(settings: InsideSettings(), nearness: 3))
+        #expect(depth > 0 && depth < 1)
+        // Asked for neither, a knot behind the eye still blends to finite, rising knots.
+        let sliding = inside(nil)
+        let all = [
+            sliding.slabKnots[0], sliding.slabKnots[1], sliding.slabKnots[2], sliding.slabKnots[3],
+            sliding.slabEnd,
+        ]
+        #expect(all.allSatisfy(\.isFinite) && zip(all, all.dropFirst()).allSatisfy { $0 < $1 }, "\(all)")
     }
 
     @Test func theUniformsCarryTheSettingsInAccumulationPixels() {

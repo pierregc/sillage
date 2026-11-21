@@ -1,4 +1,4 @@
-# Inside a galaxy (#296, #297, #353, #354, #355, #356, #357)
+# Inside a galaxy (#296, #297, #353, #354, #355, #356, #357, #396)
 
 What the renderer does when the camera goes into a disk, tried on real frames before #297
 changes anything: the README's Mice take (2026-11-04 scene-0067, 8 M visible particles on 12 M
@@ -646,7 +646,7 @@ place against its bulge in slab units however far the camera goes. The depths ar
 histogram by their float bits, 128 bins an octave, interpolated within a bin, so a particle leaving
 the frame moves the knots by a sliver; 8 M particles cost a few milliseconds a frame on the CPU,
 as `Nearness` does. Near matter the layout still slides to the eye's (`slabsWithin`), now from the
-matter's stack instead of the aim point's.
+matter's stack instead of the aim point's (dissolved instead since #396).
 
 **Why three quarters.** Tried on frames 2196 to 2425 and on a whole galaxy seen from 100 kpc:
 
@@ -709,6 +709,35 @@ Metal's.
 knots in `InsideUniforms.slabKnots` and `slabEnd`, `slabSoft` 1 for every frame of a flight off its
 look keys. Only where the knots stand changed, on the CPU (`InsideUniforms.init`). A factor per
 slab can lean on the slabs being soft and in the matter at every distance.
+
+## Slabs that cross the matter (#396)
+
+Pierre, on #358's flight with time flowing (point 3 of his list): from about frame 460 something
+sweeps from where the two disks meet up along the larger disk to the top right, comes back down
+between 500 and 534, and another sweep goes down later. The frozen flight does it too, so it is
+not the take. Without dust it is gone, and none of the near field, the stars, the web or the
+kernel cap changes it. It is the slabs: twice in that span their boundaries moved through the
+matter instead of with it, and a boundary crossing a lane changes how much of it a star close
+behind it sees (a lane in mid-slab hides 0.8 of a star 0.3 slab behind it, the same lane on a
+boundary 0.65, half again as much light through a lane of optical depth 3). Measured in five
+boxes along the sweep, frames 516 to 544: a bright pulse of 15 to 17 levels runs from the
+crossing to the top right in eight frames.
+
+- **The matter's stack stopped at the eye.** `MatterDepth` centred its four slabs on the matter,
+  but held the first knot at the near plane. From frame 455 the matter reached closer than two
+  slabs from its middle, the stack stopped following it, and as the eye came in the boundaries
+  went deeper into the disk: the sweep up to the top right.
+- **The slide to the eye's slabs.** Under 6 kpc from matter (`slabsWithin`) the knots slid from
+  the matter's stack to the eye's, 21, 42 and 64 kpc down to 8, 20 and 39 kpc by frame 545 and on
+  to 0.3, 1.5 and 7.5 kpc: every boundary crossed the whole disk on the way, the sweeps down.
+
+**What replaced them.** The matter's knots follow the matter however near it is, the first ones
+behind the eye if need be (they blend with the aim point's straight, not through their
+logarithms). Between the matter's stack and the eye's, every render of the frame is drawn twice,
+once with each, and the light dissolved from one to the other by the share the slide had
+(`Renderer.encode(cameras:)`, `InsideFrame.eyeSlabs`): no boundary moves through anything, the
+frame goes from one ordering of its dust to the other as a cross-fade. On the dive that is about
+frames 505 to 880 and the same distances on the way out, each render twice there.
 
 ## The near dust (#356)
 
