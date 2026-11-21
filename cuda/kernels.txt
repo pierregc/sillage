@@ -27,6 +27,10 @@ BarnesHutShaders bhAcceleration cuda
 BarnesHutShaders bhTracerDrift cuda
 BarnesHutShaders bhTracerStep cuda
 BarnesHutShaders bhDrawnDrift cuda
+BarnesHutShaders bhGasLeaves pending #401
+BarnesHutShaders bhGasFold pending #401
+BarnesHutShaders bhGasChoose pending #401
+BarnesHutShaders bhGasStick pending #401
 
 GPUTreeShaders gtReset cuda
 GPUTreeShaders gtBounds cuda gpu-only

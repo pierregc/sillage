@@ -24,6 +24,8 @@ public struct SceneFile: Codable, Sendable, Equatable {
     public var encounters: [Encounter]?
     /// How the scene was drawn, when a generator drew it.
     public var draw: SceneDraw?
+    /// Gas that dissipates (#401), when the scene asks for it.
+    public var stickyGas: StickyGas?
 
     public struct Galaxy: Codable, Sendable, Equatable {
         public var name: String
@@ -199,6 +201,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
         galaxies = scene.galaxies.map { Galaxy($0, share: Double($0.particleCount) / total) }
         encounters = scene.encounters.isEmpty ? nil : scene.encounters
         draw = scene.draw
+        stickyGas = scene.stickyGas
     }
 
     /// The scene at a given number of visible particles. Read back at the count it was written
@@ -223,6 +226,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
         scene.timeStepScale = timeStepScale
         scene.encounters = encounters ?? []
         scene.draw = draw
+        scene.stickyGas = stickyGas
         scene.retune()
         if let timeStep { scene.timeStep = timeStep }
         if let softening { scene.softening = softening }

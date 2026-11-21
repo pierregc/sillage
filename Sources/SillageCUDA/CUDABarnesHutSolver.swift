@@ -181,6 +181,9 @@ public final class CUDABarnesHutSolver: StepChangingSolver {
         let count = host.count
         let tracing = tracers > 0
 
+        if scene.stickyGas != nil {
+            throw CUDAError(.invalidArgument, "sticky gas runs on Metal alone so far (#401)")
+        }
         if let store, store.capacity < count {
             throw CUDAError(
                 .invalidArgument, "light tracers' buffers hold \(store.capacity) particles, not \(count)")
@@ -614,6 +617,8 @@ extension CUDABarnesHutSolver: BarnesHutPasses {
             var p = host.params
             try check(
                 sc_solver_dissipate(handle, &p, stride, disks, UInt32(disks.count)), "the dissipation")
+        // Metal's alone so far (cuda/kernels.txt): a scene that asks for it is refused at init.
+        case .stickyGas: return
         case .tracerStarFormation:
             guard tracerCount > 0, nodeCount > 0 else { return }
             var formation = host.formationParams(nodeCount: nodeCount)

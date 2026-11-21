@@ -230,6 +230,18 @@ public final class BarnesHutHost {
         return disks
     }
 
+    /// What the sticky gas passes read this step, in simulation units; nil in a scene without
+    /// it (#401).
+    public var stickyGas: StickyGasGPU? {
+        guard let gas = scene.stickyGas else { return nil }
+        return StickyGasGPU(
+            soundSpeed: gas.soundSpeed / Float(Physics.kilometersPerSecondPerVelocityUnit),
+            rate: gas.rate * Float(Physics.megayearsPerTimeUnit), crossing: gas.crossing,
+            reachSquared: gas.reach * gas.reach, timeStep: timeStep,
+            jeans: gas.jeans * Physics.gravitationalConstant.squareRoot(),
+            minimum: UInt32(max(gas.cellGas, 2)))
+    }
+
     public var params: BHParams { params(over: massive) }
 
     public func params(over particles: Int) -> BHParams {

@@ -51,6 +51,20 @@ public struct BHParams {
     public var pad1: Float = 0
 }
 
+/// The sticky gas passes (#401), as `StickyParams` reads it.
+public struct StickyGasGPU {
+    public var soundSpeed: Float
+    public var rate: Float
+    public var crossing: Float
+    public var reachSquared: Float
+    public var timeStep: Float
+    public var jeans: Float
+    public var minimum: UInt32
+    /// The nodes one dispatch runs over.
+    public var first: UInt32 = 0
+    public var end: UInt32 = 0
+}
+
 /// A copy of the drawn particles between two steps (#310), as `DrawnDriftParams` reads it.
 public struct DrawnDriftGPU {
     public var tracerCount: UInt32

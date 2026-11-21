@@ -15,6 +15,10 @@ Standing gaps, in the order they matter:
    A study on paper (2026-11-21) puts isothermal SPH nearer three times a scene than ten, and a
    sticky gas carried by the tree's cells at a few percent, to be tried first as a spike:
    [Gas that dissipates](gas-that-dissipates.md).
+   The spike ran (#401): behind `--sticky-gas`, at 2.3 % of a step, gas sinks to the nuclei after
+   a passage and keeps thin lanes there, once the rule is a collision along one line with a
+   pressure floor. Its two numbers are a setting, not a calibration, and tracers' gas, star
+   formation and CUDA are not done: [Sticky gas on the tree's cells](sticky-gas.md).
 2. **Colour is not derived.** Stellar populations are a hand-made ramp rather than luminosities
    in real bands composited like telescope filters. This is the next lever for making the
    interior of a galaxy legible.
