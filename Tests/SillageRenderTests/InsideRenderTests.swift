@@ -278,6 +278,32 @@ struct InsideRenderTests {
         #expect(try stage.dust(far) == beyond)
     }
 
+    /// A near grain carries its structure with it (#394): the grains and the eye moved together
+    /// through their galaxy's frame, as a disk's matter and a camera that follows it move while
+    /// time runs, draw the same dust.
+    @Test func aNearGrainCarriesItsStructureWithIt() throws {
+        var generator = SeededGenerator(seed: 9)
+        let positions = (0..<600).map { _ in
+            SIMD3<Float>(generator.uniform() - 0.5, generator.uniform() - 0.5, generator.uniform() - 0.5)
+                * 0.6
+        }
+        // A sixth of a cell of the noise, which is another structure altogether in a field that stands still.
+        let moved = SIMD3<Float>(0.013, -0.007, 0.004)
+        func column(_ shift: SIMD3<Float>) throws -> [Float] {
+            let stage = try Stage(
+                positions.map { $0 + shift }, maximumKernel: 64, supersample: 2, component: .dust)
+            stage.renderer.inside = Self.inside(0.8) { $0.dustInside = 1 }
+            return try stage.dust(
+                Camera(eye: SIMD3(0, -0.8, 0) + shift, target: SIMD3(0, 100, 0) + shift, near: 0.001))
+        }
+        let first = try column(.zero)
+        let second = try column(moved)
+        let total = first.reduce(0) { $0 + Double($1) }
+        let change = zip(first, second).reduce(0) { $0 + Double(abs($1.0 - $1.1)) } / total
+        #expect(total > 0)
+        #expect(change < 0.01, "\(change) of the column changed")
+    }
+
     /// A particle whose kernel covers more of the frame than `nearFrom` stands for more stars, as
     /// the square of its size up to `nearStars`, and they carry the same light (#357).
     @Test func aNearParticleBreaksIntoMoreStars() throws {
