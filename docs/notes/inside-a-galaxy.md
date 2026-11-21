@@ -526,8 +526,9 @@ entry points only call them. On CUDA:
   out, as Metal's does.
 - `CUDATakeStills.flightStill` draws a moment of a flight: the camera and the moment
   `Flight` gives, the smoothing lengths eased between the two captured frames around it, the
-  nearness, and the exposure from the pre-pass of `TakeExport.measureTrims` (a small frame
-  every half second of the flight, cached on the first call).
+  nearness, and the exposure of that moment alone, the look's scale and the target measured on
+  the first call. Since #382 it goes through `FlightFrames`, the flow a flight's video is drawn
+  through ([flights.md](flights.md#the-export-on-cuda)).
   `sillage-cuda still <take> --look <look> --flight <file> --seconds 0,2.5,9` writes them as
   `<preset>-flight-<seconds>s.png`.
 
@@ -542,8 +543,9 @@ frame) are the same bytes from main and from the commit before #347, and `Inside
 `KernelSourceTests` and `EngineFixtureTests` pass. Two moments of `inside.flight.json` are now
 among the reference outputs, and `sillage-cuda check` holds the CUDA engine to them
 ([one-kernel-source.md](one-kernel-source.md#the-frames-from-inside-a-galaxy-369)): within
-60 dB of Metal's on the CPU target, not yet run on an NVIDIA GPU (#283). The CUDA engine has no
-flight video export; the full pass draws no flight on either engine.
+60 dB of Metal's on the CPU target, not yet run on an NVIDIA GPU (#283). A flight's video is
+`sillage-cuda export` (#382, [flights.md](flights.md#the-export-on-cuda)); the full pass draws no
+flight on either engine.
 
 ## The lace through the dust layer (#354)
 

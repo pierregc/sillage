@@ -55,6 +55,9 @@ sc_status sc_context_info(const sc_context *context, sc_device_info *info);
 sc_status sc_context_synchronize(sc_context *context);
 /* The device bytes the context's buffers hold, and the most they have held (#275). */
 sc_status sc_context_memory(const sc_context *context, uint64_t *held, uint64_t *peak);
+/* The device bytes free now, whoever holds the rest, and the device's whole; both 0 on the CPU
+ * target (#382). */
+sc_status sc_context_free_memory(const sc_context *context, uint64_t *free_bytes, uint64_t *total);
 
 /* Device memory. A buffer belongs to its context, which must outlive it. */
 typedef struct sc_buffer sc_buffer;

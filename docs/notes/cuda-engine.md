@@ -1952,6 +1952,107 @@ from a take of the two moments), which a GPU box runs first too:
   without thinning) gives the same take and PNGs, to the byte, before the change, with the MSL
   shared, and with the Swift moved into `HoleSplats`.
 
+## A flight's video (#382)
+
+`sillage-cuda export <scene folder | take> --flight <file>`:
+[flights.md](flights.md#the-export-on-cuda) says what it draws, its segments, `--resume` and
+`--part`. Here, the engine's side of it.
+
+### The stage of a flight's frames
+
+`FlightFrames`, portable, decides a frame; `CUDATakeStills` is its `FlightStage`:
+
+- **The take's positions at a moment.** `Recording.positions(at:into:)` decodes the four stored
+  frames around the moment and weighs them, every core taking a share, straight into pinned host
+  memory (`CUDAHostMemory`) the device reads from; a take read from a file is decoded from its
+  mapping, with no copy. The bits are those of one particle at a time (`TakeDecodeTests`).
+  Before, the decode built an array a particle and ran three to six times a still: seconds of
+  one core at 8 M.
+- **A moment staged once.** While a flight freezes time, or a still solves its exposure, the
+  place in the take does not move: the positions, their tree and their lengths stay on the
+  device and nothing is decoded again (`stagings` counts, for the tests).
+- **The kernel lengths**, eased between the two captured frames around the moment as before
+  (#347), the trees built at the take's own frames alone.
+- **A render read back** for the exposure's measures, and the grain put where frame N of a video
+  finds it. A still solves its trim with the grain where it stands once the target is measured,
+  so that it is the same still whatever the run drew before it; drawn alone, it is the still it
+  was, to the byte.
+
+### Where a frame's time goes
+
+`--profile` hands a `PhaseTimes` to the stage and to the renderer. Each phase (the take's
+decode, the tree and the kernel lengths, the upload, the clear, each particle pass, the point
+stars, the finish, the inside's resolve, the post-processing, the frame's set up, the exposure's
+read back, the encoder) waits for the device before its time is read; a phase timed inside
+another is taken off the outer one; and the export prints two tables, the exposure's pre-pass and
+the frames, each ending on the rest no phase counted. The waits slow the run a little: it is for
+measuring.
+
+On the host, a frame of N particles costs the decode above, one pass over the positions each for
+`Nearness.distance` and `MatterDepth.knots`, and the blend of the lengths. No step of the point
+stars runs on the host with the GPU library: the listing, the read back of its count and the
+draw are kernels. #283 saw one core busy for the whole of a still from inside an arm, user time
+equal to wall time, and read it as point star work on the CPU. It is what the CUDA driver's wait
+looks like, which spins a core while a kernel runs, with the old decode on top. That is read from
+the code, not measured: #424 measures it, and whether the 50 to 110 s of such a still are the
+GPU's own, in the up to eleven full-size renders a still from inside takes.
+
+On the CPU target the fixture's flight (4 s, nine frames at two a second) at 96 by 54 takes
+about a minute on four cores, 44 s of it the exposure's pre-pass: 25 draws over 17 moments.
+
+### Large splats in a flight
+
+From inside a disk the near kernels cover 10^4 to 10^5 supersampled pixels each. With the GPU
+library a flight's frames set aside the splats past `CUDATakeStills.flightLargeSplatPixels`
+(1,024 pixels) for the second way ("Large splats, two ways", above), in a list of a quarter of
+the drawn particles at most, between 1,024 and 2^20 entries; a list that is full leaves the splat
+to its own thread. The CPU target, which draws a pass from several host threads, keeps the first
+way. `--large-splats <pixels>|off` chooses. Both ways lay the same bits
+(`bothWaysForLargeSplatsDrawTheSameFrames`), so the choice is one of time alone, and it was made
+without a GPU: #424 times both and sets the default, and #425 goes further if the profile says
+so.
+
+### Memory
+
+`sc_context_free_memory` (`cudaMemGetInfo`) gives what the device has free, whichever process
+holds the rest; `CUDAContext.freeMemory` is nil on the CPU target. After its first segment the
+export prints the most it held, what is free and how many more of it would fit, and it turns an
+out of memory error into a sentence with those numbers and what to do. A frame from inside
+allocates its targets at twice the size (7680 by 4320 for 4K) and its list of stars: two or three
+exports are what a 24 GB card holds (#283), and they slow one another. One export a GPU is the
+rule, and `--part k/n` with `--device` the way to more GPUs.
+
+### Tests
+
+`CUDA flight export` (`CUDAFlightExportTests`), on the CPU target in every check, at 64 by 36 and
+two frames a second:
+
+| test | what |
+| --- | --- |
+| `theFixturesFlightExportsWithEveryFrame` | `inside.flight.json` whole: nine frames in three segments joined, the folder of segments gone, the eye inside the disk, the trims solved at 17 moments, and the frame at the look key equal to the still `sillage-cuda still --flight` draws there |
+| `anExportStoppedResumedOrSplitIsTheSameVideo` | drawn in one go, stopped after a segment and resumed, split in `--part 1/2` and `2/2`: the same frames as drawn and the same file; a resume draws the missing segments alone, refuses another export's and leaves a whole video alone; without `--resume` it starts again |
+| `withoutTheAutomaticExposureEveryFrameIsItsStill` | every frame of the video, at the keys and between them, equal to its still, and a frozen moment decoded once |
+| `bothWaysForLargeSplatsDrawTheSameFrames` | a frame from inside, both ways, the same bits |
+| `anOverlayIsRefusedOrLeftOut` | the words over a video refused, left out with `--no-overlay`; no `--flight`, refused |
+| `theKeysOfAFlightAreDrawnAsStills` | `--flight-keys` and `--flight-at`, each still the one drawn alone |
+| `aFlightIsDrawnFromTheFramesATakeHolds` | with `--framing`, from extracts of a run (#379): a moment the take holds is the picture the whole run gives, time flows through a span, a flight that leaves the frames held is refused before anything is drawn |
+| `aPacedFlightSaysItsPace` | a stretch paced by the nearness (#406) |
+| `thePlanKeepsTheExposureToTheBit` | `plan.json` read back to the bit, and what differs between two exports |
+
+With the automatic exposure on, a still takes the trim of its moment alone and the video eases
+the trims along the flight, so a frame of the video is its still only on a look key: #382 asked
+for the frames at the keys equal to the stills, and that is the part of it that can hold.
+`TakeDecodeTests`, portable, holds the decode to the bits of one particle at a time, at 16 and
+21 bits an axis, in memory and from a file.
+
+The workflow also runs the command: the fixture's flight exported, killed after its first
+segments and resumed.
+
+Skipped without a GPU, for #424: `aFlightInsideAnArmIsTimedIn4K`, a second of a flight inside an
+arm of a take of millions of particles in 4K (`SILLAGE_CUDA_FLIGHT=<take>,<look>,<flight>`),
+both ways for large splats to the same bits, with the profile and the peak device memory, on
+`CUDAFLIGHT` lines beside the M4 Max's 94 to 360 ms a render.
+
 ## What waits for a GPU (#283)
 
 Phase 1 ends with every CUDA entry point written and compiled by `nvcc`, and run on the CPU
@@ -1987,6 +2088,9 @@ And these 19 tests, which skip without a GPU:
 | `CUDA full pass` | `aFrameOfTheFullPassIsTimed` | a frame of the run and of each preset at 8 M, with the peak host and device memory |
 | `CUDA take pass` | `aTakePassOnTheGPUKilledTwiceAndResumedWritesTheSameFiles` | #377's resume test at 2 M visible on 3 M of dark matter |
 | `CUDA take pass` | `aTakePassIsTimed` | a scene of today's size, 8 M on 12 M: a step phase by phase, a frame with its take and its video, the peak host and device memory |
+
+One more waits for #424's session rather than #283's: `aFlightInsideAnArmIsTimedIn4K`
+(`CUDA flight export`, above).
 
 Six more wait for data rather than a GPU, and run on the CPU target when their folder of branch
 `assets/cuda-checks` is named; #283 runs them on its box too, at the sizes it names:

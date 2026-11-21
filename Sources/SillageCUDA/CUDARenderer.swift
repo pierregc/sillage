@@ -83,6 +83,9 @@ public final class CUDARenderer: FrameStyling {
     public var inside: InsideFrame?
     /// The point stars the last frame drew, to the eight.
     public private(set) var starsDrawn = 0
+    /// Where the time of each pass goes when the drawing is profiled: each pass then waits for
+    /// the device, which changes nothing of what is drawn.
+    public var phases: PhaseTimes?
 
     private let handle: OpaquePointer
     private let largeCapacity: Int
@@ -301,7 +304,7 @@ public final class CUDARenderer: FrameStyling {
         if plan.web != nil { try bakeLace() }
         try bind()
         if plan.clears {
-            try check(sc_render_clear(handle), "emptying the light and the dust")
+            try timed("clear") { try check(sc_render_clear(handle), "emptying the light and the dust") }
             starsDrawn = 0
         }
         var deep: Deep?
@@ -359,7 +362,12 @@ public final class CUDARenderer: FrameStyling {
 
     /// Brings the light and the dust up to date as floats, for `target` and for #277.
     public func finish() throws {
-        try check(sc_render_finish(handle), "finishing the frame's targets")
+        try timed("finish") { try check(sc_render_finish(handle), "finishing the frame's targets") }
+    }
+
+    private func timed<T>(_ phase: String, _ work: () throws -> T) throws -> T {
+        guard let phases else { return try work() }
+        return try phases.time(phase, on: context, work)
     }
 
     /// The frame as a picture in 8-bit bytes: the particle passes, then the post-processing of
@@ -399,10 +407,12 @@ public final class CUDARenderer: FrameStyling {
                 guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
                     throw CUDAError(.invalidArgument, "this renderer has no light")
                 }
-                try post.insideResolve(
-                    light: CUDABuffer(borrowing: light, of: self, context: context),
-                    factor: settings.supersample, share: stack.weight / Float(renders),
-                    adds: index > 0 || layer > 0)
+                try timed("inside resolve") {
+                    try post.insideResolve(
+                        light: CUDABuffer(borrowing: light, of: self, context: context),
+                        factor: settings.supersample, share: stack.weight / Float(renders),
+                        adds: index > 0 || layer > 0)
+                }
             }
         }
         return try develop(format: format, resolved: true)
@@ -424,17 +434,19 @@ public final class CUDARenderer: FrameStyling {
     ) throws -> UnsafeRawBufferPointer {
         let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
         let post = try postProcessor(plan.sizes)
-        if let external {
-            try post.run(plan, light: external, resolved: resolved)
-        } else {
-            guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
-                throw CUDAError(.invalidArgument, "this renderer has no light")
+        return try timed("post-processing") {
+            if let external {
+                try post.run(plan, light: external, resolved: resolved)
+            } else {
+                guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
+                    throw CUDAError(.invalidArgument, "this renderer has no light")
+                }
+                try post.run(
+                    plan, light: CUDABuffer(borrowing: light, of: self, context: context),
+                    resolved: resolved)
             }
-            try post.run(
-                plan, light: CUDABuffer(borrowing: light, of: self, context: context),
-                resolved: resolved)
+            return try post.pack(format)
         }
-        return try post.pack(format)
     }
 
     /// An image of the post-processing of the last frame, for the comparisons.
@@ -550,6 +562,16 @@ public final class CUDARenderer: FrameStyling {
         _ name: sc_render_pass, _ pass: FramePlan.Pass, _ plan: FramePlan,
         _ parts: (massive: Range<Int>, tracers: Range<Int>), _ threads: Int, _ deep: Deep?,
         only: Int = 0
+    ) throws {
+        try timed(name == SC_RENDER_POINT_STARS ? "pass pointStars" : "pass \(pass)") {
+            try lay(name, pass, plan, parts, threads, deep, only: only)
+        }
+    }
+
+    private func lay(
+        _ name: sc_render_pass, _ pass: FramePlan.Pass, _ plan: FramePlan,
+        _ parts: (massive: Range<Int>, tracers: Range<Int>), _ threads: Int, _ deep: Deep?,
+        only: Int
     ) throws {
         try check(sc_render_begin(handle, name), "starting the \(pass) pass")
         let splat = plan.uniforms(for: pass)

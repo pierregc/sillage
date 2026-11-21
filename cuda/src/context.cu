@@ -157,6 +157,21 @@ sc_status sc_context_memory(const sc_context *context, uint64_t *held, uint64_t 
     return SC_OK;
 }
 
+sc_status sc_context_free_memory(const sc_context *context, uint64_t *free_bytes, uint64_t *total) {
+    if (!free_bytes || !total) { return fail(SC_INVALID_ARGUMENT, "sc_context_free_memory: no count to write"); }
+    *free_bytes = 0u;
+    *total = 0u;
+    if (sc_status status = use(context)) { return status; }
+#if !defined(SILLAGE_CPU)
+    size_t available = 0u;
+    size_t whole = 0u;
+    if (sc_status status = check(cudaMemGetInfo(&available, &whole), "cudaMemGetInfo")) { return status; }
+    *free_bytes = available;
+    *total = whole;
+#endif
+    return SC_OK;
+}
+
 sc_status sc_context_synchronize(sc_context *context) {
     if (sc_status status = use(context)) { return status; }
     if (sc_status status = check(cudaDeviceSynchronize(), "cudaDeviceSynchronize")) { return status; }

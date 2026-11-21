@@ -477,7 +477,9 @@ frame at each key, as PNGs, and encodes nothing: a flight seen in seconds; with 
 <scene> --at <myr,...> [--look <look>]` prints, at those moments, each galaxy's centre and disk
 axes and the export's camera, which is what keys are written from; `--arms <kpc,...>` adds where
 each disk is densest at those radii, an arm to fly into. Format, interpolation and a worked example
-in [flights](notes/flights.md).
+in [flights](notes/flights.md). On Linux, `sillage-cuda export <scene folder | take> --flight <name>`
+draws the same video on the CUDA engine, in segments that `--resume` carries on from (#382,
+[flights](notes/flights.md#the-export-on-cuda)).
 
 **Flying a flight in the app (#298).** Over a take of a scene, free flight (`F`) has Record (`R`),
 which keeps the camera and the playhead as a flight (a pause is a freeze, moving the playhead ends
