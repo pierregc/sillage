@@ -15,7 +15,10 @@ import Metal
 /// wanted indices are consecutive; it also means a seek costs one blocking copy rather than a
 /// scan. Two slots are kept clear ahead of the playhead so the reader never overwrites a
 /// snapshot the GPU is still reading.
-public final class SnapshotStream {
+///
+/// Unchecked: the reader queue and the frames share it, the table and the copies each behind
+/// their lock.
+public final class SnapshotStream: @unchecked Sendable {
     public let slotCount: Int
     public var buffer: MTLBuffer { storage }
 

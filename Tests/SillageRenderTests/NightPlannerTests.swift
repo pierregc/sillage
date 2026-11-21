@@ -538,7 +538,7 @@ struct NightPlannerTests {
     @Test func autoExploresFiftyScenesAtTheLargestCountThatLeavesRoomForFourPicks() throws {
         let planner = NightPlanner(
             recipe: recipe(scenes: nil, perGalaxy: nil), model: model,
-            maximumParticles: 10_000_000, freeBytes: 500e9, draws: Self.scaled)
+            maximumParticles: 10_000_000, freeBytes: 500e9, draws: { Self.scaled($0) })
         let long = planner.plan(now: start, deliverBy: start.addingTimeInterval(10 * 3600))
         #expect(long.scenes == 50 && long.picks == 4)
         #expect(NightRecipe.perGalaxyLadder.contains(long.particlesPerGalaxy))

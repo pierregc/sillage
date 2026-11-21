@@ -166,7 +166,7 @@ public final class FFmpegVideoWriter {
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? FileManager.default.removeItem(at: url)
         log = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).log")
-        FileManager.default.createFile(atPath: log.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: log.path, contents: nil)
         process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments =

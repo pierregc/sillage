@@ -763,7 +763,7 @@ public final class FullPassRun {
         if let url = url("state-out") {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            FileManager.default.createFile(atPath: url.path, contents: nil)
+            _ = FileManager.default.createFile(atPath: url.path, contents: nil)
             let handle = try FileHandle(forWritingTo: url)
             try engine.writeParticles(to: handle)
             try handle.close()

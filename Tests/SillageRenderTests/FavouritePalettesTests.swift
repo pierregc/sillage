@@ -39,7 +39,7 @@ struct FavouritePalettesTests {
         let kept = try FavouritePalettes.save(palette(), named: "  Soir d'Été ", in: directory)
         #expect(kept.name == "soir-d-été")
         #expect(FavouritePalettes.load(from: directory) == [kept])
-        #expect(try FavouritePalettes.favourite(matching: palette(), in: [kept]) == kept)
+        #expect(FavouritePalettes.favourite(matching: palette(), in: [kept]) == kept)
     }
 
     @Test func aNameIsNeverReusedAndNeverEmpty() throws {

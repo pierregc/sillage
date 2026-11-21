@@ -52,7 +52,7 @@ public enum TakeExtract {
         let contents = recording.contents()
         let hasDisks = contents.disks.count >= contents.frames.count * galaxies
         let staging = url.appendingPathExtension("positions")
-        FileManager.default.createFile(atPath: staging.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: staging.path, contents: nil)
         defer { try? FileManager.default.removeItem(at: staging) }
         let handle = try FileHandle(forWritingTo: staging)
         let bytes = recording.frameBytes
