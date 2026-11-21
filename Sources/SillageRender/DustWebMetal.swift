@@ -16,6 +16,9 @@ extension DustWeb {
         let resolve: MTLRenderPipelineState
         let carrier: MTLTexture
         let tags: MTLTexture
+        /// More of the two, for a frame that carries each galaxy's dust apart (#399): made the
+        /// first time such a frame is drawn.
+        private var others: [(carrier: MTLTexture, tags: MTLTexture)] = []
         let lace: MTLTexture
         /// One over the lace's mean, so that the web moves no exposure.
         let scale: Float
@@ -58,22 +61,38 @@ extension DustWeb {
             tracerPainted = try pipeline("dustWebTracerVertex", "dustFragment", frame, [1: .add])
             resolve = try pipeline("webResolveVertex", "webResolveFragment", frame, [1: .add])
 
-            func target(_ format: MTLPixelFormat) throws -> MTLTexture {
-                let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-                    pixelFormat: format, width: max(width / carrierCoarse, 1),
-                    height: max(height / carrierCoarse, 1), mipmapped: false)
-                descriptor.usage = [.renderTarget, .shaderRead]
-                descriptor.storageMode = .private
-                guard let texture = device.makeTexture(descriptor: descriptor) else {
-                    throw RenderError.textureAllocation
-                }
-                return texture
-            }
-            carrier = try target(.rgba16Float)
-            tags = try target(.rgba8Unorm)
+            let coarse = (max(width / carrierCoarse, 1), max(height / carrierCoarse, 1))
+            carrier = try Self.target(.rgba16Float, coarse, device)
+            tags = try Self.target(.rgba8Unorm, coarse, device)
             let baked = try DustWeb.lace(library: library, device: device)
             lace = baked.texture
             scale = 1 / max(baked.mean, 1e-6)
+        }
+
+        private static func target(_ format: MTLPixelFormat, _ size: (Int, Int), _ device: MTLDevice)
+            throws -> MTLTexture
+        {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: format, width: size.0, height: size.1, mipmapped: false)
+            descriptor.usage = [.renderTarget, .shaderRead]
+            descriptor.storageMode = .private
+            guard let texture = device.makeTexture(descriptor: descriptor) else {
+                throw RenderError.textureAllocation
+            }
+            return texture
+        }
+
+        /// `count` pairs of coarse targets, the web's own first, one for each galaxy of a frame
+        /// that carries their dust apart. Nil when they could not be made.
+        mutating func targets(_ count: Int, device: MTLDevice) -> [(carrier: MTLTexture, tags: MTLTexture)]? {
+            let size = (carrier.width, carrier.height)
+            while others.count + 1 < count {
+                guard let carrier = try? Self.target(.rgba16Float, size, device),
+                    let tags = try? Self.target(.rgba8Unorm, size, device)
+                else { return nil }
+                others.append((carrier, tags))
+            }
+            return [(carrier, tags)] + others.prefix(max(count - 1, 0))
         }
     }
 

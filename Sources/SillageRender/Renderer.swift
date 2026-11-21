@@ -604,6 +604,15 @@ public final class Renderer {
             webbed?.carrier.z = within.settings.web[0]
             webbed?.carrier.w = within.settings.web[1]
         }
+        // Where its grains are spread over two slabs, each galaxy's dust in a carrier of its
+        // own, so that two disks one behind the other are each multiplied by their own web.
+        var apart: [(carrier: MTLTexture, tags: MTLTexture)]?
+        if let within, web != nil {
+            let count = InsideUniforms(
+                within, camera: camera, next: next, settings: settings, splat: plan.splat
+            ).websApart(galaxies: galaxySlots)
+            if count > 1 { apart = deep?.webTargets(count, device: device) }
+        }
         insidePass = deep ?? insidePass
 
         // The uniforms of a pass that reads the inside of a galaxy behind them.
@@ -728,33 +737,37 @@ public final class Renderer {
                 encoder.endEncoding()
 
             case .webCarrier:
-                guard let web, var webUniforms = webbed,
-                    let encoder = buffer.makeRenderCommandEncoder(
-                        descriptor: descriptor([web.carrier, web.tags]))
-                else { continue }
-                encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
-                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
-                encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
-                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
-                encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
-                encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
-                encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
-                encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
-                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
-                if let within {
-                    var both = InsideSplatUniforms(
-                        splat: uniforms,
-                        inside: InsideUniforms(
-                            within, camera: camera, next: next, settings: settings, splat: uniforms))
-                    encoder.setVertexBytes(
-                        &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
+                guard let web, var webUniforms = webbed else { continue }
+                for (index, target) in (apart ?? [(web.carrier, web.tags)]).enumerated() {
+                    guard
+                        let encoder = buffer.makeRenderCommandEncoder(
+                            descriptor: descriptor([target.carrier, target.tags]))
+                    else { continue }
+                    encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
+                    encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
+                    encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
+                    encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+                    encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
+                    encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
+                    encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
+                    encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
+                    encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                    if let within {
+                        var both = InsideSplatUniforms(
+                            splat: uniforms,
+                            inside: InsideUniforms(
+                                within, camera: camera, next: next, settings: settings, splat: uniforms))
+                        if apart != nil { both.inside.webOnly = Float(index + 1) }
+                        encoder.setVertexBytes(
+                            &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
+                    }
+                    encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
+                    if let traced { bindTracers(encoder, traced.source) }
+                    drawParts(
+                        encoder, massive: web.carrierPipeline,
+                        tracers: traced == nil ? nil : web.tracerCarrier)
+                    encoder.endEncoding()
                 }
-                encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
-                if let traced { bindTracers(encoder, traced.source) }
-                drawParts(
-                    encoder, massive: web.carrierPipeline,
-                    tracers: traced == nil ? nil : web.tracerCarrier)
-                encoder.endEncoding()
 
             case .starfield:
                 guard let starBuffer, let encoder = frameEncoder() else { continue }
@@ -792,9 +805,11 @@ public final class Renderer {
                 encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
                 encoder.setFragmentBytes(&webUniforms, length: webLength, index: 1)
                 encoder.setFragmentTexture(web.lace, index: 0)
-                encoder.setFragmentTexture(web.carrier, index: 1)
-                encoder.setFragmentTexture(web.tags, index: 2)
-                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                for target in apart ?? [(web.carrier, web.tags)] {
+                    encoder.setFragmentTexture(target.carrier, index: 1)
+                    encoder.setFragmentTexture(target.tags, index: 2)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                }
 
             case .stars:
                 guard let encoder = frameEncoder() else { continue }

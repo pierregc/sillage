@@ -120,6 +120,14 @@ struct InsidePass {
         return web
     }
 
+    /// The web's coarse targets for a frame that carries each galaxy's dust apart (#399).
+    mutating func webTargets(_ count: Int, device: MTLDevice) -> [(carrier: MTLTexture, tags: MTLTexture)]? {
+        guard var held = web else { return nil }
+        let targets = held.targets(count, device: device)
+        web = held
+        return targets
+    }
+
     mutating func tracerPipelines(device: MTLDevice) -> (
         dust: MTLRenderPipelineState, splat: MTLRenderPipelineState
     )? {
