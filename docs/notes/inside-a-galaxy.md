@@ -664,6 +664,11 @@ matter's stack instead of the aim point's.
   near side's does. Lanes that dark need every star behind all of the dust, which is what an order
   in depth takes away: a soft stack that orders at all stops short of it.
 
+In the clip the lane over the bulge, dark at 2198, thin at 2214, dark at 2230 and gone at 2254
+before, now thickens and thins with the disk alone; every eighth frame from 2190 to 2294, before and
+after, is `lane-every-8-frames-2190-2294.jpg` on the assets branch, the clip
+`before-after-2100-2520.mp4`.
+
 ![Frames 2196 to 2425: before, the eye's slabs throughout, after, and the plain export](https://raw.githubusercontent.com/pierregc/sillage/assets/355-flight-slabs/docs/spikes/inside-355/frames-2196-2425.jpg)
 
 **From 100 kpc** (a flight key 100 kpc from the larger disk at 300 Myr, 17° above its plane): the
@@ -693,6 +698,11 @@ lumped. It helps the order of the two disks only a little: a slab is three quart
 matter's depth, and the two disks lie within about one slab of each other where they cross, so most
 of a pixel's dust from both still shares two slabs. Ordering two disks finely would want more
 slabs, not other knots; the web the two disks share (#354's note) is left as it was.
+
+**The CUDA engine** places the knots the same way (`CUDATakeStills.flightStill` reads the matter's
+depth from the same positions). The inside fixture at 2 s, a few kiloparsecs from the fixture's
+disk, changed and was drawn again; on the CPU target the two inside frames are 58.4 and 52.0 dB from
+Metal's.
 
 **For #356.** `insideSlabAt`, `insideDustSlabs` and `insideStarSlabs` are unchanged: four slabs,
 knots in `InsideUniforms.slabKnots` and `slabEnd`, `slabSoft` 1 for every frame of a flight off its
