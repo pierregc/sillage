@@ -18,12 +18,15 @@ struct InsideRenderTests {
         let width = 160
         let height = 90
 
-        init(_ positions: [SIMD3<Float>], maximumKernel: Float = 24, supersample: Int = 1) throws {
+        init(
+            _ positions: [SIMD3<Float>], maximumKernel: Float = 24, supersample: Int = 1,
+            component: ParticleComponent = .star
+        ) throws {
             var system = ParticleSystem()
             for position in positions {
                 system.append(
                     position: position, velocity: .zero, galaxy: 0, radius: 1, population: 0.5,
-                    luminosity: 1, component: .star)
+                    luminosity: 1, component: component)
             }
             let scene = SceneConfig.isolatedDisk(particleCount: positions.count)
             renderer = try Renderer(
@@ -32,7 +35,8 @@ struct InsideRenderTests {
                     width: width, height: height, supersample: supersample,
                     // A fifth of a unit a particle, however many there are.
                     brightness: 2e-7 * Float(positions.count),
-                    dustStrength: 0, starCount: 0, smoothingScale: 1, minimumKernel: 1,
+                    dustStrength: component == .dust ? 1e-3 : 0, starCount: 0, smoothingScale: 1,
+                    minimumKernel: 1,
                     maximumKernel: maximumKernel, bloomIntensity: 0, stretch: 0, saturation: 1,
                     spikeArms: 0, skyLevel: 0, noiseLevel: 0))
             let field = try SmoothingField(device: renderer.device, particleCount: positions.count)
@@ -48,6 +52,17 @@ struct InsideRenderTests {
             let halves = file.bytes.withUnsafeBytes { Array($0.bindMemory(to: Float16.self)) }
             return stride(from: 0, to: halves.count, by: 4).map {
                 SIMD3(Float(halves[$0]), Float(halves[$0 + 1]), Float(halves[$0 + 2]))
+            }
+        }
+
+        /// The dust's column, all four slabs, pixel by pixel, after a frame through `camera`.
+        func dust(_ camera: Camera) throws -> [Float] {
+            _ = renderer.render(camera: camera)
+            #expect(renderer.insideFailure == nil)
+            let file = try #require(renderer.particleTargets()?.target.first { $0.name == "dust.f16" })
+            let halves = file.bytes.withUnsafeBytes { Array($0.bindMemory(to: Float16.self)) }
+            return stride(from: 0, to: halves.count, by: 4).map {
+                Float(halves[$0]) + Float(halves[$0 + 1]) + Float(halves[$0 + 2]) + Float(halves[$0 + 3])
             }
         }
     }
@@ -77,6 +92,8 @@ struct InsideRenderTests {
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starCount) == 140)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.projectionY) == 148)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starTail) == 160)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustFine) == 164)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustTrim) == 172)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every
@@ -214,6 +231,51 @@ struct InsideRenderTests {
         #expect(stage.renderer.starsDrawn == 0)
         stage.renderer.inside = Self.inside(0.8) { $0.stars = 0 }
         #expect(try stage.light(far) == beyond)
+    }
+
+    /// The near dust (#356): shaped finer than its grains, the same from one drawing to the next,
+    /// its column kept on the whole; trimmed once the eye is inside; past the near field as it was.
+    @Test func theNearDustIsShapedFinerThanItsGrainsAndKeepsItsColumn() throws {
+        var generator = SeededGenerator(seed: 9)
+        let positions = (0..<600).map { _ in
+            SIMD3<Float>(generator.uniform() - 0.5, generator.uniform() - 0.5, generator.uniform() - 0.5)
+                * 0.6
+        }
+        let stage = try Stage(positions, maximumKernel: 64, supersample: 2, component: .dust)
+        let view = camera(0.8)
+        func spread(_ column: [Float]) -> (total: Double, contrast: Double) {
+            let lit = column.filter { $0 > 0 }
+            let mean = lit.reduce(0) { $0 + Double($1) } / Double(max(lit.count, 1))
+            let variance = lit.reduce(0) { $0 + pow(Double($1) - mean, 2) } / Double(max(lit.count, 1))
+            return (column.reduce(0) { $0 + Double($1) }, variance.squareRoot() / max(mean, 1e-12))
+        }
+        stage.renderer.inside = Self.inside(0.8) { settings in
+            settings.dustFine = 0
+            settings.dustInside = 1
+        }
+        let plain = spread(try stage.dust(view))
+        let shaping = Self.inside(0.8) { $0.dustInside = 1 }
+        stage.renderer.inside = shaping
+        let first = try stage.dust(view)
+        #expect(try stage.dust(view) == first)
+        let shaped = spread(first)
+        #expect(abs(shaped.total / plain.total - 1) < 0.2, "\(shaped.total / plain.total) of \(plain.total)")
+        #expect(shaped.contrast > 1.3 * plain.contrast, "\(shaped.contrast) against \(plain.contrast)")
+        // Inside, the trim; past `dustWithin`, none.
+        stage.renderer.inside = Self.inside(0.1) { $0.dustFine = 0 }
+        let trimmed = spread(try stage.dust(view)).total / plain.total
+        #expect(abs(trimmed - 0.3) < 0.01, "\(trimmed)")
+        stage.renderer.inside = Self.inside(5) { $0.dustFine = 0 }
+        #expect(abs(spread(try stage.dust(view)).total / plain.total - 1) < 1e-3)
+        // Past the near field's far edge the noise changes nothing.
+        let far = camera(12)
+        stage.renderer.inside = shaping
+        let beyond = try stage.dust(far)
+        stage.renderer.inside = Self.inside(0.8) { settings in
+            settings.dustFine = 0
+            settings.dustInside = 1
+        }
+        #expect(try stage.dust(far) == beyond)
     }
 
     /// A particle whose kernel covers more of the frame than `nearFrom` stands for more stars, as

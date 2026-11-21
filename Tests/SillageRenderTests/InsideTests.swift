@@ -161,6 +161,27 @@ struct InsideTests {
         }
     }
 
+    /// The dust's trim (#356) comes in with the eye near matter and is nowhere else; the fine
+    /// dust's settings go through as they are.
+    @Test func theDustIsTrimmedOnlyOnceTheEyeIsInside() {
+        let camera = Camera(eye: SIMD3(0, -10, 0), target: .zero, fieldOfView: 0.6, near: 0.001)
+        #expect(uniforms(50, camera: camera).inside.dustTrim == 1)
+        #expect(uniforms(2, camera: camera).inside.dustTrim == 1)
+        #expect(abs(uniforms(0.3, camera: camera).inside.dustTrim - 0.3) < 1e-6)
+        let halfway = uniforms(1.25, camera: camera).inside.dustTrim
+        #expect(halfway > 0.3 && halfway < 1, "\(halfway)")
+        let inside = uniforms(0.3, camera: camera).inside
+        #expect(inside.dustFine == 1.75 && inside.dustCell == 0.12)
+        #expect(InsideUniforms(outside: uniforms(0.3, camera: camera).splat).dustTrim == 1)
+        #expect(InsideUniforms(outside: uniforms(0.3, camera: camera).splat).dustFine == 0)
+        var faulty = InsideSettings()
+        faulty.dustWithin = [2, 0.5]
+        #expect(faulty.fault?.contains("dustWithin") == true)
+        faulty = InsideSettings()
+        faulty.dustFine = 3
+        #expect(faulty.fault?.contains("dustFine") == true)
+    }
+
     @Test func nearnessIsTheDistanceTheRankedParticleStandsAt() {
         var generator = SeededGenerator(seed: 11)
         let points = (0..<300_000).map { _ in

@@ -53,6 +53,20 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// through the depth of its dust layer: wholly within the first, not at all past the second,
     /// where it lies in the mid-plane as every export draws it (#354).
     public var web: [Float] = [1, 2]
+    /// The near dust's structure finer than a grain (#356): filaments and clumps from a noise in
+    /// three dimensions read through each grain of the near field, the log of its density spread
+    /// this many times its noise's (log-normal, as interstellar gas is); 0 for none.
+    public var dustFine: Float = 1.75
+    /// The coarsest cell of that structure along a disk's plane, in kiloparsecs, half that across
+    /// it; two finer octaves follow it.
+    public var dustCell: Float = 0.12
+    /// What the dust opacity of a disk the eye is in is multiplied by (#356): a look's dust is set
+    /// for a galaxy seen whole, and seen along a disk's plane from inside it the column was three
+    /// to six times a real lane's. Another galaxy seen whole from there keeps its lanes.
+    public var dustInside: Float = 0.3
+    /// The distances to the nearest matter between which that trim comes in: wholly nearer than
+    /// the first, not at all past the second.
+    public var dustWithin: [Float] = [0.5, 2]
     /// The mean luminance the automatic exposure holds a frame under; 0 turns it off.
     public var exposure: Float = 0.16
     /// Seconds of video the automatic exposure is eased over.
@@ -85,6 +99,10 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         slabs = try c.value(.slabs, or: slabs)
         slabsWithin = try c.value(.slabsWithin, or: slabsWithin)
         web = try c.value(.web, or: web)
+        dustFine = try c.value(.dustFine, or: dustFine)
+        dustCell = try c.value(.dustCell, or: dustCell)
+        dustInside = try c.value(.dustInside, or: dustInside)
+        dustWithin = try c.value(.dustWithin, or: dustWithin)
         exposure = try c.value(.exposure, or: exposure)
         exposureEase = try c.value(.exposureEase, or: exposureEase)
         subframes = try c.value(.subframes, or: subframes)
@@ -118,6 +136,12 @@ public struct InsideSettings: Codable, Sendable, Equatable {
             return "slabsWithin \(slabsWithin): two distances in kpc, the first nearer"
         }
         if !rising(web, 2) { return "web \(web): two distances in disk radii, the first nearer" }
+        if !(dustFine >= 0 && dustFine <= 2.5) { return "dustFine \(dustFine): 0 to 2.5" }
+        if !(dustCell >= 0.005 && dustCell <= 1) { return "dustCell \(dustCell) kpc: 0.005 to 1" }
+        if !(dustInside > 0 && dustInside <= 4) { return "dustInside \(dustInside): above 0, to 4" }
+        if !rising(dustWithin, 2) {
+            return "dustWithin \(dustWithin): two distances in kpc, the first nearer"
+        }
         if !(exposure >= 0 && exposure < 1) { return "exposure \(exposure): a mean luminance, 0 to 1" }
         if !(exposureEase >= 0 && exposureEase <= 30) { return "exposureEase \(exposureEase) s: 0 to 30" }
         if !(1...64).contains(subframes) { return "subframes \(subframes): 1 to 64" }
@@ -176,11 +200,24 @@ public struct InsideUniforms: Sendable {
     public var nearFrom: Float
     /// The Pareto index each star's share is drawn with, 0 for none.
     public var starTail: Float
+    /// The near dust's fine structure and its coarsest cell in kpc, and what the frame's dust
+    /// opacity is multiplied by (#356).
+    public var dustFine: Float
+    public var dustCell: Float
+    public var dustTrim: Float
 
     /// How far inside the eye is for the slabs: 0 past `slabsWithin`'s far distance from any
     /// matter, 1 nearer than its near one.
     public static func depth(_ frame: InsideFrame) -> Float {
         let (near, far) = (frame.settings.slabsWithin[0], frame.settings.slabsWithin[1])
+        let t = min(max((frame.nearness - near) / (far - near), 0), 1)
+        return 1 - t * t * (3 - 2 * t)
+    }
+
+    /// How far inside the eye is for the dust's trim: 0 past `dustWithin`'s far distance from any
+    /// matter, 1 nearer than its near one.
+    public static func dustDepth(_ frame: InsideFrame) -> Float {
+        let (near, far) = (frame.settings.dustWithin[0], frame.settings.dustWithin[1])
         let t = min(max((frame.nearness - near) / (far - near), 0), 1)
         return 1 - t * t * (3 - 2 * t)
     }
@@ -235,6 +272,9 @@ public struct InsideUniforms: Sendable {
         nearStars = Float(max(inside.nearStars, inside.stars))
         nearFrom = inside.nearFrom * lines
         starTail = inside.starTail
+        dustFine = inside.dustFine
+        dustCell = inside.dustCell
+        dustTrim = 1 + (inside.dustInside - 1) * Self.dustDepth(frame)
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
@@ -265,6 +305,9 @@ public struct InsideUniforms: Sendable {
         nearStars = 0
         nearFrom = 0
         starTail = 0
+        dustFine = 0
+        dustCell = 0
+        dustTrim = 1
     }
 
     /// The most light a star's pixel takes, in the light of the accumulation, so that the one

@@ -214,7 +214,11 @@ static __device__ __forceinline__ void laySplat(uint lay, const Splat &splat, in
     if (r2 > 1.0f) { return; }
     size_t pixel = size_t(y) * targets.width + size_t(x);
     if (lay == layDust) {
-        add4(targets.dust + pixel * 4u, dustPixel(splat.opticalDepth, splat.slab, r2), fixedUnit, targets.halves);
+        half4 dust = splat.grain.w > 0.0f
+            ? insideDustPixel(splat.opticalDepth, splat.slab, r2, coord, splat.grain, splat.grainX, splat.grainY,
+                              splat.grainZ)
+            : dustPixel(splat.opticalDepth, splat.slab, r2);
+        add4(targets.dust + pixel * 4u, dust, fixedUnit, targets.halves);
     } else if (lay == layLight) {
         add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2),
              fixedUnit, targets.halves);

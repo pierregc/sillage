@@ -181,6 +181,12 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   `web` (`[1, 2]` radii, seven scale lengths each) of a disk (#354): a pixel's lace is its mean
   along the stretch of ray inside the layer, so it evens out where the rays graze the plane, with
   no angle at which it stops.
+- **The near dust** (#356): in the near field a grain's opacity is shaped by a log-normal noise
+  in three dimensions laid in its galaxy's frame (`dustFine`, its log spread, 1.75; `dustCell`,
+  0.12 kpc along the disk's plane and half that across it), filaments and clumps finer than the
+  grain that hold still as the camera moves. The dust of a disk the eye is in is multiplied by
+  `dustInside` (0.3) as the eye comes within `dustWithin` (`[0.5, 2]` kpc) of matter: seen along
+  the plane from inside, the look's lanes were three to ten times a real one's.
 - **Motion blur**: while the shutter is open (`shutter`, half of the frame's interval) a point
   star is drawn as the streak it leaves, and the frame is averaged from up to `subframes` renders
   (8), one for every four pixels the near matter crosses meanwhile, each drawing its share of

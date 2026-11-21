@@ -89,6 +89,7 @@ struct CUDAInsideTests {
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starCount) == 140)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.projectionY) == 148)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starTail) == 160)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustTrim) == 172)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every
