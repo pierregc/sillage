@@ -65,6 +65,12 @@ enum Shaders {
             float nearFrom;
             /// The Pareto index a star's share is drawn with around its rank's, 0 for none.
             float starTail;
+            /// The near dust's structure finer than a grain (#356): its contrast, 0 for none, and
+            /// its coarsest cell in kiloparsecs; and the share of a disk's dust opacity taken away
+            /// while the eye is in it, 0 for none.
+            float dustFine;
+            float dustCell;
+            float dustThin;
         };
         #endif
 
@@ -189,6 +195,15 @@ enum Shaders {
             /// them lie in front of it. One varying serves both: a grain of dust writes its
             /// opacity into its own slab, and a star reads the slabs ahead of its own.
             half4 slab;
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            /// A near grain's place in the fine dust's noise and how much of it it takes, then the
+            /// noise's steps across its point and through its depth, a kernel radius each, with
+            /// a pixel's width in the noise, the log contrast and its mean (#356).
+            float4 grain;
+            float4 grainX;
+            float4 grainY;
+            float4 grainZ;
+            #endif
         };
 
         #if defined(__METAL_VERSION__)
@@ -199,6 +214,12 @@ enum Shaders {
             half opticalDepth;
             half spikes;
             half4 slab;
+            #if defined(SILLAGE_INSIDE)
+            float4 grain;
+            float4 grainX;
+            float4 grainY;
+            float4 grainZ;
+            #endif
         };
 
         static SplatOut splatOut(Splat point) {
@@ -209,6 +230,12 @@ enum Shaders {
             out.opticalDepth = point.opticalDepth;
             out.spikes = point.spikes;
             out.slab = point.slab;
+            #if defined(SILLAGE_INSIDE)
+            out.grain = point.grain;
+            out.grainX = point.grainX;
+            out.grainY = point.grainY;
+            out.grainZ = point.grainZ;
+            #endif
             return out;
         }
 
@@ -534,6 +561,16 @@ enum Shaders {
             return length;
         }
 
+        #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+        // A splat that carries no fine dust: every splat but a near grain's.
+        SHARED void insideBare(thread Splat &out) {
+            out.grain = float4(0.0f);
+            out.grainX = float4(0.0f);
+            out.grainY = float4(0.0f);
+            out.grainZ = float4(0.0f);
+        }
+        #endif
+
         SHARED Splat culledSplat() {
             Splat out;
             out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
@@ -542,6 +579,9 @@ enum Shaders {
             out.opticalDepth = half(0.0f);
             out.spikes = half(0.0f);
             out.slab = half4(half(0.0f));
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            insideBare(out);
+            #endif
             return out;
         }
 
@@ -650,6 +690,166 @@ enum Shaders {
         SHARED float insideFade(float depth, float length, constant InsideUniforms &i) {
             if (i.fadeLengths <= 0.0f) { return 1.0f; }
             return saturate((depth - i.nearPlane) / (i.fadeLengths * max(length, 1e-6f)));
+        }
+
+        // The near dust (#356). A grain stands for a cloud 50 to 100 pc across, so from a few
+        // hundred parsecs the grains are soft blobs: cotton. Within the near field each grain's
+        // opacity is shaped by a noise in three dimensions, laid in its galaxy's frame and read
+        // where each pixel's ray passes through the grain, so that grains overlapping on a pixel
+        // draw one structure and the filaments hold still while the camera moves. Ridged
+        // gradient noise: its creases are sheets, and a sheet seen through is a filament. The
+        // density is the exponential of it (below), not the noise itself.
+        SHARED uint dustHash(int x, int y, int z) {
+            uint v = (uint(x) * 1597334677u) ^ (uint(y) * 3812015801u) ^ (uint(z) * 2798796415u);
+            v = v * 747796405u + 2891336453u;
+            v = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+            return (v >> 22u) ^ v;
+        }
+
+        SHARED float dustGradient(uint h, float x, float y, float z) {
+            uint g = h & 15u;
+            float a = g < 8u ? x : y;
+            float b = g < 4u ? y : ((g == 12u || g == 14u) ? x : z);
+            return ((g & 1u) == 0u ? a : -a) + ((g & 2u) == 0u ? b : -b);
+        }
+
+        SHARED float dustPerlin(float3 p) {
+            float fx = floor(p.x);
+            float fy = floor(p.y);
+            float fz = floor(p.z);
+            int ix = int(fx);
+            int iy = int(fy);
+            int iz = int(fz);
+            float x = p.x - fx;
+            float y = p.y - fy;
+            float z = p.z - fz;
+            float u = x * x * x * (x * (x * 6.0f - 15.0f) + 10.0f);
+            float v = y * y * y * (y * (y * 6.0f - 15.0f) + 10.0f);
+            float w = z * z * z * (z * (z * 6.0f - 15.0f) + 10.0f);
+            float a = mix(dustGradient(dustHash(ix, iy, iz), x, y, z),
+                          dustGradient(dustHash(ix + 1, iy, iz), x - 1.0f, y, z), u);
+            float b = mix(dustGradient(dustHash(ix, iy + 1, iz), x, y - 1.0f, z),
+                          dustGradient(dustHash(ix + 1, iy + 1, iz), x - 1.0f, y - 1.0f, z), u);
+            float c = mix(dustGradient(dustHash(ix, iy, iz + 1), x, y, z - 1.0f),
+                          dustGradient(dustHash(ix + 1, iy, iz + 1), x - 1.0f, y, z - 1.0f), u);
+            float d = mix(dustGradient(dustHash(ix, iy + 1, iz + 1), x, y - 1.0f, z - 1.0f),
+                          dustGradient(dustHash(ix + 1, iy + 1, iz + 1), x - 1.0f, y - 1.0f, z - 1.0f), u);
+            return mix(mix(a, b, v), mix(c, d, v), w);
+        }
+
+        SHARED_CONSTANT int dustOctaves = 3;
+        // A ridge's mean and spread over the noise.
+        SHARED_CONSTANT float dustRidgeMean = 0.3023f;
+        SHARED_CONSTANT float dustRidgeSpread = 0.2895f;
+        // A cell is this many times wider along the disk's plane than across it: the filaments
+        // of a disk's dust lie along it.
+        SHARED_CONSTANT float dustStretch = 2.0f;
+
+        // The mean of exp(s x) over the ridges' sum x at unit spread, fitted within half a per
+        // cent for s up to 2.5, so that the structure moves no opacity.
+        SHARED float dustLogMean(float s) {
+            return exp(s * s * (0.53694f + s * (0.058776f - 0.024273f * s)));
+        }
+
+        // The ridges' sum at `p`, in cells of the coarsest octave, mean zero and spread one.
+        // `pixel` is a pixel's width in the same cells: an octave whose walls, a tenth of its
+        // cell, are under two pixels fades out rather than shimmer. `.y` is how much of the
+        // coarsest octave is left.
+        SHARED float2 dustFineAt(float3 p, float pixel) {
+            float total = 0.0f;
+            float norm = 0.0f;
+            float amplitude = 1.0f;
+            float size = 1.0f;
+            float coarsest = 0.0f;
+            for (int o = 0; o < dustOctaves; ++o) {
+                float detail = smoothstep(0.6f, 2.0f, 0.1f * size / max(pixel, 1e-9f));
+                if (o == 0) { coarsest = detail; }
+                if (detail <= 0.0f) { break; }
+                float r = saturate(1.0f - 1.4f * abs(dustPerlin(p)));
+                float r2 = r * r;
+                float weight = amplitude * detail;
+                total += weight * (r2 * r2 * r - dustRidgeMean);
+                norm += weight * weight;
+                // The next octave turned, so that no lattice axis lines its creases up.
+                p = float3(0.8f * p.y + 0.6f * p.z, -0.8f * p.x + 0.36f * p.y - 0.48f * p.z,
+                           -0.6f * p.x - 0.48f * p.y + 0.64f * p.z) * 2.0f + float3(5.2f, 1.3f, 7.7f);
+                size *= 0.5f;
+                amplitude *= 0.5f;
+            }
+            return float2(norm > 0.0f ? total / (dustRidgeSpread * sqrt(norm)) : 0.0f, coarsest);
+        }
+
+        // Where a near grain stands in the noise, and the noise's steps across its point and
+        // through it, a kernel radius each, and across a pixel. Past the near field it is left a
+        // plain grain.
+        SHARED void insideFineGrain(thread Splat &out, float3 position, float depth, float perPixel,
+                                    DiskFrame frame, constant SplatUniforms &u) {
+            float strength = insideNear(depth, u.inside);
+            float contrast = u.inside.dustFine;
+            if (contrast <= 0.0f || strength <= 0.0f || out.pointSize <= 0.0f) { return; }
+            // In the disk's axes, its normal last, in cells: wide along the plane, thin across it.
+            float across = max(u.inside.dustCell, 1e-4f) / dustStretch;
+            float3 axisU = frame.axisU.xyz / (across * dustStretch);
+            float3 axisV = frame.axisV.xyz / (across * dustStretch);
+            float3 normal = cross(frame.axisU.xyz, frame.axisV.xyz) / across;
+            float4x4 m = u.viewProjection;
+            float3 right = normalize(float3(m[0][0], m[1][0], m[2][0]));
+            float3 up = normalize(float3(m[0][1], m[1][1], m[2][1]));
+            float3 forward = cross(right, up);
+            float radius = 0.5f * out.pointSize / max(perPixel, 1e-9f);
+            float3 rel = position - frame.center.xyz;
+            float3 x = right * radius;
+            float3 y = up * -radius;
+            float3 z = forward * radius;
+            out.grain = float4(dot(rel, axisU), dot(rel, axisV), dot(rel, normal), strength);
+            out.grainX = float4(dot(x, axisU), dot(x, axisV), dot(x, normal), 1.0f / (max(perPixel, 1e-9f) * across));
+            out.grainY = float4(dot(y, axisU), dot(y, axisV), dot(y, normal), contrast);
+            out.grainZ = float4(dot(z, axisU), dot(z, axisV), dot(z, normal), dustLogMean(contrast));
+        }
+
+        // What a grain's opacity is multiplied by: the frame's thinning, only for a disk the eye is in
+        // (within half a scale length of its plane, nothing past one), so that a galaxy seen
+        // whole from inside another keeps its lanes. The eye is found from where the grain lands.
+        SHARED float insideDustTrim(float4 clip, float3 position, DiskFrame frame, constant SplatUniforms &u) {
+            if (u.inside.dustThin == 0.0f) { return 1.0f; }
+            float4x4 m = u.viewProjection;
+            float3 right = normalize(float3(m[0][0], m[1][0], m[2][0]));
+            float3 up = normalize(float3(m[0][1], m[1][1], m[2][1]));
+            float3 forward = normalize(float3(m[0][3], m[1][3], m[2][3]));
+            float3 eye = position - right * (clip.x / u.inside.projectionX) - up * (clip.y / u.inside.projectionY)
+                - forward * clip.w;
+            float3 normal = cross(frame.axisU.xyz, frame.axisV.xyz);
+            float3 rel = eye - frame.center.xyz;
+            float height = dot(rel, normal);
+            float h = max(frame.center.w, 1e-3f);
+            float beyond = max(length(rel - normal * height) - 7.0f * h, 0.0f);
+            float away = sqrt(height * height + beyond * beyond);
+            return 1.0f - u.inside.dustThin * (1.0f - smoothstep(0.5f * h, h, away));
+        }
+
+        // A grain of the frame's own dust pass, once its point is laid: the trim, then the noise.
+        SHARED void insideNearDust(thread Splat &out, float3 position, float perPixel, DiskFrame frame,
+                                   constant SplatUniforms &u) {
+            float trim = insideDustTrim(out.position, position, frame, u);
+            if (trim != 1.0f) { out.opticalDepth = half(float(out.opticalDepth) * trim); }
+            insideFineGrain(out, position, out.position.w, perPixel, frame, u);
+        }
+
+        // A near grain's dust on a pixel of its point: the noise read twice through the grain's
+        // depth, a third of its radius either side of its middle, where a Gaussian's two-point
+        // rule puts them.
+        SHARED half4 insideDustPixel(half opticalDepth, half4 slab, float r2, float2 coord, float4 grain,
+                                     float4 grainX, float4 grainY, float4 grainZ) {
+            float2 c = (coord - 0.5f) * 2.0f;
+            float3 at = grain.xyz + grainX.xyz * c.x + grainY.xyz * c.y;
+            float3 along = grainZ.xyz * 0.3333f;
+            float2 a = dustFineAt(at - along, grainX.w);
+            float2 b = dustFineAt(at + along, grainX.w);
+            float fine = 0.5f * (exp(grainY.w * a.x) + exp(grainY.w * b.x)) / grainZ.w;
+            float shaped = 1.0f + grain.w * a.y * (fine - 1.0f);
+            // A dense knot of a thick grain could pass what a half holds, and its infinity times
+            // the slabs it is not in would be a NaN.
+            return half4(float4(slab) * min(float(opticalDepth) * shaped * exp(-4.5f * r2), 6.0e4f));
         }
 
         // How much of a particle's light its point stars carry, from its kernel's size on
@@ -765,6 +965,9 @@ enum Shaders {
             out.position = u.viewProjection * float4(position, 1.0f);
             out.spikes = half(0.0f);
             out.slab = half4(half(0.0f));
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            insideBare(out);
+            #endif
             uint kind = p.kind;
             float weight = p.weight;
             // The compact bright minority the sampler drew (DiskSampler, kernelScale 0.75):
@@ -915,6 +1118,11 @@ enum Shaders {
                     out.pointSize = max(4.0f * u.holeShadow * perPixel, 2.0f);
                     out.opticalDepth = half(8.0f);
                 }
+                #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+                else {
+                    insideNearDust(out, position, perPixel, frame, u);
+                }
+                #endif
             } else {
                 // An arm is brighter than the disk around it, by about the factor of two a
                 // grand-design spiral shows between arm and interarm. This is the only thing
@@ -1066,6 +1274,9 @@ enum Shaders {
             out.opticalDepth = half(0.0f);
             out.spikes = half(star.color.a);
             out.slab = half4(half(0.0f));
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            insideBare(out);
+            #endif
             return out;
         }
 
@@ -1435,7 +1646,14 @@ enum Shaders {
             if (r2 > 1.0f) { discard_fragment(); }
 
             DustTarget out;
+            #if defined(SILLAGE_INSIDE)
+            out.dust = in.grain.w > 0.0f
+                ? insideDustPixel(in.opticalDepth, in.slab, r2, coord, in.grain, in.grainX, in.grainY,
+                                  in.grainZ)
+                : dustPixel(in.opticalDepth, in.slab, r2);
+            #else
             out.dust = dustPixel(in.opticalDepth, in.slab, r2);
+            #endif
             return out;
         }
         #endif
@@ -1846,6 +2064,9 @@ enum Shaders {
             Splat out;
             out.color = half3(half(0.0f));
             out.spikes = half(0.0f);
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            insideBare(out);
+            #endif
             if (!dust || grain.amount >= 1.0f) {
                 out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
                 out.pointSize = 0.0f;
@@ -1876,6 +2097,9 @@ enum Shaders {
             out.pointSize = span * 1.3f;
             out.opticalDepth = half(grain.weight * u.dustStrength * spread * 1.3f
                                     * (1.0f - grain.amount) * lane);
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            insideNearDust(out, position, grain.perPixel, frame, u);
+            #endif
             return out;
         }
 
@@ -1986,6 +2210,10 @@ enum Shaders {
             out.position = grain.position;
             out.pointSize = span * 1.3f / coarse;
             out.carried = grain.weight * u.dustStrength * spread * 1.3f * grain.amount * lane;
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            float trim = insideDustTrim(grain.position, position, frame, u);
+            if (trim != 1.0f) { out.carried *= trim; }
+            #endif
             out.slab = grain.slab;
             out.tag = half(float(g + 1u) / 255.0f);
             return out;
