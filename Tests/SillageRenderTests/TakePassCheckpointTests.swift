@@ -9,11 +9,13 @@ import Testing
 /// Checkpoints of the pass that writes a take (#377), in the suite of the full pass's: the runs
 /// here encode their video, and two encoders side by side can wait for good.
 extension CheckpointTests {
-    /// The options of a short hires of `folder` that checkpoints often and keeps its last state.
+    /// The options of a short hires of `folder` that checkpoints often, keeps its last state and
+    /// writes every frame as its encoder took it.
     private func asked(_ folder: SceneFolder, _ options: [String]) -> [String] {
         options + [
             "--frames", "12", "--checkpoint-frames", "5", "--checkpoint-steps", "4", "--state-out",
-            folder.url.appendingPathComponent("state.bin").path,
+            folder.url.appendingPathComponent("state.bin").path, "--out",
+            folder.url.appendingPathComponent("frames/f.png").path,
         ]
     }
 
@@ -38,8 +40,8 @@ extension CheckpointTests {
         ]
     }
 
-    /// Every frame of a video, decoded.
-    private func decoded(_ url: URL) throws -> [[UInt8]] {
+    /// How many frames a video holds, decoded.
+    private func frames(_ url: URL) throws -> Int {
         final class Box: @unchecked Sendable { var track: AVAssetTrack? }
         let asset = AVURLAsset(url: url)
         let box = Box()
@@ -56,24 +58,9 @@ extension CheckpointTests {
             outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
         reader.add(output)
         #expect(reader.startReading())
-        var frames: [[UInt8]] = []
-        while let sample = output.copyNextSampleBuffer() {
-            guard let buffer = CMSampleBufferGetImageBuffer(sample) else { continue }
-            CVPixelBufferLockBaseAddress(buffer, .readOnly)
-            defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-            let rows = CVPixelBufferGetHeight(buffer)
-            let stride = CVPixelBufferGetBytesPerRow(buffer)
-            let width = CVPixelBufferGetWidth(buffer) * 4
-            let base = try #require(CVPixelBufferGetBaseAddress(buffer))
-            var pixels: [UInt8] = []
-            pixels.reserveCapacity(rows * width)
-            for row in 0..<rows {
-                pixels.append(
-                    contentsOf: UnsafeRawBufferPointer(start: base + row * stride, count: width))
-            }
-            frames.append(pixels)
-        }
-        return frames
+        var count = 0
+        while output.copyNextSampleBuffer() != nil { count += 1 }
+        return count
     }
 
     /// #240's test, for the take pass: a hires never stopped against one killed just after a
@@ -81,7 +68,8 @@ extension CheckpointTests {
     /// segment of its video open, and resumed to the end. One pass of every particle, one with
     /// light tracers, and a massive pass, each with the standard step schedule, judged on the
     /// run's centres, and the director. The same take past its header, the same curves, massive
-    /// set, video frames, solver state and step switches.
+    /// set, solver state and step switches, and the same frames handed to the video's encoder:
+    /// compared as the stills read off them, since an encoder under load is not held to its bits.
     @Test(arguments: [
         ["--particles", "3000"], ["--particles", "3000", "--massive", "1500"],
         ["--particles", "3000", "--massive", "1500", "--pass", "massive"],
@@ -149,9 +137,12 @@ extension CheckpointTests {
                 try Data(contentsOf: stopped.url.appendingPathComponent(name))
                     == Data(contentsOf: straight.url.appendingPathComponent(name)), "\(name)")
         }
-        let frames = try decoded(stopped.hiresVideo)
-        #expect(frames.count == 12)
-        #expect(try frames == decoded(straight.hiresVideo))
+        #expect(try frames(stopped.hiresVideo) == 12 && frames(straight.hiresVideo) == 12)
+        for frame in 0..<12 {
+            let name = String(format: "frames/f.%04d.png", frame)
+            let drawn = try Data(contentsOf: stopped.url.appendingPathComponent(name))
+            #expect(drawn == (try Data(contentsOf: straight.url.appendingPathComponent(name))), "\(name)")
+        }
         guard draw.contains("--pass") else { return }
         #expect(try Data(contentsOf: stopped.massiveSet) == Data(contentsOf: straight.massiveSet))
         // A full pass after the resumed massive pass repeats it.
