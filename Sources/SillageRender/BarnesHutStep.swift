@@ -40,6 +40,8 @@ public struct BarnesHutWork {
 public protocol BarnesHutPasses: AnyObject {
     /// Submits each pass on its own and times it.
     var profiling: Bool { get }
+    /// A pass failed on the device: nothing more runs, and the step stops where it is (#301).
+    var failed: Bool { get }
     /// The massive particles' positions and velocities where the CPU reads them, as the last
     /// drift left them once a build is under way.
     var massivePositions: UnsafeBufferPointer<SIMD3<Float>> { get }
@@ -63,6 +65,7 @@ public protocol BarnesHutPasses: AnyObject {
 public enum BarnesHutStep {
     public static func run(_ host: BarnesHutHost, on engine: some BarnesHutPasses, steps: Int) {
         for _ in 0..<max(steps, 0) {
+            guard !engine.failed else { return }
             let stepClock = Date()
             var clock = Date()
             // Star formation goes first, before the drift, and that is not a detail.
@@ -106,6 +109,8 @@ public enum BarnesHutStep {
                 submitForces(host, on: engine, disks: disks)
             }
             host.lastForceMilliseconds = Date().timeIntervalSince(clock) * 1000
+            // A step the device lost moved nothing it can vouch for: its time is not counted.
+            guard !engine.failed else { return }
             host.time += host.timeStep
             if engine.profiling {
                 engine.stepped(milliseconds: Date().timeIntervalSince(stepClock) * 1000)

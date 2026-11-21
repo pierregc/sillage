@@ -148,8 +148,9 @@ public final class MetalTakePassEngine: TakePassEngine {
     }
 
     public func still(camera: Camera) throws -> (any RunVideoStill)? {
-        MetalRunVideoStill(
-            image: PNGWriter.image(renderer.render(camera: camera), width: width, height: height))
+        let pixels = renderer.render(camera: camera)
+        if let failure = renderer.failure { throw failure }
+        return MetalRunVideoStill(image: PNGWriter.image(pixels, width: width, height: height))
     }
 
     public func write(_ still: any RunVideoStill, to url: URL, maximumWidth: Int?) throws {
@@ -195,4 +196,10 @@ public final class MetalTakePassEngine: TakePassEngine {
     }
 
     public var peakMemory: (host: Int?, device: Int?) { (ProcessMemory.peakFootprint(), nil) }
+
+    /// A pass the GPU lost stops the run before a frame or a checkpoint is drawn from a wrong
+    /// state (#301); the checkpoint before it is still there to resume from.
+    public func check() throws {
+        if let failure = barnesHut?.failure ?? renderer.failure ?? smoothing.failure { throw failure }
+    }
 }

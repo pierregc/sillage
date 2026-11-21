@@ -45,7 +45,7 @@ public protocol TakePassEngine: AnyObject {
     func withPositions(_ body: (UnsafePointer<SIMD3<Float>>) throws -> Void) rethrows
     var heldCount: Int { get }
     /// What a take keeps of the drawn particles, the formation times the run ended on.
-    func capturedParticles() -> ParticleSystem
+    func capturedParticles() throws -> ParticleSystem
     /// The solver's state, nil for one that keeps none.
     var state: SolverState? { get }
     func writeParticles(to handle: FileHandle) throws
@@ -897,7 +897,7 @@ public final class TakePassRun {
                     takeSeconds * 1000 / Double(max(take.capturedCount, 1)), take.bitsPerAxis))
             let writing = Date()
             try RecordingFile.write(
-                take, scene: drawnScene, particles: engine.capturedParticles(), to: Self.prepared(path))
+                take, scene: drawnScene, particles: try engine.capturedParticles(), to: Self.prepared(path))
             if checkpoint != nil {
                 print(
                     String(

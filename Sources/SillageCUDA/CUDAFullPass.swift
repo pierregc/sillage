@@ -192,6 +192,8 @@ public final class CUDAFullPassEngine: FullPassEngine, CUDARunDrawn {
 
     public func check() throws {
         if let failure = barnesHut.failure { throw failure }
+        // A kernel's fault surfaces at the next synchronisation: here, not at a later download (#301).
+        try context.synchronize()
     }
 
     public var peakMemory: (host: Int?, device: Int?) {
