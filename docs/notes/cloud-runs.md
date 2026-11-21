@@ -1,0 +1,71 @@
+# Runs on a rented GPU (#283)
+
+How to compute on an NVIDIA GPU rented on Vast.ai, from the Mac, with `scripts/gpu-box.sh`. The
+Mac only drives the box over SSH: renting, shipping the code, running, fetching, destroying.
+Nothing heavy runs on the Mac.
+
+## Once, on the Mac
+
+1. An SSH key for the boxes alone: `ssh-keygen -t ed25519 -f ~/.ssh/sillage_gpu`, its public
+   half added to the Vast account (Account, SSH Keys). Vast puts it on every new box.
+2. A Vast API key, written by hand in `~/.config/sillage/gpu.env`, `chmod 600`:
+
+   ```sh
+   VAST_API_KEY=...
+   # optional, with their defaults:
+   # SSH_KEY=~/.ssh/sillage_gpu
+   # GPU=RTX 3090
+   # IMAGE=nvidia/cuda:12.8.1-devel-ubuntu24.04
+   # MAX_PRICE=0.35
+   # DEADLINE_HOURS=3
+   ```
+
+   The file never enters the repository. The script never prints the key, never puts it on a
+   command line (curl reads it from a header file of its own) and never sends it to a box.
+3. Prepaid credit on the account, **no saved card**: at zero credit Vast stops the instances, so a
+   forgotten box cannot cost more than what is left.
+
+## A session
+
+```sh
+scripts/gpu-box.sh offers "RTX 3090"   # the cheapest suitable offers, nothing rented
+scripts/gpu-box.sh up "RTX 3090"       # rents the cheapest, waits for SSH, arms the deadline
+scripts/gpu-box.sh setup               # Swift 6.2, ffmpeg, tools; prints the GPU, nvcc, Swift
+scripts/gpu-box.sh ship                # the checkout, without .build and .git, to /work/sillage
+scripts/gpu-box.sh run scripts/linux.sh engine-check
+scripts/gpu-box.sh wait                # or `tail` to look without waiting
+scripts/gpu-box.sh fetch logs          # into ~/claude-workspace/gpu-out/<date>-<box>/
+scripts/gpu-box.sh down "what ran"     # destroys it, checks, appends to gpu-ledger.md
+scripts/gpu-box.sh list                # every instance on the account, and the credit left
+```
+
+- `up` keeps on-demand offers only (a box that pauses in the middle of a debugging session wastes
+  it), from verified hosts with a CUDA 12.8 driver, 8 cores, 32 GB, 60 GB of disk, a reliability
+  of 0.98, under `MAX_PRICE`, and leaves mainland China out (swift.org and GitHub downloads are
+  unreliable there). The state of the box (its id, address, price, start, deadline) is kept in
+  `~/.config/sillage/box`, outside the repository.
+- **The deadline.** Vast enforces none. The box arms its own at start: after `DEADLINE_HOURS` it
+  deletes itself with `CONTAINER_API_KEY`, the key Vast gives each instance for that instance alone.
+  `up` prints "deadline armed" once it has checked; `status` shows the time left.
+- `run` starts the command in tmux on the box, its output in `/work/logs/<n>.log` and its exit
+  code in `/work/logs/<n>.exit`, and returns at once: a dropped SSH connection does not stop it.
+- `GPU_BOX_DRY=1 scripts/gpu-box.sh up` prints the rental it would ask for, without renting.
+- Destroy the box while a fix takes long to write: a box is paid while it waits. `setup` and the
+  build take about ten minutes on a fresh box.
+
+## What the boxes ran
+
+| date | GPU | driver | CUDA toolkit | image |
+| --- | --- | --- | --- | --- |
+| 2026-11-21 | RTX 3090 24 GB (Vast, Quebec) | 615.71.09 | 12.8.93 | `nvidia/cuda:12.8.1-devel-ubuntu24.04`, Swift 6.2 RELEASE |
+
+## Vast's API, as it was on 2026-11-21
+
+- `POST /api/v0/bundles/` searches offers (a JSON query); `PUT /api/v0/asks/<offer>/` rents one
+  (`client_id: me`, `image`, `disk`, `runtype: "ssh_direc ssh_proxy"`, `onstart`) and returns
+  `new_contract`, the instance's id; `GET /api/v0/instances/<id>/` gives its state and SSH port;
+  `DELETE /api/v0/instances/<id>/` destroys it.
+- The list of instances has moved: `GET /api/v0/instances/` answers 410, `GET /api/v1/instances/`
+  is the one.
+- `GET /api/v0/users/current/` gives the credit. Its answer also holds the account's e-mail
+  address: the script reads only the credit from it.
