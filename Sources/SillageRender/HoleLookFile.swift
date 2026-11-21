@@ -101,6 +101,8 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
     /// The post stages' tone, Sillage's own when absent (`HoleLook.settings`).
     public var stretch: Double?
     public var bloom: Double?
+    /// How far the glow reaches: each level doubles it, 4 stopping about 30 px off at 1080p.
+    public var bloomLevels: Int?
     public var whitePoint: Double?
     public var saturation: Double?
     public var camera = CameraPlan()
@@ -129,6 +131,7 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
             try c.decodeIfPresent(Double.self, forKey: .starBrightness) ?? file.starBrightness
         file.stretch = try c.decodeIfPresent(Double.self, forKey: .stretch)
         file.bloom = try c.decodeIfPresent(Double.self, forKey: .bloom)
+        file.bloomLevels = try c.decodeIfPresent(Int.self, forKey: .bloomLevels)
         file.whitePoint = try c.decodeIfPresent(Double.self, forKey: .whitePoint)
         file.saturation = try c.decodeIfPresent(Double.self, forKey: .saturation)
         file.camera = try c.decodeIfPresent(CameraPlan.self, forKey: .camera) ?? file.camera
@@ -154,6 +157,7 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
         try c.encode(starBrightness, forKey: .starBrightness)
         try c.encodeIfPresent(stretch, forKey: .stretch)
         try c.encodeIfPresent(bloom, forKey: .bloom)
+        try c.encodeIfPresent(bloomLevels, forKey: .bloomLevels)
         try c.encodeIfPresent(whitePoint, forKey: .whitePoint)
         try c.encodeIfPresent(saturation, forKey: .saturation)
         try c.encode(camera, forKey: .camera)
@@ -161,8 +165,8 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case version, name, lensed, images, temperature, hottest, beaming, exposure, exposureAt,
-            ambient, particleSize, thinning, stars, starBrightness, stretch, bloom, whitePoint, saturation,
-            camera
+            ambient, particleSize, thinning, stars, starBrightness, stretch, bloom, bloomLevels, whitePoint,
+            saturation, camera
     }
 
     public enum ReadError: Error, CustomStringConvertible, Equatable {
@@ -185,6 +189,10 @@ public struct HoleLookFile: Codable, Sendable, Equatable {
         }
         guard (0...1).contains(beaming) else { throw ReadError.badValue("beaming is from 0 to 1") }
         guard thinning >= 0 else { throw ReadError.badValue("thinning is 0 or above") }
+        guard (bloom ?? 0) >= 0 else { throw ReadError.badValue("bloom is 0 or above") }
+        guard (1...8).contains(bloomLevels ?? 1) else {
+            throw ReadError.badValue("bloomLevels is from 1 to 8")
+        }
         guard camera.distance > 1.5, (camera.toDistance ?? 2) > 1.5, camera.fieldOfView > 0,
             camera.fieldOfView < 180
         else {
