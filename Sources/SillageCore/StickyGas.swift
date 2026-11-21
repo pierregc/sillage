@@ -7,8 +7,9 @@ import Foundation
 public struct StickyGas: Codable, Sendable, Equatable {
     /// Random motion the gas keeps, in km/s: its stand-in for pressure.
     public var soundSpeed: Float = 10
-    /// E-foldings a megayear of the closing speed above the sound speed.
-    public var rate: Float = 1
+    /// E-foldings a megayear of the closing speed above the sound speed. Gentle on purpose: at
+    /// four times this the gas knots, at a quarter of it nothing gathers (docs/notes/sticky-gas.md).
+    public var rate: Float = 0.25
     /// E-foldings each time the particle crosses its cell at its closing speed,
     /// added to `rate`: a mean free path of one cell over this.
     public var crossing: Float = 0
