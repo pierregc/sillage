@@ -328,6 +328,38 @@ struct SceneFolderTests {
         #expect(abs(priced - (run + drawing)) < 1e-6)
     }
 
+    /// A take pass that would refuse a checkpoint, one that measures or on another solver than
+    /// Barnes-Hut, is given none by default, and runs as it did before #377.
+    @Test func aHiresThatCannotCheckpointIsGivenNoneByDefault() throws {
+        let folder = try explored()
+        defer { try? FileManager.default.removeItem(at: folder.batch) }
+        func checkpoints(_ options: [String]) throws -> Bool {
+            let arguments = try folder.hiresArguments(options, maximumParticles: 10_000_000).arguments
+            return arguments.contains("--checkpoint")
+        }
+        let density = ["--density", "density.npy", "--density-frames", "8", "--density-extent", "60"]
+        #expect(try checkpoints([]))
+        #expect(try !checkpoints(density))
+        #expect(try !checkpoints(["--dump-walk", "walk", "--dump-walk-frames", "0:fixture"]))
+        #expect(try !checkpoints(["--take-v6", "old.sillage"]))
+        #expect(try !checkpoints(["--sf-leaves", "leaves.csv"]))
+        #expect(try !checkpoints(["--solver", "restricted"]))
+        #expect(try checkpoints(["--solver", "barnes-hut"]))
+        // Asked for in so many words, the take pass refuses it as before.
+        #expect(try checkpoints(density + ["--checkpoint-every", "30"]))
+        var restricted = SceneConfig.merger(particleCount: 400_000)
+        restricted.solver = .restricted
+        try SceneFile(restricted).encoded().write(to: folder.scene)
+        #expect(try !checkpoints([]))
+        #expect(try checkpoints(["--solver", "barnes-hut"]))
+        // Minutes that no interval of frames can hold are refused, not a trap.
+        #expect(throws: SceneFolder.HiresError.self) { try checkpoints(["--checkpoint-every", "inf"]) }
+        let record = try folder.hiresArguments([], maximumParticles: 10_000_000).record
+        let far = SceneFolder.checkpointInterval(
+            minutes: 1e30, record: record, tracers: 0, presets: [], model: .fallback())
+        #expect(far.frames == Int(Int32.max) && far.steps == Int(Int32.max))
+    }
+
     /// A hires checkpoints about every hour by the cost model's prices, unless told otherwise,
     /// and resumes only a checkpoint of its own run: a full pass (#240) and the pass that writes
     /// the take (#377).
@@ -436,6 +468,15 @@ struct SceneFolderTests {
         try folder.commitHires()
         #expect(try String(contentsOf: folder.massiveSet, encoding: .utf8) == "massive")
         #expect(throws: POSIXError.self) { try SceneFolder.commit(folder.preview) }
+        // A run that drew no video puts none in place, not the half one a failed run left.
+        for url in [folder.take, folder.hiresVideo, folder.hiresCurves] {
+            try Data("left".utf8).write(to: SceneFolder.partial(url))
+        }
+        try Data("taken".utf8).write(to: SceneFolder.partial(folder.take))
+        try folder.commitHires(video: false)
+        #expect(try String(contentsOf: folder.take, encoding: .utf8) == "taken")
+        #expect(!FileManager.default.fileExists(atPath: folder.hiresVideo.path))
+        #expect(!FileManager.default.fileExists(atPath: SceneFolder.partial(folder.hiresVideo).path))
     }
 
     @Test func whatAnInterruptedStageLeftIsRemovedAndNothingElse() throws {

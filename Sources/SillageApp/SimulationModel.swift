@@ -153,7 +153,11 @@ final class SimulationModel: ObservableObject {
     /// Held so the verification mode can drive the view itself. MTKView pauses its display
     /// link whenever the window is occluded, which a window opened behind another app always
     /// is, and that would otherwise make the render path untestable from a script.
-    func attach(canvas view: MTKView) { canvas = view }
+    func attach(canvas view: MTKView) {
+        canvas = view
+        // A canvas built again over a still picture has nothing on it yet (#410).
+        drawGate.force()
+    }
     var hasCanvas: Bool { canvas?.window != nil }
 
     func drawOnce() {
@@ -244,6 +248,9 @@ final class SimulationModel: ObservableObject {
     /// Frames between refreshes of the smoothing field.
     let smoothingInterval = 20
     private var smoothingInFlight = false
+    /// The clock and playhead the lengths were last built at: a picture that moved on since is
+    /// drawn as moving until a refresh catches up, so a still frame is not left on old ones (#410).
+    private var smoothedAt: SIMD2<Double>?
     /// What each refresh cost, for `--replay`.
     private(set) var smoothingRefreshes: [Double] = []
 
@@ -764,6 +771,7 @@ final class SimulationModel: ObservableObject {
     /// is about to be thrown away.
     private func refreshSmoothing() {
         guard !smoothingInFlight, let field = smoothing else { return }
+        let moment = smoothingMoment
         if mode == .playback {
             guard let bound = playbackPositions else { return }
             smoothingInFlight = true
@@ -771,7 +779,7 @@ final class SimulationModel: ObservableObject {
             steppingQueue.async { [weak self] in
                 field.update(from: positions.buffer)
                 let spent = field.lastMilliseconds
-                DispatchQueue.main.async { self?.finishSmoothing(spent) }
+                DispatchQueue.main.async { self?.finishSmoothing(spent, at: moment, of: field) }
             }
         } else {
             guard let solver else { return }
@@ -779,13 +787,22 @@ final class SimulationModel: ObservableObject {
             steppingQueue.async { [weak self] in
                 field.update(from: solver)
                 let spent = field.lastMilliseconds
-                DispatchQueue.main.async { self?.finishSmoothing(spent) }
+                DispatchQueue.main.async { self?.finishSmoothing(spent, at: moment, of: field) }
             }
         }
     }
 
-    private func finishSmoothing(_ milliseconds: Double) {
+    private var smoothingMoment: SIMD2<Double> { SIMD2(elapsedMyr, playbackPosition) }
+
+    /// Whether the lengths are older than the picture, and a refresh can catch them up.
+    private var smoothingBehind: Bool {
+        let refreshable = mode == .playback ? playbackPositions != nil : solver != nil
+        return smoothing != nil && refreshable && smoothedAt != smoothingMoment
+    }
+
+    private func finishSmoothing(_ milliseconds: Double, at moment: SIMD2<Double>, of field: SmoothingField) {
         smoothingInFlight = false
+        if field === smoothing { smoothedAt = moment }
         drawGate.wake()
         smoothingRefreshes.append(milliseconds)
         if smoothingRefreshes.count > 400 { smoothingRefreshes.removeFirst() }
@@ -874,6 +891,8 @@ final class SimulationModel: ObservableObject {
             let clock = Date()
             let before = solver.time
             solver.step(count: steps)
+            // A pass the GPU lost leaves the solver where it is for good (#409).
+            let lost = (solver as? MetalBarnesHutSolver)?.failure.map { "\($0)" }
             let time = solver.time
             let advanced = Double(time - before) * Physics.megayearsPerTimeUnit
             let spent = Date().timeIntervalSince(clock)
@@ -889,7 +908,7 @@ final class SimulationModel: ObservableObject {
             var full = false
             var onDisk = 0
             var spillFailure: String?
-            if let reel {
+            if let reel, lost == nil {
                 // Every frame is kept. Past its memory budget the take carries on into a
                 // scratch file rather than coarsening, so ten thousand megayears comes back
                 // at the cadence it was taken at and not at whatever survived the budget.
@@ -904,7 +923,16 @@ final class SimulationModel: ObservableObject {
                 spillFailure = reel.spillFailure
             }
             DispatchQueue.main.async {
-                guard let self, self.liveGeneration == generation else { return }
+                guard let self else { return }
+                // A batch stopped on its way back still moved the particles the canvas draws.
+                self.drawGate.wake()
+                guard self.liveGeneration == generation else { return }
+                if let lost {
+                    self.stopLiveStepping()
+                    self.isPlaying = false
+                    self.failure = "The GPU lost the run: \(lost)"
+                    return
+                }
                 self.elapsedMyr = Double(time) * Physics.megayearsPerTimeUnit
                 // Smoothed, or a batch that happened to land behind a render makes the
                 // number jump around too much to read.
@@ -1313,6 +1341,7 @@ final class SimulationModel: ObservableObject {
             // Due on the next frame rather than now: a replay's positions buffer is still empty
             // here, and lengths taken from it would hold until the next refresh.
             framesSinceSmoothing = smoothingInterval
+            smoothedAt = nil
         } catch {
             failure = "\(error)"
             renderer = nil
@@ -1497,7 +1526,7 @@ final class SimulationModel: ObservableObject {
     /// a flight flown or recorded, the director's film, or the exposure still settling.
     private var pictureMoves: Bool {
         if contemplating || isPreparing || flights.isPlaying || flights.isRecording
-            || flights.drivesPlayhead || liveExposure.stops != 0
+            || flights.drivesPlayhead || liveExposure.stops != 0 || smoothingBehind
         {
             return true
         }
