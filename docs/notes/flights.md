@@ -265,6 +265,80 @@ renders.
 `scripts/linux.sh`, so the CUDA engine's stills (#277) and full pass (#278, #300) can follow a
 flight by asking `Flight.shot(atSeconds:look:)` and `Flight.captured(atSeconds:)`.
 
+## The export on CUDA
+
+#382, part of #375. `sillage-cuda export` draws a flight's video on a Linux machine, on the take
+it holds:
+
+```
+scripts/linux.sh tool
+.build/linux/sillage-cuda export <scene folder | take> --flight <name | file> \
+    [--look <look>] [--preset 1080p|4k] [--framing <take>] [--resume]
+```
+
+Given a scene folder it reads the folder's take, look and captured rate and writes
+`exports/<flight>-<preset>.mp4`, as the Mac does; given a take alone, `--look` and `--out` say
+the rest, and `--rate` when no `hires.json` or `clip.json` lies beside it. `--take`, `--width`,
+`--height`, `--fps`, `--start`, `--duration`, `--codec`, `--bitrate`, `--stills` and
+`--still-frames` are the Mac's. The video is encoded by ffmpeg (`FFmpegVideo`).
+
+**One flow for a flight's frames.** What decides a frame is `FlightFrames`
+(`Sources/SillageRender/FlightFrames.swift`), portable Swift that knows no engine: the camera
+and the moment from `Flight`, where the frame reads the take (among a key-frame take's own
+frames with `--framing`, #379), the look and the painted arms through `TakeFraming`, the
+nearness and the matter's depth, the renders a frame's shutter passes, the report, and the
+exposure: the scale of a look that measures its own on the look keys (#340), the target, and the
+trim solved every quarter second of the whole flight and eased. An engine gives it a
+`FlightStage`: the renderer's settings, the take's positions at a place with their eased kernel
+lengths, the grain, and a render read back. `CUDATakeStills` is the CUDA engine's stage, and
+`sillage-cuda still --flight` goes through the same flow. `FlightFrames` follows `TakeExport`
+line for line, but `TakeExport` does not call it yet: a cloud session cannot check Metal's bytes,
+so the Mac moves onto it in #426. Until then a change to a flight's frames is made in both.
+
+**Drawn in segments, kept as they come.** A flight of an hour on a box that can be taken back
+must not start again. The video is drawn in segments of whole files, a second of video each by
+default (`--segment-frames`), in `.<name>.segments` beside the output:
+
+- `plan.json`: what the export is (the take's name, size and counts, the digests of the look and
+  of the flight, the size, the rate, the part of the flight, the codec) and the exposure of the
+  whole flight, floats written as their bits. It is measured once, by the first run, whatever
+  part of the flight that run draws, and every later run draws under what is written.
+- `segment-NNNNN.mp4`, moved into place once ffmpeg has closed it with every frame, and
+  `segment-NNNNN.json` beside it: the frames it holds, a digest of them as drawn, what they took
+  of the inside of a galaxy, the device.
+
+A run that finds every segment joins them without encoding again (`FFmpegVideo.join`, which
+counts the frames), moves the video into place and removes the folder. A run that stops, killed,
+out of memory or with its box, loses the segment it was drawing. `--resume` draws the segments
+that are missing and joins; it refuses a folder whose plan is another export's and says what
+differs. Without `--resume` an export starts again from nothing. A resumed video is the video of
+a run that never stopped, frame for frame and byte for byte on the CPU target. With `--resume` a
+video that is whole, and no older than its take, look and flight, is left as it is: the same line
+can run again each time a box restarts.
+
+**Several GPUs, or several boxes, on one video.** `--part k/n` draws one segment in n and keeps
+the others' as `--resume` does: `--part 1/2 --device 0` and `--part 2/2 --device 1` side by
+side draw one video, and the part that finds every segment drawn joins them. Each GPU takes one
+export: #283 started eight draws on one 24 GB card, five ran out of its memory and the three left
+slowed one another to 350 s a frame. After its first segment an export prints what it holds on
+the device, what is free and how many more would fit; out of memory, it says so with those
+numbers and keeps its segments.
+
+**Before the video is paid for.** `--flight-keys <dir>` draws the frame at each key as a PNG,
+each at its own exposure, and `--flight-at <s,...>` those seconds instead, as on the Mac.
+`--width 960 --height 540` draws the whole flight small. A still is drawn the same whatever was
+drawn before it in the same run.
+
+**The words over the picture** (#317) are the Mac's: Core Text sets them. An export whose look,
+scene folder or `--overlay` asks for them is refused, and `--no-overlay` draws it without.
+
+**What it costs is not measured.** #283 drew 4K stills from inside an arm in 50 to 110 s on an
+RTX 3090, where the M4 Max takes 94 to 360 ms a render. `--profile` waits for the device after
+each phase and prints where the time went, the exposure's pre-pass apart from the frames, and
+`--large-splats <pixels>|off` chooses how large splats are drawn
+([cuda-engine.md](cuda-engine.md#a-flights-video-382)). #424 runs both on a rented card before
+any flight is drawn there, and #425 makes a render fast.
+
 ## Key frames and visits
 
 #379, part of #375. A take holds the massive particles; light tracers are kept only at a full
