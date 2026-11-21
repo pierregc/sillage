@@ -907,7 +907,7 @@ public final class TakePassRun {
         }
         if let (folder, done) = hires {
             do {
-                try folder.commitHires()
+                try folder.commitHires(video: videoPath != nil)
             } catch {
                 throw Failure.message("hires: could not put the take in place: \(error)")
             }

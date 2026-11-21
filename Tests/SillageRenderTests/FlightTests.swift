@@ -289,6 +289,29 @@ struct FlightTests {
         #expect(try Flight(file, take: sheet()).pacings.map(\.to) == [8])
     }
 
+    /// An eye anchored on a galaxy that moves is asked its nearness where it stands at the
+    /// captured frame the matter is read at, not half a frame away from it.
+    @Test func aPacedEyeOnAMovingGalaxyIsProbedWithItsMatter() throws {
+        var probed = take()
+        var worst = 0.0
+        probed.nearness = { moment, eyes in
+            eyes.map { eye in
+                worst = max(worst, abs(eye.x - moment))
+                return abs(eye.z) + 0.05
+            }
+        }
+        let file = FlightFile(keys: [
+            .init(
+                at: 0, myr: 200, eye: .galaxy(0, offset: SIMD3(0, 0, 20), disk: false),
+                aim: world(0, 30, 0), pace: .nearness),
+            .init(
+                at: 10, myr: 210, eye: .galaxy(0, offset: SIMD3(0, 0, 0.2), disk: false),
+                aim: world(0, 30, 0)),
+        ])
+        #expect(try Flight(file, take: probed).pacings.count == 1)
+        #expect(worst < 1e-9, "an eye \(worst) kpc off its galaxy's centre")
+    }
+
     @Test func aPaceIsAskedWhereItCanBeKept() throws {
         let decoded = try JSONDecoder().decode(
             FlightFile.Key.self,

@@ -742,7 +742,8 @@ public final class Flight {
             byMoment[captured(atSeconds: samples[n]).rounded(), default: []].append(slot)
         }
         for (moment, slots) in byMoment {
-            let found = probe(moment, slots.map { eyes[probes[$0]] })
+            // Placed at the moment the matter is read: an eye anchored on a galaxy moves with it.
+            let found = probe(moment, slots.map { point(\.eye, samples[probes[$0]], moment) })
             for (slot, value) in zip(slots, found) { near[slot] = value }
         }
         let finite = near.filter { $0.isFinite && $0 > 0 }
