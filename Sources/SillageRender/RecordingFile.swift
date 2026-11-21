@@ -1,5 +1,6 @@
 import Foundation
 import SillageCore
+
 #if canImport(simd)
     import simd
 #endif
@@ -109,7 +110,7 @@ public enum RecordingFile {
         encoder.outputFormatting = .sortedKeys
         let encoded = try encoder.encode(header)
 
-        FileManager.default.createFile(atPath: url.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: url.path, contents: nil)
         let handle = try FileHandle(forWritingTo: url)
         defer { try? handle.close() }
 

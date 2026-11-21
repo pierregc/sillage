@@ -855,7 +855,7 @@ public final class TakePassRun {
         // solver's state beside it as `<path>.json`, to compare two runs to the bit.
         if let path = argument("state-out"), let state = engine.state {
             let url = try Self.prepared(path)
-            FileManager.default.createFile(atPath: url.path, contents: nil)
+            _ = FileManager.default.createFile(atPath: url.path, contents: nil)
             let handle = try FileHandle(forWritingTo: url)
             try engine.writeParticles(to: handle)
             try handle.close()

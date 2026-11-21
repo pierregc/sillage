@@ -3,6 +3,7 @@ import Testing
 
 @testable import SillageCore
 @testable import SillageRender
+
 #if canImport(simd)
     import simd
 #else
@@ -65,7 +66,7 @@ struct RecordingTests {
                         generator.normal(), generator.normal(), generator.normal()) * 20
             }
             frames.append(positions)
-            positions.withUnsafeBufferPointer {
+            _ = positions.withUnsafeBufferPointer {
                 recording.offer(
                     positions: $0.baseAddress!, time: Float(index) * 0.25, centers: [],
                     budget: budget)
@@ -120,7 +121,7 @@ struct RecordingTests {
             }
             if index == 0 { first = positions }
             if index == 23 { last = positions }
-            positions.withUnsafeBufferPointer {
+            _ = positions.withUnsafeBufferPointer {
                 recording.offer(
                     positions: $0.baseAddress!, time: Float(index), centers: [.zero],
                     budget: recording.frameBytes * 2)

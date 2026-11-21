@@ -1092,7 +1092,7 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
         let states = UnsafeRawPointer(positionBuffer.contents())
         let times = UnsafeRawPointer(formationBuffer.contents())
         counts.withUnsafeMutableBufferPointer { counts in
-            DispatchQueue.concurrentPerform(iterations: blocks) { chunk in
+            concurrentPerform(iterations: blocks) { chunk in
                 var formed = 0
                 for index in (chunk * block)..<min((chunk + 1) * block, drawn) {
                     let time =

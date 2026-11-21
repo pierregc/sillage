@@ -211,7 +211,7 @@ struct HoleLensSetTests {
     }
 
     @Test func onATablesDistanceItIsThatTable() {
-        let set = HoleLensSet(make: Self.make)
+        let set = HoleLensSet(make: { Self.make($0) })
         let distance = set.distance(ofLevel: 30)
         let table = Self.make(distance)
         for image in 0..<3 {
@@ -229,7 +229,7 @@ struct HoleLensSetTests {
         // Half way between two tables, where the blend is furthest from either, against the
         // table built at that distance: the bend within a ten-thousandth of a radian on the
         // whole and the photon ring as close to the shadow's edge as the table puts it.
-        let set = HoleLensSet(make: Self.make)
+        let set = HoleLensSet(make: { Self.make($0) })
         for level in [15, 33, 44] {
             let distance = set.distance(ofLevel: level) * set.ratio.squareRoot()
             let exact = Self.make(distance)
@@ -257,7 +257,7 @@ struct HoleLensSetTests {
     }
 
     @Test func aCameraMovingThroughATablesDistanceDoesNotJump() {
-        let set = HoleLensSet(make: Self.make)
+        let set = HoleLensSet(make: { Self.make($0) })
         let level = 30
         let at = set.distance(ofLevel: level)
         for image in 0..<3 {
@@ -274,7 +274,7 @@ struct HoleLensSetTests {
 
     @Test func theLensTestsHoldBetweenTables() {
         // `HoleLensTests` at distances no table was built at.
-        let set = HoleLensSet(make: Self.make)
+        let set = HoleLensSet(make: { Self.make($0) })
         for distance: Float in [9.5, 23, 51] {
             let shadow = HoleLens.shadowAngle(cameraDistance: distance)
             for angle in stride(from: Float(1.8), through: 3.1, by: 0.2) {

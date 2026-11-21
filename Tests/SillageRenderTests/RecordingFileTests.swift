@@ -3,6 +3,7 @@ import Testing
 
 @testable import SillageCore
 @testable import SillageRender
+
 #if canImport(simd)
     import simd
 #endif
@@ -23,7 +24,7 @@ struct RecordingFileTests {
                 component: index % 7 == 0 ? .dust : .star)
         }
         for frame in 0..<frames {
-            var positions = (0..<particles).map { index in
+            let positions = (0..<particles).map { index in
                 SIMD3<Float>(
                     Float(index) * 0.01 + Float(frame), Float(index) * -0.02,
                     Float(frame) * 0.5)

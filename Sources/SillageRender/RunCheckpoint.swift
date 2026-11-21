@@ -1,5 +1,6 @@
 import Foundation
 import SillageCore
+
 #if canImport(CryptoKit)
     import CryptoKit
 #endif
@@ -312,7 +313,7 @@ public struct RunCheckpoint: Sendable {
     /// leaves the data in the drive's cache, where a power cut loses it (`F_FULLFSYNC` does not).
     private static func durable(_ url: URL, _ body: (FileHandle) throws -> Void) throws {
         let aside = url.appendingPathExtension("partial")
-        FileManager.default.createFile(atPath: aside.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: aside.path, contents: nil)
         let handle = try FileHandle(forWritingTo: aside)
         do {
             try body(handle)

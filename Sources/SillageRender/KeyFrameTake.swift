@@ -66,7 +66,7 @@ public final class KeyFrameTake {
             let contents = one.contents()
             guard let box = contents.frames.first else { return }
             let data = blocks.appendingPathComponent(Self.name(frame, "positions"))
-            FileManager.default.createFile(atPath: data.path, contents: nil)
+            _ = FileManager.default.createFile(atPath: data.path, contents: nil)
             let handle = try FileHandle(forWritingTo: data)
             try one.streamPositionBytes { try handle.write(contentsOf: Data($0)) }
             try handle.close()
@@ -92,7 +92,7 @@ public final class KeyFrameTake {
         if let blocks {
             // The blocks' positions one after another, mapped rather than read in.
             let all = blocks.appendingPathComponent("all.positions")
-            FileManager.default.createFile(atPath: all.path, contents: nil)
+            _ = FileManager.default.createFile(atPath: all.path, contents: nil)
             let handle = try FileHandle(forWritingTo: all)
             var frames: [Recording.Frame] = []
             var centers: [SIMD3<Float>] = []

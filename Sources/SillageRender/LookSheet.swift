@@ -1,5 +1,5 @@
 import Foundation
-import Metal
+@preconcurrency import Metal
 import SillageCore
 import simd
 
@@ -211,7 +211,7 @@ public final class LookSheet {
         let built = Built(count: files.count)
         let (device, particles, positions) = (device, take.particles, positions)
         let lanes = min(Self.buildLanes, files.count)
-        DispatchQueue.concurrentPerform(iterations: lanes) { lane in
+        concurrentPerform(iterations: lanes) { lane in
             for index in Swift.stride(from: lane, to: files.count, by: lanes) {
                 built.set(
                     index,

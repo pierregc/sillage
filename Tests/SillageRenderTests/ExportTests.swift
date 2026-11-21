@@ -171,8 +171,8 @@ struct ExportTests {
         defer { try? FileManager.default.removeItem(at: url) }
         var seen = 0
         let report = try export.write(
-            to: url, width: 64, height: 36, framesPerSecond: 20, duration: 0.5
-        ) { done, _ in seen = done }
+            to: url, width: 64, height: 36, framesPerSecond: 20, duration: 0.5,
+            progress: { done, _ in seen = done })
         #expect(report.frames == 10 && seen == 10)
 
         let asset = AVURLAsset(url: url)
