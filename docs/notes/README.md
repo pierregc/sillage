@@ -49,6 +49,7 @@ session. Read the note for an area before changing it.
 - [Old stars seen edge-on and face-on](old-stars-by-angle.md): the outskirts' light, no young stars in the bulge
 - [Why the red went out](red-population.md): and what a constant population costs
 - [Gas in filaments](gas-filaments.md): and which frame a dust lane lives in
+- [Gas that dissipates](gas-that-dissipates.md): a study on paper of what it would take for the gas to lose energy, why the Mice's lanes go out by 620 Myr, what the drawing alone, sticky gas on the tree's cells, isothermal SPH and what lies beyond would each give and cost, and a spike with its criteria
 - [What Hubble and Webb pictures are made of](telescope-colour.md): reference colours for the Telescope world
 - [Scoring a palette, and the Auto palette](palette-score.md): the five parts, the reference tones, what Auto picks
 - [A frame that passes for a photograph](a-frame-that-passes-for-a-photograph.md): the six cues taken in order on an 8 M take against deep ground photographs, `scripts/photo-ruler.py`, the `photograph` look, what settings cannot do and what the telescope scores reward (#315)
