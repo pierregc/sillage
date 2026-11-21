@@ -79,7 +79,7 @@ strength, and the dust's `lane` factor, `1 + 7 wave² envelope detail`, keeps `1
 detail` at a wave of a half, up to 2.4 times the bare dust. Only at a strength of exactly zero
 did the envelope drop out, on the frame the disk read as wholly torn: on the Mice pull out the
 companion's arcs and then the big disk's lane lost half their darkness from one frame to the
-next (+2.0 and +4.4 of mean luma at 1080p, frames 2237 and 2248 of `dive-flowing`). The take
+next (+2.0 and +4.4 of mean luma on 960 x 540 stills, frames 2237 and 2248 of `dive-flowing`). The take
 interpolates `torn` linearly between stored frames 3.2 Myr apart, and the big disk sat at
 0.99999 for a whole stored frame, so the step fell on a stored frame's edge.
 
