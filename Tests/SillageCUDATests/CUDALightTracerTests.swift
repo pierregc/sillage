@@ -313,9 +313,23 @@ extension CUDABarnesHutSolverTests {
         try builder.buildSpacing(drawn: visible, ratio: ratio)
         #expect(
             try alone.download(Float.self, count: visible) == lengths.download(Float.self, count: visible))
+        // On a GPU the cells of a level come in the order its atomics gave them, a build to the
+        // next: both trees are compared in the level order, their records moved along.
         let nodes = try builder.nodeCount
-        let theirs = try #require(builder.spacing).download(SIMD2<UInt32>.self, count: nodes)
-        #expect(try spacing.cells.download(SIMD2<UInt32>.self, count: nodes) == theirs)
+        let theirs = try Self.levelOrdered(
+            nodes: builder.nodes.download(BHNode.self, count: nodes),
+            spacing: try #require(builder.spacing).download(SIMD2<UInt32>.self, count: nodes))
+        let ours = try Self.levelOrdered(
+            nodes: solver.treeNodes.download(BHNode.self, count: nodes),
+            spacing: spacing.cells.download(SIMD2<UInt32>.self, count: nodes))
+        #expect(ours == theirs)
+    }
+
+    /// A tree's spacing records in the level order, whatever order a GPU's atomics gave a level.
+    private static func levelOrdered(nodes: [BHNode], spacing: [SIMD2<UInt32>]) throws -> [SIMD2<UInt32>] {
+        let sources = try #require(BarnesHutTree.levelOrder(of: nodes))
+        let level = try #require(BarnesHutTree.levelOrdered(nodes, moments: []))
+        return BarnesHutTree.levelOrdered(spacing: spacing, sources: sources, ordered: level.nodes)
     }
 
     /// What a run holds on the device, counted from its allocations, is what

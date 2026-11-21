@@ -2157,3 +2157,58 @@ Six more wait for data rather than a GPU, and run on the CPU target when their f
 `theLightStaysOnTheMassAsOnMetal` (`SILLAGE_CUDA_TRACER_CHECKS`), `theParticlePassesAgreeWithMetal`
 and `theStillsAgreeWithMetal` (`SILLAGE_CUDA_RENDER_TARGETS`), and `theFullPassAgreesWithTheMacs`
 and `theTakePassAgreesWithTheMacs` (`SILLAGE_CUDA_FULL_PASS`).
+
+## Timed on an RTX 5090 (#424)
+
+2026-11-21, rented on Vast.ai through `scripts/gpu-box.sh` (docs/notes/gpu-ledger.md). Scene-0031
+of the fixtures at 8 M visible on 12 M of dark matter, the settle and 24 frames through the first
+pericentre, then flights drawn from its take with `sillage-cuda export --profile`, frozen at
+300 Myr, 13 frames of 4 s at 3 frames a second. `--profile` waits for the device after each phase.
+
+**A massive step**, phase by phase (ms):
+
+| | RTX 5090 | RTX 3090 | M4 Max |
+| --- | ---: | ---: | ---: |
+| step | 128 | 430 to 470 | 450 |
+| force | 91 | 230 to 270 | |
+| tree (bounds, Morton, sort, nodes, masses) | 10.5 | 33 | |
+| halo centres and disk frames (CPU) | 11 | 35 | |
+
+The whole run, 4,606 steps: 11.5 min on a 5090 behind a fast host (Norway, 64 cores), about 25
+on another behind 16 slower cores, the GPU there busy half the time: the CPU work of a step (halo
+centres, disk frames) is the host's. A box for scenes is chosen on its CPU too.
+
+**A flight's frame on the 5090**, the default large splats:
+
+| | 1080p | 4K |
+| --- | ---: | ---: |
+| wide, about 23 kpc from matter, 1 render, 1 M point stars | 1.5 s | 3.3 s |
+| inside an arm, 0.7 to 0.2 kpc from matter, 4 renders, 26 to 49 M point stars | 9.4 s | 24 s (9 to 40) |
+
+The device is busy the whole time (`nvidia-smi` at 100 %): #382's reading holds, the time is the
+GPU's, not a CPU core's. An export from inside at 4K holds 5.3 GB of the device at most, 2.2 GB at
+1080p.
+
+**Where the 4K frames from inside an arm go** (13 frames, 52 renders, 310 s):
+
+| phase | share | each |
+| --- | ---: | ---: |
+| pass pointStars | 76 % | 4.5 s a render |
+| pass stars | 11 % | 0.63 s a render |
+| paintedDust, webResolve, webCarrier | 3 % | |
+| encode, set up, post-processing, decode | under 1 % | |
+| the rest (host, waits) | 10 % | |
+
+**The exposure's pre-pass**: 17 moments in 42 s for that flight, against 310 s for its frames: it
+does not cost more than the video.
+
+**Large splats**, 1 s of the same flight at 4K (3 frames): `off` 40.4 s a frame, `256` 10.3 s,
+`1024` 9.2 s, `4096` 11.4 s, the four videos the same to the byte. `flightLargeSplatPixels`
+stays at 1024.
+
+**For #425**: a frame from inside is the point stars' pass, 4.5 s a render for 26 to 49 M stars
+at 4K; the particle passes are a tenth of it. That pass is the one to make fast.
+
+**Not measured**: the flight export's tests on the GPU (`CUDAFlightExportTests`), the resume and
+the parts among them, and `aFlightInsideAnArmIsTimedIn4K`. They ran, but the box reached its
+deadline and deleted itself before their output was fetched. A short session runs them again.
