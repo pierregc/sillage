@@ -10,27 +10,95 @@ FRAMEWORKS="$DEV/Library/Developer/Frameworks"
 INTEROP="$DEV/Library/Developer/usr/lib"
 PLUGIN="$DEV/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib"
 
+# A product is rebuilt when its key changed: a hash of its sources, of the keys of the modules it
+# links against, of the compiler and of this script. Content, not dates, so that a branch switch
+# that comes back to the same sources rebuilds nothing. FORCE=1, or `dev.sh clean`, rebuilds all.
+built_now=" "
+
+# The hash of the Swift files of these folders of the repository, their names included.
+hash_files() {
+    (cd "$ROOT" && for dir in "$@"; do shasum -a 256 "$dir"/*.swift; done) | shasum -a 256 | cut -c1-64
+}
+
+base_key() {
+    if [ -z "${BASE_KEY:-}" ]; then
+        BASE_KEY="$({ swiftc --version 2>&1; cat "${BASH_SOURCE[0]}"; } | shasum -a 256 | cut -c1-64)"
+    fi
+    echo "$BASE_KEY"
+}
+
+# fresh <product> <key>: the product exists and was built from this key, now or in a run before.
+fresh() {
+    case "$built_now" in *" $1 "*) return 0 ;; esac
+    [ -z "${FORCE:-}" ] && [ -f "$BUILD/$1.key" ] && [ "$(cat "$BUILD/$1.key")" = "$2" ] || return 1
+    built_now="$built_now$1 "
+}
+
+stale() { rm -f "$BUILD/$1.key"; }
+
+built() {
+    printf '%s\n' "$2" > "$BUILD/$1.key"
+    built_now="$built_now$1 "
+}
+
+core_key() { echo "$(base_key) $(hash_files Sources/SillageCore)" | shasum -a 256 | cut -c1-64; }
+render_key() { echo "$(core_key) $(hash_files Sources/SillageRender)" | shasum -a 256 | cut -c1-64; }
+cli_key() { echo "$(render_key) $(hash_files Sources/sillage-render)" | shasum -a 256 | cut -c1-64; }
+tests_key() {
+    echo "$(render_key) $(hash_files Tests/SillageCoreTests Tests/SillageRenderTests)" \
+        | shasum -a 256 | cut -c1-64
+}
+app_key() {
+    echo "$(cli_key) $(hash_files Sources/SillageApp) $ROOT" | shasum -a 256 | cut -c1-64
+}
+
 build_core() {
     mkdir -p "$BUILD"
+    local key
+    key="$(core_key)"
+    fresh core "$key" && [ -f "$BUILD/libSillageCore.dylib" ] && return
+    stale core
     swiftc -O -emit-library -emit-module -enable-testing \
         -module-name SillageCore "$ROOT"/Sources/SillageCore/*.swift \
         -emit-module-path "$BUILD/SillageCore.swiftmodule" \
         -o "$BUILD/libSillageCore.dylib"
+    built core "$key"
 }
 
 build_render() {
     build_core
-    swiftc -O -emit-library -emit-module -enable-testing \
-        -module-name SillageRender -I "$BUILD" -L "$BUILD" -lSillageCore \
-        "$ROOT"/Sources/SillageRender/*.swift \
-        -emit-module-path "$BUILD/SillageRender.swiftmodule" \
-        -o "$BUILD/libSillageRender.dylib"
+    printf '%s\n' "$ROOT" > "$BUILD/sillage-root"
+    local key
+    key="$(render_key)"
+    if ! { fresh render "$key" && [ -f "$BUILD/libSillageRender.dylib" ]; }; then
+        stale render
+        swiftc -O -emit-library -emit-module -enable-testing \
+            -module-name SillageRender -I "$BUILD" -L "$BUILD" -lSillageCore \
+            "$ROOT"/Sources/SillageRender/*.swift \
+            -emit-module-path "$BUILD/SillageRender.swiftmodule" \
+            -o "$BUILD/libSillageRender.dylib"
+        built render "$key"
+    fi
+    key="$(cli_key)"
+    fresh cli "$key" && [ -f "$BUILD/sillage-render" ] && return
+    stale cli
     swiftc -O -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender \
         "$ROOT"/Sources/sillage-render/*.swift -o "$BUILD/sillage-render"
-    printf '%s\n' "$ROOT" > "$BUILD/sillage-root"
+    built cli "$key"
 }
 
 run_tests() {
+    local key
+    key="$(tests_key)"
+    if ! { fresh tests "$key" && [ -f "$BUILD/tests" ]; }; then
+        stale tests
+        build_tests
+        built tests "$key"
+    fi
+    DYLD_LIBRARY_PATH="$BUILD:$INTEROP" DYLD_FRAMEWORK_PATH="$FRAMEWORKS" "$BUILD/tests" "$@"
+}
+
+build_tests() {
     cat > "$BUILD/runner.swift" <<'SWIFT'
 import Foundation
 import Testing
@@ -45,16 +113,21 @@ SWIFT
         "$ROOT"/Tests/SillageCoreTests/*.swift "$ROOT"/Tests/SillageRenderTests/*.swift \
         "$BUILD/runner.swift" \
         -o "$BUILD/tests"
-    DYLD_LIBRARY_PATH="$BUILD:$INTEROP" DYLD_FRAMEWORK_PATH="$FRAMEWORKS" "$BUILD/tests" "$@"
 }
 
 build_app() {
     build_render
+    local app="$BUILD/Sillage.app" key
+    key="$(app_key)"
+    if fresh app "$key" && [ -x "$app/Contents/MacOS/Sillage" ]; then
+        echo "$app"
+        return
+    fi
+    stale app
     swiftc -O -I "$BUILD" -L "$BUILD" -lSillageCore -lSillageRender -parse-as-library \
         -Xlinker -rpath -Xlinker @executable_path \
         "$ROOT"/Sources/SillageApp/*.swift -o "$BUILD/Sillage"
 
-    local app="$BUILD/Sillage.app"
     rm -rf "$app"
     mkdir -p "$app/Contents/MacOS"
     cp "$BUILD/Sillage" "$app/Contents/MacOS/Sillage"
@@ -93,6 +166,7 @@ build_app() {
 </plist>
 PLIST
     codesign --force --sign - "$app" 2>/dev/null || true
+    built app "$key"
     echo "$app"
 }
 
@@ -149,6 +223,7 @@ check() {
 
 case "${1:-check}" in
     build)  build_render ;;
+    clean)  rm -rf "$BUILD" ;;
     lint)   swift format lint --recursive --strict "$ROOT/Sources" "$ROOT/Tests" ;;
     strict) strict_concurrency ;;
     kernels) "$ROOT/scripts/kernel-check.sh" ;;
@@ -165,7 +240,7 @@ case "${1:-check}" in
     explore|hires|look|export|palettes|probe-disk)
             build_render
             DYLD_LIBRARY_PATH="$BUILD" "$BUILD/sillage-render" "$@" ;;
-    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|test|lint|strict|kernels|cuda|render|app|fixtures]" >&2
+    *)      echo "usage: ${BASH_SOURCE[0]} [check|build|clean|test|lint|strict|kernels|cuda|render|app|fixtures]" >&2
             echo "       ${BASH_SOURCE[0]} explore|hires|look|export|palettes <scene folder> [options]" >&2
             echo "       ${BASH_SOURCE[0]} probe-disk <scene.json | scene folder> <galaxy> [options]" >&2
             exit 2 ;;
