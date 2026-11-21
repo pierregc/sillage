@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "keys": [
+    {"at": 0, "myr": 388.114, "eye": {"galaxy": 0, "offset": [-3, -2, 3], "disk": true}, "aim": {"galaxy": 0, "offset": [-7.78, 1.87, 0], "disk": true}},
+    {"at": 10, "eye": {"galaxy": 0, "offset": [-6.3, 1.2, 0.3], "disk": true}, "aim": {"galaxy": 0, "offset": [-9.5, 2.6, 0.1], "disk": true}},
+    {"at": 20, "eye": {"galaxy": 0, "offset": [-7.78, 1.87, 0.05], "disk": true}, "aim": {"galaxy": 0, "offset": [-9.3, 3.0, 0.1], "disk": true}},
+    {"at": 30, "myr": 395.234, "eye": {"galaxy": 0, "offset": [-8.6, 2.6, 0.06], "disk": true}, "aim": {"galaxy": 0, "offset": [-10, 3.6, 0.1], "disk": true}}
+  ]
+}
