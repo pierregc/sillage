@@ -130,6 +130,17 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
     private let gather: MTLComputePipelineState
     private let dissipate: MTLComputePipelineState?
     private let formStars: MTLComputePipelineState
+    /// Sticky gas (#401): each cell's gas mass, momentum and place, the cell each node's gas is
+    /// held against, and the four kernels. Made again from the particles every step, so nothing of
+    /// it is in a checkpoint or a take.
+    private let gasKernels:
+        (
+            leaves: MTLComputePipelineState, fold: MTLComputePipelineState,
+            choose: MTLComputePipelineState, stick: MTLComputePipelineState
+        )?
+    private var gasFlow: MTLBuffer?
+    private var gasPlaces: MTLBuffer?
+    private var gasCells: MTLBuffer?
 
     /// Every particle's position and velocity, `[tracers | massive visible | massive halo]`.
     /// Everything else is the massive particles' alone.
@@ -336,6 +347,13 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
             scene.galaxies.contains { $0.dissipationTime > 0 }
             ? try pipeline("bhDissipate") : nil
         formStars = try specialised("bhFormStars", [(2, tracing)])
+        gasKernels =
+            scene.stickyGas == nil
+            ? nil
+            : (
+                try pipeline("bhGasLeaves"), try pipeline("bhGasFold"), try pipeline("bhGasChoose"),
+                try pipeline("bhGasStick")
+            )
         tracerFormStars = tracing ? try pipeline("bhTracerFormStars") : nil
         holePull = holes.isEmpty ? nil : try pipeline("bhHolePull")
         holeSettle = holes.isEmpty ? nil : try pipeline("bhHoleSettle")
@@ -556,6 +574,62 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
                 &disks, length: disks.count * MemoryLayout<DiskCoolingGPU>.stride, index: 5)
             encoder.setBytes(&p, length: MemoryLayout<BHParams>.stride, index: 6)
         }
+    }
+
+    /// Holds each unformed gas particle against the gas of its cell, after the kick so the
+    /// velocities are this step's: the cells' sums from the leaves up, the cell each leaf reads
+    /// from the root down, then the particles.
+    private func encodeStickyGas(into buffer: MTLCommandBuffer) {
+        guard let gasKernels, var p = host.stickyGas, nodeCount > 0, let componentBuffer else {
+            return
+        }
+        if (gasFlow?.length ?? 0) < builder.nodeCapacity * 16 {
+            gasFlow = device.makeBuffer(length: builder.nodeCapacity * 16, options: .storageModePrivate)
+            gasPlaces = device.makeBuffer(length: builder.nodeCapacity * 16, options: .storageModePrivate)
+            gasCells = device.makeBuffer(length: builder.nodeCapacity * 4, options: .storageModePrivate)
+        }
+        guard let gasFlow, let gasPlaces, let gasCells else { return }
+        // One encoder for the lot: there is a dispatch a level, twice, and an encoder each cost
+        // more than the levels did.
+        guard let encoder = buffer.makeComputeCommandEncoder() else { return }
+        func dispatch(_ pipeline: MTLComputePipelineState, _ nodes: Range<Int>, params index: Int) {
+            p.first = UInt32(nodes.lowerBound)
+            p.end = UInt32(nodes.upperBound)
+            encoder.setComputePipelineState(pipeline)
+            encoder.setBytes(&p, length: MemoryLayout<StickyGasGPU>.stride, index: index)
+            encoder.dispatchThreads(
+                MTLSize(width: nodes.count, height: 1, depth: 1),
+                threadsPerThreadgroup: MTLSize(
+                    width: pipeline.maxTotalThreadsPerThreadgroup, height: 1, depth: 1))
+        }
+        // The leaves and the particles bind alike.
+        func bindParticles() {
+            encoder.setBuffer(velocityBuffer, offset: tracerCount * 16, index: 0)
+            encoder.setBuffer(gasFlow, offset: 0, index: 1)
+            encoder.setBuffer(gasCells, offset: 0, index: 2)
+            encoder.setBuffer(builder.nodes, offset: 0, index: 3)
+            encoder.setBuffer(builder.order, offset: 0, index: 4)
+            encoder.setBuffer(componentBuffer, offset: 0, index: 5)
+            encoder.setBuffer(formationBuffer, offset: 0, index: 6)
+            encoder.setBuffer(massBuffer, offset: 0, index: 7)
+            encoder.setBuffer(gasPlaces, offset: 0, index: 9)
+            encoder.setBuffer(positionBuffer, offset: tracerCount * 16, index: 10)
+        }
+        bindParticles()
+        dispatch(gasKernels.leaves, 0..<nodeCount, params: 8)
+        // The levels that hold nodes, read once the build has run.
+        let starts = builder.levelStarts
+        let levels = (0..<starts.count - 1).map { starts[$0]..<min(starts[$0 + 1], nodeCount) }
+            .filter { !$0.isEmpty }
+        encoder.setBuffer(gasFlow, offset: 0, index: 0)
+        encoder.setBuffer(gasCells, offset: 0, index: 1)
+        encoder.setBuffer(builder.nodes, offset: 0, index: 2)
+        encoder.setBuffer(gasPlaces, offset: 0, index: 4)
+        for level in levels.reversed() { dispatch(gasKernels.fold, level, params: 3) }
+        for level in levels { dispatch(gasKernels.choose, level, params: 5) }
+        bindParticles()
+        dispatch(gasKernels.stick, 0..<nodeCount, params: 8)
+        encoder.endEncoding()
     }
 
     private var params: BHParams { host.params }
@@ -1210,6 +1284,7 @@ extension MetalBarnesHutSolver: BarnesHutPasses {
         case .holes: encodeHoles(into: buffer)
         case .kick: encodeKick(into: buffer)
         case .dissipation(let disks): encodeShedRandomMotion(into: buffer, disks: disks)
+        case .stickyGas: encodeStickyGas(into: buffer)
         case .tracerStep(let mode, let pieces, let disks):
             encodeTracerStep(into: buffer, mode: mode, pieces: pieces, disks: disks)
         case .drawnDrift(let fraction): encodeDrawnDrift(into: buffer, fraction: fraction)

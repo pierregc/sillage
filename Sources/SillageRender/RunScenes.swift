@@ -10,6 +10,7 @@ public struct RunScenes {
         case unknownCamera(String)
         case unknownPreset(String)
         case unknownSolver(String)
+        case badStickyGas(String)
 
         public var description: String {
             switch self {
@@ -17,6 +18,8 @@ public struct RunScenes {
             case .unknownCamera(let mode): "unknown camera: \(mode)"
             case .unknownPreset(let name): "unknown preset: \(name)"
             case .unknownSolver(let name): "unknown solver: \(name)"
+            case .badStickyGas(let text):
+                "--sticky-gas \(text): on, or <km/s>[:<rate a Myr>[:<crossing>[:<cell gas>[:<reach kpc>[:<jeans>]]]]]"
             }
         }
     }
@@ -216,6 +219,11 @@ public struct RunScenes {
         if let dt = options.argument("dt").flatMap(Float.init) { file.timeStep = dt }
         if let theta = options.argument("theta").flatMap(Float.init) { file.openingAngle = theta }
         if let value = options.argument("softening").flatMap(Float.init) { file.softening = value }
+        // `--sticky-gas on|<km/s>[:<rate>[:<crossing>[:<cell gas>[:<reach kpc>[:<jeans>]]]]]` (#401).
+        if let text = options.argument("sticky-gas") {
+            guard let gas = StickyGas(parsing: text) else { throw Failure.badStickyGas(text) }
+            file.stickyGas = gas
+        }
         for (index, entry) in look.palette.enumerated() {
             if index < palette.count { palette[index] = entry.colour } else { palette.append(entry.colour) }
         }

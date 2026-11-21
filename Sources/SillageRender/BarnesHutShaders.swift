@@ -309,6 +309,156 @@ enum BarnesHutShaders {
             }
         }
 
+        struct StickyParams {
+            // Random motion the gas keeps, the e-foldings a unit of time it loses the rest at,
+            // and those it adds each crossing of its cell.
+            float soundSpeed;
+            float rate;
+            float crossing;
+            // The widest cell that is a neighbourhood, squared.
+            float reachSquared;
+            float timeStep;
+            // The sound speed that holds a cell of unit gas density up over the length the scene
+            // asks: it grows as the density's square root.
+            float jeans;
+            // Gas particles a cell must hold.
+            uint minimum;
+            // The nodes a dispatch runs over: every node, or one level of the tree.
+            uint first;
+            uint end;
+        };
+
+        SHARED bool bhUnformedGas(device const uint *component, device const float *formation,
+                                  uint i) {
+            return component[i] == 2u && formation[i] >= 1e8f;
+        }
+
+        // Sticky gas (#401, docs/notes/gas-that-dissipates.md). Real gas cannot pass through
+        // itself: where two streams meet they shock and the energy is radiated at once. Gas
+        // particles here moved as stars do, so a disk's lanes came apart after an encounter
+        // where real ones sharpen. Each cell of the tree is given the mass and the momentum of
+        // the unformed gas it holds and where that gas is, leaves first, a thread a node.
+        SHARED void gasLeaves(device float4 *flow, device float4 *places, device uint *cells,
+                              device const BHNode *nodes, device const uint *order,
+                              device const uint *component, device const float *formation,
+                              device const float *mass, device const float3 *positions,
+                              device const float3 *velocities, constant StickyParams &s,
+                              uint gid) {
+            uint n = s.first + gid;
+            if (n >= s.end) { return; }
+            BHNode node = nodes[n];
+            if (bhSignedCount(node) > 0) { return; }
+            uint count = uint(-bhSignedCount(node));
+            uint start = uint(bhRange(node));
+            float3 momentum = float3(0.0f);
+            float3 weighted = float3(0.0f);
+            float total = 0.0f;
+            uint gas = 0u;
+            for (uint k = 0u; k < count; ++k) {
+                uint i = order[start + k];
+                if (!bhUnformedGas(component, formation, i)) { continue; }
+                float3 moved = velocities[i] * mass[i];
+                momentum += moved;
+                float3 placed = positions[i] * mass[i];
+                weighted += placed;
+                total += mass[i];
+                gas += 1u;
+            }
+            flow[n] = float4(momentum, total);
+            places[n] = float4(weighted, 0.0f);
+            cells[n] = gas;
+        }
+
+        // One level of branches, each the sum of its children: dispatched from the deepest up.
+        SHARED void gasFold(device float4 *flow, device float4 *places, device uint *cells,
+                            device const BHNode *nodes, constant StickyParams &s, uint gid) {
+            uint n = s.first + gid;
+            if (n >= s.end) { return; }
+            int children = bhSignedCount(nodes[n]);
+            if (children <= 0) { return; }
+            uint first = uint(bhRange(nodes[n]));
+            float4 sum = float4(0.0f);
+            float4 placed = float4(0.0f);
+            uint gas = 0u;
+            for (int c = children - 1; c >= 0; --c) {
+                sum += flow[first + uint(c)];
+                placed += places[first + uint(c)];
+                gas += cells[first + uint(c)];
+            }
+            flow[n] = sum;
+            places[n] = placed;
+            cells[n] = gas;
+        }
+
+        // One level of branches, from the root down: each child's count becomes the cell its
+        // gas is held against, itself if it holds enough gas and its parent's otherwise. No
+        // leaf has to climb the tree, which keeps no way up.
+        SHARED void gasChoose(device uint *cells, device const BHNode *nodes,
+                              constant StickyParams &s, uint gid) {
+            uint n = s.first + gid;
+            if (n >= s.end) { return; }
+            uint own = n == 0u ? 0u : cells[n];
+            if (n == 0u) { cells[0] = 0u; }
+            int children = bhSignedCount(nodes[n]);
+            if (children <= 0) { return; }
+            uint first = uint(bhRange(nodes[n]));
+            for (int c = 0; c < children; ++c) {
+                uint child = first + uint(c);
+                cells[child] = cells[child] >= s.minimum ? child : own;
+            }
+        }
+
+        // A thread a leaf. A gas particle meets the *other* gas of its cell as one body, at
+        // that gas's centre and mean velocity, and loses the speed it closes on it with beyond
+        // the sound speed: an inelastic collision, the black hole's gas's line (holeStepTracer,
+        // #334) kept to the line between the two. Held against the mean on every axis, as the
+        // hole's is, a disk's own shear across the cell counted as a collision: the layer
+        // went flat and the gas drained to the centre (docs/notes/sticky-gas.md). What moves
+        // across that line or away is left alone, so a cell that turns loses nothing. Below
+        // the sound speed nothing happens, which is all the pressure this gas has. A decay,
+        // so it is stable at any step.
+        SHARED void gasStick(device float3 *velocities, device const float3 *positions,
+                             device const float4 *flow, device const float4 *places,
+                             device const uint *cells, device const BHNode *nodes,
+                             device const uint *order, device const uint *component,
+                             device const float *formation, device const float *mass,
+                             constant StickyParams &s, uint gid) {
+            uint n = s.first + gid;
+            if (n >= s.end) { return; }
+            BHNode node = nodes[n];
+            if (bhSignedCount(node) > 0) { return; }
+            uint count = uint(-bhSignedCount(node));
+            uint start = uint(bhRange(node));
+            uint cell = cells[n];
+            float widthSquared = nodes[cell].packed.x;
+            if (widthSquared > s.reachSquared) { return; }
+            float4 around = flow[cell];
+            float3 placed = places[cell].xyz;
+            float width = sqrt(max(widthSquared, 1e-12f));
+            // Cold gas that may lose all its motion knots down to the softening, and a string of
+            // knots is not a lane. Dense gas keeps the motion that holds it up over a length,
+            // the pressure floor the literature gives gas whose clouds it cannot resolve.
+            float sound = max(s.soundSpeed, s.jeans * sqrt(around.w / (width * widthSquared)));
+            for (uint k = 0u; k < count; ++k) {
+                uint i = order[start + k];
+                if (!bhUnformedGas(component, formation, i)) { continue; }
+                float m = mass[i];
+                float3 v = velocities[i];
+                float3 x = positions[i];
+                float others = around.w - m;
+                if (others < 0.5f * m) { continue; }
+                float3 apart = x - (placed - x * m) / others;
+                float distance = length(apart);
+                if (distance < 1e-6f) { continue; }
+                float3 line = apart / distance;
+                float3 w = v - (around.xyz - v * m) / others;
+                float closing = -dot(w, line);
+                if (closing <= sound) { continue; }
+                float lost = 1.0f - exp(-(s.rate + s.crossing * closing / width) * s.timeStep);
+                velocities[i] = v + line * ((closing - sound) * lost);
+            }
+        }
+
         SHARED ulong bhSpread(uint value) {
             ulong x = ulong(value) & 0x1FFFFFul;
             x = (x | (x << 32)) & 0x001F00000000FFFFul;
@@ -746,6 +896,54 @@ enum BarnesHutShaders {
                                 constant BHParams &p [[buffer(6)]],
                                 uint i [[thread_position_in_grid]]) {
             massiveDissipate(positions, velocities, accelerations, component, galaxy, disks, p, i);
+        }
+
+        kernel void bhGasLeaves(device const float3 *velocities [[buffer(0)]],
+                                device float4 *flow [[buffer(1)]],
+                                device uint *cells [[buffer(2)]],
+                                device const BHNode *nodes [[buffer(3)]],
+                                device const uint *order [[buffer(4)]],
+                                device const uint *component [[buffer(5)]],
+                                device const float *formation [[buffer(6)]],
+                                device const float *mass [[buffer(7)]],
+                                constant StickyParams &s [[buffer(8)]],
+                                device float4 *places [[buffer(9)]],
+                                device const float3 *positions [[buffer(10)]],
+                                uint gid [[thread_position_in_grid]]) {
+            gasLeaves(flow, places, cells, nodes, order, component, formation, mass, positions,
+                      velocities, s, gid);
+        }
+
+        kernel void bhGasFold(device float4 *flow [[buffer(0)]],
+                              device uint *cells [[buffer(1)]],
+                              device const BHNode *nodes [[buffer(2)]],
+                              constant StickyParams &s [[buffer(3)]],
+                              device float4 *places [[buffer(4)]],
+                              uint gid [[thread_position_in_grid]]) {
+            gasFold(flow, places, cells, nodes, s, gid);
+        }
+
+        kernel void bhGasChoose(device uint *cells [[buffer(1)]],
+                                device const BHNode *nodes [[buffer(2)]],
+                                constant StickyParams &s [[buffer(5)]],
+                                uint gid [[thread_position_in_grid]]) {
+            gasChoose(cells, nodes, s, gid);
+        }
+
+        kernel void bhGasStick(device float3 *velocities [[buffer(0)]],
+                               device const float4 *flow [[buffer(1)]],
+                               device const uint *cells [[buffer(2)]],
+                               device const BHNode *nodes [[buffer(3)]],
+                               device const uint *order [[buffer(4)]],
+                               device const uint *component [[buffer(5)]],
+                               device const float *formation [[buffer(6)]],
+                               device const float *mass [[buffer(7)]],
+                               constant StickyParams &s [[buffer(8)]],
+                               device const float4 *places [[buffer(9)]],
+                               device const float3 *positions [[buffer(10)]],
+                               uint gid [[thread_position_in_grid]]) {
+            gasStick(velocities, positions, flow, places, cells, nodes, order, component,
+                     formation, mass, s, gid);
         }
 
         constant bool bhLeafChances [[function_constant(2)]];

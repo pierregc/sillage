@@ -21,6 +21,8 @@ public enum BarnesHutPass {
     case kick
     /// The disks cooled towards `disks`; nothing when nil (`bhDissipate`).
     case dissipation([DiskCoolingGPU]?)
+    /// The gas held against the gas around it, in a scene that asks for it (#401).
+    case stickyGas
     /// One dispatch of the tracers' fused pass over these slots of their walk order.
     case tracerStep(mode: UInt32, pieces: Range<Int>, disks: [DiskCoolingGPU]?)
     /// Not a step's: the drawn particles copied `fraction` of the step in force past the last
@@ -99,6 +101,7 @@ public enum BarnesHutStep {
                 if !host.holes.isEmpty { engine.profile("black holes", [.holes]) }
                 engine.profile("kick", [.kick])
                 engine.profile("dissipation", [.dissipation(disks)])
+                if host.stickyGas != nil { engine.profile("sticky gas", [.stickyGas]) }
                 if host.tracerCount > 0 {
                     engine.profile("tracer force", tracerSteps(host, mode: 1, disks: disks))
                 }
@@ -237,6 +240,7 @@ public enum BarnesHutStep {
             var passes = forces(host, pieces: start..<upper)
             if upper == host.massive {
                 passes += [.holes, .kick, .dissipation(disks)]
+                if host.stickyGas != nil { passes.append(.stickyGas) }
             }
             engine.run(passes)
         }

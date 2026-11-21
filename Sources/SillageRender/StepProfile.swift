@@ -10,7 +10,7 @@ public struct StepProfile: Sendable {
     public static let phases = [
         "star formation", "tracer formation", "drift", "halo centres", "disk frames",
         "bounds", "morton", "sort", "nodes", "masses", "tracer sort",
-        "force", "tracer force", "kick", "dissipation", "step",
+        "force", "tracer force", "kick", "dissipation", "sticky gas", "step",
     ]
 
     public var steps = 0

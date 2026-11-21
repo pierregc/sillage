@@ -28,7 +28,7 @@ public enum RenderCommands {
             + "take-massive massive-set state-out density sf-leaves dt-schedule dt-switches "
             + "dump-walk dump-walk-frames dump-targets dump-targets-frames draw draw-out draw-take "
             + "draw-stills draw-stills-dir key-frames key-frame-curves key-frame-list key-frames-at pass "
-            + "export speed camera center pair-share checkpoint",
+            + "export speed camera center pair-share checkpoint sticky-gas",
         whole: "particles steps frames width height fps settle seed index galaxies look-seed "
             + "take-interval tracer-sort tracer-sort-chunk thumbnail-frame density-frames "
             + "take-memory checkpoint-frames checkpoint-steps draw-divisor key-frames-span",
