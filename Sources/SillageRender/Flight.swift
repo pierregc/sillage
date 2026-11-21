@@ -492,6 +492,21 @@ public final class Flight {
         return spans
     }
 
+    /// Seconds over which a frame's slabs leave the look's stack for the matter's (#355).
+    public static let slabEase = 1.0
+
+    /// How much the camera at `seconds` is still the look's, for its slabs: 1 on a look span, 0
+    /// from `slabEase` seconds away, smoothly between.
+    public func look(atSeconds seconds: Double) -> Float {
+        var on = 0.0
+        for span in lookSpans {
+            let off = max(span.lowerBound - seconds, seconds - span.upperBound, 0)
+            let t = min(off / Self.slabEase, 1)
+            on = max(on, 1 - t * t * (3 - 2 * t))
+        }
+        return Float(on)
+    }
+
     /// The video seconds of every key, the ones that only pin time included.
     public var keySeconds: [Double] { file.keys.map(\.at) }
 
