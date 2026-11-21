@@ -39,6 +39,8 @@ public final class TakeExport {
         /// and the fastest the take's time ran, against the speed it was captured at.
         public var fastestNear = 0.0
         public var fastestTimeNear = 0.0
+        /// The share of the nearness the eye covers each second on each run paced by it (#406).
+        public var paces: [Double] = []
 
         public var summary: String {
             let near =
@@ -55,6 +57,10 @@ public final class TakeExport {
             if fastestNear > 0 {
                 text += String(
                     format: "; within 1 kpc of matter the eye moves up to %.1f pc a frame", fastestNear)
+            }
+            if !paces.isEmpty {
+                let shares = paces.map { String(format: "%.2f", $0) }.joined(separator: ", ")
+                text += "; paced at \(shares) of the nearness a second"
             }
             // Past a hundredth of its speed the nearest stars dart from their own motions.
             if fastestTimeNear > 0.0125 {
@@ -620,7 +626,7 @@ public final class TakeExport {
         inside = nil
         before = nil
         guard case .flight(let flight, _, let rate) = cameras else { return nil }
-        inside = InsideReport()
+        inside = InsideReport(paces: flight.pacings.map(\.share))
         guard flight.inside.exposure > 0 else { return nil }
         let renderer = try makeRenderer(width: width, height: height)
         let target = try trimTarget(renderer, cameras, exposure: exposure)
