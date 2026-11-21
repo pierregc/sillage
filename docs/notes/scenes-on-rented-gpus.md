@@ -35,11 +35,13 @@ those and marked as an estimate. It prepares two things Pierre asked for the sam
 
 ## What runs where today
 
+As the study found it, the take pass's rows updated since by #377 and #378.
+
 | | Mac (Metal) | Linux (CUDA) |
 | --- | --- | --- |
 | explore, look, style, exports from a take, the app | yes | no, and not planned |
-| hires, one pass, every particle massive (today's scenes) | yes, no checkpoint | **no** |
-| hires `--pass massive` (the massive particles of a draw with tracers) | yes, no checkpoint | **no** |
+| hires, one pass, every particle massive (today's scenes) | yes, checkpoints (#377) | yes, checkpoints (#378) |
+| hires `--pass massive` (the massive particles of a draw with tracers) | yes, checkpoints (#377) | yes, checkpoints (#378) |
 | hires `--pass full` (tracers, videos drawn as it runs, key frames) | yes, checkpoints | yes, checkpoints (#278) |
 | stills from a take, stills of a flight | yes | yes (#277, #347) |
 | a flight's video | yes | **no** |
@@ -100,7 +102,8 @@ plain render goes through the flow, the full pass alone through `FullPassRun`.
 
 A CUDA engine (#378) gives a `TakePassEngine`; checkpoints (#377) go into `TakePassRun`, once
 for every engine. The measuring options are not an engine's business: `sillage-cuda` runs
-without them.
+without them. Since #378 `CUDATakePassEngine` is that engine and `sillage-cuda hires` runs it
+([cuda-engine.md](cuda-engine.md#the-pass-that-writes-a-take-378)).
 
 **What must hold.**
 

@@ -280,6 +280,11 @@ extension SceneFolder {
         /// How many times the run that wrote the take was resumed from a checkpoint (#377);
         /// absent when never.
         public var resumes: Int?
+        /// What ran the pass that wrote the take (#378): `metal`, `cuda-gpu` or `cuda-cpu`;
+        /// absent before, when it was the Mac.
+        public var engine: String?
+        /// The device's own memory at its peak, on an engine that has one (#378).
+        public var peakDeviceBytes: Int?
 
         public enum Pass: String, Codable, Sendable { case massive }
 
@@ -642,10 +647,12 @@ extension SceneFolder {
             }
         }
 
-        var arguments = [
-            "--video", Self.partial(hiresVideo).path, "--curves", Self.partial(hiresCurves).path,
-            "--take", Self.partial(take).path, "--no-sidecars",
-        ]
+        // `--no-video` (#378): a run that only wants its take draws no video of its own.
+        var arguments =
+            (rest.contains("--no-video") ? [] : ["--video", Self.partial(hiresVideo).path]) + [
+                "--curves", Self.partial(hiresCurves).path, "--take", Self.partial(take).path,
+                "--no-sidecars",
+            ]
         var drawn: [String] = []
         if pass == "massive" {
             record.pass = .massive
@@ -881,9 +888,15 @@ extension SceneFolder {
         }
     }
 
-    /// Puts a finished `hires` run's take, video and curves in place of the last run's.
+    /// Puts a finished `hires` run's take, video and curves in place of the last run's. A run
+    /// that drew no video (`--no-video`) leaves none of another run's beside its take.
     public func commitHires() throws {
-        for url in [take, hiresVideo, hiresCurves] { try Self.commit(url) }
+        for url in [take, hiresCurves] { try Self.commit(url) }
+        if exists(Self.partial(hiresVideo)) {
+            try Self.commit(hiresVideo)
+        } else {
+            try? FileManager.default.removeItem(at: hiresVideo)
+        }
         if exists(Self.partial(massiveSet)) { try Self.commit(massiveSet) }
     }
 

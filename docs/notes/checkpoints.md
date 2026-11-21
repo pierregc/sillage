@@ -111,7 +111,8 @@ solver that keeps no state.
 ## Which runs checkpoint
 
 Every pass of a hires from a scene folder: the full pass, and the pass that writes a take, one
-pass or `--pass massive`. By default about every hour of its run as the cost model prices it
+pass or `--pass massive`, on the Mac and with `sillage-cuda hires` on Linux (#278, #378), whose
+checkpoint is its own engine's: `--resume` refuses one of the other. By default about every hour of its run as the cost model prices it
 (`--checkpoint-every <minutes>`, 0 for none; `--checkpoint-frames` and `--checkpoint-steps` give
 the interval exactly), its settle included. In its settle a take pass checkpoints at the end of
 the chunk that crosses the interval: the chunks are where a step schedule switches and shows

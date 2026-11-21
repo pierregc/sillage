@@ -2,7 +2,9 @@
 
 Galaxy collisions, simulated and filmed on an Apple Silicon Mac: a Barnes-Hut N-body solver
 that builds and walks its tree on the GPU, and a renderer for tens of millions of particles.
-The compute engine has also been ported to CUDA, not yet run on a real NVIDIA GPU.
+The compute engine has also been ported to CUDA, so that a scene explored on the Mac can be
+computed whole on a Linux machine with an NVIDIA GPU; it is tested on the CPU, not yet run on a
+real GPU.
 
 https://github.com/user-attachments/assets/14fa1b7f-b199-45be-9f6f-948f880c3c61
 

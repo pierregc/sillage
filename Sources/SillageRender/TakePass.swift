@@ -59,13 +59,27 @@ public protocol TakePassEngine: AnyObject {
     func takeProfile() -> StepProfile?
     /// The most the process held, and the device apart when it has memory of its own.
     var peakMemory: (host: Int?, device: Int?) { get }
+    /// Throws what went wrong on the device since the last call: a GPU solver that stops
+    /// stepping on a failure says so here (#378).
+    func check() throws
+}
+
+extension TakePassEngine {
+    public func check() throws {}
 }
 
 /// Makes the engine of a take pass.
 public protocol TakePassEngineMaker {
     /// `metal`, `cuda-gpu` or `cuda-cpu`.
     var engine: String { get }
+    /// Throws where this engine may not run: a CUDA build whose comparison with the reference
+    /// outputs failed or did not run (#281, #378).
+    func refuseUnchecked() throws
     func make(_ start: TakePassRun.Start) throws -> any TakePassEngine
+}
+
+extension TakePassEngineMaker {
+    public func refuseUnchecked() throws {}
 }
 
 /// The measuring options of an engine (#376), which no take needs: called at the moments of a
@@ -207,9 +221,11 @@ public final class TakePassRun {
         frames = Int(number("frames", 1))
         width = Int(number("width", 1920))
         height = Int(number("height", 1080))
-        // A PNG sequence is still the default, but a run asked for a video does not need one too.
-        let videoPath = argument("video")
-        let outputPath = argument("out") ?? (videoPath == nil ? "out/sillage.png" : nil)
+        // A PNG sequence is still the default, but a run asked for a video does not need one too,
+        // nor one that wants its take alone (`--no-video`, #378).
+        let noVideo = options.contains("--no-video")
+        let videoPath = noVideo ? nil : argument("video")
+        let outputPath = argument("out") ?? (videoPath == nil && !noVideo ? "out/sillage.png" : nil)
 
         let built = try RunScenes(arguments, look: try RunScenes.look(arguments))
         self.built = built
@@ -257,6 +273,7 @@ public final class TakePassRun {
         if built.massive != nil, built.backend != "barnes-hut" {
             throw Failure.message("--massive needs the Barnes-Hut solver")
         }
+        try engineMaker.refuseUnchecked()
         // `--checkpoint <dir>` (#377): saved there every `--checkpoint-frames` frames and
         // `--checkpoint-steps` steps of the settle, the take and the curves written there as they
         // come and the video in segments; `--resume` picks the last checkpoint up and refuses
@@ -425,7 +442,7 @@ public final class TakePassRun {
         /// stretch starting here, and shows the run's centres to its judge. Returns how many steps
         /// that took.
         @discardableResult
-        func advance(_ count: Int, frame: Int?) -> Int {
+        func advance(_ count: Int, frame: Int?) throws -> Int {
             defer {
                 if checkpoint != nil {
                     journal.append(
@@ -436,9 +453,11 @@ public final class TakePassRun {
             }
             guard var current = scheduler, let stepper else {
                 solver.step(count: count)
+                try engine.check()
                 return count
             }
             let (run, switched) = current.step(count, frame: frame, on: stepper, ownStep: ownStep)
+            try engine.check()
             if switched, let last = current.switches.last {
                 print(
                     String(
@@ -620,7 +639,7 @@ public final class TakePassRun {
                 let count =
                     stepSchedule == nil || settled > 0
                     ? min(chunk, settle - settled) : (settle - 1) % stepsPerFrame + 1
-                advance(count, frame: nil)
+                try advance(count, frame: nil)
                 let before = settled
                 settled += count
                 if everySteps > 0, settled / everySteps > before / everySteps, settled < settle {
@@ -658,7 +677,7 @@ public final class TakePassRun {
         while frame < frames || storyGoesOn() {
             defer { frame += 1 }
             let simulationStart = Date()
-            let frameSteps = advance(stepsPerFrame, frame: frame)
+            let frameSteps = try advance(stepsPerFrame, frame: frame)
             let simulationMs = Date().timeIntervalSince(simulationStart) * 1000
             try measures?.afterSteps(self, frame: frame)
 
@@ -774,6 +793,8 @@ public final class TakePassRun {
                 curvesSeconds += Date().timeIntervalSince(curvesStart)
             }
             previousTime = solver.time
+            // What the take and the curves read off the device came whole.
+            try engine.check()
 
             if frame < frames {
                 let (done, left) = runSteps(ownDone: settle + (frame + 1) * stepsPerFrame)
@@ -900,6 +921,8 @@ public final class TakePassRun {
                 print("schedule   \(scheduler.stepsRun) steps run for \(scheduler.ownSteps) of the run's own")
             }
             record.peakMemoryBytes = engine.peakMemory.host
+            record.peakDeviceBytes = engine.peakMemory.device
+            record.engine = engineMaker.engine
             record.takeBytes =
                 (try? FileManager.default.attributesOfItem(atPath: folder.take.path)[.size] as? Int)
                 ?? nil

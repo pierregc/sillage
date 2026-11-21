@@ -223,6 +223,29 @@ struct CostModelTests {
         #expect(CostModel.fallbackDraw(vertical).fixedSeconds == CostModel.fallbackDrawFixed1080p)
     }
 
+    /// A scene computed on a CUDA box (#378), its massive pass there and its full pass on the
+    /// Mac, or both there: what ran elsewhere prices that box, and is left out.
+    @Test func runsOfAnotherEngineAreLeftOut() throws {
+        let root = try temporaryLibrary()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let batch = root.appendingPathComponent("2026-11-21")
+        let record =
+            #"{"particles": 8000000, "massive": 2000000, "pass": "massive", "previewParticles": 200000, "#
+            + #""width": 960, "height": 540, "frames": 923, "fps": 30, "settle": 1584, "#
+            + #""steps": 7384, "timeStepScale": 3.5, "timeStep": 0.021, "timeStepMyr": 0.0989, "#
+            + #""previewTimeStepMyr": 0.2, "softening": 0.0546, "clipStartMyr": 157, "#
+            + #""clipEndMyr": 887, "seconds": 1000, "engine": "cuda-gpu", "full": {"presets": ["4k"], "#
+            + #""frames": 923, "seconds": 2600, "drawSeconds": {"4k": 92.3}, "keyFrames": [0, 922], "#
+            + #""drift": 0, "checkedFrames": 232, "engine": "#
+        try write(
+            batch.appendingPathComponent("scene-0031/hires.json"), record + #""metal"}}"#, modified: now)
+        try write(
+            batch.appendingPathComponent("scene-0032/hires.json"), record + #""cuda-gpu"}}"#, modified: now)
+        let history = CostHistory.read(library: root)
+        #expect(history.hires.count == 1 && history.hires[0].tracerUnits > 0)
+        #expect(history.hires[0].id.hasSuffix("scene-0031") && history.draws["4k/hevc"]?.count == 1)
+    }
+
     /// A `costs.json` written before light tracers has no line for them, and reads with theirs.
     @Test func aCostsFileWrittenBeforeTracersReadsWithTheirFallback() throws {
         let root = try temporaryLibrary()
