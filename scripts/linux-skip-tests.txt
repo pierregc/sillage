@@ -26,6 +26,7 @@ RunVideosTests.swift          # CoreGraphics, Metal
 SolverCheckTests.swift        # Metal
 StageJobsTests+Mac.swift      # ExportedFile, which reads videos with AVFoundation
 StepScheduleRunTests.swift    # Metal
+StickyGasTests.swift         # Metal
 TakePassCheckpointTests.swift # AVFoundation, Metal
 TidalRunTests.swift           # Metal
 TracerCheckTests.swift        # Metal

@@ -1,10 +1,11 @@
 # Sillage
 
-Galaxy collisions, simulated and filmed on an Apple Silicon Mac: a Barnes-Hut N-body solver
-that builds and walks its tree on the GPU, and a renderer for tens of millions of particles.
-The compute engine has also been ported to CUDA, so that a scene explored on the Mac can be
-computed whole on a Linux machine with an NVIDIA GPU; it is tested on the CPU, not yet run on a
-real GPU.
+Galaxy collisions, simulated and filmed on the GPU, on Apple Silicon (Metal) and on NVIDIA
+(CUDA, under Linux): a Barnes-Hut N-body solver that builds and walks its tree on the GPU, and a
+renderer for tens of millions of particles. The Mac is where scenes are set up, explored and
+styled; a rented NVIDIA GPU computes them faster. On a scene of 8 million visible particles and
+12 million of dark matter, a solver step takes 128 ms on an RTX 5090 against 450 ms on an M4 Max
+([measured](docs/notes/cuda-engine.md#timed-on-an-rtx-5090-424)).
 
 https://github.com/user-attachments/assets/14fa1b7f-b199-45be-9f6f-948f880c3c61
 
@@ -34,9 +35,26 @@ standard literature, and the limits are listed below.
 *Seven archetypes at five moments of their clip: the Antennae, the Mice, a ring, a tadpole, a
 polar ring, a minor merger and a compact group.*
 
+## Two engines
+
+| | Apple Silicon (Metal) | NVIDIA (CUDA, Linux) |
+| --- | --- | --- |
+| App, setup and library screens | yes | no |
+| Preview (`explore`) | yes | yes, `sillage-cuda explore` |
+| High resolution pass and take | yes | yes, `sillage-cuda hires` |
+| Video and flight export | yes | yes, `sillage-cuda export` |
+| Stills, black hole close up | yes | yes |
+| Text overlays, animated previews, "visual" pacing | yes | no |
+
+Both engines run the same kernel source and the same Swift orchestration, and are checked
+against each other ([one kernel source](docs/notes/one-kernel-source.md)). A scene goes from
+one to the other as files. The CUDA engine has run on rented RTX 3090 and RTX 5090 cards
+([first run](docs/notes/cuda-bring-up.md), [how work reaches a box](docs/notes/cuda-platform.md)).
+
 ## Getting started
 
-macOS 14 or later on an Apple Silicon Mac.
+The app: macOS 14 or later on an Apple Silicon Mac. The CUDA engine: Linux with an NVIDIA GPU
+(CUDA 12.8 or later), see [the CUDA engine](docs/notes/cuda-engine.md).
 
 ```bash
 git clone https://github.com/pierregc/sillage.git
@@ -62,7 +80,7 @@ Units: kpc, 10^10 solar masses, G = 1.
 - A fixed time step.
 - Single precision.
 - Not compared against a published simulation.
-- The app runs on Apple Silicon only. The CUDA port is [written and tested on the CPU](docs/notes/cuda-engine.md), not yet on a GPU.
+- The app and its screens run on Apple Silicon only; the CUDA engine is a command line.
 
 ## Documentation
 
