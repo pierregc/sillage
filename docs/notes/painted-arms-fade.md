@@ -70,3 +70,22 @@ planes are known. The curves carry `torn_<galaxy>` from now on.
 - The arms of an old take are still painted in the natal plane (#198); the layer is measured
   in it, which the ring planes absorb up to the tilts seen here, 30 degrees.
 - The thresholds were set on these seven takes, all at 2 M or 8 M.
+
+## The lanes go out with the last of the paint (#393)
+
+The paint's strength is `intact` times the arm strength, so the wave's contrast fades in
+proportion. The lanes' own darkening did not: `armWave` returns the arm envelope whatever the
+strength, and the dust's `lane` factor, `1 + 7 wave² envelope detail`, keeps `1 + 1.75 envelope
+detail` at a wave of a half, up to 2.4 times the bare dust. Only at a strength of exactly zero
+did the envelope drop out, on the frame the disk read as wholly torn: on the Mice pull out the
+companion's arcs and then the big disk's lane lost half their darkness from one frame to the
+next (+2.0 and +4.4 of mean luma on 960 x 540 stills, frames 2237 and 2248 of `dive-flowing`). The take
+interpolates `torn` linearly between stored frames 3.2 Myr apart, and the big disk sat at
+0.99999 for a whole stored frame, so the step fell on a stored frame's edge.
+
+The envelope now goes out over the last `DiskFrame.laneFade` (5 %) of intactness, smoothly
+(`tint.w` carries how much of it is gone). Wider changed the frames inside the big disk: it holds
+`torn` 0.949 from 462 to 481 Myr in that take, and a tenth paled its near dust by 3 of mean luma.
+At 5 % those frames, and every disk not wholly torn, are identical to the bit. On frames 2190 to
+2300 the largest frame to frame change of mean luma is now 1.07 (`dive-flowing`, the camera's
+motion, as before) and 0.72 (`dive`), against 4.39 and 3.45; the lanes fade over about ten frames.
