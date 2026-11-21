@@ -1,0 +1,421 @@
+import AVFoundation
+import Foundation
+import Testing
+
+@testable import SillageCore
+@testable import SillageRender
+
+#if canImport(simd)
+    import simd
+#endif
+
+extension ExportTests {
+    func exported(
+        _ codec: VideoCodec, metadata: VideoMetadata? = nil, quality: Double? = nil
+    ) async throws -> (AVURLAsset, URL) {
+        let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-\(UUID().uuidString).\(codec.fileExtension)")
+        _ = try export.write(
+            to: url, width: 128, height: 72, framesPerSecond: 10, codec: codec, quality: quality,
+            metadata: metadata)
+        return (AVURLAsset(url: url), url)
+    }
+
+    func subtype(_ asset: AVURLAsset) async throws -> (FourCharCode, CGSize) {
+        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        let format = try #require(try await track.load(.formatDescriptions).first)
+        return (
+            CMFormatDescriptionGetMediaSubType(format), try await track.load(.naturalSize)
+        )
+    }
+
+    /// A take that ends off its interval still plays the frames it captured, not one more.
+    @Test func aTakeEndingOffTheIntervalKeepsItsLength() throws {
+        let loaded = try take(frames: 11, interval: 3)
+        #expect(loaded.recording.count == 5 && loaded.recording.capturedFrames == 11)
+        let export = try TakeExport(take: loaded, look: autoLook, capturedRate: 10)
+        #expect(export.positions(framesPerSecond: 10, start: 0, duration: nil).count == 11)
+        let end = try #require(loaded.recording.blend(atCaptured: 10))
+        #expect(end.fraction == 1)
+    }
+
+    /// At the take's own rate every captured frame is drawn once; at twice the rate the frames
+    /// between fall halfway; start and duration cut it in seconds.
+    @Test func framesFollowTheRateStartAndDuration() throws {
+        let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)
+        #expect(export.positions(framesPerSecond: 10, start: 0, duration: nil) == (0..<12).map(Double.init))
+        let doubled = export.positions(framesPerSecond: 20, start: 0, duration: nil)
+        #expect(doubled.count == 23 && doubled[1] == 0.5 && doubled.last == 11)
+        #expect(export.positions(framesPerSecond: 10, start: 0.5, duration: 0.3) == [5, 6, 7])
+        #expect(export.positions(framesPerSecond: 10, start: 0.8, duration: 9).count == 4)
+        #expect(export.positions(framesPerSecond: 10, start: 99, duration: nil) == [11])
+    }
+
+    /// The grid and the export replay the camera the same way, so a still of one and the same
+    /// frame of the other are the same picture, to the byte.
+    @Test func aFrameOfTheExportIsTheSameAsTheGridsStill() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        var file = autoLook
+        file.palette = loaded.scene.galaxies.map { GalaxyColours($0.color) }
+        let (width, height) = (96, 54)
+        for frame in [0, 7] {
+            let cells = try LookSheet(take: loaded).render(
+                looks: [file], frames: [frame], width: width, height: height, cellWidth: width,
+                cellHeight: height, framesPerSecond: 10)
+            let still = try TakeExport(take: loaded, look: file, capturedRate: 10)
+                .still(atCaptured: frame, width: width, height: height)
+            #expect(cells[0][0] == still)
+            #expect(still.contains { $0 > 0 && $0 < 255 })
+        }
+    }
+
+    @Test func anExportIsAnHEVCMP4OfTheFramesAsked() async throws {
+        let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var seen = 0
+        let report = try export.write(
+            to: url, width: 64, height: 36, framesPerSecond: 20, duration: 0.5
+        ) { done, _ in seen = done }
+        #expect(report.frames == 10 && seen == 10)
+
+        let asset = AVURLAsset(url: url)
+        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        let size = try await track.load(.naturalSize)
+        #expect(size == CGSize(width: 64, height: 36))
+        let format = try #require(try await track.load(.formatDescriptions).first)
+        #expect(CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_HEVC)
+        let duration = try await asset.load(.duration)
+        #expect(abs(duration.seconds - 0.5) < 0.01)
+    }
+
+    /// The particle targets of a frame, as the GPU holds them before any post-processing (#276):
+    /// read off the frame the export draws, and listed in the manifest with their sizes. No
+    /// video is written here: the encoder is not part of what is checked.
+    @Test func theParticleTargetsOfAFrameAreReadAndListed() throws {
+        var look = autoLook
+        look.look.dustStrength = 0.3
+        look.look.dustWeb = 1
+        look.look.columnSmoothing = 8
+        look.starCount = 40
+        let export = try TakeExport(take: take(frames: 6), look: look, capturedRate: 10)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("targets-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var manifest = RenderTargetManifest(
+            commit: "", device: export.gpuName, system: "", width: 64, height: 36,
+            take: RenderTargetManifest.Take(
+                file: "", scene: "", particles: 2000, drawn: 2000, capturedFrames: 6, capturedRate: 10))
+        for (frame, name) in [(1, "early"), (4, "late")] {
+            let drawn = try export.targets(atCaptured: frame, width: 64, height: 36)
+            #expect(drawn.pixels == (try export.still(atCaptured: frame, width: 64, height: 36)))
+            #expect(drawn.capture.captured == Double(frame))
+            let targets = drawn.capture.targets
+            #expect(targets.supersample == 2 && targets.drawn == 2000 && targets.starCount == 40)
+            let light = try #require(targets.target.first { $0.name == "light.f16" })
+            #expect(light.width == 128 && light.height == 72 && light.bytes.count == 128 * 72 * 8)
+            #expect(light.bytes.contains { $0 != 0 })
+            try manifest.add(
+                drawn.capture, look: "web", lookFile: "", name: name,
+                megayearsPerUnit: Physics.megayearsPerTimeUnit, to: directory)
+        }
+        let read = try #require(RenderTargetManifest.read(from: directory))
+        #expect(read.frames.map(\.name) == ["early", "late"] && read.targets.count == 2)
+        #expect(read.lace?.files.keys.sorted() == ["level0-crop", "level4"])
+        let late = try #require(read.targets.last)
+        #expect(
+            late.files.keys.sorted() == [
+                "carrier", "column", "disk-frames", "dust", "light", "ramps", "splat-uniforms",
+                "starfield", "tags", "web-uniforms",
+            ])
+        #expect(read.particles.count == 8)
+        #expect(read.frames[1].files.keys.sorted() == ["positions", "smoothing"])
+        let listed =
+            Array(read.particles.values) + read.frames.flatMap(\.files.values)
+            + read.targets.flatMap(\.files.values) + Array(read.lace?.files.values ?? [:].values)
+        for entry in listed {
+            let size =
+                try FileManager.default.attributesOfItem(
+                    atPath: directory.appendingPathComponent(entry.file).path)[.size] as? Int
+            #expect(size == entry.count * entry.stride, "\(entry.file)")
+        }
+    }
+
+    @Test func hevcIsTaggedHvc1InAnMP4() async throws {
+        let (asset, url) = try await exported(.hevc)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (codec, size) = try await subtype(asset)
+        #expect(codec == kCMVideoCodecType_HEVC && size == CGSize(width: 128, height: 72))
+        // `hvc1` is what QuickTime and iOS play; `hev1` is what they refuse.
+        let bytes = try Data(contentsOf: url)
+        #expect(bytes.range(of: Data("hvc1".utf8)) != nil)
+        #expect(bytes.range(of: Data("hev1".utf8)) == nil)
+        #expect(url.pathExtension == "mp4")
+    }
+
+    @Test func proResIs422HQInAMovie() async throws {
+        let (asset, url) = try await exported(.prores)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (codec, _) = try await subtype(asset)
+        #expect(codec == kCMVideoCodecType_AppleProRes422HQ)
+        #expect(url.pathExtension == "mov")
+        #expect(try Data(contentsOf: url).prefix(12).suffix(4) == Data("qt  ".utf8))
+        #expect(abs(try await asset.load(.duration).seconds - 1.2) < 0.01)
+    }
+
+    @Test func h264IsStillThereWhenAskedFor() async throws {
+        let (asset, url) = try await exported(.h264)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(try await subtype(asset).0 == kCMVideoCodecType_H264)
+    }
+
+    @Test func aQualityStandsInForTheBitRate() async throws {
+        for codec in [VideoCodec.h264, .hevc] {
+            let (asset, url) = try await exported(codec, quality: 0.5)
+            defer { try? FileManager.default.removeItem(at: url) }
+            #expect(try await asset.loadTracks(withMediaType: .video).count == 1)
+        }
+    }
+
+    @Test func everyExportCarriesItsLicenceAuthorAndScene() async throws {
+        let metadata = VideoMetadata(
+            sceneID: "2026-10-23/scene-0001", author: "Ada Lovelace",
+            date: Date(timeIntervalSince1970: 1_792_000_000))
+        for codec in VideoCodec.allCases {
+            let (asset, url) = try await exported(codec, metadata: metadata)
+            defer { try? FileManager.default.removeItem(at: url) }
+            let items = try await asset.load(.metadata)
+            var found: [String: String] = [:]
+            for item in items {
+                if let key = item.identifier?.rawValue, let value = try await item.load(.stringValue) {
+                    found[key] = value
+                }
+            }
+            let all = found.values.joined(separator: "\n")
+            #expect(all.contains("CC BY 4.0"), "\(codec)")
+            #expect(all.contains("https://creativecommons.org/licenses/by/4.0/"), "\(codec)")
+            #expect(all.contains("Ada Lovelace"), "\(codec)")
+            #expect(all.contains("2026-10-23/scene-0001"), "\(codec)")
+            #expect(all.contains("2026"), "\(codec)")
+        }
+    }
+
+    /// `--speed 1`, or a speed of one for every frame, draws what an export without a track
+    /// draws, in every camera mode (#305).
+    @Test func aTrackOfOneDrawsWhatNoTrackDraws() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let ones = [
+            try TimeTrack(capturedFrames: 12, capturedRate: 10, speed: 1),
+            try TimeTrack(speeds: Array(repeating: 1, count: 12), capturedRate: 10),
+        ]
+        for file in looks(autoLook) {
+            let plain = try TakeExport(take: loaded, look: file, capturedRate: 10)
+                .frames(width: 64, height: 36, framesPerSecond: 15)
+            for track in ones {
+                let tracked = try TakeExport(take: loaded, look: file, capturedRate: 10, track: track)
+                #expect(
+                    try tracked.frames(width: 64, height: 36, framesPerSecond: 15) == plain,
+                    "\(file.camera.mode)")
+            }
+        }
+    }
+
+    /// At twice the speed and with the fixed camera, frame k is frame 2k of the export at 1x.
+    @Test func atTwiceTheSpeedFrameKIsFrameTwoKOfOneX() throws {
+        let loaded = try take(frames: 13, interval: 3)
+        var file = autoLook
+        file.camera = LookFile.CameraPlan(
+            mode: .fixed, azimuth: 0, azimuthEnd: 1, zoomKeys: [SIMD2(0, 1), SIMD2(1, 2)])
+        let once = try TakeExport(take: loaded, look: file, capturedRate: 10)
+            .frames(width: 64, height: 36, framesPerSecond: 10)
+        let twice = try TakeExport(
+            take: loaded, look: file, capturedRate: 10,
+            track: TimeTrack(capturedFrames: 13, capturedRate: 10, speed: 2)
+        ).frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(once.count == 13 && twice.count == 7)
+        for (k, frame) in twice.enumerated() { #expect(frame == once[2 * k], "frame \(k)") }
+    }
+
+    /// The director plans in the video's time: at 4x its shortest shot still lasts 2.5 s of
+    /// video, where the plan of the take at 1x would last a quarter of that.
+    @Test func aDirectorAtFourTimesKeepsEveryShotTwoAndAHalfSeconds() throws {
+        let loaded = try take(frames: 320, interval: 4)
+        var file = autoLook
+        file.camera.mode = .director
+        let track = try TimeTrack(capturedFrames: 320, capturedRate: 10, speed: 4)
+        let export = try TakeExport(take: loaded, look: file, capturedRate: 10, track: track)
+        let plan = try #require(export.makeReplay(width: 64, height: 36).plan)
+        #expect(plan.shots.count > 1)
+        #expect(plan.shots.allSatisfy { Double($0.frames) / 10 >= ShotPlan.shortest })
+        #expect(plan.shots.last?.end == Int(track.length.rounded(.up)) + 1)
+        let untracked = try #require(
+            TakeExport(take: loaded, look: file, capturedRate: 10).makeReplay(width: 64, height: 36).plan)
+        #expect(untracked.shots.contains { Double($0.frames) / 10 / 4 < ShotPlan.shortest })
+    }
+
+    /// In a freeze every frame is at the same moment of the take, which is expanded once.
+    @Test func framesAtTheSameMomentAreExpandedOnce() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let megayears = TimeTrack.megayears(of: loaded.recording)
+        let track = try TimeTrack(
+            times: [
+                .init(at: 0, myr: megayears[0]), .init(at: 0.4, myr: megayears[4]),
+                .init(at: 0.8, myr: megayears[4]), .init(at: 1.1, myr: megayears[11]),
+            ], megayears: megayears, capturedRate: 10)
+        let export = try TakeExport(take: loaded, look: autoLook, capturedRate: 10, track: track)
+        let positions = export.positions(framesPerSecond: 10, start: 0, duration: nil)
+        #expect(positions.count == 12 && positions[4...8].allSatisfy { $0 == 4 })
+        let frames = try export.frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(export.expansions == Set(positions).count)
+        #expect(frames[4] != frames[8])
+    }
+
+    /// A flight draws as many frames as it lasts, and inside its freeze every frame draws from
+    /// the one expansion of the take while the camera moves on (#295).
+    @Test func aFlightDrawsItsFramesAndItsFreezeFromOnePosition() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let megayears = TimeTrack.megayears(of: loaded.recording)
+        // Each frame drawn once at the exposure its keys give: a key's still is then its frame.
+        var inside = InsideSettings()
+        inside.exposure = 0
+        inside.subframes = 1
+        let flight = FlightFile(
+            inside: inside,
+            keys: [
+                .init(at: 0, myr: megayears[0], eye: .world(SIMD3(0, -60, 20)), aim: .world(.zero)),
+                .init(at: 0.4, myr: megayears[4], eye: .galaxy(1, offset: SIMD3(0, -30, 10), disk: false)),
+                .init(at: 0.8, myr: megayears[4], eye: .world(SIMD3(30, 0, 20)), exposure: -1),
+                .init(at: 1.1, myr: megayears[11], eye: .world(SIMD3(0, 60, 20))),
+            ])
+        let export = try TakeExport(take: loaded, look: autoLook, capturedRate: 10, flight: flight)
+        #expect(abs(export.videoSeconds - 1.1) < 1e-9)
+        let positions = export.positions(framesPerSecond: 10, start: 0, duration: nil)
+        #expect(positions.count == 12 && positions[4...8].allSatisfy { $0 == 4 })
+        let frames = try export.frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(frames.count == 12)
+        #expect(export.expansions == Set(positions).count)
+        #expect(frames[4] != frames[6] && frames[6] != frames[8])
+        let keys = try export.flightKeys(width: 64, height: 36)
+        #expect(keys.map(\.seconds) == [0, 0.4, 0.8, 1.1])
+        #expect(keys[0].rgba == frames[0] && keys[2].rgba == frames[8])
+        // Any second of the flight as a still (#353), held to its length.
+        let stills = try export.flightKeys(width: 64, height: 36, at: [0.6, 5])
+        #expect(stills.map(\.seconds) == [0.6, 1.1])
+        #expect(stills[0].rgba == frames[6] && stills[1].rgba == frames[11])
+        #expect(throws: TakeExport.Failure.flightAndTrack) {
+            try TakeExport(
+                take: loaded, look: self.autoLook, capturedRate: 10,
+                track: TimeTrack(capturedFrames: 12, capturedRate: 10), flight: flight)
+        }
+    }
+
+    /// A flight that opens on look keys draws there what the export draws without one, the
+    /// look's own camera moving as it does, and then leaves it.
+    @Test func aFlightOnLookKeysDrawsThePlainExport() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let megayears = TimeTrack.megayears(of: loaded.recording)
+        for mode in [LookFile.CameraPlan.Mode.fixed, .auto] {
+            var file = autoLook
+            file.camera.mode = mode
+            let plain = try TakeExport(take: loaded, look: file, capturedRate: 10)
+                .frames(width: 64, height: 36, framesPerSecond: 10)
+            let flight = FlightFile(keys: [
+                .init(at: 0, myr: megayears[0], look: true),
+                .init(at: 0.6, myr: megayears[6], look: true),
+                .init(at: 1.1, myr: megayears[11], eye: .world(SIMD3(0, -20, 5)), aim: .world(.zero)),
+            ])
+            let flown = try TakeExport(take: loaded, look: file, capturedRate: 10, flight: flight)
+                .frames(width: 64, height: 36, framesPerSecond: 10)
+            #expect(flown.count == plain.count)
+            for index in 0...6 {
+                let most = zip(flown[index], plain[index]).map { abs(Int($0) - Int($1)) }.max() ?? 0
+                #expect(most <= 2, "\(mode) frame \(index): \(most)")
+            }
+            #expect(flown[11] != plain[11])
+        }
+    }
+
+    /// A flight that dives among the particles draws their stars, is averaged from several
+    /// renders where it passes them fast, and says what it took (#297).
+    @Test func aFlightAmongTheParticlesDrawsTheirStarsAndBlurs() throws {
+        let loaded = try take(frames: 12, interval: 3)
+        let megayears = TimeTrack.megayears(of: loaded.recording)
+        let flight = FlightFile(keys: [
+            .init(at: 0, myr: megayears[0], look: true),
+            .init(at: 0.5, myr: megayears[5], eye: .world(SIMD3(0, -3, 0.2)), aim: .world(.zero)),
+            .init(at: 1.1, myr: megayears[5], eye: .world(SIMD3(3, 0, 0.2)), aim: .world(.zero)),
+        ])
+        var file = autoLook
+        file.camera.mode = .fixed
+        let export = try TakeExport(take: loaded, look: file, capturedRate: 10, flight: flight)
+        let frames = try export.frames(width: 64, height: 36, framesPerSecond: 10)
+        let report = try #require(export.inside)
+        #expect(frames.count == 12 && frames.allSatisfy { $0.contains { $0 > 0 } })
+        #expect(report.nearest < 1 && report.mostStars > 0)
+        #expect(report.mostRenders == InsideSettings().subframes && report.renders > frames.count)
+        #expect(report.deepestTrim >= 0 && report.deepestTrim <= InsideExposure.deepest)
+        // The same flight again is the same frames, to the bit.
+        let again = try TakeExport(take: loaded, look: file, capturedRate: 10, flight: flight)
+            .frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(again == frames)
+        // The first frame is the look's own: the export's, drawn once and left at its exposure.
+        let plain = try TakeExport(take: loaded, look: file, capturedRate: 10)
+            .frames(width: 64, height: 36, framesPerSecond: 10)
+        let most = zip(frames[0], plain[0]).map { abs(Int($0) - Int($1)) }.max() ?? 0
+        #expect(most <= 2, "\(most) levels from the export's first frame")
+        // No export without a flight has anything of it.
+        let quiet = try TakeExport(take: loaded, look: file, capturedRate: 10)
+        _ = try quiet.frames(width: 64, height: 36, framesPerSecond: 10)
+        #expect(quiet.inside == nil)
+    }
+
+    /// A preview over its size budget is drawn again narrower, from the same take.
+    @Test func aPreviewOverItsBudgetIsDrawnAgainNarrower() throws {
+        let export = try TakeExport(take: take(frames: 12), look: autoLook, capturedRate: 10)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("preview-\(UUID().uuidString).gif")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let free = try export.writePreview(
+            to: url, format: .gif, width: 640, height: 360, framesPerSecond: 10)
+        #expect(free.attempts.count == 1 && free.frames == 12 && free.width == 640)
+        let fitted = try export.writePreview(
+            to: url, format: .gif, width: 640, height: 360, framesPerSecond: 10,
+            maximumBytes: free.bytes / 2)
+        #expect(fitted.attempts.count >= 2 && fitted.width < 640)
+        #expect(fitted.height == Int((Double(fitted.width) * 9 / 16).rounded()))
+        #expect(fitted.bytes <= free.bytes / 2 || fitted.width == TakeExport.previewFloor.width)
+    }
+
+    /// A look that measures its exposure (#340) draws a clip with one, on target where it was
+    /// measured; without one, the frames are the look's own.
+    @Test func aMeasuredExposureIsHeldOverTheClip() throws {
+        let loaded = try take(frames: 12)
+        var look = autoLook
+        look.camera.mode = .fixed
+        look.camera.radius = 14
+        let plain = try TakeExport(take: loaded, look: look, capturedRate: 10)
+        let before = try plain.frames(width: 320, height: 180, framesPerSecond: 10, start: 0.4, duration: 0.3)
+        #expect(plain.exposure == nil)
+        // A target a little above the take's own light.
+        let own = try #require(ExposureMeter.read(rgba: before[1], width: 320, height: 180))
+        let target = LookExposure(median: own.median + 0.02, top: own.top + 0.02)
+        look.exposure = target
+        let exposed = try TakeExport(take: loaded, look: look, capturedRate: 10)
+        let frames = try exposed.frames(
+            width: 320, height: 180, framesPerSecond: 10, start: 0.4, duration: 0.3)
+        let held = try #require(exposed.exposure)
+        #expect(held.samples.map(\.captured) == [4, 5, 6])
+        #expect(held.scale != .unit && frames != before)
+        // A frame this small and this even moves its median little; its top follows.
+        let alone = held.samples[1].solution.reading
+        func off(_ r: ExposureReading) -> Float {
+            max(abs(r.median - target.median), abs(r.top - target.top))
+        }
+        #expect(abs(alone.top - target.top) < 0.01 && off(alone) < off(own))
+        let middle = try #require(ExposureMeter.read(rgba: frames[1], width: 320, height: 180))
+        #expect(abs(middle.top - target.top) < abs(own.top - target.top))
+    }
+}

@@ -12,17 +12,7 @@ public final class GPUTreeBuilder {
         case bounds, morton, sort, nodes, masses
     }
 
-    struct Params {
-        var count: UInt32
-        var leafCapacity: UInt32
-        var maximumDepth: UInt32
-        var nodeCapacity: UInt32
-        var level: UInt32 = 0
-        var shift: UInt32 = 0
-        var tiles: UInt32
-        var tableLength: UInt32
-        var moments: UInt32
-    }
+    typealias Params = GPUTreeParams
 
     public let count: Int
     /// The first position of the buffer the tree is built over: the ones before it are left
