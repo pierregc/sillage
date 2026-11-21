@@ -516,28 +516,34 @@ public final class Renderer {
     /// the light averaged before the tone curve, and each render draws the point stars as the
     /// streaks they leave on the way to the next camera. Only a frame drawn from inside is; any
     /// other draws through the middle camera.
+    /// Between the matter's slabs and the eye's, each render is drawn with both and dissolved:
+    /// slid from one to the other, their boundaries swept the disk (#396).
     public func encode(cameras: [Camera], into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
         guard !cameras.isEmpty else { return }
-        guard inside != nil, !settings.plain, let pass = insideResources() else {
+        guard let frame = inside, !settings.plain, let pass = insideResources() else {
             encodeSplat(camera: cameras[cameras.count / 2], into: buffer)
             encodePost(into: buffer, present: present)
             return
         }
+        defer { inside = frame }
         let renders = max(cameras.count - 1, 1)
         for index in 0..<renders {
-            encodeSplat(
-                camera: cameras[index], into: buffer,
-                next: index + 1 < cameras.count ? cameras[index + 1] : nil)
-            guard let compute = buffer.makeComputeCommandEncoder() else { continue }
-            var factor = UInt32(settings.supersample)
-            var share = SIMD2<Float>(1 / Float(renders), index > 0 ? 1 : 0)
-            dispatch(compute, pass.resolve, into: resolved) { encoder in
-                encoder.setTexture(accumulation, index: 0)
-                encoder.setTexture(resolved, index: 2)
-                encoder.setBytes(&factor, length: 4, index: 0)
-                encoder.setBytes(&share, length: 8, index: 1)
+            for (layer, stack) in frame.stacks.enumerated() {
+                inside?.eyeSlabs = stack.eyeSlabs
+                encodeSplat(
+                    camera: cameras[index], into: buffer,
+                    next: index + 1 < cameras.count ? cameras[index + 1] : nil)
+                guard let compute = buffer.makeComputeCommandEncoder() else { continue }
+                var factor = UInt32(settings.supersample)
+                var share = SIMD2<Float>(stack.weight / Float(renders), index > 0 || layer > 0 ? 1 : 0)
+                dispatch(compute, pass.resolve, into: resolved) { encoder in
+                    encoder.setTexture(accumulation, index: 0)
+                    encoder.setTexture(resolved, index: 2)
+                    encoder.setBytes(&factor, length: 4, index: 0)
+                    encoder.setBytes(&share, length: 8, index: 1)
+                }
+                compute.endEncoding()
             }
-            compute.endEncoding()
         }
         encodePost(into: buffer, present: present, resolved: true)
     }
