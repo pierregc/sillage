@@ -6,7 +6,7 @@ high resolution into finished videos. Each stage reads and writes the scene's ow
 
 The app is the way in; the command line does the same and is kept as the [appendix](#appendix-the-command-line)
 below. Build and open the app with `./scripts/dev.sh app && open .build/dev/Sillage.app`
-(macOS 14+, Apple Silicon; everything goes through `./scripts/dev.sh`, not SwiftPM).
+(macOS 14+, Apple Silicon; everything goes through `./scripts/dev.sh`, not SwiftPM). The same stages also run on Linux with an NVIDIA GPU through `sillage-cuda`, see the [reference](reference.md).
 
 ## The words
 

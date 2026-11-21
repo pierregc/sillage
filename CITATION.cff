@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "Sillage"
 type: software
-abstract: "Galaxy collisions, simulated and filmed on an Apple Silicon Mac: a Barnes-Hut N-body solver that builds and walks its tree on the GPU, and a renderer for tens of millions of particles."
+abstract: "Galaxy collisions, simulated and filmed on the GPU, on Apple Silicon (Metal) and on NVIDIA (CUDA, under Linux): a Barnes-Hut N-body solver that builds and walks its tree on the GPU, and a renderer for tens of millions of particles."
 authors:
   - family-names: "Gunet-Caplain"
     given-names: "Pierre"
@@ -17,3 +17,6 @@ keywords:
   - Barnes-Hut
   - GPU
   - Metal
+  - CUDA
+  - NVIDIA
+  - Apple Silicon

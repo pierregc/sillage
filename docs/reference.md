@@ -5,7 +5,7 @@ The complete description of the command line, the files and the formats. The
 
 ## Running it
 
-macOS 14 or later on an Apple Silicon Mac.
+The app and the `sillage-render` command: macOS 14 or later on an Apple Silicon Mac. The `sillage-cuda` command: Linux with an NVIDIA GPU (see [the CUDA engine](notes/cuda-engine.md)).
 
 ```bash
 git clone https://github.com/pierregc/sillage.git
