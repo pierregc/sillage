@@ -200,11 +200,11 @@ public struct InsideUniforms: Sendable {
     public var nearFrom: Float
     /// The Pareto index each star's share is drawn with, 0 for none.
     public var starTail: Float
-    /// The near dust's fine structure and its coarsest cell in kpc, and what the frame's dust
-    /// opacity is multiplied by (#356).
+    /// The near dust's fine structure and its coarsest cell in kpc, and the share of the dust
+    /// opacity of a disk the eye is in that is taken away, 0 for none (#356).
     public var dustFine: Float
     public var dustCell: Float
-    public var dustTrim: Float
+    public var dustThin: Float
 
     /// How far inside the eye is for the slabs: 0 past `slabsWithin`'s far distance from any
     /// matter, 1 nearer than its near one.
@@ -274,7 +274,7 @@ public struct InsideUniforms: Sendable {
         starTail = inside.starTail
         dustFine = inside.dustFine
         dustCell = inside.dustCell
-        dustTrim = 1 + (inside.dustInside - 1) * Self.dustDepth(frame)
+        dustThin = (1 - inside.dustInside) * Self.dustDepth(frame)
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
@@ -307,7 +307,7 @@ public struct InsideUniforms: Sendable {
         starTail = 0
         dustFine = 0
         dustCell = 0
-        dustTrim = 1
+        dustThin = 0
     }
 
     /// The most light a star's pixel takes, in the light of the accumulation, so that the one

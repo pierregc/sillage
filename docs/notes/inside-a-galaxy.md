@@ -797,7 +797,8 @@ third; the clumps let more light through than the same column spread evenly, as 
 filaments do. A galaxy seen whole from inside the other keeps its lanes: the companion, 5 to 6
 kpc from its plane on these frames, is drawn as before. The eye is found in the vertex stage from
 where the grain lands (the camera's axes are the rows of its projection), so the trim needs no
-uniform of its own beyond the frame's factor (`InsideUniforms.dustTrim`).
+uniform of its own beyond the frame's share taken away (`InsideUniforms.dustThin`, 0 for none, so
+that a frame whose uniforms are all zero, as the CUDA tests lay them, keeps its dust).
 
 ![Frames 700 to 1104, before and after](https://raw.githubusercontent.com/pierregc/sillage/assets/356-near-dust/docs/spikes/inside-356/frames-700-1104.jpg)
 

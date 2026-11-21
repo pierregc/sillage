@@ -93,7 +93,7 @@ struct InsideRenderTests {
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.projectionY) == 148)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starTail) == 160)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustFine) == 164)
-        #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustTrim) == 172)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustThin) == 172)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every

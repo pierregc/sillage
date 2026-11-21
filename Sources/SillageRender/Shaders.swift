@@ -66,10 +66,11 @@ enum Shaders {
             /// The Pareto index a star's share is drawn with around its rank's, 0 for none.
             float starTail;
             /// The near dust's structure finer than a grain (#356): its contrast, 0 for none, and
-            /// its coarsest cell in kiloparsecs; and what the frame's dust opacity is multiplied by.
+            /// its coarsest cell in kiloparsecs; and the share of a disk's dust opacity taken away
+            /// while the eye is in it, 0 for none.
             float dustFine;
             float dustCell;
-            float dustTrim;
+            float dustThin;
         };
         #endif
 
@@ -806,11 +807,11 @@ enum Shaders {
             out.grainZ = float4(dot(z, axisU), dot(z, axisV), dot(z, normal), dustLogMean(contrast));
         }
 
-        // What a grain's opacity is multiplied by: the frame's trim, only for a disk the eye is in
+        // What a grain's opacity is multiplied by: the frame's thinning, only for a disk the eye is in
         // (within half a scale length of its plane, nothing past one), so that a galaxy seen
         // whole from inside another keeps its lanes. The eye is found from where the grain lands.
         SHARED float insideDustTrim(float4 clip, float3 position, DiskFrame frame, constant SplatUniforms &u) {
-            if (u.inside.dustTrim == 1.0f) { return 1.0f; }
+            if (u.inside.dustThin == 0.0f) { return 1.0f; }
             float4x4 m = u.viewProjection;
             float3 right = normalize(float3(m[0][0], m[1][0], m[2][0]));
             float3 up = normalize(float3(m[0][1], m[1][1], m[2][1]));
@@ -823,7 +824,7 @@ enum Shaders {
             float h = max(frame.center.w, 1e-3f);
             float beyond = max(length(rel - normal * height) - 7.0f * h, 0.0f);
             float away = sqrt(height * height + beyond * beyond);
-            return 1.0f + (u.inside.dustTrim - 1.0f) * (1.0f - smoothstep(0.5f * h, h, away));
+            return 1.0f - u.inside.dustThin * (1.0f - smoothstep(0.5f * h, h, away));
         }
 
         // A grain of the frame's own dust pass, once its point is laid: the trim, then the noise.
