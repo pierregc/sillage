@@ -72,6 +72,24 @@ struct DiskFrameTests {
         #expect(painted(torn) == (0, 0))
     }
 
+    /// The lanes' darkening goes out with the last of the paint, not on the frame the disk is
+    /// wholly torn, and an intact disk keeps all of it (#393).
+    @Test func theLanesFadeBeforeTheDiskIsWhollyTorn() {
+        let scene = spiral(.barnesHut)
+        func gone(_ torn: Float) -> Float {
+            var state = DiskState.natal(scene.galaxies[0])
+            state.torn = torn
+            return DiskFrame.make(
+                scene: scene, centers: scene.galaxies.map(\.position), time: 0, strength: 1,
+                disks: [state])[0].tint.w
+        }
+        #expect(gone(0) == 0)
+        #expect(gone(1 - DiskFrame.laneFade) == 0)
+        #expect(gone(1) == 1)
+        let steps = (0...100).map { gone(1 - DiskFrame.laneFade + DiskFrame.laneFade * Float($0) / 100) }
+        #expect(zip(steps, steps.dropFirst()).allSatisfy { $1 >= $0 && $1 - $0 < 0.02 })
+    }
+
     /// Turning the arms off has to leave a smooth disk rather than a faint pattern.
     @Test func noArmsMeansNoWave() {
         var scene = spiral(.barnesHut)

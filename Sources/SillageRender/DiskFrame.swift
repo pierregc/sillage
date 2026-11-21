@@ -17,6 +17,8 @@ public struct DiskFrame {
     public var axisU: SIMD4<Float>
     public var axisV: SIMD4<Float>
     public var pattern: SIMD4<Float>
+    /// The galaxy's colour, and how much of the lanes' own darkening has gone out with a torn
+    /// disk's paint (#393).
     public var tint: SIMD4<Float>
     /// The material's angular rate at `diskScaleLength * 2^(-2 + 0.75 i)`, eight radii, in
     /// radians per time unit and signed with the turn in the frame's own axes: what carries
@@ -30,6 +32,11 @@ public struct DiskFrame {
 
     /// The web's renewal period, as a share of a turn at two scale lengths.
     static let webPeriodShare: Float = 0.25
+
+    /// The last of a disk's intactness over which its lanes' darkening goes out. The paint fades
+    /// in proportion, but the lanes held their darkening to the end and dropped it on the frame
+    /// the disk read as wholly torn: a step a whole galaxy wide (#393).
+    static let laneFade: Float = 0.05
 
     /// Carries a galaxy's natal in-plane axes onto the plane its disk actually turns in now,
     /// by the shortest rotation that takes one normal onto the other.
@@ -84,6 +91,8 @@ public struct DiskFrame {
                 simd_length_squared(live.axis) > 1e-12 ? simd_normalize(live.axis) : natal
             let (u, v) = planeAxes(natal: orientation, normal: natal, axis: axis)
             let intact = 1 - min(max(live.torn, 0), 1)
+            let left = min(intact / laneFade, 1)
+            let lanes = left * left * (3 - 2 * left)
             // The wave is painted whichever solver is running, and that is the physical answer
             // rather than a shortcut.
             //
@@ -122,7 +131,7 @@ public struct DiskFrame {
                 pattern: SIMD4<Float>(
                     galaxy.armWindRate, patternSpeed * time,
                     galaxy.armIrregularity, Float(index) * 37.4 + 5.1),
-                tint: SIMD4<Float>(galaxy.color.x, galaxy.color.y, galaxy.color.z, 0),
+                tint: SIMD4<Float>(galaxy.color.x, galaxy.color.y, galaxy.color.z, 1 - lanes),
                 omegaInner: SIMD4<Float>(omega[0], omega[1], omega[2], omega[3]),
                 omegaOuter: SIMD4<Float>(omega[4], omega[5], omega[6], omega[7]),
                 web: SIMD4<Float>(
