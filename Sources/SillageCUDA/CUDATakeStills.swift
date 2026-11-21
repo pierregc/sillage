@@ -64,7 +64,7 @@ public final class PhaseTimes {
 /// of a video, then the particle passes and the post-processing. The two engines draw the same
 /// picture from the same take, look and framing; `docs/notes/cuda-engine.md` says how close.
 /// The frames of a flight go through `FlightFrames`, which it is the engine's stage of (#382).
-public final class CUDATakeStills: FlightStage {
+public final class CUDATakeStills: FrameStage {
     public let take: RecordingFile.Loaded
     public let framing: RecordingFile.Loaded
     public let look: LookFile
@@ -92,7 +92,7 @@ public final class CUDATakeStills: FlightStage {
     private var beside: CUDAHostMemory?
     /// Where the renderer's positions and lengths stand: a frame at the same moment of the
     /// take, as a freeze gives, draws from them again.
-    private var staged: FlightFrames.Place?
+    private var staged: (place: FlightFrames.Place, eased: Bool)?
     /// How many times the take was decoded for a flight's frame, for the tests.
     private(set) var stagings = 0
     /// The frames of the flight `flightStill` and `flightFrame` draw (#347), when there is one.
@@ -293,18 +293,22 @@ public final class CUDATakeStills: FlightStage {
 
     public func setGrain(frame index: Int) { renderer.setGrain(frame: index) }
 
-    public func stage(_ place: FlightFrames.Place) throws -> UnsafeRawPointer {
+    public func stage(_ place: FlightFrames.Place, eased: Bool) throws -> UnsafeRawPointer {
         guard let base = decoded.bytes.baseAddress else { throw RecordingFile.Failure.truncated }
-        if staged == place { return UnsafeRawPointer(base) }
+        if let staged, staged.place == place, staged.eased == eased { return UnsafeRawPointer(base) }
         staged = nil
         guard let blend = place.blend(in: take.recording) else { throw RecordingFile.Failure.truncated }
         let positions = try decode(blend, into: decoded)
-        try easeLengths(at: place, positions)
+        if eased {
+            try easeLengths(at: place, positions)
+        } else {
+            try buildLengths(positions)
+        }
         try timed("upload") {
             try renderer.positions.upload(positions, at: renderer.positionOffset)
             try renderer.setSmoothing(lengths)
         }
-        staged = place
+        staged = (place, eased)
         stagings += 1
         return UnsafeRawPointer(base)
     }
@@ -345,6 +349,21 @@ public final class CUDATakeStills: FlightStage {
                 on: self, at: frame, exposure: exposure.scale, trims: exposure.trims, interval: interval)
         }
         return try draw(prepared, of: flightFrames, index: index, format: format, stops: nil)
+    }
+
+    /// A frame of a take's video without a flight (#429), as `TakeExport.write` draws it: the
+    /// camera of the look's plan along the time track, the kernel lengths of the moment's own
+    /// tree, the look's exposure measured over the video (`TakeFrames.measureScale`), and the
+    /// grain of the video's frame `index`.
+    public func takeFrame(
+        _ frame: TimeTrack.Frame, of frames: TakeFrames, index: Int, exposure: ExposureScale?,
+        format: CUDAPost.Format = .rgb
+    ) throws -> UnsafeRawBufferPointer {
+        let shot = try timed("frame set up", device: false) {
+            try frames.prepare(on: self, at: frame, exposure: exposure)
+        }
+        renderer.setGrain(frame: index)
+        return try renderer.picture(camera: shot.camera, format: format, threads: threads)
     }
 
     private func draw(

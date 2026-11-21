@@ -6,7 +6,7 @@ import SillageRender
 /// `sillage-cuda`, the CUDA engine's command on Linux (#277, #278, #378): `hires` computes a scene
 /// folder, the pass that writes its take or its full pass, on the GPU library or on the CPU
 /// target, whichever it was linked with; `check` holds that engine to the reference outputs
-/// first; `still` draws chosen frames of a take as PNGs; `export` draws a flight's video (#382);
+/// first; `still` draws chosen frames of a take as PNGs; `export` draws a take's video, along a flight or not (#382, #429);
 /// `status` says how far a run has got. docs/notes/cuda-engine.md.
 
 func fail(_ message: String) -> Never {
@@ -24,8 +24,8 @@ let usage = """
                [--preset 1080p|4k|vertical|square|whatsapp] [--width W --height H]
                --frames 0,200,900 [--fps N] [--rate N] [--threads N] --out <dir>
            sillage-cuda still <take> --look <look> --flight <file> --seconds 0,2.5,9 [...] --out <dir>
-           sillage-cuda export <scene folder | take> --flight <name | file> [--look <look>]
-               [--framing <massive take>] [--preset 1080p|4k|vertical|square|whatsapp]
+           sillage-cuda export <scene folder | take> [--flight <name | file>] [--look <look>]
+               [--speed <x>|<file>|story[:pace[:top]] [--slow <from>:<to>:<speed>]] [--framing <massive take>] [--preset 1080p|4k|vertical|square|whatsapp]
                [--width W --height H] [--fps N] [--start s] [--duration s] [--codec hevc|h264|prores]
                [--bitrate Mbit] [--out <file>] [--resume] [--part k/n] [--device N] [--profile]
            sillage-cuda export <scene folder | take> --flight <name | file> --flight-keys <dir>
@@ -66,10 +66,13 @@ let usage = """
     in place of --frames: each is the frame the video shows there at --fps, drawn from inside a
     galaxy where the eye is near matter (point stars, motion blur) at its own automatic exposure.
 
-    export draws the video of a flight as sillage-render export --flight does on the Mac (#382):
+    export draws a take's video as sillage-render export does on the Mac, encoded by ffmpeg.
+    Without --flight (#429): the look's camera, along a time track with --speed (one speed, a
+    .time.json, or story read off the curves, held with --slow; the visual pace is the Mac's, whose
+    .time.json is given instead), the look's exposure measured once over the video, into
+    exports/<preset>.mp4 of the scene folder, the track written beside it. With --flight (#382):
     the camera, the time, the inside of a galaxy and the exposure of the flight, measured once
-    along the whole of it, into exports/<flight>-<preset>.mp4 of the scene folder, encoded by
-    ffmpeg. The video is drawn in segments of whole files (--segment-frames N, a second of video
+    along the whole of it, into exports/<flight>-<preset>.mp4. The video is drawn in segments of whole files (--segment-frames N, a second of video
     by default) kept beside it until it is whole: a run that stops loses one at most, --resume
     draws the ones missing and joins them without encoding them again, and --part k/n draws one
     segment in n, for several GPUs (--device N) or several boxes on one video. --flight-keys
@@ -230,7 +233,7 @@ if command == "export" {
     signal(SIGPIPE, SIG_IGN)
     do {
         let context = try CUDAContext(device: option("device").flatMap { Int($0) } ?? 0)
-        try CUDAFlightExport.run(
+        try CUDAExport.run(
             path, options: Array(rest.dropFirst()), context: context,
             threads: integer("threads") ?? ProcessInfo.processInfo.activeProcessorCount)
     } catch {

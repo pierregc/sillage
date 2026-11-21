@@ -22,6 +22,17 @@ Pierre's verdict. #428 (one job, any machine) is amended to that verdict.
 - **Integrity.** Whatever writes a take writes its SHA-256 beside it; whatever receives one checks
   it before drawing. A new ticket.
 
+## Pierre's verdict (2026-11-21)
+
+- **Asking for work: the workflow** (option 2 below). #428 is amended to it. The Vast key in the
+  cloud environment (option 3) is not taken.
+- **Where takes live: every take kept whole**, not extracts in its place: GPU time is paid, and
+  a take computed again would not be the same one. They go to a folder of Pierre's Google Drive
+  (about 150 GB free), reached through rclone with Google's `drive.file` scope, which sees only
+  the files rclone created; once the Drive is full, to the Mac's 1 TB disk; old takes are deleted
+  only when nothing can hold them. #440 builds it, with the digest of the integrity section. The
+  recommendation below, extracts by default, is kept for the record and not followed.
+
 ## What was read, and what was not
 
 The figures for Vast.ai (storage, bandwidth, offers) come from [gpu-rental.md](gpu-rental.md),

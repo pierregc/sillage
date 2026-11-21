@@ -289,7 +289,7 @@ frames with `--framing`, #379), the look and the painted arms through `TakeFrami
 nearness and the matter's depth, the renders a frame's shutter passes, the report, and the
 exposure: the scale of a look that measures its own on the look keys (#340), the target, and the
 trim solved every quarter second of the whole flight and eased. An engine gives it a
-`FlightStage`: the renderer's settings, the take's positions at a place with their eased kernel
+`FrameStage`: the renderer's settings, the take's positions at a place with their eased kernel
 lengths, the grain, and a render read back. `CUDATakeStills` is the CUDA engine's stage, and
 `sillage-cuda still --flight` goes through the same flow. `FlightFrames` follows `TakeExport`
 line for line, but `TakeExport` does not call it yet: a cloud session cannot check Metal's bytes,
