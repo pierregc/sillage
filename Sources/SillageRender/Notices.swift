@@ -17,6 +17,7 @@ public enum Notices {
     public static func stage(_ name: String) -> String {
         switch name {
         case "explore", "exploration": "Previews"
+        case "pick": "Selection"
         case "hires": "High resolution"
         case "look", "style": "Style"
         case "export": "Videos"

@@ -1,6 +1,19 @@
 import SillageRender
 import SwiftUI
 
+extension Binding where Value == Float {
+    /// An angle kept in radians, read and written in degrees.
+    var degrees: Binding<Float> {
+        Binding<Float>(
+            get: { wrappedValue * 180 / .pi }, set: { wrappedValue = $0 * .pi / 180 })
+    }
+}
+
+extension ClosedRange where Bound == Float {
+    /// A range of radians as degrees.
+    var inDegrees: ClosedRange<Float> { (lowerBound * 180 / .pi)...(upperBound * 180 / .pi) }
+}
+
 /// A labelled slider. `onCommit` fires when the drag ends, so structural changes can rebuild
 /// the simulation once instead of on every intermediate value.
 struct ParameterSlider: View {

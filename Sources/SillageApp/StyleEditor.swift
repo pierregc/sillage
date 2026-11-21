@@ -623,15 +623,18 @@ struct PaletteSection: View {
         if let note = session.proposalNote {
             Text(note).font(.caption).foregroundStyle(Palette.secondary)
         } else {
+            let proposals = session.proposals
+            let labels = DistinctLabels.make(
+                proposals.map { "\($0.palette.family) · \(StyleNames.harmony($0.palette.harmony))" })
             VStack(spacing: 4) {
-                ForEach(Array(session.proposals.enumerated()), id: \.offset) { _, ranked in
-                    proposal(ranked)
+                ForEach(Array(proposals.enumerated()), id: \.offset) { index, ranked in
+                    proposal(ranked, label: labels[index])
                 }
             }
         }
     }
 
-    private func proposal(_ ranked: PaletteAuto.Ranked) -> some View {
+    private func proposal(_ ranked: PaletteAuto.Ranked, label: String) -> some View {
         let chosen = session.current.paletteRecipe == ranked.palette
         return HStack(spacing: 8) {
             Button {
@@ -639,10 +642,11 @@ struct PaletteSection: View {
             } label: {
                 HStack(spacing: 8) {
                     proposalSwatches(ranked.palette)
-                    Text("\(ranked.palette.family) · \(StyleNames.harmony(ranked.palette.harmony))")
+                    Text(label)
                         .font(.caption)
                         .foregroundStyle(Palette.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                     Spacer(minLength: 4)
                     Text(StyleNames.number(ranked.score.total))
                         .font(.caption.monospacedDigit())
@@ -771,10 +775,8 @@ struct CameraSection: View {
                     set: { session.binding(\.camera.zoom).wrappedValue = exp2($0) }),
                 range: Self.octaves, reading: { Self.reading(zoom: exp2($0)) })
             ParameterSlider(
-                title: "Rotation over the clip (degrees)",
-                value: Binding(
-                    get: { session.current.camera.rotation * 180 / .pi },
-                    set: { session.binding(\.camera.rotation).wrappedValue = $0 * .pi / 180 }),
+                title: "Rotation over the clip (°)",
+                value: session.binding(\.camera.rotation).degrees,
                 range: -360...360, format: "%.0f"
             )
             .disabled(!session.current.camera.placesCamera)
@@ -942,12 +944,14 @@ struct PlanControls: View {
                 title: "Field of view", value: session.binding(\.look.fieldOfView),
                 range: 0.2...1.4)
             ParameterSlider(
-                title: "Elevation (rad)", value: session.binding(\.camera.elevation), range: -1.5...1.5)
+                title: "Elevation (°)", value: session.binding(\.camera.elevation).degrees,
+                range: (-1.5...1.5).inDegrees, format: "%.0f")
             PlanEndSlider(
                 title: "End elevation", start: session.current.camera.elevation,
                 end: session.binding(\.camera.elevationEnd), range: -1.5...1.5)
             ParameterSlider(
-                title: "Azimuth (rad)", value: session.binding(\.camera.azimuth), range: -6.3...6.3)
+                title: "Azimuth (°)", value: session.binding(\.camera.azimuth).degrees,
+                range: (-6.3...6.3).inDegrees, format: "%.0f")
             PlanEndSlider(
                 title: "End azimuth", start: session.current.camera.azimuth,
                 end: session.binding(\.camera.azimuthEnd), range: -12.6...12.6)
@@ -974,7 +978,9 @@ struct PlanEndSlider: View {
             CheckToggle(title: title, isOn: Binding(get: { end != nil }, set: { end = $0 ? start : nil }))
             if end != nil {
                 ParameterSlider(
-                    title: "", value: Binding(get: { end ?? start }, set: { end = $0 }), range: range)
+                    title: "",
+                    value: Binding(get: { end ?? start }, set: { end = $0 }).degrees,
+                    range: range.inDegrees, format: "%.0f")
             }
         }
     }

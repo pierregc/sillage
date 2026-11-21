@@ -100,9 +100,10 @@ struct ControlPanelContent: View {
             switch model.mode {
             case .running:
                 Text(
-                    String(
-                        format: "%d frames · %.0f Myr · %.1f GB", model.capturedFrames,
-                        model.capturedMyr, Double(model.capturedBytes) / 1_073_741_824)
+                    "\(model.capturedFrames) \(model.capturedFrames == 1 ? "frame" : "frames") · "
+                        + String(
+                            format: "%.0f Myr · %.1f GB", model.capturedMyr,
+                            Double(model.capturedBytes) / 1_073_741_824)
                 )
                 .font(.caption.monospacedDigit())
                 if offscreen {
@@ -377,8 +378,9 @@ struct ControlPanelContent: View {
                     title: "Distance (kpc)", value: $model.camera.distance,
                     range: OrbitCamera.nearest...OrbitCamera.furthest, format: "%.0f")
                 ParameterSlider(
-                    title: "Elevation (rad)", value: $model.camera.elevation,
-                    range: -OrbitCamera.elevationLimit...OrbitCamera.elevationLimit)
+                    title: "Elevation (°)", value: $model.camera.elevation.degrees,
+                    range: (-OrbitCamera.elevationLimit...OrbitCamera.elevationLimit).inDegrees,
+                    format: "%.0f")
             }
             ParameterSlider(
                 title: "Field of view", value: $model.look.fieldOfView, range: 0.2...1.4)

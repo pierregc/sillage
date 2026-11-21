@@ -310,12 +310,21 @@ public final class CUDARenderer: FrameStyling {
         }
         let everything = split(0..<(drawnCount + tracerCount))
         let parts = split(particles ?? 0..<(drawnCount + tracerCount))
+        // Where its grains are spread over two slabs, each galaxy's dust is carried and
+        // multiplied by its own web apart (#399): one carrier here, filled and resolved a
+        // galaxy at a time, where Metal fills a carrier each before its frame's passes.
+        let apart =
+            deep.map {
+                InsideUniforms(
+                    $0.frame, camera: $0.camera, next: $0.next, settings: settings, splat: plan.splat
+                ).websApart(galaxies: galaxySlots)
+            } ?? 1
         for pass in plan.passes {
             switch pass {
             case .column:
                 try draw(SC_RENDER_COLUMN, pass, plan, everything, threads, deep)
             case .webCarrier:
-                try draw(SC_RENDER_WEB_CARRIER, pass, plan, parts, threads, deep)
+                if apart == 1 { try draw(SC_RENDER_WEB_CARRIER, pass, plan, parts, threads, deep) }
             case .starfield:
                 try draw(SC_RENDER_STARFIELD, pass, plan, (0..<0, 0..<0), 1, deep)
             case .dust:
@@ -323,7 +332,12 @@ public final class CUDARenderer: FrameStyling {
             case .paintedDust:
                 try draw(SC_RENDER_PAINTED_DUST, pass, plan, parts, threads, deep)
             case .webResolve:
-                try draw(SC_RENDER_WEB_RESOLVE, pass, plan, (0..<0, 0..<0), 1, deep)
+                for galaxy in 1...apart {
+                    if apart > 1 {
+                        try draw(SC_RENDER_WEB_CARRIER, .webCarrier, plan, parts, threads, deep, only: galaxy)
+                    }
+                    try draw(SC_RENDER_WEB_RESOLVE, pass, plan, (0..<0, 0..<0), 1, deep)
+                }
             case .stars:
                 try draw(SC_RENDER_STARS, pass, plan, parts, threads, deep)
                 // The near particles' point stars go with the stars, as Metal draws them.
@@ -534,18 +548,20 @@ public final class CUDARenderer: FrameStyling {
 
     private func draw(
         _ name: sc_render_pass, _ pass: FramePlan.Pass, _ plan: FramePlan,
-        _ parts: (massive: Range<Int>, tracers: Range<Int>), _ threads: Int, _ deep: Deep?
+        _ parts: (massive: Range<Int>, tracers: Range<Int>), _ threads: Int, _ deep: Deep?,
+        only: Int = 0
     ) throws {
         try check(sc_render_begin(handle, name), "starting the \(pass) pass")
         let splat = plan.uniforms(for: pass)
         // The engine's passes always hold the inside of a galaxy: a frame without it hands
         // them the values that leave their arithmetic as it was.
-        let uniforms = InsideSplatUniforms(
-            splat: splat,
-            inside: deep.map {
+        var inside =
+            deep.map {
                 InsideUniforms(
                     $0.frame, camera: $0.camera, next: $0.next, settings: settings, splat: splat)
-            } ?? InsideUniforms(outside: splat))
+            } ?? InsideUniforms(outside: splat)
+        inside.webOnly = Float(only)
+        let uniforms = InsideSplatUniforms(splat: splat, inside: inside)
         var web = plan.web
         // Near a disk the lace is carried through its dust layer's depth, within the radii the
         // settings give.

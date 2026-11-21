@@ -318,11 +318,11 @@ struct GalaxyCard: View {
                 if kind != .globular {
                     Group {
                         ParameterSlider(
-                            title: "Inclination (rad)", value: galaxy.inclination,
-                            range: -1.57...1.57, onCommit: commit)
+                            title: "Inclination (°)", value: galaxy.inclination.degrees,
+                            range: (-1.57...1.57).inDegrees, format: "%.0f", onCommit: commit)
                         ParameterSlider(
-                            title: "Position angle (rad)", value: galaxy.positionAngle,
-                            range: 0...6.28, onCommit: commit)
+                            title: "Position angle (°)", value: galaxy.positionAngle.degrees,
+                            range: (0...6.28).inDegrees, format: "%.0f", onCommit: commit)
                         SegmentedChoice(
                             selection: galaxy.spin,
                             options: [("Prograde", .prograde), ("Retrograde", .retrograde)]
