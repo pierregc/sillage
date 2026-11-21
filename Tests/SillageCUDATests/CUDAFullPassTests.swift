@@ -161,11 +161,13 @@ struct CUDAFullPassTests {
         ]
         try Self.fullPass(whole, context: context, options: asked)
         try Self.fullPass(early, context: context, options: asked + ["--stop-after-key-frames"])
+        // The massive pass's curves may add their start before the frames asked for.
         let kept = try JSONDecoder().decode([KeyFrameEntry].self, from: Data(contentsOf: early.keyFrameList))
-        #expect(kept.map(\.frame) == [1, 2] && kept.allSatisfy { $0.role == "chosen" })
+        #expect(kept.filter { $0.role == "chosen" }.map(\.frame) == [1, 2] && kept.last?.frame == 2)
         let cut = whole.url.appendingPathComponent("cut.sillage")
         _ = try TakeExtract.command([
-            "extract", whole.keyFrames.path, "--at", "\(megayears[1])", "--span", "2", cut.path,
+            "extract", whole.keyFrames.path, "--at", kept.map { "\($0.timeMyr)" }.joined(separator: ","),
+            cut.path,
         ])
         #expect(try Data(contentsOf: cut) == Data(contentsOf: early.keyFrames))
         #expect(try early.storedHires()?.full == nil)
