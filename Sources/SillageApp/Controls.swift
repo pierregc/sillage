@@ -129,6 +129,43 @@ struct MenuChoice<Value: Hashable>: View {
     }
 }
 
+/// A text field's text in a box, as `ImageRenderer` can draw it.
+struct OffscreenField: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(white: 0.35)))
+    }
+}
+
+/// A stepper, drawn as its two halves offscreen.
+struct CountStepper: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 8) {
+                Text(title)
+                Text("−   +")
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(white: 0.24)))
+            }
+            .font(.caption)
+        } else {
+            Stepper(title, value: $value, in: range).font(.caption)
+        }
+    }
+}
+
 struct VectorEditor: View {
     let title: String
     @Binding var value: SIMD3<Float>

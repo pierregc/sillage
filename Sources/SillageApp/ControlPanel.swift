@@ -74,7 +74,11 @@ struct ControlPanelContent: View {
 
             if let activity = model.fileActivity {
                 HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
+                    if offscreen {
+                        Image(systemName: "hourglass")
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
                     Text(activity).font(.caption)
                 }
             }
@@ -101,7 +105,11 @@ struct ControlPanelContent: View {
                         model.capturedMyr, Double(model.capturedBytes) / 1_073_741_824)
                 )
                 .font(.caption.monospacedDigit())
-                ProgressView(value: model.captureFraction)
+                if offscreen {
+                    OffscreenTrack(fraction: Float(model.captureFraction))
+                } else {
+                    ProgressView(value: model.captureFraction)
+                }
 
                 if let why = model.captureSpillFailure {
                     Text("Cannot spill to disk, the take carries on in memory. \(why)")
@@ -181,11 +189,9 @@ struct ControlPanelContent: View {
                     .disabled(model.stopAtMyr <= 0)
 
                 Divider()
-                Stepper(
-                    "Steps per frame: \(model.stepsPerFrame)",
-                    value: $model.stepsPerFrame, in: 1...64
-                )
-                .font(.caption)
+                CountStepper(
+                    title: "Steps per frame: \(model.stepsPerFrame)",
+                    value: $model.stepsPerFrame, range: 1...64)
                 Text("Higher, the take spans more time for the same memory.")
                     .font(.caption2)
                     .foregroundStyle(Palette.secondary)

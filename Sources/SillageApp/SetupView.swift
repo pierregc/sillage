@@ -108,6 +108,7 @@ struct SetupView: View {
 /// Split out from the scroll view so it can be rendered offscreen for inspection.
 struct SetupContent: View {
     @ObservedObject var model: SimulationModel
+    @Environment(\.offscreen) private var offscreen
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -172,18 +173,22 @@ struct SetupContent: View {
             HStack {
                 Text("Random seed").font(.caption)
                 Spacer()
-                TextField(
-                    "seed",
-                    value: Binding(
-                        get: { model.draft.seed },
-                        set: {
-                            model.draft.seed = $0
-                            model.commitDraftChange()
-                        }),
-                    format: .number
-                )
-                .frame(width: 90)
-                .textFieldStyle(.roundedBorder)
+                if offscreen {
+                    OffscreenField(text: "\(model.draft.seed)").frame(width: 90)
+                } else {
+                    TextField(
+                        "seed",
+                        value: Binding(
+                            get: { model.draft.seed },
+                            set: {
+                                model.draft.seed = $0
+                                model.commitDraftChange()
+                            }),
+                        format: .number
+                    )
+                    .frame(width: 90)
+                    .textFieldStyle(.roundedBorder)
+                }
             }
 
             // Softening follows from the particle count and the disk size; there is no useful
@@ -254,9 +259,13 @@ struct GalaxyCard: View {
         return Card {
             Group {
                 HStack {
-                    TextField("name", text: galaxy.name)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 150)
+                    if offscreen {
+                        OffscreenField(text: model.draft.galaxies[index].name).frame(width: 150)
+                    } else {
+                        TextField("name", text: galaxy.name)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 150)
+                    }
                     Spacer()
                     Button(role: .destructive) {
                         model.removeGalaxy(at: index)
@@ -323,11 +332,10 @@ struct GalaxyCard: View {
                 }
 
                 if kind == .spiral {
-                    Stepper(
-                        "Arms: \(model.draft.galaxies[index].armCount)", value: galaxy.armCount,
-                        in: 1...6
+                    CountStepper(
+                        title: "Arms: \(model.draft.galaxies[index].armCount)", value: galaxy.armCount,
+                        range: 1...6
                     )
-                    .font(.caption)
                     .onChange(of: model.draft.galaxies[index].armCount) { commit() }
                     ParameterSlider(
                         title: "Arm contrast", value: galaxy.armStrength, range: 0...0.95,

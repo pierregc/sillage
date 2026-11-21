@@ -374,7 +374,8 @@ struct SillageApp: App {
                     .background(Color.black)),
             to: "out/ui-oscillators.png")
         write(
-            AnyView(SettingsForm(settings: NotificationSettings(library: nil))),
+            AnyView(
+                SettingsForm(settings: NotificationSettings(library: nil)).environment(\.offscreen, true)),
             to: "out/ui-settings.png")
         writeStyleEditor(model)
         var activity = ActivityFile(state: .running, updated: Date())
