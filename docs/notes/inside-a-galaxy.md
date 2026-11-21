@@ -1,4 +1,4 @@
-# Inside a galaxy (#296, #297, #353, #354, #357)
+# Inside a galaxy (#296, #297, #353, #354, #355, #357)
 
 What the renderer does when the camera goes into a disk, tried on real frames before #297
 changes anything: the README's Mice take (2026-11-04 scene-0067, 8 M visible particles on 12 M
@@ -625,3 +625,76 @@ it will want: taps spaced by distance from the eye rather than four even ones, w
 kiloparsecs along the plane; and a factor per slab rather than one per disk and pixel, so that a
 near filament darkens the near slabs and not the far lane behind it (the resolve already loops
 over the slabs).
+
+## A flight's slabs on the matter (#355)
+
+Pierre, on #297's flight with time flowing: as the camera backs away from the Mice (frames 2100 to
+2520), the gas lanes go dark, light, dark, light (2196, 2218, 2245, 2272), and by 2425 almost none
+is left. Once the eye is 6 kpc from matter the slabs went back, hard, to the stack every export has,
+centred on the aim point and as deep as the frame is wide. Receding, that stack grows with the
+distance and slides through the larger disk, seen edge on: the lane and the bulge behind it fell
+in one slab (the bulge behind half the lane), then in two (behind all of its near half), then in one.
+
+**What replaced it.** Past the near field a flight's slabs are laid on the matter in the frame
+(`MatterDepth`): the view depths of the drawn particles inside the frustum, between their second
+and ninety-eighth percentiles, give the matter's depth, and the four slabs, each three quarters of
+it deep, are centred there. Soft at every distance, as the eye's are: a grain is spread over a
+slab's depth and a star's dimming with it, so nothing switches when a boundary passes through a
+lane. The matter's depth does not grow with the distance, nor move with the aim: a lane keeps its
+place against its bulge in slab units however far the camera goes. The depths are read from a
+histogram by their float bits, 128 bins an octave, interpolated within a bin, so a particle leaving
+the frame moves the knots by a sliver; 8 M particles cost a few milliseconds a frame on the CPU,
+as `Nearness` does. Near matter the layout still slides to the eye's (`slabsWithin`), now from the
+matter's stack instead of the aim point's.
+
+**Why three quarters.** Tried on frames 2196 to 2425 and on a whole galaxy seen from 100 kpc:
+
+- **The quarters of the matter** (each slab holding a quarter of the particles in the frame) order
+  finely around the bulge, where the particles crowd: the edge-on disk mixes its stars and dust
+  slab by slab, its mid-plane turns into a white band, and the lanes are lighter than the export's
+  lightest state.
+- **Slabs a quarter, a half, three quarters and a whole of the matter's depth deep**: the coarser,
+  the darker the lanes, a star sharing its slab with more of the lane in front of it, up to about
+  three quarters, past which they hardly darken more. There they sit between the export's dark and
+  light states, the same on all four frames, and the near side of a disk seen from 100 kpc, half a
+  galaxy ahead of the far side, is still about a slab in front.
+- **The eye's slabs at every distance** (`"slabsWithin": [500, 1000]`, the control of #297) put
+  everything past 7.5 kpc in the last slab, every star behind all of the frame's dust: the lanes are
+  the darkest, and from 100 kpc the far side's lane darkens the bulge in front of it as much as the
+  near side's does. Lanes that dark need every star behind all of the dust, which is what an order
+  in depth takes away: a soft stack that orders at all stops short of it.
+
+![Frames 2196 to 2425: before, the eye's slabs throughout, after, and the plain export](https://raw.githubusercontent.com/pierregc/sillage/assets/355-flight-slabs/docs/spikes/inside-355/frames-2196-2425.jpg)
+
+**From 100 kpc** (a flight key 100 kpc from the larger disk at 300 Myr, 17° above its plane): the
+export's stack there cuts the disk along a straight line through the bulge, its slab boundary;
+the matter's slabs leave none, and the near side's lanes cross the bulge where the far side's go
+behind it.
+
+![A whole galaxy from 100 kpc, before and after](https://raw.githubusercontent.com/pierregc/sillage/assets/355-flight-slabs/docs/spikes/inside-355/whole-galaxy-100kpc.jpg)
+
+**The look's camera keeps the export's frame.** On a look span the slabs are the aim point's,
+hard, by the very expression every export uses; they go over to the matter's over the second after
+it (`Flight.look`, `InsideFrame.look`). The frames of the dive on its look keys (0 to 4 s) are the
+same bytes as before, and so are exports without a flight. The app's canvas keeps the slabs keyed
+on the distance alone: it has no look keys and draws from inside only near matter.
+
+**What is left of the lanes, 2300 to 2520.** They fade on their own: from about 495 Myr the plain
+export at the same moments has lost the lanes too. The painted lanes follow the disks' tearing
+(#210) and the web follows `intact`, so as the disks are torn their dust is spread thin. That is
+the model, not the drawing; what the flight adds to it is only the edge-on view, which keeps a
+thin lane through the larger disk to about 2350.
+
+**Two disks** (#353): frozen at 430 Myr, frame 550 of the dive, the stack around the aim point held
+all of the frame's dust in its last two slabs (0, 1, 31 and 68 %, the dust target read slab by
+slab); the matter's slabs hold 3, 57, 39 and 2 %. The dust now stands in the middle of the stack,
+with stars in front of it and behind it, rather than at its far end, behind which everything is
+lumped. It helps the order of the two disks only a little: a slab is three quarters of the
+matter's depth, and the two disks lie within about one slab of each other where they cross, so most
+of a pixel's dust from both still shares two slabs. Ordering two disks finely would want more
+slabs, not other knots; the web the two disks share (#354's note) is left as it was.
+
+**For #356.** `insideSlabAt`, `insideDustSlabs` and `insideStarSlabs` are unchanged: four slabs,
+knots in `InsideUniforms.slabKnots` and `slabEnd`, `slabSoft` 1 for every frame of a flight off its
+look keys. Only where the knots stand changed, on the CPU (`InsideUniforms.init`). A factor per
+slab can lean on the slabs being soft and in the matter at every distance.
