@@ -69,6 +69,66 @@ struct CheckToggle: View {
     }
 }
 
+/// A segmented picker, drawn as a row of labels offscreen.
+struct SegmentedChoice<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(title: String, value: Value)]
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 2) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(options[index].value == selection ? Color(white: 0.42) : Color.clear))
+                }
+            }
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color(white: 0.2)))
+        } else {
+            Picker("", selection: $selection) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title).tag(options[index].value)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+    }
+}
+
+/// A pop-up menu, drawn as its current choice offscreen.
+struct MenuChoice<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(title: String, value: Value)]
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 6) {
+                Text(options.first { $0.value == selection }?.title ?? "")
+                Image(systemName: "chevron.up.chevron.down").font(.caption2)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color(white: 0.24)))
+        } else {
+            Picker("", selection: $selection) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title).tag(options[index].value)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+        }
+    }
+}
+
 struct VectorEditor: View {
     let title: String
     @Binding var value: SIMD3<Float>

@@ -214,6 +214,13 @@ enum LookCheck {
             to: URL(fileURLWithPath: "/tmp/sillage-lookcheck.log"), atomically: true,
             encoding: .utf8)
         print(report)
+        // exit() skips every defer: the folders go here, and stay for a look when a check failed.
+        if failed {
+            print("kept \(folder.batch.path) and \(favourites.path)")
+        } else {
+            try? FileManager.default.removeItem(at: folder.batch)
+            try? FileManager.default.removeItem(at: favourites)
+        }
         exit(failed ? 1 : 0)
     }
 

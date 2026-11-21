@@ -157,12 +157,9 @@ struct SetupContent: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Gravity").font(.headline)
 
-            Picker("", selection: solverBinding) {
-                Text("Self-gravitating").tag(SolverKind.barnesHut)
-                Text("Test particles").tag(SolverKind.restricted)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            SegmentedChoice(
+                selection: solverBinding,
+                options: [("Self-gravitating", .barnesHut), ("Test particles", .restricted)])
 
             Text(
                 model.draft.solver == .barnesHut
@@ -238,6 +235,7 @@ struct SetupContent: View {
 struct GalaxyCard: View {
     @ObservedObject var model: SimulationModel
     let index: Int
+    @Environment(\.offscreen) private var offscreen
 
     private var commit: () -> Void { { model.commitDraftChange() } }
 
@@ -269,13 +267,10 @@ struct GalaxyCard: View {
                     .disabled(model.draft.galaxies.count <= 1)
                 }
 
-                Picker("", selection: galaxy.kind) {
-                    ForEach(GalaxyKind.allCases.filter { $0 != .blackHole }, id: \.self) {
-                        Text($0.displayName).tag($0)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                SegmentedChoice(
+                    selection: galaxy.kind,
+                    options: GalaxyKind.allCases.filter { $0 != .blackHole }.map { ($0.displayName, $0) }
+                )
                 .onChange(of: kind) { model.commitDraftChange() }
 
                 particleCountRow(galaxy)
@@ -319,12 +314,10 @@ struct GalaxyCard: View {
                         ParameterSlider(
                             title: "Position angle (rad)", value: galaxy.positionAngle,
                             range: 0...6.28, onCommit: commit)
-                        Picker("", selection: galaxy.spin) {
-                            Text("Prograde").tag(Spin.prograde)
-                            Text("Retrograde").tag(Spin.retrograde)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
+                        SegmentedChoice(
+                            selection: galaxy.spin,
+                            options: [("Prograde", .prograde), ("Retrograde", .retrograde)]
+                        )
                         .onChange(of: model.draft.galaxies[index].spin) { commit() }
                     }
                 }
@@ -413,8 +406,12 @@ struct GalaxyCard: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Palette.secondary)
             }
-            Slider(value: count, in: 50_000...8_000_000) { editing in
-                if !editing { model.commitDraftChange() }
+            if offscreen {
+                OffscreenTrack(fraction: (count.wrappedValue - 50_000) / (8_000_000 - 50_000))
+            } else {
+                Slider(value: count, in: 50_000...8_000_000) { editing in
+                    if !editing { model.commitDraftChange() }
+                }
             }
         }
     }
