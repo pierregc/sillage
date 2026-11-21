@@ -568,7 +568,11 @@ struct CUDARenderTests {
     /// The same comparison at 4K with supersampling 2, from a take at 8 M drawn from 2 M
     /// massive: the folder the Mac's `export --dump-targets` filled for it, shipped with the
     /// box's data and named by `SILLAGE_CUDA_RENDER_4K`.
-    @Test(.enabled(if: onAGPU, needsAGPU))
+    @Test(
+        .enabled(if: onAGPU, needsAGPU),
+        .enabled(
+            if: ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_4K"] != nil,
+            "set SILLAGE_CUDA_RENDER_4K to the folder of Metal's targets at 4K"))
     func theParticlePassesAgreeWithMetalAt4K() throws {
         let folder = try #require(
             ProcessInfo.processInfo.environment["SILLAGE_CUDA_RENDER_4K"],
