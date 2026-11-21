@@ -225,6 +225,90 @@ renders.
 `scripts/linux.sh`, so the CUDA engine's stills (#277) and full pass (#278, #300) can follow a
 flight by asking `Flight.shot(atSeconds:look:)` and `Flight.captured(atSeconds:)`.
 
+## Key frames and visits
+
+#379, part of #375. A take holds the massive particles; light tracers are kept only at a full
+pass's key frames (`keyframes.sillage`, #239), every drawn particle at each. A flight near matter
+wants time frozen or at a hundredth of the take's speed (`docs/notes/inside-a-galaxy.md`,
+"Motion"), so a few frames kept whole around a chosen moment are all a visit needs, and a flight
+can be drawn from them at 50 or 100 M while it is flown and framed on the massive take.
+
+```bash
+./scripts/dev.sh render hires <scene> --particles 50000000 --massive 8000000 --pass full \
+    --key-frames-at 388.114 --key-frames-span 10 --stop-after-key-frames     # keyframes.sillage
+./scripts/dev.sh render take extract <take> --at 388.114 --span 10 <out.sillage>
+./scripts/dev.sh export <scene> --look photograph --flight visit \
+    --take <scene>/keyframes.sillage --framing <scene>/take.sillage
+```
+
+**Key frames where asked.** `hires --pass full --key-frames-at <Myr,...>` adds, to the frames
+`KeyFrames.pick` chooses, the captured frame nearest each moment, and `--key-frames-span N` the
+`N - 1` captured frames after it (one by default), each with the role `chosen` in
+`keyframes.json`. A moment outside the clip is refused with the clip's span. Both options are in
+the checkpoint's command line, so `--resume` (given them again) keeps the same frames, and the
+frames taken before a restart stay on disk as before (`docs/notes/checkpoints.md`).
+`--stop-after-key-frames` ends the run once the last frame asked for is kept: the key frames are
+written and committed, the videos are dropped and `hires.json` keeps its massive pass alone. It
+is how the frames of a moment early in a long run come without the rest. `sillage-cuda hires`
+takes the three options, through the same `FullPassRun`.
+
+**An extract of a take.** `take extract <take> --at <Myr,...> [--span N] <out.sillage>`, in
+`sillage-render` and `sillage-cuda` alike (`TakeExtract`, portable): the stored frame nearest each
+moment and the `N - 1` stored frames after it, written as a take of their own with their centres
+and disk states, the positions copied as they are stored. Read back it gives the frames it was cut
+from to the byte, and an extract of a whole run's key frames is, to the byte, the key frames of
+the same run cut short after them. It is how a few frames of a large take made on a rented box
+come back without the rest.
+
+**A visit drawn from them.** `export --flight <file> --take <key frames or extract> --framing
+<massive take>`: the take's frames are placed in the framing take's run by their moments
+(`HeldFrames`), and the video is played in the framing take's captured frames, so the flight's
+`myr`, its look keys, the arms, the centres and the exposure are the massive take's. Frames as far
+apart as the massive take's stored frames or less (four captured frames in a hires) join in a run
+that time may flow through: between two of them the positions are the cubic a take draws between
+its stored frames, its tangents taken from that run alone (`Recording.blend(atStored:within:)`:
+the chord for two frames, the frame itself for one), and the kernel lengths are eased between the
+take's own frames as #297 eases them. A frozen visit gives the same `myr` to its first and last
+keys; a slow one runs it across a run of frames. Any moment of the flight outside the frames held
+is refused before anything is drawn, with what the take holds (`388.114 Myr`, `388.114 to 395.240
+Myr (10 frames)`); a moment typed to three decimals of a megayear still lands on its frame. Such a
+take is drawn only along a flight.
+
+**Authoring** stays on the massive take, in the app (#298) or by hand: its massive particles are
+the key frames' to the bit, and the tracers follow the same distribution, so a path flown at 8 M
+holds at 50 M. On the README run of the Mice (8 M massive, 50 M drawn) the same frozen flight finds
+the nearest matter 159 pc from the eye on the 8 M take and 160 on the 50 M key frame.
+
+**Sizes.** A key frame weighs eight bytes a drawn particle (64 MB at 8 M, 400 MB at 50 M, 0.8 GB at
+100 M), and the take holds the particles' attributes once beside them (28 bytes each, 1.4 GB at
+50 M): the README run's five key frames are 3.4 GB, thirty seconds at a hundredth of the take's
+speed (ten frames) 5.4 GB at 50 M and 10.8 GB at 100 M.
+
+**What a visit costs**, measured on the Mac (M4 Max) alone on the GPU, with #357's stars: the
+frozen flight's stills on the README run's approach (388.1 Myr), from far off to inside an arm of
+galaxy 0, one render each (a video frame takes up to `subframes` of them, 4.7 on average in
+#297's dive).
+
+| | 1080p | 4K | point stars a render | peak memory |
+| --- | ---: | ---: | ---: | ---: |
+| 8 M, the massive take | 36-116 ms | 62-263 ms | 23 M | 4.6-5.7 GB |
+| 50 M, the key frame | 181-377 ms | 295-843 ms | 66 M | 16.8-17.5 GB |
+
+There are no 100 M key frames yet (they wait for a rented full pass, #381). From 8 to 50 M a
+drawn particle added about 290 bytes to the peak (the positions, the eased kernel lengths of two
+frames and a scratch frame, the renderer's own buffers), so a visit at 100 M would peak near
+31 GB: a 32 GB Mac does not hold it, whose GPU may use about three quarters of its memory. 50 M
+holds on one.
+
+**Point stars and the count.** A frame lists its stars in at most 16 M entries of eight
+(`InsidePass.mostEntries`, 128 M stars), particles in index order, so a frame that asks for more
+loses the stars of its last particles. At 50 M with the default 128 a particle, a render inside the
+arm asked for 66 M: it holds, at three to five times the 8 M frame's time. At 100 M the same frame
+would ask for about 130 M and pass the list: a visit at 100 M sets `"inside": {"stars": 64}`, the
+same light in half the points a particle over twice the particles. `Nearness` (the distance that
+holds a ten-thousandth of the drawn particles) measures matter, not particles: 159 and 160 pc at
+8 and 50 M on the same frame, so it holds at any count.
+
 ## In the app
 
 #298. The app flies already (`FlyCamera`, `docs/notes/fly-camera.md`); over a take of a scene it

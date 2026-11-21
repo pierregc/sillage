@@ -96,6 +96,56 @@ public enum KeyFrames {
         return chosen.sorted { $0.frame < $1.frame }
     }
 
+    public enum Failure: Error, CustomStringConvertible, Equatable {
+        case outsideClip(myr: Double, first: Double, last: Double)
+        case badList(String)
+
+        public var description: String {
+            switch self {
+            case .outsideClip(let myr, let first, let last):
+                String(
+                    format: "--key-frames-at: %g Myr is outside the clip, %.2f to %.2f Myr", myr, first, last)
+            case .badList(let text): "--key-frames-at: \(text) is not a list of moments in Myr, as 452,520"
+            }
+        }
+    }
+
+    /// `--key-frames-at 452,520`: the moments, in Myr.
+    public static func moments(_ text: String) throws -> [Double] {
+        let parts = text.split(separator: ",")
+        let moments = parts.compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard !moments.isEmpty, moments.count == parts.count, moments.allSatisfy(\.isFinite) else {
+            throw Failure.badList(text)
+        }
+        return moments
+    }
+
+    /// `keys` with the frames asked for (#379): for each moment the captured frame nearest it,
+    /// and the `span - 1` captured frames after it, so time can run slowly through them, each
+    /// with the role `chosen`. `megayears` holds the moment of every captured frame of the run.
+    /// A frame already a key takes the role `chosen`; a moment outside the run is refused.
+    public static func adding(
+        chosen moments: [Double], span: Int, to keys: [KeyFrame], megayears: [Double]
+    ) throws -> [KeyFrame] {
+        guard let first = megayears.first, let last = megayears.last else { return keys }
+        var frames = Set<Int>()
+        for myr in moments {
+            // Half a frame of slack each side, so the clip's own ends can be asked for.
+            let slack = megayears.count > 1 ? (last - first) / Double(megayears.count - 1) / 2 : 0
+            guard myr >= first - slack, myr <= last + slack else {
+                throw Failure.outsideClip(myr: myr, first: first, last: last)
+            }
+            guard
+                let nearest = megayears.indices.min(by: {
+                    abs(megayears[$0] - myr) < abs(megayears[$1] - myr)
+                })
+            else { continue }
+            for frame in nearest..<min(nearest + max(span, 1), megayears.count) { frames.insert(frame) }
+        }
+        let chosen = frames.map { KeyFrame(frame: $0, role: .chosen, timeMyr: megayears[$0]) }
+        return (keys.filter { !frames.contains($0.frame) } + chosen).sorted { $0.frame < $1.frame }
+    }
+
     /// The captured frame nearest a moment.
     public static func nearest(timeMyr: Double, in samples: [Sample]) -> Sample? {
         samples.min { abs($0.timeMyr - timeMyr) < abs($1.timeMyr - timeMyr) }

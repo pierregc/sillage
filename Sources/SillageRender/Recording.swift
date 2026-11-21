@@ -586,6 +586,24 @@ public final class Recording: @unchecked Sendable {
         }
     }
 
+    /// Where a position along the stored frames falls, the cubic leaning only on the stored
+    /// frames in `run` (#379): a take of key frames holds runs of consecutive frames far apart,
+    /// and a tangent taken across two of them would be no velocity at all. A run of one frame
+    /// holds it; of two, the chord.
+    public func blend(atStored position: Double, within run: ClosedRange<Int>) -> Blend? {
+        locked {
+            guard !storedFrames.isEmpty else { return nil }
+            let low = min(max(run.lowerBound, 0), storedFrames.count - 1)
+            let high = min(max(run.upperBound, low), storedFrames.count - 1)
+            let clamped = min(max(position, Double(low)), Double(high))
+            let index = min(Int(clamped), max(high - 1, low))
+            let indices = [index - 1, index, index + 1, index + 2].map { min(max($0, low), high) }
+            return Blend(
+                keys: SIMD4<Int32>(indices.map(Int32.init)), fraction: Float(clamped - Double(index)),
+                times: SIMD4<Float>(indices.map { storedFrames[$0].time }))
+        }
+    }
+
     /// Where one of the captured frames falls. Every stored frame but the last stands
     /// `interval` captured ones after the one before it; the last is wherever the run ended.
     public func blend(atCaptured frame: Int) -> Blend? { blend(atCaptured: Double(frame)) }

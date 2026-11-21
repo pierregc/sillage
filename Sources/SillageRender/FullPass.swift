@@ -501,17 +501,34 @@ public final class FullPassRun {
         let stills = Set(argument("draw-stills")?.split(separator: ",").compactMap { Int($0) } ?? [])
         let stillsDirectory = url("draw-stills-dir", directory: true)
         // `--key-frames <path> --key-frame-curves <csv>`: every drawn particle at the key frames
-        // of the massive pass's curves, in a take of their own.
+        // of the massive pass's curves, in a take of their own. `--key-frames-at <Myr,...>` adds
+        // the frames nearest those moments, `--key-frames-span N` frames from each (#379). Both
+        // are in the checkpoint's command line, so a resumed run keeps the same frames.
         let keyFrameTake: KeyFrameTake? = try argument("key-frames").map { _ in
             let samples =
                 argument("key-frame-curves").flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
                 .map(KeyFrames.samples) ?? []
             var keys = KeyFrames.pick(samples.filter { $0.frame < frames })
             if keys.isEmpty { keys = [KeyFrame(frame: frames / 2, role: .middle, timeMyr: 0)] }
+            if let text = argument("key-frames-at") {
+                keys = try KeyFrames.adding(
+                    chosen: try KeyFrames.moments(text), span: max(Int(number("key-frames-span", 1)), 1),
+                    to: keys, megayears: Array(TimeTrack.megayears(of: framing.recording).prefix(frames)))
+            }
             return try KeyFrameTake(
                 keys: keys, particleCount: drawnCount, galaxyCount: scene.galaxies.count,
                 blocks: checkpoint?.keyFrames, taken: resumed?.keyFrames ?? [])
         }
+        // `--stop-after-key-frames` (#379): the run ends once the frames `--key-frames-at` asked
+        // for are kept, its videos left unfinished: a moment early in a long run, without the rest.
+        var stopAfter: Int?
+        if arguments.contains("--stop-after-key-frames") {
+            guard let chosen = keyFrameTake?.keys.filter({ $0.role == .chosen }).map(\.frame).max() else {
+                throw Failure.missing("--key-frames-at for --stop-after-key-frames")
+            }
+            stopAfter = chosen
+        }
+        var stoppedAfter: Int?
 
         var checkpointIndex = resumed?.index ?? 0
         /// Closes the videos' segments and saves the run, the next frame to draw `frame`.
@@ -686,8 +703,41 @@ public final class FullPassRun {
                 try save(frame: frame + 1, settled: settle)
             }
             if let stop, stop(frame, checkpointIndex) { throw Failure.stopped(frame: frame) }
+            if let stopAfter, frame >= stopAfter {
+                stoppedAfter = frame
+                break
+            }
         }
 
+        /// The key frames' take, and their list beside it.
+        func writeKeyFrames() throws {
+            guard let keyFrameTake, let path = argument("key-frames") else { return }
+            let url = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let list =
+                self.url("key-frame-list") ?? url.deletingPathExtension().appendingPathExtension("json")
+            try keyFrameTake.write(
+                scene: built.drawn, particles: engine.drawnAttributes(), to: url, list: list)
+            print(
+                "key frames " + keyFrameTake.entries.map { "\($0.role) \($0.frame)" }.joined(separator: ", "))
+        }
+        if let stoppedAfter {
+            // The videos closed as they stand, so that no encoder is left open, then dropped.
+            _ = try videos.finish()
+            try writeKeyFrames()
+            if let (folder, _) = hires {
+                try folder.commitFullPass([])
+                folder.removePartialOutputs()
+            }
+            print(
+                String(
+                    format:
+                        "stopped    after frame %d, the last key frame asked for: %.0f s, the videos dropped",
+                    stoppedAfter, Date().timeIntervalSince(started)))
+            checkpoint?.clear()
+            return
+        }
         reporter?.update(progress: 1, detail: "finishing", eta: Date())
         let reports = try videos.finish()
         for report in reports {
@@ -705,17 +755,7 @@ public final class FullPassRun {
                     $0, videos.drift, videos.checkedFrames,
                     videos.drift > Self.driftBound ? String(format: ", past %.3f", Self.driftBound) : "")
             } ?? "massive    repeats the massive pass to the bit over \(videos.checkedFrames) stored frames")
-        if let keyFrameTake, let path = argument("key-frames") {
-            let url = URL(fileURLWithPath: path)
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let list =
-                self.url("key-frame-list") ?? url.deletingPathExtension().appendingPathExtension("json")
-            try keyFrameTake.write(
-                scene: built.drawn, particles: engine.drawnAttributes(), to: url, list: list)
-            print(
-                "key frames " + keyFrameTake.entries.map { "\($0.role) \($0.frame)" }.joined(separator: ", "))
-        }
+        try writeKeyFrames()
         // `--state-out <path>`: what a checkpoint keeps of the particles at the end, and the
         // solver's state beside it as `<path>.json`, to compare two runs to the bit.
         if let url = url("state-out") {

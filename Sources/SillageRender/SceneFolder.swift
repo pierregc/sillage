@@ -379,6 +379,7 @@ extension SceneFolder {
         case notAVideo(String)
         case badCheckpoint
         case speedWithoutFullPass
+        case keyFramesWithoutFullPass
 
         public var description: String {
             switch self {
@@ -404,6 +405,9 @@ extension SceneFolder {
             case .speedWithoutFullPass:
                 "--speed: only the full pass draws along a time track (--pass full); export the"
                     + " take with --speed otherwise"
+            case .keyFramesWithoutFullPass:
+                "--key-frames-at: only the full pass keeps every drawn particle at key frames"
+                    + " (--pass full)"
             }
         }
     }
@@ -580,6 +584,11 @@ extension SceneFolder {
         let speed = cut("speed")
         if let pass, pass != "massive", pass != "full" { throw HiresError.badPass(pass) }
         if speed != nil, pass != "full" { throw HiresError.speedWithoutFullPass }
+        if pass != "full",
+            ["--key-frames-at", "--key-frames-span", "--stop-after-key-frames"].contains(where: rest.contains)
+        {
+            throw HiresError.keyFramesWithoutFullPass
+        }
         let presets = try cut("export").map { list in
             try list.split(separator: ",").map(String.init).map { name in
                 guard VideoPreset.named(name) != nil else { throw HiresError.notAVideo(name) }
