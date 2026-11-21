@@ -199,12 +199,7 @@ if CommandLine.arguments.count > 1,
             fail("hires: \(error)")
         }
     default:
-        var (clip, rest) = try folder.exploreStart(options)
-        // Written again once the run has followed the story to its end.
-        clip.story = nil
-        try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
-        try clip.encoded().write(to: folder.clip)
-        arguments = folder.exploreArguments(rest, clip: clip)
+        arguments = try folder.explorePlan(options)
         exploreRun = folder
         let run = StageReporter(stage: stage.rawValue, folder: folder)
         reporter = run

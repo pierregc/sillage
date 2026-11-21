@@ -2082,6 +2082,29 @@ frames a second, with the fixture's look on the director's plan:
 | `aTakesVideoStoppedResumedOrSplitIsTheSameVideo` | a look that measures its exposure: drawn in one go, stopped and resumed, split in two parts, the same frames and the same file under the same scale |
 | `aSpeedDrawsTheVideoAlongItsTrack` | `--speed 2` and the track it writes, given back as a file, the same frames; `--speed` with a flight, `--slow` without the story pace, the visual pace and `--flight-keys` without a flight refused |
 
+## A scene's preview (#430)
+
+`sillage-cuda explore <scene folder> [options]` is `sillage-render explore` on the CUDA engine:
+`SceneFolder.explorePlan`, portable and now what the Mac calls too, writes `clip.json` as the run
+starts and gives the take pass its arguments (the preview's video, the curves, the thumbnail,
+`--scene-out`, `--look-out`, `--story-cap`, the scene or a free draw); `TakePassRun` runs them on
+`CUDATakePassMaker` with the folder as `explore`, so the clip gets the story the run followed, as
+on the Mac. A generated scene that would show nothing exits 3, as there. The folder it leaves is
+the one `hires` reads, here or on the Mac: a scene goes from an empty folder to its take and its
+exports on Linux alone.
+
+Not here: `look`, `style`, `palettes` and the grids, which draw sheets with Core Graphics and are
+a person's choice made on the Mac. What a preview costs on a box beside the Mac waits for #424's
+timings: a preview is a take pass at the preview's count, so its cost follows the take pass's.
+
+`CUDA explore` (`CUDAExploreTests`), on the CPU target in every check, scene-0031 of the
+fixtures at 3,000 particles:
+
+| test | what |
+| --- | --- |
+| `anExploredSceneLeavesTheMacsFilesAndGoesOnToItsHires` | `clip.json`, `scene.json`, `look.json`, `preview.mov`, `curves.csv` and `thumbnail.png` written, the curves a row a frame of the preview, then `sillage-cuda hires` on that folder writes a take of the story's frames |
+| `anEmptyFolderStartsAFreeDrawAtTheBatchsDefaults` | an empty folder with `--seed` and `--index` draws a generated scene, or refuses one that shows nothing |
+
 ## What waits for a GPU (#283)
 
 Phase 1 ends with every CUDA entry point written and compiled by `nvcc`, and run on the CPU

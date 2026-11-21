@@ -198,6 +198,17 @@ public struct SceneFolder: Sendable, Equatable {
         return (started, rest)
     }
 
+    /// What `explore` runs here from `options`, on any engine (#430): the clip written as it
+    /// starts, its story left for the run to write once it has followed it, and the arguments of
+    /// the take pass.
+    public func explorePlan(_ options: [String]) throws -> [String] {
+        var (started, rest) = try exploreStart(options)
+        started.story = nil
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try started.encoded().write(to: clip)
+        return exploreArguments(rest, clip: started)
+    }
+
     /// The `sillage-render` command line `explore` runs. The first occurrence of a flag wins,
     /// so the outputs come first and the folder cannot be written around, then the options
     /// given, then the files already here. The story is followed past the planned clip to its
