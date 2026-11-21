@@ -380,10 +380,6 @@ final class SimulationModel: ObservableObject {
     /// integer because the shader draws a whole number of them, and `ParameterSlider` speaks
     /// only in floats; rounding here rather than storing a float keeps the count exact
     /// everywhere else.
-    var spikeArms: Float {
-        get { Float(look.spikeArms) }
-        set { look.spikeArms = Int(newValue.rounded()) }
-    }
 
     /// What the window opens on, and deliberately not `.observatory`.
     ///
