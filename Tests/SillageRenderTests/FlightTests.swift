@@ -210,6 +210,102 @@ struct FlightTests {
         #expect(Flight.trimmed(look, stops: 0).stretch == 10)
     }
 
+    /// The take above with matter in a sheet at z = 0: an eye is its height from it, plus 50 pc.
+    private func sheet() -> FlightTake {
+        var take = take()
+        take.nearness = { _, eyes in eyes.map { abs($0.z) + 0.05 } }
+        return take
+    }
+
+    /// A dive paced by nearness (#406) keeps its ends and its seconds, and away from its ends the
+    /// eye covers the same share of the nearness each second: it never stops slowing.
+    @Test func aPacedDiveKeepsSlowingWithTheNearness() throws {
+        let file = FlightFile(keys: [
+            .init(at: 0, myr: 200, eye: world(0, 0, 20), aim: world(0, 30, 0), pace: .nearness),
+            .init(at: 10, myr: 200, eye: world(0, 0, 0.2), aim: world(0, 30, 0)),
+        ])
+        let flight = try Flight(file, take: sheet())
+        let plain = try Flight(
+            FlightFile(
+                keys: file.keys.map {
+                    var key = $0
+                    key.pace = nil
+                    return key
+                }), take: take())
+        #expect(flight.pacings.count == 1)
+        let share = try #require(flight.pacings.first).share
+        func eye(_ s: Double) -> SIMD3<Double> { double(flight.camera(atSeconds: s).camera.eye) }
+        #expect(simd_length(eye(0) - SIMD3(0, 0, 20)) < 1e-4)
+        #expect(simd_length(eye(10) - SIMD3(0, 0, 0.2)) < 1e-4)
+        let step = 0.01
+        var ratios: [Double] = []
+        var previous = eye(0).z
+        for s in stride(from: step, through: 10, by: step) {
+            let z = eye(s).z
+            #expect(z <= previous + 1e-9, "\(s) s goes back up")
+            previous = z
+        }
+        for s in stride(from: 1.5, through: 8.5, by: 0.5) {
+            let speed = simd_length(eye(s + step / 2) - eye(s - step / 2)) / step
+            ratios.append(speed / (abs(eye(s).z) + 0.05))
+        }
+        #expect(ratios.max()! / ratios.min()! < 1.03, "\(ratios)")
+        #expect(abs(ratios[ratios.count / 2] / share - 1) < 0.03, "share \(share)")
+        // From 20 kpc to 250 pc, a little under half the nearness a second over ten seconds.
+        #expect(share > 0.4 && share < 0.7, "share \(share)")
+        // It leaves at rest, as the plain flight does, and gathers speed smoothly.
+        let start = simd_length(eye(0.01) - eye(0)) / 0.01
+        #expect(start < 0.05 * share * 20, "\(start) kpc a second")
+        // The plain flight spends half its time far out; the paced one is down to a kpc by then.
+        #expect(double(plain.camera(atSeconds: 5).camera.eye).z > 9)
+        #expect(eye(5).z < 2.5, "\(eye(5).z) kpc at 5 s")
+        // Time itself still follows the keys.
+        #expect(flight.captured(atSeconds: 5) == plain.captured(atSeconds: 5))
+    }
+
+    /// A stretch paced by nearness leaves the rest of a flight as it was, to the bit, and keeps
+    /// to the same path inside it.
+    @Test func aPacedStretchLeavesTheRestOfTheFlightAlone() throws {
+        var file = winding
+        file.keys[2].pace = .nearness
+        let paced = try Flight(file, take: sheet())
+        let plain = try Flight(winding, take: sheet())
+        #expect(paced.pacings.map(\.from) == [3] && paced.pacings.map(\.to) == [7])
+        for s in stride(from: 0.0, through: 8, by: 0.25) where s <= 3 || s >= 7 {
+            let (a, b) = (paced.camera(atSeconds: s).camera, plain.camera(atSeconds: s).camera)
+            #expect(a.eye == b.eye && a.target == b.target && a.up == b.up, "\(s) s")
+            #expect(a.fieldOfView == b.fieldOfView, "\(s) s")
+        }
+        // Inside it the eye stands on the plain path, at another of its seconds.
+        for s in stride(from: 3.5, through: 6.5, by: 0.5) {
+            let eye = double(paced.camera(atSeconds: s).camera.eye)
+            let nearest = stride(from: 3.0, through: 7, by: 0.001).map {
+                simd_length(double(plain.camera(atSeconds: $0).camera.eye) - eye)
+            }.min()!
+            #expect(nearest < 0.1, "\(s) s is \(nearest) kpc off the path")
+        }
+        // Two paced stretches in a row are one run, with one share.
+        file.keys[3].pace = .nearness
+        #expect(try Flight(file, take: sheet()).pacings.map(\.to) == [8])
+    }
+
+    @Test func aPaceIsAskedWhereItCanBeKept() throws {
+        let decoded = try JSONDecoder().decode(
+            FlightFile.Key.self,
+            from: Data(#"{"at": 0, "eye": [0, 0, 1], "aim": [0, 1, 0], "pace": "nearness"}"#.utf8))
+        #expect(decoded.pace == .nearness)
+        var file = winding
+        file.keys[4].pace = .nearness
+        #expect(throws: FlightFile.ReadError.self) { try file.validate() }
+        file = winding
+        file.keys.insert(.init(at: 1, look: true), at: 1)
+        file.keys[0].pace = .nearness
+        #expect(throws: FlightFile.ReadError.self) { try file.validate() }
+        file = winding
+        file.keys[1].pace = .nearness
+        #expect(throws: Flight.Failure.noNearness) { try Flight(file, take: take()) }
+    }
+
     @Test func aFlightFileReadsWritesTheSameBytesAndRefusesStrangers() throws {
         var file = winding
         file.near = 0.5

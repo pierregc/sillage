@@ -65,6 +65,12 @@ public struct FlightFile: Codable, Sendable, Equatable {
         }
     }
 
+    /// How a stretch of a flight is timed (#406).
+    public enum Pace: String, Codable, Sendable, Equatable {
+        /// The eye's speed along the path follows the distance to the nearest matter.
+        case nearness
+    }
+
     public struct Key: Codable, Sendable, Equatable {
         /// Seconds into the video.
         public var at: Double
@@ -83,10 +89,14 @@ public struct FlightFile: Codable, Sendable, Equatable {
         public var roll: Double?
         /// Stops on the look's brightness, the stretch moving with it.
         public var exposure: Double?
+        /// How the eye is timed along the path from this key to the next (#406); absent, by the
+        /// keys' seconds.
+        public var pace: Pace?
 
         public init(
             at: Double, myr: Double? = nil, time: Double? = nil, look: Bool? = nil, eye: Point? = nil,
-            aim: Point? = nil, fov: Double? = nil, roll: Double? = nil, exposure: Double? = nil
+            aim: Point? = nil, fov: Double? = nil, roll: Double? = nil, exposure: Double? = nil,
+            pace: Pace? = nil
         ) {
             self.at = at
             self.myr = myr
@@ -97,6 +107,7 @@ public struct FlightFile: Codable, Sendable, Equatable {
             self.fov = fov
             self.roll = roll
             self.exposure = exposure
+            self.pace = pace
         }
 
         public init(from decoder: any Decoder) throws {
@@ -111,7 +122,8 @@ public struct FlightFile: Codable, Sendable, Equatable {
                 aim: try c.decodeIfPresent(Point.self, forKey: .aim),
                 fov: try c.decodeIfPresent(Double.self, forKey: .fov),
                 roll: try c.decodeIfPresent(Double.self, forKey: .roll),
-                exposure: try c.decodeIfPresent(Double.self, forKey: .exposure))
+                exposure: try c.decodeIfPresent(Double.self, forKey: .exposure),
+                pace: try c.decodeIfPresent(Pace.self, forKey: .pace))
         }
 
         /// A key that places the camera; one that does not only pins the time.
@@ -213,6 +225,19 @@ public struct FlightFile: Codable, Sendable, Equatable {
             for case .galaxy? in [key.eye, key.aim] where hole {
                 throw fail("\(name): a black hole close up has no galaxy to hold on to")
             }
+            if key.pace != nil {
+                if hole {
+                    throw fail("\(name): pace follows matter, which a black hole close up has none of")
+                }
+                guard key.placesCamera, key.look != true else {
+                    throw fail("\(name): pace goes on a key that places the camera with eye and aim")
+                }
+                guard let next = keys[(index + 1)...].first(where: \.placesCamera), next.look != true else {
+                    throw fail(
+                        "\(name): a paced stretch ends on a later key that places the camera with eye and aim"
+                    )
+                }
+            }
             if let exposure = key.exposure, !Flight.exposures.contains(exposure) {
                 throw fail(
                     "\(name): exposure \(exposure) is outside \(Flight.exposures.lowerBound)"
@@ -245,16 +270,21 @@ public struct FlightTake {
     public var centres: (Double) -> [SIMD3<Double>]
     /// Each disk's axes at a captured position: two in its plane, then its spin.
     public var disks: (Double) -> [[SIMD3<Double>]]
+    /// Kiloparsecs from each eye to the nearest matter (`Nearness`) at a captured position, for
+    /// the stretches paced by it (#406); nil where the take's particles are not at hand.
+    public var nearness: ((Double, [SIMD3<Double>]) -> [Double])?
 
     public init(
         megayears: [Double], capturedRate: Int, galaxies: Int,
-        centres: @escaping (Double) -> [SIMD3<Double>], disks: @escaping (Double) -> [[SIMD3<Double>]]
+        centres: @escaping (Double) -> [SIMD3<Double>], disks: @escaping (Double) -> [[SIMD3<Double>]],
+        nearness: ((Double, [SIMD3<Double>]) -> [Double])? = nil
     ) {
         self.megayears = megayears
         self.capturedRate = capturedRate
         self.galaxies = galaxies
         self.centres = centres
         self.disks = disks
+        self.nearness = nearness
     }
 
     /// The centres the take holds, and the disk states it holds or the natal planes, carried as
@@ -281,6 +311,22 @@ public struct FlightTake {
                     let axis = simd_length_squared(live.axis) > 1e-12 ? simd_normalize(live.axis) : natal
                     let (u, v) = DiskFrame.planeAxes(natal: galaxy.orientation, normal: natal, axis: axis)
                     return [double(u), double(v), double(axis)]
+                }
+            },
+            nearness: { position, eyes in
+                guard let blend = recording.blend(atCaptured: position) else {
+                    return eyes.map { _ in .infinity }
+                }
+                let points = recording.positions(at: blend)
+                let drawn = min(
+                    take.particles.visibleCount > 0 ? take.particles.visibleCount : take.particles.count,
+                    points.count)
+                return points.withUnsafeBytes { bytes in
+                    eyes.map { eye in
+                        bytes.baseAddress.map {
+                            Double(Nearness.distance(from: Flight.float(eye), to: $0, count: drawn))
+                        } ?? .infinity
+                    }
                 }
             })
     }
@@ -317,12 +363,14 @@ public final class Flight {
     public enum Failure: Error, CustomStringConvertible, Equatable {
         case noGalaxy(key: Int, galaxy: Int, galaxies: Int)
         case noLook(key: Int)
+        case noNearness
 
         public var description: String {
             switch self {
             case .noGalaxy(let key, let galaxy, let galaxies):
                 "flight: key \(key) is on galaxy \(galaxy), and the take has \(galaxies) (0 to \(galaxies - 1))"
             case .noLook(let key): "flight: key \(key) asks for the look's camera, and none was given"
+            case .noNearness: "flight: a stretch paced by nearness needs the take's particles"
             }
         }
     }
@@ -335,7 +383,21 @@ public final class Flight {
         var roll: Double
         var exposure: Double
         var look: Bool
+        var pace: FlightFile.Pace? = nil
     }
+
+    /// A run of stretches paced by nearness (#406): the path's seconds at even steps of the
+    /// video's from `from` to `to`, and the share of the nearness the eye covers each second
+    /// away from the run's ends.
+    public struct Pacing: Sendable, Equatable {
+        public var from: Double
+        public var to: Double
+        public var path: [Double]
+        public var share: Double
+    }
+
+    /// The paced runs, in the video's order.
+    public private(set) var pacings: [Pacing] = []
 
     /// `look` gives the camera an export draws without a flight at a captured position; it is
     /// asked here only, in order, for the flight's `look` keys and the stretches between them.
@@ -404,9 +466,13 @@ public final class Flight {
                 Resolved(
                     at: key.at, eye: eye, aim: aim, fov: key.fov ?? previous?.fov ?? 0.6,
                     roll: key.roll ?? previous?.roll ?? 0, exposure: key.exposure ?? previous?.exposure ?? 0,
-                    look: false))
+                    look: false, pace: key.pace))
         }
         keys = resolved
+        if keys.contains(where: { $0.pace != nil }) {
+            guard let nearness = take.nearness else { throw Failure.noNearness }
+            pacings = paced(nearness)
+        }
         ups = carriedUps()
     }
 
@@ -420,6 +486,7 @@ public final class Flight {
     /// The camera at `seconds` into the video, and the exposure trim in stops.
     public func camera(atSeconds seconds: Double) -> (camera: Camera, exposure: Double) {
         let position = captured(atSeconds: seconds)
+        let seconds = pathSeconds(seconds)
         let (i, u) = segment(seconds)
         let exposure = eased(keys[i].exposure, keys[min(i + 1, keys.count - 1)].exposure, u)
         if i + 1 < keys.count, keys[i].look, keys[i + 1].look, let camera = lookCamera(at: position) {
@@ -599,6 +666,159 @@ public final class Flight {
         return a + (b - a) * s * s * (3 - 2 * s)
     }
 
+    // MARK: Paced by nearness
+
+    /// Seconds a run eases over at an end, from the speed the path has there to the paced one.
+    static let paceRamp = 1.0
+    /// Path samples a stretch is measured at, and how many of them nearness is measured at.
+    static let paceSamples = 512
+    static let paceProbes = 48
+    /// Steps of the video's time a run is integrated over.
+    static let paceSteps = 4096
+
+    /// Where on the path the camera is at `seconds` of the video: the same second, but inside a
+    /// paced run.
+    func pathSeconds(_ seconds: Double) -> Double {
+        guard let run = pacings.first(where: { seconds > $0.from && seconds < $0.to }) else {
+            return seconds
+        }
+        let x = (seconds - run.from) / (run.to - run.from) * Double(run.path.count - 1)
+        let n = min(Int(x), run.path.count - 2)
+        return run.path[n] + (run.path[n + 1] - run.path[n]) * (x - Double(n))
+    }
+
+    /// The video's seconds at which the camera stands at `path` seconds of the path: the
+    /// inverse of `pathSeconds`.
+    func videoSeconds(_ path: Double) -> Double {
+        guard let run = pacings.first(where: { path > $0.from && path < $0.to }) else { return path }
+        let upper = run.path.firstIndex { $0 >= path } ?? run.path.count - 1
+        let n = max(upper - 1, 0)
+        let span = run.path[upper] - run.path[n]
+        let t = span > 0 ? (path - run.path[n]) / span : 0
+        return run.from + (Double(n) + t) / Double(run.path.count - 1) * (run.to - run.from)
+    }
+
+    /// Each run of keys that ask for it, timed so that the eye's speed is a share of the
+    /// nearness, the share that keeps the run's seconds; at either end the speed eases over
+    /// `paceRamp` from the one the path has there (none at the flight's ends).
+    private func paced(_ nearness: (Double, [SIMD3<Double>]) -> [Double]) -> [Pacing] {
+        var runs: [Pacing] = []
+        var k = 0
+        while k + 1 < keys.count {
+            guard keys[k].pace != nil else {
+                k += 1
+                continue
+            }
+            var end = k + 1
+            while end + 1 < keys.count, keys[end].pace != nil { end += 1 }
+            if let run = pacing(from: k, to: end, nearness) { runs.append(run) }
+            k = end
+        }
+        return runs
+    }
+
+    private func pacing(from first: Int, to last: Int, _ probe: (Double, [SIMD3<Double>]) -> [Double])
+        -> Pacing?
+    {
+        let (from, to) = (keys[first].at, keys[last].at)
+        let duration = to - from
+        let count = Self.paceSamples * (last - first)
+        func eye(_ path: Double) -> SIMD3<Double> { point(\.eye, path, captured(atSeconds: path)) }
+        // The path's length from the run's start at even steps of its own seconds.
+        let samples = (0...count).map { from + duration * Double($0) / Double(count) }
+        let eyes = samples.map(eye)
+        var lengths = [0.0]
+        for n in 1...count { lengths.append(lengths[n - 1] + simd_length(eyes[n] - eyes[n - 1])) }
+        let length = lengths[count]
+        guard length > 1e-9 else { return nil }
+        // Nearness at fewer of them, each set of eyes at one moment of the take asked at once.
+        let every = max(count / (Self.paceProbes * (last - first)), 1)
+        let probes = Array(stride(from: 0, through: count, by: every))
+        var near = [Double](repeating: .infinity, count: probes.count)
+        var byMoment: [Double: [Int]] = [:]
+        for (slot, n) in probes.enumerated() {
+            // At the nearest captured frame: the nearness moves with the eye far more than with
+            // time, and each moment asked is a whole take decoded.
+            byMoment[captured(atSeconds: samples[n]).rounded(), default: []].append(slot)
+        }
+        for (moment, slots) in byMoment {
+            let found = probe(moment, slots.map { eyes[probes[$0]] })
+            for (slot, value) in zip(slots, found) { near[slot] = value }
+        }
+        let finite = near.filter { $0.isFinite && $0 > 0 }
+        guard let largest = finite.max() else { return nil }
+        let logs = near.map { log(min(max($0.isFinite && $0 > 0 ? $0 : largest, 1e-5), 1e5)) }
+        let probeLengths = probes.map { lengths[$0] }
+        func nearness(along s: Double) -> Double {
+            let upper = probeLengths.firstIndex { $0 >= s } ?? probeLengths.count - 1
+            guard upper > 0 else { return exp(logs[0]) }
+            let span = probeLengths[upper] - probeLengths[upper - 1]
+            let t = span > 0 ? (s - probeLengths[upper - 1]) / span : 0
+            return exp(logs[upper - 1] + (logs[upper] - logs[upper - 1]) * t)
+        }
+        // The path's own speeds at the run's ends, which the paced speed eases from and to.
+        func speed(at key: Int) -> Double {
+            let position = captured(atSeconds: keys[key].at)
+            var points: [Int: SIMD3<Double>] = [:]
+            for k in max(key - 1, 0)...min(key + 1, keys.count - 1) {
+                points[k] = point(\.eye, keys[k].at, position)
+            }
+            return simd_length(tangent(key, points))
+        }
+        let (start, end) = (speed(at: first), speed(at: last))
+        let ramp = min(Self.paceRamp, duration / 4)
+        let steps = Self.paceSteps
+        let dt = duration / Double(steps)
+        func ease(_ t: Double) -> Double {
+            let x = min(max(t, 0), 1)
+            return x * x * (3 - 2 * x)
+        }
+        // The length covered at each step for a share `k`.
+        func run(_ k: Double, _ scale: Double) -> [Double] {
+            var covered = [0.0]
+            covered.reserveCapacity(steps + 1)
+            var s = 0.0
+            for n in 0..<steps {
+                let t = (Double(n) + 0.5) * dt
+                let (rise, fall) = (ease(t / ramp), ease((duration - t) / ramp))
+                var v = scale * ((1 - rise) * start + (1 - fall) * end)
+                v += rise * fall * k * nearness(along: min(s, length))
+                s += v * dt
+                covered.append(s)
+            }
+            return covered
+        }
+        var k = 0.0
+        var scale = 1.0
+        var covered = run(0, 1)
+        if covered[steps] >= length {
+            scale = length / covered[steps]
+            covered = run(0, scale)
+        } else {
+            var high = 1.0
+            while run(high, 1)[steps] < length, high < 1e12 { high *= 2 }
+            var low = 0.0
+            for _ in 0..<60 {
+                let middle = (low + high) / 2
+                if run(middle, 1)[steps] < length { low = middle } else { high = middle }
+            }
+            k = (low + high) / 2
+            covered = run(k, 1)
+        }
+        // From length to the path's own seconds, held to the run's ends.
+        let path = covered.enumerated().map { n, s -> Double in
+            if n == 0 { return from }
+            if n == steps { return to }
+            let target = min(s / covered[steps] * length, length)
+            let upper = lengths.firstIndex { $0 >= target } ?? count
+            guard upper > 0 else { return from }
+            let span = lengths[upper] - lengths[upper - 1]
+            let t = span > 0 ? (target - lengths[upper - 1]) / span : 0
+            return samples[upper - 1] + (samples[upper] - samples[upper - 1]) * t
+        }
+        return Pacing(from: from, to: to, path: path, share: k)
+    }
+
     // MARK: Looking straight down
 
     /// Radians a second the carried up vector turns back to the world's z once clear of the
@@ -613,7 +833,7 @@ public final class Flight {
         var previous: (forward: SIMD3<Double>, up: SIMD3<Double>)?
         for n in 0..<count {
             let s = min(Double(n) * Self.upStep, seconds)
-            let position = captured(atSeconds: s)
+            let position = captured(atSeconds: videoSeconds(s))
             let forward =
                 Self.normalised(point(\.aim, s, position) - point(\.eye, s, position)) ?? previous?.forward
                 ?? SIMD3(0, 1, 0)

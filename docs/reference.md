@@ -467,7 +467,8 @@ seconds of the video, each placing the eye and the aim (in kiloparsecs, or ancho
 the field of view, a roll and an exposure trim, and pinning the take's time where it gives `myr`;
 two keys at one moment freeze time between them while the camera moves on. A key with
 `"look": true` is the camera the export draws without a flight at that moment, so a flight can open
-on the scene's framing. The video lasts to the last key and is written as
+on the scene's framing. A key with `"pace": "nearness"` times the eye from it to the next key so
+that its speed follows the distance to the nearest matter (#406): a dive that keeps slowing. The video lasts to the last key and is written as
 `exports/<flight>-<preset>.mp4`, beside the plain exports; colours, kernels and the rest come from
 the look as ever, `--fps`, `--preset`, `--codec`, `--stills`, `--still-frames` and the previews
 work as without a flight, and `--speed` does not go with it. `--flight-keys <dir>` draws only the

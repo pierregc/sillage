@@ -54,6 +54,9 @@ cannot be read the one way it means.
   without one keeps the value before; the first key starts from 0.6, 0 and 0.
 - A key with none of `eye`, `aim` and `look` only pins time, and may not carry `fov`, `roll` or
   `exposure`.
+- `"pace": "nearness"` (#406): the eye's speed from this key to the next follows the distance to
+  the nearest matter (below). It goes on a key with `eye` and `aim`, never a look key, and the
+  next key that places the camera must not be a look key either.
 - `near`, for the whole file: the camera's near distance in kiloparsecs. A flight's camera takes a
   parsec when the file gives none (#297); every other camera keeps its kiloparsec. Particles fade
   out before it rather than being cut (below).
@@ -119,6 +122,24 @@ turns back to the world's z at up to half a turn a second (`Flight.righting`) on
 looking straight down neither flips nor spins; one that goes over the top comes out upside down and
 rights itself within a second. The carried vector is sampled once at 240 a second of video when the
 flight is resolved, so any frame can be asked in any order.
+
+**Paced by nearness** (#406, recommendation 2 of `immensity-inside-an-arm.md`). A star at
+distance d crosses the frame at a rate set by v / d, so an eye held at a set share of the
+nearness each second keeps the near field drifting at one rate on screen from far out to inside an
+arm, and a dive never stops slowing: the viewer reads the scale in how long it keeps slowing. A
+key with `"pace": "nearness"` keeps the path it has without it, eye, aim, roll and field of view
+alike, and times the eye along it so that its speed is the nearness times a share, the share that
+keeps the stretch's seconds. Consecutive paced keys make one run with one share, and the keys
+inside it are passed through, not at their `at`. Over `Flight.paceRamp` (1 s, a quarter of the run
+at most) at either end the speed eases from the one the path has there, none at the flight's own
+ends, so nothing jolts. Time, the take's moment, still runs through the keys' `at` as before.
+
+The nearness is measured once, as the flight is resolved, on the take's own particles (the framing
+take's, decoded on the CPU as `Recording.positions(at:)` does) at 48 places a stretch, each at its
+captured frame nearest its moment, and taken between them on the logarithm; `Flight.pacings` holds each run's
+share. From 20 kpc down to 250 pc above a disk in 10 s the share comes out at about half the
+nearness a second (`FlightTests`); the note's 15 s dive to an arm is about a third. A flight
+without `pace` is unchanged, to the bit.
 
 **Time** is #305's track through the keys that give `myr`: Fritsch and Carlson's monotone cubic,
 so it slows into a freeze, holds, picks up out of it, and never runs backwards
