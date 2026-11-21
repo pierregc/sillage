@@ -279,6 +279,14 @@ the key frames' to the bit, and the tracers follow the same distribution, so a p
 holds at 50 M. On the README run of the Mice (8 M massive, 50 M drawn) the same frozen flight finds
 the nearest matter 159 pc from the eye on the 8 M take and 160 on the 50 M key frame.
 
+**On the Mice**, the README run's full pass cut short after frames 115 to 124 (`--key-frames-at
+388.114 --key-frames-span 10 --stop-after-key-frames`) took 4 h 34 min on the Mac and left 11
+frames, 5.8 GB. Drawn from them, a frozen flight on frame 115 and a slow one from 388.114 to
+395.234 Myr over 30 s (a hundredth of the take's speed) go into an arm of galaxy 0 as the same
+flights do on the 8 M take, the same lanes in the same places, finer (sheets on branch
+`assets/379-visits`, `docs/spikes/key-frames-379/`). The same slow flight to 396.5 Myr is refused:
+"the take holds only 297.140 Myr, 388.114 to 395.234 Myr (10 frames)".
+
 **Sizes.** A key frame weighs eight bytes a drawn particle (64 MB at 8 M, 400 MB at 50 M, 0.8 GB at
 100 M), and the take holds the particles' attributes once beside them (28 bytes each, 1.4 GB at
 50 M): the README run's five key frames are 3.4 GB, thirty seconds at a hundredth of the take's
@@ -305,7 +313,10 @@ holds on one.
 loses the stars of its last particles. At 50 M with the default 128 a particle, a render inside the
 arm asked for 66 M: it holds, at three to five times the 8 M frame's time. At 100 M the same frame
 would ask for about 130 M and pass the list: a visit at 100 M sets `"inside": {"stars": 64}`, the
-same light in half the points a particle over twice the particles. `Nearness` (the distance that
+same light in half the points a particle over twice the particles. Fewer stars buy little time: at
+50 M, 64 a particle draw 36 M stars and 32 draw 20 M (the 8 M frame's count), and the render inside
+the arm goes from 181 ms to 148 and 138 in 1080p (295 to 248 and 215 in 4K), while the frames from
+farther off cost the same: what a 50 M frame pays for is its particles, not its stars. `Nearness` (the distance that
 holds a ten-thousandth of the drawn particles) measures matter, not particles: 159 and 160 pc at
 8 and 50 M on the same frame, so it holds at any count.
 
