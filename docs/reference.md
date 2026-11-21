@@ -461,6 +461,16 @@ frame is the one it always was.
 ./scripts/dev.sh export library/2026-10-23/scene-0001 --preset 4k --speed pace.time.json
 ```
 
+**Which exports run where.** On Linux, `sillage-cuda export <scene folder | take>` draws the same
+video on the CUDA engine (#429), in segments that `--resume` carries on from and `--part k/n`
+shares between GPUs: the presets, `--width`, `--height`, `--fps`, `--start`, `--duration`,
+`--codec`, `--bitrate`, `--look`, `--take`, `--framing`, `--stills` and `--still-frames`, and
+`--speed` as a number, a `.time.json` or the story pace with `--slow`. What stays the Mac's: the
+visual pace, which draws the take small with Metal first (its `.time.json`, written beside the
+Mac's video, is given to `--speed` instead), the words over a video (#317, refused, or left out
+with `--no-overlay`), the previews (`--format webp|gif`), `--palette` and `--dump-targets`.
+[cuda-engine](notes/cuda-engine.md#a-takes-video-429).
+
 **Flights (#295).** `--flight <name>` draws the camera path kept in the scene's
 `flights/<name>.flight.json` (or `--flight <file>.json`) instead of the look's camera plan: keys at
 seconds of the video, each placing the eye and the aim (in kiloparsecs, or anchored on a galaxy),

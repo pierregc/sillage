@@ -62,8 +62,8 @@ struct CUDAFlightExportTests {
     static func export(
         _ folder: URL, take: String = "take.sillage", flight: URL, out: String = "flight.mp4",
         _ more: [String] = [], context: CUDAContext, stop: ((Int) -> Bool)? = nil
-    ) throws -> CUDAFlightExport.Report {
-        try CUDAFlightExport.run(
+    ) throws -> CUDAExport.Report {
+        try CUDAExport.run(
             folder.appendingPathComponent(take).path,
             // The first of an option given twice is the one read: `more` goes before the rest.
             options: more + [
@@ -78,7 +78,7 @@ struct CUDAFlightExportTests {
         let take = try RecordingFile.read(from: folder.appendingPathComponent("take.sillage"))
         return try CUDATakeStills(
             context: context, take: take,
-            look: CUDAFlightExport.look(look.path, folder: SceneFolder(folder), take: take), capturedRate: 30,
+            look: CUDAExport.look(look.path, folder: SceneFolder(folder), take: take), capturedRate: 30,
             width: width, height: height, laceTexels: 256,
             flight: FlightFile.decoded(from: Data(contentsOf: flight)))
     }
@@ -117,7 +117,7 @@ struct CUDAFlightExportTests {
         #expect(report.frames == 9 && report.drawn == 9 && report.segments == 3 && report.segmentsDone == 3)
         #expect(try FFmpegVideo.frameCount(out) == 9)
         #expect(try Self.decoded(out).count == 9 * Self.width * Self.height * 3)
-        #expect(!Self.exists(CUDAFlightExport.segments(of: out)))
+        #expect(!Self.exists(CUDAExport.segments(of: out)))
         // It ends inside the disk: the eye near matter, the frames averaged, the exposure held.
         #expect(report.inside.nearest < 1 && report.inside.mostRenders > 1 && report.inside.mostStars > 0)
         let trims = try #require(report.exposure?.trims)
@@ -150,10 +150,10 @@ struct CUDAFlightExportTests {
         }
         #expect(!stopped.joined && stopped.segmentsDone == 1 && stopped.drawn == 2)
         #expect(!Self.exists(out))
-        let work = CUDAFlightExport.segments(of: out)
+        let work = CUDAExport.segments(of: out)
         #expect(Self.exists(work.appendingPathComponent("plan.json")))
         #expect(Self.exists(work.appendingPathComponent("segment-00000.mp4")))
-        #expect(throws: CUDAFlightExport.Failure.self) {
+        #expect(throws: CUDAExport.Failure.self) {
             try Self.export(
                 folder, flight: flight, out: "stopped.mp4", ["--resume", "--fps", "4"], context: context)
         }
@@ -205,7 +205,7 @@ struct CUDAFlightExportTests {
             let drawn = try Self.still(
                 still, atSeconds: Double(frame) / Double(Self.fps), frame: frame,
                 interval: 1 / Double(Self.fps))
-            #expect(CUDAFlightExport.digest(Data(drawn)) == report.pixels[frame], "frame \(frame)")
+            #expect(CUDAExport.digest(Data(drawn)) == report.pixels[frame], "frame \(frame)")
         }
         // A frozen moment is decoded once: the flight's time stands at the fixture's one frame.
         #expect(still.stagings == 1)
@@ -234,7 +234,7 @@ struct CUDAFlightExportTests {
         let folder = try Self.workspace()
         defer { try? FileManager.default.removeItem(at: folder) }
         let flight = try Self.shortFlight(in: folder, exposure: 0)
-        #expect(throws: CUDAFlightExport.Failure.self) {
+        #expect(throws: CUDAExport.Failure.self) {
             try Self.export(folder, flight: flight, ["--overlay", "title"], context: context)
         }
         #expect(!Self.exists(folder.appendingPathComponent("flight.mp4")))
@@ -242,11 +242,6 @@ struct CUDAFlightExportTests {
             folder, flight: flight, ["--overlay", "title", "--no-overlay", "--duration", "0.5"],
             context: context)
         #expect(report.joined && report.frames == 1)
-        #expect(throws: CUDAFlightExport.Failure.self) {
-            try CUDAFlightExport.run(
-                folder.appendingPathComponent("take.sillage").path, options: ["--look", Self.look.path],
-                context: context)
-        }
     }
 
     /// `--flight-keys`: the frame at every key, or at the seconds asked, as stills and no video.
@@ -263,7 +258,7 @@ struct CUDAFlightExportTests {
                 "key-00-000.00s.png", "key-01-001.00s.png", "key-02-002.00s.png",
             ])
         #expect(!Self.exists(folder.appendingPathComponent("flight.mp4")))
-        #expect(!Self.exists(CUDAFlightExport.segments(of: folder.appendingPathComponent("flight.mp4"))))
+        #expect(!Self.exists(CUDAExport.segments(of: folder.appendingPathComponent("flight.mp4"))))
         let last = try PNG.decode(Data(contentsOf: report.keys[2]))
         #expect(last.width == Self.width && last.height == Self.height && last.channels == 3)
         let alone = try Self.still(
@@ -369,7 +364,7 @@ struct CUDAFlightExportTests {
 
     /// The exposure a flight is measured at is kept beside its segments to the bit.
     @Test func thePlanKeepsTheExposureToTheBit() throws {
-        let identity = CUDAFlightExport.Identity(
+        let identity = CUDAExport.Identity(
             take: "take.sillage", takeBytes: 1, particles: 2, capturedFrames: 3, framing: nil,
             framingBytes: nil, look: "a", flight: "b", capturedRate: 30, width: 64, height: 36,
             framesPerSecond: 2, start: 0, duration: nil, frames: 5, segmentFrames: 2, codec: "hevc",
@@ -383,10 +378,10 @@ struct CUDAFlightExportTests {
                     still: [0...0.1, (1 / 3)...(2 / 3)])),
         ]
         for exposure in exposures {
-            let plan = CUDAFlightExport.Plan(
+            let plan = CUDAExport.Plan(
                 identity: identity, exposure: exposure, summary: "", seconds: 1, device: "CPU")
             let read = try JSONDecoder().decode(
-                CUDAFlightExport.Plan.self, from: CUDAFlightExport.encoded(plan))
+                CUDAExport.Plan.self, from: CUDAExport.encoded(plan))
             #expect(read.exposure == exposure)
             #expect(read.identity == identity)
         }
@@ -414,7 +409,7 @@ struct CUDAFlightExportTests {
         var pixels: [[String]] = []
         for way in ["off", String(CUDATakeStills.flightLargeSplatPixels)] {
             let started = Date()
-            let report = try CUDAFlightExport.run(
+            let report = try CUDAExport.run(
                 files[0],
                 options: [
                     "--look", files[1], "--flight", files[2], "--preset", "4k", "--duration", "1",

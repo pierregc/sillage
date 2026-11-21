@@ -1960,7 +1960,7 @@ from a take of the two moments), which a GPU box runs first too:
 
 ### The stage of a flight's frames
 
-`FlightFrames`, portable, decides a frame; `CUDATakeStills` is its `FlightStage`:
+`FlightFrames`, portable, decides a frame; `CUDATakeStills` is its `FrameStage`:
 
 - **The take's positions at a moment.** `Recording.positions(at:into:)` decodes the four stored
   frames around the moment and weighs them, every core taking a share, straight into pinned host
@@ -2033,7 +2033,7 @@ two frames a second:
 | `anExportStoppedResumedOrSplitIsTheSameVideo` | drawn in one go, stopped after a segment and resumed, split in `--part 1/2` and `2/2`: the same frames as drawn and the same file; a resume draws the missing segments alone, refuses another export's and leaves a whole video alone; without `--resume` it starts again |
 | `withoutTheAutomaticExposureEveryFrameIsItsStill` | every frame of the video, at the keys and between them, equal to its still, and a frozen moment decoded once |
 | `bothWaysForLargeSplatsDrawTheSameFrames` | a frame from inside, both ways, the same bits |
-| `anOverlayIsRefusedOrLeftOut` | the words over a video refused, left out with `--no-overlay`; no `--flight`, refused |
+| `anOverlayIsRefusedOrLeftOut` | the words over a video refused, left out with `--no-overlay` |
 | `theKeysOfAFlightAreDrawnAsStills` | `--flight-keys` and `--flight-at`, each still the one drawn alone |
 | `aFlightIsDrawnFromTheFramesATakeHolds` | with `--framing`, from extracts of a run (#379): a moment the take holds is the picture the whole run gives, time flows through a span, a flight that leaves the frames held is refused before anything is drawn |
 | `aPacedFlightSaysItsPace` | a stretch paced by the nearness (#406) |
@@ -2052,6 +2052,35 @@ Skipped without a GPU, for #424: `aFlightInsideAnArmIsTimedIn4K`, a second of a 
 arm of a take of millions of particles in 4K (`SILLAGE_CUDA_FLIGHT=<take>,<look>,<flight>`),
 both ways for large splats to the same bits, with the profile and the peak device memory, on
 `CUDAFLIGHT` lines beside the M4 Max's 94 to 360 ms a render.
+
+## A take's video (#429)
+
+`sillage-cuda export <scene folder | take>` without `--flight`: the video the Mac's `export`
+draws with the look's camera, through the same segments, plan, `--resume` and `--part` as a
+flight's (`CUDAExport`, which #382 named `CUDAFlightExport`).
+
+- **`TakeFrames`**, portable, beside `FlightFrames`: the time track (`--speed` as a number, a
+  `.time.json` or the story pace held with `--slow`), the camera of the look's plan along it
+  (`TakeFraming.replay` with the track), the look, the time and the painted arms of each moment,
+  and the exposure of a look that measures its own (#340), solved on up to seven of the frames
+  drawn and held for the whole video, as `TakeExport.write` does without a flight. The plan
+  keeps that scale to the bit; there is no target and no trim.
+- **The stage** is the flight's (`FrameStage`), told not to ease: a moment's kernel lengths come
+  from the tree built over its own positions, as the Mac's `SmoothingField` builds them every
+  frame, and as `CUDATakeStills.still` always did.
+- **Not here.** The visual pace draws the take small with Metal before the export: the track it
+  writes beside the Mac's video is given as a file. A take of some moments of a run (key frames,
+  extracts) is drawn along a flight only, as on the Mac. `TakeExport` is not moved onto
+  `TakeFrames`: a Mac session does that with #426, Metal's bytes kept.
+
+`CUDA take export` (`CUDATakeExportTests`), on the CPU target in every check, at 64 by 36 and two
+frames a second, with the fixture's look on the director's plan:
+
+| test | what |
+| --- | --- |
+| `everyFrameOfATakesVideoIsItsStill` | every frame of the take's video equal to `sillage-cuda still --frames` at that frame |
+| `aTakesVideoStoppedResumedOrSplitIsTheSameVideo` | a look that measures its exposure: drawn in one go, stopped and resumed, split in two parts, the same frames and the same file under the same scale |
+| `aSpeedDrawsTheVideoAlongItsTrack` | `--speed 2` and the track it writes, given back as a file, the same frames; `--speed` with a flight, `--slow` without the story pace, the visual pace and `--flight-keys` without a flight refused |
 
 ## What waits for a GPU (#283)
 

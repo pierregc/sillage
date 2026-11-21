@@ -2,15 +2,16 @@ import Foundation
 import SillageCore
 import SillageRender
 
-/// `sillage-cuda export <scene folder | take> --flight <name | file>` (#382): a flight's video
-/// drawn on CUDA, the frames the Mac's `export --flight` draws (`FlightFrames`), encoded by
-/// ffmpeg. The video is drawn in segments of whole files, each kept as soon as it is drawn, so
-/// that a run that stops, a box taken back or a device out of memory, loses one segment at most:
-/// `--resume` draws the ones missing and joins them all without encoding them again. The
-/// exposure of the whole flight is measured once and kept beside the segments, so that every
-/// piece, whenever and wherever it is drawn, is drawn under it. `--part k/n` draws one segment
-/// in n, for several GPUs or boxes on one video. docs/notes/flights.md.
-public enum CUDAFlightExport {
+/// `sillage-cuda export <scene folder | take> [--flight <name | file>]`: a take's video drawn on
+/// CUDA, the frames the Mac's `export` draws, encoded by ffmpeg: along a flight (#382,
+/// `FlightFrames`), or with the look's camera along a time track (#429, `TakeFrames`). The video
+/// is drawn in segments of whole files, each kept as soon as it is drawn, so that a run that
+/// stops, a box taken back or a device out of memory, loses one segment at most: `--resume` draws
+/// the ones missing and joins them all without encoding them again. The exposure of the whole
+/// video is measured once and kept beside the segments, so that every piece, whenever and wherever
+/// it is drawn, is drawn under it. `--part k/n` draws one segment in n, for several GPUs or boxes
+/// on one video. docs/notes/flights.md, docs/notes/cuda-engine.md.
+public enum CUDAExport {
     public enum Failure: Error, CustomStringConvertible {
         case usage(String)
         case overlay
@@ -22,7 +23,7 @@ public enum CUDAFlightExport {
             case .usage(let why): why
             case .overlay:
                 "this engine draws no overlay (#317): its words are set with Core Text, which Linux"
-                    + " does not have. --no-overlay draws the flight without them"
+                    + " does not have. --no-overlay draws the video without them"
             case .otherExport(let folder, let differs):
                 "the segments in \(folder.path) are another export's (\(differs.joined(separator: ", "))"
                     + " differ): without --resume and --part the export starts again"
@@ -62,7 +63,8 @@ public enum CUDAFlightExport {
         var framing: String?
         var framingBytes: Int?
         var look: String
-        var flight: String
+        var flight: String?
+        var track: String?
         var capturedRate: Int
         var width: Int
         var height: Int
@@ -240,13 +242,17 @@ public enum CUDAFlightExport {
             throw SceneFolder.ExportError.codecNotAllowed(preset: preset.name, codec: pinned)
         }
 
-        guard let flightAsked = option("flight") else {
-            throw Failure.usage("--flight is needed: the export of a take without one is the Mac's still")
+        let flightURL = option("flight").map { folder.flight($0) }
+        let flightFile = try flightURL.map { try FlightFile.decoded(from: Data(contentsOf: $0)) }
+        let flightName = flightURL.map {
+            $0.lastPathComponent.replacingOccurrences(of: ".\(FlightFile.fileExtension)", with: "")
         }
-        let flightURL = folder.flight(flightAsked)
-        let flightFile = try FlightFile.decoded(from: Data(contentsOf: flightURL))
-        let flightName = flightURL.lastPathComponent.replacingOccurrences(
-            of: ".\(FlightFile.fileExtension)", with: "")
+        if flightFile != nil, option("speed") != nil {
+            throw SceneFolder.ExportError.badValue("speed", "a flight keeps its own time, without --speed")
+        }
+        if flightFile == nil, option("flight-keys") != nil {
+            throw SceneFolder.ExportError.badValue("flight-keys", "it goes with --flight")
+        }
 
         let loaded = try RecordingFile.read(from: takeURL)
         let look = try look(option("look"), folder: folder, take: loaded)
@@ -284,14 +290,30 @@ public enum CUDAFlightExport {
         let measuring = flag("profile") ? PhaseTimes() : nil
         let engine = CUDAContext.target == .gpu ? "the GPU" : "the CPU target"
 
-        let planned = try FlightFrames(
-            take: loaded, look: look, capturedRate: capturedRate, width: width, height: height,
-            framing: framing, flight: flightFile)
-        say(
-            String(
-                format:
-                    "flight     %@: %d keys over %.1f s; the look's %@ camera is ignored but for look keys",
-                flightName, flightFile.keys.count, flightFile.seconds, look.camera.mode.rawValue))
+        let planned = try flightFile.map {
+            try FlightFrames(
+                take: loaded, look: look, capturedRate: capturedRate, width: width, height: height,
+                framing: framing, flight: $0)
+        }
+        if let flightFile, let flightName {
+            say(
+                String(
+                    format:
+                        "flight     %@: %d keys over %.1f s; the look's %@ camera is ignored but for look keys",
+                    flightName, flightFile.keys.count, flightFile.seconds, look.camera.mode.rawValue))
+        }
+        let speed = try option("speed").map {
+            try timeTrack($0, slow: option("slow"), folder: folder, take: loaded, capturedRate: capturedRate)
+        }
+        if speed == nil, option("slow") != nil {
+            throw SceneFolder.ExportError.badValue("slow", "it goes with --speed story")
+        }
+        let plain =
+            planned != nil
+            ? nil
+            : try TakeFrames(
+                take: loaded, look: look, capturedRate: capturedRate, width: width, height: height,
+                framing: framing, track: speed?.track)
 
         var stills: CUDATakeStills?
         func drawing() throws -> CUDATakeStills {
@@ -312,7 +334,7 @@ public enum CUDAFlightExport {
 
         // `--flight-keys <dir>`: the frame at every key of the flight as a PNG, each at its own
         // exposure, and no video; `--flight-at <s,...>` draws those seconds instead of the keys.
-        if let directory = option("flight-keys") {
+        if let directory = option("flight-keys"), let planned {
             let moments = try option("flight-at").map { text in
                 try text.split(separator: ",").map { part in
                     guard let seconds = Double(part), seconds >= 0 else {
@@ -356,13 +378,20 @@ public enum CUDAFlightExport {
         let out =
             option("out").map { URL(fileURLWithPath: $0) }
             ?? folder.export(
-                preset: "\(flightName)-\(preset.name)", codec: codec == preset.defaultCodec ? nil : codec)
+                preset: flightName.map { "\($0)-\(preset.name)" } ?? preset.name,
+                codec: codec == preset.defaultCodec ? nil : codec)
         try manager.createDirectory(at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         let start = try value("start") ?? 0
         let duration = try value("duration")
-        let frames = planned.videoFrames(framesPerSecond: fps, start: start, duration: duration)
-        guard !frames.isEmpty else { throw Failure.usage("no frame to draw from \(start) s of the flight") }
+        let frames =
+            planned?.videoFrames(framesPerSecond: fps, start: start, duration: duration)
+            ?? plain?.videoFrames(framesPerSecond: fps, start: start, duration: duration) ?? []
+        let videoSeconds = planned?.flight.seconds ?? plain?.videoSeconds ?? 0
+        let showing = planned != nil ? "flight" : speed != nil ? "video" : "take"
+        guard !frames.isEmpty else {
+            throw Failure.usage("no frame to draw from \(start) s of the \(showing)")
+        }
         var bitRate = asked
         if bitRate == nil { bitRate = try preset.bitRate(forSeconds: Double(frames.count) / Double(fps)) }
         let rate = bitRate ?? codec.defaultBitRate(width: width, height: height)
@@ -385,12 +414,25 @@ public enum CUDAFlightExport {
         }
         say(
             String(
-                format: "export     %@ %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s flight),"
+                format: "export     %@ %@ %dx%d at %d fps, %d frames (%.1f s from %.1f s of a %.1f s %@),"
                     + " look %@, %@, %d segments of %d frames%@, on %@ (%@)",
                 preset.name, codec.rawValue, width, height, fps, frames.count,
-                Double(frames.count) / Double(fps), start, planned.flight.seconds, look.name, steering,
+                Double(frames.count) / Double(fps), start, videoSeconds, showing, look.name, steering,
                 segmentCount, segmentFrames, part.map { ", part \($0.index) of \($0.of)" } ?? "", engine,
                 context.name))
+        if let speed {
+            let megayears = TimeTrack.megayears(of: loaded.recording)
+            func myr(_ position: Double) -> Double {
+                let index = min(max(Int(position), 0), megayears.count - 1)
+                let next = min(index + 1, megayears.count - 1)
+                return megayears[index] + (megayears[next] - megayears[index]) * (position - Double(index))
+            }
+            say(
+                String(
+                    format: "speed      %@: %.1f s of video for %.1f to %.1f Myr of the take", speed.name,
+                    Double(frames.count) / Double(fps), myr(frames.first?.captured ?? 0),
+                    myr(frames.last?.captured ?? 0)))
+        }
 
         func size(_ url: URL?) -> Int? {
             url.flatMap { (try? manager.attributesOfItem(atPath: $0.path)[.size] as? Int) ?? nil }
@@ -402,8 +444,9 @@ public enum CUDAFlightExport {
             take: takeURL.lastPathComponent, takeBytes: size(takeURL) ?? 0,
             particles: loaded.recording.particleCount, capturedFrames: loaded.recording.capturedFrames,
             framing: framingURL?.lastPathComponent, framingBytes: size(framingURL),
-            look: digest(try look.encoded()), flight: digest(try flightFile.encoded()),
-            capturedRate: capturedRate, width: width, height: height, framesPerSecond: fps, start: start,
+            look: digest(try look.encoded()), flight: try flightFile.map { digest(try $0.encoded()) },
+            track: try speed.map { digest(try $0.file.encoded()) }, capturedRate: capturedRate, width: width,
+            height: height, framesPerSecond: fps, start: start,
             duration: duration, frames: frames.count, segmentFrames: segmentFrames, codec: codec.rawValue,
             bitsPerSecond: bitRate, laceTexels: laceTexels,
             engine: CUDAContext.target == .gpu ? "cuda gpu" : "cuda cpu")
@@ -425,10 +468,13 @@ public enum CUDAFlightExport {
             // The line that draws a video runs again when its box restarts: a video that is
             // whole, and no older than what it is drawn from, is left as it is.
             let lookURL = option("look").flatMap { $0.hasSuffix(".json") ? URL(fileURLWithPath: $0) : nil }
-            let sources = [takeURL, flightURL, framingURL, lookURL ?? folder.look].compactMap { $0 }
+            let trackURL = option("speed").flatMap {
+                Double($0) == nil && PaceSpec($0) == nil ? URL(fileURLWithPath: $0) : nil
+            }
+            let sources = [takeURL, flightURL, framingURL, trackURL, lookURL ?? folder.look].compactMap { $0 }
             if sources.allSatisfy({ (modified($0) ?? .distantPast) <= made }) {
                 say(
-                    "export     \(out.path) is whole and no older than its take, look and flight:"
+                    "export     \(out.path) is whole and no older than what it is drawn from:"
                         + " nothing to draw (without --resume it is drawn again)")
                 var report = Report(out: out, frames: frames.count, segments: segmentCount)
                 report.segmentsDone = segmentCount
@@ -443,26 +489,34 @@ public enum CUDAFlightExport {
         defer { reporter?.finish() }
         let started = Date()
 
-        // The exposure of the whole flight, measured once: the first run to finish it writes
+        // The exposure of the whole video, measured once: the first run to finish it writes
         // it, and every run draws under what is written.
         if !manager.fileExists(atPath: planURL.path) {
             let began = Date()
             let drawn = try drawing()
-            guard let flightFrames = drawn.flightFrames else { throw Failure.usage("no flight") }
             var tenth = 0
             drawn.phases = measuring
             defer { drawn.phases = phases }
-            let measured = try guarded(context) {
-                try flightFrames.measure(on: drawn) { done, total in
-                    reporter?.update(progress: 0, detail: "exposure \(done)/\(total)")
-                    if done * 10 / max(total, 1) > tenth {
-                        tenth = done * 10 / max(total, 1)
-                        say("exposure   \(done)/\(total) moments")
+            let measured: (exposure: FlightFrames.Exposure, clip: ClipExposure?)
+            if let flightFrames = drawn.flightFrames {
+                measured = try guarded(context) {
+                    try flightFrames.measure(on: drawn) { done, total in
+                        reporter?.update(progress: 0, detail: "exposure \(done)/\(total)")
+                        if done * 10 / max(total, 1) > tenth {
+                            tenth = done * 10 / max(total, 1)
+                            say("exposure   \(done)/\(total) moments")
+                        }
                     }
                 }
+            } else if let plain {
+                let clip = try guarded(context) { try plain.measureScale(on: drawn, frames: frames) }
+                measured = (FlightFrames.Exposure(scale: clip?.scale, target: 0), clip)
+            } else {
+                throw Failure.usage("nothing to draw")
             }
             let seconds = Date().timeIntervalSince(began)
-            var summary = measured.clip.map { "\($0.summary); " } ?? ""
+            var summary =
+                measured.clip.map { "\($0.summary); " } ?? (look.exposure == nil ? "the look's own; " : "")
             if let trims = measured.exposure.trims {
                 summary += String(
                     format: "held under a mean of %.3f, trimmed by up to %.1f stops over %d moments",
@@ -481,7 +535,7 @@ public enum CUDAFlightExport {
             try? manager.removeItem(at: scratch)
             say(String(format: "exposure   %@, measured in %.1f s", summary, seconds))
             if let measuring {
-                say(String(format: "profile    the exposure of the flight, %.1f s", seconds))
+                say(String(format: "profile    the exposure of the %@, %.1f s", showing, seconds))
                 for line in measuring.lines(total: seconds) { say("profile      \(line)") }
             }
         }
@@ -526,9 +580,9 @@ public enum CUDAFlightExport {
             let range = (index * segmentFrames)..<min((index + 1) * segmentFrames, frames.count)
             let began = Date()
             let drawn = try drawing()
-            guard let flightFrames = drawn.flightFrames else { throw Failure.usage("no flight") }
-            flightFrames.resetReport()
-            if range.lowerBound > 0 { flightFrames.follow(frames[range.lowerBound - 1]) }
+            let flightFrames = drawn.flightFrames
+            flightFrames?.resetReport()
+            if range.lowerBound > 0 { flightFrames?.follow(frames[range.lowerBound - 1]) }
             // A file of this run's own: a run killed here may have left an encoder closing its.
             let partial = work.appendingPathComponent(
                 String(
@@ -541,7 +595,12 @@ public enum CUDAFlightExport {
             var hash = PortableSHA256()
             for frame in range {
                 let pixels = try guarded(context) {
-                    try drawn.flightFrame(frames[frame], index: frame, interval: interval, exposure: exposure)
+                    if let plain {
+                        return try drawn.takeFrame(
+                            frames[frame], of: plain, index: frame, exposure: exposure.scale)
+                    }
+                    return try drawn.flightFrame(
+                        frames[frame], index: frame, interval: interval, exposure: exposure)
                 }
                 hash.update(bytes: pixels)
                 if let phases {
@@ -568,7 +627,7 @@ public enum CUDAFlightExport {
                 index: index, first: range.lowerBound, frames: range.count, seconds: seconds,
                 plan: planDigest,
                 pixels: hash.finalize().prefix(16).map { String(format: "%02x", $0) }.joined(),
-                report: flightFrames.report, device: context.name)
+                report: flightFrames?.report ?? FlightFrames.Report(), device: context.name)
             try encoded(segment).write(to: record(index), options: .atomic)
             say(
                 String(
@@ -635,13 +694,62 @@ public enum CUDAFlightExport {
         report.joined = true
         let bytes = size(out) ?? 0
         say("exposure   \(plan.summary)")
-        say("inside     \(report.inside.summary)")
+        if planned != nil { say("inside     \(report.inside.summary)") }
+        if let speed {
+            let url = out.deletingPathExtension().appendingPathExtension(TimeTrackFile.fileExtension)
+            try speed.file.encoded().write(to: url)
+            say("track      \(url.path)")
+        }
         say(
             String(
                 format: "export     %d frames drawn in %.1f s, %.2f s a frame, %.1f MB", frames.count, total,
                 total / Double(max(frames.count, 1)), Double(bytes) / 1e6))
         say("video      \(out.path)")
         return report
+    }
+
+    /// `--speed <x | file | story[:pace[:top]]>` (#305, #309): the whole take at one speed, a time
+    /// track kept in a `.time.json`, or the speeds read off the scene's curves, a stretch of which
+    /// `--slow <from>:<to>:<speed>` holds, as the Mac's `export --speed` has them. The visual pace
+    /// draws the take small with Metal first: its track, written beside the Mac's video, is given
+    /// as a file instead.
+    static func timeTrack(
+        _ text: String, slow: String?, folder: SceneFolder, take: RecordingFile.Loaded, capturedRate: Int
+    ) throws -> (file: TimeTrackFile, track: TimeTrack, name: String) {
+        let megayears = TimeTrack.megayears(of: take.recording)
+        var file: TimeTrackFile
+        var name = text
+        if let spec = PaceSpec(text) {
+            guard case .story = spec else {
+                throw SceneFolder.ExportError.badValue(
+                    "speed",
+                    "the visual pace draws the take with Metal: give the .time.json the Mac's export wrote")
+            }
+            var made = try PaceTrack.fromCurves(spec, folder: folder, scene: take.scene, megayears: megayears)
+                .made
+            if let slow {
+                let parts = slow.split(separator: ":").compactMap { Double($0) }
+                guard parts.count == 3, parts[2] > 0 else {
+                    throw SceneFolder.ExportError.badValue("slow", slow)
+                }
+                made.speeds = PaceSpec.slowed(
+                    made.speeds, megayears: megayears, from: parts[0], to: parts[1], speed: parts[2])
+                name += " slowed \(slow)"
+            }
+            file = TimeTrackFile(speeds: made.speeds)
+        } else if slow != nil {
+            throw SceneFolder.ExportError.badValue("slow", "it goes with --speed story")
+        } else if let speed = Double(text) {
+            file = TimeTrackFile(speed: speed)
+            name = String(format: "%gx", speed)
+        } else {
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: text)) else {
+                throw SceneFolder.ExportError.badValue("speed", text)
+            }
+            file = try TimeTrackFile.decoded(from: data)
+            name = URL(fileURLWithPath: text).lastPathComponent
+        }
+        return (file, try file.track(megayears: megayears, capturedRate: capturedRate), name)
     }
 
     /// A line of the log as it comes, even into a file: a long export started detached is
