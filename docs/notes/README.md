@@ -84,6 +84,7 @@ session. Read the note for an area before changing it.
 - [Gigantism](gigantism.md): why a render reads as sand, the compact minority, the kernel in projection, what more particles cost
 - [A web of dust that turns without tearing](dust-web.md): spike #173, the web carried round and renewed, finer grains, the web where the disk is intact; #200, the lace baked and paid once per pixel; #197, on in the shipped and generated styles
 - [Ten times the particles](ten-times-the-particles.md): fifty million a galaxy, what it looks like, the softening floor, the halo, the take's grid, tracers
+- [Immensity inside an arm](immensity-inside-an-arm.md): a study on paper of how far the counts can go now that a flight enters an arm, simulated particles against the point stars of #357, the real spacing of stars and what a 4K frame can hold, why larger galaxies would change nothing and what gives the sense of scale, the halo's share against the literature, what a take weighs past 8 M and how to store less, tracers and their randomness
 - [Director shots that fill the frame](director-shots.md): `ShotPlan`, the cuts, the core and plane measured on the take, the disk states takes never carried
 - [Words on the picture](overlay.md): the title, the clock, the scale bar and the captions, where they are asked, how the story's events are found, why after the post-processing and on the CPU, why not on CUDA (#317)
 
