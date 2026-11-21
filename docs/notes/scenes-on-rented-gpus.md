@@ -44,7 +44,7 @@ As the study found it, the take pass's rows updated since by #377 and #378.
 | hires `--pass massive` (the massive particles of a draw with tracers) | yes, checkpoints (#377) | yes, checkpoints (#378) |
 | hires `--pass full` (tracers, videos drawn as it runs, key frames) | yes, checkpoints | yes, checkpoints (#278) |
 | stills from a take, stills of a flight | yes | yes (#277, #347) |
-| a flight's video | yes | **no** |
+| a flight's video | yes | yes (#382), not timed on a GPU (#424) |
 
 On a GPU the CUDA engine has never run: phase 1 of #269 compiled it with `nvcc` and ran it on
 the CPU target. Seven kernels of the tree (`cuda gpu-only`) and 17 tests wait for #283, the

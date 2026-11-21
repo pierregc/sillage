@@ -79,7 +79,7 @@ struct OverlayTests {
     private func plan(
         _ overlay: Overlay, events: [OverlayEvent: Int] = [:], times: [Double]? = nil,
         positions: [Double]? = nil, framesPerSecond: Int = 10, pixelsPerKpc: Double = 10,
-        width: Int = 1920, height: Int = 1080, texts: OverlayTexts = .english
+        width: Int = 1920, height: Int = 1080, texts: OverlayTexts = .english, eyes: [SIMD3<Double>] = []
     ) -> OverlayPlan {
         let positions = positions ?? (0..<250).map(Double.init)
         return OverlayPlan(
@@ -87,7 +87,7 @@ struct OverlayTests {
             events: events, times: times ?? positions.map { 300 + 2 * $0 }, positions: positions,
             framesPerSecond: framesPerSecond,
             pixelsPerKpc: Array(repeating: pixelsPerKpc, count: positions.count), width: width,
-            height: height)
+            height: height, eyes: eyes)
     }
 
     // MARK: The story's events
@@ -275,6 +275,115 @@ struct OverlayTests {
         #expect(OverlayPlan.lengthText(1, unit: .kiloparsecs, texts: english) == "1 kiloparsec")
         #expect(OverlayPlan.lengthText(20, unit: .kiloparsecs, texts: english) == "20 kiloparsecs")
         #expect(OverlayPlan.lengthText(0.5, unit: .kiloparsecs, texts: english) == "0.5 kiloparsecs")
+    }
+
+    /// Inside an arm the frame is a few hundred light years across at the target: the bar
+    /// still finds a length between a tenth and a quarter of it (#407).
+    @Test func theBarReachesDownToTheStars() throws {
+        for unit in [Overlay.Scale.Unit.lightYears, .kiloparsecs] {
+            // 0.17 kpc across a 1920 frame, 550 light years.
+            let bar = try #require(
+                OverlayPlan.scaleTrack(
+                    pixelsPerKpc: [1920 / 0.17], width: 1920, unit: unit, framesPerSecond: 30)[0]
+                    .first)
+            #expect(OverlayPlan.barShare.contains(bar.pixels / 1920), "\(unit): \(bar.length)")
+        }
+        #expect(OverlayPlan.lengthText(50, unit: .lightYears, texts: .english) == "50 light years")
+        #expect(OverlayPlan.lengthText(0.02, unit: .kiloparsecs, texts: .english) == "0.02 kiloparsecs")
+    }
+
+    // MARK: The eye's speed
+
+    /// A dive that slows from 7 kpc a second to 50 pc a second over 15 s: the speed said steps
+    /// down a short ladder, never far from the true one, and changes no faster than the eye can
+    /// read it.
+    @Test func theSpeedFollowsADiveOnAShortLadder() {
+        let rate = 30
+        let frames = 15 * rate
+        let decay = log(7 / 0.05) / 15
+        var x = 0.0
+        var eyes: [SIMD3<Double>] = []
+        var truth: [Double] = []
+        for n in 0..<frames {
+            let speed = 7 * exp(-decay * Double(n) / Double(rate))
+            truth.append(speed * OverlayPlan.lightYearsPerKpc)
+            eyes.append(SIMD3(x, 0, 0))
+            x += speed / Double(rate)
+        }
+        // The frame is 20 times the nearness across, the nearness three times the speed.
+        let scales = truth.map { 1920 / (20 * 3 * $0 / OverlayPlan.lightYearsPerKpc) }
+        let track = OverlayPlan.speedTrack(
+            eyes: eyes, pixelsPerKpc: scales, width: 1920, unit: .lightYears, framesPerSecond: rate)
+        #expect(track.count == frames)
+        var changes = 0
+        for (index, entry) in track.enumerated() {
+            #expect(OverlayPlan.speedLadder(entry.value) == entry.value)
+            if index > 10 && index < frames - 10 {
+                #expect(
+                    abs(log(entry.value / truth[index])) < log(1.6),
+                    "\(index): \(entry.value) for \(truth[index])")
+            }
+            if index > 0, entry.value != track[index - 1].value { changes += 1 }
+        }
+        #expect(changes >= 8 && changes <= 20, "\(changes) changes")
+        // Fading in as the instruments do, then shown.
+        #expect(track[0].shown < 0.1 && track[frames / 2].shown == 1)
+        #expect(track.first!.value >= 15_000 && track.last!.value <= 200)
+    }
+
+    /// An eye at rest has no speed to say; once it moves the line fades in.
+    @Test func aStillEyeSaysNoSpeed() {
+        let still = OverlayPlan.speedTrack(
+            eyes: Array(repeating: SIMD3(1, 2, 3), count: 60), pixelsPerKpc: Array(repeating: 100, count: 60),
+            width: 1920, unit: .lightYears, framesPerSecond: 30)
+        #expect(still.allSatisfy { $0.shown == 0 })
+        // A drift of a five hundredth of the frame a second is too slow to be worth saying.
+        let crawl = OverlayPlan.speedTrack(
+            eyes: (0..<60).map { SIMD3(Double($0) * 0.192 / 30 / 500, 0, 0) },
+            pixelsPerKpc: Array(repeating: 100, count: 60), width: 1920, unit: .lightYears,
+            framesPerSecond: 30)
+        #expect(crawl.allSatisfy { $0.shown == 0 })
+        let moving = OverlayPlan.speedTrack(
+            eyes: (0..<60).map { SIMD3(Double($0) * 0.5 / 30, 0, 0) },
+            pixelsPerKpc: Array(repeating: 100, count: 60), width: 1920, unit: .lightYears,
+            framesPerSecond: 30)
+        #expect(moving.last!.shown == 1 && moving.last!.value == 1_500)
+    }
+
+    @Test func speedsAreWrittenInTheirUnit() {
+        let english = OverlayTexts.english
+        #expect(
+            OverlayPlan.speedText(7_000, unit: .lightYears, texts: english) == "7,000 light years a second")
+        #expect(OverlayPlan.speedText(1.5, unit: .lightYears, texts: english) == "1.5 light years a second")
+        #expect(OverlayPlan.speedText(0.05, unit: .kiloparsecs, texts: english) == "50 parsecs a second")
+        #expect(OverlayPlan.speedText(2, unit: .kiloparsecs, texts: english) == "2 kiloparsecs a second")
+        let french = try? JSONDecoder().decode(
+            OverlayTexts.self,
+            from: Data(#"{"lightYearsPerSecond": "{n} années-lumière par seconde", "thousands": " "}"#.utf8))
+        #expect(
+            french.map { OverlayPlan.speedText(7_000, unit: .lightYears, texts: $0) }
+                == "7 000 années-lumière par seconde")
+    }
+
+    /// Asked for, the speed sits between the clock and the bar's label; not asked, the frames
+    /// are the ones laid before it existed.
+    @Test func theSpeedSitsBetweenTheClockAndTheBar() throws {
+        let eyes = (0..<250).map { SIMD3(Double($0) * 0.05, 0, 0) }
+        let with = plan(
+            Overlay(clock: Overlay.Clock(), scale: Overlay.Scale(speed: true)), pixelsPerKpc: 400, eyes: eyes)
+        let without = plan(
+            Overlay(clock: Overlay.Clock(), scale: Overlay.Scale()), pixelsPerKpc: 400, eyes: eyes)
+        let lines = with.frames[100].lines
+        #expect(lines.count == 3)
+        let speed = lines.first { $0.text.hasSuffix("light years a second") }
+        let clock = lines.first { $0.text.hasSuffix("million years") }
+        let label = lines.first { $0.text.hasSuffix("light years") }
+        #expect(speed?.text == "1,500 light years a second")
+        #expect(clock!.baseline < speed!.baseline && speed!.baseline < label!.baseline)
+        #expect(without.frames[100].lines.count == 2)
+        #expect(without.frames[100].bars == with.frames[100].bars)
+        #expect(try Overlay.elements("clock,speed").scale == Overlay.Scale(speed: true))
+        #expect(try Overlay.elements("speed,scale").scale?.speed == true)
     }
 
     // MARK: The title and the layout

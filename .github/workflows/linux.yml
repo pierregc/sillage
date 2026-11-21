@@ -78,7 +78,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     container: swift:6.2-noble
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - name: ffmpeg, which encodes the full pass's videos (#278)
@@ -101,6 +101,23 @@ jobs:
             --flight Tests/Fixtures/engines/frames/inside.flight.json --seconds 0,3.5 \
             --out "$RUNNER_TEMP/stills"
           test -s "$RUNNER_TEMP/stills/1080p-flight-0003.50s.png"
+      - name: sillage-cuda export draws a flight's video, killed after a segment and resumed
+        run: |
+          frames=Tests/Fixtures/engines/frames
+          options="--look $frames/webb.look.json --flight $frames/inside.flight.json --rate 30"
+          options="$options --width 64 --height 36 --fps 2 --segment-frames 1 --out $RUNNER_TEMP/flight/inside.mp4"
+          .build/linux/sillage-cuda export $frames/take.sillage $options > "$RUNNER_TEMP/flight.log" &
+          run=$!
+          timeout 300 bash -c "until grep -q '^segment    2/9' '$RUNNER_TEMP/flight.log'; do sleep 0.1; done"
+          kill -9 "$run"
+          .build/linux/sillage-cuda export $frames/take.sillage $options --resume > "$RUNNER_TEMP/resumed.log"
+          cat "$RUNNER_TEMP/resumed.log"
+          grep -q '^segment    9/9' "$RUNNER_TEMP/resumed.log"
+          if grep -q '^segment    1/9' "$RUNNER_TEMP/resumed.log"; then exit 1; fi
+          test -s "$RUNNER_TEMP/flight/inside.mp4"
+          test ! -e "$RUNNER_TEMP/flight/.inside.mp4.segments"
+          .build/linux/sillage-cuda export $frames/take.sillage $options --resume > "$RUNNER_TEMP/again.log"
+          grep -q 'nothing to draw' "$RUNNER_TEMP/again.log"
       - name: sillage-cuda holds the engine to the reference outputs, as a full pass requires
         run: .build/linux/sillage-cuda check --fixtures Tests/Fixtures/engines
       - name: sillage-cuda hires computes a scene folder explored on the Mac, killed after a checkpoint and resumed

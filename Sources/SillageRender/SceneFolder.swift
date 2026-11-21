@@ -520,7 +520,22 @@ extension SceneFolder {
                 $0 + model.drawLine(preset: $1).seconds(Double(record.particles))
             }
         let seconds = minutes * 60
-        return (max(Int(seconds / max(perFrame, 1e-9)), 1), max(Int(seconds / max(step, 1e-9)), 1))
+        let most = Double(Int32.max)
+        return (
+            max(Int(min(seconds / max(perFrame, 1e-9), most)), 1),
+            max(Int(min(seconds / max(step, 1e-9), most)), 1)
+        )
+    }
+
+    /// Whether the pass that writes a take can save itself when run with `options` on a scene of
+    /// `solver`: it refuses to for a run that measures and for a solver other than Barnes-Hut
+    /// (#377), so a hires of either takes no checkpoint unless one is asked for.
+    static func takePassCheckpoints(_ options: [String], solver: SolverKind) -> Bool {
+        let asked = options.firstIndex(of: "--solver").flatMap {
+            $0 + 1 < options.count ? options[$0 + 1] : nil
+        }
+        let backend = asked ?? (solver == .restricted ? "restricted" : "barnes-hut")
+        return backend == "barnes-hut" && !TakePassRun.measuring.contains { options.contains("--\($0)") }
     }
 
     /// Whether a hires asked with `options` would pick up the checkpoint here: one of the same
@@ -691,9 +706,11 @@ extension SceneFolder {
                 arguments += ["--dt-switches", StepSwitches(switches).description]
             }
         }
-        // Every pass saves itself about every hour of its run (#240, #377).
-        let minutes = checkpointMinutes ?? Self.checkpointMinutes
-        guard minutes >= 0 else { throw HiresError.badCheckpoint }
+        // Every pass saves itself about every hour of its run (#240, #377), but a take pass that
+        // would refuse to, which is left to run without a checkpoint unless one is asked for.
+        let saves = pass == "full" || Self.takePassCheckpoints(rest, solver: file.solver)
+        let minutes = checkpointMinutes ?? (saves ? Self.checkpointMinutes : 0)
+        guard minutes.isFinite, minutes >= 0 else { throw HiresError.badCheckpoint }
         if minutes > 0 {
             arguments += ["--checkpoint", checkpoint.path]
             if !rest.contains("--checkpoint-frames") && !rest.contains("--checkpoint-steps") {
@@ -898,13 +915,14 @@ extension SceneFolder {
     }
 
     /// Puts a finished `hires` run's take, video and curves in place of the last run's. A run
-    /// that drew no video (`--no-video`) leaves none of another run's beside its take.
-    public func commitHires() throws {
+    /// that drew no video (`--no-video`) leaves none of another run's beside its take, not even
+    /// the half written one a run that failed here left.
+    public func commitHires(video: Bool = true) throws {
         for url in [take, hiresCurves] { try Self.commit(url) }
-        if exists(Self.partial(hiresVideo)) {
+        if video, exists(Self.partial(hiresVideo)) {
             try Self.commit(hiresVideo)
         } else {
-            try? FileManager.default.removeItem(at: hiresVideo)
+            for url in [Self.partial(hiresVideo), hiresVideo] { try? FileManager.default.removeItem(at: url) }
         }
         if exists(Self.partial(massiveSet)) { try Self.commit(massiveSet) }
     }

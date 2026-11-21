@@ -1,0 +1,484 @@
+{
+  "about": "Twenty candidates for named scenes, see docs/notes/twenty-galaxies.md. Coordinates are J2000 and approximate: check them in NED before asking for a cutout. Pictures under images/ are the agencies' screen size reduced to 1280 px, CC BY 4.0, to be shown with their credit unaltered.",
+  "tiers": {
+    "A": "a published orbit fitted to this object, and its shape is the stars' tides",
+    "B": "a model or an archetype exists, but part of the look is gas or the fit is loose",
+    "C": "no fitted model: the look can be approached, not reproduced"
+  },
+  "galaxies": [
+    {
+      "rank": 1,
+      "name": "Antennae",
+      "identifiers": [
+        "NGC 4038",
+        "NGC 4039",
+        "Arp 244"
+      ],
+      "j2000": "12:01:53.0 -18:52:01",
+      "distanceMpc": "22 (14 from the red giant branch tip)",
+      "what": "major merger, second passage",
+      "tier": "A",
+      "models": [
+        "Karl et al. 2010, arXiv:1003.0685",
+        "Privon et al. 2013, arXiv:1305.5865",
+        "Holincheck et al. 2016 (Galaxy Zoo: Mergers), system 62"
+      ],
+      "archetype": "antennae",
+      "picture": {
+        "id": "heic0615a",
+        "file": "images/heic0615a.jpg",
+        "page": "https://esahubble.org/images/heic0615a/",
+        "credit": "NASA, ESA, and the Hubble Heritage Team (STScI/AURA)-ESA/Hubble Collaboration. Acknowledgement: B. Whitmore (Space Telescope Science Institute) and James Long (ESA/Hubble)",
+        "licence": "CC BY 4.0"
+      },
+      "wide": "Legacy Surveys cutout antennae-ls (CC BY 4.0, Legacy Surveys / D. Lang (Perimeter Institute)); link only: https://esahubble.org/images/heic0615d/ (Digitized Sky Survey 2 credit)"
+    },
+    {
+      "rank": 2,
+      "name": "The Mice",
+      "identifiers": [
+        "NGC 4676A",
+        "NGC 4676B",
+        "Arp 242"
+      ],
+      "j2000": "12:46:10.2 +30:43:53",
+      "distanceMpc": "90",
+      "what": "major merger, just after the first passage",
+      "tier": "A",
+      "models": [
+        "Barnes 2004, arXiv:astro-ph/0402248",
+        "Privon et al. 2013, arXiv:1305.5865",
+        "Holincheck et al. 2016, system 26"
+      ],
+      "archetype": "mice",
+      "picture": {
+        "id": "heic0206h",
+        "file": "images/heic0206h.jpg",
+        "page": "https://esahubble.org/images/heic0206h/",
+        "credit": "NASA, H. Ford (JHU), G. Illingworth (UCSC/LO), M. Clampin (STScI), G. Hartig (STScI), the ACS Science Team, and ESA",
+        "licence": "CC BY 4.0"
+      },
+      "wide": "Legacy Surveys cutout mice-ls"
+    },
+    {
+      "rank": 3,
+      "name": "Whirlpool",
+      "identifiers": [
+        "M51a",
+        "NGC 5194",
+        "NGC 5195",
+        "Arp 85"
+      ],
+      "j2000": "13:29:52.7 +47:11:43",
+      "distanceMpc": "8.6",
+      "what": "grand design spiral and its companion",
+      "tier": "A",
+      "models": [
+        "Salo and Laurikainen 2000, MNRAS 319, 377",
+        "Theis and Spinneker 2003, Ap&SS 284, 495",
+        "Dobbs et al. 2010, arXiv:0912.1201"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "heic0506a",
+        "file": "images/heic0506a.jpg",
+        "page": "https://esahubble.org/images/heic0506a/",
+        "credit": "NASA, ESA, S. Beckwith (STScI), and The Hubble Heritage Team (STScI/AURA)",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 4,
+      "name": "Cartwheel",
+      "identifiers": [
+        "ESO 350-40"
+      ],
+      "j2000": "00:37:41.1 -33:42:59",
+      "distanceMpc": "150",
+      "what": "collisional ring",
+      "tier": "B",
+      "models": [
+        "Horellou and Combes 2001, Ap&SS 276, 1141",
+        "Renaud et al. 2018 (a Cartwheel-like ring), arXiv:1709.02826"
+      ],
+      "archetype": "ring",
+      "picture": {
+        "id": "weic2211a",
+        "file": "images/weic2211a.jpg",
+        "page": "https://esawebb.org/images/weic2211a/",
+        "credit": "NASA, ESA, CSA, STScI",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 5,
+      "name": "Stephan's Quintet",
+      "identifiers": [
+        "HCG 92",
+        "Arp 319"
+      ],
+      "j2000": "22:35:57.5 +33:57:36",
+      "distanceMpc": "90 (NGC 7320 is a foreground galaxy at 12)",
+      "what": "compact group of four, and an intruder",
+      "tier": "A",
+      "models": [
+        "Renaud et al. 2010, arXiv:1009.2740",
+        "Hwang et al. 2012, arXiv:1109.4161"
+      ],
+      "archetype": "compact-group",
+      "picture": {
+        "id": "weic2208a",
+        "file": "images/weic2208a.jpg",
+        "page": "https://esawebb.org/images/weic2208a/",
+        "credit": "NASA, ESA, CSA, and STScI",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 6,
+      "name": "Arp 273 (the Rose)",
+      "identifiers": [
+        "UGC 1810",
+        "UGC 1813"
+      ],
+      "j2000": "02:21:28.6 +39:22:31",
+      "distanceMpc": "90",
+      "what": "spiral torn into a rose by a smaller companion",
+      "tier": "A",
+      "models": [
+        "Holincheck et al. 2016, system 60"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "heic1107a",
+        "file": "images/heic1107a.jpg",
+        "page": "https://esahubble.org/images/heic1107a/",
+        "credit": "NASA, ESA and the Hubble Heritage Team (STScI/AURA)",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 7,
+      "name": "Arp 142 (Penguin and Egg)",
+      "identifiers": [
+        "NGC 2936",
+        "NGC 2937"
+      ],
+      "j2000": "09:37:44.0 +02:45:37",
+      "distanceMpc": "100",
+      "what": "spiral stretched by an elliptical",
+      "tier": "A",
+      "models": [
+        "Holincheck et al. 2016, system 3"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "weic2420a",
+        "file": "images/weic2420a.jpg",
+        "page": "https://esawebb.org/images/weic2420a/",
+        "credit": "NASA, ESA, CSA, STScI",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 8,
+      "name": "Tadpole",
+      "identifiers": [
+        "UGC 10214",
+        "Arp 188",
+        "VV 29"
+      ],
+      "j2000": "16:06:03.9 +55:25:32",
+      "distanceMpc": "130",
+      "what": "spiral with one 100 kpc tail after a small intruder",
+      "tier": "B",
+      "models": [
+        "Briggs et al. 2001, A&A 380, 418 (HI and the intruder's path)"
+      ],
+      "archetype": "tadpole",
+      "picture": {
+        "id": "heic0206a",
+        "file": "images/heic0206a.jpg",
+        "page": "https://esahubble.org/images/heic0206a/",
+        "credit": "NASA, Holland Ford (JHU), the ACS Science Team and ESA",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 9,
+      "name": "NGC 2207 and IC 2163",
+      "identifiers": [
+        "NGC 2207",
+        "IC 2163"
+      ],
+      "j2000": "06:16:22.0 -21:22:22",
+      "distanceMpc": "35",
+      "what": "grazing encounter, an eye-shaped disk",
+      "tier": "A",
+      "models": [
+        "Elmegreen et al. 1995, ApJ 453, 139",
+        "Struck et al. 2005, arXiv:astro-ph/0508660"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "heic2414a",
+        "file": "images/heic2414a.jpg",
+        "page": "https://esahubble.org/images/heic2414a/",
+        "credit": "NASA, ESA, CSA, STScI",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 10,
+      "name": "Arp 148 (Mayall's object)",
+      "identifiers": [
+        "Arp 148",
+        "VV 32"
+      ],
+      "j2000": "11:03:54.2 +40:50:58",
+      "distanceMpc": "150",
+      "what": "ring after a head-on hit, and a spike",
+      "tier": "A",
+      "models": [
+        "Holincheck et al. 2016, system 49"
+      ],
+      "archetype": "ring",
+      "picture": {
+        "id": "heic0810ae",
+        "file": "images/heic0810ae.jpg",
+        "page": "https://esahubble.org/images/heic0810ae/",
+        "credit": "NASA, ESA, the Hubble Heritage Team (STScI/AURA)-ESA/Hubble Collaboration and A. Evans (University of Virginia, Charlottesville/NRAO/Stony Brook University), K. Noll (STScI), and J. Westphal (Caltech)",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 11,
+      "name": "Arp 87",
+      "identifiers": [
+        "NGC 3808A",
+        "NGC 3808B"
+      ],
+      "j2000": "11:40:44.0 +22:25:46",
+      "distanceMpc": "100",
+      "what": "a bridge of stars wound round a companion",
+      "tier": "A",
+      "models": [
+        "Holincheck et al. 2016, system 37"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "heic0717a",
+        "file": "images/heic0717a.jpg",
+        "page": "https://esahubble.org/images/heic0717a/",
+        "credit": "NASA, ESA, and The Hubble Heritage Team (STScI/AURA)",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 12,
+      "name": "NGC 4650A",
+      "identifiers": [
+        "NGC 4650A"
+      ],
+      "j2000": "12:44:49.0 -40:42:52",
+      "distanceMpc": "40",
+      "what": "polar ring round a lenticular",
+      "tier": "B",
+      "models": [
+        "Bournaud and Combes 2003, arXiv:astro-ph/0301391"
+      ],
+      "archetype": "polar-ring",
+      "picture": {
+        "id": "opo9916a",
+        "file": "images/opo9916a.jpg",
+        "page": "https://esahubble.org/images/opo9916a/",
+        "credit": "The Hubble Heritage Team (AURA/STScI/NASA/ESA)",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 13,
+      "name": "Bode's Galaxy (M81)",
+      "identifiers": [
+        "M81",
+        "NGC 3031",
+        "M82",
+        "NGC 3077"
+      ],
+      "j2000": "09:55:33.2 +69:03:55",
+      "distanceMpc": "3.6",
+      "what": "grand design spiral, its arms raised by M82 and NGC 3077",
+      "tier": "B",
+      "models": [
+        "Yun 1999, IAU Symp. 186, 81",
+        "Oehm et al. 2017, arXiv:1701.01441"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "heic0710a",
+        "file": "images/heic0710a.jpg",
+        "page": "https://esahubble.org/images/heic0710a/",
+        "credit": "NASA, ESA and the Hubble Heritage Team (STScI/AURA). Acknowledgment: A. Zezas and J. Huchra (Harvard-Smithsonian Center for Astrophysics)",
+        "licence": "CC BY 4.0"
+      },
+      "wide": "link only: https://esahubble.org/images/heic0710k/ (Digitized Sky Survey 2 credit)"
+    },
+    {
+      "rank": 14,
+      "name": "Andromeda",
+      "identifiers": [
+        "M31",
+        "NGC 224",
+        "M32",
+        "NGC 205"
+      ],
+      "j2000": "00:42:44.3 +41:16:09",
+      "distanceMpc": "0.78",
+      "what": "our big neighbour, its satellites and its giant stream",
+      "tier": "B",
+      "models": [
+        "Fardal et al. 2006, arXiv:astro-ph/0501241",
+        "Fardal et al. 2013, arXiv:1307.3219"
+      ],
+      "archetype": "minor-merger",
+      "picture": {
+        "id": "heic2501a",
+        "file": "images/heic2501a.jpg",
+        "page": "https://esahubble.org/images/heic2501a/",
+        "credit": "NASA, ESA, B. Williams (University of Washington)",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 15,
+      "name": "Pinwheel",
+      "identifiers": [
+        "M101",
+        "NGC 5457",
+        "NGC 5474"
+      ],
+      "j2000": "14:03:12.6 +54:20:57",
+      "distanceMpc": "6.9",
+      "what": "lopsided face-on spiral and its companion",
+      "tier": "B",
+      "models": [
+        "Linden and Mihos 2022, arXiv:2206.13219"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "heic0602a",
+        "file": "images/heic0602a.jpg",
+        "page": "https://esahubble.org/images/heic0602a/",
+        "credit": "European Space Agency & NASA. CFHT image: Canada-France-Hawaii Telescope/J.-C. Cuillandre/Coelum. NOAO image: George Jacoby, Bruce Bohannan, Mark Hanna/NOAO/AURA/NSF",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 16,
+      "name": "Triangulum",
+      "identifiers": [
+        "M33",
+        "NGC 598"
+      ],
+      "j2000": "01:33:50.0 +30:39:37",
+      "distanceMpc": "0.85",
+      "what": "flocculent spiral, perhaps grazed by Andromeda",
+      "tier": "C",
+      "models": [
+        "McConnachie et al. 2009, Nature 461, 66 (its orbit round M31)"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "heic1901a",
+        "file": "images/heic1901a.jpg",
+        "page": "https://esahubble.org/images/heic1901a/",
+        "credit": "NASA, ESA, and M. Durbin, J. Dalcanton, and B. F. Williams (University of Washington)",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 17,
+      "name": "NGC 1300",
+      "identifiers": [
+        "NGC 1300"
+      ],
+      "j2000": "03:19:41.1 -19:24:41",
+      "distanceMpc": "19",
+      "what": "barred spiral",
+      "tier": "B",
+      "models": [],
+      "archetype": null,
+      "picture": {
+        "id": "opo0501a",
+        "file": "images/opo0501a.jpg",
+        "page": "https://esahubble.org/images/opo0501a/",
+        "credit": "NASA, ESA, and The Hubble Heritage Team (STScI/AURA)",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 18,
+      "name": "Sombrero",
+      "identifiers": [
+        "M104",
+        "NGC 4594"
+      ],
+      "j2000": "12:39:59.4 -11:37:23",
+      "distanceMpc": "9.5",
+      "what": "huge bulge, thin disk seen nearly edge on, dust lane",
+      "tier": "B",
+      "models": [],
+      "archetype": null,
+      "picture": {
+        "id": "heic2506a",
+        "file": "images/heic2506a.jpg",
+        "page": "https://esahubble.org/images/heic2506a/",
+        "credit": "ESA/Hubble & NASA, K. Noll",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 19,
+      "name": "Phantom",
+      "identifiers": [
+        "M74",
+        "NGC 628"
+      ],
+      "j2000": "01:36:41.7 +15:47:01",
+      "distanceMpc": "10",
+      "what": "isolated grand design spiral, face on",
+      "tier": "C",
+      "models": [],
+      "archetype": null,
+      "picture": {
+        "id": "potm2208a",
+        "file": "images/potm2208a.jpg",
+        "page": "https://esawebb.org/images/potm2208a/",
+        "credit": "ESA/Webb, NASA & CSA, J. Lee and the PHANGS-JWST Team. Acknowledgement: J. Schmidt",
+        "licence": "CC BY 4.0"
+      }
+    },
+    {
+      "rank": 20,
+      "name": "Hoag's Object",
+      "identifiers": [
+        "PGC 54559"
+      ],
+      "j2000": "15:17:14.4 +21:35:08",
+      "distanceMpc": "180",
+      "what": "a perfect ring round a round core",
+      "tier": "C",
+      "models": [
+        "Brosch et al. 2013, arXiv:1307.6368 (gas; origin still open)"
+      ],
+      "archetype": null,
+      "picture": {
+        "id": "opo0221a",
+        "file": "images/opo0221a.jpg",
+        "page": "https://esahubble.org/images/opo0221a/",
+        "credit": "NASA/ESA and The Hubble Heritage Team (STScI/AURA)",
+        "licence": "CC BY 4.0"
+      }
+    }
+  ]
+}

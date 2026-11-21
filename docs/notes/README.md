@@ -77,6 +77,7 @@ session. Read the note for an area before changing it.
 - [Flights](flights.md): camera paths for exports, written by hand or flown in the app and recorded, eye and aim on a spline against the video's time, anchors on galaxies, look keys, time frozen while the camera moves (#295, #298)
 - [Inside a galaxy](inside-a-galaxy.md): spike #296 and what #297 built from it for flights, the near plane, capped kernels, point stars, dust slabs from the eye, automatic exposure, motion blur and what they cost inside a disk at 8 M; and why two disks that cross cut each other in #297's flight (#353: the matter, not the drawing); the dust lace carried through the dust layer near a disk in place of #297's flattening (#354); a flight's slabs of dust laid on the matter in the frame, soft at every distance (#355)
 - [A match that is measured](photo-match.md): a real picture reduced to its extended light, the take as a histogram of its stars, the score (isophotes against correlations), the search, the mirror, the floor an archetype gets on the Antennae and the Mice (#320)
+- [Twenty galaxies to reproduce](twenty-galaxies.md): the shortlist for named scenes, why each, which have a published model of the very object, tiers A to C, the pictures and their licences in `references/catalogue/`
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first
@@ -95,6 +96,7 @@ session. Read the note for an area before changing it.
 - [One kernel source for Metal and CUDA](one-kernel-source.md): how to change the engine from now on, what the shared MSL may hold, `msl_compat.h` and the CPU target, `cuda/kernels.txt`, what the Mac's check, the workflow and a GPU session each catch, why Swift and Metal stay (#281)
 - [The tracer walk from its MSL text, on CUDA and on the CPU](cuda-walk-spike.md): spike #271, no line of MSL changed, what `msl_compat.h` and `cuda_cpu.h` do, float literals are doubles, the walk dump's format, the accuracy against Metal
 - [Whole scenes on rented GPUs, and more stars from inside](scenes-on-rented-gpus.md): a study on paper of the take pass in a flow both engines run, its checkpoints, a scene on an interruptible rented box, what each route costs on the M4 Max and on a 5090, and the three levers on the stars seen from inside (the drawing, more massive particles, light tracers on today's massive set)
+- [CUDA as a compute platform](cuda-platform.md): who asks a box for work (the Mac, a workflow that rents a box for one job, the provider's API from a cloud session), where takes live between sessions, and how a take that travelled is checked (#427)
 
 ## State
 

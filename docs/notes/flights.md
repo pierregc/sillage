@@ -54,6 +54,9 @@ cannot be read the one way it means.
   without one keeps the value before; the first key starts from 0.6, 0 and 0.
 - A key with none of `eye`, `aim` and `look` only pins time, and may not carry `fov`, `roll` or
   `exposure`.
+- `"pace": "nearness"` (#406): the eye's speed from this key to the next follows the distance to
+  the nearest matter (below). It goes on a key with `eye` and `aim`, never a look key, and the
+  next key that places the camera must not be a look key either.
 - `near`, for the whole file: the camera's near distance in kiloparsecs. A flight's camera takes a
   parsec when the file gives none (#297); every other camera keeps its kiloparsec. Particles fade
   out before it rather than being cut (below).
@@ -120,6 +123,24 @@ looking straight down neither flips nor spins; one that goes over the top comes 
 rights itself within a second. The carried vector is sampled once at 240 a second of video when the
 flight is resolved, so any frame can be asked in any order.
 
+**Paced by nearness** (#406, recommendation 2 of `immensity-inside-an-arm.md`). A star at
+distance d crosses the frame at a rate set by v / d, so an eye held at a set share of the
+nearness each second keeps the near field drifting at one rate on screen from far out to inside an
+arm, and a dive never stops slowing: the viewer reads the scale in how long it keeps slowing. A
+key with `"pace": "nearness"` keeps the path it has without it, eye, aim, roll and field of view
+alike, and times the eye along it so that its speed is the nearness times a share, the share that
+keeps the stretch's seconds. Consecutive paced keys make one run with one share, and the keys
+inside it are passed through, not at their `at`. Over `Flight.paceRamp` (1 s, a quarter of the run
+at most) at either end the speed eases from the one the path has there, none at the flight's own
+ends, so nothing jolts. Time, the take's moment, still runs through the keys' `at` as before.
+
+The nearness is measured once, as the flight is resolved, on the take's own particles (the framing
+take's, decoded on the CPU as `Recording.positions(at:)` does) at 48 places a stretch, each at its
+captured frame nearest its moment, and taken between them on the logarithm; `Flight.pacings` holds each run's
+share. From 20 kpc down to 250 pc above a disk in 10 s the share comes out at about half the
+nearness a second (`FlightTests`); the note's 15 s dive to an arm is about a third. A flight
+without `pace` is unchanged, to the bit.
+
 **Time** is #305's track through the keys that give `myr`: Fritsch and Carlson's monotone cubic,
 so it slows into a freeze, holds, picks up out of it, and never runs backwards
 (`docs/notes/variable-time.md`). A frame at the same captured position as the one before reuses
@@ -170,6 +191,15 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   square of its size, up to `nearStars` (4096); a star is `starSize` pixels of a frame 2160 high
   (1.5), its light shared among the pixels its box touches, and held under `starPeak` (2) times
   what the tone curve takes to white, so that it stays a point.
+- **Young stars in clusters** (#405, recommendation 1 of `immensity-inside-an-arm.md`): stars are
+  born in clusters and associations that come apart over tens of megayears (Lada and Lada 2003,
+  Grasha et al. 2017), so a particle with a real age puts `clusterShare` (0.8) of its stars in
+  `clusters` (4) clusters of its own, laid in its kernel as its stars are, each a Plummer sphere
+  of radius `clusterBirth` (3 pc) at birth growing by `clusterGrowth` (1 pc) a megayear. Once a
+  cluster is as wide as the stars' spread (about 50 Myr for a kernel of 50 pc) the stars stand
+  where they stand for an old particle, to the bit, so the old field and its look are unchanged
+  and the blue stars come in knots along an arm. The age is the splat's: what the run formed
+  ages as it goes, a sampled star keeps the age it was drawn with. `clusters: 0` turns it off.
 - **The near field** (`field`, `[3, 8]` kpc of view depth): all of the above applies wholly nearer
   than the first distance and not at all past the second.
 - **Dust slabs from the eye** once inside (`slabs`, `[0.3, 1.5, 7.5]` kpc), soft; farther out,
@@ -234,6 +264,80 @@ renders.
 `Flight`, `FlightFile` and `FlightTake` are portable Swift beside `TakeFraming`, built by
 `scripts/linux.sh`, so the CUDA engine's stills (#277) and full pass (#278, #300) can follow a
 flight by asking `Flight.shot(atSeconds:look:)` and `Flight.captured(atSeconds:)`.
+
+## The export on CUDA
+
+#382, part of #375. `sillage-cuda export` draws a flight's video on a Linux machine, on the take
+it holds:
+
+```
+scripts/linux.sh tool
+.build/linux/sillage-cuda export <scene folder | take> --flight <name | file> \
+    [--look <look>] [--preset 1080p|4k] [--framing <take>] [--resume]
+```
+
+Given a scene folder it reads the folder's take, look and captured rate and writes
+`exports/<flight>-<preset>.mp4`, as the Mac does; given a take alone, `--look` and `--out` say
+the rest, and `--rate` when no `hires.json` or `clip.json` lies beside it. `--take`, `--width`,
+`--height`, `--fps`, `--start`, `--duration`, `--codec`, `--bitrate`, `--stills` and
+`--still-frames` are the Mac's. The video is encoded by ffmpeg (`FFmpegVideo`).
+
+**One flow for a flight's frames.** What decides a frame is `FlightFrames`
+(`Sources/SillageRender/FlightFrames.swift`), portable Swift that knows no engine: the camera
+and the moment from `Flight`, where the frame reads the take (among a key-frame take's own
+frames with `--framing`, #379), the look and the painted arms through `TakeFraming`, the
+nearness and the matter's depth, the renders a frame's shutter passes, the report, and the
+exposure: the scale of a look that measures its own on the look keys (#340), the target, and the
+trim solved every quarter second of the whole flight and eased. An engine gives it a
+`FlightStage`: the renderer's settings, the take's positions at a place with their eased kernel
+lengths, the grain, and a render read back. `CUDATakeStills` is the CUDA engine's stage, and
+`sillage-cuda still --flight` goes through the same flow. `FlightFrames` follows `TakeExport`
+line for line, but `TakeExport` does not call it yet: a cloud session cannot check Metal's bytes,
+so the Mac moves onto it in #426. Until then a change to a flight's frames is made in both.
+
+**Drawn in segments, kept as they come.** A flight of an hour on a box that can be taken back
+must not start again. The video is drawn in segments of whole files, a second of video each by
+default (`--segment-frames`), in `.<name>.segments` beside the output:
+
+- `plan.json`: what the export is (the take's name, size and counts, the digests of the look and
+  of the flight, the size, the rate, the part of the flight, the codec) and the exposure of the
+  whole flight, floats written as their bits. It is measured once, by the first run, whatever
+  part of the flight that run draws, and every later run draws under what is written.
+- `segment-NNNNN.mp4`, moved into place once ffmpeg has closed it with every frame, and
+  `segment-NNNNN.json` beside it: the frames it holds, a digest of them as drawn, what they took
+  of the inside of a galaxy, the device.
+
+A run that finds every segment joins them without encoding again (`FFmpegVideo.join`, which
+counts the frames), moves the video into place and removes the folder. A run that stops, killed,
+out of memory or with its box, loses the segment it was drawing. `--resume` draws the segments
+that are missing and joins; it refuses a folder whose plan is another export's and says what
+differs. Without `--resume` an export starts again from nothing. A resumed video is the video of
+a run that never stopped, frame for frame and byte for byte on the CPU target. With `--resume` a
+video that is whole, and no older than its take, look and flight, is left as it is: the same line
+can run again each time a box restarts.
+
+**Several GPUs, or several boxes, on one video.** `--part k/n` draws one segment in n and keeps
+the others' as `--resume` does: `--part 1/2 --device 0` and `--part 2/2 --device 1` side by
+side draw one video, and the part that finds every segment drawn joins them. Each GPU takes one
+export: #283 started eight draws on one 24 GB card, five ran out of its memory and the three left
+slowed one another to 350 s a frame. After its first segment an export prints what it holds on
+the device, what is free and how many more would fit; out of memory, it says so with those
+numbers and keeps its segments.
+
+**Before the video is paid for.** `--flight-keys <dir>` draws the frame at each key as a PNG,
+each at its own exposure, and `--flight-at <s,...>` those seconds instead, as on the Mac.
+`--width 960 --height 540` draws the whole flight small. A still is drawn the same whatever was
+drawn before it in the same run.
+
+**The words over the picture** (#317) are the Mac's: Core Text sets them. An export whose look,
+scene folder or `--overlay` asks for them is refused, and `--no-overlay` draws it without.
+
+**What it costs is not measured.** #283 drew 4K stills from inside an arm in 50 to 110 s on an
+RTX 3090, where the M4 Max takes 94 to 360 ms a render. `--profile` waits for the device after
+each phase and prints where the time went, the exposure's pre-pass apart from the frames, and
+`--large-splats <pixels>|off` chooses how large splats are drawn
+([cuda-engine.md](cuda-engine.md#a-flights-video-382)). #424 runs both on a rented card before
+any flight is drawn there, and #425 makes a render fast.
 
 ## Key frames and visits
 

@@ -2,12 +2,69 @@ import Foundation
 import SillageCore
 import SillageRender
 
+/// Seconds spent in the phases of a drawing, kept when a run is profiled (`--profile`): each
+/// phase waits for the device before its time is read, so the time is the phase's own, and a
+/// phase timed inside another is taken off the outer one's.
+public final class PhaseTimes {
+    public private(set) var order: [String] = []
+    public private(set) var seconds: [String: Double] = [:]
+    public private(set) var counts: [String: Int] = [:]
+    /// Seconds of the phases timed inside each phase still running.
+    private var within: [Double] = []
+
+    public init() {}
+
+    public func add(_ phase: String, _ spent: Double) {
+        if seconds[phase] == nil { order.append(phase) }
+        seconds[phase, default: 0] += spent
+        counts[phase, default: 0] += 1
+    }
+
+    /// Runs `work`, waits for the device, and counts the time as `phase`'s.
+    public func time<T>(_ phase: String, on context: CUDAContext?, _ work: () throws -> T) throws -> T {
+        let started = Date()
+        within.append(0)
+        do {
+            let result = try work()
+            try context?.synchronize()
+            let spent = Date().timeIntervalSince(started)
+            add(phase, spent - within.removeLast())
+            if !within.isEmpty { within[within.count - 1] += spent }
+            return result
+        } catch {
+            within.removeLast()
+            throw error
+        }
+    }
+
+    /// The seconds of every phase together.
+    public var total: Double { seconds.values.reduce(0, +) }
+
+    /// A line a phase, the longest first, each with its share of `total` seconds, then what of
+    /// `total` no phase counted.
+    public func lines(total: Double) -> [String] {
+        var lines = order.sorted { (seconds[$0] ?? 0) > (seconds[$1] ?? 0) }.map { phase in
+            let spent = seconds[phase] ?? 0
+            let count = counts[phase] ?? 0
+            return String(
+                format: "%@: %.2f s, %.0f %%, %d times, %.1f ms each", phase, spent,
+                100 * spent / max(total, 1e-9), count, 1000 * spent / Double(max(count, 1)))
+        }
+        let rest = total - self.total
+        if rest > 0 {
+            lines.append(String(format: "the rest: %.2f s, %.0f %%", rest, 100 * rest / max(total, 1e-9)))
+        }
+        return lines
+    }
+}
+
 /// Frames of a take drawn on CUDA as `TakeExport` draws them with Metal (#277): the camera the
 /// director or the look gives each moment (`TakeFraming`), the positions the take holds there,
 /// the smoothing lengths of the tree built over them, the look and the film grain of that frame
 /// of a video, then the particle passes and the post-processing. The two engines draw the same
 /// picture from the same take, look and framing; `docs/notes/cuda-engine.md` says how close.
-public final class CUDATakeStills {
+/// The frames of a flight go through `FlightFrames`, which it is the engine's stage of (#382).
+public final class CUDATakeStills: FlightStage {
     public let take: RecordingFile.Loaded
     public let framing: RecordingFile.Loaded
     public let look: LookFile
@@ -16,6 +73,12 @@ public final class CUDATakeStills {
     public let width: Int
     public let height: Int
     public let renderer: CUDARenderer
+    /// Host threads the CPU target draws a pass from; a GPU ignores it.
+    public var threads = 1
+    /// Where the time of each phase goes when the drawing is profiled.
+    public var phases: PhaseTimes? {
+        didSet { renderer.phases = phases }
+    }
 
     private let context: CUDAContext
     private let replay: ShotReplay
@@ -23,14 +86,21 @@ public final class CUDATakeStills {
     private let held: CUDABuffer
     private let lengths: CUDABuffer
     private let count: Int
-    /// The flight the frames of `flightStill` are drawn along (#347), when the stills have one.
-    public let flight: Flight?
+    /// The take's positions at the moment staged, in pinned memory, and those of a captured
+    /// frame beside it while its tree is built.
+    private let decoded: CUDAHostMemory
+    private var beside: CUDAHostMemory?
+    /// Where the renderer's positions and lengths stand: a frame at the same moment of the
+    /// take, as a freeze gives, draws from them again.
+    private var staged: FlightFrames.Place?
+    /// How many times the take was decoded for a flight's frame, for the tests.
+    private(set) var stagings = 0
+    /// The frames of the flight `flightStill` and `flightFrame` draw (#347), when there is one.
+    public let flightFrames: FlightFrames?
+    public var flight: Flight? { flightFrames?.flight }
     /// The kernel lengths of the captured frames a flight's moment lies between, kept for the
     /// next moment: `EasedSmoothing`'s two fields.
     private var easedFields: [(frame: Int, lengths: [Float])] = []
-    /// A flight's exposure, measured once: the scale of the photograph it leaves from, and the
-    /// mean luminance its frames are held under.
-    private var flightExposure: (scale: ExposureScale?, target: Float)?
     /// What the last flight frame drawn took of the inside of a galaxy.
     public private(set) var lastFlightFrame: FlightFrame?
 
@@ -45,12 +115,22 @@ public final class CUDATakeStills {
         public var stars: Int
     }
 
+    /// Pixels of a splat's square past which a flight's frames set it aside for a block of
+    /// threads on a GPU, the second way for large splats: from inside a galaxy the near kernels
+    /// cover tens of thousands of pixels, which one thread a particle walks alone while its
+    /// warp waits. The bits are the first way's.
+    public static let flightLargeSplatPixels = 1_024
+
+    /// Splats a pass may set aside of `drawn` particles; the rest are drawn the first way.
+    public static func largeSplatCapacity(drawn: Int) -> Int { min(max(drawn / 4, 1_024), 1 << 20) }
+
     /// `framing` is another take of the same run that gives the camera, the painted arms, the
-    /// time and the exposure, as `export --framing` has it (#239).
+    /// time and the exposure, as `export --framing` has it (#239). `largeSplatPixels` draws the
+    /// splats past that many pixels the second way; 0 draws every splat from its own thread.
     public init(
         context: CUDAContext, take: RecordingFile.Loaded, look: LookFile, capturedRate: Int,
         width: Int, height: Int, framing: RecordingFile.Loaded? = nil,
-        laceTexels: Int = DustWeb.laceTexels, flight file: FlightFile? = nil
+        laceTexels: Int = DustWeb.laceTexels, flight file: FlightFile? = nil, largeSplatPixels: Int = 0
     ) throws {
         self.context = context
         self.take = take
@@ -60,9 +140,21 @@ public final class CUDATakeStills {
         self.width = width
         self.height = height
         count = take.recording.particleCount
+        // The flight first: a take or a flight that cannot be drawn is refused before the
+        // device holds anything.
+        flightFrames = try file.map {
+            try FlightFrames(
+                take: take, look: look, capturedRate: capturedRate, width: width, height: height,
+                framing: framing, flight: $0)
+        }
+        let particles = take.particles
+        let drawn = particles.visibleCount > 0 ? particles.visibleCount : particles.count
         renderer = try CUDARenderer(
-            context: context, particles: take.particles,
-            settings: look.renderSettings(width: width, height: height), laceTexels: laceTexels)
+            context: context, particles: particles,
+            settings: look.renderSettings(width: width, height: height),
+            largeSplatCapacity: largeSplatPixels > 0 ? Self.largeSplatCapacity(drawn: drawn) : 0,
+            laceTexels: laceTexels)
+        renderer.largeSplatPixels = largeSplatPixels
         if self.framing.recording !== take.recording {
             renderer.luminosityNormalisation = ParticleAttributes.luminosityNormalisation(
                 formation: self.framing.particles.formation)
@@ -74,14 +166,7 @@ public final class CUDATakeStills {
             context: context, count: count, leafCapacity: 24, nodeCapacity: count / 4 + 1024)
         held = try context.makeBuffer(length: count * 16)
         lengths = try context.makeBuffer(length: count * 4)
-        // Its `look` keys stand on the camera the stills draw without it, as an export's do.
-        let cameras = replay
-        let framed = FlightTake(take: framing ?? take, capturedRate: max(capturedRate, 1))
-        flight = try file.map {
-            try Flight(
-                $0, take: framed,
-                look: { cameras.shot(atCaptured: $0).camera })
-        }
+        decoded = try CUDAHostMemory(context: context, length: count * 16)
     }
 
     public var capturedFrames: Int { take.recording.capturedFrames }
@@ -104,13 +189,17 @@ public final class CUDATakeStills {
         threads: Int = 1, light: [Float]? = nil
     ) throws -> UnsafeRawBufferPointer {
         renderer.inside = nil
-        let decoded = try positions(atCaptured: position)
-        try buildLengths(decoded)
+        staged = nil
+        guard let blend = take.recording.blend(atCaptured: position) else {
+            throw RecordingFile.Failure.truncated
+        }
+        let positions = try decode(blend, into: decoded)
+        try buildLengths(positions)
         guard
             let shot = TakeFraming.prepare(
                 renderer, look: look, replay: replay, framing: framing, at: position)
         else { throw RecordingFile.Failure.truncated }
-        try renderer.upload(positions: decoded)
+        try renderer.positions.upload(positions, at: renderer.positionOffset)
         try renderer.setSmoothing(lengths)
         renderer.setGrain(frame: index)
         if let light {
@@ -119,40 +208,64 @@ public final class CUDATakeStills {
         return try renderer.picture(camera: shot.camera, format: format, threads: threads)
     }
 
-    private func positions(atCaptured position: Double) throws -> [SIMD3<Float>] {
-        guard let blend = take.recording.blend(atCaptured: position) else {
-            throw RecordingFile.Failure.truncated
-        }
-        return take.recording.positions(at: blend)
+    private func timed<T>(_ phase: String, device: Bool = true, _ work: () throws -> T) throws -> T {
+        guard let phases else { return try work() }
+        return try phases.time(phase, on: device ? context : nil, work)
     }
 
-    /// The smoothing lengths of the tree built over `decoded`, into `lengths`.
-    private func buildLengths(_ decoded: [SIMD3<Float>]) throws {
-        try held.upload(decoded)
-        var grown = 0
-        repeat {
-            if try builder.overflowed {
-                try builder.grow()
-                grown += 1
+    /// The take's positions at `blend` into `memory`, sixteen bytes each.
+    private func decode(_ blend: Recording.Blend, into memory: CUDAHostMemory) throws
+        -> UnsafeRawBufferPointer
+    {
+        try timed("take decode", device: false) {
+            let values = memory.bytes.bindMemory(to: SIMD3<Float>.self)
+            guard take.recording.positions(at: blend, into: values) else {
+                throw RecordingFile.Failure.truncated
             }
-            try builder.buildCells(positions: held)
-        } while try builder.overflowed && grown < 20
-        try builder.buildSmoothing(into: lengths, drawn: count)
+            return UnsafeRawBufferPointer(rebasing: memory.bytes[0..<(count * 16)])
+        }
+    }
+
+    /// The smoothing lengths of the tree built over `positions`, into `lengths`.
+    private func buildLengths(_ positions: UnsafeRawBufferPointer) throws {
+        try timed("tree and kernel lengths") {
+            try held.upload(positions)
+            var grown = 0
+            repeat {
+                if try builder.overflowed {
+                    try builder.grow()
+                    grown += 1
+                }
+                try builder.buildCells(positions: held)
+            } while try builder.overflowed && grown < 20
+            try builder.buildSmoothing(into: lengths, drawn: count)
+        }
     }
 
     /// The kernel lengths of a flight's moment, into `lengths` (#297's `EasedSmoothing`): the
-    /// trees are built at the take's captured frames alone, and a moment between two of them
-    /// takes the lengths between theirs, so that they change evenly while time runs slowly.
-    /// `decoded` holds the positions of the moment itself.
-    private func easeLengths(at position: Double, _ decoded: [SIMD3<Float>]) throws {
-        let last = capturedFrames - 1
+    /// trees are built at the take's own frames alone, and a moment between two of them takes
+    /// the lengths between theirs, so that they change evenly while time runs slowly.
+    /// `positions` holds the particles of the moment itself.
+    private func easeLengths(at place: FlightFrames.Place, _ positions: UnsafeRawBufferPointer) throws {
+        let recording = take.recording
+        let position = place.stored ?? place.captured
+        let last = recording.capturedFrames - 1
         let lower = min(max(Int(position.rounded(.down)), 0), last)
         let share = Float(min(max(position - Double(lower), 0), 1))
         let wanted = share > 0 && lower < last ? [lower, lower + 1] : [lower]
         easedFields.removeAll { !wanted.contains($0.frame) }
         for frame in wanted where !easedFields.contains(where: { $0.frame == frame }) {
-            try buildLengths(
-                Double(frame) == position ? decoded : positions(atCaptured: Double(frame)))
+            if Double(frame) == position {
+                try buildLengths(positions)
+            } else {
+                let blend =
+                    place.run.map { recording.blend(atStored: Double(frame), within: $0) }
+                    ?? recording.blend(atCaptured: Double(frame))
+                guard let blend else { throw RecordingFile.Failure.truncated }
+                let scratch = try beside ?? CUDAHostMemory(context: context, length: count * 16)
+                beside = scratch
+                try buildLengths(decode(blend, into: scratch))
+            }
             easedFields.append((frame, try lengths.download(Float.self, count: count)))
         }
         func field(_ frame: Int) throws -> [Float] {
@@ -167,81 +280,39 @@ public final class CUDATakeStills {
         try lengths.upload(before.indices.map { before[$0] + (after[$0] - before[$0]) * share })
     }
 
-    /// Sets the renderer on the moment of the flight at `seconds`: the positions, the eased
-    /// lengths, the shot's look, and how far the eye is from matter there.
-    private func stage(_ flight: Flight, atSeconds seconds: Double) throws -> (
-        shot: ShotReplay.Shot, within: InsideFrame
-    ) {
-        let captured = flight.captured(atSeconds: seconds)
-        let decoded = try positions(atCaptured: captured)
-        try easeLengths(at: captured, decoded)
-        let frame = TimeTrack.Frame(played: seconds * Double(capturedRate), captured: captured)
-        guard
-            let shot = TakeFraming.prepare(
-                renderer, look: look, shot: flight.shot(atSeconds: seconds, look: look.look),
-                framing: framing, at: frame)
-        else { throw RecordingFile.Failure.truncated }
-        try renderer.upload(positions: decoded)
-        try renderer.setSmoothing(lengths)
-        let aspect = Float(renderer.settings.width) / Float(max(renderer.settings.height, 1))
-        let (nearness, matter) = decoded.withUnsafeBytes { bytes in
-            bytes.baseAddress.map {
-                (
-                    Nearness.distance(from: shot.camera.eye, to: $0, count: renderer.drawnCount),
-                    MatterDepth.knots(
-                        camera: shot.camera, aspectRatio: aspect, points: $0, count: renderer.drawnCount)
-                )
-            } ?? (.infinity, nil)
-        }
-        let within = InsideFrame(
-            settings: flight.inside, nearness: nearness, matter: matter ?? [],
-            look: flight.look(atSeconds: seconds))
-        renderer.inside = within
-        return (shot, within)
+    // MARK: - The stage of a flight's frames
+
+    public var styling: any FrameStyling { renderer }
+    public var drawnCount: Int { renderer.drawnCount }
+    public var starsDrawn: Int { renderer.starsDrawn }
+
+    public var inside: InsideFrame? {
+        get { renderer.inside }
+        set { renderer.inside = newValue }
     }
 
-    private func pixels(_ camera: Camera, threads: Int) throws -> [UInt8] {
-        [UInt8](try renderer.picture(camera: camera, format: .rgba, threads: threads))
+    public func setGrain(frame index: Int) { renderer.setGrain(frame: index) }
+
+    public func stage(_ place: FlightFrames.Place) throws -> UnsafeRawPointer {
+        guard let base = decoded.bytes.baseAddress else { throw RecordingFile.Failure.truncated }
+        if staged == place { return UnsafeRawPointer(base) }
+        staged = nil
+        guard let blend = place.blend(in: take.recording) else { throw RecordingFile.Failure.truncated }
+        let positions = try decode(blend, into: decoded)
+        try easeLengths(at: place, positions)
+        try timed("upload") {
+            try renderer.positions.upload(positions, at: renderer.positionOffset)
+            try renderer.setSmoothing(lengths)
+        }
+        staged = place
+        stagings += 1
+        return UnsafeRawPointer(base)
     }
 
-    /// The exposure of a flight, as `TakeExport` measures it (#297): the scale of a look that
-    /// takes its exposure from the frames (#340), measured on the photograph the flight leaves
-    /// from, its look keys or its first frame; and the mean luminance the automatic exposure
-    /// holds its frames under, the settings' or the brightest of the look keys' when that is
-    /// more.
-    private func exposure(of flight: Flight, threads: Int) throws -> (scale: ExposureScale?, target: Float) {
-        if let flightExposure { return flightExposure }
-        let keys = flight.file.keys.filter { $0.look == true }.map(\.at)
-        var scale: ExposureScale?
-        if let wanted = look.exposure {
-            let moments = keys.isEmpty ? [0] : keys
-            var solutions: [ExposureSolver.Solution] = []
-            for index in ClipExposure.samples(of: moments.count) {
-                let (shot, _) = try stage(flight, atSeconds: moments[index])
-                let solved = try ExposureSolver.solve(
-                    target: wanted, stretches: shot.look.stretch > 0,
-                    draw: { scale in
-                        renderer.apply(scale.applied(to: shot.look))
-                        return ExposureMeter.read(
-                            rgba: try pixels(shot.camera, threads: threads), width: width, height: height)
-                    })
-                if let solved { solutions.append(solved) }
-            }
-            if !solutions.isEmpty { scale = ExposureSolver.held(solutions) }
+    public func measure(camera: Camera) throws -> [UInt8] {
+        try timed("exposure measure") {
+            [UInt8](try renderer.picture(camera: camera, format: .rgba, threads: threads))
         }
-        var target = Double(flight.inside.exposure)
-        if target > 0 {
-            for seconds in keys {
-                let (shot, _) = try stage(flight, atSeconds: seconds)
-                renderer.apply(scale?.applied(to: shot.look) ?? shot.look)
-                target = max(
-                    target,
-                    InsideExposure.meanLuminance(rgba: try pixels(shot.camera, threads: threads)))
-            }
-        }
-        let measured = (scale, Float(target))
-        flightExposure = measured
-        return measured
     }
 
     /// The frame of the flight at `seconds` as the video's frame `index` is drawn (#347), as
@@ -255,39 +326,36 @@ public final class CUDATakeStills {
         atSeconds seconds: Double, frame index: Int, interval: Double = 0,
         format: CUDAPost.Format = .rgb, threads: Int = 1
     ) throws -> UnsafeRawBufferPointer {
-        guard let flight else { throw CUDAError(.invalidArgument, "these stills have no flight") }
-        guard seconds >= 0, seconds <= flight.seconds else {
-            throw CUDAError(.invalidArgument, "\(seconds) s is outside the flight's \(flight.seconds) s")
+        guard let flightFrames else { throw CUDAError(.invalidArgument, "these stills have no flight") }
+        self.threads = threads
+        let frame = try flightFrames.still(on: self, atSeconds: seconds, interval: interval)
+        return try draw(frame, of: flightFrames, index: index, format: format, stops: frame.stops)
+    }
+
+    /// A frame of a video of the flight (#382), as `TakeExport.write` draws it: `frame` at the
+    /// exposure measured for the whole flight (`FlightFrames.measure`), averaged from the renders
+    /// a frame `interval` seconds long passes, with the grain of the video's frame `index`.
+    public func flightFrame(
+        _ frame: TimeTrack.Frame, index: Int, interval: Double, exposure: FlightFrames.Exposure,
+        format: CUDAPost.Format = .rgb
+    ) throws -> UnsafeRawBufferPointer {
+        guard let flightFrames else { throw CUDAError(.invalidArgument, "these stills have no flight") }
+        let prepared = try timed("frame set up", device: false) {
+            try flightFrames.prepare(
+                on: self, at: frame, exposure: exposure.scale, trims: exposure.trims, interval: interval)
         }
-        let (scale, target) = try exposure(of: flight, threads: threads)
-        let (shot, within) = try stage(flight, atSeconds: seconds)
-        func exposed(_ stops: Double) -> RenderLook {
-            let trimmed = InsideExposure.trimmed(shot.look, stops: stops)
-            return scale?.applied(to: trimmed) ?? trimmed
-        }
-        var stops = 0.0
-        if target > 0, !flight.lookSpans.contains(where: { $0.contains(seconds) }) {
-            var failure: (any Error)?
-            stops = InsideExposure.solve(target: Double(target)) { stops in
-                renderer.apply(exposed(stops))
-                do {
-                    return InsideExposure.meanLuminance(rgba: try pixels(shot.camera, threads: threads))
-                } catch {
-                    failure = failure ?? error
-                    return 0
-                }
-            }
-            if let failure { throw failure }
-        }
-        renderer.apply(exposed(stops))
-        let views =
-            interval > 0
-            ? flight.cameras(atSeconds: seconds, interval: interval, frame: within, height: height)
-            : [shot.camera]
+        return try draw(prepared, of: flightFrames, index: index, format: format, stops: nil)
+    }
+
+    private func draw(
+        _ frame: FlightFrames.Frame, of flightFrames: FlightFrames, index: Int, format: CUDAPost.Format,
+        stops: Double?
+    ) throws -> UnsafeRawBufferPointer {
         renderer.setGrain(frame: index)
-        let picture = try renderer.picture(cameras: views, format: format, threads: threads)
+        let picture = try renderer.picture(cameras: frame.cameras, format: format, threads: threads)
+        flightFrames.note(self, stops: stops)
         lastFlightFrame = FlightFrame(
-            nearness: within.nearness, stops: stops, renders: max(views.count - 1, 1),
+            nearness: frame.within.nearness, stops: frame.stops, renders: frame.renders,
             stars: renderer.starsDrawn)
         return picture
     }

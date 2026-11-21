@@ -101,6 +101,14 @@ public final class CUDAContext {
         return (Int(now), Int(peak))
     }
 
+    /// The device memory free now, whichever process holds the rest, and the device's whole,
+    /// in bytes; nil on the CPU target, which has no device.
+    public var freeMemory: (free: Int, total: Int)? {
+        var (free, total): (UInt64, UInt64) = (0, 0)
+        guard sc_context_free_memory(handle, &free, &total) == SC_OK, total > 0 else { return nil }
+        return (Int(free), Int(total))
+    }
+
     public func makeBuffer(length: Int) throws -> CUDABuffer {
         try CUDABuffer(context: self, length: length)
     }

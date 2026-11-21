@@ -6,8 +6,8 @@ import SillageRender
 /// `sillage-cuda`, the CUDA engine's command on Linux (#277, #278, #378): `hires` computes a scene
 /// folder, the pass that writes its take or its full pass, on the GPU library or on the CPU
 /// target, whichever it was linked with; `check` holds that engine to the reference outputs
-/// first; `still` draws chosen frames of a take as PNGs; `status` says how far a run has got.
-/// docs/notes/cuda-engine.md.
+/// first; `still` draws chosen frames of a take as PNGs; `export` draws a flight's video (#382);
+/// `status` says how far a run has got. docs/notes/cuda-engine.md.
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("sillage-cuda: \(message)\n".utf8))
@@ -24,6 +24,12 @@ let usage = """
                [--preset 1080p|4k|vertical|square|whatsapp] [--width W --height H]
                --frames 0,200,900 [--fps N] [--rate N] [--threads N] --out <dir>
            sillage-cuda still <take> --look <look> --flight <file> --seconds 0,2.5,9 [...] --out <dir>
+           sillage-cuda export <scene folder | take> --flight <name | file> [--look <look>]
+               [--framing <massive take>] [--preset 1080p|4k|vertical|square|whatsapp]
+               [--width W --height H] [--fps N] [--start s] [--duration s] [--codec hevc|h264|prores]
+               [--bitrate Mbit] [--out <file>] [--resume] [--part k/n] [--device N] [--profile]
+           sillage-cuda export <scene folder | take> --flight <name | file> --flight-keys <dir>
+               [--flight-at 0,2.5,9]
            sillage-cuda black-hole still <folder> <png> [--at t] [--look name] [--width W --height H]
                [--elevation deg] [--azimuth deg] [--distance r] [--fov deg] [--straight] [--images n]
                [--temperature radius|crossing] [--hottest K] [--beaming x] [--exposure x] [--stars n]
@@ -60,6 +66,20 @@ let usage = """
     in place of --frames: each is the frame the video shows there at --fps, drawn from inside a
     galaxy where the eye is near matter (point stars, motion blur) at its own automatic exposure.
 
+    export draws the video of a flight as sillage-render export --flight does on the Mac (#382):
+    the camera, the time, the inside of a galaxy and the exposure of the flight, measured once
+    along the whole of it, into exports/<flight>-<preset>.mp4 of the scene folder, encoded by
+    ffmpeg. The video is drawn in segments of whole files (--segment-frames N, a second of video
+    by default) kept beside it until it is whole: a run that stops loses one at most, --resume
+    draws the ones missing and joins them without encoding them again, and --part k/n draws one
+    segment in n, for several GPUs (--device N) or several boxes on one video. --flight-keys
+    draws the frame at every key of the flight, or at the seconds of --flight-at, as PNGs, each
+    at its own exposure, and no video. --no-overlay draws a look that asks for words without
+    them: they are the Mac's. --stills <dir> --still-frames 0,12 keeps those frames as PNGs,
+    --large-splats <pixels>|off sets the size past which a splat is drawn by a block of threads
+    on a GPU (1024 by default, the same bits either way), --profile times each phase, and --rate,
+    --take and --threads are as for still and hires.
+
     match finds the moment and the view where the take overlaps a real picture best, on the CPU,
     as sillage-render match does (#320); `sillage-cuda match` alone gives its options.
 
@@ -74,7 +94,7 @@ let usage = """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 guard let command = arguments.first,
-    ["still", "hires", "check", "status", "match", "black-hole", "take"].contains(command)
+    ["still", "hires", "check", "status", "match", "black-hole", "take", "export"].contains(command)
 else {
     print(usage)
     exit(arguments.isEmpty || arguments.first == "help" ? 0 : 2)
@@ -201,6 +221,20 @@ if command == "hires" {
             started: started)
     } catch {
         fail("hires: \(error)")
+    }
+    exit(0)
+}
+
+if command == "export" {
+    guard let path = rest.first, !path.hasPrefix("--") else { fail("no scene folder or take\n\n\(usage)") }
+    signal(SIGPIPE, SIG_IGN)
+    do {
+        let context = try CUDAContext(device: option("device").flatMap { Int($0) } ?? 0)
+        try CUDAFlightExport.run(
+            path, options: Array(rest.dropFirst()), context: context,
+            threads: integer("threads") ?? ProcessInfo.processInfo.activeProcessorCount)
+    } catch {
+        fail("export: \(error)")
     }
     exit(0)
 }
