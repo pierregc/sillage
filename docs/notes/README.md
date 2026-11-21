@@ -96,6 +96,7 @@ session. Read the note for an area before changing it.
 - [One kernel source for Metal and CUDA](one-kernel-source.md): how to change the engine from now on, what the shared MSL may hold, `msl_compat.h` and the CPU target, `cuda/kernels.txt`, what the Mac's check, the workflow and a GPU session each catch, why Swift and Metal stay (#281)
 - [The tracer walk from its MSL text, on CUDA and on the CPU](cuda-walk-spike.md): spike #271, no line of MSL changed, what `msl_compat.h` and `cuda_cpu.h` do, float literals are doubles, the walk dump's format, the accuracy against Metal
 - [Whole scenes on rented GPUs, and more stars from inside](scenes-on-rented-gpus.md): a study on paper of the take pass in a flow both engines run, its checkpoints, a scene on an interruptible rented box, what each route costs on the M4 Max and on a 5090, and the three levers on the stars seen from inside (the drawing, more massive particles, light tracers on today's massive set)
+- [CUDA as a compute platform](cuda-platform.md): who asks a box for work (the Mac, a workflow that rents a box for one job, the provider's API from a cloud session), where takes live between sessions, and how a take that travelled is checked (#427)
 
 ## State
 
