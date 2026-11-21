@@ -71,6 +71,9 @@ enum Shaders {
             float dustFine;
             float dustCell;
             float dustThin;
+            /// The one galaxy whose dust the web's carrier takes in this pass, plus one; 0 for
+            /// every galaxy's, as every frame carries it (#399).
+            float webOnly;
             /// The clusters a young particle's stars gather in, 0 for none, their radius at birth
             /// in kiloparsecs and its growth a megayear, and the share of stars in them (#405).
             float clusterCentres;
@@ -2236,6 +2239,11 @@ enum Shaders {
                                      constant WebUniforms &w) {
             WebCarrier out;
             uint g = p.galaxy;
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            // A frame whose grains are spread over two slabs carries each galaxy's dust apart,
+            // a pass a galaxy, so that each is multiplied by its own web (#399).
+            if (u.inside.webOnly > 0.0f && float(g + 1u) != u.inside.webOnly) { dust = false; }
+            #endif
             if (!dust || grain.hole || grain.amount <= 0.0f) {
                 out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
                 out.pointSize = 0.0f;
@@ -2402,9 +2410,10 @@ enum Shaders {
 
         // Once per pixel, after the painted dust and before the stars: each slab's carried dust
         // times the web of the disk that filled it. Where two disks carry dust into one slab of
-        // one pixel, the later galaxy's web serves both. `carrier` and `tagged` are the coarse
-        // targets read at `uv`, the first filtered and the second not. Where nothing was carried
-        // (`webCarried` false) the pixel keeps the dust it has.
+        // one pixel, the later galaxy's web serves both, unless the frame carries each galaxy's
+        // dust apart (#399). `carrier` and `tagged` are the coarse targets read at `uv`, the
+        // first filtered and the second not. Where nothing was carried (`webCarried` false) the
+        // pixel keeps the dust it has.
         SHARED bool webCarried(float4 carrier) {
             return !all(carrier <= 0.0f);
         }

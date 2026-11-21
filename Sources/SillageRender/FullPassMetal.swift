@@ -134,7 +134,7 @@ public final class MetalFullPassEngine: FullPassEngine {
     public func takeProfile() -> StepProfile? { barnesHut.profiling ? barnesHut.takeProfile() : nil }
 
     public func check() throws {
-        if let failure = barnesHut.failure { throw failure }
+        if let failure = barnesHut.failure ?? smoothing.failure { throw failure }
     }
 
     public var peakMemory: (host: Int?, device: Int?) { (ProcessMemory.peakFootprint(), nil) }

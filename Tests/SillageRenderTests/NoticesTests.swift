@@ -32,6 +32,7 @@ struct NoticesTests {
     }
 
     @Test func wordsFollowTheGlossary() {
+        #expect(Notices.stage("pick") == "Selection")
         #expect(Notices.stage("hires") == "High resolution")
         #expect(Notices.stage("export") == "Videos")
         #expect(Notices.night("2026-10-25") == "Night of 25 Oct")

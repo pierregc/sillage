@@ -81,9 +81,9 @@ struct CUDAInsideTests {
     }
 
     @Test func theUniformsLieWhereTheKernelsReadThem() {
-        #expect(MemoryLayout<InsideSplatUniforms>.stride == 384)
+        #expect(MemoryLayout<InsideSplatUniforms>.stride == 400)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 192 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 208 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starCount) == 140)

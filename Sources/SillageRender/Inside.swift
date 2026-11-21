@@ -244,6 +244,9 @@ public struct InsideUniforms: Sendable {
     public var dustFine: Float
     public var dustCell: Float
     public var dustThin: Float
+    /// The one galaxy whose dust the web's carrier takes in this pass, plus one; 0 for every
+    /// galaxy's (#399).
+    public var webOnly: Float = 0
     /// The clusters a young particle's stars gather in, 0 for none, their radius at birth in
     /// kiloparsecs and its growth in kiloparsecs a megayear, and the share of stars in them
     /// (#405).
@@ -251,6 +254,12 @@ public struct InsideUniforms: Sendable {
     public var clusterBirth: Float = 0
     public var clusterGrowth: Float = 0
     public var clusterShare: Float = 0
+
+    /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
+    /// grains are spread over two slabs, which is where two disks one behind the other come
+    /// to share a slab of a pixel, and there one carrier would hand both to the web of one
+    /// (#399). One for every galaxy together otherwise, as every export draws.
+    public func websApart(galaxies: Int) -> Int { slabSoft > 0 ? max(galaxies, 1) : 1 }
 
     /// How far inside the eye is for the slabs: 0 past `slabsWithin`'s far distance from any
     /// matter, 1 nearer than its near one.

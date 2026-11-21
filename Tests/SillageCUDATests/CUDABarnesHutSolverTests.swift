@@ -343,6 +343,29 @@ struct CUDABarnesHutSolverTests {
         try handle.close()
     }
 
+    /// A pass the device loses stops the run where it is and surfaces (#301): no step after it
+    /// runs or counts its time, and no checkpoint is written of what it left.
+    @Test func aPassTheDeviceLosesStopsTheRunAndSurfaces() throws {
+        let solver = try CUDABarnesHutSolver(context: CUDAContext(), scene: clusterScene(500))
+        try solver.advance(steps: 2)
+        let (time, positions) = (solver.time, solver.particles.positions)
+        solver.failsNextPass = CUDAError(.unknown, "a pass lost on purpose")
+        solver.step(count: 3)
+        #expect(solver.failure != nil)
+        #expect(solver.time == time)
+        #expect(solver.particles.positions == positions)
+        #expect(throws: CUDAError.self) { try solver.advance(steps: 1) }
+        #expect(throws: CUDAError.self) { try solver.drawnDrift(by: 0.5) }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "sillage-cuda-solver-\(UUID().uuidString).bin")
+        defer { try? FileManager.default.removeItem(at: file) }
+        _ = FileManager.default.createFile(atPath: file.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: file)
+        #expect(throws: CUDAError.self) { try solver.writeParticles(to: handle) }
+        try handle.close()
+        #expect(try Data(contentsOf: file).isEmpty)
+    }
+
     // MARK: - On a GPU only (#283)
 
     /// The tests above at 500 k, where the tree comes from its own kernels, the radix sort and

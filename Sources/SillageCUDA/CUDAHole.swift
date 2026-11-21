@@ -70,9 +70,19 @@ public final class CUDATidalRun: TidalStepping {
         }
     }
 
+    /// Empty after a failure, which `failure` then holds (#301).
     public var frame: TidalFrame {
-        let p = (try? positions.download(SIMD4<Float>.self, count: count)) ?? []
-        let v = (try? velocities.download(SIMD4<Float>.self, count: count)) ?? []
+        var p: [SIMD4<Float>] = []
+        var v: [SIMD4<Float>] = []
+        if failure == nil {
+            do {
+                p = try positions.download(SIMD4<Float>.self, count: count)
+                v = try velocities.download(SIMD4<Float>.self, count: count)
+            } catch {
+                (p, v) = ([], [])
+                failure = error
+            }
+        }
         return TidalFrame(time: time, positions: p, velocities: v)
     }
 }
