@@ -103,3 +103,23 @@ jobs:
           test -s "$RUNNER_TEMP/stills/1080p-flight-0003.50s.png"
       - name: sillage-cuda holds the engine to the reference outputs, as a full pass requires
         run: .build/linux/sillage-cuda check --fixtures Tests/Fixtures/engines
+      - name: sillage-cuda hires computes a scene folder explored on the Mac, killed after a checkpoint and resumed
+        run: |
+          scene="$RUNNER_TEMP/library/2026-10-30-b/scene-0031"
+          mkdir -p "$scene"
+          cp Tests/Fixtures/engines/scene/scene.json "$scene/"
+          cp Tests/Fixtures/engines/frames/red-vs-cyan.look.json "$scene/look.json"
+          echo '{"particles": 3000, "width": 256, "height": 144, "frames": 24, "fps": 6, "steps": 96, "settle": 12}' \
+            > "$scene/clip.json"
+          options="--particles 3000 --checkpoint-frames 4 --checkpoint-steps 4"
+          .build/linux/sillage-cuda hires "$scene" $options > "$RUNNER_TEMP/first.log" &
+          run=$!
+          timeout 300 bash -c "until grep -q 'before frame 8' '$RUNNER_TEMP/first.log'; do sleep 0.1; done"
+          kill -9 "$run"
+          .build/linux/sillage-cuda hires "$scene" $options --resume | tee "$RUNNER_TEMP/second.log"
+          grep -q '^resume     checkpoint' "$RUNNER_TEMP/second.log"
+          test -s "$scene/take.sillage"
+          test -s "$scene/hires.mov"
+          test ! -e "$scene/.checkpoint"
+          grep -q '"engine" : "cuda-cpu"' "$scene/hires.json"
+          grep -q '"resumes" : 1' "$scene/hires.json"

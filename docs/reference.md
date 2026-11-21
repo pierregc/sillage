@@ -213,6 +213,10 @@ below), or this Mac's maximum when that is lower. Given a batch folder instead o
 runs every scene marked yes in `ratings.json`, one after another, skipping those already done at
 that size. It saves itself about every hour (`--checkpoint-every <minutes>`, 0 for none) and
 `--resume` picks it up after a restart, to the bit ([docs/notes/checkpoints.md](notes/checkpoints.md), #377).
+`--no-video` writes the take, the curves and `hires.json` without `hires.mov`, for a run that
+only wants its take (#378). On Linux, `sillage-cuda hires` runs the same pass on the CUDA engine,
+from the same scene folder and with the same options, and leaves the same files
+([docs/notes/cuda-engine.md](notes/cuda-engine.md#the-pass-that-writes-a-take-378)).
 
 Only the particle count and what follows from it change. The geometry is the scene file's. The
 step scale is 3.5 whatever the preview explored at (#225), unless `--dt-scale` overrides it.

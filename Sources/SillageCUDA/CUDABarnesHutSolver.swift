@@ -330,6 +330,53 @@ public final class CUDABarnesHutSolver: StepChangingSolver {
         return traced
     }
 
+    /// What a take keeps of the drawn particles, `[tracers | massive visible]`, as
+    /// `MetalBarnesHutSolver.drawnAttributes` gives them: a tracer's attributes from its word and
+    /// its formation time from its state, downloaded a million tracers at a time, then
+    /// `massive`'s visible particles with the formation times the run ended on.
+    public func drawnAttributes(massive: ParticleSystem) throws -> ParticleSystem {
+        var system = ParticleSystem(capacity: 0)
+        let tracers = tracerCount
+        let drawn = tracers + massive.visibleCount
+        system.galaxyIndex.reserveCapacity(drawn)
+        system.birthRadius.reserveCapacity(drawn)
+        system.population.reserveCapacity(drawn)
+        system.luminosity.reserveCapacity(drawn)
+        system.formation.reserveCapacity(drawn)
+        system.component.reserveCapacity(drawn)
+        system.kernelScale.reserveCapacity(drawn)
+        let chunk = 1 << 20
+        var start = 0
+        while start < tracers {
+            let count = min(chunk, tracers - start)
+            let states = try positions.download(SIMD4<Float>.self, count: count, from: start * 16)
+            let motions = try velocities.download(SIMD4<UInt32>.self, count: count, from: start * 16)
+            for (state, motion) in zip(states, motions) {
+                let word = TracerWord(bits: motion.w)
+                system.galaxyIndex.append(word.galaxy)
+                system.birthRadius.append(word.birthRadius)
+                system.population.append(0.5)
+                system.luminosity.append(word.luminosity)
+                system.formation.append(state.w)
+                system.component.append(word.component)
+                system.kernelScale.append(word.kernelScale)
+            }
+            start += count
+        }
+        let visible = min(massive.visibleCount, massive.galaxyIndex.count)
+        let times = try formation.download(Float.self, count: visible)
+        for index in 0..<visible {
+            system.galaxyIndex.append(massive.galaxyIndex[index])
+            system.birthRadius.append(massive.birthRadius[index])
+            system.population.append(massive.population[index])
+            system.luminosity.append(massive.luminosity[index])
+            system.formation.append(times[index])
+            system.component.append(massive.component[index])
+            system.kernelScale.append(massive.kernelScale[index])
+        }
+        return system
+    }
+
     /// The tracer's attributes, `index` counting from the first tracer.
     public func tracerWord(_ index: Int) throws -> TracerWord {
         TracerWord(bits: try velocities.download(UInt32.self, count: 1, from: index * 16 + 12)[0])

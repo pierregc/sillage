@@ -463,8 +463,13 @@ public struct CostHistory: Sendable, Equatable {
         return jobs
     }
 
+    /// Whether a run was the Mac's: a scene computed on a CUDA box (#278, #378) prices that box,
+    /// not this machine, and is left out.
+    static func ranOnTheMac(_ engine: String?) -> Bool { engine == nil || engine == "metal" }
+
     static func hiresSample(_ folder: SceneFolder) -> CostModel.Sample? {
-        guard let record = folder.storedHires(), let seconds = record.seconds, seconds > 0
+        guard let record = folder.storedHires(), ranOnTheMac(record.engine), let seconds = record.seconds,
+            seconds > 0
         else { return nil }
         let steps = Double(record.stepsRun ?? record.settle + record.steps)
         return CostModel.Sample(
@@ -478,7 +483,8 @@ public struct CostHistory: Sendable, Equatable {
     static func fullPassSamples(_ folder: SceneFolder) -> (
         run: CostModel.Sample, draws: [String: CostModel.Sample]
     )? {
-        guard let record = folder.storedHires(), let full = record.full, full.seconds > 0, full.frames > 0
+        guard let record = folder.storedHires(), let full = record.full, ranOnTheMac(full.engine),
+            full.seconds > 0, full.frames > 0
         else { return nil }
         // It follows the steps its massive pass took.
         let steps = Double(record.stepsRun ?? record.settle + record.steps)
