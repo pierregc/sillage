@@ -162,8 +162,9 @@ curves and `hires.mov` so far, until it ends:
 without sampling the scene again, and refuses a checkpoint of another run (another step, count,
 look or massive take); without one it starts from the beginning, and so does a hires run
 without `--resume`, which clears the checkpoint. `--checkpoint-every <minutes>` sets the
-interval, 0 for none. A night run again after a restart, and a hires put in the queue again,
-resume by themselves when the checkpoint is that run's.
+interval, 0 for none, and a night's recipe sets it with `hires.checkpointEvery`: 15 minutes
+costs a fifth of a second each at 20 M particles. A night run again after a restart, and a hires
+put in the queue again, resume by themselves when the checkpoint is that run's.
 
 `--speed <x>`, `--speed <file>` or `--speed auto` draws the full pass's videos along a time track,
 as an export's `--speed` does (#310, [the note](notes/variable-time.md#the-full-pass-along-a-track-310)):
@@ -229,7 +230,8 @@ which is 1; a misspelt name is an error.
   "explore": { "scenes": "auto", "particlesPerGalaxy": "auto", "archetypeShare": "auto",
                "archetypes": "auto", "pairShare": "auto", "galaxies": "auto", "seed": "auto" },
   "pick": "auto",
-  "hires": { "particles": "auto", "massive": "auto", "frames": "auto", "passes": "auto" },
+  "hires": { "particles": "auto", "massive": "auto", "frames": "auto", "passes": "auto",
+             "checkpointEvery": "auto" },
   "style": { "world": "auto", "freeShare": "auto", "style": "auto", "palette": "auto" },
   "export": "auto",
   "speed": 1,
@@ -253,6 +255,7 @@ which is 1; a misspelt name is an error.
 | `hires.massive` | the particles that carry the mass, the others light tracers; as many as `hires.particles` for none | 2 000 000 (all of them below that) |
 | `hires.frames` | the first frames of the story only | the whole story |
 | `hires.passes` | `1`: a take of every particle, the videos exported from it after the style; `2`: the massive particles alone, the style on their take, then every particle again with the videos drawn as it runs (#239) | 1 up to 10 000 000 drawn, 2 past it; always 1 without light tracers |
+| `hires.checkpointEvery` | how often a hires saves itself, in minutes of its run, 0 for never (`--checkpoint-every`, [the note](notes/checkpoints.md)) | 60 |
 | `style.world` | `telescope` or `free` | Auto: drawn for each pick, free as often as `style.freeShare` says |
 | `style.freeShare` | share of the picks Auto puts in the free world, 0 to 1 | 0.2 |
 | `style.style` | a look of the catalogue, such as `hubble` or `aurora` (its world is the pick's) | Auto: the best rendering of the world (`look --style auto`, #124) |

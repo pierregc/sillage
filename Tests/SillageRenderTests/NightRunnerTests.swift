@@ -408,6 +408,30 @@ struct NightRunnerTests {
         #expect(file.state == .done && file.phases.first { $0.name == "hires" }?.skipped == 1)
     }
 
+    /// A recipe sets how often its hires save themselves (#377): the option every pass is run
+    /// with, an hour without it.
+    @Test func aRecipeSetsHowOftenAHiresCheckpoints() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let recipe = try NightRecipe.decoded(
+            from: Data(#"{"hires": {"particles": 100000, "checkpointEvery": 15}}"#.utf8))
+        #expect(recipe.hires.checkpointEvery == .value(15))
+        let folder = NightFolder(batch: batch, recipe: recipe, maximumParticles: 10_000_000)
+        #expect(folder.hiresOptions == ["--particles", "100000", "--checkpoint-every", "15"])
+        #expect(throws: NightRecipe.Failure.self) {
+            try NightRecipe.decoded(from: Data(#"{"hires": {"checkpointEvery": -1}}"#.utf8))
+        }
+        // A quarter of the steps an hour holds.
+        #expect(runner(self.recipe()).run() == 0)
+        let scene = SceneFolder(batch.appendingPathComponent("scene-0002"))
+        func steps(_ options: [String]) throws -> Int {
+            let arguments = try scene.hiresArguments(options, maximumParticles: 10_000_000).arguments
+            let index = try #require(arguments.firstIndex(of: "--checkpoint-steps"))
+            return try #require(Int(arguments[index + 1]))
+        }
+        let hourly = try steps(["--particles", "100000"])
+        #expect(abs(try steps(folder.hiresOptions) * 4 - hourly) <= 4)
+    }
+
     /// Auto draws 8 M from 2 M massive (#211): the hires is asked with both counts, and a real
     /// 8 M already done stands for it.
     @Test func theNightAsksForEightMillionFromTwoAndTakesARealEightAsDone() throws {
