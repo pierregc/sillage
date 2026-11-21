@@ -198,27 +198,27 @@ frame 20, a segment of its video open, and resumed to the end.
   run had read it and restored its solver in 0.8 to 0.9 s.
 
 **At 8 M visible on 12 M of dark matter**, a scene of today, every particle massive:
-scene-0031 at 20 M particles, 80 frames of 7 steps after a settle of 140, every frame kept (a
-take of 5.3 GB), checkpointed every 20 steps of the settle and every 20 frames; then the same
-run with `--checkpoint-every 0`, and one killed after the checkpoint before frame 20 and
-resumed. Not alone on the GPU: a full pass at 50 M and two other threads' runs were on it, so
-the times are upper bounds. They are the disk's more than the GPU's.
+scene-0031 at 20 M particles, alone on the GPU, 200 frames of 7 steps after a settle of 140,
+every frame kept so that the take (13.0 GB) passes the memory budget as a whole scene's does,
+checkpointed every 20 steps of the settle and every 50 frames; then the same run with
+`--checkpoint-every 0`, and one killed after the checkpoint before frame 50 and resumed.
 
-- A checkpoint is 0.72 GB, 32 bytes a particle and 4 a massive one, and takes 0.16 to 0.21 s
-  in all, the 1.3 GB of take written since the one before flushed with it. The massive set,
-  1.28 GB, is written once in 0.25 s. An hourly checkpoint costs a fifth of a second an hour.
-- The resumed run had read its massive set and restored its solver in 3.6 s, where the first
-  run spent 17 s sampling the scene and building its solver before its first step.
-- The peak footprint is 6.5 GB with checkpoints against 10.8 GB without: the take is no longer
-  held in memory. Without a checkpoint a take holds up to a quarter of the machine (9 GB on the
-  M4 Max's 36) before it spills, which a whole scene's take of 15 to 25 GB reaches.
+- A checkpoint is 0.72 GB, 32 bytes a particle and 4 a massive one, and takes 0.16 to 0.20 s
+  in all, the 3.2 GB of take written since the one before flushed with it. The massive set,
+  1.28 GB, is written once in 0.22 s. A checkpoint every 15 minutes costs under a second an
+  hour; the whole run took 742 s with its nine checkpoints against 736 s without.
+- The resumed run had read its massive set and restored its solver in 1.8 s, where the first
+  run spent 16 s sampling the scene and building its solver before its first step.
+- The peak footprint is 6.5 GB with checkpoints against 15.4 GB without: the take is no longer
+  held in memory, where it fills a quarter of the machine (9 GB on the M4 Max's 36) before it
+  spills.
 - Both runs wrote the same take, to the byte, and the same curves. `hires.mov` is not the same
   video: with checkpoints it is four segments, each starting on a key frame, joined.
 - On disk until the run ends: two checkpoints while the next is written (1.4 GB), the massive
   set, and the take so far with the curves and the video's segments.
 
 **What the end costs.** Putting the take together copies its positions once from
-`.checkpoint/take.positions` into the take: 1.7 s for 5.3 GB (3 GB/s), so 5 to 8 s for a scene's
+`.checkpoint/take.positions` into the take: 4.2 s for 13.0 GB (3 GB/s), so 5 to 8 s for a scene's
 15 to 25 GB, during which the disk holds the take twice; the checkpoint is removed once the
 take, the curves and the video are in place. A layout that spares the copy needs no version of
 the format for a hires: its frames are counted before it starts (the story's frames, one in

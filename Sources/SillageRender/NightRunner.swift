@@ -55,6 +55,8 @@ public struct NightFolder: Sendable {
         ["--particles", String(hiresParticles)]
             + (hiresMassive < hiresParticles ? ["--massive", String(hiresMassive)] : [])
             + (recipe.hires.frames.value.map { ["--frames", String($0)] } ?? [])
+            + (recipe.hires.checkpointEvery.value.map { ["--checkpoint-every", String(format: "%g", $0)] }
+                ?? [])
     }
 
     /// How many passes the night's hires take (#239).

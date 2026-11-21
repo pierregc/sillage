@@ -107,6 +107,9 @@ public struct NightRecipe: Codable, Sendable, Equatable {
         /// their take, then every particle runs again and the videos are drawn as it goes, with
         /// no take of them. Auto is 1 up to `twoPassesAbove` drawn, 2 past it.
         public var passes: Setting<Int> = .auto
+        /// How often a hires saves itself, in minutes of its run (#240, #377); 0 for never.
+        /// Auto is `SceneFolder.checkpointMinutes`, an hour.
+        public var checkpointEvery: Setting<Double> = .auto
 
         public init() {}
 
@@ -116,6 +119,8 @@ public struct NightRecipe: Codable, Sendable, Equatable {
             massive = try c.decodeIfPresent(Setting<Int>.self, forKey: .massive) ?? .auto
             frames = try c.decodeIfPresent(Setting<Int>.self, forKey: .frames) ?? .auto
             passes = try c.decodeIfPresent(Setting<Int>.self, forKey: .passes) ?? .auto
+            checkpointEvery =
+                try c.decodeIfPresent(Setting<Double>.self, forKey: .checkpointEvery) ?? .auto
         }
     }
 
@@ -353,7 +358,7 @@ extension NightRecipe {
         "explore": [
             "scenes", "particlesPerGalaxy", "archetypeShare", "archetypes", "pairShare", "galaxies", "seed",
         ],
-        "hires": ["particles", "massive", "frames", "passes"],
+        "hires": ["particles", "massive", "frames", "passes", "checkpointEvery"],
         "style": ["world", "style", "palette", "multicolour", "camera", "freeShare"],
     ]
 
@@ -439,6 +444,9 @@ extension NightRecipe {
         }
         if let passes = hires.passes.value, !(1...2).contains(passes) {
             throw Failure.badValue("hires.passes", "1 or 2")
+        }
+        if let minutes = hires.checkpointEvery.value, !(minutes >= 0) {
+            throw Failure.badValue("hires.checkpointEvery", "minutes, 0 for never")
         }
         if let world = style.world.value, Palette.World(rawValue: world) == nil {
             throw Failure.badValue("style.world", "telescope or free")
