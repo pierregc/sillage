@@ -106,6 +106,31 @@ of the range: on the README's film it gives 100,000 light years, the galaxies' o
 middle gave 200,000. A cut of the director moves the old length out of all proportion (past half
 the width or under 4 %), and the bar then changes at once with the picture.
 
+## The scale in words
+
+#407, recommendation 3 of [Immensity inside an arm](immensity-inside-an-arm.md). Among the stars
+the eye judges neither lengths nor speeds: the 10 s dive of #296 covers 6,500 light years each
+second, 2 × 10^11 times the speed of light, and a drift of 50 pc a second is still 160 light years
+a second. Two things say it.
+
+- **The bar reaches the stars.** Its lengths run from 1 light year (0.001 kpc) up, so a frame a
+  few hundred light years across at the target still has a length between a tenth and a quarter of
+  its width. A frame that had one before keeps the same one: the new lengths are all far shorter
+  than any that fitted.
+- **The speed**, asked with `"speed": true` in `scale`. `OverlayPlan.speedTrack` reads it off the
+  cameras the plan is laid with: the eye's distance over half a second of video either side,
+  so a flight's motion blur or a cubic's kink between keys does not make it flicker. The number is
+  said on a ladder of 1, 1.5, 2, 3, 5, 7 times a power of ten, each about half as large again as
+  the one before, and is held while the speed stays within a third of it (`speedSlack` 1.35):
+  the dive above, slowing from 7 kpc to 50 pc a second over 15 s, changes it about once a
+  second, where two significant figures would have changed every few frames, the blur the clock
+  steps were made against. It fades out over 0.6 s while the eye covers less than half a per cent
+  of the frame's width at the target a second (`speedFloor`), a camera at rest or a still turn,
+  and in again when it moves. It sits between the clock and the bar's label, at the label's size,
+  digits tabular. In kiloparsecs it is said in parsecs a second under a kiloparsec a second.
+  The words are in `OverlayTexts` (`lightYearsPerSecond`, `parsecsPerSecond`,
+  `kiloparsecsPerSecond`).
+
 ## Layout and look
 
 Pierre asked for it clean, light and soft. White at 0.9 at its strongest, no box, a dark halo of

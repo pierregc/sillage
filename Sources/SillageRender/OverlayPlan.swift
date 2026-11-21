@@ -174,7 +174,9 @@ public struct OverlayPlan: Sendable {
     /// The scale bar's lengths, in its unit: one of them always lies between a tenth and a
     /// quarter of the frame, since no two neighbours are more than 2.5 apart.
     static func lengths(_ unit: Overlay.Scale.Unit) -> [Double] {
-        let decades: [Double] = unit == .lightYears ? [1e3, 1e4, 1e5, 1e6] : [0.1, 1, 10, 100, 1000]
+        // Down to the stars (#407): a bar inside an arm spans tens of light years.
+        let decades: [Double] =
+            unit == .lightYears ? [1, 10, 100, 1e3, 1e4, 1e5, 1e6] : [0.001, 0.01, 0.1, 1, 10, 100, 1000]
         return decades.flatMap { [$0, 2 * $0, 5 * $0] }
     }
 
@@ -199,15 +201,15 @@ public struct OverlayPlan: Sendable {
             overlay: overlay, texts: texts, scene: take.scene, events: events, times: times,
             positions: positions, framesPerSecond: framesPerSecond,
             pixelsPerKpc: cameras.map { Self.pixelsPerKpc($0, height: height) }, width: width,
-            height: height)
+            height: height, eyes: cameras.map { SIMD3(Double($0.eye.x), Double($0.eye.y), Double($0.eye.z)) })
     }
 
     /// The same from what a take gives: `events` in captured frames, `times` in Myr for each
-    /// video frame, `pixelsPerKpc` at each frame's target.
+    /// video frame, `pixelsPerKpc` at each frame's target, `eyes` each frame's eye.
     init(
         overlay: Overlay, texts: OverlayTexts, scene: SceneConfig, events: [OverlayEvent: Int],
         times: [Double], positions: [Double], framesPerSecond: Int, pixelsPerKpc: [Double],
-        width: Int, height: Int
+        width: Int, height: Int, eyes: [SIMD3<Double>] = []
     ) {
         let rate = Double(max(framesPerSecond, 1))
         let count = positions.count
@@ -324,6 +326,18 @@ public struct OverlayPlan: Sendable {
                     frames[index].bars.append(stroke)
                 }
             }
+            if scale.speed == true {
+                let speeds = Self.speedTrack(
+                    eyes: eyes, pixelsPerKpc: pixelsPerKpc, width: Double(width), unit: unit,
+                    framesPerSecond: framesPerSecond)
+                for index in frames.indices where index < speeds.count {
+                    let (value, shown) = speeds[index]
+                    let alpha = instruments(index) * shown
+                    guard alpha > 0, value > 0 else { continue }
+                    frames[index].lines.append(
+                        layout.speed(Self.speedText(value, unit: unit, texts: texts), alpha: alpha))
+                }
+            }
         }
         self.frames = frames
         captions = kept
@@ -383,6 +397,65 @@ public struct OverlayPlan: Sendable {
             }
             return bars
         }
+    }
+
+    /// Seconds of video the eye's speed is averaged over, and a fade of its line takes.
+    static let speedWindow = 0.5
+    static let speedFade = 0.6
+    /// The share of the frame's width at the target the eye has to cover each second for its
+    /// speed to be worth saying.
+    static let speedFloor = 0.005
+    /// How far the speed moves off the number shown before another is shown.
+    static let speedSlack = 1.35
+
+    /// The numbers the speed is said in, each with the next about half as large again.
+    static func speedLadder(_ value: Double) -> Double {
+        let decade = pow(10, floor(log10(value)))
+        let steps = [1.0, 1.5, 2, 3, 5, 7, 10].map { $0 * decade }
+        return steps.min { abs(log($0 / value)) < abs(log($1 / value)) }!
+    }
+
+    /// The eye's speed on each frame in the unit said (light years, or kiloparsecs, a second of
+    /// video), averaged over `speedWindow`, stepped on `speedLadder` and held there while it
+    /// stays within `speedSlack` of it; and how much the line shows, fading out while the eye
+    /// covers less than `speedFloor` of the frame a second and back in when it moves.
+    static func speedTrack(
+        eyes: [SIMD3<Double>], pixelsPerKpc: [Double], width: Double, unit: Overlay.Scale.Unit,
+        framesPerSecond: Int
+    ) -> [(value: Double, shown: Double)] {
+        let rate = Double(max(framesPerSecond, 1))
+        guard eyes.count > 1 else { return eyes.map { _ in (0, 0) } }
+        let half = max(Int((speedWindow * rate / 2).rounded()), 1)
+        let perKpc = unit == .lightYears ? lightYearsPerKpc : 1
+        let fade = 1 / max(speedFade * rate, 1)
+        var shownValue = 0.0
+        var shown = 0.0
+        return eyes.indices.map { index in
+            let (from, to) = (max(index - half, 0), min(index + half, eyes.count - 1))
+            let kpc = simd_length(eyes[to] - eyes[from]) / (Double(to - from) / rate)
+            let across =
+                index < pixelsPerKpc.count && pixelsPerKpc[index] > 0 ? width / pixelsPerKpc[index] : 0
+            let moving = kpc > 0 && kpc.isFinite && (across <= 0 || kpc > speedFloor * across)
+            shown = min(max(shown + (moving ? fade : -fade), 0), 1)
+            if moving {
+                let value = kpc * perKpc
+                if shownValue <= 0 || value > shownValue * speedSlack || value < shownValue / speedSlack {
+                    shownValue = speedLadder(value)
+                }
+            }
+            return (shownValue, shown)
+        }
+    }
+
+    /// A speed in words: light years a second, or parsecs a second under a kiloparsec a second.
+    static func speedText(_ value: Double, unit: Overlay.Scale.Unit, texts: OverlayTexts) -> String {
+        func number(_ n: Double) -> String {
+            n >= 10 ? texts.number(Int(n.rounded())) : String(format: "%g", n)
+        }
+        guard unit == .kiloparsecs else { return texts.fill(texts.lightYearsPerSecond, ["n": number(value)]) }
+        return value < 1
+            ? texts.fill(texts.parsecsPerSecond, ["n": number((value * 1000 * 1e6).rounded() / 1e6)])
+            : texts.fill(texts.kiloparsecsPerSecond, ["n": number(value)])
     }
 
     /// A step a calm clock counts in: about three changes a second at the video's usual pace.
@@ -506,10 +579,12 @@ struct OverlayLayout {
         scaleCorner = overlay.scale?.corner ?? instruments
         hasClock = overlay.clock != nil
         hasScale = overlay.scale != nil
+        hasSpeed = overlay.scale?.speed == true
     }
 
     private let hasClock: Bool
     private let hasScale: Bool
+    private let hasSpeed: Bool
 
     private func x(_ corner: Overlay.Corner) -> Double { corner.isLeft ? left : width - right }
 
@@ -558,26 +633,38 @@ struct OverlayLayout {
 
     /// The baselines down a corner, of whichever of the clock and the scale bar live in it:
     /// the clock, then the bar's label, then the bar.
-    private func stack(_ corner: Overlay.Corner) -> (clock: Double, label: Double, bar: Double) {
+    private func stack(_ corner: Overlay.Corner) -> (clock: Double, speed: Double, label: Double, bar: Double)
+    {
         let clock = Self.clockSize * unit
         let label = Self.labelSize * unit
         let barGap = 0.75 * label
+        let speedGap = hasSpeed ? 1.25 * label : 0
         if corner.isTop {
             let clockBaseline = top + 0.74 * clock
             let withClock = hasClock && clockCorner == corner
-            let labelBaseline = withClock ? clockBaseline + 0.5 * clock + 1.0 * label : top + 0.74 * label
-            return (clockBaseline, labelBaseline, labelBaseline + barGap)
+            let speedBaseline = withClock ? clockBaseline + 0.5 * clock + 1.0 * label : top + 0.74 * label
+            let labelBaseline = speedBaseline + speedGap
+            return (clockBaseline, speedBaseline, labelBaseline, labelBaseline + barGap)
         }
         let bar = height - bottom
         let labelBaseline = bar - barGap
+        let speedBaseline = labelBaseline - speedGap
         let withScale = hasScale && scaleCorner == corner
-        return (withScale ? labelBaseline - 1.0 * label - 0.62 * clock : bar, labelBaseline, bar)
+        return (
+            withScale ? speedBaseline - 1.0 * label - 0.62 * clock : bar, speedBaseline, labelBaseline, bar
+        )
     }
 
     func clock(_ text: String, alpha: Double) -> OverlayFrame.Line {
         line(
             text, corner: clockCorner, baseline: stack(clockCorner).clock, size: Self.clockSize,
             weight: .regular, tracking: 0.03, alpha: 0.8 * alpha, tabular: true)
+    }
+
+    func speed(_ text: String, alpha: Double) -> OverlayFrame.Line {
+        line(
+            text, corner: scaleCorner, baseline: stack(scaleCorner).speed, size: Self.labelSize,
+            weight: .regular, tracking: 0.04, alpha: 0.68 * alpha, tabular: true)
     }
 
     func scale(_ label: String, length: Double, alpha: Double) -> (OverlayFrame.Line, OverlayFrame.Bar) {
