@@ -240,7 +240,7 @@ struct StyleEditTests {
             switch value {
             case let object as [String: Any]: return object.mapValues(move)
             case let array as [Any]: return array.map(move)
-            case let flag as NSNumber where CFGetTypeID(flag) == CFBooleanGetTypeID():
+            case let flag as NSNumber where String(cString: flag.objCType) == "c":
                 return !flag.boolValue
             case let number as NSNumber:
                 let double = number.doubleValue

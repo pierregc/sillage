@@ -24,7 +24,7 @@ struct KernelSourceTests {
         "BarnesHutShaders.TracerStepParams": MemoryLayout<TracerStepGPU>.stride,
         "BarnesHutShaders.DrawnDriftParams": MemoryLayout<DrawnDriftGPU>.stride,
         "GPUTreeShaders.BHNode": MemoryLayout<BHNode>.stride,
-        "GPUTreeShaders.TreeParams": MemoryLayout<GPUTreeBuilder.Params>.stride,
+        "GPUTreeShaders.TreeParams": MemoryLayout<GPUTreeParams>.stride,
         // As the CUDA engine reads it, the inside of a galaxy behind it (#347).
         "Shaders.SplatUniforms": MemoryLayout<InsideSplatUniforms>.stride,
         "Shaders.InsideUniforms": MemoryLayout<InsideUniforms>.stride,
