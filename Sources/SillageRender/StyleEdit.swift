@@ -87,38 +87,8 @@ extension LookFile {
         var file = self
         let from = baseline.look
         switch group {
-        case .light:
-            file.look.brightness = from.brightness
-            file.look.stretch = from.stretch
-            file.look.saturation = from.saturation
-            file.look.galaxyTint = from.galaxyTint
-            file.look.dustStrength = from.dustStrength
-            file.look.dustWeb = from.dustWeb
-            file.look.armPersistence = from.armPersistence
-        case .instrument:
-            file.look.smoothingScale = from.smoothingScale
-            file.look.minimumKernel = from.minimumKernel
-            file.look.maximumKernel = from.maximumKernel
-            file.look.columnSmoothing = from.columnSmoothing
-            file.look.glint = from.glint
-            file.look.oldWidth = from.oldWidth
-            file.look.bulgeWidth = from.bulgeWidth
-            file.look.youngWidth = from.youngWidth
-            file.look.knotWidth = from.knotWidth
-            file.look.holeShadow = from.holeShadow
-            file.look.bloomIntensity = from.bloomIntensity
-            file.look.bloomThreshold = from.bloomThreshold
-            file.look.bloomSoftKnee = from.bloomSoftKnee
-            file.look.whitePoint = from.whitePoint
-            file.look.spikeArms = from.spikeArms
-            file.look.spikeLength = from.spikeLength
-            file.look.spikeIntensity = from.spikeIntensity
-            file.look.spikePattern = from.spikePattern
-            file.look.spikeSharpness = from.spikeSharpness
-            file.look.starSize = from.starSize
-            file.look.skyLevel = from.skyLevel
-            file.look.skyColour = from.skyColour
-            file.look.noiseLevel = from.noiseLevel
+        case .light, .instrument:
+            file.look = file.look.resetting(group, to: from)
         case .detail:
             file.starCount = baseline.starCount
             file.supersample = baseline.supersample

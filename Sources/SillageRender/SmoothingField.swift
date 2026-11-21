@@ -28,6 +28,8 @@ extension SmoothingField: @unchecked Sendable {}
 public final class SmoothingField {
     public private(set) var buffer: MTLBuffer
     public private(set) var lastMilliseconds = 0.0
+    /// The first build of its own tree the GPU did not complete (#301).
+    public private(set) var failure: (any Error)?
     private let device: MTLDevice
     private var lengths: [Float]
     private let tree = BarnesHutTree(leafCapacity: SmoothingField.leafCapacity)
@@ -106,11 +108,20 @@ public final class SmoothingField {
             if builder.overflowed {
                 do { try builder.grow() } catch { return }
             }
-            guard let commands = queue.makeCommandBuffer() else { return }
+            guard let commands = queue.makeCommandBuffer() else {
+                failure = failure ?? RenderError.commandBuffer("Metal gave no command buffer")
+                return
+            }
             builder.encodeCells(into: commands, positions: positions)
             builder.encodeSmoothing(into: commands, lengths: buffer, drawn: count)
             commands.commit()
             commands.waitUntilCompleted()
+            if commands.status != .completed {
+                failure =
+                    failure ?? commands.error
+                    ?? RenderError.commandBuffer("a smoothing build ended as \(commands.status.rawValue)")
+                return
+            }
         } while builder.overflowed
         lastMilliseconds = Date().timeIntervalSince(clock) * 1000
     }

@@ -10,6 +10,8 @@ public enum RenderError: Error, CustomStringConvertible {
     case pipelineCreation(String)
     case textureAllocation
     case unsupported(String)
+    /// The GPU did not complete a command buffer, or Metal gave none (#301).
+    case commandBuffer(String)
 
     public var description: String {
         switch self {
@@ -18,6 +20,7 @@ public enum RenderError: Error, CustomStringConvertible {
         case .pipelineCreation(let message): "Pipeline creation failed: \(message)"
         case .textureAllocation: "Could not allocate a render texture"
         case .unsupported(let message): "Not supported: \(message)"
+        case .commandBuffer(let message): "GPU work lost: \(message)"
         }
     }
 }
@@ -28,6 +31,9 @@ public final class Renderer {
     public let device: MTLDevice
     public private(set) var settings: RenderSettings
     public private(set) var lastGPUTime: Double = 0
+    /// The first command buffer of a frame read back that the GPU did not complete (#301): the
+    /// picture read after it is not the frame's.
+    public private(set) var failure: (any Error)?
     private var grain = FrameGrain()
 
     private let queue: MTLCommandQueue
@@ -1106,7 +1112,8 @@ public final class Renderer {
 
     /// As `encode(cameras:into:present:)`, read back.
     public func render(cameras: [Camera]) -> [UInt8] {
-        guard let buffer = queue.makeCommandBuffer(), !cameras.isEmpty else { return [] }
+        guard !cameras.isEmpty else { return [] }
+        guard let buffer = commandBuffer() else { return [] }
         let camera = cameras[cameras.count / 2]
         if inside != nil {
             encode(cameras: cameras, into: buffer)
@@ -1114,6 +1121,7 @@ public final class Renderer {
             encodeSplat(camera: camera, into: splat)
             splat.commit()
             splat.waitUntilCompleted()
+            record(splat)
             lastSplatTime = splat.gpuEndTime - splat.gpuStartTime
             encodePost(into: buffer, present: nil)
         } else {
@@ -1121,8 +1129,27 @@ public final class Renderer {
         }
         buffer.commit()
         buffer.waitUntilCompleted()
+        record(buffer)
         lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
         return readBack()
+    }
+
+    /// Keeps the first error of a command buffer that has been waited for.
+    private func record(_ buffer: MTLCommandBuffer) {
+        guard failure == nil else { return }
+        if let error = buffer.error {
+            failure = error
+        } else if buffer.status != .completed {
+            failure = RenderError.commandBuffer("a frame's command buffer ended as \(buffer.status.rawValue)")
+        }
+    }
+
+    private func commandBuffer() -> MTLCommandBuffer? {
+        guard let buffer = queue.makeCommandBuffer() else {
+            if failure == nil { failure = RenderError.commandBuffer("Metal gave no command buffer") }
+            return nil
+        }
+        return buffer
     }
 
     /// A frame whose light another pass draws (#314): `draw` encodes into the light target,
@@ -1132,12 +1159,13 @@ public final class Renderer {
         present: MTLTexture? = nil, into given: MTLCommandBuffer? = nil,
         light draw: (MTLTexture, MTLCommandBuffer) -> Void
     ) -> [UInt8] {
-        guard let buffer = given ?? queue.makeCommandBuffer() else { return [] }
+        guard let buffer = given ?? commandBuffer() else { return [] }
         draw(accumulation, buffer)
         encodePost(into: buffer, present: present)
         guard given == nil else { return [] }
         buffer.commit()
         buffer.waitUntilCompleted()
+        record(buffer)
         lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
         return present == nil ? readBack() : []
     }
@@ -1155,11 +1183,12 @@ public final class Renderer {
         var first = true
         var took = 0.0
         func run(_ encode: (MTLCommandBuffer) -> Void) -> Bool {
-            guard let buffer = queue.makeCommandBuffer() else { return false }
+            guard let buffer = commandBuffer() else { return false }
             encode(buffer)
             pacer?.waitForGap(took)
             buffer.commit()
             buffer.waitUntilCompleted()
+            record(buffer)
             took = buffer.gpuEndTime - buffer.gpuStartTime
             return true
         }
