@@ -276,7 +276,7 @@ final class MetalMeasures: TakePassMeasures {
         }
         if let takeV6, let path = run.argument("take-v6") {
             try RecordingFile.write(
-                takeV6, scene: run.drawnScene, particles: try engine.capturedParticles(),
+                takeV6, scene: run.drawnScene, particles: engine.capturedParticles(),
                 to: TakePassRun.prepared(path))
         }
         if let massiveTake, let path = run.argument("take-massive") {
