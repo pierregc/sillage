@@ -133,6 +133,8 @@
       "256",
       "--height",
       "144",
+      "--checkpoint-every",
+      "0",
       "--dump-walk",
       "walk",
       "--dump-walk-frames",

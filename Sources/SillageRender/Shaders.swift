@@ -485,6 +485,9 @@ enum Shaders {
             /// what its colour is drawn from.
             float starShare;
             float starHash;
+            /// Which particle it is, the same one at every moment of a take: what a near grain
+            /// of dust draws its own structure from (#394).
+            uint id;
             #endif
         };
 
@@ -506,6 +509,7 @@ enum Shaders {
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
             p.starShare = 0.0f;
             p.starHash = 0.0f;
+            p.id = vid;
             #endif
             return p;
         }
@@ -535,6 +539,7 @@ enum Shaders {
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
             p.starShare = 0.0f;
             p.starHash = 0.0f;
+            p.id = 0u;
             #endif
             return p;
         }
@@ -697,11 +702,14 @@ enum Shaders {
 
         // The near dust (#356). A grain stands for a cloud 50 to 100 pc across, so from a few
         // hundred parsecs the grains are soft blobs: cotton. Within the near field each grain's
-        // opacity is shaped by a noise in three dimensions, laid in its galaxy's frame and read
-        // where each pixel's ray passes through the grain, so that grains overlapping on a pixel
-        // draw one structure and the filaments hold still while the camera moves. Ridged
-        // gradient noise: its creases are sheets, and a sheet seen through is a filament. The
-        // density is the exponential of it (below), not the noise itself.
+        // opacity is shaped by a noise in three dimensions, read where each pixel's ray passes
+        // through the grain, so the filaments hold still while the camera moves. The noise is
+        // the grain's own: a piece of the field it carries with it, turned as its galaxy's
+        // frame (#394). Laid in the galaxy's frame instead, the field stood still while the
+        // grains moved through it, 2 pc a frame of the Mice flight with time running, and every
+        // cloud changed shape from one frame to the next. Ridged gradient noise: its creases
+        // are sheets, and a sheet seen through is a filament. The density is the exponential of
+        // it (below), not the noise itself.
         SHARED uint dustHash(int x, int y, int z) {
             uint v = (uint(x) * 1597334677u) ^ (uint(y) * 3812015801u) ^ (uint(z) * 2798796415u);
             v = v * 747796405u + 2891336453u;
@@ -782,10 +790,18 @@ enum Shaders {
             return float2(norm > 0.0f ? total / (dustRidgeSpread * sqrt(norm)) : 0.0f, coarsest);
         }
 
-        // Where a near grain stands in the noise, and the noise's steps across its point and
+        // The piece of the noise particle `id` carries: where its middle reads the field, in
+        // cells, the same at every moment of a take.
+        SHARED float3 dustAnchor(uint id) {
+            int i = int(id & 0x7fffffffu);
+            return float3(float(dustHash(i, 17, 59) & 65535u), float(dustHash(i, 31, 7) & 65535u),
+                          float(dustHash(i, 5, 43) & 65535u)) * (1.0f / 256.0f);
+        }
+
+        // Where a near grain reads the noise, and the noise's steps across its point and
         // through it, a kernel radius each, and across a pixel. Past the near field it is left a
         // plain grain.
-        SHARED void insideFineGrain(thread Splat &out, float3 position, float depth, float perPixel,
+        SHARED void insideFineGrain(thread Splat &out, uint id, float depth, float perPixel,
                                     DiskFrame frame, constant SplatUniforms &u) {
             float strength = insideNear(depth, u.inside);
             float contrast = u.inside.dustFine;
@@ -800,11 +816,10 @@ enum Shaders {
             float3 up = normalize(float3(m[0][1], m[1][1], m[2][1]));
             float3 forward = cross(right, up);
             float radius = 0.5f * out.pointSize / max(perPixel, 1e-9f);
-            float3 rel = position - frame.center.xyz;
             float3 x = right * radius;
             float3 y = up * -radius;
             float3 z = forward * radius;
-            out.grain = float4(dot(rel, axisU), dot(rel, axisV), dot(rel, normal), strength);
+            out.grain = float4(dustAnchor(id), strength);
             out.grainX = float4(dot(x, axisU), dot(x, axisV), dot(x, normal), 1.0f / (max(perPixel, 1e-9f) * across));
             out.grainY = float4(dot(y, axisU), dot(y, axisV), dot(y, normal), contrast);
             out.grainZ = float4(dot(z, axisU), dot(z, axisV), dot(z, normal), dustLogMean(contrast));
@@ -831,11 +846,11 @@ enum Shaders {
         }
 
         // A grain of the frame's own dust pass, once its point is laid: the trim, then the noise.
-        SHARED void insideNearDust(thread Splat &out, float3 position, float perPixel, DiskFrame frame,
-                                   constant SplatUniforms &u) {
+        SHARED void insideNearDust(thread Splat &out, float3 position, uint id, float perPixel,
+                                   DiskFrame frame, constant SplatUniforms &u) {
             float trim = insideDustTrim(out.position, position, frame, u);
             if (trim != 1.0f) { out.opticalDepth = half(float(out.opticalDepth) * trim); }
-            insideFineGrain(out, position, out.position.w, perPixel, frame, u);
+            insideFineGrain(out, id, out.position.w, perPixel, frame, u);
         }
 
         // A near grain's dust on a pixel of its point: the noise read twice through the grain's
@@ -1123,7 +1138,7 @@ enum Shaders {
                 }
                 #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
                 else {
-                    insideNearDust(out, position, perPixel, frame, u);
+                    insideNearDust(out, position, p.id, perPixel, frame, u);
                 }
                 #endif
             } else {
@@ -1249,13 +1264,16 @@ enum Shaders {
 
         // A light tracer's (#238), from its state and its word; its spacing is read off the tree
         // only when this pass draws it.
-        SHARED Splat tracerSplat(float4 state, uint word, constant SplatUniforms &u,
+        SHARED Splat tracerSplat(uint vid, float4 state, uint word, constant SplatUniforms &u,
                                  constant DiskFrame *frames, device const float2 *stellar,
                                  constant GalaxyRamp *ramps, device const uint2 *cells,
                                  device const float *treeFrame, uint depth, constant float *scales,
                                  ColumnDensity column) {
             Drawn p = tracerDrawn(state, word, scales);
             if (splatSkips(p.kind, p.born, u)) { return culledSplat(); }
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            p.id = vid;
+            #endif
             p.spacing = tracerSpacing(p.position, cells, treeFrame, depth);
             return splat(p, u, frames, stellar, ramps, column);
         }
@@ -1332,8 +1350,8 @@ enum Shaders {
                                           device const float4 *states [[buffer(18)]],
                                           device const uint *words [[buffer(19)]],
                                           texture2d<float, access::sample> column [[texture(0)]]) {
-            return splatOut(tracerSplat(states[vid], words[vid * 4u + 3u], u, frames, stellar, ramps,
-                                        cells, treeFrame, depth, scales, column));
+            return splatOut(tracerSplat(vid, states[vid], words[vid * 4u + 3u], u, frames, stellar,
+                                        ramps, cells, treeFrame, depth, scales, column));
         }
 
         #endif
@@ -2101,7 +2119,7 @@ enum Shaders {
             out.opticalDepth = half(grain.weight * u.dustStrength * spread * 1.3f
                                     * (1.0f - grain.amount) * lane);
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
-            insideNearDust(out, position, grain.perPixel, frame, u);
+            insideNearDust(out, position, p.id, grain.perPixel, frame, u);
             #endif
             return out;
         }
@@ -2122,11 +2140,14 @@ enum Shaders {
         }
 
         // A light tracer's, from its state and its word.
-        SHARED Splat tracerDustWeb(float4 state, uint word, constant SplatUniforms &u,
+        SHARED Splat tracerDustWeb(uint vid, float4 state, uint word, constant SplatUniforms &u,
                                    constant DiskFrame *frames, constant WebUniforms &w,
                                    device const uint2 *cells, device const float *treeFrame,
                                    uint depth, constant float *scales) {
             Drawn p = tracerDrawn(state, word, scales);
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            p.id = vid;
+            #endif
             DiskFrame frame = frames[p.galaxy];
             WebGrain grain;
             bool dust = webGrain(p, u, frame, w, grain);
@@ -2162,7 +2183,7 @@ enum Shaders {
                                             constant float *scales [[buffer(17)]],
                                             device const float4 *states [[buffer(18)]],
                                             device const uint *words [[buffer(19)]]) {
-            return splatOut(tracerDustWeb(states[vid], words[vid * 4u + 3u], u, frames, w, cells,
+            return splatOut(tracerDustWeb(vid, states[vid], words[vid * 4u + 3u], u, frames, w, cells,
                                           treeFrame, depth, scales));
         }
         #endif
