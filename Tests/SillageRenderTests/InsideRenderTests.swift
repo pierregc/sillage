@@ -85,7 +85,7 @@ struct InsideRenderTests {
 
     @Test func theUniformsLieWhereTheShaderReadsThem() {
         #expect(MemoryLayout<SplatUniforms>.stride == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 192 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 208 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)

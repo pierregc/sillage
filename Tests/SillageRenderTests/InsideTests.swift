@@ -221,6 +221,29 @@ struct InsideTests {
         #expect(faulty.fault?.contains("dustFine") == true)
     }
 
+    /// The clusters young stars gather in (#405) go to the kernels in kiloparsecs, on by
+    /// default, and a flight file can turn them off or reshape them.
+    @Test func theClustersGoThroughInKiloparsecs() throws {
+        let camera = Camera(eye: SIMD3(0, -10, 0), target: .zero, fieldOfView: 0.6, near: 0.001)
+        let inside = uniforms(0.3, camera: camera).inside
+        #expect(inside.clusterCentres == 4 && inside.clusterShare == 0.8)
+        #expect(abs(inside.clusterBirth - 0.003) < 1e-9 && abs(inside.clusterGrowth - 0.001) < 1e-9)
+        #expect(InsideUniforms(outside: uniforms(0.3, camera: camera).splat).clusterCentres == 0)
+        let read = try JSONDecoder().decode(
+            InsideSettings.self, from: Data(#"{"clusters": 0, "clusterBirth": 5, "clusterShare": 1}"#.utf8))
+        #expect(
+            read.clusters == 0 && read.clusterBirth == 5 && read.clusterGrowth == 1 && read.clusterShare == 1)
+        var faulty = InsideSettings()
+        faulty.clusters = 9
+        #expect(faulty.fault?.contains("clusters") == true)
+        faulty = InsideSettings()
+        faulty.clusterShare = 1.5
+        #expect(faulty.fault?.contains("clusterShare") == true)
+        faulty = InsideSettings()
+        faulty.clusterBirth = 0
+        #expect(faulty.fault?.contains("clusterBirth") == true)
+    }
+
     @Test func nearnessIsTheDistanceTheRankedParticleStandsAt() {
         var generator = SeededGenerator(seed: 11)
         let points = (0..<300_000).map { _ in

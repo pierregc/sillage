@@ -24,13 +24,13 @@ struct CUDAInsideTests {
 
         init(
             _ positions: [SIMD3<Float>], maximumKernel: Float = 24, supersample: Int = 1,
-            largeCapacity: Int = 0
+            largeCapacity: Int = 0, formation: Float = ParticleSystem.ancient
         ) throws {
             var system = ParticleSystem()
             for position in positions {
                 system.append(
                     position: position, velocity: .zero, galaxy: 0, radius: 1, population: 0.5,
-                    luminosity: 1, component: .star)
+                    luminosity: 1, formation: formation, component: .star)
             }
             let scene = SceneConfig.isolatedDisk(particleCount: positions.count)
             renderer = try CUDARenderer(
@@ -81,9 +81,9 @@ struct CUDAInsideTests {
     }
 
     @Test func theUniformsLieWhereTheKernelsReadThem() {
-        #expect(MemoryLayout<InsideSplatUniforms>.stride == 384)
+        #expect(MemoryLayout<InsideSplatUniforms>.stride == 400)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 192 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 208 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.starCount) == 140)
@@ -219,6 +219,50 @@ struct CUDAInsideTests {
         #expect(stage.renderer.starsDrawn == 0)
         stage.renderer.inside = Self.inside(0.8) { $0.stars = 0 }
         #expect(try stage.light(far) == beyond)
+    }
+
+    /// A young particle's stars gather in its clusters and hold its light, and an old one's
+    /// stand where they stood before there were clusters, to the bit (#405).
+    @Test func youngStarsGatherInClustersAndOldOnesStayEven() throws {
+        var generator = SeededGenerator(seed: 11)
+        let positions = (0..<40).map { _ in
+            SIMD3<Float>(generator.uniform() - 0.5, generator.uniform() - 0.5, generator.uniform() - 0.5)
+                * 0.4
+        }
+        func light(ageMyr: Float, clusters: Int) throws -> [SIMD3<Float>] {
+            let stage = try Stage(
+                positions, maximumKernel: 64, supersample: 2,
+                formation: -ageMyr / Float(Physics.megayearsPerTimeUnit))
+            stage.renderer.inside = Self.inside(0.8) { settings in
+                settings.starFrom = 0.001
+                settings.starFull = 0.002
+                settings.starSize = 24
+                settings.starColours = 0
+                settings.starPeak = 1000
+                settings.starTail = 0
+                settings.clusters = clusters
+            }
+            return try stage.light(camera(1))
+        }
+        // The pixels holding half of the light, brightest first: fewer when the stars are gathered.
+        func half(_ light: [SIMD3<Float>]) -> Int {
+            let lit = light.map { Double($0.x + $0.y + $0.z) }.filter { $0 > 0 }.sorted(by: >)
+            let total = lit.reduce(0, +)
+            var held = 0.0
+            return lit.firstIndex {
+                held += $0
+                return held >= total / 2
+            } ?? lit.count
+        }
+        #expect(try light(ageMyr: 500, clusters: 4) == light(ageMyr: 500, clusters: 0))
+        let even = try light(ageMyr: 2, clusters: 0)
+        let clustered = try light(ageMyr: 2, clusters: 4)
+        #expect(clustered != even)
+        let ratio = Self.total(clustered) / Self.total(even)
+        #expect(abs(ratio - 1) < 0.1, "clustered over even \(ratio)")
+        #expect(half(clustered) * 2 < half(even), "\(half(clustered)) pixels against \(half(even))")
+        // Grown past the stars' spread, a cluster has come apart: the stars are the old field's.
+        #expect(try light(ageMyr: 200, clusters: 4) == light(ageMyr: 200, clusters: 0))
     }
 
     /// The stars' points set aside and drawn a block each, the second way for large splats,
