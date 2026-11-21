@@ -1,3 +1,4 @@
+import SillageRender
 import SwiftUI
 
 /// A labelled slider. `onCommit` fires when the drag ends, so structural changes can rebuild
@@ -87,6 +88,48 @@ struct VectorEditor: View {
             ParameterSlider(
                 title: "z", value: Binding(get: { value.z }, set: { value.z = $0 }),
                 range: range, onCommit: onCommit)
+        }
+    }
+}
+
+/// The controls of one section of a look, from the table both render settings panels share
+/// (#226): a slider for each field, a count for the arms, a box for the pattern.
+struct LookControlList: View {
+    let group: LookFile.Group
+    @Binding var look: RenderLook
+
+    var body: some View {
+        ForEach(group.controls) { control in
+            row(control)
+            if let note = control.note {
+                Text(note)
+                    .font(.caption2)
+                    .foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder private func row(_ control: LookControl) -> some View {
+        switch control.kind {
+        case .slider(let path, let range, let format):
+            ParameterSlider(
+                title: control.title,
+                value: Binding(get: { look[keyPath: path] }, set: { look[keyPath: path] = $0 }),
+                range: range, format: format)
+        case .count(let path, let range):
+            ParameterSlider(
+                title: control.title,
+                value: Binding(
+                    get: { Float(look[keyPath: path]) },
+                    set: { look[keyPath: path] = Int($0.rounded()) }),
+                range: Float(range.lowerBound)...Float(range.upperBound), format: "%.0f")
+        case .webbSpikes:
+            CheckToggle(
+                title: control.title,
+                isOn: Binding(
+                    get: { look.spikePattern == .webb },
+                    set: { look.spikePattern = $0 ? .webb : .even }))
         }
     }
 }

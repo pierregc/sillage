@@ -821,10 +821,10 @@ struct FineSettings: View {
         DisclosureGroup("Fine settings", isExpanded: $shown) {
             VStack(alignment: .leading, spacing: 10) {
                 FineGroup(session: session, title: "Light", group: .light) {
-                    LightControls(session: session)
+                    LookControlList(group: .light, look: session.binding(\.look))
                 }
                 FineGroup(session: session, title: "Instrument", group: .instrument) {
-                    InstrumentControls(session: session)
+                    LookControlList(group: .instrument, look: session.binding(\.look))
                 }
                 FineGroup(session: session, title: "Detailed rendering", group: .detail) {
                     DetailControls(session: session)
@@ -869,87 +869,6 @@ struct FineGroup<Content: View>: View {
     private var changed: Bool {
         guard let baseline = session.baseline(for: group) else { return false }
         return session.current.resetting(group, to: baseline) != session.current
-    }
-}
-
-struct LightControls: View {
-    @ObservedObject var session: StyleSession
-
-    var body: some View {
-        ParameterSlider(
-            title: "Brightness", value: session.binding(\.look.brightness), range: 0.02...2.0,
-            format: "%.2f")
-        ParameterSlider(
-            title: "Logarithmic stretch", value: session.binding(\.look.stretch), range: 0...60,
-            format: "%.0f")
-        ParameterSlider(title: "Saturation", value: session.binding(\.look.saturation), range: 0...3)
-        ParameterSlider(
-            title: "Tint per galaxy", value: session.binding(\.look.galaxyTint), range: 0...1)
-        ParameterSlider(
-            title: "Dust opacity", value: session.binding(\.look.dustStrength),
-            range: 0...1.2, format: "%.3f")
-        ParameterSlider(
-            title: "Dust web", value: session.binding(\.look.dustWeb), range: 0...1)
-        ParameterSlider(
-            title: "Painted arm strength", value: session.binding(\.look.armPersistence), range: 0...2)
-    }
-}
-
-struct InstrumentControls: View {
-    @ObservedObject var session: StyleSession
-
-    var body: some View {
-        ParameterSlider(
-            title: "Star smoothing", value: session.binding(\.look.smoothingScale), range: 0.4...5.0)
-        ParameterSlider(
-            title: "Minimum kernel (px)", value: session.binding(\.look.minimumKernel), range: 0.5...6)
-        ParameterSlider(
-            title: "Maximum kernel (px)", value: session.binding(\.look.maximumKernel), range: 4...160,
-            format: "%.0f")
-        ParameterSlider(
-            title: "Stars under the kernel (projection)", value: session.binding(\.look.columnSmoothing),
-            range: 0...120, format: "%.0f")
-        ParameterSlider(title: "Compact sources", value: session.binding(\.look.glint), range: 0...1)
-        ParameterSlider(
-            title: "Young star width", value: session.binding(\.look.youngWidth), range: 0.25...4)
-        ParameterSlider(title: "Knot width", value: session.binding(\.look.knotWidth), range: 0.25...4)
-        ParameterSlider(
-            title: "Old disk width", value: session.binding(\.look.oldWidth), range: 0.25...4)
-        ParameterSlider(title: "Bulge width", value: session.binding(\.look.bulgeWidth), range: 0.25...4)
-        ParameterSlider(title: "Glow", value: session.binding(\.look.bloomIntensity), range: 0...2)
-        ParameterSlider(
-            title: "Glow threshold", value: session.binding(\.look.bloomThreshold), range: 0.05...1.5)
-        ParameterSlider(
-            title: "Threshold softness", value: session.binding(\.look.bloomSoftKnee), range: 0...1)
-        ParameterSlider(
-            title: "Diffraction spikes", value: session.binding(\.look.spikeIntensity),
-            range: 0...1.5)
-        ParameterSlider(
-            title: "Spike arms",
-            value: Binding(
-                get: { Float(session.current.look.spikeArms) },
-                set: { session.binding(\.look.spikeArms).wrappedValue = Int($0.rounded()) }),
-            range: 0...8, format: "%.0f")
-        ParameterSlider(
-            title: "Spike length", value: session.binding(\.look.spikeLength), range: 0...200,
-            format: "%.0f")
-        ParameterSlider(
-            title: "Spike sharpness", value: session.binding(\.look.spikeSharpness), range: 0...1)
-        CheckToggle(
-            title: "Webb spikes",
-            isOn: Binding(
-                get: { session.current.look.spikePattern == .webb },
-                set: { session.binding(\.look.spikePattern).wrappedValue = $0 ? .webb : .even }))
-        ParameterSlider(
-            title: "Field star size", value: session.binding(\.look.starSize), range: 0.2...4)
-        ParameterSlider(
-            title: "White point", value: session.binding(\.look.whitePoint), range: 1...20, format: "%.1f")
-        ParameterSlider(
-            title: "Sky background", value: session.binding(\.look.skyLevel), range: 0...0.006,
-            format: "%.4f")
-        ParameterSlider(
-            title: "Twinkle (sensor noise)", value: session.binding(\.look.noiseLevel),
-            range: 0...0.004, format: "%.4f")
     }
 }
 
