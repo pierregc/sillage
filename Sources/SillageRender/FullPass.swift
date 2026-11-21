@@ -708,6 +708,8 @@ public final class FullPassRun {
                 break
             }
         }
+        // No step comes after the last frame's smoothing to check it (#409).
+        try engine.check()
 
         /// The key frames' take, and their list beside it.
         func writeKeyFrames() throws {

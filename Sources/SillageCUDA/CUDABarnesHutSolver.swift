@@ -74,6 +74,8 @@ public final class CUDABarnesHutSolver: StepChangingSolver {
     /// so the solver keeps the error and runs nothing after it: read it, or step with
     /// `advance(steps:)`, which throws it.
     public private(set) var failure: CUDAError?
+    /// Test only: the next pass is taken as one the device failed (#301).
+    var failsNextPass: CUDAError?
 
     /// Every particle's position and velocity, 16 bytes each, laid out `[tracers | massive
     /// visible | massive halo]`: a light tracer's formation time in the w of its position and its
@@ -303,17 +305,20 @@ public final class CUDABarnesHutSolver: StepChangingSolver {
     /// Every particle as it stands, tracers first, as `MetalBarnesHutSolver.particles` gives
     /// them: a tracer's light, kernel and birth radius at the steps they are kept at, its
     /// velocity half a kick ahead of the massive ones'. Downloaded on every access.
+    /// Empty where a download failed, which `failure` then holds (#301).
     public var particles: ParticleSystem {
         var system = host.template
         let tracers = tracerCount
-        system.positions =
-            (try? positions.download(SIMD3<Float>.self, count: massive, from: tracers * 16)) ?? []
-        system.velocities =
-            (try? velocities.download(SIMD3<Float>.self, count: massive, from: tracers * 16)) ?? []
-        system.formation = (try? formation.download(Float.self, count: massive)) ?? []
+        system.positions = fetched {
+            try positions.download(SIMD3<Float>.self, count: massive, from: tracers * 16)
+        }
+        system.velocities = fetched {
+            try velocities.download(SIMD3<Float>.self, count: massive, from: tracers * 16)
+        }
+        system.formation = fetched { try formation.download(Float.self, count: massive) }
         guard tracers > 0 else { return system }
-        let states = (try? positions.download(SIMD4<Float>.self, count: tracers)) ?? []
-        let motions = (try? velocities.download(SIMD4<UInt32>.self, count: tracers)) ?? []
+        let states = fetched { try positions.download(SIMD4<Float>.self, count: tracers) }
+        let motions = fetched { try velocities.download(SIMD4<UInt32>.self, count: tracers) }
         var traced = ParticleSystem(capacity: host.count)
         for index in 0..<min(states.count, motions.count) {
             let (state, motion) = (states[index], motions[index])
@@ -433,8 +438,20 @@ public final class CUDABarnesHutSolver: StepChangingSolver {
         return (spacing, builder.frame, builder.maximumDepth)
     }
 
+    private func fetched<T>(_ download: () throws -> [T]) -> [T] {
+        do { return try download() } catch {
+            failure = failure ?? (error as? CUDAError ?? CUDAError(.unknown, "\(error)"))
+            return []
+        }
+    }
+
     private func attempt(_ work: () throws -> Void) {
         guard failure == nil else { return }
+        if let injected = failsNextPass {
+            failsNextPass = nil
+            failure = injected
+            return
+        }
         do { try work() } catch let error as CUDAError {
             failure = error
         } catch {
@@ -460,6 +477,8 @@ public final class CUDABarnesHutSolver: StepChangingSolver {
 // MARK: - The step's passes
 
 extension CUDABarnesHutSolver: BarnesHutPasses {
+    public var failed: Bool { failure != nil }
+
     public var massivePositions: UnsafeBufferPointer<SIMD3<Float>> {
         UnsafeBufferPointer(
             start: hostPositions.bytes.baseAddress?.assumingMemoryBound(to: SIMD3<Float>.self),
@@ -663,6 +682,7 @@ extension CUDABarnesHutSolver {
 
     /// The files of the Metal solver's checkpoint, downloaded and written 256 MB at a time.
     public func writeParticles(to handle: FileHandle) throws {
+        if let failure { throw failure }
         let longest = changing.map(\.length).max() ?? 0
         let staging = try CUDAHostMemory(context: context, length: min(longest, 256 << 20))
         for (buffer, length) in changing {

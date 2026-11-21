@@ -108,6 +108,7 @@ struct SetupView: View {
 /// Split out from the scroll view so it can be rendered offscreen for inspection.
 struct SetupContent: View {
     @ObservedObject var model: SimulationModel
+    @Environment(\.offscreen) private var offscreen
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -157,12 +158,9 @@ struct SetupContent: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Gravity").font(.headline)
 
-            Picker("", selection: solverBinding) {
-                Text("Self-gravitating").tag(SolverKind.barnesHut)
-                Text("Test particles").tag(SolverKind.restricted)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            SegmentedChoice(
+                selection: solverBinding,
+                options: [("Self-gravitating", .barnesHut), ("Test particles", .restricted)])
 
             Text(
                 model.draft.solver == .barnesHut
@@ -175,18 +173,22 @@ struct SetupContent: View {
             HStack {
                 Text("Random seed").font(.caption)
                 Spacer()
-                TextField(
-                    "seed",
-                    value: Binding(
-                        get: { model.draft.seed },
-                        set: {
-                            model.draft.seed = $0
-                            model.commitDraftChange()
-                        }),
-                    format: .number
-                )
-                .frame(width: 90)
-                .textFieldStyle(.roundedBorder)
+                if offscreen {
+                    OffscreenField(text: "\(model.draft.seed)").frame(width: 90)
+                } else {
+                    TextField(
+                        "seed",
+                        value: Binding(
+                            get: { model.draft.seed },
+                            set: {
+                                model.draft.seed = $0
+                                model.commitDraftChange()
+                            }),
+                        format: .number
+                    )
+                    .frame(width: 90)
+                    .textFieldStyle(.roundedBorder)
+                }
             }
 
             // Softening follows from the particle count and the disk size; there is no useful
@@ -238,6 +240,7 @@ struct SetupContent: View {
 struct GalaxyCard: View {
     @ObservedObject var model: SimulationModel
     let index: Int
+    @Environment(\.offscreen) private var offscreen
 
     private var commit: () -> Void { { model.commitDraftChange() } }
 
@@ -256,9 +259,13 @@ struct GalaxyCard: View {
         return Card {
             Group {
                 HStack {
-                    TextField("name", text: galaxy.name)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 150)
+                    if offscreen {
+                        OffscreenField(text: model.draft.galaxies[index].name).frame(width: 150)
+                    } else {
+                        TextField("name", text: galaxy.name)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 150)
+                    }
                     Spacer()
                     Button(role: .destructive) {
                         model.removeGalaxy(at: index)
@@ -269,13 +276,10 @@ struct GalaxyCard: View {
                     .disabled(model.draft.galaxies.count <= 1)
                 }
 
-                Picker("", selection: galaxy.kind) {
-                    ForEach(GalaxyKind.allCases.filter { $0 != .blackHole }, id: \.self) {
-                        Text($0.displayName).tag($0)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                SegmentedChoice(
+                    selection: galaxy.kind,
+                    options: GalaxyKind.allCases.filter { $0 != .blackHole }.map { ($0.displayName, $0) }
+                )
                 .onChange(of: kind) { model.commitDraftChange() }
 
                 particleCountRow(galaxy)
@@ -314,27 +318,24 @@ struct GalaxyCard: View {
                 if kind != .globular {
                     Group {
                         ParameterSlider(
-                            title: "Inclination (rad)", value: galaxy.inclination,
-                            range: -1.57...1.57, onCommit: commit)
+                            title: "Inclination (°)", value: galaxy.inclination.degrees,
+                            range: (-1.57...1.57).inDegrees, format: "%.0f", onCommit: commit)
                         ParameterSlider(
-                            title: "Position angle (rad)", value: galaxy.positionAngle,
-                            range: 0...6.28, onCommit: commit)
-                        Picker("", selection: galaxy.spin) {
-                            Text("Prograde").tag(Spin.prograde)
-                            Text("Retrograde").tag(Spin.retrograde)
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
+                            title: "Position angle (°)", value: galaxy.positionAngle.degrees,
+                            range: (0...6.28).inDegrees, format: "%.0f", onCommit: commit)
+                        SegmentedChoice(
+                            selection: galaxy.spin,
+                            options: [("Prograde", .prograde), ("Retrograde", .retrograde)]
+                        )
                         .onChange(of: model.draft.galaxies[index].spin) { commit() }
                     }
                 }
 
                 if kind == .spiral {
-                    Stepper(
-                        "Arms: \(model.draft.galaxies[index].armCount)", value: galaxy.armCount,
-                        in: 1...6
+                    CountStepper(
+                        title: "Arms: \(model.draft.galaxies[index].armCount)", value: galaxy.armCount,
+                        range: 1...6
                     )
-                    .font(.caption)
                     .onChange(of: model.draft.galaxies[index].armCount) { commit() }
                     ParameterSlider(
                         title: "Arm contrast", value: galaxy.armStrength, range: 0...0.95,
@@ -413,8 +414,12 @@ struct GalaxyCard: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Palette.secondary)
             }
-            Slider(value: count, in: 50_000...8_000_000) { editing in
-                if !editing { model.commitDraftChange() }
+            if offscreen {
+                OffscreenTrack(fraction: (count.wrappedValue - 50_000) / (8_000_000 - 50_000))
+            } else {
+                Slider(value: count, in: 50_000...8_000_000) { editing in
+                    if !editing { model.commitDraftChange() }
+                }
             }
         }
     }

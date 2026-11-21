@@ -106,7 +106,8 @@ scene's `.checkpoint/`, and holds on top of it what a run that writes a take car
 
 A run with a measuring option (`--density`, `--dump-walk`, `--dump-targets`, `--take-v6`,
 `--take-massive`, `--sf-leaves`) is refused with a checkpoint rather than half saved, as is a
-solver that keeps no state.
+solver that keeps no state. A hires from a scene folder gives such a run no checkpoint unless
+`--checkpoint-every` asks for one, so `scripts/fidelity.py` and a restricted scene run as they did.
 
 ## Which runs checkpoint
 

@@ -33,10 +33,19 @@ struct SettingsView: View {
 
 struct SettingsForm: View {
     @StateObject var settings: NotificationSettings
+    @Environment(\.offscreen) private var offscreen
 
     var body: some View {
         Form {
-            Toggle("Queue notifications", isOn: $settings.enabled)
+            if offscreen {
+                HStack(spacing: 6) {
+                    Image(systemName: settings.enabled ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(settings.enabled ? Color.accentColor : Palette.secondary)
+                    Text("Queue notifications")
+                }
+            } else {
+                Toggle("Queue notifications", isOn: $settings.enabled)
+            }
             Text(
                 "Sillage tells you when a phase of the night ends, when the night is over, "
                     + "when a job fails, and when the queue empties after jobs started by hand."

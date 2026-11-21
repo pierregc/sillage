@@ -60,9 +60,10 @@ a few tests alone is `swiftc -Onone -I .build/linux -L .build/linux -lSillageCor
   CoreGraphics, CoreText, ImageIO, CoreVideo and CoreMedia (PNGs, the look grid and sheet,
   `ExportedFile`), QuartzCore, AVFoundation and VideoToolbox (`VideoWriter`, the codec's
   properties). `scripts/linux-skip.txt` names each with its framework.
-- **The tests of both modules but 30 files**, the ones that need Metal, AVFoundation, ImageIO or
-  CoreGraphics, and the queue and night runner's, which start and watch processes with calls only
-  macOS has. 397 tests run on Linux, and the Mac runs those and the rest.
+- **The tests of both modules but those of `scripts/linux-skip-tests.txt`**: the files that need
+  Metal, AVFoundation, ImageIO or CoreGraphics, and the queue and night runner's, which start and
+  watch processes with calls only macOS has. A suite whose other tests are portable is split:
+  `X.swift` holds what Linux runs and `X+Mac.swift`, listed, the rest. See below.
 
 Everything the ticket asked for builds: `SceneFolder`, `LookFile` and its extensions,
 `RenderLook`, `GalaxyColours`, `PaletteRamps`, the cameras (`Camera`, `AutoCamera`,
@@ -70,6 +71,31 @@ Everything the ticket asked for builds: `SceneFolder`, `LookFile` and its extens
 `DiskFrame`, `Recording` and `RecordingFile`, `RunCheckpoint`, `RunStatus`, `CostModel`,
 `StepProfile`, `VideoPreset` and `VideoCodec`, and the full pass's framing, now `TakeFraming`.
 The queue and the night's runner build too, with stand-ins that start and probe nothing.
+
+## Tests that stay on the Mac
+
+`StyleEditTests` reads only source text, yet sat in the skip list for one CoreFoundation call:
+#411 broke it and merged green, and #419 fixed it. Each listed file was then compiled
+on Linux without its Apple imports; what built and passed came back, 83 tests from 12 files:
+`StyleEditTests` (the call made portable), `KernelSourceTests` (`GPUTreeBuilder.Params` became
+`GPUTreeParams`, beside its MSL), and the CPU halves of `BarnesHutTests` (the tree, the Morton
+codes, the sampling), `LightTracerTests` (the split into tracers), `CheckpointTests`,
+`ExportTests` (presets, captions, shot replay), `PreviewTests` (the GIF palette and sizes),
+`DiskProbeTests`, `StageJobsTests`, `PlanPlayheadTests`, `NightPageTests` and `NoticesTests`.
+
+What stays, and why:
+
+- **Metal**, a device or a type defined in a Metal file (`MetalBarnesHutSolver`, `Renderer`,
+  `TakeExport`, `TidalRun`, `SmoothingField`): the solver, renderer and shader suites, and the
+  halves above that run a solver or draw. `RecordingTests`, `RunVideosTests`, `TidalRunTests` and
+  `OverlayPainterTests` have one portable test each, built on a Metal helper, and stay whole.
+- **AVFoundation, ImageIO, CoreGraphics**: reading back encoded videos and images.
+- **Processes**: `QueueRunnerTests`, `NightRunnerTests` and the halves of `NoticesTests` and
+  `NightPageTests` that start stages. `Spawn` and `ProcessProbe` are stand-ins on Linux that start
+  and probe nothing; porting them to `posix_spawn` and `/proc` would bring back about 30 tests.
+
+A new test goes in `X.swift` unless it needs one of these; a new test file that needs one is
+listed with its reason.
 
 ## `simd` on Linux
 

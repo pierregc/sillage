@@ -1,4 +1,18 @@
+import SillageRender
 import SwiftUI
+
+extension Binding where Value == Float {
+    /// An angle kept in radians, read and written in degrees.
+    var degrees: Binding<Float> {
+        Binding<Float>(
+            get: { wrappedValue * 180 / .pi }, set: { wrappedValue = $0 * .pi / 180 })
+    }
+}
+
+extension ClosedRange where Bound == Float {
+    /// A range of radians as degrees.
+    var inDegrees: ClosedRange<Float> { (lowerBound * 180 / .pi)...(upperBound * 180 / .pi) }
+}
 
 /// A labelled slider. `onCommit` fires when the drag ends, so structural changes can rebuild
 /// the simulation once instead of on every intermediate value.
@@ -69,6 +83,103 @@ struct CheckToggle: View {
     }
 }
 
+/// A segmented picker, drawn as a row of labels offscreen.
+struct SegmentedChoice<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(title: String, value: Value)]
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 2) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(options[index].value == selection ? Color(white: 0.42) : Color.clear))
+                }
+            }
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color(white: 0.2)))
+        } else {
+            Picker("", selection: $selection) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title).tag(options[index].value)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+    }
+}
+
+/// A pop-up menu, drawn as its current choice offscreen.
+struct MenuChoice<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(title: String, value: Value)]
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 6) {
+                Text(options.first { $0.value == selection }?.title ?? "")
+                Image(systemName: "chevron.up.chevron.down").font(.caption2)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color(white: 0.24)))
+        } else {
+            Picker("", selection: $selection) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index].title).tag(options[index].value)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+        }
+    }
+}
+
+/// A text field's text in a box, as `ImageRenderer` can draw it.
+struct OffscreenField: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(white: 0.35)))
+    }
+}
+
+/// A stepper, drawn as its two halves offscreen.
+struct CountStepper: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    @Environment(\.offscreen) private var offscreen
+
+    var body: some View {
+        if offscreen {
+            HStack(spacing: 8) {
+                Text(title)
+                Text("−   +")
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(white: 0.24)))
+            }
+            .font(.caption)
+        } else {
+            Stepper(title, value: $value, in: range).font(.caption)
+        }
+    }
+}
+
 struct VectorEditor: View {
     let title: String
     @Binding var value: SIMD3<Float>
@@ -87,6 +198,48 @@ struct VectorEditor: View {
             ParameterSlider(
                 title: "z", value: Binding(get: { value.z }, set: { value.z = $0 }),
                 range: range, onCommit: onCommit)
+        }
+    }
+}
+
+/// The controls of one section of a look, from the table both render settings panels share
+/// (#226): a slider for each field, a count for the arms, a box for the pattern.
+struct LookControlList: View {
+    let group: LookFile.Group
+    @Binding var look: RenderLook
+
+    var body: some View {
+        ForEach(group.controls) { control in
+            row(control)
+            if let note = control.note {
+                Text(note)
+                    .font(.caption2)
+                    .foregroundStyle(Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder private func row(_ control: LookControl) -> some View {
+        switch control.kind {
+        case .slider(let path, let range, let format):
+            ParameterSlider(
+                title: control.title,
+                value: Binding(get: { look[keyPath: path] }, set: { look[keyPath: path] = $0 }),
+                range: range, format: format)
+        case .count(let path, let range):
+            ParameterSlider(
+                title: control.title,
+                value: Binding(
+                    get: { Float(look[keyPath: path]) },
+                    set: { look[keyPath: path] = Int($0.rounded()) }),
+                range: Float(range.lowerBound)...Float(range.upperBound), format: "%.0f")
+        case .webbSpikes:
+            CheckToggle(
+                title: control.title,
+                isOn: Binding(
+                    get: { look.spikePattern == .webb },
+                    set: { look.spikePattern = $0 ? .webb : .even }))
         }
     }
 }

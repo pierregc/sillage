@@ -83,6 +83,9 @@ public final class CUDARenderer: FrameStyling {
     public var inside: InsideFrame?
     /// The point stars the last frame drew, to the eight.
     public private(set) var starsDrawn = 0
+    /// Where the time of each pass goes when the drawing is profiled: each pass then waits for
+    /// the device, which changes nothing of what is drawn.
+    public var phases: PhaseTimes?
 
     private let handle: OpaquePointer
     private let largeCapacity: Int
@@ -301,7 +304,7 @@ public final class CUDARenderer: FrameStyling {
         if plan.web != nil { try bakeLace() }
         try bind()
         if plan.clears {
-            try check(sc_render_clear(handle), "emptying the light and the dust")
+            try timed("clear") { try check(sc_render_clear(handle), "emptying the light and the dust") }
             starsDrawn = 0
         }
         var deep: Deep?
@@ -310,12 +313,21 @@ public final class CUDARenderer: FrameStyling {
         }
         let everything = split(0..<(drawnCount + tracerCount))
         let parts = split(particles ?? 0..<(drawnCount + tracerCount))
+        // Where its grains are spread over two slabs, each galaxy's dust is carried and
+        // multiplied by its own web apart (#399): one carrier here, filled and resolved a
+        // galaxy at a time, where Metal fills a carrier each before its frame's passes.
+        let apart =
+            deep.map {
+                InsideUniforms(
+                    $0.frame, camera: $0.camera, next: $0.next, settings: settings, splat: plan.splat
+                ).websApart(galaxies: galaxySlots)
+            } ?? 1
         for pass in plan.passes {
             switch pass {
             case .column:
                 try draw(SC_RENDER_COLUMN, pass, plan, everything, threads, deep)
             case .webCarrier:
-                try draw(SC_RENDER_WEB_CARRIER, pass, plan, parts, threads, deep)
+                if apart == 1 { try draw(SC_RENDER_WEB_CARRIER, pass, plan, parts, threads, deep) }
             case .starfield:
                 try draw(SC_RENDER_STARFIELD, pass, plan, (0..<0, 0..<0), 1, deep)
             case .dust:
@@ -323,7 +335,12 @@ public final class CUDARenderer: FrameStyling {
             case .paintedDust:
                 try draw(SC_RENDER_PAINTED_DUST, pass, plan, parts, threads, deep)
             case .webResolve:
-                try draw(SC_RENDER_WEB_RESOLVE, pass, plan, (0..<0, 0..<0), 1, deep)
+                for galaxy in 1...apart {
+                    if apart > 1 {
+                        try draw(SC_RENDER_WEB_CARRIER, .webCarrier, plan, parts, threads, deep, only: galaxy)
+                    }
+                    try draw(SC_RENDER_WEB_RESOLVE, pass, plan, (0..<0, 0..<0), 1, deep)
+                }
             case .stars:
                 try draw(SC_RENDER_STARS, pass, plan, parts, threads, deep)
                 // The near particles' point stars go with the stars, as Metal draws them.
@@ -345,7 +362,12 @@ public final class CUDARenderer: FrameStyling {
 
     /// Brings the light and the dust up to date as floats, for `target` and for #277.
     public func finish() throws {
-        try check(sc_render_finish(handle), "finishing the frame's targets")
+        try timed("finish") { try check(sc_render_finish(handle), "finishing the frame's targets") }
+    }
+
+    private func timed<T>(_ phase: String, _ work: () throws -> T) throws -> T {
+        guard let phases else { return try work() }
+        return try phases.time(phase, on: context, work)
     }
 
     /// The frame as a picture in 8-bit bytes: the particle passes, then the post-processing of
@@ -361,29 +383,37 @@ public final class CUDARenderer: FrameStyling {
     /// draws it: with several, the mean of a render through each but the last, the light
     /// averaged before the tone curve, each render drawing the point stars as the streaks they
     /// leave on the way to the next camera. Only a frame drawn from inside is; any other draws
-    /// through the middle camera.
+    /// through the middle camera. Between the matter's slabs and the eye's, each render is
+    /// drawn with both and dissolved (#396).
     public func picture(
         cameras: [Camera], format: CUDAPost.Format = .rgb, threads: Int = 1
     ) throws -> UnsafeRawBufferPointer {
         guard !cameras.isEmpty else { throw CUDAError(.invalidArgument, "a picture through no camera") }
-        guard inside != nil, !settings.plain else {
+        guard let frame = inside, !settings.plain else {
             try render(camera: cameras[cameras.count / 2], threads: threads)
             return try develop(format: format)
         }
+        defer { inside = frame }
         let post = try postProcessor(PostPlan.sizes(for: settings))
         let renders = max(cameras.count - 1, 1)
         for index in 0..<renders {
             let camera = cameras[index]
-            try draw(
-                plan(camera: camera), threads: threads, camera: camera,
-                next: index + 1 < cameras.count ? cameras[index + 1] : nil)
-            try finish()
-            guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
-                throw CUDAError(.invalidArgument, "this renderer has no light")
+            for (layer, stack) in frame.stacks.enumerated() {
+                inside?.eyeSlabs = stack.eyeSlabs
+                try draw(
+                    plan(camera: camera), threads: threads, camera: camera,
+                    next: index + 1 < cameras.count ? cameras[index + 1] : nil)
+                try finish()
+                guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
+                    throw CUDAError(.invalidArgument, "this renderer has no light")
+                }
+                try timed("inside resolve") {
+                    try post.insideResolve(
+                        light: CUDABuffer(borrowing: light, of: self, context: context),
+                        factor: settings.supersample, share: stack.weight / Float(renders),
+                        adds: index > 0 || layer > 0)
+                }
             }
-            try post.insideResolve(
-                light: CUDABuffer(borrowing: light, of: self, context: context),
-                factor: settings.supersample, share: 1 / Float(renders), adds: index > 0)
         }
         return try develop(format: format, resolved: true)
     }
@@ -404,17 +434,19 @@ public final class CUDARenderer: FrameStyling {
     ) throws -> UnsafeRawBufferPointer {
         let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
         let post = try postProcessor(plan.sizes)
-        if let external {
-            try post.run(plan, light: external, resolved: resolved)
-        } else {
-            guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
-                throw CUDAError(.invalidArgument, "this renderer has no light")
+        return try timed("post-processing") {
+            if let external {
+                try post.run(plan, light: external, resolved: resolved)
+            } else {
+                guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
+                    throw CUDAError(.invalidArgument, "this renderer has no light")
+                }
+                try post.run(
+                    plan, light: CUDABuffer(borrowing: light, of: self, context: context),
+                    resolved: resolved)
             }
-            try post.run(
-                plan, light: CUDABuffer(borrowing: light, of: self, context: context),
-                resolved: resolved)
+            return try post.pack(format)
         }
-        return try post.pack(format)
     }
 
     /// An image of the post-processing of the last frame, for the comparisons.
@@ -528,18 +560,30 @@ public final class CUDARenderer: FrameStyling {
 
     private func draw(
         _ name: sc_render_pass, _ pass: FramePlan.Pass, _ plan: FramePlan,
-        _ parts: (massive: Range<Int>, tracers: Range<Int>), _ threads: Int, _ deep: Deep?
+        _ parts: (massive: Range<Int>, tracers: Range<Int>), _ threads: Int, _ deep: Deep?,
+        only: Int = 0
+    ) throws {
+        try timed(name == SC_RENDER_POINT_STARS ? "pass pointStars" : "pass \(pass)") {
+            try lay(name, pass, plan, parts, threads, deep, only: only)
+        }
+    }
+
+    private func lay(
+        _ name: sc_render_pass, _ pass: FramePlan.Pass, _ plan: FramePlan,
+        _ parts: (massive: Range<Int>, tracers: Range<Int>), _ threads: Int, _ deep: Deep?,
+        only: Int
     ) throws {
         try check(sc_render_begin(handle, name), "starting the \(pass) pass")
         let splat = plan.uniforms(for: pass)
         // The engine's passes always hold the inside of a galaxy: a frame without it hands
         // them the values that leave their arithmetic as it was.
-        let uniforms = InsideSplatUniforms(
-            splat: splat,
-            inside: deep.map {
+        var inside =
+            deep.map {
                 InsideUniforms(
                     $0.frame, camera: $0.camera, next: $0.next, settings: settings, splat: splat)
-            } ?? InsideUniforms(outside: splat))
+            } ?? InsideUniforms(outside: splat)
+        inside.webOnly = Float(only)
+        let uniforms = InsideSplatUniforms(splat: splat, inside: inside)
         var web = plan.web
         // Near a disk the lace is carried through its dust layer's depth, within the radii the
         // settings give.

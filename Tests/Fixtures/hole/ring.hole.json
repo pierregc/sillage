@@ -1,6 +1,8 @@
 {
   "ambient" : 0.02,
   "beaming" : 1,
+  "bloom" : 0.35,
+  "bloomLevels" : 6,
   "camera" : {
     "azimuth" : 0,
     "distance" : 19.1944,

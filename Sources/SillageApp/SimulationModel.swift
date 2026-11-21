@@ -38,7 +38,7 @@ final class SimulationModel: ObservableObject {
     @Published var camera = OrbitCamera()
     /// Free flight. Only the flag is published: the rig itself moves on every frame, and
     /// publishing that would rebuild the panel sixty times a second.
-    @Published var isFlying = false
+    @Published var isFlying = false { didSet { drawEpoch += 1 } }
     var flight = FlyCamera()
 
     /// Full-screen, unattended viewing. See `ContemplationMode`.
@@ -153,16 +153,37 @@ final class SimulationModel: ObservableObject {
     /// Held so the verification mode can drive the view itself. MTKView pauses its display
     /// link whenever the window is occluded, which a window opened behind another app always
     /// is, and that would otherwise make the render path untestable from a script.
-    func attach(canvas view: MTKView) { canvas = view }
+    func attach(canvas view: MTKView) {
+        canvas = view
+        // A canvas built again over a still picture has nothing on it yet (#410).
+        drawGate.force()
+    }
     var hasCanvas: Bool { canvas?.window != nil }
 
-    func drawOnce() { canvas?.draw() }
+    func drawOnce() {
+        drawGate.force()
+        canvas?.draw()
+    }
+
+    /// Lets a frame through only when the picture can have changed (#229). `SILLAGE_IDLE_FPS`
+    /// sets how often a still picture is redrawn to keep the sensor grain alive: 0 leaves it
+    /// frozen, 60 draws as before.
+    private var drawGate = DrawGate(idleInterval: SimulationModel.idleInterval)
+    /// Bumped by whatever changes the picture and is not in `DrawGate.Key`.
+    private var drawEpoch = 0
+
+    private static var idleInterval: Double {
+        guard let text = ProcessInfo.processInfo.environment["SILLAGE_IDLE_FPS"],
+            let rate = Double(text)
+        else { return 1.0 / 12 }
+        return rate > 0 ? 1 / rate : 0
+    }
 
     /// Presses or releases a key on the canvas, for the headless checks.
     func hold(key: UInt16, _ down: Bool) { (canvas as? CanvasView)?.hold(key, down) }
     @Published private(set) var failure: String?
 
-    @Published private(set) var mode: ViewerMode = .running
+    @Published private(set) var mode: ViewerMode = .running { didSet { drawEpoch += 1 } }
     @Published private(set) var capturedFrames = 0
     @Published private(set) var capturedBytes = 0
     /// Whether the take has run past its memory budget and is continuing on disk.
@@ -181,7 +202,7 @@ final class SimulationModel: ObservableObject {
     /// Drawing a few million particles takes a real share of the same GPU the solver is on.
     /// When a scene is being computed to be watched later rather than now, the picture is
     /// worth nothing and the panel says everything.
-    @Published var showCanvasWhileRunning = true
+    @Published var showCanvasWhileRunning = true { didSet { drawEpoch += 1 } }
     /// Quit once the run has finished and written itself out. For a scene left overnight
     /// there is nothing left to do or to show.
     @Published var quitWhenFinished = false
@@ -227,6 +248,9 @@ final class SimulationModel: ObservableObject {
     /// Frames between refreshes of the smoothing field.
     let smoothingInterval = 20
     private var smoothingInFlight = false
+    /// The clock and playhead the lengths were last built at: a picture that moved on since is
+    /// drawn as moving until a refresh catches up, so a still frame is not left on old ones (#410).
+    private var smoothedAt: SIMD2<Double>?
     /// What each refresh cost, for `--replay`.
     private(set) var smoothingRefreshes: [Double] = []
 
@@ -363,10 +387,6 @@ final class SimulationModel: ObservableObject {
     /// integer because the shader draws a whole number of them, and `ParameterSlider` speaks
     /// only in floats; rounding here rather than storing a float keeps the count exact
     /// everywhere else.
-    var spikeArms: Float {
-        get { Float(look.spikeArms) }
-        set { look.spikeArms = Int(newValue.rounded()) }
-    }
 
     /// What the window opens on, and deliberately not `.observatory`.
     ///
@@ -402,6 +422,7 @@ final class SimulationModel: ObservableObject {
     }
 
     private func lookFileChanged(from old: LookFile) {
+        drawEpoch += 1
         guard !installingLook else { return }
         if lookFile.palette != old.palette {
             repaint()
@@ -532,10 +553,14 @@ final class SimulationModel: ObservableObject {
             wanted = InsideExposure.trimmed(wanted ?? look, stops: liveExposure.stops)
         }
         if let wanted {
-            if wanted != lastShotLook { renderer?.apply(wanted) }
+            if wanted != lastShotLook {
+                drawEpoch += 1
+                renderer?.apply(wanted)
+            }
             lastShotLook = wanted
             drawsShotLook = true
         } else if drawsShotLook {
+            drawEpoch += 1
             renderer?.apply(look)
             lastShotLook = nil
             drawsShotLook = false
@@ -585,6 +610,7 @@ final class SimulationModel: ObservableObject {
     /// Pushes the whole look at both renderers. The preview is redrawn unconditionally because
     /// it draws on demand, and every field here changes what it shows.
     private func applyLook() {
+        drawEpoch += 1
         renderer?.apply(look)
         drawsShotLook = false
         lastShotLook = nil
@@ -745,6 +771,7 @@ final class SimulationModel: ObservableObject {
     /// is about to be thrown away.
     private func refreshSmoothing() {
         guard !smoothingInFlight, let field = smoothing else { return }
+        let moment = smoothingMoment
         if mode == .playback {
             guard let bound = playbackPositions else { return }
             smoothingInFlight = true
@@ -752,7 +779,7 @@ final class SimulationModel: ObservableObject {
             steppingQueue.async { [weak self] in
                 field.update(from: positions.buffer)
                 let spent = field.lastMilliseconds
-                DispatchQueue.main.async { self?.finishSmoothing(spent) }
+                DispatchQueue.main.async { self?.finishSmoothing(spent, at: moment, of: field) }
             }
         } else {
             guard let solver else { return }
@@ -760,13 +787,23 @@ final class SimulationModel: ObservableObject {
             steppingQueue.async { [weak self] in
                 field.update(from: solver)
                 let spent = field.lastMilliseconds
-                DispatchQueue.main.async { self?.finishSmoothing(spent) }
+                DispatchQueue.main.async { self?.finishSmoothing(spent, at: moment, of: field) }
             }
         }
     }
 
-    private func finishSmoothing(_ milliseconds: Double) {
+    private var smoothingMoment: SIMD2<Double> { SIMD2(elapsedMyr, playbackPosition) }
+
+    /// Whether the lengths are older than the picture, and a refresh can catch them up.
+    private var smoothingBehind: Bool {
+        let refreshable = mode == .playback ? playbackPositions != nil : solver != nil
+        return smoothing != nil && refreshable && smoothedAt != smoothingMoment
+    }
+
+    private func finishSmoothing(_ milliseconds: Double, at moment: SIMD2<Double>, of field: SmoothingField) {
         smoothingInFlight = false
+        if field === smoothing { smoothedAt = moment }
+        drawGate.wake()
         smoothingRefreshes.append(milliseconds)
         if smoothingRefreshes.count > 400 { smoothingRefreshes.removeFirst() }
     }
@@ -854,6 +891,8 @@ final class SimulationModel: ObservableObject {
             let clock = Date()
             let before = solver.time
             solver.step(count: steps)
+            // A pass the GPU lost leaves the solver where it is for good (#409).
+            let lost = (solver as? MetalBarnesHutSolver)?.failure.map { "\($0)" }
             let time = solver.time
             let advanced = Double(time - before) * Physics.megayearsPerTimeUnit
             let spent = Date().timeIntervalSince(clock)
@@ -869,7 +908,7 @@ final class SimulationModel: ObservableObject {
             var full = false
             var onDisk = 0
             var spillFailure: String?
-            if let reel {
+            if let reel, lost == nil {
                 // Every frame is kept. Past its memory budget the take carries on into a
                 // scratch file rather than coarsening, so ten thousand megayears comes back
                 // at the cadence it was taken at and not at whatever survived the budget.
@@ -884,7 +923,16 @@ final class SimulationModel: ObservableObject {
                 spillFailure = reel.spillFailure
             }
             DispatchQueue.main.async {
-                guard let self, self.liveGeneration == generation else { return }
+                guard let self else { return }
+                // A batch stopped on its way back still moved the particles the canvas draws.
+                self.drawGate.wake()
+                guard self.liveGeneration == generation else { return }
+                if let lost {
+                    self.stopLiveStepping()
+                    self.isPlaying = false
+                    self.failure = "The GPU lost the run: \(lost)"
+                    return
+                }
                 self.elapsedMyr = Double(time) * Physics.megayearsPerTimeUnit
                 // Smoothed, or a batch that happened to land behind a render makes the
                 // number jump around too much to read.
@@ -1270,6 +1318,7 @@ final class SimulationModel: ObservableObject {
 
     private func rebuildRenderer() {
         rendererBuilds += 1
+        drawEpoch += 1
         guard solver != nil || playbackPositions != nil else { return }
         let bound = mode == .playback ? playbackPositions : solver?.positions
         let settings = renderSettings(
@@ -1292,6 +1341,7 @@ final class SimulationModel: ObservableObject {
             // Due on the next frame rather than now: a replay's positions buffer is still empty
             // here, and lengths taken from it would hold until the next refresh.
             framesSinceSmoothing = smoothingInterval
+            smoothedAt = nil
         } catch {
             failure = "\(error)"
             renderer = nil
@@ -1463,6 +1513,29 @@ final class SimulationModel: ObservableObject {
         return renderer.render(camera: activeCamera)
     }
 
+    /// What the next frame would be drawn from, short of the look and the renderer, which the
+    /// epoch stands for.
+    private func drawKey() -> DrawGate.Key {
+        DrawGate.Key(
+            camera: activeCamera, time: Float(elapsedMyr / Physics.megayearsPerTimeUnit),
+            playhead: playbackPosition, width: Int(drawableSize.width),
+            height: Int(drawableSize.height), epoch: drawEpoch)
+    }
+
+    /// Whether anything is moving the picture on its own: the solver stepping, a take playing,
+    /// a flight flown or recorded, the director's film, or the exposure still settling.
+    private var pictureMoves: Bool {
+        if contemplating || isPreparing || flights.isPlaying || flights.isRecording
+            || flights.drivesPlayhead || liveExposure.stops != 0 || smoothingBehind
+        {
+            return true
+        }
+        switch mode {
+        case .running: return isPlaying && solver != nil
+        case .playback: return isPlaying
+        }
+    }
+
     func draw(in view: MTKView) {
         drawAttempts += 1
         // Asked not to draw. The view is taken out of the hierarchy too, but it outlives that
@@ -1485,9 +1558,17 @@ final class SimulationModel: ObservableObject {
         flyOneFrame(view, seconds: seconds)
         advanceContemplation(seconds: Double(seconds))
         // A take opened from a file has no solver behind it, and does not need one.
-        guard let renderer, solver != nil || mode == .playback,
-            let drawable = view.currentDrawable
-        else { return }
+        guard let renderer, solver != nil || mode == .playback else { return }
+        let decision = drawGate.decide(
+            drawKey(), moving: pictureMoves, grain: (lastShotLook ?? look).noiseLevel > 0,
+            now: start)
+        guard decision != .skip else { return }
+        // Nothing to draw on, as when the window is covered: asked again on the next tick,
+        // since the change that opened this one would otherwise be lost.
+        guard let drawable = view.currentDrawable else {
+            drawGate.force()
+            return
+        }
 
         switch mode {
         case .running:
@@ -1499,7 +1580,7 @@ final class SimulationModel: ObservableObject {
             applyInside(activeCamera)
             flights.sample()
         }
-        tickSmoothing()
+        if decision == .active { tickSmoothing() }
         // Where the galaxies were on the frame being shown, so the spiral pattern is painted
         // about them rather than about wherever the run happened to end.
         let centers =

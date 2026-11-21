@@ -35,6 +35,16 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     public var starPeak: Float = 2
     /// Kernel lengths the stars of a particle are scattered over.
     public var starSpread: Float = 1
+    /// The clusters a young particle's stars gather in (#405), as real young stars are born in
+    /// clusters and associations that come apart over tens of megayears; 0 spreads every
+    /// particle's stars evenly through its kernel.
+    public var clusters = 4
+    /// A cluster's radius at birth in parsecs, and how many it grows by each megayear: once it
+    /// is as wide as the stars' spread, they stand where an old particle's stand.
+    public var clusterBirth: Float = 3
+    public var clusterGrowth: Float = 1
+    /// The share of a young particle's stars born in its clusters; the rest are spread evenly.
+    public var clusterShare: Float = 0.8
     /// The shares of the look's kernel ceiling between which a particle's light goes over from
     /// its splat to its stars.
     public var starFrom: Float = 0.05
@@ -46,8 +56,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     public var fade: Float = 3
     /// Where the dust's depth slabs start from the eye once inside, in kiloparsecs.
     public var slabs: [Float] = [0.3, 1.5, 7.5]
-    /// The distances to the nearest matter between which the slabs slide from the eye's layout
-    /// (nearer than the first) to the one around the aim point every export has (past the second).
+    /// The distances to the nearest matter between which a frame goes over from the eye's slabs
+    /// (nearer than the first) to the matter's, or the aim point's every export has (past the
+    /// second): drawn with both and dissolved, not slid (#396).
     public var slabsWithin: [Float] = [1.5, 6]
     /// How near a disk, in its radii (seven scale lengths), the lace of its dust web is carried
     /// through the depth of its dust layer: wholly within the first, not at all past the second,
@@ -92,6 +103,10 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         starSize = try c.value(.starSize, or: starSize)
         starPeak = try c.value(.starPeak, or: starPeak)
         starSpread = try c.value(.starSpread, or: starSpread)
+        clusters = try c.value(.clusters, or: clusters)
+        clusterBirth = try c.value(.clusterBirth, or: clusterBirth)
+        clusterGrowth = try c.value(.clusterGrowth, or: clusterGrowth)
+        clusterShare = try c.value(.clusterShare, or: clusterShare)
         starFrom = try c.value(.starFrom, or: starFrom)
         starFull = try c.value(.starFull, or: starFull)
         field = try c.value(.field, or: field)
@@ -126,6 +141,14 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !(starSize >= 0.5 && starSize <= 16) { return "starSize \(starSize) px: 0.5 to 16" }
         if !(starPeak > 0 && starPeak <= 1000) { return "starPeak \(starPeak): above 0, to 1000" }
         if !(starSpread > 0 && starSpread <= 8) { return "starSpread \(starSpread): above 0, to 8" }
+        if !(0...8).contains(clusters) { return "clusters \(clusters): 0 to 8" }
+        if !(clusterBirth > 0 && clusterBirth <= 100) {
+            return "clusterBirth \(clusterBirth) pc: above 0, to 100"
+        }
+        if !(clusterGrowth >= 0 && clusterGrowth <= 100) {
+            return "clusterGrowth \(clusterGrowth) pc a megayear: 0 to 100"
+        }
+        if !(clusterShare >= 0 && clusterShare <= 1) { return "clusterShare \(clusterShare): 0 to 1" }
         if !(starFrom >= 0 && starFrom < starFull && starFull <= 1) {
             return "starFrom \(starFrom) and starFull \(starFull): shares of the ceiling, the first lower"
         }
@@ -162,12 +185,28 @@ public struct InsideFrame: Sendable, Equatable {
     /// How much the camera is still the look's: 1 at a flight's look keys, where the frame is
     /// the export's, 0 from `Flight.slabEase` seconds away (#355).
     public var look: Float
+    /// The share of the eye's slabs a render is drawn with, nil for what the nearness gives. The
+    /// renderer draws a frame between the matter's slabs and the eye's twice, once with each,
+    /// and dissolves the two (#396).
+    public var eyeSlabs: Float?
 
-    public init(settings: InsideSettings, nearness: Float, matter: [Float] = [], look: Float = 0) {
+    public init(
+        settings: InsideSettings, nearness: Float, matter: [Float] = [], look: Float = 0,
+        eyeSlabs: Float? = nil
+    ) {
         self.settings = settings
         self.nearness = nearness
         self.matter = matter
         self.look = look
+        self.eyeSlabs = eyeSlabs
+    }
+
+    /// The renders a frame takes for its slabs and the weight of each in its light: one, or
+    /// between the matter's stack and the eye's, one with each, dissolved (#396).
+    public var stacks: [(eyeSlabs: Float?, weight: Float)] {
+        let eye = InsideUniforms.depth(self)
+        guard eyeSlabs == nil, eye > 0, eye < 1 else { return [(nil, 1)] }
+        return [(0, 1 - eye), (1, eye)]
     }
 }
 
@@ -205,6 +244,22 @@ public struct InsideUniforms: Sendable {
     public var dustFine: Float
     public var dustCell: Float
     public var dustThin: Float
+    /// The one galaxy whose dust the web's carrier takes in this pass, plus one; 0 for every
+    /// galaxy's (#399).
+    public var webOnly: Float = 0
+    /// The clusters a young particle's stars gather in, 0 for none, their radius at birth in
+    /// kiloparsecs and its growth in kiloparsecs a megayear, and the share of stars in them
+    /// (#405).
+    public var clusterCentres: Float = 0
+    public var clusterBirth: Float = 0
+    public var clusterGrowth: Float = 0
+    public var clusterShare: Float = 0
+
+    /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
+    /// grains are spread over two slabs, which is where two disks one behind the other come
+    /// to share a slab of a pixel, and there one carrier would hand both to the web of one
+    /// (#399). One for every galaxy together otherwise, as every export draws.
+    public func websApart(galaxies: Int) -> Int { slabSoft > 0 ? max(galaxies, 1) : 1 }
 
     /// How far inside the eye is for the slabs: 0 past `slabsWithin`'s far distance from any
     /// matter, 1 nearer than its near one.
@@ -239,15 +294,23 @@ public struct InsideUniforms: Sendable {
         // From the eye: the three boundaries given, and a slab's worth before and after.
         let ratio = (inside.slabs[2] / inside.slabs[0]).squareRoot()
         let eye = [inside.slabs[0] / ratio] + inside.slabs + [inside.slabs[2] * ratio]
-        func blend(_ a: [Float], _ b: [Float], _ t: Float) -> [Float] {
-            t > 0 ? zip(a, b).map { exp(log($0) + (log($1) - log($0)) * t) } : a
+        // The matter's knots may lie behind the eye (#396), so they blend straight, and only the
+        // eye's, which spread by factors, through their logarithms.
+        func blend(_ a: [Float], _ b: [Float], _ t: Float, log scaled: Bool = false) -> [Float] {
+            guard t > 0 else { return a }
+            guard t < 1 else { return b }
+            guard scaled else { return zip(a, b).map { $0 + ($1 - $0) * t } }
+            return zip(a, b).map {
+                let from = log(max($0, 1e-6))
+                return exp(from + (log($1) - from) * t)
+            }
         }
-        let within = Self.depth(frame)
+        let within = frame.eyeSlabs.map { min(max($0, 0), 1) } ?? Self.depth(frame)
         // A flight's frame keeps its slabs in the matter and soft at every distance, nothing
         // switching as the camera moves, but on the look's own camera (#355).
         let away = frame.matter.count == 5 ? 1 - min(max(frame.look, 0), 1) : 0
         let far = away > 0 ? blend(aim, frame.matter, away) : aim
-        let knots = blend(far, eye, within)
+        let knots = blend(far, eye, within, log: true)
         slabKnots = SIMD4(knots[0], knots[1], knots[2], knots[3])
         slabEnd = knots[4]
         slabSoft = max(within, away)
@@ -275,6 +338,10 @@ public struct InsideUniforms: Sendable {
         dustFine = inside.dustFine
         dustCell = inside.dustCell
         dustThin = (1 - inside.dustInside) * Self.dustDepth(frame)
+        clusterCentres = Float(inside.clusters)
+        clusterBirth = inside.clusterBirth / 1000
+        clusterGrowth = inside.clusterGrowth / 1000
+        clusterShare = inside.clusterShare
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
@@ -413,7 +480,10 @@ public enum Nearness {
 /// has is centred on the aim point and as deep as the frame is wide, so receding from a disk seen
 /// edge on it grew and slid through the disk, and a lane went in and out of its bulge's slab;
 /// laid on the matter, the slabs keep their place in it at every distance and wherever the
-/// camera aims, and soft, nothing switches as a boundary passes.
+/// camera aims, and soft, nothing switches as a boundary passes. Near enough that the matter
+/// reaches the eye, the first knots fall behind it rather than stopping there: stopped, the
+/// stack no longer followed the matter and its boundaries swept the disk as the eye came in
+/// (#396).
 public enum MatterDepth {
     /// The shares of the drawn particles in the frame the matter's depth is read between.
     public static let shares: (near: Float, far: Float) = (0.02, 0.98)
@@ -472,7 +542,7 @@ public enum MatterDepth {
         let (front, back) = (depth(at: shares.near), depth(at: shares.far))
         let middle = (front + back) / 2
         let slab = max(back - front, middle * thinnest) * slabShare
-        let start = max(middle - 2 * slab, near)
+        let start = middle - 2 * slab
         return (0...4).map { start + Float($0) * slab }
     }
 }

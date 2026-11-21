@@ -96,8 +96,11 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
     public var longestDispatchMilliseconds = 0.0
     /// The first error the GPU gave a step's pass, which cannot throw: a GPU that drops a
     /// process's work after a fault leaves it stepping in no time on positions that no longer
-    /// move, and a full pass would draw them on (#310).
+    /// move, and a full pass would draw them on (#310). Nothing runs on the GPU after it, since
+    /// the drift writes in place and a pass cannot be replayed (#301).
     public private(set) var failure: (any Error)?
+    /// Test only: the next command buffer of a pass is refused, as one the GPU lost (#301).
+    var failsNextCommandBuffer: (any Error)?
     public var lastDriftMilliseconds: Double {
         get { host.lastDriftMilliseconds }
         set { host.lastDriftMilliseconds = newValue }
@@ -442,11 +445,21 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
 
         BarnesHutStep.seed(
             host, on: self, tracersAwaitCheckpoint: store?.awaitsCheckpoint == true)
+        if let failure { throw failure }
     }
 
     public func step() { step(count: 1) }
 
-    public func step(count steps: Int) { BarnesHutStep.run(host, on: self, steps: steps) }
+    public func step(count steps: Int) {
+        guard failure == nil else { return }
+        BarnesHutStep.run(host, on: self, steps: steps)
+    }
+
+    /// Steps, and throws what a pass left behind.
+    public func advance(steps: Int = 1) throws {
+        step(count: steps)
+        if let failure { throw failure }
+    }
 
     /// The drawn particles, `[tracers | massive visible]` as `positions` holds them, `fraction`
     /// of the step in force past the last step, on the straight line the next step's drift
@@ -464,12 +477,12 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
             drawnCopy = device.makeBuffer(
                 length: max(tracerCount + massiveVisible, 1) * 16, options: .storageModeShared)
         }
+        if let failure { throw failure }
         guard let drawnCopy, let buffer = queue.makeCommandBuffer() else { throw RenderError.noDevice }
         encode(.drawnDrift(fraction: fraction), into: buffer)
-        buffer.commit()
-        buffer.waitUntilCompleted()
         // A copy the GPU dropped would draw the frame before's positions without a word.
-        if let error = buffer.error { throw error }
+        submit(buffer)
+        if let failure { throw failure }
         return drawnCopy
     }
 
@@ -493,7 +506,10 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
     }
 
     /// The step from the next one on, in simulation units (#307).
-    public func changeStep(to step: Float) { BarnesHutStep.changeStep(host, on: self, to: step) }
+    public func changeStep(to step: Float) {
+        guard failure == nil else { return }
+        BarnesHutStep.changeStep(host, on: self, to: step)
+    }
 
     /// Turns gas into stars where the tree says it has been compressed.
     ///
@@ -544,7 +560,7 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
     /// stands for its share of everything drawn, and the spacing the tracers' kernels read is
     /// written beside (#238). False before there is a tree.
     public func writeSmoothing(into lengths: MTLBuffer, drawn: Int) -> Bool {
-        guard nodeCount > 0, let buffer = queue.makeCommandBuffer() else { return false }
+        guard failure == nil, nodeCount > 0, let buffer = queue.makeCommandBuffer() else { return false }
         if tracerCount > 0 {
             let ratio = Float(tracerCount + massiveVisible) / Float(max(massiveVisible, 1))
             builder.encodeSmoothing(
@@ -553,8 +569,7 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
         } else {
             builder.encodeSmoothing(into: buffer, lengths: lengths, drawn: drawn)
         }
-        buffer.commit()
-        buffer.waitUntilCompleted()
+        submit(buffer)
         return true
     }
 
@@ -648,7 +663,10 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
         width: Int? = nil, _ configure: (MTLComputeCommandEncoder) -> Void
     ) {
         let total = threads ?? massive
-        guard total > 0, let encoder = buffer.makeComputeCommandEncoder() else { return }
+        guard total > 0 else { return }
+        guard let encoder = buffer.makeComputeCommandEncoder() else {
+            return fail("Metal gave no compute encoder")
+        }
         encoder.setComputePipelineState(pipeline)
         configure(encoder)
         let widest = pipeline.maxTotalThreadsPerThreadgroup
@@ -664,7 +682,7 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
         _ pipeline: MTLComputePipelineState, threads: Int? = nil,
         _ configure: (MTLComputeCommandEncoder) -> Void
     ) {
-        guard let buffer = queue.makeCommandBuffer() else { return }
+        guard let buffer = commandBuffer() else { return }
         encode(into: buffer, pipeline, threads: threads, configure)
         submit(buffer)
     }
@@ -678,7 +696,7 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
     }
 
     private func profiledPass(_ phase: String, _ encodePass: (MTLCommandBuffer) -> Void) {
-        guard let buffer = queue.makeCommandBuffer() else { return }
+        guard let buffer = commandBuffer() else { return }
         encodePass(buffer)
         submit(buffer)
         let spent = max(buffer.gpuEndTime - buffer.gpuStartTime, 0) * 1000
@@ -691,7 +709,35 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
         buffer.waitUntilCompleted()
         longestDispatchMilliseconds = max(
             longestDispatchMilliseconds, Date().timeIntervalSince(clock) * 1000)
-        if failure == nil, let error = buffer.error { failure = error }
+        record(buffer)
+    }
+
+    /// Keeps the first error of a command buffer that has been waited for.
+    private func record(_ buffer: MTLCommandBuffer) {
+        guard failure == nil else { return }
+        if let error = buffer.error {
+            failure = error
+        } else if buffer.status != .completed {
+            failure = RenderError.commandBuffer("a command buffer ended as \(buffer.status.rawValue)")
+        }
+    }
+
+    private func fail(_ what: String) {
+        if failure == nil { failure = RenderError.commandBuffer(what) }
+    }
+
+    /// A command buffer, none once a pass has failed.
+    private func commandBuffer() -> MTLCommandBuffer? {
+        guard failure == nil else { return nil }
+        if let injected = failsNextCommandBuffer {
+            (failure, failsNextCommandBuffer) = (injected, nil)
+            return nil
+        }
+        guard let buffer = queue.makeCommandBuffer() else {
+            fail("Metal gave no command buffer")
+            return nil
+        }
+        return buffer
     }
 
     // The solver's settings are `BarnesHutHost`'s, which the CUDA engine reads too (#274); they
@@ -789,6 +835,7 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
     public func buildTree(
         sortingTracers sortTracers: Bool, meanwhile work: [BarnesHutWork], profiled: Bool
     ) {
+        guard failure == nil else { return }
         if profiling, profiled {
             for item in work { timed(item.phase, item.run) }
             repeat {
@@ -799,26 +846,27 @@ public final class MetalBarnesHutSolver: StepChangingSolver {
                             sorted: sortedBuffer)
                     }
                 }
-            } while grewAfterOverflow()
+            } while failure == nil && grewAfterOverflow()
             if sortTracers { profiledPass("tracer sort") { encodeTracerSort(into: $0) } }
             profiler.update { $0.treeBuilds += 1 }
-        } else if let buffer = queue.makeCommandBuffer() {
+        } else if let buffer = commandBuffer() {
             builder.encode(
                 into: buffer, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
             buffer.commit()
             // The centres read the positions the build is reading, so they are taken meanwhile.
             for item in work { item.run() }
             buffer.waitUntilCompleted()
+            record(buffer)
             var spent = max(buffer.gpuEndTime - buffer.gpuStartTime, 0) * 1000
             longestDispatchMilliseconds = max(longestDispatchMilliseconds, spent)
-            while grewAfterOverflow(), let again = queue.makeCommandBuffer() {
+            while failure == nil, grewAfterOverflow(), let again = commandBuffer() {
                 builder.encode(
                     into: again, positions: positionBuffer, mass: massBuffer, sorted: sortedBuffer)
                 submit(again)
                 spent += max(again.gpuEndTime - again.gpuStartTime, 0) * 1000
             }
             lastBuildMilliseconds = spent
-            if sortTracers, let sort = queue.makeCommandBuffer() {
+            if sortTracers, let sort = commandBuffer() {
                 encodeTracerSort(into: sort)
                 submit(sort)
             }
@@ -1216,6 +1264,7 @@ extension MetalBarnesHutSolver {
     }
 
     public func writeParticles(to handle: FileHandle) throws {
+        if let failure { throw failure }
         for (buffer, length) in changing {
             try RunCheckpoint.write(buffer.contents(), length, to: handle)
         }
@@ -1225,6 +1274,7 @@ extension MetalBarnesHutSolver {
     /// centres and disks set, and the tree and the accelerations the next step starts from
     /// built again from the positions, as the last step built them. Exact with one tree a step.
     public func restore(_ state: State, from handle: FileHandle) throws {
+        if let failure { throw failure }
         try host.accepts(state)
         for (buffer, length) in changing {
             var read = 0
@@ -1242,12 +1292,15 @@ extension MetalBarnesHutSolver {
         }
         host.take(state)
         BarnesHutStep.restored(host, on: self)
+        if let failure { throw failure }
     }
 }
 
 // MARK: - The step's passes
 
 extension MetalBarnesHutSolver: BarnesHutPasses {
+    public var failed: Bool { failure != nil }
+
     public var massivePositions: UnsafeBufferPointer<SIMD3<Float>> { currentPositions }
 
     public var massiveVelocities: UnsafeBufferPointer<SIMD3<Float>> {
@@ -1256,7 +1309,7 @@ extension MetalBarnesHutSolver: BarnesHutPasses {
 
     /// One command buffer for `passes`, committed and waited for.
     public func run(_ passes: [BarnesHutPass]) {
-        guard let buffer = queue.makeCommandBuffer() else { return }
+        guard let buffer = commandBuffer() else { return }
         for pass in passes { encode(pass, into: buffer) }
         submit(buffer)
     }

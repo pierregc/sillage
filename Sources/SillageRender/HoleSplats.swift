@@ -199,10 +199,15 @@ public struct HoleLook: Sendable {
     public init() {}
 
     /// The post stages' settings: Sillage's, softer, with no field stars and no spikes.
+    ///
+    /// The bloom stands for the light the optics scatter, a few percent in wings that fall off
+    /// fast (#404). The pyramid adds each level back at its full energy: 6 levels at 0.35 laid
+    /// twice the light over the threshold back as a halo as wide as the disk, which the stretch
+    /// lifted to a third of white. 4 levels at 0.03 carry about 6 % of it, within 30 px at 1080p.
     public static func settings(width: Int, height: Int, supersample: Int = 2) -> RenderSettings {
         var settings = RenderSettings(
             width: width, height: height, supersample: supersample, starCount: 0,
-            bloomThreshold: 0.6, bloomSoftKnee: 0.6, bloomIntensity: 0.35, bloomLevels: 6,
+            bloomThreshold: 0.6, bloomSoftKnee: 0.6, bloomIntensity: 0.03, bloomLevels: 4,
             stretch: 6, saturation: 1.6, whitePoint: 6, spikeArms: 0, spikeLength: 0,
             spikeIntensity: 0, skyLevel: 0.0006, noiseLevel: 0.0008, galaxyTint: 0)
         settings.columnSmoothing = 0
@@ -233,6 +238,7 @@ extension HoleLookFile {
         var settings = HoleLook.settings(width: width, height: height)
         if let stretch { settings.stretch = Float(stretch) }
         if let bloom { settings.bloomIntensity = Float(bloom) }
+        if let bloomLevels { settings.bloomLevels = bloomLevels }
         if let whitePoint { settings.whitePoint = Float(whitePoint) }
         if let saturation { settings.saturation = Float(saturation) }
         return settings

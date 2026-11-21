@@ -351,7 +351,7 @@ extension DiskProbe {
             var stepMs = 0.0
             if index > 0 {
                 let stepStart = Date()
-                solver.step(count: stepsPerFrame)
+                try solver.advance(steps: stepsPerFrame)
                 stepMs = Date().timeIntervalSince(stepStart) * 1000
                 stepSeconds += stepMs / 1000
             }

@@ -22,6 +22,11 @@ without opening a window, which is how the animation above was made. Everything 
 that script rather than SwiftPM: with only the Command Line Tools installed, no manifest will
 compile. Shaders are built at runtime, so Xcode is not needed either way.
 
+`dev.sh` rebuilds only what changed: each module, `sillage-render`, the app and the test runner
+keep a hash of their sources and of what they link against in `.build/dev/*.key`, so a second
+command with no change starts in a few seconds. `FORCE=1 ./scripts/dev.sh ...` or
+`./scripts/dev.sh clean` rebuilds everything. The builds stay optimised (`-O`).
+
 Every render writes a scene file beside its output, `x.png` or `x.mov` giving `x.scene.json`
 (`--scene-out` picks another path). It holds the physics and nothing else: the seed, the
 encounter, each galaxy's parameters and its share of the particles, but no colour and no
@@ -462,7 +467,8 @@ seconds of the video, each placing the eye and the aim (in kiloparsecs, or ancho
 the field of view, a roll and an exposure trim, and pinning the take's time where it gives `myr`;
 two keys at one moment freeze time between them while the camera moves on. A key with
 `"look": true` is the camera the export draws without a flight at that moment, so a flight can open
-on the scene's framing. The video lasts to the last key and is written as
+on the scene's framing. A key with `"pace": "nearness"` times the eye from it to the next key so
+that its speed follows the distance to the nearest matter (#406): a dive that keeps slowing. The video lasts to the last key and is written as
 `exports/<flight>-<preset>.mp4`, beside the plain exports; colours, kernels and the rest come from
 the look as ever, `--fps`, `--preset`, `--codec`, `--stills`, `--still-frames` and the previews
 work as without a flight, and `--speed` does not go with it. `--flight-keys <dir>` draws only the
@@ -471,7 +477,9 @@ frame at each key, as PNGs, and encodes nothing: a flight seen in seconds; with 
 <scene> --at <myr,...> [--look <look>]` prints, at those moments, each galaxy's centre and disk
 axes and the export's camera, which is what keys are written from; `--arms <kpc,...>` adds where
 each disk is densest at those radii, an arm to fly into. Format, interpolation and a worked example
-in [flights](notes/flights.md).
+in [flights](notes/flights.md). On Linux, `sillage-cuda export <scene folder | take> --flight <name>`
+draws the same video on the CUDA engine, in segments that `--resume` carries on from (#382,
+[flights](notes/flights.md#the-export-on-cuda)).
 
 **Flying a flight in the app (#298).** Over a take of a scene, free flight (`F`) has Record (`R`),
 which keeps the camera and the playhead as a flight (a pause is a freeze, moving the playhead ends
@@ -597,6 +605,13 @@ asks for none draws the frames it always drew:
   kiloparsecs), measured at the depth of the camera's target, between a tenth and a quarter of
   the frame's width. It keeps its length while it stays in that range; when it leaves it, the new
   length fades in over 0.8 s as the old one fades out, each drawn true. A cut changes it at once.
+  Its lengths reach down to a light year (or a parsec), so it still has one inside an arm (#407).
+- **The eye's speed**, with `"speed": true` in `scale` (#407): a line between the clock and the
+  bar's label, "6,500 light years a second" (parsecs or kiloparsecs a second with the kiloparsec
+  unit), the camera's speed a second of video averaged over half a second. It is said on a ladder
+  of 1, 1.5, 2, 3, 5 and 7 times a power of ten and changes only when the speed moves a third off
+  the number shown, so it does not blur; it fades out while the eye covers less than half a per
+  cent of the frame's width a second and back in when it moves.
 - **Captions** at the story's events, in the title's place, one at a time: the approach, the first
   passage, the tails, the return (the second passage) and the merger, found on the take's own
   centres and the share of stars in tails of `curves-hires.csv` (see
@@ -605,7 +620,7 @@ asks for none draws the frames it always drew:
   it to go, 1.5 s at most, or is left out: the passage, then the merger, the tails, the return and
   the approach keep their place.
 
-`--overlay` takes `all`, a list of elements, or a file. Otherwise the scene's `overlay.json` is
+`--overlay` takes `all`, a list of elements (`speed` is the scale bar with the speed), or a file. Otherwise the scene's `overlay.json` is
 used, and otherwise the look's `overlay` field; `--no-overlay` draws none. The full pass of a
 hires draws the scene's overlay into its videos through the same code. The file:
 
@@ -613,7 +628,7 @@ hires draws the scene's overlay into its videos through the same code. The file:
 {
   "title": {"text": "The Mice", "subtitle": "Two spiral galaxies colliding", "seconds": 4},
   "clock": {"from": "passage", "corner": "top-right"},
-  "scale": {"unit": "kiloparsecs"},
+  "scale": {"unit": "kiloparsecs", "speed": true},
   "captions": {"passage": "Through each other", "approach": ""},
   "size": 1.2,
   "opacity": 0.8,
@@ -641,6 +656,7 @@ English:
   "kinds": {"spiral": "spirales"},
   "clock": "{n} millions d'années",
   "lightYears": "{n} années-lumière",
+  "lightYearsPerSecond": "{n} années-lumière par seconde",
   "thousands": "\u202f",
   "captions": {"passage": "Elles se traversent", "merger": "Elles n'en font plus qu'une"}
 }

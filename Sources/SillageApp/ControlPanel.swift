@@ -20,6 +20,7 @@ struct ControlPanel: View {
 struct ControlPanelContent: View {
     @ObservedObject var model: SimulationModel
     @Environment(\.queue) private var queue
+    @Environment(\.offscreen) private var offscreen
     @State private var exporting = false
 
     private var exportFolder: SceneFolder? { model.isOpenedTake ? model.takeFolder : nil }
@@ -73,7 +74,11 @@ struct ControlPanelContent: View {
 
             if let activity = model.fileActivity {
                 HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
+                    if offscreen {
+                        Image(systemName: "hourglass")
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
                     Text(activity).font(.caption)
                 }
             }
@@ -95,12 +100,17 @@ struct ControlPanelContent: View {
             switch model.mode {
             case .running:
                 Text(
-                    String(
-                        format: "%d frames · %.0f Myr · %.1f GB", model.capturedFrames,
-                        model.capturedMyr, Double(model.capturedBytes) / 1_073_741_824)
+                    "\(model.capturedFrames) \(model.capturedFrames == 1 ? "frame" : "frames") · "
+                        + String(
+                            format: "%.0f Myr · %.1f GB", model.capturedMyr,
+                            Double(model.capturedBytes) / 1_073_741_824)
                 )
                 .font(.caption.monospacedDigit())
-                ProgressView(value: model.captureFraction)
+                if offscreen {
+                    OffscreenTrack(fraction: Float(model.captureFraction))
+                } else {
+                    ProgressView(value: model.captureFraction)
+                }
 
                 if let why = model.captureSpillFailure {
                     Text("Cannot spill to disk, the take carries on in memory. \(why)")
@@ -137,8 +147,7 @@ struct ControlPanelContent: View {
                 .font(.caption2)
                 .foregroundStyle(Palette.secondary)
 
-                Toggle("Show while computing", isOn: $model.showCanvasWhileRunning)
-                    .font(.caption)
+                CheckToggle(title: "Show while computing", isOn: $model.showCanvasWhileRunning)
                 Text(
                     "Drawing a few million particles takes a real share of the GPU the computation runs on."
                 )
@@ -177,16 +186,13 @@ struct ControlPanelContent: View {
                         .buttonStyle(.bordered)
                 }
 
-                Toggle("Quit when finished", isOn: $model.quitWhenFinished)
-                    .font(.caption)
+                CheckToggle(title: "Quit when finished", isOn: $model.quitWhenFinished)
                     .disabled(model.stopAtMyr <= 0)
 
                 Divider()
-                Stepper(
-                    "Steps per frame: \(model.stepsPerFrame)",
-                    value: $model.stepsPerFrame, in: 1...64
-                )
-                .font(.caption)
+                CountStepper(
+                    title: "Steps per frame: \(model.stepsPerFrame)",
+                    value: $model.stepsPerFrame, range: 1...64)
                 Text("Higher, the take spans more time for the same memory.")
                     .font(.caption2)
                     .foregroundStyle(Palette.secondary)
@@ -204,9 +210,14 @@ struct ControlPanelContent: View {
                 )
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Palette.secondary)
-                Slider(
-                    value: $model.playbackPosition,
-                    in: 0...Double(max(model.capturedFrames - 1, 1)))
+                if offscreen {
+                    OffscreenTrack(
+                        fraction: Float(model.playbackPosition / Double(max(model.capturedFrames - 1, 1))))
+                } else {
+                    Slider(
+                        value: $model.playbackPosition,
+                        in: 0...Double(max(model.capturedFrames - 1, 1)))
+                }
                 ParameterSlider(
                     title: "Speed (frames/s)", value: $model.playbackSpeed, range: 1...120,
                     format: "%.0f")
@@ -271,122 +282,40 @@ struct ControlPanelContent: View {
             Text("Rendering").font(.headline)
             // A whole look in one press, from the honest telescope to the frankly invented.
             // The sliders below stay live afterwards: a look is a place to start, not a mode.
-            Picker("", selection: lookBinding) {
-                ForEach(RenderLook.catalogue) { named in
-                    Text(named.name).tag(named.id)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
+            MenuChoice(
+                selection: lookBinding, options: RenderLook.catalogue.map { ($0.name, $0.id) })
             Text(lookDescription)
                 .font(.caption)
                 .foregroundStyle(Palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider().padding(.vertical, 2)
-            Text("Light").font(.headline)
-            ParameterSlider(
-                title: "Brightness", value: $model.look.brightness, range: 0.02...2.0, format: "%.2f")
-            ParameterSlider(
-                title: "Logarithmic stretch", value: $model.look.stretch, range: 0...60,
-                format: "%.0f")
-            ParameterSlider(title: "Saturation", value: $model.look.saturation, range: 0...3)
-            ParameterSlider(title: "Tint per galaxy", value: $model.look.galaxyTint, range: 0...1)
-            Text(
-                "0: each star has its population's colour. 1: each galaxy keeps its own, which makes the stars it loses readable."
-            )
-            .font(.caption2)
-            .foregroundStyle(Palette.secondary)
-            ParameterSlider(
-                title: "Dust opacity", value: $model.look.dustStrength, range: 0...1.2,
-                format: "%.3f")
-            ParameterSlider(title: "Dust web", value: $model.look.dustWeb, range: 0...1)
-            ParameterSlider(
-                title: "Painted arm strength", value: $model.look.armPersistence, range: 0...2)
-            Text(
-                "Above 1 the arms are plain invention, which the softest styles own up to."
-            )
-            .font(.caption2)
-            .foregroundStyle(Palette.secondary)
-
+            section("Light", .light)
             Divider()
-            Text("Instrument").font(.headline)
-            ParameterSlider(
-                title: "Star smoothing", value: $model.look.smoothingScale,
-                range: 0.4...5.0)
-            // How wide a splat is allowed to be. The floor is the one that matters and it was
-            // reachable only from a preset: a star drawn thinner than a pixel crosses pixel
-            // boundaries as it moves and twinkles on its own, whatever the detector noise is
-            // set to. Measured on a take played slowly with the noise off, the worst
-            // frame-to-frame jump on a single pixel falls from 81 levels at 1.1 px to 16 at
-            // 3.5.
-            ParameterSlider(
-                title: "Minimum kernel (px)", value: $model.look.minimumKernel, range: 0.5...6)
-            ParameterSlider(
-                title: "Maximum kernel (px)", value: $model.look.maximumKernel, range: 4...160,
-                format: "%.0f")
-            ParameterSlider(
-                title: "Stars under the kernel (projection)", value: $model.look.columnSmoothing,
-                range: 0...120, format: "%.0f")
-            ParameterSlider(title: "Compact sources", value: $model.look.glint, range: 0...1)
-            ParameterSlider(title: "Young star width", value: $model.look.youngWidth, range: 0.25...4)
-            ParameterSlider(title: "Knot width", value: $model.look.knotWidth, range: 0.25...4)
-            ParameterSlider(title: "Old disk width", value: $model.look.oldWidth, range: 0.25...4)
-            ParameterSlider(title: "Bulge width", value: $model.look.bulgeWidth, range: 0.25...4)
-            ParameterSlider(title: "Glow", value: $model.look.bloomIntensity, range: 0...2)
-            ParameterSlider(
-                title: "Diffraction spikes", value: $model.look.spikeIntensity, range: 0...1.5)
-            // What makes a bright star sparkle is these three together, and only the first of
-            // them had a control: the number of arms and how far they reach were reachable
-            // only from a preset.
-            ParameterSlider(
-                title: "Spike arms", value: $model.spikeArms, range: 0...8,
-                format: "%.0f")
-            ParameterSlider(
-                title: "Spike length", value: $model.look.spikeLength, range: 0...200,
-                format: "%.0f")
-            Toggle(
-                "Webb spikes",
-                isOn: Binding(
-                    get: { model.look.spikePattern == .webb },
-                    set: { model.look.spikePattern = $0 ? .webb : .even })
-            )
-            .font(.caption)
-            ParameterSlider(
-                title: "Field star size", value: $model.look.starSize, range: 0.2...4)
-            ParameterSlider(
-                title: "Glow threshold", value: $model.look.bloomThreshold, range: 0.05...1.5)
-            ParameterSlider(
-                title: "Threshold softness", value: $model.look.bloomSoftKnee, range: 0...1)
-            ParameterSlider(
-                title: "White point", value: $model.look.whitePoint, range: 1...20, format: "%.1f")
-            ParameterSlider(
-                title: "Sky background", value: $model.look.skyLevel, range: 0...0.006,
-                format: "%.4f")
-            // Named for what it does rather than for what it is. Every look sits between
-            // 0.0008 and 0.0022, so a range up to 0.01 put the whole useful part of it in the
-            // first sixth of the track: it read as a control that did nothing until it
-            // suddenly did everything, and zero was three pixels wide.
-            ParameterSlider(
-                title: "Twinkle (sensor noise)", value: $model.look.noiseLevel,
-                range: 0...0.004, format: "%.4f")
-            Text(
-                "At zero, two frames of a paused scene are identical to the bit: this noise is what makes the whole background flicker. For stars that twinkle as they move, see the minimum kernel."
-            )
-            .font(.caption2)
-            .foregroundStyle(Palette.secondary)
+            section("Instrument", .instrument)
+        }
+    }
+
+    /// One section of the look, the same controls the style editor's fine settings show.
+    private func section(_ title: String, _ group: LookFile.Group) -> some View {
+        let baseline = RenderLook.catalogue.first { $0.id == model.lookName }?.look
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline)
+            LookControlList(group: group, look: $model.look)
+            Button("Reset") {
+                if let baseline { model.look = model.look.resetting(group, to: baseline) }
+            }
+            .controlSize(.small)
+            .disabled(baseline.map { model.look.resetting(group, to: $0) == model.look } ?? true)
+            .help("Back to the values of the rendering chosen above")
         }
     }
 
     private var view: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Camera").font(.headline)
-            Picker("", selection: flightBinding) {
-                Text("Orbit").tag(false)
-                Text("Free flight").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            SegmentedChoice(
+                selection: flightBinding, options: [("Orbit", false), ("Free flight", true)])
 
             if model.isFlying {
                 Text("Drag to look, scroll for speed")
@@ -449,8 +378,9 @@ struct ControlPanelContent: View {
                     title: "Distance (kpc)", value: $model.camera.distance,
                     range: OrbitCamera.nearest...OrbitCamera.furthest, format: "%.0f")
                 ParameterSlider(
-                    title: "Elevation (rad)", value: $model.camera.elevation,
-                    range: -OrbitCamera.elevationLimit...OrbitCamera.elevationLimit)
+                    title: "Elevation (°)", value: $model.camera.elevation.degrees,
+                    range: (-OrbitCamera.elevationLimit...OrbitCamera.elevationLimit).inDegrees,
+                    format: "%.0f")
             }
             ParameterSlider(
                 title: "Field of view", value: $model.look.fieldOfView, range: 0.2...1.4)

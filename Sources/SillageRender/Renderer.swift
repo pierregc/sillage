@@ -10,6 +10,8 @@ public enum RenderError: Error, CustomStringConvertible {
     case pipelineCreation(String)
     case textureAllocation
     case unsupported(String)
+    /// The GPU did not complete a command buffer, or Metal gave none (#301).
+    case commandBuffer(String)
 
     public var description: String {
         switch self {
@@ -18,6 +20,7 @@ public enum RenderError: Error, CustomStringConvertible {
         case .pipelineCreation(let message): "Pipeline creation failed: \(message)"
         case .textureAllocation: "Could not allocate a render texture"
         case .unsupported(let message): "Not supported: \(message)"
+        case .commandBuffer(let message): "GPU work lost: \(message)"
         }
     }
 }
@@ -28,6 +31,9 @@ public final class Renderer {
     public let device: MTLDevice
     public private(set) var settings: RenderSettings
     public private(set) var lastGPUTime: Double = 0
+    /// The first command buffer of a frame read back that the GPU did not complete (#301): the
+    /// picture read after it is not the frame's.
+    public private(set) var failure: (any Error)?
     private var grain = FrameGrain()
 
     private let queue: MTLCommandQueue
@@ -510,28 +516,34 @@ public final class Renderer {
     /// the light averaged before the tone curve, and each render draws the point stars as the
     /// streaks they leave on the way to the next camera. Only a frame drawn from inside is; any
     /// other draws through the middle camera.
+    /// Between the matter's slabs and the eye's, each render is drawn with both and dissolved:
+    /// slid from one to the other, their boundaries swept the disk (#396).
     public func encode(cameras: [Camera], into buffer: MTLCommandBuffer, present: MTLTexture? = nil) {
         guard !cameras.isEmpty else { return }
-        guard inside != nil, !settings.plain, let pass = insideResources() else {
+        guard let frame = inside, !settings.plain, let pass = insideResources() else {
             encodeSplat(camera: cameras[cameras.count / 2], into: buffer)
             encodePost(into: buffer, present: present)
             return
         }
+        defer { inside = frame }
         let renders = max(cameras.count - 1, 1)
         for index in 0..<renders {
-            encodeSplat(
-                camera: cameras[index], into: buffer,
-                next: index + 1 < cameras.count ? cameras[index + 1] : nil)
-            guard let compute = buffer.makeComputeCommandEncoder() else { continue }
-            var factor = UInt32(settings.supersample)
-            var share = SIMD2<Float>(1 / Float(renders), index > 0 ? 1 : 0)
-            dispatch(compute, pass.resolve, into: resolved) { encoder in
-                encoder.setTexture(accumulation, index: 0)
-                encoder.setTexture(resolved, index: 2)
-                encoder.setBytes(&factor, length: 4, index: 0)
-                encoder.setBytes(&share, length: 8, index: 1)
+            for (layer, stack) in frame.stacks.enumerated() {
+                inside?.eyeSlabs = stack.eyeSlabs
+                encodeSplat(
+                    camera: cameras[index], into: buffer,
+                    next: index + 1 < cameras.count ? cameras[index + 1] : nil)
+                guard let compute = buffer.makeComputeCommandEncoder() else { continue }
+                var factor = UInt32(settings.supersample)
+                var share = SIMD2<Float>(stack.weight / Float(renders), index > 0 || layer > 0 ? 1 : 0)
+                dispatch(compute, pass.resolve, into: resolved) { encoder in
+                    encoder.setTexture(accumulation, index: 0)
+                    encoder.setTexture(resolved, index: 2)
+                    encoder.setBytes(&factor, length: 4, index: 0)
+                    encoder.setBytes(&share, length: 8, index: 1)
+                }
+                compute.endEncoding()
             }
-            compute.endEncoding()
         }
         encodePost(into: buffer, present: present, resolved: true)
     }
@@ -591,6 +603,15 @@ public final class Renderer {
         if let within, deep != nil {
             webbed?.carrier.z = within.settings.web[0]
             webbed?.carrier.w = within.settings.web[1]
+        }
+        // Where its grains are spread over two slabs, each galaxy's dust in a carrier of its
+        // own, so that two disks one behind the other are each multiplied by their own web.
+        var apart: [(carrier: MTLTexture, tags: MTLTexture)]?
+        if let within, web != nil {
+            let count = InsideUniforms(
+                within, camera: camera, next: next, settings: settings, splat: plan.splat
+            ).websApart(galaxies: galaxySlots)
+            if count > 1 { apart = deep?.webTargets(count, device: device) }
         }
         insidePass = deep ?? insidePass
 
@@ -716,33 +737,37 @@ public final class Renderer {
                 encoder.endEncoding()
 
             case .webCarrier:
-                guard let web, var webUniforms = webbed,
-                    let encoder = buffer.makeRenderCommandEncoder(
-                        descriptor: descriptor([web.carrier, web.tags]))
-                else { continue }
-                encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
-                encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
-                encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
-                encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
-                encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
-                encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
-                encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
-                encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
-                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
-                if let within {
-                    var both = InsideSplatUniforms(
-                        splat: uniforms,
-                        inside: InsideUniforms(
-                            within, camera: camera, next: next, settings: settings, splat: uniforms))
-                    encoder.setVertexBytes(
-                        &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
+                guard let web, var webUniforms = webbed else { continue }
+                for (index, target) in (apart ?? [(web.carrier, web.tags)]).enumerated() {
+                    guard
+                        let encoder = buffer.makeRenderCommandEncoder(
+                            descriptor: descriptor([target.carrier, target.tags]))
+                    else { continue }
+                    encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
+                    encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
+                    encoder.setVertexBuffer(luminosityBuffer, offset: 0, index: 2)
+                    encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
+                    encoder.setVertexBuffer(galaxyBuffer, offset: 0, index: 5)
+                    encoder.setVertexBuffer(frameBuffer, offset: 0, index: 6)
+                    encoder.setVertexBuffer(smoothingBuffer, offset: 0, index: 7)
+                    encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
+                    encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                    if let within {
+                        var both = InsideSplatUniforms(
+                            splat: uniforms,
+                            inside: InsideUniforms(
+                                within, camera: camera, next: next, settings: settings, splat: uniforms))
+                        if apart != nil { both.inside.webOnly = Float(index + 1) }
+                        encoder.setVertexBytes(
+                            &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 4)
+                    }
+                    encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
+                    if let traced { bindTracers(encoder, traced.source) }
+                    drawParts(
+                        encoder, massive: web.carrierPipeline,
+                        tracers: traced == nil ? nil : web.tracerCarrier)
+                    encoder.endEncoding()
                 }
-                encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
-                if let traced { bindTracers(encoder, traced.source) }
-                drawParts(
-                    encoder, massive: web.carrierPipeline,
-                    tracers: traced == nil ? nil : web.tracerCarrier)
-                encoder.endEncoding()
 
             case .starfield:
                 guard let starBuffer, let encoder = frameEncoder() else { continue }
@@ -780,9 +805,11 @@ public final class Renderer {
                 encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
                 encoder.setFragmentBytes(&webUniforms, length: webLength, index: 1)
                 encoder.setFragmentTexture(web.lace, index: 0)
-                encoder.setFragmentTexture(web.carrier, index: 1)
-                encoder.setFragmentTexture(web.tags, index: 2)
-                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                for target in apart ?? [(web.carrier, web.tags)] {
+                    encoder.setFragmentTexture(target.carrier, index: 1)
+                    encoder.setFragmentTexture(target.tags, index: 2)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                }
 
             case .stars:
                 guard let encoder = frameEncoder() else { continue }
@@ -1100,7 +1127,8 @@ public final class Renderer {
 
     /// As `encode(cameras:into:present:)`, read back.
     public func render(cameras: [Camera]) -> [UInt8] {
-        guard let buffer = queue.makeCommandBuffer(), !cameras.isEmpty else { return [] }
+        guard !cameras.isEmpty else { return [] }
+        guard let buffer = commandBuffer() else { return [] }
         let camera = cameras[cameras.count / 2]
         if inside != nil {
             encode(cameras: cameras, into: buffer)
@@ -1108,6 +1136,7 @@ public final class Renderer {
             encodeSplat(camera: camera, into: splat)
             splat.commit()
             splat.waitUntilCompleted()
+            record(splat)
             lastSplatTime = splat.gpuEndTime - splat.gpuStartTime
             encodePost(into: buffer, present: nil)
         } else {
@@ -1115,8 +1144,27 @@ public final class Renderer {
         }
         buffer.commit()
         buffer.waitUntilCompleted()
+        record(buffer)
         lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
         return readBack()
+    }
+
+    /// Keeps the first error of a command buffer that has been waited for.
+    private func record(_ buffer: MTLCommandBuffer) {
+        guard failure == nil else { return }
+        if let error = buffer.error {
+            failure = error
+        } else if buffer.status != .completed {
+            failure = RenderError.commandBuffer("a frame's command buffer ended as \(buffer.status.rawValue)")
+        }
+    }
+
+    private func commandBuffer() -> MTLCommandBuffer? {
+        guard let buffer = queue.makeCommandBuffer() else {
+            if failure == nil { failure = RenderError.commandBuffer("Metal gave no command buffer") }
+            return nil
+        }
+        return buffer
     }
 
     /// A frame whose light another pass draws (#314): `draw` encodes into the light target,
@@ -1126,12 +1174,13 @@ public final class Renderer {
         present: MTLTexture? = nil, into given: MTLCommandBuffer? = nil,
         light draw: (MTLTexture, MTLCommandBuffer) -> Void
     ) -> [UInt8] {
-        guard let buffer = given ?? queue.makeCommandBuffer() else { return [] }
+        guard let buffer = given ?? commandBuffer() else { return [] }
         draw(accumulation, buffer)
         encodePost(into: buffer, present: present)
         guard given == nil else { return [] }
         buffer.commit()
         buffer.waitUntilCompleted()
+        record(buffer)
         lastGPUTime = buffer.gpuEndTime - buffer.gpuStartTime
         return present == nil ? readBack() : []
     }
@@ -1149,11 +1198,12 @@ public final class Renderer {
         var first = true
         var took = 0.0
         func run(_ encode: (MTLCommandBuffer) -> Void) -> Bool {
-            guard let buffer = queue.makeCommandBuffer() else { return false }
+            guard let buffer = commandBuffer() else { return false }
             encode(buffer)
             pacer?.waitForGap(took)
             buffer.commit()
             buffer.waitUntilCompleted()
+            record(buffer)
             took = buffer.gpuEndTime - buffer.gpuStartTime
             return true
         }

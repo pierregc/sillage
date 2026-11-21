@@ -738,9 +738,89 @@ public final class Recording: @unchecked Sendable {
     /// Positions at a moment between stored frames, decoded on the CPU exactly as the
     /// expander does it on the GPU. For tools and tests; playback goes through the expander.
     public func positions(at blend: Blend) -> [SIMD3<Float>] {
-        let around = (0..<4).map { positions(at: Int(blend.keys[$0])) }
-        guard around.allSatisfy({ $0.count == particleCount }) else { return [] }
-        return (0..<particleCount).map { index in blend.mix(around.map { $0[index] }) }
+        let count = particleCount
+        var filled = false
+        let decoded = [SIMD3<Float>](unsafeUninitializedCapacity: count) { buffer, initialized in
+            filled = positions(at: blend, into: buffer)
+            initialized = filled ? count : 0
+        }
+        return filled ? decoded : []
+    }
+
+    /// The same positions into `destination`, which holds `particleCount` of them: every core
+    /// decodes a share, and nothing is allocated a particle, which is what an engine without
+    /// the expander plays a take through (#382). False when a frame is missing.
+    @discardableResult
+    public func positions(at blend: Blend, into destination: UnsafeMutableBufferPointer<SIMD3<Float>>)
+        -> Bool
+    {
+        let count = particleCount
+        guard destination.count >= count else { return false }
+        let bits = bitsPerAxis
+        let weights = blend.weights
+        return quantised((0..<4).map { Int(blend.keys[$0]) }) { frames, bytes in
+            let (o0, o1, o2, o3) = (frames[0].origin, frames[1].origin, frames[2].origin, frames[3].origin)
+            let (s0, s1, s2, s3) = (
+                quantum(of: frames[0]), quantum(of: frames[1]), quantum(of: frames[2]), quantum(of: frames[3])
+            )
+            let (b0, b1, b2, b3) = (bytes[0], bytes[1], bytes[2], bytes[3])
+            let chunks = max(min(ProcessInfo.processInfo.activeProcessorCount, count / 65_536), 1)
+            nonisolated(unsafe) let out = destination
+            concurrentPerform(iterations: chunks) { chunk in
+                for index in (chunk * count / chunks)..<((chunk + 1) * count / chunks) {
+                    let v0 = o0 + Self.cell(b0, index, bitsPerAxis: bits) * s0
+                    let v1 = o1 + Self.cell(b1, index, bitsPerAxis: bits) * s1
+                    let v2 = o2 + Self.cell(b2, index, bitsPerAxis: bits) * s2
+                    let v3 = o3 + Self.cell(b3, index, bitsPerAxis: bits) * s3
+                    // `Blend.mix`, term for term.
+                    out[index] = weights[0] * v0 + weights[1] * v1 + weights[2] * v2 + weights[3] * v3
+                }
+            }
+        }
+    }
+
+    /// The quantised positions of several stored frames at once, each index held to the frames
+    /// there are. A take read from a file hands its mapping over; one still growing or spilled
+    /// is copied out first.
+    private func quantised(
+        _ keys: [Int], _ body: (_ frames: [Frame], _ bytes: [UnsafeRawBufferPointer]) -> Void
+    ) -> Bool {
+        let span = frameBytes
+        lock.lock()
+        let stored = storedFrames.count
+        guard stored > 0 else {
+            lock.unlock()
+            return false
+        }
+        let indices = keys.map { min(max($0, 0), stored - 1) }
+        let frames = indices.map { storedFrames[$0] }
+        let mapping = mapped
+        lock.unlock()
+        guard span > 0 else { return true }
+        if let mapping {
+            mapping.withUnsafeBytes { raw in
+                body(
+                    frames,
+                    indices.map { UnsafeRawBufferPointer(rebasing: raw[($0 * span)..<(($0 + 1) * span)]) })
+            }
+            return true
+        }
+        let distinct = Array(Set(indices)).sorted()
+        var scratch = [UInt8](repeating: 0, count: distinct.count * span)
+        return scratch.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress else { return false }
+            for (slot, index) in distinct.enumerated() {
+                guard copy(frame: index, to: base + slot * span) != nil else { return false }
+            }
+            let whole = UnsafeRawBufferPointer(raw)
+            body(
+                frames,
+                indices.map { index in
+                    let slot = distinct.firstIndex(of: index) ?? 0
+                    return UnsafeRawBufferPointer(rebasing: whole[(slot * span)..<((slot + 1) * span)])
+                })
+            return true
+        }
     }
 
     /// What a snapshot was taken at, without touching its positions.
