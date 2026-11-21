@@ -56,6 +56,8 @@ IMAGE="${IMAGE:-nvidia/cuda:12.8.1-devel-ubuntu24.04}"
 MAX_PRICE="${MAX_PRICE:-0.35}"
 DEADLINE_HOURS="${DEADLINE_HOURS:-3}"
 DRY="${GPU_BOX_DRY:-0}"
+INTERRUPTIBLE="${INTERRUPTIBLE:-0}"
+BID_MARGIN="${BID_MARGIN:-1.2}"
 
 # The key goes to curl through a header file only this user reads, never through argv.
 HEADERS="$(mktemp "${TMPDIR:-/tmp}/gpu-box.XXXXXX")"
@@ -83,16 +85,18 @@ need_box() { [ -n "$(state_get id)" ] || die "no box: run \`up\` first"; }
 
 credit() { api GET /users/current/ | json 'print(round(d.get("credit",0)+d.get("balance",0),4))'; }
 
-# The query for one card: on demand, one GPU, verified host, CUDA 12.8 driver, 8 cores, 32 GB,
+# The query for one card: on demand (interruptible with INTERRUPTIBLE=1: a bid, paused by a higher
+# bid or an on-demand rental, BID_MARGIN above the host's minimum bid, 1.2 by default), one GPU, verified host, CUDA 12.8 driver, 8 cores, 32 GB,
 # 60 GB of disk, a decent link, reliability 0.98, under MAX_PRICE.
 offers_json() {
     local gpu="$1"
     cat <<JSON
 {"gpu_name":{"eq":"$gpu"},"num_gpus":{"eq":1},"rentable":{"eq":true},"verified":{"eq":true},
- "type":"on-demand","cuda_max_good":{"gte":12.8},"reliability2":{"gte":0.98},
+ "type":"$( [ "$INTERRUPTIBLE" = 1 ] && echo bid || echo on-demand )","cuda_max_good":{"gte":12.8},"reliability2":{"gte":0.98},
  "cpu_cores_effective":{"gte":8},"cpu_ram":{"gte":32000},"disk_space":{"gte":60},
- "inet_down":{"gte":200},"inet_up":{"gte":100},"dph_total":{"lte":$MAX_PRICE},
- "duration":{"gte":86400},"order":[["dph_total","asc"]],"limit":20}
+ "inet_down":{"gte":200},"inet_up":{"gte":100},
+ "$( [ "$INTERRUPTIBLE" = 1 ] && echo min_bid || echo dph_total )":{"lte":$MAX_PRICE},
+ "duration":{"gte":14400},"order":[["$( [ "$INTERRUPTIBLE" = 1 ] && echo min_bid || echo dph_total )","asc"]],"limit":20}
 JSON
 }
 
@@ -102,7 +106,7 @@ offers() {
     api POST /bundles/ "$(offers_json "$gpu")" | json '
 o=[x for x in d.get("offers",[]) if not (x.get("geolocation") or "").endswith("CN")]
 for x in o[:10]:
-    print(x["id"], x["gpu_name"], "%.3f $/h" % x["dph_total"], x.get("geolocation"),
+    print(x["id"], x["gpu_name"], "%.3f $/h" % (x.get("min_bid") if x.get("min_bid") and "'"$INTERRUPTIBLE"'" == "1" else x["dph_total"]), x.get("geolocation"),
           "cores %d ram %d GB" % (x.get("cpu_cores_effective",0), x.get("cpu_ram",0)/1000),
           "down %d up %d Mb/s" % (x.get("inet_down",0), x.get("inet_up",0)),
           "%.3f $/GB down" % (x.get("inet_down_cost") or 0))
@@ -134,14 +138,16 @@ up() {
     [ -z "$(state_get id)" ] || die "a box is already up ($(state_get id)): \`down\` it first"
     local gpu="${1:-$GPU}" offer
     offer="$(api POST /bundles/ "$(offers_json "$gpu")" | json '
-o=[x for x in d.get("offers",[]) if not (x.get("geolocation") or "").endswith("CN")]
-print("%s %.4f %s" % (o[0]["id"], o[0]["dph_total"], (o[0].get("geolocation") or "?").replace(" ","_")) if o else "")')"
+o=[x for x in d.get("offers",[]) if not (x.get("geolocation") or "").endswith("CN") and str(x.get("machine_id")) not in "'"${SKIP_MACHINES:-}"'".split(",")]
+b="'"$INTERRUPTIBLE"'" == "1"
+print("%s %.4f %s" % (o[0]["id"], o[0]["min_bid"] * '"$BID_MARGIN"' if b else o[0]["dph_total"], (o[0].get("geolocation") or "?").replace(" ","_")) if o else "")')"
     [ -n "$offer" ] || die "no $gpu offer under $MAX_PRICE \$/h"
     read -r offer_id price place <<<"$offer"
     local body
-    body="$(python3 -c 'import json,sys; print(json.dumps({"client_id":"me","image":sys.argv[1],
-        "disk":60,"runtype":"ssh_direc ssh_proxy","label":"sillage-283","onstart":sys.argv[2]}))' \
-        "$IMAGE" "$(onstart)")"
+    body="$(python3 -c 'import json,sys; b={"client_id":"me","image":sys.argv[1],
+        "disk":60,"runtype":"ssh_direc ssh_proxy","label":"sillage","onstart":sys.argv[2]}
+if sys.argv[3] == "1": b["price"] = round(float(sys.argv[4]), 4)
+print(json.dumps(b))' "$IMAGE" "$(onstart)" "$INTERRUPTIBLE" "$price")"
     if [ "$DRY" = 1 ]; then
         echo "dry: PUT /asks/$offer_id/ ($gpu, $price \$/h, $place)"
         echo "$body" | json 'print(json.dumps(d, indent=1))'
@@ -171,7 +177,16 @@ else: print(i.get("actual_status"), i.get("ssh_host") or "-", i.get("ssh_port") 
             if on_box true 2>/dev/null; then
                 echo "box $id ready after $t s: ssh -p $port root@<box> (\`gpu-box.sh ssh\`)"
                 on_box 'cat /work/logs/watchdog.armed 2>/dev/null || echo "deadline NOT armed"'
-                return
+                # A host whose link cannot fetch Swift in minutes is no use: 20 MB in 20 s at least.
+                local speed
+                speed="$(on_box 'timeout 25 curl -s -o /dev/null -w "%{speed_download}" "https://speed.cloudflare.com/__down?bytes=20000000" || echo 0' 2>/dev/null | tail -1)"
+                if python3 -c "import sys; sys.exit(0 if float('${speed:-0}' or 0) > 1e6 else 1)"; then
+                    echo "download speed $(python3 -c "print('%.0f' % (float('$speed') / 1e6))") MB/s"
+                    return
+                fi
+                echo "box $id downloads at ${speed:-0} B/s: destroying it (SKIP_MACHINES=$(instance 'print(i.get("machine_id"))') to avoid it)" >&2
+                down "host too slow to download"
+                exit 1
             fi
         fi
         sleep 10; t=$((t + 10))
@@ -292,7 +307,7 @@ MD
     fi
     local euros
     euros="$(python3 -c "print('%.2f' % (max($cost, $spent) / 1.12))")"
-    echo "| $(date -u +%Y-%m-%d) | Vast.ai | $(state_get gpu) | $(state_get price) | $minutes | $cost | $spent | $euros | #283 | ${note:-} |" >> "$LEDGER"
+    echo "| $(date -u +%Y-%m-%d) | Vast.ai | $(state_get gpu) | $(state_get price) | $minutes | $cost | $spent | $euros | ${ISSUE:-#283} | ${note:-} |" >> "$LEDGER"
     rm -f "$STATE"
     echo "box $id destroyed after $minutes min: about $cost \$ at its price, $spent \$ of credit used; $after \$ left"
 }
