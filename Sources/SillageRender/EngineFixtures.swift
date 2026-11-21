@@ -24,10 +24,11 @@ public enum EngineFixtures {
     public static let looks = ["red-vs-cyan", "ember", "webb", "widths"]
     /// The captured frame of the take the four frames draw, and the one the walk is dumped at.
     public static let capturedFrame = 0
-    /// The small hires run the walk dump and the take come from: 1,000 light tracers.
+    /// The small hires run the walk dump and the take come from: 1,000 light tracers. No
+    /// checkpoint, which a run that dumps its walk refuses (#377).
     public static let runOptions = [
         "--particles", "3013", "--massive", "2000", "--frames", "1", "--width", String(width),
-        "--height", String(height),
+        "--height", String(height), "--checkpoint-every", "0",
     ]
 
     static func bytes<T>(_ values: [T]) -> Data { values.withUnsafeBytes { Data($0) } }
