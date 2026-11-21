@@ -461,7 +461,7 @@ enum Shaders {
 
             float ridge = spiralRidge(extent, atan2(v, u), frame.axisU.w, frame.pattern.x,
                                       frame.pattern.z, frame.pattern.w, frame.pattern.y);
-            return float2(mix(0.5f, ridge, strength * envelope), envelope);
+            return float2(mix(0.5f, ridge, strength * envelope), envelope * (1.0f - frame.tint.w));
         }
 
         // What the vertex stages read of a drawn particle: a massive one's from its buffers, a
