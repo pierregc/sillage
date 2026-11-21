@@ -178,7 +178,10 @@ self-gravitating scene of a generated batch from the options given, `--seed` the
 with no options gives the same clip, and any option given overrides the file it belongs to.
 The clip's options are `--particles`, `--width`, `--height`, `--frames`, `--fps`, `--steps` and
 `--settle`. To start a scene over, empty its folder. The same stages are
-`sillage-render <stage> <folder>`.
+`sillage-render <stage> <folder>`. On Linux, `sillage-cuda explore <folder>` runs the same
+preview from the same options on the CUDA engine and leaves the same files, so a scene goes from
+nothing to its take and its exports without the Mac (#430,
+[cuda-engine](notes/cuda-engine.md#a-scenes-preview-430)).
 
 **Whole stories.** `explore` does not stop at the planned frames while the scene's story goes
 on: it keeps capturing at the same cadence until the story is over, up to 2 Gyr of simulated

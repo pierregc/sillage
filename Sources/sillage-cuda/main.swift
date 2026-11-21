@@ -3,11 +3,12 @@ import SillageCUDA
 import SillageCore
 import SillageRender
 
-/// `sillage-cuda`, the CUDA engine's command on Linux (#277, #278, #378): `hires` computes a scene
-/// folder, the pass that writes its take or its full pass, on the GPU library or on the CPU
-/// target, whichever it was linked with; `check` holds that engine to the reference outputs
-/// first; `still` draws chosen frames of a take as PNGs; `export` draws a take's video, along a flight or not (#382, #429);
-/// `status` says how far a run has got. docs/notes/cuda-engine.md.
+/// `sillage-cuda`, the CUDA engine's command on Linux (#277, #278, #378): `explore` runs a scene's
+/// preview (#430), `hires` computes a scene folder, the pass that writes its take or its full
+/// pass, on the GPU library or on the CPU target, whichever it was linked with; `check` holds that
+/// engine to the reference outputs first; `still` draws chosen frames of a take as PNGs; `export`
+/// draws a take's video, along a flight or not (#382, #429); `status` says how far a run has got.
+/// docs/notes/cuda-engine.md.
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("sillage-cuda: \(message)\n".utf8))
@@ -15,7 +16,8 @@ func fail(_ message: String) -> Never {
 }
 
 let usage = """
-    usage: sillage-cuda hires <scene folder> [--particles N] [--massive N] [--pass massive|full] [options]
+    usage: sillage-cuda explore <scene folder> [options]
+           sillage-cuda hires <scene folder> [--particles N] [--massive N] [--pass massive|full] [options]
            sillage-cuda check [--fixtures <dir>] [--record <file>]
            sillage-cuda status <scene folder>
            sillage-cuda match <scene folder> <picture.map.json> [options]
@@ -35,7 +37,13 @@ let usage = """
                [--temperature radius|crossing] [--hottest K] [--beaming x] [--exposure x] [--stars n]
                [--thinning x] [--flight name|file --second s]
 
-    hires computes a scene folder explored on the Mac, as sillage-render hires does there.
+    explore runs a scene's preview as sillage-render explore does on the Mac (#430), from the
+    same options: a folder with nothing in it starts a free draw at the batch's defaults, one with
+    a scene.json runs it. It writes clip.json with the story the run followed, scene.json,
+    look.json, preview.mov, curves.csv and thumbnail.png, and exits 3 on a scene that would show
+    nothing.
+
+    hires computes a scene folder explored here or on the Mac, as sillage-render hires does there.
     Without --pass it is the pass that writes the take, one pass of every particle (#378): it
     reads scene.json, clip.json and look.json, samples the scene here, and writes take.sillage,
     curves-hires.csv, hires.mov and hires.json, so the folder goes back to the Mac as a hires
@@ -97,7 +105,8 @@ let usage = """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 guard let command = arguments.first,
-    ["still", "hires", "check", "status", "match", "black-hole", "take", "export"].contains(command)
+    ["still", "explore", "hires", "check", "status", "match", "black-hole", "take", "export"].contains(
+        command)
 else {
     print(usage)
     exit(arguments.isEmpty || arguments.first == "help" ? 0 : 2)
@@ -205,6 +214,24 @@ if command == "take" {
         fail("take: \(error)")
     }
     exit(0)
+}
+
+if command == "explore" {
+    guard let path = rest.first, !path.hasPrefix("--") else { fail("no scene folder\n\n\(usage)") }
+    var options = Array(rest.dropFirst())
+    var threads = ProcessInfo.processInfo.activeProcessorCount
+    if let index = options.firstIndex(of: "--threads"), index + 1 < options.count {
+        threads = Int(options[index + 1]) ?? threads
+        options.removeSubrange(index...index + 1)
+    }
+    signal(SIGPIPE, SIG_IGN)
+    do {
+        let outcome = try CUDAExplore.run(
+            SceneFolder(path: path), options: options, context: try CUDAContext(), threads: threads)
+        exit(outcome == .rejected ? 3 : 0)
+    } catch {
+        fail("explore: \(error)")
+    }
 }
 
 if command == "hires" {

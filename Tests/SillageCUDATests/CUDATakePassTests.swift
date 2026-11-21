@@ -21,7 +21,7 @@ private let needsMacFullPass: Comment =
 /// full`, through the flow the Mac's `sillage-render` runs (`TakePassRun`), on scene-0031 of the
 /// fixtures drawn at 3,000 particles, as `TakePassCheckpointTests` holds Metal's.
 /// Serialized: the solver's settings are global, and the videos go through ffmpeg.
-@Suite("CUDA take pass", .serialized)
+@Suite("CUDA take pass", .serialized, .solverSettings)
 struct CUDATakePassTests {
     static let fixtures = CUDAFullPassTests.fixtures
 

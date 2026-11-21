@@ -129,6 +129,16 @@ jobs:
           test -s "$RUNNER_TEMP/take/take.time.json"
       - name: sillage-cuda holds the engine to the reference outputs, as a full pass requires
         run: .build/linux/sillage-cuda check --fixtures Tests/Fixtures/engines
+      - name: sillage-cuda explore runs a scene's preview, then hires computes it
+        run: |
+          scene="$RUNNER_TEMP/explored/2026-10-30-b/scene-0031"
+          mkdir -p "$scene"
+          cp Tests/Fixtures/engines/scene/scene.json "$scene/"
+          .build/linux/sillage-cuda explore "$scene" --particles 3000 --width 256 --height 144 \
+            --frames 12 --fps 6 --steps 48 --settle 6 --story-cap 0
+          for file in clip.json look.json preview.mov curves.csv thumbnail.png; do test -s "$scene/$file"; done
+          .build/linux/sillage-cuda hires "$scene" --particles 3000 --no-video
+          test -s "$scene/take.sillage"
       - name: sillage-cuda hires computes a scene folder explored on the Mac, killed after a checkpoint and resumed
         run: |
           scene="$RUNNER_TEMP/library/2026-10-30-b/scene-0031"
