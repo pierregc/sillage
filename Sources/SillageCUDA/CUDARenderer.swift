@@ -375,29 +375,35 @@ public final class CUDARenderer: FrameStyling {
     /// draws it: with several, the mean of a render through each but the last, the light
     /// averaged before the tone curve, each render drawing the point stars as the streaks they
     /// leave on the way to the next camera. Only a frame drawn from inside is; any other draws
-    /// through the middle camera.
+    /// through the middle camera. Between the matter's slabs and the eye's, each render is
+    /// drawn with both and dissolved (#396).
     public func picture(
         cameras: [Camera], format: CUDAPost.Format = .rgb, threads: Int = 1
     ) throws -> UnsafeRawBufferPointer {
         guard !cameras.isEmpty else { throw CUDAError(.invalidArgument, "a picture through no camera") }
-        guard inside != nil, !settings.plain else {
+        guard let frame = inside, !settings.plain else {
             try render(camera: cameras[cameras.count / 2], threads: threads)
             return try develop(format: format)
         }
+        defer { inside = frame }
         let post = try postProcessor(PostPlan.sizes(for: settings))
         let renders = max(cameras.count - 1, 1)
         for index in 0..<renders {
             let camera = cameras[index]
-            try draw(
-                plan(camera: camera), threads: threads, camera: camera,
-                next: index + 1 < cameras.count ? cameras[index + 1] : nil)
-            try finish()
-            guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
-                throw CUDAError(.invalidArgument, "this renderer has no light")
+            for (layer, stack) in frame.stacks.enumerated() {
+                inside?.eyeSlabs = stack.eyeSlabs
+                try draw(
+                    plan(camera: camera), threads: threads, camera: camera,
+                    next: index + 1 < cameras.count ? cameras[index + 1] : nil)
+                try finish()
+                guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
+                    throw CUDAError(.invalidArgument, "this renderer has no light")
+                }
+                try post.insideResolve(
+                    light: CUDABuffer(borrowing: light, of: self, context: context),
+                    factor: settings.supersample, share: stack.weight / Float(renders),
+                    adds: index > 0 || layer > 0)
             }
-            try post.insideResolve(
-                light: CUDABuffer(borrowing: light, of: self, context: context),
-                factor: settings.supersample, share: 1 / Float(renders), adds: index > 0)
         }
         return try develop(format: format, resolved: true)
     }

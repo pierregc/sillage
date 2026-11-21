@@ -22,6 +22,11 @@ without opening a window, which is how the animation above was made. Everything 
 that script rather than SwiftPM: with only the Command Line Tools installed, no manifest will
 compile. Shaders are built at runtime, so Xcode is not needed either way.
 
+`dev.sh` rebuilds only what changed: each module, `sillage-render`, the app and the test runner
+keep a hash of their sources and of what they link against in `.build/dev/*.key`, so a second
+command with no change starts in a few seconds. `FORCE=1 ./scripts/dev.sh ...` or
+`./scripts/dev.sh clean` rebuilds everything. The builds stay optimised (`-O`).
+
 Every render writes a scene file beside its output, `x.png` or `x.mov` giving `x.scene.json`
 (`--scene-out` picks another path). It holds the physics and nothing else: the seed, the
 encounter, each galaxy's parameters and its share of the particles, but no colour and no

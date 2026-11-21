@@ -46,8 +46,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     public var fade: Float = 3
     /// Where the dust's depth slabs start from the eye once inside, in kiloparsecs.
     public var slabs: [Float] = [0.3, 1.5, 7.5]
-    /// The distances to the nearest matter between which the slabs slide from the eye's layout
-    /// (nearer than the first) to the one around the aim point every export has (past the second).
+    /// The distances to the nearest matter between which a frame goes over from the eye's slabs
+    /// (nearer than the first) to the matter's, or the aim point's every export has (past the
+    /// second): drawn with both and dissolved, not slid (#396).
     public var slabsWithin: [Float] = [1.5, 6]
     /// How near a disk, in its radii (seven scale lengths), the lace of its dust web is carried
     /// through the depth of its dust layer: wholly within the first, not at all past the second,
@@ -162,12 +163,28 @@ public struct InsideFrame: Sendable, Equatable {
     /// How much the camera is still the look's: 1 at a flight's look keys, where the frame is
     /// the export's, 0 from `Flight.slabEase` seconds away (#355).
     public var look: Float
+    /// The share of the eye's slabs a render is drawn with, nil for what the nearness gives. The
+    /// renderer draws a frame between the matter's slabs and the eye's twice, once with each,
+    /// and dissolves the two (#396).
+    public var eyeSlabs: Float?
 
-    public init(settings: InsideSettings, nearness: Float, matter: [Float] = [], look: Float = 0) {
+    public init(
+        settings: InsideSettings, nearness: Float, matter: [Float] = [], look: Float = 0,
+        eyeSlabs: Float? = nil
+    ) {
         self.settings = settings
         self.nearness = nearness
         self.matter = matter
         self.look = look
+        self.eyeSlabs = eyeSlabs
+    }
+
+    /// The renders a frame takes for its slabs and the weight of each in its light: one, or
+    /// between the matter's stack and the eye's, one with each, dissolved (#396).
+    public var stacks: [(eyeSlabs: Float?, weight: Float)] {
+        let eye = InsideUniforms.depth(self)
+        guard eyeSlabs == nil, eye > 0, eye < 1 else { return [(nil, 1)] }
+        return [(0, 1 - eye), (1, eye)]
     }
 }
 
@@ -248,15 +265,23 @@ public struct InsideUniforms: Sendable {
         // From the eye: the three boundaries given, and a slab's worth before and after.
         let ratio = (inside.slabs[2] / inside.slabs[0]).squareRoot()
         let eye = [inside.slabs[0] / ratio] + inside.slabs + [inside.slabs[2] * ratio]
-        func blend(_ a: [Float], _ b: [Float], _ t: Float) -> [Float] {
-            t > 0 ? zip(a, b).map { exp(log($0) + (log($1) - log($0)) * t) } : a
+        // The matter's knots may lie behind the eye (#396), so they blend straight, and only the
+        // eye's, which spread by factors, through their logarithms.
+        func blend(_ a: [Float], _ b: [Float], _ t: Float, log scaled: Bool = false) -> [Float] {
+            guard t > 0 else { return a }
+            guard t < 1 else { return b }
+            guard scaled else { return zip(a, b).map { $0 + ($1 - $0) * t } }
+            return zip(a, b).map {
+                let from = log(max($0, 1e-6))
+                return exp(from + (log($1) - from) * t)
+            }
         }
-        let within = Self.depth(frame)
+        let within = frame.eyeSlabs.map { min(max($0, 0), 1) } ?? Self.depth(frame)
         // A flight's frame keeps its slabs in the matter and soft at every distance, nothing
         // switching as the camera moves, but on the look's own camera (#355).
         let away = frame.matter.count == 5 ? 1 - min(max(frame.look, 0), 1) : 0
         let far = away > 0 ? blend(aim, frame.matter, away) : aim
-        let knots = blend(far, eye, within)
+        let knots = blend(far, eye, within, log: true)
         slabKnots = SIMD4(knots[0], knots[1], knots[2], knots[3])
         slabEnd = knots[4]
         slabSoft = max(within, away)
@@ -422,7 +447,10 @@ public enum Nearness {
 /// has is centred on the aim point and as deep as the frame is wide, so receding from a disk seen
 /// edge on it grew and slid through the disk, and a lane went in and out of its bulge's slab;
 /// laid on the matter, the slabs keep their place in it at every distance and wherever the
-/// camera aims, and soft, nothing switches as a boundary passes.
+/// camera aims, and soft, nothing switches as a boundary passes. Near enough that the matter
+/// reaches the eye, the first knots fall behind it rather than stopping there: stopped, the
+/// stack no longer followed the matter and its boundaries swept the disk as the eye came in
+/// (#396).
 public enum MatterDepth {
     /// The shares of the drawn particles in the frame the matter's depth is read between.
     public static let shares: (near: Float, far: Float) = (0.02, 0.98)
@@ -481,7 +509,7 @@ public enum MatterDepth {
         let (front, back) = (depth(at: shares.near), depth(at: shares.far))
         let middle = (front + back) / 2
         let slab = max(back - front, middle * thinnest) * slabShare
-        let start = max(middle - 2 * slab, near)
+        let start = middle - 2 * slab
         return (0...4).map { start + Float($0) * slab }
     }
 }
