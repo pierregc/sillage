@@ -75,10 +75,14 @@ public struct Overlay: Codable, Sendable, Equatable {
 
         public var unit: Unit?
         public var corner: Corner?
+        /// The eye's speed in words over the bar's label (#407), in the bar's unit a second of
+        /// video.
+        public var speed: Bool?
 
-        public init(unit: Unit? = nil, corner: Corner? = nil) {
+        public init(unit: Unit? = nil, corner: Corner? = nil, speed: Bool? = nil) {
             self.unit = unit
             self.corner = corner
+            self.speed = speed
         }
 
         public init(from decoder: any Decoder) throws {
@@ -86,7 +90,8 @@ public struct Overlay: Codable, Sendable, Equatable {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             self.init(
                 unit: try c.decodeIfPresent(Unit.self, forKey: .unit),
-                corner: try c.decodeIfPresent(Corner.self, forKey: .corner))
+                corner: try c.decodeIfPresent(Corner.self, forKey: .corner),
+                speed: try c.decodeIfPresent(Bool.self, forKey: .speed))
         }
     }
 
@@ -151,7 +156,7 @@ public struct Overlay: Codable, Sendable, Equatable {
         public var description: String {
             switch self {
             case .noSuchElement(let name):
-                "--overlay: no element \"\(name)\", only title, clock, scale and captions, or all,"
+                "--overlay: no element \"\(name)\", only title, clock, scale, speed and captions, or all,"
                     + " or a file"
             case .texts(let path, let why): "the overlay's texts \(path): \(why)"
             }
@@ -167,7 +172,8 @@ public struct Overlay: Codable, Sendable, Equatable {
                 overlay = Overlay(title: Title(), clock: Clock(), scale: Scale(), captions: [:])
             case "title": overlay.title = Title()
             case "clock": overlay.clock = Clock()
-            case "scale": overlay.scale = Scale()
+            case "scale": overlay.scale = Scale(speed: overlay.scale?.speed)
+            case "speed": overlay.scale = Scale(unit: overlay.scale?.unit, speed: true)
             case "captions": overlay.captions = [:]
             default: throw Failure.noSuchElement(name)
             }
@@ -234,6 +240,10 @@ public struct OverlayTexts: Codable, Sendable, Equatable {
     public var lightYears: String
     public var kiloparsecs: String
     public var kiloparsec: String
+    /// The eye's speed (#407), a second of video, in each of the bar's units.
+    public var lightYearsPerSecond: String
+    public var parsecsPerSecond: String
+    public var kiloparsecsPerSecond: String
     /// Between groups of three digits.
     public var thousands: String
     /// The minus sign before a time ahead of the first passage, and the plus after it.
@@ -253,6 +263,9 @@ public struct OverlayTexts: Codable, Sendable, Equatable {
         lightYears: "{n} light years",
         kiloparsecs: "{n} kiloparsecs",
         kiloparsec: "{n} kiloparsec",
+        lightYearsPerSecond: "{n} light years a second",
+        parsecsPerSecond: "{n} parsecs a second",
+        kiloparsecsPerSecond: "{n} kiloparsecs a second",
         thousands: ",",
         minus: "\u{2212}",
         plus: "+",
@@ -267,7 +280,8 @@ public struct OverlayTexts: Codable, Sendable, Equatable {
     public init(
         title: String, subtitleEach: String, subtitleLargest: String, subtitleOne: String,
         counts: [String], kinds: [String: String], clock: String, lightYears: String,
-        kiloparsecs: String, kiloparsec: String, thousands: String, minus: String, plus: String,
+        kiloparsecs: String, kiloparsec: String, lightYearsPerSecond: String, parsecsPerSecond: String,
+        kiloparsecsPerSecond: String, thousands: String, minus: String, plus: String,
         captions: [String: String]
     ) {
         self.title = title
@@ -280,6 +294,9 @@ public struct OverlayTexts: Codable, Sendable, Equatable {
         self.lightYears = lightYears
         self.kiloparsecs = kiloparsecs
         self.kiloparsec = kiloparsec
+        self.lightYearsPerSecond = lightYearsPerSecond
+        self.parsecsPerSecond = parsecsPerSecond
+        self.kiloparsecsPerSecond = kiloparsecsPerSecond
         self.thousands = thousands
         self.minus = minus
         self.plus = plus
@@ -301,6 +318,9 @@ public struct OverlayTexts: Codable, Sendable, Equatable {
             lightYears: try c.value(.lightYears, or: e.lightYears),
             kiloparsecs: try c.value(.kiloparsecs, or: e.kiloparsecs),
             kiloparsec: try c.value(.kiloparsec, or: e.kiloparsec),
+            lightYearsPerSecond: try c.value(.lightYearsPerSecond, or: e.lightYearsPerSecond),
+            parsecsPerSecond: try c.value(.parsecsPerSecond, or: e.parsecsPerSecond),
+            kiloparsecsPerSecond: try c.value(.kiloparsecsPerSecond, or: e.kiloparsecsPerSecond),
             thousands: try c.value(.thousands, or: e.thousands),
             minus: try c.value(.minus, or: e.minus),
             plus: try c.value(.plus, or: e.plus),
