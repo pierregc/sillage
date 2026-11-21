@@ -12,6 +12,9 @@ Standing gaps, in the order they matter:
    so a merger's nucleus is never resupplied and the burst is the shock's alone; no pressure, so
    nothing shocks properly; and the dust distribution is still the sampler's. Adding SPH is a
    project of its own and would cost another order of magnitude in speed.
+   A study on paper (2026-11-21) puts isothermal SPH nearer three times a scene than ten, and a
+   sticky gas carried by the tree's cells at a few percent, to be tried first as a spike:
+   [Gas that dissipates](gas-that-dissipates.md).
 2. **Colour is not derived.** Stellar populations are a hand-made ramp rather than luminosities
    in real bands composited like telescope filters. This is the next lever for making the
    interior of a galaxy legible.
