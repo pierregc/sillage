@@ -328,9 +328,10 @@ struct SceneFolderTests {
         #expect(abs(priced - (run + drawing)) < 1e-6)
     }
 
-    /// A full pass checkpoints about every hour by the cost model's prices, unless told
-    /// otherwise, and resumes only a checkpoint of its own run (#240).
-    @Test func aFullPassCheckpointsAboutEveryHourAndResumesOnlyItsOwnCheckpoint() throws {
+    /// A hires checkpoints about every hour by the cost model's prices, unless told otherwise,
+    /// and resumes only a checkpoint of its own run: a full pass (#240) and the pass that writes
+    /// the take (#377).
+    @Test func aHiresCheckpointsAboutEveryHourAndResumesOnlyItsOwnCheckpoint() throws {
         let folder = try explored()
         defer { try? FileManager.default.removeItem(at: folder.batch) }
         func hires(_ options: [String]) throws -> (arguments: [String], record: SceneFolder.Hires) {
@@ -338,7 +339,7 @@ struct SceneFolderTests {
         }
         let draw = ["--particles", "8e6", "--massive", "2e6"]
         let massive = try hires(draw + ["--pass", "massive"])
-        #expect(!massive.arguments.contains("--checkpoint"))
+        #expect(value("--checkpoint", in: massive.arguments) == folder.checkpoint.path)
         try massive.record.encoded().write(to: folder.hires)
         try Data().write(to: folder.take)
         let full = try hires(draw + ["--pass", "full"])
@@ -352,6 +353,17 @@ struct SceneFolderTests {
         let frames = try #require(value("--checkpoint-frames", in: full.arguments).flatMap(Int.init))
         #expect(abs(Double(steps) * step - 3_600) <= step)
         #expect(frames >= 1 && frames * (massive.record.steps / massive.record.frames) <= steps)
+        // The massive pass steps no tracer, a pass of every particle steps them all.
+        func every(_ plan: (arguments: [String], record: SceneFolder.Hires), _ tracers: Double) throws {
+            let share = Double(plan.record.stepsToRun) / Double(plan.record.settle + plan.record.steps)
+            let step = (model.hires.secondsPerUnit * 2e6 + model.tracers.secondsPerUnit * tracers) * share
+            let steps = try #require(value("--checkpoint-steps", in: plan.arguments).flatMap(Int.init))
+            #expect(abs(Double(steps) * step - 3_600) <= step)
+            #expect(value("--checkpoint-frames", in: plan.arguments).flatMap(Int.init) ?? 0 >= 1)
+        }
+        try every(massive, 0)
+        try every(try hires(draw), 6e6)
+        #expect(!(try hires(draw + ["--checkpoint-every", "0"])).arguments.contains("--checkpoint"))
         let off = try hires(draw + ["--pass", "full", "--checkpoint-every", "0"])
         #expect(!off.arguments.contains("--checkpoint"))
         let exact = try hires(
@@ -364,7 +376,7 @@ struct SceneFolderTests {
 
         // Nothing to resume, then a checkpoint of this very run, then the look changed.
         let options = draw + ["--pass", "full"]
-        #expect(!folder.resumesFullPass(options, maximumParticles: 10_000_000))
+        #expect(!folder.resumesHires(options, maximumParticles: 10_000_000))
         let identity = RunCheckpoint.Identity(
             arguments: full.arguments, scene: try String(contentsOf: folder.scene, encoding: .utf8),
             look: try String(contentsOf: folder.look, encoding: .utf8),
@@ -380,12 +392,29 @@ struct SceneFolderTests {
         let checkpoint = RunCheckpoint(directory: folder.checkpoint)
         try checkpoint.saveMassive(ParticleSystem())
         try checkpoint.save(run) { _ in }
-        #expect(folder.resumesFullPass(options, maximumParticles: 10_000_000))
+        #expect(folder.resumesHires(options, maximumParticles: 10_000_000))
         #expect(
-            !folder.resumesFullPass(
+            !folder.resumesHires(
                 draw + ["--pass", "full", "--export", "4k"], maximumParticles: 10_000_000))
+        // A full pass's checkpoint is not the massive pass's, nor the reverse.
+        let massiveOptions = draw + ["--pass", "massive"]
+        #expect(!folder.resumesHires(massiveOptions, maximumParticles: 10_000_000))
+        var taking = run
+        taking.identity = RunCheckpoint.Identity(
+            arguments: massive.arguments, scene: identity.scene, look: identity.look, framing: "",
+            particles: 8_000_000, massive: 2_000_000, timeStep: 0.02, presets: [], code: "")
+        taking.index = 2
+        taking.take = TakePassProgress(
+            journal: FrameJournal(), radius: 0, take: nil, curvesBytes: nil, video: nil, droppedTracers: 0,
+            takeSeconds: 0, curvesSeconds: 0)
+        try checkpoint.save(taking) { _ in }
+        #expect(folder.resumesHires(massiveOptions, maximumParticles: 10_000_000))
+        #expect(folder.resumesHires(massiveOptions + ["--resume"], maximumParticles: 10_000_000))
+        #expect(!folder.resumesHires(options, maximumParticles: 10_000_000))
+        #expect(!folder.resumesHires(draw, maximumParticles: 10_000_000))
         try Data(#"{"name": "another"}"#.utf8).write(to: folder.look)
-        #expect(!folder.resumesFullPass(options, maximumParticles: 10_000_000))
+        #expect(!folder.resumesHires(options, maximumParticles: 10_000_000))
+        #expect(!folder.resumesHires(massiveOptions, maximumParticles: 10_000_000))
     }
 
     @Test func anOutputIsWrittenHiddenAndPutInPlaceWhole() throws {

@@ -18,9 +18,9 @@ private let needsMacFullPass: Comment =
 /// #283's comparison at 8 M, with the Mac's full pass at that size.
 private let macFullPass8M = ProcessInfo.processInfo.environment["SILLAGE_CUDA_FULL_PASS_8M"]
 
-/// The full pass on CUDA (#278): what `sillage-cuda hires` runs, through the flow the Mac's
-/// `sillage-render` runs (`FullPassRun`), on a scene folder whose massive pass is made here by
-/// the CUDA solver over the massive particles alone, as `--massive-only` does on Metal.
+/// The full pass on CUDA (#278): what `sillage-cuda hires --pass full` runs, through the flow the
+/// Mac's `sillage-render` runs (`FullPassRun`), on a scene folder whose massive pass is made here
+/// by `sillage-cuda hires --pass massive` (#378), as on Metal.
 /// Serialized: the solver's settings are global, and the videos go through ffmpeg.
 @Suite("CUDA full pass", .serialized)
 struct CUDAFullPassTests {
@@ -44,7 +44,8 @@ struct CUDAFullPassTests {
 
     /// A scene folder as the Mac leaves it after the massive pass and the style: scene-0031 of
     /// the engines' fixtures drawn at `particles` from `massive`, a look with the director, the
-    /// massive take, `massive.bin` and `hires.json`. The massive pass is the CUDA solver's here.
+    /// massive take, `massive.bin` and `hires.json`. The massive pass is `sillage-cuda hires
+    /// --pass massive`'s here (#378).
     static func massivePass(
         particles: Int = 3_000, massive: Int = 1_500, frames: Int = 8, context: CUDAContext,
         options: [String] = [], schedule: ((SceneFolder.Hires) -> String)? = nil
@@ -76,56 +77,12 @@ struct CUDAFullPassTests {
             ] + options
         let base = try folder.hiresArguments(
             asked + ["--dt-schedule", "off"], maximumParticles: 1_000_000_000)
-        let plan = try folder.hiresArguments(
-            asked + ["--dt-schedule", schedule?(base.record) ?? "off"], maximumParticles: 1_000_000_000)
-        let run = FullPassRun(arguments: plan.arguments, engine: maker(context))
-        let scenes = try run.scenes()
-        let split = try CUDABarnesHutSolver.lightTracers(
-            context: context, drawn: scenes.drawn, massive: scenes.scene)
-        try RunCheckpoint.writeMassiveSet(split.massive, to: folder.massiveSet)
-        let solver = try CUDABarnesHutSolver(context: context, scene: scenes.scene, massive: split.massive)
-        let visible = split.massive.visibleCount
-        let interval = Int(run.number("take-interval", 1))
-        let take = Recording(
-            particleCount: visible, galaxyCount: scenes.scene.galaxies.count, interval: interval)
-        let perFrame = max(plan.record.steps / max(frames, 1), 1)
-        var record = plan.record
-        // Stepped as `sillage-render` steps a massive pass under a schedule (#312).
-        var scheduler = record.stepSchedule.map {
-            StepScheduler(
-                schedule: $0, stepMyr: Double(scenes.scene.timeStep) * Physics.megayearsPerTimeUnit,
-                story: Story(scene: scenes.scene))
-        }
-        func advance(_ count: Int, frame: Int?) throws {
-            if scheduler != nil {
-                scheduler!.step(count, frame: frame, on: solver, ownStep: scenes.scene.timeStep)
-                try solver.advance(steps: 0)
-            } else {
-                try solver.advance(steps: count)
-            }
-        }
-        if scheduler != nil {
-            for count in StepSchedule.settleChunks(settle: record.settle, perFrame: perFrame) {
-                try advance(count, frame: nil)
-            }
-        } else {
-            try solver.advance(steps: record.settle)
-        }
-        for frame in 0..<frames {
-            try advance(perFrame, frame: frame)
-            let positions = try solver.positions.download(SIMD3<Float>.self, count: visible)
-            positions.withUnsafeBufferPointer {
-                take.offer(
-                    positions: $0.baseAddress!, time: solver.time, centers: solver.centers,
-                    disks: solver.diskFrames, budget: 0)
-            }
-        }
-        if let scheduler {
-            record.stepsRun = scheduler.stepsRun
-            record.stepSwitches = scheduler.switches
-        }
-        try RecordingFile.write(take, scene: scenes.scene, particles: solver.particles, to: folder.take)
-        try record.encoded().write(to: folder.hires)
+        // The massive pass through the command, on the CUDA engine (#378), its video left out.
+        try CUDAHires.run(
+            folder,
+            options: asked + [
+                "--dt-schedule", schedule?(base.record) ?? "off", "--no-video", "--checkpoint-every", "0",
+            ], context: context, threads: 4, checkRecord: checked, maximumParticles: 1_000_000_000)
         return folder
     }
 

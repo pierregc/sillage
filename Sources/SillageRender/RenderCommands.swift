@@ -23,7 +23,7 @@ public enum RenderCommands {
     /// their options on to the render that does the work.
     static let render = options(
         flags: "plain director immersed calm check check-only no-check profile no-sidecars "
-            + "massive-only resume stop-after-key-frames",
+            + "massive-only resume no-video stop-after-key-frames",
         text: "preset solver scene look look-out scene-out video out curves thumbnail take take-v6 "
             + "take-massive massive-set state-out density sf-leaves dt-schedule dt-switches "
             + "dump-walk dump-walk-frames dump-targets dump-targets-frames draw draw-out draw-take "

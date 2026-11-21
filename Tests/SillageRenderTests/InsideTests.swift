@@ -82,6 +82,58 @@ struct InsideTests {
         }
     }
 
+    /// A flight lays its slabs on the matter in the frame past the near field, soft, at every
+    /// distance and wherever it aims, but on the look's own camera (#355).
+    @Test func aFlightsSlabsStayOnTheMatterInTheFrame() {
+        var generator = SeededGenerator(seed: 5)
+        var points = (0..<200_000).map { _ in
+            SIMD3<Float>(
+                generator.uniform() * 8 - 4, generator.uniform() * 20 - 10, generator.uniform() * 8 - 4)
+        }
+        // Off the frame, where nothing counts.
+        points += (0..<50_000).map { _ in SIMD3<Float>(400, generator.uniform() * 100, 0) }
+        func knots(_ camera: Camera) -> [Float] {
+            points.withUnsafeBytes {
+                MatterDepth.knots(
+                    camera: camera, aspectRatio: 16 / 9, points: $0.baseAddress!, count: points.count)!
+            }
+        }
+        let near = knots(Camera(eye: SIMD3(0, -100, 0), target: .zero, fieldOfView: 0.6, near: 0.001))
+        // From the second to the ninety-eighth percentile of 90 to 110 kpc, 19.2 kpc deep.
+        let slab = 0.75 * Float(19.2)
+        for index in 0..<5 {
+            #expect(abs(near[index] - (100 + slab * Float(index - 2))) < 0.1, "\(near)")
+        }
+        // Twice as far and aimed aside, the slabs keep their place in the matter.
+        let far = knots(Camera(eye: SIMD3(0, -200, 0), target: SIMD3(8, 0, 3), fieldOfView: 0.6, near: 0.001))
+        for index in 0..<5 { #expect(abs(far[index] - near[index] - 100) < 0.4, "\(far)") }
+
+        let settings = RenderSettings(width: 1920, height: 1080, supersample: 2, maximumKernel: 92)
+        let camera = Camera(eye: SIMD3(0, -100, 0), target: .zero, near: 0.001)
+        let plan = FramePlan(
+            settings: settings, camera: camera, time: 0, drawnCount: 1000, tracerCount: 0,
+            luminosityNormalisation: 1, mapped: false, laceScale: nil)
+        func inside(look: Float) -> InsideUniforms {
+            InsideUniforms(
+                InsideFrame(settings: InsideSettings(), nearness: 50, matter: near, look: look),
+                camera: camera, settings: settings, splat: plan.splat)
+        }
+        let flying = inside(look: 0)
+        #expect(
+            flying.slabSoft == 1 && abs(flying.slabKnots[1] - near[1]) < 1e-3
+                && abs(flying.slabEnd - near[4]) < 1e-3)
+        let onLook = inside(look: 1)
+        let aim = uniforms(50, camera: camera).inside
+        #expect(onLook.slabSoft == 0 && onLook.slabKnots == aim.slabKnots && onLook.slabEnd == aim.slabEnd)
+        let leaving = inside(look: 0.5)
+        #expect(leaving.slabSoft == 0.5)
+        // Inside, the eye's slabs whatever the matter.
+        let within = InsideUniforms(
+            InsideFrame(settings: InsideSettings(), nearness: 0.2, matter: near),
+            camera: camera, settings: settings, splat: plan.splat)
+        #expect(abs(within.slabKnots[2] - 1.5) < 1e-4 && within.slabSoft == 1)
+    }
+
     @Test func theUniformsCarryTheSettingsInAccumulationPixels() {
         let camera = Camera(eye: SIMD3(0, -10, 0), target: .zero, fieldOfView: 0.6, near: 0.001)
         let inside = uniforms(1, camera: camera).inside
@@ -107,6 +159,27 @@ struct InsideTests {
             }
             #expect(abs(total - 1) < 0.01, "exponent \(exponent): \(total)")
         }
+    }
+
+    /// The dust's trim (#356) comes in with the eye near matter and is nowhere else; the fine
+    /// dust's settings go through as they are.
+    @Test func theDustIsTrimmedOnlyOnceTheEyeIsInside() {
+        let camera = Camera(eye: SIMD3(0, -10, 0), target: .zero, fieldOfView: 0.6, near: 0.001)
+        #expect(uniforms(50, camera: camera).inside.dustThin == 0)
+        #expect(uniforms(2, camera: camera).inside.dustThin == 0)
+        #expect(abs(uniforms(0.3, camera: camera).inside.dustThin - 0.7) < 1e-6)
+        let halfway = uniforms(1.25, camera: camera).inside.dustThin
+        #expect(halfway > 0 && halfway < 0.7, "\(halfway)")
+        let inside = uniforms(0.3, camera: camera).inside
+        #expect(inside.dustFine == 1.75 && inside.dustCell == 0.12)
+        #expect(InsideUniforms(outside: uniforms(0.3, camera: camera).splat).dustThin == 0)
+        #expect(InsideUniforms(outside: uniforms(0.3, camera: camera).splat).dustFine == 0)
+        var faulty = InsideSettings()
+        faulty.dustWithin = [2, 0.5]
+        #expect(faulty.fault?.contains("dustWithin") == true)
+        faulty = InsideSettings()
+        faulty.dustFine = 3
+        #expect(faulty.fault?.contains("dustFine") == true)
     }
 
     @Test func nearnessIsTheDistanceTheRankedParticleStandsAt() {
@@ -235,6 +308,8 @@ struct InsideTests {
         #expect(flight.near == 0.001 && flight.inside == InsideSettings())
         #expect(flight.camera(atSeconds: 1).camera.near == 0.001)
         #expect(flight.lookSpans == [0...2])
+        #expect(flight.look(atSeconds: 1) == 1 && flight.look(atSeconds: 2) == 1)
+        #expect(flight.look(atSeconds: 2.5) == 0.5 && flight.look(atSeconds: 3) == 0)
         let near = InsideFrame(settings: flight.inside, nearness: 0.1)
         // On the look's camera, one render whatever moves.
         #expect(flight.cameras(atSeconds: 1, interval: 1.0 / 30, frame: near, height: 1080).count == 1)

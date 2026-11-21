@@ -38,7 +38,7 @@ public struct CUDAFullPassMaker: FullPassEngineMaker {
 /// (`massive.bin`), the light tracers sampled here, which carry no mass, `CUDABarnesHutSolver`
 /// over them, the smoothing read off its tree, and a `CUDARenderer` a preset over its buffers,
 /// encoded by ffmpeg.
-public final class CUDAFullPassEngine: FullPassEngine {
+public final class CUDAFullPassEngine: FullPassEngine, CUDARunDrawn {
     public enum Failure: Error, CustomStringConvertible {
         case noMassiveSet(URL)
         case otherDraw(String)
@@ -161,7 +161,8 @@ public final class CUDAFullPassEngine: FullPassEngine {
         renderer.luminosityNormalisation = exposure
         renderer.skipFrames(drawn)
         return CUDARunVideoDrawing(
-            engine: self, renderer: renderer, format: format, framesPerSecond: framesPerSecond,
+            engine: self, renderer: renderer, width: format.width, height: format.height,
+            codec: format.codec, bitsPerSecond: format.bitsPerSecond, framesPerSecond: framesPerSecond,
             metadata: metadata)
     }
 
@@ -177,50 +178,7 @@ public final class CUDAFullPassEngine: FullPassEngine {
         try held.withUnsafeBufferPointer { try body($0.baseAddress!) }
     }
 
-    /// What `MetalBarnesHutSolver.drawnAttributes` gives, downloaded a million tracers at a time:
-    /// a tracer's attributes from its word and its formation time from its state.
-    public func drawnAttributes() throws -> ParticleSystem {
-        var system = ParticleSystem(capacity: 0)
-        let drawn = tracerCount + massive.visibleCount
-        system.galaxyIndex.reserveCapacity(drawn)
-        system.birthRadius.reserveCapacity(drawn)
-        system.population.reserveCapacity(drawn)
-        system.luminosity.reserveCapacity(drawn)
-        system.formation.reserveCapacity(drawn)
-        system.component.reserveCapacity(drawn)
-        system.kernelScale.reserveCapacity(drawn)
-        let chunk = 1 << 20
-        var start = 0
-        while start < tracerCount {
-            let count = min(chunk, tracerCount - start)
-            let states = try barnesHut.positions.download(SIMD4<Float>.self, count: count, from: start * 16)
-            let motions = try barnesHut.velocities.download(
-                SIMD4<UInt32>.self, count: count, from: start * 16)
-            for (state, motion) in zip(states, motions) {
-                let word = TracerWord(bits: motion.w)
-                system.galaxyIndex.append(word.galaxy)
-                system.birthRadius.append(word.birthRadius)
-                system.population.append(0.5)
-                system.luminosity.append(word.luminosity)
-                system.formation.append(state.w)
-                system.component.append(word.component)
-                system.kernelScale.append(word.kernelScale)
-            }
-            start += count
-        }
-        let visible = min(massive.visibleCount, massive.galaxyIndex.count)
-        let times = try barnesHut.formation.download(Float.self, count: visible)
-        for index in 0..<visible {
-            system.galaxyIndex.append(massive.galaxyIndex[index])
-            system.birthRadius.append(massive.birthRadius[index])
-            system.population.append(massive.population[index])
-            system.luminosity.append(massive.luminosity[index])
-            system.formation.append(times[index])
-            system.component.append(massive.component[index])
-            system.kernelScale.append(massive.kernelScale[index])
-        }
-        return system
-    }
+    public func drawnAttributes() throws -> ParticleSystem { try barnesHut.drawnAttributes(massive: massive) }
 
     public var state: SolverState { barnesHut.state }
 
@@ -241,23 +199,39 @@ public final class CUDAFullPassEngine: FullPassEngine {
     }
 }
 
-/// A preset of a CUDA full pass: its renderer over the solver's buffers, its picture handed to
-/// ffmpeg a frame at a time.
+/// What a run's drawing reads of its engine at each frame: the light tracers as the tree stands,
+/// the drawn particles between two steps, and the threads of the CPU target.
+protocol CUDARunDrawn: AnyObject {
+    var tracers: CUDARenderer.Tracers? { get }
+    var drifted: CUDABuffer? { get }
+    var threads: Int { get }
+}
+
+/// A video of a CUDA run, a full pass's preset or a take pass's own: its renderer over the
+/// solver's buffers, its picture handed to ffmpeg a frame at a time.
 final class CUDARunVideoDrawing: RunVideoDrawing {
     let renderer: CUDARenderer
-    private unowned let engine: CUDAFullPassEngine
-    private let format: RunVideos.Format
+    private unowned let engine: any CUDARunDrawn
+    private let width: Int
+    private let height: Int
+    private let codec: VideoCodec
+    private let bitsPerSecond: Int?
     private let framesPerSecond: Int
     private let metadata: VideoMetadata?
     private var writer: FFmpegVideoWriter?
+    /// The last frame's drawing, in seconds.
+    private(set) var lastSeconds: Double = 0
 
     init(
-        engine: CUDAFullPassEngine, renderer: CUDARenderer, format: RunVideos.Format, framesPerSecond: Int,
-        metadata: VideoMetadata?
+        engine: any CUDARunDrawn, renderer: CUDARenderer, width: Int, height: Int, codec: VideoCodec,
+        bitsPerSecond: Int?, framesPerSecond: Int, metadata: VideoMetadata?
     ) {
         self.engine = engine
         self.renderer = renderer
-        self.format = format
+        self.width = width
+        self.height = height
+        self.codec = codec
+        self.bitsPerSecond = bitsPerSecond
         self.framesPerSecond = framesPerSecond
         self.metadata = metadata
     }
@@ -266,17 +240,19 @@ final class CUDARunVideoDrawing: RunVideoDrawing {
 
     func begin(_ url: URL) throws {
         writer = try FFmpegVideoWriter(
-            url: url, width: format.width, height: format.height, framesPerSecond: framesPerSecond,
-            codec: format.codec, bitsPerSecond: format.bitsPerSecond, metadata: metadata)
+            url: url, width: width, height: height, framesPerSecond: framesPerSecond, codec: codec,
+            bitsPerSecond: bitsPerSecond, metadata: metadata)
     }
 
     func append(camera: Camera, still: ((any RunVideoStill) throws -> Void)?) throws {
+        let clock = Date()
         renderer.setTracers(engine.tracers)
         renderer.drawnPositions = engine.drifted
         let pixels = try renderer.picture(camera: camera, format: .rgb, threads: engine.threads)
+        lastSeconds = Date().timeIntervalSince(clock)
         try writer?.append(pixels)
         if let still {
-            try still(CUDARunVideoStill(width: format.width, height: format.height, bytes: [UInt8](pixels)))
+            try still(CUDARunVideoStill(width: width, height: height, bytes: [UInt8](pixels)))
         }
     }
 

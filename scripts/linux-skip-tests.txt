@@ -26,6 +26,7 @@ SolverCheckTests.swift     # Metal
 StageJobsTests.swift       # ExportedFile, which reads videos with AVFoundation
 StepScheduleRunTests.swift # Metal
 StyleEditTests.swift       # CoreFoundation's CFGetTypeID
+TakePassCheckpointTests.swift # AVFoundation, Metal
 TidalRunTests.swift        # Metal
 TracerCheckTests.swift     # Metal
 TracerWalkDumpTests.swift  # Metal

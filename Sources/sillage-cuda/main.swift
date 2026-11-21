@@ -3,10 +3,11 @@ import SillageCUDA
 import SillageCore
 import SillageRender
 
-/// `sillage-cuda`, the CUDA engine's command on Linux (#277, #278): `hires` runs the full pass
-/// of a hires on the GPU library or on the CPU target, whichever it was linked with; `check`
-/// holds that engine to the reference outputs first; `still` draws chosen frames of a take as
-/// PNGs; `status` says how far a run has got. docs/notes/cuda-engine.md.
+/// `sillage-cuda`, the CUDA engine's command on Linux (#277, #278, #378): `hires` computes a scene
+/// folder, the pass that writes its take or its full pass, on the GPU library or on the CPU
+/// target, whichever it was linked with; `check` holds that engine to the reference outputs
+/// first; `still` draws chosen frames of a take as PNGs; `status` says how far a run has got.
+/// docs/notes/cuda-engine.md.
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("sillage-cuda: \(message)\n".utf8))
@@ -14,7 +15,7 @@ func fail(_ message: String) -> Never {
 }
 
 let usage = """
-    usage: sillage-cuda hires <scene folder> --pass full [--export 4k,vertical] [options]
+    usage: sillage-cuda hires <scene folder> [--particles N] [--massive N] [--pass massive|full] [options]
            sillage-cuda check [--fixtures <dir>] [--record <file>]
            sillage-cuda status <scene folder>
            sillage-cuda match <scene folder> <picture.map.json> [options]
@@ -28,17 +29,23 @@ let usage = """
                [--temperature radius|crossing] [--hottest K] [--beaming x] [--exposure x] [--stars n]
                [--thinning x] [--flight name|file --second s]
 
-    hires runs the full pass of a scene whose massive pass and style were done on the Mac: it
-    reads scene.json, look.json, take.sillage, curves-hires.csv, hires.json and massive.bin from
-    the folder, and writes exports/<preset>.<ext>, keyframes.sillage, keyframes.json and the full
-    section of hires.json there, as sillage-render hires --pass full does. Options:
+    hires computes a scene folder explored on the Mac, as sillage-render hires does there.
+    Without --pass it is the pass that writes the take, one pass of every particle (#378): it
+    reads scene.json, clip.json and look.json, samples the scene here, and writes take.sillage,
+    curves-hires.csv, hires.mov and hires.json, so the folder goes back to the Mac as a hires
+    made there. --pass massive runs the massive particles of a draw with light tracers alone
+    (--massive below --particles) and writes massive.bin too. --pass full runs the full pass of
+    a folder whose massive pass is done, here or on the Mac (#278): it reads take.sillage,
+    curves-hires.csv, hires.json and massive.bin, and writes exports/<preset>.<ext>,
+    keyframes.sillage, keyframes.json and the full section of hires.json. Options:
     --checkpoint-every <minutes>, --checkpoint-frames N, --checkpoint-steps N, --resume,
+    --dt-schedule off|story|<entries>, --take-interval N, --no-video (no hires.mov, the take
+    alone), --profile, --threads N (the CPU target's drawing); for --pass full --export 4k,vertical,
     --tracer-sort N, --tracer-sort-chunk N, --draw-stills 0,12 [--draw-stills-dir <dir>],
-    --draw-divisor N, --profile, --threads N (the CPU target's drawing), --speed <x>|<file> (the
-    videos along a time track, #310), --key-frames-at <myr,...> [--key-frames-span N] (every drawn
-    particle kept at the frames nearest those moments too, #379; --stop-after-key-frames ends the
-    run once they are kept). It refuses to start on an engine whose check did not pass
-    for this build.
+    --draw-divisor N, --speed <x>|<file> (the videos along a time track, #310), --key-frames-at
+    <myr,...> [--key-frames-span N] (every drawn particle kept at the frames nearest those moments
+    too, #379; --stop-after-key-frames ends the run once they are kept). It refuses to start on
+    an engine whose check did not pass for this build.
 
     check builds the reference tree and draws the reference frames of Tests/Fixtures/engines
     with this build, and records the outcome beside the libraries (engine-check.json).
@@ -179,11 +186,7 @@ if command == "take" {
 
 if command == "hires" {
     guard let path = rest.first, !path.hasPrefix("--") else { fail("no scene folder\n\n\(usage)") }
-    let folder = SceneFolder(path: path)
     var options = Array(rest.dropFirst())
-    guard SceneFolder.pass(in: options) == "full" else {
-        fail("only the full pass runs here (--pass full): the massive pass and the style are the Mac's")
-    }
     var threads = ProcessInfo.processInfo.activeProcessorCount
     if let index = options.firstIndex(of: "--threads"), index + 1 < options.count {
         threads = Int(options[index + 1]) ?? threads
@@ -193,42 +196,12 @@ if command == "hires" {
     signal(SIGPIPE, SIG_IGN)
     let started = Date()
     do {
-        let maximum =
-            ProcessInfo.processInfo.environment[SceneFolder.maximumParticlesVariable].flatMap(Double.init)
-            .map(Int.init) ?? 2_000_000_000
-        let plan = try folder.hiresArguments(options, maximumParticles: maximum)
-        let record = plan.record
-        let reporter = StageReporter(stage: "hires", folder: folder)
-        reporter.start(detail: "full pass, starting")
-        var begun = RunEvent(RunEvent.Kind.hiresStart)
-        begun.particles = record.particles
-        begun.massive = record.massive
-        begun.steps = record.steps
-        begun.pass = "full"
-        reporter.record(begun)
-        print(
-            String(
-                format:
-                    "hires      %d particles%@, step %.5f Myr, settle %d, %d steps, %d frames, clip %.1f to %.1f Myr,"
-                    + " full pass on %@",
-                record.particles, record.massive.map { " from \($0) massive" } ?? "", record.timeStepMyr,
-                record.settle, record.steps, record.frames, record.clipStartMyr, record.clipEndMyr,
-                CUDAEngineCheck.engine))
-        let context = try CUDAContext()
-        do {
-            try FullPassRun(
-                arguments: plan.arguments, engine: CUDAFullPassMaker(context: context, threads: threads),
-                started: started, reporter: reporter, hires: (folder, record)
-            ).run()
-        } catch {
-            reporter.finish()
-            throw error
-        }
-        reporter.finish()
+        try CUDAHires.run(
+            SceneFolder(path: path), options: options, context: try CUDAContext(), threads: threads,
+            started: started)
     } catch {
         fail("hires: \(error)")
     }
-    print(String(format: "done in %.1f s", Date().timeIntervalSince(started)))
     exit(0)
 }
 

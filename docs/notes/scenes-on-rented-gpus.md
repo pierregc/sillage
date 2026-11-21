@@ -35,11 +35,13 @@ those and marked as an estimate. It prepares two things Pierre asked for the sam
 
 ## What runs where today
 
+As the study found it, the take pass's rows updated since by #377 and #378.
+
 | | Mac (Metal) | Linux (CUDA) |
 | --- | --- | --- |
 | explore, look, style, exports from a take, the app | yes | no, and not planned |
-| hires, one pass, every particle massive (today's scenes) | yes, no checkpoint | **no** |
-| hires `--pass massive` (the massive particles of a draw with tracers) | yes, no checkpoint | **no** |
+| hires, one pass, every particle massive (today's scenes) | yes, checkpoints (#377) | yes, checkpoints (#378) |
+| hires `--pass massive` (the massive particles of a draw with tracers) | yes, checkpoints (#377) | yes, checkpoints (#378) |
 | hires `--pass full` (tracers, videos drawn as it runs, key frames) | yes, checkpoints | yes, checkpoints (#278) |
 | stills from a take, stills of a flight | yes | yes (#277, #347) |
 | a flight's video | yes | **no** |
@@ -100,7 +102,8 @@ plain render goes through the flow, the full pass alone through `FullPassRun`.
 
 A CUDA engine (#378) gives a `TakePassEngine`; checkpoints (#377) go into `TakePassRun`, once
 for every engine. The measuring options are not an engine's business: `sillage-cuda` runs
-without them.
+without them. Since #378 `CUDATakePassEngine` is that engine and `sillage-cuda hires` runs it
+([cuda-engine.md](cuda-engine.md#the-pass-that-writes-a-take-378)).
 
 **What must hold.**
 
@@ -115,6 +118,9 @@ without them.
 - No kernel is added. `cuda/kernels.txt` does not change.
 
 ## Checkpoints for the take pass
+
+Done in #377: [checkpoints.md](checkpoints.md#the-pass-that-writes-a-take-377) says what was
+built and measured. What follows is the study it was built from.
 
 Today "a run that writes a take does not" checkpoint
 ([checkpoints.md](checkpoints.md#which-runs-checkpoint)): when that was written the massive pass
@@ -189,7 +195,7 @@ With checkpoints that is survivable, given three things `gpu-box.sh` has to do:
 - **Start the run so that it restarts itself.** The instance's start command (to be checked on
   the day, with the rest of the provider's CLI) runs the same `sillage-cuda hires ... --resume`
   line: it resumes the run's own checkpoint when there is one and starts the run otherwise, as a
-  night does on the Mac (`SceneFolder.resumesFullPass`).
+  night does on the Mac (`SceneFolder.resumesHires`).
 - **Bound what a paused box costs.** A paused instance still pays for its disk, and may wait
   hours for its GPU. The watchdog counts wall time since the rental, not the run's time, and the
   ledger records the pauses.

@@ -785,10 +785,15 @@ public final class TakeExport {
         if case .flight(let flight, _, let rate) = cameras {
             let seconds = frame.played / Double(rate)
             let drawn = take.particles.visibleCount > 0 ? take.particles.visibleCount : take.particles.count
+            let points = UnsafeRawPointer(positions.contents())
+            let settings = renderer.settings
             let within = InsideFrame(
                 settings: flight.inside,
-                nearness: Nearness.distance(
-                    from: shot.camera.eye, to: UnsafeRawPointer(positions.contents()), count: drawn))
+                nearness: Nearness.distance(from: shot.camera.eye, to: points, count: drawn),
+                matter: MatterDepth.knots(
+                    camera: shot.camera, aspectRatio: Float(settings.width) / Float(max(settings.height, 1)),
+                    points: points, count: drawn) ?? [],
+                look: flight.look(atSeconds: seconds))
             renderer.inside = within
             if interval > 0 {
                 views = flight.cameras(
