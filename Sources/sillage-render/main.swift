@@ -40,6 +40,16 @@ if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "pace" {
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "story" {
     exit(storyCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
+// `take extract <take> --at <myr,...> [--span N] <out>` (#379).
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "take" {
+    do {
+        for line in try TakeExtract.command(Array(CommandLine.arguments.dropFirst(2))) { print(line) }
+        exit(0)
+    } catch {
+        FileHandle.standardError.write(Data("take: \(error)\n".utf8))
+        exit(1)
+    }
+}
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "flight" {
     exit(flightCommand(Array(CommandLine.arguments.dropFirst(2))))
 }

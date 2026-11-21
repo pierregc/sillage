@@ -19,6 +19,7 @@ let usage = """
            sillage-cuda check [--fixtures <dir>] [--record <file>]
            sillage-cuda status <scene folder>
            sillage-cuda match <scene folder> <picture.map.json> [options]
+           sillage-cuda take extract <take> --at <myr,...> [--span <frames>] <out.sillage>
            sillage-cuda still <take> --look <look> [--framing <massive take>]
                [--preset 1080p|4k|vertical|square|whatsapp] [--width W --height H]
                --frames 0,200,900 [--fps N] [--rate N] [--threads N] --out <dir>
@@ -41,8 +42,10 @@ let usage = """
     --dt-schedule off|story|<entries>, --take-interval N, --no-video (no hires.mov, the take
     alone), --profile, --threads N (the CPU target's drawing); for --pass full --export 4k,vertical,
     --tracer-sort N, --tracer-sort-chunk N, --draw-stills 0,12 [--draw-stills-dir <dir>],
-    --draw-divisor N, --speed <x>|<file> (the videos along a time track, #310). It refuses to
-    start on an engine whose check did not pass for this build.
+    --draw-divisor N, --speed <x>|<file> (the videos along a time track, #310), --key-frames-at
+    <myr,...> [--key-frames-span N] (every drawn particle kept at the frames nearest those moments
+    too, #379; --stop-after-key-frames ends the run once they are kept). It refuses to start on
+    an engine whose check did not pass for this build.
 
     check builds the reference tree and draws the reference frames of Tests/Fixtures/engines
     with this build, and records the outcome beside the libraries (engine-check.json).
@@ -60,6 +63,10 @@ let usage = """
     match finds the moment and the view where the take overlaps a real picture best, on the CPU,
     as sillage-render match does (#320); `sillage-cuda match` alone gives its options.
 
+    take extract writes the frames of a take nearest those moments, and the span - 1 frames after
+    each, as a take of their own with their centres and disk states, as sillage-render take
+    extract does (#379): a few frames of a large take come back without the rest.
+
     black-hole still draws one moment of a black hole close up's take as sillage-render
     black-hole still does (#336): --at in the hole's time units, the end of the run by default,
     stepped on from the frame the take kept before it.
@@ -67,7 +74,7 @@ let usage = """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 guard let command = arguments.first,
-    ["still", "hires", "check", "status", "match", "black-hole"].contains(command)
+    ["still", "hires", "check", "status", "match", "black-hole", "take"].contains(command)
 else {
     print(usage)
     exit(arguments.isEmpty || arguments.first == "help" ? 0 : 2)
@@ -165,6 +172,15 @@ if command == "status" {
             format: "status     %@ %@ %@: %.1f %%, %@, ends about %@", job.kind, job.batch ?? "",
             job.scene ?? "",
             job.progress * 100, job.detail ?? "", eta))
+    exit(0)
+}
+
+if command == "take" {
+    do {
+        for line in try TakeExtract.command(rest) { print(line) }
+    } catch {
+        fail("take: \(error)")
+    }
     exit(0)
 }
 

@@ -147,6 +147,33 @@ struct CUDAFullPassTests {
         #expect(!FileManager.default.fileExists(atPath: folder.checkpoint.path))
     }
 
+    /// Key frames where asked (#379) on this engine: a run cut short once they are kept holds,
+    /// to the byte, the frames a whole run keeps there, and draws no video.
+    @Test func keyFramesAskedForAreTheWholeRunsCutShort() throws {
+        let context = try CUDAContext()
+        let whole = try Self.massivePass(context: context)
+        defer { try? FileManager.default.removeItem(at: whole.batch.deletingLastPathComponent()) }
+        let early = try Self.copy(whole)
+        let megayears = TimeTrack.megayears(of: try RecordingFile.read(from: whole.take).recording)
+        let asked = [
+            "--checkpoint-every", "0", "--key-frames-at", String(format: "%.6f", megayears[1]),
+            "--key-frames-span", "2",
+        ]
+        try Self.fullPass(whole, context: context, options: asked)
+        try Self.fullPass(early, context: context, options: asked + ["--stop-after-key-frames"])
+        // The massive pass's curves may add their start before the frames asked for.
+        let kept = try JSONDecoder().decode([KeyFrameEntry].self, from: Data(contentsOf: early.keyFrameList))
+        #expect(kept.filter { $0.role == "chosen" }.map(\.frame) == [1, 2] && kept.last?.frame == 2)
+        let cut = whole.url.appendingPathComponent("cut.sillage")
+        _ = try TakeExtract.command([
+            "extract", whole.keyFrames.path, "--at", kept.map { "\($0.timeMyr)" }.joined(separator: ","),
+            cut.path,
+        ])
+        #expect(try Data(contentsOf: cut) == Data(contentsOf: early.keyFrames))
+        #expect(try early.storedHires()?.full == nil)
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: early.exports.path)) ?? []).isEmpty)
+    }
+
     /// #240's test on the CPU target: a run stopped after a checkpoint, a frame into its next
     /// segment, and resumed gives every frame of both videos, once decoded, as a run never
     /// stopped, and the same key frames and end state.

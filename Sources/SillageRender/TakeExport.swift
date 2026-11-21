@@ -80,6 +80,9 @@ public final class TakeExport {
     public let track: TimeTrack
     /// A camera path of its own (#295), over its own time track; nil follows the look's plan.
     public let flight: FlightFile?
+    /// Where the take's frames stand in the framing take's run when the take holds only some
+    /// of its moments, key frames or an extract (#379); nil when it holds them all.
+    public let held: HeldFrames?
     private let device: MTLDevice
     private let positions: MTLBuffer
     private let expander: SnapshotExpander
@@ -103,6 +106,7 @@ public final class TakeExport {
         case trackForAnotherTake(track: Int, take: Int)
         case flightAndTrack
         case holeFlight
+        case heldWithoutFlight(String)
 
         public var description: String {
             switch self {
@@ -110,6 +114,8 @@ public final class TakeExport {
                 "a time track of \(track) captured frames for a take of \(take)"
             case .flightAndTrack: "a flight keeps its own time: it takes no other track"
             case .holeFlight: "a flight that gives the hole's time is for a black hole close up"
+            case .heldWithoutFlight(let held):
+                "the take holds only \(held) of its framing take's run: it is drawn along a flight (--flight)"
             }
         }
     }
@@ -125,10 +131,22 @@ public final class TakeExport {
         self.framing = framing ?? take
         self.look = look
         self.capturedRate = max(capturedRate, 1)
-        let frames = take.recording.capturedFrames
+        // A take whose frames are not its framing take's holds some moments of that run: it is
+        // played in the framing take's frames, and each frame drawn is placed among its own.
+        var held: HeldFrames?
+        if let framing, framing.recording !== take.recording,
+            framing.recording.capturedFrames != take.recording.capturedFrames
+        {
+            held = try HeldFrames(
+                times: take.recording.frames.map { Double($0.time) * Physics.megayearsPerTimeUnit },
+                megayears: TimeTrack.megayears(of: framing.recording), interval: framing.recording.interval)
+        }
+        self.held = held
+        let frames = (held != nil ? framing ?? take : take).recording.capturedFrames
         self.flight = flight
         if flight != nil, track != nil { throw Failure.flightAndTrack }
         if flight?.isBlackHole == true { throw Failure.holeFlight }
+        if let held, flight == nil { throw Failure.heldWithoutFlight(held.description) }
         let track =
             try flight?.timeTrack(
                 megayears: TimeTrack.megayears(of: (framing ?? take).recording),
@@ -139,6 +157,13 @@ public final class TakeExport {
         }
         self.track =
             try track ?? TimeTrack(capturedFrames: frames, capturedRate: self.capturedRate)
+        // The whole flight, before anything is drawn: a time that leaves the frames held is
+        // refused with what is there.
+        if let held {
+            for frame in self.track.frames(framesPerSecond: Self.heldCheckRate, start: 0, duration: nil) {
+                _ = try held.place(atCaptured: frame.captured)
+            }
+        }
         self.device = device
         let count = take.recording.particleCount
         guard
@@ -153,7 +178,23 @@ public final class TakeExport {
         eased = try flight.map { _ in try EasedSmoothing(device: device, particleCount: count) }
     }
 
+    /// Frames of the video's time checked against the frames held, a second.
+    static let heldCheckRate = 120
+
     public var capturedFrames: Int { take.recording.capturedFrames }
+
+    /// The take's positions at captured position `position` of the run, into `buffer`. A take of
+    /// some moments places it among its own frames, leaning only on the run it falls in.
+    private func expand(atCaptured position: Double, into buffer: MTLBuffer) throws -> Bool {
+        let recording = take.recording
+        if let held {
+            let place = try held.place(atCaptured: position)
+            guard let blend = recording.blend(atStored: place.stored, within: place.run) else { return false }
+            return expander.expand(blend, of: recording, through: stream, into: buffer)
+        }
+        guard let blend = recording.blend(atCaptured: position) else { return false }
+        return expander.expand(blend, of: recording, through: stream, into: buffer)
+    }
     public var gpuName: String { device.name }
     public var takeSeconds: Double { Double(capturedFrames - 1) / Double(capturedRate) }
     /// The whole take's video along the track.
@@ -526,10 +567,7 @@ public final class TakeExport {
     public func densest(atCaptured position: Double, radii: [Double]) throws
         -> [[(offset: SIMD3<Double>, contrast: Double)]]
     {
-        let recording = take.recording
-        guard let blend = recording.blend(atCaptured: position),
-            expander.expand(blend, of: recording, through: stream, into: positions)
-        else { throw RecordingFile.Failure.truncated }
+        guard try expand(atCaptured: position, into: positions) else { throw RecordingFile.Failure.truncated }
         expanded = nil
         let flightTake = FlightTake(take: framing, capturedRate: capturedRate)
         let (centres, disks) = (flightTake.centres(position), flightTake.disks(position))
@@ -711,18 +749,24 @@ public final class TakeExport {
         if expanded != frame.captured {
             let recording = take.recording
             expanded = nil
-            guard let blend = recording.blend(atCaptured: frame.captured),
-                expander.expand(blend, of: recording, through: stream, into: positions)
-            else { throw RecordingFile.Failure.truncated }
+            guard try expand(atCaptured: frame.captured, into: positions) else {
+                throw RecordingFile.Failure.truncated
+            }
             if let eased {
-                let held = eased.update(
-                    at: frame.captured, last: recording.capturedFrames - 1, positions: positions
+                // In the take's own frames: a take of some moments eases its lengths between
+                // its frames, as a whole take does between its captured ones.
+                let place = try held?.place(atCaptured: frame.captured)
+                let kept = eased.update(
+                    at: place?.stored ?? frame.captured, last: recording.capturedFrames - 1,
+                    positions: positions
                 ) { [expander, stream] position, buffer in
-                    recording.blend(atCaptured: position).map {
-                        expander.expand($0, of: recording, through: stream, into: buffer)
-                    } ?? false
+                    let blend =
+                        place.map { recording.blend(atStored: position, within: $0.run) }
+                        ?? recording.blend(atCaptured: position)
+                    return blend.map { expander.expand($0, of: recording, through: stream, into: buffer) }
+                        ?? false
                 }
-                guard held else { throw RecordingFile.Failure.truncated }
+                guard kept else { throw RecordingFile.Failure.truncated }
             } else {
                 // Every frame, as the look grid does: a field refreshed every few frames would
                 // leave a still of the grid and the same frame here a kernel apart.

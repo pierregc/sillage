@@ -23,15 +23,15 @@ public enum RenderCommands {
     /// their options on to the render that does the work.
     static let render = options(
         flags: "plain director immersed calm check check-only no-check profile no-sidecars "
-            + "massive-only resume no-video",
+            + "massive-only resume no-video stop-after-key-frames",
         text: "preset solver scene look look-out scene-out video out curves thumbnail take take-v6 "
             + "take-massive massive-set state-out density sf-leaves dt-schedule dt-switches "
             + "dump-walk dump-walk-frames dump-targets dump-targets-frames draw draw-out draw-take "
-            + "draw-stills draw-stills-dir key-frames key-frame-curves key-frame-list pass export "
-            + "speed camera center pair-share checkpoint",
+            + "draw-stills draw-stills-dir key-frames key-frame-curves key-frame-list key-frames-at pass "
+            + "export speed camera center pair-share checkpoint",
         whole: "particles steps frames width height fps settle seed index galaxies look-seed "
             + "take-interval tracer-sort tracer-sort-chunk thumbnail-frame density-frames "
-            + "take-memory checkpoint-frames checkpoint-steps draw-divisor",
+            + "take-memory checkpoint-frames checkpoint-steps draw-divisor key-frames-span",
         number: "brightness dust star-size smoothing min-kernel max-kernel bloom-threshold "
             + "bloom-knee bloom stretch saturation white-point spikes spike-length spike-intensity "
             + "sky noise tint fov column glint dust-web old-width bulge-width young-width "
@@ -131,6 +131,15 @@ public enum RenderCommands {
             flags: "fresh", text: "take view measure", whole: "stars",
             number: "at within span kpc-across ceiling"))
 
+    static let take = CommandSpec(
+        "take",
+        summary: "Works on a take file: extract writes the frames around chosen moments as a take "
+            + "of their own (#379).",
+        usage: [
+            "usage: sillage-render take extract <take> --at <myr,...> [--span <frames>] <out.sillage>"
+        ],
+        words: ["action", "take", "out"], options: options(text: "at", whole: "span"))
+
     static let story = CommandSpec(
         "story",
         summary: "Judges the story of a scene, or of every scene of a batch, from its curves.",
@@ -179,7 +188,7 @@ public enum RenderCommands {
     /// `black-hole` read their own.
     public static let all: [CommandSpec] = [
         explore, hires, look, export, palettes, story, probeDisk, costs, event, pace, flight, fixtures,
-        holeFixtures, match,
+        holeFixtures, match, take,
     ]
 
     /// Commands with a parser of their own: asked for help, they answer it.
