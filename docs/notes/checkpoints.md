@@ -169,3 +169,61 @@ alone on the GPU, drawing 4K and vertical, a checkpoint at frame 3, killed, resu
 - One write of 2 GB or more fails on macOS (`EINVAL`), and a buffer of 200 M positions is 3.2 GB:
   the buffers are written 256 MB at a time. The test at the size of 200 M is what found it.
 
+### The take pass, measured (#377)
+
+**To the bit at 2 M.** scene-0031 again, explored at 50 k, then one pass of every particle at
+2 M visible on 3 M of dark matter: 60 frames of 76 steps after a settle of 1,501, the standard
+step schedule (twice the step through the settle, the run's own from frame 0, twice again from
+frame 53, where its judge let it), the director's cameras, checkpointed every 250 steps of the
+settle and every 20 frames. A run never stopped, against one killed (`kill -9`) just after its
+first checkpoint, in the settle, resumed, killed again a second after the checkpoint before
+frame 20, a segment of its video open, and resumed to the end.
+
+- The take (0.31 GB) is the same file, header included, and so are the curves, the particles a
+  checkpoint keeps at the end (180 MB) with the solver's counters, centres and disks, and
+  `hires.json` but for its durations and its `resumes`, 2: the same switches, 5,073 steps run
+  for 6,061 of the run's own.
+- The frames handed to the video's encoder are the same: the same check with every frame also
+  written as a PNG (`--out`, 24 frames, killed in the settle and after the checkpoint before
+  frame 8) gives the same 24 PNGs, to the byte. `hires.mov` itself is not held to its bits:
+  it holds 60 frames in both runs and their first 49 decode the same, across both resumes, but
+  the last 11 differ by what the encoder made of them, 41 to 51 dB apart. With other runs on
+  the GPU, as there were, VideoToolbox puts key frames in places that change from one run to
+  the next (one at frame 51 of the run never stopped; in the PNG check, run under a heavier
+  load, three in the run never stopped and none in the resumed one), and a preview of #376
+  differed the same way. So the test compares the stills read off the frames, not the video.
+- A checkpoint is 0.18 GB and takes 0.05 to 0.08 s in all, the take and the curves flushed and
+  the video's segment closed. The massive set, 0.32 GB, is written once in 0.07 s. A resumed
+  run had read it and restored its solver in 0.8 to 0.9 s.
+
+**At 8 M visible on 12 M of dark matter**, a scene of today, every particle massive:
+scene-0031 at 20 M particles, 80 frames of 7 steps after a settle of 140, every frame kept (a
+take of 5.3 GB), checkpointed every 20 steps of the settle and every 20 frames; then the same
+run with `--checkpoint-every 0`, and one killed after the checkpoint before frame 20 and
+resumed. Not alone on the GPU: a full pass at 50 M and two other threads' runs were on it, so
+the times are upper bounds. They are the disk's more than the GPU's.
+
+- A checkpoint is 0.72 GB, 32 bytes a particle and 4 a massive one, and takes 0.16 to 0.21 s
+  in all, the 1.3 GB of take written since the one before flushed with it. The massive set,
+  1.28 GB, is written once in 0.25 s. An hourly checkpoint costs a fifth of a second an hour.
+- The resumed run had read its massive set and restored its solver in 3.6 s, where the first
+  run spent 17 s sampling the scene and building its solver before its first step.
+- The peak footprint is 6.5 GB with checkpoints against 10.8 GB without: the take is no longer
+  held in memory. Without a checkpoint a take holds up to a quarter of the machine (9 GB on the
+  M4 Max's 36) before it spills, which a whole scene's take of 15 to 25 GB reaches.
+- Both runs wrote the same take, to the byte, and the same curves. `hires.mov` is not the same
+  video: with checkpoints it is four segments, each starting on a key frame, joined.
+- On disk until the run ends: two checkpoints while the next is written (1.4 GB), the massive
+  set, and the take so far with the curves and the video's segments.
+
+**What the end costs.** Putting the take together copies its positions once from
+`.checkpoint/take.positions` into the take: 1.7 s for 5.3 GB (3 GB/s), so 5 to 8 s for a scene's
+15 to 25 GB, during which the disk holds the take twice; the checkpoint is removed once the
+take, the curves and the video are in place. A layout that spares the copy needs no version of
+the format for a hires: its frames are counted before it starts (the story's frames, one in
+`--take-interval`, and the last), so the length of the header and where the positions begin are
+known, and they could be written in place in the take, the header and the records filled in at
+the end. Only a run that follows its story past its planned frames does not know its count,
+and that is exploration, which does not checkpoint. Seconds at the end of hours do not ask for
+it on the Mac; a rented box's disk, sized for the take twice, may (#380).
+
