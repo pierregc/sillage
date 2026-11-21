@@ -312,7 +312,7 @@ __global__ void splatVertex(Massive m, Frame f, Range range, uint lay, Targets t
 __global__ void splatTracerVertex(Tracers t, Frame f, Range range, uint lay, Targets targets, Large large) {
     uint vid;
     if (!particle(range, vid)) { return; }
-    Splat splat = tracerSplat(t.states[vid], t.words[vid * 4u + 3u], f.u, f.frames, f.stellar, f.ramps, t.cells,
+    Splat splat = tracerSplat(vid, t.states[vid], t.words[vid * 4u + 3u], f.u, f.frames, f.stellar, f.ramps, t.cells,
                               t.treeFrame, t.depth, t.scales, f.column);
     drawSplat(splat, lay, targets, large);
 }
@@ -381,7 +381,7 @@ __global__ void dustWebVertex(Massive m, Frame f, Range range, Targets targets, 
 __global__ void dustWebTracerVertex(Tracers t, Frame f, Range range, Targets targets, Large large) {
     uint vid;
     if (!particle(range, vid)) { return; }
-    Splat splat = tracerDustWeb(t.states[vid], t.words[vid * 4u + 3u], f.u, f.frames, f.w, t.cells, t.treeFrame,
+    Splat splat = tracerDustWeb(vid, t.states[vid], t.words[vid * 4u + 3u], f.u, f.frames, f.w, t.cells, t.treeFrame,
                                 t.depth, t.scales);
     drawSplat(splat, layDust, targets, large);
 }
