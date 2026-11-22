@@ -20,7 +20,8 @@ struct InsideRenderTests {
 
         init(
             _ positions: [SIMD3<Float>], maximumKernel: Float = 24, supersample: Int = 1,
-            component: ParticleComponent = .star
+            component: ParticleComponent = .star, glow: Float = 0,
+            dust: Float = 1e-3
         ) throws {
             var system = ParticleSystem()
             for position in positions {
@@ -29,16 +30,16 @@ struct InsideRenderTests {
                     luminosity: 1, component: component)
             }
             let scene = SceneConfig.isolatedDisk(particleCount: positions.count)
-            renderer = try Renderer(
-                particles: system,
-                settings: RenderSettings(
-                    width: width, height: height, supersample: supersample,
-                    // A fifth of a unit a particle, however many there are.
-                    brightness: 2e-7 * Float(positions.count),
-                    dustStrength: component == .dust ? 1e-3 : 0, starCount: 0, smoothingScale: 1,
-                    minimumKernel: 1,
-                    maximumKernel: maximumKernel, bloomIntensity: 0, stretch: 0, saturation: 1,
-                    spikeArms: 0, skyLevel: 0, noiseLevel: 0))
+            var settings = RenderSettings(
+                width: width, height: height, supersample: supersample,
+                // A fifth of a unit a particle, however many there are.
+                brightness: 2e-7 * Float(positions.count),
+                dustStrength: component == .dust ? dust : 0, starCount: 0, smoothingScale: 1,
+                minimumKernel: 1,
+                maximumKernel: maximumKernel, bloomIntensity: 0, stretch: 0, saturation: 1,
+                spikeArms: 0, skyLevel: 0, noiseLevel: 0)
+            settings.dustGlow = glow
+            renderer = try Renderer(particles: system, settings: settings)
             let field = try SmoothingField(device: renderer.device, particleCount: positions.count)
             renderer.setSmoothing(field.buffer)
             renderer.setDiskFrames(DiskFrame.make(scene: scene, centers: [.zero], time: 0, strength: 0))
@@ -277,6 +278,46 @@ struct InsideRenderTests {
             settings.dustInside = 1
         }
         #expect(try stage.dust(far) == beyond)
+    }
+
+    /// A near grain's glow spreads into a haze: its light kept, its peak lower, a share of it
+    /// taken away by `glowFade`; at 1 the haze draws the grains as they were.
+    @Test func aNearGrainsGlowSpreadsIntoAHaze() throws {
+        var generator = SeededGenerator(seed: 5)
+        let positions = (0..<400).map { _ in
+            SIMD3<Float>(generator.uniform() - 0.5, generator.uniform() - 0.5, generator.uniform() - 0.5)
+                * 0.6
+        }
+        let stage = try Stage(positions, maximumKernel: 16, component: .dust, glow: 2, dust: 0.5)
+        let view = camera(1.5)
+        func drawn(_ change: @escaping (inout InsideSettings) -> Void) throws
+            -> (total: Double, peak: Float)
+        {
+            stage.renderer.inside = Self.inside(1.5) { settings in
+                settings.dustFine = 0
+                settings.dustInside = 1
+                change(&settings)
+            }
+            let light = try stage.light(view)
+            return (Self.total(light), light.map { $0.x }.max() ?? 0)
+        }
+        let grains = try drawn { _ in }
+        #expect(try drawn { $0.glowHaze = 1 }.total == grains.total)
+        let haze = try drawn { $0.glowHaze = 4 }
+        let faded = try drawn { settings in
+            settings.glowHaze = 4
+            settings.glowFade = 0.5
+        }
+        #expect(grains.peak > 0)
+        #expect(abs(haze.total / grains.total - 1) < 0.15, "\(haze.total / grains.total)")
+        #expect(haze.peak < 0.5 * grains.peak, "\(haze.peak) against \(grains.peak)")
+        #expect(abs(faded.total / haze.total - 0.5) < 0.05, "\(faded.total / haze.total)")
+        var faulty = InsideSettings()
+        faulty.glowHaze = 0.5
+        #expect(faulty.fault?.contains("glowHaze") == true)
+        faulty = InsideSettings()
+        faulty.glowFade = 2
+        #expect(faulty.fault?.contains("glowFade") == true)
     }
 
     /// A near grain carries its structure with it (#394): the grains and the eye moved together

@@ -49,6 +49,11 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// its splat to its stars.
     public var starFrom: Float = 0.05
     public var starFull: Float = 0.2
+    /// How many times wider a near grain of a look's dust glow is drawn, its light kept, once the
+    /// stars of its size are points, and the share of that glow taken away there: a haze where
+    /// the grains, a sixth as many as the stars, stood out as blobs. 1 and 0 draw it as before.
+    public var glowHaze: Float = 1
+    public var glowFade: Float = 0
     /// The near field, in kiloparsecs from the eye: stars and the capped kernels' law apply
     /// wholly nearer than the first, not at all past the second.
     public var field: [Float] = [3, 8]
@@ -109,6 +114,8 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         clusterShare = try c.value(.clusterShare, or: clusterShare)
         starFrom = try c.value(.starFrom, or: starFrom)
         starFull = try c.value(.starFull, or: starFull)
+        glowHaze = try c.value(.glowHaze, or: glowHaze)
+        glowFade = try c.value(.glowFade, or: glowFade)
         field = try c.value(.field, or: field)
         fade = try c.value(.fade, or: fade)
         slabs = try c.value(.slabs, or: slabs)
@@ -152,6 +159,8 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !(starFrom >= 0 && starFrom < starFull && starFull <= 1) {
             return "starFrom \(starFrom) and starFull \(starFull): shares of the ceiling, the first lower"
         }
+        if !(glowHaze >= 1 && glowHaze <= 16) { return "glowHaze \(glowHaze): 1 to 16" }
+        if !(glowFade >= 0 && glowFade <= 1) { return "glowFade \(glowFade): 0 to 1" }
         if !rising(field, 2) { return "field \(field): two distances in kpc, the first nearer" }
         if !(fade >= 0 && fade <= 32) { return "fade \(fade): 0 to 32 kernel lengths" }
         if !rising(slabs, 3) { return "slabs \(slabs): three distances in kpc, each past the one before" }
@@ -254,6 +263,10 @@ public struct InsideUniforms: Sendable {
     public var clusterBirth: Float = 0
     public var clusterGrowth: Float = 0
     public var clusterShare: Float = 0
+    /// How many times wider a near grain's glow is drawn at the most, and the share of it taken
+    /// away there.
+    public var glowHaze: Float = 1
+    public var glowFade: Float = 0
 
     /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
     /// grains are spread over two slabs, which is where two disks one behind the other come
@@ -342,6 +355,8 @@ public struct InsideUniforms: Sendable {
         clusterBirth = inside.clusterBirth / 1000
         clusterGrowth = inside.clusterGrowth / 1000
         clusterShare = inside.clusterShare
+        glowHaze = inside.glowHaze
+        glowFade = inside.glowFade
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }

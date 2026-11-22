@@ -80,6 +80,11 @@ enum Shaders {
             float clusterBirth;
             float clusterGrowth;
             float clusterShare;
+            /// How many times wider a near grain's glow is drawn once the stars of its size have
+            /// taken all the light, its light kept, and the share of the glow taken away there:
+            /// a haze where the grains would show as blobs (1 and 0 for none).
+            float glowHaze;
+            float glowFade;
         };
         #endif
 
@@ -627,7 +632,11 @@ enum Shaders {
             bool knot = born > -1e8f && born < 1e8f && ageMyr >= 0.0f;
             bool hole = kind == 6u;
             bool absorbing = (kind == 2u && !knot) || hole;
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            return kind == 3u || (hole && u.holeShadow <= 0.0f) || absorbing != (u.pass != 1u);
+            #else
             return kind == 3u || (hole && u.holeShadow <= 0.0f) || absorbing != (u.pass == 0u);
+            #endif
         }
 
         // The column density as each engine holds it, and the count around a point of the frame:
@@ -876,6 +885,17 @@ enum Shaders {
             return half4(float4(slab) * min(float(opticalDepth) * shaped * exp(-4.5f * r2), 6.0e4f));
         }
 
+        // A near grain's glow, drawn wider and fainter as the stars of its size take their
+        // particles' light: there are a sixth as many grains as stars, and at the size where the
+        // stars turn to points the grains stood out as blobs.
+        SHARED void insideGlowHaze(thread Splat &out, float raw, constant InsideUniforms &i) {
+            if (i.glowHaze <= 1.0f || i.starEnd <= 0.0f) { return; }
+            float haze = smoothstep(i.starStart, i.starEnd, raw) * insideNear(out.position.w, i);
+            float wide = clamp(mix(1.0f, i.glowHaze, haze), 1.0f, max(511.0f / max(out.pointSize, 1e-3f), 1.0f));
+            out.pointSize *= wide;
+            out.opticalDepth = half(float(out.opticalDepth) * (1.0f - i.glowFade * haze) / (wide * wide));
+        }
+
         // How much of a particle's light its point stars carry, from its kernel's size on
         // screen where it stands: none while the kernel is small, all of it once the kernel is
         // large, and only in the near field. Keyed on the size alone, the wide kernels of a
@@ -1046,7 +1066,13 @@ enum Shaders {
             // Dark matter carries mass but no light, and every particle is skipped by one of
             // the two draws. Pushing them outside the clip volume drops them before any
             // fragment work rather than drawing a black point over the galaxy.
-            if (kind == 3u || (hole && u.holeShadow <= 0.0f) || absorbing != (u.pass == 0u)) {
+            // From inside, pass 2 draws the dust's glow, from the dust.
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            bool dustDraw = u.pass != 1u;
+            #else
+            bool dustDraw = u.pass == 0u;
+            #endif
+            if (kind == 3u || (hole && u.holeShadow <= 0.0f) || absorbing != dustDraw) {
                 out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
                 out.pointSize = 0.0f;
                 out.color = half3(half(0.0f));
@@ -1166,6 +1192,7 @@ enum Shaders {
                 #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
                 else {
                     insideNearDust(out, position, p.id, perPixel, frame, u);
+                    if (u.pass == 2u) { insideGlowHaze(out, raw, u.inside); }
                 }
                 #endif
             } else {
