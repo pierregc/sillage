@@ -38,8 +38,10 @@ public final class Renderer {
 
     private let queue: MTLCommandQueue
     private let dustPipeline: MTLRenderPipelineState
+    private let dustGlowPipeline: MTLRenderPipelineState
     private let splatPipeline: MTLRenderPipelineState
     private let starfieldPipeline: MTLRenderPipelineState
+    private let galaxyFieldPipeline: MTLRenderPipelineState
     private let plainPipeline: MTLRenderPipelineState
     private let plainCompositePipeline: MTLComputePipelineState
     private let resolvePipeline: MTLComputePipelineState
@@ -113,6 +115,7 @@ public final class Renderer {
     private var smoothingBuffer: MTLBuffer?
     private var frameCount = 1
     private let starBuffer: MTLBuffer?
+    private let backgroundGalaxyBuffer: MTLBuffer?
     private let particleCount: Int
     private let drawnCount: Int
     /// Where the massive particles start in `positionBuffer`, behind the light tracers.
@@ -217,8 +220,10 @@ public final class Renderer {
                 format: format, library: library, device: device)
         }
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
+        dustGlowPipeline = try additive("splatVertex", "dustGlowFragment", writing: 0)
         splatPipeline = try additive("splatVertex", "splatFragment", writing: 0)
         starfieldPipeline = try additive("starfieldVertex", "starfieldFragment", writing: 0)
+        galaxyFieldPipeline = try additive("galaxyFieldVertex", "galaxyFieldFragment", writing: 0)
         plainPipeline = try additive(
             "plainVertex", "plainFragment", writing: 0, attachments: 1)
         plainCompositePipeline = try compute("plainComposite")
@@ -356,6 +361,13 @@ public final class Renderer {
         else { throw RenderError.textureAllocation }
         self.rampBuffer = rampBuffer
         self.starBuffer = Renderer.makeStarfield(device: device, count: settings.starCount)
+        let galaxies = BackgroundGalaxy.field(count: settings.galaxyCount)
+        self.backgroundGalaxyBuffer =
+            galaxies.isEmpty
+            ? nil
+            : device.makeBuffer(
+                bytes: galaxies, length: galaxies.count * MemoryLayout<BackgroundGalaxy>.stride,
+                options: .storageModeShared)
         if externalPositions == nil, other == nil {
             upload(positions: particles.positions)
         }
@@ -770,6 +782,13 @@ public final class Renderer {
                 }
 
             case .starfield:
+                if let backgroundGalaxyBuffer, let encoder = frameEncoder() {
+                    encoder.setRenderPipelineState(galaxyFieldPipeline)
+                    encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                    encoder.setVertexBuffer(backgroundGalaxyBuffer, offset: 0, index: 0)
+                    encoder.drawPrimitives(
+                        type: .point, vertexStart: 0, vertexCount: settings.galaxyCount)
+                }
                 guard let starBuffer, let encoder = frameEncoder() else { continue }
                 encoder.setRenderPipelineState(starfieldPipeline)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
@@ -786,6 +805,12 @@ public final class Renderer {
                     drawParts(encoder, massive: deep.dust, tracers: deepTracers?.dust)
                 } else {
                     drawParts(encoder, massive: dustPipeline, tracers: traced?.pipelines.dust)
+                }
+                // The massive particles only: light tracers draw no glow.
+                if settings.dustGlow > 0 && !settings.plain {
+                    var glow = SIMD4<Float>(settings.dustGlowColour, settings.dustGlow)
+                    encoder.setFragmentBytes(&glow, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                    drawParts(encoder, massive: deep?.glow ?? dustGlowPipeline, tracers: nil)
                 }
 
             case .paintedDust:

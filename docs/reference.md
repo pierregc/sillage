@@ -353,6 +353,13 @@ The looks that carry dust draw it as a web of filaments in each disk's plane, ca
 the disk and renewed, and handed back to the grains where an encounter tears the disk (`dustWeb`,
 #197, [the note](notes/dust-web.md)); a `look.json` written before keeps its grains.
 
+Two options draw what a mid-infrared picture shows ([the Cartwheel](notes/cartwheel.md)):
+`look.dustGlow` draws the dust a second time into the light, in proportion to what it holds, in
+`look.dustGlowColour` (linear sRGB, coral by default), on top of what it absorbs; `galaxyCount`
+at the top of a look file lays that many galaxies behind the field stars, small, faint and mostly
+orange, at constant surface brightness, so a narrower field shows them larger and no brighter.
+Both are Metal only for now (#456).
+
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
 above, so the same scene always gets the same palette. `--palette <family>` does the same inside

@@ -137,6 +137,46 @@ public struct ParticleAttributes: Sendable {
     }
 }
 
+/// A galaxy far behind the field stars; mirrors `BackgroundGalaxy` in `Shaders`.
+public struct BackgroundGalaxy: Sendable {
+    /// On the field stars' shell, and its radius in kpc there.
+    public var direction: SIMD4<Float>
+    /// Linear colour, and the axis ratio.
+    public var color: SIMD4<Float>
+    /// Cosine and sine of the position angle, the bulge's share, the surface brightness.
+    public var shape: SIMD4<Float>
+
+    /// A deep infrared field: most galaxies small, faint and redshifted to orange, the few large
+    /// ones paler. Their angular sizes, 0.25 to 3.5 milliradians, are those of the
+    /// galaxies round the Cartwheel in Webb's picture.
+    public static func field(count: Int) -> [BackgroundGalaxy] {
+        guard count > 0 else { return [] }
+        var generator = SeededGenerator(seed: 0x6A1A_C7E5)
+        let shell: Float = 6_000
+        var galaxies: [BackgroundGalaxy] = []
+        galaxies.reserveCapacity(count)
+        for _ in 0..<count {
+            let direction = DiskSampler.randomDirection(&generator)
+            let size = pow(generator.uniform(), 3)
+            let radius = shell * 0.000_25 * pow(14, size)
+            let pale = min(0.7 * pow(generator.uniform(), 2) + 0.3 * size, 1)
+            let orange = SIMD3<Float>(1, 0.35, 0.1)
+            let paler = SIMD3<Float>(1, 0.85, 0.65)
+            let colour: SIMD3<Float> = orange + (paler - orange) * pale
+            let ratio = 0.25 + 0.75 * generator.uniform()
+            let angle = 2 * Float.pi * generator.uniform()
+            let bulge = 0.3 + 0.6 * generator.uniform()
+            let brightness = 0.25 + 1.5 * pow(generator.uniform(), 2)
+            galaxies.append(
+                BackgroundGalaxy(
+                    direction: SIMD4(direction.x * shell, direction.y * shell, direction.z * shell, radius),
+                    color: SIMD4(colour.x, colour.y, colour.z, ratio),
+                    shape: SIMD4(cos(angle), sin(angle), bulge, brightness)))
+        }
+        return galaxies
+    }
+}
+
 /// A field star as the star field's pass reads it; mirrors `BackgroundStar` in `Shaders`.
 public struct BackgroundStar: Sendable {
     public var direction: SIMD4<Float>

@@ -21,6 +21,9 @@ public struct LookFile: Codable, Sendable, Equatable {
     public var name: String
     public var look: RenderLook
     public var starCount: Int
+    /// Galaxies far behind the field stars, as a deep exposure is full of them; nil or 0 draws
+    /// none. Metal only.
+    public var galaxyCount: Int?
     public var supersample: Int
     public var bloomLevels: Int
     /// One fixed-size point per particle in its galaxy's tint through a single pass, and none
@@ -113,7 +116,8 @@ public struct LookFile: Codable, Sendable, Equatable {
 
     public init(
         name: String = "standard", look: RenderLook = LookFile.standardLook,
-        starCount: Int = 2500, supersample: Int = 2, bloomLevels: Int = 6, plain: Bool = false,
+        starCount: Int = 2500, galaxyCount: Int? = nil, supersample: Int = 2, bloomLevels: Int = 6,
+        plain: Bool = false,
         armStrength: Float = 1, palette: [GalaxyColours] = [], paletteRecipe: Palette? = nil,
         world: Palette.World = .free, camera: CameraPlan = CameraPlan(), overlay: Overlay? = nil,
         exposure: LookExposure? = nil
@@ -122,6 +126,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         self.name = name
         self.look = look
         self.starCount = starCount
+        self.galaxyCount = galaxyCount
         self.supersample = supersample
         self.bloomLevels = bloomLevels
         self.plain = plain
@@ -142,6 +147,7 @@ public struct LookFile: Codable, Sendable, Equatable {
             name: try c.value(.name, or: d.name),
             look: try c.value(.look, or: LookFile.omittedLook),
             starCount: try c.value(.starCount, or: d.starCount),
+            galaxyCount: try c.decodeIfPresent(Int.self, forKey: .galaxyCount),
             supersample: try c.value(.supersample, or: d.supersample),
             bloomLevels: try c.value(.bloomLevels, or: d.bloomLevels),
             plain: try c.value(.plain, or: d.plain),

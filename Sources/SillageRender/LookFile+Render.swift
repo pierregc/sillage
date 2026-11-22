@@ -41,6 +41,9 @@ extension LookFile {
         settings.columnSmoothing = look.columnSmoothing
         settings.glint = look.glint
         settings.dustWeb = look.dustWeb
+        settings.galaxyCount = max(galaxyCount ?? 0, 0)
+        settings.dustGlow = look.dustGlow
+        settings.dustGlowColour = look.dustGlowColour
         settings.oldWidth = look.oldWidth
         settings.bulgeWidth = look.bulgeWidth
         settings.youngWidth = look.youngWidth
@@ -51,6 +54,7 @@ extension LookFile {
     /// Whether going from `other` to this file changes something a renderer owns buffers for.
     public func rebuildsRenderer(from other: LookFile) -> Bool {
         supersample != other.supersample || starCount != other.starCount
+            || (galaxyCount ?? 0) != (other.galaxyCount ?? 0)
             || bloomLevels != other.bloomLevels || plain != other.plain
     }
 

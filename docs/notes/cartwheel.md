@@ -58,6 +58,28 @@ two from one take to the next, so the flight is written from the match, never by
 gives the crop's height at the key's field of view (0.15 rad, near enough orthographic for the
 match), the roll the match's.
 
+## Webb's colours
+
+Pierre asked for the picture's colours and its field as well. Measured on the crop in linear
+light, the bodies split into blue (0.59, 0.47, 1.0) over a fifth of them, red (1, 0.26, 0.24)
+over half and pink between; the brightest percent, knots and nucleus, is a pale pink. The red is
+dust and PAH glowing under MIRI, not stars, so no palette gets it: coloured by birth radius, the
+ring stays lavender, because its stars were born well inside where it now stands.
+
+- `dustGlow` draws the dust grains a second time into the light, in `dustGlowColour`, in
+  proportion to their optical depth. The dust sits in the ring and the spokes, as Webb's red
+  does. `cartwheel-webb.look.json`: Webb's look, dust opacity 0.12 without the web, glow 1 in
+  (1, 0.2, 0.12), disk and outskirts in the measured blue, core and knots pale pink, spikes 0.18
+  so that bright glowing grains do not throw them.
+- `galaxyCount` 150 000 fills the sky with galaxies of 0.25 to 3.5 milliradians, the sizes of
+  those round the Cartwheel, mostly orange: about as many in the frame as in the picture.
+
+## Previews
+
+The plain frames (explore's previews and the raw look) went through 1 - exp(-E): a dense core was
+white past a few units and hid what moved in it. They now go through asinh, linear in the faint
+light and logarithmic past it, white at 64 times the toe, so the nuclei keep their structure.
+
 ## The flights and the montage
 
 `tools/flights.py` writes four flights from the match:

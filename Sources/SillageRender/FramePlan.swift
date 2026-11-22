@@ -221,7 +221,7 @@ public struct FramePlan: Sendable {
         if first, settings.columnSmoothing > 0 { passes.append(.column) }
         // The dust the web multiplies, coarse, before the pass that multiplies it.
         if webbed { passes.append(.webCarrier) }
-        if first, settings.starCount > 0 { passes.append(.starfield) }
+        if first, settings.starCount > 0 || settings.galaxyCount > 0 { passes.append(.starfield) }
         // The dust first, so that its opacity is standing in its target when the stars are
         // drawn and read it back.
         for stage in stages {
