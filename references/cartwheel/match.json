@@ -1,0 +1,21 @@
+{
+  "capturedFrame" : 324,
+  "ceiling" : -1,
+  "map" : "cartwheel-crop.map.json",
+  "megayears" : 407.1601528930664,
+  "picture" : "cartwheel-crop.jpg",
+  "score" : 0.6558084885279337,
+  "seconds" : 16.3,
+  "storedFrame" : 81,
+  "trials" : 380363,
+  "view" : {
+    "azimuth" : 43.12422480060552,
+    "elevation" : 62.20422750397203,
+    "kpcPerWidth" : 48.6,
+    "origin" : [
+      0.29655480562276754,
+      0.5276056204816727
+    ],
+    "roll" : -88
+  }
+}

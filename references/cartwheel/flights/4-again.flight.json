@@ -1,0 +1,93 @@
+{
+ "version": 1,
+ "keys": [
+  {
+   "at": 0,
+   "myr": 407.1602,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     22,
+     -10,
+     4
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   },
+   "fov": 0.6
+  },
+  {
+   "at": 4,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     10,
+     21,
+     5
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 8,
+   "myr": 407.1602,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -16,
+     17,
+     7
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 15,
+   "myr": 419.1602,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -10,
+     -60,
+     -110
+    ]
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     0,
+     0,
+     40
+    ]
+   }
+  },
+  {
+   "at": 31,
+   "myr": 732.618,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     0,
+     -50,
+     -125
+    ]
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     0,
+     0,
+     40
+    ]
+   }
+  }
+ ]
+}

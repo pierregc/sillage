@@ -79,6 +79,7 @@ session. Read the note for an area before changing it.
 - [Inside a galaxy](inside-a-galaxy.md): spike #296 and what #297 built from it for flights, the near plane, capped kernels, point stars, dust slabs from the eye, automatic exposure, motion blur and what they cost inside a disk at 8 M; and why two disks that cross cut each other in #297's flight (#353: the matter, not the drawing); the dust lace carried through the dust layer near a disk in place of #297's flattening (#354); a flight's slabs of dust laid on the matter in the frame, soft at every distance (#355)
 - [A match that is measured](photo-match.md): a real picture reduced to its extended light, the take as a histogram of its stars, the score (isophotes against correlations), the search, the mirror, the floor an archetype gets on the Antennae and the Mice (#320)
 - [Twenty galaxies to reproduce](twenty-galaxies.md): the shortlist for named scenes, why each, which have a published model of the very object, tiers A to C, the pictures and their licences in `references/catalogue/`
+- [The Cartwheel, reproduced](cartwheel.md): ESO 350-40 from its published measurements, a compact intruder, the match that places the freeze, the flights and the split screen with Webb's picture
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first
