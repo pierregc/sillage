@@ -26,8 +26,8 @@ Everything is in `references/cartwheel/`.
 
 `tools/make_scene.py` writes it from the ring archetype scene 35 of batch seed 20261121, a draw
 that already looked close, with the encounter imposed (the restricted solver forces the placement,
-as for a scene written by hand): G3 a spiral of a third of the mass, pericentre 1.2 kpc at
-300 Myr, eccentricity 1.2, falling along the Cartwheel's axis tilted by 0.2 rad. `scene.json` is
+as for a scene written by hand): G3 a spiral of 0.45 of the mass, pericentre 1.2 kpc at
+300 Myr, eccentricity 1.2, falling along the Cartwheel's axis tilted by 0.1 rad. `scene.json` is
 the placed scene, as the 8 M hires read it.
 
 - **The intruder must be compact.** A G3 drawn as a scaled copy of the Cartwheel (Hernquist halo,
@@ -38,20 +38,29 @@ the placed scene, as the 8 M hires read it.
   twice as far out as in the picture; 1.2 kpc and 0.2 rad put it where it is. 0.7 kpc and 0.3 rad
   centre it and grow the inner ring too much. All three score alike (0.59 to 0.67), so the choice
   was made on the sheets.
-- The ring is the picture's size 107 Myr after the impact, sooner than the 300 to 430 Myr
+- The ring is the picture's size about 100 Myr after the impact, sooner than the 300 to 430 Myr
   measured: the ring's pattern runs faster than its gas.
 
-Costs: explore at 200 k, 30 s; a check hires at 500 k, 2 min; the 8 M hires (12 M of halo,
-sticky gas, 151 to 733 Myr), 10 770 s and a 12 GB take.
+**A grid, not a draw.** Pierre asked for many close scenes rather than random ones:
+`tools/sweep.sh` runs 27, the mass ratio at 0.25, 0.33 and 0.45 against the pericentre at 0.6,
+1.2 and 2 kpc and the tilt at 0.1, 0.2 and 0.35 rad, each explored, run at 500 k and matched.
+The heavier intruder wins throughout (0.67 to 0.74 against 0.61 to 0.68 for the others), which is
+Horellou and Combes's half mass; 1.2 kpc and 0.1 rad scores 0.735, with an oval ring and the
+nucleus low on the left as in the picture.
+
+Costs: explore at 200 k, 30 s; a check hires at 500 k, 2 min; the grid, 75 min; the 8 M hires
+(12 M of halo, sticky gas, 151 to 760 Myr), about 3 h and a 12 GB take.
 
 ## Matching the picture
 
 The picture is `weic2211a` at 4685 px, cropped 8:9 to the Cartwheel without G1 and G2
 (`tools/panel.py`). `photo-match.py picture` maps it; `match --kpc-across 48.6` holds the scale
 to the measured ring, since a free scale prefers a younger, smaller ring (0.74 at 25 kpc across,
-44 Myr after the impact). On the 8 M take: 0.656 at 407.2 Myr, elevation 62.2, azimuth 43.1,
-roll -88 (`match.json`). The 500 k take found the mirror, from below; the view flips between the
-two from one take to the next, so the flight is written from the match, never by hand.
+44 Myr after the impact). On the 8 M take of the winner: 0.727 at 394.5 Myr, elevation 47,
+azimuth 43.8, roll 132 (`match.json`): the disk seen 47 degrees from its axis, against the 44
+measured. A view from below is the mirror of one from above, and the match can land on either
+from one take to the next; Pierre judged the spokes turning the picture's way only from the side
+the spin points to, so the flight is written from the match and its side checked, never by hand.
 
 `tools/view2key.py` turns a match into a flight key that frames the crop in the middle half of a
 16:9 frame: the aim is the crop's centre, the eye on the view's direction at the distance that
@@ -68,9 +77,11 @@ ring stays lavender, because its stars were born well inside where it now stands
 
 - `dustGlow` draws the dust grains a second time into the light, in `dustGlowColour`, in
   proportion to their optical depth. The dust sits in the ring and the spokes, as Webb's red
-  does. `cartwheel-webb.look.json`: Webb's look, dust opacity 0.12 without the web, glow 1 in
-  (1, 0.2, 0.12), disk and outskirts in the measured blue, core and knots pale pink, spikes 0.18
-  so that bright glowing grains do not throw them.
+  does. `cartwheel-webb.look.json`: Webb's look, dust opacity 0.12 without the web, glow 2.6 in
+  salmon (1, 0.28, 0.24), brightness 0.19 and white point 2.2 for the picture's bright red, disk in
+  the measured blue, outskirts salmon so the ring has no lavender rim, core and knots pale pink,
+  spikes 0.18 so that bright glowing grains do not throw them. Red covers half the bodies, 45 % in
+  the picture, at the same brightness; the picture's knots stay brighter.
 - `galaxyCount` 150 000 fills the sky with galaxies of 0.25 to 3.5 milliradians, the sizes of
   those round the Cartwheel, mostly orange: about as many in the frame as in the picture.
 

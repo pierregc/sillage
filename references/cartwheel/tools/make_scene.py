@@ -4,9 +4,9 @@ usage: make_scene.py <base scene.json> <out folder> [mass ratio] [pericentre kpc
        [pericentre Myr]"""
 import json, math, os, sys
 src, out = sys.argv[1], sys.argv[2]
-ratio = float(sys.argv[3]) if len(sys.argv) > 3 else 0.33
+ratio = float(sys.argv[3]) if len(sys.argv) > 3 else 0.45
 q = float(sys.argv[4]) if len(sys.argv) > 4 else 1.2
-tilt = float(sys.argv[5]) if len(sys.argv) > 5 else 0.2
+tilt = float(sys.argv[5]) if len(sys.argv) > 5 else 0.1
 t = float(sys.argv[6]) if len(sys.argv) > 6 else 300.0
 d = json.load(open(src))
 d["solver"] = "restricted"

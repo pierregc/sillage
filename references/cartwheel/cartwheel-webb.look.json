@@ -1,0 +1,116 @@
+{
+  "camera": {
+    "mode": "fixed"
+  },
+  "look": {
+    "armPersistence": 1,
+    "bloomIntensity": 0.2,
+    "bloomSoftKnee": 0.5,
+    "bloomThreshold": 0.6,
+    "brightness": 0.19,
+    "dustStrength": 0.12,
+    "dustWeb": 0.0,
+    "galaxyTint": 1.0,
+    "glint": 0.3,
+    "maximumKernel": 56,
+    "minimumKernel": 0.8,
+    "noiseLevel": 0.0014,
+    "saturation": 2.2,
+    "skyColour": [
+      0.44,
+      0.42,
+      0.39
+    ],
+    "skyLevel": 0.0012,
+    "smoothingScale": 1.2,
+    "spikeArms": 6,
+    "spikeIntensity": 0.18,
+    "spikeLength": 110,
+    "spikePattern": "webb",
+    "spikeSharpness": 1,
+    "starSize": 0.9,
+    "stretch": 18,
+    "whitePoint": 2.2,
+    "dustGlow": 2.6,
+    "dustGlowColour": [
+      1.0,
+      0.28,
+      0.24
+    ]
+  },
+  "name": "cartwheel-webb",
+  "palette": [
+    {
+      "colour": [
+        0.45,
+        0.5,
+        1.0
+      ],
+      "mapping": "mix",
+      "core": [
+        1.0,
+        0.66,
+        0.66
+      ],
+      "disk": [
+        0.45,
+        0.5,
+        1.0
+      ],
+      "outskirts": [
+        1.0,
+        0.42,
+        0.38
+      ],
+      "young": [
+        1.0,
+        0.45,
+        0.55
+      ],
+      "knot": [
+        1.0,
+        0.66,
+        0.7
+      ],
+      "blend": 1.0
+    },
+    {
+      "colour": [
+        0.65,
+        0.6,
+        1.0
+      ],
+      "mapping": "mix",
+      "core": [
+        1.0,
+        0.8,
+        0.7
+      ],
+      "disk": [
+        0.65,
+        0.6,
+        1.0
+      ],
+      "outskirts": [
+        0.6,
+        0.55,
+        1.0
+      ],
+      "young": [
+        1.0,
+        0.45,
+        0.55
+      ],
+      "knot": [
+        1.0,
+        0.66,
+        0.7
+      ],
+      "blend": 1.0
+    }
+  ],
+  "starCount": 6000,
+  "version": 1,
+  "world": "telescope",
+  "galaxyCount": 150000
+}

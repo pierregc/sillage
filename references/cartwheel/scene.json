@@ -3,7 +3,7 @@
   "encounters" : [
     {
       "eccentricity" : 1.2,
-      "massRatio" : 0.33,
+      "massRatio" : 0.45,
       "pericentre" : 1.2,
       "pericentreAngle" : 0,
       "pericentreTime" : 300,
@@ -12,7 +12,7 @@
       "primary" : 0,
       "primaryDisk" : {
         "argument" : 3.1415927,
-        "inclination" : 1.3707963,
+        "inclination" : 1.4707963,
         "spin" : "prograde"
       },
       "secondary" : 1,
@@ -45,19 +45,19 @@
       "effectiveToomreQ" : 2.0561597,
       "haloExtent" : 12,
       "haloParticleRatio" : 1.5,
-      "inclination" : 0.20000005,
+      "inclination" : 0.100000024,
       "kind" : "spiral",
       "massLopsidedness" : 0.03,
       "name" : "Cartwheel",
       "outskirtFraction" : 0.12,
-      "particleShare" : 0.75188,
+      "particleShare" : 0.689655,
       "patternShare" : 0.9,
       "position" : [
-        12.313125,
-        -2.5152478e-06,
-        57.542164
+        16.377247,
+        -3.2751886e-06,
+        74.92758
       ],
-      "positionAngle" : -4.3127002e-07,
+      "positionAngle" : -8.7131156e-07,
       "potential" : {
         "mass" : 53.07236,
         "profile" : "hernquist",
@@ -65,11 +65,11 @@
       },
       "spin" : "prograde",
       "starFormingFraction" : 0.05,
-      "toomreQ" : 1.3694812,
+      "toomreQ" : 1.3580602,
       "velocity" : [
-        -0.19073437,
-        3.7209492e-08,
-        -0.8512539
+        -0.25347665,
+        4.850284e-08,
+        -1.1096157
       ],
       "velocityDispersion" : 0.05,
       "youngClumpiness" : 0.4428423
@@ -99,26 +99,26 @@
       "massLopsidedness" : 0.03,
       "name" : "G3",
       "outskirtFraction" : 0.12,
-      "particleShare" : 0.24812,
+      "particleShare" : 0.310345,
       "patternShare" : 0.9,
       "position" : [
-        -37.312496,
-        7.621963e-06,
-        -174.37018
+        -36.39388,
+        7.2781972e-06,
+        -166.50574
       ],
       "positionAngle" : 0.54346687,
       "potential" : {
-        "mass" : 17.51388,
+        "mass" : 23.882563,
         "profile" : "plummer",
-        "scaleRadius" : 1.7156645
+        "scaleRadius" : 1.9025316
       },
       "spin" : "prograde",
       "starFormingFraction" : 0.06,
       "toomreQ" : 1.4,
       "velocity" : [
-        0.5779829,
-        -1.1275603e-07,
-        2.5795572
+        0.5632814,
+        -1.07784096e-07,
+        2.4658127
       ],
       "velocityDispersion" : 0.05,
       "youngClumpiness" : 0.5

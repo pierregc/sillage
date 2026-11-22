@@ -1,21 +1,21 @@
 {
-  "capturedFrame" : 324,
+  "capturedFrame" : 308,
   "ceiling" : -1,
   "map" : "cartwheel-crop.map.json",
-  "megayears" : 407.1601528930664,
+  "megayears" : 394.45538497924804,
   "picture" : "cartwheel-crop.jpg",
-  "score" : 0.6558084885279337,
-  "seconds" : 16.3,
-  "storedFrame" : 81,
-  "trials" : 380363,
+  "score" : 0.7270695368448893,
+  "seconds" : 17.3,
+  "storedFrame" : 77,
+  "trials" : 349521,
   "view" : {
-    "azimuth" : 43.12422480060552,
-    "elevation" : 62.20422750397203,
+    "azimuth" : 43.84938225170305,
+    "elevation" : 46.98588608019038,
     "kpcPerWidth" : 48.6,
     "origin" : [
-      0.29655480562276754,
-      0.5276056204816727
+      0.6683784552864734,
+      0.8094507107719463
     ],
-    "roll" : -88
+    "roll" : 132
   }
 }
