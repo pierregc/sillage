@@ -217,6 +217,12 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   grain that hold still as the camera moves. The dust of a disk the eye is in is multiplied by
   `dustInside` (0.3) as the eye comes within `dustWithin` (`[0.5, 2]` kpc) of matter: seen along
   the plane from inside, the look's lanes were three to ten times a real one's.
+- **The near glow as a haze**: a look's `dustGlow` draws the grains a second time into the light,
+  and a galaxy has about a sixth as many grains as stars, so at the size where the stars go over
+  to points the grains stood out as blobs (the Cartwheel's dives). In the near field a grain's
+  glow is drawn up to `glowHaze` times wider, its light kept, over the stars' own cross-fade
+  (`starFrom` to `starFull`), and `glowFade` of it taken away there; 1 and 0, the defaults, draw
+  it as before. The Cartwheel's film flies with 5 and 0.5.
 - **Motion blur**: while the shutter is open (`shutter`, half of the frame's interval) a point
   star is drawn as the streak it leaves, and the frame is averaged from up to `subframes` renders
   (8), one for every four pixels the near matter crosses meanwhile, each drawing its share of

@@ -810,6 +810,12 @@ public final class Renderer {
                 if settings.dustGlow > 0 && !settings.plain {
                     var glow = SIMD4<Float>(settings.dustGlowColour, settings.dustGlow)
                     encoder.setFragmentBytes(&glow, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                    // From inside, the glow's own pass, which can spread a near grain into a haze.
+                    if deep != nil {
+                        var glowing = uniforms
+                        glowing.pass = 2
+                        bindDeep(encoder, glowing)
+                    }
                     drawParts(encoder, massive: deep?.glow ?? dustGlowPipeline, tracers: nil)
                 }
 
