@@ -94,6 +94,7 @@ struct LookFileTests {
             world: .free, family: "ember", harmony: .triadic, seed: 1, colours: file.palette.map(\.colour))
         file.overlay = Overlay(clock: Overlay.Clock())
         file.exposure = LookExposure()
+        file.galaxyCount = 10
         #expect(try keys(JSONEncoder().encode(file.look)) == fields(file.look))
         #expect(try keys(file.encoded()) == fields(file))
     }

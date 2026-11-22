@@ -69,6 +69,10 @@ public struct RenderLook: Sendable, Equatable {
     /// by its rotation and renewed before the shear winds it up (#173, docs/notes/dust-web.md).
     /// Zero, the default, draws the dust as its grains and the painted strands give it.
     public var dustWeb: Float
+    /// How brightly the dust glows, as the PAH and warm grains do in a mid-infrared picture,
+    /// in `dustGlowColour`, on top of what it absorbs. Zero, the default, draws no glow.
+    public var dustGlow: Float
+    public var dustGlowColour: SIMD3<Float>
     /// How much wider than the tree gives them each population's kernels are drawn: the old
     /// disk, the bulge, the stars under 300 Myr and the knots gas formed under 50 Myr (#339).
     /// One, the default, draws them as every look did before.
@@ -113,6 +117,8 @@ public struct RenderLook: Sendable, Equatable {
         columnSmoothing: Float = 0,
         glint: Float = 1,
         dustWeb: Float = 0,
+        dustGlow: Float = 0,
+        dustGlowColour: SIMD3<Float> = SIMD3(1, 0.26, 0.24),
         oldWidth: Float = 1,
         bulgeWidth: Float = 1,
         youngWidth: Float = 1,
@@ -145,6 +151,8 @@ public struct RenderLook: Sendable, Equatable {
         self.columnSmoothing = columnSmoothing
         self.glint = glint
         self.dustWeb = dustWeb
+        self.dustGlow = dustGlow
+        self.dustGlowColour = dustGlowColour
         self.oldWidth = oldWidth
         self.bulgeWidth = bulgeWidth
         self.youngWidth = youngWidth
@@ -187,6 +195,10 @@ public struct RenderLook: Sendable, Equatable {
         out.columnSmoothing = f(a.columnSmoothing, b.columnSmoothing)
         out.glint = f(a.glint, b.glint)
         out.dustWeb = f(a.dustWeb, b.dustWeb)
+        out.dustGlow = f(a.dustGlow, b.dustGlow)
+        out.dustGlowColour = SIMD3(
+            f(a.dustGlowColour.x, b.dustGlowColour.x), f(a.dustGlowColour.y, b.dustGlowColour.y),
+            f(a.dustGlowColour.z, b.dustGlowColour.z))
         out.oldWidth = f(a.oldWidth, b.oldWidth)
         out.bulgeWidth = f(a.bulgeWidth, b.bulgeWidth)
         out.youngWidth = f(a.youngWidth, b.youngWidth)
@@ -300,6 +312,8 @@ extension RenderLook: Codable {
             columnSmoothing: try c.value(.columnSmoothing, or: d.columnSmoothing),
             glint: try c.value(.glint, or: d.glint),
             dustWeb: try c.value(.dustWeb, or: d.dustWeb),
+            dustGlow: try c.value(.dustGlow, or: d.dustGlow),
+            dustGlowColour: try c.value(.dustGlowColour, or: d.dustGlowColour),
             oldWidth: try c.value(.oldWidth, or: d.oldWidth),
             bulgeWidth: try c.value(.bulgeWidth, or: d.bulgeWidth),
             youngWidth: try c.value(.youngWidth, or: d.youngWidth),

@@ -5,6 +5,7 @@
 // and with clang++.
 #include "cuda_cpu.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -100,10 +101,14 @@ static int run() {
         sc_post_image in = light.handle(), out = picture.handle();
         ok(sc_post_plain_composite(&in, &out, 2, 0.5f), "plainComposite");
         std::vector<float> got = picture.read();
-        float red = std::pow(1.0f - std::exp(-1.0f), 1.0f / 2.2f) * 0.5f;
-        float green = std::pow(1.0f - std::exp(-0.5f), 1.0f / 2.2f) * 0.5f;
+        auto curve = [](float e) {
+            float x = 5.0f * e, w = 320.0f;
+            return std::min(std::log(x + std::sqrt(x * x + 1.0f)) / std::log(w + std::sqrt(w * w + 1.0f)), 1.0f);
+        };
+        float red = std::pow(curve(1.0f), 1.0f / 2.2f) * 0.5f;
+        float green = std::pow(curve(0.5f), 1.0f / 2.2f) * 0.5f;
         expect(near(got[0], red, 1e-4f) && near(got[1], green, 1e-4f) && got[2] == 0.0f && got[3] == 1.0f,
-               "plainComposite is not 1 - exp(-energy) to the power 1 / 2.2, faded");
+               "plainComposite is not asinh(5 energy) / asinh(320) to the power 1 / 2.2, faded");
     }
 
     // brightPass: what is under the threshold goes, what is over keeps its excess's share.

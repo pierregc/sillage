@@ -59,6 +59,11 @@ public struct RenderSettings: Sendable {
     public var glint: Float = 1
     /// Share of the dust drawn as a web of filaments.
     public var dustWeb: Float = 0
+    /// Background galaxies behind the field stars (Metal only).
+    public var galaxyCount: Int = 0
+    /// How brightly the dust glows, and in what colour (Metal only).
+    public var dustGlow: Float = 0
+    public var dustGlowColour = SIMD3<Float>(1, 0.26, 0.24)
     /// Each population's kernel against the tree's: the old disk, the bulge, the young stars
     /// and the knots.
     public var oldWidth: Float = 1
@@ -156,6 +161,8 @@ public struct RenderSettings: Sendable {
         columnSmoothing = look.columnSmoothing
         glint = look.glint
         dustWeb = look.dustWeb
+        dustGlow = look.dustGlow
+        dustGlowColour = look.dustGlowColour
         oldWidth = look.oldWidth
         bulgeWidth = look.bulgeWidth
         youngWidth = look.youngWidth

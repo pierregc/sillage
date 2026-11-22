@@ -1,0 +1,133 @@
+{
+  "centerSoftening" : 1.2,
+  "encounters" : [
+    {
+      "eccentricity" : 1.2,
+      "massRatio" : 0.45,
+      "pericentre" : 1.2,
+      "pericentreAngle" : 0,
+      "pericentreTime" : 300,
+      "planeTilt" : 1.5707964,
+      "planeTurn" : 0,
+      "primary" : 0,
+      "primaryDisk" : {
+        "argument" : 3.1415927,
+        "inclination" : 1.4707963,
+        "spin" : "prograde"
+      },
+      "secondary" : 1,
+      "secondaryDisk" : {
+        "argument" : 0.5,
+        "inclination" : 0.9,
+        "spin" : "prograde"
+      }
+    }
+  ],
+  "galaxies" : [
+    {
+      "armCount" : 2,
+      "armIrregularity" : 0.3670032,
+      "armMassContrast" : 0.356837,
+      "armPitch" : 0.47141027,
+      "armStreaming" : 1,
+      "armStrength" : 0.7029299,
+      "bulgeExtent" : 0.08906743,
+      "bulgeFlattening" : 0.7604929,
+      "bulgeFraction" : 0.03049565,
+      "clumpiness" : 0.04226301,
+      "diskMassFraction" : 0.22,
+      "diskScaleLength" : 4.944824,
+      "diskThickness" : 0.31983066,
+      "diskTruncation" : 4.998061,
+      "dissipationTime" : 318.66867,
+      "dustFraction" : 0.1945517,
+      "dustMassFraction" : 0.12272988,
+      "effectiveToomreQ" : 2.0561597,
+      "haloExtent" : 12,
+      "haloParticleRatio" : 1.5,
+      "inclination" : 0.100000024,
+      "kind" : "spiral",
+      "massLopsidedness" : 0.03,
+      "name" : "Cartwheel",
+      "outskirtFraction" : 0.12,
+      "particleShare" : 0.689655,
+      "patternShare" : 0.9,
+      "position" : [
+        16.377247,
+        -3.2751886e-06,
+        74.92758
+      ],
+      "positionAngle" : -8.7131156e-07,
+      "potential" : {
+        "mass" : 53.07236,
+        "profile" : "hernquist",
+        "scaleRadius" : 6.102126
+      },
+      "spin" : "prograde",
+      "starFormingFraction" : 0.05,
+      "toomreQ" : 1.3580602,
+      "velocity" : [
+        -0.25347665,
+        4.850284e-08,
+        -1.1096157
+      ],
+      "velocityDispersion" : 0.05,
+      "youngClumpiness" : 0.4428423
+    },
+    {
+      "armCount" : 2,
+      "armIrregularity" : 0.45,
+      "armMassContrast" : 0.3,
+      "armPitch" : 0.47141027,
+      "armStreaming" : 1,
+      "armStrength" : 0.6,
+      "bulgeExtent" : 0.12,
+      "bulgeFlattening" : 0.7,
+      "bulgeFraction" : 0.08,
+      "clumpiness" : 0.05,
+      "diskMassFraction" : 0.22,
+      "diskScaleLength" : 1.8,
+      "diskThickness" : 0.31983066,
+      "diskTruncation" : 4,
+      "dissipationTime" : 318.66867,
+      "dustFraction" : 0.15,
+      "dustMassFraction" : 0.12,
+      "haloExtent" : 12,
+      "haloParticleRatio" : 1.5,
+      "inclination" : 2.3287463,
+      "kind" : "spiral",
+      "massLopsidedness" : 0.03,
+      "name" : "G3",
+      "outskirtFraction" : 0.12,
+      "particleShare" : 0.310345,
+      "patternShare" : 0.9,
+      "position" : [
+        -36.39388,
+        7.2781972e-06,
+        -166.50574
+      ],
+      "positionAngle" : 0.54346687,
+      "potential" : {
+        "mass" : 23.882563,
+        "profile" : "plummer",
+        "scaleRadius" : 1.9025316
+      },
+      "spin" : "prograde",
+      "starFormingFraction" : 0.06,
+      "toomreQ" : 1.4,
+      "velocity" : [
+        0.5632814,
+        -1.07784096e-07,
+        2.4658127
+      ],
+      "velocityDispersion" : 0.05,
+      "youngClumpiness" : 0.5
+    }
+  ],
+  "name" : "Cartwheel",
+  "openingAngle" : 0.9,
+  "seed" : 15960446251721259437,
+  "solver" : "barnesHut",
+  "timeStepScale" : 7,
+  "version" : 1
+}

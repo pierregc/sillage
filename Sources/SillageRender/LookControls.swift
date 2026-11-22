@@ -69,6 +69,9 @@ extension LookFile.Group {
                 .slider("Dust opacity", \.dustStrength, 0...1.2, format: "%.3f"),
                 .slider("Dust web", \.dustWeb, 0...1),
                 .slider(
+                    "Dust glow", \.dustGlow, 0...8,
+                    note: "The dust shining as in a mid-infrared picture, on top of what it hides."),
+                .slider(
                     "Painted arm strength", \.armPersistence, 0...2,
                     note: "Above 1 the arms are plain invention, which the softest styles own up to."
                 ),
@@ -115,6 +118,7 @@ extension RenderLook {
     public func resetting(_ group: LookFile.Group, to baseline: RenderLook) -> RenderLook {
         var look = self
         for control in group.controls { control.reset(&look, to: baseline) }
+        if group == .light { look.dustGlowColour = baseline.dustGlowColour }
         if group == .instrument {
             look.skyColour = baseline.skyColour
             look.holeShadow = baseline.holeShadow

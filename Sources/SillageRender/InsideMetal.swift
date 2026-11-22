@@ -19,6 +19,7 @@ struct InsidePass {
 
     let library: MTLLibrary
     let dust: MTLRenderPipelineState
+    let glow: MTLRenderPipelineState
     let splat: MTLRenderPipelineState
     let stars: MTLRenderPipelineState
     let resolve: MTLComputePipelineState
@@ -66,6 +67,7 @@ struct InsidePass {
             }
         }
         dust = try additive("splatVertex", "dustFragment", writing: 1)
+        glow = try additive("splatVertex", "dustGlowFragment", writing: 0)
         splat = try additive("splatVertex", "splatFragment", writing: 0)
         stars = try additive("pointStarVertex", "pointStarFragment", writing: 0)
         resolve = try compute("insideResolve")

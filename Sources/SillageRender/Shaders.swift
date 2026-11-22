@@ -1684,6 +1684,50 @@ enum Shaders {
         #endif
 
         #if defined(__METAL_VERSION__)
+        struct BackgroundGalaxy {
+            float4 direction;
+            float4 color;
+            float4 shape;
+        };
+
+        struct GalaxyFieldOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            half3 color;
+            float4 shape;
+            float ratio;
+        };
+
+        // Galaxies behind the field stars, each an ellipse of a disk and a bulge at constant
+        // surface brightness, so that a narrower field shows them larger and no brighter. Under a
+        // pixel and a half one is a point whose light goes as its area.
+        vertex GalaxyFieldOut galaxyFieldVertex(uint vid [[vertex_id]],
+                                                device const BackgroundGalaxy *galaxies [[buffer(0)]],
+                                                constant SplatUniforms &u [[buffer(4)]]) {
+            BackgroundGalaxy g = galaxies[vid];
+            GalaxyFieldOut out;
+            out.position = u.viewProjection * float4(g.direction.xyz, 1.0f);
+            float size = 2.0f * g.direction.w * u.projectionScale / max(out.position.w, 1e-3f);
+            float small = min(size / 1.5f, 1.0f);
+            out.pointSize = clamp(size, 1.5f, 480.0f);
+            out.color = half3(g.color.rgb * (g.shape.w * small * small));
+            out.shape = g.shape;
+            out.ratio = max(g.color.w, 0.05f);
+            return out;
+        }
+
+        fragment LightTarget galaxyFieldFragment(GalaxyFieldOut in [[stage_in]],
+                                                 float2 coord [[point_coord]]) {
+            float2 d = (coord - 0.5f) * 2.0f;
+            float2 a = float2(dot(d, in.shape.xy), dot(d, float2(-in.shape.y, in.shape.x)) / in.ratio);
+            float r = length(a);
+            if (r > 1.0f) { discard_fragment(); }
+            float profile = (1.0f - in.shape.z) * exp(-5.0f * r) + in.shape.z * exp(-60.0f * r * r);
+            LightTarget out;
+            out.light = half4(in.color * half(profile * (1.0f - smoothstep(0.6f, 1.0f, r))), 0.0h);
+            return out;
+        }
+
         vertex SplatOut starfieldVertex(uint vid [[vertex_id]],
                                         device const BackgroundStar *stars [[buffer(0)]],
                                         constant SplatUniforms &u [[buffer(4)]]) {
@@ -1707,6 +1751,19 @@ enum Shaders {
             #else
             out.dust = dustPixel(in.opticalDepth, in.slab, r2);
             #endif
+            return out;
+        }
+
+        // The same grains drawn a second time into the light: what the dust gives
+        // off, in proportion to what it holds, in one colour. Nothing dims it.
+        fragment LightTarget dustGlowFragment(SplatOut in [[stage_in]],
+                                              float2 coord [[point_coord]],
+                                              constant float4 &glow [[buffer(0)]]) {
+            float r2 = splatRadius2(coord);
+            if (r2 > 1.0f) { discard_fragment(); }
+
+            LightTarget out;
+            out.light = half4(half3(glow.rgb * (glow.w * float(in.opticalDepth) * exp(-4.5f * r2))), 0.0h);
             return out;
         }
         #endif
@@ -2668,8 +2725,19 @@ enum Shaders {
         }
         #endif
 
-        // Box average of the accumulation and an exponential exposure curve, which keeps a
-        // dense core in its galaxy's hue instead of clipping it to white.
+        // The plain frames' exposure: asinh, linear in the faint light and logarithmic past it, so
+        // a dense core keeps its gradient up to `plainWhite` instead of going white at a few
+        // units, and what moves inside it stays readable.
+        SHARED_CONSTANT float plainToe = 5.0f;
+        SHARED_CONSTANT float plainWhite = 64.0f;
+
+        SHARED float plainCurve(float energy) {
+            float x = plainToe * max(energy, 0.0f);
+            float w = plainToe * plainWhite;
+            return min(log(x + sqrt(x * x + 1.0f)) / log(w + sqrt(w * w + 1.0f)), 1.0f);
+        }
+
+        // Box average of the accumulation through the plain curve, in the galaxy's hue.
         SHARED float4 plainCompositePixel(PostRead light, uint2 gid, uint factor, float fade) {
             float3 sum = float3(0.0f);
             for (uint y = 0; y < factor; ++y) {
@@ -2678,7 +2746,8 @@ enum Shaders {
                 }
             }
             float3 energy = sum / float(factor * factor);
-            return float4(pow(1.0f - exp(-energy), 1.0f / 2.2f) * fade, 1.0f);
+            float3 curve = float3(plainCurve(energy.x), plainCurve(energy.y), plainCurve(energy.z));
+            return float4(pow(curve, 1.0f / 2.2f) * fade, 1.0f);
         }
 
         SHARED float4 brightPixel(PostSample src, uint2 gid, uint2 size, constant BloomParams &p) {
