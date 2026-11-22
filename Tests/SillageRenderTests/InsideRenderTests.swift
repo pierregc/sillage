@@ -290,7 +290,9 @@ struct InsideRenderTests {
         }
         let stage = try Stage(positions, maximumKernel: 16, component: .dust, glow: 2, dust: 0.5)
         let view = camera(1.5)
-        func drawn(_ change: @escaping (inout InsideSettings) -> Void) throws -> (total: Double, peak: Float) {
+        func drawn(_ change: @escaping (inout InsideSettings) -> Void) throws
+            -> (total: Double, peak: Float)
+        {
             stage.renderer.inside = Self.inside(1.5) { settings in
                 settings.dustFine = 0
                 settings.dustInside = 1
