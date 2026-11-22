@@ -112,8 +112,9 @@ struct CUDAPostTests {
             [Float](repeating: 0.5, count: plan.sizes.light.width * plan.sizes.light.height * 4))
         try post.run(plan, light: light)
         let bytes = [UInt8](try post.pack(.rgb))
-        // 1 - exp(-0.5) to the power 1 / 2.2, in levels of 255.
-        let expected = UInt8((Float(pow(1 - exp(-0.5), 1 / 2.2)) * 255).rounded())
+        // asinh(5 x 0.5) / asinh(5 x 64) to the power 1 / 2.2, in levels of 255.
+        let curve = log(2.5 + (2.5 * 2.5 + 1).squareRoot()) / log(320 + (320 * 320 + 1).squareRoot())
+        let expected = UInt8((Float(pow(curve, 1 / 2.2)) * 255).rounded())
         #expect(bytes.count == 64 * 36 * 3)
         #expect(bytes.allSatisfy { $0 == expected })
     }
