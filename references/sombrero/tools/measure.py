@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""measure.py <frame> [<frame> ...] [--kpc 21] [--crop x,y,w,h] [--roll deg]
+"""measure.py <frame> [<frame> ...] [--kpc 26.5] [--crop x,y,w,h] [--roll deg]
 
 Figures of a Sombrero frame beside the same figures of Hubble's picture (heic2506a), all in
 display values (0 to 1), so that a look is judged on numbers. A frame is taken to be --kpc
-across; the picture is 21. The disk's long axis is found and laid flat unless --roll is given.
+across; the picture is 26.5 (9.54 arcminutes at 9.55 Mpc). The disk's long axis is found and laid
+flat unless --roll is given.
 
   halo N     light N kpc over the centre, on the minor axis (far side, clear of the lane)
-  side N     light N kpc along the major axis, 2.5 kpc over the plane
+  side N     light N kpc along the major axis, 3 kpc over the plane
   corners    the sky
-  halo r/g, b/g   the halo's colour 3 kpc over the centre
-  disk       the stellar disk 3 kpc either side of the centre
+  halo r/g, b/g   the halo's colour 4 kpc over the centre
+  disk       the stellar disk 4 kpc either side of the centre
   white      share of the frame above 0.97
   near/far lane: offset from the major axis, width at half depth, light left (1 = no lane),
-                 its red over green, medians over cuts 2 to 5 kpc either side of the centre
+                 its red over green, medians over cuts 2.5 to 6.5 kpc either side of the centre
 """
 import argparse
 import math
@@ -25,6 +26,7 @@ LUMA = np.array([0.2126, 0.7152, 0.0722])
 HUBBLE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "catalogue", "images", "heic2506a.jpg")
 WIDTH = 1024
+HUBBLE_KPC = 26.5
 
 
 def measure(im, kpc, roll=None):
@@ -55,27 +57,27 @@ def measure(im, kpc, roll=None):
         return None if v is None else float(v @ LUMA)
 
     out = {"roll": roll}
-    for d in (1, 2, 3, 4, 5):
+    for d in (1, 2, 3, 4, 5, 6, 7):
         out[f"halo {d}"] = light(0, d)
-    for d in (4, 6, 8, 9.5):
-        both = [v for v in (light(-d, 2.5), light(d, 2.5)) if v is not None]
+    for d in (3, 5, 7.5, 10, 12):
+        both = [v for v in (light(-d, 3), light(d, 3)) if v is not None]
         out[f"side {d:g}"] = sum(both) / len(both) if both else None
     corners = [lum[:40, :60], lum[:40, -60:], lum[-40:, :60], lum[-40:, -60:]]
     out["corners"] = float(np.median([c.mean() for c in corners]))
-    halo = at(0, 3)
+    halo = at(0, 4)
     out["halo r/g"], out["halo b/g"] = float(halo[0] / halo[1]), float(halo[2] / halo[1])
-    out["disk"] = (light(-3, 0, 0.15) + light(3, 0, 0.15)) / 2
+    out["disk"] = (light(-4, 0, 0.2) + light(4, 0, 0.2)) / 2
     out["white"] = float((lum > 0.97).mean())
 
-    reach = int(0.5 / px)
+    reach = int(0.65 / px)
     for name, sign in (("near", 1), ("far", -1)):
         found = []
-        for dx in (-5, -4, -3, -2, 2, 3, 4, 5):
-            x, r = round(cx + dx / px), int(0.25 / px)
+        for dx in (-6.5, -5, -4, -2.5, 2.5, 4, 5, 6.5):
+            x, r = round(cx + dx / px), int(0.3 / px)
             col = lum[:, x - r:x + r + 1].mean(axis=1)
             red = (rgb[:, x - r:x + r + 1, 0] / np.maximum(rgb[:, x - r:x + r + 1, 1], 1e-3)).mean(axis=1)
             best = None
-            for k in range(int(0.15 / px), int(1.3 / px)):
+            for k in range(int(0.2 / px), int(1.6 / px)):
                 y = cy + sign * k
                 if not (reach <= y < height - reach):
                     continue
@@ -103,12 +105,12 @@ def measure(im, kpc, roll=None):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("frames", nargs="+")
-    p.add_argument("--kpc", type=float, default=21.0)
+    p.add_argument("--kpc", type=float, default=HUBBLE_KPC)
     p.add_argument("--roll", type=float)
     p.add_argument("--crop")
     g = p.parse_args()
     crop = [int(v) for v in g.crop.split(",")] if g.crop else None
-    columns = [("Hubble", measure(Image.open(HUBBLE), 21.0))]
+    columns = [("Hubble", measure(Image.open(HUBBLE), HUBBLE_KPC))]
     for path in g.frames:
         im = Image.open(path)
         if crop:
