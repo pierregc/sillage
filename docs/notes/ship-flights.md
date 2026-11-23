@@ -8,7 +8,8 @@ flight plan reliably.
 
 Nothing in the Swift package changed. The measurements and the prototype are
 `scripts/spikes/ship-flight.py` (numpy, Pillow, ffmpeg; no take, no GPU), with the plans it flies in
-`scripts/spikes/ship-flight-example.plan.json` and `ship-flight-head.plan.json`.
+`scripts/spikes/ship-flight-example.plan.json`, `ship-flight-head.plan.json` and
+`ship-flight-pilot.plan.json`, one for each version shown to Pierre.
 
 ```bash
 scripts/spikes/ship-flight.py measure references/ngc2207/flights/film.flight.json --from 97 --to 179 --tilt 0.85
@@ -201,12 +202,75 @@ What the head makes necessary: each leg says what is looked at, so "look at" joi
 the time among a leg's adverbs, and the check on the lit share of the frame is what finds a leg
 where the head was left looking ahead at nothing.
 
+## Between the two, flown as a pilot would
+
+Pierre on the second animatic: the right place is between the two. The system should be open,
+up to a limit that sits between them. What he does not want from the second: the moments where
+the camera "goes off sideways", which he cannot read as a movement at all. What he wants added:
+to be able to ask for a hedge-hop, a dive, a turn on the left wing or the right as if pressed by
+centrifugal force, the manoeuvres of a pilot (not loops), natural and never abrupt, and none of
+the rolls about the line of sight of the films before the spike.
+
+"Sideways" is the head turned far from the course: at 60 to 150 degrees off it, the picture
+slides across or backwards while nothing says the camera turned. So the third version
+(`ship-flight-pilot.plan.json`) is an aircraft's:
+
+- **The head stays near the course**, 35 degrees at most, at 14 degrees a second. What is in the
+  frame is always where the camera is going, give or take a glance.
+- **The turn is 10 degrees a second**, the thrust between the two versions (0.75), the speed
+  capped at 9 kpc/s.
+- **It banks.** The up vector leans into a turn by 3.5 rad for each rad a second of the course's
+  turn, 35 degrees at most, eased over 3 s: the horizon tilts as the turn comes on and comes back
+  as it ends. That is the only roll there is, and it is tied to the turn.
+- **The route is written as manoeuvres**, not waypoints: `dive` and `climb` (a height reached over
+  a distance), `skim` (a length at a height), `bank` left or right (degrees of turn, a radius, a
+  height reached). `expand` turns them into waypoints from where the camera is and where it
+  heads, so a plan holds one point, its start. Each manoeuvre carries its pace and what the head
+  looks at.
+
+```json
+{"start": {"at": [-44, -24, 26], "toward": [0, -3, 0]},
+ "manoeuvres": [
+  {"dive": 2, "over": 30, "look": [0, 0, 0]},
+  {"skim": 22, "height": 1.5, "look": [0, 0, 0]},
+  {"bank": "left", "turn": 180, "radius": 10, "height": 4.5, "look": [0, 0, 0]},
+  {"dive": 1.5, "over": 8},
+  {"bank": "left", "turn": 150, "radius": 9, "height": -2.5},
+  {"skim": 20},
+  {"bank": "left", "turn": 220, "radius": 7, "height": 4},
+  {"dive": 1.2, "over": 6}
+ ]}
+```
+
+A dive onto the disk, a hedge-hop past the bulge, a half turn on the left wing over the arms,
+down again, a turn on the wing that sinks through the plane, a pass under the bulge, a turn back
+up and a last dive on the bulge.
+
+| | the livelier ship | flown as a pilot would |
+|---|---|---|
+| seconds | 59 | 83 |
+| view turn, peak (deg/s) | 22 | 11 |
+| seconds turning faster than 10 deg/s | 20 | 14 |
+| view turned in all (deg) | 601 | 595 |
+| turn pick-up, peak (deg/s2) | 22 | 14 |
+| looking over 30 deg off its course (share of time) | 61 % | 33 % |
+| looking over 90 deg off its course (share of time) | 26 % | 0 % |
+| roll about the line of sight, peak (deg/s) | 8 | 16 |
+| seconds with under a tenth of the frame lit | 4 | 12 |
+
+With the head held near the course the frame is again what lies ahead, and the turn over the
+outer disk shows little for 12 s: a manoeuvre has to be placed where there is matter to turn
+over, which is the planner's work, and the lit share is how it knows.
+
+The bank is the one thing here that today's keys do not carry (below): a compiled flight has to
+write it as `roll`, and a roll eased to a stop at each key would pulse.
+
 ## Laid over today's file
 
 A ship's flight compiles to today's keys: an eye and an aim every half second, on the galaxy's
 disk. Drawn back through the ported interpolation, 206 keys for 102 s give the view within
-0.03 degrees and the eye within 30 pc of the ship's, away from the two ends. The livelier one gives 120 keys for 59 s and the view within half
-a degree. So the renderer, the
+0.03 degrees and the eye within 30 pc of the ship's, away from the two ends. The livelier one gives 120 keys for 59 s and the pilot's 167 for 83 s,
+the view within 0.6 degrees. So the renderer, the
 export, the app and the CUDA engine draw it as they are, and `FlightRecorder` already knows how to
 choose keys against a sampled path within a tolerance (#298).
 
@@ -231,7 +295,9 @@ radius (`flight --arms` finds them), a ring, the other galaxy, the look's view, 
 (`match`). Today `flight --at` prints these as text for a person; a chart of the scene as JSON
 would let a plan name them.
 
-**Manoeuvres**, each with a few numbers in the subject's own units and a default for every one:
+**Manoeuvres**, each with a few numbers in the subject's own units and a default for every one.
+The prototype's four (`dive`, `climb`, `skim`, `bank`) are the pilot's words; the table adds the
+ones that name a place:
 
 | manoeuvre | what the ship does | what it costs |
 |---|---|---|
@@ -294,6 +360,7 @@ In the order they pay:
    waypoints, as the prototype. The largest brick.
 3. **The flight file, for a ship**: ends under way, a roll that does not stop at each key, a
    horizon carried or taken from a disk. Small to medium; it touches `Flight`, so both engines.
+   The bank needs the roll, so this comes with the pilot, not after it.
 4. **The chart**: a scene's places at a moment, as JSON. Small.
 5. **The animatic**: the prototype's, on a thinned take. Small.
 6. **Manoeuvres and the guide's recipe**: the table above on top of the pilot and the chart, and

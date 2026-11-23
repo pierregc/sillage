@@ -229,7 +229,8 @@ def table(columns):
 
 # ---- the ship
 
-SHIP = {"turn": 8.0, "share": 0.35, "thrust": 0.5, "level": 4.0, "bank": 0.35, "slowest": 0.1, "floor": 1.0}
+SHIP = {"turn": 8.0, "share": 0.35, "thrust": 0.5, "level": 4.0, "bank": 0.35, "wing": 34.0, "slowest": 0.1,
+        "floor": 1.0}
 
 
 def bspline(points, per=400):
@@ -243,6 +244,45 @@ def bspline(points, per=400):
         q = points[i:i + 4]
         p.append(basis @ q), t.append(d1 @ q), c.append(d2 @ q), seg.append(np.full(per, i))
     return np.vstack(p), np.vstack(t), np.vstack(c), np.concatenate(seg)
+
+
+def expand(plan):
+    """A pilot's manoeuvres as waypoints, in a disk's axes: dive, climb, skim, bank left or right."""
+    p = np.array(plan["start"]["at"], float)
+    h = unit((np.array(plan["start"]["toward"], float) - p) * [1, 1, 0])
+    route = [{"at": p.tolist()}]
+
+    def add(point, m):
+        route.append({"at": [round(float(x), 2) for x in point], "tempo": m.get("tempo", 1.0),
+                      "look": m.get("look"), "most": m.get("most", 35.0)})
+
+    for m in plan["manoeuvres"]:
+        if "dive" in m or "climb" in m:
+            p = p + h * m["over"]
+            p[2] = m.get("dive", m.get("climb"))
+            add(p, m)
+        elif "skim" in m:
+            parts = max(int(m["skim"] // 12), 1)
+            for _ in range(parts):
+                p = p + h * m["skim"] / parts
+                p[2] = m.get("height", p[2])
+                add(p, m)
+        else:
+            side = 1.0 if m["bank"] == "left" else -1.0
+            left = np.array([-h[1], h[0], 0.0])
+            centre, spoke = p + side * left * m["radius"], -side * left
+            steps = max(math.ceil(m["turn"] / 40), 1)
+            low, high = p[2], m.get("height", p[2])
+            for n in range(1, steps + 1):
+                a = side * math.radians(m["turn"]) * n / steps
+                out = np.array([spoke[0] * math.cos(a) - spoke[1] * math.sin(a),
+                                spoke[0] * math.sin(a) + spoke[1] * math.cos(a), 0.0])
+                p = centre + out * m["radius"] * (1.0 if n == steps else 1.1)
+                p[2] = low + (high - low) * n / steps
+                add(p, m)
+            h = np.array([h[0] * math.cos(a) - h[1] * math.sin(a), h[0] * math.sin(a) + h[1] * math.cos(a), 0.0])
+    route[0].update({k: route[1][k] for k in ("tempo", "look", "most")})
+    return route
 
 
 def control(route):
@@ -295,7 +335,7 @@ def head(ahead, eye, looks, ship):
 
 def fly(plan):
     ship = dict(SHIP, **plan.get("ship", {}))
-    route = plan["route"]
+    route = plan["route"] if "route" in plan else expand(plan)
     points, owner = control(route)
     p, d1, d2, seg = bspline(points)
     keep = slice(0, None)
@@ -321,7 +361,8 @@ def fly(plan):
         looks[n] = (look, most)
 
     def profile(scale, turn):
-        want = scale * ship["share"] * np.maximum(nearness(pos), ship["floor"]) * tempo
+        want = np.minimum(scale * ship["share"] * np.maximum(nearness(pos), ship["floor"]) * tempo,
+                          ship.get("fastest", np.inf))
         v = np.minimum(want, turn / np.maximum(kappa, 1e-9))
         short = v < ship["slowest"] * want
         for n in range(1, len(v)):
@@ -385,8 +426,9 @@ def fly(plan):
                 up = about(up, f, math.copysign(min(abs(a) / (2 * RATE), most), a))
         ups.append(up)
     ups = np.array(ups)
-    yaw = np.einsum("ij,ij->i", np.cross(forward, np.gradient(forward, 1 / RATE, axis=0)), ups)
-    bank = smooth(np.clip(ship["bank"] * yaw, -0.6, 0.6), 2.0)
+    yaw = np.einsum("ij,ij->i", np.cross(ahead, np.gradient(ahead, 1 / RATE, axis=0)), ups)
+    wing = math.radians(ship["wing"])
+    bank = smooth(np.clip(ship["bank"] * yaw, -wing, wing), ship.get("roll", 2.0))
     ups = np.array([about(u, f, -b) for u, f, b in zip(ups, forward, bank)])
 
     crawl = short[index]
@@ -527,7 +569,7 @@ def main():
         runs, names = [], []
         for path in args.files[:2]:
             file = json.load(open(path))
-            if "route" in file:
+            if "route" in file or "manoeuvres" in file:
                 run, report = fly(file)
                 print(json.dumps(report))
                 names.append(file.get("name", "Flown by the ship"))
