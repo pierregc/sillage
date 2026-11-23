@@ -37,14 +37,15 @@ public struct DiskEquilibrium {
         self.centralDensity = diskMass * own / (2 * .pi * scale * scale)
         let bulgeShare = min(max(config.bulgeFraction, 0), 0.9)
         let flattening = min(max(config.bulgeFlattening, 0.05), 1)
-        if selfGravitating, config.bulgeApart == true, bulgeShare > 0, flattening < 1 {
+        let squeezed = config.bulgeApart == true && flattening < 1
+        if selfGravitating, bulgeShare > 0, squeezed || config.bulgeFade != nil {
             let a = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
             let step = 4 * a * config.bulgeCut / Float(Self.bulgeSamples - 1)
             bulgeStep = step
             bulgeCurve = (0..<Self.bulgeSamples).map {
                 Self.flattenedBulgeSpeedSquared(
-                    mass: diskMass * bulgeShare, scale: a, flattening: flattening, radius: Float($0) * step,
-                    cut: config.bulgeCut)
+                    mass: diskMass * bulgeShare, scale: a, flattening: squeezed ? flattening : 1,
+                    radius: Float($0) * step, cut: config.bulgeCut, fade: config.bulgeFade)
             }
         } else {
             bulgeStep = 1
@@ -76,25 +77,43 @@ public struct DiskEquilibrium {
     /// was squeezed from, a tenth at a flattening of 0.7 between one and three scale radii, which
     /// is nothing under a small bulge and a fifteenth of the launch speed's square under one of
     /// three quarters. Summed over its shells (Binney and Tremaine, equation 2.132).
+    /// With a `fade` the shells thin out from that share of the cut to nothing at the cut.
     static func flattenedBulgeSpeedSquared(
         mass: Float, scale: Float, flattening: Float, radius: Float,
-        cut: Float = DiskSampler.bulgeTruncation
+        cut: Float = DiskSampler.bulgeTruncation, fade: Float? = nil
     ) -> Float {
         guard mass > 0, radius > 0 else { return 0 }
         let a = Double(scale)
         let r = Double(radius)
         let edge = a * Double(cut)
-        let held = (edge / (edge + a)) * (edge / (edge + a))
+        let held = bulgeHeld(scale: a, edge: edge, fade: fade)
         let squeeze = 1 - Double(flattening) * Double(flattening)
         let reach = min(r, edge)
         let shells = 400
+        func kept(_ m: Double) -> Double {
+            Double(DiskSampler.bulgeKept(radius: Float(m), edge: Float(edge), fade: fade))
+        }
         var total = 0.0
         for shell in 0..<shells {
             let m = (Double(shell) + 0.5) * reach / Double(shells)
-            total += m / ((m + a) * (m + a) * (m + a) * (r * r - squeeze * m * m).squareRoot())
+            total += m * kept(m) / ((m + a) * (m + a) * (m + a) * (r * r - squeeze * m * m).squareRoot())
         }
         total *= reach / Double(shells)
         return Float(2 * Double(Physics.gravitationalConstant) * Double(mass) * a * total / held)
+    }
+
+    /// The share of a whole Hernquist sphere of scale `a` that a bulge cut at `edge` holds.
+    static func bulgeHeld(scale a: Double, edge: Double, fade: Float?) -> Double {
+        guard fade != nil else { return (edge / (edge + a)) * (edge / (edge + a)) }
+        let shells = 400
+        var held = 0.0
+        for shell in 0..<shells {
+            let m = (Double(shell) + 0.5) * edge / Double(shells)
+            held +=
+                2 * a * m * Double(DiskSampler.bulgeKept(radius: Float(m), edge: Float(edge), fade: fade))
+                / ((m + a) * (m + a) * (m + a))
+        }
+        return held * edge / Double(shells)
     }
 
     private func bulgeSpeedSquared(atRadius radius: Float, mass: Float) -> Float {
@@ -319,6 +338,53 @@ public struct DiskEquilibrium {
         let height = max(config.diskThickness, 1e-3)
         return sqrt(
             .pi * Physics.gravitationalConstant * surfaceDensity(atRadius: radius) * height)
+    }
+
+    /// How fast a grain lifted a little off the plane swings through it, in radians a time unit:
+    /// Poisson's equation at the mid-plane, the density of the stellar layer, the bulge and the
+    /// halo there less what the rotation curve's slope takes.
+    public func verticalFrequency(atRadius radius: Float) -> Float {
+        let r = max(radius, 1e-3)
+        let scale = max(config.diskScaleLength, 1e-3)
+        let truncation = max(config.diskTruncation, 0.5)
+        let stellar = config.potential.mass * config.diskMassFraction
+        let bulgeShare = min(max(config.bulgeFraction, 0), 0.9)
+        let disk = stellar * (1 - bulgeShare) / max(1 - (1 + truncation) * exp(-truncation), 1e-3)
+        let (dust, _, outskirt) = Self.shares(config)
+        let height = max(config.diskThickness, 1e-3)
+        // The stars' layer and the gas's thinner, longer one; a ring's own gas is left out.
+        func layer(_ mass: Float, length: Float, height: Float) -> Float {
+            r < length * truncation ? mass / (2 * .pi * length * length) * exp(-r / length) / (2 * height) : 0
+        }
+        var density =
+            layer(disk * max(1 - dust - outskirt, 0), length: scale, height: height)
+            + layer(
+                disk * dust * (1 - (config.drawnDustRing?.share ?? 0)),
+                length: scale * DiskSampler.dustScaleMultiplier, height: height * 0.45)
+        if bulgeShare > 0 {
+            let a = max(config.bulgeExtent * scale, 1e-3)
+            let edge = a * config.bulgeCut
+            let flattening = min(max(config.bulgeFlattening, 0.05), 1)
+            let whole = GalaxyPotential(profile: .hernquist, mass: 1, scaleRadius: a)
+            let inside = max(
+                Float(Self.bulgeHeld(scale: Double(a), edge: Double(edge), fade: config.bulgeFade)), 1e-3)
+            density +=
+                stellar * bulgeShare * a / (2 * .pi) * DiskSampler.density(whole, radius: r)
+                * DiskSampler.bulgeKept(radius: r, edge: edge, fade: config.bulgeFade) / (inside * flattening)
+        }
+        var haloMass = config.potential.mass * (1 - config.diskMassFraction)
+        if config.haloParticleCount > 0 {
+            let edge = max(config.haloExtent, 1) * config.potential.scaleRadius
+            haloMass /= min(max(DiskSampler.enclosedFraction(config.potential, radius: edge), 0.05), 1)
+        }
+        let a = config.potential.scaleRadius
+        let shape: Float = config.potential.profile == .hernquist ? a / (2 * .pi) : 3 * a * a / (4 * .pi)
+        density += haloMass * shape * DiskSampler.density(config.potential, radius: r)
+        let step = max(r * 0.01, 1e-4)
+        let ahead = circularSpeed(atRadius: r + step)
+        let behind = circularSpeed(atRadius: r - step)
+        let slope = (ahead * ahead - behind * behind) / (2 * step)
+        return sqrt(max(4 * .pi * Physics.gravitationalConstant * density - slope / r, 1e-8))
     }
 
     /// Mean streaming speed. Pressure support lets the mean rotation lag the circular speed,

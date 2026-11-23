@@ -989,9 +989,12 @@ out from the disk's own surface density, and the rotation curve it is launched o
 bulge as the flattened body it is drawn as, which pulls a tenth harder in its plane than a sphere.
 A scene without the field samples what it always did (#482). A bulge is cut at six of its scale
 radii, its mass kept inside, an edge no ordinary exposure shows; one that is most of the galaxy's
-light and drawn bright shows it, and `"bulgeReach": 12` moves the cut out to twelve. `"nucleus": 0.003` gathers that share of the
-bulge's stars in a nucleus a fiftieth of its scale radius across, the point of light at the
-centre that a Hernquist cusp alone draws as a glow.
+light and drawn bright shows it, and `"bulgeReach": 9` moves the cut out to nine and fades the
+bulge from four tenths of that reach to nothing at it, so it has no edge at any exposure; the
+rotation curve counts the faded body. `"nucleus": 0.006` gathers that share of the bulge's stars
+in a nucleus a fiftieth of its scale radius across, the point of light at the centre that a
+Hernquist cusp alone draws as a glow: old stars, compact and three times slower than the bulge's,
+drawn as stars so that a look's `bulgeWidth` does not spread them.
 
 **A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
 as the stars'. A galaxy of `scene.json` that carries
@@ -1009,9 +1012,15 @@ stand on the ring's strands, the blue knots along a lane. `"thickness"`, in kpc,
 height of the ring's layer, launched with the vertical motion that holds it, where the dust's
 usual layer is 0.45 of the disk's thickness: a lane seen nearly edge on shows its threads only if
 its layer is thinner than they stand apart. `"threads"`, a count, draws
-the ring's dust as that many long threads in place of short strands: each runs along the ring for
-40 to 125 degrees, a few tens of parsecs across, and wanders in radius and in height as it goes,
-so the threads cross and part like a braid, and the ring's young stars stand in knots along them.
+the ring's dust as that many threads in place of short strands. Two thirds run along the ring for
+35 to 140 degrees, a few tens of parsecs across, and wander and kink in radius as they go; a
+third are spurs, short, steep and trailing, that cross from one lane to the next; a few threads
+are heavy lanes and most are wisps. Each is lifted off the plane by a wave that runs along it,
+one to two kiloparsecs long and about as high as the layer, and its grains go round cold, on
+circles, with none of the stars' random motion in the plane and each at its own phase of the
+swing through it (`DiskEquilibrium.verticalFrequency`), so the weave holds for tens of megayears
+where threads lifted and let go together fell through the plane at once after twelve. The ring's
+young stars stand in one tight knot on each long thread of its rim.
 Forty to a hundred read as threads seen nearly edge on; many more close into a band. Left out,
 the ring is as wide either side, bears no young stars of its own, keeps the usual layer and its
 strands, and samples as before (#480).

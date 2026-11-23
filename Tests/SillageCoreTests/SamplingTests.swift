@@ -800,18 +800,22 @@ struct DustRingTests {
     }
 
     /// Asked for threads, the ring's dust runs in a few long ones: in a narrow sector it stands at
-    /// a handful of radii with room between them, the layer keeps its height, the ring its place.
+    /// a handful of radii with room between them, the layer keeps its height, the ring its place,
+    /// and the grains go round cold, without the stars' random motion in the plane.
     @Test func theRingIsDrawnInThreads() throws {
         let thickness = scene().galaxies[0].diskThickness * 0.2
         let strands = GalaxyConfig.DustRing(radius: 10, width: 1, thickness: thickness)
         var threads = strands
         threads.threads = 24
-        func drawn(_ ring: GalaxyConfig.DustRing) -> (filled: Double, height: Double, mean: Double) {
+        func drawn(_ ring: GalaxyConfig.DustRing) -> (
+            filled: Double, height: Double, mean: Double, outward: Double
+        ) {
             let system = RestrictedSolver.sampleParticles(for: scene { $0.dustRing = ring })
             let grains = (0..<system.count).filter { system.component[$0] == ParticleComponent.dust.rawValue }
             var cells = Set<Int>()
             var squares = 0.0
             var radius = 0.0
+            var outward = 0.0
             for index in grains {
                 let at = system.positions[index]
                 let r = Double((at.x * at.x + at.y * at.y).squareRoot())
@@ -819,10 +823,13 @@ struct DustRingTests {
                 cells.insert(sector * 1_000 + Int(r / 0.1))
                 squares += Double(at.z * at.z)
                 radius += r
+                let speed = system.velocities[index]
+                let out = Double(speed.x * at.x + speed.y * at.y) / r
+                outward += out * out
             }
             return (
                 Double(cells.count) / (90 * 60), (squares / Double(grains.count)).squareRoot(),
-                radius / Double(grains.count)
+                radius / Double(grains.count), (outward / Double(grains.count)).squareRoot()
             )
         }
         let short = drawn(strands)
@@ -830,6 +837,8 @@ struct DustRingTests {
         #expect(long.filled < 0.5 * short.filled)
         #expect(abs(long.height / short.height - 1) < 0.35)
         #expect(abs(long.mean - 10) < 0.5)
+        // One grain in fourteen stands between the threads and keeps the disk's motion.
+        #expect(long.outward < 0.4 * short.outward)
 
         let read = try SceneFile.decoded(from: SceneFile(scene { $0.dustRing = threads }).encoded())
             .scene(particleCount: 1_000).galaxies[0].dustRing
@@ -839,6 +848,37 @@ struct DustRingTests {
         #expect(
             RestrictedSolver.sampleParticles(for: scene { $0.dustRing = none }).positions
                 == RestrictedSolver.sampleParticles(for: scene { $0.dustRing = strands }).positions)
+    }
+
+    /// A grain lifted a little off the plane swings through it at the rate the mass around it
+    /// sets: the curve's figure against Poisson's equation on the density of the particles the
+    /// sampler lays down about the plane there, whichever way the bulge is counted.
+    @Test func aLiftedGrainSwingsAsTheMassAroundItAsks() {
+        for apart in [false, true] {
+            let drawn = scene {
+                $0.bulgeFraction = 0.5
+                $0.bulgeApart = apart
+            }
+            let galaxy = drawn.galaxies[0]
+            let system = RestrictedSolver.sampleParticles(for: drawn)
+            let equilibrium = DiskEquilibrium(config: galaxy)
+            let radius = 2 * galaxy.diskScaleLength
+            let slab = 0.1 * galaxy.diskThickness
+            var mass = 0.0
+            for index in 0..<system.count {
+                let at = system.positions[index]
+                let r = (at.x * at.x + at.y * at.y).squareRoot()
+                if abs(r - radius) < 0.5, abs(at.z) < slab { mass += Double(system.mass[index]) }
+            }
+            let density = mass / (2 * Double.pi * Double(radius) * 2 * Double(slab))
+            let ahead = Double(equilibrium.circularSpeed(atRadius: radius * 1.01))
+            let behind = Double(equilibrium.circularSpeed(atRadius: radius * 0.99))
+            let slope = (ahead * ahead - behind * behind) / (0.02 * Double(radius))
+            let counted =
+                (4 * Double.pi * Double(Physics.gravitationalConstant) * density - slope / Double(radius))
+                .squareRoot()
+            #expect(abs(Double(equilibrium.verticalFrequency(atRadius: radius)) / counted - 1) < 0.1)
+        }
     }
 
     /// The curve counts a sloped ring's gas where it stands too.
@@ -951,8 +991,8 @@ struct BulgeApartTests {
         }
     }
 
-    /// A reach moves the bulge's cut out, its profile kept: a seventh of it then stands between
-    /// six and twelve scale radii, the curve follows, and the scene file keeps the field.
+    /// A reach moves the bulge's cut out and fades it there: some of it stands beyond six scale
+    /// radii, almost none in the last tenth, the curve follows, and the scene file keeps the field.
     @Test func theBulgeReachesAsFarAsAsked() throws {
         let far = scene {
             $0.bulgeApart = true
@@ -968,7 +1008,11 @@ struct BulgeApartTests {
         let radii = bulge(far)
         #expect((radii.max() ?? 0) <= 12 * a * 1.001)
         let beyond = Double(radii.filter { $0 > 6 * a }.count) / Double(radii.count)
-        #expect(abs(beyond - 0.137) < 0.02)
+        #expect(beyond > 0.03 && beyond < 0.137)
+        #expect(Double(radii.filter { $0 > 10.8 * a }.count) / Double(radii.count) < 0.002)
+        let outside = DiskEquilibrium.flattenedBulgeSpeedSquared(
+            mass: 10, scale: 2, flattening: 1, radius: 26, cut: 12, fade: 0.4)
+        #expect(abs(outside / (Physics.gravitationalConstant * 10 / 26) - 1) < 0.01)
         #expect((bulge(near).max() ?? 0) <= 6 * a * 1.001)
         let inner = Float(3 * a)
         let curve = { (scene: SceneConfig) in
@@ -981,18 +1025,38 @@ struct BulgeApartTests {
     }
 
     /// A nucleus gathers its share of the bulge's stars within a few hundredths of the scale
-    /// radius, where the cusp alone holds almost none, and the scene file keeps the field.
+    /// radius, where the cusp alone holds almost none, as compact stars slower than the bulge's,
+    /// and the scene file keeps the field.
     @Test func theNucleusIsAPoint() throws {
         let pointed = scene { $0.nucleus = 0.01 }
         let a = Double(pointed.galaxies[0].bulgeExtent * pointed.galaxies[0].diskScaleLength)
-        func inside(_ scene: SceneConfig) -> Double {
+        func inside(_ scene: SceneConfig) -> (share: Double, compact: Double, speed: Double) {
             let system = RestrictedSolver.sampleParticles(for: scene)
+            let old = [ParticleComponent.bulge.rawValue, ParticleComponent.star.rawValue]
             let bulge = (0..<system.count).filter { system.component[$0] == ParticleComponent.bulge.rawValue }
-            return Double(bulge.filter { Double(system.birthRadius[$0]) < 0.06 * a }.count)
-                / Double(bulge.count)
+            let core = (0..<system.count).filter {
+                let at = system.positions[$0]
+                return old.contains(system.component[$0])
+                    && Double((at.x * at.x + at.y * at.y + at.z * at.z).squareRoot()) < 0.06 * a
+            }
+            let compact = core.filter {
+                system.component[$0] == ParticleComponent.star.rawValue && system.kernelScale[$0] == 0.75
+            }
+            let speeds = core.map { index -> Double in
+                let speed = system.velocities[index]
+                return Double(speed.x * speed.x + speed.y * speed.y + speed.z * speed.z)
+            }
+            return (
+                Double(core.count) / Double(bulge.count), Double(compact.count) / Double(max(core.count, 1)),
+                (speeds.reduce(0, +) / Double(max(core.count, 1))).squareRoot()
+            )
         }
-        #expect(inside(scene()) < 0.006)
-        #expect(abs(inside(pointed) - inside(scene()) - 0.01) < 0.003)
+        let plain = inside(scene())
+        let nucleus = inside(pointed)
+        #expect(plain.share < 0.006)
+        #expect(abs(nucleus.share - plain.share - 0.01) < 0.003)
+        #expect(nucleus.compact > 0.6)
+        #expect(nucleus.speed < 0.7 * plain.speed)
         let file = try SceneFile(pointed).encoded()
         #expect(try SceneFile.decoded(from: file).scene(particleCount: 1_000).galaxies[0].nucleus == 0.01)
         #expect(!String(decoding: try SceneFile(scene()).encoded(), as: UTF8.self).contains("nucleus"))

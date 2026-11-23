@@ -220,6 +220,12 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         bulgeReach.flatMap { $0 > 0 ? min(max($0, 2), 40) : nil } ?? DiskSampler.bulgeTruncation
     }
 
+    /// Where a bulge given a reach begins to fade, as a share of its cut: none of it is left at
+    /// the cut, so it has no edge. A bulge without a reach is cut sharp.
+    public var bulgeFade: Float? {
+        bulgeReach.flatMap { $0 > 0 ? 0.4 : nil }
+    }
+
     /// The ring as the sampler and the rotation curve read it: none unless it has a radius, a
     /// width and a share, the share held to one.
     public var drawnDustRing: DustRing? {
