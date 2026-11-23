@@ -1,0 +1,134 @@
+{
+  "centerSoftening" : 1.2,
+  "encounters" : [
+    {
+      "eccentricity" : 0.9,
+      "massRatio" : 0.55,
+      "pericentre" : 16,
+      "pericentreAngle" : 0,
+      "pericentreTime" : 260,
+      "planeTilt" : 0,
+      "planeTurn" : 0,
+      "primary" : 0,
+      "primaryDisk" : {
+        "argument" : 0,
+        "inclination" : 0.85,
+        "spin" : "retrograde"
+      },
+      "secondary" : 1,
+      "secondaryDisk" : {
+        "argument" : 4.19,
+        "inclination" : 1.05,
+        "spin" : "prograde"
+      }
+    }
+  ],
+  "galaxies" : [
+    {
+      "armCount" : 2,
+      "armIrregularity" : 0.45,
+      "armMassContrast" : 0.4241334,
+      "armPitch" : 0.5711338,
+      "armStreaming" : 1,
+      "armStrength" : 0.75,
+      "bulgeExtent" : 0.1,
+      "bulgeFlattening" : 0.83204764,
+      "bulgeFraction" : 0.14,
+      "clumpiness" : 0.04014253,
+      "diskMassFraction" : 0.22,
+      "diskScaleLength" : 5,
+      "diskThickness" : 0.23575719,
+      "diskTruncation" : 4,
+      "dissipationTime" : 283.19507,
+      "dustFraction" : 0.23869343,
+      "dustMassFraction" : 0.14112227,
+      "effectiveToomreQ" : 1.8113304,
+      "haloExtent" : 12,
+      "haloParticleRatio" : 1.5,
+      "inclination" : 0.85,
+      "kind" : "spiral",
+      "massLopsidedness" : 0.03,
+      "name" : "NGC 2207",
+      "outskirtFraction" : 0.12,
+      "particleShare" : 0.64516,
+      "patternShare" : 0.9,
+      "position" : [
+        8.916616,
+        22.918432,
+        0
+      ],
+      "positionAngle" : 0,
+      "potential" : {
+        "mass" : 30,
+        "profile" : "hernquist",
+        "scaleRadius" : 10
+      },
+      "spin" : "retrograde",
+      "starFormingFraction" : 0.05,
+      "toomreQ" : 1.3523548,
+      "velocity" : [
+        -0.27308297,
+        -0.2356477,
+        0
+      ],
+      "velocityDispersion" : 0.05,
+      "youngClumpiness" : 0.47490472
+    },
+    {
+      "armCount" : 2,
+      "armIrregularity" : 0.5,
+      "armMassContrast" : 0.41808507,
+      "armPitch" : 0.50277746,
+      "armStreaming" : 1,
+      "armStrength" : 0.6,
+      "bulgeExtent" : 0.1,
+      "bulgeFlattening" : 0.7092819,
+      "bulgeFraction" : 0.1,
+      "clumpiness" : 0.032893207,
+      "diskMassFraction" : 0.22,
+      "diskScaleLength" : 3.2,
+      "diskThickness" : 0.29410776,
+      "diskTruncation" : 3.8,
+      "dissipationTime" : 300.78766,
+      "dustFraction" : 0.19083937,
+      "dustMassFraction" : 0.12118307,
+      "effectiveToomreQ" : 2.0964255,
+      "haloExtent" : 12,
+      "haloParticleRatio" : 1.5,
+      "inclination" : 1.05,
+      "kind" : "spiral",
+      "massLopsidedness" : 0.03,
+      "name" : "IC 2163",
+      "outskirtFraction" : 0.12,
+      "particleShare" : 0.35484,
+      "patternShare" : 0.9,
+      "position" : [
+        -16.21203,
+        -41.66988,
+        0
+      ],
+      "positionAngle" : -2.0931852,
+      "potential" : {
+        "mass" : 16.5,
+        "profile" : "hernquist",
+        "scaleRadius" : 7.4161983
+      },
+      "spin" : "prograde",
+      "starFormingFraction" : 0.05,
+      "toomreQ" : 1.4028807,
+      "velocity" : [
+        0.4965145,
+        0.42845035,
+        0
+      ],
+      "velocityDispersion" : 0.05,
+      "youngClumpiness" : 0.48757863
+    }
+  ],
+  "name" : "NGC 2207 and IC 2163",
+  "openingAngle" : 0.9,
+  "seed" : 16168687594992000650,
+  "solver" : "barnesHut",
+  "timeStepScale" : 7,
+  "version" : 1
+}

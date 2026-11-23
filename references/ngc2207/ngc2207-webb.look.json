@@ -1,0 +1,117 @@
+{
+ "camera": {
+  "mode": "fixed"
+ },
+ "look": {
+  "armPersistence": 1,
+  "bloomIntensity": 0,
+  "bloomSoftKnee": 0.5,
+  "bloomThreshold": 0.6,
+  "brightness": 0.25,
+  "dustStrength": 0.6,
+  "dustWeb": 0.8,
+  "galaxyTint": 1.0,
+  "glint": 0.3,
+  "maximumKernel": 56,
+  "minimumKernel": 0.8,
+  "noiseLevel": 0.0014,
+  "saturation": 1.8,
+  "skyColour": [
+   0.44,
+   0.42,
+   0.39
+  ],
+  "skyLevel": 0.0012,
+  "smoothingScale": 1.2,
+  "spikeArms": 6,
+  "spikeIntensity": 0,
+  "spikeLength": 110,
+  "spikePattern": "webb",
+  "spikeSharpness": 1,
+  "starSize": 0.9,
+  "stretch": 1.0,
+  "whitePoint": 2.6,
+  "dustGlow": 0.3,
+  "dustGlowColour": [
+   1.0,
+   0.26,
+   0.24
+  ],
+  "bulgeWidth": 2.5
+ },
+ "name": "ngc2207-webb",
+ "palette": [
+  {
+   "colour": [
+    1.0,
+    0.5,
+    0.42
+   ],
+   "mapping": "mix",
+   "core": [
+    1.0,
+    0.82,
+    0.62
+   ],
+   "disk": [
+    1.0,
+    0.6,
+    0.42
+   ],
+   "outskirts": [
+    1.0,
+    0.4,
+    0.34
+   ],
+   "young": [
+    1.0,
+    0.72,
+    0.62
+   ],
+   "knot": [
+    0.6,
+    0.72,
+    1.0
+   ],
+   "blend": 1.0
+  },
+  {
+   "colour": [
+    1.0,
+    0.55,
+    0.38
+   ],
+   "mapping": "mix",
+   "core": [
+    1.0,
+    0.66,
+    0.28
+   ],
+   "disk": [
+    1.0,
+    0.6,
+    0.38
+   ],
+   "outskirts": [
+    1.0,
+    0.42,
+    0.32
+   ],
+   "young": [
+    1.0,
+    0.68,
+    0.5
+   ],
+   "knot": [
+    0.6,
+    0.72,
+    1.0
+   ],
+   "blend": 1.0
+  }
+ ],
+ "starCount": 6000,
+ "version": 1,
+ "world": "telescope",
+ "galaxyCount": 150000
+}

@@ -80,6 +80,7 @@ session. Read the note for an area before changing it.
 - [A match that is measured](photo-match.md): a real picture reduced to its extended light, the take as a histogram of its stars, the score (isophotes against correlations), the search, the mirror, the floor an archetype gets on the Antennae and the Mice (#320)
 - [Twenty galaxies to reproduce](twenty-galaxies.md): the shortlist for named scenes, why each, which have a published model of the very object, tiers A to C, the pictures and their licences in `references/catalogue/`
 - [The Cartwheel, reproduced](cartwheel.md): ESO 350-40 from its published measurements, a compact intruder, the match that places the freeze, the flights and the split screen with Webb's picture
+- [NGC 2207 and IC 2163, reproduced](ngc2207.md): Struck et al.'s grazing encounter from two grids of 54 previews, the match held to after the passage, the dust glow drawn in the web's filaments, one continuous flight
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first

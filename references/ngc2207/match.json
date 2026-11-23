@@ -1,0 +1,21 @@
+{
+  "capturedFrame" : 180,
+  "ceiling" : -1,
+  "map" : "ngc2207.map.json",
+  "megayears" : 291.6326446151733,
+  "picture" : "heic2414a-large.jpg",
+  "score" : 0.6358747879664103,
+  "seconds" : 6.9,
+  "storedFrame" : 45,
+  "trials" : 50745,
+  "view" : {
+    "azimuth" : 28.666157904464423,
+    "elevation" : 11.86507979732203,
+    "kpcPerWidth" : 49,
+    "origin" : [
+      0.5980350940730126,
+      0.24246902892485306
+    ],
+    "roll" : -170.04856996803602
+  }
+}
