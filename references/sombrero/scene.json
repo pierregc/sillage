@@ -1,0 +1,69 @@
+{
+  "centerSoftening" : 1.2,
+  "encounters" : [
+
+  ],
+  "galaxies" : [
+    {
+      "armCount" : 2,
+      "armIrregularity" : 0.3,
+      "armMassContrast" : 0.2,
+      "armPitch" : 0.12,
+      "armStreaming" : 1,
+      "armStrength" : 0.3,
+      "bulgeExtent" : 1.7,
+      "bulgeFlattening" : 0.65,
+      "bulgeFraction" : 0.75,
+      "clumpiness" : 0.02,
+      "diskMassFraction" : 0.2,
+      "diskScaleLength" : 2.2,
+      "diskThickness" : 0.2,
+      "diskTruncation" : 3.4,
+      "dissipationTime" : 283.19507,
+      "dustFraction" : 0.3,
+      "dustMassFraction" : 0.02,
+      "dustRing" : {
+        "radius" : 6.7,
+        "share" : 1,
+        "width" : 1.06
+      },
+      "effectiveToomreQ" : 1.8113304,
+      "haloExtent" : 12,
+      "haloParticleRatio" : 1.5,
+      "inclination" : 0,
+      "kind" : "spiral",
+      "massLopsidedness" : 0.03,
+      "name" : "M104",
+      "outskirtFraction" : 0.05,
+      "particleShare" : 1,
+      "patternShare" : 0.9,
+      "position" : [
+        0,
+        0,
+        0
+      ],
+      "positionAngle" : 0,
+      "potential" : {
+        "mass" : 100,
+        "profile" : "hernquist",
+        "scaleRadius" : 20
+      },
+      "spin" : "prograde",
+      "starFormingFraction" : 0.02,
+      "toomreQ" : 1.3523548,
+      "velocity" : [
+        0,
+        0,
+        0
+      ],
+      "velocityDispersion" : 0.05,
+      "youngClumpiness" : 0.47490472
+    }
+  ],
+  "name" : "Sombrero (M104)",
+  "openingAngle" : 0.9,
+  "seed" : 478104,
+  "solver" : "barnesHut",
+  "timeStepScale" : 7,
+  "version" : 1
+}
