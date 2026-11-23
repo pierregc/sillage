@@ -3,6 +3,7 @@ import SillageCore
 import Testing
 
 @testable import SillageRender
+
 #if canImport(simd)
     import simd
 #endif
@@ -148,6 +149,7 @@ struct LookFileTests {
         file.look.bulgeWidth = 0.8
         file.look.youngWidth = 3
         file.look.knotWidth = 0.5
+        file.look.dustReddening = 1.6
         let s = file.renderSettings(width: 320, height: 200)
         let look = file.look
         #expect(s.width == 320 && s.height == 200)
@@ -167,8 +169,20 @@ struct LookFileTests {
                 galaxyTint: s.galaxyTint, starSize: s.starSize,
                 armPersistence: look.armPersistence, fieldOfView: look.fieldOfView,
                 holeShadow: s.holeShadow, columnSmoothing: s.columnSmoothing, glint: s.glint,
-                dustWeb: s.dustWeb, oldWidth: s.oldWidth, bulgeWidth: s.bulgeWidth,
-                youngWidth: s.youngWidth, knotWidth: s.knotWidth) == look)
+                dustWeb: s.dustWeb, dustReddening: s.dustReddening, oldWidth: s.oldWidth,
+                bulgeWidth: s.bulgeWidth, youngWidth: s.youngWidth, knotWidth: s.knotWidth) == look)
+    }
+
+    /// The dust's reddening is the shader's own at 1, so a look that leaves it draws as before,
+    /// and scales the excess over red otherwise (#478).
+    @Test func theDustsReddeningScalesItsExcessOverRed() throws {
+        #expect(Renderer.reddening(1) == SIMD4(1, 1.22, 1.52, 0))
+        #expect(Renderer.reddening(0) == SIMD4(1, 1, 1, 0))
+        let browner = Renderer.reddening(2)
+        #expect(abs(browner.y - 1.44) < 1e-6 && abs(browner.z - 2.04) < 1e-6)
+        #expect(RenderLook().dustReddening == 1)
+        let text = #"{"version": 1, "look": {"dustReddening": 1.5}}"#
+        #expect(try LookFile.decoded(from: Data(text.utf8)).look.dustReddening == 1.5)
     }
 
     @Test func onlyTheFieldsThatOwnBuffersRebuildTheRenderer() {

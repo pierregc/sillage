@@ -291,7 +291,8 @@ enum Shaders {
         #endif
 
         /// Extinction is steeper in the blue than in the red, which is why a lane crossing a
-        /// bright disk reads brown rather than grey.
+        /// bright disk reads brown rather than grey. A look's `dustReddening` scales the excess
+        /// over red on Metal (#478); CUDA draws with this one.
         SHARED_CONSTANT float3 reddening = float3(1.0f, 1.22f, 1.52f);
 
         struct DiskFrame {
@@ -1731,9 +1732,9 @@ enum Shaders {
             return covered / (4.0f * reach * radius);
         }
 
-        SHARED half4 starPixel(half3 color, half4 slab, half4 dust, float share) {
+        SHARED half4 starPixel(half3 color, half4 slab, half4 dust, float share, float3 red) {
             float column = dot(float4(dust), float4(slab));
-            float3 extinction = exp(-column * reddening);
+            float3 extinction = exp(-column * red);
             return half4(half3(float3(color) * extinction * share), half(share));
         }
         #endif
@@ -2677,22 +2678,23 @@ enum Shaders {
         // and the camera: the slabs in front of its own, plus half of its own. `slab` holds the
         // weights the vertex worked out, so a star picks out the ones it is behind, and `dust` is
         // the finished dust of the pixel, `r2` from the splat's centre.
-        SHARED half4 lightPixel(half3 color, half4 slab, half4 dust, float r2) {
+        SHARED half4 lightPixel(half3 color, half4 slab, half4 dust, float r2, float3 red) {
             float falloff = exp(-4.5f * r2);
             float column = dot(float4(dust), float4(slab));
-            float3 extinction = exp(-column * reddening);
+            float3 extinction = exp(-column * red);
             return half4(color * half3(extinction) * half(falloff), half(falloff));
         }
 
         #if defined(__METAL_VERSION__)
         fragment LightTarget splatFragment(SplatOut in [[stage_in]],
                                            float2 coord [[point_coord]],
-                                           SplatFetch prior) {
+                                           SplatFetch prior,
+                                           constant float4 &red [[buffer(0)]]) {
             float r2 = splatRadius2(coord);
             if (r2 > 1.0f) { discard_fragment(); }
 
             LightTarget out;
-            out.light = lightPixel(in.color, in.slab, prior.dust, r2);
+            out.light = lightPixel(in.color, in.slab, prior.dust, r2, red.xyz);
             return out;
         }
         #endif
@@ -2702,12 +2704,13 @@ enum Shaders {
         // its first place to its last.
         fragment LightTarget pointStarFragment(StarOut in [[stage_in]],
                                                float2 coord [[point_coord]],
-                                               SplatFetch prior) {
+                                               SplatFetch prior,
+                                               constant float4 &red [[buffer(0)]]) {
             float share = starShare(coord, in.half_streak, in.radius, in.pixel);
             if (share <= 0.0f) { discard_fragment(); }
 
             LightTarget out;
-            out.light = starPixel(in.color, in.slab, prior.dust, share);
+            out.light = starPixel(in.color, in.slab, prior.dust, share, red.xyz);
             return out;
         }
         #endif

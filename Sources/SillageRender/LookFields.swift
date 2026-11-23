@@ -38,6 +38,10 @@ public enum LookFields {
         ("dustWeb", "share of the dust drawn as filaments in each disk's plane, 0 to 1"),
         ("dustGlow", "how brightly the dust glows, as in a mid-infrared picture; 0 none (Metal only)"),
         ("dustGlowColour", "the glow's colour, linear sRGB"),
+        (
+            "dustReddening",
+            "how much more the dust takes from blue and green than from red; 0 grey, 1 as drawn before, above browner (Metal only)"
+        ),
         ("smoothingScale", "kernel width over the spacing between particles: higher is softer"),
         ("minimumKernel", "smallest kernel, in pixels"),
         ("maximumKernel", "largest kernel, in pixels"),

@@ -1,4 +1,5 @@
 import SillageCore
+
 #if canImport(simd)
     import simd
 #else
@@ -44,6 +45,7 @@ extension LookFile {
         settings.galaxyCount = max(galaxyCount ?? 0, 0)
         settings.dustGlow = look.dustGlow
         settings.dustGlowColour = look.dustGlowColour
+        settings.dustReddening = look.dustReddening
         settings.oldWidth = look.oldWidth
         settings.bulgeWidth = look.bulgeWidth
         settings.youngWidth = look.youngWidth

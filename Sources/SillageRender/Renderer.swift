@@ -386,6 +386,15 @@ public final class Renderer {
 
     /// One over the mean light per unit mass of particles formed at `formation`, read on about
     /// fifty thousand of them.
+    /// The dust's extinction per channel against its red (#478): the shader's own reddening at
+    /// 1, written out rather than computed so a look that leaves it draws to the bit as before,
+    /// its excess over red scaled otherwise.
+    public static func reddening(_ scale: Float) -> SIMD4<Float> {
+        if scale == 1 { return SIMD4(1, 1.22, 1.52, 0) }
+        let s = max(scale, 0)
+        return SIMD4(1, 1 + 0.22 * s, 1 + 0.52 * s, 0)
+    }
+
     public static func luminosityNormalisation(formation: [Float]) -> Float {
         ParticleAttributes.luminosityNormalisation(formation: formation)
     }
@@ -886,6 +895,8 @@ public final class Renderer {
             case .stars:
                 guard let encoder = frameEncoder() else { continue }
                 bindParticles(encoder)
+                var red = Self.reddening(settings.dustReddening)
+                encoder.setFragmentBytes(&red, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
                 if let deep {
                     bindDeep(encoder, uniforms)

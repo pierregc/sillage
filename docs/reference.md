@@ -361,6 +361,12 @@ at the top of a look file lays that many galaxies behind the field stars, small,
 orange, at constant surface brightness, so a narrower field shows them larger and no brighter.
 Both are Metal only for now (#456).
 
+`look.dustReddening` sets how much more the dust takes from blue and green than from red: 1, the
+default, is the reddening every look drew with before (extinction 1, 1.22 and 1.52 times red's
+in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red scaled. The
+Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478). Metal only for now:
+CUDA draws with the fixed reddening.
+
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
 above, so the same scene always gets the same palette. `--palette <family>` does the same inside
