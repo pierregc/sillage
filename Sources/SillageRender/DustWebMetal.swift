@@ -14,6 +14,10 @@ extension DustWeb {
         let tracerCarrier: MTLRenderPipelineState
         let tracerPainted: MTLRenderPipelineState
         let resolve: MTLRenderPipelineState
+        /// The dust's glow under the web (#457's glow): the painted strands' grains, and the web's
+        /// dust once per pixel.
+        let paintedGlow: MTLRenderPipelineState
+        let webGlow: MTLRenderPipelineState
         let carrier: MTLTexture
         let tags: MTLTexture
         /// More of the two, for a frame that carries each galaxy's dust apart (#399): made the
@@ -60,6 +64,8 @@ extension DustWeb {
                 [0: .add, 1: .max])
             tracerPainted = try pipeline("dustWebTracerVertex", "dustFragment", frame, [1: .add])
             resolve = try pipeline("webResolveVertex", "webResolveFragment", frame, [1: .add])
+            paintedGlow = try pipeline("dustWebVertex", "dustGlowFragment", frame, [0: .add])
+            webGlow = try pipeline("webResolveVertex", "webGlowFragment", frame, [0: .add])
 
             let coarse = (max(width / carrierCoarse, 1), max(height / carrierCoarse, 1))
             carrier = try Self.target(.rgba16Float, coarse, device)

@@ -2541,6 +2541,25 @@ enum Shaders {
                                    lace);
             return out;
         }
+
+        // What the web's dust gives off, as the grains' glow does: the carried dust times its
+        // web, summed over the slabs, in one colour, so the glow follows the filaments.
+        fragment LightTarget webGlowFragment(WebResolveOut in [[stage_in]],
+                                             constant DiskFrame *frames [[buffer(0)]],
+                                             constant WebUniforms &w [[buffer(1)]],
+                                             constant float4 &glow [[buffer(2)]],
+                                             texture2d<half> lace [[texture(0)]],
+                                             texture2d<half> carried [[texture(1)]],
+                                             texture2d<half> tagged [[texture(2)]]) {
+            float2 uv = webResolveAt(in.position.xy, w);
+            float4 carrier = float4(carried.sample(bilinear, uv));
+            if (!webCarried(carrier)) { discard_fragment(); }
+            float4 webbed = float4(webResolved(uv, carrier, float4(tagged.sample(pointSampler, uv)),
+                                               frames, w, lace));
+            LightTarget out;
+            out.light = half4(half3(glow.rgb * (glow.w * dot(webbed, float4(1.0f)))), 0.0h);
+            return out;
+        }
         #endif
 
         // The light a star lays on a pixel of its splat, through everything standing between it
