@@ -622,6 +622,7 @@ public enum DiskSampler {
         let ringCentres = ring.map { ($0.width * $0.width - ringStrand * ringStrand).squareRoot() } ?? 0
         let ringInnerCentres = ring?.innerWidth.map { ($0 * $0 - ringStrand * ringStrand).squareRoot() }
         let ringFilaments = ring.map { Int((700 * $0.share).rounded()) } ?? 0
+        let ringYoung = ringFilaments > 0 ? ring?.young ?? 0 : 0
         var filaments: [Clump] = []
         for index in 0..<700 {
             let inRing = index < ringFilaments
@@ -677,8 +678,11 @@ public enum DiskSampler {
             // A clump inside the bulge is no home for gas or for young stars, for the same
             // reason as below.
             let usable = component == .star || (clump?.radius ?? 0) > bulgeRadius * 0.9
-            if component == .dust, generator.uniform() < 0.93, !filaments.isEmpty {
-                let which = Int(generator.uniform() * Float(filaments.count)) % filaments.count
+            // Young stars a ring's gas makes stand on its strands, as its grains do.
+            let born = component == .hiiRegion && ringYoung > 0 && generator.uniform() < ringYoung
+            if born || (component == .dust && generator.uniform() < 0.93 && !filaments.isEmpty) {
+                let pool = born ? ringFilaments : filaments.count
+                let which = Int(generator.uniform() * Float(pool)) % pool
                 let strand = filaments[which]
                 ringGrain = which < ringFilaments
                 let reach = ringGrain ? ringStrand : strandLength
@@ -710,6 +714,9 @@ public enum DiskSampler {
                 strandLift =
                     (SpiralPattern.fractalNoise(strand.seed * 5.7 + alongStrand * 2.3) - 0.5)
                     * config.diskThickness * 1.6
+                if ringGrain || born, let layer = ring?.thickness {
+                    strandLift *= layer / (config.diskThickness * 0.45)
+                }
                 proximity = 1
             } else if outskirt {
                 // Drawn from a longer exponential and allowed past the truncation, so the
@@ -761,7 +768,9 @@ public enum DiskSampler {
                 proximity = placed.armProximity
             }
 
-            let thickness = component == .dust ? config.diskThickness * 0.45 : config.diskThickness
+            let ringLayer = ringGrain ? ring?.thickness : nil
+            let thickness =
+                ringLayer ?? (component == .dust ? config.diskThickness * 0.45 : config.diskThickness)
             // A spheroid flattened to a third, which is what a thick disk and inner halo
             // together look like; the thin components keep their sech-squared layer.
             let height =
@@ -816,7 +825,10 @@ public enum DiskSampler {
                             + generator.normal()
                             * equilibrium.azimuthalDispersion(atRadius: radius))
                         + SIMD3<Float>(0, 0, 1)
-                        * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius))
+                        * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius)
+                            // Held by the stars and the spheroid, not by itself: at their
+                            // frequency a layer's motion goes as its height.
+                            * (ringLayer.map { $0 / max(config.diskThickness, 1e-3) } ?? 1))
                     if streamingScale > 0 {
                         let extent = radius / scale
                         let lindblad = resonances.lindblad

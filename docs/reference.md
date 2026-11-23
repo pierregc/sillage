@@ -991,7 +991,12 @@ the disk is launched on counts the ring's gas where it stands. A scene without t
 what it always did (#475). With `"innerWidth"`, also in kpc, the ring is a disk of dust that
 thickens to its rim: `innerWidth` is the spread inside the radius and `width` the spread outside
 it, so `{"radius": 8, "width": 0.5, "innerWidth": 3}` is sparse over the inner half, densest at
-8 kpc and gone by 9.5. Left out, the ring is as wide either side and samples as before (#480).
+8 kpc and gone by 9.5. `"young"`, 0 to 1, is the share of the galaxy's star-forming regions that
+stand on the ring's strands, the blue knots along a lane. `"thickness"`, in kpc, is the scale
+height of the ring's layer, launched with the vertical motion that holds it, where the dust's
+usual layer is 0.45 of the disk's thickness: a lane seen nearly edge on shows its threads only if
+its layer is thinner than they stand apart. Left out, the ring is as wide either side, bears no
+young stars of its own, keeps the usual layer and samples as before (#480).
 
 ### Known limits
 

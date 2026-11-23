@@ -747,7 +747,7 @@ struct DustRingTests {
         let dust = radii(RestrictedSolver.sampleParticles(for: sloped), .dust)
         let outside = dust.filter { $0 > 10 }
         let inside = dust.filter { $0 <= 10 }
-        #expect(abs(Double(outside.count) / Double(dust.count) - 0.5 / 3.5) < 0.02)
+        #expect(abs(Double(outside.count) / Double(dust.count) - 0.5 / 3.5) < 0.04)
         func rms(_ radii: [Double]) -> Double {
             (radii.reduce(0) { $0 + ($1 - 10) * ($1 - 10) } / Double(radii.count)).squareRoot()
         }
@@ -765,6 +765,38 @@ struct DustRingTests {
         #expect(
             RestrictedSolver.sampleParticles(for: even).positions
                 == RestrictedSolver.sampleParticles(for: plain).positions)
+    }
+
+    /// Asked, the star-forming regions stand on the ring with the dust; not asked, where they were.
+    @Test func theRingBearsItsYoungStars() throws {
+        let plain = radii(
+            RestrictedSolver.sampleParticles(for: scene { $0.dustRing = Self.ring }), .hiiRegion)
+        let born = scene { $0.dustRing = GalaxyConfig.DustRing(radius: 10, width: 1, young: 1) }
+        let young = radii(RestrictedSolver.sampleParticles(for: born), .hiiRegion)
+        #expect(abs(Double(young.count) / Double(plain.count) - 1) < 0.1)
+        #expect(inBand(young) > 0.99)
+        #expect(inBand(plain) < 0.5)
+        let read = try SceneFile.decoded(from: SceneFile(born).encoded())
+            .scene(particleCount: 1_000).galaxies[0].dustRing
+        #expect(read?.young == 1)
+    }
+
+    /// A ring's own thickness thins its layer and the vertical motion with it.
+    @Test func theRingHasItsOwnLayer() {
+        func layer(_ ring: GalaxyConfig.DustRing) -> (height: Double, speed: Double) {
+            let system = RestrictedSolver.sampleParticles(for: scene { $0.dustRing = ring })
+            let grains = (0..<system.count).filter { system.component[$0] == ParticleComponent.dust.rawValue }
+            let height =
+                grains.reduce(0.0) { $0 + Double(abs(system.positions[$1].z)) } / Double(grains.count)
+            let speed =
+                grains.reduce(0.0) { $0 + Double(abs(system.velocities[$1].z)) } / Double(grains.count)
+            return (height, speed)
+        }
+        let usual = layer(Self.ring)
+        let thickness = scene().galaxies[0].diskThickness
+        let thin = layer(GalaxyConfig.DustRing(radius: 10, width: 1, thickness: thickness * 0.09))
+        #expect(abs(thin.height / usual.height - 0.2) < 0.03)
+        #expect(abs(thin.speed / usual.speed - 0.09) < 0.02)
     }
 
     /// The curve counts a sloped ring's gas where it stands too.

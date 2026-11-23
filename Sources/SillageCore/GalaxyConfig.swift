@@ -158,18 +158,30 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         /// Spread of the grains inside that radius, where `width` is then the spread outside it:
         /// a disk of dust that thickens to its rim. Absent, the ring is as wide either side.
         public var innerWidth: Float?
+        /// Share of the galaxy's star-forming regions that stand on the ring's strands, the young
+        /// stars the gas there makes. Absent, none: they are drawn as without a ring.
+        public var young: Float?
+        /// Scale height of the ring's layer, in kpc, launched with the vertical motion that holds
+        /// it: a lane seen nearly edge on is threads only if its layer is thinner than they stand
+        /// apart. Absent, the dust's usual layer, 0.45 of the disk's thickness.
+        public var thickness: Float?
 
-        public init(radius: Float, width: Float, share: Float = 1, innerWidth: Float? = nil) {
+        public init(
+            radius: Float, width: Float, share: Float = 1, innerWidth: Float? = nil, young: Float? = nil,
+            thickness: Float? = nil
+        ) {
             self.radius = radius
             self.width = width
             self.share = share
             self.innerWidth = innerWidth
+            self.young = young
+            self.thickness = thickness
         }
 
         /// The spreads inside and outside the radius.
         public var widths: (inner: Float, outer: Float) { (innerWidth ?? width, width) }
 
-        private enum CodingKeys: String, CodingKey { case radius, width, share, innerWidth }
+        private enum CodingKeys: String, CodingKey { case radius, width, share, innerWidth, young, thickness }
 
         public init(from decoder: any Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -177,6 +189,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             width = try values.decode(Float.self, forKey: .width)
             share = try values.decodeIfPresent(Float.self, forKey: .share) ?? 1
             innerWidth = try values.decodeIfPresent(Float.self, forKey: .innerWidth)
+            young = try values.decodeIfPresent(Float.self, forKey: .young)
+            thickness = try values.decodeIfPresent(Float.self, forKey: .thickness)
         }
     }
 
@@ -187,7 +201,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         else { return nil }
         return DustRing(
             radius: ring.radius, width: ring.width, share: min(ring.share, 1),
-            innerWidth: ring.innerWidth.flatMap { $0 > 0 && $0 != ring.width ? $0 : nil })
+            innerWidth: ring.innerWidth.flatMap { $0 > 0 && $0 != ring.width ? $0 : nil },
+            young: ring.young.flatMap { $0 > 0 ? min($0, 1) : nil },
+            thickness: ring.thickness.flatMap { $0 > 0 ? $0 : nil })
     }
 
     public init(
