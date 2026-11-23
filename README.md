@@ -86,6 +86,7 @@ Units: kpc, 10^10 solar masses, G = 1.
 
 - [Reference](docs/reference.md): every command, flag, file and format.
 - [Night Manager](docs/night-manager.md): the user guide.
+- [Driving Sillage as an agent](AGENTS.md): one recipe per common task, for an AI that runs the commands.
 - [Working notes](docs/notes/README.md): what was tried, what was measured, and why.
 
 ## About
