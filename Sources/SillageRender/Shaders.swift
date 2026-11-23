@@ -92,6 +92,8 @@ enum Shaders {
             float loneStart;
             float loneEnd;
             float loneWidest;
+            /// The share of the stars that show alone kept as points, 0 for none.
+            float lonePoints;
         };
         #endif
 
@@ -698,6 +700,14 @@ enum Shaders {
             return density / (cell * cell);
         }
 
+        // A particle's own draw, 0 to 1, the same wherever the camera is.
+        SHARED float loneDraw(uint id) {
+            uint h = id * 747796405u + 2891336453u;
+            h = ((h >> ((h >> 28u) + 4u)) ^ h) * 277803737u;
+            h = h ^ (h >> 22u);
+            return float(h) * (1.0f / 4294967296.0f);
+        }
+
         // How wide a kernel `raw` across is drawn. The tree's spacing is a volume's: a sparse
         // stretch of a disk seen face on stacks nothing along a line of sight, and a kernel one
         // spacing wide, once it is wide enough on screen to be told from a point, shows as a
@@ -706,15 +716,26 @@ enum Shaders {
         // 2 pi sigma squared, sigma a sixth of its width. A star's from a size on screen, under
         // which it is a point and stays one; a grain's glow at any size, as what the dust
         // gives off is never a point.
-        SHARED float insideMerged(float raw, float2 uv, bool grain, ColumnDensity column,
-                                  constant SplatUniforms &u) {
+        SHARED float insideMerged(float raw, float2 uv, bool grain, float bright, uint id,
+                                  ColumnDensity column, constant SplatUniforms &u) {
             if (u.inside.neighbours <= 0.0f) { return raw; }
             float lone = grain ? 1.0f : smoothstep(u.inside.loneStart, u.inside.loneEnd, raw);
             if (lone <= 0.0f) { return raw; }
             float density = max(insideColumn(column, uv, grain, u.columnCell), 1e-12f);
-            float wide = min(6.0f * sqrt(u.inside.neighbours / (2.0f * M_PI_F * density)),
-                             u.inside.loneWidest);
-            return raw + (max(wide, raw) - raw) * lone;
+            // A star `bright` times its neighbours stands that much higher over them at the
+            // same width: it takes as many times more of them under it to stand no higher.
+            float needed = u.inside.neighbours * max(bright, 1.0f);
+            float wide = min(6.0f * sqrt(needed / (2.0f * M_PI_F * density)), u.inside.loneWidest);
+            if (wide <= raw) { return raw; }
+            // A share of the stars stay points instead, the bright ones first and the same ones
+            // wherever the camera is: no wider than a point star however near, so that a field
+            // keeps stars over its glow and none is ever a disk on the way from a point to a haze.
+            if (!grain && u.inside.lonePoints > 0.0f
+                && loneDraw(id) < u.inside.lonePoints * max(bright, 1.0f)) {
+                float point = min(raw, u.inside.starPointSize);
+                return raw + (point - raw) * lone * saturate(wide / raw - 1.0f);
+            }
+            return raw + (wide - raw) * lone;
         }
 
         // Where a view depth falls in the stack of four dust slabs, 0 to 4: straight between
@@ -1205,9 +1226,13 @@ enum Shaders {
             float merged = raw;
             if (!hole && p.starShare <= 0.0f && u.inside.neighbours > 0.0f) {
                 float2 at = float2(0.5f, 0.5f) + float2(0.5f, -0.5f) * out.position.xy / depth;
-                merged = insideMerged(raw, at, absorbing, column, u);
+                // Against an old star's light: the compact minority's and the young's.
+                float bright = (absorbing || !knot) ? weight
+                    : weight * synthesised(stellar, u, ageMyr).y * u.luminosityNormalisation;
+                merged = insideMerged(raw, at, absorbing, bright, p.id, column, u);
             }
             if (!absorbing && merged > raw) { span = max(merged, span); }
+            if (!absorbing && merged < raw) { span = clamp(merged, u.minimumSize, span); }
             #endif
             // Take the length back from the clamped span. Dividing by the unclamped one would
             // brighten every particle the floor caught, which made the softness control shift
@@ -1365,6 +1390,10 @@ enum Shaders {
                     return culledSplat();
                 } else {
                     float3 lit = emitted * (u.brightness * weight * gain * spread * kept);
+                    // A star kept a point brightens ever less past the point stars' cap.
+                    if (merged < raw) {
+                        lit *= u.inside.starCap / (u.inside.starCap + max(max(lit.x, lit.y), lit.z));
+                    }
                     #if defined(__METAL_VERSION__)
                     out.color = half3(min(lit, 6.0e4f));
                     #else
