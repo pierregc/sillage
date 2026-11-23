@@ -4,7 +4,8 @@ import json, math, os, subprocess, sys
 scene = sys.argv[1]
 here = os.path.dirname(os.path.abspath(__file__))
 photo = json.loads(subprocess.check_output(
-    ["python3", f"{here}/view2key.py", f"{scene}/match/cartwheel-crop.json"]))
+    ["python3", f"{here}/../../../scripts/picture-film.py", "key", f"{scene}/match/cartwheel-crop.json",
+     "--aspect", "2745x3088", "--fit", "height"]))
 M = photo["myr"]
 END = json.load(open(f"{scene}/clip.json"))["story"]["endMyr"] - 0.5
 P = {k: photo[k] for k in ("eye", "aim", "fov", "roll")}

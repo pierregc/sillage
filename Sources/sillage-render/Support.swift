@@ -8,6 +8,7 @@ import simd
 var reporter: StageReporter?
 
 func fail(_ message: String, code: Int32 = 2) -> Never {
+    RunSummary.end(status: code, error: message)
     FileHandle.standardError.write(Data((message + "\n").utf8))
     if let reporter {
         var event = RunEvent(RunEvent.Kind.error)

@@ -62,7 +62,7 @@ measured. A view from below is the mirror of one from above, and the match can l
 from one take to the next; Pierre judged the spokes turning the picture's way only from the side
 the spin points to, so the flight is written from the match and its side checked, never by hand.
 
-`tools/view2key.py` turns a match into a flight key that frames the crop in the middle half of a
+`scripts/picture-film.py key --fit height` (#463, `tools/view2key.py` before it) turns a match into a flight key that frames the crop in the middle half of a
 16:9 frame: the aim is the crop's centre, the eye on the view's direction at the distance that
 gives the crop's height at the key's field of view (0.15 rad, near enough orthographic for the
 match), the roll the match's.
@@ -110,7 +110,8 @@ light and logarithmic past it, white at 64 times the toe, so the nuclei keep the
 `tools/compose.py` pushes the split screen in over flight 1's hold (the frame slides left by a
 quarter, the picture comes in from the right, the title and the credit fade in and out), cuts to
 the other three and encodes x265 10 bit at CRF 14. ffmpeg here has no `drawtext`, so
-`tools/title.py` draws the words to a PNG. Look: `cartwheel.look.json`, the photograph with dust
+`scripts/picture-film.py title` draws the words to a PNG (#463; `film` there makes the same push
+for a single shot, `--layout slide`). Look: `cartwheel.look.json`, the photograph with dust
 and dust web at 0.4, after Pierre found the dust heavy in the night's films.
 
 Credit on screen: Image NASA, ESA, CSA, STScI (CC BY 4.0).

@@ -18,6 +18,10 @@ case .refused(let message):
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(2)
 }
+if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "fields" {
+    print(LookFields.text(catalogue: (try? RepositoryRoot.resolve())?.appendingPathComponent("looks")))
+    exit(0)
+}
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "event" {
     exit(eventCommand(Array(CommandLine.arguments.dropFirst(2))))
 }
@@ -99,6 +103,10 @@ if CommandLine.arguments.count > 1,
     }
     let folder = SceneFolder(path: CommandLine.arguments[2])
     let options = Array(CommandLine.arguments.dropFirst(3))
+    if [.explore, .hires, .export].contains(stage) {
+        RunSummary.begin(
+            command: stage.rawValue, engine: "metal", target: folder.url.path, arguments: options)
+    }
     // A black hole close up (#332) runs and draws through stages of its own.
     if folder.isBlackHole {
         let run = StageReporter(stage: stage.rawValue, folder: folder)
@@ -141,13 +149,16 @@ if CommandLine.arguments.count > 1,
             let code = try exportStage(folder, options: options, reporter: run)
             run.finish()
             if code == 0 { refreshCosts(folder) }
+            RunSummary.end(status: code)
             exit(code)
         } catch {
             fail("export: \(error)")
         }
     case .hires:
         if !folder.isExplored && FileManager.default.fileExists(atPath: folder.url.path) {
-            exit(hiresBatch(folder.url, options: options))
+            let code = hiresBatch(folder.url, options: options)
+            RunSummary.end(status: code)
+            exit(code)
         }
         do {
             let plan = try folder.hiresArguments(
@@ -247,6 +258,7 @@ do {
         exit(0)
     case .rejected:
         reporter?.finish()
+        RunSummary.end(status: 3, error: "the scene would show nothing")
         exit(3)
     }
 } catch {

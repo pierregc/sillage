@@ -11,17 +11,22 @@ import SillageRender
 /// docs/notes/cuda-engine.md.
 
 func fail(_ message: String) -> Never {
+    RunSummary.end(status: 1, error: message)
     FileHandle.standardError.write(Data("sillage-cuda: \(message)\n".utf8))
     exit(1)
 }
 
 let usage = """
-    usage: sillage-cuda explore <scene folder> [options]
+    usage: sillage-cuda <command> --help   the options of one command
+           sillage-cuda explore <scene folder> [options]
            sillage-cuda hires <scene folder> [--particles N] [--massive N] [--pass massive|full] [options]
            sillage-cuda check [--fixtures <dir>] [--record <file>]
            sillage-cuda status <scene folder>
            sillage-cuda match <scene folder> <picture.map.json> [options]
            sillage-cuda take extract <take> --at <myr,...> [--span <frames>] <out.sillage>
+           sillage-cuda flight <scene folder> --at <myr,...> [--look <name>] [--take <file>] [--arms <kpc,...>]
+           sillage-cuda look <scene folder> --palette <auto|family|file> | --promote <name> [options]
+           sillage-cuda pace <scene folder> --speed story[:pace[:top]] [--slow <from>:<to>:<speed>] [--out <file>]
            sillage-cuda still <take> --look <look> [--framing <massive take>]
                [--preset 1080p|4k|vertical|square|whatsapp] [--width W --height H]
                --frames 0,200,900 [--fps N] [--rate N] [--threads N] --out <dir>
@@ -36,6 +41,9 @@ let usage = """
                [--elevation deg] [--azimuth deg] [--distance r] [--fov deg] [--straight] [--images n]
                [--temperature radius|crossing] [--hottest K] [--beaming x] [--exposure x] [--stars n]
                [--thinning x] [--flight name|file --second s]
+
+    An option a command does not read, a value that does not parse or a stray word is refused with
+    the command's usage and exit status 2 before anything runs (#465).
 
     explore runs a scene's preview as sillage-render explore does on the Mac (#430), from the
     same options: a folder with nothing in it starts a free draw at the batch's defaults, one with
@@ -104,12 +112,20 @@ let usage = """
     """
 
 let arguments = Array(CommandLine.arguments.dropFirst())
-guard let command = arguments.first,
-    ["still", "explore", "hires", "check", "status", "match", "black-hole", "take", "export"].contains(
-        command)
-else {
-    print(usage)
-    exit(arguments.isEmpty || arguments.first == "help" ? 0 : 2)
+switch CUDACommands.check(arguments, overview: usage) {
+case .run: break
+case .help(let text):
+    print(text)
+    exit(0)
+case .refused(let message):
+    FileHandle.standardError.write(Data((message + "\n").utf8))
+    exit(2)
+}
+let command = arguments[0]
+if ["explore", "hires", "export"].contains(command), arguments.count > 1 {
+    RunSummary.begin(
+        command: command, engine: CUDAContext.target == .gpu ? "cuda" : "cuda-cpu", target: arguments[1],
+        arguments: Array(arguments.dropFirst(2)))
 }
 let rest = Array(arguments.dropFirst())
 
@@ -207,6 +223,34 @@ if command == "status" {
     exit(0)
 }
 
+if command == "flight" {
+    do {
+        let catalogue = (try? LookCatalogue.fromRepository()) ?? []
+        for line in try FlightReport.lines(rest, catalogue: catalogue) { print(line) }
+    } catch {
+        fail("flight: \(error)")
+    }
+    exit(0)
+}
+
+if command == "look" {
+    do {
+        for line in try LookChoice.lines(rest, command: "sillage-cuda") { print(line) }
+    } catch {
+        fail("look: \(error)")
+    }
+    exit(0)
+}
+
+if command == "pace" {
+    do {
+        for line in try PaceStory.lines(rest, command: "sillage-cuda") { print(line) }
+    } catch {
+        fail("pace: \(error)")
+    }
+    exit(0)
+}
+
 if command == "take" {
     do {
         for line in try TakeExtract.command(rest) { print(line) }
@@ -228,6 +272,7 @@ if command == "explore" {
     do {
         let outcome = try CUDAExplore.run(
             SceneFolder(path: path), options: options, context: try CUDAContext(), threads: threads)
+        if outcome == .rejected { RunSummary.end(status: 3, error: "the scene would show nothing") }
         exit(outcome == .rejected ? 3 : 0)
     } catch {
         fail("explore: \(error)")

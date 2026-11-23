@@ -6,7 +6,9 @@ usage: flights.py <scene folder>"""
 import csv, json, math, os, subprocess, sys
 scene = sys.argv[1]
 here = os.path.dirname(os.path.abspath(__file__))
-photo = json.loads(subprocess.check_output(["python3", f"{here}/view2key.py", f"{scene}/match/ngc2207.json"]))
+photo = json.loads(subprocess.check_output(
+    ["python3", f"{here}/../../../scripts/picture-film.py", "key", f"{scene}/match/ngc2207.json",
+     "--aspect", "6353x2983", "--fit", "width"]))
 M = photo["myr"]
 rows = list(csv.DictReader(open(f"{scene}/curves-hires.csv")))
 t = [float(r["time_myr"]) for r in rows]; d = [float(r["separation_kpc"]) for r in rows]

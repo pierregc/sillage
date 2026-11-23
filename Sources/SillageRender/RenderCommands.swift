@@ -12,33 +12,56 @@ public enum RenderCommands {
     }
 
     private static func options(
-        flags: String = "", text: String = "", whole: String = "", number: String = ""
+        flags: String = "", text: String = "", whole: String = "", number: String = "",
+        about: [String: String] = [:], group: String? = nil
     ) -> [CommandSpec.Option] {
-        func names(_ list: String) -> [String] { list.split(whereSeparator: \.isWhitespace).map(String.init) }
-        return names(flags).map { .init($0, .flag) } + names(text).map { .init($0, .text) }
-            + names(whole).map { .init($0, .whole) } + names(number).map { .init($0, .number) }
+        CommandSpec.options(
+            flags: flags, text: text, whole: whole, number: number, about: about, group: group)
     }
 
     /// What a render, an `explore` and a `hires` read between them: `hires` and `explore` hand
     /// their options on to the render that does the work.
-    static let render = options(
-        flags: "plain director immersed calm check check-only no-check profile no-sidecars "
-            + "massive-only resume no-video stop-after-key-frames",
-        text: "preset solver scene look look-out scene-out video out curves thumbnail take take-v6 "
-            + "take-massive massive-set state-out density sf-leaves dt-schedule dt-switches "
-            + "dump-walk dump-walk-frames dump-targets dump-targets-frames draw draw-out draw-take "
-            + "draw-stills draw-stills-dir key-frames key-frame-curves key-frame-list key-frames-at pass "
-            + "export speed camera center pair-share checkpoint sticky-gas",
-        whole: "particles steps frames width height fps settle seed index galaxies look-seed "
-            + "take-interval tracer-sort tracer-sort-chunk thumbnail-frame density-frames "
-            + "take-memory checkpoint-frames checkpoint-steps draw-divisor key-frames-span",
-        number: "brightness dust star-size smoothing min-kernel max-kernel bloom-threshold "
-            + "bloom-knee bloom stretch saturation white-point spikes spike-length spike-intensity "
-            + "sky noise tint fov column glint dust-web old-width bulge-width young-width "
-            + "knot-width stars supersample bloom-levels arms zoom percentile radius elevation "
-            + "elevation-end azimuth azimuth-end orbit dt-scale dissipation dt theta softening "
-            + "theta-tracers haste archetypes spacing halo story-cap story-after dt-judge "
-            + "density-extent checkpoint-every massive span")
+    static let render =
+        options(
+            flags: "calm check check-only no-check",
+            text: "preset scene solver pair-share sticky-gas",
+            whole: "seed index galaxies look-seed",
+            number: "archetypes spacing haste halo theta softening dt dt-scale dissipation",
+            group: "The scene")
+        + options(
+            flags: "resume no-video profile",
+            text: "pass export speed dt-schedule",
+            whole: "particles steps frames width height fps settle take-interval take-memory "
+                + "key-frames-span tracer-sort tracer-sort-chunk",
+            number: "massive span story-cap story-after checkpoint-every",
+            group: "The run")
+        + options(
+            text: "key-frames-at draw-stills draw-stills-dir", whole: "draw-divisor",
+            group: "The full pass of a hires")
+        + options(
+            flags: "plain director immersed",
+            text: "look camera center",
+            whole: "stars supersample bloom-levels",
+            number: "zoom percentile radius elevation elevation-end azimuth azimuth-end orbit arms "
+                + "brightness dust dust-web star-size smoothing min-kernel max-kernel column "
+                + "bloom bloom-threshold bloom-knee stretch saturation white-point tint glint "
+                + "spikes spike-length spike-intensity sky noise fov old-width bulge-width "
+                + "young-width knot-width",
+            group: "The camera and the look")
+        + options(
+            flags: "no-sidecars",
+            text: "out video curves thumbnail take scene-out look-out state-out summary",
+            whole: "thumbnail-frame", group: "Files written")
+        + options(
+            text: "density dump-walk dump-walk-frames dump-targets dump-targets-frames take-v6 "
+                + "take-massive sf-leaves",
+            whole: "density-frames", number: "density-extent", group: "Measuring")
+        + options(
+            flags: "massive-only stop-after-key-frames",
+            text: "massive-set dt-switches checkpoint draw draw-out draw-take key-frames "
+                + "key-frame-list key-frame-curves",
+            whole: "checkpoint-frames checkpoint-steps", number: "theta-tracers dt-judge",
+            group: "Set by hires and explore, or for tests")
 
     static let plain = CommandSpec(
         "",
@@ -72,7 +95,7 @@ public enum RenderCommands {
         options: options(
             flags: "grid single generated no-catalogue no-variants keep",
             text: "style palette promote camera world base take frames times stills",
-            number: "width"))
+            number: "width", about: OptionHelp.look))
 
     static let palettes = CommandSpec(
         "palettes",
@@ -80,7 +103,7 @@ public enum RenderCommands {
         usage: ["usage: sillage-render palettes <scene folder> [options]"], words: ["scene folder"],
         options: options(
             flags: "single", text: "world harmony family base",
-            whole: "count seed best frame width"))
+            whole: "count seed best frame width", about: OptionHelp.palettes))
 
     static let export = CommandSpec(
         "export",
@@ -92,10 +115,11 @@ public enum RenderCommands {
         words: ["scene folder"],
         options: options(
             flags: "no-overlay single drawings-only",
-            text: "preset codec format look palette world take out overlay framing speed slow "
+            text: "preset codec format look palette world take out overlay framing speed slow summary "
                 + "flight flight-at flight-keys stills still-frames dump-targets dump-targets-frames csv "
                 + "drawings drawings-myr",
-            number: "bitrate quality duration fps start width height from to seconds max-size"))
+            number: "bitrate quality duration fps start width height from to seconds max-size",
+            about: OptionHelp.export))
 
     static let pace = CommandSpec(
         "pace",
@@ -107,7 +131,8 @@ public enum RenderCommands {
         ],
         words: ["scene folder"],
         options: options(
-            flags: "drawings-only", text: "speed slow take look out csv drawings drawings-myr"))
+            flags: "drawings-only", text: "speed slow take look out csv drawings drawings-myr",
+            about: OptionHelp.pace))
 
     static let flight = CommandSpec(
         "flight",
@@ -116,7 +141,7 @@ public enum RenderCommands {
             "usage: sillage-render flight <scene folder> --at <myr,...> [--look <name>] "
                 + "[--take <file>] [--arms <kpc,...>]"
         ],
-        words: ["scene folder"], options: options(text: "at look take arms"))
+        words: ["scene folder"], options: options(text: "at look take arms", about: OptionHelp.flight))
 
     static let match = CommandSpec(
         "match",
@@ -129,7 +154,7 @@ public enum RenderCommands {
         words: ["scene folder", "picture map"],
         options: options(
             flags: "fresh", text: "take view measure", whole: "stars",
-            number: "at within span kpc-across ceiling"))
+            number: "at within span kpc-across ceiling", about: OptionHelp.match))
 
     static let take = CommandSpec(
         "take",
@@ -138,7 +163,7 @@ public enum RenderCommands {
         usage: [
             "usage: sillage-render take extract <take> --at <myr,...> [--span <frames>] <out.sillage>"
         ],
-        words: ["action", "take", "out"], options: options(text: "at", whole: "span"))
+        words: ["action", "take", "out"], options: options(text: "at", whole: "span", about: OptionHelp.take))
 
     static let story = CommandSpec(
         "story",
@@ -149,7 +174,8 @@ public enum RenderCommands {
         "costs",
         summary: "Refreshes the cost model of a library; --check <batch> sets it against a batch.",
         usage: ["usage: sillage-render costs [library] [--check <batch>]"], words: [],
-        extraWords: true, options: options(text: "check"))
+        extraWords: true,
+        options: options(text: "check", about: ["check": "sets the cost model against this batch"]))
 
     static let probeDisk = CommandSpec(
         "probe-disk",
@@ -166,7 +192,8 @@ public enum RenderCommands {
             whole: "particles seed width height arm-count",
             number: "myr frame-myr lag-myr dt-scale clumpiness toomre-q arm-strength "
                 + "arm-irregularity disk-mass-fraction disk-thickness dissipation mass-contrast "
-                + "streaming young-clumpiness dust-fraction dust-mass softening effective-q"))
+                + "streaming young-clumpiness dust-fraction dust-mass softening effective-q",
+            about: OptionHelp.probeDisk))
 
     static let event = CommandSpec(
         "event",
@@ -184,11 +211,16 @@ public enum RenderCommands {
         summary: "Writes the black hole close up's reference outputs (#336).",
         usage: ["usage: sillage-render hole-fixtures <directory>"], words: ["directory"])
 
+    static let fields = CommandSpec(
+        "fields",
+        summary: "Prints the fields of a look file: what each does, its default and the range looks/ use.",
+        usage: ["usage: sillage-render fields"])
+
     /// The commands this table holds to their options. `queue`, `night`, `status` and
     /// `black-hole` read their own.
     public static let all: [CommandSpec] = [
         explore, hires, look, export, palettes, story, probeDisk, costs, event, pace, flight, fixtures,
-        holeFixtures, match, take,
+        holeFixtures, match, take, fields,
     ]
 
     /// Commands with a parser of their own: asked for help, they answer it.

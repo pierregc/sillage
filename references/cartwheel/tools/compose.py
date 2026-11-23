@@ -1,5 +1,6 @@
 """Assembles the film: flight 1 with the split screen pushed in over its hold, then the other
-shots with hard cuts, encoded x265 10 bit. $CARTWHEEL_REF holds panel-webb.png and title.png.
+shots with hard cuts, encoded x265 10 bit. $CARTWHEEL_REF holds panel-webb.png and title.png
+(`scripts/picture-film.py title`). A film of one shot is `scripts/picture-film.py film`.
 usage: compose.py <masters dir> <out.mp4> [hold start s]"""
 import os, subprocess, sys
 d, out = sys.argv[1], sys.argv[2]

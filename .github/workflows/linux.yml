@@ -83,8 +83,13 @@ jobs:
       - uses: actions/checkout@v5
       - name: ffmpeg, which encodes the full pass's videos (#278)
         run: |
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
+          # From the mirror beside GitHub's runners: archive.ubuntu.com at 170 kB/s took the
+          # job's whole limit. Held to a time, so a stall fails here rather than sitting silent.
+          export DEBIAN_FRONTEND=noninteractive
+          sed -i 's|http://archive.ubuntu.com|http://azure.archive.ubuntu.com|g' \
+            /etc/apt/sources.list.d/ubuntu.sources
+          timeout 240 apt-get update -qq
+          timeout 420 apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
           ffmpeg -hide_banner -version | head -1
       - name: The CUDA engine's tests on the CPU target, and sillage-cuda
         run: scripts/linux.sh tool test-cuda
