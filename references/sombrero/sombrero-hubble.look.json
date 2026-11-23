@@ -5,7 +5,7 @@
   "bloomIntensity": 0.5,
   "bloomSoftKnee": 0.6,
   "bloomThreshold": 0.26,
-  "brightness": 0.26,
+  "brightness": 0.15,
   "columnSmoothing": 300,
   "dustStrength": 0.16,
   "dustWeb": 1,
@@ -34,7 +34,7 @@
   "youngWidth": 3,
   "bulgeWidth": 3.0
  },
- "name": "f16",
+ "name": "h90m10",
  "palette": [
   {
    "blend": 0.75,
