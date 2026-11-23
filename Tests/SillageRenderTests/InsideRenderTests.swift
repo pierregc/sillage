@@ -21,7 +21,7 @@ struct InsideRenderTests {
         init(
             _ positions: [SIMD3<Float>], maximumKernel: Float = 24, supersample: Int = 1,
             component: ParticleComponent = .star, glow: Float = 0,
-            dust: Float = 1e-3
+            dust: Float = 1e-3, smoothing: Float = 1
         ) throws {
             var system = ParticleSystem()
             for position in positions {
@@ -34,7 +34,7 @@ struct InsideRenderTests {
                 width: width, height: height, supersample: supersample,
                 // A fifth of a unit a particle, however many there are.
                 brightness: 2e-7 * Float(positions.count),
-                dustStrength: component == .dust ? dust : 0, starCount: 0, smoothingScale: 1,
+                dustStrength: component == .dust ? dust : 0, starCount: 0, smoothingScale: smoothing,
                 minimumKernel: 1,
                 maximumKernel: maximumKernel, bloomIntensity: 0, stretch: 0, saturation: 1,
                 spikeArms: 0, skyLevel: 0, noiseLevel: 0)
@@ -86,7 +86,7 @@ struct InsideRenderTests {
 
     @Test func theUniformsLieWhereTheShaderReadsThem() {
         #expect(MemoryLayout<SplatUniforms>.stride == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 208 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 224 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)
@@ -96,6 +96,8 @@ struct InsideRenderTests {
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustFine) == 164)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.dustThin) == 172)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.webOnly) == 176)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.neighbours) == 204)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.loneWidest) == 216)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every
@@ -318,6 +320,66 @@ struct InsideRenderTests {
         faulty = InsideSettings()
         faulty.glowFade = 2
         #expect(faulty.fault?.contains("glowFade") == true)
+    }
+
+    /// A kernel that shows alone is widened until it covers its neighbours in projection
+    /// (docs/notes/lone-kernels.md): a sparse sheet across the line of sight, past the near field,
+    /// every particle a disk of its own, is drawn even, its light kept, its stars and the glow of
+    /// its grains alike. Without `neighbours` the frame is the one it was, and stars whose kernels
+    /// are under the size asked stay as they were, where a grain's glow is widened at any size.
+    @Test func aLoneKernelWidensToCoverItsNeighbours() throws {
+        var generator = SeededGenerator(seed: 11)
+        // 12 kpc from the eye, 12 pixels a kiloparsec: a particle every 6 pixels or so.
+        let positions = (0..<120).map { _ in
+            SIMD3<Float>((generator.uniform() - 0.5) * 8, 0, (generator.uniform() - 0.5) * 4)
+        }
+        let view = camera(12)
+        for (component, glow) in [(ParticleComponent.star, Float(0)), (.dust, 2)] {
+            let stage = try Stage(
+                positions, maximumKernel: 16, component: component, glow: glow, dust: 0.5, smoothing: 5)
+            func drawn(_ change: @escaping (inout InsideSettings) -> Void) throws -> [SIMD3<Float>] {
+                stage.renderer.inside = Self.inside(12) { settings in
+                    settings.loneWidest = 512
+                    change(&settings)
+                }
+                return try stage.light(view)
+            }
+            // The total, the peak, and how uneven the middle of the sheet is: its light's
+            // deviation over its mean.
+            func measured(_ light: [SIMD3<Float>]) -> (total: Double, peak: Float, uneven: Double) {
+                var values: [Double] = []
+                for y in 30..<60 {
+                    for x in 50..<110 { values.append(Double(light[y * stage.width + x].x)) }
+                }
+                let mean = values.reduce(0, +) / Double(values.count)
+                let spread = (values.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(values.count))
+                    .squareRoot()
+                return (Self.total(light), light.map { $0.x }.max() ?? 0, spread / max(mean, 1e-12))
+            }
+            let plain = try drawn { _ in }
+            let alone = measured(plain)
+            #expect(alone.peak > 0 && alone.uneven > 1, "\(component): \(alone)")
+            let merged = measured(try drawn { $0.neighbours = 8 })
+            #expect(abs(merged.total / alone.total - 1) < 0.03, "\(component): \(merged.total / alone.total)")
+            #expect(merged.uneven < 0.4 * alone.uneven, "\(component): \(merged.uneven), \(alone.uneven)")
+            #expect(merged.peak < 0.5 * alone.peak, "\(component): \(merged.peak), \(alone.peak)")
+            // A frame 90 high: these kernels are 70 pixels of one 2160 high.
+            let points = try drawn { settings in
+                settings.neighbours = 8
+                settings.loneFrom = 200
+                settings.loneFull = 400
+            }
+            #expect((points == plain) == (component == .star))
+        }
+        var faulty = InsideSettings()
+        faulty.neighbours = -1
+        #expect(faulty.fault?.contains("neighbours") == true)
+        faulty = InsideSettings()
+        faulty.loneFrom = 20
+        #expect(faulty.fault?.contains("loneFrom") == true)
+        faulty = InsideSettings()
+        faulty.loneWidest = 2
+        #expect(faulty.fault?.contains("loneWidest") == true)
     }
 
     /// A near grain carries its structure with it (#394): the grains and the eye moved together

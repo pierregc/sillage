@@ -124,7 +124,7 @@ public struct FramePlan: Sendable {
     public init(
         settings: RenderSettings, camera: Camera, time: Float, drawnCount: Int, tracerCount: Int,
         luminosityNormalisation: Float, mapped: Bool, laceScale: Float?,
-        stages: ClosedRange<UInt32> = 0...1, first: Bool = true
+        stages: ClosedRange<UInt32> = 0...1, first: Bool = true, counted: Bool = false
     ) {
         let scale = settings.supersample
         let aspect = Float(settings.width) / Float(settings.height)
@@ -218,7 +218,7 @@ public struct FramePlan: Sendable {
         var passes: [Pass] = []
         // The column pass, once per frame over every drawn particle: counts into coarse
         // cells, which the splat vertex reads back to size its kernel in projection.
-        if first, settings.columnSmoothing > 0 { passes.append(.column) }
+        if first, settings.columnSmoothing > 0 || counted { passes.append(.column) }
         // The dust the web multiplies, coarse, before the pass that multiplies it.
         if webbed { passes.append(.webCarrier) }
         if first, settings.starCount > 0 || settings.galaxyCount > 0 { passes.append(.starfield) }

@@ -88,6 +88,9 @@ Shaders splatFragment cuda in splatVertex splatTracerVertex
 Shaders countVertex cuda
 Shaders countTracerVertex cuda
 Shaders countFragment cuda in countVertex countTracerVertex
+Shaders countKindsVertex pending #459
+Shaders countKindsTracerVertex pending #459
+Shaders countKindsFragment pending #459
 Shaders plainVertex cuda
 Shaders plainTracerVertex cuda
 Shaders plainFragment cuda in plainVertex plainTracerVertex

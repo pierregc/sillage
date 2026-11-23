@@ -82,6 +82,9 @@ ring stays lavender, because its stars were born well inside where it now stands
   the measured blue, outskirts salmon so the ring has no lavender rim, core and knots pale pink,
   spikes 0.18 so that bright glowing grains do not throw them. Red covers half the bodies, 45 % in
   the picture, at the same brightness; the picture's knots stay brighter.
+- At mid distance the grains of that glow, a sixth as many as the stars, read as red blobs in
+  the sparse stretches: the film's flight asks for `neighbours` 8
+  ([lone kernels](lone-kernels.md)).
 - `galaxyCount` 150 000 fills the sky with galaxies of 0.25 to 3.5 milliradians, the sizes of
   those round the Cartwheel, mostly orange: about as many in the frame as in the picture.
 

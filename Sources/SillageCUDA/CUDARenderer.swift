@@ -583,6 +583,8 @@ public final class CUDARenderer: FrameStyling {
                     $0.frame, camera: $0.camera, next: $0.next, settings: settings, splat: splat)
             } ?? InsideUniforms(outside: splat)
         inside.webOnly = Float(only)
+        // Metal alone counts the grains apart and keeps the count's pyramid: pending #459.
+        inside.neighbours = 0
         let uniforms = InsideSplatUniforms(splat: splat, inside: inside)
         var web = plan.web
         // Near a disk the lace is carried through its dust layer's depth, within the radii the

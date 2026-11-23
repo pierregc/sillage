@@ -76,6 +76,9 @@ public final class Renderer {
     /// Emitting particles per cell of `columnCell` accumulation pixels, for the projected
     /// kernel.
     private let columnDensity: MTLTexture
+    /// The same with the grains of dust counted apart and a pyramid over it, for a frame from
+    /// inside that widens its lone kernels; made by the first that does.
+    private var kindDensity: MTLTexture?
     static let columnCell = FramePlan.columnCell
     private let resolved: MTLTexture
     private let bloomDown: [MTLTexture]
@@ -564,6 +567,19 @@ public final class Renderer {
     /// wait for it (#298).
     public func prepareInside() { _ = insideResources() }
 
+    private func kindCounts() -> MTLTexture? {
+        if kindDensity == nil {
+            let size = FramePlan.columnSize(settings)
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rg32Float, width: max(size.width, 1), height: max(size.height, 1),
+                mipmapped: true)
+            descriptor.usage = [.renderTarget, .shaderRead]
+            descriptor.storageMode = .private
+            kindDensity = device.makeTexture(descriptor: descriptor)
+        }
+        return kindDensity
+    }
+
     /// Nil when the inside of a galaxy cannot be drawn here, and the frame is then drawn as any
     /// other; `insideFailure` says why.
     private func insideResources() -> InsidePass? {
@@ -589,6 +605,8 @@ public final class Renderer {
         // Not for a frame drawn in parts, which the canvas alone asks for.
         let within = settings.plain || particles != nil ? nil : inside
         var deep = within.flatMap { _ in insideResources() }
+        let counted = deep != nil && (within?.settings.neighbours ?? 0) > 0 ? kindCounts() : nil
+        let column = counted ?? columnDensity
         // Its own pipelines, so a look without the web draws what it always drew.
         let wide = (settings.width * settings.supersample, settings.height * settings.supersample)
         let web =
@@ -599,7 +617,8 @@ public final class Renderer {
         let plan = FramePlan(
             settings: settings, camera: camera, time: time, drawnCount: drawnCount,
             tracerCount: tracerCount, luminosityNormalisation: luminosityNormalisation,
-            mapped: palette.mapped, laceScale: web?.scale, stages: stages, first: first)
+            mapped: palette.mapped, laceScale: web?.scale, stages: stages, first: first,
+            counted: counted != nil)
         if first { drawn = plan }
         let parts = split(particles ?? 0..<(drawnCount + tracerCount))
         let traced =
@@ -656,7 +675,7 @@ public final class Renderer {
                 encoder.setBuffer(smoothingBuffer, offset: 0, index: 7)
                 encoder.setBuffer(formationBuffer, offset: 0, index: 8)
                 encoder.setBuffer(traitBuffer, offset: 0, index: 10)
-                encoder.setTexture(columnDensity, index: 0)
+                encoder.setTexture(column, index: 0)
             }
         }
 
@@ -700,7 +719,7 @@ public final class Renderer {
             encoder.setVertexBuffer(traitBuffer, offset: 0, index: 10)
             encoder.setVertexBuffer(rampKeyBuffer, offset: 0, index: 11)
             encoder.setVertexBuffer(rampBuffer, offset: 0, index: 12)
-            encoder.setVertexTexture(columnDensity, index: 0)
+            encoder.setVertexTexture(column, index: 0)
             if let traced { bindTracers(encoder, traced.source) }
         }
 
@@ -733,20 +752,27 @@ public final class Renderer {
             case .column:
                 guard
                     let encoder = buffer.makeRenderCommandEncoder(
-                        descriptor: descriptor([columnDensity]))
+                        descriptor: descriptor([column]))
                 else { continue }
-                encoder.setRenderPipelineState(countPipeline)
+                encoder.setRenderPipelineState(counted == nil ? countPipeline : deep?.kinds ?? countPipeline)
                 encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
                 encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                // The inside library's count reads its uniforms with the inside behind them.
+                if counted != nil { bindDeep(encoder, uniforms) }
                 encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
                 encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
                 if let traced {
-                    encoder.setRenderPipelineState(traced.pipelines.count)
+                    encoder.setRenderPipelineState(
+                        counted == nil ? traced.pipelines.count : deep?.tracerKinds ?? traced.pipelines.count)
                     bindTracers(encoder, traced.source)
                     encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: tracerCount)
                 }
                 encoder.endEncoding()
+                if let counted, let blit = buffer.makeBlitCommandEncoder() {
+                    blit.generateMipmaps(for: counted)
+                    blit.endEncoding()
+                }
 
             case .webCarrier:
                 guard let web, var webUniforms = webbed else { continue }

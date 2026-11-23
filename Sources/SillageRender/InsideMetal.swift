@@ -23,6 +23,9 @@ struct InsidePass {
     let splat: MTLRenderPipelineState
     let stars: MTLRenderPipelineState
     let resolve: MTLComputePipelineState
+    /// The column pass of a frame that widens its lone kernels: what emits and the grains, apart.
+    let kinds: MTLRenderPipelineState
+    let tracerKinds: MTLRenderPipelineState
     private let count: MTLComputePipelineState
     private let offsets: MTLComputePipelineState
     private let fill: MTLComputePipelineState
@@ -71,6 +74,12 @@ struct InsidePass {
         splat = try additive("splatVertex", "splatFragment", writing: 0)
         stars = try additive("pointStarVertex", "pointStarFragment", writing: 0)
         resolve = try compute("insideResolve")
+        kinds = try Renderer.additive(
+            "countKindsVertex", "countKindsFragment", writing: 0, attachments: 1,
+            format: .rg32Float, library: library, device: device)
+        tracerKinds = try Renderer.additive(
+            "countKindsTracerVertex", "countKindsFragment", writing: 0, attachments: 1,
+            format: .rg32Float, library: library, device: device)
         count = try compute("insideCount")
         offsets = try compute("insideOffsets")
         fill = try compute("insideFill")
