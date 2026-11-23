@@ -980,6 +980,16 @@ particle crosses well under one softening length per step.
 **Parameters.** Per scene: particle count, opening angle, halo particle ratio. Per galaxy:
 mass, scale radius, truncation, thickness, Toomre Q, inclination, position angle and spin.
 
+**A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
+as the stars'. A galaxy of `scene.json` that carries
+`"dustRing": {"radius": 9, "width": 1.2, "share": 1}` has it gathered at one radius instead, the
+dark brim of the Sombrero: `radius` and `width` in kpc, the ring's mean radius and the spread of
+its grains about it (one standard deviation), `share` the part of the dust that stands in the
+ring, 1 when left out, the rest drawn as without one. The grains keep their strands, their thin
+layer and their grain, the stellar disk's truncation does not fade them, and the rotation curve
+the disk is launched on counts the ring's gas where it stands. A scene without the field samples
+what it always did (#475).
+
 ### Known limits
 
 - Single precision throughout: positions, velocities and forces are all 32 bit floats.

@@ -141,6 +141,44 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// `dustFraction` of the particles for the light. Absent, as in every file written before
     /// #218, a dust particle weighs what a star does and the gas carries `dustFraction`.
     public var dustMassFraction: Float?
+    /// The ring this galaxy's dust is gathered in, when it has one (#475).
+    public var dustRing: DustRing?
+
+    /// Gas and dust gathered at one radius rather than spread along the arms: the dark brim
+    /// of the Sombrero, a ring a companion has driven out. The grains keep their strands,
+    /// their thin layer and their grain; only where they stand changes, and the stellar
+    /// disk's truncation does not fade them.
+    public struct DustRing: Codable, Sendable, Equatable {
+        /// Mean radius of the ring, in kpc.
+        public var radius: Float
+        /// Spread of the grains about that radius, one standard deviation, in kpc.
+        public var width: Float
+        /// Share of the galaxy's dust that stands in the ring; the rest is drawn as without one.
+        public var share: Float
+
+        public init(radius: Float, width: Float, share: Float = 1) {
+            self.radius = radius
+            self.width = width
+            self.share = share
+        }
+
+        private enum CodingKeys: String, CodingKey { case radius, width, share }
+
+        public init(from decoder: any Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            radius = try values.decode(Float.self, forKey: .radius)
+            width = try values.decode(Float.self, forKey: .width)
+            share = try values.decodeIfPresent(Float.self, forKey: .share) ?? 1
+        }
+    }
+
+    /// The ring as the sampler and the rotation curve read it: none unless it has a radius, a
+    /// width and a share, the share held to one.
+    public var drawnDustRing: DustRing? {
+        guard let ring = dustRing, kind.isRotating, ring.radius > 0, ring.width > 0, ring.share > 0
+        else { return nil }
+        return DustRing(radius: ring.radius, width: ring.width, share: min(ring.share, 1))
+    }
 
     public init(
         name: String,
@@ -223,7 +261,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armMassContrast, armStreaming, massLopsidedness, patternShare, outskirtFraction
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
-        case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction
+        case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction, dustRing
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -273,6 +311,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         spin = try values.decode(Spin.self, forKey: .spin)
         effectiveToomreQ = try values.decodeIfPresent(Float.self, forKey: .effectiveToomreQ)
         dustMassFraction = try values.decodeIfPresent(Float.self, forKey: .dustMassFraction)
+        dustRing = try values.decodeIfPresent(DustRing.self, forKey: .dustRing)
     }
 
     /// What a galaxy described before the calm disk carried, for the fields it lacks.

@@ -408,15 +408,20 @@ public enum DiskSampler {
         phaseOffset: Float = 0,
         scaleMultiplier: Float = 1,
         shape: SpiralPattern.Shape,
+        ring: (radius: Float, spread: Float)? = nil,
         using generator: inout SeededGenerator
     ) -> (radius: Float, phi: Float, armProximity: Float) {
         var radius: Float = 0
         var phi: Float = 0
         var density: Float = 1
         for _ in 0..<32 {
-            radius =
-                config.diskScaleLength * scaleMultiplier
-                * inverseExponentialCDF(generator.uniform(), truncation: config.diskTruncation)
+            if let ring {
+                radius = ring.radius + generator.normal() * ring.spread
+            } else {
+                radius =
+                    config.diskScaleLength * scaleMultiplier
+                    * inverseExponentialCDF(generator.uniform(), truncation: config.diskTruncation)
+            }
             phi = generator.uniform() * 2 * .pi
             if radius < minimumRadius { continue }
             if contrast <= 0 {
@@ -605,15 +610,23 @@ public enum DiskSampler {
         // to be a bend rather than a wobble; past about a third of a scale length the strands
         // stop belonging to an arm at all.
         let strandWarp = scale * 0.115
+        // A ring's strands come first in the list, as many as its share of the dust, shorter
+        // across the ring when it is narrow so that the grains' spread is the width asked.
+        let ring = config.drawnDustRing
+        let ringStrand = ring.map { min(strandLength, $0.width * 0.7) } ?? strandLength
+        let ringCentres = ring.map { ($0.width * $0.width - ringStrand * ringStrand).squareRoot() } ?? 0
+        let ringFilaments = ring.map { Int((700 * $0.share).rounded()) } ?? 0
         var filaments: [Clump] = []
-        for _ in 0..<700 {
+        for index in 0..<700 {
+            let inRing = index < ringFilaments
             // Over a scale length and a bit more than the stars': a gas disk is the more
             // extended of the two, and drawn on the stellar scale the filaments crowded into
             // the middle third of the picture.
             let placed = samplePlanePosition(
                 config, arms: arms, contrast: min(strength * 1.45, 0.95), windRate: windRate,
-                minimumRadius: bulgeRadius * 0.9,
+                minimumRadius: inRing ? 0.03 : bulgeRadius * 0.9,
                 scaleMultiplier: outskirtScaleMultiplier, shape: shape,
+                ring: inRing ? ring.map { ($0.radius, ringCentres) } : nil,
                 using: &generator)
             let u = generator.uniform()
             filaments.append(
@@ -646,6 +659,7 @@ public enum DiskSampler {
             var crestShift: Float = 0
             /// How far this grain's strand is warped out of the plane where it sits.
             var strandLift: Float = 0
+            var ringGrain = false
 
             // Drawn whether or not it is used, so that turning a clump down does not shift
             // every later draw in the galaxy and make two samplings incomparable.
@@ -658,14 +672,16 @@ public enum DiskSampler {
             // reason as below.
             let usable = component == .star || (clump?.radius ?? 0) > bulgeRadius * 0.9
             if component == .dust, generator.uniform() < 0.93, !filaments.isEmpty {
-                let strand =
-                    filaments[Int(generator.uniform() * Float(filaments.count)) % filaments.count]
+                let which = Int(generator.uniform() * Float(filaments.count)) % filaments.count
+                let strand = filaments[which]
+                ringGrain = which < ringFilaments
+                let reach = ringGrain ? ringStrand : strandLength
                 // A strand runs *along the arm*, which means its radius and its angle have to
                 // change together, at the pattern's own pitch. Stretched azimuthally alone —
                 // which is what shearing a round clump gives — a strand is a segment of a
                 // circle, and a disk full of those reads as a set of concentric rings however
                 // thin they are. That was two attempts.
-                let travel = generator.normal() * strandLength
+                let travel = generator.normal() * reach
                 radius = max(strand.radius + travel, 0.03)
                 let pitch = windRate * log(radius / max(strand.radius, 1e-3))
                 // And a strand is not a clean arc either. The pitch alone gives a perfect
@@ -673,7 +689,7 @@ public enum DiskSampler {
                 // noise keyed on the strand's own seed and read along its length, the whole
                 // thread meanders together — a twisted membrane rather than a wire. Two
                 // frequencies, because one gives a smooth bend and real filaments kink.
-                let alongStrand = travel / max(strandLength, 1e-3)
+                let alongStrand = travel / max(reach, 1e-3)
                 let meander =
                     (SpiralPattern.fractalNoise(strand.seed + alongStrand * 1.7) - 0.5)
                     + 0.45
@@ -698,6 +714,16 @@ public enum DiskSampler {
                         generator.uniform(), truncation: config.diskTruncation * 1.5)
                 phi = generator.uniform() * 2 * .pi
                 proximity = 0
+            } else if let ring, component == .dust, generator.uniform() < ring.share {
+                let placed = samplePlanePosition(
+                    config, arms: arms, contrast: min(strength * 1.4, 0.95), windRate: windRate,
+                    minimumRadius: 0.03, phaseOffset: -0.85 * spin, shape: shape,
+                    ring: (ring.radius, ring.width), using: &generator)
+                crestShift = 0.85 * spin / Float(max(arms, 1))
+                radius = placed.radius
+                phi = placed.phi
+                proximity = placed.armProximity
+                ringGrain = true
             } else if attached, let clump, usable {
                 let placed = scatter(clump, using: &generator)
                 radius = placed.radius
@@ -845,10 +871,13 @@ public enum DiskSampler {
             // Falls to a floor rather than to nothing: what is beyond the thin disk's own
             // truncation is the outskirts, and they have to keep some light or the edge is a
             // rim again.
+            // A ring stands where it was asked, the stellar disk's edge does not fade it.
             let taper =
-                outskirt
-                ? 0.10 + 0.9 * exp(-max(edge - config.diskTruncation * 0.5, 0) * 0.9)
-                : 1 - smoothstep(config.diskTruncation - 2.1, config.diskTruncation, edge)
+                ringGrain
+                ? 1
+                : outskirt
+                    ? 0.10 + 0.9 * exp(-max(edge - config.diskTruncation * 0.5, 0) * 0.9)
+                    : 1 - smoothstep(config.diskTruncation - 2.1, config.diskTruncation, edge)
             // A wide spread in per-star brightness reads as texture rather than as grain.
             var brightness =
                 (0.45 + 1.5 * generator.uniform() * generator.uniform())

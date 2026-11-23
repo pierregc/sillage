@@ -65,6 +65,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
         /// The gas's share of the disk's mass (`GalaxyConfig.dustMassFraction`, #218); absent,
         /// as in every file written before, it is the dust's share of the particles.
         public var dustMassFraction: Float?
+        /// The ring the dust is gathered in (`GalaxyConfig.DustRing`, #475); absent, the dust
+        /// is drawn along the arms as it always was.
+        public var dustRing: GalaxyConfig.DustRing?
         public var haloParticleRatio: Float
         public var haloExtent: Float
         public var dissipationTime: Float
@@ -103,6 +106,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             toomreQ = galaxy.toomreQ
             effectiveToomreQ = galaxy.effectiveToomreQ
             dustMassFraction = galaxy.dustMassFraction
+            dustRing = galaxy.dustRing
             haloParticleRatio = galaxy.haloParticleRatio
             haloExtent = galaxy.haloExtent
             dissipationTime = galaxy.dissipationTime
@@ -166,6 +170,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.patternShare = patternShare ?? 0
             galaxy.effectiveToomreQ = effectiveToomreQ
             galaxy.dustMassFraction = dustMassFraction
+            galaxy.dustRing = dustRing
             return galaxy
         }
     }
