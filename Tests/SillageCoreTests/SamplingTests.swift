@@ -596,3 +596,146 @@ struct CalmDiskSamplingTests {
         #expect(before > 1.8 * after)
     }
 }
+
+@Suite("Dust ring")
+struct DustRingTests {
+    private static let ring = GalaxyConfig.DustRing(radius: 10, width: 1)
+
+    private func scene(_ change: (inout GalaxyConfig) -> Void = { _ in }) -> SceneConfig {
+        var scene = SceneConfig.isolatedDisk(particleCount: 60_000)
+        scene.galaxies[0].kind = .spiral
+        change(&scene.galaxies[0])
+        return scene
+    }
+
+    private func radii(_ system: ParticleSystem, _ component: ParticleComponent) -> [Double] {
+        (0..<system.count).filter { system.component[$0] == component.rawValue }
+            .map { Double(system.birthRadius[$0]) }
+    }
+
+    private func inBand(_ radii: [Double]) -> Double {
+        let ring = Self.ring
+        let near = radii.filter { abs($0 - Double(ring.radius)) < 3 * Double(ring.width) }
+        return Double(near.count) / Double(max(radii.count, 1))
+    }
+
+    /// The dust stands at the ring's radius with the spread asked, as thin a layer as before,
+    /// not faded by the disk's edge, and the stars stay where they were.
+    @Test func theRingGathersTheDust() {
+        let plain = RestrictedSolver.sampleParticles(for: scene())
+        let ringed = RestrictedSolver.sampleParticles(for: scene { $0.dustRing = Self.ring })
+        let dust = radii(ringed, .dust)
+        let mean = dust.reduce(0, +) / Double(dust.count)
+        let spread = (dust.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(dust.count)).squareRoot()
+        #expect(abs(mean - 10) < 0.1)
+        #expect(abs(spread - 1) < 0.1)
+        #expect(inBand(dust) > 0.99)
+        #expect(inBand(radii(plain, .dust)) < 0.5)
+        #expect(abs(Double(dust.count) / Double(radii(plain, .dust).count) - 1) < 0.03)
+
+        let stars = radii(ringed, .star)
+        let before = radii(plain, .star)
+        #expect(
+            abs(stars.reduce(0, +) / Double(stars.count) / (before.reduce(0, +) / Double(before.count)) - 1)
+                < 0.02)
+
+        func dustOf(_ system: ParticleSystem) -> (height: Double, opacity: Double) {
+            let grains = (0..<system.count).filter { system.component[$0] == ParticleComponent.dust.rawValue }
+            let height =
+                grains.reduce(0.0) { $0 + Double(abs(system.positions[$1].z)) } / Double(grains.count)
+            let opacity = grains.reduce(0.0) { $0 + Double(system.luminosity[$1]) } / Double(grains.count)
+            return (height, opacity)
+        }
+        #expect(abs(dustOf(ringed).height / dustOf(plain).height - 1) < 0.1)
+        #expect(dustOf(ringed).opacity > dustOf(plain).opacity)
+    }
+
+    /// A share of the dust in the ring leaves the rest where it is drawn without one.
+    @Test func theShareSplitsTheDust() {
+        let plain = inBand(radii(RestrictedSolver.sampleParticles(for: scene()), .dust))
+        let half = scene { $0.dustRing = GalaxyConfig.DustRing(radius: 10, width: 1, share: 0.5) }
+        let found = inBand(radii(RestrictedSolver.sampleParticles(for: half), .dust))
+        #expect(abs(found - (0.5 + 0.5 * plain)) < 0.03)
+    }
+
+    /// A ring that cannot be drawn is no ring: the sample is the one without the field.
+    @Test func aRingOfNothingChangesNothing() {
+        let plain = RestrictedSolver.sampleParticles(for: scene())
+        for ring in [
+            GalaxyConfig.DustRing(radius: 10, width: 1, share: 0),
+            GalaxyConfig.DustRing(radius: 10, width: 0), GalaxyConfig.DustRing(radius: 0, width: 1),
+        ] {
+            let same = RestrictedSolver.sampleParticles(for: scene { $0.dustRing = ring })
+            #expect(same.positions == plain.positions)
+            #expect(same.velocities == plain.velocities)
+            #expect(same.luminosity == plain.luminosity)
+        }
+    }
+
+    /// The scene file keeps the ring, reads a ring without a share as the whole dust, and a
+    /// scene without one is written without the field.
+    @Test func theSceneFileKeepsTheRing() throws {
+        let ringed = scene { $0.dustRing = GalaxyConfig.DustRing(radius: 9, width: 1.2, share: 0.8) }
+        let file = try SceneFile(ringed).encoded()
+        let read = try SceneFile.decoded(from: file).scene(particleCount: 1_000).galaxies[0].dustRing
+        #expect(read == GalaxyConfig.DustRing(radius: 9, width: 1.2, share: 0.8))
+        #expect(!String(decoding: try SceneFile(scene()).encoded(), as: UTF8.self).contains("dustRing"))
+        let bare = try JSONDecoder().decode(
+            GalaxyConfig.DustRing.self, from: Data(#"{"radius": 9, "width": 1.2}"#.utf8))
+        #expect(bare.share == 1)
+    }
+
+    /// The rotation curve counts the ring's gas where it stands: against the pull of the
+    /// sampled grains themselves, weaker inside the ring than without it, stronger outside.
+    @Test func theCurveCountsTheRingWhereItStands() {
+        let heavy = scene {
+            $0.dustMassFraction = 0.3
+            $0.dustRing = Self.ring
+        }
+        let galaxy = heavy.galaxies[0]
+        let system = RestrictedSolver.sampleParticles(for: heavy)
+        let grains = (0..<system.count).filter { system.component[$0] == ParticleComponent.dust.rawValue }
+        let mass = grains.reduce(Float(0)) { $0 + system.mass[$1] }
+        func summed(_ radius: Float) -> Double {
+            var total = 0.0
+            for step in 0..<8 {
+                let angle = Float(step) * .pi / 4
+                let at = SIMD3<Float>(radius * cos(angle), radius * sin(angle), 0)
+                for index in grains {
+                    let d = at - system.positions[index]
+                    let r2 = Double(simd_length_squared(d)) + 0.04
+                    total +=
+                        Double(system.mass[index]) * Double(simd_dot(d, at) / radius) / (r2 * r2.squareRoot())
+                }
+            }
+            return total / 8 * Double(radius)
+        }
+        for (radius, tolerance) in [(Float(6), 0.2), (13.5, 0.2), (20, 0.05)] {
+            let curve = Double(DiskEquilibrium.ringSpeedSquared(mass: mass, ring: Self.ring, radius: radius))
+            #expect(abs(curve / summed(radius) - 1) < tolerance)
+        }
+        #expect(DiskEquilibrium.ringSpeedSquared(mass: mass, ring: Self.ring, radius: 6) < 0)
+
+        var spread = galaxy
+        spread.dustRing = nil
+        let curve = { (galaxy: GalaxyConfig, radius: Float) in
+            DiskEquilibrium(config: galaxy, selfGravitating: true).circularSpeed(atRadius: radius)
+        }
+        #expect(curve(galaxy, 14) > curve(spread, 14))
+        #expect(curve(galaxy, 6) < curve(spread, 6))
+        #expect(abs(curve(galaxy, 60) / curve(spread, 60) - 1) < 0.01)
+    }
+
+    /// A companion resized by its encounter's mass ratio has its ring resized with it.
+    @Test func theRingFollowsTheMassRatio() throws {
+        var scene = SceneConfig.merger()
+        scene.galaxies[1].dustRing = Self.ring
+        let length = scene.galaxies[1].diskScaleLength
+        scene.encounters = [Encounter(pericentre: 8, eccentricity: 1, massRatio: 0.25, pericentreTime: 100)]
+        try scene.placeEncounters()
+        let stretch = scene.galaxies[1].diskScaleLength / length
+        #expect(abs(stretch - 1) > 0.05)
+        #expect(abs((scene.galaxies[1].dustRing?.radius ?? 0) - 10 * stretch) < 1e-4)
+        #expect(abs((scene.galaxies[1].dustRing?.width ?? 0) - stretch) < 1e-4)
+    }
+}

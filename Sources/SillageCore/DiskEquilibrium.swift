@@ -18,6 +18,11 @@ public struct DiskEquilibrium {
     /// need different rotation curves and not just different force laws.
     public let selfGravitating: Bool
     private let centralDensity: Float
+    /// The dust ring's pull in the plane, as a speed squared, every `ringStep` kpc from the
+    /// centre; empty without a ring.
+    private let ringCurve: [Float]
+    private let ringStep: Float
+    private let ringMass: Float
 
     public init(config: GalaxyConfig, selfGravitating: Bool = true) {
         self.config = config
@@ -25,6 +30,65 @@ public struct DiskEquilibrium {
         let diskMass = config.potential.mass * config.diskMassFraction
         let scale = max(config.diskScaleLength, 1e-3)
         self.centralDensity = diskMass / (2 * .pi * scale * scale)
+        if selfGravitating, let ring = config.drawnDustRing {
+            let disk = diskMass * (1 - min(max(config.bulgeFraction, 0), 0.9))
+            let mass = disk * Self.shares(config).dust * ring.share
+            let reach = (ring.radius + 4 * ring.width) * 2
+            let step = reach / Float(Self.ringSamples - 1)
+            ringMass = mass
+            ringStep = step
+            ringCurve = (0..<Self.ringSamples).map {
+                Self.ringSpeedSquared(mass: mass, ring: ring, radius: Float($0) * step)
+            }
+        } else {
+            ringMass = 0
+            ringStep = 1
+            ringCurve = []
+        }
+    }
+
+    static let ringSamples = 192
+
+    /// What a ring of gas adds to the square of the circular speed at `radius`: nothing to
+    /// speak of well inside it, less than nothing just inside, where it pulls outward, and a
+    /// point mass's share far outside. Summed over circles across the ring's width, each
+    /// softened by a fifth of that width.
+    static func ringSpeedSquared(mass: Float, ring: GalaxyConfig.DustRing, radius: Float) -> Float {
+        guard mass > 0, radius > 0 else { return 0 }
+        let r = Double(radius)
+        let softening = max(0.2 * Double(ring.width), 0.025 * Double(ring.radius))
+        let circles = 41
+        let angles = 128
+        var total = 0.0
+        var weights = 0.0
+        for circle in 0..<circles {
+            let x = -3 + 6 * Double(circle) / Double(circles - 1)
+            let circleRadius = Double(ring.radius) + Double(ring.width) * x
+            guard circleRadius > 0 else { continue }
+            let weight = exp(-0.5 * x * x) * circleRadius
+            var pull = 0.0
+            for angle in 0..<angles {
+                let c = cos((Double(angle) + 0.5) * .pi / Double(angles))
+                let d2 =
+                    r * r + circleRadius * circleRadius - 2 * r * circleRadius * c + softening * softening
+                pull += (r - circleRadius * c) / (d2 * d2.squareRoot())
+            }
+            total += weight * pull / Double(angles)
+            weights += weight
+        }
+        guard weights > 0 else { return 0 }
+        return Float(Double(Physics.gravitationalConstant) * Double(mass) * r * total / weights)
+    }
+
+    private func ringSpeedSquared(atRadius radius: Float) -> Float {
+        guard !ringCurve.isEmpty else { return 0 }
+        let at = radius / ringStep
+        let index = Int(at)
+        guard index < ringCurve.count - 1 else {
+            return Physics.gravitationalConstant * ringMass / max(radius, 1e-4)
+        }
+        let t = at - Float(index)
+        return ringCurve[index] * (1 - t) + ringCurve[index + 1] * t
     }
 
     public func surfaceDensity(atRadius radius: Float) -> Float {
@@ -81,6 +145,7 @@ public struct DiskEquilibrium {
             squared += Physics.gravitationalConstant * bulge.mass * inside / r
         }
         squared += Self.diskSpeedSquared(config, mass: stellar * (1 - bulgeShare), radius: r)
+        squared += ringSpeedSquared(atRadius: r)
         return sqrt(max(squared, 0))
     }
 
@@ -98,17 +163,10 @@ public struct DiskEquilibrium {
     /// what this exists to remove; the same sum now sits within one per cent.
     static func diskSpeedSquared(_ config: GalaxyConfig, mass: Float, radius: Float) -> Float {
         let scale = max(config.diskScaleLength, 1e-3)
-        var dust = min(max(config.dustFraction, 0), 0.8)
-        var ionised = min(max(config.starFormingFraction, 0), 0.3)
-        var outskirt = min(max(config.outskirtFraction, 0), 0.5)
-        // Shares of the mass: the gas's own when it has one, the rest in proportion.
-        if let gas = config.dustMassFraction, dust > 0, config.dustFraction < 0.8 {
-            let rest = (1 - min(max(gas, 0), 0.8)) / (1 - dust)
-            dust = min(max(gas, 0), 0.8)
-            ionised *= rest
-            outskirt *= rest
-        }
+        let (dust, ionised, outskirt) = shares(config)
         let thin = max(1 - dust - ionised - outskirt, 0)
+        // The dust a ring holds pulls from where it stands (`ringSpeedSquared`).
+        let spread = 1 - (config.drawnDustRing?.share ?? 0)
         let truncation = max(config.diskTruncation, 0.5)
         let held = mass / max(1 - (1 + truncation) * exp(-truncation), 1e-3)
         // The thick component stands well off the plane — the sampler spreads it over a third
@@ -120,9 +178,24 @@ public struct DiskEquilibrium {
         return exponentialDiskSpeedSquared(
             mass: held * (thin + ionised), scaleLength: scale, radius: radius)
             + exponentialDiskSpeedSquared(
-                mass: held * dust, scaleLength: scale * DiskSampler.dustScaleMultiplier,
+                mass: held * dust * spread, scaleLength: scale * DiskSampler.dustScaleMultiplier,
                 radius: radius)
             + Physics.gravitationalConstant * mass * outskirt * inside / max(radius, 1e-4)
+    }
+
+    /// Shares of the disk's mass in the gas, the young knots and the outskirts: the gas's own
+    /// when it has one, the rest in proportion.
+    static func shares(_ config: GalaxyConfig) -> (dust: Float, ionised: Float, outskirt: Float) {
+        var dust = min(max(config.dustFraction, 0), 0.8)
+        var ionised = min(max(config.starFormingFraction, 0), 0.3)
+        var outskirt = min(max(config.outskirtFraction, 0), 0.5)
+        if let gas = config.dustMassFraction, dust > 0, config.dustFraction < 0.8 {
+            let rest = (1 - min(max(gas, 0), 0.8)) / (1 - dust)
+            dust = min(max(gas, 0), 0.8)
+            ionised *= rest
+            outskirt *= rest
+        }
+        return (dust, ionised, outskirt)
     }
 
     /// Freeman's rotation curve for a razor-thin exponential disk, the one place a closed

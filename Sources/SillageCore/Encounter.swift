@@ -554,6 +554,8 @@ extension SceneConfig {
             galaxy.potential.scaleRadius *= stretch
             galaxy.diskScaleLength *= stretch
             galaxy.diskThickness *= stretch
+            galaxy.dustRing?.radius *= stretch
+            galaxy.dustRing?.width *= stretch
             galaxies[encounter.secondary] = galaxy
         }
         let total = totalParticleCount
