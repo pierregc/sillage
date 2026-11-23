@@ -23,6 +23,10 @@ public struct DiskEquilibrium {
     private let ringCurve: [Float]
     private let ringStep: Float
     private let ringMass: Float
+    /// The flattened bulge's pull in the plane, as a speed squared, every `bulgeStep` kpc from
+    /// the centre: empty unless the galaxy takes its bulge apart (`bulgeApart`).
+    private let bulgeCurve: [Float]
+    private let bulgeStep: Float
 
     public init(config: GalaxyConfig, selfGravitating: Bool = true) {
         self.config = config
@@ -31,6 +35,20 @@ public struct DiskEquilibrium {
         let scale = max(config.diskScaleLength, 1e-3)
         let own = config.bulgeApart == true ? 1 - min(max(config.bulgeFraction, 0), 0.9) : 1
         self.centralDensity = diskMass * own / (2 * .pi * scale * scale)
+        let bulgeShare = min(max(config.bulgeFraction, 0), 0.9)
+        let flattening = min(max(config.bulgeFlattening, 0.05), 1)
+        if selfGravitating, config.bulgeApart == true, bulgeShare > 0, flattening < 1 {
+            let a = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
+            let step = 4 * a * DiskSampler.bulgeTruncation / Float(Self.bulgeSamples - 1)
+            bulgeStep = step
+            bulgeCurve = (0..<Self.bulgeSamples).map {
+                Self.flattenedBulgeSpeedSquared(
+                    mass: diskMass * bulgeShare, scale: a, flattening: flattening, radius: Float($0) * step)
+            }
+        } else {
+            bulgeStep = 1
+            bulgeCurve = []
+        }
         if selfGravitating, let ring = config.drawnDustRing {
             let disk = diskMass * (1 - min(max(config.bulgeFraction, 0), 0.9))
             let mass = disk * Self.shares(config).dust * ring.share
@@ -49,6 +67,43 @@ public struct DiskEquilibrium {
     }
 
     static let ringSamples = 192
+    static let bulgeSamples = 1024
+
+    /// What the bulge adds to the square of the circular speed in its own plane, flattened as
+    /// the sampler draws it: a Hernquist sphere cut at six scale radii, its mass kept inside, and
+    /// squeezed along the disk's axis. A spheroid pulls harder in its plane than the sphere it
+    /// was squeezed from, a tenth at a flattening of 0.7 between one and three scale radii, which
+    /// is nothing under a small bulge and a fifteenth of the launch speed's square under one of
+    /// three quarters. Summed over its shells (Binney and Tremaine, equation 2.132).
+    static func flattenedBulgeSpeedSquared(
+        mass: Float, scale: Float, flattening: Float, radius: Float
+    ) -> Float {
+        guard mass > 0, radius > 0 else { return 0 }
+        let a = Double(scale)
+        let r = Double(radius)
+        let edge = a * Double(DiskSampler.bulgeTruncation)
+        let held = (edge / (edge + a)) * (edge / (edge + a))
+        let squeeze = 1 - Double(flattening) * Double(flattening)
+        let reach = min(r, edge)
+        let shells = 400
+        var total = 0.0
+        for shell in 0..<shells {
+            let m = (Double(shell) + 0.5) * reach / Double(shells)
+            total += m / ((m + a) * (m + a) * (m + a) * (r * r - squeeze * m * m).squareRoot())
+        }
+        total *= reach / Double(shells)
+        return Float(2 * Double(Physics.gravitationalConstant) * Double(mass) * a * total / held)
+    }
+
+    private func bulgeSpeedSquared(atRadius radius: Float, mass: Float) -> Float {
+        let at = radius / bulgeStep
+        let index = Int(at)
+        guard index < bulgeCurve.count - 1 else {
+            return Physics.gravitationalConstant * mass / max(radius, 1e-4)
+        }
+        let t = at - Float(index)
+        return bulgeCurve[index] * (1 - t) + bulgeCurve[index + 1] * t
+    }
 
     /// What a ring of gas adds to the square of the circular speed at `radius`: nothing to
     /// speak of well inside it, less than nothing just inside, where it pulls outward, and a
@@ -143,7 +198,9 @@ public struct DiskEquilibrium {
             scaleRadius: config.potential.scaleRadius)
         var squared = halo.circularSpeed(atRadius: r) * halo.circularSpeed(atRadius: r)
 
-        if bulgeShare > 0 {
+        if !bulgeCurve.isEmpty {
+            squared += bulgeSpeedSquared(atRadius: r, mass: stellar * bulgeShare)
+        } else if bulgeShare > 0 {
             // Spherical: the bulge's flattening moves this by less than the sampling noise.
             // Truncated, though, and that part does show — a sphere cut at six scale radii
             // carries the whole of its mass inside them and pulls a third harder there than

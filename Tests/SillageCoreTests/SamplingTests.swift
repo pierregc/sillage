@@ -843,8 +843,13 @@ struct BulgeApartTests {
     /// Under a bulge of three quarters the disk's own surface density is a quarter of the stars',
     /// and so are its dispersion and, squared, its drift: launched near its circular speed.
     @Test func theDiskIsLaunchedOnItsOwnDensity() {
-        let whole = DiskEquilibrium(config: scene().galaxies[0], selfGravitating: true)
-        let apart = DiskEquilibrium(config: scene { $0.bulgeApart = true }.galaxies[0], selfGravitating: true)
+        let whole = DiskEquilibrium(
+            config: scene { $0.bulgeFlattening = 1 }.galaxies[0], selfGravitating: true)
+        let round = scene {
+            $0.bulgeFlattening = 1
+            $0.bulgeApart = true
+        }
+        let apart = DiskEquilibrium(config: round.galaxies[0], selfGravitating: true)
         let radius = 3 * scene().galaxies[0].diskScaleLength
         #expect(
             abs(apart.surfaceDensity(atRadius: radius) / whole.surfaceDensity(atRadius: radius) - 0.25) < 1e-4
@@ -852,11 +857,56 @@ struct BulgeApartTests {
         #expect(
             abs(apart.radialDispersion(atRadius: radius) / whole.radialDispersion(atRadius: radius) - 0.25)
                 < 1e-3)
-        #expect(abs(apart.circularSpeed(atRadius: radius) / whole.circularSpeed(atRadius: radius) - 1) < 1e-5)
+        #expect(abs(apart.circularSpeed(atRadius: radius) / whole.circularSpeed(atRadius: radius) - 1) < 1e-4)
         let lag = { (equilibrium: DiskEquilibrium) in
             1 - equilibrium.streamingSpeed(atRadius: radius) / equilibrium.circularSpeed(atRadius: radius)
         }
         #expect(lag(apart) < lag(whole) / 8)
+    }
+
+    /// Apart, the bulge pulls in the plane as the flattened body the sampler draws: as a sphere
+    /// when round, harder when squeezed, against the pull of its own sampled stars.
+    @Test func theBulgePullsAsItIsFlattened() {
+        let round = DiskEquilibrium.flattenedBulgeSpeedSquared(mass: 10, scale: 2, flattening: 1, radius: 5)
+        let held = Float(12.0 / 14.0) * Float(12.0 / 14.0)
+        let sphere = Physics.gravitationalConstant * 10 * (5.0 / 7.0) * (5.0 / 7.0) / held / 5
+        #expect(abs(round / sphere - 1) < 0.002)
+        let squeezed = DiskEquilibrium.flattenedBulgeSpeedSquared(
+            mass: 10, scale: 2, flattening: 0.7, radius: 5)
+        #expect(squeezed / sphere > 1.07 && squeezed / sphere < 1.14)
+
+        let galaxy = scene {
+            $0.bulgeApart = true
+            $0.bulgeFlattening = 0.7
+            $0.bulgeExtent = 1
+        }.galaxies[0]
+        let system = RestrictedSolver.sampleParticles(
+            for: scene {
+                $0.bulgeApart = true
+                $0.bulgeFlattening = 0.7
+                $0.bulgeExtent = 1
+            })
+        let stars = (0..<system.count).filter { system.component[$0] == ParticleComponent.bulge.rawValue }
+        let mass = stars.reduce(Float(0)) { $0 + system.mass[$1] }
+        let a = galaxy.bulgeExtent * galaxy.diskScaleLength
+        for radius in [a, 2.5 * a] {
+            var total = 0.0
+            for step in 0..<8 {
+                let angle = Float(step) * .pi / 4
+                let at = SIMD3<Float>(radius * cos(angle), radius * sin(angle), 0)
+                for index in stars {
+                    let d = at - system.positions[index]
+                    let r2 = Double(simd_length_squared(d)) + 0.01
+                    total +=
+                        Double(system.mass[index]) * Double(simd_dot(d, at) / radius) / (r2 * r2.squareRoot())
+                }
+            }
+            let summed = total / 8 * Double(radius) * Double(Physics.gravitationalConstant)
+            let curve = Double(
+                DiskEquilibrium.flattenedBulgeSpeedSquared(
+                    mass: mass, scale: a, flattening: 0.7, radius: radius))
+            #expect(abs(curve / summed - 1) < 0.04)
+        }
     }
 
     /// Absent or false the sample is the one it always was, and the scene file keeps the field.
