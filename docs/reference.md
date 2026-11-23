@@ -517,7 +517,10 @@ the same bytes as before. The file's optional `inside` block sets each piece; th
 lines say what the flight took. What each does and costs in
 [inside a galaxy](notes/inside-a-galaxy.md). Its `neighbours` (0 by default) widens the kernels
 that show alone at mid distance, where a sparse stretch of a disk reads as blobs
-([lone kernels](notes/lone-kernels.md)).
+([lone kernels](notes/lone-kernels.md)). Its `dustSlabs` (0 by default) lays the dust's slabs on
+the dust grains in the frame rather than on all the matter, the four together that many times the
+grains' depth, for a ring of dust inside a wide bulge (#479,
+[flights](notes/flights.md)).
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph

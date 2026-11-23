@@ -82,6 +82,11 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// (nearer than the first) to the matter's, or the aim point's every export has (past the
     /// second): drawn with both and dissolved, not slid (#396).
     public var slabsWithin: [Float] = [1.5, 6]
+    /// Past the near field, lays the slabs on the dust grains in the frame rather than on all the
+    /// matter (#479), the four together this many times the grains' depth; 0, the default, keeps
+    /// them on all the matter. A ring of dust in a wide bulge needs it: on the matter, a slab is as
+    /// deep as the bulge and the ring's far side shades the core.
+    public var dustSlabs: Float = 0
     /// How near a disk, in its radii (seven scale lengths), the lace of its dust web is carried
     /// through the depth of its dust layer: wholly within the first, not at all past the second,
     /// where it lies in the mid-plane as every export draws it (#354).
@@ -142,6 +147,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         fade = try c.value(.fade, or: fade)
         slabs = try c.value(.slabs, or: slabs)
         slabsWithin = try c.value(.slabsWithin, or: slabsWithin)
+        dustSlabs = try c.value(.dustSlabs, or: dustSlabs)
         web = try c.value(.web, or: web)
         dustFine = try c.value(.dustFine, or: dustFine)
         dustCell = try c.value(.dustCell, or: dustCell)
@@ -196,6 +202,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !rising(slabs, 3) { return "slabs \(slabs): three distances in kpc, each past the one before" }
         if !rising(slabsWithin, 2) {
             return "slabsWithin \(slabsWithin): two distances in kpc, the first nearer"
+        }
+        if !(dustSlabs == 0 || (dustSlabs >= 1 && dustSlabs <= 8)) {
+            return "dustSlabs \(dustSlabs): 0, or 1 to 8 times the dust's depth"
         }
         if !rising(web, 2) { return "web \(web): two distances in disk radii, the first nearer" }
         if !(dustFine >= 0 && dustFine <= 2.5) { return "dustFine \(dustFine): 0 to 2.5" }
@@ -557,10 +566,32 @@ public enum MatterDepth {
     /// 128 bins an octave, read through linearly: a particle crossing a bin's edge or the frame's
     /// moves a knot by a share of a bin over the bin's count, so the knots move as smoothly as
     /// the camera does.
+    ///
+    /// With `dust`, the components of the points and the stack's depth against the dust's (#479),
+    /// the knots are read on the dust grains alone and the four slabs together are that many
+    /// times the grains' depth; with no grain in the frame, on all the matter as without.
     public static func knots(
-        camera: Camera, aspectRatio: Float, points: UnsafeRawPointer, count: Int
+        camera: Camera, aspectRatio: Float, points: UnsafeRawPointer, count: Int,
+        dust: (components: [UInt32], cover: Float)? = nil
     ) -> [Float]? {
         guard count > 0 else { return nil }
+        if let dust, dust.cover > 0,
+            let knots = depths(
+                camera: camera, aspectRatio: aspectRatio, points: points, count: count,
+                only: dust.components, cover: dust.cover)
+        {
+            return knots
+        }
+        return depths(
+            camera: camera, aspectRatio: aspectRatio, points: points, count: count, only: nil, cover: 0)
+    }
+
+    private static func depths(
+        camera: Camera, aspectRatio: Float, points: UnsafeRawPointer, count: Int,
+        only components: [UInt32]?, cover: Float
+    ) -> [Float]? {
+        let wanted = ParticleComponent.dust.rawValue
+        let marked = min(components?.count ?? count, count)
         let matrix = camera.viewProjection(aspectRatio: aspectRatio)
         let stride = MemoryLayout<SIMD3<Float>>.stride
         let near = max(camera.near, 1e-6)
@@ -573,6 +604,7 @@ public enum MatterDepth {
             concurrentPerform(iterations: chunks) { chunk in
                 let base = chunk * bins
                 for index in (chunk * count / chunks)..<((chunk + 1) * count / chunks) {
+                    if let components, index >= marked || components[index] != wanted { continue }
                     let p = points.load(fromByteOffset: index * stride, as: SIMD3<Float>.self)
                     let clip = matrix * SIMD4(p, 1)
                     guard clip.w > near, clip.w.isFinite, abs(clip.x) <= clip.w, abs(clip.y) <= clip.w
@@ -601,7 +633,7 @@ public enum MatterDepth {
         }
         let (front, back) = (depth(at: shares.near), depth(at: shares.far))
         let middle = (front + back) / 2
-        let slab = max(back - front, middle * thinnest) * slabShare
+        let slab = max(back - front, middle * thinnest) * (components == nil ? slabShare : cover / 4)
         let start = middle - 2 * slab
         return (0...4).map { start + Float($0) * slab }
     }

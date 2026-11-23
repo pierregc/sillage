@@ -207,6 +207,12 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   (#355); they slide from one layout to the other as the eye comes within `slabsWithin`
   (`[1.5, 6]` kpc) of matter. On the look's own camera the slabs are the export's, around the aim
   point and hard, and they go over to the matter's in the second after it.
+- **Slabs on the dust** (`dustSlabs`, 0 by default, #479): a positive value lays the slabs past
+  the near field on the dust grains in the frame alone, the four together that many times the
+  grains' depth (second to ninety-eighth percentile), so that they just cover the dust. On all
+  the matter a bulge 30 kpc deep makes each slab 22 kpc deep, and the far side of a ring of dust
+  inside it shades the core; on the dust the slabs are as deep as the ring. With no grain in the
+  frame they fall back on the matter. 1.2 suits the Sombrero.
 - **The dust web's lace is carried through the dust layer's depth** as the eye comes within
   `web` (`[1, 2]` radii, seven scale lengths each) of a disk (#354): a pixel's lace is its mean
   along the stretch of ray inside the layer, so it evens out where the rays graze the plane, with

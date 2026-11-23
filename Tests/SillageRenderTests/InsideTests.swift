@@ -142,6 +142,46 @@ struct InsideTests {
         }
     }
 
+    /// With `dustSlabs`, the stack is laid on the dust grains alone and just covers them (#479):
+    /// a thin ring inside a deep bulge gets slabs as deep as the ring, not the bulge.
+    @Test func aFlightsSlabsCanBeLaidOnTheDust() {
+        var generator = SeededGenerator(seed: 7)
+        // A bulge 60 kpc deep about 100 kpc away, and a ring of dust 2 kpc deep within it.
+        var points = (0..<100_000).map { _ in
+            SIMD3<Float>(
+                generator.uniform() * 8 - 4, generator.uniform() * 60 - 30, generator.uniform() * 8 - 4)
+        }
+        var components = [UInt32](repeating: ParticleComponent.bulge.rawValue, count: points.count)
+        points += (0..<20_000).map { _ in
+            SIMD3<Float>(generator.uniform() * 8 - 4, generator.uniform() * 2 - 1, generator.uniform() * 0.2)
+        }
+        components += [UInt32](repeating: ParticleComponent.dust.rawValue, count: 20_000)
+        let camera = Camera(eye: SIMD3(0, -100, 0), target: .zero, fieldOfView: 0.6, near: 0.001)
+        func knots(_ dust: (components: [UInt32], cover: Float)?) -> [Float] {
+            points.withUnsafeBytes {
+                MatterDepth.knots(
+                    camera: camera, aspectRatio: 16 / 9, points: $0.baseAddress!, count: points.count,
+                    dust: dust)!
+            }
+        }
+        let matter = knots(nil)
+        #expect(matter[1] - matter[0] > 30, "\(matter)")
+        // From the second to the ninety-eighth percentile of 99 to 101 kpc, 1.92 kpc deep, the
+        // four slabs 1.2 times that.
+        let dust = knots((components, 1.2))
+        for index in 0..<5 {
+            let wanted: Float = 100 + 0.576 * Float(index - 2)
+            #expect(abs(dust[index] - wanted) < 0.05, "\(dust)")
+        }
+        // Off, or with no grain in the frame, the matter's knots to the bit.
+        #expect(knots((components, 0)) == matter)
+        let none = [UInt32](repeating: ParticleComponent.star.rawValue, count: points.count)
+        #expect(knots((none, 1.2)) == matter)
+        var faulty = InsideSettings()
+        faulty.dustSlabs = 0.5
+        #expect(faulty.fault?.contains("dustSlabs") == true)
+    }
+
     /// Between the matter's slabs and the eye's, a render is drawn with either stack as asked,
     /// for the renderer to dissolve them, and never slides one into the other (#396).
     @Test func aFrameBetweenTheStacksIsDrawnWithEither() {
