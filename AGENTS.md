@@ -204,12 +204,29 @@ with a score (`megayears`, `elevation`, `azimuth`, `roll`, `kpcPerWidth`); `--at
 `--view` and `--span` narrow the search. On CUDA: `sillage-cuda match`. Reference pictures and
 their credits are in `references/` (`references/catalogue` has twenty interacting galaxies).
 
-The film that shrinks the simulation into one half and slides the picture in on the other has no
-shared tool yet (#463). Two worked sets exist, each written for its galaxy:
-`references/cartwheel/tools` and `references/ngc2207/tools` (`view2key.py` turns a match into the
-flight key that frames the picture, `flights.py` writes the flight, `compose.py` the split
-screen, `title.py` the title). Their paths are those of the workspace they ran in: copy and
-adapt, or wait for #463.
+`scripts/picture-film.py` makes the pictures and the film that show the two together (Pillow and
+ffmpeg, on the Mac or Linux; each command prints one JSON line naming what it wrote):
+
+```bash
+scripts/picture-film.py flight S/match/picture.json --picture picture.jpg --out S/flights/photo.flight.json
+sillage-render export S --flight photo --flight-keys out/photo         # the take as the picture frames it
+scripts/picture-film.py still out/photo/<key>.png out/beside.jpg --picture picture.jpg --left Simulation --right Webb
+scripts/picture-film.py key S/match/picture.json --picture picture.jpg --at 30   # one key, to paste in a flight
+scripts/picture-film.py film master.mov out/film.mp4 --picture picture.jpg --hold 30:9 \
+    --title "NGC 2207  &  IC 2163" --subtitle "115 million light-years away" \
+    --left "Simulation  ·  Sillage" --right "James Webb Space Telescope" --credit "Image: NASA, ESA, CSA, STScI"
+scripts/picture-film.py sheet out/sheet.jpg a.png b.png --picture picture.jpg --labels "first,second"
+scripts/picture-film.py sheet out/sheet.jpg out/film.mp4 --at 5,31,34,60   # frames of a video
+```
+
+`film` takes one continuous video (a flight's export, ProRes for a master) whose camera holds the
+picture's view over `--hold <start s>:<length s>`: the frame gives up half the screen, the picture
+comes in beside it, the title fades in and out, and the rest of the video is untouched. Put the
+`key` in the flight at the hold's start and again at its end, with the same `myr`, so the view and
+the time hold. A picture wider than tall: key with `--fit width` (the default), layout `shrink`. A
+taller one: `--fit height`, layout `slide`. `references/cartwheel` and `references/ngc2207` hold
+two finished examples, with their scenes, looks and flights; `docs/notes/cartwheel.md` and
+`ngc2207.md` tell how each was made.
 
 ### A black hole close up
 
