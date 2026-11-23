@@ -980,6 +980,14 @@ particle crosses well under one softening length per step.
 **Parameters.** Per scene: particle count, opening angle, halo particle ratio. Per galaxy:
 mass, scale radius, truncation, thickness, Toomre Q, inclination, position angle and spin.
 
+**A disk under a large bulge.** The disk's random motions and its drift behind the circular speed
+are worked out from a surface density that counts the whole stellar mass, the bulge's included:
+right to a tenth under a small bulge, four times too dense under one of three quarters, whose
+disk is then launched hot and a fifth slow and falls inward (the Sombrero's ring went from 6.7 to
+4.7 kpc in 166 Myr). A galaxy of `scene.json` that carries `"bulgeApart": true` has them worked
+out from the disk's own surface density. A scene without the field samples what it always did
+(#482).
+
 **A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
 as the stars'. A galaxy of `scene.json` that carries
 `"dustRing": {"radius": 9, "width": 1.2, "share": 1}` has it gathered at one radius instead, the

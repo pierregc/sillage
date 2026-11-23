@@ -829,3 +829,46 @@ struct DustRingTests {
         }
     }
 }
+
+@Suite("Bulge apart")
+struct BulgeApartTests {
+    private func scene(_ change: (inout GalaxyConfig) -> Void = { _ in }) -> SceneConfig {
+        var scene = SceneConfig.isolatedDisk(particleCount: 40_000)
+        scene.galaxies[0].kind = .spiral
+        scene.galaxies[0].bulgeFraction = 0.75
+        change(&scene.galaxies[0])
+        return scene
+    }
+
+    /// Under a bulge of three quarters the disk's own surface density is a quarter of the stars',
+    /// and so are its dispersion and, squared, its drift: launched near its circular speed.
+    @Test func theDiskIsLaunchedOnItsOwnDensity() {
+        let whole = DiskEquilibrium(config: scene().galaxies[0], selfGravitating: true)
+        let apart = DiskEquilibrium(config: scene { $0.bulgeApart = true }.galaxies[0], selfGravitating: true)
+        let radius = 3 * scene().galaxies[0].diskScaleLength
+        #expect(
+            abs(apart.surfaceDensity(atRadius: radius) / whole.surfaceDensity(atRadius: radius) - 0.25) < 1e-4
+        )
+        #expect(
+            abs(apart.radialDispersion(atRadius: radius) / whole.radialDispersion(atRadius: radius) - 0.25)
+                < 1e-3)
+        #expect(abs(apart.circularSpeed(atRadius: radius) / whole.circularSpeed(atRadius: radius) - 1) < 1e-5)
+        let lag = { (equilibrium: DiskEquilibrium) in
+            1 - equilibrium.streamingSpeed(atRadius: radius) / equilibrium.circularSpeed(atRadius: radius)
+        }
+        #expect(lag(apart) < lag(whole) / 8)
+    }
+
+    /// Absent or false the sample is the one it always was, and the scene file keeps the field.
+    @Test func withoutItNothingChanges() throws {
+        let plain = RestrictedSolver.sampleParticles(for: scene())
+        let off = RestrictedSolver.sampleParticles(for: scene { $0.bulgeApart = false })
+        #expect(off.positions == plain.positions)
+        #expect(off.velocities == plain.velocities)
+        let on = RestrictedSolver.sampleParticles(for: scene { $0.bulgeApart = true })
+        #expect(on.velocities != plain.velocities)
+        let file = try SceneFile(scene { $0.bulgeApart = true }).encoded()
+        #expect(try SceneFile.decoded(from: file).scene(particleCount: 1_000).galaxies[0].bulgeApart == true)
+        #expect(!String(decoding: try SceneFile(scene()).encoded(), as: UTF8.self).contains("bulgeApart"))
+    }
+}

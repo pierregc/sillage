@@ -141,6 +141,11 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// `dustFraction` of the particles for the light. Absent, as in every file written before
     /// #218, a dust particle weighs what a star does and the gas carries `dustFraction`.
     public var dustMassFraction: Float?
+    /// Whether the disk's random motions and drift are worked out from the disk's own surface
+    /// density, the bulge's share left out (#482). Absent, as in every file written before, from
+    /// the whole stellar mass: right to a tenth under a small bulge, four times too dense under
+    /// one of three quarters, whose disk was then launched hot and a fifth slow.
+    public var bulgeApart: Bool?
     /// The ring this galaxy's dust is gathered in, when it has one (#475).
     public var dustRing: DustRing?
 
@@ -287,7 +292,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armMassContrast, armStreaming, massLopsidedness, patternShare, outskirtFraction
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
-        case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction, dustRing
+        case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction, dustRing, bulgeApart
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -337,6 +342,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         spin = try values.decode(Spin.self, forKey: .spin)
         effectiveToomreQ = try values.decodeIfPresent(Float.self, forKey: .effectiveToomreQ)
         dustMassFraction = try values.decodeIfPresent(Float.self, forKey: .dustMassFraction)
+        bulgeApart = try values.decodeIfPresent(Bool.self, forKey: .bulgeApart)
         dustRing = try values.decodeIfPresent(DustRing.self, forKey: .dustRing)
     }
 

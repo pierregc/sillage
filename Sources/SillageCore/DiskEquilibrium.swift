@@ -29,7 +29,8 @@ public struct DiskEquilibrium {
         self.selfGravitating = selfGravitating
         let diskMass = config.potential.mass * config.diskMassFraction
         let scale = max(config.diskScaleLength, 1e-3)
-        self.centralDensity = diskMass / (2 * .pi * scale * scale)
+        let own = config.bulgeApart == true ? 1 - min(max(config.bulgeFraction, 0), 0.9) : 1
+        self.centralDensity = diskMass * own / (2 * .pi * scale * scale)
         if selfGravitating, let ring = config.drawnDustRing {
             let disk = diskMass * (1 - min(max(config.bulgeFraction, 0), 0.9))
             let mass = disk * Self.shares(config).dust * ring.share

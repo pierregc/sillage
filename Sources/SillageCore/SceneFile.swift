@@ -68,6 +68,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
         /// The ring the dust is gathered in (`GalaxyConfig.DustRing`, #475); absent, the dust
         /// is drawn along the arms as it always was.
         public var dustRing: GalaxyConfig.DustRing?
+        /// The disk's motions from its own surface density (`GalaxyConfig.bulgeApart`, #482);
+        /// absent, from the whole stellar mass as it always was.
+        public var bulgeApart: Bool?
         public var haloParticleRatio: Float
         public var haloExtent: Float
         public var dissipationTime: Float
@@ -107,6 +110,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             effectiveToomreQ = galaxy.effectiveToomreQ
             dustMassFraction = galaxy.dustMassFraction
             dustRing = galaxy.dustRing
+            bulgeApart = galaxy.bulgeApart
             haloParticleRatio = galaxy.haloParticleRatio
             haloExtent = galaxy.haloExtent
             dissipationTime = galaxy.dissipationTime
@@ -171,6 +175,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.effectiveToomreQ = effectiveToomreQ
             galaxy.dustMassFraction = dustMassFraction
             galaxy.dustRing = dustRing
+            galaxy.bulgeApart = bulgeApart
             return galaxy
         }
     }
