@@ -85,6 +85,13 @@ enum Shaders {
             /// a haze where the grains would show as blobs (1 and 0 for none).
             float glowHaze;
             float glowFade;
+            /// The particles of its kind a kernel that shows alone is widened to cover in
+            /// projection, 0 for none (docs/notes/lone-kernels.md); the kernel sizes, in pixels,
+            /// between which a star's widens, and the widest such a kernel is drawn.
+            float neighbours;
+            float loneStart;
+            float loneEnd;
+            float loneWidest;
         };
         #endif
 
@@ -654,6 +661,62 @@ enum Shaders {
         #endif
 
         #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+        // The column of a frame that widens its lone kernels (docs/notes/lone-kernels.md), at a
+        // level of its pyramid: the particles that emit in x, the grains of dust in y, each
+        // level's cell the mean of the four under it.
+        #if defined(__METAL_VERSION__)
+        constexpr sampler columnPyramid(filter::linear, mip_filter::nearest, address::clamp_to_edge,
+                                        coord::normalized);
+        static float2 columnKinds(ColumnDensity column, float2 uv, uint mip) {
+            return column.sample(columnPyramid, uv, level(float(mip))).rg;
+        }
+        #else
+        SHARED float2 columnKinds(ColumnDensity column, float2 uv, uint mip) {
+            float4 kinds = sample_linear_level(column, uv, min(mip, column.levels - 1u), false);
+            return float2(kinds.x, kinds.y);
+        }
+        #endif
+
+        // The levels read: the last one's cell is 256 accumulation pixels across.
+        SHARED_CONSTANT uint columnLevels = 6u;
+
+        // The particles of a kind over a point of the frame, to an accumulation pixel squared:
+        // read from the finest level whose cell holds enough of them to say, six with the
+        // particle itself. Where a kernel shows alone a cell of the first level holds less than
+        // one, and its count is the particle's own.
+        SHARED float insideColumn(ColumnDensity column, float2 uv, bool grain, float cell) {
+            float density = 0.0f;
+            float left = 1.0f;
+            for (uint mip = 0u; mip < columnLevels; ++mip) {
+                float2 kinds = columnKinds(column, uv, mip);
+                float mean = grain ? kinds.y : kinds.x;
+                float held = mean * float(1u << (2u * mip));
+                float sure = mip + 1u == columnLevels ? 1.0f : saturate((held - 1.0f) / 5.0f);
+                density += left * sure * mean;
+                left *= 1.0f - sure;
+            }
+            return density / (cell * cell);
+        }
+
+        // How wide a kernel `raw` across is drawn. The tree's spacing is a volume's: a sparse
+        // stretch of a disk seen face on stacks nothing along a line of sight, and a kernel one
+        // spacing wide, once it is wide enough on screen to be told from a point, shows as a
+        // disk of its own. Such a kernel is widened until it covers `neighbours` particles of
+        // its kind in projection, its light kept; a kernel's profile holds its light within
+        // 2 pi sigma squared, sigma a sixth of its width. A star's from a size on screen, under
+        // which it is a point and stays one; a grain's glow at any size, as what the dust
+        // gives off is never a point.
+        SHARED float insideMerged(float raw, float2 uv, bool grain, ColumnDensity column,
+                                  constant SplatUniforms &u) {
+            if (u.inside.neighbours <= 0.0f) { return raw; }
+            float lone = grain ? 1.0f : smoothstep(u.inside.loneStart, u.inside.loneEnd, raw);
+            if (lone <= 0.0f) { return raw; }
+            float density = max(insideColumn(column, uv, grain, u.columnCell), 1e-12f);
+            float wide = min(6.0f * sqrt(u.inside.neighbours / (2.0f * M_PI_F * density)),
+                             u.inside.loneWidest);
+            return raw + (max(wide, raw) - raw) * lone;
+        }
+
         // Where a view depth falls in the stack of four dust slabs, 0 to 4: straight between
         // the knots. Around the aim point they are evenly spaced, which is the stack every
         // frame has; from inside they are placed from the eye, a factor apart.
@@ -1135,6 +1198,17 @@ enum Shaders {
             if (!absorbing) { raw *= populationWidth(kind, nursery, knot, ageMyr, u); }
             #endif
             float span = clamp(raw, u.minimumSize, u.maximumSize);
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            // A lone kernel's width, for what emits and is not a point star. A grain's glow takes
+            // it further down; its dust keeps the tree's, and so do the stars' cross-fade, the
+            // fade at the near plane and the capped kernels' law.
+            float merged = raw;
+            if (!hole && p.starShare <= 0.0f && u.inside.neighbours > 0.0f) {
+                float2 at = float2(0.5f, 0.5f) + float2(0.5f, -0.5f) * out.position.xy / depth;
+                merged = insideMerged(raw, at, absorbing, column, u);
+            }
+            if (!absorbing && merged > raw) { span = max(merged, span); }
+            #endif
             // Take the length back from the clamped span. Dividing by the unclamped one would
             // brighten every particle the floor caught, which made the softness control shift
             // the exposure as a side effect.
@@ -1192,7 +1266,15 @@ enum Shaders {
                 #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
                 else {
                     insideNearDust(out, position, p.id, perPixel, frame, u);
-                    if (u.pass == 2u) { insideGlowHaze(out, raw, u.inside); }
+                    if (u.pass == 2u) {
+                        insideGlowHaze(out, raw, u.inside);
+                        // The wider of the haze and the lone kernel, not one over the other.
+                        float wide = min(merged * 1.3f, 511.0f) / max(out.pointSize, 1e-3f);
+                        if (merged > raw && wide > 1.0f) {
+                            out.pointSize *= wide;
+                            out.opticalDepth = half(float(out.opticalDepth) / (wide * wide));
+                        }
+                    }
                 }
                 #endif
             } else {
@@ -2625,6 +2707,31 @@ enum Shaders {
             return out;
         }
 
+        // The same for a frame that widens its lone kernels: a grain of dust is counted too, into
+        // a channel of its own.
+        #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+        SHARED CountPoint countKindPoint(float3 position, uint kind, float born,
+                                         constant SplatUniforms &u, thread float &grain) {
+            CountPoint out;
+            out.position = u.viewProjection * float4(position, 1.0f);
+            out.pointSize = 1.0f;
+            bool nursery = kind == 1u || kind == 2u;
+            float ageMyr = (nursery || born >= 0.0f)
+                ? (u.time - born) * u.megayearsPerUnit : -born * u.megayearsPerUnit;
+            bool knot = born > -1e8f && born < 1e8f && ageMyr >= 0.0f;
+            grain = (kind == 2u && !knot) ? 1.0f : 0.0f;
+            if (kind == 3u || kind == 6u) {
+                out.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
+                out.pointSize = 0.0f;
+            }
+            return out;
+        }
+
+        SHARED float4 countKindPixel(float grain) {
+            return float4(1.0f - grain, grain, 0.0f, 0.0f);
+        }
+        #endif
+
         // A light tracer's, from its state and its word.
         SHARED CountPoint countTracer(float4 state, uint word, constant SplatUniforms &u) {
             return countPoint(state.xyz, (word >> 4) & 7u, state.w, u);
@@ -2666,6 +2773,46 @@ enum Shaders {
         fragment float4 countFragment(CountOut in [[stage_in]]) {
             return countPixel();
         }
+
+        #if defined(SILLAGE_INSIDE)
+        struct CountKindOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            float grain [[flat]];
+        };
+
+        vertex CountKindOut countKindsVertex(uint vid [[vertex_id]],
+                                             device const float3 *positions [[buffer(0)]],
+                                             device const uint *component [[buffer(3)]],
+                                             constant SplatUniforms &u [[buffer(4)]],
+                                             device const float *formation [[buffer(8)]]) {
+            CountKindOut out;
+            float grain = 0.0f;
+            CountPoint point = countKindPoint(positions[vid], component[vid], formation[vid], u, grain);
+            out.position = point.position;
+            out.pointSize = point.pointSize;
+            out.grain = grain;
+            return out;
+        }
+
+        vertex CountKindOut countKindsTracerVertex(uint vid [[vertex_id]],
+                                                   constant SplatUniforms &u [[buffer(4)]],
+                                                   device const float4 *states [[buffer(18)]],
+                                                   device const uint *words [[buffer(19)]]) {
+            CountKindOut out;
+            float grain = 0.0f;
+            CountPoint point = countKindPoint(states[vid].xyz, (words[vid * 4u + 3u] >> 4) & 7u,
+                                              states[vid].w, u, grain);
+            out.position = point.position;
+            out.pointSize = point.pointSize;
+            out.grain = grain;
+            return out;
+        }
+
+        fragment float4 countKindsFragment(CountKindOut in [[stage_in]]) {
+            return countKindPixel(in.grain);
+        }
+        #endif
         #endif
 
         // The raw look: one fixed-size point per particle in its galaxy's tint, none of the

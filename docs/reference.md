@@ -515,7 +515,9 @@ follows by itself and a fast pass is averaged from several renders. All of it is
 so the photograph a flight leaves from stays the export's, and an export without a flight draws
 the same bytes as before. The file's optional `inside` block sets each piece; the export's last
 lines say what the flight took. What each does and costs in
-[inside a galaxy](notes/inside-a-galaxy.md).
+[inside a galaxy](notes/inside-a-galaxy.md). Its `neighbours` (0 by default) widens the kernels
+that show alone at mid distance, where a sparse stretch of a disk reads as blobs
+([lone kernels](notes/lone-kernels.md)).
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph

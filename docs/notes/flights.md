@@ -225,6 +225,12 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   it as before. The Cartwheel's film flies with 5 and 0.5. Under a `dustWeb` the web's own
   glow is drawn once per pixel and has no haze to spread; the painted strands' grains glow
   without it too ([NGC 2207](ngc2207.md)).
+- **Kernels that show alone**: at mid distance, past the near field, the particles of a sparse
+  stretch seen face on are disks of their own, the glow's grains most of all. With `neighbours`
+  (0, off, by default; the Cartwheel's film flies with 8) such a kernel is widened until it covers
+  that many particles of its kind in projection, its light kept: a star's between `loneFrom` and
+  `loneFull` pixels on screen (5 and 12, of a frame 2160 high), a grain's glow at any size, at
+  most `loneWidest` (120) wide ([lone kernels](lone-kernels.md)).
 - **Motion blur**: while the shutter is open (`shutter`, half of the frame's interval) a point
   star is drawn as the streak it leaves, and the frame is averaged from up to `subframes` renders
   (8), one for every four pixels the near matter crosses meanwhile, each drawing its share of

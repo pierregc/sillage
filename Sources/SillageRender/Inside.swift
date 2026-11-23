@@ -54,6 +54,18 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// the grains, a sixth as many as the stars, stood out as blobs. 1 and 0 draw it as before.
     public var glowHaze: Float = 1
     public var glowFade: Float = 0
+    /// The particles of its kind a kernel that shows alone is widened to cover in projection, its
+    /// light kept (docs/notes/lone-kernels.md): a kernel is a tree spacing wide, and where a disk
+    /// is sparse and nothing stacks along the line of sight, one wide enough on screen shows as a
+    /// disk of its own, most of all a grain's dust glow, a sixth as many as the stars. 0, the
+    /// default, leaves every kernel the tree's.
+    public var neighbours: Float = 0
+    /// The width of a star's kernel on screen, in pixels of a frame 2160 high, between which it is
+    /// widened: under the first it is a point and stays one. A grain's glow is at any size.
+    public var loneFrom: Float = 5
+    public var loneFull: Float = 12
+    /// The widest such a kernel is drawn, in pixels of a frame 2160 high.
+    public var loneWidest: Float = 120
     /// The near field, in kiloparsecs from the eye: stars and the capped kernels' law apply
     /// wholly nearer than the first, not at all past the second.
     public var field: [Float] = [3, 8]
@@ -116,6 +128,10 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         starFull = try c.value(.starFull, or: starFull)
         glowHaze = try c.value(.glowHaze, or: glowHaze)
         glowFade = try c.value(.glowFade, or: glowFade)
+        neighbours = try c.value(.neighbours, or: neighbours)
+        loneFrom = try c.value(.loneFrom, or: loneFrom)
+        loneFull = try c.value(.loneFull, or: loneFull)
+        loneWidest = try c.value(.loneWidest, or: loneWidest)
         field = try c.value(.field, or: field)
         fade = try c.value(.fade, or: fade)
         slabs = try c.value(.slabs, or: slabs)
@@ -161,6 +177,13 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         }
         if !(glowHaze >= 1 && glowHaze <= 16) { return "glowHaze \(glowHaze): 1 to 16" }
         if !(glowFade >= 0 && glowFade <= 1) { return "glowFade \(glowFade): 0 to 1" }
+        if !(neighbours >= 0 && neighbours <= 256) { return "neighbours \(neighbours): 0 to 256" }
+        if !(loneFrom >= 0 && loneFrom < loneFull && loneFull <= 512) {
+            return "loneFrom \(loneFrom) and loneFull \(loneFull) px: the first lower, to 512"
+        }
+        if !(loneWidest >= loneFull && loneWidest <= 512) {
+            return "loneWidest \(loneWidest) px: loneFull to 512"
+        }
         if !rising(field, 2) { return "field \(field): two distances in kpc, the first nearer" }
         if !(fade >= 0 && fade <= 32) { return "fade \(fade): 0 to 32 kernel lengths" }
         if !rising(slabs, 3) { return "slabs \(slabs): three distances in kpc, each past the one before" }
@@ -267,6 +290,13 @@ public struct InsideUniforms: Sendable {
     /// away there.
     public var glowHaze: Float = 1
     public var glowFade: Float = 0
+    /// The particles of its kind a kernel that shows alone is widened to cover in projection, 0
+    /// for none; the kernel sizes in accumulation pixels between which a star's widens, and the
+    /// widest such a kernel is drawn.
+    public var neighbours: Float = 0
+    public var loneStart: Float = 0
+    public var loneEnd: Float = 0
+    public var loneWidest: Float = 0
 
     /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
     /// grains are spread over two slabs, which is where two disks one behind the other come
@@ -357,6 +387,11 @@ public struct InsideUniforms: Sendable {
         clusterShare = inside.clusterShare
         glowHaze = inside.glowHaze
         glowFade = inside.glowFade
+        neighbours = inside.neighbours
+        loneStart = inside.loneFrom * lines / 2160
+        loneEnd = inside.loneFull * lines / 2160
+        // No point is wider than 511 pixels, and a grain's is 1.3 times its kernel.
+        loneWidest = min(inside.loneWidest * lines / 2160, 511 / 1.3)
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
