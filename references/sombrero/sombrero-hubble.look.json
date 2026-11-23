@@ -1,19 +1,19 @@
 {
  "bloomLevels": 4,
  "look": {
-  "armPersistence": 1.6,
+  "armPersistence": 0.0,
   "bloomIntensity": 0.5,
   "bloomSoftKnee": 0.6,
   "bloomThreshold": 0.26,
-  "brightness": 0.11,
+  "brightness": 0.26,
   "columnSmoothing": 300,
-  "dustStrength": 0.12,
+  "dustStrength": 0.16,
   "dustWeb": 1,
   "galaxyTint": 0,
-  "glint": 0.3,
+  "glint": 0.0,
   "holeShadow": 0,
   "maximumKernel": 92,
-  "minimumKernel": 1.8,
+  "minimumKernel": 1.0,
   "noiseLevel": 0,
   "saturation": 1.0,
   "skyColour": [
@@ -21,19 +21,20 @@
    0.42,
    0.39
   ],
-  "skyLevel": 0.0006,
-  "smoothingScale": 2.17794,
+  "skyLevel": 0.0,
+  "smoothingScale": 2.0,
   "spikeArms": 6,
   "spikeIntensity": 0,
   "spikeLength": 110,
   "spikePattern": "webb",
   "spikeSharpness": 1,
   "starSize": 0.5,
-  "stretch": 0.5,
-  "whitePoint": 6.0,
-  "youngWidth": 3
+  "stretch": 1.1,
+  "whitePoint": 10.0,
+  "youngWidth": 3,
+  "bulgeWidth": 3.0
  },
- "name": "sombrero-hubble",
+ "name": "f16",
  "palette": [
   {
    "blend": 0.75,
@@ -48,14 +49,14 @@
     0.95
    ],
    "disk": [
-    0.55,
-    0.54,
-    0.53
+    0.95,
+    0.91,
+    0.85
    ],
    "knot": [
-    1.58449,
-    0.84484,
-    0.81593
+    0.6,
+    0.8,
+    1.4
    ],
    "mapping": "mix",
    "outskirts": [
@@ -64,9 +65,9 @@
     1.80393
    ],
    "young": [
-    0.83829,
-    1.02158,
-    1.26236
+    0.95,
+    0.91,
+    0.85
    ]
   },
   {
@@ -82,14 +83,14 @@
     0.95
    ],
    "disk": [
-    0.55,
-    0.54,
-    0.53
+    0.95,
+    0.91,
+    0.85
    ],
    "knot": [
-    1.58449,
-    0.84484,
-    0.81593
+    0.6,
+    0.8,
+    1.4
    ],
    "mapping": "mix",
    "outskirts": [
@@ -98,9 +99,9 @@
     1.80393
    ],
    "young": [
-    0.83829,
-    1.02158,
-    1.26236
+    0.95,
+    0.91,
+    0.85
    ]
   },
   {
@@ -116,14 +117,14 @@
     0.95
    ],
    "disk": [
-    0.55,
-    0.54,
-    0.53
+    0.95,
+    0.91,
+    0.85
    ],
    "knot": [
-    1.58449,
-    0.84484,
-    0.81593
+    0.6,
+    0.8,
+    1.4
    ],
    "mapping": "mix",
    "outskirts": [
@@ -132,9 +133,9 @@
     1.80393
    ],
    "young": [
-    0.83829,
-    1.02158,
-    1.26236
+    0.95,
+    0.91,
+    0.85
    ]
   },
   {
@@ -150,14 +151,14 @@
     0.95
    ],
    "disk": [
-    0.55,
-    0.54,
-    0.53
+    0.95,
+    0.91,
+    0.85
    ],
    "knot": [
-    1.58449,
-    0.84484,
-    0.81593
+    0.6,
+    0.8,
+    1.4
    ],
    "mapping": "mix",
    "outskirts": [
@@ -166,9 +167,9 @@
     1.80393
    ],
    "young": [
-    0.83829,
-    1.02158,
-    1.26236
+    0.95,
+    0.91,
+    0.85
    ]
   },
   {
@@ -184,14 +185,14 @@
     0.95
    ],
    "disk": [
-    0.55,
-    0.54,
-    0.53
+    0.95,
+    0.91,
+    0.85
    ],
    "knot": [
-    1.58449,
-    0.84484,
-    0.81593
+    0.6,
+    0.8,
+    1.4
    ],
    "mapping": "mix",
    "outskirts": [
@@ -200,13 +201,14 @@
     1.80393
    ],
    "young": [
-    0.83829,
-    1.02158,
-    1.26236
+    0.95,
+    0.91,
+    0.85
    ]
   }
  ],
  "starCount": 7200,
  "version": 1,
- "world": "telescope"
+ "world": "telescope",
+ "armStrength": 0.0
 }
