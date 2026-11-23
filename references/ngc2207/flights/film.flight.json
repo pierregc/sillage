@@ -2,11 +2,13 @@
  "version": 1,
  "inside": {
   "field": [
-   8,
-   20
+   6,
+   14
   ],
   "glowHaze": 5,
-  "glowFade": 0.5
+  "glowFade": 0.5,
+  "stars": 24,
+  "subframes": 2
  },
  "keys": [
   {

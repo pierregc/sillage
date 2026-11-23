@@ -78,7 +78,9 @@ keys = [
     {"at": 188, "myr": M + 10, "eye": g(0, [mid[i] + 110 * turned(u, -0.5, 0.15)[i] for i in range(3)]), "aim": g(0, mid), "fov": 0.6},
     {"at": 206, "myr": END, "eye": g(0, [mid[i] + 150 * turned(u, -0.8, 0.2)[i] for i in range(3)]), "aim": g(0, mid)},
 ]
-inside = {"field": [8, 20], "glowHaze": 5, "glowFade": 0.5}
+# lighter than the Cartwheel's: these wide disks put most of the 8 M in the near field, 128 M point
+# stars a render and up to 8 renders a frame took 17 s an image
+inside = {"field": [6, 14], "glowHaze": 5, "glowFade": 0.5, "stars": 24, "subframes": 2}
 os.makedirs(f"{scene}/flights", exist_ok=True)
 json.dump({"version": 1, "inside": inside, "keys": keys}, open(f"{scene}/flights/film.flight.json", "w"), indent=1)
 print("start", round(START, 1), "pericentre", P, "photo", M, "end", END, "seconds", keys[-1]["at"])
