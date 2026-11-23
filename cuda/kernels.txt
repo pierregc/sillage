@@ -83,6 +83,7 @@ Shaders webCarrierTracerVertex cuda
 Shaders webCarrierFragment cuda in webCarrierVertex webCarrierTracerVertex
 Shaders webResolveVertex metal-only: the triangle that covers the frame, where CUDA launches webResolveFragment a pixel
 Shaders webResolveFragment cuda
+Shaders webGlowFragment pending #456
 Shaders splatFragment cuda in splatVertex splatTracerVertex
 Shaders countVertex cuda
 Shaders countTracerVertex cuda

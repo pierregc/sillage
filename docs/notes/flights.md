@@ -222,7 +222,9 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   to points the grains stood out as blobs (the Cartwheel's dives). In the near field a grain's
   glow is drawn up to `glowHaze` times wider, its light kept, over the stars' own cross-fade
   (`starFrom` to `starFull`), and `glowFade` of it taken away there; 1 and 0, the defaults, draw
-  it as before. The Cartwheel's film flies with 5 and 0.5.
+  it as before. The Cartwheel's film flies with 5 and 0.5. Under a `dustWeb` the web's own
+  glow is drawn once per pixel and has no haze to spread; the painted strands' grains glow
+  without it too ([NGC 2207](ngc2207.md)).
 - **Motion blur**: while the shutter is open (`shutter`, half of the frame's interval) a point
   star is drawn as the streak it leaves, and the frame is averaged from up to `subframes` renders
   (8), one for every four pixels the near matter crosses meanwhile, each drawing its share of

@@ -828,6 +828,11 @@ public final class Renderer {
                 encoder.setVertexBytes(&webUniforms, length: webLength, index: 13)
                 drawParts(
                     encoder, massive: web.painted, tracers: traced == nil ? nil : web.tracerPainted)
+                if settings.dustGlow > 0 && !settings.plain {
+                    var glow = SIMD4<Float>(settings.dustGlowColour, settings.dustGlow)
+                    encoder.setFragmentBytes(&glow, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                    drawParts(encoder, massive: web.paintedGlow, tracers: nil)
+                }
 
             case .webResolve:
                 guard let web, var webUniforms = webbed, let encoder = frameEncoder()
@@ -840,6 +845,16 @@ public final class Renderer {
                     encoder.setFragmentTexture(target.carrier, index: 1)
                     encoder.setFragmentTexture(target.tags, index: 2)
                     encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                }
+                if settings.dustGlow > 0 && !settings.plain {
+                    var glow = SIMD4<Float>(settings.dustGlowColour, settings.dustGlow)
+                    encoder.setRenderPipelineState(web.webGlow)
+                    encoder.setFragmentBytes(&glow, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
+                    for target in apart ?? [(web.carrier, web.tags)] {
+                        encoder.setFragmentTexture(target.carrier, index: 1)
+                        encoder.setFragmentTexture(target.tags, index: 2)
+                        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                    }
                 }
 
             case .stars:

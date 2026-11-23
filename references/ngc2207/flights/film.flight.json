@@ -1,0 +1,473 @@
+{
+ "version": 1,
+ "inside": {
+  "field": [
+   6,
+   14
+  ],
+  "glowHaze": 5,
+  "glowFade": 0.5,
+  "stars": 24,
+  "subframes": 2
+ },
+ "keys": [
+  {
+   "at": 0,
+   "myr": 157.892,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     153.481,
+     10.88,
+     -21.322
+    ]
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     5.075,
+     6.497,
+     0.042
+    ]
+   },
+   "fov": 0.6
+  },
+  {
+   "at": 9,
+   "myr": 242.892,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     118.861,
+     -31.27,
+     -5.106
+    ]
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     5.075,
+     6.497,
+     0.042
+    ]
+   }
+  },
+  {
+   "at": 16,
+   "myr": 279.7623,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     68.586,
+     -49.26,
+     9.127
+    ]
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     5.075,
+     6.497,
+     0.042
+    ]
+   },
+   "roll": -1.1871600000000002
+  },
+  {
+   "at": 24,
+   "myr": 283.6326,
+   "eye": [
+    42.90845,
+    -68.48515,
+    17.418050000000004
+   ],
+   "aim": [
+    4.163,
+    2.384,
+    0.449
+   ],
+   "fov": 0.3,
+   "roll": -2.3743200000000004
+  },
+  {
+   "at": 30.0,
+   "myr": 291.6326,
+   "eye": [
+    90.264,
+    -155.103,
+    38.158
+   ],
+   "aim": [
+    4.163,
+    2.384,
+    0.449
+   ],
+   "fov": 0.15,
+   "roll": -2.9679
+  },
+  {
+   "at": 39.0,
+   "eye": [
+    90.264,
+    -155.103,
+    38.158
+   ],
+   "aim": [
+    4.163,
+    2.384,
+    0.449
+   ]
+  },
+  {
+   "at": 50,
+   "eye": {
+    "galaxy": 1,
+    "offset": [
+     6,
+     -5,
+     46
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 1
+   },
+   "fov": 0.6,
+   "roll": 0
+  },
+  {
+   "at": 53,
+   "eye": {
+    "galaxy": 1,
+    "offset": [
+     4,
+     -3,
+     26
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 1,
+    "offset": [
+     1,
+     -0.6,
+     0
+    ],
+    "disk": true
+   },
+   "pace": "nearness"
+  },
+  {
+   "at": 63,
+   "eye": {
+    "galaxy": 1,
+    "offset": [
+     1.2,
+     -0.8,
+     2.2
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 1,
+    "offset": [
+     1.2,
+     -0.8,
+     -30
+    ],
+    "disk": true
+   }
+  },
+  {
+   "at": 70,
+   "eye": {
+    "galaxy": 1,
+    "offset": [
+     1.0,
+     -0.6,
+     1.4
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 77,
+   "eye": {
+    "galaxy": 1,
+    "offset": [
+     1.5,
+     -1.0,
+     4.0
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 97,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -12,
+     -8,
+     26
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 106,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -3,
+     -2,
+     6
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     3,
+     2,
+     -8
+    ],
+    "disk": true
+   },
+   "pace": "nearness"
+  },
+  {
+   "at": 112,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     1.5,
+     1.0,
+     -3
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     12,
+     7,
+     -0.5
+    ],
+    "disk": true
+   }
+  },
+  {
+   "at": 119,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     13,
+     7,
+     -15
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     6,
+     3,
+     0
+    ],
+    "disk": true
+   }
+  },
+  {
+   "at": 129,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -16,
+     -12,
+     -16
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 139,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -48,
+     -6,
+     2.2
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     0,
+     -4,
+     0
+    ],
+    "disk": true
+   }
+  },
+  {
+   "at": 145,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -26,
+     -5,
+     1.8
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     10,
+     -4,
+     -1
+    ],
+    "disk": true
+   },
+   "pace": "nearness"
+  },
+  {
+   "at": 153,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -4,
+     -4,
+     1.5
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     30,
+     -4,
+     -1.5
+    ],
+    "disk": true
+   },
+   "pace": "nearness"
+  },
+  {
+   "at": 158,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     13,
+     -6,
+     3.0
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 165,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     24,
+     -11,
+     4.5
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 172,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     11,
+     23,
+     5.5
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 179,
+   "myr": 291.6326,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -18,
+     19,
+     8
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 188,
+   "myr": 301.6326,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     5.108,
+     -96.564,
+     38.492
+    ]
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     5.075,
+     6.497,
+     0.042
+    ]
+   },
+   "fov": 0.6
+  },
+  {
+   "at": 206,
+   "myr": 657.447,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     -35.588,
+     -125.106,
+     59.432
+    ]
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     5.075,
+     6.497,
+     0.042
+    ]
+   }
+  }
+ ]
+}
