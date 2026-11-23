@@ -732,7 +732,9 @@ enum Shaders {
             // keeps stars over its glow and none is ever a disk on the way from a point to a haze.
             if (!grain && u.inside.lonePoints > 0.0f
                 && loneDraw(id) < u.inside.lonePoints * max(bright, 1.0f)) {
-                float point = min(raw, u.inside.starPointSize);
+                // No narrower than three accumulation pixels: under that a splat's profile falls
+                // between the pixels, and its light changes with where it stands on them (#357).
+                float point = min(raw, max(u.inside.starPointSize, 3.0f));
                 return raw + (point - raw) * lone * saturate(wide / raw - 1.0f);
             }
             return raw + (wide - raw) * lone;
