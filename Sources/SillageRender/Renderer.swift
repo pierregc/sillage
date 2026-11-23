@@ -758,6 +758,8 @@ public final class Renderer {
                 encoder.setVertexBuffer(drawnBuffer, offset: positionOffset, index: 0)
                 encoder.setVertexBuffer(componentBuffer, offset: 0, index: 3)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                // The inside library's count reads its uniforms with the inside behind them.
+                if counted != nil { bindDeep(encoder, uniforms) }
                 encoder.setVertexBuffer(formationBuffer, offset: 0, index: 8)
                 encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: drawnCount)
                 if let traced {
