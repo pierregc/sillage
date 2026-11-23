@@ -408,14 +408,19 @@ public enum DiskSampler {
         phaseOffset: Float = 0,
         scaleMultiplier: Float = 1,
         shape: SpiralPattern.Shape,
-        ring: (radius: Float, spread: Float)? = nil,
+        ring: (radius: Float, spread: Float, inner: Float?)? = nil,
         using generator: inout SeededGenerator
     ) -> (radius: Float, phi: Float, armProximity: Float) {
         var radius: Float = 0
         var phi: Float = 0
         var density: Float = 1
         for _ in 0..<32 {
-            if let ring {
+            if let ring, let inner = ring.inner {
+                // Two half bells of one height: the side is drawn by its share of the area.
+                let inside = generator.uniform() * (inner + ring.spread) < inner
+                let step = abs(generator.normal())
+                radius = inside ? ring.radius - step * inner : ring.radius + step * ring.spread
+            } else if let ring {
                 radius = ring.radius + generator.normal() * ring.spread
             } else {
                 radius =
@@ -613,8 +618,9 @@ public enum DiskSampler {
         // A ring's strands come first in the list, as many as its share of the dust, shorter
         // across the ring when it is narrow so that the grains' spread is the width asked.
         let ring = config.drawnDustRing
-        let ringStrand = ring.map { min(strandLength, $0.width * 0.7) } ?? strandLength
+        let ringStrand = ring.map { min(strandLength, min($0.width, $0.widths.inner) * 0.7) } ?? strandLength
         let ringCentres = ring.map { ($0.width * $0.width - ringStrand * ringStrand).squareRoot() } ?? 0
+        let ringInnerCentres = ring?.innerWidth.map { ($0 * $0 - ringStrand * ringStrand).squareRoot() }
         let ringFilaments = ring.map { Int((700 * $0.share).rounded()) } ?? 0
         var filaments: [Clump] = []
         for index in 0..<700 {
@@ -626,7 +632,7 @@ public enum DiskSampler {
                 config, arms: arms, contrast: min(strength * 1.45, 0.95), windRate: windRate,
                 minimumRadius: inRing ? 0.03 : bulgeRadius * 0.9,
                 scaleMultiplier: outskirtScaleMultiplier, shape: shape,
-                ring: inRing ? ring.map { ($0.radius, ringCentres) } : nil,
+                ring: inRing ? ring.map { ($0.radius, ringCentres, ringInnerCentres) } : nil,
                 using: &generator)
             let u = generator.uniform()
             filaments.append(
@@ -718,7 +724,7 @@ public enum DiskSampler {
                 let placed = samplePlanePosition(
                     config, arms: arms, contrast: min(strength * 1.4, 0.95), windRate: windRate,
                     minimumRadius: 0.03, phaseOffset: -0.85 * spin, shape: shape,
-                    ring: (ring.radius, ring.width), using: &generator)
+                    ring: (ring.radius, ring.width, ring.innerWidth), using: &generator)
                 crestShift = 0.85 * spin / Float(max(arms, 1))
                 radius = placed.radius
                 phi = placed.phi

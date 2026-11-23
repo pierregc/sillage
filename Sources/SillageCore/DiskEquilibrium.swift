@@ -57,13 +57,23 @@ public struct DiskEquilibrium {
         guard mass > 0, radius > 0 else { return 0 }
         let r = Double(radius)
         let softening = max(0.2 * Double(ring.width), 0.025 * Double(ring.radius))
-        let circles = 41
+        let inner = Double(ring.widths.inner)
+        // As close together across a long inner slope as across the ring itself.
+        let circles = ring.innerWidth == nil ? 41 : 41 + 2 * Int((20 * inner / Double(ring.width)).rounded())
         let angles = 128
         var total = 0.0
         var weights = 0.0
         for circle in 0..<circles {
-            let x = -3 + 6 * Double(circle) / Double(circles - 1)
-            let circleRadius = Double(ring.radius) + Double(ring.width) * x
+            var x = -3 + 6 * Double(circle) / Double(circles - 1)
+            var circleRadius = Double(ring.radius) + Double(ring.width) * x
+            if ring.innerWidth != nil {
+                // Evenly from three inner spreads inside to three outer ones outside.
+                circleRadius =
+                    Double(ring.radius) - 3 * inner
+                    + 3 * (inner + Double(ring.width)) * Double(circle) / Double(circles - 1)
+                let offset = circleRadius - Double(ring.radius)
+                x = offset / (offset < 0 ? inner : Double(ring.width))
+            }
             guard circleRadius > 0 else { continue }
             let weight = exp(-0.5 * x * x) * circleRadius
             var pull = 0.0

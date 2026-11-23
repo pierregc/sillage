@@ -988,7 +988,10 @@ its grains about it (one standard deviation), `share` the part of the dust that 
 ring, 1 when left out, the rest drawn as without one. The grains keep their strands, their thin
 layer and their grain, the stellar disk's truncation does not fade them, and the rotation curve
 the disk is launched on counts the ring's gas where it stands. A scene without the field samples
-what it always did (#475).
+what it always did (#475). With `"innerWidth"`, also in kpc, the ring is a disk of dust that
+thickens to its rim: `innerWidth` is the spread inside the radius and `width` the spread outside
+it, so `{"radius": 8, "width": 0.5, "innerWidth": 3}` is sparse over the inner half, densest at
+8 kpc and gone by 9.5. Left out, the ring is as wide either side and samples as before (#480).
 
 ### Known limits
 

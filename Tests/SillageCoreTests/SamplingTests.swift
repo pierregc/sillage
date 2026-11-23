@@ -738,4 +738,62 @@ struct DustRingTests {
         #expect(abs((scene.galaxies[1].dustRing?.radius ?? 0) - 10 * stretch) < 1e-4)
         #expect(abs((scene.galaxies[1].dustRing?.width ?? 0) - stretch) < 1e-4)
     }
+
+    /// With an inner width the dust thickens to the rim: a long slope inside the radius, a short
+    /// one outside, the share on each side that of its width, and the file keeps the field.
+    @Test func theRingThickensToItsRim() throws {
+        let rim = GalaxyConfig.DustRing(radius: 10, width: 0.5, innerWidth: 3)
+        let sloped = scene { $0.dustRing = rim }
+        let dust = radii(RestrictedSolver.sampleParticles(for: sloped), .dust)
+        let outside = dust.filter { $0 > 10 }
+        let inside = dust.filter { $0 <= 10 }
+        #expect(abs(Double(outside.count) / Double(dust.count) - 0.5 / 3.5) < 0.02)
+        func rms(_ radii: [Double]) -> Double {
+            (radii.reduce(0) { $0 + ($1 - 10) * ($1 - 10) } / Double(radii.count)).squareRoot()
+        }
+        #expect(abs(rms(outside) - 0.5) < 0.06)
+        #expect(abs(rms(inside) - 3) < 0.3)
+        let fifth = { (from: Double) in Double(dust.filter { $0 > from && $0 <= from + 1 }.count) }
+        #expect(fifth(9) > 1.5 * fifth(6))
+        #expect(fifth(6) > 1.5 * fifth(3))
+
+        let read = try SceneFile.decoded(from: SceneFile(sloped).encoded())
+            .scene(particleCount: 1_000).galaxies[0].dustRing
+        #expect(read == rim)
+        let even = scene { $0.dustRing = GalaxyConfig.DustRing(radius: 10, width: 1, innerWidth: 1) }
+        let plain = scene { $0.dustRing = Self.ring }
+        #expect(
+            RestrictedSolver.sampleParticles(for: even).positions
+                == RestrictedSolver.sampleParticles(for: plain).positions)
+    }
+
+    /// The curve counts a sloped ring's gas where it stands too.
+    @Test func theCurveCountsTheSlope() {
+        let rim = GalaxyConfig.DustRing(radius: 10, width: 0.5, innerWidth: 3)
+        let heavy = scene {
+            $0.dustMassFraction = 0.3
+            $0.dustRing = rim
+        }
+        let system = RestrictedSolver.sampleParticles(for: heavy)
+        let grains = (0..<system.count).filter { system.component[$0] == ParticleComponent.dust.rawValue }
+        let mass = grains.reduce(Float(0)) { $0 + system.mass[$1] }
+        func summed(_ radius: Float) -> Double {
+            var total = 0.0
+            for step in 0..<8 {
+                let angle = Float(step) * .pi / 4
+                let at = SIMD3<Float>(radius * cos(angle), radius * sin(angle), 0)
+                for index in grains {
+                    let d = at - system.positions[index]
+                    let r2 = Double(simd_length_squared(d)) + 0.04
+                    total +=
+                        Double(system.mass[index]) * Double(simd_dot(d, at) / radius) / (r2 * r2.squareRoot())
+                }
+            }
+            return total / 8 * Double(radius)
+        }
+        for (radius, tolerance) in [(Float(5), 0.25), (13.5, 0.2), (20, 0.05)] {
+            let curve = Double(DiskEquilibrium.ringSpeedSquared(mass: mass, ring: rim, radius: radius))
+            #expect(abs(curve / summed(radius) - 1) < tolerance)
+        }
+    }
 }

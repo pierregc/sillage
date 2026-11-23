@@ -155,20 +155,28 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         public var width: Float
         /// Share of the galaxy's dust that stands in the ring; the rest is drawn as without one.
         public var share: Float
+        /// Spread of the grains inside that radius, where `width` is then the spread outside it:
+        /// a disk of dust that thickens to its rim. Absent, the ring is as wide either side.
+        public var innerWidth: Float?
 
-        public init(radius: Float, width: Float, share: Float = 1) {
+        public init(radius: Float, width: Float, share: Float = 1, innerWidth: Float? = nil) {
             self.radius = radius
             self.width = width
             self.share = share
+            self.innerWidth = innerWidth
         }
 
-        private enum CodingKeys: String, CodingKey { case radius, width, share }
+        /// The spreads inside and outside the radius.
+        public var widths: (inner: Float, outer: Float) { (innerWidth ?? width, width) }
+
+        private enum CodingKeys: String, CodingKey { case radius, width, share, innerWidth }
 
         public init(from decoder: any Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             radius = try values.decode(Float.self, forKey: .radius)
             width = try values.decode(Float.self, forKey: .width)
             share = try values.decodeIfPresent(Float.self, forKey: .share) ?? 1
+            innerWidth = try values.decodeIfPresent(Float.self, forKey: .innerWidth)
         }
     }
 
@@ -177,7 +185,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public var drawnDustRing: DustRing? {
         guard let ring = dustRing, kind.isRotating, ring.radius > 0, ring.width > 0, ring.share > 0
         else { return nil }
-        return DustRing(radius: ring.radius, width: ring.width, share: min(ring.share, 1))
+        return DustRing(
+            radius: ring.radius, width: ring.width, share: min(ring.share, 1),
+            innerWidth: ring.innerWidth.flatMap { $0 > 0 && $0 != ring.width ? $0 : nil })
     }
 
     public init(
