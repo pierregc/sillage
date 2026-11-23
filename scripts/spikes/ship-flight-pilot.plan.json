@@ -1,0 +1,116 @@
+{
+ "name": "Flown as a pilot would",
+ "about": "NGC 2207's disk a third time, between the two: the turn at 10 degrees a second, a head that stays within 35 degrees of the course, wings that bank into a turn, and the route written as a pilot's manoeuvres. Kiloparsecs and degrees, in the disk's axes.",
+ "ship": {
+  "turn": 10,
+  "head": 14,
+  "pick": 14,
+  "thrust": 0.75,
+  "level": 8,
+  "share": 0.45,
+  "bank": 3.5,
+  "wing": 35,
+  "fastest": 9,
+  "roll": 3.0
+ },
+ "start": {
+  "at": [
+   -44,
+   -24,
+   26
+  ],
+  "toward": [
+   0,
+   -3,
+   0
+  ]
+ },
+ "manoeuvres": [
+  {
+   "dive": 2,
+   "over": 30,
+   "tempo": 2.5,
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "most": 30
+  },
+  {
+   "skim": 22,
+   "height": 1.5,
+   "tempo": 3.5,
+   "look": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "bank": "left",
+   "turn": 180,
+   "radius": 10,
+   "height": 4.5,
+   "tempo": 2,
+   "look": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "dive": 1.5,
+   "over": 8,
+   "tempo": 2.5,
+   "look": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "bank": "left",
+   "turn": 150,
+   "radius": 9,
+   "height": -2.5,
+   "tempo": 3,
+   "look": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "skim": 20,
+   "tempo": 3,
+   "look": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "bank": "left",
+   "turn": 220,
+   "radius": 7,
+   "height": 4,
+   "tempo": 2.5,
+   "look": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "dive": 1.2,
+   "over": 6,
+   "tempo": 3,
+   "look": [
+    0,
+    0,
+    0
+   ]
+  }
+ ]
+}

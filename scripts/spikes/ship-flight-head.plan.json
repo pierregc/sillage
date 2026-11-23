@@ -1,0 +1,174 @@
+{
+ "name": "A livelier ship, turning its head",
+ "about": "NGC 2207's disk again, livelier: the turn at 12 degrees a second, twice the thrust, and a head that turns to a place at 22 degrees a second. Down onto the disk looking at the centre, a fast pass low by the bulge, a climbing turn that looks back down at the whole spiral, back down through an arm and out under the disk.",
+ "ship": {
+  "turn": 12,
+  "head": 22,
+  "pick": 22,
+  "thrust": 1.0,
+  "level": 8,
+  "share": 0.5
+ },
+ "route": [
+  {
+   "at": [
+    -38,
+    -22,
+    30
+   ],
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "most": 60,
+   "tempo": 0.6
+  },
+  {
+   "at": [
+    -26,
+    -14,
+    9
+   ],
+   "tempo": 1.5
+  },
+  {
+   "at": [
+    -16,
+    -8,
+    1.8
+   ],
+   "tempo": 3,
+   "look": null
+  },
+  {
+   "at": [
+    -5,
+    -4,
+    1.3
+   ],
+   "tempo": 4,
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "most": 80
+  },
+  {
+   "at": [
+    8,
+    -2,
+    1.6
+   ],
+   "tempo": 4,
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "most": 150
+  },
+  {
+   "at": [
+    20,
+    2,
+    4
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    28,
+    12,
+    12
+   ]
+  },
+  {
+   "at": [
+    20,
+    26,
+    20
+   ]
+  },
+  {
+   "at": [
+    2,
+    30,
+    22
+   ]
+  },
+  {
+   "at": [
+    -12,
+    22,
+    13
+   ],
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "most": 40
+  },
+  {
+   "at": [
+    -15,
+    9,
+    4
+   ],
+   "tempo": 2,
+   "look": null
+  },
+  {
+   "at": [
+    -10,
+    -3,
+    -0.5
+   ],
+   "tempo": 5,
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "most": 130
+  },
+  {
+   "at": [
+    -2,
+    -11,
+    -3.5
+   ],
+   "tempo": 4
+  },
+  {
+   "at": [
+    10,
+    -14,
+    -5
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    24,
+    -10,
+    -4
+   ],
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "most": 150
+  },
+  {
+   "at": [
+    38,
+    0,
+    2
+   ]
+  }
+ ]
+}
