@@ -268,6 +268,31 @@ def control(route):
     return np.array(points), owner
 
 
+def head(ahead, eye, looks, ship):
+    """The gaze as a head: it turns to a place, or back ahead, at a bounded rate it picks up and lets go."""
+    most, pick = math.radians(ship["head"]), math.radians(ship.get("pick", 1.2 * ship["head"]))
+    out, gaze, spin = [], None, np.zeros(3)
+    for n in range(len(ahead)):
+        target, limit = looks[n]
+        want = ahead[n]
+        if target is not None:
+            to = unit(target - eye[n])
+            off = math.degrees(math.acos(np.clip(np.dot(to, ahead[n]), -1, 1)))
+            want = to if off <= limit else about(ahead[n], unit(np.cross(ahead[n], to)), math.radians(limit))
+        if gaze is None:
+            gaze = want
+        axis = np.cross(gaze, want)
+        sine = np.linalg.norm(axis)
+        off = math.atan2(sine, np.dot(gaze, want))
+        rate = min(most, 0.8 * math.sqrt(2 * pick * off), off / 0.6)
+        change = (axis / sine * rate if sine > 1e-9 else np.zeros(3)) - spin
+        size = np.linalg.norm(change)
+        spin = spin + (change * min(1, pick / RATE / size) if size > 0 else 0)
+        gaze = unit(gaze + np.cross(spin, gaze) / RATE)
+        out.append(gaze)
+    return np.array(out)
+
+
 def fly(plan):
     ship = dict(SHIP, **plan.get("ship", {}))
     route = plan["route"]
@@ -330,14 +355,18 @@ def fly(plan):
         lean = smooth(lean, plan.get("gaze", 8.0))
         return scale, clock, short, t, at, eye, ahead, lean, index
 
-    # the turn a ship allows is shared between its course and its gaze
     full = math.radians(ship["turn"])
     turn = np.full(len(grid), full)
-    for _ in range(3):
+    if "head" in ship:
         scale, clock, short, t, at, eye, ahead, lean, index = timed(turn)
-        leaning = np.linalg.norm(np.gradient(lean, 1 / RATE, axis=0), axis=1)
-        turn = np.maximum(full - np.interp(grid, at, smooth(leaning, 1.0)), 0.25 * full)
-    forward = unit(ahead + lean)
+        forward = head(ahead, eye, [looks[way[i]] for i in index], ship)
+    else:
+        # the turn a ship allows is shared between its course and its gaze
+        for _ in range(3):
+            scale, clock, short, t, at, eye, ahead, lean, index = timed(turn)
+            leaning = np.linalg.norm(np.gradient(lean, 1 / RATE, axis=0), axis=1)
+            turn = np.maximum(full - np.interp(grid, at, smooth(leaning, 1.0)), 0.25 * full)
+        forward = unit(ahead + lean)
 
     # up: carried, levelled slowly on the disk's spin, banked into the turn
     z = np.array([0, 0, 1.0])
@@ -495,12 +524,19 @@ def main():
                               "view off by at most (deg)": round(float(angle(again["forward"][:n], run["forward"][:n]).max()), 3),
                               "view turn through the keys, peak (deg/s)": round(float(measures(again)["view turn, peak (deg/s)"]), 2)}))
     else:
-        a = keyed(json.load(open(args.files[0])), args.galaxy, args.start, args.end, args.level, world_z)
-        b, report = fly(json.load(open(args.files[1])))
-        print(json.dumps(report))
-        print(table({"keys": measures(a), "ship": measures(b)}))
-        animatic(a, b, args.files[2], ["The keys, as written today", "The same visit, flown by the ship"])
-
+        runs, names = [], []
+        for path in args.files[:2]:
+            file = json.load(open(path))
+            if "route" in file:
+                run, report = fly(file)
+                print(json.dumps(report))
+                names.append(file.get("name", "Flown by the ship"))
+            else:
+                run = keyed(file, args.galaxy, args.start, args.end, args.level, world_z)
+                names.append("The keys, as written today")
+            runs.append(run)
+        print(table({names[0]: measures(runs[0]), names[1]: measures(runs[1])}))
+        animatic(runs[0], runs[1], args.files[2], names)
 
 if __name__ == "__main__":
     main()

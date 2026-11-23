@@ -7,14 +7,16 @@ spinning on itself, and a way to ask for such a flight in plain words that an ag
 flight plan reliably.
 
 Nothing in the Swift package changed. The measurements and the prototype are
-`scripts/spikes/ship-flight.py` (numpy, Pillow, ffmpeg; no take, no GPU), with the plan it flies in
-`scripts/spikes/ship-flight-example.plan.json`.
+`scripts/spikes/ship-flight.py` (numpy, Pillow, ffmpeg; no take, no GPU), with the plans it flies in
+`scripts/spikes/ship-flight-example.plan.json` and `ship-flight-head.plan.json`.
 
 ```bash
 scripts/spikes/ship-flight.py measure references/ngc2207/flights/film.flight.json --from 97 --to 179 --tilt 0.85
 scripts/spikes/ship-flight.py fly scripts/spikes/ship-flight-example.plan.json --out ship.flight.json --myr 300
 scripts/spikes/ship-flight.py animatic references/ngc2207/flights/film.flight.json \
     scripts/spikes/ship-flight-example.plan.json out.mp4 --from 97 --to 179 --tilt 0.85
+scripts/spikes/ship-flight.py animatic scripts/spikes/ship-flight-example.plan.json \
+    scripts/spikes/ship-flight-head.plan.json out.mp4
 ```
 
 ## What makes today's flights robotic
@@ -153,11 +155,58 @@ The same visit of NGC 2207's disk, as the keys make it and as the ship flies it:
   through the vertical the wrong way and the ship comes out on its back; at 4 degrees a second it
   takes 45 s to come level. A dive has to start on the side it pulls out towards.
 
+## A livelier ship, turning its head
+
+Pierre on the first animatic, the same day: smoother, no longer a roller coaster, but too soft,
+too much of a spaceship, almost boring. No need to think of a mass that is hard to stop and hard
+to turn. The camera may turn its head to look at something, may speed up and slow down harder,
+and may turn faster than 8 degrees a second, without becoming brutal.
+
+So rule 1 changes and the numbers move (`ship-flight-head.plan.json`):
+
+1. **The course is the ship's, the gaze is a head's.** The path is still flown forward and bounded
+   in turn, 12 degrees a second. The gaze turns to a place named on a leg, up to an angle off the
+   course that the leg gives (60 to 150 degrees here, so it can look back at the galaxy it
+   leaves), or comes back ahead. It is a tracker in the world's frame: the view never turns faster
+   than 22 degrees a second and picks its turn up at 22 degrees a second each second, whatever the
+   course does under it.
+2. The thrust is doubled (the speed changes by up to its own value each second), the pace is half
+   the nearness a second, and the up vector comes level at 8 degrees a second.
+
+The head's rate has to be above the course's: at 16 against 14 the head could not gain on a turn
+it was inside, and the frames stayed empty.
+
+| | the ship, looking where it goes | the livelier ship, turning its head |
+|---|---|---|
+| seconds | 102 | 59 |
+| kiloparsecs flown | 147 | 223 |
+| view turn, peak (deg/s) | 8 | 22 |
+| seconds turning faster than 10 deg/s | 0 | 20 |
+| view turned in all (deg) | 493 | 601 |
+| turn pick-up, peak (deg/s2) | 7 | 22 |
+| looking over 30 deg off its course (share of time) | 0 % | 61 % |
+| looking over 90 deg off its course (share of time) | 0 % | 26 % |
+| roll about the line of sight, peak (deg/s) | 1.7 | 8 |
+| seconds with under a tenth of the frame lit | 0 | 3.5 |
+
+It visits more in less time: down onto the disk with the whole spiral in view, a fast pass low by
+the bulge with the head following it, a climbing turn that looks back down at the galaxy, back
+down through an arm, out under the disk looking back. The head removes most of what the first
+rules cost: a turn no longer empties the frame, since the head stays on the subject while the
+course comes round, and a half turn of the course is 15 s. The view still turns seven times
+slower at its peak than the keys' 149 degrees a second, and it never jumps: every turn is picked
+up and let go.
+
+What the head makes necessary: each leg says what is looked at, so "look at" joins the pace and
+the time among a leg's adverbs, and the check on the lit share of the frame is what finds a leg
+where the head was left looking ahead at nothing.
+
 ## Laid over today's file
 
 A ship's flight compiles to today's keys: an eye and an aim every half second, on the galaxy's
 disk. Drawn back through the ported interpolation, 206 keys for 102 s give the view within
-0.03 degrees and the eye within 30 pc of the ship's, away from the two ends. So the renderer, the
+0.03 degrees and the eye within 30 pc of the ship's, away from the two ends. The livelier one gives 120 keys for 59 s and the view within half
+a degree. So the renderer, the
 export, the app and the CUDA engine draw it as they are, and `FlightRecorder` already knows how to
 choose keys against a sampled path within a tolerance (#298).
 
@@ -198,8 +247,9 @@ would let a plan name them.
 | hold | stops on a view for some seconds | the only stop |
 | back away | retro-rockets, on the line of sight, the subject shrinking | no turn |
 
-**Adverbs**: the pace of a leg (slow, cruise, fast), the take's time on a leg (runs, slows,
-frozen, a moment pinned where a manoeuvre starts), and the film's length.
+**Adverbs**: the pace of a leg (slow, cruise, fast), what the head looks at on it (ahead, a
+place, and how far round it may turn), the take's time on a leg (runs, slows, frozen, a moment
+pinned where a manoeuvre starts), and the film's length.
 
 A sentence becomes five to ten manoeuvres. The pilot works every number out, and the check
 answers in words an agent can act on or pass on: this turn does not fit in the seconds asked, the
