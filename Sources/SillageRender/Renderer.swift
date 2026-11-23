@@ -220,7 +220,7 @@ public final class Renderer {
         ) throws -> MTLRenderPipelineState {
             try Renderer.additive(
                 vertexFunction, fragmentFunction, writing: target, attachments: attachments,
-                format: format, library: library, device: device)
+                format: format, library: library, device: device, dustRed: settings.dustReddening != 1)
         }
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
         dustGlowPipeline = try additive("splatVertex", "dustGlowFragment", writing: 0)
@@ -386,13 +386,13 @@ public final class Renderer {
 
     /// One over the mean light per unit mass of particles formed at `formation`, read on about
     /// fifty thousand of them.
-    /// The dust's extinction per channel against its red (#478): the shader's own reddening at
-    /// 1, written out rather than computed so a look that leaves it draws to the bit as before,
-    /// its excess over red scaled otherwise.
+    /// The dust's extinction per channel against its red (#478), and in `w` whether the shader
+    /// takes it: at 1 it keeps its own constant, so a look that leaves it draws to the bit as
+    /// before; otherwise the excess over red is scaled.
     public static func reddening(_ scale: Float) -> SIMD4<Float> {
         if scale == 1 { return SIMD4(1, 1.22, 1.52, 0) }
         let s = max(scale, 0)
-        return SIMD4(1, 1 + 0.22 * s, 1 + 0.52 * s, 0)
+        return SIMD4(1, 1 + 0.22 * s, 1 + 0.52 * s, 1)
     }
 
     public static func luminosityNormalisation(formation: [Float]) -> Float {
@@ -435,7 +435,7 @@ public final class Renderer {
         ) throws -> MTLRenderPipelineState {
             try Renderer.additive(
                 vertexFunction, fragmentFunction, writing: target, attachments: attachments,
-                format: format, library: library, device: device)
+                format: format, library: library, device: device, dustRed: settings.dustReddening != 1)
         }
         tracerPipelines = TracerPipelines(
             dust: try additive("splatTracerVertex", "dustFragment", writing: 1),
@@ -449,11 +449,17 @@ public final class Renderer {
 
     static func additive(
         _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
-        attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice
+        attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice,
+        dustRed: Bool = false
     ) throws -> MTLRenderPipelineState {
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
-        descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
+        // The light fragments take a look's dust reddening only when it sets one (#478).
+        let constants = MTLFunctionConstantValues()
+        var red = dustRed
+        constants.setConstantValue(&red, type: .bool, index: 20)
+        descriptor.fragmentFunction = try library.makeFunction(
+            name: fragmentFunction, constantValues: constants)
         for (index, format) in [format, format].prefix(attachments).enumerated() {
             guard let attachment = descriptor.colorAttachments[index] else { continue }
             attachment.pixelFormat = format
@@ -594,7 +600,8 @@ public final class Renderer {
     private func insideResources() -> InsidePass? {
         if insidePass == nil, insideFailure == nil {
             do {
-                insidePass = try InsidePass(device: device, particles: drawnCount)
+                insidePass = try InsidePass(
+                    device: device, particles: drawnCount, dustRed: settings.dustReddening != 1)
             } catch {
                 insideFailure = "\(error)"
             }
@@ -953,13 +960,15 @@ public final class Renderer {
                     library,
                     try Self.additive(
                         "splatVertex", "splatFragment", writing: 0, attachments: 2,
-                        format: .rgba16Float, library: library, device: device)
+                        format: .rgba16Float, library: library, device: device,
+                        dustRed: settings.dustReddening != 1)
                 )
             }
             if tracing, widenedTracers == nil, let library = widened?.library {
                 widenedTracers = try Self.additive(
                     "splatTracerVertex", "splatFragment", writing: 0, attachments: 2,
-                    format: .rgba16Float, library: library, device: device)
+                    format: .rgba16Float, library: library, device: device,
+                    dustRed: settings.dustReddening != 1)
             }
         } catch {
             widenedUnavailable = true

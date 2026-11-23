@@ -58,6 +58,7 @@ extension LookFile {
         supersample != other.supersample || starCount != other.starCount
             || (galaxyCount ?? 0) != (other.galaxyCount ?? 0)
             || bloomLevels != other.bloomLevels || plain != other.plain
+            || (look.dustReddening != 1) != (other.look.dustReddening != 1)
     }
 
     /// Each palette entry recolours the galaxy at its index; a galaxy past the end keeps its

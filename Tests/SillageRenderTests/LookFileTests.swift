@@ -177,7 +177,7 @@ struct LookFileTests {
     /// and scales the excess over red otherwise (#478).
     @Test func theDustsReddeningScalesItsExcessOverRed() throws {
         #expect(Renderer.reddening(1) == SIMD4(1, 1.22, 1.52, 0))
-        #expect(Renderer.reddening(0) == SIMD4(1, 1, 1, 0))
+        #expect(Renderer.reddening(0) == SIMD4(1, 1, 1, 1))
         let browner = Renderer.reddening(2)
         #expect(abs(browner.y - 1.44) < 1e-6 && abs(browner.z - 2.04) < 1e-6)
         #expect(RenderLook().dustReddening == 1)

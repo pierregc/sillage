@@ -2686,6 +2686,11 @@ enum Shaders {
         }
 
         #if defined(__METAL_VERSION__)
+        // A look's dust reddening (#478), compiled in only for the pipelines of a look that sets
+        // it, so every other look's light passes are the code they always were.
+        constant bool dustRedSet [[function_constant(20)]];
+        constant bool dustRed = is_function_constant_defined(dustRedSet) && dustRedSet;
+
         fragment LightTarget splatFragment(SplatOut in [[stage_in]],
                                            float2 coord [[point_coord]],
                                            SplatFetch prior,
@@ -2694,7 +2699,7 @@ enum Shaders {
             if (r2 > 1.0f) { discard_fragment(); }
 
             LightTarget out;
-            out.light = lightPixel(in.color, in.slab, prior.dust, r2, red.xyz);
+            out.light = lightPixel(in.color, in.slab, prior.dust, r2, dustRed ? red.xyz : reddening);
             return out;
         }
         #endif
@@ -2710,7 +2715,7 @@ enum Shaders {
             if (share <= 0.0f) { discard_fragment(); }
 
             LightTarget out;
-            out.light = starPixel(in.color, in.slab, prior.dust, share, red.xyz);
+            out.light = starPixel(in.color, in.slab, prior.dust, share, dustRed ? red.xyz : reddening);
             return out;
         }
         #endif
