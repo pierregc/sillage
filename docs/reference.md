@@ -987,7 +987,11 @@ disk is then launched hot and a fifth slow and falls inward (the Sombrero's ring
 4.7 kpc in 166 Myr). A galaxy of `scene.json` that carries `"bulgeApart": true` has them worked
 out from the disk's own surface density, and the rotation curve it is launched on counts the
 bulge as the flattened body it is drawn as, which pulls a tenth harder in its plane than a sphere.
-A scene without the field samples what it always did (#482).
+A scene without the field samples what it always did (#482). A bulge is cut at six of its scale
+radii, its mass kept inside, an edge no ordinary exposure shows; one that is most of the galaxy's
+light and drawn bright shows it, and `"bulgeReach": 12` moves the cut out to twelve. `"nucleus": 0.003` gathers that share of the
+bulge's stars in a nucleus a fiftieth of its scale radius across, the point of light at the
+centre that a Hernquist cusp alone draws as a glow.
 
 **A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
 as the stars'. A galaxy of `scene.json` that carries
@@ -1004,8 +1008,13 @@ it, so `{"radius": 8, "width": 0.5, "innerWidth": 3}` is sparse over the inner h
 stand on the ring's strands, the blue knots along a lane. `"thickness"`, in kpc, is the scale
 height of the ring's layer, launched with the vertical motion that holds it, where the dust's
 usual layer is 0.45 of the disk's thickness: a lane seen nearly edge on shows its threads only if
-its layer is thinner than they stand apart. Left out, the ring is as wide either side, bears no
-young stars of its own, keeps the usual layer and samples as before (#480).
+its layer is thinner than they stand apart. `"threads"`, a count, draws
+the ring's dust as that many long threads in place of short strands: each runs along the ring for
+40 to 125 degrees, a few tens of parsecs across, and wanders in radius and in height as it goes,
+so the threads cross and part like a braid, and the ring's young stars stand in knots along them.
+Forty to a hundred read as threads seen nearly edge on; many more close into a band. Left out,
+the ring is as wide either side, bears no young stars of its own, keeps the usual layer and its
+strands, and samples as before (#480).
 
 ### Known limits
 

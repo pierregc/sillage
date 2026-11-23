@@ -71,6 +71,10 @@ public struct SceneFile: Codable, Sendable, Equatable {
         /// The disk's motions from its own surface density (`GalaxyConfig.bulgeApart`, #482);
         /// absent, from the whole stellar mass as it always was.
         public var bulgeApart: Bool?
+        /// Where the bulge is cut, in its scale radii (`GalaxyConfig.bulgeReach`); absent, six.
+        public var bulgeReach: Float?
+        /// Share of the bulge's stars in a nucleus (`GalaxyConfig.nucleus`); absent, none.
+        public var nucleus: Float?
         public var haloParticleRatio: Float
         public var haloExtent: Float
         public var dissipationTime: Float
@@ -111,6 +115,8 @@ public struct SceneFile: Codable, Sendable, Equatable {
             dustMassFraction = galaxy.dustMassFraction
             dustRing = galaxy.dustRing
             bulgeApart = galaxy.bulgeApart
+            bulgeReach = galaxy.bulgeReach
+            nucleus = galaxy.nucleus
             haloParticleRatio = galaxy.haloParticleRatio
             haloExtent = galaxy.haloExtent
             dissipationTime = galaxy.dissipationTime
@@ -176,6 +182,8 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.dustMassFraction = dustMassFraction
             galaxy.dustRing = dustRing
             galaxy.bulgeApart = bulgeApart
+            galaxy.bulgeReach = bulgeReach
+            galaxy.nucleus = nucleus
             return galaxy
         }
     }

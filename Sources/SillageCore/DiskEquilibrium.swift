@@ -39,11 +39,12 @@ public struct DiskEquilibrium {
         let flattening = min(max(config.bulgeFlattening, 0.05), 1)
         if selfGravitating, config.bulgeApart == true, bulgeShare > 0, flattening < 1 {
             let a = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
-            let step = 4 * a * DiskSampler.bulgeTruncation / Float(Self.bulgeSamples - 1)
+            let step = 4 * a * config.bulgeCut / Float(Self.bulgeSamples - 1)
             bulgeStep = step
             bulgeCurve = (0..<Self.bulgeSamples).map {
                 Self.flattenedBulgeSpeedSquared(
-                    mass: diskMass * bulgeShare, scale: a, flattening: flattening, radius: Float($0) * step)
+                    mass: diskMass * bulgeShare, scale: a, flattening: flattening, radius: Float($0) * step,
+                    cut: config.bulgeCut)
             }
         } else {
             bulgeStep = 1
@@ -76,12 +77,13 @@ public struct DiskEquilibrium {
     /// is nothing under a small bulge and a fifteenth of the launch speed's square under one of
     /// three quarters. Summed over its shells (Binney and Tremaine, equation 2.132).
     static func flattenedBulgeSpeedSquared(
-        mass: Float, scale: Float, flattening: Float, radius: Float
+        mass: Float, scale: Float, flattening: Float, radius: Float,
+        cut: Float = DiskSampler.bulgeTruncation
     ) -> Float {
         guard mass > 0, radius > 0 else { return 0 }
         let a = Double(scale)
         let r = Double(radius)
-        let edge = a * Double(DiskSampler.bulgeTruncation)
+        let edge = a * Double(cut)
         let held = (edge / (edge + a)) * (edge / (edge + a))
         let squeeze = 1 - Double(flattening) * Double(flattening)
         let reach = min(r, edge)
@@ -208,7 +210,7 @@ public struct DiskEquilibrium {
             let a = max(config.bulgeExtent * config.diskScaleLength, 1e-3)
             let bulge = GalaxyPotential(profile: .hernquist, mass: stellar * bulgeShare, scaleRadius: a)
             let held = DiskSampler.enclosedFraction(
-                bulge, radius: a * DiskSampler.bulgeTruncation)
+                bulge, radius: a * config.bulgeCut)
             let inside = min(DiskSampler.enclosedFraction(bulge, radius: r) / max(held, 1e-3), 1)
             squared += Physics.gravitationalConstant * bulge.mass * inside / r
         }

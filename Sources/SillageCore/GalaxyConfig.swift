@@ -146,6 +146,14 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// the whole stellar mass: right to a tenth under a small bulge, four times too dense under
     /// one of three quarters, whose disk was then launched hot and a fifth slow.
     public var bulgeApart: Bool?
+    /// How far the bulge reaches, in its scale radii, its mass kept inside. Absent, six: the
+    /// usual two to three half-light radii, an edge no ordinary exposure shows. A bulge that is
+    /// most of the galaxy's light, drawn bright, shows that edge; twelve fades it out.
+    public var bulgeReach: Float?
+    /// Share of the bulge's stars gathered in a nucleus at its very centre, a Plummer sphere a
+    /// fiftieth of the bulge's scale radius across: the point of light at the heart of a galaxy
+    /// like the Sombrero, which a Hernquist cusp alone draws as a glow. Absent, none.
+    public var nucleus: Float?
     /// The ring this galaxy's dust is gathered in, when it has one (#475).
     public var dustRing: DustRing?
 
@@ -170,10 +178,14 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         /// it: a lane seen nearly edge on is threads only if its layer is thinner than they stand
         /// apart. Absent, the dust's usual layer, 0.45 of the disk's thickness.
         public var thickness: Float?
+        /// How many long threads the ring's dust is drawn as: each runs along the ring for a
+        /// good part of a turn, thin, and weaves across the others in radius and in height.
+        /// Absent, short strands as elsewhere in a disk.
+        public var threads: Int?
 
         public init(
             radius: Float, width: Float, share: Float = 1, innerWidth: Float? = nil, young: Float? = nil,
-            thickness: Float? = nil
+            thickness: Float? = nil, threads: Int? = nil
         ) {
             self.radius = radius
             self.width = width
@@ -181,12 +193,15 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             self.innerWidth = innerWidth
             self.young = young
             self.thickness = thickness
+            self.threads = threads
         }
 
         /// The spreads inside and outside the radius.
         public var widths: (inner: Float, outer: Float) { (innerWidth ?? width, width) }
 
-        private enum CodingKeys: String, CodingKey { case radius, width, share, innerWidth, young, thickness }
+        private enum CodingKeys: String, CodingKey {
+            case radius, width, share, innerWidth, young, thickness, threads
+        }
 
         public init(from decoder: any Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -196,7 +211,13 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             innerWidth = try values.decodeIfPresent(Float.self, forKey: .innerWidth)
             young = try values.decodeIfPresent(Float.self, forKey: .young)
             thickness = try values.decodeIfPresent(Float.self, forKey: .thickness)
+            threads = try values.decodeIfPresent(Int.self, forKey: .threads)
         }
+    }
+
+    /// Where the bulge is cut, in its scale radii.
+    public var bulgeCut: Float {
+        bulgeReach.flatMap { $0 > 0 ? min(max($0, 2), 40) : nil } ?? DiskSampler.bulgeTruncation
     }
 
     /// The ring as the sampler and the rotation curve read it: none unless it has a radius, a
@@ -208,7 +229,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             radius: ring.radius, width: ring.width, share: min(ring.share, 1),
             innerWidth: ring.innerWidth.flatMap { $0 > 0 && $0 != ring.width ? $0 : nil },
             young: ring.young.flatMap { $0 > 0 ? min($0, 1) : nil },
-            thickness: ring.thickness.flatMap { $0 > 0 ? $0 : nil })
+            thickness: ring.thickness.flatMap { $0 > 0 ? $0 : nil },
+            threads: ring.threads.flatMap { $0 > 0 ? min($0, 4000) : nil })
     }
 
     public init(
@@ -293,6 +315,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
         case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction, dustRing, bulgeApart
+        case bulgeReach, nucleus
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -343,6 +366,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         effectiveToomreQ = try values.decodeIfPresent(Float.self, forKey: .effectiveToomreQ)
         dustMassFraction = try values.decodeIfPresent(Float.self, forKey: .dustMassFraction)
         bulgeApart = try values.decodeIfPresent(Bool.self, forKey: .bulgeApart)
+        bulgeReach = try values.decodeIfPresent(Float.self, forKey: .bulgeReach)
+        nucleus = try values.decodeIfPresent(Float.self, forKey: .nucleus)
         dustRing = try values.decodeIfPresent(DustRing.self, forKey: .dustRing)
     }
 
