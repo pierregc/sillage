@@ -83,10 +83,12 @@ jobs:
       - uses: actions/checkout@v5
       - name: ffmpeg, which encodes the full pass's videos (#278)
         run: |
-          # A mirror that stalls is given up on and tried again, not waited on until the job's limit.
+          # Said aloud and held to a time: a mirror that stalls or a package that asks a question
+          # fails here with its last lines, instead of sitting silent until the job's limit.
+          export DEBIAN_FRONTEND=noninteractive
           patient="-o Acquire::Retries=4 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
-          apt-get update -qq $patient
-          apt-get install -y -qq --no-install-recommends $patient ffmpeg > /dev/null
+          timeout 300 apt-get update -q $patient | tail -n 3
+          timeout 600 apt-get install -y -q --no-install-recommends $patient ffmpeg | tail -n 5
           ffmpeg -hide_banner -version | head -1
       - name: The CUDA engine's tests on the CPU target, and sillage-cuda
         run: scripts/linux.sh tool test-cuda
