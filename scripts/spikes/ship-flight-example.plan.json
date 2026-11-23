@@ -1,0 +1,135 @@
+{
+ "about": "NGC 2207's disk, visited as a ship would: down onto the disk, a pull out into a pass low over the arms by the bulge, a turn over the disk that sinks through an arm, and on under the disk. Points in the disk's axes, kiloparsecs.",
+ "ship": {
+  "turn": 8,
+  "thrust": 0.5
+ },
+ "route": [
+  {
+   "at": [
+    -40,
+    -18,
+    22
+   ]
+  },
+  {
+   "at": [
+    -27,
+    -12.5,
+    6
+   ],
+   "tempo": 1.5
+  },
+  {
+   "at": [
+    -18,
+    -9,
+    2.0
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    -8,
+    -6,
+    1.6
+   ],
+   "tempo": 3,
+   "look": [
+    0,
+    0,
+    0
+   ],
+   "most": 25
+  },
+  {
+   "at": [
+    6,
+    -4,
+    1.5
+   ],
+   "tempo": 3
+  },
+  {
+   "at": [
+    14.5,
+    0,
+    2.8
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    10.3,
+    10.3,
+    3.2
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    0,
+    14.5,
+    3.5
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    -10.3,
+    10.3,
+    3.5
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    -14.5,
+    0,
+    3.0
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    -10.3,
+    -10.3,
+    1.5
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    -5,
+    -13.6,
+    -0.5
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    5,
+    -13.6,
+    -2.5
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    12.5,
+    -7.2,
+    -3.5
+   ],
+   "tempo": 2
+  },
+  {
+   "at": [
+    14.5,
+    0,
+    -4
+   ],
+   "tempo": 2
+  }
+ ],
+ "name": "The ship, looking where it goes"
+}
