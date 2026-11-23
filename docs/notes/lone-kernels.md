@@ -49,17 +49,18 @@ before.
   `6 sqrt(neighbours / (2 π density))` wide, never narrower than the tree's width and at most
   `loneWidest` (120 pixels of a frame 2160 high). The light per area follows the width as it
   always did, so the flux is kept.
-- **A star's from a size on screen.** Between `loneFrom` and `loneFull` (5 and 12 pixels of a
-  frame 2160 high) a star's kernel goes over to that width. Under the first it is a point and
-  stays one: the fine grain of a dense arm and the points of a sparse one are left alone, and a
-  dense arm whose kernels already overlap is never widened whatever their size.
+- **A star's from a size on screen.** Between `loneFrom` and `loneFull` (1.5 and 4 pixels of a
+  frame 2160 high; 5 and 12 at first, see below) a star's kernel goes over to that width. Under
+  the first it is a point and stays one: the fine grain of a dense arm and the points of a sparse
+  one are left alone, and a dense arm whose kernels already overlap is never widened whatever
+  their size.
 - **A grain's glow at any size.** What the dust gives off is never a point. The dust's own
   opacity keeps the tree's kernel: only the glow's draw is widened.
 - **The near field keeps its own.** The stars' cross-fade, the fade at the near plane and the
   capped kernels' law read the tree's width as before; a point star is not widened; a near
   grain's glow takes the wider of its haze and this.
 
-The Cartwheel's flight asks for 8. Its stills at 21, 23 and 50 s lose every blob: the glow is a
+The Cartwheel's flight first asked for 8, with a window of 5 to 12 pixels. Its stills at 21, 23 and 50 s lose every blob: the glow is a
 continuous red with the arms' shape, and the stars that were points stay points over it. The
 photograph the film holds on gains the same, its inner disk a diffuse red where it was a stipple.
 Without `neighbours` the film's stills are the bytes main draws, in the near field and out of it.
@@ -79,6 +80,40 @@ gone with the rest.
 Between two frames a thirtieth of a second apart (1080p, at 21.5 and 50.5 s) the rms of the
 difference falls, 17.4 to 15.0 levels and 15.3 to 12.3: the widths follow a count read through
 bilinear cells and blended between levels, and nothing pops.
+
+## The stars that were still disks
+
+Pierre's first look at those stills: the red is right, and the white and blue over it are still
+small disks. Two causes, neither of them the count.
+
+- **A star brighter than its neighbours.** The compact minority the sampler draws and the young
+  carry 5 to 15 times an old star's light (at the film's `glint` 0.3). Widened to cover eight
+  neighbours, such a star still stands that many times over them, a soft disk of its own. It is
+  now widened to cover as many times more of them as it is brighter, so that it stands no
+  higher than they do.
+- **The way from a point to a haze.** Between `loneFrom` and `loneFull` a star's kernel was part
+  widened: a disk of an in-between size, which is the very thing to avoid. The window's
+  defaults went down to 1.5 and 4 pixels, under which a kernel reads as a point anyway.
+
+And `lonePoints`, the share of the stars that show alone kept as points instead of widened: no
+wider than a point star (`starSize`) however near the camera comes, their light kept up to the
+point stars' cap, the bright ones first (a star `b` times its neighbours is a point `b` times as
+often) and the same ones wherever the camera is, by a draw of their index. A field then keeps
+stars over its glow, and no star is ever a disk: it is a point or it is part of the haze. In the
+near field the capped kernels' law dims these points as #357's point stars take the light.
+
+Four doses of the stills at 21, 23 and 50 s, `neighbours` and the window with them:
+
+| | neighbours | window | lonePoints | reads as |
+| --- | --- | --- | --- | --- |
+| first | 8 | 5 to 12 | 0 | red merged, white and blue disks left |
+| 16 | 16 | 5 to 12 | 0 | smoother, some disks left |
+| milky | 16 | 1.5 to 4 | 0 | no disk and no point |
+| points | 16 | 1.5 to 4 | 0.35 | points over a haze, no disk |
+
+Pierre liked the last two alike and asked for one dial between them: `lonePoints` is it, from a
+milky field at 0 to a sharp one at 1, `neighbours` setting apart how smooth the haze under it is.
+The film's flight takes 16 and 0.35 until he says otherwise.
 
 ## Limits
 

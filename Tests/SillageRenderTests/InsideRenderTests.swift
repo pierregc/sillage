@@ -21,13 +21,13 @@ struct InsideRenderTests {
         init(
             _ positions: [SIMD3<Float>], maximumKernel: Float = 24, supersample: Int = 1,
             component: ParticleComponent = .star, glow: Float = 0,
-            dust: Float = 1e-3, smoothing: Float = 1
+            dust: Float = 1e-3, smoothing: Float = 1, first: Float = 1
         ) throws {
             var system = ParticleSystem()
-            for position in positions {
+            for (index, position) in positions.enumerated() {
                 system.append(
                     position: position, velocity: .zero, galaxy: 0, radius: 1, population: 0.5,
-                    luminosity: 1, component: component)
+                    luminosity: index == 0 ? first : 1, component: component)
             }
             let scene = SceneConfig.isolatedDisk(particleCount: positions.count)
             var settings = RenderSettings(
@@ -98,6 +98,7 @@ struct InsideRenderTests {
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.webOnly) == 176)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.neighbours) == 204)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.loneWidest) == 216)
+        #expect(MemoryLayout<InsideUniforms>.offset(of: \.lonePoints) == 220)
     }
 
     /// With nothing in the near field, a frame set to the inside of a galaxy is the frame every
@@ -380,6 +381,48 @@ struct InsideRenderTests {
         faulty = InsideSettings()
         faulty.loneWidest = 2
         #expect(faulty.fault?.contains("loneWidest") == true)
+    }
+
+    /// A star brighter than its neighbours stands that much higher over them at the same width,
+    /// so it is widened to cover as many times more of them; and with `lonePoints` the stars
+    /// that show alone are points, the bright ones first, where without it they are a haze.
+    @Test func aLoneStarIsAHazeOrAPointByItsLight() throws {
+        var generator = SeededGenerator(seed: 11)
+        var positions = (0..<120).map { _ in
+            SIMD3<Float>((generator.uniform() - 0.5) * 8, 0, (generator.uniform() - 0.5) * 4)
+        }
+        positions[0] = .zero
+        let view = camera(12)
+        func drawn(first: Float, _ change: @escaping (inout InsideSettings) -> Void) throws
+            -> (peak: Float, lit: Int)
+        {
+            let stage = try Stage(positions, maximumKernel: 16, smoothing: 5, first: first)
+            stage.renderer.inside = Self.inside(12) { settings in
+                settings.loneWidest = 512
+                settings.starPeak = 1000
+                change(&settings)
+            }
+            let light = try stage.light(view).map { $0.x }
+            let peak = light.max() ?? 0
+            return (peak, light.filter { $0 > 0.1 * peak }.count)
+        }
+        let even = try drawn(first: 1) { $0.neighbours = 8 }
+        let one = try drawn(first: 16) { $0.neighbours = 8 }
+        let alone = try drawn(first: 16) { _ in }
+        #expect(even.peak > 0 && alone.peak > 8 * even.peak, "\(alone.peak), \(even.peak)")
+        #expect(one.peak < 4 * even.peak, "\(one.peak) against \(even.peak)")
+        let plain = try drawn(first: 1) { _ in }
+        let points = try drawn(first: 1) { settings in
+            settings.neighbours = 8
+            settings.lonePoints = 1
+        }
+        #expect(points.peak > 2 * plain.peak, "\(points.peak) against \(plain.peak)")
+        #expect(
+            points.lit < plain.lit / 2 && even.lit > 2 * plain.lit,
+            "\(points.lit), \(plain.lit), \(even.lit)")
+        var faulty = InsideSettings()
+        faulty.lonePoints = 1.5
+        #expect(faulty.fault?.contains("lonePoints") == true)
     }
 
     /// A near grain carries its structure with it (#394): the grains and the eye moved together

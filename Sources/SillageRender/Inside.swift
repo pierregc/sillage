@@ -61,11 +61,16 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// default, leaves every kernel the tree's.
     public var neighbours: Float = 0
     /// The width of a star's kernel on screen, in pixels of a frame 2160 high, between which it is
-    /// widened: under the first it is a point and stays one. A grain's glow is at any size.
-    public var loneFrom: Float = 5
-    public var loneFull: Float = 12
+    /// widened: under the first it is a point and stays one, and the two stand close so that no
+    /// star is long a disk of a size in between. A grain's glow is at any size.
+    public var loneFrom: Float = 1.5
+    public var loneFull: Float = 4
     /// The widest such a kernel is drawn, in pixels of a frame 2160 high.
     public var loneWidest: Float = 120
+    /// The share of the stars that show alone kept as points the size of a point star, the bright
+    /// ones first and the same ones wherever the camera is, where the rest are widened: the one
+    /// dial between a milky field, 0, and a sharp one, 1.
+    public var lonePoints: Float = 0
     /// The near field, in kiloparsecs from the eye: stars and the capped kernels' law apply
     /// wholly nearer than the first, not at all past the second.
     public var field: [Float] = [3, 8]
@@ -132,6 +137,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         loneFrom = try c.value(.loneFrom, or: loneFrom)
         loneFull = try c.value(.loneFull, or: loneFull)
         loneWidest = try c.value(.loneWidest, or: loneWidest)
+        lonePoints = try c.value(.lonePoints, or: lonePoints)
         field = try c.value(.field, or: field)
         fade = try c.value(.fade, or: fade)
         slabs = try c.value(.slabs, or: slabs)
@@ -184,6 +190,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !(loneWidest >= loneFull && loneWidest <= 512) {
             return "loneWidest \(loneWidest) px: loneFull to 512"
         }
+        if !(lonePoints >= 0 && lonePoints <= 1) { return "lonePoints \(lonePoints): 0 to 1" }
         if !rising(field, 2) { return "field \(field): two distances in kpc, the first nearer" }
         if !(fade >= 0 && fade <= 32) { return "fade \(fade): 0 to 32 kernel lengths" }
         if !rising(slabs, 3) { return "slabs \(slabs): three distances in kpc, each past the one before" }
@@ -297,6 +304,8 @@ public struct InsideUniforms: Sendable {
     public var loneStart: Float = 0
     public var loneEnd: Float = 0
     public var loneWidest: Float = 0
+    /// The share of the stars that show alone kept as points.
+    public var lonePoints: Float = 0
 
     /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
     /// grains are spread over two slabs, which is where two disks one behind the other come
@@ -392,6 +401,7 @@ public struct InsideUniforms: Sendable {
         loneEnd = inside.loneFull * lines / 2160
         // No point is wider than 511 pixels, and a grain's is 1.3 times its kernel.
         loneWidest = min(inside.loneWidest * lines / 2160, 511 / 1.3)
+        lonePoints = inside.lonePoints
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
