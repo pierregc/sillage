@@ -14,14 +14,15 @@ notes; open them only for what is not here.
 | | Mac (Metal) | Linux with an NVIDIA GPU (CUDA) |
 | --- | --- | --- |
 | Command | `./scripts/dev.sh render <args>`, which builds `sillage-render` if needed and runs it | `scripts/linux.sh tool` builds `.build/linux/sillage-cuda`; run it with `LD_LIBRARY_PATH=.build/linux` |
-| Help | `sillage-render --help`, `sillage-render <command> --help` | `sillage-cuda help` |
-| Has | every command below | `explore`, `hires`, `still`, `export`, `match`, `take extract`, `black-hole still` |
-| Lacks | | `look`, `palettes`, `pace`, `flight`, text overlays, `--format webp\|gif`, `--palette`, the visual pace, `dustGlow` and `galaxyCount` of a look |
+| Help | `sillage-render --help`, `sillage-render <command> --help` | `sillage-cuda help`, `sillage-cuda <command> --help` |
+| Has | every command below | `explore`, `hires`, `still`, `export`, `match`, `take extract`, `flight`, `look --palette\|--promote`, `pace --speed story`, `black-hole still` |
+| Lacks | | `look --style auto\|--grid`, `palettes`, the visual pace, text overlays, `--format webp\|gif`, `export --palette`, `dustGlow` and `galaxyCount` of a look |
 
 `./scripts/dev.sh explore|hires|look|export|palettes <folder>` are shortcuts for
 `./scripts/dev.sh render <command> <folder>`. A scene folder goes from one engine to the other as
-it is. `sillage-cuda` does not yet refuse a mistyped option (#465): check the spelling against
-`sillage-cuda help` before a paid run.
+it is. `<command> --help` gives each option's meaning, unit and default. Both commands refuse an
+option they do not read, a value that does not parse or a stray word, with exit status 2,
+before anything runs.
 
 A rented GPU is driven from the Mac with `scripts/gpu-box.sh` (`offers`, `up`, `setup`, `ship`,
 `run <command>`, `wait`, `tail`, `fetch <paths>`, `down "<what ran>"`); `docs/notes/cloud-runs.md`
@@ -96,14 +97,16 @@ sillage-render look S --grid --stills out/grid --base webb --frames shots   # lo
 sillage-render export S --look dream                # one export with another look, look.json untouched
 ```
 
+On CUDA, `sillage-cuda look S --palette ...` and `--promote` work the same; `--style auto`, `--grid`
+and `palettes` draw the take with Metal and stay on the Mac.
+
 `--look` takes a file, a name in the scene's `looks/`, or a name in the repository's `looks/`
 (over forty, `hubble`, `webb`, `photograph`, `observatory`, `raw`...). For a change no look has,
 copy a look file and edit it: `look` holds the rendering (`brightness`, `stretch`, `whitePoint`,
 `saturation`, `dustStrength`, `bloomIntensity`, `starSize`, `spikeIntensity`, `noiseLevel`,
 `skyLevel`...), `palette` each galaxy's colours in linear sRGB, `camera` the camera plan. A field
-left out takes its default, so a file names only what it changes. The fields and their meaning
-are in `Sources/SillageRender/RenderLook.swift` and `LookFile.swift` until #464 gives them a
-table.
+left out takes its default, so a file names only what it changes. `sillage-render fields` prints
+every field with what it does, its default and the range the repository's looks use.
 
 ### A video or stills in a given format
 
@@ -132,6 +135,9 @@ sillage-render export S --speed story:4:8 --slow 300:420:0.5   # a stretch held 
 sillage-render pace S --speed story --out S/exports/my.time.json   # the track alone, no video
 sillage-render export S --speed S/exports/my.time.json
 ```
+
+On CUDA, `sillage-cuda pace S --speed story` writes the same track; the visual pace draws with
+Metal, so its `.time.json` comes from the Mac.
 
 A track file is one of: `{"version": 1, "speed": 2}`; speeds from moments of the take,
 `{"version": 1, "ramp": 1.5, "keys": [{"myr": 300, "speed": 1}, {"myr": 420, "speed": 0.5}]}`;
@@ -188,8 +194,7 @@ least. A flight file, `S/flights/dive.flight.json`:
 
 Near matter the frames are drawn from inside by themselves (point stars, automatic exposure).
 The rest, the `inside` block and a worked example on the Mice are in `docs/notes/flights.md`. On
-CUDA: `sillage-cuda export S --flight dive [--flight-keys <dir>]`; `flight --at` is the Mac's for
-now (#467).
+CUDA: `sillage-cuda flight S --at ...` and `sillage-cuda export S --flight dive [--flight-keys <dir>]`.
 
 ### A real picture beside the simulation
 
@@ -239,8 +244,13 @@ two finished examples, with their scenes, looks and flights; `docs/notes/cartwhe
   `sillage-cuda status S` reads a scene's run on a box. `docs/night-status.md` describes the files
   behind them (`activity.json`, `events.jsonl`).
 - `sillage-render queue add|list|run|pause` lines heavy jobs up one after another on the Mac.
+- `explore`, `hires` and `export`, on both engines, take `--summary <file>`, or `--summary -` for
+  the last line of the output: one JSON object written as the command exits, however it exits,
+  with the command, the exit status, the error, the seconds and every file it wrote.
 - One heavy job at a time on a GPU: two share it badly and time nothing reliably. Sessions on
-  the same Mac take turns (#468).
+  the same machine take turns through `scripts/gpu-lock.sh run <label> <command...>`, which waits
+  for the lock, runs the command and releases it; `scripts/gpu-lock.sh status` says who holds it.
+  Use it for `explore`, `hires`, `export`, `look --style auto|--grid` and timings.
 - Exit status: 0 done, 2 refused arguments, 3 a scene rejected by its check, 1 anything else.
 
 ## Where the rest is

@@ -44,6 +44,8 @@ polar ring, a minor merger and a compact group.*
 | High resolution pass and take | yes | yes, `sillage-cuda hires` |
 | Video and flight export | yes | yes, `sillage-cuda export` |
 | Stills, black hole close up | yes | yes |
+| Flight keys (`flight`), story pacing (`pace`), palette and look choice (`look --palette`, `--promote`) | yes | yes |
+| Looks drawn and scored (`look --style auto`, `--grid`, `palettes`) | yes | no |
 | Text overlays, animated previews, "visual" pacing | yes | no |
 
 Both engines run the same kernel source and the same Swift orchestration, and are checked

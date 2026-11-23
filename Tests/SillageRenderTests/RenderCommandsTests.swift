@@ -148,7 +148,11 @@ struct RenderCommandsTests {
                     && ["Night", "Queue", "Status", "Hole", "Notices", "Scene", "Look", "Style"]
                         .contains { file.hasPrefix($0) }
                     && file != "SceneFolder.swift"
-                if isOwn || ["RenderCommands.swift", "CommandSpec.swift"].contains(file) { continue }
+                if isOwn
+                    || ["RenderCommands.swift", "CUDACommands.swift", "CommandSpec.swift"].contains(file)
+                {
+                    continue
+                }
                 let text = try String(contentsOf: url.appendingPathComponent(file), encoding: .utf8)
                 let range = NSRange(text.startIndex..., in: text)
                 for match in reads.matches(in: text, range: range) {

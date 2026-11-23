@@ -14,10 +14,30 @@ public struct CommandSpec: Sendable {
     public struct Option: Sendable, Equatable {
         public var name: String
         public var kind: Kind
+        /// What it does, its unit and its default, one line for `--help` (#464).
+        public var help: String
+        /// The heading `--help` lists it under, for a command with many.
+        public var group: String?
 
-        public init(_ name: String, _ kind: Kind) {
+        public init(_ name: String, _ kind: Kind, help: String = "", group: String? = nil) {
             self.name = name
             self.kind = kind
+            self.help = help
+            self.group = group
+        }
+    }
+
+    /// The options named in each list, each with its line from `about`, else `OptionHelp.shared`.
+    static func options(
+        flags: String = "", text: String = "", whole: String = "", number: String = "",
+        about: [String: String] = [:], group: String? = nil
+    ) -> [Option] {
+        func names(_ list: String) -> [String] { list.split(whereSeparator: \.isWhitespace).map(String.init) }
+        let all =
+            names(flags).map { ($0, Kind.flag) } + names(text).map { ($0, Kind.text) }
+            + names(whole).map { ($0, Kind.whole) } + names(number).map { ($0, Kind.number) }
+        return all.map { name, kind in
+            Option(name, kind, help: about[name] ?? OptionHelp.shared[name] ?? "", group: group)
         }
     }
 
@@ -169,34 +189,50 @@ public struct CommandSpec: Sendable {
         var lines = usage
         lines.append("")
         lines.append(summary)
-        let named = options.map { option -> String in
-            switch option.kind {
-            case .flag: "--\(option.name)"
-            case .text: "--\(option.name) TEXT"
-            case .whole: "--\(option.name) N"
-            case .number: "--\(option.name) X"
+        guard !options.isEmpty else { return lines.joined(separator: "\n") }
+        lines.append("")
+        lines.append("Options:")
+        var group: String?
+        for option in options {
+            if option.group != group, let heading = option.group {
+                lines.append("")
+                lines.append("  \(heading):")
             }
-        }
-        if !named.isEmpty {
-            lines.append("")
-            lines.append("Options:")
-            lines += Self.columns(named, width: 78, indent: "  ")
+            group = option.group
+            lines += Self.described(option)
         }
         return lines.joined(separator: "\n")
     }
 
-    static func columns(_ items: [String], width: Int, indent: String) -> [String] {
-        var lines: [String] = []
-        var line: [String] = []
-        for item in items {
-            let size = indent.count + line.joined(separator: "  ").count + item.count + 2
-            if size > width, !line.isEmpty {
-                lines.append(indent + line.joined(separator: "  "))
-                line = []
-            }
-            line.append(item)
+    /// `--name KIND` and its line, the line wrapped under a column of its own.
+    static func described(_ option: Option) -> [String] {
+        let name: String
+        switch option.kind {
+        case .flag: name = "--\(option.name)"
+        case .text: name = "--\(option.name) TEXT"
+        case .whole: name = "--\(option.name) N"
+        case .number: name = "--\(option.name) X"
         }
-        if !line.isEmpty { lines.append(indent + line.joined(separator: "  ")) }
+        let column = 30
+        let words = option.help.split(separator: " ").map(String.init)
+        var lines: [String] = []
+        var line = "  " + name
+        if line.count >= column - 1 {
+            lines.append(line)
+            line = ""
+        }
+        line = line.padding(toLength: column, withPad: " ", startingAt: 0)
+        var used = 0
+        for word in words {
+            if used > 0, column + used + 1 + word.count > 100 {
+                lines.append(line)
+                line = String(repeating: " ", count: column)
+                used = 0
+            }
+            line += (used > 0 ? " " : "") + word
+            used += (used > 0 ? 1 : 0) + word.count
+        }
+        lines.append(words.isEmpty ? line.trimmingCharacters(in: .whitespaces) : line)
         return lines
     }
 }

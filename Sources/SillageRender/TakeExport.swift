@@ -566,54 +566,6 @@ public final class TakeExport {
         return pixels
     }
 
-    /// Where a flight finds an arm to go into (#297): for each galaxy at a captured position
-    /// and each of `radii`, in kiloparsecs, the place on that circle of its disk where the
-    /// emitting particles near its plane are densest, as an offset in the disk's axes, with how
-    /// many times the circle's mean it holds.
-    public func densest(atCaptured position: Double, radii: [Double]) throws
-        -> [[(offset: SIMD3<Double>, contrast: Double)]]
-    {
-        guard try expand(atCaptured: position, into: positions) else { throw RecordingFile.Failure.truncated }
-        expanded = nil
-        let flightTake = FlightTake(take: framing, capturedRate: capturedRate)
-        let (centres, disks) = (flightTake.centres(position), flightTake.disks(position))
-        let particles = take.particles
-        let drawn = particles.visibleCount > 0 ? particles.visibleCount : particles.count
-        let points = positions.contents().bindMemory(to: SIMD3<Float>.self, capacity: drawn)
-        let sectors = 120
-        var counts = [[[Double]]](
-            repeating: [[Double]](repeating: [Double](repeating: 0, count: sectors), count: radii.count),
-            count: centres.count)
-        for index in 0..<drawn {
-            guard let component = ParticleComponent(rawValue: particles.component[index]), component.emits
-            else { continue }
-            let galaxy = Int(particles.galaxyIndex[index])
-            guard galaxy < centres.count, galaxy < disks.count else { continue }
-            let p = points[index]
-            let rel = SIMD3(Double(p.x), Double(p.y), Double(p.z)) - centres[galaxy]
-            let axes = disks[galaxy]
-            guard abs(simd_dot(rel, axes[2])) < 0.3 else { continue }
-            let (u, v) = (simd_dot(rel, axes[0]), simd_dot(rel, axes[1]))
-            let radius = (u * u + v * v).squareRoot()
-            for (ring, wanted) in radii.enumerated() where abs(radius - wanted) < 0.08 * wanted {
-                let turn = (atan2(v, u) / (2 * .pi) + 1).truncatingRemainder(dividingBy: 1)
-                counts[galaxy][ring][min(Int(turn * Double(sectors)), sectors - 1)] += 1
-            }
-        }
-        return counts.map { rings in
-            zip(radii, rings).map { radius, ring in
-                // Over three sectors, nine degrees: an arm, not a clump of a few particles.
-                let smooth = (0..<sectors).map { at in
-                    (-1...1).reduce(0.0) { $0 + ring[(at + $1 + sectors) % sectors] } / 3
-                }
-                let mean = max(ring.reduce(0, +) / Double(sectors), 1e-9)
-                let best = smooth.indices.max { smooth[$0] < smooth[$1] } ?? 0
-                let angle = (Double(best) + 0.5) / Double(sectors) * 2 * .pi
-                return (SIMD3(radius * cos(angle), radius * sin(angle), 0), smooth[best] / mean)
-            }
-        }
-    }
-
     /// Seconds of video between the moments a flight's automatic exposure is solved at.
     static let trimStep = 0.25
 
