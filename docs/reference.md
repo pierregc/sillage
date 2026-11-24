@@ -367,14 +367,6 @@ in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red
 Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478). Metal only for now:
 CUDA draws with the fixed reddening.
 
-`look.emittingSpacing`, true or false (the default), sizes a star's kernel from the spacing of
-the emitting particles alone, the dust left out. A particle's kernel is its spacing read off a
-tree of every drawn particle, so a star standing in a dense thread of dust takes the grains'
-spacing and shows as a tight point among wide neighbours, in a photo and more so in a flight's
-near field, where those points turn into bunches of point stars (#478). With it, the stars'
-lengths come from a second tree of the stars alone, which away from the dust holds the same
-stars and gives the same lengths; the dust keeps its own. Metal only for now: CUDA sizes every kernel off the one tree.
-
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
 above, so the same scene always gets the same palette. `--palette <family>` does the same inside

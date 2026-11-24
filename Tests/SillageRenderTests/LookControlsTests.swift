@@ -40,11 +40,11 @@ struct LookControlsTests {
         #expect(file.resetting(.instrument, to: base) == base)
     }
 
-    /// A look field is either one of the controls, one of the four the light and the instrument
+    /// A look field is either one of the controls, one of the three the light and the instrument
     /// reset without showing, or the camera's field of view: a new field has to be placed in one of them.
     @Test func everyFieldOfALookIsAccountedFor() {
         let shown = LookFile.Group.light.controls.count + LookFile.Group.instrument.controls.count
-        let unshown = 4
+        let unshown = 3
         let camera = 1
         #expect(Mirror(reflecting: RenderLook()).children.count == shown + unshown + camera)
     }

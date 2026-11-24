@@ -84,10 +84,6 @@ public struct RenderLook: Sendable, Equatable {
     public var bulgeWidth: Float
     public var youngWidth: Float
     public var knotWidth: Float
-    /// Whether a star's kernel is sized from the spacing of the emitting particles alone, the
-    /// dust left out (#478): a star in a dense thread of dust otherwise takes the grains'
-    /// spacing and shows as a tight point. False, the default, draws every look as before.
-    public var emittingSpacing: Bool
 
     /// The glint every shipped and generated style draws with: the sparkle gone, the knots
     /// kept (#184, docs/notes/gigantism.md).
@@ -131,8 +127,7 @@ public struct RenderLook: Sendable, Equatable {
         oldWidth: Float = 1,
         bulgeWidth: Float = 1,
         youngWidth: Float = 1,
-        knotWidth: Float = 1,
-        emittingSpacing: Bool = false
+        knotWidth: Float = 1
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -168,7 +163,6 @@ public struct RenderLook: Sendable, Equatable {
         self.bulgeWidth = bulgeWidth
         self.youngWidth = youngWidth
         self.knotWidth = knotWidth
-        self.emittingSpacing = emittingSpacing
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -216,7 +210,6 @@ public struct RenderLook: Sendable, Equatable {
         out.bulgeWidth = f(a.bulgeWidth, b.bulgeWidth)
         out.youngWidth = f(a.youngWidth, b.youngWidth)
         out.knotWidth = f(a.knotWidth, b.knotWidth)
-        out.emittingSpacing = u < 0.5 ? a.emittingSpacing : b.emittingSpacing
         return out
     }
 
@@ -332,7 +325,6 @@ extension RenderLook: Codable {
             oldWidth: try c.value(.oldWidth, or: d.oldWidth),
             bulgeWidth: try c.value(.bulgeWidth, or: d.bulgeWidth),
             youngWidth: try c.value(.youngWidth, or: d.youngWidth),
-            knotWidth: try c.value(.knotWidth, or: d.knotWidth),
-            emittingSpacing: try c.value(.emittingSpacing, or: d.emittingSpacing))
+            knotWidth: try c.value(.knotWidth, or: d.knotWidth))
     }
 }

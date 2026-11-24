@@ -127,7 +127,6 @@ extension RenderLook {
         if group == .instrument {
             look.skyColour = baseline.skyColour
             look.holeShadow = baseline.holeShadow
-            look.emittingSpacing = baseline.emittingSpacing
         }
         return look
     }

@@ -3,7 +3,6 @@ import Testing
 
 @testable import SillageCore
 @testable import SillageRender
-
 #if canImport(simd)
     import simd
 #else
@@ -126,56 +125,5 @@ struct GPUTreeTests {
             worst = max(worst, abs(lengths[index] - expected[index]) / expected[index])
         }
         #expect(worst < 1e-5)
-    }
-
-    /// With `emitting` set, the stars' lengths come from a tree of the stars alone: a star in a
-    /// dense clump of grains keeps its neighbours' length, the grains keep theirs, and a star
-    /// far from any grain is about where it was (#478).
-    @Test func emittingParticlesTakeTheirLengthsFromEachOther() throws {
-        let device = try #require(MTLCreateSystemDefaultDevice())
-        var generator = SeededGenerator(seed: 9)
-        // 60 000 stars spread through a box 20 kpc wide, 40 000 grains packed in 0.2 kpc round
-        // the centre, where a few stars stand among them.
-        var points = (0..<59_980).map { _ in
-            SIMD3<Float>(
-                generator.uniform() * 20 - 10, generator.uniform() * 20 - 10, generator.uniform() * 20 - 10)
-        }
-        points += (0..<20).map { _ in
-            SIMD3<Float>(
-                generator.uniform() * 0.1 - 0.05, generator.uniform() * 0.1 - 0.05,
-                generator.uniform() * 0.1 - 0.05)
-        }
-        points += (0..<40_000).map { _ in
-            SIMD3<Float>(
-                generator.uniform() * 0.2 - 0.1, generator.uniform() * 0.2 - 0.1,
-                generator.uniform() * 0.2 - 0.1)
-        }
-        let count = points.count
-        let buffer = try #require(
-            device.makeBuffer(
-                bytes: points, length: count * MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared)
-        )
-        let stars = (0..<60_000).map { UInt32($0) }
-        let inside = Array(59_980..<60_000)
-        let far = (0..<60_000).filter { simd_length(points[$0]) > 5 }.prefix(2000)
-        func lengths(_ emitting: [UInt32]?) throws -> [Float] {
-            let field = try SmoothingField(device: device, particleCount: count)
-            field.emitting = emitting
-            field.update(from: buffer)
-            return Array(
-                UnsafeBufferPointer(
-                    start: field.buffer.contents().bindMemory(to: Float.self, capacity: count), count: count))
-        }
-        let plain = try lengths(nil)
-        let apart = try lengths(stars)
-        try #require(!inside.isEmpty)
-        // In the clump a star took the grains' tiny spacing; apart, the stars' own.
-        let before = inside.map { plain[$0] }.reduce(0, +) / Float(inside.count)
-        let after = inside.map { apart[$0] }.reduce(0, +) / Float(inside.count)
-        #expect(after > 5 * before, "\(before) -> \(after)")
-        // The grains keep theirs, and a star far from the clump keeps its length.
-        #expect((60_000..<count).allSatisfy { apart[$0] == plain[$0] })
-        let drift = far.map { abs(apart[$0] / plain[$0] - 1) }.reduce(0, +) / Float(far.count)
-        #expect(drift < 0.02, "\(drift)")
     }
 }
