@@ -1,0 +1,15 @@
+{
+ "carrier": "cart",
+ "win": 1.875,
+ "family": "ps",
+ "sz0": 0.002,
+ "seed": 3,
+ "label": "B f4 statistics only: Portilla-Simoncelli (rel, corr, mag)",
+ "kind": "statistics",
+ "par": {
+  "rim": 8.8,
+  "inner": 0.6045
+ },
+ "command": "python3 references/sombrero/tools/dust_track_b.py references/sombrero/dust-tracks/b/f4.json --out OUT [--law hubble]",
+ "note": "inner x rim = 5.32 kpc, the near band top edge: the inner cut law=hubble reads (#500); no other use in this field"
+}
