@@ -192,10 +192,69 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         public var sheet: Float?
         /// How uneven the sheet is, from 0, smooth, to 1; absent, 0.6.
         public var cotton: Float?
+        /// The sheet's grains laid as clouds strung along concentric rings (#506) in place of
+        /// the ring's own profile and `cotton`'s field. Absent, none.
+        public var clouds: Clouds?
+
+        /// Clouds along the ring: compact clumps elongated along the rotation, in a thin layer,
+        /// their centres and the rest of the grains drawn from a sum of Gaussian rings.
+        public struct Clouds: Codable, Sendable, Equatable {
+            /// The rings the clouds and the smooth share stand in: radius, spread (one standard
+            /// deviation) in kpc and peak height, as many as wanted.
+            public var rings: [[Float]]
+            /// Share of the grains in clouds; the rest is smooth over the same rings.
+            public var share: Float = 0.75
+            /// The clouds' lengths along the rotation, kpc, drawn evenly in log between the two.
+            public var length: [Float] = [0.1, 0.3]
+            /// How many times longer than wide, between the two.
+            public var aspect: [Float] = [2.5, 4]
+            /// How many clouds.
+            public var count: Int = 5000
+            /// The lengths' law: dN/dL as L to minus this; 1 draws them evenly in log.
+            public var slope: Float = 1
+            /// Knots a cloud is made of, how far they spread in its length and width, and how far a
+            /// grain spreads round its knot, all as shares of the cloud's length and width.
+            public var knots: Int = 4
+            public var knotSpread: Float = 0.3
+            public var grainSpread: Float = 0.35
+
+            public init(
+                rings: [[Float]], share: Float = 0.75, length: [Float] = [0.1, 0.3],
+                aspect: [Float] = [2.5, 4], count: Int = 5000
+            ) {
+                self.rings = rings
+                self.share = share
+                self.length = length
+                self.aspect = aspect
+                self.count = count
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let values = try decoder.container(keyedBy: CodingKeys.self)
+                rings = try values.decode([[Float]].self, forKey: .rings)
+                share = try values.decodeIfPresent(Float.self, forKey: .share) ?? share
+                length = try values.decodeIfPresent([Float].self, forKey: .length) ?? length
+                aspect = try values.decodeIfPresent([Float].self, forKey: .aspect) ?? aspect
+                count = try values.decodeIfPresent(Int.self, forKey: .count) ?? count
+                slope = try values.decodeIfPresent(Float.self, forKey: .slope) ?? slope
+                knots = try values.decodeIfPresent(Int.self, forKey: .knots) ?? knots
+                knotSpread = try values.decodeIfPresent(Float.self, forKey: .knotSpread) ?? knotSpread
+                grainSpread = try values.decodeIfPresent(Float.self, forKey: .grainSpread) ?? grainSpread
+            }
+
+            /// Usable: rings of three positive numbers, two rising lengths and aspects.
+            var usable: Bool {
+                !rings.isEmpty && rings.allSatisfy { $0.count == 3 && $0.allSatisfy { $0 > 0 } }
+                    && length.count == 2 && length[0] > 0 && length[1] >= length[0]
+                    && aspect.count == 2 && aspect[0] > 0 && aspect[1] >= aspect[0] && count > 0
+                    && knots > 0 && knotSpread >= 0 && grainSpread > 0
+            }
+        }
 
         public init(
             radius: Float, width: Float, share: Float = 1, innerWidth: Float? = nil, young: Float? = nil,
-            thickness: Float? = nil, threads: Int? = nil, sheet: Float? = nil, cotton: Float? = nil
+            thickness: Float? = nil, threads: Int? = nil, sheet: Float? = nil, cotton: Float? = nil,
+            clouds: Clouds? = nil
         ) {
             self.radius = radius
             self.width = width
@@ -206,13 +265,14 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             self.threads = threads
             self.sheet = sheet
             self.cotton = cotton
+            self.clouds = clouds
         }
 
         /// The spreads inside and outside the radius.
         public var widths: (inner: Float, outer: Float) { (innerWidth ?? width, width) }
 
         private enum CodingKeys: String, CodingKey {
-            case radius, width, share, innerWidth, young, thickness, threads, sheet, cotton
+            case radius, width, share, innerWidth, young, thickness, threads, sheet, cotton, clouds
         }
 
         public init(from decoder: any Decoder) throws {
@@ -226,6 +286,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             threads = try values.decodeIfPresent(Int.self, forKey: .threads)
             sheet = try values.decodeIfPresent(Float.self, forKey: .sheet)
             cotton = try values.decodeIfPresent(Float.self, forKey: .cotton)
+            clouds = try values.decodeIfPresent(Clouds.self, forKey: .clouds)
         }
     }
 
@@ -252,7 +313,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             thickness: ring.thickness.flatMap { $0 > 0 ? $0 : nil },
             threads: ring.threads.flatMap { $0 > 0 ? min($0, 4000) : nil },
             sheet: ring.sheet.flatMap { $0 > 0 ? min($0, 1) : nil },
-            cotton: ring.sheet.flatMap { $0 > 0 ? min(max(ring.cotton ?? 0.6, 0), 1) : nil })
+            cotton: ring.sheet.flatMap { $0 > 0 ? min(max(ring.cotton ?? 0.6, 0), 1) : nil },
+            clouds: ring.sheet.flatMap { $0 > 0 ? ring.clouds.flatMap { $0.usable ? $0 : nil } : nil })
     }
 
     public init(

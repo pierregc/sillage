@@ -26,6 +26,11 @@ public struct DustScreenRef: Codable, Sendable, Equatable {
     /// by more than half a period; the one resting at `rest` is the tile as written. 0, the
     /// default, keeps one realization wound from `rest` for ever.
     public var renew: Float = 0
+    /// Keeps the screen only where the line of sight runs along the radius (#506): from none
+    /// at the first radial share of the line of sight in the plane to all of it at the second,
+    /// the grains' own dust in its place elsewhere (the ring's tips), and the colour law's rim
+    /// with it. Absent, the screen everywhere.
+    public var front: [Float]?
 
     public init(tile: String, galaxy: Int = 0, rest: Float = 0, depth: Float = 1) {
         self.tile = tile
@@ -43,6 +48,7 @@ public struct DustScreenRef: Codable, Sendable, Equatable {
         depth = try c.value(.depth, or: depth)
         law = try c.decodeIfPresent(DustScreenLaw.self, forKey: .law)
         renew = try c.value(.renew, or: renew)
+        front = try c.decodeIfPresent([Float].self, forKey: .front)
     }
 
     var fault: String? {
@@ -52,6 +58,9 @@ public struct DustScreenRef: Codable, Sendable, Equatable {
         if !rest.isFinite { return "dustScreen rest \(rest): a moment in megayears" }
         if !(depth >= 0 && depth <= 1000) { return "dustScreen depth \(depth): 0 to 1000" }
         if let fault = law?.fault { return fault }
+        if let front, !(front.count == 2 && front[0] >= 0 && front[1] > front[0] && front[1] <= 1) {
+            return "dustScreen front \(front): two rising shares, 0 to 1"
+        }
         if !(renew == 0 || (renew >= 1 && renew <= 1000)) {
             return "dustScreen renew \(renew): 0, or 1 to 1000 megayears"
         }
@@ -180,6 +189,13 @@ struct ScreenUniforms {
     /// The renewal period in time units (0: none), whether the tile holds scores read through
     /// its lut, and the scores the lut spans.
     var renew: SIMD4<Float> = .zero
+    /// Whether the screen is kept by the radial share of the line of sight, and between which.
+    var front: SIMD4<Float> = .zero
+
+    static func front(_ ref: DustScreenRef?) -> SIMD4<Float> {
+        guard let front = ref?.front else { return .zero }
+        return SIMD4(1, front[0], front[1], 0)
+    }
 }
 
 /// What the light fragments read of a screen's colour law; mirrors `ScreenLaw` in `Shaders`.
@@ -187,6 +203,7 @@ struct ScreenLaw {
     var diffuse: SIMD4<Float> = .zero
     var rim: SIMD4<Float> = .zero
     var radii: SIMD4<Float> = .zero
+    var front: SIMD4<Float> = .zero
     var eye: SIMD4<Float> = .zero
     var right: SIMD4<Float> = .zero
     var up: SIMD4<Float> = .zero
@@ -198,6 +215,7 @@ struct ScreenLaw {
         diffuse = SIMD4(law.diffuse[0], law.diffuse[1], law.diffuse[2], 0)
         rim = SIMD4(law.rim[0], law.rim[1], law.rim[2], 0)
         radii = SIMD4(law.rimRadii[0], law.rimRadii[1], Float(screen.galaxy), 1)
+        front = ScreenUniforms.front(screen)
         eye = web.eye
         right = web.right
         up = web.up

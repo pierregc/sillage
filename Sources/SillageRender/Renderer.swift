@@ -672,6 +672,7 @@ public final class Renderer {
                 let loaded = try deep!.screenTile(ref, device: device)
                 screenTile = loaded.texture
                 screenLut = loaded.lut
+                screen.front = ScreenUniforms.front(ref)
                 if let lut = loaded.tile.lut {
                     screen.renew = SIMD4(
                         ref.renew / Float(Physics.megayearsPerTimeUnit), 1, lut.range[0], lut.range[1])

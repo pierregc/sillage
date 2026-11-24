@@ -2475,8 +2475,13 @@ enum Shaders {
             }
             float3 position = p.position;
             float coarse = w.carrier.x;
-            float raw = max(p.spacing * u.smoothingScale * grain.kernelScale
-                                * mix(1.0f, w.right.w, grain.amount), 1e-4f) * grain.perPixel;
+            float widen = mix(1.0f, w.right.w, grain.amount);
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            // A dust screen's grains are drawn at their own width (#506): where the screen gives
+            // way to them they are the dust seen, and where it holds they only share it out.
+            if (u.inside.screenGalaxy > 0.0f && float(g + 1u) == u.inside.screenGalaxy) { widen = 1.0f; }
+            #endif
+            float raw = max(p.spacing * u.smoothingScale * grain.kernelScale * widen, 1e-4f) * grain.perPixel;
             // Never under a few of its own pixels, or the coarse target would drop part of it.
             float span = clamp(raw, max(u.minimumSize, w.carrier.y * coarse / 1.3f), u.maximumSize);
             float reach = span / grain.perPixel;
@@ -2677,7 +2682,19 @@ enum Shaders {
             /// The renewal period (0: none), whether the tile holds scores read through its lut,
             /// and the scores the lut spans.
             float4 renew;
+            /// Whether the screen is kept only where the line of sight runs along the radius, and
+            /// the radial share of the line of sight from which it comes in and at which it is whole.
+            float4 front;
         };
+
+        // How much of a screen a point of the plane keeps (#506): where the line of sight in the
+        // plane runs along the radius (the front and the back of a ring) all of it, where it runs
+        // along the ring (its tips) none, the grains' own dust there instead.
+        static float screenFront(float2 p, float2 sight, float4 front) {
+            if (front.x <= 0.0f) { return 1.0f; }
+            float radial = abs(dot(normalize(sight + 1e-9f), normalize(p + 1e-9f)));
+            return smoothstep(front.y, front.z, radial);
+        }
 
         constexpr sampler screenLutSampler(filter::linear, address::clamp_to_edge);
 
@@ -2694,6 +2711,8 @@ enum Shaders {
             float4 rim;
             /// The rim from all at x to none at y kpc, the galaxy.
             float4 radii;
+            /// The screen's front weighting (`ScreenUniforms.front`), so the rim greys only there.
+            float4 front;
             /// The camera, as `WebUniforms` holds it.
             float4 eye;
             float4 right;
@@ -2722,6 +2741,8 @@ enum Shaders {
                 float3 meet = rel + ray * t;
                 float radius = length(float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz)));
                 rim = 1.0f - smoothstep(law.radii.x, law.radii.y, radius);
+                float2 plane = float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz));
+                rim *= screenFront(plane, float2(dot(ray, frame.axisU.xyz), dot(ray, frame.axisV.xyz)), law.front);
             }
             float3 thin = float3(law.diffuse.x, 1.0f, law.diffuse.y);
             float3 thick = float3(law.rim.x, 1.0f, law.rim.y);
@@ -2752,21 +2773,26 @@ enum Shaders {
             return float(tile.sample(screenSampler, at, gradient2d(gx, gy)).r);
         }
 
-        static float screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
-                              float3 ray, float3 stepX, float3 stepY, texture2d<half> tile, texture2d<half> lut) {
+        static float2 screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+                               float3 ray, float3 stepX, float3 stepY, texture2d<half> tile, texture2d<half> lut) {
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
             float3 rel = w.eye.xyz - frame.center.xyz;
             float least = 0.05f * length(ray);
+            float facing = abs(dot(ray, axis)) / length(ray);
             float along = dot(ray, axis);
             along = along < 0.0f ? min(along, -least) : max(along, least);
             float t = -dot(rel, axis) / along;
-            if (t <= 0.0f) { return 1.0f; }
+            // A ray that never meets the plane ahead: a screen kept by its front gives way to the
+            // grains there, as it does at grazing angles, where a sheet has nothing to show.
+            if (t <= 0.0f) { return screen.front.x > 0.0f ? float2(0.0f, 0.0f) : float2(1.0f, 1.0f); }
             float3 meet = rel + ray * t;
             float3 ex = t * (stepX - ray * (dot(stepX, axis) / along));
             float3 ey = t * (stepY - ray * (dot(stepY, axis) / along));
             float2 p = float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz));
             float2 dx = float2(dot(ex, frame.axisU.xyz), dot(ex, frame.axisV.xyz));
             float2 dy = float2(dot(ey, frame.axisU.xyz), dot(ey, frame.axisV.xyz));
+            float kept = screenFront(p, float2(dot(ray, frame.axisU.xyz), dot(ray, frame.axisV.xyz)), screen.front);
+            if (screen.front.x > 0.0f) { kept *= smoothstep(0.03f, 0.07f, facing); }
             float radius = length(p);
             float omega = webOmega(frame, radius);
             float shear = webOmegaSlope(frame, radius) / max(radius, 1e-4f);
@@ -2803,7 +2829,7 @@ enum Shaders {
                                    (radius - screen.shape.y) / span);
                 column = float(lut.sample(screenLutSampler, at).r);
             }
-            return max(column, 0.0f) * length(ray) / abs(along);
+            return float2(max(column, 0.0f) * length(ray) / abs(along), kept);
         }
 
         // `webResolved` with the screen's galaxy read off its tile instead of the lace.
@@ -2828,9 +2854,10 @@ enum Shaders {
             for (int s = 0; s < 4; ++s) {
                 if (carrier[s] > 0.0f && int(tags[s] + 0.5f) - 1 == screened) { held += carrier[s]; }
             }
-            float column = held > 0.0f
-                ? screen.depth.x * screenAt(frames[screened], w, screen, ray, stepX, stepY, tile, lut) / held
-                : 0.0f;
+            // Where the screen is kept only in part, the grains' own dust makes up the rest.
+            float2 read = held > 0.0f ? screenAt(frames[screened], w, screen, ray, stepX, stepY, tile, lut)
+                                      : float2(0.0f, 1.0f);
+            float column = held > 0.0f ? read.y * screen.depth.x * read.x / held + (1.0f - read.y) : 0.0f;
             for (int s = 0; s < 4; ++s) {
                 int g = int(tags[s] + 0.5f) - 1;
                 if (carrier[s] <= 0.0f || g < 0) { continue; }

@@ -541,6 +541,76 @@ public enum DiskSampler {
         return dense * (1 + min(2 * cotton, 1) * (gaps - 1))
     }
 
+    /// A ring's clouds (#506): each a centre drawn from the rings, a length along the rotation
+    /// and a width across, and four knots inside it of uneven weight, so no two are alike.
+    struct RingClouds {
+        struct Cloud {
+            var radius: Float
+            var phi: Float
+            var along: Float
+            var across: Float
+            var knots: [SIMD2<Float>]
+        }
+        var clouds: [Cloud]
+        /// Running sum of the clouds' weights (their areas), to pick one by weight.
+        var total: [Float]
+    }
+
+    static func ringClouds(_ spec: GalaxyConfig.DustRing.Clouds, seed: UInt64) -> RingClouds {
+        var generator = SeededGenerator(seed: seed)
+        var clouds: [RingClouds.Cloud] = []
+        var total: [Float] = []
+        var sum: Float = 0
+        let (low, high) = (spec.length[0], spec.length[1])
+        for _ in 0..<spec.count {
+            let radius = ringsRadius(spec.rings, using: &generator)
+            // dN/dL as L^-slope between the two lengths, by its inverse distribution.
+            let u = generator.uniform()
+            let length: Float
+            if abs(spec.slope - 1) < 1e-3 {
+                length = low * pow(high / low, u)
+            } else {
+                let a = 1 - spec.slope
+                length = pow(pow(low, a) + u * (pow(high, a) - pow(low, a)), 1 / a)
+            }
+            let aspect = spec.aspect[0] + (spec.aspect[1] - spec.aspect[0]) * generator.uniform()
+            let along = length
+            let across = length / aspect
+            // Knots of uneven weight: each drawn as often as a log-normal of spread one says.
+            var knots: [SIMD2<Float>] = []
+            for _ in 0..<spec.knots {
+                let knot = SIMD2(
+                    generator.normal() * along * spec.knotSpread,
+                    generator.normal() * across * spec.knotSpread)
+                let copies = max(1, Int(exp(generator.normal()).rounded()))
+                knots += Array(repeating: knot, count: min(copies, 8))
+            }
+            clouds.append(
+                .init(
+                    radius: radius, phi: generator.uniform() * 2 * .pi, along: along * spec.grainSpread,
+                    across: across * spec.grainSpread, knots: knots))
+            sum += along * across
+            total.append(sum)
+        }
+        return RingClouds(clouds: clouds, total: total)
+    }
+
+    /// A radius drawn from a sum of Gaussian rings, each [radius, spread, peak height].
+    static func ringsRadius(_ rings: [[Float]], using generator: inout SeededGenerator) -> Float {
+        let weights = rings.map { $0[1] * $0[2] * $0[0] }
+        let all = weights.reduce(0, +)
+        var pick = generator.uniform() * all
+        var chosen = rings[rings.count - 1]
+        for (ring, weight) in zip(rings, weights) {
+            if pick < weight {
+                chosen = ring
+                break
+            }
+            pick -= weight
+        }
+        return max(chosen[0] + generator.normal() * chosen[1], 0.1)
+    }
+
     /// A sheet's scale height against its ring's: thinner inside than at the rim.
     static func sheetFlare(radius: Float, ring: GalaxyConfig.DustRing) -> Float {
         0.35 + 0.65 * smoothstep(ring.radius - 2 * ring.widths.inner, ring.radius, radius)
@@ -691,6 +761,9 @@ public enum DiskSampler {
         // A ring's strands come first in the list, as many as its share of the dust, shorter
         // across the ring when it is narrow so that the grains' spread is the width asked.
         let ring = config.drawnDustRing
+        let ringClouds = ring?.clouds.map {
+            Self.ringClouds($0, seed: UInt64(galaxyIndex) &* 0x9E37_79B9 &+ 506)
+        }
         let ringStrand = ring.map { min(strandLength, min($0.width, $0.widths.inner) * 0.7) } ?? strandLength
         let ringCentres = ring.map { ($0.width * $0.width - ringStrand * ringStrand).squareRoot() } ?? 0
         let ringInnerCentres = ring?.innerWidth.map { ($0 * $0 - ringStrand * ringStrand).squareRoot() }
@@ -798,7 +871,35 @@ public enum DiskSampler {
             {
                 sheeted = true
             }
-            if sheeted, let ring {
+            if sheeted, let ring, let clouds = ring.clouds, let list = ringClouds {
+                // Clouds along concentric rings (#506): a grain in a cloud lands round one of its
+                // knots, longer along the rotation than across it; the rest are smooth over the
+                // rings. Each in a thin layer at its own phase of the swing, so no ripple runs
+                // through the layer and seen edge on it has no strata.
+                if generator.uniform() < clouds.share {
+                    let pick = generator.uniform() * (list.total.last ?? 1)
+                    var lo = 0
+                    var hi = list.total.count - 1
+                    while lo < hi {
+                        let mid = (lo + hi) / 2
+                        if list.total[mid] < pick { lo = mid + 1 } else { hi = mid }
+                    }
+                    let cloud = list.clouds[lo]
+                    let knot = cloud.knots[
+                        Int(generator.uniform() * Float(cloud.knots.count)) % cloud.knots.count]
+                    let along = knot.x + generator.normal() * cloud.along
+                    let across = knot.y + generator.normal() * cloud.across
+                    radius = max(cloud.radius + across, 0.1)
+                    phi = cloud.phi + along / cloud.radius
+                } else {
+                    radius = Self.ringsRadius(clouds.rings, using: &generator)
+                    phi = generator.uniform() * 2 * .pi
+                }
+                sheetLayer =
+                    (ring.thickness ?? config.diskThickness * 0.45) * sheetFlare(radius: radius, ring: ring)
+                ringGrain = true
+                proximity = 1
+            } else if sheeted, let ring {
                 radius = ring.radius
                 phi = 0
                 let cotton = ring.cotton ?? 0.6
