@@ -747,7 +747,8 @@ struct DustRingTests {
         let dust = radii(RestrictedSolver.sampleParticles(for: sloped), .dust)
         let outside = dust.filter { $0 > 10 }
         let inside = dust.filter { $0 <= 10 }
-        #expect(abs(Double(outside.count) / Double(dust.count) - 0.5 / 3.5) < 0.04)
+        let share = Double(outside.count) / Double(dust.count)
+        #expect(abs(share - 0.5 / 3.5) < 0.04)
         func rms(_ radii: [Double]) -> Double {
             (radii.reduce(0) { $0 + ($1 - 10) * ($1 - 10) } / Double(radii.count)).squareRoot()
         }
