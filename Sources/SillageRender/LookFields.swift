@@ -48,7 +48,6 @@ public enum LookFields {
         ("columnSmoothing", "stars a kernel covers in projection; 0 sizes kernels from the 3D spacing alone"),
         ("oldWidth", "widens the old disk's kernels"),
         ("bulgeWidth", "widens the bulge's kernels"),
-        ("starSpacingFloor", "least spacing in kpc a star's kernel is sized from; 0 none"),
         ("youngWidth", "widens the kernels of stars under 300 Myr"),
         ("knotWidth", "widens the kernels of knots under 50 Myr"),
         ("glint", "light kept by the compact bright minority: 1 as sampled, 0 ordinary stars"),

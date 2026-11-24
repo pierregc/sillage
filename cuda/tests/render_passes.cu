@@ -80,7 +80,6 @@ static SplatUniforms uniforms(float scale, uint count, uint side) {
     u.bulgeWidth = 1.0f;
     u.youngWidth = 1.0f;
     u.knotWidth = 1.0f;
-    u.starSpacingFloor = 0.0f;
     return u;
 }
 

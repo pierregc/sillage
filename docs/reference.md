@@ -367,14 +367,6 @@ in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red
 Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478). Metal only for now:
 CUDA draws with the fixed reddening.
 
-`look.starSpacingFloor`, in kpc, is the least spacing an emitting particle's kernel is sized
-from. A particle's kernel is its spacing read off the solver's tree, which holds every particle,
-so a star inside a dense thread of dust takes the grains' tiny spacing and shows as a speck,
-reddened when grains stand in front of it. Floored, it is drawn as wide as its own population and
-its light melts into the disk's; the dust and the compact minority (glints, a nucleus) keep the
-tree's spacing. 0, the default, draws as before; the Sombrero's threads take a few hundredths of
-a kpc (#478). Metal and CUDA alike.
-
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
 above, so the same scene always gets the same palette. `--palette <family>` does the same inside

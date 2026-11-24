@@ -94,11 +94,6 @@ extension LookFile.Group {
                 .slider("Knot width", \.knotWidth, 0.25...4),
                 .slider("Old disk width", \.oldWidth, 0.25...4),
                 .slider("Bulge width", \.bulgeWidth, 0.25...4),
-                .slider(
-                    "Star spacing floor (kpc)", \.starSpacingFloor, 0...0.2, format: "%.3f",
-                    note:
-                        "Stars inside dust threads drawn no finer than this, so they melt into the disk's light."
-                ),
                 .slider("Glow", \.bloomIntensity, 0...2),
                 .slider("Glow threshold", \.bloomThreshold, 0.05...1.5),
                 .slider("Threshold softness", \.bloomSoftKnee, 0...1),
