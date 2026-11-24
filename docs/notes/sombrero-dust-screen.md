@@ -82,6 +82,17 @@ the tile's lut, so the column keeps B1's statistics radius by radius; octaves na
 fade out. It costs nothing measurable (a 4K still in 1.8 s either way). Images in
 `~/claude-workspace/sombrero/banc/508/`.
 
+Close to the disk the dabs are read along the ray's whole line, which may cross the plane behind
+the eye: each dab counts for its share ahead of the eye, the statistics for the layer's share
+ahead, so the eye can stand in the layer and a ray leaving the plane sees only what is above it.
+Below 3 degrees to the plane the dabs give way to the grains, as `front` does for a tile: edge on,
+the lane is the grains' own. What still breaks: inside the layer the screen is laid on the grains'
+carrier, and near the eye the grains are separate kernels, so the dust shows as grey discs; the
+screen would need a carrier of its own there. `smooth` lays a share of each radius's mean column
+smooth (gaps filled, mean kept); `rings` ([radius, sigma, column], up to four) add column mottled
+as the radius's own, for the outer rings that make the tips: `smooth` 0.3, rings 7.9 and 8.75 kpc
+(sigma 0.4 and 0.35, column 0.25), depth 0.39 give Hubble's lane depth at the front and the tips.
+
 ## Not done
 
 The flights (zenith, low pass, inside, core, wide): the screen is read at the mid-plane from any
