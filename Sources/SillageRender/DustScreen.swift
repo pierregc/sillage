@@ -123,7 +123,8 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         if !(1...3).contains(shape) { return "dustScreen dabs shape \(shape): 1 to 3" }
         if !(0...65535).contains(seed) { return "dustScreen dabs seed \(seed): 0 to 65535" }
         if !(smooth >= 0 && smooth <= 1) { return "dustScreen dabs smooth \(smooth): 0 to 1" }
-        let ringsOK = rings.count <= 4
+        let ringsOK =
+            rings.count <= 4
             && rings.allSatisfy { $0.count == 3 && $0[0] >= 0 && $0[1] > 0 && $0[2] >= 0 }
         if !ringsOK { return "dustScreen dabs rings: up to four [radius, sigma, column], sigma above 0" }
         return nil
