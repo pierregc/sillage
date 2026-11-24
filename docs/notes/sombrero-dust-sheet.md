@@ -70,3 +70,19 @@ It is a prototype, and these are its known gaps against the bench the plan asks 
 - The remaining threads stray outside the ring's edges as lone wires at 0.1 of the grains: try 0.
 - Untested: how the renderer's dust web (`dustWeb` 1) and `dustWidth` draw a sheet; how the sheet
   looks after 12 to 18 Myr of the run; the far lane; close passes in flight.
+
+## The bench, as built: `references/sombrero/tools/dust_bench.py`
+
+```bash
+git fetch origin assets/478-sombrero          # the real light, dust off (--light origin, the default)
+python3 references/sombrero/tools/dust_bench.py --grains /tmp/v6.f32 --sheet /tmp/v6.jpg \
+    --ref "Sillage v6 (rendu réel)=real-v6-still.png"       # grains from DustBenchTests
+python3 references/sombrero/tools/dust_bench.py scale=0.4,0.9,1.8 warp=0,0.6,1.2 --sheet grid.jpg
+```
+
+Procedural dust (envelope times fBm, parameters in `DEFAULTS`, as key=value or JSON) takes about 10 s
+a frame at 3072 px; a grid of 9 about 90 s at 1536 px. Hubble on top, variants below, French
+labels, `measure.py` figures on each. Calibrated on the v6 grains (8 M take, 1.2 M dust grains)
+against the real v6 still: `k` 0.19, `behind` 0.95, `behind_far` 0.18, `redden` 3, `blur` 0.6 px.
+It reads the near lane as slightly wider and more solid than the renderer does (width 0.34 against
+0.28, rim solid 0.77 against 0.63); the lane's depth, red over green and the far lane match.
