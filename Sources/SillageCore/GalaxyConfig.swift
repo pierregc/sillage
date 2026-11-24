@@ -158,6 +158,13 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// younger than a gigayear, an early type's old disk, where the young ones, many times
     /// brighter for their mass, stand out of it as points. Absent, 1: the disk as always drawn.
     public var recentStars: Float?
+    /// Whether the dark halo's speeds are cut at the escape speed of the galaxy as it is built,
+    /// bulge and disk included, with the Gaussian they are drawn from widened so that the speeds
+    /// kept still carry the Jeans pressure (#507). Absent, at the escape speed of the analytic
+    /// sphere: under a bulge of three quarters that cut a fifth of the inner halo's draws and
+    /// left it a quarter short of its kinetic energy, so it fell inward over 60 Myr, the circular
+    /// speed at the dust ring rose by 6 to 8 per cent and the ring shrank with it.
+    public var haloEscape: Bool?
     /// The ring this galaxy's dust is gathered in, when it has one (#475).
     public var dustRing: DustRing?
 
@@ -217,6 +224,14 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             public var knots: Int = 4
             public var knotSpread: Float = 0.3
             public var grainSpread: Float = 0.35
+            /// Megayears of the rotation's shear the clouds are laid down as having had already
+            /// (#507): each grain set along its circle by how much faster or slower than its
+            /// cloud's centre it turns, so a cloud starts as the trailing streak it would be that
+            /// much later, its knots drawn out with it. Absent, none: round knots.
+            public var shear: Float?
+            /// Random motion of the ring's grains in the plane, km/s (#507): this much radially and
+            /// the epicyclic share of it along the rotation. Absent, none: cold, on circles.
+            public var random: Float?
 
             public init(
                 rings: [[Float]], share: Float = 0.75, length: [Float] = [0.1, 0.3],
@@ -240,6 +255,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
                 knots = try values.decodeIfPresent(Int.self, forKey: .knots) ?? knots
                 knotSpread = try values.decodeIfPresent(Float.self, forKey: .knotSpread) ?? knotSpread
                 grainSpread = try values.decodeIfPresent(Float.self, forKey: .grainSpread) ?? grainSpread
+                shear = try values.decodeIfPresent(Float.self, forKey: .shear)
+                random = try values.decodeIfPresent(Float.self, forKey: .random)
             }
 
             /// Usable: rings of three positive numbers, two rising lengths and aspects.
@@ -399,7 +416,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
         case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction, dustRing, bulgeApart
-        case bulgeReach, nucleus, recentStars
+        case bulgeReach, nucleus, recentStars, haloEscape
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -453,6 +470,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         bulgeReach = try values.decodeIfPresent(Float.self, forKey: .bulgeReach)
         nucleus = try values.decodeIfPresent(Float.self, forKey: .nucleus)
         recentStars = try values.decodeIfPresent(Float.self, forKey: .recentStars)
+        haloEscape = try values.decodeIfPresent(Bool.self, forKey: .haloEscape)
         dustRing = try values.decodeIfPresent(DustRing.self, forKey: .dustRing)
     }
 

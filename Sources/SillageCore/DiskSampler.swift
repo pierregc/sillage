@@ -382,14 +382,21 @@ public enum DiskSampler {
             circularSpeed: { equilibrium.circularSpeed(atRadius: $0) },
             inner: potential.scaleRadius * 0.005, edge: edge)
 
+        let bound =
+            config.haloEscape == true
+            ? boundSpeeds(
+                dispersion: dispersion, circularSpeed: { equilibrium.circularSpeed(atRadius: $0) },
+                inner: potential.scaleRadius * 0.005, edge: edge) : nil
+
         for _ in 0..<count {
             let u = generator.uniform() * limit
             let radius =
                 potential.profile == .plummer
                 ? inversePlummerRadius(u, scale: potential.scaleRadius)
                 : inverseHernquistRadius(u, scale: potential.scaleRadius)
-            let sigma = dispersion(radius)
-            let escape = potential.escapeSpeed(atRadius: radius)
+            var sigma = dispersion(radius)
+            var escape = potential.escapeSpeed(atRadius: radius)
+            if let bound { (sigma, escape) = bound(radius) }
             var speed: Float = 0
             for _ in 0..<32 {
                 let draw = SIMD3<Float>(
@@ -409,6 +416,70 @@ public enum DiskSampler {
                 component: .halo,
                 mass: particleMass,
                 kernelScale: 1
+            )
+        }
+    }
+
+    /// The width of the Gaussian a pressure-supported population's speeds are drawn from, and
+    /// the escape speed they are cut at, both against the galaxy as built (#507).
+    ///
+    /// The escape speed comes from the potential `circularSpeed` implies, summed inward from
+    /// `edge`; the Gaussian is widened until the speeds left under that cut hold the Jeans
+    /// dispersion's second moment, which a Gaussian cut at the escape speed otherwise falls short of.
+    static func boundSpeeds(
+        dispersion: (Float) -> Float,
+        circularSpeed: (Float) -> Float,
+        inner: Float,
+        edge: Float
+    ) -> (Float) -> (sigma: Float, escape: Float) {
+        let samples = 128
+        let start = max(inner, 1e-5)
+        let step = log(max(edge, start * 2) / start) / Float(samples - 1)
+        let radii = (0..<samples).map { Double(start * exp(step * Float($0))) }
+        func pull(_ r: Double) -> Double {
+            let speed = Double(circularSpeed(Float(r)))
+            return speed * speed / r
+        }
+        var depth = [Double](repeating: 0, count: samples)
+        let outer = Double(circularSpeed(Float(radii[samples - 1])))
+        depth[samples - 1] = outer * outer
+        for index in Swift.stride(from: samples - 2, through: 0, by: -1) {
+            let a = radii[index]
+            let b = radii[index + 1]
+            depth[index] = depth[index + 1] + 0.5 * (pull(a) + pull(b)) * (b - a)
+        }
+        // E[chi^2 | chi < x] / 3 for the length of a unit three-dimensional Gaussian.
+        func kept(_ x: Double) -> Double {
+            let steps = 256
+            var below = 0.0
+            var second = 0.0
+            for k in 0..<steps {
+                let c = (Double(k) + 0.5) * x / Double(steps)
+                let w = c * c * exp(-0.5 * c * c)
+                below += w
+                second += w * c * c
+            }
+            return below > 0 ? second / (3 * below) : 1
+        }
+        var sigma = [Float](repeating: 0, count: samples)
+        var escape = [Float](repeating: 0, count: samples)
+        for index in 0..<samples {
+            let wanted = Double(dispersion(Float(radii[index])))
+            let cut = (2 * depth[index]).squareRoot()
+            var width = wanted
+            for _ in 0..<24 where width > 0 {
+                width = min(wanted / kept(cut / width).squareRoot(), 3 * wanted)
+            }
+            sigma[index] = Float(width)
+            escape[index] = Float(cut)
+        }
+        return { radius in
+            let position = log(max(radius, start) / start) / step
+            let index = min(max(Int(position), 0), samples - 2)
+            let blend = min(max(position - Float(index), 0), 1)
+            return (
+                sigma[index] * (1 - blend) + sigma[index + 1] * blend,
+                escape[index] * (1 - blend) + escape[index + 1] * blend
             )
         }
     }
@@ -891,6 +962,10 @@ public enum DiskSampler {
                     let across = knot.y + generator.normal() * cloud.across
                     radius = max(cloud.radius + across, 0.1)
                     phi = cloud.phi + along / cloud.radius
+                    if let shear = clouds.shear, shear > 0 {
+                        let elapsed = shear / Float(Physics.megayearsPerTimeUnit)
+                        phi += spin * (angularRate(radius) - angularRate(cloud.radius)) * elapsed
+                    }
                 } else {
                     radius = Self.ringsRadius(clouds.rings, using: &generator)
                     phi = generator.uniform() * 2 * .pi
@@ -1140,6 +1215,16 @@ public enum DiskSampler {
                         + SIMD3<Float>(0, 0, 1)
                         * (swing
                             * (generator.normal() * (ringLayer ?? 0) * 0.9 - liftSwing))
+                    if sheeted, let random = ring?.clouds?.random, random > 0 {
+                        // Epicycles: the motion along the rotation is kappa / 2 Omega of the radial.
+                        let radial = random / Float(Physics.kilometersPerSecondPerVelocityUnit)
+                        let share =
+                            equilibrium.epicyclicFrequency(atRadius: radius)
+                            / max(2 * angularRate(radius), 1e-6)
+                        localVelocity +=
+                            outward * (generator.normal() * radial)
+                            + along * (generator.normal() * radial * share)
+                    }
                 } else {
                     localVelocity =
                         outward

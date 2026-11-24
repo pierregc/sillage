@@ -80,6 +80,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
         /// How much of the disk's recent star formation is kept (`GalaxyConfig.recentStars`);
         /// absent, all of it.
         public var recentStars: Float?
+        /// The halo's speeds cut at the built galaxy's escape speed (`GalaxyConfig.haloEscape`,
+        /// #507); absent, at the analytic sphere's.
+        public var haloEscape: Bool?
         public var haloParticleRatio: Float
         public var haloExtent: Float
         public var dissipationTime: Float
@@ -123,6 +126,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             bulgeReach = galaxy.bulgeReach
             nucleus = galaxy.nucleus
             recentStars = galaxy.recentStars
+            haloEscape = galaxy.haloEscape
             haloParticleRatio = galaxy.haloParticleRatio
             haloExtent = galaxy.haloExtent
             dissipationTime = galaxy.dissipationTime
@@ -191,6 +195,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.bulgeReach = bulgeReach
             galaxy.nucleus = nucleus
             galaxy.recentStars = recentStars
+            galaxy.haloEscape = haloEscape
             return galaxy
         }
     }
