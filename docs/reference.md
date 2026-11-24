@@ -539,7 +539,8 @@ the dust's column across the plane, read where each pixel's ray meets the mid-pl
 angle and turned by the disk's rotation from `rest` (megayears); `depth` scales it; the grains
 only share it among the slabs. `law` sees it through a colour law whose shares of the green
 depth tend to one in thick dust, the rim within `rimRadii` with its own (#506,
-[the Sombrero's dust screen](notes/sombrero-dust-screen.md)).
+[the Sombrero's dust screen](notes/sombrero-dust-screen.md)) Its `dabs` draws the column from round dabs carried by the rotation
+instead of the tile, through the tile's lut (#508).
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph

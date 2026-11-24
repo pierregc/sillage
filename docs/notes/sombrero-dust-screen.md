@@ -63,6 +63,25 @@ unchanged. Inverting the engine's opacity row by row against the field's (`remap
 files) took B6 to 3.16 and drew horizontal stripes; not kept. What is left between the engine and
 the bench is the light the dust lies in front of, not the field.
 
+## Dabs in place of the tile (#508)
+
+B1's tile is ten times longer along the radius than round, because it was drawn from the front
+view, where a radius shows as a tenth of itself: right at the front, strokes from the core at the
+tips and from above. `dabs` in the same block (`{"size": [120, 70, 35], "cell": 100, "octaves": 4,
+"ratio": 0.55, "gain": 0.8, "shape": 2}`) draws the screen's scores from dabs instead: Gaussian
+blobs in the layer, widths in parsecs along the rotation, the radius and the height, centred in
+the mid-plane, and their column taken along the ray in closed form. A blob projects round from any
+angle, so a dab as tall as it is wide keeps its shape at 6 degrees, at the tips and from above;
+height is what the front sees, the radius what the tips see. Dabs sit one to a cell on rings one
+cell wide, each ring turned rigidly at its own rate: a dab moves with the dust and is never
+sheared, and independent dabs look the same however far their rings have slipped, so nothing needs
+renewing. Each octave is `ratio` the size, `gain` the amplitude; a dab's depth is gamma of shape
+`shape`. The sum is turned into a normal score from its mean and variance where the ray falls
+(Wilson-Hilferty, checked by Monte Carlo at 6, 30 and 89 degrees: sd 1.04 to 1.06) and read through
+the tile's lut, so the column keeps B1's statistics radius by radius; octaves narrower than a pixel
+fade out. It costs nothing measurable (a 4K still in 1.8 s either way). Images in
+`~/claude-workspace/sombrero/banc/508/`.
+
 ## Not done
 
 The flights (zenith, low pass, inside, core, wide): the screen is read at the mid-plane from any
