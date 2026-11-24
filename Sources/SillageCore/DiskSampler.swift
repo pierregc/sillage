@@ -1050,7 +1050,8 @@ public enum DiskSampler {
                 edge: edge / max(config.diskTruncation, 1e-3),
                 // No arm reaches inside the bulge, so nothing young either: proximity there
                 // is 0.5 by default and drew a fifth of the core as arm stars.
-                armProximity: proximity * (1 - bulgeWeight), roll: generator.uniform())
+                armProximity: proximity * (1 - bulgeWeight), roll: generator.uniform(),
+                recent: config.recentStars ?? 1)
             switch component {
             case .hiiRegion:
                 population = 1

@@ -995,7 +995,13 @@ rotation curve counts the faded body. `"nucleus": 0.006` gathers that share of t
 in a nucleus a fiftieth of its scale radius across, the point of light at the centre that a
 Hernquist cusp alone draws as a glow: old stars, compact and three times slower than the bulge's,
 drawn as stars of the bright compact minority so that a look's `bulgeWidth` does not spread them
-and its `glint` sets their light with the disk's.
+and its `glint` sets their light with the disk's. `"recentStars"`, 0 to 1, is how much of the
+disk's recent star formation is kept: a disk is drawn with a fifth of its stars under 900 Myr
+old where its pattern stands and ages down to 60 Myr everywhere, and those, many times brighter
+for their mass, stand out of an old galaxy's disk as points of light, reddened where they shine
+through its dust. At 0 no disk star is younger than a gigayear, the old disk of an early type;
+the positions and motions drawn are the same to the bit, only the ages change. The knots of
+`starFormingFraction` are not touched.
 
 **A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
 as the stars'. A galaxy of `scene.json` that carries

@@ -154,6 +154,10 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// fiftieth of the bulge's scale radius across: the point of light at the heart of a galaxy
     /// like the Sombrero, which a Hernquist cusp alone draws as a glow. Absent, none.
     public var nucleus: Float?
+    /// How much of the disk's recent star formation is kept, 0 to 1: at 0 no disk star is
+    /// younger than a gigayear, an early type's old disk, where the young ones, many times
+    /// brighter for their mass, stand out of it as points. Absent, 1: the disk as always drawn.
+    public var recentStars: Float?
     /// The ring this galaxy's dust is gathered in, when it has one (#475).
     public var dustRing: DustRing?
 
@@ -321,7 +325,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
         case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction, dustRing, bulgeApart
-        case bulgeReach, nucleus
+        case bulgeReach, nucleus, recentStars
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -374,6 +378,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         bulgeApart = try values.decodeIfPresent(Bool.self, forKey: .bulgeApart)
         bulgeReach = try values.decodeIfPresent(Float.self, forKey: .bulgeReach)
         nucleus = try values.decodeIfPresent(Float.self, forKey: .nucleus)
+        recentStars = try values.decodeIfPresent(Float.self, forKey: .recentStars)
         dustRing = try values.decodeIfPresent(DustRing.self, forKey: .dustRing)
     }
 

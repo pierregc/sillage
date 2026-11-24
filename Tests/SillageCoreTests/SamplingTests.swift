@@ -1024,6 +1024,25 @@ struct BulgeApartTests {
         #expect(!String(decoding: try SceneFile(near).encoded(), as: UTF8.self).contains("bulgeReach"))
     }
 
+    /// With none of its recent star formation kept a disk has no star under a gigayear old,
+    /// drawn where it was and moving as it did, and the scene file keeps the field.
+    @Test func anOldDiskHasNoYoungStars() throws {
+        let quiet = scene { $0.recentStars = 0 }
+        func youngest(_ system: ParticleSystem) -> Double {
+            (0..<system.count).filter { system.component[$0] == ParticleComponent.star.rawValue }
+                .map { -Double(system.formation[$0]) * Physics.megayearsPerTimeUnit }.min() ?? 0
+        }
+        let usual = RestrictedSolver.sampleParticles(for: scene())
+        let old = RestrictedSolver.sampleParticles(for: quiet)
+        #expect(youngest(usual) < 100)
+        #expect(youngest(old) >= Double(StarFormation.quietYoungestMyr) * 0.999)
+        #expect(old.positions == usual.positions)
+        #expect(old.velocities == usual.velocities)
+        let file = try SceneFile(quiet).encoded()
+        #expect(try SceneFile.decoded(from: file).scene(particleCount: 1_000).galaxies[0].recentStars == 0)
+        #expect(!String(decoding: try SceneFile(scene()).encoded(), as: UTF8.self).contains("recentStars"))
+    }
+
     /// A nucleus gathers its share of the bulge's stars within a few hundredths of the scale
     /// radius, where the cusp alone holds almost none, as compact stars slower than the bulge's,
     /// and the scene file keeps the field.

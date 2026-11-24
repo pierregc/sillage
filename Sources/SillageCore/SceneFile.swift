@@ -75,6 +75,9 @@ public struct SceneFile: Codable, Sendable, Equatable {
         public var bulgeReach: Float?
         /// Share of the bulge's stars in a nucleus (`GalaxyConfig.nucleus`); absent, none.
         public var nucleus: Float?
+        /// How much of the disk's recent star formation is kept (`GalaxyConfig.recentStars`);
+        /// absent, all of it.
+        public var recentStars: Float?
         public var haloParticleRatio: Float
         public var haloExtent: Float
         public var dissipationTime: Float
@@ -117,6 +120,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             bulgeApart = galaxy.bulgeApart
             bulgeReach = galaxy.bulgeReach
             nucleus = galaxy.nucleus
+            recentStars = galaxy.recentStars
             haloParticleRatio = galaxy.haloParticleRatio
             haloExtent = galaxy.haloExtent
             dissipationTime = galaxy.dissipationTime
@@ -184,6 +188,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.bulgeApart = bulgeApart
             galaxy.bulgeReach = bulgeReach
             galaxy.nucleus = nucleus
+            galaxy.recentStars = recentStars
             return galaxy
         }
     }
