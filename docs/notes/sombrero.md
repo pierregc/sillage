@@ -128,6 +128,20 @@ the above.
 - Some threads seen edge on show their lift wave as a regular zigzag.
 - By 200 Myr the threads wind into near circles, faint in the far views.
 
+## Open work (24/11)
+
+- **The dust lane**: a continuous cottony sheet in place of the threads, tuned on a bench before any
+  take. The plan, the bench and the agents' split: [the dust bench](sombrero-dust-bench.md).
+- The sampler fields `dustRing.sheet` and `cotton`, announced by the coordinator on
+  `claude/project-thread-yxfc71`, not yet pushed when this was written.
+- `look.dustWidth` (PR #483, commit 0ff19be) widens the dust grains' kernels; off by default and
+  without effect while `dustWeb` is 1. PR #483's body does not mention it yet.
+- Scene v6 still has `starFormingFraction` and `dustRing.young` above zero; the next scene sets both
+  to 0 (checked at 2 M: nothing lights in the lane).
+- After the dust: a new 8 M take, the photo at Hubble's framing, the flight stills, the 4K film (the
+  v6 export was stopped on 24/11, partial file deleted; take lib/sombrero-8m-v6 kept).
+- Not started: the core spindle, finer fibres at the rim, the general tools moved to `scripts/`.
+
 ## Figures and costs
 
 Against Hubble at the frame's figures (`tools/measure.py`, values 0 to 1), v6 at 12 Myr: halo 1 to
