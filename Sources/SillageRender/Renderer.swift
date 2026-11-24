@@ -666,10 +666,18 @@ public final class Renderer {
         // A dust screen's tile (#506), read by the inside library's resolve.
         var screen = ScreenUniforms()
         var screenTile: MTLTexture?
+        var screenLut: MTLTexture?
         if let ref = within?.settings.dustScreen, web != nil, deep != nil {
             do {
                 let loaded = try deep!.screenTile(ref, device: device)
                 screenTile = loaded.texture
+                screenLut = loaded.lut
+                if let lut = loaded.tile.lut {
+                    screen.renew = SIMD4(
+                        ref.renew / Float(Physics.megayearsPerTimeUnit), 1, lut.range[0], lut.range[1])
+                } else {
+                    screen.renew = SIMD4(ref.renew / Float(Physics.megayearsPerTimeUnit), 0, 0, 1)
+                }
                 screen.shape = SIMD4(
                     Float(ref.galaxy + 1), loaded.tile.radii[0], loaded.tile.radii[1],
                     ref.rest / Float(Physics.megayearsPerTimeUnit))
@@ -915,6 +923,7 @@ public final class Renderer {
                 if deep != nil {
                     encoder.setFragmentBytes(&screen, length: MemoryLayout<ScreenUniforms>.stride, index: 2)
                     encoder.setFragmentTexture(screenTile ?? web.lace, index: 3)
+                    encoder.setFragmentTexture(screenLut ?? screenTile ?? web.lace, index: 4)
                 }
                 for target in apart ?? [(web.carrier, web.tags)] {
                     encoder.setFragmentTexture(target.carrier, index: 1)

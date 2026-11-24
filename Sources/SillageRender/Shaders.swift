@@ -2674,7 +2674,12 @@ enum Shaders {
             float4 shape;
             /// The dust a unit of the tile lays in the frame's dust target.
             float4 depth;
+            /// The renewal period (0: none), whether the tile holds scores read through its lut,
+            /// and the scores the lut spans.
+            float4 renew;
         };
+
+        constexpr sampler screenLutSampler(filter::linear, address::clamp_to_edge);
 
         constexpr sampler screenSampler(filter::linear, mip_filter::linear, s_address::repeat,
                                         t_address::clamp_to_edge, max_anisotropy(16));
@@ -2725,25 +2730,11 @@ enum Shaders {
             return exp(-green * share);
         }
 
-        static float screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
-                              float3 ray, float3 stepX, float3 stepY, texture2d<half> tile) {
-            float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
-            float3 rel = w.eye.xyz - frame.center.xyz;
-            float least = 0.05f * length(ray);
-            float along = dot(ray, axis);
-            along = along < 0.0f ? min(along, -least) : max(along, least);
-            float t = -dot(rel, axis) / along;
-            if (t <= 0.0f) { return 1.0f; }
-            float3 meet = rel + ray * t;
-            float3 ex = t * (stepX - ray * (dot(stepX, axis) / along));
-            float3 ey = t * (stepY - ray * (dot(stepY, axis) / along));
-            float2 p = float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz));
-            float2 dx = float2(dot(ex, frame.axisU.xyz), dot(ex, frame.axisV.xyz));
-            float2 dy = float2(dot(ey, frame.axisU.xyz), dot(ey, frame.axisV.xyz));
-            float radius = length(p);
-            float age = w.up.w - screen.shape.w;
-            float angle = webOmega(frame, radius) * age;
-            float shear = webOmegaSlope(frame, radius) / max(radius, 1e-4f);
+        // One realization of the tile at the plane point `p` (footprint `dx`, `dy`), wound by
+        // the rotation curve for `age` from where it rests and turned rigidly by `spin`.
+        static float screenRealization(float2 p, float2 dx, float2 dy, float omega, float shear, float age,
+                                       float spin, constant ScreenUniforms &screen, texture2d<half> tile) {
+            float angle = omega * age + spin;
             float c = cos(angle);
             float n = sin(angle);
             float2 q = float2(c * p.x + n * p.y, n * -p.x + c * p.y);
@@ -2758,14 +2749,68 @@ enum Shaders {
             float2 dv = q / (r * span);
             float2 gx = float2(dot(du, qx), dot(dv, qx));
             float2 gy = float2(dot(du, qy), dot(dv, qy));
-            float column = max(float(tile.sample(screenSampler, at, gradient2d(gx, gy)).r), 0.0f);
-            return column * length(ray) / abs(along);
+            return float(tile.sample(screenSampler, at, gradient2d(gx, gy)).r);
+        }
+
+        static float screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+                              float3 ray, float3 stepX, float3 stepY, texture2d<half> tile, texture2d<half> lut) {
+            float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
+            float3 rel = w.eye.xyz - frame.center.xyz;
+            float least = 0.05f * length(ray);
+            float along = dot(ray, axis);
+            along = along < 0.0f ? min(along, -least) : max(along, least);
+            float t = -dot(rel, axis) / along;
+            if (t <= 0.0f) { return 1.0f; }
+            float3 meet = rel + ray * t;
+            float3 ex = t * (stepX - ray * (dot(stepX, axis) / along));
+            float3 ey = t * (stepY - ray * (dot(stepY, axis) / along));
+            float2 p = float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz));
+            float2 dx = float2(dot(ex, frame.axisU.xyz), dot(ex, frame.axisV.xyz));
+            float2 dy = float2(dot(ey, frame.axisU.xyz), dot(ey, frame.axisV.xyz));
+            float radius = length(p);
+            float omega = webOmega(frame, radius);
+            float shear = webOmegaSlope(frame, radius) / max(radius, 1e-4f);
+            float since = w.up.w - screen.shape.w;
+            float value;
+            float period = screen.renew.x;
+            if (period > 0.0f) {
+                // Two realizations half a period apart, each resting unsheared in the middle of its
+                // life and weighted cos squared about it; the one resting at the tile's own rest is
+                // the tile as written, each later one turned rigidly by an angle of its own.
+                float total = 0.0f;
+                float norm = 0.0f;
+                for (int k = 0; k < 2; ++k) {
+                    float s = since / period + 0.5f * float(k);
+                    float cycle = floor(s + 0.5f);
+                    float u = s - cycle;
+                    float weight = cospi(u);
+                    weight *= weight;
+                    if (weight < 1e-4f) { continue; }
+                    int id = int(cycle) * 2 + k;
+                    float spin = id == 0 ? 0.0f : 2.0f * M_PI_F * webHash(uint2(uint(id + 4096), 506u)).x;
+                    total += weight * screenRealization(p, dx, dy, omega, shear, u * period, spin, screen, tile);
+                    norm += weight * weight;
+                }
+                // Scores keep their spread when blended; columns are averaged.
+                value = screen.renew.y > 0.0f ? total * rsqrt(max(norm, 1e-6f)) : total;
+            } else {
+                value = screenRealization(p, dx, dy, omega, shear, since, 0.0f, screen, tile);
+            }
+            float column = value;
+            if (screen.renew.y > 0.0f) {
+                float span = max(screen.shape.z - screen.shape.y, 1e-4f);
+                float2 at = float2((value - screen.renew.z) / (screen.renew.w - screen.renew.z),
+                                   (radius - screen.shape.y) / span);
+                column = float(lut.sample(screenLutSampler, at).r);
+            }
+            return max(column, 0.0f) * length(ray) / abs(along);
         }
 
         // `webResolved` with the screen's galaxy read off its tile instead of the lace.
         static half4 screenResolved(float2 uv, float4 carrier, float4 tagged, constant DiskFrame *frames,
                                     constant WebUniforms &w, texture2d<half> lace,
-                                    constant ScreenUniforms &screen, texture2d<half> tile) {
+                                    constant ScreenUniforms &screen, texture2d<half> tile,
+                                    texture2d<half> lut) {
             float4 tags = tagged * 255.0f;
             float2 ndc = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
             float3 across = w.right.xyz * (w.forward.w * w.target.z);
@@ -2784,7 +2829,7 @@ enum Shaders {
                 if (carrier[s] > 0.0f && int(tags[s] + 0.5f) - 1 == screened) { held += carrier[s]; }
             }
             float column = held > 0.0f
-                ? screen.depth.x * screenAt(frames[screened], w, screen, ray, stepX, stepY, tile) / held
+                ? screen.depth.x * screenAt(frames[screened], w, screen, ray, stepX, stepY, tile, lut) / held
                 : 0.0f;
             for (int s = 0; s < 4; ++s) {
                 int g = int(tags[s] + 0.5f) - 1;
@@ -2812,7 +2857,8 @@ enum Shaders {
                                                texture2d<half> tagged [[texture(2)]]
                                                #if defined(SILLAGE_INSIDE)
                                                , constant ScreenUniforms &screen [[buffer(2)]],
-                                               texture2d<half> tile [[texture(3)]]
+                                               texture2d<half> tile [[texture(3)]],
+                                               texture2d<half> lut [[texture(4)]]
                                                #endif
                                                ) {
             float2 uv = webResolveAt(in.position.xy, w);
@@ -2822,7 +2868,7 @@ enum Shaders {
             #if defined(SILLAGE_INSIDE)
             if (screen.shape.x > 0.0f) {
                 out.dust = screenResolved(uv, carrier, float4(tagged.sample(pointSampler, uv)), frames, w,
-                                          lace, screen, tile);
+                                          lace, screen, tile, lut);
                 return out;
             }
             #endif

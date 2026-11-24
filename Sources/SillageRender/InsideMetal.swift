@@ -38,16 +38,16 @@ struct InsidePass {
     let particles: Int
     /// Built the first time a frame with the web is drawn; nil when it could not be.
     var web: DustWeb.Pass?
-    /// A dust screen's tile (#506), loaded the first time a frame asks for it, by its path.
-    var screen: (path: String, texture: MTLTexture, tile: DustScreenTile)?
+    /// A dust screen's tile and lut (#506), loaded the first time a frame asks for them, by path.
+    var screen: (path: String, texture: MTLTexture, lut: MTLTexture?, tile: DustScreenTile)?
 
     /// The tile of `ref`, loaded once.
     mutating func screenTile(_ ref: DustScreenRef, device: MTLDevice) throws -> (
-        texture: MTLTexture, tile: DustScreenTile
+        texture: MTLTexture, lut: MTLTexture?, tile: DustScreenTile
     ) {
-        if let held = screen, held.path == ref.tile { return (held.texture, held.tile) }
+        if let held = screen, held.path == ref.tile { return (held.texture, held.lut, held.tile) }
         let loaded = try DustScreenTile.load(ref.tile, device: device)
-        screen = (ref.tile, loaded.texture, loaded.tile)
+        screen = (ref.tile, loaded.texture, loaded.lut, loaded.tile)
         return loaded
     }
     var webUnavailable = false
