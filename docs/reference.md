@@ -989,6 +989,13 @@ particle crosses well under one softening length per step.
 **Parameters.** Per scene: particle count, opening angle, halo particle ratio. Per galaxy:
 mass, scale radius, truncation, thickness, Toomre Q, inclination, position angle and spin.
 
+**How much the gas forms.** A top-level `"starFormation"` in `scene.json` is a factor on the
+star formation's efficiency per free-fall time: 0 forms nothing, so every grain of dust stays
+dust for the whole run; absent, the run forms as it always has, to the bit. The Sombrero's cold,
+dense threads of dust formed a third of their grains into stars within 450 Myr, each drawn as
+a bright knot along its thread; the galaxy's ring forms almost nothing, so its scene takes 0
+(#478). Metal and CUDA alike.
+
 **A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
 as the stars'. A galaxy of `scene.json` that carries
 `"dustRing": {"radius": 9, "width": 1.2, "share": 1}` has it gathered at one radius instead, the
