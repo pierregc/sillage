@@ -140,10 +140,20 @@ enum Shaders {
             float bulgeWidth;
             float youngWidth;
             float knotWidth;
+            /// The least spacing, in kpc, an emitting particle's kernel is sized from (#478): a
+            /// star in a dust thread's dense cells otherwise takes the grains' spacing and is
+            /// drawn as a point. 0 leaves every spacing as the tree gives it.
+            float starSpacingFloor;
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
             InsideUniforms inside;
             #endif
         };
+
+        // An emitting particle's spacing under the look's floor (#478); the compact minority, the
+        // glints and the nucleus, keeps its own so it stays a point.
+        SHARED float emittingSpacing(float spacing, float kernelScale, constant SplatUniforms &u) {
+            return kernelScale < 0.8f ? spacing : max(spacing, u.starSpacingFloor);
+        }
 
         struct GalaxyRamp {
             float4 core;
@@ -1091,7 +1101,8 @@ enum Shaders {
                                ColumnDensity column) {
             float kernelScale = p.kernelScale < 0.8f ? mix(0.9f, p.kernelScale, u.glint) : p.kernelScale;
             float depth = max(clip.w, 1e-3f);
-            float raw = max(p.spacing * u.smoothingScale * kernelScale, 1e-4f) * u.projectionScale / depth;
+            float spacing = emittingSpacing(p.spacing, p.kernelScale, u);
+            float raw = max(spacing * u.smoothingScale * kernelScale, 1e-4f) * u.projectionScale / depth;
             if (u.columnSmoothing > 0.0f) {
                 float2 uv = float2(0.5f, 0.5f) + float2(0.5f, -0.5f) * clip.xy / depth;
                 float count = max(columnRead(column, uv), 0.25f);
@@ -1202,7 +1213,8 @@ enum Shaders {
             // kernel conserves its flux that is the same light spread thinner: enough of them
             // overlapping make a continuum instead of a stipple. A small minority are compact
             // and much brighter, and those are the sources the eye picks out one at a time.
-            float raw = max(p.spacing * u.smoothingScale * kernelScale, 1e-4f) * perPixel;
+            float spacing = absorbing ? p.spacing : emittingSpacing(p.spacing, p.kernelScale, u);
+            float raw = max(spacing * u.smoothingScale * kernelScale, 1e-4f) * perPixel;
             // The spacing above is the three-dimensional one, read off the solver's tree. A
             // thin disk seen face-on stacks many of those spacings along a line of sight, so
             // a kernel sized to one of them still resolves the particles. Sized instead so
@@ -1526,7 +1538,7 @@ enum Shaders {
         // A particle's kernel length, which its point stars are scattered over.
         SHARED float insideLength(float spacing, float kernelScale, constant SplatUniforms &u) {
             float scale = kernelScale < 0.8f ? mix(0.9f, kernelScale, u.glint) : kernelScale;
-            return max(spacing * u.smoothingScale * scale, 1e-4f);
+            return max(emittingSpacing(spacing, kernelScale, u) * u.smoothingScale * scale, 1e-4f);
         }
 
         // Stars are drawn eight to a list entry: a particle takes an entry for every eight stars

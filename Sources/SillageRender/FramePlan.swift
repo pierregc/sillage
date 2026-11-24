@@ -1,4 +1,5 @@
 import SillageCore
+
 #if canImport(simd)
     import simd
 #else
@@ -41,6 +42,7 @@ public struct SplatUniforms: Sendable {
     public var bulgeWidth: Float = 1
     public var youngWidth: Float = 1
     public var knotWidth: Float = 1
+    public var starSpacingFloor: Float = 0
 
     /// Whether some population is drawn at another width than the tree's, which Metal draws
     /// from a library of its own.
@@ -192,7 +194,8 @@ public struct FramePlan: Sendable {
             pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow,
             columnSmoothing: settings.columnSmoothing, columnCell: Float(Self.columnCell),
             glint: settings.glint, oldWidth: settings.oldWidth, bulgeWidth: settings.bulgeWidth,
-            youngWidth: settings.youngWidth, knotWidth: settings.knotWidth)
+            youngWidth: settings.youngWidth, knotWidth: settings.knotWidth,
+            starSpacingFloor: settings.starSpacingFloor)
 
         // Its own passes, so a look without the web draws what it always drew.
         let webbed = Self.drawsWeb(settings, stages: stages) && laceScale != nil

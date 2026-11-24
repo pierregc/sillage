@@ -73,6 +73,8 @@ public struct RenderSettings: Sendable {
     public var bulgeWidth: Float = 1
     public var youngWidth: Float = 1
     public var knotWidth: Float = 1
+    /// The least spacing, in kpc, a star's kernel is sized from.
+    public var starSpacingFloor: Float = 0
     /// Draws the raw look: plain points and one pass, instead of the splat, dust and post
     /// stages. Fixed for the renderer's life, since it decides which pipelines get built.
     public var plain: Bool
@@ -171,6 +173,7 @@ public struct RenderSettings: Sendable {
         bulgeWidth = look.bulgeWidth
         youngWidth = look.youngWidth
         knotWidth = look.knotWidth
+        starSpacingFloor = look.starSpacingFloor
         starSize = look.starSize
     }
 }

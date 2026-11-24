@@ -150,6 +150,7 @@ struct LookFileTests {
         file.look.youngWidth = 3
         file.look.knotWidth = 0.5
         file.look.dustReddening = 1.6
+        file.look.starSpacingFloor = 0.04
         let s = file.renderSettings(width: 320, height: 200)
         let look = file.look
         #expect(s.width == 320 && s.height == 200)
@@ -170,11 +171,29 @@ struct LookFileTests {
                 armPersistence: look.armPersistence, fieldOfView: look.fieldOfView,
                 holeShadow: s.holeShadow, columnSmoothing: s.columnSmoothing, glint: s.glint,
                 dustWeb: s.dustWeb, dustReddening: s.dustReddening, oldWidth: s.oldWidth,
-                bulgeWidth: s.bulgeWidth, youngWidth: s.youngWidth, knotWidth: s.knotWidth) == look)
+                bulgeWidth: s.bulgeWidth, youngWidth: s.youngWidth, knotWidth: s.knotWidth,
+                starSpacingFloor: s.starSpacingFloor) == look)
     }
 
     /// The dust's reddening is the shader's own at 1, so a look that leaves it draws as before,
     /// and scales the excess over red otherwise (#478).
+    /// The floor reaches the splat uniforms, and a look without it leaves them at 0 (#478).
+    @Test func theStarSpacingFloorReachesTheSplat() throws {
+        #expect(RenderLook().starSpacingFloor == 0)
+        var settings = RenderSettings(width: 64, height: 64)
+        let camera = Camera(eye: SIMD3(0, -10, 0), target: .zero)
+        func plan() -> FramePlan {
+            FramePlan(
+                settings: settings, camera: camera, time: 0, drawnCount: 10, tracerCount: 0,
+                luminosityNormalisation: 1, mapped: false, laceScale: nil)
+        }
+        #expect(plan().splat.starSpacingFloor == 0)
+        settings.starSpacingFloor = 0.04
+        #expect(plan().splat.starSpacingFloor == 0.04)
+        let text = #"{"version": 1, "look": {"starSpacingFloor": 0.05}}"#
+        #expect(try LookFile.decoded(from: Data(text.utf8)).look.starSpacingFloor == 0.05)
+    }
+
     @Test func theDustsReddeningScalesItsExcessOverRed() throws {
         #expect(Renderer.reddening(1) == SIMD4(1, 1.22, 1.52, 0))
         #expect(Renderer.reddening(0) == SIMD4(1, 1, 1, 1))

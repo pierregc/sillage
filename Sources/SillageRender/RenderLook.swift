@@ -84,6 +84,10 @@ public struct RenderLook: Sendable, Equatable {
     public var bulgeWidth: Float
     public var youngWidth: Float
     public var knotWidth: Float
+    /// The least spacing, in kpc, a star's kernel is sized from (#478): a star inside a dust
+    /// thread otherwise takes the grains' spacing and shows as a speck. 0, the default, draws
+    /// every look as before; the compact minority keeps its own.
+    public var starSpacingFloor: Float
 
     /// The glint every shipped and generated style draws with: the sparkle gone, the knots
     /// kept (#184, docs/notes/gigantism.md).
@@ -127,7 +131,8 @@ public struct RenderLook: Sendable, Equatable {
         oldWidth: Float = 1,
         bulgeWidth: Float = 1,
         youngWidth: Float = 1,
-        knotWidth: Float = 1
+        knotWidth: Float = 1,
+        starSpacingFloor: Float = 0
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -163,6 +168,7 @@ public struct RenderLook: Sendable, Equatable {
         self.bulgeWidth = bulgeWidth
         self.youngWidth = youngWidth
         self.knotWidth = knotWidth
+        self.starSpacingFloor = starSpacingFloor
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -210,6 +216,7 @@ public struct RenderLook: Sendable, Equatable {
         out.bulgeWidth = f(a.bulgeWidth, b.bulgeWidth)
         out.youngWidth = f(a.youngWidth, b.youngWidth)
         out.knotWidth = f(a.knotWidth, b.knotWidth)
+        out.starSpacingFloor = f(a.starSpacingFloor, b.starSpacingFloor)
         return out
     }
 
@@ -325,6 +332,7 @@ extension RenderLook: Codable {
             oldWidth: try c.value(.oldWidth, or: d.oldWidth),
             bulgeWidth: try c.value(.bulgeWidth, or: d.bulgeWidth),
             youngWidth: try c.value(.youngWidth, or: d.youngWidth),
-            knotWidth: try c.value(.knotWidth, or: d.knotWidth))
+            knotWidth: try c.value(.knotWidth, or: d.knotWidth),
+            starSpacingFloor: try c.value(.starSpacingFloor, or: d.starSpacingFloor))
     }
 }

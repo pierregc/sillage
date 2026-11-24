@@ -50,6 +50,7 @@ extension LookFile {
         settings.bulgeWidth = look.bulgeWidth
         settings.youngWidth = look.youngWidth
         settings.knotWidth = look.knotWidth
+        settings.starSpacingFloor = look.starSpacingFloor
         return settings
     }
 
