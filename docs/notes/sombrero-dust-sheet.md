@@ -86,3 +86,23 @@ labels, `measure.py` figures on each. Calibrated on the v6 grains (8 M take, 1.2
 against the real v6 still: `k` 0.19, `behind` 0.95, `behind_far` 0.18, `redden` 3, `blur` 0.6 px.
 It reads the near lane as slightly wider and more solid than the renderer does (width 0.34 against
 0.28, rim solid 0.77 against 0.63); the lane's depth, red over green and the far lane match.
+
+### Bench fixes (#488)
+
+- The envelope stops at `rim` whatever `fall` says (p1 to p6 carry `fall` 0.8, which used to leak
+  dust to 1.09 of the rim). The mass beyond the rim is gone, so the figures renormalise: p6 rim solid
+  0.73 to 0.83 (the same as the old code with `fall` 0.01).
+- Sand: grains are drawn on a scrambled Sobol sequence and splatted bilinearly (`qmc`, `splat`, 1;
+  0 gives the old random, nearest-pixel bench). On p6's low-density edge the error against a 48 M
+  reference falls from 0.23 to 0.15 at 6 M grains and to 0.07 at `n=24000000` (13 s), where 2 px
+  detail is carried without sand. Chunks are at most 3 M grains, so any `n` fits in memory.
+- A thin sharp upper edge needs radial structure, which the 6 degree view foreshortens tenfold:
+  `edge` (density share of a ridge at the rim), `edge_w` (kpc), `edge_thin` (thins the layer there).
+  The soft left tip: `tipfade`, `tip_az`, `tip_w` thin a sector, most at the rim. All 0 by default.
+  The far lane is only `behind_far` 0.18 of the light, so the line stays faint beside Hubble's.
+- Noise lattice: each octave has its own spiral tilt (`twist`, 0.45) and reference radius
+  (`rjitter`, 0.12), still periodic in azimuth. `twist=0 rjitter=0` restores the axis-aligned lattice.
+- `grey` (0): the reddening is divided by `1 + grey k N`, so thin dust reddens and thick dust goes
+  grey-brown; try `redden=5 grey=1.5`. No violet yet.
+- `clean_light` keeps knots above `keep_upper` (0.45 kpc over the plane's line), wide patches and
+  weak ones (`peak` 16); `--face-linear JPG` draws the optical depth linearly, 0 to 1, unstretched.
