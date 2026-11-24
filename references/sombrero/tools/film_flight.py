@@ -33,4 +33,4 @@ keys = [
     {"at": 86, "myr": 40, "eye": ring(60, 30, -6), "aim": core, "fov": 0.6},
     {"at": 100, "myr": 440, "eye": disk(0, -80 * math.cos(math.radians(15)), 80 * math.sin(math.radians(15))), "aim": core},
 ]
-json.dump({"version": 1, "inside": {"dustSlabs": 1.2, "starColours": 0.3}, "keys": keys}, open(sys.argv[1], "w"), indent=1)
+json.dump({"version": 1, "inside": {"dustSlabs": 1.2, "starColours": 0.3, "starYoungK": 6500}, "keys": keys}, open(sys.argv[1], "w"), indent=1)

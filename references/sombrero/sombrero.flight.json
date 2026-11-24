@@ -2,7 +2,8 @@
  "version": 1,
  "inside": {
   "dustSlabs": 1.2,
-  "starColours": 0.3
+  "starColours": 0.3,
+  "starYoungK": 6500
  },
  "keys": [
   {

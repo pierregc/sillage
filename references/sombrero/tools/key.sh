@@ -27,6 +27,8 @@ m = float(sys.argv[2])
 f = {"version": 1}
 ds = float(__import__("os").environ.get("DUSTSLABS", "0"))
 if ds > 0: f["inside"] = {"dustSlabs": ds}
+extra = __import__("os").environ.get("INSIDE")
+if extra: f.setdefault("inside", {}).update(json.loads(extra))
 f["keys"] = [dict(key, at=0, myr=m), dict(key, at=1, myr=m + float(__import__("os").environ.get("DM", "1")))]
 json.dump(f, open(sys.argv[1], "w"), indent=1)
 PY
