@@ -27,7 +27,7 @@ Measured by taking one part out of the finalists' common base (f2, seed 2, 3072 
 | m2 (outer part denser towards the tips) | 1 + 0.3 outward cos 2 azimuth | 2.32: profile 2.9, histogram 2.7 | the balance between centre and tips |
 | veil | an even lognormal layer | 2.11 | nothing the score sees; kept for the look of an even ground |
 | filaments | 12 000 polylines, 0.3 kpc, wandering in pitch and height | 2.17 (f3 against f2) | nothing the score sees |
-| cell walls (web) | grains on the walls of a cellular noise | 2.2 to 2.4 (f4, f8) | nothing beyond the speckle; from above, a foam of bubbles |
+| cell walls (web) | grains on the walls of a cellular noise | 2.2 to 2.4 at 3072, slightly better at 6144 (f4, f8) | a little on the score; from above, a faint foam of bubbles |
 | sheets | elements in 4 layers 20 pc apart | 2.20 / 2.50 on seeds 2 / 3 (f5) | a little on one seed |
 | orbit modulation | elements' masses times exp(0.3 n(azimuth)) along trailing spirals | 2.25 (f6) | nothing on the score; left and right differ more with it |
 | outer height (z_out) | the outer part's elements spread 80 pc in height | 2.20 | nothing the score sees |
@@ -60,11 +60,46 @@ change what one sees (left against right, from above) more than what is measured
 Scored at 6144 px (frames rendered at 6144, `share=depth centre=nucleus blur=0.15`, 48 M grains,
 `strat=1`), mean over seeds 1 to 3, old colour law; the frames shown are seed 2 with `law=hubble`.
 
-FINALISTS_TABLE
+Ranked as I would show them. Summary: mean over seeds 1 to 3 (each seed); worst bars: mean over seeds;
+law=hubble: seed 2 with the lead's colour law; far: the far lane's offset and width (Hubble 0.45, 0.09 kpc).
+
+| | recipe | summary | worst bars | phase | law=hubble | far h / w | pass |
+|---|---|---|---|---|---|---|---|
+| f1 | speckle, filaments, fine veil | 2.04 (2.06 / 2.00 / 2.05) | histogram 2.6, minkowski 2.3 | 2.1 | 2.05 | 0.39 / 0.32 | yes |
+| f2 | speckle and filaments (the base) | 2.05 (2.06 / 2.02 / 2.06) | histogram 2.7, minkowski 2.3 | 2.2 | 2.08 | 0.44 / 0.23 | yes |
+| f6 | f2 without the orbit modulation | 2.12 (2.11 / 2.13 / 2.11) | histogram 2.7, minkowski 2.4 | 2.2 | 2.13 | 0.44 / 0.24 | yes |
+| f8 | speckle, filaments and cell walls | 1.98 (2.08 / 1.86 / 2.01) | histogram 2.5, minkowski 2.2 | 1.8 | 1.82 | 0.44 / 0.32 | yes |
+| f4 | speckle and cell walls | 1.94 (2.04 / 1.89 / 1.88) | profile 2.5, minkowski 2.2 | 1.9 | 1.87 | 0.44 / 0.33 | yes |
+| f3 | speckle alone | 2.17 (2.24 / 2.14 / 2.13) | minkowski 2.5, phase 2.5 | 2.5 | 2.25 | 0.44 / 0.32 | yes |
+| f5 | f2 in one layer (no sheets) | 2.23 (2.19 / 2.24 / 2.27) | minkowski 2.8, histogram 2.5 | 2.1 | 2.28 | 0.43 / 0.19 | yes |
+| f7 | f2 on an oval ring, no m2 | 2.27 (2.19 / 2.23 / 2.39) | histogram 3.1, minkowski 2.4 | 1.7 | 2.25 | 0.41 / 0.44 | no (histogram) |
+
+Four recipes: speckle alone (f3), speckle and polyline filaments (f1, f2, f5, f6), cell walls (f4, f8),
+and an oval ring instead of `m2` (f7). Seven pass the line on the mean of three seeds and on every seed;
+f7 misses on the tips' histogram. f4 and f8 score best but carry one dark fan where a heavy cell wall
+stands on edge (centre, left of the core): I rank them after f1, f2 and f6 for that.
 
 ## What the close-ups show that the score does not
 
-CLOSEUPS
+Seen on `closeup-hubble-law.jpg` and `contact.jpg`, all eight against Hubble at 4.3 pc a pixel:
+
+- **Centre.** With `law=hubble` the two storeys are there: a grey top band on the inner rim, orange
+  below. But the orange zone is an even, fine-grained speckle; Hubble's is crossed by crisp dark
+  filaments 5 to 20 pc thick, linked into a web with clear gaps, thinning into tendrils that hang
+  below the lane. Ours ends in an even lower edge. Hubble's top band is darker and clumpier, with blue
+  stars in it. The score passes a texture that still reads as procedural: a finding about the score,
+  not a success. Small vertical ticks (20 to 40 pc) are speckle elements set nearly radial by their
+  pitch spread (0.4 rad); `spk_pspread` 0.2 would remove them, not tried on the finalists.
+- **The eight look alike.** The parts the score does not see (veil, filaments, walls, sheets, orbit)
+  change little that the eye sees either at this scale: the speckle and the thin layer make the look.
+- **Tips.** Soft and mottled, no wedge, but the ends are rounded outlines of the ring; Hubble's left tip
+  is broad and fanned, its right tip dark and narrow, with bright gaps; ours are alike left and right.
+- **Far half.** Over the core a faint line, nearly invisible, no slab, as wanted, but fainter and wider
+  than Hubble's (measured 0.39 to 0.44 kpc high, 0.19 to 0.44 wide against 0.45 and 0.09). To the sides
+  a grey mottled veil over the near lane; Hubble shows distinct filaments there.
+- **From above.** An even, grainy annulus from 5.7 to 9.3 kpc with faint trailing spiral stretches; no
+  spokes, no pattern that only exists at 6 degrees. Pale: the dust is thin face on. Before the orbit
+  modulation was wound along spirals it drew radial stripes (fixed, see above).
 
 ## Porting to Swift
 
@@ -78,6 +113,15 @@ grains it keeps one of. Grains: the detail converges by 24 M grains in the lane 
 (f2 scores 11.6 at 1.2 M, 3.9 at 6 M, 2.1 at 24 M, 3072 px frames). The real takes carry 1.2 M dust
 grains: they would need about twenty times more in the ring, or grains drawn as splats about four
 times wider, which loses the 5 to 10 pc filaments.
+
+## Search
+
+About 220 trials in `trials.csv` (26 sweeps, families base, speckle, thin, outer, filaments, strata,
+shape, web, threshold, mix, seeds, orbit, recipes, fine, candidates, ablation, grains). More than the
+brief's 150 because two findings made earlier trials stale: a lucky seed (s11, s15 to s18) and sand
+(s20 on, `strat=1`). In `params` of trials s01 to s19, `rim_w` is the rim part's depth, renamed
+`rim_tail` when the bench's `law=hubble` took `rim_w`. The web's heights were hashed patches in the
+trials (rectangles at the lower edge); the finalists use a smooth lift.
 
 ## Not verified
 

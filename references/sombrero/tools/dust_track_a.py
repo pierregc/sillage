@@ -375,9 +375,10 @@ def web_part(u, par, seed):
     th, r, w = th[keep], r[keep], w[keep]
     h = par["web_h"] * flare(r, par) * orbit_height(th, par, r)
     zs = par["z_out"] * outward(r, par)
-    # each patch of wall (about 0.18 kpc along, 0.08 across) at its own height, spread z_out at the rim
-    patch = _h32((th * 40).astype(np.int64), (r * 12).astype(np.int64), par["seed"] + 5)
-    z = ndtri(np.clip(u[keep, 2], 1e-7, 1 - 1e-7)) * h + zs * 1.7 * (2 * patch - 1) + mid_plane(r, th, par)
+    # the walls' mid-plane wanders in height by z_out at the rim, smoothly (0.3 kpc along, 0.15 across)
+    lift = fbm(th, r, np.zeros_like(r), par, par["seed"] * 13 + 61, 0.3, 0.15, 1.0, 2)
+    lift = lift / max(float(lift.std()), 1e-6)
+    z = ndtri(np.clip(u[keep, 2], 1e-7, 1 - 1e-7)) * h + zs * lift + mid_plane(r, th, par)
     return r, th, z, w * orbit_mass(th, par, r)
 
 
