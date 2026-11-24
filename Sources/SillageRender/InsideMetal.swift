@@ -38,6 +38,16 @@ struct InsidePass {
     let particles: Int
     /// Built the first time a frame with the web is drawn; nil when it could not be.
     var web: DustWeb.Pass?
+    /// A dust screen's tile (#506), loaded the first time a frame asks for it, by its path.
+    var screen: (path: String, texture: MTLTexture, tile: DustScreenTile)?
+
+    /// The tile of `ref`, loaded once.
+    mutating func screenTile(_ ref: DustScreenRef, device: MTLDevice) throws -> (texture: MTLTexture, tile: DustScreenTile) {
+        if let held = screen, held.path == ref.tile { return (held.texture, held.tile) }
+        let loaded = try DustScreenTile.load(ref.tile, device: device)
+        screen = (ref.tile, loaded.texture, loaded.tile)
+        return loaded
+    }
     var webUnavailable = false
     /// The light tracers' two, built the first time a frame draws some.
     var tracers: (dust: MTLRenderPipelineState, splat: MTLRenderPipelineState)?
@@ -45,8 +55,12 @@ struct InsidePass {
     /// Whether the light fragments take a look's dust reddening (#478).
     let dustRed: Bool
 
-    init(device: MTLDevice, particles: Int, dustRed: Bool = false) throws {
+    /// Whether they take a dust screen's colour law (#506).
+    let screenLaw: Bool
+
+    init(device: MTLDevice, particles: Int, dustRed: Bool = false, screenLaw: Bool = false) throws {
         self.dustRed = dustRed
+        self.screenLaw = screenLaw
         guard device.readWriteTextureSupport == .tier2 else {
             throw RenderError.unsupported("textures read and written in one kernel")
         }
@@ -61,7 +75,8 @@ struct InsidePass {
         {
             try Renderer.additive(
                 vertex, fragment, writing: target, attachments: 2, format: .rgba16Float,
-                library: library, device: device, dustRed: dustRed)
+                library: library, device: device, dustRed: dustRed,
+                screenLaw: screenLaw)
         }
         func compute(_ name: String) throws -> MTLComputePipelineState {
             guard let function = library.makeFunction(name: name) else {
@@ -124,10 +139,14 @@ struct InsidePass {
     /// The stars the last frame drew, to the eight, once its commands have run.
     var listed: Int { Int(draw.contents().load(as: UInt32.self)) * Self.group }
 
-    mutating func webPass(device: MTLDevice, width: Int, height: Int) -> DustWeb.Pass? {
+    mutating func webPass(
+        device: MTLDevice, width: Int, height: Int, coarse: Int = DustWeb.carrierCoarse
+    ) -> DustWeb.Pass? {
+        if let held = web, held.coarse != coarse { web = nil }
         if web == nil, !webUnavailable {
             do {
-                web = try DustWeb.Pass(library: library, device: device, width: width, height: height)
+                web = try DustWeb.Pass(
+                    library: library, device: device, width: width, height: height, coarse: coarse)
             } catch {
                 webUnavailable = true
             }
@@ -150,7 +169,8 @@ struct InsidePass {
             func additive(_ fragment: String, writing target: Int) -> MTLRenderPipelineState? {
                 try? Renderer.additive(
                     "splatTracerVertex", fragment, writing: target, attachments: 2,
-                    format: .rgba16Float, library: library, device: device, dustRed: dustRed)
+                    format: .rgba16Float, library: library, device: device, dustRed: dustRed,
+                screenLaw: screenLaw)
             }
             if let dust = additive("dustFragment", writing: 1),
                 let splat = additive("splatFragment", writing: 0)

@@ -452,7 +452,7 @@ public final class Renderer {
     static func additive(
         _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
         attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice,
-        dustRed: Bool = false
+        dustRed: Bool = false, screenLaw: Bool = false
     ) throws -> MTLRenderPipelineState {
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
@@ -460,6 +460,11 @@ public final class Renderer {
         let constants = MTLFunctionConstantValues()
         var red = dustRed
         constants.setConstantValue(&red, type: .bool, index: 20)
+        // And a dust screen's colour law only in the inside library of a flight that has one (#506).
+        if screenLaw {
+            var law = true
+            constants.setConstantValue(&law, type: .bool, index: 21)
+        }
         descriptor.fragmentFunction = try library.makeFunction(
             name: fragmentFunction, constantValues: constants)
         for (index, format) in [format, format].prefix(attachments).enumerated() {
@@ -603,7 +608,8 @@ public final class Renderer {
         if insidePass == nil, insideFailure == nil {
             do {
                 insidePass = try InsidePass(
-                    device: device, particles: drawnCount, dustRed: settings.dustReddening != 1)
+                    device: device, particles: drawnCount, dustRed: settings.dustReddening != 1,
+                    screenLaw: inside?.settings.dustScreen?.law != nil)
             } catch {
                 insideFailure = "\(error)"
             }
@@ -630,7 +636,10 @@ public final class Renderer {
         let web =
             FramePlan.drawsWeb(settings, stages: stages)
             ? (deep == nil
-                ? webResources() : deep?.webPass(device: device, width: wide.0, height: wide.1))
+                ? webResources()
+                : deep?.webPass(
+                    device: device, width: wide.0, height: wide.1,
+                    coarse: within?.settings.dustScreen == nil ? DustWeb.carrierCoarse : 1))
             : nil
         let plan = FramePlan(
             settings: settings, camera: camera, time: time, drawnCount: drawnCount,
@@ -652,6 +661,22 @@ public final class Renderer {
         if let within, deep != nil {
             webbed?.carrier.z = within.settings.web[0]
             webbed?.carrier.w = within.settings.web[1]
+        }
+        if let web { webbed?.carrier.x = Float(web.coarse) }
+        // A dust screen's tile (#506), read by the inside library's resolve.
+        var screen = ScreenUniforms()
+        var screenTile: MTLTexture?
+        if let ref = within?.settings.dustScreen, web != nil, deep != nil {
+            do {
+                let loaded = try deep!.screenTile(ref, device: device)
+                screenTile = loaded.texture
+                screen.shape = SIMD4(
+                    Float(ref.galaxy + 1), loaded.tile.radii[0], loaded.tile.radii[1],
+                    ref.rest / Float(Physics.megayearsPerTimeUnit))
+                screen.depth = SIMD4(ref.depth, 0, 0, 0)
+            } catch {
+                FileHandle.standardError.write(Data("dust screen: \(error)\n".utf8))
+            }
         }
         // Where its grains are spread over two slabs, each galaxy's dust in a carrier of its
         // own, so that two disks one behind the other are each multiplied by their own web.
@@ -887,6 +912,10 @@ public final class Renderer {
                 encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
                 encoder.setFragmentBytes(&webUniforms, length: webLength, index: 1)
                 encoder.setFragmentTexture(web.lace, index: 0)
+                if deep != nil {
+                    encoder.setFragmentBytes(&screen, length: MemoryLayout<ScreenUniforms>.stride, index: 2)
+                    encoder.setFragmentTexture(screenTile ?? web.lace, index: 3)
+                }
                 for target in apart ?? [(web.carrier, web.tags)] {
                     encoder.setFragmentTexture(target.carrier, index: 1)
                     encoder.setFragmentTexture(target.tags, index: 2)
@@ -910,6 +939,10 @@ public final class Renderer {
                 encoder.setFragmentBytes(&red, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
                 if let deep {
+                    // A dust screen's colour law (#506): its parameters and the disk frames.
+                    var law = ScreenLaw(within?.settings.dustScreen, web: webbed)
+                    encoder.setFragmentBytes(&law, length: MemoryLayout<ScreenLaw>.stride, index: 1)
+                    encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 2)
                     bindDeep(encoder, uniforms)
                     drawParts(encoder, massive: deep.splat, tracers: deepTracers?.splat)
                     if starred {

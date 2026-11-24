@@ -97,6 +97,8 @@ enum Shaders {
             /// The mean temperatures of an old and a young point star, in kelvin (#478).
             float starOldK;
             float starYoungK;
+            /// The galaxy a dust screen draws, plus one; 0 for none (#506).
+            float screenGalaxy;
         };
         #endif
 
@@ -2313,6 +2315,14 @@ enum Shaders {
             float height = dot(rel, axis);
             float scale = max(frame.center.w, 1e-3f);
             float facing = dot(normalize(position - w.eye.xyz), axis);
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            // A dust screen's galaxy hands the web all the dust of its disk, at every angle (#506).
+            if (u.inside.screenGalaxy > 0.0f && float(p.galaxy + 1u) == u.inside.screenGalaxy) {
+                grain.amount = (1.0f - smoothstep(0.3f * scale, 0.8f * scale, abs(height)))
+                    * (1.0f - smoothstep(5.0f * scale, 7.0f * scale, length(rel - axis * height)));
+                return true;
+            }
+            #endif
             grain.amount = w.eye.w * frame.web.x
                 * (1.0f - smoothstep(0.3f * scale, 0.8f * scale, abs(height)))
                 * (1.0f - smoothstep(5.0f * scale, 7.0f * scale, length(rel - axis * height)))
@@ -2653,17 +2663,169 @@ enum Shaders {
             return half4(webbed);
         }
 
+        #if defined(__METAL_VERSION__) && defined(SILLAGE_INSIDE)
+        // A dust screen (#506, `DustScreen.swift`): the tile, azimuth across and radius down,
+        // read where the pixel's ray meets the disk's mid-plane, turned back by the disk's
+        // rotation since the moment it rests at, over the pixel's footprint on the plane. The
+        // tile is the dust's column across the plane; the ray's column is that over the cosine
+        // of its angle to the axis, as through any thin layer.
+        struct ScreenUniforms {
+            /// The galaxy plus one (0: none), the tile's inner and outer radii, its rest time.
+            float4 shape;
+            /// The dust a unit of the tile lays in the frame's dust target.
+            float4 depth;
+        };
+
+        constexpr sampler screenSampler(filter::linear, mip_filter::linear, s_address::repeat,
+                                        t_address::clamp_to_edge, max_anisotropy(16));
+
+        // A screen's colour law (#506), the bench's (`law=hubble`, #499): each channel's optical
+        // depth a share of the green's that tends to one as the green's passes `t`, thin dust
+        // reddening and thick dust grey, with the rim (the radii inside `radii.x` to `radii.y`
+        // of the screen's galaxy, where the pixel's ray meets its mid-plane) a law of its own.
+        struct ScreenLaw {
+            /// Red and blue shares in thin dust and the green depth they tend to one past.
+            float4 diffuse;
+            float4 rim;
+            /// The rim from all at x to none at y kpc, the galaxy.
+            float4 radii;
+            /// The camera, as `WebUniforms` holds it.
+            float4 eye;
+            float4 right;
+            float4 up;
+            float4 forward;
+            float4 target;
+        };
+
+        constant bool screenLawSet [[function_constant(21)]];
+        constant bool screenLaw = is_function_constant_defined(screenLawSet) && screenLawSet;
+
+        static float3 screenExtinction(float column, float3 red, float2 pixel, constant ScreenLaw &law,
+                                       constant DiskFrame *frames) {
+            float green = column * red.y;
+            float2 uv = pixel / law.target.xy;
+            float2 ndc = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
+            float3 ray = law.forward.xyz + ndc.x * law.right.xyz * (law.forward.w * law.target.z)
+                + ndc.y * law.up.xyz * law.forward.w;
+            DiskFrame frame = frames[int(law.radii.z + 0.5f)];
+            float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
+            float3 rel = law.eye.xyz - frame.center.xyz;
+            float along = dot(ray, axis);
+            float rim = 0.0f;
+            float t = abs(along) > 1e-6f ? -dot(rel, axis) / along : -1.0f;
+            if (t > 0.0f) {
+                float3 meet = rel + ray * t;
+                float radius = length(float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz)));
+                rim = 1.0f - smoothstep(law.radii.x, law.radii.y, radius);
+            }
+            float3 thin = float3(law.diffuse.x, 1.0f, law.diffuse.y);
+            float3 thick = float3(law.rim.x, 1.0f, law.rim.y);
+            float3 share = mix(1.0f + (thin - 1.0f) / (1.0f + green / law.diffuse.z),
+                               1.0f + (thick - 1.0f) / (1.0f + green / law.rim.z), rim);
+            return exp(-green * share);
+        }
+
+        static float screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+                              float3 ray, float3 stepX, float3 stepY, texture2d<half> tile) {
+            float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
+            float3 rel = w.eye.xyz - frame.center.xyz;
+            float least = 0.05f * length(ray);
+            float along = dot(ray, axis);
+            along = along < 0.0f ? min(along, -least) : max(along, least);
+            float t = -dot(rel, axis) / along;
+            if (t <= 0.0f) { return 1.0f; }
+            float3 meet = rel + ray * t;
+            float3 ex = t * (stepX - ray * (dot(stepX, axis) / along));
+            float3 ey = t * (stepY - ray * (dot(stepY, axis) / along));
+            float2 p = float2(dot(meet, frame.axisU.xyz), dot(meet, frame.axisV.xyz));
+            float2 dx = float2(dot(ex, frame.axisU.xyz), dot(ex, frame.axisV.xyz));
+            float2 dy = float2(dot(ey, frame.axisU.xyz), dot(ey, frame.axisV.xyz));
+            float radius = length(p);
+            float age = w.up.w - screen.shape.w;
+            float angle = webOmega(frame, radius) * age;
+            float shear = webOmegaSlope(frame, radius) / max(radius, 1e-4f);
+            float c = cos(angle);
+            float n = sin(angle);
+            float2 q = float2(c * p.x + n * p.y, n * -p.x + c * p.y);
+            float2 turn = float2(n * -p.x + c * p.y, -c * p.x - n * p.y) * (shear * age);
+            float2 qx = float2(c * dx.x + n * dx.y, n * -dx.x + c * dx.y) + turn * dot(p, dx);
+            float2 qy = float2(c * dy.x + n * dy.y, n * -dy.x + c * dy.y) + turn * dot(p, dy);
+            float r = max(length(q), 1e-4f);
+            float span = max(screen.shape.z - screen.shape.y, 1e-4f);
+            float2 at = float2((atan2(q.y, q.x) + M_PI_F) / (2.0f * M_PI_F), (r - screen.shape.y) / span);
+            // The polar map's derivatives: azimuth across, radius down.
+            float2 du = float2(-q.y, q.x) / (r * r * 2.0f * M_PI_F);
+            float2 dv = q / (r * span);
+            float2 gx = float2(dot(du, qx), dot(dv, qx));
+            float2 gy = float2(dot(du, qy), dot(dv, qy));
+            float column = max(float(tile.sample(screenSampler, at, gradient2d(gx, gy)).r), 0.0f);
+            return column * length(ray) / abs(along);
+        }
+
+        // `webResolved` with the screen's galaxy read off its tile instead of the lace.
+        static half4 screenResolved(float2 uv, float4 carrier, float4 tagged, constant DiskFrame *frames,
+                                    constant WebUniforms &w, texture2d<half> lace,
+                                    constant ScreenUniforms &screen, texture2d<half> tile) {
+            float4 tags = tagged * 255.0f;
+            float2 ndc = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
+            float3 across = w.right.xyz * (w.forward.w * w.target.z);
+            float3 upward = w.up.xyz * w.forward.w;
+            float3 ray = w.forward.xyz + ndc.x * across + ndc.y * upward;
+            float3 stepX = across * (2.0f / w.target.x);
+            float3 stepY = upward * (-2.0f / w.target.y);
+            float4 webbed = carrier;
+            int last = -1;
+            float web = 1.0f;
+            int screened = int(screen.shape.x + 0.5f) - 1;
+            // The screen's column, shared among the slabs its galaxy's grains fill as they fill
+            // them: the grains say how deep the dust lies, the tile how much there is.
+            float held = 0.0f;
+            for (int s = 0; s < 4; ++s) {
+                if (carrier[s] > 0.0f && int(tags[s] + 0.5f) - 1 == screened) { held += carrier[s]; }
+            }
+            float column = held > 0.0f
+                ? screen.depth.x * screenAt(frames[screened], w, screen, ray, stepX, stepY, tile) / held
+                : 0.0f;
+            for (int s = 0; s < 4; ++s) {
+                int g = int(tags[s] + 0.5f) - 1;
+                if (carrier[s] <= 0.0f || g < 0) { continue; }
+                if (g == screened) {
+                    webbed[s] = carrier[s] * column;
+                    continue;
+                }
+                if (g != last) {
+                    web = webAt(frames[g], w, ray, stepX, stepY, lace);
+                    last = g;
+                }
+                webbed[s] = carrier[s] * web;
+            }
+            return half4(webbed);
+        }
+        #endif
+
         #if defined(__METAL_VERSION__)
         fragment DustTarget webResolveFragment(WebResolveOut in [[stage_in]],
                                                constant DiskFrame *frames [[buffer(0)]],
                                                constant WebUniforms &w [[buffer(1)]],
                                                texture2d<half> lace [[texture(0)]],
                                                texture2d<half> carried [[texture(1)]],
-                                               texture2d<half> tagged [[texture(2)]]) {
+                                               texture2d<half> tagged [[texture(2)]]
+                                               #if defined(SILLAGE_INSIDE)
+                                               , constant ScreenUniforms &screen [[buffer(2)]],
+                                               texture2d<half> tile [[texture(3)]]
+                                               #endif
+                                               ) {
             float2 uv = webResolveAt(in.position.xy, w);
             float4 carrier = float4(carried.sample(bilinear, uv));
             if (!webCarried(carrier)) { discard_fragment(); }
             DustTarget out;
+            #if defined(SILLAGE_INSIDE)
+            if (screen.shape.x > 0.0f) {
+                out.dust = screenResolved(uv, carrier, float4(tagged.sample(pointSampler, uv)), frames, w,
+                                          lace, screen, tile);
+                return out;
+            }
+            #endif
             out.dust = webResolved(uv, carrier, float4(tagged.sample(pointSampler, uv)), frames, w,
                                    lace);
             return out;
@@ -2709,11 +2871,25 @@ enum Shaders {
         fragment LightTarget splatFragment(SplatOut in [[stage_in]],
                                            float2 coord [[point_coord]],
                                            SplatFetch prior,
-                                           constant float4 &red [[buffer(0)]]) {
+                                           constant float4 &red [[buffer(0)]]
+                                           #if defined(SILLAGE_INSIDE)
+                                           , constant ScreenLaw &law [[buffer(1)]],
+                                           constant DiskFrame *lawFrames [[buffer(2)]]
+                                           #endif
+                                           ) {
             float r2 = splatRadius2(coord);
             if (r2 > 1.0f) { discard_fragment(); }
 
             LightTarget out;
+            #if defined(SILLAGE_INSIDE)
+            if (screenLaw) {
+                float falloff = exp(-4.5f * r2);
+                float3 extinction = screenExtinction(dot(float4(prior.dust), float4(in.slab)),
+                                                     dustRed ? red.xyz : reddening, in.position.xy, law, lawFrames);
+                out.light = half4(in.color * half3(extinction) * half(falloff), half(falloff));
+                return out;
+            }
+            #endif
             out.light = lightPixel(in.color, in.slab, prior.dust, r2, dustRed ? red.xyz : reddening);
             return out;
         }
@@ -2725,11 +2901,19 @@ enum Shaders {
         fragment LightTarget pointStarFragment(StarOut in [[stage_in]],
                                                float2 coord [[point_coord]],
                                                SplatFetch prior,
-                                               constant float4 &red [[buffer(0)]]) {
+                                               constant float4 &red [[buffer(0)]],
+                                               constant ScreenLaw &law [[buffer(1)]],
+                                               constant DiskFrame *lawFrames [[buffer(2)]]) {
             float share = starShare(coord, in.half_streak, in.radius, in.pixel);
             if (share <= 0.0f) { discard_fragment(); }
 
             LightTarget out;
+            if (screenLaw) {
+                float3 extinction = screenExtinction(dot(float4(prior.dust), float4(in.slab)),
+                                                     dustRed ? red.xyz : reddening, in.position.xy, law, lawFrames);
+                out.light = half4(half3(float3(in.color) * extinction * share), half(share));
+                return out;
+            }
             out.light = starPixel(in.color, in.slab, prior.dust, share, dustRed ? red.xyz : reddening);
             return out;
         }

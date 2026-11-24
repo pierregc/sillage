@@ -96,6 +96,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// through the depth of its dust layer: wholly within the first, not at all past the second,
     /// where it lies in the mid-plane as every export draws it (#354).
     public var web: [Float] = [1, 2]
+    /// A dust screen for one galaxy (#506, `DustScreen.swift`): its dust drawn as its grains'
+    /// smooth layer times a tile laid in its plane, read at every angle; absent, none.
+    public var dustScreen: DustScreenRef?
     /// The near dust's structure finer than a grain (#356): filaments and clumps from a noise in
     /// three dimensions read through each grain of the near field, the log of its density spread
     /// this many times its noise's (log-normal, as interstellar gas is); 0 for none.
@@ -156,6 +159,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         slabsWithin = try c.value(.slabsWithin, or: slabsWithin)
         dustSlabs = try c.value(.dustSlabs, or: dustSlabs)
         web = try c.value(.web, or: web)
+        dustScreen = try c.decodeIfPresent(DustScreenRef.self, forKey: .dustScreen)
         dustFine = try c.value(.dustFine, or: dustFine)
         dustCell = try c.value(.dustCell, or: dustCell)
         dustInside = try c.value(.dustInside, or: dustInside)
@@ -217,6 +221,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
             return "dustSlabs \(dustSlabs): 0, or 1 to 8 times the dust's depth"
         }
         if !rising(web, 2) { return "web \(web): two distances in disk radii, the first nearer" }
+        if let fault = dustScreen?.fault { return fault }
         if !(dustFine >= 0 && dustFine <= 2.5) { return "dustFine \(dustFine): 0 to 2.5" }
         if !(dustCell >= 0.005 && dustCell <= 1) { return "dustCell \(dustCell) kpc: 0.005 to 1" }
         if !(dustInside > 0 && dustInside <= 4) { return "dustInside \(dustInside): above 0, to 4" }
@@ -328,6 +333,8 @@ public struct InsideUniforms: Sendable {
     /// The mean temperatures of an old and a young point star, in kelvin.
     public var starOldK: Float = 4800
     public var starYoungK: Float = 9000
+    /// The galaxy a dust screen draws, plus one; 0 for none (#506).
+    public var screenGalaxy: Float = 0
 
     /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
     /// grains are spread over two slabs, which is where two disks one behind the other come
@@ -426,6 +433,7 @@ public struct InsideUniforms: Sendable {
         lonePoints = inside.lonePoints
         starOldK = inside.starOldK
         starYoungK = inside.starYoungK
+        screenGalaxy = inside.dustScreen.map { Float($0.galaxy + 1) } ?? 0
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }

@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """film_split.py: the film's freeze frame beside Hubble, at the film's size (#506).
 
-  film_split.py split FRAME_4K OUTDIR          01-freeze-cut.jpg and 01-freeze-pair.jpg
+  film_split.py split FRAME_4K OUTDIR [PREFIX] PREFIX-cut.jpg and PREFIX-pair.jpg (01-freeze)
   film_split.py framing FRAME OUT.png          a core-centred frame (26.5 kpc across its width) cut to
-                                               Hubble's framing (core at 504,312 of 1024), for
-                                               texture.py and closeup.py; missing edges mirrored
+                                               Hubble's framing, its centre on Hubble's nucleus as the
+                                               bench draws it, for texture.py and closeup.py; missing
+                                               edges mirrored
   film_split.py sheet OUT.jpg TILE_W label=png ...   a contact sheet, three tiles a row
 
 A film frame is 26.5 kpc across, the nucleus at its centre (the flight aims at the galaxy's centre).
 Hubble is resampled from its full frame (hubble_ref.py) to the same scale, centred on its nucleus,
-which sits 12 px right of hubble_ref.CORE at 3840 px (45 px at full resolution).
+dust_bench.NUCLEUS from hubble_ref.CORE (15 px right and 7 down at 3840 px).
 """
+import math
 import os
 import sys
 
@@ -21,7 +23,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import hubble_ref  # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
-NUCLEUS = (hubble_ref.CORE[0] + 12 / 3840, hubble_ref.CORE[1] + 2 / 3840)  # shares of the width
+# Hubble's nucleus from CORE: dust_bench.NUCLEUS (0.108 kpc along the disk, 0.041 down, laid flat) rolled
+# 5.63 degrees, as shares of the width; the bench draws its ring about it.
+_NX, _NY, _R = 0.108, -0.041, math.radians(hubble_ref.ROLL)
+NUCLEUS = (hubble_ref.CORE[0] + (_NX * math.cos(_R) + _NY * math.sin(_R)) / hubble_ref.KPC,
+           hubble_ref.CORE[1] + (_NX * math.sin(_R) - _NY * math.cos(_R)) / hubble_ref.KPC)
 FONT = "/System/Library/Fonts/Avenir Next.ttc"
 
 
@@ -49,14 +55,14 @@ def label(im, xy, text, anchor, size=34):
                             anchor=anchor)
 
 
-def split(frame, out):
+def split(frame, out, prefix="01-freeze"):
     sim = Image.open(frame).convert("RGB")
     W, H = sim.size
     cut = sim.copy()
     cut.paste(hubble(W, H).crop((W // 2, 0, W, H)), (W // 2, 0))
     label(cut, (60, H - 50), "Simulation  ·  Sillage", "ls")
     label(cut, (W - 60, H - 50), "Hubble  ·  ESA/Hubble & NASA, K. Noll (heic2506a)", "rs")
-    cut.save(os.path.join(out, "01-freeze-cut.jpg"), quality=92)
+    cut.save(os.path.join(out, f"{prefix}-cut.jpg"), quality=92)
     kpc, pw = 22.0, W // 2  # whole galaxies, each at half width: 22 kpc across, the frame's height in kpc
     ph = round(pw * hubble_ref.KPC * H / W / kpc)
     k = pw * hubble_ref.KPC / (kpc * W)
@@ -67,13 +73,13 @@ def split(frame, out):
     pair.paste(hubble(pw, ph, kpc), (pw, y))
     label(pair, (pw // 2, y + ph + 70), "Simulation  ·  Sillage", "ms")
     label(pair, (pw + pw // 2, y + ph + 70), "Hubble  ·  ESA/Hubble & NASA, K. Noll", "ms")
-    pair.save(os.path.join(out, "01-freeze-pair.jpg"), quality=92)
+    pair.save(os.path.join(out, f"{prefix}-pair.jpg"), quality=92)
 
 
 def framing(frame, out):
     a = np.asarray(Image.open(frame).convert("RGB"))
     h, w = a.shape[:2]
-    x0, y0 = w // 2 - round(hubble_ref.CORE[0] * w), h // 2 - round(hubble_ref.CORE[1] * w)
+    x0, y0 = w // 2 - round(NUCLEUS[0] * w), h // 2 - round(NUCLEUS[1] * w)
     Image.fromarray(crop(a, x0, y0, w, round(w * 606 / 1024))).save(out)
 
 
