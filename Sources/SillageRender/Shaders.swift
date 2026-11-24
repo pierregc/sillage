@@ -94,6 +94,9 @@ enum Shaders {
             float loneWidest;
             /// The share of the stars that show alone kept as points, 0 for none.
             float lonePoints;
+            /// The mean temperatures of an old and a young point star, in kelvin (#478).
+            float starOldK;
+            float starYoungK;
         };
         #endif
 
@@ -1386,7 +1389,15 @@ enum Shaders {
                         bool young = knot || nursery || kind == 1u;
                         float mean = young ? 9000.0f : 4800.0f;
                         float drawn = mean * exp2((p.starHash - 0.5f) * 1.6f * u.inside.starColours);
+                        float3 base = emitted;
                         emitted = chromaticity(emitted * blackbody(drawn) / blackbody(mean));
+                        // Means other than these two, asked by the flight, drawn apart so a
+                        // flight that keeps them draws exactly as before.
+                        if (u.inside.starOldK != 4800.0f || u.inside.starYoungK != 9000.0f) {
+                            float asked = young ? u.inside.starYoungK : u.inside.starOldK;
+                            float shifted = asked * exp2((p.starHash - 0.5f) * 1.6f * u.inside.starColours);
+                            emitted = chromaticity(base * blackbody(shifted) / blackbody(mean));
+                        }
                     }
                     float near = u.projectionScale / max(out.position.w, u.inside.starNearest);
                     float size = u.inside.starPointSize;

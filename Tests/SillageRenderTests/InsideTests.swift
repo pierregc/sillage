@@ -37,6 +37,16 @@ struct InsideTests {
         var faulty = InsideSettings()
         faulty.slabs = [0.3, 0.2, 7]
         #expect(faulty.fault?.contains("slabs") == true)
+        // The point stars' mean temperatures, the shader's own unless a flight asks (#478).
+        #expect(InsideSettings().starOldK == 4800 && InsideSettings().starYoungK == 9000)
+        let cooler = try FlightFile.decoded(
+            from: Data(
+                text.replacingOccurrences(of: #""stars": 64"#, with: #""stars": 64, "starYoungK": 6500"#).utf8
+            ))
+        #expect(cooler.inside?.starYoungK == 6500 && cooler.inside?.starOldK == 4800)
+        var cold = InsideSettings()
+        cold.starYoungK = 500
+        #expect(cold.fault?.contains("starYoungK") == true)
     }
 
     private func frame(_ nearness: Float) -> InsideFrame {

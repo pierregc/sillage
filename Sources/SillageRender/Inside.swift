@@ -71,6 +71,11 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// ones first and the same ones wherever the camera is, where the rest are widened: the one
     /// dial between a milky field, 0, and a sharp one, 1.
     public var lonePoints: Float = 0
+    /// The mean temperature, in kelvin, a point star's colour is drawn around: an old star's and
+    /// a young one's (#478). A galaxy whose young stars near the eye should read soft white
+    /// rather than blue takes a cooler young mean.
+    public var starOldK: Float = 4800
+    public var starYoungK: Float = 9000
     /// The near field, in kiloparsecs from the eye: stars and the capped kernels' law apply
     /// wholly nearer than the first, not at all past the second.
     public var field: [Float] = [3, 8]
@@ -143,6 +148,8 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         loneFull = try c.value(.loneFull, or: loneFull)
         loneWidest = try c.value(.loneWidest, or: loneWidest)
         lonePoints = try c.value(.lonePoints, or: lonePoints)
+        starOldK = try c.value(.starOldK, or: starOldK)
+        starYoungK = try c.value(.starYoungK, or: starYoungK)
         field = try c.value(.field, or: field)
         fade = try c.value(.fade, or: fade)
         slabs = try c.value(.slabs, or: slabs)
@@ -197,6 +204,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
             return "loneWidest \(loneWidest) px: loneFull to 512"
         }
         if !(lonePoints >= 0 && lonePoints <= 1) { return "lonePoints \(lonePoints): 0 to 1" }
+        if !(starOldK >= 1000 && starOldK <= 40000 && starYoungK >= 1000 && starYoungK <= 40000) {
+            return "starOldK \(starOldK) and starYoungK \(starYoungK): 1000 to 40000 K"
+        }
         if !rising(field, 2) { return "field \(field): two distances in kpc, the first nearer" }
         if !(fade >= 0 && fade <= 32) { return "fade \(fade): 0 to 32 kernel lengths" }
         if !rising(slabs, 3) { return "slabs \(slabs): three distances in kpc, each past the one before" }
@@ -315,6 +325,9 @@ public struct InsideUniforms: Sendable {
     public var loneWidest: Float = 0
     /// The share of the stars that show alone kept as points.
     public var lonePoints: Float = 0
+    /// The mean temperatures of an old and a young point star, in kelvin.
+    public var starOldK: Float = 4800
+    public var starYoungK: Float = 9000
 
     /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
     /// grains are spread over two slabs, which is where two disks one behind the other come
@@ -411,6 +424,8 @@ public struct InsideUniforms: Sendable {
         // No point is wider than 511 pixels, and a grain's is 1.3 times its kernel.
         loneWidest = min(inside.loneWidest * lines / 2160, 511 / 1.3)
         lonePoints = inside.lonePoints
+        starOldK = inside.starOldK
+        starYoungK = inside.starYoungK
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
