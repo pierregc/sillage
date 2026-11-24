@@ -62,6 +62,9 @@ DEFAULTS = dict(
     fibres=0.0, fibre_lu=1.5, fibre_lv=0.04, fibre_lw=0.1, fibre_width=0.12,
     # the rim: a thin ridge in the last `edge_w` kpc (density share `edge`), the layer thinned there by
     # `edge_thin` (0 to 1); `tipfade` (0 to 1) thins a sector of `tip_w` degrees centred on azimuth `tip_az`, most at the rim
+    # `taper` (kpc, 0 off): the whole profile decays as exp(-(r - inner) / taper), densest at the inner cut with a
+    # sparse tail to the rim; `wobble` (kpc) scallops the inner cut along the azimuth, in lumps `wobble_len` kpc long
+    taper=0.0, wobble=0.0, wobble_len=0.8,
     edge=0.0, edge_w=0.25, edge_thin=0.0, tipfade=0.0, tip_az=180.0, tip_w=35.0,
     # noise lattice: per-octave tilt of the cells (a spiral of up to `twist` radians) and jittered
     # reference radius, so no cell edge lines up with the azimuth/radius axes (twist 0, rjitter 0: as before)
@@ -156,17 +159,18 @@ def warped(r, a, z, par):
 
 
 def smoothstep(a, b, x):
-    t = np.clip((x - a) / max(b - a, 1e-9), 0, 1)
+    t = np.clip((x - a) / np.maximum(b - a, 1e-9), 0, 1)
     return t * t * (3 - 2 * t)
 
 
 def radial_profile(r, par):
     rim, inner = par["rim"], par["inner"] * par["rim"]
-    up = smoothstep(inner, inner + par["rise"], r)
+    up = smoothstep(inner - par["wobble"], inner - par["wobble"] + par["rise"], r)
     ramp = smoothstep(inner, par["plateau"] * rim, r) ** par["inward"]
     plateau = par["floor"] + (1 - par["floor"]) * ramp + par["edge"] * rim_ridge(r, par)
     down = 1 - smoothstep(par["plateau"] * rim, rim + par["fall"], r)
-    return up * plateau * down * (r <= rim)   # nothing beyond the rim, whatever `fall` says
+    tail = np.exp(-np.maximum(r - inner, 0) / par["taper"]) if par["taper"] > 0 else 1.0
+    return up * plateau * down * tail * (r <= rim)   # nothing beyond the rim, whatever `fall` says
 
 
 def rim_ridge(r, par):
@@ -233,6 +237,14 @@ def weights(par, n, rng, stats):
                  veil, par)
     w = w / np.where(veil, stats["vwmean"], stats["wmean"])
     w = par["veil"] + (1 - par["veil"]) * w
+    if par["wobble"] > 0:   # the inner cut's radius wanders with azimuth; sampled at its lowest, trimmed here
+        inner = par["inner"] * par["rim"]
+        cells = max(int(round(2 * math.pi * inner / par["wobble_len"])), 4)
+        p = np.stack([th / (2 * np.pi) * cells, np.full_like(th, 0.5), np.full_like(th, 0.5)], -1).astype(np.float32)
+        n = np.clip(perlin(p, cells, par["seed"] * 7 + 3) + 0.5 * perlin(p * 2.0, 2 * cells, par["seed"] * 7 + 4), -1, 1)
+        cut = inner + par["wobble"] * n
+        up_s = smoothstep(inner - par["wobble"], inner - par["wobble"] + par["rise"], r)
+        w = w * smoothstep(cut, cut + par["rise"], r) / np.maximum(up_s, 1e-6)
     if par["tipfade"] > 0:
         d = (np.degrees(th) - par["tip_az"] + 180) % 360 - 180
         outward = 0.3 + 0.7 * smoothstep(0.55 * par["rim"], par["rim"], r)   # the sector thins most at its outer end

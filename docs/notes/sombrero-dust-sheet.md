@@ -142,3 +142,15 @@ Close-ups: `closeup.py OUT.jpg [frames] [--scale N|native]` draws the lane's lef
 tip, Hubble beside each frame at one scale (default 6144 px across, twice the bench). `dust_bench.py
 --width 6144` renders the bench that wide in about 11 s and 5.4 GB; its light stays the 3072 px one,
 so only the dust gains.
+
+#### Bench fixes (#488), follow-up
+
+- Geometry: `edge` sits at the OUTER radius, so on the far half it is the upper edge and on the near
+  half the lower, sparse one. Hubble's sharp dark edge is the near lane's upper side, the INNER radii
+  (`inner` 0.56 of the rim projects 0.5 kpc below the core). `taper` (kpc) makes the profile densest at the
+  inner cut and sparse outward, `wobble`/`wobble_len` scallop that cut along the azimuth;
+  `rise=0.05 floor=1 inward=1 taper=2 wobble=0.4` is a first setting.
+- Thin layers: `thickness=0.005` draws clean at 3072 and 6144 px. Error against 48 M grains in the
+  lane: 0.04 at 6 M, 0.016 at 24 M (3072); 0.045 and 0.018 (6144). 24 M grains: 15 s and 1.9 GB at 3072,
+  20 s and 6.8 GB at 6144. A thinner layer is denser for the same `mass`: lower it.
+- Colour: `redden=9 grey=0.8 mass=1.6` gives a dark top band and orange below it.
