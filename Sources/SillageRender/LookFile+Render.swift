@@ -1,4 +1,5 @@
 import SillageCore
+
 #if canImport(simd)
     import simd
 #else
@@ -44,10 +45,12 @@ extension LookFile {
         settings.galaxyCount = max(galaxyCount ?? 0, 0)
         settings.dustGlow = look.dustGlow
         settings.dustGlowColour = look.dustGlowColour
+        settings.dustReddening = look.dustReddening
         settings.oldWidth = look.oldWidth
         settings.bulgeWidth = look.bulgeWidth
         settings.youngWidth = look.youngWidth
         settings.knotWidth = look.knotWidth
+        settings.dustWidth = look.dustWidth
         return settings
     }
 
@@ -56,6 +59,7 @@ extension LookFile {
         supersample != other.supersample || starCount != other.starCount
             || (galaxyCount ?? 0) != (other.galaxyCount ?? 0)
             || bloomLevels != other.bloomLevels || plain != other.plain
+            || (look.dustReddening != 1) != (other.look.dustReddening != 1)
     }
 
     /// Each palette entry recolours the galaxy at its index; a galaxy past the end keeps its

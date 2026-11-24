@@ -220,7 +220,7 @@ static __device__ __forceinline__ void laySplat(uint lay, const Splat &splat, in
             : dustPixel(splat.opticalDepth, splat.slab, r2);
         add4(targets.dust + pixel * 4u, dust, fixedUnit, targets.halves);
     } else if (lay == layLight) {
-        add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2),
+        add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2, reddening),
              fixedUnit, targets.halves);
     } else {
         add4(targets.light + pixel * 4u, starfieldPixel(splat.color, splat.spikes, coord, r2), fixedUnit,
@@ -350,7 +350,7 @@ static __device__ __forceinline__ void layStar(const Star &star, int x, int y, f
     float share = starShare(coord, star.half_streak, star.radius, star.pixel);
     if (share <= 0.0f) { return; }
     size_t pixel = size_t(y) * targets.width + size_t(x);
-    add4(targets.light + pixel * 4u, starPixel(star.color, star.slab, targets.finishedDust[pixel], share), fixedUnit,
+    add4(targets.light + pixel * 4u, starPixel(star.color, star.slab, targets.finishedDust[pixel], share, reddening), fixedUnit,
          targets.halves);
 }
 

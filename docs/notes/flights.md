@@ -185,7 +185,9 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   to a few bright stars over a crowd of faint ones (`starShare`, rank to minus one, each drawn
   around its rank's share from a Pareto tail of index `starTail`, 1.5), scattered evenly through
   its kernel and thinning past it (`starSpread`, in kernel lengths), coloured around its
-  population (`starColours`). The cross-fade runs from `starFrom` to `starFull` of the kernel
+  population (`starColours`), about a mean of 4800 K for an old star and 9000 K for a young
+  one (`starOldK`, `starYoungK`; a cooler young mean keeps the young stars near the eye soft
+  white rather than blue, as the Sombrero's flight does, #478). The cross-fade runs from `starFrom` to `starFull` of the kernel
   ceiling (0.05 to 0.2, of a frame 1080 high), in the near field only. Since #357 a particle whose
   kernel covers more than `nearFrom` of the frame's height (0.3) stands for more stars, as the
   square of its size, up to `nearStars` (4096); a star is `starSize` pixels of a frame 2160 high
@@ -207,6 +209,12 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   (#355); they slide from one layout to the other as the eye comes within `slabsWithin`
   (`[1.5, 6]` kpc) of matter. On the look's own camera the slabs are the export's, around the aim
   point and hard, and they go over to the matter's in the second after it.
+- **Slabs on the dust** (`dustSlabs`, 0 by default, #479): a positive value lays the slabs past
+  the near field on the dust grains in the frame alone, the four together that many times the
+  grains' depth (second to ninety-eighth percentile), so that they just cover the dust. On all
+  the matter a bulge 30 kpc deep makes each slab 22 kpc deep, and the far side of a ring of dust
+  inside it shades the core; on the dust the slabs are as deep as the ring. With no grain in the
+  frame they fall back on the matter. 1.2 suits the Sombrero.
 - **The dust web's lace is carried through the dust layer's depth** as the eye comes within
   `web` (`[1, 2]` radii, seven scale lengths each) of a disk (#354): a pixel's lace is its mean
   along the stretch of ray inside the layer, so it evens out where the rays graze the plane, with

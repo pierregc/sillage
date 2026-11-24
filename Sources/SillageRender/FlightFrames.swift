@@ -303,7 +303,9 @@ public final class FlightFrames {
             nearness: Nearness.distance(from: shot.camera.eye, to: points, count: stage.drawnCount),
             matter: MatterDepth.knots(
                 camera: shot.camera, aspectRatio: Float(settings.width) / Float(max(settings.height, 1)),
-                points: points, count: stage.drawnCount) ?? [],
+                points: points, count: stage.drawnCount,
+                dust: flight.inside.dustSlabs > 0 ? (take.particles.component, flight.inside.dustSlabs) : nil)
+                ?? [],
             look: flight.look(atSeconds: seconds))
         stage.inside = within
         var views = [shot.camera]

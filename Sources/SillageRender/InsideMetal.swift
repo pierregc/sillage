@@ -42,7 +42,11 @@ struct InsidePass {
     /// The light tracers' two, built the first time a frame draws some.
     var tracers: (dust: MTLRenderPipelineState, splat: MTLRenderPipelineState)?
 
-    init(device: MTLDevice, particles: Int) throws {
+    /// Whether the light fragments take a look's dust reddening (#478).
+    let dustRed: Bool
+
+    init(device: MTLDevice, particles: Int, dustRed: Bool = false) throws {
+        self.dustRed = dustRed
         guard device.readWriteTextureSupport == .tier2 else {
             throw RenderError.unsupported("textures read and written in one kernel")
         }
@@ -57,7 +61,7 @@ struct InsidePass {
         {
             try Renderer.additive(
                 vertex, fragment, writing: target, attachments: 2, format: .rgba16Float,
-                library: library, device: device)
+                library: library, device: device, dustRed: dustRed)
         }
         func compute(_ name: String) throws -> MTLComputePipelineState {
             guard let function = library.makeFunction(name: name) else {
@@ -146,7 +150,7 @@ struct InsidePass {
             func additive(_ fragment: String, writing target: Int) -> MTLRenderPipelineState? {
                 try? Renderer.additive(
                     "splatTracerVertex", fragment, writing: target, attachments: 2,
-                    format: .rgba16Float, library: library, device: device)
+                    format: .rgba16Float, library: library, device: device, dustRed: dustRed)
             }
             if let dust = additive("dustFragment", writing: 1),
                 let splat = additive("splatFragment", writing: 0)

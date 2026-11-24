@@ -60,6 +60,8 @@ public final class Renderer {
     /// their own, built the first time one is drawn.
     private var widened: (library: MTLLibrary, massive: MTLRenderPipelineState)?
     private var widenedTracers: MTLRenderPipelineState?
+    /// The dust pass of a look that widens the dust's kernels (#478).
+    private var widenedDust: MTLRenderPipelineState?
     private var widenedUnavailable = false
     /// What a flight's frame is drawn with from inside a galaxy (#297), and through which a
     /// frame set to it is drawn wherever the camera is; nil, the default, draws as every frame
@@ -220,7 +222,7 @@ public final class Renderer {
         ) throws -> MTLRenderPipelineState {
             try Renderer.additive(
                 vertexFunction, fragmentFunction, writing: target, attachments: attachments,
-                format: format, library: library, device: device)
+                format: format, library: library, device: device, dustRed: settings.dustReddening != 1)
         }
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
         dustGlowPipeline = try additive("splatVertex", "dustGlowFragment", writing: 0)
@@ -386,6 +388,15 @@ public final class Renderer {
 
     /// One over the mean light per unit mass of particles formed at `formation`, read on about
     /// fifty thousand of them.
+    /// The dust's extinction per channel against its red (#478), and in `w` whether the shader
+    /// takes it: at 1 it keeps its own constant, so a look that leaves it draws to the bit as
+    /// before; otherwise the excess over red is scaled.
+    public static func reddening(_ scale: Float) -> SIMD4<Float> {
+        if scale == 1 { return SIMD4(1, 1.22, 1.52, 0) }
+        let s = max(scale, 0)
+        return SIMD4(1, 1 + 0.22 * s, 1 + 0.52 * s, 1)
+    }
+
     public static func luminosityNormalisation(formation: [Float]) -> Float {
         ParticleAttributes.luminosityNormalisation(formation: formation)
     }
@@ -426,7 +437,7 @@ public final class Renderer {
         ) throws -> MTLRenderPipelineState {
             try Renderer.additive(
                 vertexFunction, fragmentFunction, writing: target, attachments: attachments,
-                format: format, library: library, device: device)
+                format: format, library: library, device: device, dustRed: settings.dustReddening != 1)
         }
         tracerPipelines = TracerPipelines(
             dust: try additive("splatTracerVertex", "dustFragment", writing: 1),
@@ -440,11 +451,17 @@ public final class Renderer {
 
     static func additive(
         _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
-        attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice
+        attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice,
+        dustRed: Bool = false
     ) throws -> MTLRenderPipelineState {
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
-        descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
+        // The light fragments take a look's dust reddening only when it sets one (#478).
+        let constants = MTLFunctionConstantValues()
+        var red = dustRed
+        constants.setConstantValue(&red, type: .bool, index: 20)
+        descriptor.fragmentFunction = try library.makeFunction(
+            name: fragmentFunction, constantValues: constants)
         for (index, format) in [format, format].prefix(attachments).enumerated() {
             guard let attachment = descriptor.colorAttachments[index] else { continue }
             attachment.pixelFormat = format
@@ -585,7 +602,8 @@ public final class Renderer {
     private func insideResources() -> InsidePass? {
         if insidePass == nil, insideFailure == nil {
             do {
-                insidePass = try InsidePass(device: device, particles: drawnCount)
+                insidePass = try InsidePass(
+                    device: device, particles: drawnCount, dustRed: settings.dustReddening != 1)
             } catch {
                 insideFailure = "\(error)"
             }
@@ -829,6 +847,8 @@ public final class Renderer {
                 if let deep {
                     bindDeep(encoder, uniforms)
                     drawParts(encoder, massive: deep.dust, tracers: deepTracers?.dust)
+                } else if uniforms.dustWidth != 1, traced == nil, let dust = widenedDustPipeline() {
+                    drawParts(encoder, massive: dust, tracers: nil)
                 } else {
                     drawParts(encoder, massive: dustPipeline, tracers: traced?.pipelines.dust)
                 }
@@ -886,6 +906,8 @@ public final class Renderer {
             case .stars:
                 guard let encoder = frameEncoder() else { continue }
                 bindParticles(encoder)
+                var red = Self.reddening(settings.dustReddening)
+                encoder.setFragmentBytes(&red, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
                 encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
                 if let deep {
                     bindDeep(encoder, uniforms)
@@ -942,19 +964,34 @@ public final class Renderer {
                     library,
                     try Self.additive(
                         "splatVertex", "splatFragment", writing: 0, attachments: 2,
-                        format: .rgba16Float, library: library, device: device)
+                        format: .rgba16Float, library: library, device: device,
+                        dustRed: settings.dustReddening != 1)
                 )
             }
             if tracing, widenedTracers == nil, let library = widened?.library {
                 widenedTracers = try Self.additive(
                     "splatTracerVertex", "splatFragment", writing: 0, attachments: 2,
-                    format: .rgba16Float, library: library, device: device)
+                    format: .rgba16Float, library: library, device: device,
+                    dustRed: settings.dustReddening != 1)
             }
         } catch {
             widenedUnavailable = true
             return nil
         }
         return widened.map { ($0.massive, tracing ? widenedTracers : nil) }
+    }
+
+    /// The dust pass compiled with the population widths, nil when it could not be built, and the
+    /// dust is then drawn at the tree's width.
+    private func widenedDustPipeline() -> MTLRenderPipelineState? {
+        guard !widenedUnavailable else { return nil }
+        if widenedDust == nil {
+            guard let library = try? ShaderCache.library(Self.widenedSource, on: device) else { return nil }
+            widenedDust = try? Self.additive(
+                "splatVertex", "dustFragment", writing: 1, attachments: 2, format: .rgba16Float,
+                library: library, device: device)
+        }
+        return widenedDust
     }
 
     /// Nil when the web could not be built, and the dust is then drawn as it always was.

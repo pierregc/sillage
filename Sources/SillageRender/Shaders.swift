@@ -94,6 +94,9 @@ enum Shaders {
             float loneWidest;
             /// The share of the stars that show alone kept as points, 0 for none.
             float lonePoints;
+            /// The mean temperatures of an old and a young point star, in kelvin (#478).
+            float starOldK;
+            float starYoungK;
         };
         #endif
 
@@ -140,6 +143,9 @@ enum Shaders {
             float bulgeWidth;
             float youngWidth;
             float knotWidth;
+            /// The dust grains' kernels against the tree's (#478): wider, the grains of a thin sheet
+            /// merge into a veil.
+            float dustWidth;
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
             InsideUniforms inside;
             #endif
@@ -291,7 +297,8 @@ enum Shaders {
         #endif
 
         /// Extinction is steeper in the blue than in the red, which is why a lane crossing a
-        /// bright disk reads brown rather than grey.
+        /// bright disk reads brown rather than grey. A look's `dustReddening` scales the excess
+        /// over red on Metal (#478); CUDA draws with this one.
         SHARED_CONSTANT float3 reddening = float3(1.0f, 1.22f, 1.52f);
 
         struct DiskFrame {
@@ -1217,6 +1224,7 @@ enum Shaders {
             }
             #if defined(SILLAGE_POPULATION_WIDTHS) || !defined(__METAL_VERSION__)
             if (!absorbing) { raw *= populationWidth(kind, nursery, knot, ageMyr, u); }
+            if (kind == 2u && !knot) { raw *= u.dustWidth; }
             #endif
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
@@ -1373,7 +1381,15 @@ enum Shaders {
                         bool young = knot || nursery || kind == 1u;
                         float mean = young ? 9000.0f : 4800.0f;
                         float drawn = mean * exp2((p.starHash - 0.5f) * 1.6f * u.inside.starColours);
+                        float3 base = emitted;
                         emitted = chromaticity(emitted * blackbody(drawn) / blackbody(mean));
+                        // Means other than these two, asked by the flight, drawn apart so a
+                        // flight that keeps them draws exactly as before.
+                        if (u.inside.starOldK != 4800.0f || u.inside.starYoungK != 9000.0f) {
+                            float asked = young ? u.inside.starYoungK : u.inside.starOldK;
+                            float shifted = asked * exp2((p.starHash - 0.5f) * 1.6f * u.inside.starColours);
+                            emitted = chromaticity(base * blackbody(shifted) / blackbody(mean));
+                        }
                     }
                     float near = u.projectionScale / max(out.position.w, u.inside.starNearest);
                     float size = u.inside.starPointSize;
@@ -1731,9 +1747,9 @@ enum Shaders {
             return covered / (4.0f * reach * radius);
         }
 
-        SHARED half4 starPixel(half3 color, half4 slab, half4 dust, float share) {
+        SHARED half4 starPixel(half3 color, half4 slab, half4 dust, float share, float3 red) {
             float column = dot(float4(dust), float4(slab));
-            float3 extinction = exp(-column * reddening);
+            float3 extinction = exp(-column * red);
             return half4(half3(float3(color) * extinction * share), half(share));
         }
         #endif
@@ -2677,22 +2693,28 @@ enum Shaders {
         // and the camera: the slabs in front of its own, plus half of its own. `slab` holds the
         // weights the vertex worked out, so a star picks out the ones it is behind, and `dust` is
         // the finished dust of the pixel, `r2` from the splat's centre.
-        SHARED half4 lightPixel(half3 color, half4 slab, half4 dust, float r2) {
+        SHARED half4 lightPixel(half3 color, half4 slab, half4 dust, float r2, float3 red) {
             float falloff = exp(-4.5f * r2);
             float column = dot(float4(dust), float4(slab));
-            float3 extinction = exp(-column * reddening);
+            float3 extinction = exp(-column * red);
             return half4(color * half3(extinction) * half(falloff), half(falloff));
         }
 
         #if defined(__METAL_VERSION__)
+        // A look's dust reddening (#478), compiled in only for the pipelines of a look that sets
+        // it, so every other look's light passes are the code they always were.
+        constant bool dustRedSet [[function_constant(20)]];
+        constant bool dustRed = is_function_constant_defined(dustRedSet) && dustRedSet;
+
         fragment LightTarget splatFragment(SplatOut in [[stage_in]],
                                            float2 coord [[point_coord]],
-                                           SplatFetch prior) {
+                                           SplatFetch prior,
+                                           constant float4 &red [[buffer(0)]]) {
             float r2 = splatRadius2(coord);
             if (r2 > 1.0f) { discard_fragment(); }
 
             LightTarget out;
-            out.light = lightPixel(in.color, in.slab, prior.dust, r2);
+            out.light = lightPixel(in.color, in.slab, prior.dust, r2, dustRed ? red.xyz : reddening);
             return out;
         }
         #endif
@@ -2702,12 +2724,13 @@ enum Shaders {
         // its first place to its last.
         fragment LightTarget pointStarFragment(StarOut in [[stage_in]],
                                                float2 coord [[point_coord]],
-                                               SplatFetch prior) {
+                                               SplatFetch prior,
+                                               constant float4 &red [[buffer(0)]]) {
             float share = starShare(coord, in.half_streak, in.radius, in.pixel);
             if (share <= 0.0f) { discard_fragment(); }
 
             LightTarget out;
-            out.light = starPixel(in.color, in.slab, prior.dust, share);
+            out.light = starPixel(in.color, in.slab, prior.dust, share, dustRed ? red.xyz : reddening);
             return out;
         }
         #endif

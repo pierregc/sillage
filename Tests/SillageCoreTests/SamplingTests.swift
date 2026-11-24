@@ -635,9 +635,9 @@ struct DustRingTests {
 
         let stars = radii(ringed, .star)
         let before = radii(plain, .star)
-        #expect(
-            abs(stars.reduce(0, +) / Double(stars.count) / (before.reduce(0, +) / Double(before.count)) - 1)
-                < 0.02)
+        let starMean: Double = stars.reduce(0, +) / Double(stars.count)
+        let beforeMean: Double = before.reduce(0, +) / Double(before.count)
+        #expect(abs(starMean / beforeMean - 1) < 0.02)
 
         func dustOf(_ system: ParticleSystem) -> (height: Double, opacity: Double) {
             let grains = (0..<system.count).filter { system.component[$0] == ParticleComponent.dust.rawValue }

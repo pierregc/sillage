@@ -66,6 +66,9 @@ public struct SceneConfig: Codable, Sendable, Equatable {
     public var draw: SceneDraw?
     /// Gas that dissipates (#401); nil in every scene that does not ask for it.
     public var stickyGas: StickyGas?
+    /// A factor on star formation's efficiency per free-fall time (#478): 0 forms nothing, nil
+    /// (absent from the file) runs as every scene always has.
+    public var starFormation: Float?
 
     public init(
         name: String,
@@ -160,7 +163,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case name, galaxies, solver, seed, timeStep, centerSoftening, openingAngle, softening
-        case timeStepScale, encounters, draw, stickyGas
+        case timeStepScale, encounters, draw, stickyGas, starFormation
     }
 
     /// Takes written before a scene could carry encounters still read.
@@ -178,6 +181,7 @@ public struct SceneConfig: Codable, Sendable, Equatable {
         encounters = try values.decodeIfPresent([Encounter].self, forKey: .encounters) ?? []
         draw = try values.decodeIfPresent(SceneDraw.self, forKey: .draw)
         stickyGas = try values.decodeIfPresent(StickyGas.self, forKey: .stickyGas)
+        starFormation = try values.decodeIfPresent(Float.self, forKey: .starFormation)
     }
 
     public func encoded() throws -> Data {

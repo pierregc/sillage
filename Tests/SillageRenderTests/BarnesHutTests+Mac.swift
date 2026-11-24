@@ -708,6 +708,36 @@ extension BarnesHutTests {
     /// formation times are stored once, so replaying at any moment can only show the right
     /// knots if the array is a history rather than a state: written the moment a particle
     /// forms and untouched afterwards.
+    /// A scene's `starFormation` scales the efficiency (#478): 0 leaves every grain unformed, and
+    /// a scene without it forms exactly as before, the field absent from its file.
+    @Test func aScenesStarFormationFactorScalesWhatForms() throws {
+        var scene = SceneConfig.isolatedDisk(particleCount: 30_000)
+        scene.galaxies[0].kind = .spiral
+        scene.timeStepScale = 8
+        scene.retune()
+        let sampled = RestrictedSolver.sampleParticles(for: scene)
+        func formed(_ scene: SceneConfig) throws -> [Float] {
+            let solver = try MetalBarnesHutSolver(scene: scene, particles: sampled)
+            solver.step(count: 120)
+            return solver.particles.formation
+        }
+        func count(_ formation: [Float]) -> Int { formation.count { $0 > -1e8 && $0 < 1e8 } }
+        let plain = try formed(scene)
+        var none = scene
+        none.starFormation = 0
+        var one = scene
+        one.starFormation = 1
+        let base = count(sampled.formation)
+        #expect(count(plain) > base)
+        #expect(count(try formed(none)) == base)
+        #expect(try formed(one) == plain)
+        // The file keeps it, and a scene without it writes no such field.
+        #expect(try SceneConfig.decoded(from: none.encoded()).starFormation == 0)
+        #expect(!String(decoding: try scene.encoded(), as: UTF8.self).contains("starFormation"))
+        let file = SceneFile(none)
+        #expect(file.starFormation == 0 && file.scene(particleCount: 1000).starFormation == 0)
+    }
+
     @Test func gasFormsStarsExactlyOnce() throws {
         var scene = SceneConfig.isolatedDisk(particleCount: 30_000)
         scene.galaxies[0].kind = .spiral

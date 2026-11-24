@@ -151,7 +151,9 @@ public final class BarnesHutHost {
 
     public func formationParams(nodeCount: Int) -> StarFormationGPU {
         StarFormationGPU(
-            efficiency: StarFormation.efficiency,
+            // A scene's factor only when it sets one, so every other runs to the bit (#478).
+            efficiency: scene.starFormation.map { StarFormation.efficiency * max($0, 0) }
+                ?? StarFormation.efficiency,
             threshold: StarFormation.thresholdDensity,
             timeStep: timeStep,
             time: time,

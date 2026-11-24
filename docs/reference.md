@@ -361,6 +361,16 @@ at the top of a look file lays that many galaxies behind the field stars, small,
 orange, at constant surface brightness, so a narrower field shows them larger and no brighter.
 Both are Metal only for now (#456).
 
+`look.dustReddening` sets how much more the dust takes from blue and green than from red: 1, the
+default, is the reddening every look drew with before (extinction 1, 1.22 and 1.52 times red's
+in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red scaled. The
+Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478). Metal only for now:
+CUDA draws with the fixed reddening.
+
+`look.dustWidth` widens the dust grains' kernels against the tree's, as `youngWidth` does a
+young star's: a thin sheet of grains drawn wider reads as a veil rather than as the grains or the
+threads they lie on (#478). 1, the default, draws as before.
+
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
 above, so the same scene always gets the same palette. `--palette <family>` does the same inside
@@ -517,7 +527,10 @@ the same bytes as before. The file's optional `inside` block sets each piece; th
 lines say what the flight took. What each does and costs in
 [inside a galaxy](notes/inside-a-galaxy.md). Its `neighbours` (0 by default) widens the kernels
 that show alone at mid distance, where a sparse stretch of a disk reads as blobs
-([lone kernels](notes/lone-kernels.md)).
+([lone kernels](notes/lone-kernels.md)). Its `dustSlabs` (0 by default) lays the dust's slabs on
+the dust grains in the frame rather than on all the matter, the four together that many times the
+grains' depth, for a ring of dust inside a wide bulge (#479,
+[flights](notes/flights.md)).
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph
@@ -1002,6 +1015,13 @@ for their mass, stand out of an old galaxy's disk as points of light, reddened w
 through its dust. At 0 no disk star is younger than a gigayear, the old disk of an early type;
 the positions and motions drawn are the same to the bit, only the ages change. The knots of
 `starFormingFraction` are not touched.
+
+**How much the gas forms.** A top-level `"starFormation"` in `scene.json` is a factor on the
+star formation's efficiency per free-fall time: 0 forms nothing, so every grain of dust stays
+dust for the whole run; absent, the run forms as it always has, to the bit. The Sombrero's cold,
+dense threads of dust formed a third of their grains into stars within 450 Myr, each drawn as
+a bright knot along its thread; the galaxy's ring forms almost nothing, so its scene takes 0
+(#478). Metal and CUDA alike.
 
 **A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
 as the stars'. A galaxy of `scene.json` that carries

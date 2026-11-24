@@ -750,7 +750,9 @@ public final class TakeExport {
                 nearness: Nearness.distance(from: shot.camera.eye, to: points, count: drawn),
                 matter: MatterDepth.knots(
                     camera: shot.camera, aspectRatio: Float(settings.width) / Float(max(settings.height, 1)),
-                    points: points, count: drawn) ?? [],
+                    points: points, count: drawn,
+                    dust: flight.inside.dustSlabs > 0
+                        ? (take.particles.component, flight.inside.dustSlabs) : nil) ?? [],
                 look: flight.look(atSeconds: seconds))
             renderer.inside = within
             if interval > 0 {
