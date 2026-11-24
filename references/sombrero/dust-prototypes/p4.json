@@ -1,0 +1,22 @@
+{
+ "label": "Prototype 4 : nappe et fibres",
+ "thickness": 0.038,
+ "fall": 0.8,
+ "floor": 0.1,
+ "inward": 2.2,
+ "octaves": 6,
+ "gain": 0.55,
+ "mass": 0.75,
+ "n": 6000000,
+ "lu": 0.9,
+ "lv": 0.45,
+ "lw": 0.12,
+ "shear": 0.8,
+ "threshold": -1.0,
+ "gamma": 1.0,
+ "veil": 0.3,
+ "fibres": 0.5,
+ "fibre_lu": 1.5,
+ "fibre_lv": 0.05,
+ "fibre_width": 0.15
+}

@@ -9,7 +9,7 @@ sampler (--grains, 7 floats a grain: x y z opacity vx vy vz). Projected as Hubbl
 share `behind` of the light, far dust the share `behind_far`; transmission per channel
 (1-b) + b exp(-k a_c N). The measure.py figures are printed and drawn on each variant.
 
-  dust_bench.py rim_solid.json --out /tmp/a.png --sheet /tmp/a.jpg
+  dust_bench.py p1.json --face /tmp/a-face.jpg --out /tmp/a.png --sheet /tmp/a.jpg
   dust_bench.py --grains /tmp/v6.f32 --sheet /tmp/v6.jpg --ref "Sillage v6 (rendu réel)=real.png"
   dust_bench.py scale=0.3,0.6,1.2 warp=0,0.5,1 --sheet /tmp/grid.jpg      # a grid, 9 variants
 
@@ -29,7 +29,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import binary_dilation, gaussian_filter, median_filter, zoom
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -40,15 +40,25 @@ FRAME_KPC, CORE, BASE_W, BASE_H = 26.5, (504 / 1024, 312 / 1024), 3072, 1818
 INC, ROLL = math.radians(6), math.radians(5.63)
 
 DEFAULTS = dict(
-    # envelope
-    rim=8.8, inner=0.56, rise=0.5, plateau=0.95, fall=0.35, thickness=0.04, flare=0.35,
-    # noise
-    octaves=6, scale=0.9, gain=0.55, warp=0.0, warp_scale=2.0, threshold=-0.4, gamma=1.5,
-    curve="pow", expk=1.0, veil=0.1, shear=0.0, threads=0.0, thread_width=0.12, seed=1,
+    # envelope: radii in kpc, `inner` a share of the rim; `inward` > 1 thins the dust faster inward
+    rim=8.8, inner=0.56, rise=0.5, plateau=0.95, fall=0.35, floor=0.8, inward=1.0,
+    thickness=0.04, flare=0.35,
+    # noise: lengths in kpc along the orbit (lu), across (lv) and in height (lw) of the first octave
+    kind="fbm", octaves=6, lu=1.0, lv=0.5, lw=0.2, lacunarity=2.0, gain=0.55, seed=1,
+    warp_along=0.0, warp_across=0.0, warp_height=0.0, warp_lu=3.0, warp_lv=1.5, warp_lw=0.5,
+    shear=0.0,
+    # contrast: "pow" max(0, z - threshold)^gamma, or "exp"; `veil` is a floor of the density
+    curve="pow", threshold=-0.4, gamma=1.5, expk=1.0, veil=0.1,
+    # a thin upper veil: share vf of the grains, thicker by vscale, its own noise (kind, scale, contrast)
+    vf=0.0, vscale=2.5, vkind="fbm", vlu=1.5, vthr=0.3, vgamma=1.5,
+    # ragged top: the upper half's thickness times exp(rag * noise)
+    rag=0.0, rag_lu=1.5, rag_lv=0.6,
+    # fibres: share of fine ridges laid over the sheet
+    fibres=0.0, fibre_lu=1.5, fibre_lv=0.04, fibre_lw=0.1, fibre_width=0.12,
     # grains
     n=6_000_000, myr=0.0,
     # light
-    k=0.19, blur=0.6, behind=0.95, behind_far=0.18, redden=3.0, gamma_light=2.2, kernel=1.0,
+    mass=1.0, k=0.19, blur=0.6, behind=0.95, behind_far=0.18, redden=3.0, gamma_light=2.2, kernel=1.0,
 )
 # Reddening of the renderer (Shaders.swift): exp(-column * (1, 1.22, 1.52)); `redden` scales the excess.
 CHANNELS = np.array([0.0, 0.22, 0.52])
@@ -60,57 +70,74 @@ TABLE = ["lane rim left", "lane rim width", "lane 3/4 left", "lane 1/2 left", "l
 
 # ---------------------------------------------------------------- noise
 
-def _tables(seed):
-    rng = np.random.default_rng(seed)
-    perm = rng.permutation(256).astype(np.int32)
-    perm = np.concatenate([perm, perm])
-    g = np.array([[1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0], [1, 0, 1], [-1, 0, 1],
+GRADS = np.array([[1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0], [1, 0, 1], [-1, 0, 1],
                   [1, 0, -1], [-1, 0, -1], [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]], np.float32)
-    return perm, g
+U32 = np.uint32
 
 
-def perlin(p, tab):
-    """Improved Perlin noise, vectorised over the rows of p (N, 3), about -1 to 1."""
-    perm, grads = tab
+def _hash(iu, iv, iw, seed):
+    h = iu.astype(U32) * U32(374761393) + iv.astype(U32) * U32(668265263) + iw.astype(U32) * U32(2246822519) + U32(seed)
+    h = (h ^ (h >> U32(13))) * U32(1274126177)
+    h ^= h >> U32(16)
+    h = h * U32(2654435761)
+    h ^= h >> U32(15)
+    return h % U32(12)
+
+
+def perlin(p, period, seed):
+    """Gradient noise of p (N, 3), about -1 to 1, periodic along axis 0 (`period` cells)."""
     i = np.floor(p)
     f = (p - i).astype(np.float32)
-    i = i.astype(np.int64) & 255
+    iu = np.mod(i[:, 0], period).astype(np.int64)
+    iv, iw = i[:, 1].astype(np.int64), i[:, 2].astype(np.int64)
     u = f * f * f * (f * (f * 6 - 15) + 10)
     out = 0
     for dx, dy, dz in itertools.product((0, 1), repeat=3):
-        h = perm[perm[perm[i[:, 0] + dx] + i[:, 1] + dy] + i[:, 2] + dz] % 12
-        d = grads[h]
+        d = GRADS[_hash((iu + dx) % period, iv + dy, iw + dz, seed)]
         dot = d[:, 0] * (f[:, 0] - dx) + d[:, 1] * (f[:, 1] - dy) + d[:, 2] * (f[:, 2] - dz)
         w = ((u[:, 0] if dx else 1 - u[:, 0]) * (u[:, 1] if dy else 1 - u[:, 1])
              * (u[:, 2] if dz else 1 - u[:, 2]))
         out = out + w * dot
-    return out
+    return out * 1.6
 
 
-def fbm(p, par, tab, rots):
-    """Octaves twice finer and `gain` as strong, each read through its own rotation and offset so
-    the lattice never lines up between octaves."""
-    total = 0
-    amp = 1.0
-    freq = 1.0 / par["scale"]
+def cyl(a, r, z, lu, lv, lw, par, off=0.0):
+    """Noise coordinates: lattice cells along the orbit (an integer count round the ring), across, in height."""
+    rref = 0.78 * par["rim"]
+    cells = max(int(round(2 * math.pi * rref / lu)), 4)
+    p = np.stack([a / (2 * np.pi) * cells, r / lv + off, z / lw + off * 0.7], -1).astype(np.float32)
+    return p, cells
+
+
+def octaves(a, r, z, par, seed, lu, lv, lw, kind):
+    """Sum of octaves, each lac times finer and `gain` as strong; kind fbm, ridged or billow."""
+    total, amp, norm = 0, 1.0, 0.0
+    lac = par["lacunarity"]
     for o in range(int(par["octaves"])):
-        q = (p @ rots[o]) * freq + o * 17.31
-        total = total + amp * perlin(q.astype(np.float32), tab)
+        p, cells = cyl(a, r, z, lu / lac ** o, lv / lac ** o, lw / lac ** o, par, off=o * 13.37)
+        n = perlin(p, int(round(cells)), seed + 7 * o)
+        if kind == "ridged":
+            n = 1 - 2 * np.abs(n)
+            n = n * n
+        elif kind == "billow":
+            n = 2 * np.abs(n) - 0.5
+        total = total + amp * n
+        norm += amp
         amp *= par["gain"]
-        freq *= 2.0
-    return total
+    return total / norm
 
 
-def _rotations(seed, count):
-    rng = np.random.default_rng(seed + 99)
-    out = []
-    for _ in range(count):
-        q, _ = np.linalg.qr(rng.normal(size=(3, 3)))
-        out.append(q.astype(np.float32))
-    return out
+def warped(r, a, z, par):
+    """Domain warp: the position read through three slow noises, in kpc along, across and up."""
+    if par["warp_along"] == par["warp_across"] == par["warp_height"] == 0:
+        return r, a, z
+    rref = 0.78 * par["rim"]
+    d = []
+    for k in range(3):
+        p, cells = cyl(a, r, z, par["warp_lu"], par["warp_lv"], par["warp_lw"], par, off=40.0 * (k + 1))
+        d.append(perlin(p, cells, par["seed"] * 31 + 900 + k))
+    return r + par["warp_across"] * d[1], a + par["warp_along"] * d[0] / rref, z + par["warp_height"] * d[2]
 
-
-# ---------------------------------------------------------------- dust
 
 def smoothstep(a, b, x):
     t = np.clip((x - a) / max(b - a, 1e-9), 0, 1)
@@ -120,7 +147,8 @@ def smoothstep(a, b, x):
 def radial_profile(r, par):
     rim, inner = par["rim"], par["inner"] * par["rim"]
     up = smoothstep(inner, inner + par["rise"], r)
-    plateau = 0.8 + 0.2 * smoothstep(inner, par["plateau"] * rim, r)
+    ramp = smoothstep(inner, par["plateau"] * rim, r) ** par["inward"]
+    plateau = par["floor"] + (1 - par["floor"]) * ramp
     down = 1 - smoothstep(par["plateau"] * rim, rim + par["fall"], r)
     return up * plateau * down
 
@@ -138,55 +166,65 @@ def sample_envelope(par, n, rng):
     cdf /= cdf[-1]
     r = np.interp(rng.random(n), cdf, grid)
     th = rng.random(n) * 2 * np.pi
-    z = rng.normal(size=n) * thickness_at(r, par)
-    return r, th, z
+    veil = rng.random(n) < par["vf"]
+    z = rng.normal(size=n) * thickness_at(r, par) * np.where(veil, par["vscale"], 1.0)
+    if par["rag"] > 0:
+        p, cells = cyl(th, r, np.zeros_like(r), par["rag_lu"], par["rag_lv"], 1.0, par)
+        rg = np.exp(par["rag"] * perlin(p, cells, par["seed"] * 17 + 5))
+        z = np.where(z > 0, z * rg, z)
+    return r, th, z, veil
 
 
-def raw_noise(r, th, z, par, tab, rots):
+def raw_noise(r, th, z, veil, par):
+    """Noise of every grain: the sheet's, a veil's own, and fibres' ridge value."""
     ln = np.log(np.maximum(r, 1e-3) / par["rim"])
     a = th - par["shear"] * ln
-    p = np.stack([r * np.cos(a), r * np.sin(a), z], -1).astype(np.float32)
-    if par["warp"] > 0:
-        s = par["scale"] * par["warp_scale"]
-        q = p / s
-        dx = np.stack([perlin(q + o, tab) for o in (0.0, 31.4, 71.7)], -1)
-        p = p + par["warp"] * par["scale"] * dx
-    n = fbm(p, par, tab, rots)
-    if par["threads"] > 0:
-        # thin concentric-ish threads: ridges of a noise of the radius, wavering with the angle
-        q = np.stack([r / (par["scale"] * 0.12), 0.6 * np.cos(a) + 5.0, 0.6 * np.sin(a)], -1).astype(np.float32)
-        ridge = np.exp(-(perlin(q, tab) / par["thread_width"]) ** 2)
-        return n, ridge
-    return n, None
+    r2, a2, z2 = warped(r, a, z, par)
+    n = octaves(a2, r2, z2, par, par["seed"] * 13 + 1, par["lu"], par["lv"], par["lw"], par["kind"])
+    if par["vf"] > 0:
+        nv = octaves(a2, r2, z2, par, par["seed"] * 13 + 777, par["lu"] * par["vlu"], par["lv"] * par["vlu"],
+                     par["lw"] * par["vlu"], par["vkind"])
+        n = np.where(veil, nv, n)
+    ridge = None
+    if par["fibres"] > 0:
+        p, cells = cyl(a2, r2, z2, par["fibre_lu"], par["fibre_lv"], par["fibre_lw"], par, off=5.5)
+        ridge = np.exp(-(perlin(p, cells, par["seed"] * 13 + 4242) / par["fibre_width"]) ** 2)
+    return n, ridge
 
 
-def contrast(n, par, stats):
-    mean, std = stats["mean"], stats["std"]
-    z = (n - mean) / std
+def contrast(nz, veil, par):
+    """z-scored noise to density: a threshold and power, or an exponential."""
+    thr = np.where(veil, par["vthr"], par["threshold"])
+    gam = np.where(veil, par["vgamma"], par["gamma"])
     if par["curve"] == "exp":
-        w = np.exp(par["expk"] * z)
-    else:
-        w = np.maximum(z - par["threshold"], 0) ** par["gamma"]
-    return w
+        return np.exp(par["expk"] * nz)
+    return np.maximum(nz - thr, 0) ** gam
 
 
-def weights(par, n, rng, tab, rots, stats):
-    r, th, z = sample_envelope(par, n, rng)
-    nz, ridge = raw_noise(r, th, z, par, tab, rots)
-    w = contrast(nz, par, stats) / stats["wmean"]
+def weights(par, n, rng, stats):
+    r, th, z, veil = sample_envelope(par, n, rng)
+    nz, ridge = raw_noise(r, th, z, veil, par)
+    w = contrast((nz - np.where(veil, stats["vmean"], stats["mean"])) / np.where(veil, stats["vstd"], stats["std"]),
+                 veil, par)
+    w = w / np.where(veil, stats["vwmean"], stats["wmean"])
     w = par["veil"] + (1 - par["veil"]) * w
     if ridge is not None:
-        w = (1 - par["threads"]) * w + par["threads"] * ridge / stats["rmean"]
+        w = (1 - par["fibres"]) * w + par["fibres"] * ridge / stats["rmean"]
     return r * np.cos(th), r * np.sin(th), z, w.astype(np.float32)
 
 
-def pilot(par, tab, rots):
+def pilot(par):
     rng = np.random.default_rng(par["seed"] + 5)
-    r, th, z = sample_envelope(par, 200_000, rng)
-    nz, ridge = raw_noise(r, th, z, par, tab, rots)
-    stats = dict(mean=float(nz.mean()), std=float(nz.std()))
-    w = contrast(nz, par, dict(stats, wmean=1))
-    stats["wmean"] = float(max(w.mean(), 1e-9))
+    r, th, z, veil = sample_envelope(par, 300_000, rng)
+    nz, ridge = raw_noise(r, th, z, veil, par)
+    stats = {}
+    for name, sel in (("", ~veil), ("v", veil)):
+        s = nz[sel] if sel.any() else nz
+        mean, std = float(s.mean()), float(max(s.std(), 1e-9))
+        v = veil[sel] if sel.any() else veil
+        w = contrast((s - mean) / std, v, par)
+        stats[name + "mean"], stats[name + "std"] = mean, std
+        stats[name + "wmean"] = float(max(w.mean(), 1e-9))
     stats["rmean"] = float(max(ridge.mean(), 1e-9)) if ridge is not None else 1.0
     return stats
 
@@ -211,22 +249,30 @@ def project(x, y, z, w, par, width):
     return maps
 
 
+FACE_KPC, FACE_PX = 20.0, 1000
+
+
+def face_hist(x, y, w):
+    ix = np.rint((x / FACE_KPC + 0.5) * FACE_PX).astype(np.int64)
+    iy = np.rint((0.5 - y / FACE_KPC) * FACE_PX).astype(np.int64)
+    ok = (ix >= 0) & (ix < FACE_PX) & (iy >= 0) & (iy < FACE_PX)
+    return np.bincount(iy[ok] * FACE_PX + ix[ok], weights=w[ok], minlength=FACE_PX ** 2).reshape(FACE_PX, FACE_PX)
+
+
 def _chunk(args):
     par, n, seed, stats, width = args
-    tab, rots = _tables(par["seed"]), _rotations(par["seed"], int(par["octaves"]))
-    x, y, z, w = weights(par, n, np.random.default_rng(seed), tab, rots, stats)
-    return project(x, y, z, w, par, width), float(w.sum())
+    x, y, z, w = weights(par, n, np.random.default_rng(seed), stats)
+    return project(x, y, z, w, par, width), float(w.sum()), face_hist(x, y, w)
 
 
 def procedural_columns(par, width, pool=None):
-    tab, rots = _tables(par["seed"]), _rotations(par["seed"], int(par["octaves"]))
-    stats = pilot(par, tab, rots)
+    stats = pilot(par)
     parts = 4
     jobs = [(par, par["n"] // parts, par["seed"] * 1000 + i, stats, width) for i in range(parts)]
     res = list(pool.map(_chunk, jobs)) if pool else [_chunk(j) for j in jobs]
     near = sum(r[0][0] for r in res)
     far = sum(r[0][1] for r in res)
-    return near, far, sum(r[1] for r in res)
+    return near, far, sum(r[1] for r in res), sum(r[2] for r in res)
 
 
 def grain_columns(path, par, width):
@@ -237,13 +283,13 @@ def grain_columns(path, par, width):
         ph = np.arctan2(y, x) + np.sign(x * vy - y * vx) * np.hypot(vx, vy) / np.maximum(r, 1e-6) * par["myr"] / 4.71
         x, y = r * np.cos(ph), r * np.sin(ph)
     near, far = project(x, y, z, lum.astype(np.float32), par, width)
-    return near, far, float(lum.sum())
+    return near, far, float(lum.sum()), None
 
 
 def to_column(m, total, par, width):
     kpp = FRAME_KPC / width
     m = gaussian_filter(m, par["blur"] * width / BASE_W)
-    return m / total / kpp ** 2 * 100.0
+    return m / total / kpp ** 2 * 100.0 * par["mass"]
 
 
 # ---------------------------------------------------------------- light
@@ -297,6 +343,28 @@ def load_light(spec, width):
     return np.asarray(im), "rendu réel"
 
 
+def clean_light(light, threshold=7.0):
+    """Replaces the blue knots of young stars (blue excess over a median background) by that background."""
+    h, w = light.shape[:2]
+    f = light.astype(np.float32)
+    exc = f[..., 2] - 0.5 * (f[..., 0] + f[..., 1])
+    q = 4 * max(w // BASE_W, 1) if w >= BASE_W else 2
+    small = np.stack([f[::q, ::q, c] for c in range(3)], -1)
+    es = exc[::q, ::q]
+    size = 21 if w >= BASE_W else 11
+    bg_e = median_filter(es, size=size, mode="nearest")
+    bg = np.stack([median_filter(small[..., c], size=size, mode="nearest") for c in range(3)], -1)
+    up = lambda a: zoom(a, (h / a.shape[0], w / a.shape[1]) + (1,) * (a.ndim - 2), order=1)[:h, :w]
+    bg_e, bg = up(bg_e), up(bg)
+    pad = lambda a: np.pad(a, ((0, h - a.shape[0]), (0, w - a.shape[1])) + ((0, 0),) * (a.ndim - 2), mode="edge")
+    bg_e, bg = pad(bg_e), pad(bg)
+    mask = (exc - bg_e) > threshold
+    mask = binary_dilation(mask, iterations=max(3, w // 400))
+    m = np.clip(gaussian_filter(mask.astype(np.float32), max(1.5, w / 1000)) * 1.6, 0, 1)[..., None]
+    out = f * (1 - m) + bg * m
+    return np.clip(out + 0.5, 0, 255).astype(np.uint8)
+
+
 def attenuate(light, near, far, par):
     a = 1 + par["redden"] * CHANNELS
     g = par["gamma_light"]
@@ -310,11 +378,13 @@ def attenuate(light, near, far, par):
 
 def render(par, light, grains=None, width=BASE_W, pool=None):
     if grains:
-        near, far, total = grain_columns(grains, par, width)
+        near, far, total, face = grain_columns(grains, par, width)
     else:
-        near, far, total = procedural_columns(par, width, pool)
+        near, far, total, face = procedural_columns(par, width, pool)
     near, far = to_column(near, total, par, width), to_column(far, total, par, width)
-    return Image.fromarray(attenuate(light, near, far, par))
+    im = Image.fromarray(attenuate(light, near, far, par))
+    im.face = face
+    return im
 
 
 # ---------------------------------------------------------------- sheet
@@ -375,6 +445,18 @@ def make_sheet(path, items, hubble_fig, full_w=2400, wide=True):
     return sheet
 
 
+def face_image(hist, label=""):
+    """The ring seen from above: dust dark on a pale ground, scaled to its own 99.5th percentile."""
+    h = gaussian_filter(hist, 1.2)
+    t = np.clip(h / max(np.percentile(h[h > 0], 99.5), 1e-9), 0, 1) ** 0.6
+    ground, dust = np.array([236, 230, 220.0]), np.array([58, 36, 22.0])
+    im = Image.fromarray((ground + (dust - ground) * t[..., None]).astype(np.uint8))
+    d = ImageDraw.Draw(im)
+    d.text((10, 6), label, font=font(26), fill=(20, 20, 20))
+    d.text((10, FACE_PX - 32), "vue de dessus, 20 kpc", font=font(22), fill=(60, 60, 60))
+    return im
+
+
 # ---------------------------------------------------------------- main
 
 def parse_value(v):
@@ -393,19 +475,25 @@ def main():
     p.add_argument("args", nargs="*", help="params.json and key=value (a comma list makes a grid)")
     p.add_argument("--grains")
     p.add_argument("--light")
+    p.add_argument("--clean-light", dest="clean", choices=["on", "off", "auto"], default="auto",
+                   help="remove the blue knots of the light (auto: on for procedural dust)")
     p.add_argument("--width", type=int)
     p.add_argument("--out")
     p.add_argument("--sheet")
+    p.add_argument("--face", help="JPG of the ring seen from above (20 kpc across), procedural dust only")
     p.add_argument("--ref", action="append", default=[])
     p.add_argument("--label", default=None)
     p.add_argument("--table", action="store_true", help="print the calibration figures")
     g = p.parse_args()
 
     par = dict(DEFAULTS)
+    jlabel = None
     sweep = {}
     for a in g.args:
         if "=" not in a:
-            par.update(json.load(open(a)))
+            data = json.load(open(a))
+            jlabel = data.pop("label", None)
+            par.update(data)
         else:
             k, v = a.split("=", 1)
             if k not in DEFAULTS:
@@ -419,13 +507,16 @@ def main():
         sys.exit("a grid is 12 variants at most")
     width = g.width or (1536 if sweep else BASE_W)
     light, light_name = load_light(g.light, width)
+    if g.clean == "on" or (g.clean == "auto" and not g.grains):
+        light = clean_light(light)
+        light_name += ", knots removed"
     print("light:", light_name, file=sys.stderr)
 
     variants = []
     for v in values:
         q = dict(par)
         q.update(dict(zip(names, v)))
-        label = g.label or ("grains" if g.grains else "banc")
+        label = g.label or jlabel or ("grains" if g.grains else "banc")
         variants.append((label + ("  " + " ".join(f"{k}={x}" for k, x in zip(names, v)) if names else ""), q))
 
     pool = ProcessPoolExecutor(4) if not g.grains else None
@@ -434,6 +525,8 @@ def main():
         im = render(q, light, g.grains, width, pool)
         if len(variants) == 1 and g.out:
             im.save(g.out)
+        if len(variants) == 1 and g.face and im.face is not None:
+            face_image(im.face, label).save(g.face, quality=92)
         items.append((label, im, figures(im)))
     for r in g.ref:
         label, path = r.split("=", 1)
