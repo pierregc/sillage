@@ -2685,6 +2685,12 @@ enum Shaders {
             /// Whether the screen is kept only where the line of sight runs along the radius, and
             /// the radial share of the line of sight from which it comes in and at which it is whole.
             float4 front;
+            /// Round dabs in place of the tile's scores (#508): the largest dabs' widths along the
+            /// rotation, the radius and the axis and their cell in kpc (0: none); the dabs a cell
+            /// holds, the octaves, the size and amplitude ratios from one octave to the next; the seed.
+            float4 dabSize;
+            float4 dabShape;
+            float4 dabSeed;
         };
 
         // How much of a screen a point of the plane keeps (#506): where the line of sight in the
@@ -2773,6 +2779,102 @@ enum Shaders {
             return float(tile.sample(screenSampler, at, gradient2d(gx, gy)).r);
         }
 
+        // A normal score from round dabs (#508). Each dab is a Gaussian blob in the layer, widths
+        // along the rotation, the radius and the axis, centred in the mid-plane; its column along a
+        // ray of direction `sight` (the disk's axes) through the plane point `p` falls off as
+        // exp(-Q/2), Q the blob's distance to the ray, so a blob as tall as it is wide is as round
+        // from 6 degrees as from above. Dabs sit in cells on rings one cell wide, each ring turned
+        // rigidly at its own rate: the dabs move with the dust and none is ever sheared, and a
+        // field of independent dabs looks the same however far its rings have slipped. The sum,
+        // over octaves of smaller dabs, is a gamma-like variable turned into a normal score
+        // (Wilson-Hilferty) from its mean and variance where the ray falls; octaves narrower than
+        // a pixel fade out of both. `pix` is a pixel's width at the plane, kpc.
+        static float screenDabs(float2 p, float3 sight, float pix, float since, DiskFrame frame,
+                                constant ScreenUniforms &screen) {
+            float3 sigma = screen.dabSize.xyz;
+            float cell0 = screen.dabSize.w;
+            float count = screen.dabShape.x;
+            int octaves = int(screen.dabShape.y + 0.5f);
+            float ratio = screen.dabShape.z;
+            float gain = screen.dabShape.w;
+            uint seed = uint(screen.dabSeed.x + 0.5f);
+            int slots = max(int(ceil(count - 1e-3f)), 1);
+            float present = count / float(slots);
+            float inner = screen.shape.y;
+            float outer = screen.shape.z;
+            float lz = sight.z < 0.0f ? min(sight.z, -0.05f) : max(sight.z, 0.05f);
+            float r = max(length(p), 1e-4f);
+            float theta = atan2(p.y, p.x);
+            float2 rh = p / r;
+            float2 th = float2(-rh.y, rh.x);
+            // The plane footprint of a largest dab where the ray falls: Q = x G x over plane offsets.
+            float3 l = float3(dot(sight.xy, th), dot(sight.xy, rh), lz);
+            float3 is2 = 1.0f / (sigma * sigma);
+            float3 m = l * is2;
+            float b = dot(l, m);
+            float gaa = is2.x - m.x * m.x / b;
+            float grr = is2.y - m.y * m.y / b;
+            float gar = -m.x * m.y / b;
+            float det = max(gaa * grr - gar * gar, 1e-12f);
+            float area = 2.0f * M_PI_F * rsqrt(det);
+            const float reach = 2.75f;
+            float extentA = reach * sqrt(grr / det);
+            float extentR = reach * sqrt(gaa / det);
+            // A dab's width on the screen, the geometric mean of its two.
+            float wide = sqrt(sigma.x * sigma.y * sigma.z * sqrt(b));
+            float total = 0.0f;
+            float mean = 0.0f;
+            float variance = 0.0f;
+            float scale = 1.0f;
+            float amplitude = 1.0f;
+            for (int o = 0; o < octaves; ++o, scale *= ratio, amplitude *= gain) {
+                float g = amplitude * smoothstep(0.6f, 1.2f, wide * scale / max(pix, 1e-6f));
+                if (g <= 1e-4f) { continue; }
+                float cell = cell0 * scale;
+                mean += g * count * area / (cell0 * cell0);
+                variance += g * g * count * (2.0f - present) * 0.5f * area / (cell0 * cell0);
+                float3 s = sigma * scale;
+                int j0 = max(int(floor((r - extentR * scale - inner) / cell)), 0);
+                int j1 = min(int(floor((r + extentR * scale - inner) / cell)), int((outer - inner) / cell));
+                j1 = min(j1, j0 + 63);
+                for (int j = j0; j <= j1; ++j) {
+                    float rj = inner + (float(j) + 0.5f) * cell;
+                    int n = max(int(round(2.0f * M_PI_F * rj / cell)), 1);
+                    float arc = 2.0f * M_PI_F / float(n);
+                    float turned = webOmega(frame, rj) * since;
+                    float phi = theta - turned;
+                    float spread = extentA * scale / rj;
+                    int i0 = int(floor((phi - spread) / arc));
+                    int i1 = min(int(floor((phi + spread) / arc)), i0 + 63);
+                    for (int i = i0; i <= i1; ++i) {
+                        int wrapped = ((i % n) + n) % n;
+                        for (int k = 0; k < slots; ++k) {
+                            uint2 key = uint2(uint(wrapped) * 4u + uint(k), (uint(j) * 8u + uint(o)) * 65537u + seed);
+                            float2 h = webHash(key);
+                            float2 e = webHash(key ^ uint2(0x9E3779B9u, 0x85EBCA6Bu));
+                            if (e.y >= present) { continue; }
+                            float angle = (float(i) + h.x) * arc + turned;
+                            float rc = inner + (float(j) + h.y) * cell;
+                            float2 rc2 = float2(cos(angle), sin(angle));
+                            float2 d = p - rc * rc2;
+                            float2 tc = float2(-rc2.y, rc2.x);
+                            float3 a = float3(dot(d, tc), dot(d, rc2), 0.0f) / s;
+                            float3 v = float3(dot(sight.xy, tc), dot(sight.xy, rc2), lz) / s;
+                            float along = dot(a, v);
+                            float q = dot(a, a) - along * along / dot(v, v);
+                            if (q < reach * reach) {
+                                total += g * -log(max(e.x, 1e-6f)) * exp(-0.5f * q);
+                            }
+                        }
+                    }
+                }
+            }
+            if (mean <= 0.0f) { return 0.0f; }
+            float shape = mean * mean / max(variance, 1e-12f);
+            float x = max(total / mean, 0.0f);
+            return (pow(x, 1.0f / 3.0f) - (1.0f - 1.0f / (9.0f * shape))) * 3.0f * sqrt(shape);
+        }
+
         static float2 screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
                                float3 ray, float3 stepX, float3 stepY, texture2d<half> tile, texture2d<half> lut) {
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
@@ -2799,7 +2901,11 @@ enum Shaders {
             float since = w.up.w - screen.shape.w;
             float value;
             float period = screen.renew.x;
-            if (period > 0.0f) {
+            if (screen.dabSize.x > 0.0f) {
+                float3 sight = float3(dot(ray, frame.axisU.xyz), dot(ray, frame.axisV.xyz), dot(ray, axis))
+                    / length(ray);
+                value = screenDabs(p, sight, t * length(stepX), since, frame, screen);
+            } else if (period > 0.0f) {
                 // Two realizations half a period apart, each resting unsheared in the middle of its
                 // life and weighted cos squared about it; the one resting at the tile's own rest is
                 // the tile as written, each later one turned rigidly by an angle of its own.

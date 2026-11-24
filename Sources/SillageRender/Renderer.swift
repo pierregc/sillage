@@ -683,6 +683,11 @@ public final class Renderer {
                     Float(ref.galaxy + 1), loaded.tile.radii[0], loaded.tile.radii[1],
                     ref.rest / Float(Physics.megayearsPerTimeUnit))
                 screen.depth = SIMD4(ref.depth, 0, 0, 0)
+                if ref.dabs != nil, loaded.tile.lut == nil {
+                    FileHandle.standardError.write(Data("dust screen: dabs need a tile with a lut\n".utf8))
+                } else {
+                    screen.dabs(ref.dabs)
+                }
             } catch {
                 FileHandle.standardError.write(Data("dust screen: \(error)\n".utf8))
             }

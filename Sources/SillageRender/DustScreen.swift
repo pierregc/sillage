@@ -31,6 +31,9 @@ public struct DustScreenRef: Codable, Sendable, Equatable {
     /// the grains' own dust in its place elsewhere (the ring's tips), and the colour law's rim
     /// with it. Absent, the screen everywhere.
     public var front: [Float]?
+    /// Draws the scores from round dabs carried by the rotation instead of the tile (#508); the
+    /// tile's lut still turns them into the column. Absent, the tile.
+    public var dabs: DustScreenDabs?
 
     public init(tile: String, galaxy: Int = 0, rest: Float = 0, depth: Float = 1) {
         self.tile = tile
@@ -49,6 +52,7 @@ public struct DustScreenRef: Codable, Sendable, Equatable {
         law = try c.decodeIfPresent(DustScreenLaw.self, forKey: .law)
         renew = try c.value(.renew, or: renew)
         front = try c.decodeIfPresent([Float].self, forKey: .front)
+        dabs = try c.decodeIfPresent(DustScreenDabs.self, forKey: .dabs)
     }
 
     var fault: String? {
@@ -64,6 +68,49 @@ public struct DustScreenRef: Codable, Sendable, Equatable {
         if !(renew == 0 || (renew >= 1 && renew <= 1000)) {
             return "dustScreen renew \(renew): 0, or 1 to 1000 megayears"
         }
+        if let fault = dabs?.fault { return fault }
+        return nil
+    }
+}
+
+/// Round dabs (#508): blobs in the dust layer, each carried round at its ring's rate and never
+/// sheared, seen through the layer along the ray, so a dab looks as round from Hubble's angle as
+/// from above. Each octave's dabs are `ratio` the size of the last, `gain` the amplitude; their sum
+/// is turned into a normal score and read through the tile's lut.
+public struct DustScreenDabs: Codable, Sendable, Equatable {
+    /// The largest dabs' Gaussian widths in parsecs: along the rotation, along the radius, in height.
+    public var size: [Float]
+    /// The largest dabs' cell in parsecs, one ring of cells across it; the size along the rotation if absent.
+    public var cell: Float?
+    /// Dabs a cell holds on average, 0.1 to 4.
+    public var count: Float = 1
+    public var octaves: Int = 3
+    public var ratio: Float = 0.5
+    public var gain: Float = 0.6
+    public var seed: Int = 1
+
+    public init(from decoder: any Decoder) throws {
+        try rejectUnknownFields(decoder, CodingKeys.self)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        size = try c.decode([Float].self, forKey: .size)
+        cell = try c.decodeIfPresent(Float.self, forKey: .cell)
+        count = try c.value(.count, or: count)
+        octaves = try c.value(.octaves, or: octaves)
+        ratio = try c.value(.ratio, or: ratio)
+        gain = try c.value(.gain, or: gain)
+        seed = try c.value(.seed, or: seed)
+    }
+
+    var fault: String? {
+        if !(size.count == 3 && size.allSatisfy { $0 >= 1 && $0 <= 5000 }) {
+            return "dustScreen dabs size \(size): three widths, 1 to 5000 parsecs"
+        }
+        if let cell, !(cell >= 1 && cell <= 5000) { return "dustScreen dabs cell \(cell): 1 to 5000 parsecs" }
+        if !(count >= 0.1 && count <= 4) { return "dustScreen dabs count \(count): 0.1 to 4" }
+        if !(1...4).contains(octaves) { return "dustScreen dabs octaves \(octaves): 1 to 4" }
+        if !(ratio >= 0.2 && ratio <= 0.9) { return "dustScreen dabs ratio \(ratio): 0.2 to 0.9" }
+        if !(gain > 0 && gain <= 2) { return "dustScreen dabs gain \(gain): above 0, to 2" }
+        if !(0...65535).contains(seed) { return "dustScreen dabs seed \(seed): 0 to 65535" }
         return nil
     }
 }
@@ -191,10 +238,22 @@ struct ScreenUniforms {
     var renew: SIMD4<Float> = .zero
     /// Whether the screen is kept by the radial share of the line of sight, and between which.
     var front: SIMD4<Float> = .zero
+    /// The largest dabs' widths and cell in kpc (0: no dabs), then count, octaves, ratio, gain,
+    /// then the seed.
+    var dabSize: SIMD4<Float> = .zero
+    var dabShape: SIMD4<Float> = .zero
+    var dabSeed: SIMD4<Float> = .zero
 
     static func front(_ ref: DustScreenRef?) -> SIMD4<Float> {
         guard let front = ref?.front else { return .zero }
         return SIMD4(1, front[0], front[1], 0)
+    }
+
+    mutating func dabs(_ dabs: DustScreenDabs?) {
+        guard let dabs else { return }
+        dabSize = SIMD4(dabs.size[0], dabs.size[1], dabs.size[2], dabs.cell ?? dabs.size[0]) / 1000
+        dabShape = SIMD4(dabs.count, Float(dabs.octaves), dabs.ratio, dabs.gain)
+        dabSeed = SIMD4(Float(dabs.seed), 0, 0, 0)
     }
 }
 
