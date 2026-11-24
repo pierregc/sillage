@@ -182,6 +182,17 @@ public final class TakeExport {
         expander = try SnapshotExpander(device: device, recording: take.recording)
         smoothing = try SmoothingField(device: device, particleCount: count)
         eased = try flight.map { _ in try EasedSmoothing(device: device, particleCount: count) }
+        if look.look.emittingSpacing {
+            // A star's kernel from the emitting particles alone, the dust left out (#478).
+            let component = take.particles.component
+            let emitting = (0..<min(count, component.count)).compactMap { index -> UInt32? in
+                let kind = component[index]
+                return kind == ParticleComponent.dust.rawValue || kind == ParticleComponent.halo.rawValue
+                    ? nil : UInt32(index)
+            }
+            smoothing.emitting = emitting
+            eased?.emitting = emitting
+        }
     }
 
     /// Frames of the video's time checked against the frames held, a second.

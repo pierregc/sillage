@@ -37,6 +37,13 @@ public final class SmoothingField {
     /// Made on first use: a field fed by a solver's tree never needs one.
     private var builder: GPUTreeBuilder?
     private var queue: MTLCommandQueue?
+    /// The particles whose lengths are read off a tree of the emitting particles alone (#478),
+    /// nil for every particle's off one tree. A star inside a dense thread of dust otherwise
+    /// takes the grains' spacing and is drawn as a tight point among wide neighbours.
+    public var emitting: [UInt32]? {
+        didSet { emittingTree = nil }
+    }
+    private var emittingTree: (builder: GPUTreeBuilder, positions: MTLBuffer, lengths: MTLBuffer)?
     static let leafCapacity = 24
 
     // How many neighbours the kernel spans and any hand tuning on top are both nothing but
@@ -123,7 +130,47 @@ public final class SmoothingField {
                 return
             }
         } while builder.overflowed
+        if emitting != nil { refineEmitting(from: positions, queue: queue) }
         lastMilliseconds = Date().timeIntervalSince(clock) * 1000
+    }
+
+    /// The emitting particles' lengths again, off a tree of them alone: away from the dust a leaf
+    /// holds the same stars either way, so a length there is what it was.
+    private func refineEmitting(from positions: MTLBuffer, queue: MTLCommandQueue) {
+        guard let emitting, !emitting.isEmpty else { return }
+        if emittingTree == nil {
+            let n = emitting.count
+            guard
+                let builder = try? GPUTreeBuilder(
+                    device: device, count: n, leafCapacity: Self.leafCapacity, nodeCapacity: n / 4 + 1024),
+                let gathered = device.makeBuffer(
+                    length: n * MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared),
+                let lengths = device.makeBuffer(length: n * 4, options: .storageModeShared)
+            else { return }
+            emittingTree = (builder, gathered, lengths)
+        }
+        guard let tree = emittingTree else { return }
+        let all = positions.contents().bindMemory(to: SIMD3<Float>.self, capacity: count)
+        let gathered = tree.positions.contents().bindMemory(to: SIMD3<Float>.self, capacity: emitting.count)
+        for (slot, index) in emitting.enumerated() where Int(index) < count {
+            gathered[slot] = all[Int(index)]
+        }
+        repeat {
+            if tree.builder.overflowed {
+                do { try tree.builder.grow() } catch { return }
+            }
+            guard let commands = queue.makeCommandBuffer() else { return }
+            tree.builder.encodeCells(into: commands, positions: tree.positions)
+            tree.builder.encodeSmoothing(into: commands, lengths: tree.lengths, drawn: emitting.count)
+            commands.commit()
+            commands.waitUntilCompleted()
+            guard commands.status == .completed else { return }
+        } while tree.builder.overflowed
+        let refined = tree.lengths.contents().bindMemory(to: Float.self, capacity: emitting.count)
+        let out = buffer.contents().bindMemory(to: Float.self, capacity: count)
+        for (slot, index) in emitting.enumerated() where Int(index) < count {
+            out[Int(index)] = refined[slot]
+        }
     }
 
     private func gpuTree() -> (GPUTreeBuilder, MTLCommandQueue)? {

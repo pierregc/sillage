@@ -16,6 +16,10 @@ final class EasedSmoothing {
     private let count: Int
     /// How many trees were built, for the tests.
     private(set) var builds = 0
+    /// The emitting particles, their lengths read off a tree of their own (#478); nil for none.
+    var emitting: [UInt32]? {
+        didSet { for held in fields { held.field.emitting = emitting } }
+    }
 
     init(device: MTLDevice, particleCount: Int) throws {
         count = max(particleCount, 1)
