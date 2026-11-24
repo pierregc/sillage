@@ -1,0 +1,17 @@
+{
+ "carrier": "cart",
+ "win": 1.875,
+ "family": "zquilt",
+ "tol": 0.5,
+ "c": 1.5,
+ "sz0": 0.003,
+ "seed": 1,
+ "label": "B f8 EXEMPLAR: Hubble quilted, lifted c 1.5",
+ "kind": "exemplar",
+ "par": {
+  "rim": 8.8,
+  "inner": 0.6045
+ },
+ "command": "python3 references/sombrero/tools/dust_track_b.py references/sombrero/dust-tracks/b/f8.json --out OUT [--law hubble]",
+ "note": "inner x rim = 5.32 kpc, the near band top edge: the inner cut law=hubble reads (#500); no other use in this field"
+}
