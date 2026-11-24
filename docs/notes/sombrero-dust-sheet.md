@@ -371,8 +371,22 @@ far line follows a circle of 5.5 kpc (rms 0.05 kpc over the columns) and the nea
 of 5.9 kpc: the far line is the mirror of the near lane's inner edge within 0.04 kpc in projection, not
 of the lane's body (0.69). The ring is centred on the nucleus within the noise, with a dense, thin inner
 rim: 0.09 kpc of projected width leaves at most about 0.04 kpc of height (sigma) or 0.9 kpc of radius to
-that rim. Counted from `CORE`, as the bench counts, the pair looks 0.08 kpc lopsided; the bench centres
-its ring on `CORE`, 0.04 kpc above Hubble's, which no figure corrects yet.
+that rim. Counted from `CORE`, as the bench counts, the pair looks 0.08 kpc lopsided.
+
+**Centring on the nucleus.** Hubble's nucleus is 0.108 kpc along the disk (to the right) and 0.041 kpc
+under `CORE` (peak of the light laid flat, smoothed 4 to 37 pc: 0.106 to 0.110 and -0.040 to -0.041; the
+bulge's mirror symmetry 1.2 to 2.2 kpc out gives 0.08 and -0.04). The bench light's peak and symmetry
+sit on `CORE` (0.00, 0.00 to 0.01). At 6 degrees, 0.04 kpc on the sky is 0.38 kpc of radius, so a ring
+fitted on a bench centred on `CORE` takes radii 0.4 kpc too large. `centre=nucleus` moves the light frame
+by `NUCLEUS` (sub-pixel) and projects the ring about the same point; `centre=core` (default) renders to
+the byte as before. With it, the lanes' rows move 0.04 kpc down and their fitted radii do not (p6 by
+depth: near inner edge 0.62 to 0.66 under `CORE`, rings 6.64 and 6.62 kpc). P6 + taper with `inner=0.6`
+puts its far line on Hubble's (0.44 against 0.45) but its near inner edge at 0.50 against Hubble's 0.56:
+a mirror-symmetric ring cannot land both; Hubble's near edge lies 0.4 kpc further out than its far line
+(`centre-nucleus-rows.jpg` in the bench's output of #495).
+
+For the explorers: `share=depth centre=nucleus`, measured at 3072 and 6144 against the far figures
+(`loin h`, `loin l`, `loin creux`) as well as the near ones, `n=24000000` for layers under 0.01 kpc.
 
 **The light's shares.** With `share=split` the near half dims `behind` 0.95 of the light and the far
 half `behind_far` 0.18, cut at the row of the core: at the tips the share steps from 0.95 to 0.18 across

@@ -34,7 +34,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy.special import ndtri
 from scipy.stats import qmc
-from scipy.ndimage import binary_dilation, find_objects, gaussian_filter, label, median_filter, zoom
+from scipy.ndimage import binary_dilation, find_objects, gaussian_filter, label, median_filter, shift, zoom
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -46,6 +46,9 @@ Image.MAX_IMAGE_PIXELS = None
 warnings.filterwarnings("ignore", message=".*balance properties.*")
 FRAME_KPC, CORE, BASE_W, BASE_H = hubble_ref.KPC, hubble_ref.CORE, 3072, 1818
 INC, ROLL = math.radians(6), math.radians(5.63)
+# Hubble's nucleus from CORE, kpc along the disk and up (laid flat): the peak of its light, smoothed 4 to
+# 37 pc, on the full frame (0.106 to 0.110, -0.040 to -0.041); the bench light's peak sits on CORE (0.00)
+NUCLEUS = (0.108, -0.041)
 
 DEFAULTS = dict(
     # envelope: radii in kpc, `inner` a share of the rim; `inward` > 1 thins the dust faster inward
@@ -85,6 +88,9 @@ DEFAULTS = dict(
     # where the dust dims the light: 0, the display light made linear (light ** gamma_light); > 0, the
     # renderer's energy under its log `stretch` and `white` point (the v6 look: 1.1 and 13)
     stretch=0.0, white=13.0,
+    # where the galaxy sits: "core", on CORE (as before); "nucleus", on Hubble's nucleus, NUCLEUS kpc from
+    # CORE: the light frame is shifted there and the ring projected about it, light and dust together
+    centre="core",
 )
 # Reddening of the renderer (Shaders.swift): exp(-column * (1, 1.22, 1.52)); `redden` scales the excess.
 CHANNELS = np.array([0.0, 0.22, 0.52])
@@ -289,8 +295,9 @@ def project(x, y, z, w, par, width):
     share "depth", also (near, far) maps of the column times each grain's share of light behind it."""
     height = round(width * BASE_H / BASE_W)
     kpp = FRAME_KPC / width
-    sx = x
-    sy = y * math.sin(INC) + z * math.cos(INC)
+    dx, dy = centre_offset(par)
+    sx = x + dx
+    sy = y * math.sin(INC) + z * math.cos(INC) + dy
     ux = sx * math.cos(ROLL) + sy * math.sin(ROLL)
     uy = -sx * math.sin(ROLL) + sy * math.cos(ROLL)
     fx = CORE[0] * width + ux / kpp
@@ -483,7 +490,28 @@ def mean_share(weighted, col):
     return np.where(col > 1e-9, weighted / np.maximum(col, 1e-9), 0.0)
 
 
+def centre_offset(par):
+    if par["centre"] == "core":
+        return 0.0, 0.0
+    if par["centre"] == "nucleus":
+        return NUCLEUS
+    raise SystemExit(f"centre is core or nucleus, not {par['centre']}")
+
+
+def recentre(light, par):
+    """The light frame moved from CORE to the galaxy's centre (centre_offset), sub-pixel."""
+    dx, dy = centre_offset(par)
+    if dx == dy == 0:
+        return light
+    kpp = FRAME_KPC / light.shape[1]
+    ux = dx * math.cos(ROLL) + dy * math.sin(ROLL)
+    uy = -dx * math.sin(ROLL) + dy * math.cos(ROLL)
+    moved = shift(light.astype(np.float32), (-uy / kpp, ux / kpp, 0), order=1, mode="nearest")
+    return np.clip(moved + 0.5, 0, 255).astype(np.uint8)
+
+
 def render(par, light, grains=None, width=BASE_W, pool=None):
+    light = recentre(light, par)
     if grains:
         maps, total, face = grain_columns(grains, par, width)
     else:
