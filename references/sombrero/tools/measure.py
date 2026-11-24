@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """measure.py <frame> [<frame> ...] [--kpc 26.5] [--crop x,y,w,h] [--roll deg]
+measure.py --halves [--width 0] [<frame> ...]    the near and far lanes column by column (#495)
 
 Figures of a Sombrero frame beside the same figures of Hubble's picture (heic2506a), all in
 display values (0 to 1), so that a look is judged on numbers. A frame is taken to be --kpc
@@ -21,6 +22,7 @@ import os
 
 import numpy as np
 from PIL import Image, ImageFilter
+from scipy.ndimage import gaussian_filter1d
 
 import hubble_ref
 
@@ -143,19 +145,154 @@ def measure(im, kpc, roll=None, width=None):
     return out
 
 
+BANDS = np.arange(-6.5, 6.51, 0.5)  # kpc along the major axis, centres of the columns `halves` reads
+SIN_I = math.sin(math.radians(6))
+
+
+def flat_strip(src, scale, reach=7.5, depth=1.7):
+    """Display luminance and red over green of the frame laid flat about Hubble's core (rolled 5.63
+    degrees), `reach` kpc either side along the disk and `depth` kpc over and under, `scale` px across
+    the whole frame. Returns lum, rg, the core's row and column, px per kpc."""
+    k, (cx, cy) = 1 / HUBBLE_KPC, hubble_ref.CORE
+    im = hubble_ref.flat_region(src, (cx - reach * k, cy - depth * k, cx + reach * k, cy + depth * k), scale)
+    rgb = np.asarray(im).astype(np.float32) / 255
+    ppk = scale / HUBBLE_KPC
+    return rgb @ LUMA.astype(np.float32), rgb[..., 0] / np.maximum(rgb[..., 1], 1e-3), depth * ppk, im.width / 2, ppk
+
+
+def _upper_baseline(d, prof, sel, deg, rounds=6):
+    """The light without the lane: a polynomial in log light over `sel`, refitted on the points that
+    are not more than half a scatter under it, so dark dips do not pull it down."""
+    x, y = d[sel], np.log(np.maximum(prof[sel], 1e-4))
+    keep = np.ones_like(x, bool)
+    for _ in range(rounds):
+        p = np.polyfit(x[keep], y[keep], deg)
+        res = y - np.polyval(p, x)
+        keep = res > -0.5 * np.std(res[keep])
+    return np.exp(np.polyval(p, d))
+
+
+def lane_profile(d, prof, rg, sign, ppk, lo=0.2, hi=1.4, deg=3):
+    """One half (sign 1 over the core, -1 under) of a column's profile against its upper baseline (fitted
+    from 0.12 to 1.65 kpc): the darkest height in lo..hi kpc, the width at half depth, the depth (1 - light
+    left), the half-depth edge facing the core, and the red over green there."""
+    sel = (sign * d >= 0.12) & (sign * d <= 1.65)
+    ratio = prof / _upper_baseline(d, prof, sel, deg)
+    ratio = gaussian_filter1d(ratio, max(0.01 * ppk, 0.5))
+    idx = np.nonzero((sign * d >= lo) & (sign * d <= hi))[0]
+    k = idx[np.argmin(ratio[idx])]
+    depth = 1 - ratio[k]
+    up = down = k
+    while up > 0 and ratio[up] < 1 - depth / 2:
+        up -= 1
+    while down < len(d) - 1 and ratio[down] < 1 - depth / 2:
+        down += 1
+    inner = min(abs(d[up]), abs(d[down]))
+    return dict(offset=abs(d[k]), width=(down - up) / ppk, depth=depth, inner=inner, rg=float(rg[k]))
+
+
+def halves(src, scale=None, band=0.5, deg=3, far=(0.2, 1.4), near=(0.2, 1.4)):
+    """Near (under the core) and far (over it) lanes, column by column along the disk (BANDS, `band` kpc
+    wide), on `src` (a hubble_ref source in Hubble's framing) at `scale` px across (default its own)."""
+    lum, rg, row0, col0, ppk = flat_strip(src, scale or src.width)
+    d = (row0 - np.arange(lum.shape[0])) / ppk
+    out = []
+    for x in BANDS:
+        a, b = round(col0 + (x - band / 2) * ppk), round(col0 + (x + band / 2) * ppk)
+        prof, red = lum[:, a:b].mean(1), rg[:, a:b].mean(1)
+        out.append(dict(x=float(x), near=lane_profile(d, prof, red, -1, ppk, *near, deg=deg),
+                        far=lane_profile(d, prof, red, 1, ppk, *far, deg=deg)))
+    return out
+
+
+NUCLEUS = -0.04  # kpc: Hubble's nucleus lies this far under the core's row (CORE), measured on the full frame
+
+
+def ring_fit(xs, offsets, z0=None):
+    """Radius r and height z0 (kpc) of a circle seen 6 degrees from edge on whose projection
+    sqrt(r^2 - x^2) sin i + z0 passes nearest the offsets: what radius a lane's line follows.
+    A given z0 fixes the circle's centre (NUCLEUS: Hubble's nucleus, for a far lane over the core)."""
+    best, fixed = None, z0
+    for r in np.arange(3.0, 10.01, 0.02):
+        proj = np.sqrt(np.clip(r * r - xs * xs, 0, None)) * SIN_I
+        z0 = float(np.mean(offsets - proj)) if fixed is None else fixed
+        err = float(np.sqrt(np.mean((offsets - proj - z0) ** 2)))
+        if best is None or err < best[2]:
+            best = (float(r), z0, err)
+    return best
+
+
+FAR_SPAN = (1.0, 4.5)  # |x| kpc where the far lane is read: clear of the core's inner dust, short of the tips
+
+
+def far_summary(rows, z0=NUCLEUS):
+    """Medians of the far lane over FAR_SPAN, with two noise figures: left against right (half their
+    difference) and the scatter of the columns over sqrt(count); and the rings its line and the near
+    lane's inner edge follow, about a centre z0 kpc over the core's row (NUCLEUS for Hubble, 0 for a bench)."""
+    sel = [r for r in rows if FAR_SPAN[0] <= abs(r["x"]) <= FAR_SPAN[1]]
+    out = {}
+    for key in ("offset", "width", "depth", "inner"):
+        v = np.array([r["far"][key] for r in sel])
+        left = np.median([r["far"][key] for r in sel if r["x"] < 0])
+        right = np.median([r["far"][key] for r in sel if r["x"] > 0])
+        out[f"far {key}"] = float(np.median(v))
+        out[f"far {key} lr"] = float(abs(left - right) / 2)
+        out[f"far {key} sem"] = float(np.std(v) / math.sqrt(len(v)))
+    xs = np.array([r["x"] for r in sel])
+    far = np.array([r["far"]["offset"] for r in sel])
+    out["far ring r"], _, out["far ring rms"] = ring_fit(xs, far, z0)
+    # the near lane's edge facing the core, the far lane's mirror (heights counted down from the core's row)
+    edge = np.array([r["near"]["inner"] for r in sel])
+    out["near edge ring r"], _, out["near edge ring rms"] = ring_fit(xs, edge, -z0)
+    out["near inner"] = float(np.median(edge))
+    out["near offset"] = float(np.median([r["near"]["offset"] for r in sel]))
+    out["near width"] = float(np.median([r["near"]["width"] for r in sel]))
+    return out
+
+
+def print_halves(rows, name):
+    print(f"{name}: lanes by column (kpc from the core's row; depth = 1 - light left)")
+    print(f"{'x':>6} | {'near off':>8} {'inner':>6} {'width':>6} {'depth':>6} | {'far off':>7} {'inner':>6} {'width':>6} {'depth':>6} {'r/g':>5}")
+    for r in rows:
+        n, f = r["near"], r["far"]
+        print(f"{r['x']:+6.1f} | {n['offset']:8.2f} {n['inner']:6.2f} {n['width']:6.2f} {n['depth']:6.2f} | "
+              f"{f['offset']:7.2f} {f['inner']:6.2f} {f['width']:6.2f} {f['depth']:6.3f} {f['rg']:5.2f}")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("frames", nargs="+")
+    p.add_argument("frames", nargs="*")
     p.add_argument("--kpc", type=float, default=HUBBLE_KPC)
     p.add_argument("--roll", type=float)
     p.add_argument("--crop")
     p.add_argument("--width", type=int, help=f"px across the frames are measured at (default {WIDTH})")
     p.add_argument("--hubble", help="Hubble's full frame (default $SOMBRERO_HUBBLE, the local copy, "
                                     "then the lane strip of assets/478-sombrero)")
+    p.add_argument("--halves", action="store_true",
+                   help="the near and far lanes column by column (frames in Hubble's framing, at their own "
+                        "width; Hubble at --width, 0 for its full 14319 px), the far lane's figures and noise")
     g = p.parse_args()
     width = g.width or WIDTH
     crop = [int(v) for v in g.crop.split(",")] if g.crop else None
     hub = hubble_ref.load(g.hubble)
+    if g.halves:
+        sources = [(f"Hubble at {width or hub.width} px", hub, width or hub.width)]
+        sources += [(os.path.basename(f), hubble_ref.Source(Image.open(f)), None) for f in g.frames]
+        for name, src, scale in sources:
+            rows = halves(src, scale)
+            print_halves(rows, name)
+            degs = (2, 3, 4) if src is hub else (3,)
+            for deg in degs:
+                s = far_summary(rows if deg == 3 else halves(src, scale, deg=deg), NUCLEUS if src is hub else 0.0)
+                print(f"  far lane over |x| {FAR_SPAN[0]:g}-{FAR_SPAN[1]:g} kpc, baseline degree {deg}: "
+                      + "  ".join(f"{k} {s[k]:.2f} (lr {s[k + ' lr']:.3f}, sem {s[k + ' sem']:.3f})"
+                                  for k in ("far offset", "far width", "far depth", "far inner")))
+                print(f"    ring of the far line {s['far ring r']:.2f} kpc (rms {s['far ring rms']:.3f}); of the near "
+                      f"lane's inner edge {s['near edge ring r']:.2f} kpc (rms {s['near edge ring rms']:.3f}); "
+                      f"near offset {s['near offset']:.2f}, inner edge {s['near inner']:.2f}, width {s['near width']:.2f}")
+        return
+    if not g.frames and not g.halves:
+        p.error("no frame")
     columns = [("Hubble", measure(hub.frame(width), HUBBLE_KPC, width=width))]
     for path in g.frames:
         im = Image.open(path)

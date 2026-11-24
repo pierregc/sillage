@@ -6,8 +6,10 @@ Dust = grains drawn from an envelope (radial profile, Gaussian height) and weigh
 sampler (--grains, 7 floats a grain: x y z opacity vx vy vz). Projected as Hubble frames it
 (6 degrees from edge on, roll 5.63, core at 0.492, 0.305 of the width, 26.5 kpc across), near half
 (y < 0, below the core) and far half apart, then laid on a light frame: near dust dims the
-share `behind` of the light, far dust the share `behind_far`; transmission per channel
-(1-b) + b exp(-k a_c N). The measure.py figures are printed and drawn on each variant.
+share `behind` of the light, far dust the share `behind_far` (share=split); or each grain the share
+of light behind it along its line of sight, from light_model.py (share=depth); transmission per
+channel (1-b) + b exp(-k a_c N). The measure.py figures, the far lane's among them, are printed and
+drawn on each variant.
 
   dust_bench.py p1.json --face /tmp/a-face.jpg --out /tmp/a.png --sheet /tmp/a.jpg
   dust_bench.py --grains /tmp/v6.f32 --sheet /tmp/v6.jpg --ref "Sillage v6 (rendu réel)=real.png"
@@ -37,6 +39,7 @@ from scipy.ndimage import binary_dilation, find_objects, gaussian_filter, label,
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import hubble_ref  # noqa: E402
+import light_model  # noqa: E402
 import measure  # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
@@ -75,13 +78,22 @@ DEFAULTS = dict(
     mass=1.0, k=0.19, blur=0.6, behind=0.95, behind_far=0.18, redden=3.0, gamma_light=2.2, kernel=1.0,
     # thick dust turns grey: the reddening is divided by 1 + grey * (optical depth k N); 0 keeps it constant
     grey=0.0,
+    # share of the light behind the dust: "split", `behind` under the core's row and `behind_far` over it;
+    # "depth", each grain's own share along its line of sight, from the 3D light model `light_model`
+    # (light_model.py; "" the fitted light-model.json beside this file)
+    share="split", light_model="",
+    # where the dust dims the light: 0, the display light made linear (light ** gamma_light); > 0, the
+    # renderer's energy under its log `stretch` and `white` point (the v6 look: 1.1 and 13)
+    stretch=0.0, white=13.0,
 )
 # Reddening of the renderer (Shaders.swift): exp(-column * (1, 1.22, 1.52)); `redden` scales the excess.
 CHANNELS = np.array([0.0, 0.22, 0.52])
 KEYS = [("near lane left", "proche"), ("near lane width", "largeur"), ("near lane r/g", "r/g"),
-        ("rim solid", "bord plein"), ("far lane left", "lointain")]
+        ("rim solid", "bord plein"), ("far lane left", "lointain"),
+        ("far offset", "loin h"), ("far width", "loin l"), ("far depth", "loin creux")]
 TABLE = ["lane rim left", "lane rim width", "lane 3/4 left", "lane 1/2 left", "lane 1/2 width",
-         "lane rim r/g", "far lane left", "rim solid", "near lane left", "near lane width", "near lane r/g"]
+         "lane rim r/g", "far lane left", "rim solid", "near lane left", "near lane width", "near lane r/g",
+         "far offset", "far width", "far depth"]
 
 
 # ---------------------------------------------------------------- noise
@@ -273,7 +285,8 @@ def pilot(par):
 # ---------------------------------------------------------------- projection
 
 def project(x, y, z, w, par, width):
-    """Column maps (near, far) in units of mass share per kpc^2 times 100, on a width-px frame."""
+    """Column maps (near, far) in units of mass share per kpc^2 times 100, on a width-px frame; with
+    share "depth", also (near, far) maps of the column times each grain's share of light behind it."""
     height = round(width * BASE_H / BASE_W)
     kpp = FRAME_KPC / width
     sx = x
@@ -285,7 +298,23 @@ def project(x, y, z, w, par, width):
     maps = []
     for sel in (y < 0, y >= 0):
         maps.append(splat(fx[sel], fy[sel], w[sel], width, height, par["splat"]))
+    if par["share"] == "depth":
+        b = light_model.share(light_params(par), x, y, z)
+        for sel in (y < 0, y >= 0):
+            maps.append(splat(fx[sel], fy[sel], w[sel] * b[sel], width, height, par["splat"]))
+    elif par["share"] != "split":
+        raise SystemExit(f"share is split or depth, not {par['share']}")
     return maps
+
+
+_LIGHT = {}
+
+
+def light_params(par):
+    path = par["light_model"] or light_model.DEFAULT
+    if path not in _LIGHT:
+        _LIGHT[path] = light_model.load(path)
+    return _LIGHT[path]
 
 
 def splat(fx, fy, w, width, height, bilinear=1):
@@ -319,13 +348,16 @@ def _chunk(args):
 
 
 def procedural_columns(par, width, pool=None):
+    """Column maps [near, far] (and with share "depth" [near, far, near times share, far times share]),
+    total weight, top view."""
     stats = pilot(par)
+    if par["share"] == "depth":
+        light_model.load_table(light_params(par))   # built once here, read by every worker
     parts = max(4, -(-par["n"] // 3_000_000))   # chunks of at most 3 M grains: bounded memory at any n
     jobs = [(par, par["n"] // parts, par["seed"] * 1000 + i, stats, width) for i in range(parts)]
     res = list(pool.map(_chunk, jobs)) if pool else [_chunk(j) for j in jobs]
-    near = sum(r[0][0] for r in res)
-    far = sum(r[0][1] for r in res)
-    return near, far, sum(r[1] for r in res), sum(r[2] for r in res)
+    maps = [sum(r[0][k] for r in res) for k in range(len(res[0][0]))]
+    return maps, sum(r[1] for r in res), sum(r[2] for r in res)
 
 
 def grain_columns(path, par, width):
@@ -335,8 +367,7 @@ def grain_columns(path, par, width):
         r = np.hypot(x, y)
         ph = np.arctan2(y, x) + np.sign(x * vy - y * vx) * np.hypot(vx, vy) / np.maximum(r, 1e-6) * par["myr"] / 4.71
         x, y = r * np.cos(ph), r * np.sin(ph)
-    near, far = project(x, y, z, lum.astype(np.float32), par, width)
-    return near, far, float(lum.sum()), None
+    return project(x, y, z, lum.astype(np.float32), par, width), float(lum.sum()), None
 
 
 def to_column(m, total, par, width):
@@ -419,25 +450,50 @@ def clean_light(light, threshold=7.0, peak=16.0, keep_upper=0.45):
     return np.clip(out + 0.5, 0, 255).astype(np.uint8)
 
 
-def attenuate(light, near, far, par):
+def transmission(col, par):
+    tau = par["k"] * col[..., None]
+    a = 1 + par["redden"] / (1 + par["grey"] * tau) * CHANNELS   # grey 0: one reddening everywhere
+    return np.exp(-tau * a)
+
+
+def attenuate(light, near, far, par, shares=None):
+    """The light dimmed by the near and far columns. `shares` (near, far): each pixel's share of light
+    behind its near and far dust (share "depth"); None takes `behind` and `behind_far`."""
     g = par["gamma_light"]
     lin = (light.astype(np.float32) / 255) ** g
-    k = par["k"]
-    for col, b in ((near, par["behind"]), (far, par["behind_far"])):
-        tau = k * col[..., None]
-        a = 1 + par["redden"] / (1 + par["grey"] * tau) * CHANNELS   # grey 0: one reddening everywhere
-        t = (1 - b) + b * np.exp(-tau * a)
+    if shares is None and par["stretch"] <= 0:   # as the bench always did
+        for col, b in ((near, par["behind"]), (far, par["behind_far"])):
+            lin = lin * ((1 - b) + b * transmission(col, par))
+        return (np.clip(lin, 0, 1) ** (1 / g) * 255 + 0.5).astype(np.uint8)
+    bn, bf = shares if shares is not None else (par["behind"], par["behind_far"])
+    bn, bf = np.asarray(bn, np.float32)[..., None], np.asarray(bf, np.float32)[..., None]
+    tn, tf = transmission(near, par), transmission(far, par)
+    # light behind both layers, between them, in front of both (the far dust lies behind the near)
+    t = bf * tn * tf + (bn - bf) * tn + (1 - bn)
+    if par["stretch"] > 0:
+        energy = light_model.to_energy(lin, par["stretch"], par["white"])
+        lin = light_model.from_energy(energy * t, par["stretch"], par["white"])
+    else:
         lin = lin * t
     return (np.clip(lin, 0, 1) ** (1 / g) * 255 + 0.5).astype(np.uint8)
 
 
+def mean_share(weighted, col):
+    """A pixel's share of light behind its dust: the column-weighted mean of its grains' shares."""
+    return np.where(col > 1e-9, weighted / np.maximum(col, 1e-9), 0.0)
+
+
 def render(par, light, grains=None, width=BASE_W, pool=None):
     if grains:
-        near, far, total, face = grain_columns(grains, par, width)
+        maps, total, face = grain_columns(grains, par, width)
     else:
-        near, far, total, face = procedural_columns(par, width, pool)
-    near, far = to_column(near, total, par, width), to_column(far, total, par, width)
-    im = Image.fromarray(attenuate(light, near, far, par))
+        maps, total, face = procedural_columns(par, width, pool)
+    maps = [to_column(m, total, par, width) for m in maps]
+    near, far = maps[:2]
+    shares = (mean_share(maps[2], near), mean_share(maps[3], far)) if len(maps) == 4 else None
+    im = Image.fromarray(attenuate(light, near, far, par, shares))
+    im.shares = shares
+    im.columns = (near, far)
     im.face = face
     im.face_column = (face / total / (FACE_KPC / FACE_PX) ** 2 * 100.0 * par["mass"]) if face is not None else None
     return im
@@ -465,7 +521,8 @@ def panel(src, box, width):
 
 
 def figures_line(fig):
-    return "   ".join(f"{label} {fig[key]:.2f}" for key, label in KEYS if fig.get(key) is not None)
+    return "   ".join(f"{label} {fig[key]:.{3 if key == 'far depth' else 2}f}" for key, label in KEYS
+                      if fig.get(key) is not None)
 
 
 def row(label, im, fig, full_w, wide=True):
@@ -532,11 +589,16 @@ def parse_value(v):
 
 
 def figures(im):
-    return measure.measure(im, FRAME_KPC)
+    """measure.py's figures, and the far lane's (measure.halves, over |x| 1 to 4.5 kpc, at the frame's width)."""
+    out = measure.measure(im, FRAME_KPC)
+    out.update(measure.far_summary(measure.halves(hubble_ref.Source(im)), 0.0))
+    return out
 
 
 def hubble_figures(hub):
-    return measure.measure(hub.frame(measure.WIDTH), FRAME_KPC, width=measure.WIDTH)
+    out = measure.measure(hub.frame(measure.WIDTH), FRAME_KPC, width=measure.WIDTH)
+    out.update(measure.far_summary(measure.halves(hub, measure.WIDTH)))
+    return out
 
 
 def main():
