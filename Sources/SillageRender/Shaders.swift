@@ -2691,6 +2691,11 @@ enum Shaders {
             float4 dabSize;
             float4 dabShape;
             float4 dabSeed;
+            /// Rings of column added, mottled as the radius's own: radius, sigma, column (0: none).
+            float4 dabRing0;
+            float4 dabRing1;
+            float4 dabRing2;
+            float4 dabRing3;
         };
 
         // How much of a screen a point of the plane keeps (#506): where the line of sight in the
@@ -2779,6 +2784,12 @@ enum Shaders {
             return float(tile.sample(screenSampler, at, gradient2d(gx, gy)).r);
         }
 
+        // The standard normal's distribution function (a tanh fit, 3e-4 at worst).
+        static float screenNormal(float x) {
+            x = clamp(x, -6.0f, 6.0f);
+            return 0.5f + 0.5f * tanh(0.7978846f * x * (1.0f + 0.044715f * x * x));
+        }
+
         // A normal score from round dabs (#508). Each dab is a Gaussian blob in the layer, widths
         // along the rotation, the radius and the axis, centred in the mid-plane; its column along a
         // ray of direction `sight` (the disk's axes) through the plane point `p` falls off as
@@ -2789,9 +2800,12 @@ enum Shaders {
         // over octaves of smaller dabs, is a gamma-like variable turned into a normal score
         // (Wilson-Hilferty) from its mean and variance where the ray falls; a dab's depth is gamma
         // distributed, of mean one and integer shape 1 to 3; octaves narrower than
-        // a pixel fade out of both. `pix` is a pixel's width at the plane, kpc.
-        static float screenDabs(float2 p, float3 sight, float pix, float since, DiskFrame frame,
-                                constant ScreenUniforms &screen) {
+        // a pixel fade out of both. `pix` is a pixel's width at the plane, kpc. The line runs
+        // along `sight` through `p`, where it crosses the plane; the eye stands at `eye` along
+        // it and `height` above the plane: a dab counts only for its share ahead of the eye, and
+        // the mean and variance for the layer's share ahead of it, also returned.
+        static float2 screenDabs(float2 p, float3 sight, float eye, float height, float pix, float since,
+                                 DiskFrame frame, constant ScreenUniforms &screen) {
             float3 sigma = screen.dabSize.xyz;
             float cell0 = screen.dabSize.w;
             float count = screen.dabShape.x;
@@ -2805,7 +2819,7 @@ enum Shaders {
             float present = count / float(slots);
             float inner = screen.shape.y;
             float outer = screen.shape.z;
-            float lz = sight.z < 0.0f ? min(sight.z, -0.05f) : max(sight.z, 0.05f);
+            float lz = sight.z;
             float r = max(length(p), 1e-4f);
             float theta = atan2(p.y, p.x);
             float2 rh = p / r;
@@ -2828,14 +2842,18 @@ enum Shaders {
             float total = 0.0f;
             float mean = 0.0f;
             float variance = 0.0f;
+            float whole = 0.0f;
             float scale = 1.0f;
             float amplitude = 1.0f;
             for (int o = 0; o < octaves; ++o, scale *= ratio, amplitude *= gain) {
                 float g = amplitude * smoothstep(0.6f, 1.2f, wide * scale / max(pix, 1e-6f));
                 if (g <= 1e-4f) { continue; }
                 float cell = cell0 * scale;
-                mean += g * count * area / (cell0 * cell0);
-                variance += g * g * count * (second - present) * 0.5f * area / (cell0 * cell0);
+                // The share of this octave's layer ahead of the eye.
+                float ahead = screenNormal(-sign(lz) * height / (sigma.z * scale));
+                whole += g * count * area / (cell0 * cell0);
+                mean += ahead * g * count * area / (cell0 * cell0);
+                variance += ahead * g * g * count * (second - present) * 0.5f * area / (cell0 * cell0);
                 float3 s = sigma * scale;
                 int j0 = max(int(floor((r - extentR * scale - inner) / cell)), 0);
                 int j1 = min(int(floor((r + extentR * scale - inner) / cell)), int((outer - inner) / cell));
@@ -2864,24 +2882,80 @@ enum Shaders {
                             float3 a = float3(dot(d, tc), dot(d, rc2), 0.0f) / s;
                             float3 v = float3(dot(sight.xy, tc), dot(sight.xy, rc2), lz) / s;
                             float along = dot(a, v);
-                            float q = dot(a, a) - along * along / dot(v, v);
+                            float vv = dot(v, v);
+                            float q = dot(a, a) - along * along / vv;
                             if (q < reach * reach) {
+                                float front = screenNormal((-along / vv - eye) * sqrt(vv));
                                 float2 f = webHash(key ^ uint2(0x27D4EB2Fu, 0x165667B1u));
                                 float u = e.x * (shape > 1 ? f.x : 1.0f) * (shape > 2 ? f.y : 1.0f);
-                                total += g * -log(max(u, 1e-12f)) / float(shape) * exp(-0.5f * q);
+                                total += front * g * -log(max(u, 1e-12f)) / float(shape) * exp(-0.5f * q);
                             }
                         }
                     }
                 }
             }
-            if (mean <= 0.0f) { return 0.0f; }
+            if (mean <= 1e-6f * whole || whole <= 0.0f) { return float2(0.0f, 0.0f); }
             float kappa = mean * mean / max(variance, 1e-12f);
             float x = max(total / mean, 0.0f);
-            return (pow(x, 1.0f / 3.0f) - (1.0f - 1.0f / (9.0f * kappa))) * 3.0f * sqrt(kappa);
+            return float2((pow(x, 1.0f / 3.0f) - (1.0f - 1.0f / (9.0f * kappa))) * 3.0f * sqrt(kappa),
+                          mean / whole);
+        }
+
+        // The column a dab screen lays along a pixel's ray (#508): the dabs read along the whole
+        // line, which may meet the plane behind the eye, each for its share ahead of the eye, so the
+        // camera can stand in the layer; through the tile's lut at the radius the line crosses the
+        // plane, a share of that radius's mean laid smooth, the rings' column added; over the sine
+        // of the ray's angle to the plane, as through any thin layer, times the layer's share ahead.
+        // Below 3 degrees to the plane the dabs give way to the grains, whose depth is real.
+        static float2 screenDabsAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+                                   float3 ray, float3 stepX, texture2d<half> lut) {
+            float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
+            float3 rel = w.eye.xyz - frame.center.xyz;
+            float3 d = ray / length(ray);
+            float height = dot(rel, axis);
+            float lz = dot(d, axis);
+            float kept = smoothstep(0.03f, 0.07f, abs(lz));
+            if (kept <= 0.0f) { return float2(0.0f, 0.0f); }
+            float2 eye = float2(dot(rel, frame.axisU.xyz), dot(rel, frame.axisV.xyz));
+            float2 flat = float2(dot(d, frame.axisU.xyz), dot(d, frame.axisV.xyz));
+            // The line crosses the plane at parameter 0; the eye stands at height / lz along it.
+            float at = height / lz;
+            float2 p = eye - flat * at;
+            float pix = abs(at) * length(stepX) / length(ray);
+            float since = w.up.w - screen.shape.w;
+            float2 read = screenDabs(p, float3(flat, lz), at, height, pix, since, frame, screen);
+            if (read.y <= 0.0f) { return float2(0.0f, kept); }
+            float radius = length(p);
+            float span = max(screen.shape.z - screen.shape.y, 1e-4f);
+            float row = (radius - screen.shape.y) / span;
+            float range = screen.renew.w - screen.renew.z;
+            float column = float(lut.sample(screenLutSampler, float2((read.x - screen.renew.z) / range, row)).r);
+            float4 rings[4] = {screen.dabRing0, screen.dabRing1, screen.dabRing2, screen.dabRing3};
+            float added = 0.0f;
+            for (int k = 0; k < 4; ++k) {
+                if (rings[k].z <= 0.0f) { continue; }
+                float x = (radius - rings[k].x) / rings[k].y;
+                added += rings[k].z * exp(-0.5f * x * x);
+            }
+            if (screen.dabSeed.z > 0.0f || added > 0.0f) {
+                // The radius's mean column (Gauss-Hermite, five nodes): a share of it laid smooth,
+                // and the rings' column added mottled as the radius's own, its mean kept.
+                const float nodes[5] = {-2.8570f, -1.3556f, 0.0f, 1.3556f, 2.8570f};
+                const float weights[5] = {0.01126f, 0.22208f, 0.53333f, 0.22208f, 0.01126f};
+                float mean = 0.0f;
+                for (int k = 0; k < 5; ++k) {
+                    float2 node = float2((nodes[k] - screen.renew.z) / range, row);
+                    mean += weights[k] * float(lut.sample(screenLutSampler, node).r);
+                }
+                column = mix(column, mean, screen.dabSeed.z);
+                column *= 1.0f + added / max(mean, 0.02f);
+            }
+            return float2(max(column, 0.0f) * read.y / abs(lz), kept);
         }
 
         static float2 screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
                                float3 ray, float3 stepX, float3 stepY, texture2d<half> tile, texture2d<half> lut) {
+            if (screen.dabSize.x > 0.0f) { return screenDabsAt(frame, w, screen, ray, stepX, lut); }
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
             float3 rel = w.eye.xyz - frame.center.xyz;
             float least = 0.05f * length(ray);
@@ -2906,11 +2980,7 @@ enum Shaders {
             float since = w.up.w - screen.shape.w;
             float value;
             float period = screen.renew.x;
-            if (screen.dabSize.x > 0.0f) {
-                float3 sight = float3(dot(ray, frame.axisU.xyz), dot(ray, frame.axisV.xyz), dot(ray, axis))
-                    / length(ray);
-                value = screenDabs(p, sight, t * length(stepX), since, frame, screen);
-            } else if (period > 0.0f) {
+            if (period > 0.0f) {
                 // Two realizations half a period apart, each resting unsheared in the middle of its
                 // life and weighted cos squared about it; the one resting at the tile's own rest is
                 // the tile as written, each later one turned rigidly by an angle of its own.

@@ -90,6 +90,11 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
     /// The gamma shape of a dab's depth, 1 (exponential) to 3: the higher, the fewer lone dark dabs.
     public var shape: Int = 1
     public var seed: Int = 1
+    /// The share of each radius's mean column laid smooth under the dabs, 0 to 1: gaps filled, the mean kept.
+    public var smooth: Float = 0
+    /// Up to four rings of column added, each [radius kpc, sigma kpc, column in the tile's units],
+    /// mottled as the radius's own column is.
+    public var rings: [[Float]] = []
 
     public init(from decoder: any Decoder) throws {
         try rejectUnknownFields(decoder, CodingKeys.self)
@@ -102,6 +107,8 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         gain = try c.value(.gain, or: gain)
         shape = try c.value(.shape, or: shape)
         seed = try c.value(.seed, or: seed)
+        smooth = try c.value(.smooth, or: smooth)
+        rings = try c.value(.rings, or: rings)
     }
 
     var fault: String? {
@@ -115,6 +122,9 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         if !(gain > 0 && gain <= 2) { return "dustScreen dabs gain \(gain): above 0, to 2" }
         if !(1...3).contains(shape) { return "dustScreen dabs shape \(shape): 1 to 3" }
         if !(0...65535).contains(seed) { return "dustScreen dabs seed \(seed): 0 to 65535" }
+        if !(smooth >= 0 && smooth <= 1) { return "dustScreen dabs smooth \(smooth): 0 to 1" }
+        let ringsOK = rings.count <= 4 && rings.allSatisfy { $0.count == 3 && $0[0] >= 0 && $0[1] > 0 && $0[2] >= 0 }
+        if !ringsOK { return "dustScreen dabs rings: up to four [radius, sigma, column], sigma above 0" }
         return nil
     }
 }
@@ -243,10 +253,15 @@ struct ScreenUniforms {
     /// Whether the screen is kept by the radial share of the line of sight, and between which.
     var front: SIMD4<Float> = .zero
     /// The largest dabs' widths and cell in kpc (0: no dabs), then count, octaves, ratio, gain,
-    /// then the seed and the depths' gamma shape.
+    /// then the seed, the depths' gamma shape and the smooth share.
     var dabSize: SIMD4<Float> = .zero
     var dabShape: SIMD4<Float> = .zero
     var dabSeed: SIMD4<Float> = .zero
+    /// Rings of column added: radius, sigma, column (column 0: none).
+    var dabRing0: SIMD4<Float> = .zero
+    var dabRing1: SIMD4<Float> = .zero
+    var dabRing2: SIMD4<Float> = .zero
+    var dabRing3: SIMD4<Float> = .zero
 
     static func front(_ ref: DustScreenRef?) -> SIMD4<Float> {
         guard let front = ref?.front else { return .zero }
@@ -257,7 +272,14 @@ struct ScreenUniforms {
         guard let dabs else { return }
         dabSize = SIMD4(dabs.size[0], dabs.size[1], dabs.size[2], dabs.cell ?? dabs.size[0]) / 1000
         dabShape = SIMD4(dabs.count, Float(dabs.octaves), dabs.ratio, dabs.gain)
-        dabSeed = SIMD4(Float(dabs.seed), Float(dabs.shape), 0, 0)
+        dabSeed = SIMD4(Float(dabs.seed), Float(dabs.shape), dabs.smooth, 0)
+        let ring = { (i: Int) -> SIMD4<Float> in
+            i < dabs.rings.count ? SIMD4(dabs.rings[i][0], dabs.rings[i][1], dabs.rings[i][2], 0) : .zero
+        }
+        dabRing0 = ring(0)
+        dabRing1 = ring(1)
+        dabRing2 = ring(2)
+        dabRing3 = ring(3)
     }
 }
 
