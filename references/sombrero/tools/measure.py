@@ -70,35 +70,65 @@ def measure(im, kpc, roll=None):
     out["white"] = float((lum > 0.97).mean())
 
     reach = int(0.65 / px)
-    for name, sign in (("near", 1), ("far", -1)):
-        found = []
-        for dx in (-6.5, -5, -4, -2.5, 2.5, 4, 5, 6.5):
-            x, r = round(cx + dx / px), int(0.3 / px)
-            col = lum[:, x - r:x + r + 1].mean(axis=1)
-            red = (rgb[:, x - r:x + r + 1, 0] / np.maximum(rgb[:, x - r:x + r + 1, 1], 1e-3)).mean(axis=1)
-            best = None
-            for k in range(int(0.2 / px), int(1.6 / px)):
-                y = cy + sign * k
-                if not (reach <= y < height - reach):
-                    continue
-                edge = min(col[y - reach:y].max(), col[y + 1:y + reach + 1].max())
-                left = col[y] / max(edge, 1e-3)
-                if best is None or left < best[0]:
-                    best = (left, y, edge, k)
-            if best is None:
+
+    def lane(dx, sign, half_width=0.3):
+        """The darkest row under (sign 1) or over the core at dx kpc along the disk: the light left
+        there against the brighter of the light just over and under it, the lane's width at half
+        depth, its red over green, its offset from the axis, and the column and rows it spans."""
+        x, r = round(cx + dx / px), max(int(half_width / px), 1)
+        if not (r <= x < width - r):
+            return None
+        col = lum[:, x - r:x + r + 1].mean(axis=1)
+        red = (rgb[:, x - r:x + r + 1, 0] / np.maximum(rgb[:, x - r:x + r + 1, 1], 1e-3)).mean(axis=1)
+        best = None
+        for k in range(int(0.2 / px), int(1.6 / px)):
+            y = cy + sign * k
+            if not (reach <= y < height - reach):
                 continue
-            left, y, edge, k = best
-            half = (col[y] + edge) / 2
-            up = y
-            while up > 0 and col[up] < half:
-                up -= 1
-            down = y
-            while down < height - 1 and col[down] < half:
-                down += 1
-            found.append((k * px, (down - up) * px, left, red[y]))
+            edge = min(col[y - reach:y].max(), col[y + 1:y + reach + 1].max())
+            left = col[y] / max(edge, 1e-3)
+            if best is None or left < best[0]:
+                best = (left, y, edge, k)
+        if best is None:
+            return None
+        left, y, edge, k = best
+        half = (col[y] + edge) / 2
+        up = y
+        while up > 0 and col[up] < half:
+            up -= 1
+        down = y
+        while down < height - 1 and col[down] < half:
+            down += 1
+        return k * px, (down - up) * px, left, red[y], x, up, down, edge
+
+    for name, sign in (("near", 1), ("far", -1)):
+        found = [f[:4] for f in (lane(dx, sign) for dx in (-6.5, -5, -4, -2.5, 2.5, 4, 5, 6.5)) if f]
         f = np.median(np.array(found), axis=0)
         out[f"{name} lane offset"], out[f"{name} lane width"] = float(f[0]), float(f[1])
         out[f"{name} lane left"], out[f"{name} lane r/g"] = float(f[2]), float(f[3])
+
+    # The near lane along the major axis (#478): at the rim, three quarters and half of the ring's
+    # radius (7.5 kpc), both sides, narrow columns: how deep, how wide and how red it is there.
+    for label, at in (("rim", 7.0), ("3/4", 5.6), ("1/2", 3.75)):
+        found = [f[:4] for f in (lane(s * at, 1, 0.12) for s in (-1, 1)) if f]
+        if found:
+            f = np.mean(np.array(found), axis=0)
+            out[f"lane {label} left"], out[f"lane {label} width"], out[f"lane {label} r/g"] = (
+                float(f[2]), float(f[1]), float(f[3]))
+        else:
+            out[f"lane {label} left"] = out[f"lane {label} width"] = out[f"lane {label} r/g"] = None
+    # How solid the near lane is at the rim: over columns 5 to 7 kpc out on both sides, the share
+    # of pixels within the lane's half-depth band that hold under 0.7 of the light round it.
+    dark, total = 0, 0
+    for s in (-1, 1):
+        for dx in np.arange(5.0, 7.0, 4 * px):
+            f = lane(s * dx, 1, 0.02)
+            if not f:
+                continue
+            _, _, _, _, x, up, down, edge = f
+            band = lum[up:down + 1, x]
+            dark += int((band < 0.7 * edge).sum()); total += band.size
+    out["rim solid"] = dark / total if total else None
     return out
 
 
