@@ -2787,7 +2787,8 @@ enum Shaders {
         // rigidly at its own rate: the dabs move with the dust and none is ever sheared, and a
         // field of independent dabs looks the same however far its rings have slipped. The sum,
         // over octaves of smaller dabs, is a gamma-like variable turned into a normal score
-        // (Wilson-Hilferty) from its mean and variance where the ray falls; octaves narrower than
+        // (Wilson-Hilferty) from its mean and variance where the ray falls; a dab's depth is gamma
+        // distributed, of mean one and integer shape 1 to 3; octaves narrower than
         // a pixel fade out of both. `pix` is a pixel's width at the plane, kpc.
         static float screenDabs(float2 p, float3 sight, float pix, float since, DiskFrame frame,
                                 constant ScreenUniforms &screen) {
@@ -2798,6 +2799,8 @@ enum Shaders {
             float ratio = screen.dabShape.z;
             float gain = screen.dabShape.w;
             uint seed = uint(screen.dabSeed.x + 0.5f);
+            int shape = clamp(int(screen.dabSeed.y + 0.5f), 1, 3);
+            float second = 1.0f + 1.0f / float(shape);
             int slots = max(int(ceil(count - 1e-3f)), 1);
             float present = count / float(slots);
             float inner = screen.shape.y;
@@ -2832,7 +2835,7 @@ enum Shaders {
                 if (g <= 1e-4f) { continue; }
                 float cell = cell0 * scale;
                 mean += g * count * area / (cell0 * cell0);
-                variance += g * g * count * (2.0f - present) * 0.5f * area / (cell0 * cell0);
+                variance += g * g * count * (second - present) * 0.5f * area / (cell0 * cell0);
                 float3 s = sigma * scale;
                 int j0 = max(int(floor((r - extentR * scale - inner) / cell)), 0);
                 int j1 = min(int(floor((r + extentR * scale - inner) / cell)), int((outer - inner) / cell));
@@ -2863,16 +2866,18 @@ enum Shaders {
                             float along = dot(a, v);
                             float q = dot(a, a) - along * along / dot(v, v);
                             if (q < reach * reach) {
-                                total += g * -log(max(e.x, 1e-6f)) * exp(-0.5f * q);
+                                float2 f = webHash(key ^ uint2(0x27D4EB2Fu, 0x165667B1u));
+                                float u = e.x * (shape > 1 ? f.x : 1.0f) * (shape > 2 ? f.y : 1.0f);
+                                total += g * -log(max(u, 1e-12f)) / float(shape) * exp(-0.5f * q);
                             }
                         }
                     }
                 }
             }
             if (mean <= 0.0f) { return 0.0f; }
-            float shape = mean * mean / max(variance, 1e-12f);
+            float kappa = mean * mean / max(variance, 1e-12f);
             float x = max(total / mean, 0.0f);
-            return (pow(x, 1.0f / 3.0f) - (1.0f - 1.0f / (9.0f * shape))) * 3.0f * sqrt(shape);
+            return (pow(x, 1.0f / 3.0f) - (1.0f - 1.0f / (9.0f * kappa))) * 3.0f * sqrt(kappa);
         }
 
         static float2 screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,

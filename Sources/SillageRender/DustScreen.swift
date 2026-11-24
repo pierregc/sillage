@@ -87,6 +87,8 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
     public var octaves: Int = 3
     public var ratio: Float = 0.5
     public var gain: Float = 0.6
+    /// The gamma shape of a dab's depth, 1 (exponential) to 3: the higher, the fewer lone dark dabs.
+    public var shape: Int = 1
     public var seed: Int = 1
 
     public init(from decoder: any Decoder) throws {
@@ -98,6 +100,7 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         octaves = try c.value(.octaves, or: octaves)
         ratio = try c.value(.ratio, or: ratio)
         gain = try c.value(.gain, or: gain)
+        shape = try c.value(.shape, or: shape)
         seed = try c.value(.seed, or: seed)
     }
 
@@ -110,6 +113,7 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         if !(1...4).contains(octaves) { return "dustScreen dabs octaves \(octaves): 1 to 4" }
         if !(ratio >= 0.2 && ratio <= 0.9) { return "dustScreen dabs ratio \(ratio): 0.2 to 0.9" }
         if !(gain > 0 && gain <= 2) { return "dustScreen dabs gain \(gain): above 0, to 2" }
+        if !(1...3).contains(shape) { return "dustScreen dabs shape \(shape): 1 to 3" }
         if !(0...65535).contains(seed) { return "dustScreen dabs seed \(seed): 0 to 65535" }
         return nil
     }
@@ -239,7 +243,7 @@ struct ScreenUniforms {
     /// Whether the screen is kept by the radial share of the line of sight, and between which.
     var front: SIMD4<Float> = .zero
     /// The largest dabs' widths and cell in kpc (0: no dabs), then count, octaves, ratio, gain,
-    /// then the seed.
+    /// then the seed and the depths' gamma shape.
     var dabSize: SIMD4<Float> = .zero
     var dabShape: SIMD4<Float> = .zero
     var dabSeed: SIMD4<Float> = .zero
@@ -253,7 +257,7 @@ struct ScreenUniforms {
         guard let dabs else { return }
         dabSize = SIMD4(dabs.size[0], dabs.size[1], dabs.size[2], dabs.cell ?? dabs.size[0]) / 1000
         dabShape = SIMD4(dabs.count, Float(dabs.octaves), dabs.ratio, dabs.gain)
-        dabSeed = SIMD4(Float(dabs.seed), 0, 0, 0)
+        dabSeed = SIMD4(Float(dabs.seed), Float(dabs.shape), 0, 0)
     }
 }
 
