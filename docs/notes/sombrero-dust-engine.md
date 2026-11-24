@@ -10,8 +10,7 @@ Branch `feat/506-sombrero-engine` (worktree `~/claude-workspace/sillage-wt-506`)
 - Sheets: `S2/show2.sh <name> <prefix> [label]` writes `<prefix>-cut.jpg`, `-pair.jpg` and `-closeup-film.jpg` (near lane only) to banc/506 and prints the lane figures and the texture score (grid 3072). It is built on `references/sombrero/tools/film_split.py` (`split`, `framing`, `sheet`) and `closeup.py --scale 3840`.
 - Clips (1080p HEVC, 7 s, about 5 min each): `gpu-lock.sh run L sr506.sh export <take> --look <look> --flight S2/clip-cotton-{hubble,tilt}.flight.json --preset 1080p --out <mp4>`. Flights run 0.5 to 60 Myr. Hubble: 800 kpc, 6 deg, 26.5 kpc across, roll 0.1. Tilt: 30 deg elevation, 34 kpc across. `S2/cotton-runs.sh` does both clips plus the edge-on still.
 - Edge on: `export ... --flight S2/s-edge-{whole,close}-cotton.flight.json --flight-keys <dir> --flight-at 0 --preset 4k` (whole galaxy from 800 kpc; near ring from (0,-14,0) disk axes, aim (0,-7,0), fov 0.1). Sheet via `S2/tools/sheets.py`.
-- Lane depth vs Hubble: `S2/tools/lane.py <frame-hf.png>`, the opacity across the near lane. Hubble: sum 62, tips 57.
-- Colour excess by depth: `S2/tools/colour.py`.
+- Lane depth vs Hubble: `S2/tools/lane.py <frame-hf.png>` (Hubble: sum 62, tips 57); colour excess by depth: `S2/tools/colour.py`.
 - Layer thickness: `S2/tools/layer.py <take> <myr>`. Clumping and thickness over time: `S2/tools/clump.py <take>`.
 
 ## Options added (all off by default)
