@@ -91,6 +91,14 @@ DEFAULTS = dict(
     # where the galaxy sits: "core", on CORE (as before); "nucleus", on Hubble's nucleus, NUCLEUS kpc from
     # CORE: the light frame is shifted there and the ring projected about it, light and dust together
     centre="core",
+    # the colour law: "old", one reddening law (`redden`, `grey`) everywhere; "hubble", the law measured on Hubble
+    # (colour_law.py): the dust is split by radius into the inner rim (within `rim_w` kpc of the inner cut, dense,
+    # near grey) and the rest (reddening). In each, the optical depth in red and in blue is a share of the green
+    # one, `dif_r`, `dif_b` (the rest) and `rim_r`, `rim_b` (the rim) in thin dust, tending to 1 as the green
+    # optical depth passes `dif_t` and `rim_t`: share = 1 + (a - 1) / (1 + tau / t). `leak` is a neutral share
+    # of the light that goes through whatever the dust (gaps), on top of the share `behind` leaves. `redden`
+    # still sets the green opacity (1 + redden 0.22 times k N) and `grey` is not read
+    law="old", dif_r=0.19, dif_b=1.95, dif_t=3.5, rim_r=0.20, rim_b=1.68, rim_t=0.37, rim_w=1.1, leak=0.0,
 )
 # Reddening of the renderer (Shaders.swift): exp(-column * (1, 1.22, 1.52)); `redden` scales the excess.
 CHANNELS = np.array([0.0, 0.22, 0.52])
@@ -311,7 +319,19 @@ def project(x, y, z, w, par, width):
             maps.append(splat(fx[sel], fy[sel], w[sel] * b[sel], width, height, par["splat"]))
     elif par["share"] != "split":
         raise SystemExit(f"share is split or depth, not {par['share']}")
+    if par["law"] == "hubble":   # the column of each half that lies in the inner rim
+        s = rim_share(np.hypot(x, y), par)
+        for sel in (y < 0, y >= 0):
+            maps.append(splat(fx[sel], fy[sel], w[sel] * s[sel], width, height, par["splat"]))
+    elif par["law"] != "old":
+        raise SystemExit(f"law is old or hubble, not {par['law']}")
     return maps
+
+
+def rim_share(r, par):
+    """1 within the inner rim, 0 beyond it: from `rim_w` * 0.7 to 1.4 kpc over the inner cut of the ring."""
+    inner = par["inner"] * par["rim"]
+    return 1 - smoothstep(inner + 0.7 * par["rim_w"], inner + 1.4 * par["rim_w"], r)
 
 
 _LIGHT = {}
@@ -355,8 +375,8 @@ def _chunk(args):
 
 
 def procedural_columns(par, width, pool=None):
-    """Column maps [near, far] (and with share "depth" [near, far, near times share, far times share]),
-    total weight, top view."""
+    """Column maps [near, far] (with share "depth" then near and far times share, with law "hubble" then the
+    near and far columns in the inner rim), total weight, top view."""
     stats = pilot(par)
     if par["share"] == "depth":
         light_model.load_table(light_params(par))   # built once here, read by every worker
@@ -457,24 +477,35 @@ def clean_light(light, threshold=7.0, peak=16.0, keep_upper=0.45):
     return np.clip(out + 0.5, 0, 255).astype(np.uint8)
 
 
-def transmission(col, par):
+def transmission(col, par, rim=None):
+    """Per channel share of the light the dust column `col` lets through; `rim`, the part of the column in
+    the inner rim (law "hubble")."""
     tau = par["k"] * col[..., None]
+    if par.get("law", "old") == "hubble":
+        q = np.zeros_like(col) if rim is None else np.clip(rim / np.maximum(col, 1e-9), 0, 1)
+        q = q[..., None]
+        tau = tau * (1 + par["redden"] * CHANNELS[1])   # green's: the old law's green opacity, so k, mass and redden keep their meaning
+        share = lambda a, t: 1 + (np.array([a[0], 1.0, a[1]]) - 1) / (1 + tau / t)
+        ratio = (1 - q) * share((par["dif_r"], par["dif_b"]), par["dif_t"]) + q * share((par["rim_r"], par["rim_b"]), par["rim_t"])
+        return par["leak"] + (1 - par["leak"]) * np.exp(-tau * ratio)
     a = 1 + par["redden"] / (1 + par["grey"] * tau) * CHANNELS   # grey 0: one reddening everywhere
     return np.exp(-tau * a)
 
 
-def attenuate(light, near, far, par, shares=None):
+def attenuate(light, near, far, par, shares=None, rims=None):
     """The light dimmed by the near and far columns. `shares` (near, far): each pixel's share of light
-    behind its near and far dust (share "depth"); None takes `behind` and `behind_far`."""
+    behind its near and far dust (share "depth"); None takes `behind` and `behind_far`. `rims` (near, far):
+    the part of each column in the inner rim (law "hubble")."""
     g = par["gamma_light"]
     lin = (light.astype(np.float32) / 255) ** g
+    rn, rf = rims if rims is not None else (None, None)
     if shares is None and par["stretch"] <= 0:   # as the bench always did
-        for col, b in ((near, par["behind"]), (far, par["behind_far"])):
-            lin = lin * ((1 - b) + b * transmission(col, par))
+        for col, rim, b in ((near, rn, par["behind"]), (far, rf, par["behind_far"])):
+            lin = lin * ((1 - b) + b * transmission(col, par, rim))
         return (np.clip(lin, 0, 1) ** (1 / g) * 255 + 0.5).astype(np.uint8)
     bn, bf = shares if shares is not None else (par["behind"], par["behind_far"])
     bn, bf = np.asarray(bn, np.float32)[..., None], np.asarray(bf, np.float32)[..., None]
-    tn, tf = transmission(near, par), transmission(far, par)
+    tn, tf = transmission(near, par, rn), transmission(far, par, rf)
     # light behind both layers, between them, in front of both (the far dust lies behind the near)
     t = bf * tn * tf + (bn - bf) * tn + (1 - bn)
     if par["stretch"] > 0:
@@ -518,9 +549,11 @@ def render(par, light, grains=None, width=BASE_W, pool=None):
         maps, total, face = procedural_columns(par, width, pool)
     maps = [to_column(m, total, par, width) for m in maps]
     near, far = maps[:2]
-    shares = (mean_share(maps[2], near), mean_share(maps[3], far)) if len(maps) == 4 else None
-    im = Image.fromarray(attenuate(light, near, far, par, shares))
+    shares = (mean_share(maps[2], near), mean_share(maps[3], far)) if par["share"] == "depth" else None
+    rims = tuple(maps[-2:]) if par["law"] == "hubble" else None
+    im = Image.fromarray(attenuate(light, near, far, par, shares, rims))
     im.shares = shares
+    im.rims = rims
     im.columns = (near, far)
     im.face = face
     im.face_column = (face / total / (FACE_KPC / FACE_PX) ** 2 * 100.0 * par["mass"]) if face is not None else None
