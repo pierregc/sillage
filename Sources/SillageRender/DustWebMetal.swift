@@ -30,7 +30,9 @@ extension DustWeb {
         /// dust screen (#506), whose tile holds detail down to the frame's pixel.
         let coarse: Int
 
-        init(library: MTLLibrary, device: MTLDevice, width: Int, height: Int, coarse: Int = carrierCoarse) throws {
+        init(library: MTLLibrary, device: MTLDevice, width: Int, height: Int, coarse: Int = carrierCoarse)
+            throws
+        {
             func pipeline(
                 _ vertex: String, _ fragment: String, _ formats: [MTLPixelFormat],
                 _ blends: [Int: MTLBlendOperation]

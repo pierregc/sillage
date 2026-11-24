@@ -81,7 +81,8 @@ struct DustScreenTile: Codable {
     var data: String
 
     /// The tile's texture, with its mipmaps, and its description.
-    static func load(_ path: String, device: MTLDevice) throws -> (texture: MTLTexture, tile: DustScreenTile) {
+    static func load(_ path: String, device: MTLDevice) throws -> (texture: MTLTexture, tile: DustScreenTile)
+    {
         let url = URL(fileURLWithPath: path)
         let tile = try JSONDecoder().decode(DustScreenTile.self, from: Data(contentsOf: url))
         let limit = 16_384

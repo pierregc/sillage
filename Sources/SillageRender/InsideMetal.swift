@@ -42,7 +42,9 @@ struct InsidePass {
     var screen: (path: String, texture: MTLTexture, tile: DustScreenTile)?
 
     /// The tile of `ref`, loaded once.
-    mutating func screenTile(_ ref: DustScreenRef, device: MTLDevice) throws -> (texture: MTLTexture, tile: DustScreenTile) {
+    mutating func screenTile(_ ref: DustScreenRef, device: MTLDevice) throws -> (
+        texture: MTLTexture, tile: DustScreenTile
+    ) {
         if let held = screen, held.path == ref.tile { return (held.texture, held.tile) }
         let loaded = try DustScreenTile.load(ref.tile, device: device)
         screen = (ref.tile, loaded.texture, loaded.tile)
@@ -170,7 +172,7 @@ struct InsidePass {
                 try? Renderer.additive(
                     "splatTracerVertex", fragment, writing: target, attachments: 2,
                     format: .rgba16Float, library: library, device: device, dustRed: dustRed,
-                screenLaw: screenLaw)
+                    screenLaw: screenLaw)
             }
             if let dust = additive("dustFragment", writing: 1),
                 let splat = additive("splatFragment", writing: 0)
