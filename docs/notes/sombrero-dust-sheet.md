@@ -106,3 +106,39 @@ It reads the near lane as slightly wider and more solid than the renderer does (
   grey-brown; try `redden=5 grey=1.5`. No violet yet.
 - `clean_light` keeps knots above `keep_upper` (0.45 kpc over the plane's line), wide patches and
   weak ones (`peak` 16); `--face-linear JPG` draws the optical depth linearly, 0 to 1, unstretched.
+
+### Hubble's full-resolution frame (#486)
+
+The reference is ESA/Hubble's large JPEG of heic2506a, 14319 x 8477 px (1.85 pc a pixel at 26.5 kpc
+across). It has Hubble's own framing: registered on the old 1024 x 606 copy it sits within 0.01 px
+of it (at the copy's scale) and 0.00001 in scale, so the core is still at 0.4922, 0.3047 of the width
+and the roll 5.63 degrees. The tools take it from `--hubble PATH`, else `$SOMBRERO_HUBBLE`, else the
+local copy `hubble_ref.DEFAULT_PATH`, else from branch `assets/478-sombrero`: `heic2506a-lane-strip.jpg`
+(a lossless crop of the same file, full width, rows 2640 to 6160, 11.2 MiB) and `heic2506a-3072.jpg`
+(the whole frame at 3072 px, for the sky outside the strip). Positions are shares of the frame's
+width (`hubble_ref.py`); `measure.py` brings every frame to `--width` (default 3072, the bench's)
+and Hubble is drawn on sheets from the full frame at the sheet's scale, never enlarged.
+
+Hubble's figures by the width they are measured at (`measure.py`, default width 3072):
+
+| figure | old 1024 copy | large @1024 | large @3072 | large @6144 | large @14319 |
+|---|---|---|---|---|---|
+| near lane offset (kpc) | 0.71 | 0.70 | 0.73 | 0.73 | 0.73 |
+| near lane width (kpc) | 0.27 | 0.31 | 0.29 | 0.28 | 0.28 |
+| near lane left | 0.46 | 0.48 | 0.46 | 0.45 | 0.45 |
+| near lane r/g | 1.34 | 1.30 | 1.28 | 1.28 | 1.28 |
+| far lane left | 0.97 | 0.97 | 0.96 | 0.97 | 0.96 |
+| rim width (kpc) | 0.21 | 0.22 | 0.17 | 0.17 | 0.17 |
+| rim r/g | 1.29 | 1.22 | 1.22 | 1.22 | 1.22 |
+| rim solid | 0.68 | 0.70 | 0.81 | 0.88 | 0.91 |
+
+The halo, the side light, the disk and the sky do not move. The lane's red over green reads 1.28 on
+the large frame, 0.06 under the old copy, which was a little more saturated than its source. The
+rim's width and solidity depend on the pixel: the finer the scale, the narrower and the more
+speckled it is, so a bench is compared to Hubble at the same width. At the bench's 3072 px, Prototype
+6 reads rim solid 0.88 against Hubble's 0.81.
+
+Close-ups: `closeup.py OUT.jpg [frames] [--scale N|native]` draws the lane's left tip, centre and right
+tip, Hubble beside each frame at one scale (default 6144 px across, twice the bench). `dust_bench.py
+--width 6144` renders the bench that wide in about 11 s and 5.4 GB; its light stays the 3072 px one,
+so only the dust gains.

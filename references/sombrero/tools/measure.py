@@ -22,19 +22,29 @@ import os
 import numpy as np
 from PIL import Image, ImageFilter
 
+import hubble_ref
+
 LUMA = np.array([0.2126, 0.7152, 0.0722])
-HUBBLE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "catalogue", "images", "heic2506a.jpg")
-WIDTH = 1024
-HUBBLE_KPC = 26.5
+HUBBLE_KPC = hubble_ref.KPC
+WIDTH = 3072  # the width every frame is brought to, the bench's own; --width, or hubble_ref's full frame
+# Lengths once counted in pixels of the old small copy, now shares of the width
+BLUR = 0.00586  # the smoothing that finds the core
+CORNER_W, CORNER_H = 0.0586, 0.0391  # the sky patches
+STEP = 0.1  # kpc between the columns of the rim's solidity
 
 
-def measure(im, kpc, roll=None):
-    im = im.convert("RGB").resize((WIDTH, round(im.height * WIDTH / im.width)), Image.LANCZOS)
+def measure(im, kpc, roll=None, width=None):
+    """Figures of `im` (a picture `kpc` across), brought to `width` px across (WIDTH) unless it is
+    that already; a larger width keeps more of the lane's grain."""
+    width_px = width or WIDTH
+    if im.width != width_px:
+        im = im.convert("RGB").resize((width_px, round(im.height * width_px / im.width)),
+                                      Image.LANCZOS)
+    im = im.convert("RGB")
     lum = (np.asarray(im).astype(float) / 255) @ LUMA
-    px = kpc / WIDTH
-    soft = np.asarray(
-        Image.fromarray((lum * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(6))).astype(float)
+    px = kpc / width_px
+    soft = np.asarray(Image.fromarray((lum * 255).astype(np.uint8)).filter(
+        ImageFilter.GaussianBlur(BLUR * width_px))).astype(float)
     cy, cx = np.unravel_index(np.argmax(soft), soft.shape)
     if roll is None:
         ys, xs = np.nonzero(soft > np.quantile(soft, 0.96))
@@ -62,7 +72,8 @@ def measure(im, kpc, roll=None):
     for d in (3, 5, 7.5, 10, 12):
         both = [v for v in (light(-d, 3), light(d, 3)) if v is not None]
         out[f"side {d:g}"] = sum(both) / len(both) if both else None
-    corners = [lum[:40, :60], lum[:40, -60:], lum[-40:, :60], lum[-40:, -60:]]
+    ch, cw = round(CORNER_H * width_px), round(CORNER_W * width_px)
+    corners = [lum[:ch, :cw], lum[:ch, -cw:], lum[-ch:, :cw], lum[-ch:, -cw:]]
     out["corners"] = float(np.median([c.mean() for c in corners]))
     halo = at(0, 4)
     out["halo r/g"], out["halo b/g"] = float(halo[0] / halo[1]), float(halo[2] / halo[1])
@@ -121,7 +132,7 @@ def measure(im, kpc, roll=None):
     # of pixels within the lane's half-depth band that hold under 0.7 of the light round it.
     dark, total = 0, 0
     for s in (-1, 1):
-        for dx in np.arange(5.0, 7.0, 4 * px):
+        for dx in np.arange(5.0, 7.0, STEP):
             f = lane(s * dx, 1, 0.02)
             if not f:
                 continue
@@ -138,14 +149,19 @@ def main():
     p.add_argument("--kpc", type=float, default=HUBBLE_KPC)
     p.add_argument("--roll", type=float)
     p.add_argument("--crop")
+    p.add_argument("--width", type=int, help=f"px across the frames are measured at (default {WIDTH})")
+    p.add_argument("--hubble", help="Hubble's full frame (default $SOMBRERO_HUBBLE, the local copy, "
+                                    "then the lane strip of assets/478-sombrero)")
     g = p.parse_args()
+    width = g.width or WIDTH
     crop = [int(v) for v in g.crop.split(",")] if g.crop else None
-    columns = [("Hubble", measure(Image.open(HUBBLE), HUBBLE_KPC))]
+    hub = hubble_ref.load(g.hubble)
+    columns = [("Hubble", measure(hub.frame(width), HUBBLE_KPC, width=width))]
     for path in g.frames:
         im = Image.open(path)
         if crop:
             im = im.crop((crop[0], crop[1], crop[0] + crop[2], crop[1] + crop[3]))
-        columns.append((os.path.splitext(os.path.basename(path))[0][-18:], measure(im, g.kpc, g.roll)))
+        columns.append((os.path.splitext(os.path.basename(path))[0][-18:], measure(im, g.kpc, g.roll, width)))
     print(f"{'':18}" + "".join(f"{name:>19}" for name, _ in columns))
     for key in columns[0][1]:
         cells = "".join(

@@ -4,7 +4,7 @@
 Dust = grains drawn from an envelope (radial profile, Gaussian height) and weighted by a noise
 (fBm of gradient noise, optional warp, shear, contrast curve), or read from a .f32 file of the
 sampler (--grains, 7 floats a grain: x y z opacity vx vy vz). Projected as Hubble frames it
-(6 degrees from edge on, roll 5.63, core at 504,312 of 1024 x 606, 26.5 kpc across), near half
+(6 degrees from edge on, roll 5.63, core at 0.492, 0.305 of the width, 26.5 kpc across), near half
 (y < 0, below the core) and far half apart, then laid on a light frame: near dust dims the
 share `behind` of the light, far dust the share `behind_far`; transmission per channel
 (1-b) + b exp(-k a_c N). The measure.py figures are printed and drawn on each variant.
@@ -36,11 +36,12 @@ from scipy.ndimage import binary_dilation, find_objects, gaussian_filter, label,
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import hubble_ref  # noqa: E402
 import measure  # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
 warnings.filterwarnings("ignore", message=".*balance properties.*")
-FRAME_KPC, CORE, BASE_W, BASE_H = 26.5, (504 / 1024, 312 / 1024), 3072, 1818
+FRAME_KPC, CORE, BASE_W, BASE_H = hubble_ref.KPC, hubble_ref.CORE, 3072, 1818
 INC, ROLL = math.radians(6), math.radians(5.63)
 
 DEFAULTS = dict(
@@ -351,20 +352,7 @@ def stand_in_light(width):
     return (np.clip(lum[..., None] * colour, 0, 1) * 255).astype(np.uint8)
 
 
-def fetch_asset(name):
-    cache = os.path.join("/tmp", "dust_bench_assets")
-    os.makedirs(cache, exist_ok=True)
-    dest = os.path.join(cache, name)
-    if not os.path.exists(dest):
-        root = os.path.join(HERE, "..", "..", "..")
-        subprocess.run(["git", "-C", root, "fetch", "origin", "assets/478-sombrero"], check=False,
-                       capture_output=True)
-        blob = subprocess.run(["git", "-C", root, "show", f"origin/assets/478-sombrero:{name}"],
-                              capture_output=True)
-        if blob.returncode:
-            return None
-        open(dest, "wb").write(blob.stdout)
-    return dest
+fetch_asset = hubble_ref.fetch_asset
 
 
 def load_light(spec, width):
@@ -452,19 +440,16 @@ def font(size):
     return ImageFont.load_default()
 
 
-def flat(im, width=BASE_W):
-    """closeup.py's laying flat: scaled to width, rotated about Hubble's core."""
-    h = round(width * 606 / 1024)
-    im = im.convert("RGB").resize((width, h), Image.LANCZOS)
-    return im.rotate(5.63, resample=Image.BICUBIC, center=(504 * width / 1024, 312 * width / 1024))
+# Boxes of the frame laid flat, shares of its width: the lane's band, its left end, the core
+BOXES = [(0.09, 0.243, 0.90, 0.373), (0.09, 0.260, 0.30, 0.355), (0.40, 0.237, 0.60, 0.355)]
 
 
-BOXES = [(0.09, 0.41, 0.90, 0.63), (0.09, 0.44, 0.30, 0.60), (0.40, 0.40, 0.60, 0.60)]
-
-
-def crops(im, width=BASE_W):
-    h = round(width * 606 / 1024)
-    return [im.crop((round(a * width), round(b * h), round(c * width), round(d * h))) for a, b, c, d in BOXES]
+def panel(src, box, width):
+    """`box` laid flat (closeup.py's roll about Hubble's core), `width` px across: from the source's
+    own pixels, so Hubble comes from the full frame and is never an enlarged copy."""
+    im = hubble_ref.flat_region(src, box, width / (box[2] - box[0]))
+    h = round(width * (box[3] - box[1]) / (box[2] - box[0]))
+    return im if im.size == (width, h) else im.resize((width, h), Image.LANCZOS)
 
 
 def figures_line(fig):
@@ -472,25 +457,26 @@ def figures_line(fig):
 
 
 def row(label, im, fig, full_w, wide=True):
-    """One row: band, then lane's left end and core, same scale for every row."""
-    b, l, c = crops(flat(im, BASE_W))
+    """One row: band, then lane's left end and core, same scale for every row. `im` is a picture of
+    Hubble's framing or a hubble_ref source (Hubble's full frame)."""
+    src = im if hasattr(im, "region") else hubble_ref.Source(im)
     tw = full_w // 2
-    th = round(l.height * tw / l.width)
-    bh = round(b.height * full_w / b.width)
+    th = round(tw * (BOXES[1][3] - BOXES[1][1]) / (BOXES[1][2] - BOXES[1][0]))
+    b = panel(src, BOXES[0], full_w)
     f = font(30)
-    out = Image.new("RGB", (full_w, 44 + bh + (th if wide else 0)), "black")
+    out = Image.new("RGB", (full_w, 44 + b.height + (th if wide else 0)), "black")
     d = ImageDraw.Draw(out)
     d.text((10, 5), label + (("    " + figures_line(fig)) if fig else ""), font=f, fill="white")
-    out.paste(b.resize((full_w, bh), Image.LANCZOS), (0, 44))
+    out.paste(b, (0, 44))
     if wide:
-        out.paste(l.resize((tw, th), Image.LANCZOS), (0, 44 + bh))
-        out.paste(c.resize((tw, th), Image.LANCZOS), (tw, 44 + bh))
+        for k, box in enumerate(BOXES[1:]):
+            out.paste(panel(src, box, tw).resize((tw, th), Image.LANCZOS), (k * tw, 44 + b.height))
     return out
 
 
-def make_sheet(path, items, hubble_fig, full_w=2400, wide=True):
-    hub = Image.open(measure.HUBBLE)
-    rows = [row("Hubble   " if True else "", hub, hubble_fig, full_w, wide)]
+def make_sheet(path, items, hubble_fig, full_w=2400, wide=True, hub=None):
+    hub = hub or hubble_ref.load()
+    rows = [row("Hubble", hub, hubble_fig, full_w, wide)]
     rows += [row(label, im, fig, full_w, wide) for label, im, fig in items]
     sheet = Image.new("RGB", (full_w, sum(r.height for r in rows)), "black")
     y = 0
@@ -537,6 +523,10 @@ def figures(im):
     return measure.measure(im, FRAME_KPC)
 
 
+def hubble_figures(hub):
+    return measure.measure(hub.frame(measure.WIDTH), FRAME_KPC, width=measure.WIDTH)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("args", nargs="*", help="params.json and key=value (a comma list makes a grid)")
@@ -550,6 +540,8 @@ def main():
     p.add_argument("--face", help="JPG of the ring seen from above (20 kpc across), procedural dust only")
     p.add_argument("--face-linear", help="JPG of the top view in optical depth, linear, no stretch")
     p.add_argument("--ref", action="append", default=[])
+    p.add_argument("--hubble", help="Hubble's full frame (default $SOMBRERO_HUBBLE, the local copy, "
+                                    "then the lane strip of assets/478-sombrero)")
     p.add_argument("--label", default=None)
     p.add_argument("--table", action="store_true", help="print the calibration figures")
     g = p.parse_args()
@@ -602,7 +594,8 @@ def main():
         label, path = r.split("=", 1)
         im = Image.open(path).convert("RGB")
         items.append((label, im, figures(im)))
-    hub_fig = figures(Image.open(measure.HUBBLE))
+    hub = hubble_ref.load(g.hubble)
+    hub_fig = hubble_figures(hub)
 
     if g.table:
         print(f"{'':16}{'Hubble':>10}" + "".join(f"{i[0][:12]:>14}" for i in items))
@@ -614,7 +607,7 @@ def main():
     print("Hubble |", figures_line(hub_fig))
     if g.sheet:
         wide = len(items) <= 4
-        make_sheet(g.sheet, items, hub_fig, 2400 if wide else 2000, wide)
+        make_sheet(g.sheet, items, hub_fig, 2400 if wide else 2000, wide, hub)
         print("sheet", g.sheet)
 
 

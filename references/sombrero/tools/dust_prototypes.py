@@ -12,6 +12,7 @@ from concurrent.futures import ProcessPoolExecutor
 from PIL import Image, ImageDraw
 
 import dust_bench as d
+import hubble_ref
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -23,8 +24,8 @@ def main():
     light, _ = d.load_light(None, d.BASE_W)
     light = d.clean_light(light)
     pool = ProcessPoolExecutor(4)
-    hub = Image.open(d.measure.HUBBLE)
-    hub_fig = d.figures(hub)
+    hub = hubble_ref.load(os.environ.get("SOMBRERO_HUBBLE"))
+    hub_fig = d.hubble_figures(hub)
     bands, faces = [], []
     for f in files:
         par = dict(d.DEFAULTS)
@@ -35,7 +36,7 @@ def main():
         im = d.render(par, light, None, d.BASE_W, pool)
         fig = d.figures(im)
         print(label, "|", d.figures_line(fig), flush=True)
-        d.make_sheet(os.path.join(out, name + "-planche.jpg"), [(label, im, fig)], hub_fig, 2400, True)
+        d.make_sheet(os.path.join(out, name + "-planche.jpg"), [(label, im, fig)], hub_fig, 2400, True, hub)
         face = d.face_image(im.face, label)
         face.save(os.path.join(out, name + "-face.jpg"), quality=92)
         bands.append((label, d.row(label, im, fig, 2400, wide=False)))

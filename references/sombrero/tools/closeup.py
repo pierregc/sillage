@@ -1,38 +1,71 @@
-"""closeup.py <out.jpg> <hubble full size> <frame 3072 px> [<frame> ...] [--labels a,b]: each frame's disk
-band beside Hubble's at the same scale, laid flat about the core (504, 312 of 1024 x 606, rolled 5.63
-degrees): the band 0.09 to 0.90 of the width and 0.41 to 0.63 of the height; then the lane's left end and
-the core, tighter. Frames are Hubble's framing (26.5 kpc across)."""
-import sys
-from PIL import Image, ImageDraw, ImageFont
-Image.MAX_IMAGE_PIXELS = None
-args = sys.argv[1:]; labels = []
-if "--labels" in args:
-    i = args.index("--labels"); labels = args[i + 1].split(","); del args[i:i + 2]
-out, ref, frames = args[0], args[1], args[2:]
-W = 3072; H = round(W * 606 / 1024)
-font = ImageFont.truetype("/System/Library/Fonts/Avenir Next.ttc", 34, index=5)
-def flat(im):
-    im = im.convert("RGB").resize((W, H), Image.LANCZOS)
-    return im.rotate(5.63, resample=Image.BICUBIC, center=(504 * W / 1024, 312 * W / 1024))
-boxes = [(0.09, 0.41, 0.90, 0.63), (0.09, 0.44, 0.30, 0.60), (0.40, 0.40, 0.60, 0.60)]
-def crops(im):
-    return [im.crop((round(a * W), round(b * H), round(c * W), round(d * H))) for a, b, c, d in boxes]
-hub = crops(flat(Image.open(ref)))
-rows = []
-for n, f in enumerate(frames):
-    ours = crops(flat(Image.open(f)))
-    lab = labels[n] if n < len(labels) else f
-    band = Image.new("RGB", (hub[0].width, hub[0].height * 2), "black")
-    band.paste(hub[0], (0, 0)); band.paste(ours[0], (0, hub[0].height))
-    tw = band.width // 2; th = round(hub[1].height * tw / hub[1].width)
-    tight = Image.new("RGB", (band.width, th * 2), "black")
-    for k, (h, o) in enumerate(zip(hub[1:], ours[1:])):
-        tight.paste(h.resize((tw, th), Image.LANCZOS), (k * tw, 0)); tight.paste(o.resize((tw, th), Image.LANCZOS), (k * tw, th))
-    row = Image.new("RGB", (band.width, band.height + tight.height + 50), "black")
-    d = ImageDraw.Draw(row); d.text((10, 6), f"{lab}   (top: Hubble, below: Sillage; band, then lane's left end and core)", font=font, fill="white")
-    row.paste(band, (0, 50)); row.paste(tight, (0, 50 + band.height)); rows.append(row)
-sheet = Image.new("RGB", (rows[0].width, sum(r.height for r in rows)), "black")
-y = 0
-for r in rows: sheet.paste(r, (0, y)); y += r.height
-sheet.save(out, quality=88)
-print(out, sheet.size)
+#!/usr/bin/env python3
+"""closeup.py OUT.jpg [frame ...] [--scale N|native] [--labels a,b] [--hubble PATH] [--quality 92]
+
+Close-ups of the lane's left tip, centre and right tip, laid flat about the core (rolled 5.63 degrees),
+each frame beside Hubble's at the same scale. A frame is Hubble's framing (26.5 kpc across); the
+scale is the px the whole frame would measure across (default 6144, twice the bench's 3072). Hubble
+is cut from its full frame (14319 px across, see hubble_ref.py), so it is never enlarged below that
+scale; a bench narrower than the scale is enlarged, labelled as such. With no frame, or `--scale
+native`, Hubble stands alone at its own resolution (1.85 pc a pixel).
+
+A bench render can be made wider with dust_bench.py --width (the light stays the 3072 px one).
+"""
+import argparse
+import os
+
+from PIL import Image, ImageDraw
+
+import dust_bench as d
+import hubble_ref
+
+W = 0.16  # share of the frame's width, per close-up
+BOXES = [(x, y, x + W, y + 0.08) for x, y in ((0.125, 0.28), (hubble_ref.CORE[0] - W / 2, 0.29), (0.71, 0.285))]
+NAMES = ["left tip", "centre", "right tip"]
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("out")
+    p.add_argument("frames", nargs="*")
+    p.add_argument("--scale", default="6144", help="px across the whole frame, or native")
+    p.add_argument("--labels", default="")
+    p.add_argument("--hubble", help="Hubble's full frame (default $SOMBRERO_HUBBLE, the local copy, "
+                                    "then the lane strip of assets/478-sombrero)")
+    p.add_argument("--quality", type=int, default=92)
+    g = p.parse_args()
+
+    hub = hubble_ref.load(g.hubble)
+    scale = hub.width if g.scale == "native" else int(g.scale)
+    if scale > hub.width:
+        raise SystemExit(f"Hubble's frame is {hub.width} px across: no sharper than --scale {hub.width}")
+    labels = g.labels.split(",") if g.labels else []
+    sources = [("Hubble, %.2f pc a pixel" % (hubble_ref.KPC * 1000 / scale), hub)]
+    for n, f in enumerate(g.frames):
+        im = Image.open(f).convert("RGB")
+        note = "" if im.width >= scale else f", enlarged {scale / im.width:.1f}x"
+        lab = labels[n] if n < len(labels) else os.path.basename(f)
+        sources.append((f"{lab} ({im.width} px{note})", hubble_ref.Source(im)))
+
+    head = 44
+    cols = []
+    for title, src in sources:
+        panels = [hubble_ref.flat_region(src, box, scale) for box in BOXES]
+        pw, ph = panels[0].size
+        col = Image.new("RGB", (pw, head + len(panels) * (ph + 30)), "black")
+        draw = ImageDraw.Draw(col)
+        draw.text((8, 6), title, font=d.font(28), fill="white")
+        for k, im in enumerate(panels):
+            draw.text((8, head + k * (ph + 30) + 2), NAMES[k], font=d.font(22), fill=(190, 190, 190))
+            col.paste(im, (0, head + k * (ph + 30) + 28))
+        cols.append(col)
+    sheet = Image.new("RGB", (sum(c.width + 6 for c in cols) - 6, cols[0].height), "black")
+    x = 0
+    for c in cols:
+        sheet.paste(c, (x, 0))
+        x += c.width + 6
+    sheet.save(g.out, quality=g.quality)
+    print(g.out, sheet.size)
+
+
+if __name__ == "__main__":
+    main()
