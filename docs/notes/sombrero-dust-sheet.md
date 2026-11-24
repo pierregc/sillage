@@ -87,6 +87,26 @@ against the real v6 still: `k` 0.19, `behind` 0.95, `behind_far` 0.18, `redden` 
 It reads the near lane as slightly wider and more solid than the renderer does (width 0.34 against
 0.28, rim solid 0.77 against 0.63); the lane's depth, red over green and the far lane match.
 
+### Bench fixes (#488)
+
+- The envelope stops at `rim` whatever `fall` says (p1 to p6 carry `fall` 0.8, which used to leak
+  dust to 1.09 of the rim). The mass beyond the rim is gone, so the figures renormalise: p6 rim solid
+  0.73 to 0.83 (the same as the old code with `fall` 0.01).
+- Sand: grains are drawn on a scrambled Sobol sequence and splatted bilinearly (`qmc`, `splat`, 1;
+  0 gives the old random, nearest-pixel bench). On p6's low-density edge the error against a 48 M
+  reference falls from 0.23 to 0.15 at 6 M grains and to 0.07 at `n=24000000` (13 s), where 2 px
+  detail is carried without sand. Chunks are at most 3 M grains, so any `n` fits in memory.
+- A thin sharp upper edge needs radial structure, which the 6 degree view foreshortens tenfold:
+  `edge` (density share of a ridge at the rim), `edge_w` (kpc), `edge_thin` (thins the layer there).
+  The soft left tip: `tipfade`, `tip_az`, `tip_w` thin a sector, most at the rim. All 0 by default.
+  The far lane is only `behind_far` 0.18 of the light, so the line stays faint beside Hubble's.
+- Noise lattice: each octave has its own spiral tilt (`twist`, 0.45) and reference radius
+  (`rjitter`, 0.12), still periodic in azimuth. `twist=0 rjitter=0` restores the axis-aligned lattice.
+- `grey` (0): the reddening is divided by `1 + grey k N`, so thin dust reddens and thick dust goes
+  grey-brown; try `redden=5 grey=1.5`. No violet yet.
+- `clean_light` keeps knots above `keep_upper` (0.45 kpc over the plane's line), wide patches and
+  weak ones (`peak` 16); `--face-linear JPG` draws the optical depth linearly, 0 to 1, unstretched.
+
 ### Hubble's full-resolution frame (#486)
 
 The reference is ESA/Hubble's large JPEG of heic2506a, 14319 x 8477 px (1.85 pc a pixel at 26.5 kpc
@@ -122,3 +142,15 @@ Close-ups: `closeup.py OUT.jpg [frames] [--scale N|native]` draws the lane's lef
 tip, Hubble beside each frame at one scale (default 6144 px across, twice the bench). `dust_bench.py
 --width 6144` renders the bench that wide in about 11 s and 5.4 GB; its light stays the 3072 px one,
 so only the dust gains.
+
+#### Bench fixes (#488), follow-up
+
+- Geometry: `edge` sits at the OUTER radius, so on the far half it is the upper edge and on the near
+  half the lower, sparse one. Hubble's sharp dark edge is the near lane's upper side, the INNER radii
+  (`inner` 0.56 of the rim projects 0.5 kpc below the core). `taper` (kpc) makes the profile densest at the
+  inner cut and sparse outward, `wobble`/`wobble_len` scallop that cut along the azimuth;
+  `rise=0.05 floor=1 inward=1 taper=2 wobble=0.4` is a first setting.
+- Thin layers: `thickness=0.005` draws clean at 3072 and 6144 px. Error against 48 M grains in the
+  lane: 0.04 at 6 M, 0.016 at 24 M (3072); 0.045 and 0.018 (6144). 24 M grains: 15 s and 1.9 GB at 3072,
+  20 s and 6.8 GB at 6144. A thinner layer is denser for the same `mass`: lower it.
+- Colour: `redden=9 grey=0.8 mass=1.6` gives a dark top band and orange below it.

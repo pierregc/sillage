@@ -25,11 +25,14 @@ import math
 import os
 import subprocess
 import sys
+import warnings
 from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from scipy.ndimage import binary_dilation, gaussian_filter, median_filter, zoom
+from scipy.special import ndtri
+from scipy.stats import qmc
+from scipy.ndimage import binary_dilation, find_objects, gaussian_filter, label, median_filter, zoom
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -37,6 +40,7 @@ import hubble_ref  # noqa: E402
 import measure  # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
+warnings.filterwarnings("ignore", message=".*balance properties.*")
 FRAME_KPC, CORE, BASE_W, BASE_H = hubble_ref.KPC, hubble_ref.CORE, 3072, 1818
 INC, ROLL = math.radians(6), math.radians(5.63)
 
@@ -56,10 +60,21 @@ DEFAULTS = dict(
     rag=0.0, rag_lu=1.5, rag_lv=0.6,
     # fibres: share of fine ridges laid over the sheet
     fibres=0.0, fibre_lu=1.5, fibre_lv=0.04, fibre_lw=0.1, fibre_width=0.12,
-    # grains
-    n=6_000_000, myr=0.0,
+    # the rim: a thin ridge in the last `edge_w` kpc (density share `edge`), the layer thinned there by
+    # `edge_thin` (0 to 1); `tipfade` (0 to 1) thins a sector of `tip_w` degrees centred on azimuth `tip_az`, most at the rim
+    # `taper` (kpc, 0 off): the whole profile decays as exp(-(r - inner) / taper), densest at the inner cut with a
+    # sparse tail to the rim; `wobble` (kpc) scallops the inner cut along the azimuth, in lumps `wobble_len` kpc long
+    taper=0.0, wobble=0.0, wobble_len=0.8,
+    edge=0.0, edge_w=0.25, edge_thin=0.0, tipfade=0.0, tip_az=180.0, tip_w=35.0,
+    # noise lattice: per-octave tilt of the cells (a spiral of up to `twist` radians) and jittered
+    # reference radius, so no cell edge lines up with the azimuth/radius axes (twist 0, rjitter 0: as before)
+    twist=0.45, rjitter=0.12,
+    # grains: quasi-random (Sobol) positions and bilinear splats (qmc 0, splat 0: random, nearest pixel)
+    n=6_000_000, myr=0.0, qmc=1, splat=1,
     # light
     mass=1.0, k=0.19, blur=0.6, behind=0.95, behind_far=0.18, redden=3.0, gamma_light=2.2, kernel=1.0,
+    # thick dust turns grey: the reddening is divided by 1 + grey * (optical depth k N); 0 keeps it constant
+    grey=0.0,
 )
 # Reddening of the renderer (Shaders.swift): exp(-column * (1, 1.22, 1.52)); `redden` scales the excess.
 CHANNELS = np.array([0.0, 0.22, 0.52])
@@ -102,10 +117,13 @@ def perlin(p, period, seed):
     return out * 1.6
 
 
-def cyl(a, r, z, lu, lv, lw, par, off=0.0):
-    """Noise coordinates: lattice cells along the orbit (an integer count round the ring), across, in height."""
-    rref = 0.78 * par["rim"]
+def cyl(a, r, z, lu, lv, lw, par, off=0.0, octave=0):
+    """Noise coordinates: lattice cells along the orbit (an integer count round the ring), across, in height.
+    Each octave reads the ring through its own spiral tilt (still periodic in azimuth) and its own
+    reference radius for the cell count, so no lattice line follows an axis or sits at one radius."""
+    rref = (0.78 + par["rjitter"] * math.sin(1.7 * octave + 0.3)) * par["rim"]
     cells = max(int(round(2 * math.pi * rref / lu)), 4)
+    a = a + par["twist"] * math.sin(2.399 * octave + 0.7) * np.log(np.maximum(r, 1e-3) / par["rim"])
     p = np.stack([a / (2 * np.pi) * cells, r / lv + off, z / lw + off * 0.7], -1).astype(np.float32)
     return p, cells
 
@@ -115,7 +133,7 @@ def octaves(a, r, z, par, seed, lu, lv, lw, kind):
     total, amp, norm = 0, 1.0, 0.0
     lac = par["lacunarity"]
     for o in range(int(par["octaves"])):
-        p, cells = cyl(a, r, z, lu / lac ** o, lv / lac ** o, lw / lac ** o, par, off=o * 13.37)
+        p, cells = cyl(a, r, z, lu / lac ** o, lv / lac ** o, lw / lac ** o, par, off=o * 13.37, octave=o)
         n = perlin(p, int(round(cells)), seed + 7 * o)
         if kind == "ridged":
             n = 1 - 2 * np.abs(n)
@@ -141,34 +159,44 @@ def warped(r, a, z, par):
 
 
 def smoothstep(a, b, x):
-    t = np.clip((x - a) / max(b - a, 1e-9), 0, 1)
+    t = np.clip((x - a) / np.maximum(b - a, 1e-9), 0, 1)
     return t * t * (3 - 2 * t)
 
 
 def radial_profile(r, par):
     rim, inner = par["rim"], par["inner"] * par["rim"]
-    up = smoothstep(inner, inner + par["rise"], r)
+    up = smoothstep(inner - par["wobble"], inner - par["wobble"] + par["rise"], r)
     ramp = smoothstep(inner, par["plateau"] * rim, r) ** par["inward"]
-    plateau = par["floor"] + (1 - par["floor"]) * ramp
+    plateau = par["floor"] + (1 - par["floor"]) * ramp + par["edge"] * rim_ridge(r, par)
     down = 1 - smoothstep(par["plateau"] * rim, rim + par["fall"], r)
-    return up * plateau * down
+    tail = np.exp(-np.maximum(r - inner, 0) / par["taper"]) if par["taper"] > 0 else 1.0
+    return up * plateau * down * tail * (r <= rim)   # nothing beyond the rim, whatever `fall` says
+
+
+def rim_ridge(r, par):
+    """1 at the rim, falling inward over `edge_w` kpc."""
+    return np.exp(-0.5 * ((par["rim"] - r) / max(par["edge_w"], 1e-3)) ** 2)
 
 
 def thickness_at(r, par):
     inner = par["inner"] * par["rim"]
     t = np.clip((r - inner) / max(par["rim"] - inner, 1e-9), 0, 1)
-    return par["thickness"] * (par["flare"] + (1 - par["flare"]) * t)
+    return par["thickness"] * (par["flare"] + (1 - par["flare"]) * t) * (1 - par["edge_thin"] * rim_ridge(r, par))
 
 
 def sample_envelope(par, n, rng):
-    grid = np.linspace(0, par["rim"] + 3 * par["fall"] + 0.5, 4000)
+    grid = np.linspace(0, par["rim"], 4000)
     pdf = radial_profile(grid, par) * grid
     cdf = np.cumsum(pdf)
     cdf /= cdf[-1]
-    r = np.interp(rng.random(n), cdf, grid)
-    th = rng.random(n) * 2 * np.pi
-    veil = rng.random(n) < par["vf"]
-    z = rng.normal(size=n) * thickness_at(r, par) * np.where(veil, par["vscale"], 1.0)
+    if par["qmc"]:   # stratified draws: the sheet is sampled evenly, not by chance
+        u = qmc.Sobol(4, scramble=True, seed=rng.integers(1 << 31)).random(n)
+    else:
+        u = rng.random((n, 4))
+    r = np.interp(u[:, 0], cdf, grid)
+    th = u[:, 1] * 2 * np.pi
+    veil = u[:, 3] < par["vf"]
+    z = ndtri(np.clip(u[:, 2], 1e-7, 1 - 1e-7)) * thickness_at(r, par) * np.where(veil, par["vscale"], 1.0)
     if par["rag"] > 0:
         p, cells = cyl(th, r, np.zeros_like(r), par["rag_lu"], par["rag_lv"], 1.0, par)
         rg = np.exp(par["rag"] * perlin(p, cells, par["seed"] * 17 + 5))
@@ -209,6 +237,18 @@ def weights(par, n, rng, stats):
                  veil, par)
     w = w / np.where(veil, stats["vwmean"], stats["wmean"])
     w = par["veil"] + (1 - par["veil"]) * w
+    if par["wobble"] > 0:   # the inner cut's radius wanders with azimuth; sampled at its lowest, trimmed here
+        inner = par["inner"] * par["rim"]
+        cells = max(int(round(2 * math.pi * inner / par["wobble_len"])), 4)
+        p = np.stack([th / (2 * np.pi) * cells, np.full_like(th, 0.5), np.full_like(th, 0.5)], -1).astype(np.float32)
+        n = np.clip(perlin(p, cells, par["seed"] * 7 + 3) + 0.5 * perlin(p * 2.0, 2 * cells, par["seed"] * 7 + 4), -1, 1)
+        cut = inner + par["wobble"] * n
+        up_s = smoothstep(inner - par["wobble"], inner - par["wobble"] + par["rise"], r)
+        w = w * smoothstep(cut, cut + par["rise"], r) / np.maximum(up_s, 1e-6)
+    if par["tipfade"] > 0:
+        d = (np.degrees(th) - par["tip_az"] + 180) % 360 - 180
+        outward = 0.3 + 0.7 * smoothstep(0.55 * par["rim"], par["rim"], r)   # the sector thins most at its outer end
+        w = w * (1 - par["tipfade"] * np.exp(-0.5 * (d / par["tip_w"]) ** 2) * outward)
     if ridge is not None:
         w = (1 - par["fibres"]) * w + par["fibres"] * ridge / stats["rmean"]
     return r * np.cos(th), r * np.sin(th), z, w.astype(np.float32)
@@ -240,24 +280,36 @@ def project(x, y, z, w, par, width):
     sy = y * math.sin(INC) + z * math.cos(INC)
     ux = sx * math.cos(ROLL) + sy * math.sin(ROLL)
     uy = -sx * math.sin(ROLL) + sy * math.cos(ROLL)
-    px = np.rint(CORE[0] * width + ux / kpp).astype(np.int64)
-    py = np.rint(CORE[1] * width - uy / kpp).astype(np.int64)
+    fx = CORE[0] * width + ux / kpp
+    fy = CORE[1] * width - uy / kpp
     maps = []
     for sel in (y < 0, y >= 0):
-        ok = sel & (px >= 0) & (px < width) & (py >= 0) & (py < height)
-        m = np.bincount(py[ok] * width + px[ok], weights=w[ok], minlength=width * height)
-        maps.append(m.reshape(height, width).astype(np.float32))
+        maps.append(splat(fx[sel], fy[sel], w[sel], width, height, par["splat"]))
     return maps
+
+
+def splat(fx, fy, w, width, height, bilinear=1):
+    """Drops weights on a width x height grid; bilinear spreads a grain over its four nearest pixels."""
+    if not bilinear:
+        corners = [(np.rint(fx), np.rint(fy), w)]
+    else:
+        x0, y0 = np.floor(fx), np.floor(fy)
+        tx, ty = fx - x0, fy - y0
+        corners = [(x0 + i, y0 + j, w * (tx if i else 1 - tx) * (ty if j else 1 - ty))
+                   for i in (0, 1) for j in (0, 1)]
+    m = np.zeros(width * height)
+    for cx, cy, cw in corners:
+        px, py = cx.astype(np.int64), cy.astype(np.int64)
+        ok = (px >= 0) & (px < width) & (py >= 0) & (py < height)
+        m += np.bincount(py[ok] * width + px[ok], weights=cw[ok], minlength=width * height)
+    return m.reshape(height, width).astype(np.float32)
 
 
 FACE_KPC, FACE_PX = 20.0, 1000
 
 
 def face_hist(x, y, w):
-    ix = np.rint((x / FACE_KPC + 0.5) * FACE_PX).astype(np.int64)
-    iy = np.rint((0.5 - y / FACE_KPC) * FACE_PX).astype(np.int64)
-    ok = (ix >= 0) & (ix < FACE_PX) & (iy >= 0) & (iy < FACE_PX)
-    return np.bincount(iy[ok] * FACE_PX + ix[ok], weights=w[ok], minlength=FACE_PX ** 2).reshape(FACE_PX, FACE_PX)
+    return splat((x / FACE_KPC + 0.5) * FACE_PX, (0.5 - y / FACE_KPC) * FACE_PX, w, FACE_PX, FACE_PX)
 
 
 def _chunk(args):
@@ -268,7 +320,7 @@ def _chunk(args):
 
 def procedural_columns(par, width, pool=None):
     stats = pilot(par)
-    parts = 4
+    parts = max(4, -(-par["n"] // 3_000_000))   # chunks of at most 3 M grains: bounded memory at any n
     jobs = [(par, par["n"] // parts, par["seed"] * 1000 + i, stats, width) for i in range(parts)]
     res = list(pool.map(_chunk, jobs)) if pool else [_chunk(j) for j in jobs]
     near = sum(r[0][0] for r in res)
@@ -331,8 +383,11 @@ def load_light(spec, width):
     return np.asarray(im), "rendu réel"
 
 
-def clean_light(light, threshold=7.0):
-    """Replaces the blue knots of young stars (blue excess over a median background) by that background."""
+def clean_light(light, threshold=7.0, peak=16.0, keep_upper=0.45):
+    """Replaces the blue knots of young stars (blue excess over a median background) by that background.
+    A blue patch is a knot only if it is compact (not three times wider than tall) and its excess
+    peaks above `peak`; and knots higher than `keep_upper` kpc above the plane's line (the lane's upper
+    edge) stay, as does the faint, wide blue there."""
     h, w = light.shape[:2]
     f = light.astype(np.float32)
     exc = f[..., 2] - 0.5 * (f[..., 0] + f[..., 1])
@@ -346,7 +401,18 @@ def clean_light(light, threshold=7.0):
     bg_e, bg = up(bg_e), up(bg)
     pad = lambda a: np.pad(a, ((0, h - a.shape[0]), (0, w - a.shape[1])) + ((0, 0),) * (a.ndim - 2), mode="edge")
     bg_e, bg = pad(bg_e), pad(bg)
-    mask = (exc - bg_e) > threshold
+    diff = exc - bg_e
+    lab, count = label(diff > threshold)
+    mask = np.zeros(diff.shape, bool)
+    for i, sl in enumerate(find_objects(lab), 1):
+        part = lab[sl] == i
+        tall, wide = sl[0].stop - sl[0].start, sl[1].stop - sl[1].start
+        cy, cx = (sl[0].start + sl[0].stop) / 2, (sl[1].start + sl[1].stop) / 2
+        kpp = FRAME_KPC / w
+        ux, uy = (cx - CORE[0] * w) * kpp, -(cy - CORE[1] * w) * kpp
+        height = ux * math.sin(ROLL) + uy * math.cos(ROLL)
+        if diff[sl][part].max() >= peak and wide < 3 * tall and height < keep_upper:
+            mask[sl] |= part
     mask = binary_dilation(mask, iterations=max(3, w // 400))
     m = np.clip(gaussian_filter(mask.astype(np.float32), max(1.5, w / 1000)) * 1.6, 0, 1)[..., None]
     out = f * (1 - m) + bg * m
@@ -354,12 +420,13 @@ def clean_light(light, threshold=7.0):
 
 
 def attenuate(light, near, far, par):
-    a = 1 + par["redden"] * CHANNELS
     g = par["gamma_light"]
     lin = (light.astype(np.float32) / 255) ** g
     k = par["k"]
     for col, b in ((near, par["behind"]), (far, par["behind_far"])):
-        t = (1 - b) + b * np.exp(-k * col[..., None] * a)
+        tau = k * col[..., None]
+        a = 1 + par["redden"] / (1 + par["grey"] * tau) * CHANNELS   # grey 0: one reddening everywhere
+        t = (1 - b) + b * np.exp(-tau * a)
         lin = lin * t
     return (np.clip(lin, 0, 1) ** (1 / g) * 255 + 0.5).astype(np.uint8)
 
@@ -372,6 +439,7 @@ def render(par, light, grains=None, width=BASE_W, pool=None):
     near, far = to_column(near, total, par, width), to_column(far, total, par, width)
     im = Image.fromarray(attenuate(light, near, far, par))
     im.face = face
+    im.face_column = (face / total / (FACE_KPC / FACE_PX) ** 2 * 100.0 * par["mass"]) if face is not None else None
     return im
 
 
@@ -431,6 +499,17 @@ def make_sheet(path, items, hubble_fig, full_w=2400, wide=True, hub=None):
     return sheet
 
 
+def face_linear(column, k, label=""):
+    """Faithful top view: optical depth k N laid out linearly, 0 (pale ground) to 1 (full dust), nothing stretched."""
+    t = np.clip(gaussian_filter(column, 1.2) * k, 0, 1)
+    ground, dust = np.array([236, 230, 220.0]), np.array([58, 36, 22.0])
+    im = Image.fromarray((ground + (dust - ground) * t[..., None]).astype(np.uint8))
+    d = ImageDraw.Draw(im)
+    d.text((10, 6), label, font=font(26), fill=(20, 20, 20))
+    d.text((10, FACE_PX - 32), "vue de dessus, 20 kpc, profondeur optique lineaire 0-1", font=font(22), fill=(60, 60, 60))
+    return im
+
+
 def face_image(hist, label=""):
     """The ring seen from above: dust dark on a pale ground, scaled to its own 99.5th percentile."""
     h = gaussian_filter(hist, 1.2)
@@ -471,6 +550,7 @@ def main():
     p.add_argument("--out")
     p.add_argument("--sheet")
     p.add_argument("--face", help="JPG of the ring seen from above (20 kpc across), procedural dust only")
+    p.add_argument("--face-linear", help="JPG of the top view in optical depth, linear, no stretch")
     p.add_argument("--ref", action="append", default=[])
     p.add_argument("--hubble", help="Hubble's full frame (default $SOMBRERO_HUBBLE, the local copy, "
                                     "then the lane strip of assets/478-sombrero)")
@@ -519,6 +599,8 @@ def main():
             im.save(g.out)
         if len(variants) == 1 and g.face and im.face is not None:
             face_image(im.face, label).save(g.face, quality=92)
+        if len(variants) == 1 and g.face_linear and im.face_column is not None:
+            face_linear(im.face_column, q["k"], label).save(g.face_linear, quality=92)
         items.append((label, im, figures(im)))
     for r in g.ref:
         label, path = r.split("=", 1)
