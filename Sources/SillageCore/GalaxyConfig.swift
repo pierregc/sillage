@@ -186,10 +186,16 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         /// good part of a turn, thin, and weaves across the others in radius and in height.
         /// Absent, short strands as elsewhere in a disk.
         public var threads: Int?
+        /// Share of the ring's grains laid as one sheet in place of threads or strands: a
+        /// layer that follows the ring's own profile, thinner inside than at the rim, in clouds
+        /// drawn out along trailing spirals with more gaps inward. Absent, none.
+        public var sheet: Float?
+        /// How uneven the sheet is, from 0, smooth, to 1; absent, 0.6.
+        public var cotton: Float?
 
         public init(
             radius: Float, width: Float, share: Float = 1, innerWidth: Float? = nil, young: Float? = nil,
-            thickness: Float? = nil, threads: Int? = nil
+            thickness: Float? = nil, threads: Int? = nil, sheet: Float? = nil, cotton: Float? = nil
         ) {
             self.radius = radius
             self.width = width
@@ -198,13 +204,15 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             self.young = young
             self.thickness = thickness
             self.threads = threads
+            self.sheet = sheet
+            self.cotton = cotton
         }
 
         /// The spreads inside and outside the radius.
         public var widths: (inner: Float, outer: Float) { (innerWidth ?? width, width) }
 
         private enum CodingKeys: String, CodingKey {
-            case radius, width, share, innerWidth, young, thickness, threads
+            case radius, width, share, innerWidth, young, thickness, threads, sheet, cotton
         }
 
         public init(from decoder: any Decoder) throws {
@@ -216,6 +224,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             young = try values.decodeIfPresent(Float.self, forKey: .young)
             thickness = try values.decodeIfPresent(Float.self, forKey: .thickness)
             threads = try values.decodeIfPresent(Int.self, forKey: .threads)
+            sheet = try values.decodeIfPresent(Float.self, forKey: .sheet)
+            cotton = try values.decodeIfPresent(Float.self, forKey: .cotton)
         }
     }
 
@@ -240,7 +250,9 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             innerWidth: ring.innerWidth.flatMap { $0 > 0 && $0 != ring.width ? $0 : nil },
             young: ring.young.flatMap { $0 > 0 ? min($0, 1) : nil },
             thickness: ring.thickness.flatMap { $0 > 0 ? $0 : nil },
-            threads: ring.threads.flatMap { $0 > 0 ? min($0, 4000) : nil })
+            threads: ring.threads.flatMap { $0 > 0 ? min($0, 4000) : nil },
+            sheet: ring.sheet.flatMap { $0 > 0 ? min($0, 1) : nil },
+            cotton: ring.sheet.flatMap { $0 > 0 ? min(max(ring.cotton ?? 0.6, 0), 1) : nil })
     }
 
     public init(

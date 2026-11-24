@@ -1032,6 +1032,17 @@ Forty to a hundred read as threads seen nearly edge on; many more close into a b
 the ring is as wide either side, bears no young stars of its own, keeps the usual layer and its
 strands, and samples as before (#480).
 
+`"sheet"`, a share from 0 to 1, lays that much of the ring's dust as one continuous layer in place
+of threads or strands: grains drawn in the ring's own profile and kept or dropped by a cloud
+field, value noise at several scales with no period, read along trailing spirals that a slower
+noise bends, with puffs of no direction over it. The clouds stand as a lognormal about the mean,
+and from one inner width inside the radius to two and a half only the densest are left, so the
+sheet ends in wisps. Its grains are launched cold on circles, its layer is `thickness` at the rim
+and a third of it inside, rippled, each grain at its own phase of the swing. `"cotton"`, from 0 to
+1 and 0.6 when left out, is how uneven the sheet is: 0 is a smooth ring. Left out, no sheet, and
+the ring samples as before. A first version, to be tuned on the dust bench
+(`docs/notes/sombrero-dust-sheet.md`).
+
 ### Known limits
 
 - Single precision throughout: positions, velocities and forces are all 32 bit floats.

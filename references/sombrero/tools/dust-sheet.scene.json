@@ -1,0 +1,75 @@
+{
+ "centerSoftening": 1.2,
+ "encounters": [],
+ "galaxies": [
+  {
+   "armCount": 0,
+   "armIrregularity": 0.3,
+   "armMassContrast": 0,
+   "armPitch": 0.12,
+   "armStreaming": 1,
+   "armStrength": 0,
+   "bulgeApart": true,
+   "bulgeExtent": 0.98,
+   "bulgeFlattening": 0.7,
+   "bulgeFraction": 0.75,
+   "bulgeReach": 9,
+   "clumpiness": 0,
+   "diskMassFraction": 0.2,
+   "diskScaleLength": 2.2,
+   "diskThickness": 0.2,
+   "diskTruncation": 3.9,
+   "dissipationTime": 283.19507,
+   "dustFraction": 0.6,
+   "dustMassFraction": 0.004,
+   "dustRing": {
+    "radius": 6.7,
+    "share": 1,
+    "thickness": 0.04,
+    "threads": 700,
+    "width": 1.06,
+    "young": 0,
+    "sheet": 0.9,
+    "cotton": 0.8
+   },
+   "haloExtent": 12,
+   "haloParticleRatio": 1.5,
+   "inclination": 0,
+   "kind": "spiral",
+   "massLopsidedness": 0.03,
+   "name": "M104",
+   "nucleus": 0.006,
+   "outskirtFraction": 0,
+   "particleShare": 1,
+   "patternShare": 0.9,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "positionAngle": 0,
+   "potential": {
+    "mass": 100,
+    "profile": "hernquist",
+    "scaleRadius": 20
+   },
+   "spin": "prograde",
+   "starFormingFraction": 0,
+   "toomreQ": 3.5,
+   "velocity": [
+    0,
+    0,
+    0
+   ],
+   "velocityDispersion": 0.05,
+   "youngClumpiness": 0.47490472,
+   "recentStars": 0
+  }
+ ],
+ "name": "Sombrero (M104)",
+ "openingAngle": 0.9,
+ "seed": 478104,
+ "solver": "barnesHut",
+ "timeStepScale": 7,
+ "version": 1
+}

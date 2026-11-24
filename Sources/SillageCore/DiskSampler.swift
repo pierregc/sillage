@@ -505,6 +505,47 @@ public enum DiskSampler {
         return octave(at) * 0.55 + octave(at * 2.9 + 13.1) * 0.30 + octave(at * 7.3 + 41.9) * 0.15
     }
 
+    /// Pitch of the trailing spirals a ring's sheet draws its clouds out along, as a tangent.
+    static let sheetPitch: Float = 0.22
+    /// One standard deviation of the sheet's cloud field before it is scaled.
+    static let sheetSpread: Float = 0.076
+
+    /// A sheet's cloud field at a place in the plane, in standard deviations about its mean:
+    /// value noise at several scales, hashed and so never repeating. Large clouds and the fibres
+    /// inside them are read along trailing spirals that a slower noise bends, so the lanes cross
+    /// from one radius to the next and never close into circles; puffs with no direction lie
+    /// over them, or the sheet is combed hair.
+    static func sheetCloud(radius: Float, phi: Float, ring: Float, spin: Float, seed: Float) -> Float {
+        let wound = log(max(radius, 1e-3) / max(ring, 1e-3))
+        let straight = spin * phi + wound / sheetPitch
+        let shift = SIMD3<Float>(seed, -seed, seed * 0.5)
+        let bend =
+            grain(SIMD3<Float>(2 * cos(straight), 2 * sin(straight), 6 * wound) + shift) - 0.5
+        let turn = straight + 2.4 * bend
+        let at = SIMD3<Float>(10 * cos(turn), 10 * sin(turn), 33 * wound) + shift
+        let fine = grain(at)
+        let wide = grain(at * 0.22 + SIMD3<Float>(17.3, 5.1, -9.7))
+        let puff = grain(
+            SIMD3<Float>(radius * cos(phi), radius * sin(phi), seed) * 6 + SIMD3<Float>(3.3, 9.1, 0))
+        return (0.25 * fine + 0.45 * wide + 0.3 * puff - 0.5) / sheetSpread
+    }
+
+    /// How much of a sheet a place keeps, 0 to 1, for a cloud field `cloud` there: the clouds
+    /// stand as a lognormal about the mean, and inside the ring only the densest are left, a
+    /// sheet in wisps by two and a half inner widths in.
+    static func sheetKept(cloud: Float, radius: Float, ring: GalaxyConfig.DustRing, cotton: Float) -> Float {
+        let dense = exp(1.2 * cotton * (min(cloud, 2) - 2))
+        let inner = ring.widths.inner
+        let floor = -2.5 + 3.3 * (1 - smoothstep(ring.radius - 2.5 * inner, ring.radius - inner, radius))
+        let gaps = smoothstep(floor - 0.3, floor + 0.3, cloud)
+        return dense * (1 + min(2 * cotton, 1) * (gaps - 1))
+    }
+
+    /// A sheet's scale height against its ring's: thinner inside than at the rim.
+    static func sheetFlare(radius: Float, ring: GalaxyConfig.DustRing) -> Float {
+        0.35 + 0.65 * smoothstep(ring.radius - 2 * ring.widths.inner, ring.radius, radius)
+    }
+
     private struct Clump {
         var radius: Float
         var phi: Float
@@ -733,6 +774,9 @@ public enum DiskSampler {
             var strandLift: Float = 0
             var ringGrain = false
             var threaded = false
+            /// A grain of a ring's sheet, and its layer's height where it stands.
+            var sheeted = false
+            var sheetLayer: Float = 0
             /// A threaded grain's lift is a wave that runs along its thread: what its swing
             /// through the plane is worth here, in kpc, a quarter turn ahead of its lift.
             var liftSwing: Float = 0
@@ -749,7 +793,44 @@ public enum DiskSampler {
             let usable = component == .star || (clump?.radius ?? 0) > bulgeRadius * 0.9
             // Young stars a ring's gas makes stand on its strands, as its grains do.
             let born = component == .hiiRegion && ringYoung > 0 && generator.uniform() < ringYoung
-            if born || (component == .dust && generator.uniform() < 0.93 && !filaments.isEmpty) {
+            if !born, component == .dust, let ring, let sheet = ring.sheet,
+                generator.uniform() < ring.share * sheet
+            {
+                sheeted = true
+            }
+            if sheeted, let ring {
+                radius = ring.radius
+                phi = 0
+                let cotton = ring.cotton ?? 0.6
+                for _ in 0..<64 {
+                    let placed = samplePlanePosition(
+                        config, arms: arms, contrast: 0, windRate: windRate, minimumRadius: 0.03,
+                        scaleMultiplier: outskirtScaleMultiplier, shape: shape,
+                        ring: (ring.radius, ring.width, ring.innerWidth), using: &generator)
+                    radius = placed.radius
+                    phi = placed.phi
+                    let cloud = sheetCloud(
+                        radius: radius, phi: phi, ring: ring.radius, spin: spin,
+                        seed: Float(galaxyIndex) * 7.7)
+                    let kept = sheetKept(cloud: cloud, radius: radius, ring: ring, cotton: cotton)
+                    if generator.uniform() < kept { break }
+                }
+                // The layer is rippled, unevenly, each grain launched at its own phase of the
+                // swing as a thread's lift is.
+                sheetLayer =
+                    (ring.thickness ?? config.diskThickness * 0.45) * sheetFlare(radius: radius, ring: ring)
+                let wound = log(radius / ring.radius)
+                let turn = spin * phi + wound / sheetPitch
+                let slow = SIMD3<Float>(3 * cos(turn), 3 * sin(turn), 9 * wound)
+                let phase =
+                    25 * grain(slow + SIMD3<Float>(4.2, 8.9, 1.3))
+                    + 9 * grain(slow * 3.7 + SIMD3<Float>(1.1, 6.4, 2.2))
+                let swell = sheetLayer * (0.1 + 1.1 * grain(slow * 1.9 + SIMD3<Float>(7.7, 0.3, 5.5)))
+                strandLift = swell * cos(phase)
+                liftSwing = swell * sin(phase)
+                ringGrain = true
+                proximity = 1
+            } else if born || (component == .dust && generator.uniform() < 0.93 && !filaments.isEmpty) {
                 let pool = born ? ringCount : filaments.count
                 let pick = generator.uniform()
                 var which = Int(pick * Float(pool)) % pool
@@ -899,7 +980,8 @@ public enum DiskSampler {
             // A thread is thin and the layer is its weave: half the layer's height is its own.
             let ringLayer =
                 threaded
-                ? (ring?.thickness ?? config.diskThickness * 0.45) * 0.5 : (ringGrain ? ring?.thickness : nil)
+                ? (ring?.thickness ?? config.diskThickness * 0.45) * 0.5
+                : (sheeted ? sheetLayer * 0.6 : (ringGrain ? ring?.thickness : nil))
             let thickness =
                 ringLayer ?? (component == .dust ? config.diskThickness * 0.45 : config.diskThickness)
             // A spheroid flattened to a third, which is what a thick disk and inner halo
@@ -947,7 +1029,7 @@ public enum DiskSampler {
                         + SIMD3<Float>(
                             generator.normal(), generator.normal(), generator.normal())
                         * dispersion
-                } else if threaded {
+                } else if threaded || sheeted {
                     // A thread is cold gas: on a circle at the speed that holds it there, with
                     // none of the stars' random motion in the plane, which would smear a thread
                     // tens of parsecs across in a few megayears.

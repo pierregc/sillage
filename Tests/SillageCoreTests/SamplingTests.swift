@@ -850,6 +850,54 @@ struct DustRingTests {
                 == RestrictedSolver.sampleParticles(for: scene { $0.dustRing = strands }).positions)
     }
 
+    /// Asked for a sheet, the ring's dust is one layer in clouds: cold, far fewer grains well
+    /// inside the ring than its own profile puts there, uneven round the ring as `cotton` asks,
+    /// and without the field nothing moves.
+    @Test func theRingIsLaidAsASheet() throws {
+        let plain = GalaxyConfig.DustRing(radius: 10, width: 1)
+        func drawn(_ ring: GalaxyConfig.DustRing) -> (inside: Double, uneven: Double, outward: Double) {
+            let system = RestrictedSolver.sampleParticles(for: scene { $0.dustRing = ring })
+            let grains = (0..<system.count).filter { system.component[$0] == ParticleComponent.dust.rawValue }
+            var inside = 0.0
+            var outward = 0.0
+            var cells = [Double](repeating: 0, count: 120)
+            for index in grains {
+                let at = system.positions[index]
+                let r = Double((at.x * at.x + at.y * at.y).squareRoot())
+                if r < 8 { inside += 1 }
+                if r > 9, r < 10 { cells[Int((Double(atan2(at.y, at.x)) + .pi) / (2 * .pi) * 119.99)] += 1 }
+                let speed = system.velocities[index]
+                let out = Double(speed.x * at.x + speed.y * at.y) / r
+                outward += out * out
+            }
+            let mean = cells.reduce(0, +) / 120
+            let spread = (cells.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / 120).squareRoot()
+            return (
+                inside / Double(grains.count), spread / mean, (outward / Double(grains.count)).squareRoot()
+            )
+        }
+        var sheet = plain
+        sheet.sheet = 1
+        sheet.cotton = 1
+        var smooth = sheet
+        smooth.cotton = 0
+        let strands = drawn(plain)
+        let clouds = drawn(sheet)
+        let even = drawn(smooth)
+        #expect(clouds.inside < 0.5 * strands.inside)
+        #expect(clouds.uneven > 2 * even.uneven)
+        #expect(clouds.outward < 0.2 * strands.outward)
+
+        let read = try SceneFile.decoded(from: SceneFile(scene { $0.dustRing = sheet }).encoded())
+            .scene(particleCount: 1_000).galaxies[0].dustRing
+        #expect(read?.sheet == 1 && read?.cotton == 1)
+        var none = plain
+        none.sheet = 0
+        #expect(
+            RestrictedSolver.sampleParticles(for: scene { $0.dustRing = none }).positions
+                == RestrictedSolver.sampleParticles(for: scene { $0.dustRing = plain }).positions)
+    }
+
     /// A grain lifted a little off the plane swings through it at the rate the mass around it
     /// sets: the curve's figure against Poisson's equation on the density of the particles the
     /// sampler lays down about the plane there, whichever way the bulge is counted.
