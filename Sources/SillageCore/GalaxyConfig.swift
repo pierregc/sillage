@@ -232,6 +232,12 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
             /// Random motion of the ring's grains in the plane, km/s (#507): this much radially and
             /// the epicyclic share of it along the rotation. Absent, none: cold, on circles.
             public var random: Float?
+            /// Clouds that live and are reborn (#507): a life in megayears and the last moment one
+            /// is born. Each cloud is born at a moment drawn evenly from minus its life to the last,
+            /// its grains laid down so that the rotation brings them together then (`shear`
+            /// megayears old); a flight's `inside.cloudLife` shows each only through its life.
+            /// Absent, every cloud is there from the start.
+            public var life: [Float]?
 
             public init(
                 rings: [[Float]], share: Float = 0.75, length: [Float] = [0.1, 0.3],
@@ -257,6 +263,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
                 grainSpread = try values.decodeIfPresent(Float.self, forKey: .grainSpread) ?? grainSpread
                 shear = try values.decodeIfPresent(Float.self, forKey: .shear)
                 random = try values.decodeIfPresent(Float.self, forKey: .random)
+                life = try values.decodeIfPresent([Float].self, forKey: .life)
             }
 
             /// Usable: rings of three positive numbers, two rising lengths and aspects.
@@ -265,6 +272,7 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
                     && length.count == 2 && length[0] > 0 && length[1] >= length[0]
                     && aspect.count == 2 && aspect[0] > 0 && aspect[1] >= aspect[0] && count > 0
                     && knots > 0 && knotSpread >= 0 && grainSpread > 0
+                    && (life.map { $0.count == 2 && $0[0] > 0 && $0[1] >= 0 && $0[1] < 5000 } ?? true)
             }
         }
 

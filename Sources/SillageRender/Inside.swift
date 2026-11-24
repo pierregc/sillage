@@ -99,6 +99,10 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// A dust screen for one galaxy (#506, `DustScreen.swift`): its dust drawn as its grains'
     /// smooth layer times a tile laid in its plane, read at every angle; absent, none.
     public var dustScreen: DustScreenRef?
+    /// The life of the clouds a scene's `dustRing.clouds.life` gave each its birth (#507): its
+    /// length in megayears, the share of their opacity grains keep outside it, and what the
+    /// opacity of every grain with a life is multiplied by; empty for none.
+    public var cloudLife: [Float] = []
     /// The near dust's structure finer than a grain (#356): filaments and clumps from a noise in
     /// three dimensions read through each grain of the near field, the log of its density spread
     /// this many times its noise's (log-normal, as interstellar gas is); 0 for none.
@@ -160,6 +164,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         dustSlabs = try c.value(.dustSlabs, or: dustSlabs)
         web = try c.value(.web, or: web)
         dustScreen = try c.decodeIfPresent(DustScreenRef.self, forKey: .dustScreen)
+        cloudLife = try c.value(.cloudLife, or: cloudLife)
         dustFine = try c.value(.dustFine, or: dustFine)
         dustCell = try c.value(.dustCell, or: dustCell)
         dustInside = try c.value(.dustInside, or: dustInside)
@@ -222,6 +227,12 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         }
         if !rising(web, 2) { return "web \(web): two distances in disk radii, the first nearer" }
         if let fault = dustScreen?.fault { return fault }
+        if !(cloudLife.isEmpty
+            || (cloudLife.count == 3 && cloudLife[0] > 0 && cloudLife[1] >= 0 && cloudLife[1] <= 1
+                && cloudLife[2] > 0 && cloudLife[2] <= 100))
+        {
+            return "cloudLife \(cloudLife): a life in Myr, the share kept outside it (0 to 1), a gain"
+        }
         if !(dustFine >= 0 && dustFine <= 2.5) { return "dustFine \(dustFine): 0 to 2.5" }
         if !(dustCell >= 0.005 && dustCell <= 1) { return "dustCell \(dustCell) kpc: 0.005 to 1" }
         if !(dustInside > 0 && dustInside <= 4) { return "dustInside \(dustInside): above 0, to 4" }
@@ -335,6 +346,10 @@ public struct InsideUniforms: Sendable {
     public var starYoungK: Float = 9000
     /// The galaxy a dust screen draws, plus one; 0 for none (#506).
     public var screenGalaxy: Float = 0
+    /// A cloud's life in megayears (0 for none), the share kept outside it, the gain (#507).
+    public var cloudLife: Float = 0
+    public var cloudRest: Float = 0
+    public var cloudGain: Float = 1
 
     /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
     /// grains are spread over two slabs, which is where two disks one behind the other come
@@ -434,6 +449,11 @@ public struct InsideUniforms: Sendable {
         starOldK = inside.starOldK
         starYoungK = inside.starYoungK
         screenGalaxy = inside.dustScreen.map { Float($0.galaxy + 1) } ?? 0
+        if inside.cloudLife.count == 3 {
+            cloudLife = inside.cloudLife[0]
+            cloudRest = inside.cloudLife[1]
+            cloudGain = inside.cloudLife[2]
+        }
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }

@@ -99,6 +99,11 @@ enum Shaders {
             float starYoungK;
             /// The galaxy a dust screen draws, plus one; 0 for none (#506).
             float screenGalaxy;
+            /// A cloud's life in megayears, 0 for none; the share of its opacity its grains keep
+            /// outside it; and what the opacity of a grain with a life is multiplied by (#507).
+            float cloudLife;
+            float cloudRest;
+            float cloudGain;
         };
         #endif
 
@@ -509,6 +514,9 @@ enum Shaders {
             float warming;
             float population;
             float rampKey;
+            /// When the cloud a grain of dust belongs to is born, in megayears; below -1e8 for a
+            /// grain with no life (#507).
+            float life;
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
             /// A point star's share of its particle's light, 0 for the particle itself, and
             /// what its colour is drawn from.
@@ -529,6 +537,15 @@ enum Shaders {
             p.kind = component[vid];
             p.galaxy = galaxy[vid];
             p.weight = luminosity[vid];
+            p.life = -1e9f;
+            // A cloud's grain with a life (#507) carries its opacity negated, its cloud's birth in
+            // megayears plus a thousand in the integer part and its opacity in sixteenths after.
+            if (p.weight < 0.0f && p.kind == 2u) {
+                float v = -p.weight;
+                float birth = floor(v);
+                p.weight = (v - birth) * 16.0f;
+                p.life = birth - 1000.0f;
+            }
             p.kernelScale = traits[vid].y;
             p.born = formation[vid];
             p.spacing = smoothing[vid];
@@ -550,6 +567,7 @@ enum Shaders {
         SHARED Drawn tracerDrawn(float4 state, uint word, constant float *scales) {
             Drawn p;
             p.position = state.xyz;
+            p.life = -1e9f;
             p.born = state.w;
             p.galaxy = word & 15u;
             p.kind = (word >> 4) & 7u;
@@ -1114,6 +1132,20 @@ enum Shaders {
         }
         #endif
 
+        // How much of a cloud's grain's opacity shows now (#507): rising over the first quarter of
+        // its cloud's life, falling over the last third, `cloudRest` of it outside.
+        SHARED float cloudShown(Drawn p, constant SplatUniforms &u) {
+            #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
+            float life = u.inside.cloudLife;
+            if (life <= 0.0f || p.life < -1e8f) { return 1.0f; }
+            float age = (u.time * u.megayearsPerUnit - p.life) / life;
+            float on = smoothstep(0.0f, 0.25f, age) * (1.0f - smoothstep(0.67f, 1.0f, age));
+            return mix(u.inside.cloudRest, 1.0f, on) * u.inside.cloudGain;
+            #else
+            return 1.0f;
+            #endif
+        }
+
         SHARED Splat splat(Drawn p, constant SplatUniforms &u, constant DiskFrame *frames,
                            device const float2 *stellar, constant GalaxyRamp *ramps,
                            ColumnDensity column) {
@@ -1127,7 +1159,7 @@ enum Shaders {
             insideBare(out);
             #endif
             uint kind = p.kind;
-            float weight = p.weight;
+            float weight = p.weight * cloudShown(p, u);
             // The compact bright minority the sampler drew (DiskSampler, kernelScale 0.75):
             // two per cent of the stars carrying a quarter of the light as point sources. At
             // glint 0 they are given back the light and the width of an ordinary star.
@@ -2286,7 +2318,7 @@ enum Shaders {
             float3 position = p.position;
             grain.position = u.viewProjection * float4(position, 1.0f);
             uint kind = p.kind;
-            grain.weight = p.weight;
+            grain.weight = p.weight * cloudShown(p, u);
             grain.kernelScale = p.kernelScale;
             if (grain.kernelScale < 0.8f) {
                 grain.weight *= mix(0.07f, 1.0f, u.glint);

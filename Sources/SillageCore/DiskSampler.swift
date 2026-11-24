@@ -621,6 +621,8 @@ public enum DiskSampler {
             var along: Float
             var across: Float
             var knots: [SIMD2<Float>]
+            /// When it is born, whole megayears (#507); 0 without a life.
+            var birth: Float = 0
         }
         var clouds: [Cloud]
         /// Running sum of the clouds' weights (their areas), to pick one by weight.
@@ -629,6 +631,8 @@ public enum DiskSampler {
 
     static func ringClouds(_ spec: GalaxyConfig.DustRing.Clouds, seed: UInt64) -> RingClouds {
         var generator = SeededGenerator(seed: seed)
+        // Births from a generator of their own, so the clouds' shapes are the same with or without.
+        var births = SeededGenerator(seed: seed ^ 0x507)
         var clouds: [RingClouds.Cloud] = []
         var total: [Float] = []
         var sum: Float = 0
@@ -659,7 +663,8 @@ public enum DiskSampler {
             clouds.append(
                 .init(
                     radius: radius, phi: generator.uniform() * 2 * .pi, along: along * spec.grainSpread,
-                    across: across * spec.grainSpread, knots: knots))
+                    across: across * spec.grainSpread, knots: knots,
+                    birth: spec.life.map { (-$0[0] + births.uniform() * ($0[1] + $0[0])).rounded() } ?? 0))
             sum += along * across
             total.append(sum)
         }
@@ -921,6 +926,8 @@ public enum DiskSampler {
             /// A grain of a ring's sheet, and its layer's height where it stands.
             var sheeted = false
             var sheetLayer: Float = 0
+            /// The birth of the cloud a grain belongs to, in megayears, when its clouds live (#507).
+            var cloudBirth: Float?
             /// A threaded grain's lift is a wave that runs along its thread: what its swing
             /// through the plane is worth here, in kpc, a quarter turn ahead of its lift.
             var liftSwing: Float = 0
@@ -962,10 +969,13 @@ public enum DiskSampler {
                     let across = knot.y + generator.normal() * cloud.across
                     radius = max(cloud.radius + across, 0.1)
                     phi = cloud.phi + along / cloud.radius
-                    if let shear = clouds.shear, shear > 0 {
-                        let elapsed = shear / Float(Physics.megayearsPerTimeUnit)
+                    // Sheared as it will be at its age now: `shear` at its birth, less before.
+                    let age = (clouds.shear ?? 0) - cloud.birth
+                    if age != 0 {
+                        let elapsed = age / Float(Physics.megayearsPerTimeUnit)
                         phi += spin * (angularRate(radius) - angularRate(cloud.radius)) * elapsed
                     }
+                    if clouds.life != nil { cloudBirth = cloud.birth }
                 } else {
                     radius = Self.ringsRadius(clouds.rings, using: &generator)
                     phi = generator.uniform() * 2 * .pi
@@ -1352,6 +1362,10 @@ public enum DiskSampler {
                     (0.25 + 1.9 * grain(along * 2.6)) * (0.8 + 0.5 * generator.uniform())
                     * max(taper, 0.02)
                 formation = ParticleSystem.unformed
+                if let birth = cloudBirth {
+                    // Read back by the renderer's `massiveDrawn`: the birth in the integer part.
+                    brightness = -(birth + 1000 + min(brightness, 15.99) / 16)
+                }
             case .star, .halo, .bulge, .outskirt, .hole:
                 if outskirt {
                     // Old everywhere, and faint. The metallicity gradient does the rest on its
