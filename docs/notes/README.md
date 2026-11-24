@@ -83,6 +83,9 @@ session. Read the note for an area before changing it.
 - [Twenty galaxies to reproduce](twenty-galaxies.md): the shortlist for named scenes, why each, which have a published model of the very object, tiers A to C, the pictures and their licences in `references/catalogue/`
 - [The Cartwheel, reproduced](cartwheel.md): ESO 350-40 from its published measurements, a compact intruder, the match that places the freeze, the flights and the split screen with Webb's picture
 - [NGC 2207 and IC 2163, reproduced](ngc2207.md): Struck et al.'s grazing encounter from two grids of 54 previews, the match held to after the passage, the dust glow drawn in the web's filaments, one continuous flight
+- [The Sombrero, reproduced](sombrero.md): a lone galaxy with a ring of dust threads, the fields each fault needed, the wrong turns and the rule they teach (#478)
+- [The Sombrero's dust bench](sombrero-dust-bench.md): the plan for a procedural dust sheet, a bench that tunes it without the galaxy, and the agents' split (#478)
+- [Reproducing a known galaxy](reproducing-a-galaxy.md): the order that worked for the Cartwheel, NGC 2207 and the Sombrero, what changes for a pair, the traps on one screen
 - [The model, and why it is still one file](simulation-model.md): `SimulationModel`
 - [Contemplation](contemplation.md): `--cinema`, `treeReuse`, frame pacing
 - [Favourite palettes](favourite-palettes.md): `palettes/`, the heart, where favourites come first
