@@ -477,3 +477,119 @@ on the Mac), and any Swift or GPU render.
 Sheets: `closeup.py OUT.jpg frames...` now adds a fourth row, the far half over the core, and writes
 `OUT-far.jpg`: the far half left, centre and right, each frame plain and enhanced. `dust_bench.py` prints
 `loin h`, `loin l` and `loin creux` (the far lane's offset, width and depth) beside the near figures.
+
+### The colour law (#499): `colour_law.py`, `law=hubble`
+
+The bench's one reddening law cannot give Hubble's colours because Hubble's dust has two kinds of colour,
+not one law that flattens with depth. `colour_law.py measure OUT` reads A_r and A_b against A_g on the
+cleaned 6144 grid (texture.py's estimator, maps smoothed 1.5 px, pixels binned by A_g; curves and fits in
+`colour-law.json`). Sheets for Pierre: `~/claude-workspace/sombrero/banc/499/` (`colour-law-ratio-map.png`,
+`colour-law-curves.png`, `colour-law-tests.png`, `closeup-colour.jpg`).
+
+**Two zones.** `d` is the distance below the lane's upper edge (the highest row where A_g passes 0.6). The
+**dense band** is d < 0.10 kpc (the thin skirt over the edge included), the **orange zone** 0.15 to 0.45.
+Centre, ratio of medians (scatter: spread of the 10 windows' own medians, then pixel IQR):
+
+| A_g | band A_r/A_g | band A_b/A_g | orange A_r/A_g | orange A_b/A_g | tips: band | tips: orange |
+|---|---|---|---|---|---|---|
+| 0.6-0.8 | 0.72 | 1.09 | 0.42 | 1.70 | 0.75 / 1.11 | 0.47 / 1.52 |
+| 1.0-1.2 | 0.79 | 1.03 | 0.44 | 1.64 | 0.74 / 1.15 | 0.57 / 1.41 |
+| 1.8-2.0 | 0.93 | 0.98 | 0.63 | 1.33 | 0.94 / 1.02 | 0.74 / 1.18 |
+| 2.25-2.5 | 0.96 | 0.99 | 0.72 | 1.20 | | 0.83 / 1.13 (A_g 2.3) |
+
+Windows' sd 0.02 to 0.08 in the orange zone and 0.04 to 0.13 in the band (more at the tips); pixel IQR
+0.07 to 0.19. Binning on A_r or A_b instead of A_g moves a ratio by at most 0.02 (0.1 in the thinnest
+band bin). The band is grey (A_b/A_g 1.0, A_r/A_g 0.7 rising to 0.95) from A_g 0.4 on; the orange zone
+reddens (0.42 : 1 : 1.7 in thin dust) and flattens towards grey as it thickens. Hubble's global
+"1.8-2.1, 1.55 in the thickest dust" is the two mixed: the bar's bins hold both zones.
+
+**The band is not a depth.** At the same column (A_g 1.3 to 2.0, centre) A_b/A_g is 1.0 for the pixels
+under the edge and 1.5 beyond d = 0.15, with A_g unchanged (`colour-law-tests.png`, left). Any law of
+the column alone paints the band orange or the orange zone grey. 0.10 kpc under the edge is about 1 kpc of
+radius at 6 degrees: this is the ring's inner rim, the dense thin one of #495.
+
+**What the floor explains.** A share b of the light behind the dust makes ratios flatten with a fixed
+law: A_c <= -ln(1-b). With the light model's b (`share=depth`; mean floor 1-b: orange 0.03 centre and 0.11
+tips, band 0.09 and 0.24) a fixed law (r : g : b = 0.58 : 1 : 1.56 orange, 0.84 : 1 : 1.03 band) fits
+both regions to 0.10 nat rms. The orange zone's thin-dust law (A_g under 0.7) laid back over the whole
+range misses by 0.38 nat rms at the centre and 0.46 at the tips with no floor, 0.20 and 0.16 with the
+model's floor: the floor takes about half of the flattening. Floors fitted free are 0.06 (centre) and
+0.09 (tips) in the orange zone and 0.11 and 0.14 in the band, against the model's 0.03 and 0.11, 0.09
+and 0.24: close in the orange zone, too low at the centre and too high at the tips in the band. The rest
+needs the law itself to grey with the column: the orange zone's A_r/A_g stays 0.43 up to A_g 1.1
+then rises to 0.72, which no floor gives. Shared floors alone leave the band's colour untouched.
+
+**What makes the band grey-blue.**
+- *A flatter law in thick dust:* holds inside each zone (above), but cannot make the band: see the same
+  column. Nor is the band grey only where thick: it is grey from A_g 0.4.
+- *Scattered light:* not supported. Light scattered to us is added and bluer than the lane's light, so
+  the deepest pixels (A_g >= 2) would let through more blue than green. They let through 0.129, 0.116,
+  0.118 (r, g, b) in the band against a neutral light (I0 b/g 0.98, r/g 1.03), a floor of unreddened light
+  at 12 %; in the orange zone 0.214, 0.112, 0.065, no floor at all (`colour-law-tests.png`, middle). A blue
+  floor would be 1.3 to 1.5 times green's; at most a few per cent of the band's floor can be blue.
+- *Young stars and clusters:* not the cause. The band's ratio curves with the 4816 point sources removed
+  and kept are the same to 0.02 (`colour-law-tests.png`, right): the medians do not see them. Their blue
+  dots show in the raw crop, 18 % of the band's pixels change by more than 0.1 nat in A_b, and no
+  median ratio moves.
+So the band is neutral, not blue: its display colour is about (86, 79, 82) against Hubble's orange
+(130, 82, 64), and it reads blue-grey beside orange. The data support grey dust (large grains, or opaque
+clumps with gaps, which the pixel cannot tell apart) in the inner rim, plus a neutral floor of light
+that avoids the dust (about 12 %, of which the model's b gives 9 % at the centre and 24 % at the tips).
+No additive term is needed.
+
+**The option.** `law=hubble` (default `old`, every old file renders to the byte, checked at 1536 px with
+`share=split` and `share=depth`). Per pixel, from the dust column N, its share q in the inner rim (a second
+column map, grains within `rim_w` x 0.7 to 1.4 kpc of the inner cut, the radius split foreshortened to
+0.1 kpc) and the light's share b: tau_g = k N (1 + redden 0.22) (green's opacity of the old law, so
+`k`, `mass` and `redden` keep their meaning), then for each zone the red and blue optical depths are
+tau_g (1 + (a - 1) / (1 + tau_g / t)), a pixel mixing the two zones by q, and the transmission is
+`leak` + (1 - leak) exp(-tau_c) behind the usual (1-b) + b. Numbers (`dif_*` the rest of the dust,
+`rim_*` the inner rim; a is the thin-dust ratio to green, t where it greys):
+
+| | a_r | a_b | t | fitted to |
+|---|---|---|---|---|
+| `dif`, curves | 0.30 | 1.83 | 3.2 | the measured curves behind the model floor (0.075 nat rms) |
+| `rim`, curves | 0.21 | 1.17 | 0.47 | (0.086 nat rms) |
+| `dif`, default | 0.19 | 1.95 | 3.5 | the 16 z of the `colour` bar, from the line above |
+| `rim`, default | 0.20 | 1.68 | 0.37 | |
+
+`rim_w` 1.1 (kpc, the radius where half the rim is left; set by eye on p6 + taper at 3072 px, where the
+grey band comes out about 0.1 kpc thick under the edge, like Hubble's) and `leak` 0. The numbers are made for `share=depth`: behind
+`share=split` and `behind` 0.95 the same law scores 4.97.
+
+**Proof** (`colour_law.py proof OUT`: Hubble's cleaned map on the bench light at 6144 px, no blur, N solved
+so green dims by exp(-A) as in `texture_proofs.lay`; blur 0.15 gives the same figures):
+
+| round trip | summary | `colour` | others that moved |
+|---|---|---|---|
+| old law, `behind` 0.95 (#498) | 1.08 | 4.71 | |
+| old law, light model's b | 1.06 | 4.34 | |
+| `law=hubble` curves' numbers, light model's b | | 2.97 | |
+| `law=hubble` default, `behind` 0.95 | 0.99 | 4.97 | |
+| `law=hubble` default, light model's b | 1.00 | **1.72** | skewness 0.4 to 0.8, intermittency 0.4 to 1.0, entre échelles 0.6 to 0.9, symmetry 0.3 to 0.7; none above 1.3 |
+
+The colour bar's own floor: Hubble's odd against even windows 0.60, left against right half 1.72, so
+1.72 is at the left-right floor. It is a fit: the six numbers were refined on this bar's components
+(centre and tips), so it is not held-out. The other bars move a little because the luminance holds the
+three channels; the `colour` bar is the only one it was tuned for. Close-up, Hubble beside the round trip
+and beside p6 + taper, old law and new: `closeup-colour.jpg`.
+
+**p6 with the taper envelope** (`rise=0.05 floor=1 inward=1 taper=2 wobble=0.4 share=depth centre=nucleus
+blur=0.15 n=24000000`, 6144 px, old law then `law=hubble`): summary 7.14 to 7.42, `colour` 5.72 to 5.99.
+The bar does not follow, and should not yet: p6 + taper puts all its thick dust in the inner rim (the
+bar's thickest bin comes out 0.23 against Hubble's 0.51, the thin bins 0.28 against 0.18), where Hubble
+has as much thick dust in the orange zone. The ratios by zone do follow (A_g 1.4 to 2, centre, old law
+then new then Hubble: band 0.70 / 1.23, 0.92 / 1.06, 0.89 / 1.00; orange 0.66 / 1.35, 0.58 / 1.38,
+0.57 / 1.41). So `law=hubble` gives the right colour for a given dust, and the bar will come down with
+the dust's depth distribution, not by changing the law. Other bars: phase 9.6 to 10.1, skewness 4.9
+to 5.3, intermittency 6.4 to 6.8, blobs 4.6 to 5.2.
+
+**For the explorers' finalists:** `law=hubble share=depth centre=nucleus` and nothing else changed (dust,
+`k`, `mass` untouched); the inner rim is the grains within about 1 kpc of `inner` x `rim`, so a ring whose
+dense dust sits elsewhere gets its grey band there.
+
+Not verified: any renderer (Swift, GPU) or `--grains` frames; the rim as a radial class is the reading of
+a 6-degree view (the foreshortened 0.1 kpc) and the explorers' rings may put their band at other radii;
+`rim_w` was set on one render; the tips' bands (floor 0.24 in the model against 0.14 fitted) are the
+weakest numbers; Hubble's colours are its published processing decoded with gamma 2.2, not calibrated
+photometry.
