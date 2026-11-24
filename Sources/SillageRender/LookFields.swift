@@ -50,6 +50,7 @@ public enum LookFields {
         ("bulgeWidth", "widens the bulge's kernels"),
         ("youngWidth", "widens the kernels of stars under 300 Myr"),
         ("knotWidth", "widens the kernels of knots under 50 Myr"),
+        ("dustWidth", "widens the dust grains' kernels, so a thin sheet of grains reads as a veil"),
         ("glint", "light kept by the compact bright minority: 1 as sampled, 0 ordinary stars"),
         ("starSize", "size of the field and point stars"),
         ("bloomIntensity", "bloom strength"),

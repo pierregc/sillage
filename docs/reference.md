@@ -367,6 +367,10 @@ in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red
 Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478). Metal only for now:
 CUDA draws with the fixed reddening.
 
+`look.dustWidth` widens the dust grains' kernels against the tree's, as `youngWidth` does a
+young star's: a thin sheet of grains drawn wider reads as a veil rather than as the grains or the
+threads they lie on (#478). 1, the default, draws as before.
+
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
 above, so the same scene always gets the same palette. `--palette <family>` does the same inside

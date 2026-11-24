@@ -50,6 +50,7 @@ extension LookFile {
         settings.bulgeWidth = look.bulgeWidth
         settings.youngWidth = look.youngWidth
         settings.knotWidth = look.knotWidth
+        settings.dustWidth = look.dustWidth
         return settings
     }
 

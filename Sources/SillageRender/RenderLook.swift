@@ -84,6 +84,9 @@ public struct RenderLook: Sendable, Equatable {
     public var bulgeWidth: Float
     public var youngWidth: Float
     public var knotWidth: Float
+    /// How much wider the dust grains' kernels are drawn than the tree gives them (#478): the
+    /// grains of a thin sheet merge into a veil. One, the default, draws as before.
+    public var dustWidth: Float
 
     /// The glint every shipped and generated style draws with: the sparkle gone, the knots
     /// kept (#184, docs/notes/gigantism.md).
@@ -127,7 +130,8 @@ public struct RenderLook: Sendable, Equatable {
         oldWidth: Float = 1,
         bulgeWidth: Float = 1,
         youngWidth: Float = 1,
-        knotWidth: Float = 1
+        knotWidth: Float = 1,
+        dustWidth: Float = 1
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -163,6 +167,7 @@ public struct RenderLook: Sendable, Equatable {
         self.bulgeWidth = bulgeWidth
         self.youngWidth = youngWidth
         self.knotWidth = knotWidth
+        self.dustWidth = dustWidth
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -210,6 +215,7 @@ public struct RenderLook: Sendable, Equatable {
         out.bulgeWidth = f(a.bulgeWidth, b.bulgeWidth)
         out.youngWidth = f(a.youngWidth, b.youngWidth)
         out.knotWidth = f(a.knotWidth, b.knotWidth)
+        out.dustWidth = f(a.dustWidth, b.dustWidth)
         return out
     }
 
@@ -325,6 +331,7 @@ extension RenderLook: Codable {
             oldWidth: try c.value(.oldWidth, or: d.oldWidth),
             bulgeWidth: try c.value(.bulgeWidth, or: d.bulgeWidth),
             youngWidth: try c.value(.youngWidth, or: d.youngWidth),
-            knotWidth: try c.value(.knotWidth, or: d.knotWidth))
+            knotWidth: try c.value(.knotWidth, or: d.knotWidth),
+            dustWidth: try c.value(.dustWidth, or: d.dustWidth))
     }
 }

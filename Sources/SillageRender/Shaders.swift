@@ -143,6 +143,9 @@ enum Shaders {
             float bulgeWidth;
             float youngWidth;
             float knotWidth;
+            /// The dust grains' kernels against the tree's (#478): wider, the grains of a thin sheet
+            /// merge into a veil.
+            float dustWidth;
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
             InsideUniforms inside;
             #endif
@@ -1221,6 +1224,7 @@ enum Shaders {
             }
             #if defined(SILLAGE_POPULATION_WIDTHS) || !defined(__METAL_VERSION__)
             if (!absorbing) { raw *= populationWidth(kind, nursery, knot, ageMyr, u); }
+            if (kind == 2u && !knot) { raw *= u.dustWidth; }
             #endif
             float span = clamp(raw, u.minimumSize, u.maximumSize);
             #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)

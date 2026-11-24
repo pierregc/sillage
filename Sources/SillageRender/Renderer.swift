@@ -60,6 +60,8 @@ public final class Renderer {
     /// their own, built the first time one is drawn.
     private var widened: (library: MTLLibrary, massive: MTLRenderPipelineState)?
     private var widenedTracers: MTLRenderPipelineState?
+    /// The dust pass of a look that widens the dust's kernels (#478).
+    private var widenedDust: MTLRenderPipelineState?
     private var widenedUnavailable = false
     /// What a flight's frame is drawn with from inside a galaxy (#297), and through which a
     /// frame set to it is drawn wherever the camera is; nil, the default, draws as every frame
@@ -845,6 +847,8 @@ public final class Renderer {
                 if let deep {
                     bindDeep(encoder, uniforms)
                     drawParts(encoder, massive: deep.dust, tracers: deepTracers?.dust)
+                } else if uniforms.dustWidth != 1, traced == nil, let dust = widenedDustPipeline() {
+                    drawParts(encoder, massive: dust, tracers: nil)
                 } else {
                     drawParts(encoder, massive: dustPipeline, tracers: traced?.pipelines.dust)
                 }
@@ -975,6 +979,19 @@ public final class Renderer {
             return nil
         }
         return widened.map { ($0.massive, tracing ? widenedTracers : nil) }
+    }
+
+    /// The dust pass compiled with the population widths, nil when it could not be built, and the
+    /// dust is then drawn at the tree's width.
+    private func widenedDustPipeline() -> MTLRenderPipelineState? {
+        guard !widenedUnavailable else { return nil }
+        if widenedDust == nil {
+            guard let library = try? ShaderCache.library(Self.widenedSource, on: device) else { return nil }
+            widenedDust = try? Self.additive(
+                "splatVertex", "dustFragment", writing: 1, attachments: 2, format: .rgba16Float,
+                library: library, device: device)
+        }
+        return widenedDust
     }
 
     /// Nil when the web could not be built, and the dust is then drawn as it always was.

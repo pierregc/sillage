@@ -150,6 +150,7 @@ struct LookFileTests {
         file.look.youngWidth = 3
         file.look.knotWidth = 0.5
         file.look.dustReddening = 1.6
+        file.look.dustWidth = 2.5
         let s = file.renderSettings(width: 320, height: 200)
         let look = file.look
         #expect(s.width == 320 && s.height == 200)
@@ -170,7 +171,8 @@ struct LookFileTests {
                 armPersistence: look.armPersistence, fieldOfView: look.fieldOfView,
                 holeShadow: s.holeShadow, columnSmoothing: s.columnSmoothing, glint: s.glint,
                 dustWeb: s.dustWeb, dustReddening: s.dustReddening, oldWidth: s.oldWidth,
-                bulgeWidth: s.bulgeWidth, youngWidth: s.youngWidth, knotWidth: s.knotWidth) == look)
+                bulgeWidth: s.bulgeWidth, youngWidth: s.youngWidth, knotWidth: s.knotWidth,
+                dustWidth: s.dustWidth) == look)
     }
 
     /// The dust's reddening is the shader's own at 1, so a look that leaves it draws as before,

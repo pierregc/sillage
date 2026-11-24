@@ -92,6 +92,7 @@ extension LookFile.Group {
                 .slider("Compact sources", \.glint, 0...1),
                 .slider("Young star width", \.youngWidth, 0.25...4),
                 .slider("Knot width", \.knotWidth, 0.25...4),
+                .slider("Dust width", \.dustWidth, 0.25...6),
                 .slider("Old disk width", \.oldWidth, 0.25...4),
                 .slider("Bulge width", \.bulgeWidth, 0.25...4),
                 .slider("Glow", \.bloomIntensity, 0...2),
