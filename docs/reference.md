@@ -530,7 +530,16 @@ that show alone at mid distance, where a sparse stretch of a disk reads as blobs
 ([lone kernels](notes/lone-kernels.md)). Its `dustSlabs` (0 by default) lays the dust's slabs on
 the dust grains in the frame rather than on all the matter, the four together that many times the
 grains' depth, for a ring of dust inside a wide bulge (#479,
-[flights](notes/flights.md)).
+[flights](notes/flights.md)). Its `dustScreen` (absent by default; Metal only) draws one galaxy's
+dust from a polar tile laid in its plane rather than from where its grains stand:
+`{"tile": "ring.tile.json", "galaxy": 0, "rest": 12, "depth": 0.45, "law": {"diffuse": [0.55,
+1.47, 10], "rim": [0.7, 1.2, 0.25], "rimRadii": [6.09, 6.86]}}`. The tile (a JSON naming `width`
+azimuths from -pi to pi, `height` radii between `radii`, and `data`, raw little-endian floats) is
+the dust's column across the plane, read where each pixel's ray meets the mid-plane at every
+angle and turned by the disk's rotation from `rest` (megayears); `depth` scales it; the grains
+only share it among the slabs. `law` sees it through a colour law whose shares of the green
+depth tend to one in thick dust, the rim within `rimRadii` with its own (#506,
+[the Sombrero's dust screen](notes/sombrero-dust-screen.md)).
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph
