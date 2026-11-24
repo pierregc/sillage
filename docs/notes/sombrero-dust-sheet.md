@@ -335,6 +335,48 @@ Sheets for Pierre, in `~/claude-workspace/sombrero/banc/487/`: `hubble-lane.jpg`
 far, unwrapped and as opacity maps), `aller-retour.jpg` (the round trip beside Hubble, same scale),
 `p6-adversaires.jpg` (p6, the fBm, the adversaries and the round trip, each map with its bars).
 
+### Through the bench at low blur (follow-up)
+
+Everything laid on the bench light at 6144 px with the explorers' settings, p1-p6 and the fBm
+rendered at 24 M grains (`texture_proofs.py OUT --grid 6144 --blur 0.15 --frames DIR --sheets`).
+
+| summary (worst bars) | `blur` 0.15 | `blur` 0.3 |
+|---|---|---|
+| round trip | 1.08 | 1.67 |
+| Hubble in shuffled 1.5 kpc blocks | 1.79 (phase 2.4) | 2.07 (phase 2.7) |
+| Hubble slid 3.7 kpc | 2.10 (anisotropy 2.7) | 2.20 (anisotropy 2.7) |
+| Gaussian phases, Hubble's profile | 3.94 (edges 5.1, phase 5.0) | 4.12 |
+| Gaussian phases, Hubble's 1 kpc structure | 3.14 (spectrum 4.1, phase 3.8) | 3.39 |
+| mirror | 18.6 (symmetry 26.5) | 18.6 |
+| plain fBm | 8.21 | 8.62 |
+| p1 / p2 / p3 / p4 / p5 / p6 | 9.83 / 8.40 / 5.65 / 10.64 / 9.10 / 7.87 | 10.26 / 8.84 / 5.97 / 11.04 / 9.62 / 8.28 |
+
+- At `blur` 0.15 the rows that should pass stay at or under Hubble's own left-right floor (2.05) and
+  the Gaussian fields sit 1 to 2 above them; at 0.6 the bench's blur put all of them near 3.2.
+- The Gaussian fields fail on phase (3.8 to 5.0), the spectra along (3.1 to 3.5), entre échelles
+  (2.5 to 3.2) and intermittency (2.7). They pass filaments (1.7): that bar is no Gaussian test.
+- **Pass line** at 6144, `blur` 0.15 to 0.3: summary under 2.3, no bar over 3, and phase under 3.
+  The should-pass rows reach 2.2 and 2.7; the Gaussian fields break the phase bar in every case.
+  The real test is phase together with the spectrum along and entre échelles: a field that passes
+  all three is not Gaussian-phase noise with the right spectrum.
+
+**Colour.** Fitting `redden` and `grey` on the round trip (redden 1 to 12, grey 0 to 4) brings
+`couleur / profondeur` from 4.7 to 2.65 at best (redden 12, grey 4, the grid's corner), not to the
+floor. The residual is in the ratio of blue to green reddening, which the bench fixes at 0.52 : 0.22
+(2.4): Hubble's is 1.8 to 2.1 in thin and middle dust and 1.55 in the thickest bin, so the dense
+top band is bluer than any one law with that ratio allows (scattered light, or the blue clusters
+in it). Masking only that band would not help, the ratio is off in every bin; the honest course is
+the one taken, colour shown and not summed. A per-channel law (or a blue light share in front of
+the top band) would be the bench change, not an explorer's setting.
+
+**Memory.** At 24 M grains a 6144 frame peaks at 6.8 GB in the main process, a 3072 frame at 1.9 GB
+(14 s). A 3072 frame with `blur` 0.15 scored with `texture.py --grid 6144` is not meaningless: the
+round trip scores 1.29 against 1.08, p6 8.42 against 7.87, the loss being mostly in the filaments
+bar. So explorers can screen at 3072 (`--grid 6144` must be given, the default picks 3072 for a
+3072 frame) and render finalists at 6144. Rendering only the lane's rows (about a fifth of the
+frame's height, the score reads nothing else) would cut the 6144 frame's arrays about five times;
+it needs a row window in `dust_bench.project` and `attenuate` and was not built.
+
 ### The far half (#495)
 
 **Where it is.** On Hubble the far half of the ring is a thin, faint line over the core, the ring's

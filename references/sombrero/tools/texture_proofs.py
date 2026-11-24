@@ -67,13 +67,15 @@ def adversaries(A, g, rng):
 def lay(A, light, g, par=None, blur=True):
     """Lays a lane map (apparent opacity on luminance, lane coordinates of grid g) on the bench
     light (at g's width) as the bench lays near dust: transmission (1-b) + b exp(-k a_c N), N solved
-    so the green channel, which carries most of the luminance, dims by exp(-A). The blur is the
-    bench's, given in 3072 px pixels."""
+    so the green channel, which carries most of the luminance, dims by exp(-A) (inverted on a table,
+    so `grey` is honoured). The blur is the bench's, given in 3072 px pixels."""
     par = dict(D.DEFAULTS, **(par or {}))
     b, k = par["behind"], par["k"]
-    a_g = 1 + par["redden"] * D.CHANNELS[1]
-    t = np.clip(np.exp(-A), (1 - b) + 0.005, 1)
-    N = -np.log((t - (1 - b)) / b) / (k * a_g)
+    tau = np.linspace(0, 30, 6001)
+    a_g = 1 + par["redden"] / (1 + par["grey"] * tau) * D.CHANNELS[1]
+    t_g = (1 - b) + b * np.exp(-tau * a_g)                        # falls with tau
+    t = np.clip(np.exp(-A), t_g[-1], 1)
+    N = np.interp(-t, -t_g, tau) / k
     full = np.zeros((len(g.vs), len(g.us)), np.float32)
     full[g.band] = N
     vi, ui = g.frame_coords()
@@ -122,7 +124,12 @@ def main():
         "~/claude-workspace/sombrero/assets-wt/bench-light-12myr-26.5.png"))
     p.add_argument("--hubble-clean", help="cleaned Hubble frame at the grid's width (texture.build(cache=...))")
     p.add_argument("--sheets", action="store_true")
+    p.add_argument("--blur", type=float, help="the bench's blur for the laid maps (3072 px pixels; default the bench's)")
+    p.add_argument("--colour-fit", action="store_true", help="fit redden and grey on the round trip's colour")
     a = p.parse_args()
+    bpar = {} if a.blur is None else {"blur": a.blur}
+    blur_txt = f"{bpar.get('blur', D.DEFAULTS['blur']):g}".replace(".", ",")
+    tag = "" if a.blur is None else f"-blur{a.blur:g}"
     os.makedirs(a.out, exist_ok=True)
     rng = np.random.default_rng(487)
     g = T.grid(a.grid)
@@ -146,18 +153,33 @@ def main():
         line(f"plancher {name}", {"distance": d, "z": z, "regions": per})
     line("Hubble brut (points gardés)", T.score(hubble_raw(g.w), g.w))
 
-    rt = lay(hlane.A, light, g)
+    rt = lay(hlane.A, light, g, bpar)
     rt.save(os.path.join(a.out, f"aller-retour-{g.w}.png"))
     r_rt = T.score(rt, g.w)
-    line("aller-retour (banc, flou 0,6)", r_rt)
+    line(f"aller-retour (banc, flou {blur_txt})", r_rt)
     r_rt0 = T.score(lay(hlane.A, light, g, blur=False), g.w)
     line("aller-retour sans flou", r_rt0)
     if g.w == 6144:
         line("aller-retour rendu à 3072, grille 6144", T.score(rt.resize((3072, 1818), Image.LANCZOS), g.w))
     else:
         line("aller-retour rendu à 1536, grille 3072", T.score(rt.resize((1536, 909), Image.LANCZOS), g.w))
-    line("aller-retour, behind 0,8", T.score(lay(hlane.A, light, g, {"behind": 0.8}), g.w))
-    line("aller-retour, redden 1", T.score(lay(hlane.A, light, g, {"redden": 1.0}), g.w))
+    line("aller-retour, behind 0,8", T.score(lay(hlane.A, light, g, dict(bpar, behind=0.8)), g.w))
+    line("aller-retour, redden 1", T.score(lay(hlane.A, light, g, dict(bpar, redden=1.0)), g.w))
+    if a.colour_fit:
+        fits = []
+        for redden in (1, 2, 3, 5, 7, 9, 12):
+            for grey in (0, 0.25, 0.5, 1, 2, 4):
+                r = T.score(lay(hlane.A, light, g, dict(bpar, redden=redden, grey=grey)), g.w)
+                fits.append((r["distance"]["colour"], redden, grey, r))
+        fits.sort(key=lambda f: f[0])
+        best = fits[0]
+        print("colour fit: best colour distance %.2f at redden %g grey %g; next %s" % (
+            best[0], best[1], best[2], ", ".join(f"{f[0]:.2f} ({f[1]:g}, {f[2]:g})" for f in fits[1:4])))
+        print("  z (centre: A_g-A_r in 4 depth bins, A_b-A_r in 4; then tips):",
+              " ".join(f"{x:+.1f}" for x in best[3]["z"]["colour"]))
+        print("  Hubble centre:", " ".join(f"{x:.2f}" for x in ref["regions"]["centre"]["colour"]))
+        print("  best centre:  ", " ".join(f"{x:.2f}" for x in best[3]["figures"]["centre"]["colour"]))
+        line(f"aller-retour, couleur ajustée (redden {best[1]:g}, grey {best[2]:g})", best[3])
     r_light = T.score(Image.fromarray(light), g.w)
     line("lumière du banc seule", r_light)
 
@@ -177,7 +199,7 @@ def main():
     adv_frames = {}
     for name, A in adv.items():
         line(name + " (carte)", T.score_lane(A, g, ref))
-        r = T.score(lay(A, light, g), g.w)
+        r = T.score(lay(A, light, g, bpar), g.w)
         adv_frames[name] = r
         line(name + " (banc)", r)
 
@@ -191,7 +213,7 @@ def main():
         print("far lane mean A: Hubble %.3f, light alone %.3f, " % (float(hfar.A[gf.core].mean()), r_light["far"]["mean"])
               + ", ".join(f"{n} {frames[n]['far']['mean']:.3f}" for n in frames))
     res["far lane"] = far
-    json.dump(res, open(os.path.join(a.out, f"proofs-{g.w}.json"), "w"), indent=1)
+    json.dump(res, open(os.path.join(a.out, f"proofs-{g.w}{tag}.json"), "w"), indent=1)
     if not a.sheets:
         return
 
@@ -231,7 +253,7 @@ def main():
     rt_strip = strip_rows(g.unwrap(g.to_grid(rt))[g.band], W)
     parts = [label_bar("Hubble (réduit à 3072 px, étoiles ponctuelles retirées)", W), band(hb),
              label_bar("Aller-retour : la carte d'opacité de Hubble posée sur la lumière du banc, composition du "
-                       f"banc (behind 0,95, redden 3, flou 0,6)   distance {r_rt['distance']['summary']:.2f}, "
+                       f"banc (behind 0,95, redden 3, flou {blur_txt})   distance {r_rt['distance']['summary']:.2f}, "
                        f"sans le flou {r_rt0['distance']['summary']:.2f}", W, 26),
              band(rb),
              label_bar("Bout gauche et sous le bulbe : Hubble à gauche, aller-retour à droite", W, 26),
@@ -254,7 +276,7 @@ def main():
     for lbl, r in items:
         rows += [label_bar(f"{lbl}   distance {r['distance']['summary']:.2f}", W),
                  map_rows(r["_A"], W, 2)[0], T.bars(r["distance"], W)]
-    stack(rows).save(os.path.join(a.out, "p6-adversaires.jpg"), quality=88)
+    stack(rows).save(os.path.join(a.out, f"p6-adversaires{tag}.jpg"), quality=88)
 
 
 def crops(im):
