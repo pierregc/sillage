@@ -994,7 +994,8 @@ bulge from four tenths of that reach to nothing at it, so it has no edge at any 
 rotation curve counts the faded body. `"nucleus": 0.006` gathers that share of the bulge's stars
 in a nucleus a fiftieth of its scale radius across, the point of light at the centre that a
 Hernquist cusp alone draws as a glow: old stars, compact and three times slower than the bulge's,
-drawn as stars so that a look's `bulgeWidth` does not spread them.
+drawn as stars of the bright compact minority so that a look's `bulgeWidth` does not spread them
+and its `glint` sets their light with the disk's.
 
 **A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
 as the stars'. A galaxy of `scene.json` that carries
@@ -1013,7 +1014,7 @@ height of the ring's layer, launched with the vertical motion that holds it, whe
 usual layer is 0.45 of the disk's thickness: a lane seen nearly edge on shows its threads only if
 its layer is thinner than they stand apart. `"threads"`, a count, draws
 the ring's dust as that many threads in place of short strands. Two thirds run along the ring for
-35 to 140 degrees, a few tens of parsecs across, and wander and kink in radius as they go; a
+35 to 140 degrees, 4 to 26 parsecs across at a scale length of 2.2 kpc, and wander and kink in radius as they go; a
 third are spurs, short, steep and trailing, that cross from one lane to the next; a few threads
 are heavy lanes and most are wisps. Each is lifted off the plane by a wave that runs along it,
 one to two kiloparsecs long and about as high as the layer, and its grains go round cold, on

@@ -301,8 +301,9 @@ public enum DiskSampler {
                 galaxy: galaxyIndex,
                 radius: radius,
                 population: 0,
+                // The light of the compact bright minority, which a look's `glint` takes back.
                 luminosity: (0.45 + 1.5 * generator.uniform() * generator.uniform())
-                    * bulgeGrain,
+                    * bulgeGrain * (central ? 14 : 1),
                 formation: StarFormation.oldFormation(roll: generator.uniform()),
                 component: central ? .star : .bulge,
                 mass: particleMass,
@@ -681,7 +682,7 @@ public enum DiskSampler {
                 filaments.append(
                     Clump(
                         radius: placed.radius, phi: placed.phi,
-                        spread: scale * (0.003 + 0.016 * u * u),
+                        spread: scale * (0.002 + 0.010 * u * u),
                         seed: generator.uniform() * 900,
                         arc: arc, drift: spur ? -spin * steep : bend, weave: spur ? weave * 0.3 : weave,
                         ripple: turns, spur: spur))
