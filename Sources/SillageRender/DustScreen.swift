@@ -108,6 +108,12 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
     /// The eye's height above the plane, kpc, from which the dabs lay none of the column
     /// themselves, fading in from a third of it; 0: `volume` at every height.
     public var volumeHeight: Float = 0
+    /// The eye's height, kpc, below which the dabs take the grazing band, all of it under a third
+    /// of it, so its edge never sweeps the frame (#511); 0: within four dab heights of the plane.
+    public var grazingHeight: Float = 0
+    /// Spreads the dust the dabs lay over a slab's depth, as the grains' is (#511): dust just past
+    /// a slab boundary shades the light just behind it, so no boundary shows as a band in the dust.
+    public var softSlabs: Bool = false
 
     public init(from decoder: any Decoder) throws {
         try rejectUnknownFields(decoder, CodingKeys.self)
@@ -126,6 +132,8 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         fade = try c.value(.fade, or: fade)
         grazing = try c.value(.grazing, or: grazing)
         volumeHeight = try c.value(.volumeHeight, or: volumeHeight)
+        grazingHeight = try c.value(.grazingHeight, or: grazingHeight)
+        softSlabs = try c.value(.softSlabs, or: softSlabs)
     }
 
     var fault: String? {
@@ -145,6 +153,9 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         if !(grazing >= 0.05 && grazing <= 1) { return "dustScreen dabs grazing \(grazing): 0.05 to 1" }
         if !(volumeHeight >= 0 && volumeHeight <= 1000) {
             return "dustScreen dabs volumeHeight \(volumeHeight): 0 to 1000 kpc"
+        }
+        if !(grazingHeight >= 0 && grazingHeight <= 1000) {
+            return "dustScreen dabs grazingHeight \(grazingHeight): 0 to 1000 kpc"
         }
         let ringsOK =
             rings.count <= 4
@@ -288,8 +299,11 @@ struct ScreenUniforms {
     var dabRing2: SIMD4<Float> = .zero
     var dabRing3: SIMD4<Float> = .zero
     /// From inside the layer: the fade ahead of the eye in kpc, the grazing band's share, the
-    /// height in kpc from which the dabs lay none of the column themselves.
+    /// height in kpc from which the dabs lay none of the column themselves, the one from which they
+    /// leave the grazing band to the grains (0: four dab heights).
     var dabInside = SIMD4<Float>(0, 1, 0, 0)
+    /// 1 when the dabs spread their dust over a slab's depth as the grains do.
+    var dabSoft: SIMD4<Float> = .zero
 
     static func front(_ ref: DustScreenRef?) -> SIMD4<Float> {
         guard let front = ref?.front else { return .zero }
@@ -308,7 +322,8 @@ struct ScreenUniforms {
         dabRing1 = ring(1)
         dabRing2 = ring(2)
         dabRing3 = ring(3)
-        dabInside = SIMD4(dabs.fade / 1000, dabs.grazing, dabs.volumeHeight, 0)
+        dabInside = SIMD4(dabs.fade / 1000, dabs.grazing, dabs.volumeHeight, dabs.grazingHeight)
+        dabSoft = SIMD4(dabs.softSlabs ? 1 : 0, 0, 0, 0)
     }
 }
 

@@ -109,6 +109,19 @@ plane (from four dab heights), rays flatter than `0.07 x grazing` read at the ba
 blended across it, so up and down meet unseen and no footprint outgrows the 64 cells a ray reads.
 0.45 with dabs of 95 x 55 x 28 pc (cell 80) holds from 250 pc above the plane to 30 pc below it.
 
+The film's approach (#511) showed three thresholds. The dabs' slab shares were placed with the
+export's stack round the aim point, not the frame's own slabs the grains and stars are drawn in
+(the resolve was bound the plain splat uniforms), and kept whole in the slab a dab lies in: the
+dust just past a boundary shaded almost none of the light just behind it, a straight band empty of
+dust along the line where the boundary meets the plane. `softSlabs` binds the frame's slabs and
+spreads each dab's share over a slab's depth, a ramp between the middles of the two slabs round
+each boundary, as the grains' dust is. The grazing band went over from the grains to the dabs
+between 112 and 28 pc of eye height, the dust at the horizon coming in over a second of the
+descent; `grazingHeight` 3 hands it over between 1 and 3 kpc, with `volume`. The far side of the
+ring shades the bulge in the eye's slabs and not in the matter's, and the approach crossed
+`slabsWithin` (1.5 to 6 kpc of nearness) in under a second; `slabsLog` with [0.5, 800] dissolves
+them over the whole approach.
+
 ## Not done
 
 The flights (zenith, low pass, inside, core, wide): the screen is read at the mid-plane from any

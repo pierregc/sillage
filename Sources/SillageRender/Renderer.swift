@@ -972,7 +972,17 @@ public final class Renderer {
                     encoder.setFragmentBytes(&screen, length: MemoryLayout<ScreenUniforms>.stride, index: 2)
                     encoder.setFragmentTexture(screenTile ?? web.lace, index: 3)
                     encoder.setFragmentTexture(screenLut ?? screenTile ?? web.lace, index: 4)
-                    encoder.setFragmentBytes(&uniforms, length: uniformsLength, index: 3)
+                    if let within, within.settings.dustScreen?.dabs?.softSlabs == true {
+                        // The frame's own slabs, the ones its grains and stars are drawn in (#511).
+                        var both = InsideSplatUniforms(
+                            splat: uniforms,
+                            inside: InsideUniforms(
+                                within, camera: camera, next: next, settings: settings, splat: uniforms))
+                        encoder.setFragmentBytes(
+                            &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 3)
+                    } else {
+                        encoder.setFragmentBytes(&uniforms, length: uniformsLength, index: 3)
+                    }
                 }
                 for target in apart ?? [(web.carrier, web.tags)] {
                     encoder.setFragmentTexture(target.carrier, index: 1)

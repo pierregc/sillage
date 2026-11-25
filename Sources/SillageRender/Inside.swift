@@ -99,6 +99,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// (nearer than the first) to the matter's, or the aim point's every export has (past the
     /// second): drawn with both and dissolved, not slid (#396).
     public var slabsWithin: [Float] = [1.5, 6]
+    /// Whether that goes by the logarithm of the nearness (#511): a camera closing in at a steady
+    /// pace in log distance goes over steadily, not in the last second of its approach.
+    public var slabsLog: Bool = false
     /// Past the near field, lays the slabs on the dust grains in the frame rather than on all the
     /// matter (#479), the four together this many times the grains' depth; 0, the default, keeps
     /// them on all the matter. A ring of dust in a wide bulge needs it: on the matter, a slab is as
@@ -171,6 +174,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         fade = try c.value(.fade, or: fade)
         slabs = try c.value(.slabs, or: slabs)
         slabsWithin = try c.value(.slabsWithin, or: slabsWithin)
+        slabsLog = try c.value(.slabsLog, or: slabsLog)
         dustSlabs = try c.value(.dustSlabs, or: dustSlabs)
         web = try c.value(.web, or: web)
         dustScreen = try c.decodeIfPresent(DustScreenRef.self, forKey: .dustScreen)
@@ -364,7 +368,11 @@ public struct InsideUniforms: Sendable {
     /// matter, 1 nearer than its near one.
     public static func depth(_ frame: InsideFrame) -> Float {
         let (near, far) = (frame.settings.slabsWithin[0], frame.settings.slabsWithin[1])
-        let t = min(max((frame.nearness - near) / (far - near), 0), 1)
+        let along =
+            frame.settings.slabsLog
+            ? log(max(frame.nearness, 1e-6) / near) / log(far / near)
+            : (frame.nearness - near) / (far - near)
+        let t = min(max(along, 0), 1)
         return 1 - t * t * (3 - 2 * t)
     }
 
