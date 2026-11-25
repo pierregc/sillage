@@ -91,7 +91,21 @@ struct SkyParams {
     /// Cells along a face's edge at the coarsest level.
     static let coarsest: Float = 96
 
-    init(_ sky: SkyField, camera: Camera, width: Int, height: Int, supersample: Int) {
+    /// The angle between two cameras' views, and between their rolls about it.
+    static func turn(from a: Camera, to b: Camera) -> SIMD2<Float> {
+        let fa = simd_normalize(a.target - a.eye)
+        let fb = simd_normalize(b.target - b.eye)
+        let view = acos(min(max(simd_dot(fa, fb), -1), 1))
+        let ra = simd_normalize(simd_cross(fa, a.up))
+        let rb = simd_normalize(simd_cross(fb, b.up))
+        let roll = acos(min(max(simd_dot(ra, rb), -1), 1))
+        return SIMD2(view, max(roll - view, 0))
+    }
+
+    init(
+        _ sky: SkyField, camera: Camera, width: Int, height: Int, supersample: Int,
+        turn: SIMD2<Float> = .zero
+    ) {
         let forward = simd_normalize(camera.target - camera.eye)
         let right = simd_normalize(simd_cross(forward, camera.up))
         let up = simd_cross(right, forward)
@@ -103,7 +117,12 @@ struct SkyParams {
         // Over the pixel's solid angle, as a camera of one focal ratio; a view wider than the
         // reference past that, by `depth`.
         let wider = min(tan(sky.fieldOfView / 2) / max(tangent, 1e-12), 1)
-        let kept = pow(reference / max(pixel, 1e-12), 2) * pow(wider, sky.depth - 2)
+        // A star the turning view drags into a streak of `streak` pixels: its light spread
+        // along it, so it fades as a camera's does, and a fast turn does not strobe.
+        let streak = turn.x / max(pixel, 1e-12) + turn.y * Float(height) / 2
+        let kept =
+            pow(reference / max(pixel, 1e-12), 2) * pow(wider, sky.depth - 2)
+            / (1 + max(streak - 1, 0) / 3)
         self.right = SIMD4(right, tangent * aspect)
         self.up = SIMD4(up, tangent)
         self.forward = SIMD4(forward, 0)

@@ -68,6 +68,9 @@ public final class Renderer {
     /// frame set to it is drawn wherever the camera is; nil, the default, draws as every frame
     /// did.
     public var inside: InsideFrame?
+    /// How far the view turns while the shutter is open, in radians, and how far it rolls: the
+    /// deep sky fades by the streak it would leave (#512). Set by a flight's export.
+    public var skyTurn = SIMD2<Float>(0, 0)
     private var insidePass: InsidePass?
     /// Why a frame asked for from inside was drawn without it, when it was.
     public private(set) var insideFailure: String?
@@ -417,7 +420,7 @@ public final class Renderer {
         guard let skyPipeline else { return }
         var params = SkyParams(
             sky, camera: camera, width: settings.width, height: settings.height,
-            supersample: settings.supersample)
+            supersample: settings.supersample, turn: skyTurn)
         var red = red
         encoder.setRenderPipelineState(skyPipeline)
         encoder.setFragmentBytes(&params, length: MemoryLayout<SkyParams>.stride, index: 20)

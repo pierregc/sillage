@@ -750,6 +750,7 @@ public final class TakeExport {
         var views = [shot.camera]
         var stops = 0.0
         renderer.inside = nil
+        renderer.skyTurn = .zero
         if case .flight(let flight, _, let rate) = cameras {
             let seconds = frame.played / Double(rate)
             let drawn = take.particles.visibleCount > 0 ? take.particles.visibleCount : take.particles.count
@@ -768,6 +769,10 @@ public final class TakeExport {
             if interval > 0 {
                 views = flight.cameras(
                     atSeconds: seconds, interval: interval, frame: within, height: renderer.settings.height)
+                let half = interval * flight.inside.shutter / 2
+                renderer.skyTurn = SkyParams.turn(
+                    from: flight.camera(atSeconds: max(seconds - half, 0)).camera,
+                    to: flight.camera(atSeconds: min(seconds + half, flight.seconds)).camera)
             }
             stops = trims?.stops(atSeconds: seconds) ?? 0
             shot.look = InsideExposure.trimmed(shot.look, stops: stops)
