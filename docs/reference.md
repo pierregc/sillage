@@ -367,6 +367,18 @@ in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red
 Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478). Metal only for now:
 CUDA draws with the fixed reddening.
 
+`sky` at the top of a look file draws a deep sky behind every slab of dust (#512): field stars,
+the brighter with four diffraction spikes fixed to the frame, and small galaxies, worked out per
+pixel from a seeded hash of the direction, so the sky stays put as the camera turns, flies and
+pulls out, with no parallax and no buffer. `{"brightness": 0.07}` lands the counts of Hubble's
+frame of the Sombrero (about 1,000 sources a megapixel of sky above 12 in 8 bits, 100 above 100)
+in a 4K still framed as Hubble; `fieldOfView` and `height` are that reference view, `density`,
+`galaxies`, `spikes`, `spikeAngle`, `starWidth` and `seed` shape it. A coarser pixel sees each
+object fainter by its solid angle, so a 1080p frame is the 4K one reduced; `depth` above 2 thins
+a view wider than the reference further, and from inside a disk the sky is gone. `dither` lays
+triangular noise of that many 8-bit steps on the frame before it is written, so a faint halo is
+not cut into bands. Both Metal only.
+
 `look.dustWidth` widens the dust grains' kernels against the tree's, as `youngWidth` does a
 young star's: a thin sheet of grains drawn wider reads as a veil rather than as the grains or the
 threads they lie on (#478). 1, the default, draws as before.

@@ -1943,10 +1943,10 @@ enum Shaders {
             return atan(float2(d[(k + 1u) % 3u], d[(k + 2u) % 3u]) / major) * (4.0f / M_PI_F);
         }
 
-        // The light of a mid-level object times this, by rank: twelve times fainter a level
-        // among the faint, four among the bright, as Hubble's frame of the Sombrero counts them.
+        // The light of a mid-level object times this, by rank: nine times fainter a level among
+        // the faint, four among the bright, as Hubble's frame of the Sombrero counts them.
         static float skyRankLight(float rank) {
-            return rank >= 6.0f ? exp(2.518f * (7.0f - rank)) : 12.4f * exp(1.386f * (6.0f - rank));
+            return rank >= 6.0f ? exp(2.2f * (7.0f - rank)) : 9.0f * exp(1.386f * (6.0f - rank));
         }
 
         static float3 skyTint(float3 c) {
@@ -1978,10 +1978,10 @@ enum Shaders {
             if (skyUnit(h) < clamp((0.15f + 0.08f * rank) * p.field.w, 0.0f, 0.9f)) {
                 // A galaxy: an exponential disk round a small bulge, of one surface brightness
                 // whatever the view, the larger among the brighter.
-                float size = mix(9.0f, 1.2f, saturate(rank / 9.0f)) * (0.6f + 0.8f * skyUnit(h));
+                float size = mix(14.0f, 1.4f, saturate(rank / 9.0f)) * (0.6f + 0.8f * skyUnit(h));
                 float scale = size * p.scale.y / max(2.0f * p.up.w / (p.size.y / p.size.z), 1e-12f);
                 float hd = scale / 1.68f;
-                float q = 0.25f + 0.75f * skyUnit(h);
+                float q = 0.2f + 0.8f * skyUnit(h);
                 float angle = 6.2831853f * skyUnit(h);
                 float bulge = 0.15f + 0.5f * skyUnit(h);
                 float2 e = float2(dot(off, float2(cos(angle), sin(angle))),
@@ -1999,9 +1999,9 @@ enum Shaders {
             // A star: a tight core and, by its light, four spikes fixed to the frame, cut short
             // inside its cell, whose neighbours are all the pixel looks at.
             float r2 = dot(off, off);
-            float t = pow(hue, 1.6f);
-            float3 colour = t < 0.55f ? mix(float3(1.0f, 0.66f, 0.42f), float3(1.0f, 0.95f, 0.9f), t / 0.55f)
-                                      : mix(float3(1.0f, 0.95f, 0.9f), float3(0.74f, 0.84f, 1.0f), (t - 0.55f) / 0.45f);
+            float t = pow(hue, 0.8f);
+            float3 colour = t < 0.3f ? mix(float3(1.0f, 0.72f, 0.5f), float3(1.0f, 0.95f, 0.9f), t / 0.3f)
+                                     : mix(float3(1.0f, 0.95f, 0.9f), float3(0.8f, 0.88f, 1.0f), (t - 0.3f) / 0.7f);
             float energy = exp(-0.5f * r2 / (w * w)) / (6.2831853f * w * w);
             if (p.field.z > 0.0f) {
                 float2 s = float2(dot(off, p.more.xy), dot(off, float2(-p.more.y, p.more.x)));
@@ -2009,7 +2009,7 @@ enum Shaders {
                 float limit = 0.9f * p.scale.x / float(1u << level);
                 float2 along = abs(s);
                 float2 across = exp(-0.5f * float2(s.y * s.y, s.x * s.x) / (sw * sw)) / (2.5066f * sw);
-                float2 fall = pow(1.0f + along / t0, float2(-1.5f)) / (4.0f * t0)
+                float2 fall = pow(1.0f + along / t0, float2(-1.8f)) / (2.5f * t0)
                             * (1.0f - smoothstep(float2(0.5f * limit), float2(limit), along));
                 energy += 0.03f * p.field.z * dot(across, fall);
             }
@@ -2045,7 +2045,7 @@ enum Shaders {
                 // The levels only get fainter: one whose brightest would not show ends it.
                 float peak = p.field.x * p.size.w * skyRankLight(float(level)) / (6.2831853f * w * w);
                 if (peak < 2e-5f) { break; }
-                float cells = 20.0f * float(1u << level);
+                float cells = 96.0f * float(1u << level);
                 total += skyCells(face, level, cells, d, at, p);
                 float2 c = (skyFace(face, d) + 1.0f) * 0.5f * cells;
                 if (min(c.x, c.y) < 1.0f || max(c.x, c.y) > cells - 1.0f) {

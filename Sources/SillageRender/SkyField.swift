@@ -9,13 +9,13 @@
 /// direction, so the sky is fixed in space, has no parallax and costs no memory. Ten levels of
 /// cells on an equi-angular cube, each four times as many objects as the one before and
 /// fainter. The sky is drawn at its full depth at `fieldOfView` over `height` pixels; a coarser
-/// pixel, from a wider view or a smaller frame, sees each object's light fall as the pixel's
-/// solid angle to the power `depth` over two, as a camera of one focal ratio does at `depth` 2:
-/// the faint ones go, the sky's count per frame stays about the same, and from inside a disk
-/// it is all but gone. Behind every slab of dust. Metal only.
+/// pixel sees each object's light fall as the pixel's solid angle, as a camera of one focal
+/// ratio does, so a 1080p frame is the 4K one reduced, and a view wider than the reference by
+/// `depth` past that: the faint ones go, and from inside a disk the sky is all but gone. Behind
+/// every slab of dust. Metal only.
 public struct SkyField: Codable, Sendable, Equatable {
-    /// The light of a mid-level object, a little under a hundred and fifty in the 8-bit frame of
-    /// a 4K still at `fieldOfView`. Zero draws no sky.
+    /// The light of a mid-level object: 0.07 lands the counts of Hubble's frame of the Sombrero
+    /// in a 4K still at `fieldOfView`. Zero draws no sky.
     public var brightness: Float
     /// Objects per frame against the default.
     public var density: Float
@@ -23,7 +23,9 @@ public struct SkyField: Codable, Sendable, Equatable {
     /// over a frame of `height` pixels. Hubble's Sombrero framed as the film does.
     public var fieldOfView: Float
     public var height: Float
-    /// How fast the faint objects fade in a coarser pixel: 2 is a camera of one focal ratio.
+    /// How fast the faint objects fade in a view wider than `fieldOfView`: 2 is a camera of one
+    /// focal ratio, which keeps the count per frame but fills a wide view with faint stars;
+    /// above 2, fewer. A smaller frame always sees them as a camera of one focal ratio would.
     public var depth: Float
     /// Share of each object's light thrown into the four spikes; zero draws none.
     public var spikes: Float
@@ -87,7 +89,7 @@ struct SkyParams {
     var scale: SIMD4<Float>
 
     /// Cells along a face's edge at the coarsest level.
-    static let coarsest: Float = 20
+    static let coarsest: Float = 96
 
     init(_ sky: SkyField, camera: Camera, width: Int, height: Int, supersample: Int) {
         let forward = simd_normalize(camera.target - camera.eye)
@@ -98,7 +100,10 @@ struct SkyParams {
         // One output pixel, in radians, against the reference's.
         let pixel = 2 * tangent / Float(max(height, 1))
         let reference = 2 * tan(sky.fieldOfView / 2) / max(sky.height, 1)
-        let kept = pow(reference / max(pixel, 1e-12), sky.depth)
+        // Over the pixel's solid angle, as a camera of one focal ratio; a view wider than the
+        // reference past that, by `depth`.
+        let wider = min(tan(sky.fieldOfView / 2) / max(tangent, 1e-12), 1)
+        let kept = pow(reference / max(pixel, 1e-12), 2) * pow(wider, sky.depth - 2)
         self.right = SIMD4(right, tangent * aspect)
         self.up = SIMD4(up, tangent)
         self.forward = SIMD4(forward, 0)
