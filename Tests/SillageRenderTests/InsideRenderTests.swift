@@ -21,7 +21,7 @@ struct InsideRenderTests {
         init(
             _ positions: [SIMD3<Float>], maximumKernel: Float = 24, supersample: Int = 1,
             component: ParticleComponent = .star, glow: Float = 0,
-            dust: Float = 1e-3, smoothing: Float = 1, first: Float = 1
+            dust: Float = 1e-3, smoothing: Float = 1, first: Float = 1, bloom: Float = 0
         ) throws {
             var system = ParticleSystem()
             for (index, position) in positions.enumerated() {
@@ -36,7 +36,7 @@ struct InsideRenderTests {
                 brightness: 2e-7 * Float(positions.count),
                 dustStrength: component == .dust ? dust : 0, starCount: 0, smoothingScale: smoothing,
                 minimumKernel: 1,
-                maximumKernel: maximumKernel, bloomIntensity: 0, stretch: 0, saturation: 1,
+                maximumKernel: maximumKernel, bloomIntensity: bloom, stretch: 0, saturation: 1,
                 spikeArms: 0, skyLevel: 0, noiseLevel: 0)
             settings.dustGlow = glow
             renderer = try Renderer(particles: system, settings: settings)
@@ -423,6 +423,40 @@ struct InsideRenderTests {
         var faulty = InsideSettings()
         faulty.lonePoints = 1.5
         #expect(faulty.fault?.contains("lonePoints") == true)
+    }
+
+    /// The point stars bloom by `starBloom` (#510): at 0 a near star throws no halo, the pixels
+    /// round it as dark as the field's, and at 1 the frame is the one drawn without it.
+    @Test func aNearStarBloomsByItsShare() throws {
+        var generator = SeededGenerator(seed: 5)
+        let positions = (0..<60).map { _ in
+            SIMD3<Float>((generator.uniform() - 0.5) * 2, 0, (generator.uniform() - 0.5) * 1)
+        }
+        let view = camera(1.5)
+        func picture(_ change: @escaping (inout InsideSettings) -> Void) throws -> [UInt8] {
+            let stage = try Stage(positions, maximumKernel: 4, supersample: 2, bloom: 0.5)
+            stage.renderer.inside = Self.inside(1.5) { settings in
+                settings.starPeak = 1000
+                change(&settings)
+            }
+            let pixels = stage.renderer.render(camera: view)
+            #expect(stage.renderer.insideFailure == nil)
+            return pixels
+        }
+        func lit(_ pixels: [UInt8]) -> Int {
+            stride(from: 0, to: pixels.count, by: 4).filter { pixels[$0 + 1] > 8 }.count
+        }
+        let plain = try picture { _ in }
+        let whole = try picture { $0.starBloom = 1 }
+        let none = try picture { $0.starBloom = 0 }
+        #expect(whole == plain)
+        #expect(lit(plain) > 0 && lit(none) < lit(plain) / 2, "\(lit(none)) against \(lit(plain))")
+        var faulty = InsideSettings()
+        faulty.starBloom = 1.5
+        #expect(faulty.fault?.contains("starBloom") == true)
+        faulty = InsideSettings()
+        faulty.heldLengths = -1
+        #expect(faulty.fault?.contains("heldLengths") == true)
     }
 
     /// A near grain carries its structure with it (#394): the grains and the eye moved together

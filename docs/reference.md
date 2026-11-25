@@ -543,7 +543,12 @@ depth tend to one in thick dust, the rim within `rimRadii` with its own (#506,
 instead of the tile, through the tile's lut, with an optional `smooth` share and `rings` (#508);
 `volume` lets the dabs lay the column themselves, in the slabs where they lie along the ray, below
 the eye height `volumeHeight` (kpc), `fade` (pc) thins it round the eye and `grazing` hands the
-band near the plane to the dabs when the eye is in the layer.
+band near the plane to the dabs when the eye is in the layer; `grazingHeight` (kpc) hands it to them
+from that eye height down, and `softSlabs` lays their dust in the frame's own slabs, spread over a
+slab's depth as the grains' is, `slant` caps the slant column a line reads at so many times the
+vertical one and `holeFade` (kpc) fades the band read at its edges in from the ring's inner radius
+(#511). The inside settings' `slabsLog` dissolves the eye's slabs
+into the matter's by the logarithm of the nearness between `slabsWithin`'s two distances.
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph

@@ -81,6 +81,9 @@ public final class Renderer {
     /// The same with the grains of dust counted apart and a pyramid over it, for a frame from
     /// inside that widens its lone kernels; made by the first that does.
     private var kindDensity: MTLTexture?
+    /// What the bloom of a frame drawn from inside reads when its point stars bloom less than
+    /// the rest (#510): `resolved` with only that share of the stars in it.
+    private var bloomSource: MTLTexture?
     static let columnCell = FramePlan.columnCell
     private let resolved: MTLTexture
     private let bloomDown: [MTLTexture]
@@ -564,25 +567,63 @@ public final class Renderer {
         }
         defer { inside = frame }
         let renders = max(cameras.count - 1, 1)
+        let starBloom = frame.settings.starBloom
+        let source = starBloom < 1 ? bloomTarget() : nil
         for index in 0..<renders {
             for (layer, stack) in frame.stacks.enumerated() {
                 inside?.eyeSlabs = stack.eyeSlabs
+                let weight = stack.weight / Float(renders)
+                let after = index > 0 || layer > 0
+                // The light before the point stars goes to the bloom whole, theirs in part.
+                var split = false
                 encodeSplat(
                     camera: cameras[index], into: buffer,
-                    next: index + 1 < cameras.count ? cameras[index + 1] : nil)
-                guard let compute = buffer.makeComputeCommandEncoder() else { continue }
-                var factor = UInt32(settings.supersample)
-                var share = SIMD2<Float>(stack.weight / Float(renders), index > 0 || layer > 0 ? 1 : 0)
-                dispatch(compute, pass.resolve, into: resolved) { encoder in
-                    encoder.setTexture(accumulation, index: 0)
-                    encoder.setTexture(resolved, index: 2)
-                    encoder.setBytes(&factor, length: 4, index: 0)
-                    encoder.setBytes(&share, length: 8, index: 1)
+                    next: index + 1 < cameras.count ? cameras[index + 1] : nil,
+                    beforeStars: source.map { source in
+                        {
+                            split = true
+                            self.encodeInsideResolve(
+                                into: buffer, pass, source, weight: weight * (1 - starBloom), after: after)
+                        }
+                    })
+                encodeInsideResolve(into: buffer, pass, resolved, weight: weight, after: after)
+                if let source {
+                    encodeInsideResolve(
+                        into: buffer, pass, source, weight: split ? weight * starBloom : weight,
+                        after: after || split)
                 }
-                compute.endEncoding()
             }
         }
-        encodePost(into: buffer, present: present, resolved: true)
+        encodePost(into: buffer, present: present, resolved: true, bloomFrom: source)
+    }
+
+    /// `accumulation` averaged down into `target`, `weight` of it, added to what is there
+    /// `after` the first render of a frame.
+    private func encodeInsideResolve(
+        into buffer: MTLCommandBuffer, _ pass: InsidePass, _ target: MTLTexture, weight: Float, after: Bool
+    ) {
+        guard let compute = buffer.makeComputeCommandEncoder() else { return }
+        var factor = UInt32(settings.supersample)
+        var share = SIMD2<Float>(weight, after ? 1 : 0)
+        dispatch(compute, pass.resolve, into: target) { encoder in
+            encoder.setTexture(accumulation, index: 0)
+            encoder.setTexture(target, index: 2)
+            encoder.setBytes(&factor, length: 4, index: 0)
+            encoder.setBytes(&share, length: 8, index: 1)
+        }
+        compute.endEncoding()
+    }
+
+    private func bloomTarget() -> MTLTexture? {
+        if bloomSource == nil {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: resolved.pixelFormat, width: resolved.width, height: resolved.height,
+                mipmapped: false)
+            descriptor.usage = [.shaderRead, .shaderWrite]
+            descriptor.storageMode = .private
+            bloomSource = device.makeTexture(descriptor: descriptor)
+        }
+        return bloomSource
     }
 
     /// Builds what a frame drawn from inside needs now, so that the first frame that is does not
@@ -623,7 +664,8 @@ public final class Renderer {
     /// star field.
     private func encodeSplat(
         camera: Camera, into buffer: MTLCommandBuffer, particles: Range<Int>? = nil,
-        stages: ClosedRange<UInt32> = 0...1, first: Bool = true, next: Camera? = nil
+        stages: ClosedRange<UInt32> = 0...1, first: Bool = true, next: Camera? = nil,
+        beforeStars: (() -> Void)? = nil
     ) {
         // From inside a galaxy (#297): the passes its text changes come from its own library.
         // Not for a frame drawn in parts, which the canvas alone asks for.
@@ -930,7 +972,17 @@ public final class Renderer {
                     encoder.setFragmentBytes(&screen, length: MemoryLayout<ScreenUniforms>.stride, index: 2)
                     encoder.setFragmentTexture(screenTile ?? web.lace, index: 3)
                     encoder.setFragmentTexture(screenLut ?? screenTile ?? web.lace, index: 4)
-                    encoder.setFragmentBytes(&uniforms, length: uniformsLength, index: 3)
+                    if let within, within.settings.dustScreen?.dabs?.softSlabs == true {
+                        // The frame's own slabs, the ones its grains and stars are drawn in (#511).
+                        var both = InsideSplatUniforms(
+                            splat: uniforms,
+                            inside: InsideUniforms(
+                                within, camera: camera, next: next, settings: settings, splat: uniforms))
+                        encoder.setFragmentBytes(
+                            &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 3)
+                    } else {
+                        encoder.setFragmentBytes(&uniforms, length: uniformsLength, index: 3)
+                    }
                 }
                 for target in apart ?? [(web.carrier, web.tags)] {
                     encoder.setFragmentTexture(target.carrier, index: 1)
@@ -949,18 +1001,35 @@ public final class Renderer {
                 }
 
             case .stars:
-                guard let encoder = frameEncoder() else { continue }
-                bindParticles(encoder)
+                guard var encoder = frameEncoder() else { continue }
                 var red = Self.reddening(settings.dustReddening)
-                encoder.setFragmentBytes(&red, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
-                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
-                if let deep {
+                var law = ScreenLaw(within?.settings.dustScreen, web: webbed)
+                func bindStars(_ encoder: MTLRenderCommandEncoder) {
+                    bindParticles(encoder)
+                    encoder.setFragmentBytes(&red, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                    encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                    guard deep != nil else { return }
                     // A dust screen's colour law (#506): its parameters and the disk frames.
-                    var law = ScreenLaw(within?.settings.dustScreen, web: webbed)
                     encoder.setFragmentBytes(&law, length: MemoryLayout<ScreenLaw>.stride, index: 1)
                     encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 2)
                     bindDeep(encoder, uniforms)
+                }
+                bindStars(encoder)
+                if let deep {
                     drawParts(encoder, massive: deep.splat, tracers: deepTracers?.splat)
+                    // The light so far resolved for the bloom before the point stars join it.
+                    if let beforeStars {
+                        encoder.endEncoding()
+                        frame = nil
+                        beforeStars()
+                        guard
+                            let reopened = buffer.makeRenderCommandEncoder(
+                                descriptor: descriptor([accumulation, dustAccumulation], load: .load))
+                        else { continue }
+                        frame = reopened
+                        encoder = reopened
+                        bindStars(encoder)
+                    }
                     if starred {
                         encoder.setRenderPipelineState(deep.stars)
                         encoder.setVertexBuffer(deep.list, offset: 0, index: 23)
@@ -1063,7 +1132,8 @@ public final class Renderer {
     /// `resolved` says the light is averaged down already, as a frame drawn from inside
     /// leaves it (#297).
     private func encodePost(
-        into buffer: MTLCommandBuffer, present: MTLTexture?, resolved done: Bool = false
+        into buffer: MTLCommandBuffer, present: MTLTexture?, resolved done: Bool = false,
+        bloomFrom: MTLTexture? = nil
     ) {
         guard let compute = buffer.makeComputeCommandEncoder() else { return }
         let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
@@ -1106,7 +1176,7 @@ public final class Renderer {
             case .bright(var bloom):
                 let first = bloomDown[0]
                 dispatch(compute, brightPassPipeline, into: first) { encoder in
-                    encoder.setTexture(resolved, index: 0)
+                    encoder.setTexture(bloomFrom ?? resolved, index: 0)
                     encoder.setTexture(first, index: 1)
                     encoder.setBytes(&bloom, length: MemoryLayout<BloomParams>.stride, index: 0)
                 }
