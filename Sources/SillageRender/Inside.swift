@@ -41,9 +41,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     public var starSpread: Float = 1
     /// The moment, in megayears, whose kernel lengths every frame of the flight is drawn with
     /// (#510), the take's captured frame nearest it; absent, each frame's are eased between the
-    /// trees of the captured frames either side. A tree built again gives a particle a length
-    /// tens of percent off the last one's, and its point stars, scattered over that length, slide
-    /// one way across a captured frame and back across the next: a zigzag when time runs. Held,
+    /// trees of the captured frames either side. A tree built again gives a particle another
+    /// length, and its point stars, scattered over it, drift one way across a captured frame and
+    /// turn at the next, often back: a zigzag when time runs (measured in #510). Held,
     /// a star keeps its place round its particle and follows its orbit. For a flight over a
     /// megayear or two; not for a take of key frames.
     public var heldLengths: Float?
