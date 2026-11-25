@@ -33,8 +33,20 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// The most light a star lays, against what the tone curve takes to white: past it a star
     /// keeps its size and gains a glint, not a disk of bloom (#357).
     public var starPeak: Float = 2
+    /// The share of the point stars' light the bloom spreads (#510), Metal only: the look's bloom
+    /// throws a halo of four layers round a near star, wider than the star by ten or more. The
+    /// rest of the frame blooms as the look says. 1 for all of it, as before.
+    public var starBloom: Float = 1
     /// Kernel lengths the stars of a particle are scattered over.
     public var starSpread: Float = 1
+    /// The moment, in megayears, whose kernel lengths every frame of the flight is drawn with
+    /// (#510), the take's captured frame nearest it; absent, each frame's are eased between the
+    /// trees of the captured frames either side. A tree built again gives a particle a length
+    /// tens of percent off the last one's, and its point stars, scattered over that length, slide
+    /// one way across a captured frame and back across the next: a zigzag when time runs. Held,
+    /// a star keeps its place round its particle and follows its orbit. For a flight over a
+    /// megayear or two; not for a take of key frames.
+    public var heldLengths: Float?
     /// The clusters a young particle's stars gather in (#405), as real young stars are born in
     /// clusters and associations that come apart over tens of megayears; 0 spreads every
     /// particle's stars evenly through its kernel.
@@ -137,7 +149,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         starColours = try c.value(.starColours, or: starColours)
         starSize = try c.value(.starSize, or: starSize)
         starPeak = try c.value(.starPeak, or: starPeak)
+        starBloom = try c.value(.starBloom, or: starBloom)
         starSpread = try c.value(.starSpread, or: starSpread)
+        heldLengths = try c.decodeIfPresent(Float.self, forKey: .heldLengths)
         clusters = try c.value(.clusters, or: clusters)
         clusterBirth = try c.value(.clusterBirth, or: clusterBirth)
         clusterGrowth = try c.value(.clusterGrowth, or: clusterGrowth)
@@ -186,7 +200,11 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !(starColours >= 0 && starColours <= 2) { return "starColours \(starColours): 0 to 2" }
         if !(starSize >= 0.5 && starSize <= 16) { return "starSize \(starSize) px: 0.5 to 16" }
         if !(starPeak > 0 && starPeak <= 1000) { return "starPeak \(starPeak): above 0, to 1000" }
+        if !(starBloom >= 0 && starBloom <= 1) { return "starBloom \(starBloom): 0 to 1" }
         if !(starSpread > 0 && starSpread <= 8) { return "starSpread \(starSpread): above 0, to 8" }
+        if let held = heldLengths, !(held >= 0 && held.isFinite) {
+            return "heldLengths \(held) Myr: a moment of the take"
+        }
         if !(0...8).contains(clusters) { return "clusters \(clusters): 0 to 8" }
         if !(clusterBirth > 0 && clusterBirth <= 100) {
             return "clusterBirth \(clusterBirth) pc: above 0, to 100"

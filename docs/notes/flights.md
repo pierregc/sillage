@@ -193,6 +193,17 @@ adds nothing: on the photograph's framing a flight's frame is the export's withi
   square of its size, up to `nearStars` (4096); a star is `starSize` pixels of a frame 2160 high
   (1.5), its light shared among the pixels its box touches, and held under `starPeak` (2) times
   what the tone curve takes to white, so that it stays a point.
+- **Near stars as points** (#510, Metal only): the look's bloom spreads a near star's light in four
+  layers, a halo ten times the star's width that slides as the coarse levels' texels go by.
+  `starBloom` (1) is the share of the point stars' light the bloom takes: the frame is resolved
+  for the bloom once before the stars are drawn and once after. Nothing else in the frame
+  blooms less, and a frame with no point stars, as every view from outside, is the same.
+- **Held kernel lengths** (#510): each frame's kernel lengths are eased between the trees of the
+  captured frames either side, and a tree built again gives a particle a length tens of
+  percent off; the stars scattered over it slide one way across a captured frame and back
+  across the next. `heldLengths` (a moment in megayears) draws every frame with the lengths of
+  the captured frame nearest it, so each star keeps its place round its particle. For a flight
+  over a megayear or two, on a whole take.
 - **Young stars in clusters** (#405, recommendation 1 of `immensity-inside-an-arm.md`): stars are
   born in clusters and associations that come apart over tens of megayears (Lada and Lada 2003,
   Grasha et al. 2017), so a particle with a real age puts `clusterShare` (0.8) of its stars in

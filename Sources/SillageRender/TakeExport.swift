@@ -103,6 +103,8 @@ public final class TakeExport {
     public private(set) var exposure: ClipExposure?
     /// The kernel lengths a flight's frames are drawn with (#297).
     private let eased: EasedSmoothing?
+    /// The captured frame whose lengths `eased` holds for every frame, when the flight asks.
+    private let lengthsHeld: Double?
     /// What the frames of the flight last drawn took of the inside of a galaxy.
     public private(set) var inside: InsideReport?
     /// The frame of a video drawn before this one, for the speeds the report gives.
@@ -148,6 +150,14 @@ public final class TakeExport {
                 megayears: TimeTrack.megayears(of: framing.recording), interval: framing.recording.interval)
         }
         self.held = held
+        // The captured frame whose kernel lengths every frame of the flight draws with (#510).
+        if held == nil, let myr = flight?.inside?.heldLengths {
+            lengthsHeld = try TimeTrack.position(
+                of: Double(myr), in: TimeTrack.megayears(of: take.recording)
+            ).rounded()
+        } else {
+            lengthsHeld = nil
+        }
         let frames = (held != nil ? framing ?? take : take).recording.capturedFrames
         self.flight = flight
         if flight != nil, track != nil { throw Failure.flightAndTrack }
@@ -716,7 +726,7 @@ public final class TakeExport {
                 let place = try held?.place(atCaptured: frame.captured)
                 let kept = eased.update(
                     at: place?.stored ?? frame.captured, last: recording.capturedFrames - 1,
-                    positions: positions
+                    positions: positions, holding: lengthsHeld
                 ) { [expander, stream] position, buffer in
                     let blend =
                         place.map { recording.blend(atStored: position, within: $0.run) }
