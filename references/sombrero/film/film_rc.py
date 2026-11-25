@@ -7,10 +7,10 @@ sight and the velocity. Axes are galaxy 0's (disk in xy, spin +z; Hubble looks f
 up). END_MYR: the take's moment at the cut (170 by default).
 
 Shots (seconds): far and tilted, advancing onto Hubble's axis 0-16 (time running to 12 Myr),
-freeze for the split screen 16-23.3, in along Hubble's line of sight 23.3-30, banked swoop onto the
-near ring 30-34.5, low flight along it 34.5-42, descent to a stop in the layer 42-49.5, a look
-round 49.5-61, off towards the core 61-70, held 70-71.5, the galaxy turning round the fixed
-camera 71.5-78, pull-out with time running 78-92, time racing 90-95.5, cut.
+freeze for the split screen 16-25, in along Hubble's line of sight 25-31.7, banked swoop onto the
+near ring 31.7-36.2, low flight along it 36.2-43.7, descent to a stop in the layer 43.7-51.2, a
+look round 51.2-62.7, off towards the core 62.7-71.7, held 71.7-73.2, the galaxy turning round
+the fixed camera 73.2-79.7, pull-out with time running 79.7-93.7, time racing 91.7-97.2, cut.
 
 The camera flies as a pilot: it looks along its own path a little ahead (a lead into turns),
 banks with the turn of its course (3.5 rad per rad/s, 0.45 rad at most, eased) and never slips
@@ -30,11 +30,11 @@ INSIDE = "/Users/pierregc/claude-workspace/sombrero/out/508/flights/h2-descent.f
 STARS = {"starBloom": 0.12, "heldLengths": 12.0}
 HUBBLE = np.array([0.0, -795.618, 83.623])  # the freeze: 800 kpc, 6 degrees up
 FOV_H, ROLL_H = 0.018632, 0.1
-FAR, EL_FAR = 3200.0, 68.0  # first frame: four times Hubble's distance, 22 degrees off the pole
-T_F, T_H = 16.0, 23.3  # freeze, end of the hold
-T_A = 30.0  # end of the straight approach
-T_RING, T_LOW, T_STOP, T_GO, T_CORE = 34.5, 42.0, 49.5, 61.0, 70.0
-T_ROT, T_PULL, T_PEND, T_ACC, END = 71.5, 78.0, 92.0, 90.0, 95.5
+FAR, EL_FAR = 3200.0, 62.0  # first frame: four times Hubble's distance, 28 degrees off the pole
+T_F, T_H = 16.0, 25.0  # freeze, end of the hold (the split screen)
+T_A = T_H + 6.7  # end of the straight approach
+T_RING, T_LOW, T_STOP, T_GO, T_CORE = (T_A + x for x in (4.5, 12.0, 19.5, 31.0, 40.0))
+T_ROT, T_PULL, T_PEND, T_ACC, END = (T_A + x for x in (41.5, 48.0, 62.0, 60.0, 65.5))
 MYR_F = 12.0
 MYR_END = float(sys.argv[2]) if len(sys.argv) > 2 else 170.0
 R_ROT, R_PULL = 1.2, 2.5  # Myr/s while the camera holds near the core, at the end of the pull-out
@@ -222,7 +222,7 @@ dchi = np.gradient(np.unwrap(np.arctan2(np.gradient(pts[:, 1]), np.gradient(pts[
 turn = np.interp(s_t, arc, dchi) * v_t * ins
 bank = gaussian_filter1d(BANK_MAX * np.tanh(K_BANK * turn / BANK_MAX), 0.6 * FPS, mode="nearest")
 roll[ins] += bank[ins]
-fi = CubicHermiteSpline([T_A, 36.0, 46.0, T_GO, T_CORE], [fov_appr(RHO_A), 1.0, 1.1, 1.1, 1.0],
+fi = CubicHermiteSpline([T_A, T_A + 6.0, T_A + 16.0, T_GO, T_CORE], [fov_appr(RHO_A), 1.0, 1.1, 1.1, 1.0],
                         [-V_A * (fov_appr(RHO_A * 1.001) - fov_appr(RHO_A)) / (RHO_A * 0.001), 0.006, 0, 0, 0])
 fov[ins] = fi(t[ins])
 fov[core] = 1.0
