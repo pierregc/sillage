@@ -67,7 +67,7 @@ overlay() {
 
 contact() {
   local s=()
-  for x in "1 far=0.1" "1 far=8" "1 far=15.9" "2 split=17" "2 split=20.5" "2 split=24" \
+  for x in "1 far=0.6" "1 far=8" "1 far=15.9" "2 split=17" "2 split=20.5" "2 split=24" \
     "3 approach=25.7" "3 approach=28.2" "3 approach=31.2" "4 swoop=32.7" "4 swoop=34.2" "4 swoop=35.7" \
     "5 low flight=37.2" "5 low flight=40.2" "5 low flight=43.2" "6 descent=44.7" "6 descent=47.2" "6 descent=50.7" \
     "7 look up=54" "7 look left=58.7" "7 look right=61.7" "8 to the core=64.7" "8 to the core=67.7" "8 to the core=71.2" \
