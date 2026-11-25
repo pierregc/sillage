@@ -51,6 +51,8 @@ extension LookFile {
         settings.youngWidth = look.youngWidth
         settings.knotWidth = look.knotWidth
         settings.dustWidth = look.dustWidth
+        settings.sky = sky
+        settings.dither = max(dither ?? 0, 0)
         return settings
     }
 

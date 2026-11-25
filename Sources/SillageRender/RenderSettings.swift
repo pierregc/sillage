@@ -62,6 +62,11 @@ public struct RenderSettings: Sendable {
     public var dustWeb: Float = 0
     /// Background galaxies behind the field stars (Metal only).
     public var galaxyCount: Int = 0
+    /// The deep sky drawn per pixel behind the dust (#512); nil, none (Metal only).
+    public var sky: SkyField?
+    /// Triangular noise of this many 8-bit steps before the frame is written (#512); 0 none
+    /// (Metal only).
+    public var dither: Float = 0
     /// How brightly the dust glows, and in what colour (Metal only).
     public var dustGlow: Float = 0
     public var dustGlowColour = SIMD3<Float>(1, 0.26, 0.24)
