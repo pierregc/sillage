@@ -157,7 +157,7 @@ def film(master, wide_png, out, hold, crf):
                  f"[0:v]trim=start={ts + count / fps},setpts=PTS-STARTPTS[c];"
                  "[a][b][c]concat=n=3:v=1,format=yuv420p10le[v]")
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", master, "-i", seg, "-filter_complex", graph, "-map", "[v]",
-                        "-c:v", "libx265", "-preset", "medium", "-crf", str(crf), "-x265-params", "log-level=error",
+                        "-c:v", "libx265", "-preset", "medium", "-tune", "grain", "-crf", str(crf), "-x265-params", "log-level=error",
                         "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1", "-movflags", "+faststart", out], check=True)
     print(json.dumps({"film": out, "split": [round(ts, 3), round(ts + count / fps, 3)]}))
 

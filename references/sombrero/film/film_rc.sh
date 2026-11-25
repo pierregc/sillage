@@ -86,7 +86,7 @@ changes() {
   ffmpeg -v error -y -i "$D/a.mov" -i "$D/b2.mov" -i "$D/b3.mov" -i "$D/b4.mov" -filter_complex \
     "[0:v]$n[a];[1:v]$n[b2];[2:v]$n[b3];[3:v]$n[b4];[b2][b3]xfade=transition=fade:duration=1:offset=$o2[x2];\
 [x2][b4]xfade=transition=fade:duration=1:offset=$o3[x3];[a][x3]concat=n=2:v=1,fade=t=in:st=0:d=0.5,format=yuv420p[v]" \
-    -map "[v]" -c:v libx264 -crf "$CRF" -preset slow -tag:v avc1 -movflags +faststart "$D/changes.mp4"
+    -map "[v]" -c:v libx264 -crf "$CRF" -preset slow -tune grain -tag:v avc1 -movflags +faststart "$D/changes.mp4"
   for x in "${SHOTS[@]:0:3}"; do s+=("$x"); done
   for x in "${SHOTS[@]:15}"; do s+=("${x%=*}=$(python3 -c "print(round(${x##*=} - ${SEAMS[0]} + $FREEZE, 3))")"); done
   $PY "$W/references/sombrero/film/contact.py" "$D/changes.mp4" "$D/changes-contact.jpg" 640 "${s[@]}"
