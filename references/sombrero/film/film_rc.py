@@ -6,12 +6,14 @@ same, one render a frame), prints the camera once a second and the angle between
 sight and the velocity. Axes are galaxy 0's (disk in xy, spin +z; Hubble looks from -y, 6 degrees
 up). END_MYR: the take's moment at the cut (170 by default).
 
-Shots (seconds): far and tilted, advancing onto Hubble's axis 0-16 (time running to 12 Myr),
-freeze for the split screen 16-25, in along Hubble's line of sight 25-31.7, banked swoop onto the
-near ring 31.7-36.2, low flight along it 36.2-43.7, descent to a stop in the layer 43.7-51.2, a
-look round 51.2-62.7, off towards the core and up over it 62.7-73.2, held 73.2-74.7, the galaxy
-turning round the fixed camera 74.7-81.2, pull-out with time running 81.2-95.2, time racing
-93.2-98.7, cut.
+Shots (seconds): far, seen 63 degrees from face on with the ring rolled across the frame and off
+centre, turning, then unrolling onto Hubble's axis 0-16 (time running to 48 Myr), freeze for the
+split screen 16-25, in along Hubble's line of sight 25-31.7, banked swoop onto the near ring
+31.7-36.2, low flight along it 36.2-43.7, descent to a stop in the layer 43.7-51.2, the head
+turned 100 degrees right and back 51.2-64.7, off out over the ring and round onto the core to a
+hover 450 pc above the plane inside the ring 64.7-79.2, held 79.2-80.7, the galaxy turning round
+the fixed camera 80.7-88.2, pull-out with time running 88.2-102.2, time speeding up over half a
+turn 101.2-107.7, cut.
 
 The camera flies as a pilot: it looks along its own path a little ahead (a lead into turns),
 banks with the turn of its course (2.5 rad per rad/s, 0.35 rad at most, eased) and never slips
@@ -27,21 +29,55 @@ from scipy.interpolate import CubicHermiteSpline, CubicSpline, PchipInterpolator
 from scipy.ndimage import gaussian_filter1d
 
 FPS = 30
-INSIDE = "/Users/pierregc/claude-workspace/sombrero/out/508/flights/h2-descent.flight.json"
-STARS = {"starBloom": 0.12, "heldLengths": 12.0}
+# #511's inside block (dust thresholds; #510's stars), the dust's column 1.2 times the original
+# (#511 had 1.15), and #510's star shares scaled by 92/255: they are shares of the look's kernel
+# ceiling, which #512's look raised from 92 to 255 px, so the same particles turn to stars
+INSIDE = "/Users/pierregc/claude-workspace/sombrero/out/511/flights/final02.flight.json"
+DEPTH = 0.39 * 1.2
+STARS = {"starFrom": round(0.05 * 92 / 255, 6), "starFull": round(0.2 * 92 / 255, 6)}
 HUBBLE = np.array([0.0, -795.618, 83.623])  # the freeze: 800 kpc, 6 degrees up
 FOV_H, ROLL_H = 0.018632, 0.1
-FAR, EL_FAR = 2200.0, 62.0  # first frame: the ring a quarter of the frame's width, 28 degrees off the pole
+FAR = 2200.0  # first frame: the ring a quarter of the frame's width
+AZ0, EL0, ROLL0 = -50.0, 27.0, -0.55  # 63 degrees from face on, 40 degrees round, the ring's line rolled 31 degrees
+OFF0 = np.array([0.08, 0.06])  # the centre off the frame's, shares of its width and height
 T_F, T_H = 16.0, 25.0  # freeze, end of the hold (the split screen)
 T_A = T_H + 6.7  # end of the straight approach
-T_RING, T_LOW, T_STOP, T_GO, T_CORE = (T_A + x for x in (4.5, 12.0, 19.5, 31.0, 41.5))
-T_ROT, T_PULL, T_PEND, T_ACC, END = (T_A + x for x in (43.0, 49.5, 63.5, 61.5, 67.0))
-MYR_F = 12.0
-MYR_END = float(sys.argv[2]) if len(sys.argv) > 2 else 170.0
-R_ROT, R_PULL = 2.0, 3.0  # Myr/s while the camera holds near the core, at the end of the pull-out
-RAMP = 2.5  # seconds the last acceleration of time takes
-C_STOP = np.array([3.879, -0.408, 1.7])  # the stop near the core, 1.7 kpc up: the far side of the ring in view
-END_DIR = np.array([-0.9945 * 0.9659, 0.1045 * 0.9659, 0.2588])  # towards the core, climbing 15 deg
+T_RING, T_LOW, T_STOP, T_GO, T_CORE = (T_A + x for x in (4.5, 12.0, 19.5, 33.0, 47.5))
+T_ROT, T_PULL, T_PEND, T_ACC, END = (T_A + x for x in (49.0, 56.5, 70.5, 69.5, 76.0))
+T_SLOW = 8.0  # the opening's time runs evenly to here, then slows to the freeze
+MYR_F = 48.0  # the freeze: a third of a turn of the ring in the opening
+HALF = float(sys.argv[2]) if len(sys.argv) > 2 else 65.0  # Myr the ending adds: about half a turn of the ring
+R_ROT, R_PULL = 1.0, 2.5  # Myr/s while the camera holds near the core, at the end of the pull-out
+EASE_ROT = 5.0  # seconds time takes to start again at the hover
+RAMP = 4.5  # seconds the ending's acceleration of time takes
+# off again from the stop: a right bend out over the ring (55 degrees, radius 2.5 kpc), then a
+# banked left turn back round onto the core (168 degrees, radius 1.6 kpc) climbing to 450 pc, to a
+# hover 7.1 kpc from the centre, the eyes on it, the ring's inner dust in front
+STOP, HEAD_STOP, Z_HOVER = np.array([5.982, -2.940, 0.016]), 73.8, 0.45
+BENDS = [(2.5, -55.0), (1.6, 168.0)]
+
+
+def bends(n_out=12):
+    p, h, xy = STOP[:2].copy(), math.radians(HEAD_STOP), [STOP[:2].copy()]
+    for r, a in BENDS:
+        for _ in range(400):
+            dh = math.radians(a) / 400
+            h += dh / 2
+            p = p + r * abs(dh) * np.array([math.cos(h), math.sin(h)])
+            h += dh / 2
+            xy.append(p.copy())
+    xy = np.array(xy)
+    s = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))])
+    pick = np.linspace(0, s[-1], n_out + 1)[1:]
+    x = np.clip(pick / (0.85 * s[-1]), 0, 1)
+    z = STOP[2] + (Z_HOVER - STOP[2]) * x * x * (3 - 2 * x)
+    pts = np.stack([np.interp(pick, s, xy[:, 0]), np.interp(pick, s, xy[:, 1]), z], -1)
+    return pts, np.array([math.cos(h), math.sin(h), 0.0])
+
+
+HOVER_PTS, END_DIR = bends()
+C_STOP = HOVER_PTS[-1]
+AZ_END = 33.0  # the pull-out's azimuth at 100 kpc
 K_BANK, BANK_MAX = 2.5, 0.35
 
 t = np.arange(round(END * FPS) + 1) / FPS
@@ -79,17 +115,24 @@ eye = np.zeros((n, 3))
 fov = np.zeros(n)
 roll = np.zeros(n)
 
-# 1-2. from far and tilted onto Hubble's axis, then the hold
+# 1-2. from far, at an odd angle and off centre, unrolling onto Hubble's axis; then the hold
 op = t <= T_F + 1e-9
 ud = smooth5((t - 0.5) / (T_F - 0.5))
-ue = smooth5((t - 1.5) / (T_F - 1.5))
+ue = smooth5((t - 1.0) / (T_F - 1.0))
 rho_op = np.exp(math.log(FAR) + (math.log(800.0) - math.log(FAR)) * ud)
-eye[op] = sph(rho_op[op], -90.0, (EL_FAR + (6.0 - EL_FAR) * ue)[op])
+eye[op] = sph(rho_op[op], (AZ0 + (-90.0 - AZ0) * ue)[op], (EL0 + (6.0 - EL0) * ue)[op])
 hold = (t >= T_F - 1e-9) & (t <= T_H + 1e-9)
 eye[hold] = HUBBLE
 fov[op | hold] = FOV_H
-roll[op] = ROLL_H * ue[op]
+roll[op] = (ROLL0 + (ROLL_H - ROLL0) * ue)[op]
 roll[hold] = ROLL_H
+# the aim moved off the centre so that the galaxy sits OFF0 of the frame away, back to it with the move
+f_op = unit(-eye[op])
+r_op = unit(np.cross(f_op, [0.0, 0.0, 1.0]))
+u_op = np.cross(r_op, f_op)
+h_op = 2 * rho_op[op] * math.tan(FOV_H / 2)
+off = np.zeros((n, 3))
+off[op] = -(1 - ue[op])[:, None] * (OFF0[0] * h_op[:, None] * 16 / 9 * r_op + OFF0[1] * h_op[:, None] * u_op)
 
 # 3. straight in along Hubble's line of sight, the distance eased in log; the closing rate starts
 # from rest over two seconds
@@ -144,12 +187,8 @@ P = np.array([
     ring(-43.0, 7.14, 0.14),   # 6: the descent begins
     [5.598, -4.279, 0.075],    # turning in as it slows, 3.65 kpc round
     [5.855, -3.628, 0.03],
-    [5.982, -2.940, 0.016],    # 9: the stop in the layer, looking 20 degrees in from the ring
-    [6.20, -2.05, 0.12],       # a climbing left turn onto the core, pulling up to see it from above
-    [5.85, -1.10, 0.50],
-    [5.30, -0.62, 1.00],
-    C_STOP - 0.9 * END_DIR,
-    C_STOP,                    # 14: near the core, 2 kpc up, coming to a hover
+    STOP,                      # 9: the stop in the layer, looking 20 degrees in from the ring
+    *HOVER_PTS,                # the S out over the ring and round onto the core, to the hover
 ])
 I_RING, I_LOW, I_STOP, I_CORE = 3, 6, 9, len(P) - 1
 chord = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
@@ -173,7 +212,7 @@ def point_at(s):
 # (seconds, control point, speed kpc/s); within a leg the speed goes from one to the next
 # smoothstepped, plus a bump 16 x^2 (1-x)^2 that makes the leg's length: no jolt at any waypoint
 WAY = [(T_A, 0, V_A), (T_RING, I_RING, 0.55), (T_LOW, I_LOW, 0.55), (T_STOP, I_STOP, 0.0),
-       (T_GO, I_STOP, 0.0), (T_CORE, I_CORE, 0.0)]
+       (T_GO, I_STOP, 0.0), (T_GO + 6.0, I_STOP + 4, 0.75), (T_CORE, I_CORE, 0.0)]  # +4: end of the right bend
 ins = (t > T_A + 1e-9) & (t <= T_CORE + 1e-9)
 s_t = np.zeros(n)
 v_t = np.zeros(n)
@@ -197,8 +236,7 @@ fwd = unit(point_at(s_t + lead) - point_at(s_t))
 
 # a head turned from the stop: (seconds after the stop, yaw left, pitch up in degrees), each move
 # minimum-jerk, held still between
-LOOK = [(0.0, 0, 0), (0.6, 0, 0), (2.1, 5, 8), (2.5, 5, 8), (4.4, -3, -8), (4.8, -3, -8),
-        (6.8, 20, -1), (7.3, 20, -1), (10.3, -20, 1), (10.6, -20, 1), (11.5, 0, 0)]
+LOOK = [(0.0, 0, 0), (1.0, 0, 0), (7.0, -100, 0), (8.5, -100, 0), (13.5, 0, 0)]  # 100 degrees right and back
 lk = (t > T_STOP) & (t < T_GO)
 yaw_off = np.zeros(n)
 pit_off = np.zeros(n)
@@ -221,7 +259,7 @@ d_cen = to_c / np.maximum(dist_c, 1e-9)[:, None]
 w = smooth((t - T_A) / 1.2) * (1 - smooth((t - T_CORE) / 0.5)) * ins
 d = unit((1 - w)[:, None] * d_cen + w[:, None] * look)
 reach = dist_c + (2.5 - dist_c) * smooth((t - T_A) / 2.5) * (1 - smooth((t - (T_CORE - 3.0)) / 3.0)) * (t <= T_CORE)
-aim = eye + d * reach[:, None]
+aim = eye + d * reach[:, None] + off
 
 # banking from the turn of the course (left positive, as roll)
 dchi = np.gradient(np.unwrap(np.arctan2(np.gradient(pts[:, 1]), np.gradient(pts[:, 0]))), arc)
@@ -240,34 +278,33 @@ el0 = math.degrees(math.asin(C_STOP[2] / rho0))
 pull = t > T_PULL + 1e-9
 u = smooth5((t - T_PULL) / (T_PEND - T_PULL))
 rho_p = np.exp(math.log(rho0) + (math.log(100.0) - math.log(rho0)) * u)
-eye[pull] = sph(rho_p[pull], az0 + (20.0 - az0) * u[pull], el0 + (25.0 - el0) * u[pull])
+eye[pull] = sph(rho_p[pull], az0 + (AZ_END - az0) * u[pull], el0 + (25.0 - el0) * u[pull])
 aim[core] = 0.0
 V0 = 2 * rho0 * math.tan(0.55)
 beta = math.log(2 * 100.0 * math.tan(0.1095) / V0) / math.log(100.0 / rho0)
 fov[pull] = 2 * np.arctan(V0 * (rho_p[pull] / rho0) ** beta / (2 * rho_p[pull]))
 
-# time: running to the freeze, held, then the galaxy turns round the held camera, faster on the
-# way out, racing at the end
+# time: running from the first frame, slowing to the freeze, held, then the galaxy turns round the
+# held camera, starting again gently, faster on the way out, speeding up over half a turn at the end
 fine = np.linspace(0, END, 200001)
 r = np.zeros_like(fine)
 mo = fine <= T_F
-r[mo] = 1 - smooth((fine[mo] - 4.0) / (T_F - 4.0))
+r[mo] = 1 - smooth((fine[mo] - T_SLOW) / (T_F - T_SLOW))
 r[mo] *= (MYR_F - 0.5) / np.trapezoid(r[mo], fine[mo])
 mr = (fine > T_ROT) & (fine <= T_PULL)
-r[mr] = R_ROT * smooth((fine[mr] - T_ROT) / 1.5)
+r[mr] = R_ROT * smooth5((fine[mr] - T_ROT) / EASE_ROT)
 mp = (fine > T_PULL) & (fine <= T_ACC)
 r[mp] = R_ROT + (R_PULL - R_ROT) * smooth((fine[mp] - T_PULL) / (T_ACC - T_PULL))
 ma = fine > T_ACC
 myr_fine = 0.5 + np.concatenate([[0], np.cumsum((r[1:] + r[:-1]) / 2 * np.diff(fine))])
-need = MYR_END - myr_fine[ma][0]
-ramp = smooth((fine[ma] - T_ACC) / RAMP)
-r_top = R_PULL + (need - R_PULL * (END - T_ACC)) / np.trapezoid(ramp, fine[ma])
+ramp = smooth5((fine[ma] - T_ACC) / RAMP)
+r_top = R_PULL + (HALF - R_PULL * (END - T_ACC)) / np.trapezoid(ramp, fine[ma])
 r[ma] = R_PULL + (r_top - R_PULL) * ramp
 myr_fine = 0.5 + np.concatenate([[0], np.cumsum((r[1:] + r[:-1]) / 2 * np.diff(fine))])
 myr = np.interp(t, fine, myr_fine)
 myr[(t >= T_F - 1e-9) & (t <= T_ROT + 1e-9)] = MYR_F
-print(f"time: {myr[round(T_PULL * FPS)]:.1f} Myr at {T_PULL} s, {myr[round(T_ACC * FPS)]:.1f} at {T_ACC} s, "
-      f"{myr[-1]:.1f} at the cut; racing at {r_top:.1f} Myr/s", file=sys.stderr)
+print(f"time: {myr[0]:.1f} to {MYR_F} Myr in the opening at {r[1]:.2f} Myr/s, {myr[round(T_PULL * FPS)]:.1f} at {T_PULL:.1f} s, "
+      f"{myr[round(T_ACC * FPS)]:.1f} at {T_ACC:.1f} s, {myr[-1]:.1f} at the cut; up to {r_top:.1f} Myr/s", file=sys.stderr)
 
 
 def key(i):
@@ -278,6 +315,7 @@ def key(i):
 
 
 inside = {**json.load(open(INSIDE))["inside"], **STARS}
+inside["dustScreen"] = {**inside["dustScreen"], "depth": round(DEPTH, 6)}
 keys = [key(i) for i in range(n)]
 out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
