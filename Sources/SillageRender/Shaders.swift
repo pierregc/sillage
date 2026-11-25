@@ -2710,6 +2710,13 @@ enum Shaders {
             float3 depths;
             float4 middles;
             float soft;
+            /// From inside (#511), times the share the dabs lay themselves: the inverse square of
+            /// the longest slant a line reads the layer at (0: none), and the span in kpc over which
+            /// the band read at its edges fades in from the ring's inner radius (0: none).
+            float slant;
+            float hole;
+            /// The share the dabs lay themselves, which the hole's fade is taken by.
+            float laid;
         };
 
         // How much of a screen a point of the plane keeps (#506): where the line of sight in the
@@ -3030,6 +3037,9 @@ enum Shaders {
                 column = mix(column, mean, screen.dabSeed.z);
                 column *= 1.0f + added / max(mean, 0.02f);
             }
+            // A ring is no wider than so many times the layer is thick: a line flatter than that
+            // crosses all of it, and its slant column stops growing (#511).
+            if (slabs.slant > 0.0f) { return max(column, 0.0f) * read.y * rsqrt(lz * lz + slabs.slant); }
             return max(column, 0.0f) * read.y / abs(lz);
         }
 
@@ -3066,6 +3076,22 @@ enum Shaders {
                                                 pixel, lut, split, slabs, below);
                     float up = screenDabsLine(frame, w, screen, rel, height, level + least * axis, edge, least,
                                               pixel, lut, split, slabs, above);
+                    if (slabs.hole > 0.0f) {
+                        // The edge read stops the line's slope, so the ring's hole would cut it
+                        // square where its crossing leaves the ring: it fades in from the inner
+                        // radius instead, wholly within reach of the eye, and not at all at the
+                        // band's edges, where it is the line itself (#511).
+                        float2 eye = float2(dot(rel, frame.axisU.xyz), dot(rel, frame.axisV.xyz));
+                        float reach = height / least;
+                        float sloped = smoothstep(0.5f * least, least, abs(lz));
+                        float2 ahead = float2(height > 0.0f ? reach : 0.0f, height < 0.0f ? -reach : 0.0f);
+                        float inner = screen.shape.y;
+                        float fadeDown = smoothstep(inner, inner + slabs.hole, length(eye + edge * ahead.x));
+                        float fadeUp = smoothstep(inner, inner + slabs.hole, length(eye + edge * ahead.y));
+                        float whole = slabs.laid * (1.0f - sloped);
+                        down *= mix(1.0f, fadeDown, whole * saturate(ahead.x / 0.5f));
+                        up *= mix(1.0f, fadeUp, whole * saturate(ahead.y / 0.5f));
+                    }
                     float t = smoothstep(-least, least, lz);
                     float column = mix(down, up, t);
                     if (split) { shares = mix(below * down, above * up, t) / max(column, 1e-9f); }
@@ -3081,7 +3107,7 @@ enum Shaders {
                                float3 ray, float3 stepX, float3 stepY, texture2d<half> tile, texture2d<half> lut) {
             if (screen.dabSize.x > 0.0f) {
                 float4 shares = float4(1.0f, 0.0f, 0.0f, 0.0f);
-                ScreenSlabs none = {float3(0.0f), float4(0.0f), 0.0f};
+                ScreenSlabs none = {float3(0.0f), float4(0.0f), 0.0f, 0.0f, 0.0f, 0.0f};
                 return screenDabsAt(frame, w, screen, ray, stepX, lut, false, none, shares);
             }
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
@@ -3154,6 +3180,9 @@ enum Shaders {
                 slabs.middles = 0.5f * (k + float4(k.yzw, u.inside.slabEnd));
             }
             slabs.soft = u.inside.slabSoft * screen.dabSoft.x;
+            slabs.slant = 0.0f;
+            slabs.hole = 0.0f;
+            slabs.laid = 0.0f;
             return slabs;
         }
 
@@ -3198,8 +3227,11 @@ enum Shaders {
                 // dabs lie along the line, wherever the grains are, so near the eye it is no
                 // longer stamped on their separate kernels; `volume` below 1 leaves the rest on them.
                 float4 shares = float4(1.0f, 0.0f, 0.0f, 0.0f);
-                float2 read = screenDabsAt(frames[screened], w, screen, ray, stepX, lut, true,
-                                           screenSlabDepths(u, screen), shares);
+                ScreenSlabs slabs = screenSlabDepths(u, screen);
+                slabs.slant = volume * screen.dabSoft.y;
+                slabs.hole = screen.dabSoft.z;
+                slabs.laid = volume;
+                float2 read = screenDabsAt(frames[screened], w, screen, ray, stepX, lut, true, slabs, shares);
                 float laid = read.y * screen.depth.x * read.x;
                 float carried = held > 0.0f ? (1.0f - volume) * laid / held : 0.0f;
                 for (int s = 0; s < 4; ++s) {

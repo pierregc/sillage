@@ -114,6 +114,13 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
     /// Spreads the dust the dabs lay over a slab's depth, as the grains' is (#511): dust just past
     /// a slab boundary shades the light just behind it, so no boundary shows as a band in the dust.
     public var softSlabs: Bool = false
+    /// From inside, the longest slant a line reads the layer at, in times its vertical column (0:
+    /// none, 1/sin of the angle to the plane at every angle): a ring is no wider than so many times
+    /// the layer is thick, so a flatter line crosses all of it and its column stops growing (#511).
+    public var slant: Float = 0
+    /// From inside, the span in kpc over which the band read at its edges fades in from the ring's
+    /// inner radius, so the hole does not cut the line at the horizon square (0: none).
+    public var holeFade: Float = 0
 
     public init(from decoder: any Decoder) throws {
         try rejectUnknownFields(decoder, CodingKeys.self)
@@ -134,6 +141,8 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         volumeHeight = try c.value(.volumeHeight, or: volumeHeight)
         grazingHeight = try c.value(.grazingHeight, or: grazingHeight)
         softSlabs = try c.value(.softSlabs, or: softSlabs)
+        slant = try c.value(.slant, or: slant)
+        holeFade = try c.value(.holeFade, or: holeFade)
     }
 
     var fault: String? {
@@ -154,6 +163,10 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         if !(volumeHeight >= 0 && volumeHeight <= 1000) {
             return "dustScreen dabs volumeHeight \(volumeHeight): 0 to 1000 kpc"
         }
+        if !(slant == 0 || (slant >= 1 && slant <= 1000)) {
+            return "dustScreen dabs slant \(slant): 0, or 1 to 1000"
+        }
+        if !(holeFade >= 0 && holeFade <= 100) { return "dustScreen dabs holeFade \(holeFade): 0 to 100 kpc" }
         if !(grazingHeight >= 0 && grazingHeight <= 1000) {
             return "dustScreen dabs grazingHeight \(grazingHeight): 0 to 1000 kpc"
         }
@@ -302,7 +315,8 @@ struct ScreenUniforms {
     /// height in kpc from which the dabs lay none of the column themselves, the one from which they
     /// leave the grazing band to the grains (0: four dab heights).
     var dabInside = SIMD4<Float>(0, 1, 0, 0)
-    /// 1 when the dabs spread their dust over a slab's depth as the grains do.
+    /// 1 when the dabs spread their dust over a slab's depth as the grains do, the inverse square of
+    /// the longest slant, the hole's fade in kpc.
     var dabSoft: SIMD4<Float> = .zero
 
     static func front(_ ref: DustScreenRef?) -> SIMD4<Float> {
@@ -323,7 +337,8 @@ struct ScreenUniforms {
         dabRing2 = ring(2)
         dabRing3 = ring(3)
         dabInside = SIMD4(dabs.fade / 1000, dabs.grazing, dabs.volumeHeight, dabs.grazingHeight)
-        dabSoft = SIMD4(dabs.softSlabs ? 1 : 0, 0, 0, 0)
+        let slant = dabs.slant > 0 ? 1 / (dabs.slant * dabs.slant) : 0
+        dabSoft = SIMD4(dabs.softSlabs ? 1 : 0, slant, dabs.holeFade, 0)
     }
 }
 
