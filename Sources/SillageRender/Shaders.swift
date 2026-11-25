@@ -3146,9 +3146,8 @@ enum Shaders {
         static ScreenSlabs screenSlabDepths(constant SplatUniforms &u, constant ScreenUniforms &screen) {
             ScreenSlabs slabs;
             if (u.inside.slabSoft <= 0.0f) {
-                float quarter = 1.0f / (4.0f * u.slabScale);
-                slabs.depths = u.slabNear + float3(1.0f, 2.0f, 3.0f) * quarter;
-                slabs.middles = u.slabNear + float4(0.5f, 1.5f, 2.5f, 3.5f) * quarter;
+                slabs.depths = u.slabNear + float3(1.0f, 2.0f, 3.0f) / (4.0f * u.slabScale);
+                slabs.middles = u.slabNear + float4(0.5f, 1.5f, 2.5f, 3.5f) / (4.0f * u.slabScale);
             } else {
                 float4 k = u.inside.slabKnots;
                 slabs.depths = k.yzw;
