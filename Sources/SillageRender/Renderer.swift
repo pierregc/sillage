@@ -592,29 +592,47 @@ public final class Renderer {
         defer { inside = frame }
         let renders = max(cameras.count - 1, 1)
         let starBloom = frame.settings.starBloom
-        let source = starBloom < 1 ? bloomTarget() : nil
+        // The share of the sky's light the bloom sees (#509): below 1 the sky is drawn last
+        // and its light kept out of the bloom's source but for that share.
+        let skyBloom = settings.sky.map { $0.brightness > 0 ? min(max($0.bloom, 0), 1) : 1 } ?? 1
+        let source = starBloom < 1 || skyBloom < 1 ? bloomTarget() : nil
         for index in 0..<renders {
             for (layer, stack) in frame.stacks.enumerated() {
                 inside?.eyeSlabs = stack.eyeSlabs
                 let weight = stack.weight / Float(renders)
                 let after = index > 0 || layer > 0
-                // The light before the point stars goes to the bloom whole, theirs in part.
+                // The light before the point stars goes to the bloom whole, theirs in part, and
+                // the sky's, drawn last, in its own part: the source is (1 - s) before the stars,
+                // (s - k) before the sky and k all of it, s the stars' share and k the sky's.
                 var split = false
+                var skySplit = false
+                let stars = starBloom < 1 ? starBloom : 1
                 encodeSplat(
                     camera: cameras[index], into: buffer,
                     next: index + 1 < cameras.count ? cameras[index + 1] : nil,
-                    beforeStars: source.map { source in
-                        {
-                            split = true
-                            self.encodeInsideResolve(
-                                into: buffer, pass, source, weight: weight * (1 - starBloom), after: after)
-                        }
-                    })
+                    beforeStars: starBloom < 1
+                        ? source.map { source in
+                            {
+                                split = true
+                                self.encodeInsideResolve(
+                                    into: buffer, pass, source, weight: weight * (1 - starBloom),
+                                    after: after)
+                            }
+                        } : nil,
+                    beforeSky: skyBloom < 1
+                        ? source.map { source in
+                            {
+                                self.encodeInsideResolve(
+                                    into: buffer, pass, source,
+                                    weight: weight * ((split ? stars : 1) - skyBloom), after: after || split)
+                                skySplit = true
+                            }
+                        } : nil)
                 encodeInsideResolve(into: buffer, pass, resolved, weight: weight, after: after)
                 if let source {
+                    let last = skySplit ? skyBloom : (split ? starBloom : 1)
                     encodeInsideResolve(
-                        into: buffer, pass, source, weight: split ? weight * starBloom : weight,
-                        after: after || split)
+                        into: buffer, pass, source, weight: weight * last, after: after || split || skySplit)
                 }
             }
         }
@@ -689,7 +707,7 @@ public final class Renderer {
     private func encodeSplat(
         camera: Camera, into buffer: MTLCommandBuffer, particles: Range<Int>? = nil,
         stages: ClosedRange<UInt32> = 0...1, first: Bool = true, next: Camera? = nil,
-        beforeStars: (() -> Void)? = nil
+        beforeStars: (() -> Void)? = nil, beforeSky: (() -> Void)? = nil
     ) {
         // From inside a galaxy (#297): the passes its text changes come from its own library.
         // Not for a frame drawn in parts, which the canvas alone asks for.
@@ -1027,7 +1045,10 @@ public final class Renderer {
             case .stars:
                 guard var encoder = frameEncoder() else { continue }
                 var red = Self.reddening(settings.dustReddening)
-                if plan.clears { drawSky(encoder, camera: camera, red: red) }
+                // A sky the bloom sees only in part is drawn last, once the light before it is
+                // resolved for the bloom (#509).
+                let skyLast = plan.clears && beforeSky != nil && deep != nil
+                if plan.clears && !skyLast { drawSky(encoder, camera: camera, red: red) }
                 var law = ScreenLaw(within?.settings.dustScreen, web: webbed)
                 func bindStars(_ encoder: MTLRenderCommandEncoder) {
                     bindParticles(encoder)
@@ -1060,6 +1081,17 @@ public final class Renderer {
                         encoder.setVertexBuffer(deep.list, offset: 0, index: 23)
                         encoder.drawPrimitives(
                             type: .point, indirectBuffer: deep.draw, indirectBufferOffset: 0)
+                    }
+                    if skyLast, let beforeSky {
+                        encoder.endEncoding()
+                        frame = nil
+                        beforeSky()
+                        guard
+                            let reopened = buffer.makeRenderCommandEncoder(
+                                descriptor: descriptor([accumulation, dustAccumulation], load: .load))
+                        else { continue }
+                        frame = reopened
+                        drawSky(reopened, camera: camera, red: red)
                     }
                 } else if uniforms.widens, let wide = widenedPipelines(tracing: traced != nil) {
                     drawParts(encoder, massive: wide.massive, tracers: wide.tracers)

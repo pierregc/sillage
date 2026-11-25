@@ -378,7 +378,10 @@ object fainter by its solid angle, so a 1080p frame is the 4K one reduced; `dept
 a view wider than the reference further, and from inside a disk the sky is gone. `turn` below 1
 shows only that share of the camera's turns, rolls included, from the view `anchor` (with
 `anchorUp`): a telephoto orbiting a galaxy then sees the sky drift rather than race past (the
-Sombrero film takes 0.025). `dither` lays
+Sombrero film takes 0.025). `bloom` below 1, in a flight's frames, keeps that share of the sky's
+light out of the look's bloom, which otherwise lays its every level round a bright star as a wide
+cone; `halo` gives each star a soft halo of its own instead, that share of its light, `haloWidth`
+(3) times its core's width (the film takes 0, 0.1 and 3). `dither` lays
 triangular noise of that many 8-bit steps on the frame before it is written, so a faint halo is
 not cut into bands. Both Metal only.
 

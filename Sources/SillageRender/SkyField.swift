@@ -43,12 +43,21 @@ public struct SkyField: Codable, Sendable, Equatable {
     /// The view the sky is where it is at any `turn`, and its up.
     public var anchor: SIMD3<Float>
     public var anchorUp: SIMD3<Float>
+    /// Share of the sky's light the look's bloom sees, in a flight's frames: 1 blooms it as any
+    /// light, so a bright star wears the bloom's every level as a wide cone; 0 leaves it its
+    /// core and spikes (#509).
+    public var bloom: Float
+    /// A soft halo round each star, as a share of its light on top of its core, `haloWidth`
+    /// times the core's width: the one glow a star keeps when the bloom does not see it.
+    public var halo: Float
+    public var haloWidth: Float
 
     public init(
         brightness: Float = 1, density: Float = 1, fieldOfView: Float = 0.018632,
         height: Float = 2160, depth: Float = 2, spikes: Float = 1, spikeAngle: Float = 0,
         galaxies: Float = 1, starWidth: Float = 0.65, seed: Int = 1, turn: Float = 1,
-        anchor: SIMD3<Float> = SIMD3(0, 1, 0), anchorUp: SIMD3<Float> = SIMD3(0, 0, 1)
+        anchor: SIMD3<Float> = SIMD3(0, 1, 0), anchorUp: SIMD3<Float> = SIMD3(0, 0, 1),
+        bloom: Float = 1, halo: Float = 0, haloWidth: Float = 3
     ) {
         self.brightness = brightness
         self.density = density
@@ -63,6 +72,9 @@ public struct SkyField: Codable, Sendable, Equatable {
         self.turn = turn
         self.anchor = anchor
         self.anchorUp = anchorUp
+        self.bloom = bloom
+        self.halo = halo
+        self.haloWidth = haloWidth
     }
 
     public init(from decoder: any Decoder) throws {
@@ -82,7 +94,10 @@ public struct SkyField: Codable, Sendable, Equatable {
             seed: try c.value(.seed, or: d.seed),
             turn: try c.value(.turn, or: d.turn),
             anchor: try c.value(.anchor, or: d.anchor),
-            anchorUp: try c.value(.anchorUp, or: d.anchorUp))
+            anchorUp: try c.value(.anchorUp, or: d.anchorUp),
+            bloom: try c.value(.bloom, or: d.bloom),
+            halo: try c.value(.halo, or: d.halo),
+            haloWidth: try c.value(.haloWidth, or: d.haloWidth))
     }
 }
 
@@ -99,7 +114,8 @@ struct SkyParams {
     var field: SIMD4<Float>
     /// The spikes' cosine and sine, the seed, a star's width in output pixels.
     var more: SIMD4<Float>
-    /// Pixels a cell of the coarsest level spans, and the reference pixel's size in radians.
+    /// Pixels a cell of the coarsest level spans, the reference pixel's size in radians, a
+    /// star's halo as a share of its light and its width in core widths.
     var scale: SIMD4<Float>
 
     /// Cells along a face's edge at the coarsest level.
@@ -175,6 +191,7 @@ struct SkyParams {
             cos(sky.spikeAngle), sin(sky.spikeAngle), Float(UInt32(truncatingIfNeeded: sky.seed) % 65_521),
             max(sky.starWidth, 0.3))
         // A coarsest cell is half pi over `coarsest` radians wide.
-        self.scale = SIMD4(Float.pi / 2 / Self.coarsest / pixel, reference, 0, 0)
+        self.scale = SIMD4(
+            Float.pi / 2 / Self.coarsest / pixel, reference, max(sky.halo, 0), max(sky.haloWidth, 1))
     }
 }

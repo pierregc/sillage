@@ -2003,6 +2003,10 @@ enum Shaders {
             float3 colour = t < 0.3f ? mix(float3(1.0f, 0.72f, 0.5f), float3(1.0f, 0.95f, 0.9f), t / 0.3f)
                                      : mix(float3(1.0f, 0.95f, 0.9f), float3(0.8f, 0.88f, 1.0f), (t - 0.3f) / 0.7f);
             float energy = exp(-0.5f * r2 / (w * w)) / (6.2831853f * w * w);
+            if (p.scale.z > 0.0f) {
+                float hw = w * p.scale.w;
+                energy += p.scale.z * exp(-0.5f * r2 / (hw * hw)) / (6.2831853f * hw * hw);
+            }
             if (p.field.z > 0.0f) {
                 float2 s = float2(dot(off, p.more.xy), dot(off, float2(-p.more.y, p.more.x)));
                 float sw = 0.55f, t0 = 2.0f;
