@@ -33,7 +33,7 @@ FPS = 30
 # (#511 had 1.15), and #510's star shares scaled by 92/255: they are shares of the look's kernel
 # ceiling, which #512's look raised from 92 to 255 px, so the same particles turn to stars
 INSIDE = "/Users/pierregc/claude-workspace/sombrero/out/511/flights/final02.flight.json"
-DEPTH = 0.39 * 1.2
+DEPTH = float(os.environ.get("DEPTH", 0.39 * 1.2))  # the 20 M take wants 0.412: its lane is 11 % deeper at one depth
 STARS = {"starFrom": round(0.05 * 92 / 255, 6), "starFull": round(0.2 * 92 / 255, 6)}
 HUBBLE = np.array([0.0, -795.618, 83.623])  # the freeze: 800 kpc, 6 degrees up
 FOV_H, ROLL_H = 0.018632, 0.1
