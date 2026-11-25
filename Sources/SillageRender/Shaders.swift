@@ -1890,6 +1890,185 @@ enum Shaders {
             return splatOut(starfieldSplat(stars[vid], u));
         }
 
+        // The deep sky (#512, `SkyField`): field stars and small galaxies worked out per pixel
+        // from a seeded hash of the direction, on ten levels of cells of an equi-angular cube,
+        // each level four times the objects of the one before. Drawn once the dust stands in
+        // its target, behind all of it.
+        struct SkyParams {
+            float4 right;
+            float4 up;
+            float4 forward;
+            float4 size;
+            float4 field;
+            float4 more;
+            float4 scale;
+        };
+
+        struct SkyOut {
+            float4 position [[position]];
+        };
+
+        vertex SkyOut skyVertex(uint vid [[vertex_id]]) {
+            SkyOut out;
+            float2 p = float2(float((vid << 1u) & 2u), float(vid & 2u));
+            out.position = float4(p * 2.0f - 1.0f, 0.0f, 1.0f);
+            return out;
+        }
+
+        static uint skyHash(uint x) {
+            x ^= x >> 16u; x *= 0x7feb352du; x ^= x >> 15u; x *= 0x846ca68bu; x ^= x >> 16u;
+            return x;
+        }
+
+        static float skyUnit(thread uint &h) {
+            h = skyHash(h + 0x9e3779b9u);
+            return float(h >> 8u) * (1.0f / 16777216.0f);
+        }
+
+        // Face `face` is axis face / 2, negative when odd; (x, y) equi-angular, -1 to 1.
+        static float3 skyDirection(uint face, float2 xy) {
+            float2 uv = tan(xy * (M_PI_F / 4.0f));
+            uint k = face >> 1u;
+            float3 d = float3(0.0f);
+            d[k] = (face & 1u) ? -1.0f : 1.0f;
+            d[(k + 1u) % 3u] = uv.x;
+            d[(k + 2u) % 3u] = uv.y;
+            return normalize(d);
+        }
+
+        // Where `d` falls on face `face`; past one, off it.
+        static float2 skyFace(uint face, float3 d) {
+            uint k = face >> 1u;
+            float major = max(abs(d[k]), 1e-6f);
+            return atan(float2(d[(k + 1u) % 3u], d[(k + 2u) % 3u]) / major) * (4.0f / M_PI_F);
+        }
+
+        // The light of a mid-level object times this, by rank: nine times fainter a level among
+        // the faint, four among the bright, as Hubble's frame of the Sombrero counts them.
+        static float skyRankLight(float rank) {
+            return rank >= 6.0f ? exp(2.2f * (7.0f - rank)) : 9.0f * exp(1.386f * (6.0f - rank));
+        }
+
+        static float3 skyTint(float3 c) {
+            return c / max(dot(c, float3(0.2126f, 0.7152f, 0.0722f)), 1e-4f);
+        }
+
+        // The light the object of `cell`, if it holds one, lays on the pixel at `at`.
+        static float3 skyObject(uint face, uint level, int2 cell, float cells, float2 at,
+                                constant SkyParams &p) {
+            uint h = skyHash(skyHash(skyHash(uint(p.more.z) * 131u + level * 7u + face)
+                                     + uint(cell.x)) + uint(cell.y));
+            // The cell's solid angle against its face's mean, so the sky is even.
+            float2 uv = tan(((float2(cell) + 0.5f) / cells * 2.0f - 1.0f) * (M_PI_F / 4.0f));
+            float even = 1.178f * (1.0f + uv.x * uv.x) * (1.0f + uv.y * uv.y)
+                       / pow(1.0f + dot(uv, uv), 1.5f);
+            if (skyUnit(h) >= p.field.y * even) { return float3(0.0f); }
+            float2 xy = (float2(cell) + float2(skyUnit(h), skyUnit(h))) / cells * 2.0f - 1.0f;
+            float3 d = skyDirection(face, xy);
+            float z = dot(d, p.forward.xyz);
+            if (z <= 0.0f) { return float3(0.0f); }
+            float2 ndc = float2(dot(d, p.right.xyz) / (z * p.right.w), dot(d, p.up.xyz) / (z * p.up.w));
+            float2 place = float2((ndc.x + 1.0f) * 0.5f * p.size.x, (1.0f - ndc.y) * 0.5f * p.size.y);
+            // In output pixels.
+            float2 off = (at - place) / p.size.z;
+            float rank = float(level) + skyUnit(h);
+            float light = p.field.x * p.size.w * skyRankLight(rank);
+            float w = p.more.w;
+            float hue = skyUnit(h);
+            if (skyUnit(h) < clamp((0.15f + 0.08f * rank) * p.field.w, 0.0f, 0.9f)) {
+                // A galaxy: an exponential disk round a small bulge, of one surface brightness
+                // whatever the view, the larger among the brighter.
+                float size = mix(14.0f, 1.4f, saturate(rank / 9.0f)) * (0.6f + 0.8f * skyUnit(h));
+                float scale = size * p.scale.y / max(2.0f * p.up.w / (p.size.y / p.size.z), 1e-12f);
+                float hd = scale / 1.68f;
+                float q = 0.2f + 0.8f * skyUnit(h);
+                float angle = 6.2831853f * skyUnit(h);
+                float bulge = 0.15f + 0.5f * skyUnit(h);
+                float2 e = float2(dot(off, float2(cos(angle), sin(angle))),
+                                  dot(off, float2(-sin(angle), cos(angle))));
+                float a = sqrt(hd * hd + w * w), b = sqrt(q * q * hd * hd + w * w);
+                float rho = length(float2(e.x / a, e.y / b));
+                if (rho > 12.0f) { return float3(0.0f); }
+                float sb2 = 0.09f * hd * hd + w * w;
+                float profile = (1.0f - bulge) * exp(-rho) / (6.2831853f * a * b)
+                              + bulge * exp(-0.5f * dot(off, off) / sb2) / (6.2831853f * sb2);
+                float3 colour = hue < 0.45f ? mix(float3(1.0f, 0.5f, 0.28f), float3(1.0f, 0.72f, 0.5f), hue / 0.45f)
+                              : (hue < 0.75f ? float3(1.0f, 0.88f, 0.74f) : float3(0.74f, 0.84f, 1.0f));
+                return skyTint(colour) * (light * 0.6f * profile);
+            }
+            // A star: a tight core and, by its light, four spikes fixed to the frame, cut short
+            // inside its cell, whose neighbours are all the pixel looks at.
+            float r2 = dot(off, off);
+            float t = pow(hue, 0.8f);
+            float3 colour = t < 0.3f ? mix(float3(1.0f, 0.72f, 0.5f), float3(1.0f, 0.95f, 0.9f), t / 0.3f)
+                                     : mix(float3(1.0f, 0.95f, 0.9f), float3(0.8f, 0.88f, 1.0f), (t - 0.3f) / 0.7f);
+            float energy = exp(-0.5f * r2 / (w * w)) / (6.2831853f * w * w);
+            if (p.field.z > 0.0f) {
+                float2 s = float2(dot(off, p.more.xy), dot(off, float2(-p.more.y, p.more.x)));
+                float sw = 0.55f, t0 = 2.0f;
+                float limit = 0.9f * p.scale.x / float(1u << level);
+                float2 along = abs(s);
+                float2 across = exp(-0.5f * float2(s.y * s.y, s.x * s.x) / (sw * sw)) / (2.5066f * sw);
+                float2 fall = pow(1.0f + along / t0, float2(-1.8f)) / (2.5f * t0)
+                            * (1.0f - smoothstep(float2(0.5f * limit), float2(limit), along));
+                energy += 0.03f * p.field.z * dot(across, fall);
+            }
+            return skyTint(colour) * (light * energy);
+        }
+
+        static float3 skyCells(uint face, uint level, float cells, float3 d, float2 at,
+                               constant SkyParams &p) {
+            float2 xy = skyFace(face, d);
+            int2 base = int2(floor((xy + 1.0f) * 0.5f * cells));
+            int n = int(cells);
+            float3 sum = float3(0.0f);
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    int2 cell = base + int2(dx, dy);
+                    if (cell.x < 0 || cell.y < 0 || cell.x >= n || cell.y >= n) { continue; }
+                    sum += skyObject(face, level, cell, cells, at, p);
+                }
+            }
+            return sum;
+        }
+
+        static float3 skyLight(float2 at, constant SkyParams &p) {
+            float2 ndc = float2(at.x / p.size.x * 2.0f - 1.0f, 1.0f - at.y / p.size.y * 2.0f);
+            float3 d = normalize(p.forward.xyz + p.right.xyz * (ndc.x * p.right.w)
+                                 + p.up.xyz * (ndc.y * p.up.w));
+            float3 m = abs(d);
+            uint k = (m.x >= m.y && m.x >= m.z) ? 0u : (m.y >= m.z ? 1u : 2u);
+            uint face = k * 2u + (d[k] < 0.0f ? 1u : 0u);
+            float w = p.more.w;
+            float3 total = float3(0.0f);
+            for (uint level = 0u; level < 10u; ++level) {
+                // The levels only get fainter: one whose brightest would not show ends it.
+                float peak = p.field.x * p.size.w * skyRankLight(float(level)) / (6.2831853f * w * w);
+                if (peak < 2e-5f) { break; }
+                float cells = 96.0f * float(1u << level);
+                total += skyCells(face, level, cells, d, at, p);
+                float2 c = (skyFace(face, d) + 1.0f) * 0.5f * cells;
+                if (min(c.x, c.y) < 1.0f || max(c.x, c.y) > cells - 1.0f) {
+                    for (uint other = 0u; other < 6u; ++other) {
+                        uint ok = other >> 1u;
+                        if (ok == k || d[ok] * ((other & 1u) ? -1.0f : 1.0f) <= 0.0f) { continue; }
+                        total += skyCells(other, level, cells, d, at, p);
+                    }
+                }
+            }
+            return total;
+        }
+
+        fragment LightTarget skyFragment(SkyOut in [[stage_in]], SplatFetch prior,
+                                         constant SkyParams &p [[buffer(20)]],
+                                         constant float4 &red [[buffer(21)]]) {
+            float3 light = skyLight(in.position.xy, p);
+            float column = dot(float4(prior.dust), float4(1.0f));
+            LightTarget out;
+            out.light = half4(half3(light * exp(-column * red.xyz)), 0.0h);
+            return out;
+        }
+
         // Reading the dust attachment makes overlapping fragments on a pixel run in order, so
         // only the draw that needs it reads it: the dust writes its own slab without looking,
         // and the field stars sit behind the whole stack and are not dimmed by it.
@@ -3940,12 +4119,19 @@ enum Shaders {
                               texture2d<float, access::write> output [[texture(2)]],
                               texture2d<float, access::sample> spikes [[texture(3)]],
                               constant CompositeParams &p [[buffer(0)]],
+                              constant float &dither [[buffer(1)]],
                               uint2 gid [[thread_position_in_grid]]) {
             if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
-            output.write(
-                compositePixel(hdr, bloom, spikes, gid,
-                               uint2(output.get_width(), output.get_height()), p),
-                gid);
+            float4 pixel = compositePixel(hdr, bloom, spikes, gid,
+                                          uint2(output.get_width(), output.get_height()), p);
+            // A look's dither (#512): triangular noise of `dither` 8-bit steps, new each frame,
+            // so a faint gradient is not cut into bands; none on black.
+            if (dither > 0.0f) {
+                float noise = hash2(float2(gid) + p.seed * 0.618f) + hash2(float2(gid) + p.seed * 1.37f + 71.3f) - 1.0f;
+                float shown = max(pixel.r, max(pixel.g, pixel.b));
+                pixel.rgb += noise * (dither / 255.0f) * smoothstep(0.0f, 3.0f / 255.0f, shown);
+            }
+            output.write(pixel, gid);
         }
         #endif
         """

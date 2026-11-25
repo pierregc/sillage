@@ -42,6 +42,7 @@ public final class Renderer {
     private let splatPipeline: MTLRenderPipelineState
     private let starfieldPipeline: MTLRenderPipelineState
     private let galaxyFieldPipeline: MTLRenderPipelineState
+    private var skyPipeline: MTLRenderPipelineState?
     private let plainPipeline: MTLRenderPipelineState
     private let plainCompositePipeline: MTLComputePipelineState
     private let resolvePipeline: MTLComputePipelineState
@@ -67,6 +68,9 @@ public final class Renderer {
     /// frame set to it is drawn wherever the camera is; nil, the default, draws as every frame
     /// did.
     public var inside: InsideFrame?
+    /// How far the view turns while the shutter is open, in radians, and how far it rolls: the
+    /// deep sky fades by the streak it would leave (#512). Set by a flight's export.
+    public var skyTurn = SIMD2<Float>(0, 0)
     private var insidePass: InsidePass?
     /// Why a frame asked for from inside was drawn without it, when it was.
     public private(set) var insideFailure: String?
@@ -402,6 +406,26 @@ public final class Renderer {
 
     public static func luminosityNormalisation(formation: [Float]) -> Float {
         ParticleAttributes.luminosityNormalisation(formation: formation)
+    }
+
+    /// The deep sky behind the dust of the first render of a frame (#512), before the stars
+    /// bind what they read.
+    private func drawSky(_ encoder: MTLRenderCommandEncoder, camera: Camera, red: SIMD4<Float>) {
+        guard let sky = settings.sky, sky.brightness > 0 else { return }
+        if skyPipeline == nil {
+            skyPipeline = try? Renderer.additive(
+                "skyVertex", "skyFragment", writing: 0, attachments: 2, format: .rgba16Float,
+                library: library, device: device)
+        }
+        guard let skyPipeline else { return }
+        var params = SkyParams(
+            sky, camera: camera, width: settings.width, height: settings.height,
+            supersample: settings.supersample, turn: skyTurn)
+        var red = red
+        encoder.setRenderPipelineState(skyPipeline)
+        encoder.setFragmentBytes(&params, length: MemoryLayout<SkyParams>.stride, index: 20)
+        encoder.setFragmentBytes(&red, length: MemoryLayout<SIMD4<Float>>.stride, index: 21)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
     /// The field stars `BackgroundStar.field` draws, in a buffer.
@@ -1003,6 +1027,7 @@ public final class Renderer {
             case .stars:
                 guard var encoder = frameEncoder() else { continue }
                 var red = Self.reddening(settings.dustReddening)
+                if plan.clears { drawSky(encoder, camera: camera, red: red) }
                 var law = ScreenLaw(within?.settings.dustScreen, web: webbed)
                 func bindStars(_ encoder: MTLRenderCommandEncoder) {
                     bindParticles(encoder)
@@ -1223,6 +1248,8 @@ public final class Renderer {
                     encoder.setTexture(rays, index: 3)
                     encoder.setBytes(
                         &composite, length: MemoryLayout<CompositeParams>.stride, index: 0)
+                    var dither = settings.dither
+                    encoder.setBytes(&dither, length: MemoryLayout<Float>.stride, index: 1)
                 }
             }
         }

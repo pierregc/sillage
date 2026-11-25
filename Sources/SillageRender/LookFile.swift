@@ -45,6 +45,12 @@ public struct LookFile: Codable, Sendable, Equatable {
     public var overlay: Overlay?
     /// Brightness and stretch measured on the frames drawn (#340). Absent, the look's own.
     public var exposure: LookExposure?
+    /// A deep sky of field stars and small galaxies behind the scene, fixed in direction (#512).
+    /// Absent, none. Metal only.
+    public var sky: SkyField?
+    /// Triangular noise of this many 8-bit steps laid on the frame before it is written, so a
+    /// faint gradient is not cut into bands (#512). Absent, none. Metal only.
+    public var dither: Float?
 
     public struct CameraPlan: Codable, Sendable, Equatable {
         public enum Mode: String, Codable, Sendable {
@@ -120,7 +126,7 @@ public struct LookFile: Codable, Sendable, Equatable {
         plain: Bool = false,
         armStrength: Float = 1, palette: [GalaxyColours] = [], paletteRecipe: Palette? = nil,
         world: Palette.World = .free, camera: CameraPlan = CameraPlan(), overlay: Overlay? = nil,
-        exposure: LookExposure? = nil
+        exposure: LookExposure? = nil, sky: SkyField? = nil, dither: Float? = nil
     ) {
         version = Self.currentVersion
         self.name = name
@@ -137,6 +143,8 @@ public struct LookFile: Codable, Sendable, Equatable {
         self.camera = camera
         self.overlay = overlay
         self.exposure = exposure
+        self.sky = sky
+        self.dither = dither
     }
 
     public init(from decoder: any Decoder) throws {
@@ -157,7 +165,9 @@ public struct LookFile: Codable, Sendable, Equatable {
             world: try c.value(.world, or: d.world),
             camera: try c.value(.camera, or: d.camera),
             overlay: try c.decodeIfPresent(Overlay.self, forKey: .overlay),
-            exposure: try c.decodeIfPresent(LookExposure.self, forKey: .exposure))
+            exposure: try c.decodeIfPresent(LookExposure.self, forKey: .exposure),
+            sky: try c.decodeIfPresent(SkyField.self, forKey: .sky),
+            dither: try c.decodeIfPresent(Float.self, forKey: .dither))
         version = try c.decode(Int.self, forKey: .version)
     }
 

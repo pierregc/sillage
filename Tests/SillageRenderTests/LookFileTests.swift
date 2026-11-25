@@ -187,6 +187,17 @@ struct LookFileTests {
         #expect(try LookFile.decoded(from: Data(text.utf8)).look.dustReddening == 1.5)
     }
 
+    @Test func theDeepSkyAndTheDitherAreOffUnlessAFileAsks() throws {
+        #expect(LookFile().sky == nil && LookFile().renderSettings(width: 8, height: 8).dither == 0)
+        let text = #"{"version": 1, "sky": {"brightness": 0.5, "spikes": 0}, "dither": 1}"#
+        let file = try LookFile.decoded(from: Data(text.utf8))
+        #expect(file.sky == SkyField(brightness: 0.5, spikes: 0))
+        #expect(file.renderSettings(width: 8, height: 8).dither == 1)
+        #expect(!(try String(decoding: LookFile().encoded(), as: UTF8.self)).contains("sky"))
+        let stray = #"{"version": 1, "sky": {"brightnes": 0.5}}"#
+        #expect(throws: (any Error).self) { try LookFile.decoded(from: Data(stray.utf8)) }
+    }
+
     @Test func onlyTheFieldsThatOwnBuffersRebuildTheRenderer() {
         let base = LookFile.standard
         var live = base
