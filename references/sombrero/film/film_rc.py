@@ -9,11 +9,12 @@ up). END_MYR: the take's moment at the cut (170 by default).
 Shots (seconds): far and tilted, advancing onto Hubble's axis 0-16 (time running to 12 Myr),
 freeze for the split screen 16-25, in along Hubble's line of sight 25-31.7, banked swoop onto the
 near ring 31.7-36.2, low flight along it 36.2-43.7, descent to a stop in the layer 43.7-51.2, a
-look round 51.2-62.7, off towards the core 62.7-71.7, held 71.7-73.2, the galaxy turning round
-the fixed camera 73.2-79.7, pull-out with time running 79.7-93.7, time racing 91.7-97.2, cut.
+look round 51.2-62.7, off towards the core and up over it 62.7-73.2, held 73.2-74.7, the galaxy
+turning round the fixed camera 74.7-81.2, pull-out with time running 81.2-95.2, time racing
+93.2-98.7, cut.
 
 The camera flies as a pilot: it looks along its own path a little ahead (a lead into turns),
-banks with the turn of its course (3.5 rad per rad/s, 0.45 rad at most, eased) and never slips
+banks with the turn of its course (2.5 rad per rad/s, 0.35 rad at most, eased) and never slips
 sideways; the look round is a head turned from a stop.
 """
 import json
@@ -30,17 +31,18 @@ INSIDE = "/Users/pierregc/claude-workspace/sombrero/out/508/flights/h2-descent.f
 STARS = {"starBloom": 0.12, "heldLengths": 12.0}
 HUBBLE = np.array([0.0, -795.618, 83.623])  # the freeze: 800 kpc, 6 degrees up
 FOV_H, ROLL_H = 0.018632, 0.1
-FAR, EL_FAR = 3200.0, 62.0  # first frame: four times Hubble's distance, 28 degrees off the pole
+FAR, EL_FAR = 2200.0, 62.0  # first frame: the ring a quarter of the frame's width, 28 degrees off the pole
 T_F, T_H = 16.0, 25.0  # freeze, end of the hold (the split screen)
 T_A = T_H + 6.7  # end of the straight approach
-T_RING, T_LOW, T_STOP, T_GO, T_CORE = (T_A + x for x in (4.5, 12.0, 19.5, 31.0, 40.0))
-T_ROT, T_PULL, T_PEND, T_ACC, END = (T_A + x for x in (41.5, 48.0, 62.0, 60.0, 65.5))
+T_RING, T_LOW, T_STOP, T_GO, T_CORE = (T_A + x for x in (4.5, 12.0, 19.5, 31.0, 41.5))
+T_ROT, T_PULL, T_PEND, T_ACC, END = (T_A + x for x in (43.0, 49.5, 63.5, 61.5, 67.0))
 MYR_F = 12.0
 MYR_END = float(sys.argv[2]) if len(sys.argv) > 2 else 170.0
-R_ROT, R_PULL = 1.2, 2.5  # Myr/s while the camera holds near the core, at the end of the pull-out
+R_ROT, R_PULL = 2.0, 3.0  # Myr/s while the camera holds near the core, at the end of the pull-out
 RAMP = 2.5  # seconds the last acceleration of time takes
-C_STOP = np.array([3.0, -0.25, 0.38])  # the stop near the core
-K_BANK, BANK_MAX = 3.5, 0.45
+C_STOP = np.array([3.879, -0.408, 1.7])  # the stop near the core, 1.7 kpc up: the far side of the ring in view
+END_DIR = np.array([-0.9945 * 0.9659, 0.1045 * 0.9659, 0.2588])  # towards the core, climbing 15 deg
+K_BANK, BANK_MAX = 2.5, 0.35
 
 t = np.arange(round(END * FPS) + 1) / FPS
 n = len(t)
@@ -140,17 +142,18 @@ P = np.array([
     ring(-63.0, 7.30, 0.22),
     ring(-53.0, 7.22, 0.18),
     ring(-43.0, 7.14, 0.14),   # 6: the descent begins
-    ring(-35.0, 7.08, 0.075),
-    [6.008, -3.545, 0.03],     # turning in as it slows
-    [6.027, -2.989, 0.016],    # 9: the stop in the layer, looking 30 degrees in from the ring
-    [5.777, -1.849, 0.16],     # a climbing left turn onto the core, 2.7 kpc round
-    [5.066, -0.922, 0.42],
-    C_STOP + 0.9 * u_c,
-    C_STOP,                    # 14: near the core, looking at it
+    [5.598, -4.279, 0.075],    # turning in as it slows, 3.65 kpc round
+    [5.855, -3.628, 0.03],
+    [5.982, -2.940, 0.016],    # 9: the stop in the layer, looking 20 degrees in from the ring
+    [6.20, -2.05, 0.12],       # a climbing left turn onto the core, pulling up to see it from above
+    [5.85, -1.10, 0.50],
+    [5.30, -0.62, 1.00],
+    C_STOP - 0.9 * END_DIR,
+    C_STOP,                    # 14: near the core, 2 kpc up, coming to a hover
 ])
 I_RING, I_LOW, I_STOP, I_CORE = 3, 6, 9, len(P) - 1
 chord = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
-end_dir = -u_c
+end_dir = END_DIR / np.linalg.norm(END_DIR)
 path = CubicSpline(chord, P, bc_type=((1, -uni), (1, end_dir)))
 uu = np.linspace(0, chord[-1], 40001)
 pts = path(uu)
@@ -204,6 +207,9 @@ for (a, ya, pa), (b, yb, pb) in zip(LOOK, LOOK[1:]):
     x = smooth5((t[m] - T_STOP - a) / (b - a))
     yaw_off[m] = ya + (yb - ya) * x
     pit_off[m] = pa + (pb - pa) * x
+# coming to a hover near the core, the eyes go down to it over the last 2.5 s (under 0.4 kpc/s)
+wg = smooth((t - (T_CORE - 2.5)) / 2.5)[:, None]
+fwd = unit((1 - wg) * fwd + wg * unit(-eye))
 psi = np.arctan2(fwd[:, 1], fwd[:, 0]) + np.radians(yaw_off)
 th = np.arcsin(np.clip(fwd[:, 2], -1, 1)) + np.radians(pit_off)
 look = np.stack([np.cos(th) * np.cos(psi), np.cos(th) * np.sin(psi), np.sin(th)], -1)
@@ -222,10 +228,10 @@ dchi = np.gradient(np.unwrap(np.arctan2(np.gradient(pts[:, 1]), np.gradient(pts[
 turn = np.interp(s_t, arc, dchi) * v_t * ins
 bank = gaussian_filter1d(BANK_MAX * np.tanh(K_BANK * turn / BANK_MAX), 0.6 * FPS, mode="nearest")
 roll[ins] += bank[ins]
-fi = CubicHermiteSpline([T_A, T_A + 6.0, T_A + 16.0, T_GO, T_CORE], [fov_appr(RHO_A), 1.0, 1.1, 1.1, 1.0],
+fi = CubicHermiteSpline([T_A, T_A + 6.0, T_A + 16.0, T_GO, T_CORE], [fov_appr(RHO_A), 1.0, 1.1, 1.1, 1.1],
                         [-V_A * (fov_appr(RHO_A * 1.001) - fov_appr(RHO_A)) / (RHO_A * 0.001), 0.006, 0, 0, 0])
 fov[ins] = fi(t[ins])
-fov[core] = 1.0
+fov[core] = 1.1
 
 # 7-8. pull-out: log distance from the centre, a little orbit and rise, aim at the centre
 rho0 = float(np.linalg.norm(C_STOP))
@@ -236,7 +242,7 @@ u = smooth5((t - T_PULL) / (T_PEND - T_PULL))
 rho_p = np.exp(math.log(rho0) + (math.log(100.0) - math.log(rho0)) * u)
 eye[pull] = sph(rho_p[pull], az0 + (20.0 - az0) * u[pull], el0 + (25.0 - el0) * u[pull])
 aim[core] = 0.0
-V0 = 2 * rho0 * math.tan(0.5)
+V0 = 2 * rho0 * math.tan(0.55)
 beta = math.log(2 * 100.0 * math.tan(0.1095) / V0) / math.log(100.0 / rho0)
 fov[pull] = 2 * np.arctan(V0 * (rho_p[pull] / rho0) ** beta / (2 * rho_p[pull]))
 
@@ -291,7 +297,8 @@ for name, a, b in (("swoop", T_A, T_RING), ("low flight", T_RING, T_LOW), ("desc
     m = (t > a) & (t < b) & (spd > 0.02)
     course = np.degrees(np.abs(np.gradient(np.unwrap(np.arctan2(vel[:, 1], vel[:, 0])), t)))
     print(f"sight off the velocity, {name}: max {ang[m].max():.1f} deg, mean {ang[m].mean():.1f}; "
-          f"course turns up to {course[m].max():.1f} deg/s, bank up to {np.abs(roll[m]).max():.2f} rad", file=sys.stderr)
+          f"course turns up to {course[m].max():.1f} deg/s, bank up to {np.abs(roll[m]).max():.2f} rad; "
+          f"over 0.4 kpc/s max {ang[m & (spd > 0.4)].max():.1f} deg", file=sys.stderr)
 np.save(os.path.join(out, "film-sight.npy"), np.stack([t, ang, spd, roll, myr], 1))
 for s in range(0, math.floor(END) + 1):
     i = min(s * FPS, n - 1)

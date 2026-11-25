@@ -21,18 +21,18 @@ CRF=${CRF:-20}
 GAP=${GAP:-20}
 mode=$1; shift
 case $mode in
-  animatic) fps=30; size=(--width 640 --height 360); wsize="(640, 360)"; codec=hevc; F=$OUT/flights/film-animatic.flight.json
+  animatic) fps=30; size=(--width 640 --height 360); wsize="(640, 360)"; codec=prores; F=$OUT/flights/film-animatic.flight.json
             BIN_A=${BIN_A:-$BIN} ;;
   film) fps=30; size=(--preset 1080p); wsize="(1920, 1080)"; codec=prores; F=$OUT/flights/film.flight.json
         BIN_A=${BIN_A:-$SOM/out/508/bin/v11} ;;
   *) echo "film_rc.sh animatic|film [piece...|assemble|overlay]"; exit 2 ;;
 esac
 D=$OUT/$mode; mkdir -p "$D"
-FREEZE=16; HOLD=9; END=97.2; SEAMS=(43.7 62.7 79.7)
+FREEZE=16; HOLD=9; END=98.7; SEAMS=(43.7 62.7 81.2)
 # name:first second:last second:seconds drawn past it (F: the last frame alone). Each b piece but
 # the last runs a second into the next and is crossfaded over it: two runs differ by a few percent
 # in exposure and in their nearest stars.
-PIECES=(a:0:16:F b1:25:43.7:1 b2:43.7:62.7:1 b3:62.7:79.7:1 b4:79.7:97.2:F wide)
+PIECES=(a:0:16:F b1:25:43.7:1 b2:43.7:62.7:1 b3:62.7:81.2:1 b4:81.2:98.7:F wide)
 want=("$@")
 
 render() {
@@ -70,9 +70,9 @@ contact() {
   for x in "1 far=0.1" "1 far=8" "1 far=15.9" "2 split=17" "2 split=20.5" "2 split=24" \
     "3 approach=25.7" "3 approach=28.2" "3 approach=31.2" "4 swoop=32.7" "4 swoop=34.2" "4 swoop=35.7" \
     "5 low flight=37.2" "5 low flight=40.2" "5 low flight=43.2" "6 descent=44.7" "6 descent=47.2" "6 descent=50.7" \
-    "7 look up=54" "7 look left=58.7" "7 look right=61.7" "8 to the core=64.7" "8 to the core=67.2" "8 to the core=69.7" \
-    "9 core turning=72.7" "9 core turning=76.2" "9 core turning=79.6" "10 pull-out=81.7" "10 pull-out=86.7" "10 pull-out=91.2" \
-    "11 racing=92.7" "11 racing=94.7" "11 racing=97.1"; do s+=("$x"); done
+    "7 look up=54" "7 look left=58.7" "7 look right=61.7" "8 to the core=64.7" "8 to the core=67.7" "8 to the core=71.2" \
+    "9 core turning=74.2" "9 core turning=77.7" "9 core turning=81.1" "10 pull-out=83.2" "10 pull-out=88.2" "10 pull-out=92.7" \
+    "11 racing=94.2" "11 racing=96.2" "11 racing=98.6"; do s+=("$x"); done
   $PY "$W/references/sombrero/film/contact.py" "$D/film.mp4" "$D/contact.jpg" 640 "${s[@]}"
 }
 
