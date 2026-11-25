@@ -93,6 +93,22 @@ smooth (gaps filled, mean kept); `rings` ([radius, sigma, column], up to four) a
 as the radius's own, for the outer rings that make the tips: `smooth` 0.3, rings 7.9 and 8.75 kpc
 (sigma 0.4 and 0.35, column 0.25), depth 0.39 give Hubble's lane depth at the front and the tips.
 
+### From inside the layer
+
+The grey discs were the grains' kernels: the screen's column is shared among the slabs a pixel's
+grains fill, divided by what they carry, so any grain at all gets the whole column and none gets
+nothing; near the eye the grains are separate kernels and each showed as a flat disc. `volume` 1
+lays the column where the dabs themselves lie: each dab's share between the slab boundaries along
+the ray (a difference of the normal distribution function), the smooth share by the layer's
+Gaussian, wherever the grains are or not. Below `volumeHeight` (3 kpc, from a third of it) it
+takes over from the grains, so frames from afar are unchanged to the byte. `fade` (150 pc) weighs
+the dust by a ramp ahead of the eye, in the dabs and in their statistics alike, so the layer thins
+round a camera inside it as the grains do. In the layer the grazing band the grains take showed as
+a bright seam along the horizon; with `grazing` below 1 the dabs take it too as the eye nears the
+plane (from four dab heights), rays flatter than `0.07 x grazing` read at the band's two edges and
+blended across it, so up and down meet unseen and no footprint outgrows the 64 cells a ray reads.
+0.45 with dabs of 95 x 55 x 28 pc (cell 80) holds from 250 pc above the plane to 30 pc below it.
+
 ## Not done
 
 The flights (zenith, low pass, inside, core, wide): the screen is read at the mid-plane from any

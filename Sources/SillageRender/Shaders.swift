@@ -2696,6 +2696,10 @@ enum Shaders {
             float4 dabRing1;
             float4 dabRing2;
             float4 dabRing3;
+            /// From inside the layer (#508): the distance over which the dust fades in ahead of the
+            /// eye, kpc (0: none), and the share of the grazing band left to the grains when the eye
+            /// is in the layer (1: all of it), and the height from which the dabs lay none themselves.
+            float4 dabInside;
         };
 
         // How much of a screen a point of the plane keeps (#506): where the line of sight in the
@@ -2790,6 +2794,18 @@ enum Shaders {
             return 0.5f + 0.5f * tanh(0.7978846f * x * (1.0f + 0.044715f * x * x));
         }
 
+        // The share of a Gaussian along a line, centred at `centre` with `root` the inverse of its
+        // width, that lies past `from`, each point weighed by a ramp from 0 at `from` to 1 a
+        // distance `fade` further on: the integral of the distribution function, x Phi + phi.
+        static float screenAhead(float centre, float root, float from, float fade) {
+            float x = (centre - from) * root;
+            float y = x - fade * root;
+            if (y > 6.0f) { return 1.0f; }
+            float gx = x * screenNormal(x) + 0.39894228f * exp(-0.5f * x * x);
+            float gy = y * screenNormal(y) + 0.39894228f * exp(-0.5f * y * y);
+            return saturate((gx - gy) / max(fade * root, 1e-6f));
+        }
+
         // A normal score from round dabs (#508). Each dab is a Gaussian blob in the layer, widths
         // along the rotation, the radius and the axis, centred in the mid-plane; its column along a
         // ray of direction `sight` (the disk's axes) through the plane point `p` falls off as
@@ -2803,9 +2819,13 @@ enum Shaders {
         // a pixel fade out of both. `pix` is a pixel's width at the plane, kpc. The line runs
         // along `sight` through `p`, where it crosses the plane; the eye stands at `eye` along
         // it and `height` above the plane: a dab counts only for its share ahead of the eye, and
-        // the mean and variance for the layer's share ahead of it, also returned.
+        // the mean and variance for the layer's share ahead of it, also returned. With `split`,
+        // `cuts` are where the line enters slabs 1 to 3 and `shares` comes back with the share of
+        // the dabs, then of the smooth layer, in each slab.
         static float2 screenDabs(float2 p, float3 sight, float eye, float height, float pix, float since,
-                                 DiskFrame frame, constant ScreenUniforms &screen) {
+                                 DiskFrame frame, constant ScreenUniforms &screen, bool split, float3 cuts,
+                                 thread float4 &shares, thread float4 &layered) {
+            float4 slabbed = float4(0.0f);
             float3 sigma = screen.dabSize.xyz;
             float cell0 = screen.dabSize.w;
             float count = screen.dabShape.x;
@@ -2815,6 +2835,7 @@ enum Shaders {
             uint seed = uint(screen.dabSeed.x + 0.5f);
             int shape = clamp(int(screen.dabSeed.y + 0.5f), 1, 3);
             float second = 1.0f + 1.0f / float(shape);
+            float fade = screen.dabInside.x;
             int slots = max(int(ceil(count - 1e-3f)), 1);
             float present = count / float(slots);
             float inner = screen.shape.y;
@@ -2850,7 +2871,8 @@ enum Shaders {
                 if (g <= 1e-4f) { continue; }
                 float cell = cell0 * scale;
                 // The share of this octave's layer ahead of the eye.
-                float ahead = screenNormal(-sign(lz) * height / (sigma.z * scale));
+                float ahead = fade > 0.0f ? screenAhead(0.0f, abs(lz) / (sigma.z * scale), eye, fade)
+                                          : screenNormal(-sign(lz) * height / (sigma.z * scale));
                 whole += g * count * area / (cell0 * cell0);
                 mean += ahead * g * count * area / (cell0 * cell0);
                 variance += ahead * g * g * count * (second - present) * 0.5f * area / (cell0 * cell0);
@@ -2885,14 +2907,37 @@ enum Shaders {
                             float vv = dot(v, v);
                             float q = dot(a, a) - along * along / vv;
                             if (q < reach * reach) {
-                                float front = screenNormal((-along / vv - eye) * sqrt(vv));
+                                float front = fade > 0.0f ? screenAhead(-along / vv, sqrt(vv), eye, fade)
+                                                          : screenNormal((-along / vv - eye) * sqrt(vv));
                                 float2 f = webHash(key ^ uint2(0x27D4EB2Fu, 0x165667B1u));
                                 float u = e.x * (shape > 1 ? f.x : 1.0f) * (shape > 2 ? f.y : 1.0f);
                                 total += front * g * -log(max(u, 1e-12f)) / float(shape) * exp(-0.5f * q);
+                                if (split) {
+                                    float root = sqrt(vv);
+                                    float centre = -along / vv;
+                                    float3 past = float3(screenNormal((centre - cuts.x) * root),
+                                                         screenNormal((centre - cuts.y) * root),
+                                                         screenNormal((centre - cuts.z) * root));
+                                    slabbed += g * -log(max(u, 1e-12f)) / float(shape) * exp(-0.5f * q)
+                                        * float4(max(front - past.x, 0.0f), past.x - past.y, past.y - past.z, past.z);
+                                }
                             }
                         }
                     }
                 }
+            }
+            if (split) {
+                // The smooth layer's share by slab, Gaussian along the line round the plane, and
+                // the dabs' own, leaning on it where few dabs are met.
+                float spread = sigma.z / max(abs(lz), 1e-4f);
+                float ahead = fade > 0.0f ? screenAhead(0.0f, 1.0f / spread, eye, fade) : screenNormal(-eye / spread);
+                float3 past = float3(screenNormal(-cuts.x / spread), screenNormal(-cuts.y / spread),
+                                     screenNormal(-cuts.z / spread));
+                layered = ahead > 1e-6f
+                    ? max(float4(ahead - past.x, past.x - past.y, past.y - past.z, past.z), 0.0f) / ahead
+                    : float4(1.0f, 0.0f, 0.0f, 0.0f);
+                float prior = 0.05f * max(mean, 1e-6f);
+                shares = (max(slabbed, 0.0f) + prior * layered) / (max(total, 0.0f) + prior);
             }
             if (mean <= 1e-6f * whole || whole <= 0.0f) { return float2(0.0f, 0.0f); }
             float kappa = mean * mean / max(variance, 1e-12f);
@@ -2907,24 +2952,25 @@ enum Shaders {
         // plane, a share of that radius's mean laid smooth, the rings' column added; over the sine
         // of the ray's angle to the plane, as through any thin layer, times the layer's share ahead.
         // Below 3 degrees to the plane the dabs give way to the grains, whose depth is real.
-        static float2 screenDabsAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
-                                   float3 ray, float3 stepX, texture2d<half> lut) {
-            float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
-            float3 rel = w.eye.xyz - frame.center.xyz;
-            float3 d = ray / length(ray);
-            float height = dot(rel, axis);
-            float lz = dot(d, axis);
-            float kept = smoothstep(0.03f, 0.07f, abs(lz));
-            if (kept <= 0.0f) { return float2(0.0f, 0.0f); }
+        // With `split`, `depths` are the view depths where slabs 1 to 3 begin and `shares` comes
+        // back with the column's share in each slab, by where along the line its dabs lie.
+        // `screenDabsAt` along one line, `d` its direction (`flat` and `lz` in the disk's axes) and
+        // `pixel` a pixel's width over the ray's length, a unit away.
+        static float screenDabsLine(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+                                    float3 rel, float height, float3 d, float2 flat, float lz, float2 pixel,
+                                    texture2d<half> lut, bool split, float3 depths, thread float4 &shares) {
             float2 eye = float2(dot(rel, frame.axisU.xyz), dot(rel, frame.axisV.xyz));
-            float2 flat = float2(dot(d, frame.axisU.xyz), dot(d, frame.axisV.xyz));
             // The line crosses the plane at parameter 0; the eye stands at height / lz along it.
             float at = height / lz;
             float2 p = eye - flat * at;
-            float pix = abs(at) * length(stepX) / length(ray);
+            float pix = abs(at) * pixel.x / pixel.y;
             float since = w.up.w - screen.shape.w;
-            float2 read = screenDabs(p, float3(flat, lz), at, height, pix, since, frame, screen);
-            if (read.y <= 0.0f) { return float2(0.0f, kept); }
+            // Where the line enters each slab, from the eye's place along it.
+            float3 cuts = at + max(depths, 0.0f) / max(dot(d, w.forward.xyz), 1e-4f);
+            float4 layered = float4(1.0f, 0.0f, 0.0f, 0.0f);
+            float2 read = screenDabs(p, float3(flat, lz), at, height, pix, since, frame, screen, split, cuts,
+                                     shares, layered);
+            if (read.y <= 0.0f) { return 0.0f; }
             float radius = length(p);
             float span = max(screen.shape.z - screen.shape.y, 1e-4f);
             float row = (radius - screen.shape.y) / span;
@@ -2947,15 +2993,62 @@ enum Shaders {
                     float2 node = float2((nodes[k] - screen.renew.z) / range, row);
                     mean += weights[k] * float(lut.sample(screenLutSampler, node).r);
                 }
+                if (split) {
+                    float mottled = max(column, 0.0f) * (1.0f - screen.dabSeed.z);
+                    float laid = mean * screen.dabSeed.z;
+                    shares = (mottled * shares + laid * layered) / max(mottled + laid, 1e-9f);
+                }
                 column = mix(column, mean, screen.dabSeed.z);
                 column *= 1.0f + added / max(mean, 0.02f);
             }
-            return float2(max(column, 0.0f) * read.y / abs(lz), kept);
+            return max(column, 0.0f) * read.y / abs(lz);
+        }
+
+        static float2 screenDabsAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+                                   float3 ray, float3 stepX, texture2d<half> lut, bool split, float3 depths,
+                                   thread float4 &shares) {
+            float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
+            float3 rel = w.eye.xyz - frame.center.xyz;
+            float3 d = ray / length(ray);
+            float height = dot(rel, axis);
+            float lz = dot(d, axis);
+            float kept = smoothstep(0.03f, 0.07f, abs(lz));
+            float2 flat = float2(dot(d, frame.axisU.xyz), dot(d, frame.axisV.xyz));
+            float2 pixel = float2(length(stepX), length(ray));
+            if (screen.dabInside.y < 1.0f) {
+                // In the layer the grains near the eye are faint and the grazing band they take
+                // shows as a bright seam: there the dabs take it too. Flatter than `least` the line
+                // is read at the band's two edges, blended across it, so up and down meet unseen
+                // and no dab footprint outgrows its cells.
+                float sz = screen.dabSize.z;
+                kept = mix(kept, 1.0f, 1.0f - smoothstep(sz, 4.0f * sz, abs(height)));
+                float least = 0.07f * screen.dabInside.y;
+                if (abs(lz) < least && kept > 0.0f) {
+                    float2 edge = flat * sqrt((1.0f - least * least) / max(dot(flat, flat), 1e-8f));
+                    float3 level = edge.x * frame.axisU.xyz + edge.y * frame.axisV.xyz;
+                    float4 below = shares;
+                    float4 above = shares;
+                    float down = screenDabsLine(frame, w, screen, rel, height, level - least * axis, edge, -least,
+                                                pixel, lut, split, depths, below);
+                    float up = screenDabsLine(frame, w, screen, rel, height, level + least * axis, edge, least,
+                                              pixel, lut, split, depths, above);
+                    float t = smoothstep(-least, least, lz);
+                    float column = mix(down, up, t);
+                    if (split) { shares = mix(below * down, above * up, t) / max(column, 1e-9f); }
+                    return float2(column, kept);
+                }
+            }
+            if (kept <= 0.0f) { return float2(0.0f, 0.0f); }
+            return float2(screenDabsLine(frame, w, screen, rel, height, d, flat, lz, pixel, lut, split, depths,
+                                         shares), kept);
         }
 
         static float2 screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
                                float3 ray, float3 stepX, float3 stepY, texture2d<half> tile, texture2d<half> lut) {
-            if (screen.dabSize.x > 0.0f) { return screenDabsAt(frame, w, screen, ray, stepX, lut); }
+            if (screen.dabSize.x > 0.0f) {
+                float4 shares = float4(1.0f, 0.0f, 0.0f, 0.0f);
+                return screenDabsAt(frame, w, screen, ray, stepX, lut, false, float3(0.0f), shares);
+            }
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
             float3 rel = w.eye.xyz - frame.center.xyz;
             float least = 0.05f * length(ray);
@@ -3013,11 +3106,32 @@ enum Shaders {
             return float2(max(column, 0.0f) * length(ray) / abs(along), kept);
         }
 
+        // The view depths where dust slabs 1 to 3 begin, as `insideSlabAt` places them.
+        static float3 screenSlabDepths(constant SplatUniforms &u) {
+            if (u.inside.slabSoft <= 0.0f) {
+                return u.slabNear + float3(1.0f, 2.0f, 3.0f) / (4.0f * u.slabScale);
+            }
+            return u.inside.slabKnots.yzw;
+        }
+
+        // The share of the column dabs lay themselves (#508): `volume`, gone by the height that
+        // `dabInside.z` gives (kpc; 0: at every height) from a third of it, so frames from afar
+        // keep their dust on the grains.
+        static float screenVolume(constant DiskFrame *frames, constant WebUniforms &w,
+                                  constant ScreenUniforms &screen) {
+            if (screen.shape.x <= 0.0f || screen.dabSize.x <= 0.0f || screen.dabSeed.w <= 0.0f) { return 0.0f; }
+            float top = screen.dabInside.z;
+            if (top <= 0.0f) { return screen.dabSeed.w; }
+            DiskFrame frame = frames[int(screen.shape.x + 0.5f) - 1];
+            float height = dot(w.eye.xyz - frame.center.xyz, cross(frame.axisU.xyz, frame.axisV.xyz));
+            return screen.dabSeed.w * (1.0f - smoothstep(top / 3.0f, top, abs(height)));
+        }
+
         // `webResolved` with the screen's galaxy read off its tile instead of the lace.
         static half4 screenResolved(float2 uv, float4 carrier, float4 tagged, constant DiskFrame *frames,
                                     constant WebUniforms &w, texture2d<half> lace,
                                     constant ScreenUniforms &screen, texture2d<half> tile,
-                                    texture2d<half> lut) {
+                                    texture2d<half> lut, constant SplatUniforms &u) {
             float4 tags = tagged * 255.0f;
             float2 ndc = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
             float3 across = w.right.xyz * (w.forward.w * w.target.z);
@@ -3034,6 +3148,32 @@ enum Shaders {
             float held = 0.0f;
             for (int s = 0; s < 4; ++s) {
                 if (carrier[s] > 0.0f && int(tags[s] + 0.5f) - 1 == screened) { held += carrier[s]; }
+            }
+            float volume = screenVolume(frames, w, screen);
+            if (volume > 0.0f) {
+                // Dabs that carry their own dust (#508): the column laid in the slabs where its
+                // dabs lie along the line, wherever the grains are, so near the eye it is no
+                // longer stamped on their separate kernels; `volume` below 1 leaves the rest on them.
+                float4 shares = float4(1.0f, 0.0f, 0.0f, 0.0f);
+                float2 read = screenDabsAt(frames[screened], w, screen, ray, stepX, lut, true,
+                                           screenSlabDepths(u), shares);
+                float laid = read.y * screen.depth.x * read.x;
+                float carried = held > 0.0f ? (1.0f - volume) * laid / held : 0.0f;
+                for (int s = 0; s < 4; ++s) {
+                    int g = int(tags[s] + 0.5f) - 1;
+                    if (carrier[s] <= 0.0f || g < 0) { continue; }
+                    if (g == screened) {
+                        webbed[s] = carrier[s] * ((1.0f - read.y) + carried);
+                        continue;
+                    }
+                    if (g != last) {
+                        web = webAt(frames[g], w, ray, stepX, stepY, lace);
+                        last = g;
+                    }
+                    webbed[s] = carrier[s] * web;
+                }
+                float own = held > 0.0f ? volume : 1.0f;
+                return half4(max(webbed, 0.0f) + laid * own * shares);
             }
             // Where the screen is kept only in part, the grains' own dust makes up the rest.
             float2 read = held > 0.0f ? screenAt(frames[screened], w, screen, ray, stepX, stepY, tile, lut)
@@ -3066,17 +3206,24 @@ enum Shaders {
                                                #if defined(SILLAGE_INSIDE)
                                                , constant ScreenUniforms &screen [[buffer(2)]],
                                                texture2d<half> tile [[texture(3)]],
-                                               texture2d<half> lut [[texture(4)]]
+                                               texture2d<half> lut [[texture(4)]],
+                                               constant SplatUniforms &u [[buffer(3)]]
                                                #endif
                                                ) {
             float2 uv = webResolveAt(in.position.xy, w);
             float4 carrier = float4(carried.sample(bilinear, uv));
+            #if defined(SILLAGE_INSIDE)
+            // Dabs that carry their own dust reach pixels no grain does.
+            bool own = screenVolume(frames, w, screen) > 0.0f;
+            if (!own && !webCarried(carrier)) { discard_fragment(); }
+            #else
             if (!webCarried(carrier)) { discard_fragment(); }
+            #endif
             DustTarget out;
             #if defined(SILLAGE_INSIDE)
             if (screen.shape.x > 0.0f) {
                 out.dust = screenResolved(uv, carrier, float4(tagged.sample(pointSampler, uv)), frames, w,
-                                          lace, screen, tile, lut);
+                                          lace, screen, tile, lut, u);
                 return out;
             }
             #endif

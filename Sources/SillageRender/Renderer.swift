@@ -930,6 +930,7 @@ public final class Renderer {
                     encoder.setFragmentBytes(&screen, length: MemoryLayout<ScreenUniforms>.stride, index: 2)
                     encoder.setFragmentTexture(screenTile ?? web.lace, index: 3)
                     encoder.setFragmentTexture(screenLut ?? screenTile ?? web.lace, index: 4)
+                    encoder.setFragmentBytes(&uniforms, length: uniformsLength, index: 3)
                 }
                 for target in apart ?? [(web.carrier, web.tags)] {
                     encoder.setFragmentTexture(target.carrier, index: 1)

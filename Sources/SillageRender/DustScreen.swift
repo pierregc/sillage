@@ -95,6 +95,19 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
     /// Up to four rings of column added, each [radius kpc, sigma kpc, column in the tile's units],
     /// mottled as the radius's own column is.
     public var rings: [[Float]] = []
+    /// The share of the column the dabs lay themselves, 0 to 1, in the slabs where they lie along
+    /// the ray, instead of on the grains' kernels: 1 holds from inside the layer, where the grains
+    /// near the eye are separate kernels. 0 (the default) lays it all on the grains.
+    public var volume: Float = 0
+    /// Parsecs over which the dabs' dust fades in ahead of the eye, so the layer thins round a
+    /// camera inside it (0: none).
+    public var fade: Float = 0
+    /// The share of the grazing band (3 to 7 degrees from the plane) still left to the grains when
+    /// the eye is in the layer, 0.05 to 1; above three dab heights it is all of it again.
+    public var grazing: Float = 1
+    /// The eye's height above the plane, kpc, from which the dabs lay none of the column
+    /// themselves, fading in from a third of it; 0: `volume` at every height.
+    public var volumeHeight: Float = 0
 
     public init(from decoder: any Decoder) throws {
         try rejectUnknownFields(decoder, CodingKeys.self)
@@ -109,6 +122,10 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         seed = try c.value(.seed, or: seed)
         smooth = try c.value(.smooth, or: smooth)
         rings = try c.value(.rings, or: rings)
+        volume = try c.value(.volume, or: volume)
+        fade = try c.value(.fade, or: fade)
+        grazing = try c.value(.grazing, or: grazing)
+        volumeHeight = try c.value(.volumeHeight, or: volumeHeight)
     }
 
     var fault: String? {
@@ -123,6 +140,12 @@ public struct DustScreenDabs: Codable, Sendable, Equatable {
         if !(1...3).contains(shape) { return "dustScreen dabs shape \(shape): 1 to 3" }
         if !(0...65535).contains(seed) { return "dustScreen dabs seed \(seed): 0 to 65535" }
         if !(smooth >= 0 && smooth <= 1) { return "dustScreen dabs smooth \(smooth): 0 to 1" }
+        if !(volume >= 0 && volume <= 1) { return "dustScreen dabs volume \(volume): 0 to 1" }
+        if !(fade >= 0 && fade <= 5000) { return "dustScreen dabs fade \(fade): 0 to 5000 parsecs" }
+        if !(grazing >= 0.05 && grazing <= 1) { return "dustScreen dabs grazing \(grazing): 0.05 to 1" }
+        if !(volumeHeight >= 0 && volumeHeight <= 1000) {
+            return "dustScreen dabs volumeHeight \(volumeHeight): 0 to 1000 kpc"
+        }
         let ringsOK =
             rings.count <= 4
             && rings.allSatisfy { $0.count == 3 && $0[0] >= 0 && $0[1] > 0 && $0[2] >= 0 }
@@ -255,7 +278,7 @@ struct ScreenUniforms {
     /// Whether the screen is kept by the radial share of the line of sight, and between which.
     var front: SIMD4<Float> = .zero
     /// The largest dabs' widths and cell in kpc (0: no dabs), then count, octaves, ratio, gain,
-    /// then the seed, the depths' gamma shape and the smooth share.
+    /// then the seed, the depths' gamma shape, the smooth share and the volume share.
     var dabSize: SIMD4<Float> = .zero
     var dabShape: SIMD4<Float> = .zero
     var dabSeed: SIMD4<Float> = .zero
@@ -264,6 +287,9 @@ struct ScreenUniforms {
     var dabRing1: SIMD4<Float> = .zero
     var dabRing2: SIMD4<Float> = .zero
     var dabRing3: SIMD4<Float> = .zero
+    /// From inside the layer: the fade ahead of the eye in kpc, the grazing band's share, the
+    /// height in kpc from which the dabs lay none of the column themselves.
+    var dabInside = SIMD4<Float>(0, 1, 0, 0)
 
     static func front(_ ref: DustScreenRef?) -> SIMD4<Float> {
         guard let front = ref?.front else { return .zero }
@@ -274,7 +300,7 @@ struct ScreenUniforms {
         guard let dabs else { return }
         dabSize = SIMD4(dabs.size[0], dabs.size[1], dabs.size[2], dabs.cell ?? dabs.size[0]) / 1000
         dabShape = SIMD4(dabs.count, Float(dabs.octaves), dabs.ratio, dabs.gain)
-        dabSeed = SIMD4(Float(dabs.seed), Float(dabs.shape), dabs.smooth, 0)
+        dabSeed = SIMD4(Float(dabs.seed), Float(dabs.shape), dabs.smooth, dabs.volume)
         let ring = { (i: Int) -> SIMD4<Float> in
             i < dabs.rings.count ? SIMD4(dabs.rings[i][0], dabs.rings[i][1], dabs.rings[i][2], 0) : .zero
         }
@@ -282,6 +308,7 @@ struct ScreenUniforms {
         dabRing1 = ring(1)
         dabRing2 = ring(2)
         dabRing3 = ring(3)
+        dabInside = SIMD4(dabs.fade / 1000, dabs.grazing, dabs.volumeHeight, 0)
     }
 }
 

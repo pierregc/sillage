@@ -540,7 +540,10 @@ angle and turned by the disk's rotation from `rest` (megayears); `depth` scales 
 only share it among the slabs. `law` sees it through a colour law whose shares of the green
 depth tend to one in thick dust, the rim within `rimRadii` with its own (#506,
 [the Sombrero's dust screen](notes/sombrero-dust-screen.md)) Its `dabs` draws the column from round dabs carried by the rotation
-instead of the tile, through the tile's lut, with an optional `smooth` share and `rings` (#508).
+instead of the tile, through the tile's lut, with an optional `smooth` share and `rings` (#508);
+`volume` lets the dabs lay the column themselves, in the slabs where they lie along the ray, below
+the eye height `volumeHeight` (kpc), `fade` (pc) thins it round the eye and `grazing` hands the
+band near the plane to the dabs when the eye is in the layer.
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph
