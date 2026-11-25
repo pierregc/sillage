@@ -6,7 +6,7 @@
 #   (a b1 b2 b3 b4) and stops; `assemble` alone redoes the assembly.
 #   The film draws a (far shots) with #508's binary and the flight as #508 reads it, b1-b4 with
 #   #510's binary and its inside stars (rough-cut-stars); the animatic all with #508's.
-# Env: TAKE, LOOK, BIN508, BIN510, OUT (default ~/claude-workspace/sombrero/out/509).
+# Env: TAKE, LOOK, BIN508, BIN510, OUT (default ~/claude-workspace/sombrero/out/509), CRF (x265, 20).
 set -euo pipefail
 W=$(cd "$(dirname "$0")/../../.." && pwd)
 SOM=$HOME/claude-workspace/sombrero
@@ -16,6 +16,7 @@ BIN508=${BIN508:-$SOM/out/508/bin/v11}
 BIN510=${BIN510:-$SOM/out/510/bin/v2}
 OUT=${OUT:-$SOM/out/509}
 PY=$SOM/venv/bin/python
+CRF=${CRF:-20}
 mode=$1; shift
 case $mode in
   animatic) fps=10; size=(--width 640 --height 360); codec=hevc
@@ -66,5 +67,5 @@ read -r w h < <(ffprobe -v error -select_streams v:0 -show_entries stream=width,
 $PY -c "
 import sys; sys.path.insert(0, '$W/references/sombrero/tools'); import film_split
 film_split.hubble($w, $h).save('$D/hubble.png')"
-$PY "$W/scripts/picture-film.py" film "$D/master.mov" "$D/rough-cut.mp4" --picture "$D/hubble.png" --hold 18:7.3 \
+$PY "$W/scripts/picture-film.py" film "$D/master.mov" "$D/rough-cut.mp4" --picture "$D/hubble.png" --hold 18:7.3 --crf "$CRF" \
   --layout shrink --left "Simulation  ·  Sillage" --right "Hubble  ·  ESA/Hubble & NASA, K. Noll"
