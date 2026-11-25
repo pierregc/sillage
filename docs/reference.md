@@ -375,7 +375,10 @@ frame of the Sombrero (about 1,000 sources a megapixel of sky above 12 in 8 bits
 in a 4K still framed as Hubble; `fieldOfView` and `height` are that reference view, `density`,
 `galaxies`, `spikes`, `spikeAngle`, `starWidth` and `seed` shape it. A coarser pixel sees each
 object fainter by its solid angle, so a 1080p frame is the 4K one reduced; `depth` above 2 thins
-a view wider than the reference further, and from inside a disk the sky is gone. `dither` lays
+a view wider than the reference further, and from inside a disk the sky is gone. `turn` below 1
+shows only that share of the camera's turns, rolls included, from the view `anchor` (with
+`anchorUp`): a telephoto orbiting a galaxy then sees the sky drift rather than race past (the
+Sombrero film takes 0.025). `dither` lays
 triangular noise of that many 8-bit steps on the frame before it is written, so a faint halo is
 not cut into bands. Both Metal only.
 

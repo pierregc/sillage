@@ -28,7 +28,7 @@ public enum LookFields {
         ("exposure", "brightness and stretch measured on the frames drawn; absent, the look's own"),
         (
             "sky",
-            "a deep sky behind the dust, fixed in direction: {brightness, density, fieldOfView, height, depth, spikes, spikeAngle, galaxies, starWidth, seed}; Metal only"
+            "a deep sky behind the dust, fixed in direction: {brightness, density, fieldOfView, height, depth, spikes, spikeAngle, galaxies, starWidth, seed, turn, anchor, anchorUp}; Metal only"
         ),
         ("dither", "triangular noise of this many 8-bit steps on the frame, against banding; Metal only"),
     ]

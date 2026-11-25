@@ -36,11 +36,19 @@ public struct SkyField: Codable, Sendable, Equatable {
     /// Width of a star, in output pixels.
     public var starWidth: Float
     public var seed: Int
+    /// Share of the camera's turns the sky shows: 1 holds it fixed in space; below, it turns
+    /// that share of the camera's turn from `anchor`, so a telephoto orbiting a galaxy sees it
+    /// drift gently rather than race past, rolls and banks included.
+    public var turn: Float
+    /// The view the sky is where it is at any `turn`, and its up.
+    public var anchor: SIMD3<Float>
+    public var anchorUp: SIMD3<Float>
 
     public init(
         brightness: Float = 1, density: Float = 1, fieldOfView: Float = 0.018632,
         height: Float = 2160, depth: Float = 2, spikes: Float = 1, spikeAngle: Float = 0,
-        galaxies: Float = 1, starWidth: Float = 0.65, seed: Int = 1
+        galaxies: Float = 1, starWidth: Float = 0.65, seed: Int = 1, turn: Float = 1,
+        anchor: SIMD3<Float> = SIMD3(0, 1, 0), anchorUp: SIMD3<Float> = SIMD3(0, 0, 1)
     ) {
         self.brightness = brightness
         self.density = density
@@ -52,6 +60,9 @@ public struct SkyField: Codable, Sendable, Equatable {
         self.galaxies = galaxies
         self.starWidth = starWidth
         self.seed = seed
+        self.turn = turn
+        self.anchor = anchor
+        self.anchorUp = anchorUp
     }
 
     public init(from decoder: any Decoder) throws {
@@ -68,7 +79,10 @@ public struct SkyField: Codable, Sendable, Equatable {
             spikeAngle: try c.value(.spikeAngle, or: d.spikeAngle),
             galaxies: try c.value(.galaxies, or: d.galaxies),
             starWidth: try c.value(.starWidth, or: d.starWidth),
-            seed: try c.value(.seed, or: d.seed))
+            seed: try c.value(.seed, or: d.seed),
+            turn: try c.value(.turn, or: d.turn),
+            anchor: try c.value(.anchor, or: d.anchor),
+            anchorUp: try c.value(.anchorUp, or: d.anchorUp))
     }
 }
 
@@ -102,13 +116,39 @@ struct SkyParams {
         return SIMD2(view, max(roll - view, 0))
     }
 
+    /// The camera's axes as the sky sees them: turned from the anchor's by `share` of the
+    /// rotation that takes the anchor's axes to the camera's.
+    static func axes(
+        right: SIMD3<Float>, up: SIMD3<Float>, forward: SIMD3<Float>, sky: SkyField
+    ) -> (SIMD3<Float>, SIMD3<Float>, SIMD3<Float>) {
+        let af = simd_normalize(sky.anchor)
+        let ar = simd_normalize(simd_cross(af, sky.anchorUp))
+        let au = simd_cross(ar, af)
+        // The rotation from the anchor's axes to the camera's, as an axis and an angle.
+        let twice = simd_cross(ar, right) + simd_cross(au, up) + simd_cross(af, forward)
+        let cosine = (simd_dot(ar, right) + simd_dot(au, up) + simd_dot(af, forward) - 1) / 2
+        let angle = atan2(simd_length(twice) / 2, cosine)
+        guard simd_length(twice) > 1e-7 else { return angle > 1 ? (right, up, forward) : (ar, au, af) }
+        let axis = simd_normalize(twice)
+        let turned = angle * max(sky.turn, 0)
+        func rotate(_ v: SIMD3<Float>) -> SIMD3<Float> {
+            v * cos(turned) + simd_cross(axis, v) * sin(turned)
+                + axis * simd_dot(axis, v) * (1 - cos(turned))
+        }
+        return (rotate(ar), rotate(au), rotate(af))
+    }
+
     init(
         _ sky: SkyField, camera: Camera, width: Int, height: Int, supersample: Int,
         turn: SIMD2<Float> = .zero
     ) {
-        let forward = simd_normalize(camera.target - camera.eye)
-        let right = simd_normalize(simd_cross(forward, camera.up))
-        let up = simd_cross(right, forward)
+        var forward = simd_normalize(camera.target - camera.eye)
+        var right = simd_normalize(simd_cross(forward, camera.up))
+        var up = simd_cross(right, forward)
+        if sky.turn != 1 {
+            (right, up, forward) = Self.axes(right: right, up: up, forward: forward, sky: sky)
+        }
+        let share = min(max(sky.turn, 0), 1)
         let tangent = tan(camera.fieldOfView / 2)
         let aspect = Float(width) / Float(max(height, 1))
         // One output pixel, in radians, against the reference's.
@@ -119,10 +159,11 @@ struct SkyParams {
         let wider = min(tan(sky.fieldOfView / 2) / max(tangent, 1e-12), 1)
         // A star the turning view drags into a streak of `streak` pixels: its light spread
         // along it, so it fades as a camera's does, and a fast turn does not strobe.
-        let streak = turn.x / max(pixel, 1e-12) + turn.y * Float(height) / 2
+        // Past a few pixels, a safety: a sky that drifts never streaks that far.
+        let streak = share * (turn.x / max(pixel, 1e-12) + turn.y * Float(height) / 2)
         let kept =
             pow(reference / max(pixel, 1e-12), 2) * pow(wider, sky.depth - 2)
-            / (1 + max(streak - 1, 0) / 3)
+            / (1 + max(streak - 6, 0) / 6)
         self.right = SIMD4(right, tangent * aspect)
         self.up = SIMD4(up, tangent)
         self.forward = SIMD4(forward, 0)
