@@ -2060,6 +2060,59 @@ arm of a take of millions of particles in 4K (`SILLAGE_CUDA_FLIGHT=<take>,<look>
 both ways for large splats to the same bits, with the profile and the peak device memory, on
 `CUDAFLIGHT` lines beside the M4 Max's 94 to 360 ms a render.
 
+### A film over several boxes (#513)
+
+A long flight goes in contiguous pieces, one box each, every piece its own export:
+
+```
+.build/linux/sillage-cuda export take.sillage --look film.look.json --flight film.flight.json \
+    --rate 30 --preset 4k --start 36 --duration 18 --out piece-03.mp4 --resume
+```
+
+Piece k starts at `--start k*D` and draws `D*fps` frames; the last one leaves `--duration` out
+and runs to the end. Take D a whole number of frames, so the pieces abut. Every piece measures
+the exposure of the whole flight before its first frame, whatever part it draws, so the pieces
+agree and each box pays that pre-pass once (`plan.json` keeps it for `--resume`). The grain
+starts again at each piece's first frame, so the joined film matches the one-box video up to the
+grain. Join the pieces with ffmpeg's concat demuxer and `-c copy`. `--part k/n` is the other
+way: one plan, the segments brought together on one box and joined there with `--resume`.
+
+What goes up with the take: the look and the flight, read by path, and every file the flight
+names by path, which is the dust screen's tile (`inside.dustScreen.tile`, its json and the two
+`.f32` files beside it). The CUDA engine refuses a flight with a dust screen by name before the
+first frame for now (`CUDATakeStills.notDrawn`): the screen's passes are Metal's alone (#513).
+
+## The Sombrero film (#513)
+
+What the film's look and flight add on Metal, drawn by the CUDA engine on one kernel text:
+
+- **The deep sky (#512).** `skyFragment` is a kernel of a pixel over the light target after the
+  particles, before the point stars, as Metal's triangle covers the frame. Its arithmetic is the
+  shared `skyPixel` (the sky's light through the dust's column with the frame's reddening);
+  `SkyParams`, portable, is built from the look's `sky` and the frame's camera as on Metal, and
+  `FlightFrames` sets the sky's turn over the shutter as `TakeExport` does.
+- **The bloom's shares (#509, #510).** With `inside.starBloom` or `sky.bloom` under one, the light
+  laid before the point stars and before the sky is kept apart as the bloom's source, resolved
+  with the frame and weighted as Metal weighs it; the bright pass reads it.
+- **The look's dust reddening and dither.** `RenderSettings.reddening` gives the light passes
+  their extinction; the composite applies the shared `ditherPixel`.
+- **Held kernel lengths (#510).** `CUDATakeStills` eases every frame's lengths at the captured
+  frame nearest `inside.heldLengths`.
+- **Refused by name:** `inside.dustScreen` (#506, #508, #511).
+
+The rest of #513's list already arrives through shared code: `starOldK` / `starYoungK`,
+`starFrom` / `starFull`, `slabsWithin`, `slabsLog` (`InsideFrame`, `InsideUniforms`), `dustSlabs`
+and the exposure's pre-pass (`FlightFrames`), `dustWidth` (`FramePlan`), and the renders a
+shutter passes (`FlightFile.cameras`, `InsideBlur.subframes`, as `TakeExport` takes them).
+
+`Tests/Fixtures/sombrero/recipe.json` lists three frames of the film's look over the engines'
+small take: wide, from inside the dust layer, and with the sky turning. The look's sky is the
+film's at six times its brightness: at 128 by 72 the film's own changes a few pixels by a level or
+two, which would hide an error in its port. `CUDASombreroTests`
+draws them on the CPU target and holds them to Metal's at the inside tolerance once the Mac has
+written them (`SombreroFixture.command`); until then it says it waits. `screen.flight.json`, with
+a synthetic 64 by 16 tile (`make_tile.py`), is the dust screen's flight for when it is ported.
+
 ## A take's video (#429)
 
 `sillage-cuda export <scene folder | take>` without `--flight`: the video the Mac's `export`
