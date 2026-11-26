@@ -10,10 +10,12 @@ else.
 
 `./scripts/dev.sh fixtures` writes them again on the Mac, from `scene/` and the five look files
 of `frames/`. The same code gives the same bytes: nothing in them depends on the run, the date or
-the commit. On every `./scripts/dev.sh check`, `EngineFixtureTests` requires Metal to give each
-output again to the bit, and `TreeLayoutTests` requires it of the portable `BarnesHutTree`, on
-Linux too. A PR that changes them on purpose regenerates them and says so; the tolerances of
-the other engines are in `docs/notes/one-kernel-source.md`.
+the commit. Since 2026-11-26 they are written on an Apple M6 under macOS 27: the M4 Max under
+macOS 26 gave other bits for the inside frames and the black hole's. On every
+`./scripts/dev.sh check`, `EngineFixtureTests` requires Metal to give each output again to the
+bit, and `TreeLayoutTests` requires it of the portable `BarnesHutTree`, on Linux too. A PR
+that changes them on purpose regenerates them and says so; the tolerances of the other engines
+are in `docs/notes/one-kernel-source.md`.
 
 ## The level order
 
