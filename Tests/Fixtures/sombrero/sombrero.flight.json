@@ -1,0 +1,71 @@
+{
+ "version": 1,
+ "near": 0.001,
+ "inside": {
+  "stars": 128,
+  "exposure": 0.16,
+  "subframes": 4,
+  "clusters": 0,
+  "dustSlabs": 1.2,
+  "starBloom": 0.12,
+  "heldLengths": 12.388,
+  "slabsLog": true,
+  "starFrom": 0.018039,
+  "starFull": 0.072157
+ },
+ "keys": [
+  {
+   "at": 0,
+   "myr": 12.388,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     9,
+     -14,
+     7
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 2,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     3,
+     -6,
+     4
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0
+   }
+  },
+  {
+   "at": 4,
+   "myr": 12.388,
+   "eye": {
+    "galaxy": 0,
+    "offset": [
+     1.5,
+     0.5,
+     0.05
+    ],
+    "disk": true
+   },
+   "aim": {
+    "galaxy": 0,
+    "offset": [
+     -2,
+     3,
+     0
+    ],
+    "disk": true
+   }
+  }
+ ]
+}

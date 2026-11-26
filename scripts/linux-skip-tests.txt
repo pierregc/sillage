@@ -25,6 +25,7 @@ QueueRunnerTests.swift        # ProcessProbe and Spawn, which only know macOS
 RecordingTests.swift          # Metal
 RunVideosTests.swift          # CoreGraphics, Metal
 SolverCheckTests.swift        # Metal
+SombreroFixtureTests.swift    # EngineFixtures.insideFrame, which draws on Metal
 StageJobsTests+Mac.swift      # ExportedFile, which reads videos with AVFoundation
 StepScheduleRunTests.swift    # Metal
 StickyGasTests.swift         # Metal
