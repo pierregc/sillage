@@ -116,9 +116,13 @@ public struct FramePlan: Sendable {
         )
     }
 
-    public static func carrierSize(_ settings: RenderSettings) -> (width: Int, height: Int) {
+    /// `screened`: at the frame's own resolution, as a dust screen's carrier is drawn (#506).
+    public static func carrierSize(_ settings: RenderSettings, screened: Bool = false) -> (
+        width: Int, height: Int
+    ) {
         let size = accumulationSize(settings)
-        return (max(size.width / DustWeb.carrierCoarse, 1), max(size.height / DustWeb.carrierCoarse, 1))
+        let coarse = screened ? 1 : DustWeb.carrierCoarse
+        return (max(size.width / coarse, 1), max(size.height / coarse, 1))
     }
 
     /// `laceScale` is one over the baked lace's mean, nil when the frame draws no web: the

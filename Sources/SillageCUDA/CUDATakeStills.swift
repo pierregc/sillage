@@ -145,7 +145,7 @@ public final class CUDATakeStills: FrameStage {
         count = take.recording.particleCount
         // The flight first: a take or a flight that cannot be drawn is refused before the
         // device holds anything.
-        if let refused = file.flatMap(Self.notDrawn) { throw CUDAError(.invalidArgument, refused) }
+        let screen = try file?.inside?.dustScreen.map(Self.screen)
         flightFrames = try file.map {
             try FlightFrames(
                 take: take, look: look, capturedRate: capturedRate, width: width, height: height,
@@ -157,7 +157,8 @@ public final class CUDATakeStills: FrameStage {
             context: context, particles: particles,
             settings: look.renderSettings(width: width, height: height),
             largeSplatCapacity: largeSplatPixels > 0 ? Self.largeSplatCapacity(drawn: drawn) : 0,
-            laceTexels: laceTexels)
+            laceTexels: laceTexels, screened: screen != nil)
+        if let screen { try renderer.setScreen(screen) }
         renderer.largeSplatPixels = largeSplatPixels
         if self.framing.recording !== take.recording {
             renderer.luminosityNormalisation = ParticleAttributes.luminosityNormalisation(
@@ -184,13 +185,14 @@ public final class CUDATakeStills: FrameStage {
         }
     }
 
-    /// What of a flight this engine does not draw, named, so that it is refused before the first
-    /// frame rather than left out (#513); nil when it draws all of it.
-    public static func notDrawn(_ flight: FlightFile) -> String? {
-        guard let screen = flight.inside?.dustScreen else { return nil }
-        let dabs = screen.dabs == nil ? "" : " and its dabs"
-        return "inside.dustScreen (\(screen.tile))\(dabs): the dust screen of #506, #508 and #511 is drawn "
-            + "on Metal alone so far (#513); draw this flight on the Mac, or without its dustScreen"
+    /// A flight's dust screen (#506, #513), read before the first frame: one Metal would draw
+    /// without, its tile unreadable or its dabs on a tile without a lut, is refused by name.
+    public static func screen(_ ref: DustScreenRef) throws -> DustScreenTexels {
+        do {
+            return try DustScreenTexels(ref)
+        } catch {
+            throw CUDAError(.invalidArgument, "inside.dustScreen: \(error)")
+        }
     }
 
     public var capturedFrames: Int { take.recording.capturedFrames }
