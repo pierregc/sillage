@@ -62,7 +62,7 @@ public enum CUDACommands {
         ],
         words: ["scene folder or take"],
         options: options(
-            flags: "no-overlay profile resume",
+            flags: "no-overlay profile resume whole-squares",
             text: "flight flight-at flight-keys look take framing preset codec speed slow overlay "
                 + "out stills still-frames large-splats part summary",
             whole: "width height fps rate threads device segment-frames",

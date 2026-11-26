@@ -1839,16 +1839,15 @@ enum Shaders {
         }
         #endif
 
-        #if defined(__METAL_VERSION__)
         struct BackgroundGalaxy {
             float4 direction;
             float4 color;
             float4 shape;
         };
 
-        struct GalaxyFieldOut {
-            float4 position [[position]];
-            float pointSize [[point_size]];
+        struct GalaxyPoint {
+            float4 position;
+            float pointSize;
             half3 color;
             float4 shape;
             float ratio;
@@ -1857,11 +1856,8 @@ enum Shaders {
         // Galaxies behind the field stars, each an ellipse of a disk and a bulge at constant
         // surface brightness, so that a narrower field shows them larger and no brighter. Under a
         // pixel and a half one is a point whose light goes as its area.
-        vertex GalaxyFieldOut galaxyFieldVertex(uint vid [[vertex_id]],
-                                                device const BackgroundGalaxy *galaxies [[buffer(0)]],
-                                                constant SplatUniforms &u [[buffer(4)]]) {
-            BackgroundGalaxy g = galaxies[vid];
-            GalaxyFieldOut out;
+        SHARED GalaxyPoint galaxyFieldPoint(BackgroundGalaxy g, constant SplatUniforms &u) {
+            GalaxyPoint out;
             out.position = u.viewProjection * float4(g.direction.xyz, 1.0f);
             float size = 2.0f * g.direction.w * u.projectionScale / max(out.position.w, 1e-3f);
             float small = min(size / 1.5f, 1.0f);
@@ -1872,15 +1868,53 @@ enum Shaders {
             return out;
         }
 
+        // How far a pixel stands from the galaxy's centre, in its own ellipse: past one the
+        // galaxy leaves it alone.
+        SHARED float galaxyFieldRadius(float2 coord, float4 shape, float ratio) {
+            float2 d = (coord - 0.5f) * 2.0f;
+            float2 a = float2(dot(d, shape.xy), dot(d, float2(-shape.y, shape.x)) / ratio);
+            return length(a);
+        }
+
+        SHARED half4 galaxyFieldPixel(half3 color, float4 shape, float r) {
+            float profile = (1.0f - shape.z) * exp(-5.0f * r) + shape.z * exp(-60.0f * r * r);
+            return half4(color * half(profile * (1.0f - smoothstep(0.6f, 1.0f, r))), half(0.0f));
+        }
+
+        // The same grains drawn a second time into the light: what the dust gives
+        // off, in proportion to what it holds, in one colour. Nothing dims it.
+        SHARED half4 dustGlowPixel(float4 glow, half opticalDepth, float r2) {
+            return half4(half3(glow.rgb * (glow.w * float(opticalDepth) * exp(-4.5f * r2))), half(0.0f));
+        }
+
+        #if defined(__METAL_VERSION__)
+        struct GalaxyFieldOut {
+            float4 position [[position]];
+            float pointSize [[point_size]];
+            half3 color;
+            float4 shape;
+            float ratio;
+        };
+
+        vertex GalaxyFieldOut galaxyFieldVertex(uint vid [[vertex_id]],
+                                                device const BackgroundGalaxy *galaxies [[buffer(0)]],
+                                                constant SplatUniforms &u [[buffer(4)]]) {
+            GalaxyPoint point = galaxyFieldPoint(galaxies[vid], u);
+            GalaxyFieldOut out;
+            out.position = point.position;
+            out.pointSize = point.pointSize;
+            out.color = point.color;
+            out.shape = point.shape;
+            out.ratio = point.ratio;
+            return out;
+        }
+
         fragment LightTarget galaxyFieldFragment(GalaxyFieldOut in [[stage_in]],
                                                  float2 coord [[point_coord]]) {
-            float2 d = (coord - 0.5f) * 2.0f;
-            float2 a = float2(dot(d, in.shape.xy), dot(d, float2(-in.shape.y, in.shape.x)) / in.ratio);
-            float r = length(a);
+            float r = galaxyFieldRadius(coord, in.shape, in.ratio);
             if (r > 1.0f) { discard_fragment(); }
-            float profile = (1.0f - in.shape.z) * exp(-5.0f * r) + in.shape.z * exp(-60.0f * r * r);
             LightTarget out;
-            out.light = half4(in.color * half(profile * (1.0f - smoothstep(0.6f, 1.0f, r))), 0.0h);
+            out.light = galaxyFieldPixel(in.color, in.shape, r);
             return out;
         }
 
@@ -2101,8 +2135,6 @@ enum Shaders {
             return out;
         }
 
-        // The same grains drawn a second time into the light: what the dust gives
-        // off, in proportion to what it holds, in one colour. Nothing dims it.
         fragment LightTarget dustGlowFragment(SplatOut in [[stage_in]],
                                               float2 coord [[point_coord]],
                                               constant float4 &glow [[buffer(0)]]) {
@@ -2110,7 +2142,7 @@ enum Shaders {
             if (r2 > 1.0f) { discard_fragment(); }
 
             LightTarget out;
-            out.light = half4(half3(glow.rgb * (glow.w * float(in.opticalDepth) * exp(-4.5f * r2))), 0.0h);
+            out.light = dustGlowPixel(glow, in.opticalDepth, r2);
             return out;
         }
         #endif
@@ -3497,6 +3529,12 @@ enum Shaders {
         }
         #endif
 
+        // What the web's dust gives off, as the grains' glow does: the carried dust times its
+        // web, summed over the slabs, in one colour, so the glow follows the filaments.
+        SHARED half4 webGlowPixel(float4 glow, float4 webbed) {
+            return half4(half3(glow.rgb * (glow.w * dot(webbed, float4(1.0f)))), half(0.0f));
+        }
+
         #if defined(__METAL_VERSION__)
         fragment DustTarget webResolveFragment(WebResolveOut in [[stage_in]],
                                                constant DiskFrame *frames [[buffer(0)]],
@@ -3533,8 +3571,6 @@ enum Shaders {
             return out;
         }
 
-        // What the web's dust gives off, as the grains' glow does: the carried dust times its
-        // web, summed over the slabs, in one colour, so the glow follows the filaments.
         fragment LightTarget webGlowFragment(WebResolveOut in [[stage_in]],
                                              constant DiskFrame *frames [[buffer(0)]],
                                              constant WebUniforms &w [[buffer(1)]],
@@ -3548,7 +3584,7 @@ enum Shaders {
             float4 webbed = float4(webResolved(uv, carrier, float4(tagged.sample(pointSampler, uv)),
                                                frames, w, lace));
             LightTarget out;
-            out.light = half4(half3(glow.rgb * (glow.w * dot(webbed, float4(1.0f)))), 0.0h);
+            out.light = webGlowPixel(glow, webbed);
             return out;
         }
         #endif

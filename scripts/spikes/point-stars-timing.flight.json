@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "near": 0.001,
+  "inside": {"stars": 128, "exposure": 0.16, "subframes": 4, "clusters": 0},
+  "keys": [
+    {"at": 0, "myr": 13, "look": true},
+    {"at": 2, "myr": 13, "eye": {"galaxy": 0, "offset": [3, -6, 4], "disk": true}, "aim": {"galaxy": 0}},
+    {"at": 4, "myr": 13, "eye": {"galaxy": 0, "offset": [1.5, 0.5, 0.05], "disk": true}, "aim": {"galaxy": 0, "offset": [-2, 3, 0], "disk": true}},
+    {"at": 6, "myr": 13, "eye": {"galaxy": 0, "offset": [0.2, 2.2, 0.05], "disk": true}, "aim": {"galaxy": 0, "offset": [-3, 2, 0], "disk": true}}
+  ]
+}

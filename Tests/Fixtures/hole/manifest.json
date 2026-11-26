@@ -1,6 +1,6 @@
 {
   "byteOrder" : "little",
-  "device" : "Apple M4 Max",
+  "device" : "Apple M6",
   "end" : "end.bin",
   "format" : "sillage-hole-fixtures",
   "gas" : {
@@ -18,7 +18,7 @@
   "start" : "start.bin",
   "startStep" : 6000,
   "steps" : 40,
-  "system" : "macOS 26.5.1",
+  "system" : "macOS 27.2.1",
   "tracers" : 4000,
   "version" : 1,
   "views" : [

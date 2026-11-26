@@ -27,8 +27,12 @@
 #   fetch <paths>       rsyncs paths of /work back to ~/claude-workspace/gpu-out/<date>-<box>/
 #   down [note]         destroys the box, checks Vast no longer lists it, appends to the ledger
 #   list                every instance on the account (a forgotten box shows here)
+#   where               the box's id, address, port and deadline
+#   cleanup             destroys every instance whose label is $LABEL (the workflow's safety net)
 #
 # GPU_BOX_DRY=1 prints what `up` and `down` would send instead of sending it.
+# LABEL=<text> names the instances this run rents (default sillage); GPU_OUT=<dir> is where `fetch`
+# puts what it brings back. .github/workflows/gpu.yml drives this script from GitHub's runner.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -44,7 +48,7 @@ SWIFT_SHA="8e3d63a3371caad495e694414b9b9a22c5f68c6473077406c7296472a41bc077"
 die() { echo "gpu-box: $*" >&2; exit 1; }
 
 [ -f "$CONFIG" ] || die "$CONFIG is missing: it holds VAST_API_KEY=..."
-if [ "$(stat -f %Lp "$CONFIG" 2>/dev/null || stat -c %a "$CONFIG")" != 600 ]; then
+if [ "$(stat -c %a "$CONFIG" 2>/dev/null || stat -f %Lp "$CONFIG")" != 600 ]; then
     die "$CONFIG must be chmod 600"
 fi
 # shellcheck disable=SC1090
@@ -82,6 +86,10 @@ api() {
 json() { python3 -c "import json,sys; d=json.load(sys.stdin); $1"; }
 
 state_get() { [ -f "$STATE" ] && sed -n "s/^$1=//p" "$STATE" | head -1; }
+state_put() {
+    { grep -v "^$1=" "$STATE" 2>/dev/null || true; echo "$1=$2"; } > "$STATE.tmp"
+    mv "$STATE.tmp" "$STATE"; chmod 600 "$STATE"
+}
 need_box() { [ -n "$(state_get id)" ] || die "no box: run \`up\` first"; }
 
 credit() { api GET /users/current/ | json 'print(round(d.get("credit",0)+d.get("balance",0),4))'; }
@@ -146,9 +154,9 @@ print("%s %.4f %s" % (o[0]["id"], o[0]["min_bid"] * '"$BID_MARGIN"' if b else o[
     read -r offer_id price place <<<"$offer"
     local body
     body="$(python3 -c 'import json,sys; b={"client_id":"me","image":sys.argv[1],
-        "disk":60,"runtype":"ssh_direc ssh_proxy","label":"sillage","onstart":sys.argv[2]}
+        "disk":60,"runtype":"ssh_direc ssh_proxy","label":sys.argv[5],"onstart":sys.argv[2]}
 if sys.argv[3] == "1": b["price"] = round(float(sys.argv[4]), 4)
-print(json.dumps(b))' "$IMAGE" "$(onstart)" "$INTERRUPTIBLE" "$price")"
+print(json.dumps(b))' "$IMAGE" "$(onstart)" "$INTERRUPTIBLE" "$price" "${LABEL:-sillage}")"
     if [ "$DRY" = 1 ]; then
         echo "dry: PUT /asks/$offer_id/ ($gpu, $price \$/h, $place)"
         echo "$body" | json 'print(json.dumps(d, indent=1))'
@@ -173,8 +181,7 @@ p=(i.get("ports") or {}).get("22/tcp") or []
 if i.get("public_ipaddr") and p: print(i.get("actual_status"), i["public_ipaddr"].strip(), p[0]["HostPort"])
 else: print(i.get("actual_status"), i.get("ssh_host") or "-", i.get("ssh_port") or "-")')"
         if [ "$status" = running ] && [ "$host" != - ]; then
-            sed -i '' -e '/^host=/d' -e '/^port=/d' "$STATE"
-            echo "host=$host" >> "$STATE"; echo "port=$port" >> "$STATE"
+            state_put host "$host"; state_put port "$port"
             if on_box true 2>/dev/null; then
                 echo "box $id ready after $t s: ssh -p $port root@<box> (\`gpu-box.sh ssh\`)"
                 on_box 'cat /work/logs/watchdog.armed 2>/dev/null || echo "deadline NOT armed"'
@@ -257,7 +264,7 @@ run() {
     local cmd
     printf -v cmd '%q ' "$@"
     on_box "cd /work/sillage && tmux new-session -d -s run$n \"export PATH=/opt/swift/usr/bin:/usr/local/cuda/bin:\\\$PATH; ( $cmd ) > /work/logs/$n.log 2>&1; echo \\\$? > /work/logs/$n.exit\""
-    sed -i '' '/^run=/d' "$STATE"; echo "run=$n" >> "$STATE"
+    state_put run "$n"
     echo "run $n started: $*"
 }
 
@@ -274,7 +281,7 @@ wait_run() {
 
 fetch() {
     need_box
-    local out="$HOME/claude-workspace/gpu-out/$(date +%Y-%m-%d)-$(state_get id)"
+    local out="${GPU_OUT:-$HOME/claude-workspace/gpu-out/$(date +%Y-%m-%d)-$(state_get id)}"
     mkdir -p "$out"
     local path
     for path in "${@:-logs}"; do
@@ -319,6 +326,14 @@ MD
     echo "| $(date -u +%Y-%m-%d) | Vast.ai | $(state_get gpu) | $(state_get price) | $minutes | $cost | $spent | $euros | ${ISSUE:-#283} | ${note:-} |" >> "$LEDGER"
     rm -f "$STATE"
     echo "box $id destroyed after $minutes min: about $cost \$ at its price, $spent \$ of credit used; $after \$ left"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        {
+            echo "### GPU ledger line"
+            echo "| date (UTC) | provider | GPU | \$/h | minutes | cost \$ | credit used \$ | € | issue | what ran |"
+            echo "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |"
+            tail -n 1 "$LEDGER"
+        } >> "$GITHUB_STEP_SUMMARY"
+    fi
 }
 
 list() {
@@ -328,7 +343,23 @@ if not d.get("instances"): print("no instance on the account")'
     echo "credit: $(credit) \$"
 }
 
-[ $# -gt 0 ] || { sed -n '2,31p' "$0"; exit 2; }
+where() {
+    need_box
+    echo "id $(state_get id), host $(state_get host), port $(state_get port), deadline $(date -u -d "@$(state_get deadline)" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || date -u -r "$(state_get deadline)" '+%Y-%m-%d %H:%M UTC')"
+}
+
+cleanup() {
+    local label="${LABEL:-sillage}" ids id
+    ids="$(api GET /v1/instances/ | json "print(' '.join(str(i['id']) for i in d.get('instances',[]) if i.get('label') == '$label'))")"
+    [ -n "$ids" ] || { echo "no instance labelled $label"; return; }
+    for id in $ids; do
+        if [ "$DRY" = 1 ]; then echo "dry: DELETE /instances/$id/"; continue; fi
+        api DELETE "/instances/$id/" > /dev/null || true
+        echo "destroyed instance $id labelled $label"
+    done
+}
+
+[ $# -gt 0 ] || { sed -n '2,35p' "$0"; exit 2; }
 command="$1"; shift
 case "$command" in
     offers) offers "$@" ;;
@@ -344,5 +375,7 @@ case "$command" in
     fetch) fetch "$@" ;;
     down) down "$@" ;;
     list) list ;;
+    where) where ;;
+    cleanup) cleanup ;;
     *) die "unknown command $command" ;;
 esac
