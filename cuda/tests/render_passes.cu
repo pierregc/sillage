@@ -1,7 +1,7 @@
 // The renderer's particle passes on the CPU target (#276), through the C API alone: a star lays
 // its whole kernel, a frame drawn twice is the same to the bit, both ways for large splats lay
-// the same bits, the deep sky (#513) adds light through the dust, and a call the renderer cannot
-// answer is refused. The Swift tests draw whole
+// the same bits, the deep sky (#513) adds light through the dust, a dust screen's colour law
+// colours it, and a call the renderer cannot answer is refused. The Swift tests draw whole
 // scenes with the frame plan (Tests/SillageCUDATests/CUDARenderTests.swift); this one runs
 // where there is no Swift, with g++ and with clang++.
 #include "cuda_cpu.h"
@@ -303,6 +303,53 @@ static int run() {
         expect(sc_render_sky(renderer, &sky, sizeof sky - 16u) == SC_INVALID_ARGUMENT, "a sky of another size");
         sc_renderer_destroy(renderer);
         release(clear);
+        release(dusty);
+    }
+
+    // A dust screen's colour law (#506): the stars' colour changes through the dust, their
+    // coverage does not, and a screen is refused before its tile and at another size.
+    {
+        Scene dusty = scene(context, 6000u);
+        sc_renderer *renderer = nullptr;
+        ok(sc_renderer_create(context, &config, &renderer), "a renderer");
+        frame(renderer, dusty, uniforms(50.0f, dusty.count, side));
+        auto plain = fixed(renderer, SC_RENDER_LIGHT_FIXED, side);
+        ScreenLaw law;
+        std::memset(&law, 0, sizeof law);
+        law.diffuse = float4(0.5f, 2.0f, 1.0f, 0.0f);
+        law.rim = float4(1.0f, 1.0f, 1.0f, 0.0f);
+        law.radii = float4(1.0f, 2.0f, 0.0f, 1.0f);
+        law.target = float4(float(side), float(side), 1.0f, 0.0f);
+        ok(sc_render_set_screen(renderer, nullptr, 0u, &law, sizeof law), "the screen's law");
+        frame(renderer, dusty, uniforms(50.0f, dusty.count, side));
+        auto lawful = fixed(renderer, SC_RENDER_LIGHT_FIXED, side);
+        size_t coloured = 0, covered = 0;
+        for (size_t i = 0; i < plain.size(); ++i) {
+            bool alpha = i % 4u == 3u;
+            coloured += !alpha && plain[i] != lawful[i] ? 1u : 0u;
+            covered += alpha && plain[i] != lawful[i] ? 1u : 0u;
+        }
+        std::printf("  the screen's law changes %zu colour values and %zu coverages\n", coloured, covered);
+        expect(coloured > 0u, "the screen's law changes no colour");
+        expect(covered == 0u, "the screen's law changes a star's coverage");
+        ok(sc_render_set_screen(renderer, nullptr, 0u, nullptr, 0u), "no screen");
+        frame(renderer, dusty, uniforms(50.0f, dusty.count, side));
+        expect(fixed(renderer, SC_RENDER_LIGHT_FIXED, side) == plain, "a cleared law still colours the stars");
+        ScreenUniforms screen;
+        std::memset(&screen, 0, sizeof screen);
+        screen.shape = float4(1.0f, 1.0f, 2.0f, 0.0f);
+        expect(sc_render_set_screen(renderer, &screen, sizeof screen, nullptr, 0u) == SC_INVALID_ARGUMENT,
+               "a screen before its tile");
+        expect(sc_render_set_screen(renderer, &screen, sizeof screen - 16u, nullptr, 0u) == SC_INVALID_ARGUMENT,
+               "a screen of another size");
+        expect(sc_render_set_screen(renderer, nullptr, 0u, &law, sizeof law + 16u) == SC_INVALID_ARGUMENT,
+               "a law of another size");
+        std::vector<float> tile(8u * 4u + 4u * 2u + 2u + 1u, 1.0f);
+        expect(sc_render_set_screen_tile(renderer, tile.data(), 8u, 4u, 5u, nullptr, 0u) == SC_INVALID_ARGUMENT,
+               "a tile with more levels than it halves to");
+        ok(sc_render_set_screen_tile(renderer, tile.data(), 8u, 4u, 4u, nullptr, 0u), "a tile of four levels");
+        ok(sc_render_set_screen(renderer, &screen, sizeof screen, nullptr, 0u), "a screen after its tile");
+        sc_renderer_destroy(renderer);
         release(dusty);
     }
 

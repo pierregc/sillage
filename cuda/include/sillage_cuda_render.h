@@ -144,6 +144,15 @@ sc_status sc_render_set_reddening(sc_renderer *renderer, const float *red);
 /* Draws the deep sky (#512) into the light, through the finished dust of each pixel: SkyParams
  * with its length. */
 sc_status sc_render_sky(sc_renderer *renderer, const void *params, size_t length);
+/* A dust screen's tile (#506), once: `levels` levels of floats, level 0 first and each half the
+ * one before on each side, never under 1, as Metal's generateMipmaps makes them, and its lut,
+ * `lut_width` floats by `height`, or NULL for a tile of columns. */
+sc_status sc_render_set_screen_tile(sc_renderer *renderer, const float *tile, uint32_t width, uint32_t height,
+                                    uint32_t levels, const float *lut, uint32_t lut_width);
+/* What the web's resolve reads of a dust screen, ScreenUniforms with its length, and the light
+ * passes' colour law, ScreenLaw with its length, for the frames that follow; NULL for none. */
+sc_status sc_render_set_screen(sc_renderer *renderer, const void *screen, size_t length, const void *law,
+                               size_t law_length);
 /* Brings SC_RENDER_LIGHT and SC_RENDER_DUST_TARGET up to date. */
 sc_status sc_render_finish(sc_renderer *renderer);
 /* A target of the renderer, which owns it. NULL for one this renderer does not have. */
