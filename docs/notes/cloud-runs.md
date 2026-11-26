@@ -94,10 +94,10 @@ the fixtures are the numbers that pass or fail.
 `scripts/cuda-card-check.sh` runs the engine check and every CUDA Swift test on the card, timings,
 the 200 M faint light and exact resume left out, and prints a `VERDICT` block last, which the
 workflow's log shows (its artifacts cannot be fetched from the cloud). It checks bits, not speed:
-the cheapest card of sm_86 or later does (RTX 3060 and up), for an hour at most:
+the cheapest card of sm_86 or later does (RTX 3060 and up), billed by the second, so a deadline of two hours costs nothing more:
 
 ```text
-gpu.yml: command scripts/cuda-card-check.sh, gpu RTX 3060, max_price 0.15, hours 1
+gpu.yml: command scripts/cuda-card-check.sh, gpu RTX 3060, max_price 0.15, hours 2
 ```
 
 ## What the boxes ran

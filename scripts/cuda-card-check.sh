@@ -5,7 +5,7 @@
 # no timing: any card of sm_86 or later does, the cheapest first. The verdict is printed last,
 # where the workflow's log shows it, since artifacts cannot be fetched from the cloud.
 #
-#   gpu.yml, command: scripts/cuda-card-check.sh, gpu: RTX 3060, hours: 1
+#   gpu.yml, command: scripts/cuda-card-check.sh, gpu: RTX 3060, hours: 2 (billed by the second)
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
