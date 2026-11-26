@@ -2238,12 +2238,25 @@ the squares' 69 M for 1.6 M lit. `CUDAInsideTests.aStreaksBandLaysTheBitsOfItsWh
 fixed-point light of streaks across, up, slanted and towards the stars, both ways for large
 splats, the same bits with and without the band.
 
-**Not measured yet.** The pass's time on a GPU. `scripts/spikes/point-stars-timing.sh` is the
-session: a take of the fixture's scene-0031 at 8 M on 12 M (two frames at 13 Myr, a few minutes
-of steps), then two frames of a video at 3 a second from inside its disk in 4K, each four renders
-over its shutter, before (`--whole-squares`) and after, with `--profile`, their PNGs compared to
-the byte. A still has no shutter and so no streaks: `--flight-keys` would time nothing. A star
-that barely moves (a point of a few pixels) gains nothing: the gain is the streaks'.
+**Timed on an RTX 5090** (2026-11-26, `gpu.yml` run 45862075598, Vast.ai in Serbia,
+0.56 $/h, 11 minutes, `scripts/spikes/point-stars-timing.sh`): a take of the fixture's scene-0031
+at 8 M on 12 M (two frames at 13 Myr), then two frames of a video at 3 a second from inside its
+disk in 4K, the eye 171 pc from matter and moving up to 660 pc a frame, each frame four renders
+over its shutter, up to 21.4 M point stars a render (19.8 M in the last). Before is
+`--whole-squares`, in the same build, on the same box:
+
+| | before | after |
+| --- | ---: | ---: |
+| pass pointStars, a render | 10.17 s | 0.90 s |
+| pass stars, a render | 0.27 s | 0.27 s |
+| a frame | 44.5 s | 7.4 s |
+| its point stars' share | 91 % | 49 % |
+
+The PNGs of both are the same bytes. The exposure's pre-pass (25 moments, renders with no shutter
+and so no streaks) is the same both ways: 34 ms of point stars a render. What is left of a frame
+is half point stars and a third "the rest" (host and waits, 5 s of 15 for two frames): the next
+gain is there or in the accumulation's atomics, not in the walk. A still has no shutter and so no
+streaks: `--flight-keys` would time nothing.
 
 **On the CPU target**, the script at 1080p and 20,000 particles (`PARTICLES=20000 PRESET=1080p`),
 two frames 3.8 s into its flight, the eye moving up to 660 pc a frame within 1 kpc of matter, 8
