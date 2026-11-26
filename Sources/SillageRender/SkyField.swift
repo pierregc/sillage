@@ -2,6 +2,7 @@
     import simd
 #else
     import Foundation
+    import SillageCore
 #endif
 
 /// A deep sky behind the scene (#512): field stars, the brightest with a telescope's four
@@ -12,7 +13,7 @@
 /// pixel sees each object's light fall as the pixel's solid angle, as a camera of one focal
 /// ratio does, so a 1080p frame is the 4K one reduced, and a view wider than the reference by
 /// `depth` past that: the faint ones go, and from inside a disk the sky is all but gone. Behind
-/// every slab of dust. Metal only.
+/// every slab of dust.
 public struct SkyField: Codable, Sendable, Equatable {
     /// The light of a mid-level object: 0.07 lands the counts of Hubble's frame of the Sombrero
     /// in a 4K still at `fieldOfView`. Zero draws no sky.
@@ -102,27 +103,27 @@ public struct SkyField: Codable, Sendable, Equatable {
 }
 
 /// What the sky's pass reads; mirrors `SkyParams` in `Shaders`.
-struct SkyParams {
+public struct SkyParams: Sendable {
     /// The camera's axes; `right.w` and `up.w` the tangents of the half fields.
-    var right: SIMD4<Float>
-    var up: SIMD4<Float>
-    var forward: SIMD4<Float>
+    public var right: SIMD4<Float>
+    public var up: SIMD4<Float>
+    public var forward: SIMD4<Float>
     /// The target's width and height, the supersampling, and the light kept for a pixel this
     /// size against the reference.
-    var size: SIMD4<Float>
+    public var size: SIMD4<Float>
     /// Brightness, the share of a cell holding an object, the spikes' share, the galaxies'.
-    var field: SIMD4<Float>
+    public var field: SIMD4<Float>
     /// The spikes' cosine and sine, the seed, a star's width in output pixels.
-    var more: SIMD4<Float>
+    public var more: SIMD4<Float>
     /// Pixels a cell of the coarsest level spans, the reference pixel's size in radians, a
     /// star's halo as a share of its light and its width in core widths.
-    var scale: SIMD4<Float>
+    public var scale: SIMD4<Float>
 
     /// Cells along a face's edge at the coarsest level.
-    static let coarsest: Float = 96
+    public static let coarsest: Float = 96
 
     /// The angle between two cameras' views, and between their rolls about it.
-    static func turn(from a: Camera, to b: Camera) -> SIMD2<Float> {
+    public static func turn(from a: Camera, to b: Camera) -> SIMD2<Float> {
         let fa = simd_normalize(a.target - a.eye)
         let fb = simd_normalize(b.target - b.eye)
         let view = acos(min(max(simd_dot(fa, fb), -1), 1))
@@ -154,7 +155,7 @@ struct SkyParams {
         return (rotate(ar), rotate(au), rotate(af))
     }
 
-    init(
+    public init(
         _ sky: SkyField, camera: Camera, width: Int, height: Int, supersample: Int,
         turn: SIMD2<Float> = .zero
     ) {

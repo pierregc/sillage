@@ -165,6 +165,8 @@ enum OptionHelp {
             "a camera path: a name in the scene's flights/ or a .flight.json; the video lasts to its last key",
         "flight-keys": "draws only the frame at each key of --flight, as PNGs in this folder, and no video",
         "flight-at": "with --flight-keys, those seconds of the flight instead of its keys, as 0,2.5,9",
+        "flight-stills":
+            "draws only the --flight-at seconds of --flight, as sillage-cuda still --flight draws and names them",
         "stills": "keeps frames as PNGs in this folder",
         "still-frames": "the frames --stills keeps, as 0,120,300 (frames of the video)",
         "framing": "a massive take the camera is framed on, for a take of tracers",

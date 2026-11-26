@@ -395,14 +395,8 @@ public final class Renderer {
 
     /// One over the mean light per unit mass of particles formed at `formation`, read on about
     /// fifty thousand of them.
-    /// The dust's extinction per channel against its red (#478), and in `w` whether the shader
-    /// takes it: at 1 it keeps its own constant, so a look that leaves it draws to the bit as
-    /// before; otherwise the excess over red is scaled.
-    public static func reddening(_ scale: Float) -> SIMD4<Float> {
-        if scale == 1 { return SIMD4(1, 1.22, 1.52, 0) }
-        let s = max(scale, 0)
-        return SIMD4(1, 1 + 0.22 * s, 1 + 0.52 * s, 1)
-    }
+    /// The dust's extinction per channel against its red (#478): `RenderSettings.reddening`.
+    public static func reddening(_ scale: Float) -> SIMD4<Float> { RenderSettings.reddening(scale) }
 
     public static func luminosityNormalisation(formation: [Float]) -> Float {
         ParticleAttributes.luminosityNormalisation(formation: formation)
@@ -1014,8 +1008,9 @@ public final class Renderer {
                     encoder.setFragmentBytes(&screen, length: MemoryLayout<ScreenUniforms>.stride, index: 2)
                     encoder.setFragmentTexture(screenTile ?? web.lace, index: 3)
                     encoder.setFragmentTexture(screenLut ?? screenTile ?? web.lace, index: 4)
-                    if let within, within.settings.dustScreen?.dabs?.softSlabs == true {
-                        // The frame's own slabs, the ones its grains and stars are drawn in (#511).
+                    if let within {
+                        // The frame's own slabs, the ones its grains and stars are drawn in (#511),
+                        // which the dabs read whenever they lay their own dust, soft or not (#513).
                         var both = InsideSplatUniforms(
                             splat: uniforms,
                             inside: InsideUniforms(

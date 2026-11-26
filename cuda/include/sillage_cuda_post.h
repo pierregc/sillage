@@ -45,10 +45,10 @@ sc_status sc_post_compact(const sc_post_image *point, const sc_post_image *broad
 /* diffractionSpikes, with a SpikeParams. */
 sc_status sc_post_spikes(const sc_post_image *src, const sc_post_image *dst, const void *params,
                          size_t bytes);
-/* composite, with a CompositeParams. */
+/* composite, with a CompositeParams, then a look's dither of `dither` 8-bit steps (#512). */
 sc_status sc_post_composite(const sc_post_image *hdr, const sc_post_image *bloom,
                             const sc_post_image *spikes, const sc_post_image *dst,
-                            const void *params, size_t bytes);
+                            const void *params, size_t bytes, float dither);
 
 typedef enum sc_post_format {
     /* 3 bytes a pixel. */

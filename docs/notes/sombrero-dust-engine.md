@@ -14,7 +14,7 @@ Branch `feat/506-sombrero-engine` (worktree `~/claude-workspace/sillage-wt-506`)
 - Layer thickness: `S2/tools/layer.py <take> <myr>`. Clumping and thickness over time: `S2/tools/clump.py <take>`.
 
 ## Options added (all off by default)
-Flight file `inside.dustScreen` (Metal only, inside library). Struct `DustScreenRef` in `Sources/SillageRender/DustScreen.swift`; field in `InsideSettings` (`Inside.swift`):
+Flight file `inside.dustScreen` (inside library on Metal; the CUDA engine draws it too, #513). Struct `DustScreenRef` in `Sources/SillageRender/DustScreen.swift`; field in `InsideSettings` (`Inside.swift`):
 - `tile` (path to a `.tile.json`), `galaxy` 0, `rest` 0 (Myr: the moment the tile lies as written), `depth` 1 (dust per unit of the tile).
 - `law` absent: `{diffuse:[r,b,t], rim:[r,b,t], rimRadii:[a,b]}`, the per-channel share of green depth tending to 1 past t.
 - `renew` 0 (Myr period). `front` absent (`[a,b]`: keep the screen by the radial share of the line of sight).

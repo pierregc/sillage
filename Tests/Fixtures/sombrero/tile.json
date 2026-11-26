@@ -1,0 +1,17 @@
+{
+  "width": 64,
+  "height": 16,
+  "radii": [
+    0.5,
+    8.0
+  ],
+  "data": "tile.f32",
+  "lut": {
+    "data": "lut.f32",
+    "width": 16,
+    "range": [
+      -3.0,
+      3.0
+    ]
+  }
+}

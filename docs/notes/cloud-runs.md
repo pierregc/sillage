@@ -53,6 +53,42 @@ scripts/gpu-box.sh list                # every instance on the account, and the 
 - Destroy the box while a fix takes long to write: a box is paid while it waits. `setup` and the
   build take about ten minutes on a fresh box.
 
+## One frame of each scene (#513)
+
+The first test of a card is short: the engine check, then one 4K frame of a few scenes beside the
+Mac's, and no video. `engine-check` builds the tool the frames are drawn with. The check needs nothing but the checkout: it draws `Tests/Fixtures/engines`
+and the Sombrero fixture's frames (the sky, the bloom's shares, the dust layer, the dust screen)
+and holds them to Metal's references, once the Mac has written the Sombrero ones
+(`SILLAGE_WRITE_SOMBRERO=1 ./scripts/dev.sh test --filter SombreroFixtureTests`).
+
+On the Mac, Metal's frame of each scene at the second chosen, under the names `sillage-cuda` gives
+them (`<preset>-flight-<seconds>s.png`):
+
+```sh
+./scripts/dev.sh render export <take> --look <look> --flight <flight> --flight-stills mac \
+    --flight-at 39 --preset 4k --fps 30
+```
+
+On the box, the same moments, then side by side:
+
+```sh
+scripts/gpu-box.sh up "RTX 3090" && scripts/gpu-box.sh setup && scripts/gpu-box.sh ship
+scripts/gpu-box.sh run scripts/linux.sh engine-check
+scripts/gpu-box.sh wait
+scripts/gpu-box.sh put <take> <look> <flight> <tile.json> <tile .f32> <lut .f32>
+scripts/gpu-box.sh run env LD_LIBRARY_PATH=.build/linux .build/linux/sillage-cuda still \
+    /work/in/<take> --look /work/in/<look> --flight /work/in/<flight> --seconds 39 --preset 4k \
+    --rate 30 --out /work/cuda
+scripts/gpu-box.sh wait && scripts/gpu-box.sh fetch logs cuda
+scripts/gpu-box.sh down "engine check, one 4K frame of each scene (#513)"
+python3 scripts/still-pairs.py mac ~/claude-workspace/gpu-out/<date>-<box>/cuda --out pairs
+```
+
+A flight names its dust screen's tile by path (`inside.dustScreen.tile`): on the box it is
+`/work/in/<tile.json>`, so the flight put there names that path, and the tile's json names its two
+`.f32` files beside it. The frames are held to nothing but the eye and `comparison.md`'s PSNR:
+the fixtures are the numbers that pass or fail.
+
 ## What the boxes ran
 
 | date | GPU | driver | CUDA toolkit | image |

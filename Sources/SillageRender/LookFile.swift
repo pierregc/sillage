@@ -46,10 +46,10 @@ public struct LookFile: Codable, Sendable, Equatable {
     /// Brightness and stretch measured on the frames drawn (#340). Absent, the look's own.
     public var exposure: LookExposure?
     /// A deep sky of field stars and small galaxies behind the scene, fixed in direction (#512).
-    /// Absent, none. Metal only.
+    /// Absent, none.
     public var sky: SkyField?
     /// Triangular noise of this many 8-bit steps laid on the frame before it is written, so a
-    /// faint gradient is not cut into bands (#512). Absent, none. Metal only.
+    /// faint gradient is not cut into bands (#512). Absent, none.
     public var dither: Float?
 
     public struct CameraPlan: Codable, Sendable, Equatable {

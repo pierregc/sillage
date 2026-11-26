@@ -96,6 +96,8 @@ struct LookFileTests {
         file.overlay = Overlay(clock: Overlay.Clock())
         file.exposure = LookExposure()
         file.galaxyCount = 10
+        file.sky = SkyField()
+        file.dither = 1
         #expect(try keys(JSONEncoder().encode(file.look)) == fields(file.look))
         #expect(try keys(file.encoded()) == fields(file))
     }
@@ -178,9 +180,9 @@ struct LookFileTests {
     /// The dust's reddening is the shader's own at 1, so a look that leaves it draws as before,
     /// and scales the excess over red otherwise (#478).
     @Test func theDustsReddeningScalesItsExcessOverRed() throws {
-        #expect(Renderer.reddening(1) == SIMD4(1, 1.22, 1.52, 0))
-        #expect(Renderer.reddening(0) == SIMD4(1, 1, 1, 1))
-        let browner = Renderer.reddening(2)
+        #expect(RenderSettings.reddening(1) == SIMD4(1, 1.22, 1.52, 0))
+        #expect(RenderSettings.reddening(0) == SIMD4(1, 1, 1, 1))
+        let browner = RenderSettings.reddening(2)
         #expect(abs(browner.y - 1.44) < 1e-6 && abs(browner.z - 2.04) < 1e-6)
         #expect(RenderLook().dustReddening == 1)
         let text = #"{"version": 1, "look": {"dustReddening": 1.5}}"#
@@ -193,7 +195,7 @@ struct LookFileTests {
         let file = try LookFile.decoded(from: Data(text.utf8))
         #expect(file.sky == SkyField(brightness: 0.5, spikes: 0))
         #expect(file.renderSettings(width: 8, height: 8).dither == 1)
-        #expect(!(try String(decoding: LookFile().encoded(), as: UTF8.self)).contains("sky"))
+        #expect(!(try String(decoding: LookFile().encoded(), as: UTF8.self)).contains(#""sky""#))
         let stray = #"{"version": 1, "sky": {"brightnes": 0.5}}"#
         #expect(throws: (any Error).self) { try LookFile.decoded(from: Data(stray.utf8)) }
     }

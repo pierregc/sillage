@@ -83,6 +83,9 @@ public final class CUDARenderer: FrameStyling {
     public var inside: InsideFrame?
     /// The point stars the last frame drew, to the eight.
     public private(set) var starsDrawn = 0
+    /// The angle the view turns, and its roll about it, while the shutter is open: the deep sky
+    /// fades by the streak it would leave (#512), as `Renderer.skyTurn`. Set by a flight's frames.
+    public var skyTurn = SIMD2<Float>(0, 0)
     /// Where the time of each pass goes when the drawing is profiled: each pass then waits for
     /// the device, which changes nothing of what is drawn.
     public var phases: PhaseTimes?
@@ -105,21 +108,26 @@ public final class CUDARenderer: FrameStyling {
     private var palette: GalaxyPalette
     /// One over the lace's mean, once it is baked.
     private var laceScale: Float?
+    private let screened: Bool
+    /// What the web's resolve reads of the dust screen whose tile `setScreen` handed over.
+    private var screen: ScreenUniforms?
     private var tracerCount: Int { tracers?.count ?? 0 }
 
     /// `externalPositions` and `externalFormation` are a solver's own buffers, read where they
     /// are. `laceTexels` is the side of the baked lace, `DustWeb.laceTexels` for a picture.
+    /// `screened` draws the web's carrier at the frame's own resolution, as Metal does for a
+    /// flight with a dust screen (#506), whose tile `setScreen` then hands over.
     public convenience init(
         context: CUDAContext, particles: ParticleSystem, settings: RenderSettings,
         externalPositions: CUDABuffer? = nil, externalFormation: CUDABuffer? = nil,
         externalPositionOffset: Int = 0, largeSplatCapacity: Int = 0,
-        laceTexels: Int = DustWeb.laceTexels
+        laceTexels: Int = DustWeb.laceTexels, screened: Bool = false
     ) throws {
         try self.init(
             context: context, attributes: ParticleAttributes(particles), settings: settings,
             externalPositions: externalPositions, externalFormation: externalFormation,
             externalPositionOffset: externalPositionOffset, largeSplatCapacity: largeSplatCapacity,
-            laceTexels: laceTexels)
+            laceTexels: laceTexels, screened: screened)
         if externalPositions == nil { try upload(positions: particles.positions) }
     }
 
@@ -129,10 +137,11 @@ public final class CUDARenderer: FrameStyling {
         context: CUDAContext, attributes: ParticleAttributes, settings: RenderSettings,
         externalPositions: CUDABuffer? = nil, externalFormation: CUDABuffer? = nil,
         externalPositionOffset: Int = 0, largeSplatCapacity: Int = 0,
-        laceTexels: Int = DustWeb.laceTexels
+        laceTexels: Int = DustWeb.laceTexels, screened: Bool = false
     ) throws {
         self.context = context
         self.settings = settings
+        self.screened = screened
         count = attributes.count
         drawnCount = attributes.drawnCount
         luminosityNormalisation = attributes.luminosityNormalisation
@@ -144,7 +153,7 @@ public final class CUDARenderer: FrameStyling {
 
         let frame = FramePlan.accumulationSize(settings)
         let column = FramePlan.columnSize(settings)
-        let carrier = FramePlan.carrierSize(settings)
+        let carrier = FramePlan.carrierSize(settings, screened: screened)
         var config = sc_render_config(
             width: UInt32(frame.width), height: UInt32(frame.height),
             column_width: UInt32(max(column.width, 1)), column_height: UInt32(max(column.height, 1)),
@@ -297,9 +306,11 @@ public final class CUDARenderer: FrameStyling {
     /// The same from a plan made elsewhere: another renderer's, or one read back from a file.
     /// `camera` is the plan's own, which a frame drawn from inside a galaxy needs, and `next`
     /// the camera a moment later, to where its point stars' streaks run.
+    /// `beforeStars` and `beforeSky` run, from inside a galaxy, where `Renderer.encodeSplat` runs
+    /// its own: before the point stars, and before a deep sky drawn last (#509, #510).
     public func draw(
         _ plan: FramePlan, particles: Range<Int>? = nil, threads: Int = 1, camera: Camera? = nil,
-        next: Camera? = nil
+        next: Camera? = nil, beforeStars: (() throws -> Void)? = nil, beforeSky: (() throws -> Void)? = nil
     ) throws {
         if plan.web != nil { try bakeLace() }
         try bind()
@@ -311,6 +322,7 @@ public final class CUDARenderer: FrameStyling {
         if let inside, let camera, !settings.plain, particles == nil {
             deep = Deep(frame: inside, camera: camera, next: next)
         }
+        try setScreen(for: plan, deep: deep != nil)
         let everything = split(0..<(drawnCount + tracerCount))
         let parts = split(particles ?? 0..<(drawnCount + tracerCount))
         // Where its grains are spread over two slabs, each galaxy's dust is carried and
@@ -342,14 +354,97 @@ public final class CUDARenderer: FrameStyling {
                     try draw(SC_RENDER_WEB_RESOLVE, pass, plan, (0..<0, 0..<0), 1, deep)
                 }
             case .stars:
+                try setReddening()
+                // The deep sky behind the dust of the first part of a frame (#512); one the bloom
+                // sees only in part is drawn last, once the light before it is resolved (#509).
+                let sky = plan.clears ? try skyParams(camera) : nil
+                let skyLast = sky != nil && beforeSky != nil && deep != nil
+                if let sky, !skyLast { try drawSky(sky) }
                 try draw(SC_RENDER_STARS, pass, plan, parts, threads, deep)
-                // The near particles' point stars go with the stars, as Metal draws them.
-                if let deep, deep.frame.settings.stars > 0, drawnCount > 0 {
-                    try draw(SC_RENDER_POINT_STARS, pass, plan, (0..<0, 0..<0), 1, deep)
-                    starsDrawn = Int(sc_render_stars_listed(handle))
+                if let deep {
+                    if let beforeStars { try beforeStars() }
+                    // The near particles' point stars go with the stars, as Metal draws them.
+                    if deep.frame.settings.stars > 0, drawnCount > 0 {
+                        try draw(SC_RENDER_POINT_STARS, pass, plan, (0..<0, 0..<0), 1, deep)
+                        starsDrawn = Int(sc_render_stars_listed(handle))
+                    }
+                    if skyLast, let sky, let beforeSky {
+                        try beforeSky()
+                        try drawSky(sky)
+                    }
                 }
             case .plain:
                 try draw(SC_RENDER_PLAIN, pass, plan, everything, threads, deep)
+            }
+        }
+    }
+
+    /// A dust screen's tile (#506), for the frames drawn from inside whose flight names it.
+    public func setScreen(_ texels: DustScreenTexels) throws {
+        guard screened else {
+            throw CUDAError(.invalidArgument, "a dust screen on a renderer not made for one (screened)")
+        }
+        try texels.tile.withUnsafeBufferPointer { tile in
+            try texels.lut.withUnsafeBufferPointer { lut in
+                try check(
+                    sc_render_set_screen_tile(
+                        handle, tile.baseAddress, UInt32(texels.width), UInt32(texels.height),
+                        UInt32(texels.levels), texels.lut.isEmpty ? nil : lut.baseAddress,
+                        UInt32(texels.lutWidth)),
+                    "the dust screen's tile")
+            }
+        }
+        screen = texels.uniforms
+    }
+
+    /// The screen the frame's resolve reads and the colour law its light passes take, as
+    /// `Renderer.encodeSplat` binds them: from inside alone, the screen with the web alone.
+    private func setScreen(for plan: FramePlan, deep: Bool) throws {
+        let ref = deep ? inside?.settings.dustScreen : nil
+        if ref != nil, screen == nil {
+            throw CUDAError(.invalidArgument, "a flight's dust screen (#506) before its tile (setScreen)")
+        }
+        var uniforms = ref != nil && plan.web != nil ? screen : nil
+        var law = ref?.law != nil ? ScreenLaw(ref, web: plan.web) : nil
+        func set(_ screen: UnsafeRawBufferPointer?, _ law: UnsafeRawBufferPointer?) throws {
+            try check(
+                sc_render_set_screen(
+                    handle, screen?.baseAddress, screen?.count ?? 0, law?.baseAddress, law?.count ?? 0),
+                "the dust screen")
+        }
+        switch (uniforms != nil, law != nil) {
+        case (true, true):
+            try withUnsafeBytes(of: &uniforms!) { a in try withUnsafeBytes(of: &law!) { try set(a, $0) } }
+        case (true, false): try withUnsafeBytes(of: &uniforms!) { try set($0, nil) }
+        case (false, true): try withUnsafeBytes(of: &law!) { try set(nil, $0) }
+        case (false, false): try set(nil, nil)
+        }
+    }
+
+    /// What the dust takes of each colour in the light of the stars and of the sky: the look's
+    /// `dustReddening`, as `Renderer.reddening` gives it to Metal (#478).
+    private func setReddening() throws {
+        let red = RenderSettings.reddening(settings.dustReddening)
+        let channels = [red.x, red.y, red.z]
+        try check(sc_render_set_reddening(handle, channels), "the dust's reddening")
+    }
+
+    /// The deep sky's parameters for a frame through `camera`, nil for a look without one.
+    private func skyParams(_ camera: Camera?) throws -> SkyParams? {
+        guard let sky = settings.sky, sky.brightness > 0 else { return nil }
+        guard let camera else {
+            throw CUDAError(.invalidArgument, "the deep sky (#512) needs the camera of the frame's plan")
+        }
+        return SkyParams(
+            sky, camera: camera, width: settings.width, height: settings.height,
+            supersample: settings.supersample, turn: skyTurn)
+    }
+
+    private func drawSky(_ params: SkyParams) throws {
+        try timed("deep sky") {
+            var params = params
+            try withUnsafeBytes(of: &params) { bytes in
+                try check(sc_render_sky(handle, bytes.baseAddress, bytes.count), "the deep sky")
             }
         }
     }
@@ -396,26 +491,56 @@ public final class CUDARenderer: FrameStyling {
         defer { inside = frame }
         let post = try postProcessor(PostPlan.sizes(for: settings))
         let renders = max(cameras.count - 1, 1)
+        // The share of the point stars' light the bloom sees (#510), and of the deep sky's
+        // (#509): below one, what the bloom sees is resolved apart, as `Renderer.encode` does.
+        let starBloom = frame.settings.starBloom
+        let skyBloom = settings.sky.map { $0.brightness > 0 ? min(max($0.bloom, 0), 1) : 1 } ?? 1
+        let apart = starBloom < 1 || skyBloom < 1
+        func resolve(_ share: Float, adds: Bool, bloom: Bool = false) throws {
+            try finish()
+            guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
+                throw CUDAError(.invalidArgument, "this renderer has no light")
+            }
+            try timed("inside resolve") {
+                try post.insideResolve(
+                    light: CUDABuffer(borrowing: light, of: self, context: context),
+                    factor: settings.supersample, share: share, adds: adds, bloom: bloom)
+            }
+        }
         for index in 0..<renders {
             let camera = cameras[index]
             for (layer, stack) in frame.stacks.enumerated() {
                 inside?.eyeSlabs = stack.eyeSlabs
+                let weight = stack.weight / Float(renders)
+                let after = index > 0 || layer > 0
+                // The bloom sees the light before the point stars whole, theirs in part, and the
+                // sky's, drawn last, in its own part: (1 - s) before the stars, (s - k) before the
+                // sky and k all of it, s the stars' share and k the sky's.
+                var split = false
+                var skySplit = false
+                let stars = starBloom < 1 ? starBloom : 1
                 try draw(
                     plan(camera: camera), threads: threads, camera: camera,
-                    next: index + 1 < cameras.count ? cameras[index + 1] : nil)
-                try finish()
-                guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
-                    throw CUDAError(.invalidArgument, "this renderer has no light")
-                }
-                try timed("inside resolve") {
-                    try post.insideResolve(
-                        light: CUDABuffer(borrowing: light, of: self, context: context),
-                        factor: settings.supersample, share: stack.weight / Float(renders),
-                        adds: index > 0 || layer > 0)
+                    next: index + 1 < cameras.count ? cameras[index + 1] : nil,
+                    beforeStars: apart && starBloom < 1
+                        ? {
+                            split = true
+                            try resolve(weight * (1 - starBloom), adds: after, bloom: true)
+                        } : nil,
+                    beforeSky: apart && skyBloom < 1
+                        ? {
+                            try resolve(
+                                weight * ((split ? stars : 1) - skyBloom), adds: after || split, bloom: true)
+                            skySplit = true
+                        } : nil)
+                try resolve(weight, adds: after)
+                if apart {
+                    let last = skySplit ? skyBloom : (split ? starBloom : 1)
+                    try resolve(weight * last, adds: after || split || skySplit, bloom: true)
                 }
             }
         }
-        return try develop(format: format, resolved: true)
+        return try develop(format: format, resolved: true, bloomFromSource: apart)
     }
 
     private func postProcessor(_ sizes: PostPlan.Sizes) throws -> CUDAPost {
@@ -430,20 +555,24 @@ public final class CUDARenderer: FrameStyling {
     /// to be developed with this renderer's look and grain. `resolved` says the light is
     /// averaged down already, as a frame drawn from inside leaves it (#347).
     public func develop(
-        format: CUDAPost.Format = .rgb, light external: CUDABuffer? = nil, resolved: Bool = false
+        format: CUDAPost.Format = .rgb, light external: CUDABuffer? = nil, resolved: Bool = false,
+        bloomFromSource: Bool = false
     ) throws -> UnsafeRawBufferPointer {
         let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
         let post = try postProcessor(plan.sizes)
+        let dither = settings.dither
         return try timed("post-processing") {
             if let external {
-                try post.run(plan, light: external, resolved: resolved)
+                try post.run(
+                    plan, light: external, resolved: resolved, bloomFromSource: bloomFromSource,
+                    dither: dither)
             } else {
                 guard let light = sc_render_target_of(handle, SC_RENDER_LIGHT) else {
                     throw CUDAError(.invalidArgument, "this renderer has no light")
                 }
                 try post.run(
                     plan, light: CUDABuffer(borrowing: light, of: self, context: context),
-                    resolved: resolved)
+                    resolved: resolved, bloomFromSource: bloomFromSource, dither: dither)
             }
             return try post.pack(format)
         }
@@ -459,7 +588,7 @@ public final class CUDARenderer: FrameStyling {
     public func target(_ which: Target) throws -> [Float] {
         let frame = FramePlan.accumulationSize(settings)
         let column = FramePlan.columnSize(settings)
-        let carrier = FramePlan.carrierSize(settings)
+        let carrier = FramePlan.carrierSize(settings, screened: screened)
         let (name, values): (sc_render_target, Int) =
             switch which {
             case .light: (SC_RENDER_LIGHT, frame.width * frame.height * 4)
@@ -593,6 +722,7 @@ public final class CUDARenderer: FrameStyling {
             web?.carrier.z = deep.frame.settings.web[0]
             web?.carrier.w = deep.frame.settings.web[1]
         }
+        if screened { web?.carrier.x = 1 }
         let handle = SendableHandle(handle)
         func part(_ massive: Range<Int>, _ tracers: Range<Int>) -> sc_status {
             Self.withStride(of: uniforms) { uniforms in

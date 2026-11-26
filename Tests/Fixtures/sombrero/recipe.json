@@ -1,0 +1,33 @@
+{
+ "take": "../engines/frames/take.sillage",
+ "look": "sombrero.look.json",
+ "width": 128,
+ "height": 72,
+ "framesPerSecond": 30,
+ "frames": [
+  {
+   "flight": "sombrero.flight.json",
+   "seconds": 0.5,
+   "file": "wide-0.50s.rgba",
+   "what": "wide, the whole disk and the sky behind it"
+  },
+  {
+   "flight": "sombrero.flight.json",
+   "seconds": 2.0,
+   "file": "turning-2.00s.rgba",
+   "what": "the camera turning, the sky turning a share of it and streaked"
+  },
+  {
+   "flight": "sombrero.flight.json",
+   "seconds": 4.0,
+   "file": "layer-4.00s.rgba",
+   "what": "from inside the dust layer, point stars and slabs from the eye"
+  },
+  {
+   "flight": "screen.flight.json",
+   "seconds": 4.0,
+   "file": "screen-4.00s.rgba",
+   "what": "the same with the dust screen, its dabs and its colour law"
+  }
+ ]
+}

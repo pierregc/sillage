@@ -67,6 +67,8 @@ struct swizzle {
     MSL_API swizzle &operator-=(const V &v) { return *this = V(*this) - v; }
     MSL_API swizzle &operator*=(const V &v) { return *this = V(*this) * v; }
     MSL_API swizzle &operator/=(const V &v) { return *this = V(*this) / v; }
+    MSL_API swizzle &operator+=(S s) { return *this = V(*this) + s; }
+    MSL_API swizzle &operator-=(S s) { return *this = V(*this) - s; }
     MSL_API swizzle &operator*=(S s) { return *this = V(*this) * s; }
     MSL_API swizzle &operator/=(S s) { return *this = V(*this) / s; }
 };
@@ -123,6 +125,7 @@ struct alignas(sizeof(T) * 4) vec4 {
         swizzle<vec3<T>, T, 3> rgb;
         // The two in the middle, over y and z.
         struct { T yzOffset; swizzle<vec2<T>, T, 2> yz; };
+        struct { T yzwOffset; swizzle<vec3<T>, T, 3> yzw; };
     };
     vec4() = default;
     MSL_API constexpr explicit vec4(T s) : x(s), y(s), z(s), w(s) {}
@@ -354,6 +357,8 @@ MSL_API float pow(float x, float y) { return powf(x, y); }
 MSL_API float sin(float x) { return sinf(x); }
 MSL_API float cos(float x) { return cosf(x); }
 MSL_API float tan(float x) { return tanf(x); }
+MSL_API float tanh(float x) { return tanhf(x); }
+MSL_API float atan(float x) { return atanf(x); }
 MSL_API float atan2(float y, float x) { return atan2f(y, x); }
 MSL_API float acos(float x) { return acosf(x); }
 MSL_API float asin(float x) { return asinf(x); }
@@ -428,6 +433,9 @@ MSL_API constexpr T select(T a, T b, bool c) { return c ? b : a; }
     MSL_UNARY(N, V, log2)                                                                      \
     MSL_UNARY(N, V, sin)                                                                       \
     MSL_UNARY(N, V, cos)                                                                       \
+    MSL_UNARY(N, V, tan)                                                                       \
+    MSL_UNARY(N, V, tanh)                                                                      \
+    MSL_UNARY(N, V, atan)                                                                      \
     MSL_UNARY(N, V, floor)                                                                     \
     MSL_UNARY(N, V, ceil)                                                                      \
     MSL_UNARY(N, V, fract)                                                                     \

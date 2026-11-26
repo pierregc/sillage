@@ -1,0 +1,236 @@
+{
+ "bloomLevels": 4,
+ "look": {
+  "armPersistence": 0.0,
+  "bloomIntensity": 0.25,
+  "bloomSoftKnee": 0.6,
+  "bloomThreshold": 0.6,
+  "brightness": 0.075,
+  "columnSmoothing": 300,
+  "dustStrength": 0.045,
+  "dustWeb": 1,
+  "galaxyTint": 0,
+  "glint": 0.25,
+  "holeShadow": 0,
+  "maximumKernel": 255,
+  "minimumKernel": 1.0,
+  "noiseLevel": 0,
+  "saturation": 1.1,
+  "skyColour": [
+   0.44,
+   0.42,
+   0.39
+  ],
+  "skyLevel": 0.0,
+  "smoothingScale": 2.0,
+  "spikeArms": 6,
+  "spikeIntensity": 0,
+  "spikeLength": 110,
+  "spikePattern": "webb",
+  "spikeSharpness": 1,
+  "starSize": 0.5,
+  "stretch": 1.1,
+  "whitePoint": 13.0,
+  "youngWidth": 3.0,
+  "bulgeWidth": 3.0,
+  "knotWidth": 1.5,
+  "dustReddening": 2.0
+ },
+ "name": "sombrero-fixture",
+ "palette": [
+  {
+   "blend": 0.75,
+   "colour": [
+    1.0,
+    0.98,
+    0.96
+   ],
+   "core": [
+    1.0,
+    0.97,
+    0.95
+   ],
+   "disk": [
+    0.95,
+    0.91,
+    0.85
+   ],
+   "knot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mapping": "mix",
+   "outskirts": [
+    0.58683,
+    1.04166,
+    1.80393
+   ],
+   "young": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "blend": 0.75,
+   "colour": [
+    1.0,
+    0.98,
+    0.96
+   ],
+   "core": [
+    1.0,
+    0.97,
+    0.95
+   ],
+   "disk": [
+    0.95,
+    0.91,
+    0.85
+   ],
+   "knot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mapping": "mix",
+   "outskirts": [
+    0.58683,
+    1.04166,
+    1.80393
+   ],
+   "young": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "blend": 0.75,
+   "colour": [
+    1.0,
+    0.98,
+    0.96
+   ],
+   "core": [
+    1.0,
+    0.97,
+    0.95
+   ],
+   "disk": [
+    0.95,
+    0.91,
+    0.85
+   ],
+   "knot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mapping": "mix",
+   "outskirts": [
+    0.58683,
+    1.04166,
+    1.80393
+   ],
+   "young": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "blend": 0.75,
+   "colour": [
+    1.0,
+    0.98,
+    0.96
+   ],
+   "core": [
+    1.0,
+    0.97,
+    0.95
+   ],
+   "disk": [
+    0.95,
+    0.91,
+    0.85
+   ],
+   "knot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mapping": "mix",
+   "outskirts": [
+    0.58683,
+    1.04166,
+    1.80393
+   ],
+   "young": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "blend": 0.75,
+   "colour": [
+    1.0,
+    0.98,
+    0.96
+   ],
+   "core": [
+    1.0,
+    0.97,
+    0.95
+   ],
+   "disk": [
+    0.95,
+    0.91,
+    0.85
+   ],
+   "knot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mapping": "mix",
+   "outskirts": [
+    0.58683,
+    1.04166,
+    1.80393
+   ],
+   "young": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  }
+ ],
+ "starCount": 7200,
+ "version": 1,
+ "world": "telescope",
+ "armStrength": 0.0,
+ "sky": {
+  "brightness": 6,
+  "spikes": 3,
+  "depth": 3,
+  "turn": 0.025,
+  "anchor": [
+   0,
+   0.99452,
+   -0.10453
+  ],
+  "anchorUp": [
+   0,
+   0,
+   1
+  ],
+  "bloom": 0.0,
+  "halo": 0.1,
+  "haloWidth": 3.0
+ },
+ "dither": 1
+}

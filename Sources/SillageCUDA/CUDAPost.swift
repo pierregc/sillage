@@ -30,6 +30,9 @@ public final class CUDAPost {
     public let context: CUDAContext
     public let sizes: PostPlan.Sizes
     private var images: [PostPlan.Image: CUDABuffer] = [:]
+    /// What the bloom sees of a frame drawn from inside, the size of `.resolved`, when it sees
+    /// only part of the point stars or of the deep sky (#509, #510); made the first time.
+    private var bloomSource: CUDABuffer?
     private let packed: CUDABuffer
     private let host: CUDAHostMemory
 
@@ -68,21 +71,35 @@ public final class CUDAPost {
     /// One of the renders a frame drawn from inside a galaxy is averaged from (#347), into
     /// `resolved`: the box average of `light` times `share`, on top of the renders before when
     /// `adds`, as `insideResolve` does on Metal.
-    public func insideResolve(light: CUDABuffer, factor: Int, share: Float, adds: Bool) throws {
+    /// `bloom` resolves it into what the bloom sees instead, as Renderer's `bloomTarget`.
+    public func insideResolve(light: CUDABuffer, factor: Int, share: Float, adds: Bool, bloom: Bool = false)
+        throws
+    {
         guard light.length >= sizes.light.width * sizes.light.height * 16 else {
             throw CUDAError(.invalidArgument, "the light is smaller than the plan's")
         }
         var source = try handle(.light, light: light)
-        var target = try handle(.resolved, light: nil)
+        var target = try bloom ? bloomImage() : handle(.resolved, light: nil)
         try check(
             sc_post_inside_resolve(&source, &target, UInt32(factor), share, adds ? 1 : 0),
             "insideResolve")
     }
 
+    private func bloomImage() throws -> sc_post_image {
+        let size = sizes.size(of: .resolved)
+        let buffer = try bloomSource ?? context.makeBuffer(length: size.width * size.height * 16)
+        bloomSource = buffer
+        return sc_post_image(texels: buffer.handle, width: UInt32(size.width), height: UInt32(size.height))
+    }
+
     /// Runs the passes of `plan` over `light`, the renderer's supersampled accumulation, and
     /// leaves the picture in `output`. `resolved` says `insideResolve` averaged the light down
-    /// already.
-    public func run(_ plan: PostPlan, light: CUDABuffer, resolved done: Bool = false) throws {
+    /// already; `bloomFromSource` that the bloom sees what it resolved for the bloom, not the
+    /// frame. `dither` is the look's (#512).
+    public func run(
+        _ plan: PostPlan, light: CUDABuffer, resolved done: Bool = false, bloomFromSource: Bool = false,
+        dither: Float = 0
+    ) throws {
         guard plan.sizes == sizes else {
             throw CUDAError(.invalidArgument, "a post-processing plan for other sizes")
         }
@@ -108,7 +125,7 @@ public final class CUDAPost {
                     "plainComposite")
 
             case .bright(let bloom):
-                var source = try image(.resolved)
+                var source = try bloomFromSource ? bloomImage() : image(.resolved)
                 var target = try image(.down(0))
                 try withUnsafeBytes(of: bloom) { bytes in
                     try check(
@@ -149,7 +166,7 @@ public final class CUDAPost {
                 try withUnsafeBytes(of: composite) { bytes in
                     try check(
                         sc_post_composite(
-                            &frame, &glow, &rays, &target, bytes.baseAddress, bytes.count),
+                            &frame, &glow, &rays, &target, bytes.baseAddress, bytes.count, dither),
                         "composite")
                 }
             }

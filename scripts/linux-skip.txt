@@ -1,5 +1,6 @@
 CanvasPacer.swift                # QuartzCore
 DiskProbeRun.swift               # CoreGraphics, CoreVideo, Metal
+DustScreenMetal.swift            # Metal
 DustWebMetal.swift               # Metal
 EasedSmoothing.swift             # Metal
 EngineFixtures.swift             # Metal
