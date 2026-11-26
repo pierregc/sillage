@@ -2,6 +2,7 @@
     import simd
 #else
     import Foundation
+    import SillageCore
 #endif
 
 /// A deep sky behind the scene (#512): field stars, the brightest with a telescope's four

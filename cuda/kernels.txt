@@ -73,6 +73,8 @@ Shaders insideOffsets cuda
 Shaders insideFill cuda
 Shaders pointStarVertex cuda
 Shaders pointStarFragment cuda in pointStarVertex
+Shaders skyVertex pending #513
+Shaders skyFragment pending #513
 Shaders dustFragment cuda in splatVertex splatTracerVertex dustWebVertex dustWebTracerVertex
 Shaders dustGlowFragment pending #456
 Shaders bakeLace cuda
