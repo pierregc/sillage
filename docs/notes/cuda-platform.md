@@ -174,3 +174,30 @@ A take that travelled is checked before it is drawn.
 - **New, after #424**: a GPU take pass that lays out its tree canonically, so that computing a take
   again gives the same take and a resumed pass gives the same bytes.
 - **Only on Pierre's go**: an object store for the takes kept between sessions.
+
+## What was built (#428, #440)
+
+- **`.github/workflows/gpu.yml`**, `workflow_dispatch` only, one run at a time, `dry_run` ticked by
+  default. Inputs: the command, the card, the price ceiling, the hours (5 at most), the commit, what
+  to bring back, the scene to fetch from the Drive and the scene to put on it.
+- **No runner on the box.** Option 2 above had the box register a just-in-time runner. GitHub's own
+  token cannot register runners: it takes a personal token with the *Administration* permission of
+  the repository, which can change its settings. The workflow instead drives the box from GitHub's
+  runner over SSH, with `gpu-box.sh` as on the Mac. The secret it needs, the SSH key of the boxes, reaches
+  boxes only and only while one exists. The cost is the 6 hours a job on GitHub's runner may last,
+  more than a 5-hour run needs.
+- **The Vast key** stays on GitHub's runner: the box never gets it and deletes itself with its own
+  instance key. The destroy step, the `cleanup` job (by the run's label) and the deadline are three
+  separate ways to the same end.
+- **Takes** (`scripts/take-store.sh`): `up` verifies the take's digest, checks the Drive's free room,
+  copies the scene folder (not its checkpoints) to `Sillage/<library date>/<scene>/` and checks the
+  copy by hash; `down` fetches a scene and refuses a take whose digest does not match; `archive`
+  moves the oldest scenes to the Mac's library, checked, then removes them from the Drive. A take
+  that did not reach the Drive keeps its box up until the deadline (`drop_take` overrides).
+- **Not built here**: the digest written by the engine as it writes a take (`PortableSHA256` in the
+  Swift), and an export's plan recording it. `take-store.sh up` seals a take that has no digest, so a take is
+  checked from the moment it leaves its box; the engine's own digest is a ticket for the Mac and cloud threads.
+- **Tests**: `scripts/gpu-check.sh` in the Linux workflow runs both scripts against a recorded Vast
+  and a local folder standing for the Drive: the offer query and its ceiling, the dry rental, the
+  cleanup by label, no key in a request, a take up and down with the same bytes, a corrupted take
+  refused, a full Drive refused, `archive`. **Not yet run for real**: a box and the Drive.
