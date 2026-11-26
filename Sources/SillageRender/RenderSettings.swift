@@ -182,3 +182,14 @@ public struct RenderSettings: Sendable {
         starSize = look.starSize
     }
 }
+
+extension RenderSettings {
+    /// The dust's extinction per channel against its red (#478), and in `w` whether the shader
+    /// takes it: at 1 it keeps its own constant, so a look that leaves it draws to the bit as
+    /// before; otherwise the excess over red is scaled.
+    public static func reddening(_ scale: Float) -> SIMD4<Float> {
+        if scale == 1 { return SIMD4(1, 1.22, 1.52, 0) }
+        let s = max(scale, 0)
+        return SIMD4(1, 1 + 0.22 * s, 1 + 0.52 * s, 1)
+    }
+}
