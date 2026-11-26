@@ -2086,9 +2086,10 @@ first frame for now (`CUDATakeStills.notDrawn`): the screen's passes are Metal's
 
 What the film's look and flight add on Metal, drawn by the CUDA engine on one kernel text:
 
-- **The deep sky (#512).** `skyFragment` is a kernel of a pixel over the light target after the
-  particles, before the point stars, as Metal's triangle covers the frame. Its arithmetic is the
-  shared `skyPixel` (the sky's light through the dust's column with the frame's reddening);
+- **The deep sky (#512).** `skyFragment` is a kernel of a pixel over the light target, where
+  Metal's triangle covers the frame: once the dust is finished, before the stars, or last when the
+  bloom sees the sky apart (the sums are fixed point, so only that split cares). Its arithmetic
+  is the shared `skyPixel` (the sky's light through the dust's column with the frame's reddening);
   `SkyParams`, portable, is built from the look's `sky` and the frame's camera as on Metal, and
   `FlightFrames` sets the sky's turn over the shutter as `TakeExport` does.
 - **The bloom's shares (#509, #510).** With `inside.starBloom` or `sky.bloom` under one, the light
