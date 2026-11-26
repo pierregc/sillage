@@ -265,7 +265,9 @@ aim = eye + d * reach[:, None] + off
 dchi = np.gradient(np.unwrap(np.arctan2(np.gradient(pts[:, 1]), np.gradient(pts[:, 0]))), arc)
 turn = np.interp(s_t, arc, dchi) * v_t * ins
 bank = gaussian_filter1d(BANK_MAX * np.tanh(K_BANK * turn / BANK_MAX), 0.6 * FPS, mode="nearest")
-roll[ins] += bank[ins]
+# eased in at the swoop and out at the hover: cut at the ends of `ins`, it snapped 10 and 1.4 degrees
+env = smooth5((t - T_A) / 1.3) * (1 - smooth5((t - (T_CORE - 0.8)) / 0.8))
+roll[ins] += (bank * env)[ins]
 fi = CubicHermiteSpline([T_A, T_A + 6.0, T_A + 16.0, T_GO, T_CORE], [fov_appr(RHO_A), 1.0, 1.1, 1.1, 1.1],
                         [-V_A * (fov_appr(RHO_A * 1.001) - fov_appr(RHO_A)) / (RHO_A * 0.001), 0.006, 0, 0, 0])
 fov[ins] = fi(t[ins])
