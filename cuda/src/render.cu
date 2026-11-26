@@ -172,6 +172,18 @@ struct Targets {
     bool halves;
     // What the dust takes of each colour: `reddening`, or a look's `dustReddening` (#478).
     float3 red;
+    // A dust screen's colour law (#506), Metal's function constant `screenLaw`, and the disk
+    // frames it reads.
+    bool lawSet;
+    ScreenLaw law;
+    const DiskFrame *frames;
+};
+
+// A dust screen (#506) as the web's resolve reads it: no screen while `uniforms.shape.x` is 0.
+struct Screen {
+    ScreenUniforms uniforms;
+    texels2d tile;
+    texels2d lut;
 };
 
 struct CarrierTargets {
@@ -222,8 +234,12 @@ static __device__ __forceinline__ void laySplat(uint lay, const Splat &splat, in
             : dustPixel(splat.opticalDepth, splat.slab, r2);
         add4(targets.dust + pixel * 4u, dust, fixedUnit, targets.halves);
     } else if (lay == layLight) {
-        add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2, targets.red),
-             fixedUnit, targets.halves);
+        half4 dust = targets.finishedDust[pixel];
+        half4 light = targets.lawSet
+            ? screenLightPixel(splat.color, splat.slab, dust, r2, targets.red, float2(float(x) + 0.5f, float(y) + 0.5f),
+                               targets.law, targets.frames)
+            : lightPixel(splat.color, splat.slab, dust, r2, targets.red);
+        add4(targets.light + pixel * 4u, light, fixedUnit, targets.halves);
     } else {
         add4(targets.light + pixel * 4u, starfieldPixel(splat.color, splat.spikes, coord, r2), fixedUnit,
              targets.halves);
@@ -352,8 +368,12 @@ static __device__ __forceinline__ void layStar(const Star &star, int x, int y, f
     float share = starShare(coord, star.half_streak, star.radius, star.pixel);
     if (share <= 0.0f) { return; }
     size_t pixel = size_t(y) * targets.width + size_t(x);
-    add4(targets.light + pixel * 4u, starPixel(star.color, star.slab, targets.finishedDust[pixel], share, targets.red), fixedUnit,
-         targets.halves);
+    half4 dust = targets.finishedDust[pixel];
+    half4 light = targets.lawSet
+        ? screenStarPixel(star.color, star.slab, dust, share, targets.red, float2(float(x) + 0.5f, float(y) + 0.5f),
+                          targets.law, targets.frames)
+        : starPixel(star.color, star.slab, dust, share, targets.red);
+    add4(targets.light + pixel * 4u, light, fixedUnit, targets.halves);
 }
 
 // A thread a star, where Metal draws the list's entries as points, eight instances each.
@@ -406,18 +426,23 @@ __global__ void webCarrierTracerVertex(Tracers t, Frame f, Range range, CarrierT
 }
 
 // The carrier times the web, a thread a pixel of the frame, where Metal draws one triangle
-// over it. The carrier is read with Metal's bilinear sampler and the tags with its nearest.
-__global__ void webResolveFragment(Frame f, Lace lace, texels2d carried, texels2d tagged, fixed_t *dust,
-                                   uint width, uint height, bool halves) {
+// over it. The carrier is read with Metal's bilinear sampler and the tags with its nearest; a
+// dust screen's galaxy is read off its tile instead of the lace.
+__global__ void webResolveFragment(Frame f, Lace lace, texels2d carried, texels2d tagged, Screen screen,
+                                   fixed_t *dust, uint width, uint height, bool halves) {
     size_t pixel = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
     if (pixel >= size_t(width) * height) { return; }
     float2 centre(float(pixel % width) + 0.5f, float(pixel / width) + 0.5f);
     float2 uv = webResolveAt(centre, f.w);
     float4 carrier = sample_bilinear(carried, uv);
-    // Where nothing was carried Metal's fragment is discarded.
-    if (!webCarried(carrier)) { return; }
-    add4(dust + pixel * 4u, webResolved(uv, carrier, sample_nearest(tagged, uv), f.frames, f.w, lace), fixedUnit,
-         halves);
+    // Where nothing was carried Metal's fragment is discarded, unless dabs carry their own dust.
+    bool own = screenVolume(f.frames, f.w, screen.uniforms) > 0.0f;
+    if (!own && !webCarried(carrier)) { return; }
+    float4 tags = sample_nearest(tagged, uv);
+    half4 resolved = screen.uniforms.shape.x > 0.0f
+        ? screenResolved(uv, carrier, tags, f.frames, f.w, lace, screen.uniforms, screen.tile, screen.lut, f.u)
+        : webResolved(uv, carrier, tags, f.frames, f.w, lace);
+    add4(dust + pixel * 4u, resolved, fixedUnit, halves);
 }
 
 // The deep sky (#512), a thread a pixel of the target, where Metal draws one triangle over it:
@@ -579,6 +604,18 @@ struct sc_renderer {
     sc_buffer *starDraw;
     uint32_t starsListed;
     metal::float3 red;
+    // A dust screen (#506): its tile with its levels and its lut, kept once; what the resolve
+    // reads of it and its colour law, set each frame.
+    sc_buffer *screenTile;
+    sc_buffer *screenLut;
+    uint32_t tileWidth;
+    uint32_t tileHeight;
+    uint32_t tileLevels;
+    uint32_t lutWidth;
+    uint32_t lutHeight;
+    sh::ScreenUniforms screen;
+    bool lawSet;
+    sh::ScreenLaw law;
 };
 
 namespace sillage {
@@ -625,7 +662,8 @@ static void releaseAll(sc_renderer *renderer) {
          {&renderer->lightFixed, &renderer->dustFixed, &renderer->light, &renderer->dust, &renderer->columnFixed,
           &renderer->column, &renderer->carrierFixed, &renderer->carrier, &renderer->tags, &renderer->lace,
           &renderer->large, &renderer->largeCounter, &renderer->stellar, &renderer->stars, &renderer->frames,
-          &renderer->ramps, &renderer->fallback, &renderer->starCounts, &renderer->starList, &renderer->starDraw}) {
+          &renderer->ramps, &renderer->fallback, &renderer->starCounts, &renderer->starList, &renderer->starDraw,
+          &renderer->screenTile, &renderer->screenLut}) {
         release(*buffer);
     }
 }
@@ -669,7 +707,8 @@ static sh::Tracers tracers(const sc_renderer *renderer) {
 static sh::Targets targets(const sc_renderer *renderer) {
     return sh::Targets{pointer<sh::fixed_t>(renderer->lightFixed), pointer<sh::fixed_t>(renderer->dustFixed),
                        pointer<const metal::float4>(renderer->dust), renderer->config.width,
-                       renderer->config.height, renderer->halves, renderer->red};
+                       renderer->config.height, renderer->halves, renderer->red, renderer->lawSet,
+                       renderer->law, pointer<const sh::DiskFrame>(renderer->frames)};
 }
 
 static sh::CarrierTargets carrierTargets(const sc_renderer *renderer) {
@@ -837,7 +876,14 @@ static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_rend
                                               config.carrier_height, 4u);
             auto tagged = metal::texels2d_of(pointer<const float>(renderer->tags), config.carrier_width,
                                              config.carrier_height, 4u);
-            LAUNCH(webResolveFragment, groups(pixels(renderer)), width, frame, lace, carried, tagged,
+            // Without a lut the tile stands in for it, as Metal binds it.
+            const sc_buffer *lut = renderer->screenLut ? renderer->screenLut : renderer->screenTile;
+            sh::Screen screen{renderer->screen,
+                              metal::texels2d_of(pointer<const float>(renderer->screenTile), renderer->tileWidth,
+                                                 renderer->tileHeight, 1u, renderer->tileLevels),
+                              metal::texels2d_of(pointer<const float>(lut), renderer->lutWidth, renderer->lutHeight,
+                                                 1u)};
+            LAUNCH(webResolveFragment, groups(pixels(renderer)), width, frame, lace, carried, tagged, screen,
                    pointer<sh::fixed_t>(renderer->dustFixed), config.width, config.height, renderer->halves);
             return SC_OK;
         }
@@ -1230,6 +1276,66 @@ sc_status sc_render_sky(sc_renderer *renderer, const void *params, size_t length
     sh::SkyParams sky;
     memcpy(&sky, params, sizeof sky);
     LAUNCH(skyFragment, groups(pixels(renderer)), width, sky, targets(renderer));
+    return SC_OK;
+}
+
+sc_status sc_render_set_screen_tile(sc_renderer *renderer, const float *tile, uint32_t width, uint32_t height,
+                                    uint32_t levels, const float *lut, uint32_t lut_width) {
+    if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
+    uint32_t most = 0u;
+    for (uint32_t side = width > height ? width : height; side > 0u; side >>= 1) { most += 1u; }
+    if (!tile || width == 0u || height == 0u || levels == 0u || levels > most || levels > 16u) {
+        return fail(SC_INVALID_ARGUMENT, "a dust screen's tile of %u by %u with %u levels", width, height, levels);
+    }
+    if (lut && lut_width == 0u) { return fail(SC_INVALID_ARGUMENT, "a dust screen's lut of no width"); }
+    size_t texels = 0u;
+    for (uint32_t level = 0u; level < levels; ++level) {
+        size_t wide = (width >> level) > 0u ? (width >> level) : 1u;
+        size_t high = (height >> level) > 0u ? (height >> level) : 1u;
+        texels += wide * high;
+    }
+    if (sc_status status = keep(renderer, &renderer->screenTile, tile, texels * 4u, 16u)) { return status; }
+    renderer->tileWidth = width;
+    renderer->tileHeight = height;
+    renderer->tileLevels = levels;
+    if (lut) {
+        if (sc_status status = keep(renderer, &renderer->screenLut, lut, size_t(lut_width) * height * 4u, 16u)) {
+            return status;
+        }
+        renderer->lutWidth = lut_width;
+    } else {
+        release(renderer->screenLut);
+        renderer->lutWidth = width;
+    }
+    renderer->lutHeight = height;
+    return SC_OK;
+}
+
+sc_status sc_render_set_screen(sc_renderer *renderer, const void *screen, size_t length, const void *law,
+                               size_t law_length) {
+    if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
+    if (screen && length != sizeof(sh::ScreenUniforms)) {
+        return fail(SC_INVALID_ARGUMENT, "ScreenUniforms is %zu bytes in the MSL, and %zu were given",
+                    sizeof(sh::ScreenUniforms), length);
+    }
+    if (law && law_length != sizeof(sh::ScreenLaw)) {
+        return fail(SC_INVALID_ARGUMENT, "ScreenLaw is %zu bytes in the MSL, and %zu were given", sizeof(sh::ScreenLaw),
+                    law_length);
+    }
+    sh::ScreenUniforms uniforms;
+    memset(&uniforms, 0, sizeof uniforms);
+    if (screen) { memcpy(&uniforms, screen, sizeof uniforms); }
+    if (uniforms.shape.x > 0.0f) {
+        if (!renderer->screenTile) { return fail(SC_INVALID_ARGUMENT, "a dust screen before its tile"); }
+        if (uniforms.shape.x > float(galaxySlots) + 0.5f) {
+            return fail(SC_INVALID_ARGUMENT, "a dust screen of galaxy %d, past the frames' %u", int(uniforms.shape.x) - 1,
+                        galaxySlots);
+        }
+    }
+    renderer->screen = uniforms;
+    renderer->lawSet = law != nullptr;
+    memset(&renderer->law, 0, sizeof renderer->law);
+    if (law) { memcpy(&renderer->law, law, sizeof renderer->law); }
     return SC_OK;
 }
 

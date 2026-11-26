@@ -552,9 +552,9 @@ public final class TakeExport {
     /// The frame `CUDATakeStills.flightStill` draws (#369): a moment of the flight at its own
     /// exposure, averaged from the renders of a frame `interval` seconds long, with the grain of
     /// the video's frame `index`. As RGBA.
-    func flightStill(atSeconds seconds: Double, frame index: Int, interval: Double, width: Int, height: Int)
-        throws -> [UInt8]
-    {
+    public func flightStill(
+        atSeconds seconds: Double, frame index: Int, interval: Double, width: Int, height: Int
+    ) throws -> [UInt8] {
         guard let flight = try makeFlight(width: width, height: height) else {
             throw RenderError.unsupported("a flight still without a flight")
         }

@@ -27,7 +27,7 @@
    "flight": "screen.flight.json",
    "seconds": 4.0,
    "file": "screen-4.00s.rgba",
-   "what": "the same with the dust screen and its dabs, refused on CUDA until it is ported"
+   "what": "the same with the dust screen, its dabs and its colour law"
   }
  ]
 }

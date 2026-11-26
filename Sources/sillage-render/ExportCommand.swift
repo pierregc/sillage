@@ -137,6 +137,36 @@ func exportStage(_ folder: SceneFolder, options: [String], reporter: StageReport
         print(String(format: "flight     keys drawn in %.1f s", Date().timeIntervalSince(started)))
         return 0
     }
+    // `--flight-stills <dir> --flight-at <s,...>`: those moments as `sillage-cuda still --flight`
+    // draws them, under its file names, for the two engines' frames side by side (#513).
+    if let directory = option("flight-stills") {
+        guard flight != nil, let at = option("flight-at") else {
+            throw SceneFolder.ExportError.badValue("flight-stills", "it goes with --flight and --flight-at")
+        }
+        let moments = try at.split(separator: ",").map { part in
+            guard let seconds = Double(part), seconds >= 0 else {
+                throw SceneFolder.ExportError.badValue("flight-at", at)
+            }
+            return seconds
+        }
+        let width = Int(try value("width") ?? Double(preset.width))
+        let height = Int(try value("height") ?? Double(preset.height))
+        let fps = Int(try value("fps") ?? Double(capturedRate))
+        let out = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        for seconds in moments {
+            let started = Date()
+            let rgba = try export.flightStill(
+                atSeconds: seconds, frame: Int((seconds * Double(fps)).rounded()), interval: 1 / Double(fps),
+                width: width, height: height)
+            let url = out.appendingPathComponent(
+                String(format: "%@-flight-%07.2fs.png", preset.name, seconds))
+            try PNGWriter.write(
+                PNGWriter.image(rgba, width: width, height: height), maximumWidth: nil, to: url)
+            print(String(format: "still      %@  %.1f s", url.path, Date().timeIntervalSince(started)))
+        }
+        return 0
+    }
     if let name = option("format") {
         guard let format = AnimatedImage.Format(rawValue: name.lowercased()) else {
             throw SceneFolder.ExportError.badValue("format", name)

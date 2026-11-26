@@ -108,21 +108,26 @@ public final class CUDARenderer: FrameStyling {
     private var palette: GalaxyPalette
     /// One over the lace's mean, once it is baked.
     private var laceScale: Float?
+    private let screened: Bool
+    /// What the web's resolve reads of the dust screen whose tile `setScreen` handed over.
+    private var screen: ScreenUniforms?
     private var tracerCount: Int { tracers?.count ?? 0 }
 
     /// `externalPositions` and `externalFormation` are a solver's own buffers, read where they
     /// are. `laceTexels` is the side of the baked lace, `DustWeb.laceTexels` for a picture.
+    /// `screened` draws the web's carrier at the frame's own resolution, as Metal does for a
+    /// flight with a dust screen (#506), whose tile `setScreen` then hands over.
     public convenience init(
         context: CUDAContext, particles: ParticleSystem, settings: RenderSettings,
         externalPositions: CUDABuffer? = nil, externalFormation: CUDABuffer? = nil,
         externalPositionOffset: Int = 0, largeSplatCapacity: Int = 0,
-        laceTexels: Int = DustWeb.laceTexels
+        laceTexels: Int = DustWeb.laceTexels, screened: Bool = false
     ) throws {
         try self.init(
             context: context, attributes: ParticleAttributes(particles), settings: settings,
             externalPositions: externalPositions, externalFormation: externalFormation,
             externalPositionOffset: externalPositionOffset, largeSplatCapacity: largeSplatCapacity,
-            laceTexels: laceTexels)
+            laceTexels: laceTexels, screened: screened)
         if externalPositions == nil { try upload(positions: particles.positions) }
     }
 
@@ -132,10 +137,11 @@ public final class CUDARenderer: FrameStyling {
         context: CUDAContext, attributes: ParticleAttributes, settings: RenderSettings,
         externalPositions: CUDABuffer? = nil, externalFormation: CUDABuffer? = nil,
         externalPositionOffset: Int = 0, largeSplatCapacity: Int = 0,
-        laceTexels: Int = DustWeb.laceTexels
+        laceTexels: Int = DustWeb.laceTexels, screened: Bool = false
     ) throws {
         self.context = context
         self.settings = settings
+        self.screened = screened
         count = attributes.count
         drawnCount = attributes.drawnCount
         luminosityNormalisation = attributes.luminosityNormalisation
@@ -147,7 +153,7 @@ public final class CUDARenderer: FrameStyling {
 
         let frame = FramePlan.accumulationSize(settings)
         let column = FramePlan.columnSize(settings)
-        let carrier = FramePlan.carrierSize(settings)
+        let carrier = FramePlan.carrierSize(settings, screened: screened)
         var config = sc_render_config(
             width: UInt32(frame.width), height: UInt32(frame.height),
             column_width: UInt32(max(column.width, 1)), column_height: UInt32(max(column.height, 1)),
@@ -316,6 +322,7 @@ public final class CUDARenderer: FrameStyling {
         if let inside, let camera, !settings.plain, particles == nil {
             deep = Deep(frame: inside, camera: camera, next: next)
         }
+        try setScreen(for: plan, deep: deep != nil)
         let everything = split(0..<(drawnCount + tracerCount))
         let parts = split(particles ?? 0..<(drawnCount + tracerCount))
         // Where its grains are spread over two slabs, each galaxy's dust is carried and
@@ -369,6 +376,48 @@ public final class CUDARenderer: FrameStyling {
             case .plain:
                 try draw(SC_RENDER_PLAIN, pass, plan, everything, threads, deep)
             }
+        }
+    }
+
+    /// A dust screen's tile (#506), for the frames drawn from inside whose flight names it.
+    public func setScreen(_ texels: DustScreenTexels) throws {
+        guard screened else {
+            throw CUDAError(.invalidArgument, "a dust screen on a renderer not made for one (screened)")
+        }
+        try texels.tile.withUnsafeBufferPointer { tile in
+            try texels.lut.withUnsafeBufferPointer { lut in
+                try check(
+                    sc_render_set_screen_tile(
+                        handle, tile.baseAddress, UInt32(texels.width), UInt32(texels.height),
+                        UInt32(texels.levels), texels.lut.isEmpty ? nil : lut.baseAddress,
+                        UInt32(texels.lutWidth)),
+                    "the dust screen's tile")
+            }
+        }
+        screen = texels.uniforms
+    }
+
+    /// The screen the frame's resolve reads and the colour law its light passes take, as
+    /// `Renderer.encodeSplat` binds them: from inside alone, the screen with the web alone.
+    private func setScreen(for plan: FramePlan, deep: Bool) throws {
+        let ref = deep ? inside?.settings.dustScreen : nil
+        if ref != nil, screen == nil {
+            throw CUDAError(.invalidArgument, "a flight's dust screen (#506) before its tile (setScreen)")
+        }
+        var uniforms = ref != nil && plan.web != nil ? screen : nil
+        var law = ref?.law != nil ? ScreenLaw(ref, web: plan.web) : nil
+        func set(_ screen: UnsafeRawBufferPointer?, _ law: UnsafeRawBufferPointer?) throws {
+            try check(
+                sc_render_set_screen(
+                    handle, screen?.baseAddress, screen?.count ?? 0, law?.baseAddress, law?.count ?? 0),
+                "the dust screen")
+        }
+        switch (uniforms != nil, law != nil) {
+        case (true, true):
+            try withUnsafeBytes(of: &uniforms!) { a in try withUnsafeBytes(of: &law!) { try set(a, $0) } }
+        case (true, false): try withUnsafeBytes(of: &uniforms!) { try set($0, nil) }
+        case (false, true): try withUnsafeBytes(of: &law!) { try set(nil, $0) }
+        case (false, false): try set(nil, nil)
         }
     }
 
@@ -539,7 +588,7 @@ public final class CUDARenderer: FrameStyling {
     public func target(_ which: Target) throws -> [Float] {
         let frame = FramePlan.accumulationSize(settings)
         let column = FramePlan.columnSize(settings)
-        let carrier = FramePlan.carrierSize(settings)
+        let carrier = FramePlan.carrierSize(settings, screened: screened)
         let (name, values): (sc_render_target, Int) =
             switch which {
             case .light: (SC_RENDER_LIGHT, frame.width * frame.height * 4)
@@ -673,6 +722,7 @@ public final class CUDARenderer: FrameStyling {
             web?.carrier.z = deep.frame.settings.web[0]
             web?.carrier.w = deep.frame.settings.web[1]
         }
+        if screened { web?.carrier.x = 1 }
         let handle = SendableHandle(handle)
         func part(_ massive: Range<Int>, _ tracers: Range<Int>) -> sc_status {
             Self.withStride(of: uniforms) { uniforms in

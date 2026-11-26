@@ -61,8 +61,9 @@ MSL_API float4 sample_nearest(const texels2d &t, float2 uv) {
 }
 
 // filter::linear over one level; the neighbours past an edge are the edge's own texels, or
-// the other side's when the texture repeats.
-MSL_API float4 sample_linear_level(const texels2d &t, float2 uv, uint level, bool repeats) {
+// the other side's when the texture repeats, across alone with `clampsDown` (a dust screen's
+// t_address::clamp_to_edge, #513).
+MSL_API float4 sample_linear_level(const texels2d &t, float2 uv, uint level, bool repeats, bool clampsDown = false) {
     uint w = max(t.width >> level, 1u);
     uint h = max(t.height >> level, 1u);
     float x = uv.x * float(w) - 0.5f;
@@ -75,8 +76,8 @@ MSL_API float4 sample_linear_level(const texels2d &t, float2 uv, uint level, boo
     if (repeats) {
         x0 = texel_wrapped(left, w);
         x1 = texel_wrapped(left + 1.0f, w);
-        y0 = texel_wrapped(top, h);
-        y1 = texel_wrapped(top + 1.0f, h);
+        y0 = clampsDown ? texel_clamped(top, h) : texel_wrapped(top, h);
+        y1 = clampsDown ? texel_clamped(top + 1.0f, h) : texel_wrapped(top + 1.0f, h);
     } else {
         x0 = texel_clamped(left, w);
         x1 = texel_clamped(left + 1.0f, w);
@@ -93,20 +94,21 @@ MSL_API float4 sample_bilinear(const texels2d &t, float2 uv) {
 }
 
 // filter::linear, mip_filter::linear, address::repeat at a level of detail.
-MSL_API float4 sample_trilinear(const texels2d &t, float2 uv, float lod) {
+MSL_API float4 sample_trilinear(const texels2d &t, float2 uv, float lod, bool clampsDown = false) {
     float last = float(t.levels - 1u);
     float at = min(max(lod, 0.0f), last);
     uint fine = uint(at);
     uint coarse = min(fine + 1u, t.levels - 1u);
-    float4 value = sample_linear_level(t, uv, fine, true);
+    float4 value = sample_linear_level(t, uv, fine, true, clampsDown);
     if (coarse == fine) { return value; }
-    return mix(value, sample_linear_level(t, uv, coarse, true), at - float(fine));
+    return mix(value, sample_linear_level(t, uv, coarse, true, clampsDown), at - float(fine));
 }
 
 // filter::linear, mip_filter::linear, address::repeat, max_anisotropy(most), with the
 // footprint's two axes in normalised coordinates, as gradient2d gives them: taps along the
 // longer axis, at the level of detail the shorter one asks for.
-MSL_API float4 sample_anisotropic(const texels2d &t, float2 uv, float2 dx, float2 dy, float most) {
+MSL_API float4 sample_anisotropic(const texels2d &t, float2 uv, float2 dx, float2 dy, float most,
+                                  bool clampsDown = false) {
     float2 size(float(t.width), float(t.height));
     float along = length(dx * size);
     float across = length(dy * size);
@@ -123,7 +125,7 @@ MSL_API float4 sample_anisotropic(const texels2d &t, float2 uv, float2 dx, float
     uint count = uint(taps);
     for (uint tap = 0u; tap < count; ++tap) {
         float share = (float(tap) + 0.5f) / taps - 0.5f;
-        total += sample_trilinear(t, uv + axis * share, lod);
+        total += sample_trilinear(t, uv + axis * share, lod, clampsDown);
     }
     return total / taps;
 }

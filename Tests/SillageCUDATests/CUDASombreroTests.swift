@@ -7,8 +7,9 @@ import Testing
 
 /// What the Sombrero film draws on CUDA (#513), on the CPU target at small sizes: the deep sky
 /// behind the dust (#512), the look's dust reddening and dither, the bloom's share of the point
-/// stars and of the sky (#509, #510), the held kernel lengths, and the dust screen refused by
-/// name. The fixture's frames are held to Metal's once the Mac has written them.
+/// stars and of the sky (#509, #510), the held kernel lengths, and the dust screen with its dabs
+/// and colour law (#506, #508, #511). The fixture's frames are held to Metal's once the Mac has
+/// written them.
 @Suite("CUDA engine, the Sombrero film")
 struct CUDASombreroTests {
     static let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -172,25 +173,55 @@ struct CUDASombreroTests {
         #expect(try picture(held, at: 2.5) != picture(eased, at: 2.5), "the lengths are not held")
     }
 
-    @Test func aFlightWithTheDustScreenIsRefusedByName() throws {
+    /// The screen's frame against the same moment without it: its dabs lay their own dust, its
+    /// law colours what they dim, and without the law the frame is another again.
+    @Test func theDustScreenDrawsItsDustAndItsLaw() throws {
+        let fixture = try Self.fixture()
+        let work = Self.work()
+        defer { try? FileManager.default.removeItem(at: work) }
+        let frame = fixture.frames[3]
+        let screen = try fixture.flight(frame.flight, into: work)
+        var lawless = try FlightFile.decoded(from: Data(contentsOf: screen))
+        lawless.inside?.dustScreen?.law = nil
+        let unlawful = work.appendingPathComponent("lawless.flight.json")
+        try JSONEncoder().encode(lawless).write(to: unlawful)
+        let look = try Self.look()
+        let rate = fixture.framesPerSecond
+        let plain = try Self.flightStill(
+            try Self.stills(look, flight: fixture.flight("sombrero.flight.json", into: work)), frame,
+            rate: rate)
+        let drawn = try Self.flightStill(try Self.stills(look, flight: screen), frame, rate: rate)
+        let withoutLaw = try Self.flightStill(try Self.stills(look, flight: unlawful), frame, rate: rate)
+        let changed = zip(drawn, plain).filter { $0 != $1 }.count
+        print("CUDASOMBRERO the dust screen changes \(changed) of \(drawn.count) values")
+        #expect(changed > drawn.count / 20, "the dust screen changes only \(changed) values")
+        #expect(withoutLaw != drawn, "the screen's colour law changes nothing")
+    }
+
+    @Test func aDustScreenMetalDrawsWithoutIsRefusedByName() throws {
         let fixture = try Self.fixture()
         let work = Self.work()
         defer { try? FileManager.default.removeItem(at: work) }
         let screen = try fixture.flight("screen.flight.json", into: work)
-        #expect(CUDATakeStills.notDrawn(try FlightFile.decoded(from: Data(contentsOf: screen))) != nil)
+        var flight = try FlightFile.decoded(from: Data(contentsOf: screen))
+        try FileManager.default.copyItem(
+            at: fixture.url("tile.f32"), to: work.appendingPathComponent("tile.f32"))
+        let tile = work.appendingPathComponent("tile.json")
+        try Data(#"{"width": 64, "height": 16, "radii": [0.5, 8], "data": "tile.f32"}"#.utf8).write(to: tile)
+        flight.inside?.dustScreen?.tile = tile.path
+        let url = work.appendingPathComponent("lutless.flight.json")
+        try JSONEncoder().encode(flight).write(to: url)
         do {
-            _ = try Self.stills(try Self.look(), flight: screen)
-            Issue.record("a flight with a dust screen was not refused")
+            _ = try Self.stills(try Self.look(), flight: url)
+            Issue.record("dabs on a tile without a lut were not refused")
         } catch {
-            #expect("\(error)".contains("inside.dustScreen"), "\(error)")
+            #expect("\(error)".contains("inside.dustScreen") && "\(error)".contains("lut"), "\(error)")
         }
-        let plain = try fixture.flight("sombrero.flight.json", into: work)
-        #expect(CUDATakeStills.notDrawn(try FlightFile.decoded(from: Data(contentsOf: plain))) == nil)
     }
 
     /// The fixture's frames, within the tolerance `sillage-cuda check` holds the inside frames to,
     /// once Metal's are written; until then each is drawn, and the test says it waits for them.
-    @Test(arguments: [0, 1, 2])
+    @Test(arguments: [0, 1, 2, 3])
     func theFramesAreMetalsWithinTheTolerance(index: Int) throws {
         let fixture = try Self.fixture()
         let frame = fixture.frames[index]

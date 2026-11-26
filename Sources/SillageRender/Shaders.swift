@@ -2859,7 +2859,7 @@ enum Shaders {
             return half4(webbed);
         }
 
-        #if defined(__METAL_VERSION__) && defined(SILLAGE_INSIDE)
+        #if defined(SILLAGE_INSIDE) || !defined(__METAL_VERSION__)
         // A dust screen (#506, `DustScreen.swift`): the tile, azimuth across and radius down,
         // read where the pixel's ray meets the disk's mid-plane, turned back by the disk's
         // rotation since the moment it rests at, over the pixel's footprint on the plane. The
@@ -2913,16 +2913,35 @@ enum Shaders {
         // How much of a screen a point of the plane keeps (#506): where the line of sight in the
         // plane runs along the radius (the front and the back of a ring) all of it, where it runs
         // along the ring (its tips) none, the grains' own dust there instead.
-        static float screenFront(float2 p, float2 sight, float4 front) {
+        SHARED float screenFront(float2 p, float2 sight, float4 front) {
             if (front.x <= 0.0f) { return 1.0f; }
             float radial = abs(dot(normalize(sight + 1e-9f), normalize(p + 1e-9f)));
             return smoothstep(front.y, front.z, radial);
         }
 
+        // The tile and its lut as each engine holds them: Metal samples its textures, the CUDA
+        // engine reads its levels by hand with a filter of the same kind.
+        #if defined(__METAL_VERSION__)
         constexpr sampler screenLutSampler(filter::linear, address::clamp_to_edge);
 
         constexpr sampler screenSampler(filter::linear, mip_filter::linear, s_address::repeat,
                                         t_address::clamp_to_edge, max_anisotropy(16));
+        typedef texture2d<half> ScreenTexture;
+        static float screenTileRead(ScreenTexture tile, float2 at, float2 gx, float2 gy) {
+            return float(tile.sample(screenSampler, at, gradient2d(gx, gy)).r);
+        }
+        static float screenLutRead(ScreenTexture lut, float2 at) {
+            return float(lut.sample(screenLutSampler, at).r);
+        }
+        #else
+        typedef texels2d ScreenTexture;
+        SHARED float screenTileRead(ScreenTexture tile, float2 at, float2 gx, float2 gy) {
+            return sample_anisotropic(tile, at, gx, gy, 16.0f, true).x;
+        }
+        SHARED float screenLutRead(ScreenTexture lut, float2 at) {
+            return sample_bilinear(lut, at).x;
+        }
+        #endif
 
         // A screen's colour law (#506), the bench's (`law=hubble`, #499): each channel's optical
         // depth a share of the green's that tends to one as the green's passes `t`, thin dust
@@ -2944,10 +2963,12 @@ enum Shaders {
             float4 target;
         };
 
+        #if defined(__METAL_VERSION__)
         constant bool screenLawSet [[function_constant(21)]];
         constant bool screenLaw = is_function_constant_defined(screenLawSet) && screenLawSet;
+        #endif
 
-        static float3 screenExtinction(float column, float3 red, float2 pixel, constant ScreenLaw &law,
+        SHARED float3 screenExtinction(float column, float3 red, float2 pixel, constant ScreenLaw &law,
                                        constant DiskFrame *frames) {
             float green = column * red.y;
             float2 uv = pixel / law.target.xy;
@@ -2974,10 +2995,24 @@ enum Shaders {
             return exp(-green * share);
         }
 
+        // A splat's and a point star's light through a screen's colour law (#506).
+        SHARED half4 screenLightPixel(half3 color, half4 slab, half4 dust, float r2, float3 red, float2 pixel,
+                                      constant ScreenLaw &law, constant DiskFrame *frames) {
+            float falloff = exp(-4.5f * r2);
+            float3 extinction = screenExtinction(dot(float4(dust), float4(slab)), red, pixel, law, frames);
+            return half4(color * half3(extinction) * half(falloff), half(falloff));
+        }
+
+        SHARED half4 screenStarPixel(half3 color, half4 slab, half4 dust, float share, float3 red, float2 pixel,
+                                     constant ScreenLaw &law, constant DiskFrame *frames) {
+            float3 extinction = screenExtinction(dot(float4(dust), float4(slab)), red, pixel, law, frames);
+            return half4(half3(float3(color) * extinction * share), half(share));
+        }
+
         // One realization of the tile at the plane point `p` (footprint `dx`, `dy`), wound by
         // the rotation curve for `age` from where it rests and turned rigidly by `spin`.
-        static float screenRealization(float2 p, float2 dx, float2 dy, float omega, float shear, float age,
-                                       float spin, constant ScreenUniforms &screen, texture2d<half> tile) {
+        SHARED float screenRealization(float2 p, float2 dx, float2 dy, float omega, float shear, float age,
+                                       float spin, constant ScreenUniforms &screen, ScreenTexture tile) {
             float angle = omega * age + spin;
             float c = cos(angle);
             float n = sin(angle);
@@ -2993,11 +3028,11 @@ enum Shaders {
             float2 dv = q / (r * span);
             float2 gx = float2(dot(du, qx), dot(dv, qx));
             float2 gy = float2(dot(du, qy), dot(dv, qy));
-            return float(tile.sample(screenSampler, at, gradient2d(gx, gy)).r);
+            return screenTileRead(tile, at, gx, gy);
         }
 
         // The standard normal's distribution function (a tanh fit, 3e-4 at worst).
-        static float screenNormal(float x) {
+        SHARED float screenNormal(float x) {
             x = clamp(x, -6.0f, 6.0f);
             return 0.5f + 0.5f * tanh(0.7978846f * x * (1.0f + 0.044715f * x * x));
         }
@@ -3005,7 +3040,7 @@ enum Shaders {
         // The share of a Gaussian along a line, centred at `centre` with `root` the inverse of its
         // width, that lies past `from`, each point weighed by a ramp from 0 at `from` to 1 a
         // distance `fade` further on: the integral of the distribution function, x Phi + phi.
-        static float screenAhead(float centre, float root, float from, float fade) {
+        SHARED float screenAhead(float centre, float root, float from, float fade) {
             float x = (centre - from) * root;
             float y = x - fade * root;
             if (y > 6.0f) { return 1.0f; }
@@ -3034,7 +3069,7 @@ enum Shaders {
         // slab before it to the middle of the slab after, `ramps` along the line, as a grain's
         // dust is spread over a slab's depth: dust just past a boundary still shades the light
         // just behind it, and no boundary shows as a seam in the dust (#511).
-        static float2 screenDabs(float2 p, float3 sight, float eye, float height, float pix, float since,
+        SHARED float2 screenDabs(float2 p, float3 sight, float eye, float height, float pix, float since,
                                  DiskFrame frame, constant ScreenUniforms &screen, bool split, float3 cuts,
                                  float4 ramps, float soft, thread float4 &shares, thread float4 &layered) {
             float4 slabbed = float4(0.0f);
@@ -3181,9 +3216,9 @@ enum Shaders {
         // back with the column's share in each slab, by where along the line its dabs lie.
         // `screenDabsAt` along one line, `d` its direction (`flat` and `lz` in the disk's axes) and
         // `pixel` a pixel's width over the ray's length, a unit away.
-        static float screenDabsLine(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+        SHARED float screenDabsLine(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
                                     float3 rel, float height, float3 d, float2 flat, float lz, float2 pixel,
-                                    texture2d<half> lut, bool split, ScreenSlabs slabs, thread float4 &shares) {
+                                    ScreenTexture lut, bool split, ScreenSlabs slabs, thread float4 &shares) {
             float2 eye = float2(dot(rel, frame.axisU.xyz), dot(rel, frame.axisV.xyz));
             // The line crosses the plane at parameter 0; the eye stands at height / lz along it.
             float at = height / lz;
@@ -3202,7 +3237,7 @@ enum Shaders {
             float span = max(screen.shape.z - screen.shape.y, 1e-4f);
             float row = (radius - screen.shape.y) / span;
             float range = screen.renew.w - screen.renew.z;
-            float column = float(lut.sample(screenLutSampler, float2((read.x - screen.renew.z) / range, row)).r);
+            float column = screenLutRead(lut, float2((read.x - screen.renew.z) / range, row));
             float4 rings[4] = {screen.dabRing0, screen.dabRing1, screen.dabRing2, screen.dabRing3};
             float added = 0.0f;
             for (int k = 0; k < 4; ++k) {
@@ -3218,7 +3253,7 @@ enum Shaders {
                 float mean = 0.0f;
                 for (int k = 0; k < 5; ++k) {
                     float2 node = float2((nodes[k] - screen.renew.z) / range, row);
-                    mean += weights[k] * float(lut.sample(screenLutSampler, node).r);
+                    mean += weights[k] * screenLutRead(lut, node);
                 }
                 if (split) {
                     float mottled = max(column, 0.0f) * (1.0f - screen.dabSeed.z);
@@ -3234,8 +3269,8 @@ enum Shaders {
             return max(column, 0.0f) * read.y / abs(lz);
         }
 
-        static float2 screenDabsAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
-                                   float3 ray, float3 stepX, texture2d<half> lut, bool split, ScreenSlabs slabs,
+        SHARED float2 screenDabsAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+                                   float3 ray, float3 stepX, ScreenTexture lut, bool split, ScreenSlabs slabs,
                                    thread float4 &shares) {
             float3 axis = cross(frame.axisU.xyz, frame.axisV.xyz);
             float3 rel = w.eye.xyz - frame.center.xyz;
@@ -3294,8 +3329,8 @@ enum Shaders {
                                          shares), kept);
         }
 
-        static float2 screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
-                               float3 ray, float3 stepX, float3 stepY, texture2d<half> tile, texture2d<half> lut) {
+        SHARED float2 screenAt(DiskFrame frame, constant WebUniforms &w, constant ScreenUniforms &screen,
+                               float3 ray, float3 stepX, float3 stepY, ScreenTexture tile, ScreenTexture lut) {
             if (screen.dabSize.x > 0.0f) {
                 float4 shares = float4(1.0f, 0.0f, 0.0f, 0.0f);
                 ScreenSlabs none = {float3(0.0f), float4(0.0f), 0.0f, 0.0f, 0.0f, 0.0f};
@@ -3353,14 +3388,14 @@ enum Shaders {
                 float span = max(screen.shape.z - screen.shape.y, 1e-4f);
                 float2 at = float2((value - screen.renew.z) / (screen.renew.w - screen.renew.z),
                                    (radius - screen.shape.y) / span);
-                column = float(lut.sample(screenLutSampler, at).r);
+                column = screenLutRead(lut, at);
             }
             return float2(max(column, 0.0f) * length(ray) / abs(along), kept);
         }
 
         // The view depths where dust slabs 1 to 3 begin, as `insideSlabAt` places them, the
         // middles of the four, and the spread the dabs take from the grains' (#511).
-        static ScreenSlabs screenSlabDepths(constant SplatUniforms &u, constant ScreenUniforms &screen) {
+        SHARED ScreenSlabs screenSlabDepths(constant SplatUniforms &u, constant ScreenUniforms &screen) {
             ScreenSlabs slabs;
             if (u.inside.slabSoft <= 0.0f) {
                 slabs.depths = u.slabNear + float3(1.0f, 2.0f, 3.0f) / (4.0f * u.slabScale);
@@ -3380,7 +3415,7 @@ enum Shaders {
         // The share of the column dabs lay themselves (#508): `volume`, gone by the height that
         // `dabInside.z` gives (kpc; 0: at every height) from a third of it, so frames from afar
         // keep their dust on the grains.
-        static float screenVolume(constant DiskFrame *frames, constant WebUniforms &w,
+        SHARED float screenVolume(constant DiskFrame *frames, constant WebUniforms &w,
                                   constant ScreenUniforms &screen) {
             if (screen.shape.x <= 0.0f || screen.dabSize.x <= 0.0f || screen.dabSeed.w <= 0.0f) { return 0.0f; }
             float top = screen.dabInside.z;
@@ -3391,10 +3426,10 @@ enum Shaders {
         }
 
         // `webResolved` with the screen's galaxy read off its tile instead of the lace.
-        static half4 screenResolved(float2 uv, float4 carrier, float4 tagged, constant DiskFrame *frames,
-                                    constant WebUniforms &w, texture2d<half> lace,
-                                    constant ScreenUniforms &screen, texture2d<half> tile,
-                                    texture2d<half> lut, constant SplatUniforms &u) {
+        SHARED half4 screenResolved(float2 uv, float4 carrier, float4 tagged, constant DiskFrame *frames,
+                                    constant WebUniforms &w, Lace lace,
+                                    constant ScreenUniforms &screen, ScreenTexture tile,
+                                    ScreenTexture lut, constant SplatUniforms &u) {
             float4 tags = tagged * 255.0f;
             float2 ndc = float2(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f);
             float3 across = w.right.xyz * (w.forward.w * w.target.z);
@@ -3550,10 +3585,8 @@ enum Shaders {
             LightTarget out;
             #if defined(SILLAGE_INSIDE)
             if (screenLaw) {
-                float falloff = exp(-4.5f * r2);
-                float3 extinction = screenExtinction(dot(float4(prior.dust), float4(in.slab)),
-                                                     dustRed ? red.xyz : reddening, in.position.xy, law, lawFrames);
-                out.light = half4(in.color * half3(extinction) * half(falloff), half(falloff));
+                out.light = screenLightPixel(in.color, in.slab, prior.dust, r2, dustRed ? red.xyz : reddening,
+                                             in.position.xy, law, lawFrames);
                 return out;
             }
             #endif
@@ -3576,9 +3609,8 @@ enum Shaders {
 
             LightTarget out;
             if (screenLaw) {
-                float3 extinction = screenExtinction(dot(float4(prior.dust), float4(in.slab)),
-                                                     dustRed ? red.xyz : reddening, in.position.xy, law, lawFrames);
-                out.light = half4(half3(float3(in.color) * extinction * share), half(share));
+                out.light = screenStarPixel(in.color, in.slab, prior.dust, share, dustRed ? red.xyz : reddening,
+                                            in.position.xy, law, lawFrames);
                 return out;
             }
             out.light = starPixel(in.color, in.slab, prior.dust, share, dustRed ? red.xyz : reddening);

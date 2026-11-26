@@ -6,7 +6,8 @@ import Foundation
 /// every angle, edge on included, and carried round by the disk's rotation from the moment it
 /// rests at; the grains, drawn into the web's carrier at the frame's resolution, only say how
 /// the dust is shared among the slabs, and where there is none. A flight's `inside.dustScreen`
-/// names it; absent, the web is drawn as always. Metal only.
+/// names it; absent, the web is drawn as always. The CUDA engine draws it too (#513), its
+/// textures from `DustScreenTexels`.
 public struct DustScreenRef: Codable, Sendable, Equatable {
     /// The tile's description (`DustScreenTile`), a JSON file.
     public var tile: String
@@ -220,7 +221,7 @@ struct DustScreenTile: Codable {
 }
 
 /// What the web's resolve reads of a screen; mirrors `ScreenUniforms` in `Shaders`.
-struct ScreenUniforms {
+public struct ScreenUniforms: Sendable {
     /// The galaxy plus one (0: no screen), the tile's inner and outer radii in kpc, and the
     /// moment it rests at in time units.
     var shape: SIMD4<Float> = .zero
@@ -273,7 +274,7 @@ struct ScreenUniforms {
 }
 
 /// What the light fragments read of a screen's colour law; mirrors `ScreenLaw` in `Shaders`.
-struct ScreenLaw {
+public struct ScreenLaw: Sendable {
     var diffuse: SIMD4<Float> = .zero
     var rim: SIMD4<Float> = .zero
     var radii: SIMD4<Float> = .zero
@@ -284,7 +285,7 @@ struct ScreenLaw {
     var forward: SIMD4<Float> = .zero
     var target = SIMD4<Float>(1, 1, 1, 0)
 
-    init(_ screen: DustScreenRef?, web: WebUniforms?) {
+    public init(_ screen: DustScreenRef?, web: WebUniforms?) {
         guard let screen, let law = screen.law, let web else { return }
         diffuse = SIMD4(law.diffuse[0], law.diffuse[1], law.diffuse[2], 0)
         rim = SIMD4(law.rim[0], law.rim[1], law.rim[2], 0)

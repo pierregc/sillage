@@ -201,6 +201,10 @@ static void testFunctions() {
     CHECK(abs(atan(1.0f) - M_PI_4_F) < 1e-6f && atan(float2(0.0f, -1.0f)).x == 0.0f &&
           abs(atan(float2(0.0f, -1.0f)).y + M_PI_4_F) < 1e-6f);
     CHECK(abs(tan(float2(M_PI_4_F, 0.0f)).x - 1.0f) < 1e-6f && tan(float3(0.0f)).z == 0.0f);
+    CHECK(tanh(0.0f) == 0.0f && abs(tanh(float2(1.0f, -1.0f)).y + 0.76159416f) < 1e-6f);
+    float4 four(1.0f, 2.0f, 3.0f, 4.0f);
+    float3 tail = four.yzw;
+    CHECK(tail.x == 2.0f && tail.z == 4.0f && float4(four.yzw, 5.0f).w == 5.0f);
     CHECK(popcount(0xF0F0u) == 8u && clz(1u) == 31u && ctz(8u) == 3u && clz(0u) == 32u);
     CHECK(as_type<uint>(1.0f) == 0x3F800000u && as_type<float>(0x40000000u) == 2.0f);
     CHECK(as_type<int>(as_type<float>(-7)) == -7);
@@ -218,6 +222,23 @@ static void testFunctions() {
 
     CHECK(simd_sum(3u) == 3u && simd_prefix_exclusive_sum(3u) == 0u && simd_broadcast(4u, 0) == 4u);
     CHECK(uint(static_cast<simd_vote::vote_t>(simd_ballot(true))) == 1u && simd_ballot(true).all());
+}
+
+// msl_texture.h's filters: a texel at its centre, the edge held past the top and bottom while
+// across repeats, and a round footprint the trilinear filter.
+static void testTextures() {
+    std::vector<float> texels = {0.0f, 1.0f, 2.0f, 3.0f, 10.0f, 11.0f, 12.0f, 13.0f, 6.5f, 6.5f};
+    texels2d t = texels2d_of(texels.data(), 4u, 2u, 1u, 2u);
+    CHECK(t.offset[1] == 8u && fetch_texel(t, 1u, 1u, 0u).x == 6.5f && fetch_texel(t, 0u, 0u, 0u).w == 1.0f);
+    CHECK(sample_bilinear(t, float2(0.375f, 0.75f)).x == 11.0f && sample_nearest(t, float2(0.9f, 0.1f)).x == 3.0f);
+    CHECK(sample_bilinear(t, float2(0.375f, 0.0f)).x == 1.0f);
+    CHECK(sample_trilinear(t, float2(0.0f, 0.25f), 0.0f, true).x == 1.5f);
+    CHECK(sample_trilinear(t, float2(0.375f, 0.0f), 0.0f, true).x == 1.0f);
+    CHECK(sample_trilinear(t, float2(0.375f, 0.0f), 0.0f).x == 6.0f);
+    CHECK(sample_trilinear(t, float2(0.375f, 0.25f), 0.5f, true).x == 0.5f * 1.0f + 0.5f * 6.5f);
+    float2 step(0.25f, 0.0f), down(0.0f, 0.5f);
+    CHECK(sample_anisotropic(t, float2(0.375f, 0.25f), step, down, 16.0f, true).x
+          == sample_trilinear(t, float2(0.375f, 0.25f), 0.0f, true).x);
 }
 
 static ulong spreadReference(uint value) {
@@ -314,6 +335,7 @@ static int run() {
     testCuda();
     testVectors();
     testFunctions();
+    testTextures();
     testTreeText();
     std::printf("cuda/tests/compat.cu: %d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;

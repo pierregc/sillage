@@ -16,7 +16,7 @@ strata, the coherent lift of its layer seen edge on (`03-smooth`).
 
 ## The screen
 
-`inside.dustScreen` in a flight file (`DustScreen.swift`, Metal only, off unless given): a polar
+`inside.dustScreen` in a flight file (`DustScreen.swift`, both engines since #513, off unless given): a polar
 tile of the dust's column across the plane, read where each pixel's ray meets the galaxy's
 mid-plane, at every angle, turned by the disk's rotation from `rest`, over the pixel's footprint
 (mipmaps, anisotropic). The column along the ray is the tile's over the cosine of the ray's angle
