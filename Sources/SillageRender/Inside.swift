@@ -713,7 +713,8 @@ public enum InsideBlur {
         let (a, b) = (opening.target - opening.eye, closing.target - closing.eye)
         let (la, lb) = (simd_length(a), simd_length(b))
         var turned: Float = 0
-        if la > 0, lb > 0 { turned = acos(min(max(simd_dot(a, b) / (la * lb), -1), 1)) }
+        // Not acos: in Float it rounds a sub-pixel turn to 0 or 0.55 px, and a slowing turn flickers.
+        if la > 0, lb > 0 { turned = atan2(simd_length(simd_cross(a, b)), simd_dot(a, b)) }
         let pixels = scale * (moved + turned) * within
         guard pixels.isFinite else { return most }
         guard pixels >= still else { return 0 }

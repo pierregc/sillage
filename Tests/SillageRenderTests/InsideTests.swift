@@ -340,6 +340,20 @@ struct InsideTests {
         #expect(InsideBlur.subframes(from: camera(0), to: camera(1), frame: single, height: 1080) == 0)
     }
 
+    /// A turn under a pixel is measured as it is (#509): acos in Float rounded it to nothing or to
+    /// half a pixel, and the frames of a slowing turn flickered between still and streaked.
+    @Test func aSlowTurnIsStreakedUntilItStops() {
+        let near = frame(0.2)
+        let ahead = Camera(eye: .zero, target: SIMD3(0, 2.5, 0), near: 0.001)
+        let scale = 2160 / (2 * tan(ahead.fieldOfView / 2))
+        for step in 1...40 {
+            let angle = Float(step) * 0.07 / scale
+            let turned = Camera(eye: .zero, target: 2.5 * SIMD3(sin(angle), cos(angle), 0), near: 0.001)
+            let count = InsideBlur.subframes(from: ahead, to: turned, frame: near, height: 2160)
+            #expect(count == (step == 1 ? 0 : 1), "\(step)")
+        }
+    }
+
     /// A frame under the target keeps its exposure; one over it is brought down to it in a few
     /// draws, the tone curve making the mean fall by less than a stop per stop.
     @Test func theExposureOnlyDarkensAndLandsOnItsTarget() {
