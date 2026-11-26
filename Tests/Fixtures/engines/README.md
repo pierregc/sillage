@@ -1,7 +1,7 @@
 # The engines' reference outputs (#281)
 
 Small outputs the Metal engine gives and the CUDA engine has to give too: a tree, the
-accelerations of one walk, five frames. Under 2 MB in all.
+accelerations of one walk, five frames. Under 2.5 MB in all.
 
 Everything is little endian, byte for byte as Metal holds it: a `float3` takes 16 bytes, its
 fourth float 0. `manifest.json` (`sillage-engine-fixtures`, version 1) lists the tree's files
