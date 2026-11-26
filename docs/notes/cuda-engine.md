@@ -2243,8 +2243,13 @@ session: a take of the fixture's scene-0031 at 8 M on 12 M (two frames at 13 Myr
 of steps), then two frames of a video at 3 a second from inside its disk in 4K, each four renders
 over its shutter, before (`--whole-squares`) and after, with `--profile`, their PNGs compared to
 the byte. A still has no shutter and so no streaks: `--flight-keys` would time nothing. A star
-that barely moves (a point of a few pixels) gains nothing: the gain is the streaks'. On the CPU
-target at 1080p and 20,000 particles the flight's stills walk the same pixels both ways.
+that barely moves (a point of a few pixels) gains nothing: the gain is the streaks'.
+
+**On the CPU target**, the script at 1080p and 20,000 particles (`PARTICLES=20000 PRESET=1080p`),
+two frames 3.8 s into its flight, the eye moving up to 660 pc a frame within 1 kpc of matter, 8
+renders: the frames' point stars took 18.2 s a render walking whole squares, 4.0 s along the
+bands, the same bytes. The exposure's pre-pass, whose renders have no shutter, did not change
+(0.80 and 0.79 s a render). A GPU's share is still to measure.
 
 **Next if the pass stays long.** The light's accumulation through the compare and swap of
 `addFixed`: a native 64-bit `atomicAdd` with the ceiling at 2^63, or screen tiles, as #425 lists.
