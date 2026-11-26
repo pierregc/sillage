@@ -96,6 +96,8 @@ struct LookFileTests {
         file.overlay = Overlay(clock: Overlay.Clock())
         file.exposure = LookExposure()
         file.galaxyCount = 10
+        file.sky = SkyField()
+        file.dither = 1
         #expect(try keys(JSONEncoder().encode(file.look)) == fields(file.look))
         #expect(try keys(file.encoded()) == fields(file))
     }
@@ -193,7 +195,7 @@ struct LookFileTests {
         let file = try LookFile.decoded(from: Data(text.utf8))
         #expect(file.sky == SkyField(brightness: 0.5, spikes: 0))
         #expect(file.renderSettings(width: 8, height: 8).dither == 1)
-        #expect(!(try String(decoding: LookFile().encoded(), as: UTF8.self)).contains("sky"))
+        #expect(!(try String(decoding: LookFile().encoded(), as: UTF8.self)).contains(#""sky""#))
         let stray = #"{"version": 1, "sky": {"brightnes": 0.5}}"#
         #expect(throws: (any Error).self) { try LookFile.decoded(from: Data(stray.utf8)) }
     }
