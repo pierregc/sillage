@@ -522,7 +522,10 @@ that its speed follows the distance to the nearest matter (#406): a dive that ke
 the look as ever, `--fps`, `--preset`, `--codec`, `--stills`, `--still-frames` and the previews
 work as without a flight, and `--speed` does not go with it. `--flight-keys <dir>` draws only the
 frame at each key, as PNGs, and encodes nothing: a flight seen in seconds; with `--flight-at
-<s,...>` it draws those seconds of the flight instead. `sillage-render flight
+<s,...>` it draws those seconds of the flight instead. `--flight-stills <dir> --flight-at <s,...>`
+draws those seconds as `sillage-cuda still --flight --seconds` does, the renders of a frame's
+shutter and the grain of its video frame, under the same names, so `scripts/still-pairs.py` sets
+the two engines' frames side by side (#513). `sillage-render flight
 <scene> --at <myr,...> [--look <look>]` prints, at those moments, each galaxy's centre and disk
 axes and the export's camera, which is what keys are written from; `--arms <kpc,...>` adds where
 each disk is densest at those radii, an arm to fly into. Format, interpolation and a worked example
@@ -548,7 +551,7 @@ that show alone at mid distance, where a sparse stretch of a disk reads as blobs
 ([lone kernels](notes/lone-kernels.md)). Its `dustSlabs` (0 by default) lays the dust's slabs on
 the dust grains in the frame rather than on all the matter, the four together that many times the
 grains' depth, for a ring of dust inside a wide bulge (#479,
-[flights](notes/flights.md)). Its `dustScreen` (absent by default; Metal only) draws one galaxy's
+[flights](notes/flights.md)). Its `dustScreen` (absent by default; Metal and CUDA) draws one galaxy's
 dust from a polar tile laid in its plane rather than from where its grains stand:
 `{"tile": "ring.tile.json", "galaxy": 0, "rest": 12, "depth": 0.45, "law": {"diffuse": [0.55,
 1.47, 10], "rim": [0.7, 1.2, 0.25], "rimRadii": [6.09, 6.86]}}`. The tile (a JSON naming `width`

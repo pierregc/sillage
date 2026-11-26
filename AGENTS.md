@@ -16,7 +16,7 @@ notes; open them only for what is not here.
 | Command | `./scripts/dev.sh render <args>`, which builds `sillage-render` if needed and runs it | `scripts/linux.sh tool` builds `.build/linux/sillage-cuda`; run it with `LD_LIBRARY_PATH=.build/linux` |
 | Help | `sillage-render --help`, `sillage-render <command> --help` | `sillage-cuda help`, `sillage-cuda <command> --help` |
 | Has | every command below | `explore`, `hires`, `still`, `export`, `match`, `take extract`, `flight`, `look --palette\|--promote`, `pace --speed story`, `black-hole still` |
-| Lacks | | `look --style auto\|--grid`, `palettes`, the visual pace, text overlays, `--format webp\|gif`, `export --palette`, `dustGlow` and `galaxyCount` of a look, a flight's `inside.dustScreen` (refused by name, #513) |
+| Lacks | | `look --style auto\|--grid`, `palettes`, the visual pace, text overlays, `--format webp\|gif`, `export --palette`, `dustGlow` and `galaxyCount` of a look |
 
 `./scripts/dev.sh explore|hires|look|export|palettes <folder>` are shortcuts for
 `./scripts/dev.sh render <command> <folder>`. A scene folder goes from one engine to the other as

@@ -2079,8 +2079,8 @@ way: one plan, the segments brought together on one box and joined there with `-
 
 What goes up with the take: the look and the flight, read by path, and every file the flight
 names by path, which is the dust screen's tile (`inside.dustScreen.tile`, its json and the two
-`.f32` files beside it). The CUDA engine refuses a flight with a dust screen by name before the
-first frame for now (`CUDATakeStills.notDrawn`): the screen's passes are Metal's alone (#513).
+`.f32` files beside it). The tile is read before the first frame, so a flight whose tile is
+missing is refused then rather than drawn without it.
 
 ## The Sombrero film (#513)
 
@@ -2099,20 +2099,35 @@ What the film's look and flight add on Metal, drawn by the CUDA engine on one ke
   their extinction; the composite applies the shared `ditherPixel`.
 - **Held kernel lengths (#510).** `CUDATakeStills` eases every frame's lengths at the captured
   frame nearest `inside.heldLengths`.
-- **Refused by name:** `inside.dustScreen` (#506, #508, #511).
+- **The dust screen (#506, #508, #511).** Its functions are shared text, from the tile's
+  realization to the dabs, their rings, volume, fade, grazing band, soft slabs, hole and slant:
+  the resolve kernel calls `screenResolved` where Metal's inside library does, and the light and
+  point star kernels `screenLightPixel` and `screenStarPixel` when the screen has a colour law
+  (Metal's function constant 21). The carrier is drawn at the frame's own resolution, as Metal
+  draws it under a screen (`CUDARenderer(screened:)`). `DustScreenTexels` reads the tile and its
+  lut as Metal's loader does, rounds them to half floats as its r16Float textures hold them, and
+  makes the tile's levels as `generateMipmaps` does, each texel the mean of the two by two above;
+  `ScreenUniforms` comes from the same lines as `Renderer.encodeSplat`'s. The two textures are
+  read through `ScreenTexture`, Metal's sampler on Metal and `msl_texture.h` on CUDA: the lut
+  bilinear, the tile anisotropic over its levels, repeating across and held at its first and last
+  radius (`clampsDown`). The filters are the textbook ones, not Metal's GPU's, which is why the
+  screen's frame is held to the inside tolerance like the others. A tile CUDA cannot read, or
+  dabs on a tile without a lut (which Metal draws without its dabs, with a line on stderr), are
+  refused by name before the first frame.
 
 The rest of #513's list already arrives through shared code: `starOldK` / `starYoungK`,
 `starFrom` / `starFull`, `slabsWithin`, `slabsLog` (`InsideFrame`, `InsideUniforms`), `dustSlabs`
 and the exposure's pre-pass (`FlightFrames`), `dustWidth` (`FramePlan`), and the renders a
 shutter passes (`FlightFile.cameras`, `InsideBlur.subframes`, as `TakeExport` takes them).
 
-`Tests/Fixtures/sombrero/recipe.json` lists three frames of the film's look over the engines'
-small take: wide, from inside the dust layer, and with the sky turning. The look's sky is the
+`Tests/Fixtures/sombrero/recipe.json` lists four frames of the film's look over the engines'
+small take: wide, from inside the dust layer, with the sky turning, and the dust layer again
+through the dust screen with its dabs and colour law (`screen.flight.json`, a synthetic 64 by 16
+tile from `make_tile.py`). The look's sky is the
 film's at six times its brightness: at 128 by 72 the film's own changes a few pixels by a level or
 two, which would hide an error in its port. `CUDASombreroTests`
 draws them on the CPU target and holds them to Metal's at the inside tolerance once the Mac has
-written them (`SombreroFixture.command`); until then it says it waits. `screen.flight.json`, with
-a synthetic 64 by 16 tile (`make_tile.py`), is the dust screen's flight for when it is ported.
+written them (`SombreroFixture.command`); until then it says it waits.
 
 ## A take's video (#429)
 
