@@ -293,6 +293,43 @@ struct CUDAInsideTests {
         #expect(first.bits == second.bits)
     }
 
+    /// A streak is walked only along the band its box crosses, not over the whole square that
+    /// holds it (#425), and lays the bits the whole square lays: across the frame, up it,
+    /// slanted, towards the stars, from the stars' own threads and from a block each.
+    @Test func aStreaksBandLaysTheBitsOfItsWholeSquare() throws {
+        var generator = SeededGenerator(seed: 11)
+        let positions = (0..<80).map { _ in
+            SIMD3<Float>(generator.uniform() - 0.5, generator.uniform() - 0.5, generator.uniform() - 0.5)
+                * 0.4
+        }
+        let starred = Self.inside(0.8) { settings in
+            settings.stars = 16
+            settings.starFrom = 0.001
+            settings.starFull = 0.002
+            settings.starSize = 72  // 3 pixels of the 90 lines drawn
+        }
+        let from = camera(1)
+        let moves: [SIMD3<Float>] = [
+            SIMD3(0.3, 0, 0), SIMD3(0, 0, 0.3), SIMD3(0.2, 0, -0.25), SIMD3(0.001, 0, 0.3), SIMD3(0, 0.4, 0),
+        ]
+        for move in moves {
+            let to = Camera(
+                eye: SIMD3(0, -1, 0) + move, target: SIMD3(0, 100, 0) + move, near: 0.001)
+            for largeCapacity in [0, 4096] {
+                func bits(whole: Bool) throws -> [UInt64] {
+                    let stage = try Stage(positions, maximumKernel: 64, largeCapacity: largeCapacity)
+                    stage.renderer.largeSplatPixels = largeCapacity > 0 ? 16 : 0
+                    stage.renderer.wholeSquares = whole
+                    stage.renderer.inside = starred
+                    _ = try stage.picture([from, to])
+                    return try stage.renderer.fixedTarget(.light)
+                }
+                let (band, whole) = (try bits(whole: false), try bits(whole: true))
+                #expect(whole.contains { $0 > 0 } && band == whole, "\(move), \(largeCapacity)")
+            }
+        }
+    }
+
     /// A frame through several cameras is the mean of a render through each but the last: of
     /// one camera again and again, the frame itself; of two, the light of both at half each.
     @Test func aFrameIsTheMeanOfItsRenders() throws {

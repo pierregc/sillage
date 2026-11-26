@@ -18,6 +18,7 @@
 #include "engine.h"
 #include "fixed.h"
 #include "raster.h"
+#include "band.h"
 #include "Shaders.h"
 
 namespace metal {
@@ -200,14 +201,17 @@ struct Large {
 };
 
 template <class Point>
-static __device__ __forceinline__ bool setAside(const Large &large, const Square &square, const Point &point) {
-    if (large.threshold == 0u) { return false; }
-    uint pixels = uint(square.right - square.left) * uint(square.bottom - square.top);
-    if (pixels <= large.threshold) { return false; }
+static __device__ __forceinline__ bool setAside(const Large &large, uint pixels, const Point &point) {
+    if (large.threshold == 0u || pixels <= large.threshold) { return false; }
     uint slot = claim(large.count);
     if (slot >= large.capacity) { return false; }
     static_cast<Point *>(large.entries)[slot] = point;
     return true;
+}
+
+template <class Point>
+static __device__ __forceinline__ bool setAside(const Large &large, const Square &square, const Point &point) {
+    return setAside(large, uint(square.right - square.left) * uint(square.bottom - square.top), point);
 }
 
 static __device__ __forceinline__ void laySplat(uint lay, const Splat &splat, int x, int y, float2 coord,
@@ -384,7 +388,8 @@ static __device__ __forceinline__ void layStar(const Star &star, int x, int y, f
 }
 
 // A thread a star, where Metal draws the list's entries as points, eight instances each.
-__global__ void pointStarVertex(Massive m, Frame f, const uint2 *list, uint stars, Targets targets, Large large) {
+__global__ void pointStarVertex(Massive m, Frame f, const uint2 *list, uint stars, Targets targets, Large large,
+                                bool whole) {
     uint index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= stars) { return; }
     Star star = pointStar(index / insideGroup, index % insideGroup, m.positions, m.population, m.formation,
@@ -392,9 +397,12 @@ __global__ void pointStarVertex(Massive m, Frame f, const uint2 *list, uint star
                           m.rampKeys, f.ramps, list, f.column);
     Square square;
     if (!pointSquare(star.position, star.pointSize, targets.width, targets.height, square)) { return; }
-    if (setAside(large, square, star)) { return; }
+    Band band = starBand(star.half_streak, star.radius, star.pixel, square, whole);
+    if (large.threshold > 0u && setAside(large, bandPixels(band, square), star)) { return; }
     for (int y = square.top; y < square.bottom; ++y) {
-        for (int x = square.left; x < square.right; ++x) { layStar(star, x, y, pointCoord(square, x, y), targets); }
+        int left, right;
+        bandRow(band, square, y, left, right);
+        for (int x = left; x < right; ++x) { layStar(star, x, y, pointCoord(square, x, y), targets); }
     }
 }
 
@@ -531,16 +539,33 @@ __global__ void largeSplats(const Splat *splats, uint count, uint lay, Targets t
     }
 }
 
-__global__ void largeStars(const Star *stars, uint count, Targets targets) {
+// A star's block shares the rows its band crosses, each as wide as the widest of them.
+__global__ void largeStars(const Star *stars, uint count, Targets targets, bool whole) {
     if (blockIdx.x >= count) { return; }
     Star star = stars[blockIdx.x];
     Square square;
     if (!pointSquare(star.position, star.pointSize, targets.width, targets.height, square)) { return; }
-    uint wide = uint(square.right - square.left);
-    uint pixels = wide * uint(square.bottom - square.top);
+    Band band = starBand(star.half_streak, star.radius, star.pixel, square, whole);
+    int top = square.bottom;
+    int bottom = square.top;
+    int widest = 0;
+    for (int y = square.top; y < square.bottom; ++y) {
+        int left, right;
+        bandRow(band, square, y, left, right);
+        if (right == left) { continue; }
+        top = min(top, y);
+        bottom = max(bottom, y + 1);
+        widest = max(widest, right - left);
+    }
+    if (widest == 0) { return; }
+    uint wide = uint(widest);
+    uint pixels = wide * uint(bottom - top);
     for (uint pixel = threadIdx.x; pixel < pixels; pixel += blockDim.x) {
-        int x = square.left + int(pixel % wide);
-        int y = square.top + int(pixel / wide);
+        int y = top + int(pixel / wide);
+        int left, right;
+        bandRow(band, square, y, left, right);
+        int x = left + int(pixel % wide);
+        if (x >= right) { continue; }
         layStar(star, x, y, pointCoord(square, x, y), targets);
     }
 }
@@ -587,6 +612,7 @@ struct sc_renderer {
     uint32_t largeThreshold;
     uint32_t largeCount;
     bool halves;
+    bool wholeSquares;
     std::mutex largeLock;
     // What a later pass reads as floats and an earlier one changed.
     bool columnStale;
@@ -877,11 +903,12 @@ static sc_status drawStars(sc_renderer *renderer, const sh::Frame &frame) {
     if (stars == 0u) { return SC_OK; }
     sh::Targets onto = targets(renderer);
     auto vertices = [&](sh::Large large) -> sc_status {
-        LAUNCH(pointStarVertex, groups(stars), width, massive(renderer), frame, list, stars, onto, large);
+        LAUNCH(pointStarVertex, groups(stars), width, massive(renderer), frame, list, stars, onto, large,
+               renderer->wholeSquares);
         return SC_OK;
     };
     auto aside = [&](const sh::Star *held, uint32_t some) -> sc_status {
-        LAUNCH(largeStars, some, width, held, some, onto);
+        LAUNCH(largeStars, some, width, held, some, onto, renderer->wholeSquares);
         return SC_OK;
     };
     return draw<sh::Star>(renderer, vertices, aside);
@@ -1140,6 +1167,12 @@ sc_status sc_render_set_large(sc_renderer *renderer, uint32_t threshold) {
 sc_status sc_render_set_half_floats(sc_renderer *renderer, int32_t halves) {
     if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
     renderer->halves = halves != 0;
+    return SC_OK;
+}
+
+sc_status sc_render_set_whole_squares(sc_renderer *renderer, int32_t whole) {
+    if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
+    renderer->wholeSquares = whole != 0;
     return SC_OK;
 }
 

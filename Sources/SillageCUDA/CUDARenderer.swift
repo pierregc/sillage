@@ -74,6 +74,9 @@ public final class CUDARenderer: FrameStyling {
     /// they lose of the faint light (#283): the result depends on the order the threads run
     /// in, and `fixedTarget` then holds a half's bits a value.
     public var halfFloats = false
+    /// Walks every pixel of a point star's square, as before #425, in place of the band its
+    /// streak crosses: the same bits, slower. The measure's "before".
+    public var wholeSquares = false
     /// Splats the last pass set aside.
     public var largeSplatCount: Int { Int(sc_render_large_count(handle)) }
     /// What a flight's frame is drawn with from inside a galaxy (#347), as `Renderer.inside`:
@@ -572,6 +575,7 @@ public final class CUDARenderer: FrameStyling {
             settings.dustGlow,
         ]
         try check(sc_render_set_glow(handle, glow), "the dust's glow")
+        try check(sc_render_set_whole_squares(handle, wholeSquares ? 1 : 0), "the point stars' walk")
     }
 
     /// What a frame drawn from inside a galaxy hands every pass behind its uniforms.

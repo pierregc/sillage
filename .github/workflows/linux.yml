@@ -164,3 +164,13 @@ jobs:
           test ! -e "$scene/.checkpoint"
           grep -q '"engine" : "cuda-cpu"' "$scene/hires.json"
           grep -q '"resumes" : 1' "$scene/hires.json"
+
+  gpu-scripts:
+    # The GPU workflow's scripts (#428, #440) against a recorded Vast and a local folder for the Drive.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: gpu-box.sh and take-store.sh, with no box, no key and no Drive
+        run: scripts/gpu-check.sh

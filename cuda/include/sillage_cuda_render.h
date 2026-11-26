@@ -126,6 +126,10 @@ sc_status sc_render_set_large(sc_renderer *renderer, uint32_t threshold);
  * a frame is cleared. */
 sc_status sc_render_set_half_floats(sc_renderer *renderer, int32_t halves);
 
+/* 1 walks every pixel of a point star's square, as before #425; 0, the default, only the band
+ * its streak's box crosses. The bits are the same: the whole square is the measure's "before". */
+sc_status sc_render_set_whole_squares(sc_renderer *renderer, int32_t whole);
+
 /* Either may be NULL. */
 sc_status sc_render_set_particles(sc_renderer *renderer, const sc_render_massive *massive,
                                   const sc_render_tracers *tracers);

@@ -69,3 +69,20 @@ scripts/gpu-box.sh list                # every instance on the account, and the 
   is the one.
 - `GET /api/v0/users/current/` gives the credit. Its answer also holds the account's e-mail
   address: the script reads only the credit from it.
+
+## From a workflow, with the Mac off (#428, #440)
+
+`.github/workflows/gpu.yml` runs `gpu-box.sh` from GitHub's runner: it rents, ships the commit, runs
+one command, brings the results back as artifacts and destroys the box.
+
+- Secrets of the repository: `VAST_API_KEY`, `GPU_SSH_KEY` (the private half of the key on the Vast
+  account) and, for takes, `RCLONE_CONF` (the `sillage` remote, `drive.file` scope).
+- Start it: Actions, gpu, Run workflow; or `gh workflow run gpu.yml -f dry_run=false -f command='...'`;
+  or the GitHub tools of a cloud session (`actions_run_trigger`). **The first input, `dry_run`, is
+  ticked by default: it lists the offers and prints the rental, and rents nothing.**
+- Safety nets, in this order: the destroy step (`if: always()`), the `cleanup` job (destroys by the
+  run's label), the box's own deadline. A take that did not reach the Drive keeps the box up until
+  its deadline unless `drop_take` is ticked; the job summary says where to reach it.
+- A run's summary holds the ledger line and the SHA-256 of every file brought back.
+- `scripts/take-store.sh` keeps takes on the Drive (`up`, `down`, `list`, `archive`); `scripts/gpu-check.sh`
+  tests both scripts in the Linux workflow with a recorded Vast and a folder for the Drive.
