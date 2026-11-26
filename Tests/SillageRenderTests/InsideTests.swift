@@ -446,6 +446,12 @@ struct InsideTests {
         #expect(simd_length(views[4].eye - middle) < 1e-6)
         let open = flight.camera(atSeconds: 5 - 1.0 / 120).camera.eye
         #expect(simd_length(views[0].eye - open) < 1e-6 && simd_length(views[0].eye - views[8].eye) > 0)
+        // Halfway through the near field the streaks are half as long: they end with it (#509).
+        let half = InsideFrame(settings: flight.inside, nearness: 5.5)
+        #expect(InsideBlur.within(half) == 0.5)
+        let shorter = flight.cameras(atSeconds: 5, interval: 1.0 / 30, frame: half, height: 1080)
+        let quarter = flight.camera(atSeconds: 5 - 0.5 / 120).camera.eye
+        #expect(shorter.count > 1 && simd_length(shorter[0].eye - quarter) < 1e-6)
         var kept = file
         kept.near = 0.5
         #expect(try Flight(kept, take: take(), look: { _ in look }).near == 0.5)

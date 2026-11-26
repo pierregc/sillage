@@ -704,10 +704,8 @@ public enum InsideBlur {
         from opening: Camera, to closing: Camera, frame: InsideFrame, height: Int
     ) -> Int {
         let most = frame.settings.subframes
-        let (near, far) = (frame.settings.field[0], frame.settings.field[1])
-        guard most > 1, frame.nearness < far else { return 0 }
-        let t = min(max((frame.nearness - near) / (far - near), 0), 1)
-        let within = 1 - t * t * (3 - 2 * t)
+        guard most > 1, frame.nearness < frame.settings.field[1] else { return 0 }
+        let within = Self.within(frame)
         let scale = Float(height) / (2 * tan(opening.fieldOfView / 2))
         let moved = simd_length(closing.eye - opening.eye) / max(frame.nearness, 1e-4)
         let (a, b) = (opening.target - opening.eye, closing.target - closing.eye)
@@ -719,6 +717,14 @@ public enum InsideBlur {
         guard pixels.isFinite else { return most }
         guard pixels >= still else { return 0 }
         return min(max(Int((pixels / step).rounded(.up)), 1), most)
+    }
+
+    /// How far the frame is in the near field: 1 nearer than `field`'s first distance, 0 past
+    /// its second.
+    public static func within(_ frame: InsideFrame) -> Float {
+        let (near, far) = (frame.settings.field[0], frame.settings.field[1])
+        let t = min(max((frame.nearness - near) / (far - near), 0), 1)
+        return 1 - t * t * (3 - 2 * t)
     }
 }
 
