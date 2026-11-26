@@ -101,6 +101,9 @@ public final class CUDATakeStills: FrameStage {
     /// The kernel lengths of the captured frames a flight's moment lies between, kept for the
     /// next moment: `EasedSmoothing`'s two fields.
     private var easedFields: [(frame: Int, lengths: [Float])] = []
+    /// The captured frame whose kernel lengths every frame of the flight draws with (#510), as
+    /// `TakeExport` holds them.
+    private let lengthsHeld: Double?
     /// What the last flight frame drawn took of the inside of a galaxy.
     public private(set) var lastFlightFrame: FlightFrame?
 
@@ -142,6 +145,7 @@ public final class CUDATakeStills: FrameStage {
         count = take.recording.particleCount
         // The flight first: a take or a flight that cannot be drawn is refused before the
         // device holds anything.
+        if let refused = file.flatMap(Self.notDrawn) { throw CUDAError(.invalidArgument, refused) }
         flightFrames = try file.map {
             try FlightFrames(
                 take: take, look: look, capturedRate: capturedRate, width: width, height: height,
@@ -167,6 +171,26 @@ public final class CUDATakeStills: FrameStage {
         held = try context.makeBuffer(length: count * 16)
         lengths = try context.makeBuffer(length: count * 4)
         decoded = try CUDAHostMemory(context: context, length: count * 16)
+        // Not for a take of some moments of its framing take's run, as on Metal.
+        let some =
+            self.framing.recording !== take.recording
+            && self.framing.recording.capturedFrames != take.recording.capturedFrames
+        if !some, let myr = file?.inside?.heldLengths {
+            lengthsHeld = try TimeTrack.position(
+                of: Double(myr), in: TimeTrack.megayears(of: take.recording)
+            ).rounded()
+        } else {
+            lengthsHeld = nil
+        }
+    }
+
+    /// What of a flight this engine does not draw, named, so that it is refused before the first
+    /// frame rather than left out (#513); nil when it draws all of it.
+    public static func notDrawn(_ flight: FlightFile) -> String? {
+        guard let screen = flight.inside?.dustScreen else { return nil }
+        let dabs = screen.dabs == nil ? "" : " and its dabs"
+        return "inside.dustScreen (\(screen.tile))\(dabs): the dust screen of #506, #508 and #511 is drawn "
+            + "on Metal alone so far (#513); draw this flight on the Mac, or without its dustScreen"
     }
 
     public var capturedFrames: Int { take.recording.capturedFrames }
@@ -189,6 +213,7 @@ public final class CUDATakeStills: FrameStage {
         threads: Int = 1, light: [Float]? = nil
     ) throws -> UnsafeRawBufferPointer {
         renderer.inside = nil
+        renderer.skyTurn = .zero
         staged = nil
         guard let blend = take.recording.blend(atCaptured: position) else {
             throw RecordingFile.Failure.truncated
@@ -249,9 +274,10 @@ public final class CUDATakeStills: FrameStage {
     private func easeLengths(at place: FlightFrames.Place, _ positions: UnsafeRawBufferPointer) throws {
         let recording = take.recording
         let position = place.stored ?? place.captured
+        let asked = lengthsHeld ?? position
         let last = recording.capturedFrames - 1
-        let lower = min(max(Int(position.rounded(.down)), 0), last)
-        let share = Float(min(max(position - Double(lower), 0), 1))
+        let lower = min(max(Int(asked.rounded(.down)), 0), last)
+        let share = Float(min(max(asked - Double(lower), 0), 1))
         let wanted = share > 0 && lower < last ? [lower, lower + 1] : [lower]
         easedFields.removeAll { !wanted.contains($0.frame) }
         for frame in wanted where !easedFields.contains(where: { $0.frame == frame }) {
@@ -289,6 +315,11 @@ public final class CUDATakeStills: FrameStage {
     public var inside: InsideFrame? {
         get { renderer.inside }
         set { renderer.inside = newValue }
+    }
+
+    public var skyTurn: SIMD2<Float> {
+        get { renderer.skyTurn }
+        set { renderer.skyTurn = newValue }
     }
 
     public func setGrain(frame index: Int) { renderer.setGrain(frame: index) }

@@ -32,6 +32,7 @@ struct KernelSourceTests {
         "Shaders.DiskFrame": MemoryLayout<DiskFrame>.stride,
         "Shaders.GalaxyRamp": MemoryLayout<GalaxyRamp>.stride,
         "Shaders.BackgroundStar": MemoryLayout<BackgroundStar>.stride,
+        "Shaders.SkyParams": MemoryLayout<SkyParams>.stride,
         "Shaders.BloomParams": MemoryLayout<BloomParams>.stride,
         "Shaders.CompositeParams": MemoryLayout<CompositeParams>.stride,
         "Shaders.SpikeParams": MemoryLayout<SpikeParams>.stride,

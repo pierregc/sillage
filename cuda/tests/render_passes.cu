@@ -1,10 +1,12 @@
 // The renderer's particle passes on the CPU target (#276), through the C API alone: a star lays
 // its whole kernel, a frame drawn twice is the same to the bit, both ways for large splats lay
-// the same bits, and a call the renderer cannot answer is refused. The Swift tests draw whole
+// the same bits, the deep sky (#513) adds light through the dust, and a call the renderer cannot
+// answer is refused. The Swift tests draw whole
 // scenes with the frame plan (Tests/SillageCUDATests/CUDARenderTests.swift); this one runs
 // where there is no Swift, with g++ and with clang++.
 #include "cuda_cpu.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -156,6 +158,22 @@ static bool frame(sc_renderer *renderer, const Scene &made, SplatUniforms u) {
     return fine && ok(sc_render_finish(renderer), "finish");
 }
 
+// The deep sky (#512) of a square frame looking along +y, a degree of it a pixel or so.
+static SkyParams skyParams(uint side, float brightness) {
+    SkyParams p;
+    std::memset(&p, 0, sizeof p);
+    float tangent = 0.5f;
+    float pixel = 2.0f * tangent / float(side);
+    p.right = float4(1.0f, 0.0f, 0.0f, tangent);
+    p.up = float4(0.0f, 0.0f, 1.0f, tangent);
+    p.forward = float4(0.0f, 1.0f, 0.0f, 0.0f);
+    p.size = float4(float(side), float(side), 1.0f, 1.0f);
+    p.field = float4(brightness, 0.5f, 0.0f, 0.0f);
+    p.more = float4(1.0f, 0.0f, 7.0f, 1.0f);
+    p.scale = float4(1.5707963f / 96.0f / pixel, pixel, 0.0f, 1.0f);
+    return p;
+}
+
 static int run() {
     sc_context *context = nullptr;
     if (!ok(sc_context_create(0, &context), "a context")) { return 1; }
@@ -245,6 +263,47 @@ static int run() {
         expect(sc_render_set_particles(strict, &shorter, nullptr) == SC_INVALID_ARGUMENT, "buffers too short");
         sc_renderer_destroy(strict);
         release(many);
+    }
+
+    // The deep sky (#512): light added and none taken, none at no brightness, less through dust.
+    {
+        Scene clear = scene(context, 600u);
+        std::vector<uint> stars(600u, 0u);
+        std::vector<float> old(600u, -1e9f);
+        ok(sc_buffer_upload(const_cast<sc_buffer *>(clear.massive.component), 0, stars.data(), 600u * 4u), "stars");
+        ok(sc_buffer_upload(const_cast<sc_buffer *>(clear.massive.formation), 0, old.data(), 600u * 4u), "ages");
+        Scene dusty = scene(context, 6000u);
+        sc_renderer *renderer = nullptr;
+        ok(sc_renderer_create(context, &config, &renderer), "a renderer");
+        auto added = [&](const Scene &made, const SkyParams &sky) {
+            frame(renderer, made, uniforms(50.0f, made.count, side));
+            auto before = fixed(renderer, SC_RENDER_LIGHT_FIXED, side);
+            ok(sc_render_sky(renderer, &sky, sizeof sky), "the sky");
+            auto after = fixed(renderer, SC_RENDER_LIGHT_FIXED, side);
+            std::vector<long long> sum(before.size());
+            for (size_t i = 0; i < sum.size(); ++i) { sum[i] = (long long)(after[i] - before[i]); }
+            return sum;
+        };
+        auto open = added(clear, skyParams(side, 1.0f));
+        auto dark = added(clear, skyParams(side, 0.0f));
+        auto dimmed = added(dusty, skyParams(side, 1.0f));
+        size_t lit = 0, taken = 0, lighter = 0, dimmer = 0;
+        for (size_t i = 0; i < open.size(); ++i) {
+            lit += open[i] > 0 ? 1u : 0u;
+            taken += open[i] < 0 || dimmed[i] < 0 ? 1u : 0u;
+            lighter += dimmed[i] > open[i] ? 1u : 0u;
+            dimmer += dimmed[i] < open[i] ? 1u : 0u;
+        }
+        std::printf("  the sky lights %zu of %zu values, %zu of them dimmed by the dust\n", lit, open.size(), dimmer);
+        expect(lit > 0u, "the sky adds no light");
+        expect(taken == 0u, "the sky takes light away");
+        expect(std::all_of(dark.begin(), dark.end(), [](long long v) { return v == 0; }), "a dark sky adds light");
+        expect(lighter == 0u && dimmer > 0u, "the dust does not dim the sky");
+        SkyParams sky = skyParams(side, 1.0f);
+        expect(sc_render_sky(renderer, &sky, sizeof sky - 16u) == SC_INVALID_ARGUMENT, "a sky of another size");
+        sc_renderer_destroy(renderer);
+        release(clear);
+        release(dusty);
     }
 
     // The lace: its mean is its last level, and every level the mean of the one above.

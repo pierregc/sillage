@@ -1890,6 +1890,8 @@ enum Shaders {
             return splatOut(starfieldSplat(stars[vid], u));
         }
 
+        #endif
+
         // The deep sky (#512, `SkyField`): field stars and small galaxies worked out per pixel
         // from a seeded hash of the direction, on ten levels of cells of an equi-angular cube,
         // each level four times the objects of the one before. Drawn once the dust stands in
@@ -1904,29 +1906,18 @@ enum Shaders {
             float4 scale;
         };
 
-        struct SkyOut {
-            float4 position [[position]];
-        };
-
-        vertex SkyOut skyVertex(uint vid [[vertex_id]]) {
-            SkyOut out;
-            float2 p = float2(float((vid << 1u) & 2u), float(vid & 2u));
-            out.position = float4(p * 2.0f - 1.0f, 0.0f, 1.0f);
-            return out;
-        }
-
-        static uint skyHash(uint x) {
+        SHARED uint skyHash(uint x) {
             x ^= x >> 16u; x *= 0x7feb352du; x ^= x >> 15u; x *= 0x846ca68bu; x ^= x >> 16u;
             return x;
         }
 
-        static float skyUnit(thread uint &h) {
+        SHARED float skyUnit(thread uint &h) {
             h = skyHash(h + 0x9e3779b9u);
             return float(h >> 8u) * (1.0f / 16777216.0f);
         }
 
         // Face `face` is axis face / 2, negative when odd; (x, y) equi-angular, -1 to 1.
-        static float3 skyDirection(uint face, float2 xy) {
+        SHARED float3 skyDirection(uint face, float2 xy) {
             float2 uv = tan(xy * (M_PI_F / 4.0f));
             uint k = face >> 1u;
             float3 d = float3(0.0f);
@@ -1937,7 +1928,7 @@ enum Shaders {
         }
 
         // Where `d` falls on face `face`; past one, off it.
-        static float2 skyFace(uint face, float3 d) {
+        SHARED float2 skyFace(uint face, float3 d) {
             uint k = face >> 1u;
             float major = max(abs(d[k]), 1e-6f);
             return atan(float2(d[(k + 1u) % 3u], d[(k + 2u) % 3u]) / major) * (4.0f / M_PI_F);
@@ -1945,16 +1936,16 @@ enum Shaders {
 
         // The light of a mid-level object times this, by rank: nine times fainter a level among
         // the faint, four among the bright, as Hubble's frame of the Sombrero counts them.
-        static float skyRankLight(float rank) {
+        SHARED float skyRankLight(float rank) {
             return rank >= 6.0f ? exp(2.2f * (7.0f - rank)) : 9.0f * exp(1.386f * (6.0f - rank));
         }
 
-        static float3 skyTint(float3 c) {
+        SHARED float3 skyTint(float3 c) {
             return c / max(dot(c, float3(0.2126f, 0.7152f, 0.0722f)), 1e-4f);
         }
 
         // The light the object of `cell`, if it holds one, lays on the pixel at `at`.
-        static float3 skyObject(uint face, uint level, int2 cell, float cells, float2 at,
+        SHARED float3 skyObject(uint face, uint level, int2 cell, float cells, float2 at,
                                 constant SkyParams &p) {
             uint h = skyHash(skyHash(skyHash(uint(p.more.z) * 131u + level * 7u + face)
                                      + uint(cell.x)) + uint(cell.y));
@@ -2020,7 +2011,7 @@ enum Shaders {
             return skyTint(colour) * (light * energy);
         }
 
-        static float3 skyCells(uint face, uint level, float cells, float3 d, float2 at,
+        SHARED float3 skyCells(uint face, uint level, float cells, float3 d, float2 at,
                                constant SkyParams &p) {
             float2 xy = skyFace(face, d);
             int2 base = int2(floor((xy + 1.0f) * 0.5f * cells));
@@ -2036,7 +2027,7 @@ enum Shaders {
             return sum;
         }
 
-        static float3 skyLight(float2 at, constant SkyParams &p) {
+        SHARED float3 skyLight(float2 at, constant SkyParams &p) {
             float2 ndc = float2(at.x / p.size.x * 2.0f - 1.0f, 1.0f - at.y / p.size.y * 2.0f);
             float3 d = normalize(p.forward.xyz + p.right.xyz * (ndc.x * p.right.w)
                                  + p.up.xyz * (ndc.y * p.up.w));
@@ -2063,13 +2054,30 @@ enum Shaders {
             return total;
         }
 
+        // The light the sky lays on the pixel at `at` of the target, through all the dust there.
+        SHARED half4 skyPixel(float2 at, half4 dust, constant SkyParams &p, float3 red) {
+            float3 light = skyLight(at, p);
+            float column = dot(float4(dust), float4(1.0f));
+            return half4(half3(light * exp(-column * red)), half(0.0f));
+        }
+
+        #if defined(__METAL_VERSION__)
+        struct SkyOut {
+            float4 position [[position]];
+        };
+
+        vertex SkyOut skyVertex(uint vid [[vertex_id]]) {
+            SkyOut out;
+            float2 p = float2(float((vid << 1u) & 2u), float(vid & 2u));
+            out.position = float4(p * 2.0f - 1.0f, 0.0f, 1.0f);
+            return out;
+        }
+
         fragment LightTarget skyFragment(SkyOut in [[stage_in]], SplatFetch prior,
                                          constant SkyParams &p [[buffer(20)]],
                                          constant float4 &red [[buffer(21)]]) {
-            float3 light = skyLight(in.position.xy, p);
-            float column = dot(float4(prior.dust), float4(1.0f));
             LightTarget out;
-            out.light = half4(half3(light * exp(-column * red.xyz)), 0.0h);
+            out.light = skyPixel(in.position.xy, prior.dust, p, red.xyz);
             return out;
         }
 
@@ -4001,6 +4009,17 @@ enum Shaders {
             return float4(pow(mapped, 1.0f / 2.2f) * p.fade, 1.0f);
         }
 
+        // A look's dither (#512): triangular noise of `dither` 8-bit steps, new each frame,
+        // so a faint gradient is not cut into bands; none on black.
+        SHARED float4 ditherPixel(float4 pixel, uint2 gid, constant CompositeParams &p, float dither) {
+            if (dither > 0.0f) {
+                float noise = hash2(float2(gid) + p.seed * 0.618f) + hash2(float2(gid) + p.seed * 1.37f + 71.3f) - 1.0f;
+                float shown = max(pixel.r, max(pixel.g, pixel.b));
+                pixel.rgb += noise * (dither / 255.0f) * smoothstep(0.0f, 3.0f / 255.0f, shown);
+            }
+            return pixel;
+        }
+
         #if defined(__METAL_VERSION__)
         struct PlainOut {
             float4 position [[position]];
@@ -4128,14 +4147,7 @@ enum Shaders {
             if (gid.x >= output.get_width() || gid.y >= output.get_height()) { return; }
             float4 pixel = compositePixel(hdr, bloom, spikes, gid,
                                           uint2(output.get_width(), output.get_height()), p);
-            // A look's dither (#512): triangular noise of `dither` 8-bit steps, new each frame,
-            // so a faint gradient is not cut into bands; none on black.
-            if (dither > 0.0f) {
-                float noise = hash2(float2(gid) + p.seed * 0.618f) + hash2(float2(gid) + p.seed * 1.37f + 71.3f) - 1.0f;
-                float shown = max(pixel.r, max(pixel.g, pixel.b));
-                pixel.rgb += noise * (dither / 255.0f) * smoothstep(0.0f, 3.0f / 255.0f, shown);
-            }
-            output.write(pixel, gid);
+            output.write(ditherPixel(pixel, gid, p, dither), gid);
         }
         #endif
         """

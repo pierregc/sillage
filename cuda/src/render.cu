@@ -170,6 +170,8 @@ struct Targets {
     uint height;
     // Whether the targets hold half floats, blended as Metal blends them (#283's measure).
     bool halves;
+    // What the dust takes of each colour: `reddening`, or a look's `dustReddening` (#478).
+    float3 red;
 };
 
 struct CarrierTargets {
@@ -220,7 +222,7 @@ static __device__ __forceinline__ void laySplat(uint lay, const Splat &splat, in
             : dustPixel(splat.opticalDepth, splat.slab, r2);
         add4(targets.dust + pixel * 4u, dust, fixedUnit, targets.halves);
     } else if (lay == layLight) {
-        add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2, reddening),
+        add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2, targets.red),
              fixedUnit, targets.halves);
     } else {
         add4(targets.light + pixel * 4u, starfieldPixel(splat.color, splat.spikes, coord, r2), fixedUnit,
@@ -350,7 +352,7 @@ static __device__ __forceinline__ void layStar(const Star &star, int x, int y, f
     float share = starShare(coord, star.half_streak, star.radius, star.pixel);
     if (share <= 0.0f) { return; }
     size_t pixel = size_t(y) * targets.width + size_t(x);
-    add4(targets.light + pixel * 4u, starPixel(star.color, star.slab, targets.finishedDust[pixel], share, reddening), fixedUnit,
+    add4(targets.light + pixel * 4u, starPixel(star.color, star.slab, targets.finishedDust[pixel], share, targets.red), fixedUnit,
          targets.halves);
 }
 
@@ -416,6 +418,16 @@ __global__ void webResolveFragment(Frame f, Lace lace, texels2d carried, texels2
     if (!webCarried(carrier)) { return; }
     add4(dust + pixel * 4u, webResolved(uv, carrier, sample_nearest(tagged, uv), f.frames, f.w, lace), fixedUnit,
          halves);
+}
+
+// The deep sky (#512), a thread a pixel of the target, where Metal draws one triangle over it:
+// its light through all the finished dust of the pixel.
+__global__ void skyFragment(SkyParams p, Targets targets) {
+    size_t pixel = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (pixel >= size_t(targets.width) * targets.height) { return; }
+    float2 centre(float(pixel % targets.width) + 0.5f, float(pixel / targets.width) + 0.5f);
+    add4(targets.light + pixel * 4u, skyPixel(centre, targets.finishedDust[pixel], p, targets.red), fixedUnit,
+         targets.halves);
 }
 
 // The raw look's points: every pixel of the square, with no kernel.
@@ -566,6 +578,7 @@ struct sc_renderer {
     sc_buffer *starList;
     sc_buffer *starDraw;
     uint32_t starsListed;
+    metal::float3 red;
 };
 
 namespace sillage {
@@ -656,7 +669,7 @@ static sh::Tracers tracers(const sc_renderer *renderer) {
 static sh::Targets targets(const sc_renderer *renderer) {
     return sh::Targets{pointer<sh::fixed_t>(renderer->lightFixed), pointer<sh::fixed_t>(renderer->dustFixed),
                        pointer<const metal::float4>(renderer->dust), renderer->config.width,
-                       renderer->config.height, renderer->halves};
+                       renderer->config.height, renderer->halves, renderer->red};
 }
 
 static sh::CarrierTargets carrierTargets(const sc_renderer *renderer) {
@@ -939,6 +952,7 @@ sc_status sc_renderer_create(sc_context *context, const sc_render_config *config
         return status;
     }
     renderer->dustStale = true;
+    renderer->red = sh::reddening;
     *made = renderer;
     return SC_OK;
 }
@@ -1190,6 +1204,33 @@ sc_status sc_render_draw(sc_renderer *renderer, sc_render_pass pass, const void 
                                       renderer->config.column_height, 1u);
     return drawPass(renderer, frame, pass, sh::Range{massive_first, massive_count},
                     sh::Range{tracer_first, tracer_count});
+}
+
+sc_status sc_render_set_reddening(sc_renderer *renderer, const float *red) {
+    if (!renderer || !red) { return fail(SC_INVALID_ARGUMENT, "sc_render_set_reddening: no renderer or no colours"); }
+    renderer->red = metal::float3(red[0], red[1], red[2]);
+    return SC_OK;
+}
+
+sc_status sc_render_sky(sc_renderer *renderer, const void *params, size_t length) {
+    if (!renderer) { return fail(SC_INVALID_ARGUMENT, "no renderer"); }
+    if (!params || length != sizeof(sh::SkyParams)) {
+        return fail(SC_INVALID_ARGUMENT, "SkyParams is %zu bytes in the MSL, and %zu were given", sizeof(sh::SkyParams),
+                    length);
+    }
+    if (!renderer->dustFixed->length) { return fail(SC_INVALID_ARGUMENT, "the sky on a renderer without its dust"); }
+    if (sc_status status = use(renderer->context)) { return status; }
+    // The sky reads the finished dust, as a star does.
+    if (renderer->dustStale) {
+        if (sc_status status = finish(renderer->dustFixed, renderer->dust, pixels(renderer) * 4u, unit(renderer))) {
+            return status;
+        }
+        renderer->dustStale = false;
+    }
+    sh::SkyParams sky;
+    memcpy(&sky, params, sizeof sky);
+    LAUNCH(skyFragment, groups(pixels(renderer)), width, sky, targets(renderer));
+    return SC_OK;
 }
 
 sc_status sc_render_finish(sc_renderer *renderer) {

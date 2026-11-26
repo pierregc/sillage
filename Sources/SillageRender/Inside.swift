@@ -33,7 +33,7 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// The most light a star lays, against what the tone curve takes to white: past it a star
     /// keeps its size and gains a glint, not a disk of bloom (#357).
     public var starPeak: Float = 2
-    /// The share of the point stars' light the bloom spreads (#510), Metal only: the look's bloom
+    /// The share of the point stars' light the bloom spreads (#510): the look's bloom
     /// throws a halo of four layers round a near star, wider than the star by ten or more. The
     /// rest of the frame blooms as the look says. 1 for all of it, as before.
     public var starBloom: Float = 1

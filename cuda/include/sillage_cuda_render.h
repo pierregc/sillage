@@ -138,6 +138,12 @@ sc_status sc_render_draw(sc_renderer *renderer, sc_render_pass pass, const void 
                          size_t splat_length, const void *web_uniforms, size_t web_length,
                          uint32_t massive_first, uint32_t massive_count, uint32_t tracer_first,
                          uint32_t tracer_count);
+/* What the dust takes of red, green and blue in the light of the stars and of the sky: the
+ * MSL's `reddening` until set, or a look's `dustReddening` (#478). */
+sc_status sc_render_set_reddening(sc_renderer *renderer, const float *red);
+/* Draws the deep sky (#512) into the light, through the finished dust of each pixel: SkyParams
+ * with its length. */
+sc_status sc_render_sky(sc_renderer *renderer, const void *params, size_t length);
 /* Brings SC_RENDER_LIGHT and SC_RENDER_DUST_TARGET up to date. */
 sc_status sc_render_finish(sc_renderer *renderer);
 /* A target of the renderer, which owns it. NULL for one this renderer does not have. */

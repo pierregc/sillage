@@ -191,14 +191,14 @@ static int run() {
         CompositeParams p = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 3.0f, 4.0f, 1.0f, 0.36f, 0.42f, 0.60f};
         sc_post_image a = hdr.handle(), b = glow.handle(), c = rays.handle(), d = out.handle();
         hdr.fill(0.0f, 0.0f, 0.0f);
-        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p), "composite of black");
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 0.0f), "composite of black");
         std::vector<float> got = out.read();
         expect(got[0] == 0.0f && got[1] == 0.0f && got[2] == 0.0f && got[3] == 1.0f, "composite of black is not black");
         float last = -1.0f;
         bool grows = true;
         for (float level : {0.05f, 0.2f, 0.8f, 3.0f}) {
             hdr.fill(level, level, level);
-            ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p), "composite");
+            ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 0.0f), "composite");
             got = out.read();
             grows = grows && got[0] > last && got[0] <= 1.0f && near(got[0], got[1], 1e-5f) && near(got[1], got[2], 1e-5f);
             last = got[0];
@@ -206,23 +206,40 @@ static int run() {
         expect(grows, "composite does not map more light to a brighter grey inside 0 and 1");
         float lit = last;
         p.fade = 0.5f;
-        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p), "composite faded");
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 0.0f), "composite faded");
         got = out.read();
         expect(near(got[0], lit * 0.5f, 1e-5f), "composite does not scale its picture by the fade");
         p.skyLevel = 0.1f;
         p.fade = 1.0f;
         hdr.fill(0.0f, 0.0f, 0.0f);
-        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p), "composite of the sky");
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 0.0f), "composite of the sky");
         got = out.read();
         expect(got[2] > got[1] && got[1] > got[0] && got[0] > 0.0f, "the sky is not bluer than red");
         // The grain depends on the pixel and the seed alone, so it repeats.
         p.noiseLevel = 0.01f;
-        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p), "composite with grain");
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 0.0f), "composite with grain");
         std::vector<float> first = out.read();
-        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p), "composite with grain again");
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 0.0f), "composite with grain again");
         expect(first == out.read(), "the grain is not the same twice");
         expect(first[0] != first[4] || first[1] != first[5], "the grain is the same on two pixels");
-        expect(sc_post_composite(&a, &b, &c, &d, &p, sizeof p - 4u) == SC_INVALID_ARGUMENT, "CompositeParams of another size");
+        // A look's dither (#512): at most its steps, the same twice, and none on black.
+        p.noiseLevel = 0.0f;
+        p.skyLevel = 0.0f;
+        hdr.fill(0.2f, 0.2f, 0.2f);
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 0.0f), "composite without dither");
+        std::vector<float> plain = out.read();
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 2.0f), "composite with dither");
+        std::vector<float> dithered = out.read();
+        float widest = 0.0f;
+        for (size_t i = 0; i < plain.size(); ++i) { widest = std::max(widest, std::fabs(dithered[i] - plain[i])); }
+        expect(dithered != plain && widest <= 2.0f / 255.0f + 1e-6f, "the dither is not within its two steps");
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 2.0f), "composite with dither again");
+        expect(out.read() == dithered, "the dither is not the same twice");
+        hdr.fill(0.0f, 0.0f, 0.0f);
+        ok(sc_post_composite(&a, &b, &c, &d, &p, sizeof p, 2.0f), "dither on black");
+        got = out.read();
+        expect(got[0] == 0.0f && got[1] == 0.0f && got[2] == 0.0f, "the dither lights black");
+        expect(sc_post_composite(&a, &b, &c, &d, &p, sizeof p - 4u, 0.0f) == SC_INVALID_ARGUMENT, "CompositeParams of another size");
     }
 
     // The grain's hash: the argument of its sine is of the order of 1e5, where the last bit of

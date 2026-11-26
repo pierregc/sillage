@@ -122,6 +122,11 @@ static void testVectors() {
     other.xyz = v.xyz;
     CHECK(other.x == 7.0f && other.z == 13.0f && other.w == 9.0f);
     CHECK(v.rgb.e[1] == 10.0f && v.r == 7.0f && v.a == 4.0f);
+    float4 lifted(1.0f, 2.0f, 3.0f, 4.0f);
+    lifted.rgb += 0.5f;
+    CHECK(lifted.x == 1.5f && lifted.y == 2.5f && lifted.z == 3.5f && lifted.w == 4.0f);
+    lifted.rgb -= 1.5f;
+    CHECK(lifted.x == 0.0f && lifted.z == 2.0f && lifted.w == 4.0f);
     float2 xy = v.xy;
     CHECK(xy.x == 7.0f && xy.y == 10.0f);
     v.xy = float2(1.0f, 1.0f);
@@ -193,6 +198,9 @@ static void testFunctions() {
     CHECK(isnan(float4(NAN, 0.0f, 0.0f, NAN)).w && !isnan(float2(1.0f, 2.0f)).x);
     CHECK(acos(1.0f) == 0.0f && abs(asin(1.0f) - M_PI_2_F) < 1e-6f && abs(acos(-1.0f) - M_PI_F) < 1e-6f);
     CHECK(rint(2.5f) == 2.0f && rint(3.5f) == 4.0f && rint(-1.5f) == -2.0f);
+    CHECK(abs(atan(1.0f) - M_PI_4_F) < 1e-6f && atan(float2(0.0f, -1.0f)).x == 0.0f &&
+          abs(atan(float2(0.0f, -1.0f)).y + M_PI_4_F) < 1e-6f);
+    CHECK(abs(tan(float2(M_PI_4_F, 0.0f)).x - 1.0f) < 1e-6f && tan(float3(0.0f)).z == 0.0f);
     CHECK(popcount(0xF0F0u) == 8u && clz(1u) == 31u && ctz(8u) == 3u && clz(0u) == 32u);
     CHECK(as_type<uint>(1.0f) == 0x3F800000u && as_type<float>(0x40000000u) == 2.0f);
     CHECK(as_type<int>(as_type<float>(-7)) == -7);
