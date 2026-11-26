@@ -43,8 +43,13 @@ for way in before after; do
     "$tool" export "$scene" --look Tests/Fixtures/engines/frames/webb.look.json \
         --flight scripts/spikes/point-stars-timing.flight.json --preset "$PRESET" --no-overlay \
         --fps 3 --start "$START" --duration 0.67 --stills "$WORK/$way" --still-frames 0,1 \
-        --out "$WORK/$way.mp4" --profile "${whole[@]}"
+        --out "$WORK/$way.mp4" --profile "${whole[@]}" 2>&1 | tee "$WORK/$way.log"
     echo "TIMING $way: $((SECONDS - started)) s for two frames from $START s"
+done
+
+# The lines a measure keeps, at the end where a log's tail shows them.
+for way in before after; do
+    grep -E "pass pointStars|pass stars|^segment|^inside" "$WORK/$way.log" | sed "s/^/TIMING $way: /"
 done
 
 same=yes
