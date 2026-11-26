@@ -96,8 +96,9 @@ let usage = """
     at its own exposure, and no video. --no-overlay draws a look that asks for words without
     them: they are the Mac's. --stills <dir> --still-frames 0,12 keeps those frames as PNGs,
     --large-splats <pixels>|off sets the size past which a splat is drawn by a block of threads
-    on a GPU (1024 by default, the same bits either way), --profile times each phase, and --rate,
-    --take and --threads are as for still and hires.
+    on a GPU (1024 by default, the same bits either way), --whole-squares walks every pixel of a
+    point star's square as before #425 (the same bits, for a timing's before), --profile times
+    each phase, and --rate, --take and --threads are as for still and hires.
 
     match finds the moment and the view where the take overlaps a real picture best, on the CPU,
     as sillage-render match does (#320); `sillage-cuda match` alone gives its options.
