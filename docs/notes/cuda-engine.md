@@ -829,9 +829,9 @@ with the expressions `Renderer.encodeSplat` had:
 | --- | --- | --- |
 | `column` | `columnSmoothing > 0`, first part of the frame | `countVertex`, `countTracerVertex` |
 | `webCarrier` | the web is drawn | `webCarrierVertex`, `webCarrierTracerVertex` |
-| `starfield` | `starCount > 0`, first part | `starfieldVertex` |
-| `dust` or `paintedDust` | stage 0, without or with the web | `splatVertex` and `splatTracerVertex`, or `dustWebVertex` and `dustWebTracerVertex` |
-| `webResolve` | after `paintedDust` | `webResolveFragment` |
+| `starfield` | `starCount > 0` or `galaxyCount > 0`, first part | `galaxyFieldVertex`, then `starfieldVertex` |
+| `dust` or `paintedDust` | stage 0, without or with the web | `splatVertex` and `splatTracerVertex`, or `dustWebVertex` and `dustWebTracerVertex`; with `dustGlow`, the same vertex functions of the massive particles again into the light (`SC_RENDER_DUST_GLOW`, `SC_RENDER_PAINTED_GLOW`, #456) |
+| `webResolve` | after `paintedDust` | `webResolveFragment`; with `dustGlow`, `webGlowFragment` into the light (`SC_RENDER_WEB_GLOW`) |
 | `stars` | stage 1 | `splatVertex`, `splatTracerVertex` |
 | `plain` | the raw look, alone | `plainVertex`, `plainTracerVertex` |
 
@@ -840,6 +840,11 @@ a pass added to `FramePlan.Pass` stops both from compiling until they draw it, a
 typecheck of `SillageCUDA` says so there. `plan.uniforms(for:)` sets `SplatUniforms.pass`.
 `stages` and `first` draw part of a frame into what earlier parts left, as
 `Renderer.render(camera:slice:)` does.
+
+The dust's glow is not a pass of the plan: Metal draws it in the encoder of the pass it glows
+from, and `CUDARenderer` after it, with that pass's uniforms. From inside a galaxy the grains'
+glow is drawn with `SplatUniforms.pass` at 2, which can spread a near grain into a haze, as
+Metal's inside library does.
 
 `ParticleAttributes(particles)` makes what a renderer holds of each massive particle
 (population, luminosity, component, galaxy, the two traits, the ramp key: 28 bytes), each

@@ -67,14 +67,14 @@ RecordingShaders expandSnapshots21 metal-only: take playback
 Shaders splatVertex cuda
 Shaders splatTracerVertex cuda
 Shaders starfieldVertex cuda
-Shaders galaxyFieldVertex pending #456
+Shaders galaxyFieldVertex cuda
 Shaders insideCount cuda
 Shaders insideOffsets cuda
 Shaders insideFill cuda
 Shaders pointStarVertex cuda
 Shaders pointStarFragment cuda in pointStarVertex
 Shaders dustFragment cuda in splatVertex splatTracerVertex dustWebVertex dustWebTracerVertex
-Shaders dustGlowFragment pending #456
+Shaders dustGlowFragment cuda in splatVertex dustWebVertex
 Shaders bakeLace cuda
 Shaders dustWebVertex cuda
 Shaders dustWebTracerVertex cuda
@@ -83,7 +83,7 @@ Shaders webCarrierTracerVertex cuda
 Shaders webCarrierFragment cuda in webCarrierVertex webCarrierTracerVertex
 Shaders webResolveVertex metal-only: the triangle that covers the frame, where CUDA launches webResolveFragment a pixel
 Shaders webResolveFragment cuda
-Shaders webGlowFragment pending #456
+Shaders webGlowFragment cuda
 Shaders splatFragment cuda in splatVertex splatTracerVertex
 Shaders countVertex cuda
 Shaders countTracerVertex cuda
@@ -96,7 +96,7 @@ Shaders plainTracerVertex cuda
 Shaders plainFragment cuda in plainVertex plainTracerVertex
 Shaders insideResolve cuda
 Shaders starfieldFragment cuda in starfieldVertex
-Shaders galaxyFieldFragment pending #456
+Shaders galaxyFieldFragment cuda in galaxyFieldVertex
 Shaders resolve cuda
 Shaders plainComposite cuda
 Shaders brightPass cuda

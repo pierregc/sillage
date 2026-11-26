@@ -44,7 +44,14 @@ typedef enum sc_render_pass {
     SC_RENDER_PLAIN = 7,
     /* The point stars of a frame drawn from inside a galaxy (#347), after SC_RENDER_STARS and
      * with its uniforms: the near particles' stars are listed, then drawn. */
-    SC_RENDER_POINT_STARS = 8
+    SC_RENDER_POINT_STARS = 8,
+    /* The dust's glow (#456), into the light with sc_render_set_glow's colour, each after the
+     * pass it glows from and with its uniforms: the grains of SC_RENDER_DUST, the painted
+     * strands of SC_RENDER_PAINTED_DUST (massive particles alone, as Metal draws them), and the
+     * web of SC_RENDER_WEB_RESOLVE, a pixel each. */
+    SC_RENDER_DUST_GLOW = 9,
+    SC_RENDER_PAINTED_GLOW = 10,
+    SC_RENDER_WEB_GLOW = 11
 } sc_render_pass;
 
 typedef enum sc_render_target {
@@ -103,6 +110,10 @@ void sc_renderer_destroy(sc_renderer *renderer);
 sc_status sc_render_set_stellar(sc_renderer *renderer, const float *table, uint32_t samples);
 /* BackgroundStar, 32 bytes each. */
 sc_status sc_render_set_starfield(sc_renderer *renderer, const void *stars, uint32_t count);
+/* BackgroundGalaxy, 48 bytes each: drawn behind the field stars in SC_RENDER_STARFIELD. */
+sc_status sc_render_set_galaxies(sc_renderer *renderer, const void *galaxies, uint32_t count);
+/* The dust's glow: a linear colour then how bright, four floats. */
+sc_status sc_render_set_glow(sc_renderer *renderer, const float *glow);
 /* Bakes the lace and its levels, once, and gives its mean. */
 sc_status sc_render_bake_lace(sc_renderer *renderer, float *mean);
 /* Splats whose square covers more than `threshold` pixels are set aside and drawn a block

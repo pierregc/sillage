@@ -21,7 +21,7 @@ public enum EngineFixtures {
 
     public static let width = 256
     public static let height = 144
-    public static let looks = ["red-vs-cyan", "ember", "webb", "widths"]
+    public static let looks = ["red-vs-cyan", "ember", "webb", "widths", "glow"]
     /// The captured frame of the take the four frames draw, and the one the walk is dumped at.
     public static let capturedFrame = 0
     /// The small hires run the walk dump and the take come from: 1,000 light tracers. No
@@ -350,7 +350,7 @@ public enum EngineFixtures {
     // MARK: - Inside a galaxy
 
     /// Moments of `frames/inside.flight.json` drawn from inside the take's disk (#369), small
-    /// to keep the fixtures under 2 MB: as `CUDATakeStills.flightStill` draws them, each the
+    /// to keep the fixtures under 2.5 MB: as `CUDATakeStills.flightStill` draws them, each the
     /// video's frame at 30 a second, averaged from its renders, at its own exposure.
     public static let insideLook = "webb"
     public static let insideSeconds: [Double] = [2, 3.5]

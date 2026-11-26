@@ -1,6 +1,6 @@
 {
   "byteOrder" : "little",
-  "device" : "Apple M4 Max",
+  "device" : "Apple M6",
   "format" : "sillage-engine-fixtures",
   "frames" : {
     "capturedFrame" : 0,
@@ -21,6 +21,10 @@
       {
         "file" : "frames/widths.rgba",
         "look" : "frames/widths.look.json"
+      },
+      {
+        "file" : "frames/glow.rgba",
+        "look" : "frames/glow.look.json"
       }
     ],
     "inside" : {
@@ -50,7 +54,7 @@
     "width" : 256
   },
   "source" : "Metal, ./scripts/dev.sh fixtures",
-  "system" : "macOS 26.5.1",
+  "system" : "macOS 27.2.1",
   "tree" : {
     "buffers" : {
       "frame" : {

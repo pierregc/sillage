@@ -359,7 +359,7 @@ Two options draw what a mid-infrared picture shows ([the Cartwheel](notes/cartwh
 `dustWeb` the web's filaments glow as well ([NGC 2207](notes/ngc2207.md)); `galaxyCount`
 at the top of a look file lays that many galaxies behind the field stars, small, faint and mostly
 orange, at constant surface brightness, so a narrower field shows them larger and no brighter.
-Both are Metal only for now (#456).
+Both engines draw them, CUDA since #456.
 
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
