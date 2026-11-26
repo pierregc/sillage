@@ -2212,3 +2212,39 @@ at 4K; the particle passes are a tenth of it. That pass is the one to make fast.
 **Not measured**: the flight export's tests on the GPU (`CUDAFlightExportTests`), the resume and
 the parts among them, and `aFlightInsideAnArmIsTimedIn4K`. They ran, but the box reached its
 deadline and deleted itself before their output was fetched. A short session runs them again.
+
+## Point stars along their streaks (#425)
+
+**Why the pass was slow.** While the shutter is open a point star is the streak it leaves from
+one camera to the next (#297): its point grows to hold the streak, `drawn + 2 size + 1.5` pixels
+wide, and `starShare` lights only the thin box along it. Metal's rasteriser runs the fragment
+over the whole square and discards the rest at no cost worth naming. The CUDA kernel walked that
+whole square too, a thread a star: a streak of 300 pixels walked 90,000 pixels to light about
+1,000. From inside an arm, with the camera moving, the near stars are such streaks.
+
+**What changed.** A star's rows are walked only where its box crosses them (`cuda/src/band.h`):
+the box in point coordinates, half its length along the streak and half its width across, two
+pixels to spare on each side, and for each row the span of columns inside both. The set-aside
+test of the second way counts the band's pixels, not the square's, and a block shares the rows
+the band crosses, each as wide as the widest. Only which pixels are visited changed: every pixel
+`starShare` gives light to is still laid, through the same shared functions, so the bits are the
+same. `--whole-squares` (export) and `CUDARenderer.wholeSquares` walk the whole square again,
+for the measure's before.
+
+**Held on the CPU target.** `cuda/tests/star_band.cu`: 4,000 random streaks on a 1920 x 1080
+frame, up to 480 pixels long, straight across, up, slanted by 1e-4, none at all, every pixel of
+each square against `starShare`: none lit outside its band, and the bands walk 3.8 M pixels of
+the squares' 69 M for 1.6 M lit. `CUDAInsideTests.aStreaksBandLaysTheBitsOfItsWholeSquare`: the
+fixed-point light of streaks across, up, slanted and towards the stars, both ways for large
+splats, the same bits with and without the band.
+
+**Not measured yet.** The pass's time on a GPU. `scripts/spikes/point-stars-timing.sh` is the
+session: a take of the fixture's scene-0031 at 8 M on 12 M (two frames at 13 Myr, a few minutes
+of steps), then two frames of a video at 3 a second from inside its disk in 4K, each four renders
+over its shutter, before (`--whole-squares`) and after, with `--profile`, their PNGs compared to
+the byte. A still has no shutter and so no streaks: `--flight-keys` would time nothing. A star
+that barely moves (a point of a few pixels) gains nothing: the gain is the streaks'. On the CPU
+target at 1080p and 20,000 particles the flight's stills walk the same pixels both ways.
+
+**Next if the pass stays long.** The light's accumulation through the compare and swap of
+`addFixed`: a native 64-bit `atomicAdd` with the ceiling at 2^63, or screen tiles, as #425 lists.

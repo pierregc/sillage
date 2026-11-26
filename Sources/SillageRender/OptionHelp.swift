@@ -185,6 +185,7 @@ enum OptionHelp {
         "part": "draws one share of the video, k/n, to share it between GPUs or boxes",
         "segment-frames": "frames in each segment the video is drawn in (a second's)",
         "large-splats": "size in pixels past which a splat is drawn by a block of threads, or off (1024)",
+        "whole-squares": "walks every pixel of a point star's square, as before #425: the same bits, slower",
         "rate": "the take's captured rate, when no hires.json or clip.json says it",
         "fixtures": "the reference outputs (Tests/Fixtures/engines)",
         "record": "where the check's record is written",
