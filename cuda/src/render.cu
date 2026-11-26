@@ -170,6 +170,8 @@ struct Targets {
     uint height;
     // Whether the targets hold half floats, blended as Metal blends them (#283's measure).
     bool halves;
+    // The dust's glow: its colour and how bright (#456).
+    float4 glow;
 };
 
 struct CarrierTargets {
@@ -185,6 +187,7 @@ struct CarrierTargets {
 constexpr uint layDust = 0u;
 constexpr uint layLight = 1u;
 constexpr uint layStarfield = 2u;
+constexpr uint layGlow = 3u;
 
 // The second way for large splats: a splat whose square covers more than `threshold` pixels is
 // set aside, and a block of threads shares its pixels afterwards. A list that is full leaves
@@ -222,6 +225,9 @@ static __device__ __forceinline__ void laySplat(uint lay, const Splat &splat, in
     } else if (lay == layLight) {
         add4(targets.light + pixel * 4u, lightPixel(splat.color, splat.slab, targets.finishedDust[pixel], r2),
              fixedUnit, targets.halves);
+    } else if (lay == layGlow) {
+        add4(targets.light + pixel * 4u, dustGlowPixel(targets.glow, splat.opticalDepth, r2), fixedUnit,
+             targets.halves);
     } else {
         add4(targets.light + pixel * 4u, starfieldPixel(splat.color, splat.spikes, coord, r2), fixedUnit,
              targets.halves);
@@ -238,6 +244,15 @@ static __device__ __forceinline__ void drawSplat(const Splat &splat, uint lay, c
             laySplat(lay, splat, x, y, pointCoord(square, x, y), targets);
         }
     }
+}
+
+// A pixel of a background galaxy: Metal's galaxyFieldFragment, which discards past its ellipse.
+static __device__ __forceinline__ void layGalaxy(const GalaxyPoint &point, int x, int y, float2 coord,
+                                                 const Targets &targets) {
+    float r = galaxyFieldRadius(coord, point.shape, point.ratio);
+    if (r > 1.0f) { return; }
+    size_t pixel = size_t(y) * targets.width + size_t(x);
+    add4(targets.light + pixel * 4u, galaxyFieldPixel(point.color, point.shape, r), fixedUnit, targets.halves);
 }
 
 // A tag as Metal's rgba8Unorm target holds it.
@@ -324,6 +339,20 @@ __global__ void starfieldVertex(const BackgroundStar *stars, Frame f, Range rang
     drawSplat(starfieldSplat(stars[vid], f.u), layStarfield, targets, large);
 }
 
+// The galaxies behind the field stars, drawn before them in the same pass.
+__global__ void galaxyFieldVertex(const BackgroundGalaxy *galaxies, Frame f, Range range, Targets targets,
+                                  Large large) {
+    uint vid;
+    if (!particle(range, vid)) { return; }
+    GalaxyPoint point = galaxyFieldPoint(galaxies[vid], f.u);
+    Square square;
+    if (!pointSquare(point.position, point.pointSize, targets.width, targets.height, square)) { return; }
+    if (setAside(large, square, point)) { return; }
+    for (int y = square.top; y < square.bottom; ++y) {
+        for (int x = square.left; x < square.right; ++x) { layGalaxy(point, x, y, pointCoord(square, x, y), targets); }
+    }
+}
+
 // The point stars of a frame drawn from inside a galaxy (#347). The near particles' stars are
 // listed in the order of their indices as Metal lists them, a block of particles a thread: the
 // counts, one thread that turns them into where each block's entries start, then the entries.
@@ -369,13 +398,13 @@ __global__ void pointStarVertex(Massive m, Frame f, const uint2 *list, uint star
     }
 }
 
-// The dust under the web: what the painted strands lay.
-__global__ void dustWebVertex(Massive m, Frame f, Range range, Targets targets, Large large) {
+// The dust under the web: what the painted strands lay, or their glow.
+__global__ void dustWebVertex(Massive m, Frame f, Range range, uint lay, Targets targets, Large large) {
     uint vid;
     if (!particle(range, vid)) { return; }
     Splat splat = massiveDustWeb(vid, m.positions, m.formation, m.luminosity, m.component, f.u, m.galaxy,
                                  f.frames, m.smoothing, m.traits, f.w);
-    drawSplat(splat, layDust, targets, large);
+    drawSplat(splat, lay, targets, large);
 }
 
 __global__ void dustWebTracerVertex(Tracers t, Frame f, Range range, Targets targets, Large large) {
@@ -416,6 +445,19 @@ __global__ void webResolveFragment(Frame f, Lace lace, texels2d carried, texels2
     if (!webCarried(carrier)) { return; }
     add4(dust + pixel * 4u, webResolved(uv, carrier, sample_nearest(tagged, uv), f.frames, f.w, lace), fixedUnit,
          halves);
+}
+
+// What the web's dust gives off, a thread a pixel as the resolve, into the light.
+__global__ void webGlowFragment(Frame f, Lace lace, texels2d carried, texels2d tagged, fixed_t *light, float4 glow,
+                                uint width, uint height, bool halves) {
+    size_t pixel = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (pixel >= size_t(width) * height) { return; }
+    float2 centre(float(pixel % width) + 0.5f, float(pixel / width) + 0.5f);
+    float2 uv = webResolveAt(centre, f.w);
+    float4 carrier = sample_bilinear(carried, uv);
+    if (!webCarried(carrier)) { return; }
+    float4 webbed = float4(webResolved(uv, carrier, sample_nearest(tagged, uv), f.frames, f.w, lace));
+    add4(light + pixel * 4u, webGlowPixel(glow, webbed), fixedUnit, halves);
 }
 
 // The raw look's points: every pixel of the square, with no kernel.
@@ -503,6 +545,20 @@ __global__ void largeStars(const Star *stars, uint count, Targets targets) {
     }
 }
 
+__global__ void largeGalaxies(const GalaxyPoint *points, uint count, Targets targets) {
+    if (blockIdx.x >= count) { return; }
+    GalaxyPoint point = points[blockIdx.x];
+    Square square;
+    if (!pointSquare(point.position, point.pointSize, targets.width, targets.height, square)) { return; }
+    uint wide = uint(square.right - square.left);
+    uint pixels = wide * uint(square.bottom - square.top);
+    for (uint pixel = threadIdx.x; pixel < pixels; pixel += blockDim.x) {
+        int x = square.left + int(pixel % wide);
+        int y = square.top + int(pixel / wide);
+        layGalaxy(point, x, y, pointCoord(square, x, y), targets);
+    }
+}
+
 __global__ void largeCarriers(const WebCarrier *grains, uint count, CarrierTargets targets) {
     if (blockIdx.x >= count) { return; }
     WebCarrier grain = grains[blockIdx.x];
@@ -542,6 +598,8 @@ struct sc_renderer {
     sc_render_tracers tracers;
     uint32_t stellarSamples;
     uint32_t starCount;
+    uint32_t galaxyCount;
+    float glow[4];
     uint32_t frameCount;
     uint32_t rampCount;
     sc_buffer *lightFixed;
@@ -558,6 +616,7 @@ struct sc_renderer {
     sc_buffer *largeCounter;
     sc_buffer *stellar;
     sc_buffer *stars;
+    sc_buffer *galaxies;
     sc_buffer *frames;
     sc_buffer *ramps;
     sc_buffer *fallback;
@@ -611,7 +670,8 @@ static void releaseAll(sc_renderer *renderer) {
     for (sc_buffer **buffer :
          {&renderer->lightFixed, &renderer->dustFixed, &renderer->light, &renderer->dust, &renderer->columnFixed,
           &renderer->column, &renderer->carrierFixed, &renderer->carrier, &renderer->tags, &renderer->lace,
-          &renderer->large, &renderer->largeCounter, &renderer->stellar, &renderer->stars, &renderer->frames,
+          &renderer->large, &renderer->largeCounter, &renderer->stellar, &renderer->stars, &renderer->galaxies,
+          &renderer->frames,
           &renderer->ramps, &renderer->fallback, &renderer->starCounts, &renderer->starList, &renderer->starDraw}) {
         release(*buffer);
     }
@@ -654,9 +714,11 @@ static sh::Tracers tracers(const sc_renderer *renderer) {
 }
 
 static sh::Targets targets(const sc_renderer *renderer) {
+    const float *glow = renderer->glow;
     return sh::Targets{pointer<sh::fixed_t>(renderer->lightFixed), pointer<sh::fixed_t>(renderer->dustFixed),
                        pointer<const metal::float4>(renderer->dust), renderer->config.width,
-                       renderer->config.height, renderer->halves};
+                       renderer->config.height, renderer->halves,
+                       metal::float4(glow[0], glow[1], glow[2], glow[3])};
 }
 
 static sh::CarrierTargets carrierTargets(const sc_renderer *renderer) {
@@ -685,28 +747,58 @@ static sc_status draw(sc_renderer *renderer, Vertices vertices, Blocks blocks) {
     return held_back > 0u ? blocks(pointer<const Point>(renderer->large), held_back) : SC_OK;
 }
 
+static bool glows(sc_render_pass pass) { return pass == SC_RENDER_DUST_GLOW || pass == SC_RENDER_PAINTED_GLOW; }
+
+static uint32_t layOf(sc_render_pass pass) {
+    if (pass == SC_RENDER_STARS) { return sh::layLight; }
+    if (pass == SC_RENDER_STARFIELD) { return sh::layStarfield; }
+    return glows(pass) ? sh::layGlow : sh::layDust;
+}
+
+// The galaxies behind the field stars, before the stars.
+static sc_status drawGalaxies(sc_renderer *renderer, const sh::Frame &frame) {
+    if (renderer->galaxyCount == 0u) { return SC_OK; }
+    sh::Targets onto = targets(renderer);
+    auto vertices = [&](sh::Large large) -> sc_status {
+        LAUNCH(galaxyFieldVertex, groups(renderer->galaxyCount), width,
+               pointer<const sh::BackgroundGalaxy>(renderer->galaxies), frame, sh::Range{0u, renderer->galaxyCount},
+               onto, large);
+        return SC_OK;
+    };
+    auto blocks = [&](const sh::GalaxyPoint *aside, uint32_t count) -> sc_status {
+        LAUNCH(largeGalaxies, count, width, aside, count, onto);
+        return SC_OK;
+    };
+    return draw<sh::GalaxyPoint>(renderer, vertices, blocks);
+}
+
 static sc_status drawSplats(sc_renderer *renderer, const sh::Frame &frame, sc_render_pass pass, sh::Range some,
                             sh::Range traced) {
     sh::Targets onto = targets(renderer);
-    uint32_t lay = pass == SC_RENDER_STARS ? sh::layLight : (pass == SC_RENDER_STARFIELD ? sh::layStarfield : sh::layDust);
+    uint32_t lay = layOf(pass);
+    bool painted = pass == SC_RENDER_PAINTED_DUST || pass == SC_RENDER_PAINTED_GLOW;
+    // Metal draws no light tracer's glow.
+    if (glows(pass)) { traced.count = 0u; }
+    if (pass == SC_RENDER_STARFIELD) {
+        if (sc_status status = drawGalaxies(renderer, frame)) { return status; }
+        if (renderer->starCount == 0u) { return SC_OK; }
+    }
     auto vertices = [&](sh::Large large) -> sc_status {
         if (pass == SC_RENDER_STARFIELD) {
-            if (renderer->starCount > 0u) {
-                LAUNCH(starfieldVertex, groups(renderer->starCount), width,
-                       pointer<const sh::BackgroundStar>(renderer->stars), frame, sh::Range{0u, renderer->starCount},
-                       onto, large);
-            }
+            LAUNCH(starfieldVertex, groups(renderer->starCount), width,
+                   pointer<const sh::BackgroundStar>(renderer->stars), frame, sh::Range{0u, renderer->starCount},
+                   onto, large);
             return SC_OK;
         }
         if (some.count > 0u) {
-            if (pass == SC_RENDER_PAINTED_DUST) {
-                LAUNCH(dustWebVertex, groups(some.count), width, massive(renderer), frame, some, onto, large);
+            if (painted) {
+                LAUNCH(dustWebVertex, groups(some.count), width, massive(renderer), frame, some, lay, onto, large);
             } else {
                 LAUNCH(splatVertex, groups(some.count), width, massive(renderer), frame, some, lay, onto, large);
             }
         }
         if (traced.count > 0u) {
-            if (pass == SC_RENDER_PAINTED_DUST) {
+            if (painted) {
                 LAUNCH(dustWebTracerVertex, groups(traced.count), width, tracers(renderer), frame, traced, onto, large);
             } else {
                 LAUNCH(splatTracerVertex, groups(traced.count), width, tracers(renderer), frame, traced, lay, onto,
@@ -815,15 +907,25 @@ static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_rend
         case SC_RENDER_STARFIELD:
         case SC_RENDER_DUST:
         case SC_RENDER_PAINTED_DUST:
-        case SC_RENDER_STARS: return drawSplats(renderer, frame, pass, some, traced);
+        case SC_RENDER_STARS:
+        case SC_RENDER_DUST_GLOW:
+        case SC_RENDER_PAINTED_GLOW: return drawSplats(renderer, frame, pass, some, traced);
         case SC_RENDER_POINT_STARS: return drawStars(renderer, frame);
-        case SC_RENDER_WEB_RESOLVE: {
+        case SC_RENDER_WEB_RESOLVE:
+        case SC_RENDER_WEB_GLOW: {
             auto lace = metal::texels2d_of(pointer<const float>(renderer->lace), config.lace_texels,
                                            config.lace_texels, 1u, renderer->laceLevels);
             auto carried = metal::texels2d_of(pointer<const float>(renderer->carrier), config.carrier_width,
                                               config.carrier_height, 4u);
             auto tagged = metal::texels2d_of(pointer<const float>(renderer->tags), config.carrier_width,
                                              config.carrier_height, 4u);
+            if (pass == SC_RENDER_WEB_GLOW) {
+                const float *glow = renderer->glow;
+                LAUNCH(webGlowFragment, groups(pixels(renderer)), width, frame, lace, carried, tagged,
+                       pointer<sh::fixed_t>(renderer->lightFixed), metal::float4(glow[0], glow[1], glow[2], glow[3]),
+                       config.width, config.height, renderer->halves);
+                return SC_OK;
+            }
             LAUNCH(webResolveFragment, groups(pixels(renderer)), width, frame, lace, carried, tagged,
                    pointer<sh::fixed_t>(renderer->dustFixed), config.width, config.height, renderer->halves);
             return SC_OK;
@@ -847,10 +949,11 @@ static sc_status drawPass(sc_renderer *renderer, const sh::Frame &frame, sc_rend
 // What a finish divides the light, the dust and the carrier by: nothing when they hold halves.
 static float unit(const sc_renderer *renderer) { return renderer->halves ? 0.0f : sh::fixedUnit; }
 
-static bool known(sc_render_pass pass) { return pass >= SC_RENDER_COLUMN && pass <= SC_RENDER_POINT_STARS; }
+static bool known(sc_render_pass pass) { return pass >= SC_RENDER_COLUMN && pass <= SC_RENDER_WEB_GLOW; }
 
 static bool needsWeb(sc_render_pass pass) {
-    return pass == SC_RENDER_WEB_CARRIER || pass == SC_RENDER_PAINTED_DUST || pass == SC_RENDER_WEB_RESOLVE;
+    return pass == SC_RENDER_WEB_CARRIER || pass == SC_RENDER_PAINTED_DUST || pass == SC_RENDER_WEB_RESOLVE
+        || pass == SC_RENDER_PAINTED_GLOW || pass == SC_RENDER_WEB_GLOW;
 }
 
 static bool drawsDust(sc_render_pass pass) {
@@ -900,6 +1003,7 @@ sc_status sc_renderer_create(sc_context *context, const sc_render_config *config
     size_t aside = renderer->config.large_capacity;
     size_t entry = sizeof(sh::Splat) > sizeof(sh::WebCarrier) ? sizeof(sh::Splat) : sizeof(sh::WebCarrier);
     if (sizeof(sh::Star) > entry) { entry = sizeof(sh::Star); }
+    if (sizeof(sh::GalaxyPoint) > entry) { entry = sizeof(sh::GalaxyPoint); }
     struct Wanted {
         sc_buffer **buffer;
         size_t length;
@@ -979,6 +1083,21 @@ sc_status sc_render_set_starfield(sc_renderer *renderer, const void *stars, uint
         return status;
     }
     renderer->starCount = count;
+    return SC_OK;
+}
+
+sc_status sc_render_set_galaxies(sc_renderer *renderer, const void *galaxies, uint32_t count) {
+    if (sc_status status =
+            keep(renderer, &renderer->galaxies, galaxies, size_t(count) * sizeof(sh::BackgroundGalaxy), 48u)) {
+        return status;
+    }
+    renderer->galaxyCount = count;
+    return SC_OK;
+}
+
+sc_status sc_render_set_glow(sc_renderer *renderer, const float *glow) {
+    if (!renderer || !glow) { return fail(SC_INVALID_ARGUMENT, "no renderer or no glow"); }
+    for (int channel = 0; channel < 4; ++channel) { renderer->glow[channel] = glow[channel]; }
     return SC_OK;
 }
 
@@ -1113,23 +1232,29 @@ sc_status sc_render_begin(sc_renderer *renderer, sc_render_pass pass) {
         case SC_RENDER_PAINTED_DUST:
         case SC_RENDER_WEB_RESOLVE:
         case SC_RENDER_STARS:
-        case SC_RENDER_POINT_STARS: break;
+        case SC_RENDER_POINT_STARS:
+        case SC_RENDER_DUST_GLOW:
+        case SC_RENDER_PAINTED_GLOW:
+        case SC_RENDER_WEB_GLOW: break;
     }
+    bool resolves = pass == SC_RENDER_WEB_RESOLVE || pass == SC_RENDER_WEB_GLOW;
     // A splat sizes its kernel from the column's cells, the resolve reads the carrier, and a
     // star reads the finished dust.
-    if (renderer->columnStale && pass != SC_RENDER_WEB_RESOLVE) {
+    if (renderer->columnStale && !resolves) {
         if (sc_status status = finish(renderer->columnFixed, renderer->column, cells(renderer), sh::countUnit)) {
             return status;
         }
         renderer->columnStale = false;
     }
-    if (renderer->carrierStale && pass == SC_RENDER_WEB_RESOLVE) {
+    if (renderer->carrierStale && resolves) {
         if (sc_status status =
                 finish(renderer->carrierFixed, renderer->carrier, coarse(renderer) * 4u, unit(renderer))) {
             return status;
         }
         renderer->carrierStale = false;
     }
+    // The glow writes the light alone.
+    if (glows(pass) || pass == SC_RENDER_WEB_GLOW) { return SC_OK; }
     if (pass != SC_RENDER_STARS && pass != SC_RENDER_POINT_STARS) {
         renderer->dustStale = true;
         return SC_OK;
@@ -1166,7 +1291,8 @@ sc_status sc_render_draw(sc_renderer *renderer, sc_render_pass pass, const void 
         }
         memcpy(&frame.w, web_uniforms, sizeof frame.w);
     }
-    bool particles = pass != SC_RENDER_STARFIELD && pass != SC_RENDER_WEB_RESOLVE && pass != SC_RENDER_POINT_STARS;
+    bool particles = pass != SC_RENDER_STARFIELD && pass != SC_RENDER_WEB_RESOLVE && pass != SC_RENDER_POINT_STARS
+        && pass != SC_RENDER_WEB_GLOW;
     if (particles && massive_count > 0u
         && (!renderer->hasMassive || massive_first > renderer->massive.count
             || massive_count > renderer->massive.count - massive_first)) {
