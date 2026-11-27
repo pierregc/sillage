@@ -7,7 +7,9 @@ scratch; with one, its first two galaxies give the fields the papers do not set 
 clumps). Overrides: pericentre, eccentricity, pericentreTime (Myr), i1, w1, i2, w2 (degrees,
 Toomre and Toomre's angles), node (descending or ascending), turn (degrees from Sillage's
 pericentre line to the paper's x, for view.json), truncation (scale lengths),
-haloExtent (scale radii), q (Toomre Q), seed. NGC 4038 is the primary, NGC 4039 the secondary, both prograde.
+haloExtent (scale radii), q (Toomre Q), seed, diskScale (both disks' scale lengths and heights
+times this), massRatio (NGC 4039's mass over NGC 4038's: its potential's mass times the ratio, its
+scale radius and disk times its square root, as for NGC 2207). NGC 4038 is the primary, NGC 4039 the secondary, both prograde.
 
 Toomre and Toomre's (i, w) are read for each disk against its own companion's orbit: z along
 the orbit's angular momentum, x towards the companion at pericentre, w counted in the orbit
@@ -192,6 +194,13 @@ def build(model, overrides, template=None):
     peri = float(o.get("pericentre", peri))
     t = float(o.get("pericentreTime", 200))
     turn = float(o.get("turn", m["turn"]))
+    size, ratio = float(o.get("diskScale", 1)), float(o.get("massRatio", 1))
+    for g in gals:
+        g["diskScaleLength"] *= size; g["diskThickness"] *= size
+    if ratio != 1:
+        gals[1] = dict(gals[1], mass=gals[1]["mass"] * ratio, scaleRadius=gals[1]["scaleRadius"] * math.sqrt(ratio),
+                       diskScaleLength=gals[1]["diskScaleLength"] * math.sqrt(ratio),
+                       diskThickness=gals[1]["diskThickness"] * math.sqrt(ratio))
     temps = (template or {}).get("galaxies", [None, None])
     galaxies = [spiral(n, g, extent, truncation, q, tp) for n, g, tp in zip(("NGC 4038", "NGC 4039"), gals, temps)]
     disk = lambda i, w, primary: {"inclination": round(math.radians(i), 6),
@@ -201,7 +210,7 @@ def build(model, overrides, template=None):
         seed=int(o.get("seed", 20261127)), solver="restricted", timeStepScale=7, openingAngle=0.9,
         centerSoftening=1.2, galaxies=galaxies,
         encounters=[{"primary": 0, "secondary": 1, "pericentre": peri,
-                     "eccentricity": float(o.get("eccentricity", m["eccentricity"])), "massRatio": 1.0,
+                     "eccentricity": float(o.get("eccentricity", m["eccentricity"])), "massRatio": ratio,
                      "pericentreTime": t, "primaryDisk": disk(i1, w1, True),
                      "secondaryDisk": disk(i2, w2, False), "planeTilt": 0, "planeTurn": 0,
                      "pericentreAngle": 0}])
