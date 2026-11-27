@@ -1,0 +1,46 @@
+{
+  "cite": "Privon, Barnes, Evans, Hibbard, Yun, Mazzarella, Armus and Surace 2013, ApJ 771, 120 (arXiv:1305.5865)",
+  "firstPericentreMyr": 200.0,
+  "mergerMyr": 530.0,
+  "mirror": {
+    "azimuth": 265.485,
+    "elevation": -12.204,
+    "roll": 64.517
+  },
+  "model": "privon",
+  "node": "descending",
+  "paperAngles": [
+    -20.0,
+    283.0,
+    -5.0
+  ],
+  "sky": {
+    "azimuth": 85.485,
+    "elevation": 12.204,
+    "roll": -64.517
+  },
+  "spins": {
+    "NGC 4038": [
+      0.23457,
+      -0.875426,
+      0.422618
+    ],
+    "NGC 4039": [
+      0.936117,
+      -0.0819,
+      0.34202
+    ]
+  },
+  "toomre": {
+    "NGC 4038": [
+      65.0,
+      345.0
+    ],
+    "NGC 4039": [
+      70.0,
+      95.0
+    ]
+  },
+  "turn": 0.0,
+  "viewMyr": 460.0
+}

@@ -1,0 +1,132 @@
+{
+  "centerSoftening": 1.2,
+  "encounters": [
+    {
+      "eccentricity": 1.0,
+      "massRatio": 1.0,
+      "pericentre": 4.925,
+      "pericentreAngle": 0,
+      "pericentreTime": 200.0,
+      "planeTilt": 0,
+      "planeTurn": 0,
+      "primary": 0,
+      "primaryDisk": {
+        "argument": 0.261799,
+        "inclination": 1.134464,
+        "spin": "prograde"
+      },
+      "secondary": 1,
+      "secondaryDisk": {
+        "argument": 1.48353,
+        "inclination": 1.22173,
+        "spin": "prograde"
+      }
+    }
+  ],
+  "galaxies": [
+    {
+      "armCount": 2,
+      "armIrregularity": 0.45,
+      "armMassContrast": 0.4,
+      "armPitch": 0.45,
+      "armStreaming": 1,
+      "armStrength": 0.5,
+      "bulgeExtent": 0.24,
+      "bulgeFlattening": 0.8,
+      "bulgeFraction": 0.25,
+      "clumpiness": 0.04,
+      "diskMassFraction": 0.2,
+      "diskScaleLength": 1.6417,
+      "diskThickness": 0.1642,
+      "diskTruncation": 6.0,
+      "dissipationTime": 300,
+      "dustFraction": 0.2,
+      "dustMassFraction": 0.2,
+      "haloExtent": 12.0,
+      "haloParticleRatio": 1.5,
+      "inclination": 0,
+      "kind": "spiral",
+      "massLopsidedness": 0.03,
+      "name": "NGC 4038",
+      "outskirtFraction": 0.12,
+      "particleShare": 0.5,
+      "patternShare": 0.9,
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "positionAngle": 0,
+      "potential": {
+        "mass": 40.2076,
+        "profile": "hernquist",
+        "scaleRadius": 7.2149
+      },
+      "spin": "prograde",
+      "starFormingFraction": 0.05,
+      "toomreQ": 1.5,
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "velocityDispersion": 0.05,
+      "youngClumpiness": 0.45
+    },
+    {
+      "armCount": 2,
+      "armIrregularity": 0.45,
+      "armMassContrast": 0.4,
+      "armPitch": 0.45,
+      "armStreaming": 1,
+      "armStrength": 0.5,
+      "bulgeExtent": 0.24,
+      "bulgeFlattening": 0.8,
+      "bulgeFraction": 0.25,
+      "clumpiness": 0.04,
+      "diskMassFraction": 0.2,
+      "diskScaleLength": 1.6417,
+      "diskThickness": 0.1642,
+      "diskTruncation": 6.0,
+      "dissipationTime": 300,
+      "dustFraction": 0.2,
+      "dustMassFraction": 0.2,
+      "haloExtent": 12.0,
+      "haloParticleRatio": 1.5,
+      "inclination": 0,
+      "kind": "spiral",
+      "massLopsidedness": 0.03,
+      "name": "NGC 4039",
+      "outskirtFraction": 0.12,
+      "particleShare": 0.5,
+      "patternShare": 0.9,
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "positionAngle": 0,
+      "potential": {
+        "mass": 40.2076,
+        "profile": "hernquist",
+        "scaleRadius": 7.2149
+      },
+      "spin": "prograde",
+      "starFormingFraction": 0.05,
+      "toomreQ": 1.5,
+      "velocity": [
+        0,
+        0,
+        0
+      ],
+      "velocityDispersion": 0.05,
+      "youngClumpiness": 0.45
+    }
+  ],
+  "name": "The Antennae after Privon et al. 2013",
+  "openingAngle": 0.9,
+  "seed": 20261127,
+  "solver": "restricted",
+  "timeStepScale": 7,
+  "version": 1
+}

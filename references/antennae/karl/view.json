@@ -1,0 +1,46 @@
+{
+  "cite": "Karl, Naab, Johansson, Kotarba, Boily, Renaud and Theis 2010, ApJL 715, L88 (arXiv:1003.0685)",
+  "firstPericentreMyr": 200.0,
+  "mergerMyr": 850.0,
+  "mirror": {
+    "azimuth": 249.026,
+    "elevation": 1.075,
+    "roll": 70.699
+  },
+  "model": "karl",
+  "node": "descending",
+  "paperAngles": [
+    93.0,
+    69.0,
+    253.5
+  ],
+  "sky": {
+    "azimuth": 69.026,
+    "elevation": -1.075,
+    "roll": -70.699
+  },
+  "spins": {
+    "NGC 4038": [
+      -0.433013,
+      -0.75,
+      0.5
+    ],
+    "NGC 4039": [
+      0.75,
+      0.433013,
+      0.5
+    ]
+  },
+  "toomre": {
+    "NGC 4038": [
+      60.0,
+      30.0
+    ],
+    "NGC 4039": [
+      60.0,
+      60.0
+    ]
+  },
+  "turn": 180.0,
+  "viewMyr": 800.0
+}
