@@ -155,6 +155,21 @@ was checked frame to frame for jumps: b2 was drawn again whole on the last copy,
 b3 (from 78 s) and of b4 (from 93.7 s) were drawn again on it and spliced in. Freeze one copy before
 the first 4K piece: pieces from different copies are what cost the redo.
 
+### Defects seen, shot by shot
+
+From frames, contact sheets and frame-to-frame measures of the master; the film has not yet been
+watched in real time from start to end.
+
+- Far views (the opening, 0 to 16 s, and the pull-out, 88.2 to 107.7 s): the halo is mottled, about
+  2 levels rms; its corners read grey; the far ring shows as a thin orange line.
+- Split screen (16 to 25 s): the divider crosses the title.
+- Swoop onto the ring (31.7 to 36.2 s): near stars draw as dashes.
+- Descent, stop and look round (43.7 to 64.7 s): the brightness steps by 0.3 to 0.8 level where a
+  move stops or starts, at 51.1, 64.63 and 64.77 s.
+- Out over the ring and round to the hover (64.7 to 79.2 s): a step of 1.75 % near 70.2 s, and
+  another of 0.3 to 0.8 level at 79.2 s as the hover starts.
+- At 1:1, in every shot with bright stars: a faint grid of diffraction spikes.
+
 Not done: the core spindle, finer fibres at the rim, the general tools moved to `scripts/`.
 
 ## Figures and costs
