@@ -255,8 +255,13 @@ public enum DiskSampler {
         // so that is what the bulge must be balanced against.
         let equilibrium = DiskEquilibrium(config: config, selfGravitating: selfGravitating)
         let fade = config.bulgeFade
+        // Uncut without a fade: the integral's last sample can land a rounding past the edge.
         let dispersion = jeansDispersion(
-            density: { density(shape, radius: $0) * bulgeKept(radius: $0, edge: edge, fade: fade) },
+            density: { radius in
+                fade == nil
+                    ? density(shape, radius: radius)
+                    : density(shape, radius: radius) * bulgeKept(radius: radius, edge: edge, fade: fade)
+            },
             circularSpeed: { equilibrium.circularSpeed(atRadius: $0) },
             inner: scale * 0.005, edge: edge)
         let nucleus = min(max(config.nucleus ?? 0, 0), 0.05)
