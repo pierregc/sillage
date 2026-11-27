@@ -290,6 +290,79 @@ struct CUDARenderTests {
         #expect(a + c > 0 && abs((a + c) / (b + d) - 1) < 0.25, "\(a + c) against \(b + d)")
     }
 
+    /// The dust's glow (#456) adds light in its colour after each pass that lays dust: the
+    /// grains, the painted strands and the web. It lays no dust and covers no pixel.
+    @Test(arguments: [Float(0), 1])
+    func theDustGlowAddsLightInItsColourAndNothingElse(web: Float) throws {
+        let stage = Stage.disk()
+        func draw(glow: Float) throws -> (light: [Float], fixed: [UInt64], dust: [UInt64]) {
+            var settings = Self.settings(dust: 0.6, stars: 0, web: web)
+            settings.dustGlow = glow
+            settings.dustGlowColour = SIMD3(1, 0.5, 0.25)
+            let renderer = try Self.renderer(stage, settings)
+            try renderer.render(camera: stage.camera)
+            return (
+                try renderer.target(.light), try renderer.fixedTarget(.light), try renderer.fixedTarget(.dust)
+            )
+        }
+        let dark = try draw(glow: 0)
+        let glowing = try draw(glow: 2)
+        #expect(glowing.dust == dark.dust)
+        #expect(Self.total(glowing.light, channel: 3) == Self.total(dark.light, channel: 3))
+        let added = (0..<3).map {
+            Self.total(glowing.light, channel: $0) - Self.total(dark.light, channel: $0)
+        }
+        #expect(added[0] > 0.01 * Self.total(dark.light, channel: 0), "\(added)")
+        #expect(abs(added[1] / added[0] - 0.5) < 0.01 && abs(added[2] / added[0] - 0.25) < 0.01, "\(added)")
+        #expect(try draw(glow: 2).fixed == glowing.fixed)
+    }
+
+    /// From inside a galaxy the grains' glow has its own pass; with nothing near, it lays the
+    /// light it lays from outside.
+    @Test func farFromEverythingTheGlowIsTheExports() throws {
+        let stage = Stage.disk(20_000)
+        var settings = Self.settings(dust: 0.6, stars: 0)
+        settings.noiseLevel = 0
+        func added(inside: Bool) throws -> Double {
+            var totals: [Double] = []
+            for glow: Float in [0, 2] {
+                settings.dustGlow = glow
+                let renderer = try Self.renderer(stage, settings)
+                if inside { renderer.inside = InsideFrame(settings: InsideSettings(), nearness: 60) }
+                try renderer.render(camera: stage.camera)
+                totals.append(Self.total(try renderer.target(.light), channel: 0))
+            }
+            return totals[1] - totals[0]
+        }
+        let outside = try added(inside: false)
+        let within = try added(inside: true)
+        #expect(outside > 0 && abs(within / outside - 1) < 0.01, "\(within) against \(outside)")
+    }
+
+    /// The background galaxies lie behind the field stars: light without coverage or dust, the
+    /// same bits drawn twice and both ways for large splats.
+    @Test func theBackgroundGalaxiesAddOnlyTheirLight() throws {
+        let stage = Stage.merger()
+        func draw(galaxies: Int, capacity: Int = 0, pixels: Int = 0) throws -> (
+            light: [Float], fixed: [UInt64]
+        ) {
+            var settings = Self.settings(dust: 0.4, stars: 0)
+            settings.galaxyCount = galaxies
+            let renderer = try Self.renderer(stage, settings, largeCapacity: capacity)
+            renderer.largeSplatPixels = pixels
+            try renderer.render(camera: stage.camera)
+            if pixels > 0 { #expect(renderer.largeSplatCount > 0, "no galaxy over \(pixels) pixels") }
+            return (try renderer.target(.light), try renderer.fixedTarget(.light))
+        }
+        let none = try draw(galaxies: 0)
+        let field = try draw(galaxies: 4000)
+        #expect(Self.total(field.light, channel: 3) == Self.total(none.light, channel: 3))
+        let added = (0..<3).map { Self.total(field.light, channel: $0) - Self.total(none.light, channel: $0) }
+        #expect(added[0] > 0 && added[0] > added[2], "orange on the whole: \(added)")
+        #expect(try draw(galaxies: 4000).fixed == field.fixed)
+        #expect(try draw(galaxies: 4000, capacity: 20_000, pixels: 1).fixed == field.fixed)
+    }
+
     /// The column pass counts every particle that emits, once, and a kernel sized from it is
     /// never narrower than the tree's.
     @Test func theColumnCountsWhatEmitsAndWidensItsKernels() throws {

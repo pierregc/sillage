@@ -1,0 +1,224 @@
+# One job on a rented GPU, started by hand (#428, #440): rents a Vast.ai box, ships this commit to
+# it, runs one command, brings the results back as artifacts, keeps a hires take on the Drive and
+# destroys the box whatever happens. docs/notes/cuda-platform.md says how to start it and what it
+# needs. Nothing runs on a pull request or a push, and the first run is a dry run: it rents nothing.
+name: gpu
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: lists the offers and prints the rental, rents nothing. Untick to rent.'
+        type: boolean
+        default: true
+      command:
+        description: 'The command, run in /work/sillage on the box'
+        default: 'scripts/linux.sh engine-check'
+      gpu:
+        description: 'The card'
+        default: 'RTX 5090'
+      max_price:
+        description: 'Highest price, $/h: no offer above it is rented'
+        default: '0.80'
+      hours:
+        description: 'Hours allowed, at most 5: the box deletes itself after them, whatever happens'
+        default: '2'
+      ref:
+        description: 'Branch, tag or commit to ship (default: the one the workflow started on)'
+        default: ''
+      fetch:
+        description: 'What to bring back as artifacts: paths under /work, space separated (logs always)'
+        default: 'sillage/out'
+      take_down:
+        description: 'A scene to fetch from the Drive before the command: <library date>/<scene>'
+        default: ''
+      take_up:
+        description: 'A scene folder under /work/sillage to put on the Drive after the command'
+        default: ''
+      drop_take:
+        description: 'Destroy the box even if the take did not reach the Drive'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpu
+  cancel-in-progress: false
+
+env:
+  LABEL: sillage-gh-${{ github.run_id }}-${{ github.run_attempt }}
+  GPU: ${{ inputs.gpu }}
+  MAX_PRICE: ${{ inputs.max_price }}
+  DEADLINE_HOURS: ${{ inputs.hours }}
+  DRY: ${{ inputs.dry_run }}
+
+jobs:
+  gpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    outputs:
+      held: ${{ steps.destroy.outputs.held }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Check the inputs and write the keys
+        id: keys
+        env:
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+          GPU_SSH_KEY: ${{ secrets.GPU_SSH_KEY }}
+        run: |
+          [ -n "$VAST_API_KEY" ] || { echo "::error::The repository secret VAST_API_KEY is not set"; exit 1; }
+          [[ "$VAST_API_KEY" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::VAST_API_KEY has odd characters"; exit 1; }
+          [[ "$MAX_PRICE" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::max_price is not a number"; exit 1; }
+          [[ "$DEADLINE_HOURS" =~ ^[1-5]$ ]] ||
+              { echo "::error::hours must be above 0 and at most 5"; exit 1; }
+          [[ "$GPU" =~ ^[A-Za-z0-9\ ]+$ ]] || { echo "::error::gpu has odd characters"; exit 1; }
+          echo "minutes=$(python3 -c "print(int(float('$DEADLINE_HOURS') * 60) + 30)")" >> "$GITHUB_OUTPUT"
+          mkdir -p ~/.config/sillage ~/.ssh
+          install -m 600 /dev/null ~/.config/sillage/gpu.env
+          printf "VAST_API_KEY='%s'\nSSH_KEY=%s\n" "$VAST_API_KEY" "$HOME/.ssh/sillage_gpu" > ~/.config/sillage/gpu.env
+          if [ "$DRY" != true ]; then
+              [ -n "$GPU_SSH_KEY" ] || { echo "::error::The repository secret GPU_SSH_KEY is not set"; exit 1; }
+              install -m 600 /dev/null ~/.ssh/sillage_gpu
+              printf '%s\n' "$GPU_SSH_KEY" > ~/.ssh/sillage_gpu
+          fi
+          {
+            echo "## GPU job"
+            echo "- mode: $([ "$DRY" = true ] && echo 'dry run, nothing rented' || echo 'rental')"
+            echo "- card: $GPU, at most $MAX_PRICE \$/h, at most $DEADLINE_HOURS h"
+            echo "- commit: $(git rev-parse --short HEAD)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The offers under the ceiling
+        run: scripts/gpu-box.sh offers "$GPU"
+
+      - name: Dry run, the rental that would be sent
+        if: inputs.dry_run
+        run: |
+          GPU_BOX_DRY=1 scripts/gpu-box.sh up "$GPU"
+          echo "Dry run: nothing was rented. Run it again with the dry run unticked to rent." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rent the box
+        if: ${{ !inputs.dry_run }}
+        run: scripts/gpu-box.sh up "$GPU"
+
+      - name: Install the toolchain and ship this commit
+        if: ${{ !inputs.dry_run }}
+        run: |
+          scripts/gpu-box.sh setup
+          scripts/gpu-box.sh ship
+
+      - name: Give the box the Drive's configuration
+        if: ${{ !inputs.dry_run && (inputs.take_down != '' || inputs.take_up != '') }}
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
+        run: |
+          [ -n "$RCLONE_CONF" ] || { echo "::error::The repository secret RCLONE_CONF is not set"; exit 1; }
+          printf '%s\n' "$RCLONE_CONF" | scripts/gpu-box.sh ssh 'umask 077; mkdir -p /root/.config/rclone; cat > /root/.config/rclone/rclone.conf'
+          scripts/gpu-box.sh ssh 'cd /work/sillage && scripts/take-store.sh install'
+
+      - name: Fetch the take from the Drive
+        if: ${{ !inputs.dry_run && inputs.take_down != '' }}
+        env:
+          TAKE_DOWN: ${{ inputs.take_down }}
+        run: |
+          printf -v scene '%q' "$TAKE_DOWN"
+          scripts/gpu-run.sh bash -c "cd /work/sillage && scripts/take-store.sh down $scene library/$scene"
+
+      - name: Run the command
+        id: run
+        if: ${{ !inputs.dry_run }}
+        timeout-minutes: ${{ fromJSON(steps.keys.outputs.minutes || '30') }}
+        env:
+          COMMAND: ${{ inputs.command }}
+        run: |
+          printf '%s\n' "$COMMAND" | scripts/gpu-box.sh ssh 'cat > /work/command.sh'
+          code=0
+          scripts/gpu-run.sh bash /work/command.sh || code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          echo "- command exit code: $code" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Put the take on the Drive
+        id: upload
+        if: ${{ !inputs.dry_run && !cancelled() && inputs.take_up != '' }}
+        env:
+          TAKE_UP: ${{ inputs.take_up }}
+        run: |
+          printf -v scene '%q' "$TAKE_UP"
+          if scripts/gpu-run.sh bash -c "cd /work/sillage && scripts/take-store.sh up $scene"; then
+              echo "state=ok" >> "$GITHUB_OUTPUT"
+              echo "- take: on the Drive and checked by hash" >> "$GITHUB_STEP_SUMMARY"
+          else
+              echo "state=failed" >> "$GITHUB_OUTPUT"
+              echo "::error::The take did not reach the Drive"
+              exit 1
+          fi
+
+      - name: Bring the results back
+        if: ${{ !inputs.dry_run && !cancelled() && steps.run.outcome != 'skipped' }}
+        env:
+          FETCH: ${{ inputs.fetch }}
+          GPU_OUT: ${{ runner.temp }}/out
+        run: |
+          # shellcheck disable=SC2086
+          scripts/gpu-box.sh fetch logs $FETCH || true
+          mkdir -p "$GPU_OUT"
+          { echo "### Files"; echo '```'; (cd "$GPU_OUT" && find . -type f -exec sha256sum {} + | sort -k2); echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.dry_run && !cancelled() && steps.run.outcome != 'skipped' }}
+        with:
+          name: gpu-${{ github.run_id }}
+          path: ${{ runner.temp }}/out
+          if-no-files-found: warn
+
+      - name: Destroy the box
+        id: destroy
+        if: always()
+        env:
+          DROP_TAKE: ${{ inputs.drop_take }}
+          TAKE_UP: ${{ inputs.take_up }}
+          UPLOAD: ${{ steps.upload.outputs.state }}
+          COMMAND: ${{ inputs.command }}
+        run: |
+          [ "$DRY" = true ] && exit 0
+          [ -f ~/.config/sillage/box ] || { echo "no box was rented"; exit 0; }
+          if [ -n "$TAKE_UP" ] && [ "$UPLOAD" != ok ] && [ "$DROP_TAKE" != true ]; then
+              echo "held=true" >> "$GITHUB_OUTPUT"
+              where="$(scripts/gpu-box.sh where)"
+              echo "::error::The take is not on the Drive, so the box is kept: $where"
+              {
+                echo "### The box is kept, because the take is not on the Drive"
+                echo "$where. It deletes itself at its deadline. Reach it from the Mac with \`scripts/gpu-box.sh\`"
+                echo "(the take is in /work/sillage/$TAKE_UP), or run the workflow again with drop_take ticked to destroy boxes."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+          fi
+          what="$(printf '%s' "$COMMAND" | tr -d '\n|' | cut -c1-80)"
+          scripts/gpu-box.sh down "run ${GITHUB_RUN_ID}: $what"
+
+      - name: The verdict
+        if: ${{ !inputs.dry_run && steps.run.outputs.exit != '0' && steps.run.outcome != 'skipped' }}
+        run: |
+          echo "::error::The command exited with ${{ steps.run.outputs.exit }}"
+          exit 1
+
+  cleanup:
+    needs: gpu
+    if: ${{ always() && !inputs.dry_run && needs.gpu.outputs.held != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Destroy any box this run left, by its label
+        env:
+          VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
+        run: |
+          mkdir -p ~/.config/sillage
+          install -m 600 /dev/null ~/.config/sillage/gpu.env
+          printf "VAST_API_KEY='%s'\n" "$VAST_API_KEY" > ~/.config/sillage/gpu.env
+          scripts/gpu-box.sh cleanup

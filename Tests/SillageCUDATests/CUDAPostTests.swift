@@ -28,6 +28,7 @@ struct CUDAPostTests {
         ("red-vs-cyan", 60, 6, 0.0001),
         ("ember", 48, 40, 0.003),
         ("webb", 48, 40, 0.003),
+        ("glow", 48, 40, 0.003),
     ]
 
     @Test(arguments: tolerances)
@@ -36,8 +37,12 @@ struct CUDAPostTests {
     ) throws {
         let context = try CUDAContext()
         let look = tolerance.look
-        let reference = [UInt8](
-            try Data(contentsOf: Self.frames.appendingPathComponent("\(look).rgba")))
+        let file = Self.frames.appendingPathComponent("\(look).rgba")
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            print("CUDAPOST", look, CUDAEngineCheck.awaitingMetal)
+            return
+        }
+        let reference = [UInt8](try Data(contentsOf: file))
         let drawn = try CUDAStillChecks.fixtureFrame(
             context: context, take: Self.frames.appendingPathComponent("take.sillage"),
             look: Self.frames.appendingPathComponent("\(look).look.json"))

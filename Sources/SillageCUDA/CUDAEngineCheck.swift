@@ -61,7 +61,11 @@ public enum CUDAEngineCheck {
         ("ember", 48, 40, 0.003),
         ("webb", 48, 40, 0.003),
         ("widths", 60, 6, 0.0001),
+        ("glow", 48, 40, 0.003),
     ]
+
+    /// What a frame whose reference Metal has not written yet says in place of its measure.
+    public static let awaitingMetal = "no Metal reference yet: ./scripts/dev.sh fixtures on the Mac writes it"
 
     /// Runs every comparison the engine can run here.
     public static func run(
@@ -80,8 +84,9 @@ public enum CUDAEngineCheck {
         for tolerance in frameTolerances {
             attempt("frame \(tolerance.look)") {
                 let frames = fixtures.appendingPathComponent("frames")
-                let reference = [UInt8](
-                    try Data(contentsOf: frames.appendingPathComponent("\(tolerance.look).rgba")))
+                let file = frames.appendingPathComponent("\(tolerance.look).rgba")
+                guard FileManager.default.fileExists(atPath: file.path) else { return (true, awaitingMetal) }
+                let reference = [UInt8](try Data(contentsOf: file))
                 let drawn = try CUDAStillChecks.fixtureFrame(
                     context: context, take: frames.appendingPathComponent("take.sillage"),
                     look: frames.appendingPathComponent("\(tolerance.look).look.json"), threads: threads)

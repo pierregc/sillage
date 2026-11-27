@@ -359,7 +359,7 @@ Two options draw what a mid-infrared picture shows ([the Cartwheel](notes/cartwh
 `dustWeb` the web's filaments glow as well ([NGC 2207](notes/ngc2207.md)); `galaxyCount`
 at the top of a look file lays that many galaxies behind the field stars, small, faint and mostly
 orange, at constant surface brightness, so a narrower field shows them larger and no brighter.
-Both are Metal only for now (#456).
+Both engines draw them, CUDA since #456.
 
 `look.dustReddening` sets how much more the dust takes from blue and green than from red: 1, the
 default, is the reddening every look drew with before (extinction 1, 1.22 and 1.52 times red's

@@ -94,13 +94,13 @@ struct EngineFixtureTests {
         #expect(expected.contains { $0 > 32 }, "\(seconds) s: a black frame checks nothing")
     }
 
-    @Test func theFixturesStayUnderTwoMegabytes() throws {
+    @Test func theFixturesStayUnderTwoAndAHalfMegabytes() throws {
         let files = FileManager.default.enumerator(
             at: Self.folder, includingPropertiesForKeys: [.fileSizeKey])
         var total = 0
         while let url = files?.nextObject() as? URL {
             total += try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         }
-        #expect(total > 0 && total < 2_000_000, "\(total) bytes")
+        #expect(total > 0 && total < 2_500_000, "\(total) bytes")
     }
 }

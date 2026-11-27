@@ -140,6 +140,21 @@ static std::vector<unsigned long long> fixed(sc_renderer *renderer, sc_render_ta
     return values;
 }
 
+// Each channel's sum over the pixels.
+static std::vector<double> sums(const std::vector<unsigned long long> &values) {
+    std::vector<double> total(4, 0.0);
+    for (size_t index = 0; index < values.size(); ++index) { total[index % 4u] += double(values[index]); }
+    return total;
+}
+
+// The grains' glow over what a frame left, as the frame plan draws it after the dust.
+static bool glow(sc_renderer *renderer, const Scene &made, SplatUniforms u, const float colour[4]) {
+    u.pass = 0u;
+    return ok(sc_render_set_glow(renderer, colour), "the glow") && ok(sc_render_begin(renderer, SC_RENDER_DUST_GLOW), "begin")
+        && ok(sc_render_draw(renderer, SC_RENDER_DUST_GLOW, &u, sizeof u, nullptr, 0u, 0u, made.count, 0u, 0u), "glow")
+        && ok(sc_render_finish(renderer), "finish");
+}
+
 // The dust then the stars of a scene, as the frame plan orders them.
 static bool frame(sc_renderer *renderer, const Scene &made, SplatUniforms u) {
     DiskFrame frames[1];
@@ -227,6 +242,24 @@ static int run() {
         expect(fixed(renderer, SC_RENDER_LIGHT_FIXED, side) == light, "the light of a frame drawn twice differs");
         expect(fixed(renderer, SC_RENDER_DUST_FIXED, side) == dust, "the dust of a frame drawn twice differs");
         expect(sc_render_set_large(renderer, 16u) == SC_INVALID_ARGUMENT, "large splats with no room for them");
+
+        // The grains' glow (#456): light in its colour, from the dust, and no dust of its own.
+        const float none[4] = {1.0f, 0.5f, 0.25f, 0.0f};
+        glow(renderer, many, u, none);
+        expect(fixed(renderer, SC_RENDER_LIGHT_FIXED, side) == light, "a glow of no brightness lays light");
+        const float coral[4] = {1.0f, 0.5f, 0.25f, 2.0f};
+        glow(renderer, many, u, coral);
+        auto glowing = fixed(renderer, SC_RENDER_LIGHT_FIXED, side);
+        expect(fixed(renderer, SC_RENDER_DUST_FIXED, side) == dust, "the glow lays dust");
+        std::vector<double> before = sums(light), after = sums(glowing), grains = sums(dust);
+        double red = after[0] - before[0];
+        double held = grains[0] + grains[1] + grains[2] + grains[3];
+        std::printf("  the glow: %.4g of red over %.4g of dust, green %.4f and blue %.4f of the red\n", red, held,
+                    (after[1] - before[1]) / red, (after[2] - before[2]) / red);
+        expect(red > 0.0 && std::fabs(red / (2.0 * held) - 1.0) < 0.01, "the glow is not twice the dust");
+        expect(std::fabs((after[1] - before[1]) / red - 0.5) < 0.005, "the glow's green");
+        expect(std::fabs((after[2] - before[2]) / red - 0.25) < 0.005, "the glow's blue");
+        expect(after[3] == before[3], "the glow covers pixels");
         sc_renderer_destroy(renderer);
 
         for (uint capacity : {4096u, 5u}) {
@@ -256,6 +289,10 @@ static int run() {
         expect(sc_render_draw(strict, SC_RENDER_STARS, &u, sizeof u, nullptr, 0u, 0u, 0u, 0u, 3u)
                    == SC_INVALID_ARGUMENT, "tracers that were never given");
         expect(sc_render_begin(strict, SC_RENDER_WEB_RESOLVE) == SC_INVALID_ARGUMENT, "the web without its lace");
+        expect(sc_render_begin(strict, SC_RENDER_WEB_GLOW) == SC_INVALID_ARGUMENT, "the web's glow without its lace");
+        expect(sc_render_begin(strict, SC_RENDER_PAINTED_GLOW) == SC_INVALID_ARGUMENT,
+               "the painted glow without its lace");
+        expect(sc_render_set_glow(strict, nullptr) == SC_INVALID_ARGUMENT, "a glow of nothing");
         float mean = 0.0f;
         expect(sc_render_bake_lace(strict, &mean) == SC_INVALID_ARGUMENT, "a lace on a renderer without the web");
         sc_render_massive shorter = many.massive;
@@ -351,6 +388,54 @@ static int run() {
         ok(sc_render_set_screen(renderer, &screen, sizeof screen, nullptr, 0u), "a screen after its tile");
         sc_renderer_destroy(renderer);
         release(dusty);
+    }
+
+    // A background galaxy (#456): 20 pixels across, half as tall, its light within its ellipse
+    // and no coverage; the second way lays the same bits.
+    {
+        Scene empty = scene(context, 1u);
+        SplatUniforms u = uniforms(50.0f, 1u, side);
+        BackgroundGalaxy galaxy;
+        galaxy.direction = float4(0.0f, 0.0f, 0.0f, 20.0f * 50.0f / (2.0f * u.projectionScale));
+        galaxy.color = float4(1.0f, 0.5f, 0.2f, 0.5f);
+        galaxy.shape = float4(1.0f, 0.0f, 0.5f, 1.0f);
+        std::vector<unsigned long long> first;
+        for (uint capacity : {0u, 64u}) {
+            sc_render_config roomy = config;
+            roomy.large_capacity = capacity;
+            sc_renderer *renderer = nullptr;
+            ok(sc_renderer_create(context, &roomy, &renderer), "a renderer");
+            ok(sc_render_set_galaxies(renderer, &galaxy, 1u), "the galaxy");
+            if (capacity > 0u) { ok(sc_render_set_large(renderer, 16u), "the second way"); }
+            ok(sc_render_set_particles(renderer, &empty.massive, nullptr), "the particles");
+            ok(sc_render_clear(renderer), "clear");
+            ok(sc_render_begin(renderer, SC_RENDER_STARFIELD), "begin");
+            ok(sc_render_draw(renderer, SC_RENDER_STARFIELD, &u, sizeof u, nullptr, 0u, 0u, 0u, 0u, 0u), "draw");
+            ok(sc_render_finish(renderer), "finish");
+            auto light = fixed(renderer, SC_RENDER_LIGHT_FIXED, side);
+            if (capacity == 0u) {
+                first = light;
+                size_t lit = 0, wide = 0, tall = 0;
+                for (uint y = 0; y < side; ++y) {
+                    for (uint x = 0; x < side; ++x) {
+                        if (light[(size_t(y) * side + x) * 4u] == 0ull) { continue; }
+                        lit += 1;
+                        wide = std::max<size_t>(wide, size_t(std::abs(int(x) - int(side / 2u)) + 1));
+                        tall = std::max<size_t>(tall, size_t(std::abs(int(y) - int(side / 2u)) + 1));
+                    }
+                }
+                std::vector<double> total = sums(light);
+                std::printf("  a galaxy: %zu pixels lit, %zu by %zu from its centre\n", lit, wide, tall);
+                expect(lit > 80u && lit < 240u, "a galaxy covers another area than its ellipse");
+                expect(wide >= 9u && wide <= 11u && tall >= 4u && tall <= 6u, "a galaxy is not 20 by 10 pixels");
+                expect(total[3] == 0.0 && std::fabs(total[1] / total[0] - 0.5) < 0.01, "a galaxy's colour or coverage");
+            } else {
+                expect(sc_render_large_count(renderer) == 1u, "the galaxy was not set aside");
+                expect(light == first, "the two ways lay another galaxy");
+            }
+            sc_renderer_destroy(renderer);
+        }
+        release(empty);
     }
 
     // The lace: its mean is its last level, and every level the mean of the one above.

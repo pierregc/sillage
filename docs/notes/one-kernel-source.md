@@ -315,7 +315,7 @@ post-processing. After #277 the eight are `cuda` and no line is pending: phase 1
 
 ## The reference outputs
 
-`Tests/Fixtures/engines/` holds small outputs both engines must give, under 2 MB in all, byte for
+`Tests/Fixtures/engines/` holds small outputs both engines must give, under 2.5 MB in all, byte for
 byte as Metal holds them, little endian (a `float3` is 16 bytes). `manifest.json`
 (`sillage-engine-fixtures`, version 1) lists every file with its type, stride and count, as
 #271's walk dump does, and the README beside it gives the formats in full: a C++ reader needs no
@@ -343,9 +343,9 @@ Swift.
   keys sorted ([takes-on-disk.md](takes-on-disk.md)): the header's bytes change from main, the
   data do not, and a take written before reads as it did.
   Beside them (#369), two moments of `inside.flight.json`, a flight into that take's disk, at
-  2 and 3.5 s in `webb`, 128 x 72 to keep the fixtures under 2 MB: three and four renders, point
+  2 and 3.5 s in `webb`, 128 x 72 to keep the fixtures under 2.5 MB: three and four renders, point
   stars and the dust slabs from the eye, which no other reference output draws (below).
-- **`Tests/Fixtures/hole/`** (#336, beside the others to keep them under 2 MB): a moment of a
+- **`Tests/Fixtures/hole/`** (#336, beside the others to keep them under 2.5 MB): a moment of a
   black hole close up of 4,000 tracers, Metal's run 40 steps on from it, and three stills of that
   later moment, with a README of its own. Metal must give them to the bit; CUDA's step and stills
   are held to the tolerances of [cuda-engine.md](cuda-engine.md#the-black-hole-close-up-336).

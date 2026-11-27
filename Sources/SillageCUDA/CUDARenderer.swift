@@ -74,6 +74,9 @@ public final class CUDARenderer: FrameStyling {
     /// they lose of the faint light (#283): the result depends on the order the threads run
     /// in, and `fixedTarget` then holds a half's bits a value.
     public var halfFloats = false
+    /// Walks every pixel of a point star's square, as before #425, in place of the band its
+    /// streak crosses: the same bits, slower. The measure's "before".
+    public var wholeSquares = false
     /// Splats the last pass set aside.
     public var largeSplatCount: Int { Int(sc_render_large_count(handle)) }
     /// What a flight's frame is drawn with from inside a galaxy (#347), as `Renderer.inside`:
@@ -184,6 +187,7 @@ public final class CUDARenderer: FrameStyling {
             smoothing = try context.makeBuffer([Float](repeating: 0.05, count: count))
             try setStellar(StellarPopulation.table)
             try setStarfield(BackgroundStar.field(count: settings.starCount))
+            try setGalaxies(BackgroundGalaxy.field(count: settings.galaxyCount))
         } catch {
             sc_renderer_destroy(made)
             throw error
@@ -207,6 +211,16 @@ public final class CUDARenderer: FrameStyling {
             try check(
                 sc_render_set_starfield(handle, bytes.baseAddress, UInt32(stars.count)),
                 "the field stars")
+        }
+    }
+
+    /// The galaxies behind the field stars: `BackgroundGalaxy.field` of the settings' count
+    /// unless others are given.
+    public func setGalaxies(_ galaxies: [BackgroundGalaxy]) throws {
+        try galaxies.withUnsafeBytes { bytes in
+            try check(
+                sc_render_set_galaxies(handle, bytes.baseAddress, UInt32(galaxies.count)),
+                "the background galaxies")
         }
     }
 
@@ -323,6 +337,8 @@ public final class CUDARenderer: FrameStyling {
             deep = Deep(frame: inside, camera: camera, next: next)
         }
         try setScreen(for: plan, deep: deep != nil)
+        // The dust's glow, after each pass that lays dust, as Metal draws it.
+        let glows = settings.dustGlow > 0 && !settings.plain
         let everything = split(0..<(drawnCount + tracerCount))
         let parts = split(particles ?? 0..<(drawnCount + tracerCount))
         // Where its grains are spread over two slabs, each galaxy's dust is carried and
@@ -344,14 +360,19 @@ public final class CUDARenderer: FrameStyling {
                 try draw(SC_RENDER_STARFIELD, pass, plan, (0..<0, 0..<0), 1, deep)
             case .dust:
                 try draw(SC_RENDER_DUST, pass, plan, parts, threads, deep)
+                if glows { try draw(SC_RENDER_DUST_GLOW, pass, plan, (parts.massive, 0..<0), threads, deep) }
             case .paintedDust:
                 try draw(SC_RENDER_PAINTED_DUST, pass, plan, parts, threads, deep)
+                if glows {
+                    try draw(SC_RENDER_PAINTED_GLOW, pass, plan, (parts.massive, 0..<0), threads, deep)
+                }
             case .webResolve:
                 for galaxy in 1...apart {
                     if apart > 1 {
                         try draw(SC_RENDER_WEB_CARRIER, .webCarrier, plan, parts, threads, deep, only: galaxy)
                     }
                     try draw(SC_RENDER_WEB_RESOLVE, pass, plan, (0..<0, 0..<0), 1, deep)
+                    if glows { try draw(SC_RENDER_WEB_GLOW, pass, plan, (0..<0, 0..<0), 1, deep) }
                 }
             case .stars:
                 try setReddening()
@@ -678,6 +699,12 @@ public final class CUDARenderer: FrameStyling {
         try check(status, "the disk frames and the ramps")
         try check(sc_render_set_large(handle, UInt32(largeSplatPixels)), "the large splats' size")
         try check(sc_render_set_half_floats(handle, halfFloats ? 1 : 0), "the accumulation")
+        let glow = [
+            settings.dustGlowColour.x, settings.dustGlowColour.y, settings.dustGlowColour.z,
+            settings.dustGlow,
+        ]
+        try check(sc_render_set_glow(handle, glow), "the dust's glow")
+        try check(sc_render_set_whole_squares(handle, wholeSquares ? 1 : 0), "the point stars' walk")
     }
 
     /// What a frame drawn from inside a galaxy hands every pass behind its uniforms.
@@ -692,8 +719,16 @@ public final class CUDARenderer: FrameStyling {
         _ parts: (massive: Range<Int>, tracers: Range<Int>), _ threads: Int, _ deep: Deep?,
         only: Int = 0
     ) throws {
-        try timed(name == SC_RENDER_POINT_STARS ? "pass pointStars" : "pass \(pass)") {
+        try timed(Self.phase(name, pass)) {
             try lay(name, pass, plan, parts, threads, deep, only: only)
+        }
+    }
+
+    private static func phase(_ name: sc_render_pass, _ pass: FramePlan.Pass) -> String {
+        switch name {
+        case SC_RENDER_POINT_STARS: "pass pointStars"
+        case SC_RENDER_DUST_GLOW, SC_RENDER_PAINTED_GLOW, SC_RENDER_WEB_GLOW: "pass \(pass) glow"
+        default: "pass \(pass)"
         }
     }
 
@@ -703,7 +738,10 @@ public final class CUDARenderer: FrameStyling {
         only: Int
     ) throws {
         try check(sc_render_begin(handle, name), "starting the \(pass) pass")
-        let splat = plan.uniforms(for: pass)
+        var splat = plan.uniforms(for: pass)
+        // From inside, the grains' glow has a pass of its own, which can spread a near grain
+        // into a haze.
+        if name == SC_RENDER_DUST_GLOW, deep != nil { splat.pass = 2 }
         // The engine's passes always hold the inside of a galaxy: a frame without it hands
         // them the values that leave their arithmetic as it was.
         var inside =

@@ -324,6 +324,7 @@ public enum CUDAExport {
                     height: height, framing: framing, laceTexels: laceTexels, flight: flightFile,
                     largeSplatPixels: largeSplats)
                 made.threads = threads
+                made.renderer.wholeSquares = flag("whole-squares")
                 made.phases = phases
                 stills = made
                 return made
@@ -370,6 +371,9 @@ public enum CUDAExport {
                 String(
                     format: "flight     keys drawn in %.1f s on %@ (%@)", report.seconds, engine, context.name
                 ))
+            if let phases {
+                for line in phases.lines(total: report.seconds) { say("profile      \(line)") }
+            }
             return report
         }
 

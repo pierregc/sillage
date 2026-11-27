@@ -110,7 +110,7 @@
     "nodes" : 1314,
     "tracers" : 1000
   },
-  "device" : "Apple M4 Max",
+  "device" : "Apple M6",
   "dtScale" : 3.5,
   "format" : "sillage-walk-dump",
   "frame" : 0,
