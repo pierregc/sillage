@@ -66,6 +66,9 @@ public enum CUDAEngineCheck {
 
     /// What a frame whose reference Metal has not written yet says in place of its measure.
     public static let awaitingMetal = "no Metal reference yet: ./scripts/dev.sh fixtures on the Mac writes it"
+    /// The same for a frame of the Sombrero fixture.
+    public static let awaitingSombrero =
+        "no Metal reference yet: \(SombreroFixture.command) on the Mac writes it"
 
     /// Runs every comparison the engine can run here.
     public static func run(
@@ -106,13 +109,15 @@ public enum CUDAEngineCheck {
         } catch {
             items.append(Item(name: "inside", passed: false, detail: "\(error)"))
         }
-        // The Sombrero fixture beside it (#513), the frames Metal's references exist for.
+        // The Sombrero fixture beside it (#513); a frame Metal has not written yet says it waits.
         let sombrero = fixtures.deletingLastPathComponent().appendingPathComponent("sombrero")
         if let fixture = try? SombreroFixture.load(from: sombrero) {
-            for frame in fixture.frames
-            where FileManager.default.fileExists(atPath: fixture.url(frame.file).path) {
+            for frame in fixture.frames {
                 attempt("sombrero \(frame.file)") {
-                    try Self.sombrero(frame, of: fixture, context: context, threads: threads)
+                    guard FileManager.default.fileExists(atPath: fixture.url(frame.file).path) else {
+                        return (true, awaitingSombrero)
+                    }
+                    return try Self.sombrero(frame, of: fixture, context: context, threads: threads)
                 }
             }
         }

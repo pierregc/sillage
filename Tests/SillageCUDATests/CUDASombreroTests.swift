@@ -10,6 +10,14 @@ import Testing
 /// stars and of the sky (#509, #510), the held kernel lengths, and the dust screen with its dabs
 /// and colour law (#506, #508, #511). The fixture's frames are held to Metal's once the Mac has
 /// written them.
+/// Whether the Mac has written Metal's frames of the fixture.
+private let metalWritten =
+    (try? SombreroFixture.load(from: CUDASombreroTests.folder)).map { fixture in
+        fixture.frames.allSatisfy { FileManager.default.fileExists(atPath: fixture.url($0.file).path) }
+    } ?? false
+private let waitingForMetal = Comment(
+    rawValue: "waiting for Metal's frames: \(SombreroFixture.command) on the Mac writes them")
+
 @Suite("CUDA engine, the Sombrero film")
 struct CUDASombreroTests {
     static let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -219,27 +227,27 @@ struct CUDASombreroTests {
         }
     }
 
-    /// The fixture's frames, within the tolerance `sillage-cuda check` holds the inside frames to,
-    /// once Metal's are written; until then each is drawn, and the test says it waits for them.
+    /// The fixture's frames drawn, neither black nor white, references or not.
     @Test(arguments: [0, 1, 2, 3])
-    func theFramesAreMetalsWithinTheTolerance(index: Int) throws {
+    func theFramesAreDrawn(index: Int) throws {
         let fixture = try Self.fixture()
         let frame = fixture.frames[index]
-        let work = Self.work()
-        defer { try? FileManager.default.removeItem(at: work) }
-        let stills = try Self.stills(try Self.look(), flight: fixture.flight(frame.flight, into: work))
-        let drawn = try Self.flightStill(stills, frame, rate: fixture.framesPerSecond)
+        let drawn = try Self.frame(frame, of: fixture)
         #expect(drawn.count == fixture.width * fixture.height * 3)
         #expect(drawn.contains { $0 > 32 }, "\(frame.file): a black frame checks nothing")
         #expect(
             drawn.filter { $0 == 255 }.count < drawn.count / 10, "\(frame.file): a white frame checks nothing"
         )
-        guard let reference = try? Data(contentsOf: fixture.url(frame.file)) else {
-            print(
-                "CUDASOMBRERO waiting for Metal's \(frame.file) (\(frame.what)): run on the Mac "
-                    + SombreroFixture.command)
-            return
-        }
+    }
+
+    /// The fixture's frames, within the tolerance `sillage-cuda check` holds the inside frames to.
+    /// Skipped, and says it waits, until the Mac has written Metal's.
+    @Test(.enabled(if: metalWritten, waitingForMetal), arguments: [0, 1, 2, 3])
+    func theFramesAreMetalsWithinTheTolerance(index: Int) throws {
+        let fixture = try Self.fixture()
+        let frame = fixture.frames[index]
+        let drawn = try Self.frame(frame, of: fixture)
+        let reference = try Data(contentsOf: fixture.url(frame.file))
         let measure = CUDAStillChecks.measure(drawn, channels: 3, [UInt8](reference), channels: 4)
         let tolerance = CUDAEngineCheck.insideTolerance
         print("CUDASOMBRERO", frame.file, measure)
@@ -247,5 +255,12 @@ struct CUDASombreroTests {
         #expect(measure.largest <= tolerance.largest, "\(measure)")
         #expect(measure.overEight <= tolerance.overEight, "\(measure)")
         #expect(abs(measure.meanA - measure.meanB) < tolerance.mean, "the exposure moved")
+    }
+
+    static func frame(_ frame: SombreroFixture.Frame, of fixture: SombreroFixture) throws -> [UInt8] {
+        let work = Self.work()
+        defer { try? FileManager.default.removeItem(at: work) }
+        let stills = try Self.stills(try Self.look(), flight: fixture.flight(frame.flight, into: work))
+        return try Self.flightStill(stills, frame, rate: fixture.framesPerSecond)
     }
 }
