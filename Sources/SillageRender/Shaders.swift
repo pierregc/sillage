@@ -300,7 +300,7 @@ enum Shaders {
 
         /// Extinction is steeper in the blue than in the red, which is why a lane crossing a
         /// bright disk reads brown rather than grey. A look's `dustReddening` scales the excess
-        /// over red on Metal (#478); CUDA draws with this one.
+        /// over red (#478), on Metal and on CUDA.
         SHARED_CONSTANT float3 reddening = float3(1.0f, 1.22f, 1.52f);
 
         struct DiskFrame {

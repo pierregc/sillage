@@ -364,8 +364,7 @@ Both engines draw them, CUDA since #456.
 `look.dustReddening` sets how much more the dust takes from blue and green than from red: 1, the
 default, is the reddening every look drew with before (extinction 1, 1.22 and 1.52 times red's
 in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red scaled. The
-Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478). Metal only for now:
-CUDA draws with the fixed reddening.
+Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478).
 
 `sky` at the top of a look file draws a deep sky behind every slab of dust (#512): field stars,
 the brighter with four diffraction spikes fixed to the frame, and small galaxies, worked out per
@@ -383,7 +382,7 @@ light out of the look's bloom, which otherwise lays its every level round a brig
 cone; `halo` gives each star a soft halo of its own instead, that share of its light, `haloWidth`
 (3) times its core's width (the film takes 0, 0.1 and 3). `dither` lays
 triangular noise of that many 8-bit steps on the frame before it is written, so a faint halo is
-not cut into bands. Both Metal only.
+not cut into bands.
 
 `look.dustWidth` widens the dust grains' kernels against the tree's, as `youngWidth` does a
 young star's: a thin sheet of grains drawn wider reads as a veil rather than as the grains or the

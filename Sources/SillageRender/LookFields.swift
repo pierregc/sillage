@@ -28,9 +28,9 @@ public enum LookFields {
         ("exposure", "brightness and stretch measured on the frames drawn; absent, the look's own"),
         (
             "sky",
-            "a deep sky behind the dust, fixed in direction: {brightness, density, fieldOfView, height, depth, spikes, spikeAngle, galaxies, starWidth, seed, turn, anchor, anchorUp, bloom, halo, haloWidth}; Metal only"
+            "a deep sky behind the dust, fixed in direction: {brightness, density, fieldOfView, height, depth, spikes, spikeAngle, galaxies, starWidth, seed, turn, anchor, anchorUp, bloom, halo, haloWidth}"
         ),
-        ("dither", "triangular noise of this many 8-bit steps on the frame, against banding; Metal only"),
+        ("dither", "triangular noise of this many 8-bit steps on the frame, against banding"),
     ]
 
     public static let look: [(String, String)] = [
@@ -45,7 +45,7 @@ public enum LookFields {
         ("dustGlowColour", "the glow's colour, linear sRGB"),
         (
             "dustReddening",
-            "how much more the dust takes from blue and green than from red; 0 grey, 1 as drawn before, above browner (Metal only)"
+            "how much more the dust takes from blue and green than from red; 0 grey, 1 as drawn before, above browner"
         ),
         ("smoothingScale", "kernel width over the spacing between particles: higher is softer"),
         ("minimumKernel", "smallest kernel, in pixels"),
