@@ -3,7 +3,7 @@
 
   split.py title OUT.png [WxH]                      the words, divider and bottom shade, transparent
   split.py still WIDE.png OUT.jpg WxH               the open split screen, captioned
-  split.py film MASTER.mov WIDE.png OUT.mp4 START:LENGTH [--crf 20]
+  split.py film MASTER.mov WIDE.png OUT.mp4|OUT.mov START:LENGTH [--crf 20]   (.mov: ProRes 422 HQ)
 
 The layout and type are the Cartwheel montage's (references/cartwheel/tools/title.py of #455,
 Avenir Next, drawn on a 3840x2160 layer and scaled): two halves edge to edge with a thin divider,
@@ -156,9 +156,13 @@ def film(master, wide_png, out, hold, crf):
         graph = (f"[0:v]trim=0:{ts},setpts=PTS-STARTPTS[a];[1:v]setpts=PTS-STARTPTS[b];"
                  f"[0:v]trim=start={ts + count / fps},setpts=PTS-STARTPTS[c];"
                  "[a][b][c]concat=n=3:v=1,format=yuv420p10le[v]")
+        # OUT.mov: the master with the split screen, ProRes 422 HQ, for the final encodes
+        codec = (["-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le"] if out.endswith(".mov") else
+                 ["-c:v", "libx265", "-preset", "medium", "-tune", "grain", "-crf", str(crf), "-x265-params",
+                  "log-level=error", "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1", "-movflags", "+faststart"])
+        graph = graph.replace(",format=yuv420p10le[v]", "[v]") if out.endswith(".mov") else graph
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", master, "-i", seg, "-filter_complex", graph, "-map", "[v]",
-                        "-c:v", "libx265", "-preset", "medium", "-tune", "grain", "-crf", str(crf), "-x265-params", "log-level=error",
-                        "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1", "-movflags", "+faststart", out], check=True)
+                        *codec, out], check=True)
     print(json.dumps({"film": out, "split": [round(ts, 3), round(ts + count / fps, 3)]}))
 
 
