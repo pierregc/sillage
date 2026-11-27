@@ -82,6 +82,7 @@ session. Read the note for an area before changing it.
 - [A match that is measured](photo-match.md): a real picture reduced to its extended light, the take as a histogram of its stars, the score (isophotes against correlations), the search, the mirror, the floor an archetype gets on the Antennae and the Mice (#320)
 - [Twenty galaxies to reproduce](twenty-galaxies.md): the shortlist for named scenes, why each, which have a published model of the very object, tiers A to C, the pictures and their licences in `references/catalogue/`
 - [The Cartwheel, reproduced](cartwheel.md): ESO 350-40 from its published measurements, a compact intruder, the match that places the freeze, the flights and the split screen with Webb's picture
+- [The Antennae, reproduced](antennae.md): NGC 4038/9 from Karl et al. 2010 and Privon et al. 2013, Toomre and Toomre's angles and the papers' views tested against Sillage's (#521, #523)
 - [NGC 2207 and IC 2163, reproduced](ngc2207.md): Struck et al.'s grazing encounter from two grids of 54 previews, the match held to after the passage, the dust glow drawn in the web's filaments, one continuous flight
 - [The Sombrero, reproduced](sombrero.md): a lone galaxy with a ring of dust threads, the fields each fault needed, the wrong turns and the rule they teach (#478), the 4K film drawn in pieces on a frozen engine (#509)
 - [The Sombrero's dust bench](sombrero-dust-bench.md): the plan for a procedural dust sheet, a bench that tunes it without the galaxy, and the steps (#478)
