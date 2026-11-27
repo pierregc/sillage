@@ -425,8 +425,8 @@ struct InsideRenderTests {
         #expect(faulty.fault?.contains("lonePoints") == true)
     }
 
-    /// The point stars bloom by `starBloom` (#510): at 0 a near star throws no halo, the pixels
-    /// round it as dark as the field's, and at 1 the frame is the one drawn without it.
+    /// The point stars bloom by `starBloom` (#510): at 0 a near star throws no halo, the frame
+    /// the one drawn with no bloom at all, and at 1 the frame is the one drawn without it.
     @Test func aNearStarBloomsByItsShare() throws {
         var generator = SeededGenerator(seed: 5)
         let positions = (0..<60).map { _ in
@@ -449,8 +449,11 @@ struct InsideRenderTests {
         let plain = try picture { _ in }
         let whole = try picture { $0.starBloom = 1 }
         let none = try picture { $0.starBloom = 0 }
+        let bare = try Stage(positions, maximumKernel: 4, supersample: 2)
+        bare.renderer.inside = Self.inside(1.5) { $0.starPeak = 1000 }
         #expect(whole == plain)
-        #expect(lit(plain) > 0 && lit(none) < lit(plain) / 2, "\(lit(none)) against \(lit(plain))")
+        #expect(none == bare.renderer.render(camera: view))
+        #expect(lit(none) < lit(plain), "\(lit(none)) against \(lit(plain))")
         var faulty = InsideSettings()
         faulty.starBloom = 1.5
         #expect(faulty.fault?.contains("starBloom") == true)
