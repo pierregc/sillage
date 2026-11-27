@@ -6,16 +6,18 @@
 #   (a b1 b2 b3 b4) and stops; `assemble` alone redoes the assembly.
 #   The film draws a (far shots) with #508's binary and the flight as #508 reads it, b1-b4 with
 #   #510's binary and its inside stars (rough-cut-stars); the animatic all with #508's.
-# Env: TAKE, LOOK, BIN508, BIN510, OUT (default ~/claude-workspace/sombrero/out/509), CRF (x265, 20).
+# Env: TAKE, LOOK, BIN508, BIN510, OUT ($SOMBRERO/out/509), CRF (x265, 20); SOMBRERO, the working
+#   folder (~/claude-workspace/sombrero); SR, the sillage-render wrapper ($SOMBRERO/sr508.sh); PY.
 set -euo pipefail
 W=$(cd "$(dirname "$0")/../../.." && pwd)
-SOM=$HOME/claude-workspace/sombrero
+SOM=${SOMBRERO:-$HOME/claude-workspace/sombrero}
 TAKE=${TAKE:-$SOM/lib/sombrero-8m-s7}
 LOOK=${LOOK:-$SOM/out/506/s2/looks/sombrero-506.look.json}
 BIN508=${BIN508:-$SOM/out/508/bin/v11}
 BIN510=${BIN510:-$SOM/out/510/bin/v2}
 OUT=${OUT:-$SOM/out/509}
-PY=$SOM/venv/bin/python
+PY=${PY:-$SOM/venv/bin/python}
+SR=${SR:-$SOM/sr508.sh}
 CRF=${CRF:-20}
 mode=$1; shift
 case $mode in
@@ -36,7 +38,7 @@ render() {
   local name=$1 s=$2 e=$3 tail=$4; [ "$tail" = F ] && tail="1 / $fps"
   local dur; dur=$(python3 -c "print(round($e - $s + $tail, 6))")
   local F=$near bin=$nbin; [ "$name" = a ] && { F=$far; bin=$BIN508; }
-  SR_BIN=$bin "$W/scripts/gpu-lock.sh" run "sombrero-509-$mode-$name" "$SOM/sr508.sh" export "$TAKE" --look "$LOOK" \
+  SR_BIN=$bin "$W/scripts/gpu-lock.sh" run "sombrero-509-$mode-$name" "$SR" export "$TAKE" --look "$LOOK" \
     --flight "$F" "${size[@]}" --fps $fps --codec $codec --start "$s" --duration "$dur" \
     --out "$D/$name.mov" > "$D/$name.log" 2>&1 || { tail -5 "$D/$name.log"; exit 1; }
   tail -3 "$D/$name.log" | head -1

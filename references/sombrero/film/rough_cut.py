@@ -2,7 +2,9 @@
 """rough_cut.py OUT_DIR: the Sombrero rough cut's flight (#509), one key a frame at 30 fps.
 
 Writes OUT_DIR/rough-cut.flight.json and OUT_DIR/rough-cut-animatic.flight.json (the same path,
-one render a frame from inside), and prints the camera once a second.
+one render a frame from inside), and prints the camera once a second. Env: INSIDE, the flight whose
+inside block it takes ($SOMBRERO/out/508/flights/h2-descent.flight.json, SOMBRERO being
+~/claude-workspace/sombrero by default).
 
 The flight's own easing (fov and roll smoothstepped key to key) would stall at every key, so the
 path is computed here and laid one key per video frame: every frame lands on a key and draws
@@ -25,7 +27,8 @@ from scipy.ndimage import gaussian_filter1d
 
 FPS = 30
 END = 78.0
-INSIDE = "/Users/pierregc/claude-workspace/sombrero/out/508/flights/h2-descent.flight.json"
+SOM = os.environ.get("SOMBRERO", os.path.expanduser("~/claude-workspace/sombrero"))  # the working folder
+INSIDE = os.environ.get("INSIDE", f"{SOM}/out/508/flights/h2-descent.flight.json")
 HUBBLE = np.array([0.0, -795.618, 83.623])  # e9/h2 freeze: 800 kpc, 6 degrees up
 FOV_H, ROLL_H = 0.018632, 0.1
 TIMES = [(0.0, 0.5), (10.0, 8.0), (18.0, 12.0), (64.0, 12.0), (78.0, 22.0)]

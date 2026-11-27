@@ -46,8 +46,9 @@ import dust_bench as D  # noqa: E402
 import light_model  # noqa: E402
 import texture as T  # noqa: E402
 
-OUT = os.environ.get("TRACK_B_OUT", "/Users/pierregc/claude-workspace/sombrero/banc/490")
-CLEAN = "/Users/pierregc/claude-workspace/sombrero/banc/487/cache/hubble-6144-clean.png"
+SOM = os.environ.get("SOMBRERO", os.path.expanduser("~/claude-workspace/sombrero"))  # the working folder
+OUT = os.environ.get("TRACK_B_OUT", f"{SOM}/banc/490")
+CLEAN = f"{SOM}/banc/487/cache/hubble-6144-clean.png"
 SIN, COS = math.sin(D.INC), math.cos(D.INC)
 DX, DY = D.NUCLEUS
 PX = T.FRAME_KPC / 6144              # kpc, a sky pixel of the 6144 grid

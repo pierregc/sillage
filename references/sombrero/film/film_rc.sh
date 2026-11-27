@@ -10,17 +10,20 @@
 #   render a frame. One binary for all (#509's RC2: #510's stars, #511's dust, #512's sky and halo,
 #   the sky kept out of the bloom), BIN_A only to draw piece a apart.
 # Env: TAKE, TAKE_A (piece a's take, TAKE by default), LOOK, BIN_A, BIN, OUT, RES (1080p), CRF (x265,
-#   20), GAP (20).
+#   20), GAP (20); SOMBRERO, the working folder the defaults are in (~/claude-workspace/sombrero); SR,
+#   the wrapper that runs the sillage-render built in $SR_BIN ($SOMBRERO/sr509c.sh); PY, a Python with
+#   numpy, scipy and Pillow ($SOMBRERO/venv/bin/python). docs/notes/sombrero.md has the film's own run.
 set -euo pipefail
 W=$(cd "$(dirname "$0")/../../.." && pwd)
-SOM=$HOME/claude-workspace/sombrero
+SOM=${SOMBRERO:-$HOME/claude-workspace/sombrero}
 TAKE=${TAKE:-$SOM/lib/sombrero-8m-s7-170}
 TAKE_A=${TAKE_A:-$TAKE}
 LOOK=${LOOK:-$W/references/sombrero/film/sombrero-509c.look.json}
 BIN=${BIN:-$SOM/out/509c/bin/v2}
 RES=${RES:-1080p}
 OUT=${OUT:-$SOM/out/509c}
-PY=$SOM/venv/bin/python
+PY=${PY:-$SOM/venv/bin/python}
+SR=${SR:-$SOM/sr509c.sh}
 CRF=${CRF:-20}
 GAP=${GAP:-20}
 mode=$1; shift
@@ -44,7 +47,7 @@ render() {
   local name=$1 s=$2 e=$3 tail=$4; [ "$tail" = F ] && tail="1 / $fps"
   local dur; dur=$(python3 -c "print(round($e - $s + $tail, 6))")
   local bin=$BIN take=$TAKE; [ "$name" = a ] && { bin=$BIN_A; take=$TAKE_A; }
-  SR_BIN=$bin "$W/scripts/gpu-lock.sh" run "sombrero-509c-$mode-$name" "$SOM/sr509c.sh" export "$take" --look "$LOOK" \
+  SR_BIN=$bin "$W/scripts/gpu-lock.sh" run "sombrero-509c-$mode-$name" "$SR" export "$take" --look "$LOOK" \
     --flight "$F" "${size[@]}" --fps $fps --codec $codec --start "$s" --duration "$dur" \
     --out "$D/$name.mov" > "$D/$name.log" 2>&1 || { tail -5 "$D/$name.log"; exit 1; }
   tail -3 "$D/$name.log" | head -1
@@ -60,7 +63,7 @@ k = {**k, "fov": round(2 * math.atan(math.tan(k["fov"] / 2) * 1.55), 7)}
 json.dump({**d, "keys": [{**k, "at": 0}, {**k, "at": 1}]}, open(sys.argv[2], "w"))
 EOF
   mkdir -p "$D/wide-keys"
-  SR_BIN=$BIN_A "$W/scripts/gpu-lock.sh" run "sombrero-509c-$mode-wide" "$SOM/sr509c.sh" export "$TAKE_A" --look "$LOOK" \
+  SR_BIN=$BIN_A "$W/scripts/gpu-lock.sh" run "sombrero-509c-$mode-wide" "$SR" export "$TAKE_A" --look "$LOOK" \
     --flight "$OUT/flights/wide.flight.json" --flight-keys "$D/wide-keys" --width "$w" --height "$h" > "$D/wide.log" 2>&1 \
     || { tail -5 "$D/wide.log"; exit 1; }
   cp "$D/wide-keys/key-00-000.00s.png" "$out"

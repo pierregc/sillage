@@ -4,7 +4,10 @@
 Writes OUT_DIR/film.flight.json (#510's inside stars) and OUT_DIR/film-animatic.flight.json (the
 same, one render a frame), prints the camera once a second and the angle between the line of
 sight and the velocity. Axes are galaxy 0's (disk in xy, spin +z; Hubble looks from -y, 6 degrees
-up). END_MYR: the take's moment at the cut (170 by default).
+up). END_MYR: the take's moment at the cut (170 by default). Env: INSIDE, the flight whose inside
+block the film takes ($SOMBRERO/out/511/flights/final02.flight.json, SOMBRERO being
+~/claude-workspace/sombrero by default), and DEPTH, the dust screen's depth (0.412 for the film's
+20 M take).
 
 Shots (seconds): far, seen 63 degrees from face on with the ring rolled across the frame and off
 centre, turning, then unrolling onto Hubble's axis 0-16 (time running to 48 Myr), freeze for the
@@ -32,7 +35,8 @@ FPS = 30
 # #511's inside block (dust thresholds; #510's stars), the dust's column 1.2 times the original
 # (#511 had 1.15), and #510's star shares scaled by 92/255: they are shares of the look's kernel
 # ceiling, which #512's look raised from 92 to 255 px, so the same particles turn to stars
-INSIDE = "/Users/pierregc/claude-workspace/sombrero/out/511/flights/final02.flight.json"
+SOM = os.environ.get("SOMBRERO", os.path.expanduser("~/claude-workspace/sombrero"))  # the working folder
+INSIDE = os.environ.get("INSIDE", f"{SOM}/out/511/flights/final02.flight.json")
 DEPTH = float(os.environ.get("DEPTH", 0.39 * 1.2))  # the 20 M take wants 0.412: its lane is 11 % deeper at one depth
 STARS = {"starFrom": round(0.05 * 92 / 255, 6), "starFull": round(0.2 * 92 / 255, 6)}
 HUBBLE = np.array([0.0, -795.618, 83.623])  # the freeze: 800 kpc, 6 degrees up

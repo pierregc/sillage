@@ -21,7 +21,8 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_PATH = "/Users/pierregc/claude-workspace/sombrero/reference/heic2506a-large.jpg"
+DEFAULT_PATH = os.path.join(os.environ.get("SOMBRERO", os.path.expanduser("~/claude-workspace/sombrero")),
+                            "reference/heic2506a-large.jpg")
 KPC = 26.5
 CORE = (0.4921875, 0.3046875)  # Hubble's core, shares of the width (x, y)
 ROLL = 5.63  # degrees the disk's major axis is tilted

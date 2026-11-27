@@ -48,7 +48,7 @@ import hubble_ref  # noqa: E402
 import closeup  # noqa: E402
 import light_model  # noqa: E402
 
-OUT = "/Users/pierregc/claude-workspace/sombrero/banc/504"
+OUT = os.path.join(os.environ.get("SOMBRERO", os.path.expanduser("~/claude-workspace/sombrero")), "banc/504")
 KMS = dct.KMS                  # kpc per Myr in one km/s
 SILLAGE_T = 4.71               # Myr: Sillage's time unit; its velocity unit is a kpc per 4.71 Myr
 TIMES = [-40, -20, -10, 0, 10, 20, 40]
