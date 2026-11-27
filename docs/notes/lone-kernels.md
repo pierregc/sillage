@@ -102,6 +102,16 @@ often) and the same ones wherever the camera is, by a draw of their index. A fie
 stars over its glow, and no star is ever a disk: it is a point or it is part of the haze. In the
 near field the capped kernels' law dims these points as #357's point stars take the light.
 
+Such a point is drawn no narrower than three accumulation pixels: a splat's profile narrower
+than that falls between the pixels, and its light changes with where it stands on them, as #357
+found for its point stars. A 4K frame supersampled twice is at that size already and draws the
+same bytes; at 1080p, between two frames 3 ms apart with every lone star a point, the rms of the
+difference falls from 7.8 to 7.0 levels (6.4 with none, which is the film grain's).
+
+Between two frames a thirtieth of a second apart (1080p, at 50.5 and 21.5 s) the film as it was
+moved by 15.3 and 17.4 levels rms; the dial at 0 by 11.6 and 14.2, at 0.35 by 13.3 and 15.2, at 1
+by 14.7 and 15.6. Points or haze, a field flickers less than the disks did.
+
 Four doses of the stills at 21, 23 and 50 s, `neighbours` and the window with them:
 
 | | neighbours | window | lonePoints | reads as |

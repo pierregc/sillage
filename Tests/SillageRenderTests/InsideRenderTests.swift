@@ -393,10 +393,10 @@ struct InsideRenderTests {
         }
         positions[0] = .zero
         let view = camera(12)
-        func drawn(first: Float, _ change: @escaping (inout InsideSettings) -> Void) throws
-            -> (peak: Float, lit: Int)
-        {
-            let stage = try Stage(positions, maximumKernel: 16, smoothing: 5, first: first)
+        func drawn(
+            first: Float, smoothing: Float = 5, _ change: @escaping (inout InsideSettings) -> Void
+        ) throws -> (peak: Float, lit: Int) {
+            let stage = try Stage(positions, maximumKernel: 16, smoothing: smoothing, first: first)
             stage.renderer.inside = Self.inside(12) { settings in
                 settings.loneWidest = 512
                 settings.starPeak = 1000
@@ -412,14 +412,15 @@ struct InsideRenderTests {
         #expect(even.peak > 0 && alone.peak > 8 * even.peak, "\(alone.peak), \(even.peak)")
         #expect(one.peak < 4 * even.peak, "\(one.peak) against \(even.peak)")
         let plain = try drawn(first: 1) { _ in }
-        let points = try drawn(first: 1) { settings in
+        #expect(even.lit > 2 * plain.lit, "\(even.lit) against \(plain.lit)")
+        // Kernels 12 pixels wide, four times the three a point is drawn no narrower than.
+        let wide = try drawn(first: 1, smoothing: 20) { _ in }
+        let points = try drawn(first: 1, smoothing: 20) { settings in
             settings.neighbours = 8
             settings.lonePoints = 1
         }
-        #expect(points.peak > 2 * plain.peak, "\(points.peak) against \(plain.peak)")
-        #expect(
-            points.lit < plain.lit / 2 && even.lit > 2 * plain.lit,
-            "\(points.lit), \(plain.lit), \(even.lit)")
+        #expect(points.peak > 2 * wide.peak, "\(points.peak) against \(wide.peak)")
+        #expect(points.lit < wide.lit / 2, "\(points.lit) against \(wide.lit)")
         var faulty = InsideSettings()
         faulty.lonePoints = 1.5
         #expect(faulty.fault?.contains("lonePoints") == true)
