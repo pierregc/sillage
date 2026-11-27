@@ -66,6 +66,9 @@ public enum CUDAEngineCheck {
 
     /// What a frame whose reference Metal has not written yet says in place of its measure.
     public static let awaitingMetal = "no Metal reference yet: ./scripts/dev.sh fixtures on the Mac writes it"
+    /// The same for a frame of the Sombrero fixture.
+    public static let awaitingSombrero =
+        "no Metal reference yet: \(SombreroFixture.command) on the Mac writes it"
 
     /// Runs every comparison the engine can run here.
     public static func run(
@@ -105,6 +108,18 @@ public enum CUDAEngineCheck {
             }
         } catch {
             items.append(Item(name: "inside", passed: false, detail: "\(error)"))
+        }
+        // The Sombrero fixture beside it (#513); a frame Metal has not written yet says it waits.
+        let sombrero = fixtures.deletingLastPathComponent().appendingPathComponent("sombrero")
+        if let fixture = try? SombreroFixture.load(from: sombrero) {
+            for frame in fixture.frames {
+                attempt("sombrero \(frame.file)") {
+                    guard FileManager.default.fileExists(atPath: fixture.url(frame.file).path) else {
+                        return (true, awaitingSombrero)
+                    }
+                    return try Self.sombrero(frame, of: fixture, context: context, threads: threads)
+                }
+            }
         }
         return Record(
             engine: engine, device: context.name, build: buildDigest(), date: Date(), items: items)
@@ -180,11 +195,34 @@ public enum CUDAEngineCheck {
         let measure = try insideMeasure(
             seconds: image.seconds, context: context, fixtures: fixtures, threads: threads
         ).measure
+        return (withinInside(measure), "\(measure)")
+    }
+
+    static func withinInside(_ measure: CUDAStillChecks.Measure) -> Bool {
         let tolerance = insideTolerance
-        let passed =
-            measure.psnr >= tolerance.psnr && measure.largest <= tolerance.largest
+        return measure.psnr >= tolerance.psnr && measure.largest <= tolerance.largest
             && measure.overEight <= tolerance.overEight && abs(measure.meanA - measure.meanB) < tolerance.mean
-        return (passed, "\(measure)")
+    }
+
+    /// A frame of the Sombrero fixture against Metal's, held as the inside frames are.
+    static func sombrero(
+        _ frame: SombreroFixture.Frame, of fixture: SombreroFixture, context: CUDAContext, threads: Int
+    ) throws -> (Bool, String) {
+        let work = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "sombrero-check-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: work) }
+        let drawing = try CUDATakeStills(
+            context: context, take: RecordingFile.read(from: fixture.url(fixture.take)),
+            look: LookFile.decoded(from: Data(contentsOf: fixture.url(fixture.look))),
+            capturedRate: fixture.framesPerSecond, width: fixture.width, height: fixture.height,
+            flight: FlightFile.decoded(from: Data(contentsOf: fixture.flight(frame.flight, into: work))))
+        let drawn = [UInt8](
+            try drawing.flightStill(
+                atSeconds: frame.seconds, frame: fixture.index(frame),
+                interval: 1 / Double(fixture.framesPerSecond), format: .rgb, threads: threads))
+        let reference = [UInt8](try Data(contentsOf: fixture.url(frame.file)))
+        let measure = CUDAStillChecks.measure(drawn, channels: 3, reference, channels: 4)
+        return (withinInside(measure), "\(measure)")
     }
 
     /// The fixture's tree built by this engine: its order, cells, masses, moments, frame and

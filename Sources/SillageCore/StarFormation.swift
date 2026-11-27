@@ -181,13 +181,19 @@ public enum StarFormation {
     public static let armYoungShare: Float = 0.40
     public static let armYoungMyr: Float = 900
 
+    /// How far back a disk with none of its recent star formation kept has its youngest stars.
+    public static let quietYoungestMyr: Float = 1_000
+
     /// When a particle sampled at this radius and this close to an arm formed, in code units
-    /// before t = 0.
+    /// before t = 0. `recent` is the share kept of the recent star formation: under 1 the arms
+    /// make that much less and the youngest age moves towards `quietYoungestMyr`, the ages
+    /// above it closing up under the disk's oldest.
     public static func sampledFormation(
-        edge: Float, armProximity: Float, roll: Float
+        edge: Float, armProximity: Float, roll: Float, recent: Float = 1
     ) -> Float {
         let reach = min(max(edge, 0), 1)
-        let arm = min(max(armProximity, 0), 1)
+        let kept = min(max(recent, 0), 1)
+        let arm = min(max(armProximity, 0), 1) * kept
         let span = diskOldestMyr - (diskOldestMyr - diskEdgeOldestMyr) * reach
         var age: Float
         if roll < armYoungShare * arm {
@@ -204,6 +210,12 @@ public enum StarFormation {
             let cut = exp(-span / decay)
             let since = -decay * log(max(1 - min(max(inner, 0), 1) * (1 - cut), 1e-9))
             age = max(span - since, youngestSampledMyr)
+        }
+        if kept < 1 {
+            let floor = youngestSampledMyr + (quietYoungestMyr - youngestSampledMyr) * (1 - kept)
+            age =
+                floor
+                + (age - youngestSampledMyr) * max(span - floor, 0) / max(span - youngestSampledMyr, 1)
         }
         return -age / Float(Physics.megayearsPerTimeUnit)
     }

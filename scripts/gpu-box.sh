@@ -19,6 +19,7 @@
 #   status              the box's state, price, age and the time left before its deadline
 #   setup               installs Swift 6.2, ffmpeg and tools, checks nvidia-smi and nvcc
 #   ship                rsyncs the local checkout (without .build and .git) to /work/sillage
+#   put <paths>         rsyncs local files or folders (takes, looks, flights, tiles) to /work/in/
 #   run <command>       runs it in /work/sillage in tmux, output in /work/logs/<n>.log
 #   tail [n]            the end of the last (or n-th) run's log, and whether it has finished
 #   wait                waits for the last run to finish, then shows its tail
@@ -247,6 +248,14 @@ ship() {
     echo "shipped $(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo ' with local changes') to /work/sillage"
 }
 
+put() {
+    need_box
+    [ $# -gt 0 ] || die "put what?"
+    on_box 'mkdir -p /work/in'
+    rsync -az -e "ssh $(ssh_args)" "$@" "root@$(state_get host):/work/in/"
+    echo "put $# path(s) in /work/in"
+}
+
 run() {
     [ $# -gt 0 ] || die "run what?"
     local n
@@ -350,7 +359,7 @@ cleanup() {
     done
 }
 
-[ $# -gt 0 ] || { sed -n '2,34p' "$0"; exit 2; }
+[ $# -gt 0 ] || { sed -n '2,35p' "$0"; exit 2; }
 command="$1"; shift
 case "$command" in
     offers) offers "$@" ;;
@@ -358,6 +367,7 @@ case "$command" in
     status) status ;;
     setup) setup ;;
     ship) ship ;;
+    put) put "$@" ;;
     run) run "$@" ;;
     tail) tail_run "$@" ;;
     wait) wait_run "$@" ;;

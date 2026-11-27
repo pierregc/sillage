@@ -26,8 +26,13 @@ extension DustWeb {
         let lace: MTLTexture
         /// One over the lace's mean, so that the web moves no exposure.
         let scale: Float
+        /// How many times coarser than the frame the carrier is drawn: `carrierCoarse`, or 1 for a
+        /// dust screen (#506), whose tile holds detail down to the frame's pixel.
+        let coarse: Int
 
-        init(library: MTLLibrary, device: MTLDevice, width: Int, height: Int) throws {
+        init(library: MTLLibrary, device: MTLDevice, width: Int, height: Int, coarse: Int = carrierCoarse)
+            throws
+        {
             func pipeline(
                 _ vertex: String, _ fragment: String, _ formats: [MTLPixelFormat],
                 _ blends: [Int: MTLBlendOperation]
@@ -67,9 +72,10 @@ extension DustWeb {
             paintedGlow = try pipeline("dustWebVertex", "dustGlowFragment", frame, [0: .add])
             webGlow = try pipeline("webResolveVertex", "webGlowFragment", frame, [0: .add])
 
-            let coarse = (max(width / carrierCoarse, 1), max(height / carrierCoarse, 1))
-            carrier = try Self.target(.rgba16Float, coarse, device)
-            tags = try Self.target(.rgba8Unorm, coarse, device)
+            self.coarse = max(coarse, 1)
+            let size = (max(width / self.coarse, 1), max(height / self.coarse, 1))
+            carrier = try Self.target(.rgba16Float, size, device)
+            tags = try Self.target(.rgba8Unorm, size, device)
             let baked = try DustWeb.lace(library: library, device: device)
             lace = baked.texture
             scale = 1 / max(baked.mean, 1e-6)

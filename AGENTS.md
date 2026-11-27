@@ -261,3 +261,6 @@ two finished examples, with their scenes, looks and flights; `docs/notes/cartwhe
   `inside-a-galaxy.md`: the features above in depth.
 - `docs/notes/cuda-engine.md`, `cloud-runs.md`, `cuda-platform.md`: the CUDA engine and rented
   boxes.
+- `docs/notes/reproducing-a-galaxy.md`: making Sillage draw a galaxy someone has photographed, the
+  order that worked and the traps; `cartwheel.md`, `ngc2207.md` and `sombrero.md` are the three
+  done.

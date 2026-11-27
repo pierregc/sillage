@@ -82,6 +82,7 @@ public final class TakeFrames {
     {
         _ = try stage.stage(FlightFrames.Place(captured: frame.captured), eased: false)
         stage.inside = nil
+        stage.skyTurn = .zero
         let styling = stage.styling
         guard
             let shot = TakeFraming.prepare(styling, look: look, replay: replay, framing: framing, at: frame)

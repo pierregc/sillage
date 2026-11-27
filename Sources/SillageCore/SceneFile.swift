@@ -26,6 +26,8 @@ public struct SceneFile: Codable, Sendable, Equatable {
     public var draw: SceneDraw?
     /// Gas that dissipates (#401), when the scene asks for it.
     public var stickyGas: StickyGas?
+    /// A factor on star formation's efficiency (#478), when the scene sets one; 0 forms nothing.
+    public var starFormation: Float?
 
     public struct Galaxy: Codable, Sendable, Equatable {
         public var name: String
@@ -68,6 +70,16 @@ public struct SceneFile: Codable, Sendable, Equatable {
         /// The ring the dust is gathered in (`GalaxyConfig.DustRing`, #475); absent, the dust
         /// is drawn along the arms as it always was.
         public var dustRing: GalaxyConfig.DustRing?
+        /// The disk's motions from its own surface density (`GalaxyConfig.bulgeApart`, #482);
+        /// absent, from the whole stellar mass as it always was.
+        public var bulgeApart: Bool?
+        /// Where the bulge is cut, in its scale radii (`GalaxyConfig.bulgeReach`); absent, six.
+        public var bulgeReach: Float?
+        /// Share of the bulge's stars in a nucleus (`GalaxyConfig.nucleus`); absent, none.
+        public var nucleus: Float?
+        /// How much of the disk's recent star formation is kept (`GalaxyConfig.recentStars`);
+        /// absent, all of it.
+        public var recentStars: Float?
         public var haloParticleRatio: Float
         public var haloExtent: Float
         public var dissipationTime: Float
@@ -107,6 +119,10 @@ public struct SceneFile: Codable, Sendable, Equatable {
             effectiveToomreQ = galaxy.effectiveToomreQ
             dustMassFraction = galaxy.dustMassFraction
             dustRing = galaxy.dustRing
+            bulgeApart = galaxy.bulgeApart
+            bulgeReach = galaxy.bulgeReach
+            nucleus = galaxy.nucleus
+            recentStars = galaxy.recentStars
             haloParticleRatio = galaxy.haloParticleRatio
             haloExtent = galaxy.haloExtent
             dissipationTime = galaxy.dissipationTime
@@ -171,6 +187,10 @@ public struct SceneFile: Codable, Sendable, Equatable {
             galaxy.effectiveToomreQ = effectiveToomreQ
             galaxy.dustMassFraction = dustMassFraction
             galaxy.dustRing = dustRing
+            galaxy.bulgeApart = bulgeApart
+            galaxy.bulgeReach = bulgeReach
+            galaxy.nucleus = nucleus
+            galaxy.recentStars = recentStars
             return galaxy
         }
     }
@@ -207,6 +227,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
         encounters = scene.encounters.isEmpty ? nil : scene.encounters
         draw = scene.draw
         stickyGas = scene.stickyGas
+        starFormation = scene.starFormation
     }
 
     /// The scene at a given number of visible particles. Read back at the count it was written
@@ -232,6 +253,7 @@ public struct SceneFile: Codable, Sendable, Equatable {
         scene.encounters = encounters ?? []
         scene.draw = draw
         scene.stickyGas = stickyGas
+        scene.starFormation = starFormation
         scene.retune()
         if let timeStep { scene.timeStep = timeStep }
         if let softening { scene.softening = softening }

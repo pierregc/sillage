@@ -361,6 +361,33 @@ at the top of a look file lays that many galaxies behind the field stars, small,
 orange, at constant surface brightness, so a narrower field shows them larger and no brighter.
 Both engines draw them, CUDA since #456.
 
+`look.dustReddening` sets how much more the dust takes from blue and green than from red: 1, the
+default, is the reddening every look drew with before (extinction 1, 1.22 and 1.52 times red's
+in red, green and blue), 0 grey dust, above 1 browner lanes, the excess over red scaled. The
+Sombrero's lane, a brown veil over a bright disk, takes about 1.6 (#478).
+
+`sky` at the top of a look file draws a deep sky behind every slab of dust (#512): field stars,
+the brighter with four diffraction spikes fixed to the frame, and small galaxies, worked out per
+pixel from a seeded hash of the direction, so the sky stays put as the camera turns, flies and
+pulls out, with no parallax and no buffer. `{"brightness": 0.07}` lands the counts of Hubble's
+frame of the Sombrero (about 1,000 sources a megapixel of sky above 12 in 8 bits, 100 above 100)
+in a 4K still framed as Hubble; `fieldOfView` and `height` are that reference view, `density`,
+`galaxies`, `spikes`, `spikeAngle`, `starWidth` and `seed` shape it. A coarser pixel sees each
+object fainter by its solid angle, so a 1080p frame is the 4K one reduced; `depth` above 2 thins
+a view wider than the reference further, and from inside a disk the sky is gone. `turn` below 1
+shows only that share of the camera's turns, rolls included, from the view `anchor` (with
+`anchorUp`): a telephoto orbiting a galaxy then sees the sky drift rather than race past (the
+Sombrero film takes 0.025). `bloom` below 1, in a flight's frames, keeps that share of the sky's
+light out of the look's bloom, which otherwise lays its every level round a bright star as a wide
+cone; `halo` gives each star a soft halo of its own instead, that share of its light, `haloWidth`
+(3) times its core's width (the film takes 0, 0.1 and 3). `dither` lays
+triangular noise of that many 8-bit steps on the frame before it is written, so a faint halo is
+not cut into bands.
+
+`look.dustWidth` widens the dust grains' kernels against the tree's, as `youngWidth` does a
+young star's: a thin sheet of grains drawn wider reads as a veil rather than as the grains or the
+threads they lie on (#478). 1, the default, draws as before.
+
 A scene's palette can be chosen on its own: `look <scene> --palette auto` scores a fixed
 number of palettes drawn from the scene's seed and puts the best in `look.json`, promoted as
 above, so the same scene always gets the same palette. `--palette <family>` does the same inside
@@ -494,7 +521,10 @@ that its speed follows the distance to the nearest matter (#406): a dive that ke
 the look as ever, `--fps`, `--preset`, `--codec`, `--stills`, `--still-frames` and the previews
 work as without a flight, and `--speed` does not go with it. `--flight-keys <dir>` draws only the
 frame at each key, as PNGs, and encodes nothing: a flight seen in seconds; with `--flight-at
-<s,...>` it draws those seconds of the flight instead. `sillage-render flight
+<s,...>` it draws those seconds of the flight instead. `--flight-stills <dir> --flight-at <s,...>`
+draws those seconds as `sillage-cuda still --flight --seconds` does, the renders of a frame's
+shutter and the grain of its video frame, under the same names, so `scripts/still-pairs.py` sets
+the two engines' frames side by side (#513). `sillage-render flight
 <scene> --at <myr,...> [--look <look>]` prints, at those moments, each galaxy's centre and disk
 axes and the export's camera, which is what keys are written from; `--arms <kpc,...>` adds where
 each disk is densest at those radii, an arm to fly into. Format, interpolation and a worked example
@@ -517,7 +547,28 @@ the same bytes as before. The file's optional `inside` block sets each piece; th
 lines say what the flight took. What each does and costs in
 [inside a galaxy](notes/inside-a-galaxy.md). Its `neighbours` (0 by default) widens the kernels
 that show alone at mid distance, where a sparse stretch of a disk reads as blobs
-([lone kernels](notes/lone-kernels.md)).
+([lone kernels](notes/lone-kernels.md)). Its `dustSlabs` (0 by default) lays the dust's slabs on
+the dust grains in the frame rather than on all the matter, the four together that many times the
+grains' depth, for a ring of dust inside a wide bulge (#479,
+[flights](notes/flights.md)). Its `dustScreen` (absent by default; Metal and CUDA) draws one galaxy's
+dust from a polar tile laid in its plane rather than from where its grains stand:
+`{"tile": "ring.tile.json", "galaxy": 0, "rest": 12, "depth": 0.45, "law": {"diffuse": [0.55,
+1.47, 10], "rim": [0.7, 1.2, 0.25], "rimRadii": [6.09, 6.86]}}`. The tile (a JSON naming `width`
+azimuths from -pi to pi, `height` radii between `radii`, and `data`, raw little-endian floats) is
+the dust's column across the plane, read where each pixel's ray meets the mid-plane at every
+angle and turned by the disk's rotation from `rest` (megayears); `depth` scales it; the grains
+only share it among the slabs. `law` sees it through a colour law whose shares of the green
+depth tend to one in thick dust, the rim within `rimRadii` with its own (#506,
+[the Sombrero's dust screen](notes/sombrero-dust-screen.md)) Its `dabs` draws the column from round dabs carried by the rotation
+instead of the tile, through the tile's lut, with an optional `smooth` share and `rings` (#508);
+`volume` lets the dabs lay the column themselves, in the slabs where they lie along the ray, below
+the eye height `volumeHeight` (kpc), `fade` (pc) thins it round the eye and `grazing` hands the
+band near the plane to the dabs when the eye is in the layer; `grazingHeight` (kpc) hands it to them
+from that eye height down, and `softSlabs` lays their dust in the frame's own slabs, spread over a
+slab's depth as the grains' is, `slant` caps the slant column a line reads at so many times the
+vertical one and `holeFade` (kpc) fades the band read at its edges in from the ring's inner radius
+(#511). The inside settings' `slabsLog` dissolves the eye's slabs
+into the matter's by the logarithm of the nearness between `slabsWithin`'s two distances.
 
 ```bash
 ./scripts/dev.sh render flight library/2026-11-04/scene-0067 --at 400,520,560 --look photograph
@@ -980,6 +1031,36 @@ particle crosses well under one softening length per step.
 **Parameters.** Per scene: particle count, opening angle, halo particle ratio. Per galaxy:
 mass, scale radius, truncation, thickness, Toomre Q, inclination, position angle and spin.
 
+**A disk under a large bulge.** The disk's random motions and its drift behind the circular speed
+are worked out from a surface density that counts the whole stellar mass, the bulge's included:
+right to a tenth under a small bulge, four times too dense under one of three quarters, whose
+disk is then launched hot and a fifth slow and falls inward (the Sombrero's ring went from 6.7 to
+4.7 kpc in 166 Myr). A galaxy of `scene.json` that carries `"bulgeApart": true` has them worked
+out from the disk's own surface density, and the rotation curve it is launched on counts the
+bulge as the flattened body it is drawn as, which pulls a tenth harder in its plane than a sphere.
+A scene without the field samples what it always did (#482). A bulge is cut at six of its scale
+radii, its mass kept inside, an edge no ordinary exposure shows; one that is most of the galaxy's
+light and drawn bright shows it, and `"bulgeReach": 9` moves the cut out to nine and fades the
+bulge from four tenths of that reach to nothing at it, so it has no edge at any exposure; the
+rotation curve counts the faded body. `"nucleus": 0.006` gathers that share of the bulge's stars
+in a nucleus a fiftieth of its scale radius across, the point of light at the centre that a
+Hernquist cusp alone draws as a glow: old stars, compact and three times slower than the bulge's,
+drawn as stars of the bright compact minority so that a look's `bulgeWidth` does not spread them
+and its `glint` sets their light with the disk's. `"recentStars"`, 0 to 1, is how much of the
+disk's recent star formation is kept: a disk is drawn with a fifth of its stars under 900 Myr
+old where its pattern stands and ages down to 60 Myr everywhere, and those, many times brighter
+for their mass, stand out of an old galaxy's disk as points of light, reddened where they shine
+through its dust. At 0 no disk star is younger than a gigayear, the old disk of an early type;
+the positions and motions drawn are the same to the bit, only the ages change. The knots of
+`starFormingFraction` are not touched.
+
+**How much the gas forms.** A top-level `"starFormation"` in `scene.json` is a factor on the
+star formation's efficiency per free-fall time: 0 forms nothing, so every grain of dust stays
+dust for the whole run; absent, the run forms as it always has, to the bit. The Sombrero's cold,
+dense threads of dust formed a third of their grains into stars within 450 Myr, each drawn as
+a bright knot along its thread; the galaxy's ring forms almost nothing, so its scene takes 0
+(#478). Metal and CUDA alike.
+
 **A ring of dust.** A galaxy's dust is drawn along its arms, on an exponential half again as long
 as the stars'. A galaxy of `scene.json` that carries
 `"dustRing": {"radius": 9, "width": 1.2, "share": 1}` has it gathered at one radius instead, the
@@ -988,7 +1069,37 @@ its grains about it (one standard deviation), `share` the part of the dust that 
 ring, 1 when left out, the rest drawn as without one. The grains keep their strands, their thin
 layer and their grain, the stellar disk's truncation does not fade them, and the rotation curve
 the disk is launched on counts the ring's gas where it stands. A scene without the field samples
-what it always did (#475).
+what it always did (#475). With `"innerWidth"`, also in kpc, the ring is a disk of dust that
+thickens to its rim: `innerWidth` is the spread inside the radius and `width` the spread outside
+it, so `{"radius": 8, "width": 0.5, "innerWidth": 3}` is sparse over the inner half, densest at
+8 kpc and gone by 9.5. `"young"`, 0 to 1, is the share of the galaxy's star-forming regions that
+stand on the ring's strands, the blue knots along a lane. `"thickness"`, in kpc, is the scale
+height of the ring's layer, launched with the vertical motion that holds it, where the dust's
+usual layer is 0.45 of the disk's thickness: a lane seen nearly edge on shows its threads only if
+its layer is thinner than they stand apart. `"threads"`, a count, draws
+the ring's dust as that many threads in place of short strands. Two thirds run along the ring for
+35 to 140 degrees, 4 to 26 parsecs across at a scale length of 2.2 kpc, and wander and kink in radius as they go; a
+third are spurs, short, steep and trailing, that cross from one lane to the next; a few threads
+are heavy lanes and most are wisps. Each is lifted off the plane by a wave that runs along it,
+one to two kiloparsecs long and about as high as the layer, and its grains go round cold, on
+circles, with none of the stars' random motion in the plane and each at its own phase of the
+swing through it (`DiskEquilibrium.verticalFrequency`), so the weave holds for tens of megayears
+where threads lifted and let go together fell through the plane at once after twelve. The ring's
+young stars stand in one tight knot on each long thread of its rim.
+Forty to a hundred read as threads seen nearly edge on; many more close into a band. Left out,
+the ring is as wide either side, bears no young stars of its own, keeps the usual layer and its
+strands, and samples as before (#480).
+
+`"sheet"`, a share from 0 to 1, lays that much of the ring's dust as one continuous layer in place
+of threads or strands: grains drawn in the ring's own profile and kept or dropped by a cloud
+field, value noise at several scales with no period, read along trailing spirals that a slower
+noise bends, with puffs of no direction over it. The clouds stand as a lognormal about the mean,
+and from one inner width inside the radius to two and a half only the densest are left, so the
+sheet ends in wisps. Its grains are launched cold on circles, its layer is `thickness` at the rim
+and a third of it inside, rippled, each grain at its own phase of the swing. `"cotton"`, from 0 to
+1 and 0.6 when left out, is how uneven the sheet is: 0 is a smooth ring. Left out, no sheet, and
+the ring samples as before. A first version, to be tuned on the dust bench
+(`docs/notes/sombrero-dust-sheet.md`).
 
 ### Known limits
 

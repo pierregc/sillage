@@ -33,8 +33,20 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// The most light a star lays, against what the tone curve takes to white: past it a star
     /// keeps its size and gains a glint, not a disk of bloom (#357).
     public var starPeak: Float = 2
+    /// The share of the point stars' light the bloom spreads (#510): the look's bloom
+    /// throws a halo of four layers round a near star, wider than the star by ten or more. The
+    /// rest of the frame blooms as the look says. 1 for all of it, as before.
+    public var starBloom: Float = 1
     /// Kernel lengths the stars of a particle are scattered over.
     public var starSpread: Float = 1
+    /// The moment, in megayears, whose kernel lengths every frame of the flight is drawn with
+    /// (#510), the take's captured frame nearest it; absent, each frame's are eased between the
+    /// trees of the captured frames either side. A tree built again gives a particle another
+    /// length, and its point stars, scattered over it, drift one way across a captured frame and
+    /// turn at the next, often back: a zigzag when time runs (measured in #510). Held,
+    /// a star keeps its place round its particle and follows its orbit. For a flight over a
+    /// megayear or two; not for a take of key frames.
+    public var heldLengths: Float?
     /// The clusters a young particle's stars gather in (#405), as real young stars are born in
     /// clusters and associations that come apart over tens of megayears; 0 spreads every
     /// particle's stars evenly through its kernel.
@@ -71,6 +83,11 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// ones first and the same ones wherever the camera is, where the rest are widened: the one
     /// dial between a milky field, 0, and a sharp one, 1.
     public var lonePoints: Float = 0
+    /// The mean temperature, in kelvin, a point star's colour is drawn around: an old star's and
+    /// a young one's (#478). A galaxy whose young stars near the eye should read soft white
+    /// rather than blue takes a cooler young mean.
+    public var starOldK: Float = 4800
+    public var starYoungK: Float = 9000
     /// The near field, in kiloparsecs from the eye: stars and the capped kernels' law apply
     /// wholly nearer than the first, not at all past the second.
     public var field: [Float] = [3, 8]
@@ -82,10 +99,21 @@ public struct InsideSettings: Codable, Sendable, Equatable {
     /// (nearer than the first) to the matter's, or the aim point's every export has (past the
     /// second): drawn with both and dissolved, not slid (#396).
     public var slabsWithin: [Float] = [1.5, 6]
+    /// Whether that goes by the logarithm of the nearness (#511): a camera closing in at a steady
+    /// pace in log distance goes over steadily, not in the last second of its approach.
+    public var slabsLog: Bool = false
+    /// Past the near field, lays the slabs on the dust grains in the frame rather than on all the
+    /// matter (#479), the four together this many times the grains' depth; 0, the default, keeps
+    /// them on all the matter. A ring of dust in a wide bulge needs it: on the matter, a slab is as
+    /// deep as the bulge and the ring's far side shades the core.
+    public var dustSlabs: Float = 0
     /// How near a disk, in its radii (seven scale lengths), the lace of its dust web is carried
     /// through the depth of its dust layer: wholly within the first, not at all past the second,
     /// where it lies in the mid-plane as every export draws it (#354).
     public var web: [Float] = [1, 2]
+    /// A dust screen for one galaxy (#506, `DustScreen.swift`): its dust drawn as its grains'
+    /// smooth layer times a tile laid in its plane, read at every angle; absent, none.
+    public var dustScreen: DustScreenRef?
     /// The near dust's structure finer than a grain (#356): filaments and clumps from a noise in
     /// three dimensions read through each grain of the near field, the log of its density spread
     /// this many times its noise's (log-normal, as interstellar gas is); 0 for none.
@@ -124,7 +152,9 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         starColours = try c.value(.starColours, or: starColours)
         starSize = try c.value(.starSize, or: starSize)
         starPeak = try c.value(.starPeak, or: starPeak)
+        starBloom = try c.value(.starBloom, or: starBloom)
         starSpread = try c.value(.starSpread, or: starSpread)
+        heldLengths = try c.decodeIfPresent(Float.self, forKey: .heldLengths)
         clusters = try c.value(.clusters, or: clusters)
         clusterBirth = try c.value(.clusterBirth, or: clusterBirth)
         clusterGrowth = try c.value(.clusterGrowth, or: clusterGrowth)
@@ -138,11 +168,16 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         loneFull = try c.value(.loneFull, or: loneFull)
         loneWidest = try c.value(.loneWidest, or: loneWidest)
         lonePoints = try c.value(.lonePoints, or: lonePoints)
+        starOldK = try c.value(.starOldK, or: starOldK)
+        starYoungK = try c.value(.starYoungK, or: starYoungK)
         field = try c.value(.field, or: field)
         fade = try c.value(.fade, or: fade)
         slabs = try c.value(.slabs, or: slabs)
         slabsWithin = try c.value(.slabsWithin, or: slabsWithin)
+        slabsLog = try c.value(.slabsLog, or: slabsLog)
+        dustSlabs = try c.value(.dustSlabs, or: dustSlabs)
         web = try c.value(.web, or: web)
+        dustScreen = try c.decodeIfPresent(DustScreenRef.self, forKey: .dustScreen)
         dustFine = try c.value(.dustFine, or: dustFine)
         dustCell = try c.value(.dustCell, or: dustCell)
         dustInside = try c.value(.dustInside, or: dustInside)
@@ -169,7 +204,11 @@ public struct InsideSettings: Codable, Sendable, Equatable {
         if !(starColours >= 0 && starColours <= 2) { return "starColours \(starColours): 0 to 2" }
         if !(starSize >= 0.5 && starSize <= 16) { return "starSize \(starSize) px: 0.5 to 16" }
         if !(starPeak > 0 && starPeak <= 1000) { return "starPeak \(starPeak): above 0, to 1000" }
+        if !(starBloom >= 0 && starBloom <= 1) { return "starBloom \(starBloom): 0 to 1" }
         if !(starSpread > 0 && starSpread <= 8) { return "starSpread \(starSpread): above 0, to 8" }
+        if let held = heldLengths, !(held >= 0 && held.isFinite) {
+            return "heldLengths \(held) Myr: a moment of the take"
+        }
         if !(0...8).contains(clusters) { return "clusters \(clusters): 0 to 8" }
         if !(clusterBirth > 0 && clusterBirth <= 100) {
             return "clusterBirth \(clusterBirth) pc: above 0, to 100"
@@ -191,13 +230,20 @@ public struct InsideSettings: Codable, Sendable, Equatable {
             return "loneWidest \(loneWidest) px: loneFull to 512"
         }
         if !(lonePoints >= 0 && lonePoints <= 1) { return "lonePoints \(lonePoints): 0 to 1" }
+        if !(starOldK >= 1000 && starOldK <= 40000 && starYoungK >= 1000 && starYoungK <= 40000) {
+            return "starOldK \(starOldK) and starYoungK \(starYoungK): 1000 to 40000 K"
+        }
         if !rising(field, 2) { return "field \(field): two distances in kpc, the first nearer" }
         if !(fade >= 0 && fade <= 32) { return "fade \(fade): 0 to 32 kernel lengths" }
         if !rising(slabs, 3) { return "slabs \(slabs): three distances in kpc, each past the one before" }
         if !rising(slabsWithin, 2) {
             return "slabsWithin \(slabsWithin): two distances in kpc, the first nearer"
         }
+        if !(dustSlabs == 0 || (dustSlabs >= 1 && dustSlabs <= 8)) {
+            return "dustSlabs \(dustSlabs): 0, or 1 to 8 times the dust's depth"
+        }
         if !rising(web, 2) { return "web \(web): two distances in disk radii, the first nearer" }
+        if let fault = dustScreen?.fault { return fault }
         if !(dustFine >= 0 && dustFine <= 2.5) { return "dustFine \(dustFine): 0 to 2.5" }
         if !(dustCell >= 0.005 && dustCell <= 1) { return "dustCell \(dustCell) kpc: 0.005 to 1" }
         if !(dustInside > 0 && dustInside <= 4) { return "dustInside \(dustInside): above 0, to 4" }
@@ -306,6 +352,11 @@ public struct InsideUniforms: Sendable {
     public var loneWidest: Float = 0
     /// The share of the stars that show alone kept as points.
     public var lonePoints: Float = 0
+    /// The mean temperatures of an old and a young point star, in kelvin.
+    public var starOldK: Float = 4800
+    public var starYoungK: Float = 9000
+    /// The galaxy a dust screen draws, plus one; 0 for none (#506).
+    public var screenGalaxy: Float = 0
 
     /// How many carriers the web's dust of this frame goes into: one for each galaxy once its
     /// grains are spread over two slabs, which is where two disks one behind the other come
@@ -317,7 +368,11 @@ public struct InsideUniforms: Sendable {
     /// matter, 1 nearer than its near one.
     public static func depth(_ frame: InsideFrame) -> Float {
         let (near, far) = (frame.settings.slabsWithin[0], frame.settings.slabsWithin[1])
-        let t = min(max((frame.nearness - near) / (far - near), 0), 1)
+        let along =
+            frame.settings.slabsLog
+            ? log(max(frame.nearness, 1e-6) / near) / log(far / near)
+            : (frame.nearness - near) / (far - near)
+        let t = min(max(along, 0), 1)
         return 1 - t * t * (3 - 2 * t)
     }
 
@@ -402,6 +457,9 @@ public struct InsideUniforms: Sendable {
         // No point is wider than 511 pixels, and a grain's is 1.3 times its kernel.
         loneWidest = min(inside.loneWidest * lines / 2160, 511 / 1.3)
         lonePoints = inside.lonePoints
+        starOldK = inside.starOldK
+        starYoungK = inside.starYoungK
+        screenGalaxy = inside.dustScreen.map { Float($0.galaxy + 1) } ?? 0
         projectionY = 1 / tan(camera.fieldOfView / 2)
         projectionX = projectionY * Float(settings.height) / Float(max(settings.width, 1))
     }
@@ -557,10 +615,32 @@ public enum MatterDepth {
     /// 128 bins an octave, read through linearly: a particle crossing a bin's edge or the frame's
     /// moves a knot by a share of a bin over the bin's count, so the knots move as smoothly as
     /// the camera does.
+    ///
+    /// With `dust`, the components of the points and the stack's depth against the dust's (#479),
+    /// the knots are read on the dust grains alone and the four slabs together are that many
+    /// times the grains' depth; with no grain in the frame, on all the matter as without.
     public static func knots(
-        camera: Camera, aspectRatio: Float, points: UnsafeRawPointer, count: Int
+        camera: Camera, aspectRatio: Float, points: UnsafeRawPointer, count: Int,
+        dust: (components: [UInt32], cover: Float)? = nil
     ) -> [Float]? {
         guard count > 0 else { return nil }
+        if let dust, dust.cover > 0,
+            let knots = depths(
+                camera: camera, aspectRatio: aspectRatio, points: points, count: count,
+                only: dust.components, cover: dust.cover)
+        {
+            return knots
+        }
+        return depths(
+            camera: camera, aspectRatio: aspectRatio, points: points, count: count, only: nil, cover: 0)
+    }
+
+    private static func depths(
+        camera: Camera, aspectRatio: Float, points: UnsafeRawPointer, count: Int,
+        only components: [UInt32]?, cover: Float
+    ) -> [Float]? {
+        let wanted = ParticleComponent.dust.rawValue
+        let marked = min(components?.count ?? count, count)
         let matrix = camera.viewProjection(aspectRatio: aspectRatio)
         let stride = MemoryLayout<SIMD3<Float>>.stride
         let near = max(camera.near, 1e-6)
@@ -573,6 +653,7 @@ public enum MatterDepth {
             concurrentPerform(iterations: chunks) { chunk in
                 let base = chunk * bins
                 for index in (chunk * count / chunks)..<((chunk + 1) * count / chunks) {
+                    if let components, index >= marked || components[index] != wanted { continue }
                     let p = points.load(fromByteOffset: index * stride, as: SIMD3<Float>.self)
                     let clip = matrix * SIMD4(p, 1)
                     guard clip.w > near, clip.w.isFinite, abs(clip.x) <= clip.w, abs(clip.y) <= clip.w
@@ -601,7 +682,7 @@ public enum MatterDepth {
         }
         let (front, back) = (depth(at: shares.near), depth(at: shares.far))
         let middle = (front + back) / 2
-        let slab = max(back - front, middle * thinnest) * slabShare
+        let slab = max(back - front, middle * thinnest) * (components == nil ? slabShare : cover / 4)
         let start = middle - 2 * slab
         return (0...4).map { start + Float($0) * slab }
     }
@@ -623,20 +704,27 @@ public enum InsideBlur {
         from opening: Camera, to closing: Camera, frame: InsideFrame, height: Int
     ) -> Int {
         let most = frame.settings.subframes
-        let (near, far) = (frame.settings.field[0], frame.settings.field[1])
-        guard most > 1, frame.nearness < far else { return 0 }
-        let t = min(max((frame.nearness - near) / (far - near), 0), 1)
-        let within = 1 - t * t * (3 - 2 * t)
+        guard most > 1, frame.nearness < frame.settings.field[1] else { return 0 }
+        let within = Self.within(frame)
         let scale = Float(height) / (2 * tan(opening.fieldOfView / 2))
         let moved = simd_length(closing.eye - opening.eye) / max(frame.nearness, 1e-4)
         let (a, b) = (opening.target - opening.eye, closing.target - closing.eye)
         let (la, lb) = (simd_length(a), simd_length(b))
         var turned: Float = 0
-        if la > 0, lb > 0 { turned = acos(min(max(simd_dot(a, b) / (la * lb), -1), 1)) }
+        // Not acos: in Float it rounds a sub-pixel turn to 0 or 0.55 px, and a slowing turn flickers.
+        if la > 0, lb > 0 { turned = atan2(simd_length(simd_cross(a, b)), simd_dot(a, b)) }
         let pixels = scale * (moved + turned) * within
         guard pixels.isFinite else { return most }
         guard pixels >= still else { return 0 }
         return min(max(Int((pixels / step).rounded(.up)), 1), most)
+    }
+
+    /// How far the frame is in the near field: 1 nearer than `field`'s first distance, 0 past
+    /// its second.
+    public static func within(_ frame: InsideFrame) -> Float {
+        let (near, far) = (frame.settings.field[0], frame.settings.field[1])
+        let t = min(max((frame.nearness - near) / (far - near), 0), 1)
+        return 1 - t * t * (3 - 2 * t)
     }
 }
 

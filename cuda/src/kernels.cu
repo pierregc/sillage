@@ -22,12 +22,15 @@ SILLAGE_STRUCT(GPUTreeShaders, BHNode, 32);
 SILLAGE_STRUCT(GPUTreeShaders, TreeParams, 36);
 
 // The renderer's particle passes (#276).
-SILLAGE_STRUCT(Shaders, SplatUniforms, 416);
-SILLAGE_STRUCT(Shaders, InsideUniforms, 224);
+SILLAGE_STRUCT(Shaders, SplatUniforms, 432);
+SILLAGE_STRUCT(Shaders, InsideUniforms, 240);
 SILLAGE_STRUCT(Shaders, WebUniforms, 112);
 SILLAGE_STRUCT(Shaders, DiskFrame, 128);
 SILLAGE_STRUCT(Shaders, GalaxyRamp, 112);
 SILLAGE_STRUCT(Shaders, BackgroundStar, 32);
+SILLAGE_STRUCT(Shaders, SkyParams, 112);
+SILLAGE_STRUCT(Shaders, ScreenUniforms, 208);
+SILLAGE_STRUCT(Shaders, ScreenLaw, 144);
 SILLAGE_STRUCT(Shaders, BackgroundGalaxy, 48);
 
 // The post-processing's parameters (#277).

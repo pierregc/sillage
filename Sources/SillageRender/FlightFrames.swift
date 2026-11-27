@@ -15,6 +15,9 @@ public protocol FrameStage: AnyObject {
     var drawnCount: Int { get }
     /// What the next renders take of the inside of a galaxy; nil draws as every export does.
     var inside: InsideFrame? { get set }
+    /// The angle the view turns, and its roll about it, while a frame's shutter is open, by which
+    /// the deep sky fades (#512, `SkyParams.turn`); zero for a still.
+    var skyTurn: SIMD2<Float> { get set }
     /// The point stars the last render drew.
     var starsDrawn: Int { get }
     /// Puts the take's positions at `place` and their kernel lengths on the engine, and gives the
@@ -303,13 +306,20 @@ public final class FlightFrames {
             nearness: Nearness.distance(from: shot.camera.eye, to: points, count: stage.drawnCount),
             matter: MatterDepth.knots(
                 camera: shot.camera, aspectRatio: Float(settings.width) / Float(max(settings.height, 1)),
-                points: points, count: stage.drawnCount) ?? [],
+                points: points, count: stage.drawnCount,
+                dust: flight.inside.dustSlabs > 0 ? (take.particles.component, flight.inside.dustSlabs) : nil)
+                ?? [],
             look: flight.look(atSeconds: seconds))
         stage.inside = within
+        stage.skyTurn = .zero
         var views = [shot.camera]
         if interval > 0 {
             views = flight.cameras(
                 atSeconds: seconds, interval: interval, frame: within, height: settings.height)
+            let half = interval * flight.inside.shutter / 2
+            stage.skyTurn = SkyParams.turn(
+                from: flight.camera(atSeconds: max(seconds - half, 0)).camera,
+                to: flight.camera(atSeconds: min(seconds + half, flight.seconds)).camera)
         }
         let stops = trims?.stops(atSeconds: seconds) ?? 0
         shot.look = InsideExposure.trimmed(shot.look, stops: stops)

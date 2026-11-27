@@ -1,4 +1,5 @@
 import SillageCore
+
 #if canImport(simd)
     import simd
 #else
@@ -73,6 +74,9 @@ public struct RenderLook: Sendable, Equatable {
     /// in `dustGlowColour`, on top of what it absorbs. Zero, the default, draws no glow.
     public var dustGlow: Float
     public var dustGlowColour: SIMD3<Float>
+    /// How much more the dust takes from blue and green than from red, against the reddening
+    /// every look draws with (#478): 1, the default, is that, 0 grey dust, above 1 browner lanes.
+    public var dustReddening: Float
     /// How much wider than the tree gives them each population's kernels are drawn: the old
     /// disk, the bulge, the stars under 300 Myr and the knots gas formed under 50 Myr (#339).
     /// One, the default, draws them as every look did before.
@@ -80,6 +84,9 @@ public struct RenderLook: Sendable, Equatable {
     public var bulgeWidth: Float
     public var youngWidth: Float
     public var knotWidth: Float
+    /// How much wider the dust grains' kernels are drawn than the tree gives them (#478): the
+    /// grains of a thin sheet merge into a veil. One, the default, draws as before.
+    public var dustWidth: Float
 
     /// The glint every shipped and generated style draws with: the sparkle gone, the knots
     /// kept (#184, docs/notes/gigantism.md).
@@ -119,10 +126,12 @@ public struct RenderLook: Sendable, Equatable {
         dustWeb: Float = 0,
         dustGlow: Float = 0,
         dustGlowColour: SIMD3<Float> = SIMD3(1, 0.26, 0.24),
+        dustReddening: Float = 1,
         oldWidth: Float = 1,
         bulgeWidth: Float = 1,
         youngWidth: Float = 1,
-        knotWidth: Float = 1
+        knotWidth: Float = 1,
+        dustWidth: Float = 1
     ) {
         self.brightness = brightness
         self.dustStrength = dustStrength
@@ -153,10 +162,12 @@ public struct RenderLook: Sendable, Equatable {
         self.dustWeb = dustWeb
         self.dustGlow = dustGlow
         self.dustGlowColour = dustGlowColour
+        self.dustReddening = dustReddening
         self.oldWidth = oldWidth
         self.bulgeWidth = bulgeWidth
         self.youngWidth = youngWidth
         self.knotWidth = knotWidth
+        self.dustWidth = dustWidth
     }
 
     public static func mix(_ a: RenderLook, _ b: RenderLook, _ t: Float) -> RenderLook {
@@ -199,10 +210,12 @@ public struct RenderLook: Sendable, Equatable {
         out.dustGlowColour = SIMD3(
             f(a.dustGlowColour.x, b.dustGlowColour.x), f(a.dustGlowColour.y, b.dustGlowColour.y),
             f(a.dustGlowColour.z, b.dustGlowColour.z))
+        out.dustReddening = f(a.dustReddening, b.dustReddening)
         out.oldWidth = f(a.oldWidth, b.oldWidth)
         out.bulgeWidth = f(a.bulgeWidth, b.bulgeWidth)
         out.youngWidth = f(a.youngWidth, b.youngWidth)
         out.knotWidth = f(a.knotWidth, b.knotWidth)
+        out.dustWidth = f(a.dustWidth, b.dustWidth)
         return out
     }
 
@@ -314,9 +327,11 @@ extension RenderLook: Codable {
             dustWeb: try c.value(.dustWeb, or: d.dustWeb),
             dustGlow: try c.value(.dustGlow, or: d.dustGlow),
             dustGlowColour: try c.value(.dustGlowColour, or: d.dustGlowColour),
+            dustReddening: try c.value(.dustReddening, or: d.dustReddening),
             oldWidth: try c.value(.oldWidth, or: d.oldWidth),
             bulgeWidth: try c.value(.bulgeWidth, or: d.bulgeWidth),
             youngWidth: try c.value(.youngWidth, or: d.youngWidth),
-            knotWidth: try c.value(.knotWidth, or: d.knotWidth))
+            knotWidth: try c.value(.knotWidth, or: d.knotWidth),
+            dustWidth: try c.value(.dustWidth, or: d.dustWidth))
     }
 }

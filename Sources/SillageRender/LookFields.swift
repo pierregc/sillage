@@ -26,6 +26,11 @@ public enum LookFields {
         ),
         ("overlay", "words over every video drawn with this look (title, clock, scale, captions)"),
         ("exposure", "brightness and stretch measured on the frames drawn; absent, the look's own"),
+        (
+            "sky",
+            "a deep sky behind the dust, fixed in direction: {brightness, density, fieldOfView, height, depth, spikes, spikeAngle, galaxies, starWidth, seed, turn, anchor, anchorUp, bloom, halo, haloWidth}"
+        ),
+        ("dither", "triangular noise of this many 8-bit steps on the frame, against banding"),
     ]
 
     public static let look: [(String, String)] = [
@@ -38,6 +43,10 @@ public enum LookFields {
         ("dustWeb", "share of the dust drawn as filaments in each disk's plane, 0 to 1"),
         ("dustGlow", "how brightly the dust glows, as in a mid-infrared picture; 0 none"),
         ("dustGlowColour", "the glow's colour, linear sRGB"),
+        (
+            "dustReddening",
+            "how much more the dust takes from blue and green than from red; 0 grey, 1 as drawn before, above browner"
+        ),
         ("smoothingScale", "kernel width over the spacing between particles: higher is softer"),
         ("minimumKernel", "smallest kernel, in pixels"),
         ("maximumKernel", "largest kernel, in pixels"),
@@ -46,6 +55,7 @@ public enum LookFields {
         ("bulgeWidth", "widens the bulge's kernels"),
         ("youngWidth", "widens the kernels of stars under 300 Myr"),
         ("knotWidth", "widens the kernels of knots under 50 Myr"),
+        ("dustWidth", "widens the dust grains' kernels, so a thin sheet of grains reads as a veil"),
         ("glint", "light kept by the compact bright minority: 1 as sampled, 0 ordinary stars"),
         ("starSize", "size of the field and point stars"),
         ("bloomIntensity", "bloom strength"),

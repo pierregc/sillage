@@ -103,6 +103,8 @@ public final class TakeExport {
     public private(set) var exposure: ClipExposure?
     /// The kernel lengths a flight's frames are drawn with (#297).
     private let eased: EasedSmoothing?
+    /// The captured frame whose lengths `eased` holds for every frame, when the flight asks.
+    private let lengthsHeld: Double?
     /// What the frames of the flight last drawn took of the inside of a galaxy.
     public private(set) var inside: InsideReport?
     /// The frame of a video drawn before this one, for the speeds the report gives.
@@ -148,6 +150,14 @@ public final class TakeExport {
                 megayears: TimeTrack.megayears(of: framing.recording), interval: framing.recording.interval)
         }
         self.held = held
+        // The captured frame whose kernel lengths every frame of the flight draws with (#510).
+        if held == nil, let myr = flight?.inside?.heldLengths {
+            lengthsHeld = try TimeTrack.position(
+                of: Double(myr), in: TimeTrack.megayears(of: take.recording)
+            ).rounded()
+        } else {
+            lengthsHeld = nil
+        }
         let frames = (held != nil ? framing ?? take : take).recording.capturedFrames
         self.flight = flight
         if flight != nil, track != nil { throw Failure.flightAndTrack }
@@ -542,9 +552,9 @@ public final class TakeExport {
     /// The frame `CUDATakeStills.flightStill` draws (#369): a moment of the flight at its own
     /// exposure, averaged from the renders of a frame `interval` seconds long, with the grain of
     /// the video's frame `index`. As RGBA.
-    func flightStill(atSeconds seconds: Double, frame index: Int, interval: Double, width: Int, height: Int)
-        throws -> [UInt8]
-    {
+    public func flightStill(
+        atSeconds seconds: Double, frame index: Int, interval: Double, width: Int, height: Int
+    ) throws -> [UInt8] {
         guard let flight = try makeFlight(width: width, height: height) else {
             throw RenderError.unsupported("a flight still without a flight")
         }
@@ -716,7 +726,7 @@ public final class TakeExport {
                 let place = try held?.place(atCaptured: frame.captured)
                 let kept = eased.update(
                     at: place?.stored ?? frame.captured, last: recording.capturedFrames - 1,
-                    positions: positions
+                    positions: positions, holding: lengthsHeld
                 ) { [expander, stream] position, buffer in
                     let blend =
                         place.map { recording.blend(atStored: position, within: $0.run) }
@@ -740,6 +750,7 @@ public final class TakeExport {
         var views = [shot.camera]
         var stops = 0.0
         renderer.inside = nil
+        renderer.skyTurn = .zero
         if case .flight(let flight, _, let rate) = cameras {
             let seconds = frame.played / Double(rate)
             let drawn = take.particles.visibleCount > 0 ? take.particles.visibleCount : take.particles.count
@@ -750,12 +761,18 @@ public final class TakeExport {
                 nearness: Nearness.distance(from: shot.camera.eye, to: points, count: drawn),
                 matter: MatterDepth.knots(
                     camera: shot.camera, aspectRatio: Float(settings.width) / Float(max(settings.height, 1)),
-                    points: points, count: drawn) ?? [],
+                    points: points, count: drawn,
+                    dust: flight.inside.dustSlabs > 0
+                        ? (take.particles.component, flight.inside.dustSlabs) : nil) ?? [],
                 look: flight.look(atSeconds: seconds))
             renderer.inside = within
             if interval > 0 {
                 views = flight.cameras(
                     atSeconds: seconds, interval: interval, frame: within, height: renderer.settings.height)
+                let half = interval * flight.inside.shutter / 2
+                renderer.skyTurn = SkyParams.turn(
+                    from: flight.camera(atSeconds: max(seconds - half, 0)).camera,
+                    to: flight.camera(atSeconds: min(seconds + half, flight.seconds)).camera)
             }
             stops = trims?.stops(atSeconds: seconds) ?? 0
             shot.look = InsideExposure.trimmed(shot.look, stops: stops)

@@ -21,7 +21,7 @@ struct InsideRenderTests {
         init(
             _ positions: [SIMD3<Float>], maximumKernel: Float = 24, supersample: Int = 1,
             component: ParticleComponent = .star, glow: Float = 0,
-            dust: Float = 1e-3, smoothing: Float = 1, first: Float = 1
+            dust: Float = 1e-3, smoothing: Float = 1, first: Float = 1, bloom: Float = 0
         ) throws {
             var system = ParticleSystem()
             for (index, position) in positions.enumerated() {
@@ -36,7 +36,7 @@ struct InsideRenderTests {
                 brightness: 2e-7 * Float(positions.count),
                 dustStrength: component == .dust ? dust : 0, starCount: 0, smoothingScale: smoothing,
                 minimumKernel: 1,
-                maximumKernel: maximumKernel, bloomIntensity: 0, stretch: 0, saturation: 1,
+                maximumKernel: maximumKernel, bloomIntensity: bloom, stretch: 0, saturation: 1,
                 spikeArms: 0, skyLevel: 0, noiseLevel: 0)
             settings.dustGlow = glow
             renderer = try Renderer(particles: system, settings: settings)
@@ -86,7 +86,7 @@ struct InsideRenderTests {
 
     @Test func theUniformsLieWhereTheShaderReadsThem() {
         #expect(MemoryLayout<SplatUniforms>.stride == 192)
-        #expect(MemoryLayout<InsideUniforms>.stride == 224 && MemoryLayout<InsideUniforms>.alignment == 16)
+        #expect(MemoryLayout<InsideUniforms>.stride == 240 && MemoryLayout<InsideUniforms>.alignment == 16)
         #expect(MemoryLayout<InsideSplatUniforms>.offset(of: \.inside) == 192)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabKnots) == 64)
         #expect(MemoryLayout<InsideUniforms>.offset(of: \.slabEnd) == 80)
@@ -423,6 +423,67 @@ struct InsideRenderTests {
         var faulty = InsideSettings()
         faulty.lonePoints = 1.5
         #expect(faulty.fault?.contains("lonePoints") == true)
+    }
+
+    /// The point stars bloom by `starBloom` (#510): at 0 a near star throws no halo, the frame
+    /// the one drawn with no bloom at all, in between a share of it, and at 1 the frame is the
+    /// one drawn without it. A far patch, drawn as kernels and not as point stars, keeps its
+    /// whole bloom at every share, so the bloom's source is never left empty.
+    @Test func aNearStarBloomsByItsShare() throws {
+        var generator = SeededGenerator(seed: 5)
+        let near = (0..<60).map { _ in
+            SIMD3<Float>((generator.uniform() - 0.5) * 2, 0, (generator.uniform() - 0.5) * 1)
+        }
+        let far = (0..<200).map { _ in
+            SIMD3<Float>((generator.uniform() - 0.5) * 0.3, 8, (generator.uniform() - 0.5) * 0.3)
+        }
+        let view = camera(1.5)
+        func picture(
+            _ positions: [SIMD3<Float>], bloom: Float = 0.5,
+            _ change: @escaping (inout InsideSettings) -> Void
+        ) throws -> [UInt8] {
+            let stage = try Stage(positions, maximumKernel: 4, supersample: 2, bloom: bloom)
+            stage.renderer.inside = Self.inside(1.5) { settings in
+                settings.starPeak = 1000
+                change(&settings)
+            }
+            let pixels = stage.renderer.render(camera: view)
+            #expect(stage.renderer.insideFailure == nil)
+            return pixels
+        }
+        func lit(_ pixels: [UInt8]) -> Int {
+            stride(from: 0, to: pixels.count, by: 4).filter { pixels[$0 + 1] > 8 }.count
+        }
+        func sum(_ pixels: [UInt8]) -> Int { pixels.reduce(0) { $0 + Int($1) } }
+        let plain = try picture(near) { _ in }
+        let whole = try picture(near) { $0.starBloom = 1 }
+        let none = try picture(near) { $0.starBloom = 0 }
+        #expect(whole == plain)
+        #expect(try none == picture(near, bloom: 0) { _ in })
+        #expect(lit(none) < lit(plain), "\(lit(none)) against \(lit(plain))")
+        // The far patch alone: its bloom is there and the same at 0 as at 1.
+        let patch = try picture(far) { $0.starBloom = 0 }
+        #expect(try patch == picture(far) { $0.starBloom = 1 })
+        #expect(try patch != picture(far, bloom: 0) { _ in })
+        // Both together, half the stars' share: every value between the frames at 0 and at 1.
+        let all = near + far
+        let low = try picture(all) { $0.starBloom = 0 }
+        let half = try picture(all) { $0.starBloom = 0.5 }
+        let high = try picture(all) { $0.starBloom = 1 }
+        #expect(sum(low) < sum(half) && sum(half) < sum(high), "\(sum(low)), \(sum(half)), \(sum(high))")
+        let outside = zip(half.indices, half).filter { index, value in
+            let floor = Int(min(low[index], high[index])) - 1
+            let ceiling = Int(max(low[index], high[index])) + 1
+            return Int(value) < floor || Int(value) > ceiling
+        }.count
+        #expect(outside == 0, "\(outside) values outside the frames at 0 and at 1")
+        #expect(try low != picture(all, bloom: 0) { _ in })
+        var faulty = InsideSettings()
+        faulty.starBloom = 1.5
+        #expect(faulty.fault?.contains("starBloom") == true)
+        faulty = InsideSettings()
+        faulty.heldLengths = -1
+        #expect(faulty.fault?.contains("heldLengths") == true)
     }
 
     /// A near grain carries its structure with it (#394): the grains and the eye moved together

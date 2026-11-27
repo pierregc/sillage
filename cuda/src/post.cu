@@ -78,10 +78,10 @@ __global__ void diffractionSpikes(texels2d src, float *dst, uint width, uint hei
 }
 
 __global__ void composite(texels2d hdr, texels2d bloom, texels2d spikes, float *output, uint width,
-                          uint height, CompositeParams p) {
+                          uint height, CompositeParams p, float dither) {
     uint2 gid = pixelOfThread();
     if (gid.x >= width || gid.y >= height) { return; }
-    put(output, width, gid, compositePixel(hdr, bloom, spikes, gid, uint2(width, height), p));
+    put(output, width, gid, ditherPixel(compositePixel(hdr, bloom, spikes, gid, uint2(width, height), p), gid, p, dither));
 }
 
 // What Metal's rgba8Unorm write does to a value: clamped to 0 and 1, a number that is not one
@@ -269,7 +269,7 @@ sc_status sc_post_spikes(const sc_post_image *src, const sc_post_image *dst, con
 }
 
 sc_status sc_post_composite(const sc_post_image *hdr, const sc_post_image *bloom, const sc_post_image *spikes,
-                            const sc_post_image *dst, const void *params, size_t bytes) {
+                            const sc_post_image *dst, const void *params, size_t bytes, float dither) {
     if (sc_status status = valid(hdr, "sc_post_composite", "frame")) { return status; }
     if (sc_status status = valid(bloom, "sc_post_composite", "bloom")) { return status; }
     if (sc_status status = valid(spikes, "sc_post_composite", "spikes")) { return status; }
@@ -283,7 +283,7 @@ sc_status sc_post_composite(const sc_post_image *hdr, const sc_post_image *bloom
     }
     if (sc_status status = use(dst->texels->context)) { return status; }
     LAUNCH(composite, dst->width, dst->height, texture(hdr), texture(bloom), texture(spikes),
-           pointer<float>(dst->texels), dst->width, dst->height, parameters<sh::CompositeParams>(params));
+           pointer<float>(dst->texels), dst->width, dst->height, parameters<sh::CompositeParams>(params), dither);
     return SC_OK;
 }
 

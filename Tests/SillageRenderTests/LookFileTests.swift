@@ -3,6 +3,7 @@ import SillageCore
 import Testing
 
 @testable import SillageRender
+
 #if canImport(simd)
     import simd
 #endif
@@ -95,6 +96,8 @@ struct LookFileTests {
         file.overlay = Overlay(clock: Overlay.Clock())
         file.exposure = LookExposure()
         file.galaxyCount = 10
+        file.sky = SkyField()
+        file.dither = 1
         #expect(try keys(JSONEncoder().encode(file.look)) == fields(file.look))
         #expect(try keys(file.encoded()) == fields(file))
     }
@@ -148,6 +151,8 @@ struct LookFileTests {
         file.look.bulgeWidth = 0.8
         file.look.youngWidth = 3
         file.look.knotWidth = 0.5
+        file.look.dustReddening = 1.6
+        file.look.dustWidth = 2.5
         let s = file.renderSettings(width: 320, height: 200)
         let look = file.look
         #expect(s.width == 320 && s.height == 200)
@@ -167,8 +172,32 @@ struct LookFileTests {
                 galaxyTint: s.galaxyTint, starSize: s.starSize,
                 armPersistence: look.armPersistence, fieldOfView: look.fieldOfView,
                 holeShadow: s.holeShadow, columnSmoothing: s.columnSmoothing, glint: s.glint,
-                dustWeb: s.dustWeb, oldWidth: s.oldWidth, bulgeWidth: s.bulgeWidth,
-                youngWidth: s.youngWidth, knotWidth: s.knotWidth) == look)
+                dustWeb: s.dustWeb, dustReddening: s.dustReddening, oldWidth: s.oldWidth,
+                bulgeWidth: s.bulgeWidth, youngWidth: s.youngWidth, knotWidth: s.knotWidth,
+                dustWidth: s.dustWidth) == look)
+    }
+
+    /// The dust's reddening is the shader's own at 1, so a look that leaves it draws as before,
+    /// and scales the excess over red otherwise (#478).
+    @Test func theDustsReddeningScalesItsExcessOverRed() throws {
+        #expect(RenderSettings.reddening(1) == SIMD4(1, 1.22, 1.52, 0))
+        #expect(RenderSettings.reddening(0) == SIMD4(1, 1, 1, 1))
+        let browner = RenderSettings.reddening(2)
+        #expect(abs(browner.y - 1.44) < 1e-6 && abs(browner.z - 2.04) < 1e-6)
+        #expect(RenderLook().dustReddening == 1)
+        let text = #"{"version": 1, "look": {"dustReddening": 1.5}}"#
+        #expect(try LookFile.decoded(from: Data(text.utf8)).look.dustReddening == 1.5)
+    }
+
+    @Test func theDeepSkyAndTheDitherAreOffUnlessAFileAsks() throws {
+        #expect(LookFile().sky == nil && LookFile().renderSettings(width: 8, height: 8).dither == 0)
+        let text = #"{"version": 1, "sky": {"brightness": 0.5, "spikes": 0}, "dither": 1}"#
+        let file = try LookFile.decoded(from: Data(text.utf8))
+        #expect(file.sky == SkyField(brightness: 0.5, spikes: 0))
+        #expect(file.renderSettings(width: 8, height: 8).dither == 1)
+        #expect(!(try String(decoding: LookFile().encoded(), as: UTF8.self)).contains(#""sky""#))
+        let stray = #"{"version": 1, "sky": {"brightnes": 0.5}}"#
+        #expect(throws: (any Error).self) { try LookFile.decoded(from: Data(stray.utf8)) }
     }
 
     @Test func onlyTheFieldsThatOwnBuffersRebuildTheRenderer() {

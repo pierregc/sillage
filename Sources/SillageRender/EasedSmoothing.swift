@@ -33,13 +33,15 @@ final class EasedSmoothing {
 
     /// The lengths at the captured `position` of a take whose last frame is `last`.
     /// `positions` holds the particles there already; `expand` writes those of another moment
-    /// into a buffer, false when it cannot.
+    /// into a buffer, false when it cannot. `holding`, a captured frame, gives that frame's
+    /// lengths at every position instead (#510).
     func update(
-        at position: Double, last: Int, positions: MTLBuffer,
+        at position: Double, last: Int, positions: MTLBuffer, holding: Double? = nil,
         expand: (Double, MTLBuffer) -> Bool
     ) -> Bool {
-        let lower = min(max(Int(position.rounded(.down)), 0), last)
-        let share = Float(min(max(position - Double(lower), 0), 1))
+        let asked = holding ?? position
+        let lower = min(max(Int(asked.rounded(.down)), 0), last)
+        let share = Float(min(max(asked - Double(lower), 0), 1))
         let wanted = share > 0 && lower < last ? [lower, lower + 1] : [lower]
         for frame in wanted where !fields.contains(where: { $0.frame == frame }) {
             guard let slot = fields.firstIndex(where: { held in !wanted.contains { $0 == held.frame } })

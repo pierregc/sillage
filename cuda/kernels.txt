@@ -73,6 +73,8 @@ Shaders insideOffsets cuda
 Shaders insideFill cuda
 Shaders pointStarVertex cuda
 Shaders pointStarFragment cuda in pointStarVertex
+Shaders skyVertex metal-only: the triangle that covers the frame, where CUDA launches skyFragment a pixel
+Shaders skyFragment cuda
 Shaders dustFragment cuda in splatVertex splatTracerVertex dustWebVertex dustWebTracerVertex
 Shaders dustGlowFragment cuda in splatVertex dustWebVertex
 Shaders bakeLace cuda

@@ -1,4 +1,5 @@
 import SillageCore
+
 #if canImport(simd)
     import simd
 #endif
@@ -61,15 +62,23 @@ public struct RenderSettings: Sendable {
     public var dustWeb: Float = 0
     /// Background galaxies behind the field stars.
     public var galaxyCount: Int = 0
+    /// The deep sky drawn per pixel behind the dust (#512); nil, none.
+    public var sky: SkyField?
+    /// Triangular noise of this many 8-bit steps before the frame is written (#512); 0 none.
+    public var dither: Float = 0
     /// How brightly the dust glows, and in what colour.
     public var dustGlow: Float = 0
     public var dustGlowColour = SIMD3<Float>(1, 0.26, 0.24)
+    /// How much more the dust takes from blue and green than from red.
+    public var dustReddening: Float = 1
     /// Each population's kernel against the tree's: the old disk, the bulge, the young stars
     /// and the knots.
     public var oldWidth: Float = 1
     public var bulgeWidth: Float = 1
     public var youngWidth: Float = 1
     public var knotWidth: Float = 1
+    /// The dust grains' kernels against the tree's.
+    public var dustWidth: Float = 1
     /// Draws the raw look: plain points and one pass, instead of the splat, dust and post
     /// stages. Fixed for the renderer's life, since it decides which pipelines get built.
     public var plain: Bool
@@ -163,10 +172,23 @@ public struct RenderSettings: Sendable {
         dustWeb = look.dustWeb
         dustGlow = look.dustGlow
         dustGlowColour = look.dustGlowColour
+        dustReddening = look.dustReddening
         oldWidth = look.oldWidth
         bulgeWidth = look.bulgeWidth
         youngWidth = look.youngWidth
         knotWidth = look.knotWidth
+        dustWidth = look.dustWidth
         starSize = look.starSize
+    }
+}
+
+extension RenderSettings {
+    /// The dust's extinction per channel against its red (#478), and in `w` whether the shader
+    /// takes it: at 1 it keeps its own constant, so a look that leaves it draws to the bit as
+    /// before; otherwise the excess over red is scaled.
+    public static func reddening(_ scale: Float) -> SIMD4<Float> {
+        if scale == 1 { return SIMD4(1, 1.22, 1.52, 0) }
+        let s = max(scale, 0)
+        return SIMD4(1, 1 + 0.22 * s, 1 + 0.52 * s, 1)
     }
 }

@@ -116,7 +116,8 @@ public enum RenderCommands {
         options: options(
             flags: "no-overlay single drawings-only",
             text: "preset codec format look palette world take out overlay framing speed slow summary "
-                + "flight flight-at flight-keys stills still-frames dump-targets dump-targets-frames csv "
+                + "flight flight-at flight-keys flight-stills stills still-frames dump-targets "
+                + "dump-targets-frames csv "
                 + "drawings drawings-myr",
             number: "bitrate quality duration fps start width height from to seconds max-size",
             about: OptionHelp.export))

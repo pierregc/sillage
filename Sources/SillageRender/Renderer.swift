@@ -42,6 +42,7 @@ public final class Renderer {
     private let splatPipeline: MTLRenderPipelineState
     private let starfieldPipeline: MTLRenderPipelineState
     private let galaxyFieldPipeline: MTLRenderPipelineState
+    private var skyPipeline: MTLRenderPipelineState?
     private let plainPipeline: MTLRenderPipelineState
     private let plainCompositePipeline: MTLComputePipelineState
     private let resolvePipeline: MTLComputePipelineState
@@ -60,11 +61,16 @@ public final class Renderer {
     /// their own, built the first time one is drawn.
     private var widened: (library: MTLLibrary, massive: MTLRenderPipelineState)?
     private var widenedTracers: MTLRenderPipelineState?
+    /// The dust pass of a look that widens the dust's kernels (#478).
+    private var widenedDust: MTLRenderPipelineState?
     private var widenedUnavailable = false
     /// What a flight's frame is drawn with from inside a galaxy (#297), and through which a
     /// frame set to it is drawn wherever the camera is; nil, the default, draws as every frame
     /// did.
     public var inside: InsideFrame?
+    /// How far the view turns while the shutter is open, in radians, and how far it rolls: the
+    /// deep sky fades by the streak it would leave (#512). Set by a flight's export.
+    public var skyTurn = SIMD2<Float>(0, 0)
     private var insidePass: InsidePass?
     /// Why a frame asked for from inside was drawn without it, when it was.
     public private(set) var insideFailure: String?
@@ -79,6 +85,9 @@ public final class Renderer {
     /// The same with the grains of dust counted apart and a pyramid over it, for a frame from
     /// inside that widens its lone kernels; made by the first that does.
     private var kindDensity: MTLTexture?
+    /// What the bloom of a frame drawn from inside reads when its point stars bloom less than
+    /// the rest (#510): `resolved` with only that share of the stars in it.
+    private var bloomSource: MTLTexture?
     static let columnCell = FramePlan.columnCell
     private let resolved: MTLTexture
     private let bloomDown: [MTLTexture]
@@ -220,7 +229,7 @@ public final class Renderer {
         ) throws -> MTLRenderPipelineState {
             try Renderer.additive(
                 vertexFunction, fragmentFunction, writing: target, attachments: attachments,
-                format: format, library: library, device: device)
+                format: format, library: library, device: device, dustRed: settings.dustReddening != 1)
         }
         dustPipeline = try additive("splatVertex", "dustFragment", writing: 1)
         dustGlowPipeline = try additive("splatVertex", "dustGlowFragment", writing: 0)
@@ -386,8 +395,31 @@ public final class Renderer {
 
     /// One over the mean light per unit mass of particles formed at `formation`, read on about
     /// fifty thousand of them.
+    /// The dust's extinction per channel against its red (#478): `RenderSettings.reddening`.
+    public static func reddening(_ scale: Float) -> SIMD4<Float> { RenderSettings.reddening(scale) }
+
     public static func luminosityNormalisation(formation: [Float]) -> Float {
         ParticleAttributes.luminosityNormalisation(formation: formation)
+    }
+
+    /// The deep sky behind the dust of the first render of a frame (#512), before the stars
+    /// bind what they read.
+    private func drawSky(_ encoder: MTLRenderCommandEncoder, camera: Camera, red: SIMD4<Float>) {
+        guard let sky = settings.sky, sky.brightness > 0 else { return }
+        if skyPipeline == nil {
+            skyPipeline = try? Renderer.additive(
+                "skyVertex", "skyFragment", writing: 0, attachments: 2, format: .rgba16Float,
+                library: library, device: device)
+        }
+        guard let skyPipeline else { return }
+        var params = SkyParams(
+            sky, camera: camera, width: settings.width, height: settings.height,
+            supersample: settings.supersample, turn: skyTurn)
+        var red = red
+        encoder.setRenderPipelineState(skyPipeline)
+        encoder.setFragmentBytes(&params, length: MemoryLayout<SkyParams>.stride, index: 20)
+        encoder.setFragmentBytes(&red, length: MemoryLayout<SIMD4<Float>>.stride, index: 21)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
     /// The field stars `BackgroundStar.field` draws, in a buffer.
@@ -426,7 +458,7 @@ public final class Renderer {
         ) throws -> MTLRenderPipelineState {
             try Renderer.additive(
                 vertexFunction, fragmentFunction, writing: target, attachments: attachments,
-                format: format, library: library, device: device)
+                format: format, library: library, device: device, dustRed: settings.dustReddening != 1)
         }
         tracerPipelines = TracerPipelines(
             dust: try additive("splatTracerVertex", "dustFragment", writing: 1),
@@ -440,11 +472,22 @@ public final class Renderer {
 
     static func additive(
         _ vertexFunction: String, _ fragmentFunction: String, writing target: Int,
-        attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice
+        attachments: Int, format: MTLPixelFormat, library: MTLLibrary, device: MTLDevice,
+        dustRed: Bool = false, screenLaw: Bool = false
     ) throws -> MTLRenderPipelineState {
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: vertexFunction)
-        descriptor.fragmentFunction = library.makeFunction(name: fragmentFunction)
+        // The light fragments take a look's dust reddening only when it sets one (#478).
+        let constants = MTLFunctionConstantValues()
+        var red = dustRed
+        constants.setConstantValue(&red, type: .bool, index: 20)
+        // And a dust screen's colour law only in the inside library of a flight that has one (#506).
+        if screenLaw {
+            var law = true
+            constants.setConstantValue(&law, type: .bool, index: 21)
+        }
+        descriptor.fragmentFunction = try library.makeFunction(
+            name: fragmentFunction, constantValues: constants)
         for (index, format) in [format, format].prefix(attachments).enumerated() {
             guard let attachment = descriptor.colorAttachments[index] else { continue }
             attachment.pixelFormat = format
@@ -542,25 +585,81 @@ public final class Renderer {
         }
         defer { inside = frame }
         let renders = max(cameras.count - 1, 1)
+        let starBloom = frame.settings.starBloom
+        // The share of the sky's light the bloom sees (#509): below 1 the sky is drawn last
+        // and its light kept out of the bloom's source but for that share.
+        let skyBloom = settings.sky.map { $0.brightness > 0 ? min(max($0.bloom, 0), 1) : 1 } ?? 1
+        let source = starBloom < 1 || skyBloom < 1 ? bloomTarget() : nil
         for index in 0..<renders {
             for (layer, stack) in frame.stacks.enumerated() {
                 inside?.eyeSlabs = stack.eyeSlabs
+                let weight = stack.weight / Float(renders)
+                let after = index > 0 || layer > 0
+                // The light before the point stars goes to the bloom whole, theirs in part, and
+                // the sky's, drawn last, in its own part: the source is (1 - s) before the stars,
+                // (s - k) before the sky and k all of it, s the stars' share and k the sky's.
+                var split = false
+                var skySplit = false
+                let stars = starBloom < 1 ? starBloom : 1
                 encodeSplat(
                     camera: cameras[index], into: buffer,
-                    next: index + 1 < cameras.count ? cameras[index + 1] : nil)
-                guard let compute = buffer.makeComputeCommandEncoder() else { continue }
-                var factor = UInt32(settings.supersample)
-                var share = SIMD2<Float>(stack.weight / Float(renders), index > 0 || layer > 0 ? 1 : 0)
-                dispatch(compute, pass.resolve, into: resolved) { encoder in
-                    encoder.setTexture(accumulation, index: 0)
-                    encoder.setTexture(resolved, index: 2)
-                    encoder.setBytes(&factor, length: 4, index: 0)
-                    encoder.setBytes(&share, length: 8, index: 1)
+                    next: index + 1 < cameras.count ? cameras[index + 1] : nil,
+                    beforeStars: starBloom < 1
+                        ? source.map { source in
+                            {
+                                split = true
+                                self.encodeInsideResolve(
+                                    into: buffer, pass, source, weight: weight * (1 - starBloom),
+                                    after: after)
+                            }
+                        } : nil,
+                    beforeSky: skyBloom < 1
+                        ? source.map { source in
+                            {
+                                self.encodeInsideResolve(
+                                    into: buffer, pass, source,
+                                    weight: weight * ((split ? stars : 1) - skyBloom), after: after || split)
+                                skySplit = true
+                            }
+                        } : nil)
+                encodeInsideResolve(into: buffer, pass, resolved, weight: weight, after: after)
+                if let source {
+                    let last = skySplit ? skyBloom : (split ? starBloom : 1)
+                    encodeInsideResolve(
+                        into: buffer, pass, source, weight: weight * last, after: after || split || skySplit)
                 }
-                compute.endEncoding()
             }
         }
-        encodePost(into: buffer, present: present, resolved: true)
+        encodePost(into: buffer, present: present, resolved: true, bloomFrom: source)
+    }
+
+    /// `accumulation` averaged down into `target`, `weight` of it, added to what is there
+    /// `after` the first render of a frame.
+    private func encodeInsideResolve(
+        into buffer: MTLCommandBuffer, _ pass: InsidePass, _ target: MTLTexture, weight: Float, after: Bool
+    ) {
+        guard let compute = buffer.makeComputeCommandEncoder() else { return }
+        var factor = UInt32(settings.supersample)
+        var share = SIMD2<Float>(weight, after ? 1 : 0)
+        dispatch(compute, pass.resolve, into: target) { encoder in
+            encoder.setTexture(accumulation, index: 0)
+            encoder.setTexture(target, index: 2)
+            encoder.setBytes(&factor, length: 4, index: 0)
+            encoder.setBytes(&share, length: 8, index: 1)
+        }
+        compute.endEncoding()
+    }
+
+    private func bloomTarget() -> MTLTexture? {
+        if bloomSource == nil {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: resolved.pixelFormat, width: resolved.width, height: resolved.height,
+                mipmapped: false)
+            descriptor.usage = [.shaderRead, .shaderWrite]
+            descriptor.storageMode = .private
+            bloomSource = device.makeTexture(descriptor: descriptor)
+        }
+        return bloomSource
     }
 
     /// Builds what a frame drawn from inside needs now, so that the first frame that is does not
@@ -585,7 +684,9 @@ public final class Renderer {
     private func insideResources() -> InsidePass? {
         if insidePass == nil, insideFailure == nil {
             do {
-                insidePass = try InsidePass(device: device, particles: drawnCount)
+                insidePass = try InsidePass(
+                    device: device, particles: drawnCount, dustRed: settings.dustReddening != 1,
+                    screenLaw: inside?.settings.dustScreen?.law != nil)
             } catch {
                 insideFailure = "\(error)"
             }
@@ -599,7 +700,8 @@ public final class Renderer {
     /// star field.
     private func encodeSplat(
         camera: Camera, into buffer: MTLCommandBuffer, particles: Range<Int>? = nil,
-        stages: ClosedRange<UInt32> = 0...1, first: Bool = true, next: Camera? = nil
+        stages: ClosedRange<UInt32> = 0...1, first: Bool = true, next: Camera? = nil,
+        beforeStars: (() -> Void)? = nil, beforeSky: (() -> Void)? = nil
     ) {
         // From inside a galaxy (#297): the passes its text changes come from its own library.
         // Not for a frame drawn in parts, which the canvas alone asks for.
@@ -612,7 +714,10 @@ public final class Renderer {
         let web =
             FramePlan.drawsWeb(settings, stages: stages)
             ? (deep == nil
-                ? webResources() : deep?.webPass(device: device, width: wide.0, height: wide.1))
+                ? webResources()
+                : deep?.webPass(
+                    device: device, width: wide.0, height: wide.1,
+                    coarse: within?.settings.dustScreen == nil ? DustWeb.carrierCoarse : 1))
             : nil
         let plan = FramePlan(
             settings: settings, camera: camera, time: time, drawnCount: drawnCount,
@@ -634,6 +739,36 @@ public final class Renderer {
         if let within, deep != nil {
             webbed?.carrier.z = within.settings.web[0]
             webbed?.carrier.w = within.settings.web[1]
+        }
+        if let web { webbed?.carrier.x = Float(web.coarse) }
+        // A dust screen's tile (#506), read by the inside library's resolve.
+        var screen = ScreenUniforms()
+        var screenTile: MTLTexture?
+        var screenLut: MTLTexture?
+        if let ref = within?.settings.dustScreen, web != nil, deep != nil {
+            do {
+                let loaded = try deep!.screenTile(ref, device: device)
+                screenTile = loaded.texture
+                screenLut = loaded.lut
+                screen.front = ScreenUniforms.front(ref)
+                if let lut = loaded.tile.lut {
+                    screen.renew = SIMD4(
+                        ref.renew / Float(Physics.megayearsPerTimeUnit), 1, lut.range[0], lut.range[1])
+                } else {
+                    screen.renew = SIMD4(ref.renew / Float(Physics.megayearsPerTimeUnit), 0, 0, 1)
+                }
+                screen.shape = SIMD4(
+                    Float(ref.galaxy + 1), loaded.tile.radii[0], loaded.tile.radii[1],
+                    ref.rest / Float(Physics.megayearsPerTimeUnit))
+                screen.depth = SIMD4(ref.depth, 0, 0, 0)
+                if ref.dabs != nil, loaded.tile.lut == nil {
+                    FileHandle.standardError.write(Data("dust screen: dabs need a tile with a lut\n".utf8))
+                } else {
+                    screen.dabs(ref.dabs)
+                }
+            } catch {
+                FileHandle.standardError.write(Data("dust screen: \(error)\n".utf8))
+            }
         }
         // Where its grains are spread over two slabs, each galaxy's dust in a carrier of its
         // own, so that two disks one behind the other are each multiplied by their own web.
@@ -829,6 +964,8 @@ public final class Renderer {
                 if let deep {
                     bindDeep(encoder, uniforms)
                     drawParts(encoder, massive: deep.dust, tracers: deepTracers?.dust)
+                } else if uniforms.dustWidth != 1, traced == nil, let dust = widenedDustPipeline() {
+                    drawParts(encoder, massive: dust, tracers: nil)
                 } else {
                     drawParts(encoder, massive: dustPipeline, tracers: traced?.pipelines.dust)
                 }
@@ -867,6 +1004,23 @@ public final class Renderer {
                 encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 0)
                 encoder.setFragmentBytes(&webUniforms, length: webLength, index: 1)
                 encoder.setFragmentTexture(web.lace, index: 0)
+                if deep != nil {
+                    encoder.setFragmentBytes(&screen, length: MemoryLayout<ScreenUniforms>.stride, index: 2)
+                    encoder.setFragmentTexture(screenTile ?? web.lace, index: 3)
+                    encoder.setFragmentTexture(screenLut ?? screenTile ?? web.lace, index: 4)
+                    if let within {
+                        // The frame's own slabs, the ones its grains and stars are drawn in (#511),
+                        // which the dabs read whenever they lay their own dust, soft or not (#513).
+                        var both = InsideSplatUniforms(
+                            splat: uniforms,
+                            inside: InsideUniforms(
+                                within, camera: camera, next: next, settings: settings, splat: uniforms))
+                        encoder.setFragmentBytes(
+                            &both, length: MemoryLayout<InsideSplatUniforms>.stride, index: 3)
+                    } else {
+                        encoder.setFragmentBytes(&uniforms, length: uniformsLength, index: 3)
+                    }
+                }
                 for target in apart ?? [(web.carrier, web.tags)] {
                     encoder.setFragmentTexture(target.carrier, index: 1)
                     encoder.setFragmentTexture(target.tags, index: 2)
@@ -884,17 +1038,55 @@ public final class Renderer {
                 }
 
             case .stars:
-                guard let encoder = frameEncoder() else { continue }
-                bindParticles(encoder)
-                encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
-                if let deep {
+                guard var encoder = frameEncoder() else { continue }
+                var red = Self.reddening(settings.dustReddening)
+                // A sky the bloom sees only in part is drawn last, once the light before it is
+                // resolved for the bloom (#509).
+                let skyLast = plan.clears && beforeSky != nil && deep != nil
+                if plan.clears && !skyLast { drawSky(encoder, camera: camera, red: red) }
+                var law = ScreenLaw(within?.settings.dustScreen, web: webbed)
+                func bindStars(_ encoder: MTLRenderCommandEncoder) {
+                    bindParticles(encoder)
+                    encoder.setFragmentBytes(&red, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+                    encoder.setVertexBytes(&uniforms, length: uniformsLength, index: 4)
+                    guard deep != nil else { return }
+                    // A dust screen's colour law (#506): its parameters and the disk frames.
+                    encoder.setFragmentBytes(&law, length: MemoryLayout<ScreenLaw>.stride, index: 1)
+                    encoder.setFragmentBuffer(frameBuffer, offset: 0, index: 2)
                     bindDeep(encoder, uniforms)
+                }
+                bindStars(encoder)
+                if let deep {
                     drawParts(encoder, massive: deep.splat, tracers: deepTracers?.splat)
+                    // The light so far resolved for the bloom before the point stars join it.
+                    if let beforeStars {
+                        encoder.endEncoding()
+                        frame = nil
+                        beforeStars()
+                        guard
+                            let reopened = buffer.makeRenderCommandEncoder(
+                                descriptor: descriptor([accumulation, dustAccumulation], load: .load))
+                        else { continue }
+                        frame = reopened
+                        encoder = reopened
+                        bindStars(encoder)
+                    }
                     if starred {
                         encoder.setRenderPipelineState(deep.stars)
                         encoder.setVertexBuffer(deep.list, offset: 0, index: 23)
                         encoder.drawPrimitives(
                             type: .point, indirectBuffer: deep.draw, indirectBufferOffset: 0)
+                    }
+                    if skyLast, let beforeSky {
+                        encoder.endEncoding()
+                        frame = nil
+                        beforeSky()
+                        guard
+                            let reopened = buffer.makeRenderCommandEncoder(
+                                descriptor: descriptor([accumulation, dustAccumulation], load: .load))
+                        else { continue }
+                        frame = reopened
+                        drawSky(reopened, camera: camera, red: red)
                     }
                 } else if uniforms.widens, let wide = widenedPipelines(tracing: traced != nil) {
                     drawParts(encoder, massive: wide.massive, tracers: wide.tracers)
@@ -942,19 +1134,34 @@ public final class Renderer {
                     library,
                     try Self.additive(
                         "splatVertex", "splatFragment", writing: 0, attachments: 2,
-                        format: .rgba16Float, library: library, device: device)
+                        format: .rgba16Float, library: library, device: device,
+                        dustRed: settings.dustReddening != 1)
                 )
             }
             if tracing, widenedTracers == nil, let library = widened?.library {
                 widenedTracers = try Self.additive(
                     "splatTracerVertex", "splatFragment", writing: 0, attachments: 2,
-                    format: .rgba16Float, library: library, device: device)
+                    format: .rgba16Float, library: library, device: device,
+                    dustRed: settings.dustReddening != 1)
             }
         } catch {
             widenedUnavailable = true
             return nil
         }
         return widened.map { ($0.massive, tracing ? widenedTracers : nil) }
+    }
+
+    /// The dust pass compiled with the population widths, nil when it could not be built, and the
+    /// dust is then drawn at the tree's width.
+    private func widenedDustPipeline() -> MTLRenderPipelineState? {
+        guard !widenedUnavailable else { return nil }
+        if widenedDust == nil {
+            guard let library = try? ShaderCache.library(Self.widenedSource, on: device) else { return nil }
+            widenedDust = try? Self.additive(
+                "splatVertex", "dustFragment", writing: 1, attachments: 2, format: .rgba16Float,
+                library: library, device: device)
+        }
+        return widenedDust
     }
 
     /// Nil when the web could not be built, and the dust is then drawn as it always was.
@@ -977,7 +1184,8 @@ public final class Renderer {
     /// `resolved` says the light is averaged down already, as a frame drawn from inside
     /// leaves it (#297).
     private func encodePost(
-        into buffer: MTLCommandBuffer, present: MTLTexture?, resolved done: Bool = false
+        into buffer: MTLCommandBuffer, present: MTLTexture?, resolved done: Bool = false,
+        bloomFrom: MTLTexture? = nil
     ) {
         guard let compute = buffer.makeComputeCommandEncoder() else { return }
         let plan = PostPlan(settings: settings, fade: fade, grain: &grain)
@@ -1020,7 +1228,7 @@ public final class Renderer {
             case .bright(var bloom):
                 let first = bloomDown[0]
                 dispatch(compute, brightPassPipeline, into: first) { encoder in
-                    encoder.setTexture(resolved, index: 0)
+                    encoder.setTexture(bloomFrom ?? resolved, index: 0)
                     encoder.setTexture(first, index: 1)
                     encoder.setBytes(&bloom, length: MemoryLayout<BloomParams>.stride, index: 0)
                 }
@@ -1067,6 +1275,8 @@ public final class Renderer {
                     encoder.setTexture(rays, index: 3)
                     encoder.setBytes(
                         &composite, length: MemoryLayout<CompositeParams>.stride, index: 0)
+                    var dither = settings.dither
+                    encoder.setBytes(&dither, length: MemoryLayout<Float>.stride, index: 1)
                 }
             }
         }

@@ -141,6 +141,23 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     /// `dustFraction` of the particles for the light. Absent, as in every file written before
     /// #218, a dust particle weighs what a star does and the gas carries `dustFraction`.
     public var dustMassFraction: Float?
+    /// Whether the disk's random motions and drift are worked out from the disk's own surface
+    /// density, the bulge's share left out (#482). Absent, as in every file written before, from
+    /// the whole stellar mass: right to a tenth under a small bulge, four times too dense under
+    /// one of three quarters, whose disk was then launched hot and a fifth slow.
+    public var bulgeApart: Bool?
+    /// How far the bulge reaches, in its scale radii, its mass kept inside. Absent, six: the
+    /// usual two to three half-light radii, an edge no ordinary exposure shows. A bulge that is
+    /// most of the galaxy's light, drawn bright, shows that edge; twelve fades it out.
+    public var bulgeReach: Float?
+    /// Share of the bulge's stars gathered in a nucleus at its very centre, a Plummer sphere a
+    /// fiftieth of the bulge's scale radius across: the point of light at the heart of a galaxy
+    /// like the Sombrero, which a Hernquist cusp alone draws as a glow. Absent, none.
+    public var nucleus: Float?
+    /// How much of the disk's recent star formation is kept, 0 to 1: at 0 no disk star is
+    /// younger than a gigayear, an early type's old disk, where the young ones, many times
+    /// brighter for their mass, stand out of it as points. Absent, 1: the disk as always drawn.
+    public var recentStars: Float?
     /// The ring this galaxy's dust is gathered in, when it has one (#475).
     public var dustRing: DustRing?
 
@@ -155,21 +172,133 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         public var width: Float
         /// Share of the galaxy's dust that stands in the ring; the rest is drawn as without one.
         public var share: Float
+        /// Spread of the grains inside that radius, where `width` is then the spread outside it:
+        /// a disk of dust that thickens to its rim. Absent, the ring is as wide either side.
+        public var innerWidth: Float?
+        /// Share of the galaxy's star-forming regions that stand on the ring's strands, the young
+        /// stars the gas there makes. Absent, none: they are drawn as without a ring.
+        public var young: Float?
+        /// Scale height of the ring's layer, in kpc, launched with the vertical motion that holds
+        /// it: a lane seen nearly edge on is threads only if its layer is thinner than they stand
+        /// apart. Absent, the dust's usual layer, 0.45 of the disk's thickness.
+        public var thickness: Float?
+        /// How many long threads the ring's dust is drawn as: each runs along the ring for a
+        /// good part of a turn, thin, and weaves across the others in radius and in height.
+        /// Absent, short strands as elsewhere in a disk.
+        public var threads: Int?
+        /// Share of the ring's grains laid as one sheet in place of threads or strands: a
+        /// layer that follows the ring's own profile, thinner inside than at the rim, in clouds
+        /// drawn out along trailing spirals with more gaps inward. Absent, none.
+        public var sheet: Float?
+        /// How uneven the sheet is, from 0, smooth, to 1; absent, 0.6.
+        public var cotton: Float?
+        /// The sheet's grains laid as clouds strung along concentric rings (#506) in place of
+        /// the ring's own profile and `cotton`'s field. Absent, none.
+        public var clouds: Clouds?
 
-        public init(radius: Float, width: Float, share: Float = 1) {
+        /// Clouds along the ring: compact clumps elongated along the rotation, in a thin layer,
+        /// their centres and the rest of the grains drawn from a sum of Gaussian rings.
+        public struct Clouds: Codable, Sendable, Equatable {
+            /// The rings the clouds and the smooth share stand in: radius, spread (one standard
+            /// deviation) in kpc and peak height, as many as wanted.
+            public var rings: [[Float]]
+            /// Share of the grains in clouds; the rest is smooth over the same rings.
+            public var share: Float = 0.75
+            /// The clouds' lengths along the rotation, kpc, drawn evenly in log between the two.
+            public var length: [Float] = [0.1, 0.3]
+            /// How many times longer than wide, between the two.
+            public var aspect: [Float] = [2.5, 4]
+            /// How many clouds.
+            public var count: Int = 5000
+            /// The lengths' law: dN/dL as L to minus this; 1 draws them evenly in log.
+            public var slope: Float = 1
+            /// Knots a cloud is made of, how far they spread in its length and width, and how far a
+            /// grain spreads round its knot, all as shares of the cloud's length and width.
+            public var knots: Int = 4
+            public var knotSpread: Float = 0.3
+            public var grainSpread: Float = 0.35
+
+            public init(
+                rings: [[Float]], share: Float = 0.75, length: [Float] = [0.1, 0.3],
+                aspect: [Float] = [2.5, 4], count: Int = 5000
+            ) {
+                self.rings = rings
+                self.share = share
+                self.length = length
+                self.aspect = aspect
+                self.count = count
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let values = try decoder.container(keyedBy: CodingKeys.self)
+                rings = try values.decode([[Float]].self, forKey: .rings)
+                share = try values.decodeIfPresent(Float.self, forKey: .share) ?? share
+                length = try values.decodeIfPresent([Float].self, forKey: .length) ?? length
+                aspect = try values.decodeIfPresent([Float].self, forKey: .aspect) ?? aspect
+                count = try values.decodeIfPresent(Int.self, forKey: .count) ?? count
+                slope = try values.decodeIfPresent(Float.self, forKey: .slope) ?? slope
+                knots = try values.decodeIfPresent(Int.self, forKey: .knots) ?? knots
+                knotSpread = try values.decodeIfPresent(Float.self, forKey: .knotSpread) ?? knotSpread
+                grainSpread = try values.decodeIfPresent(Float.self, forKey: .grainSpread) ?? grainSpread
+            }
+
+            /// Usable: rings of three positive numbers, two rising lengths and aspects.
+            var usable: Bool {
+                !rings.isEmpty && rings.allSatisfy { $0.count == 3 && $0.allSatisfy { $0 > 0 } }
+                    && length.count == 2 && length[0] > 0 && length[1] >= length[0]
+                    && aspect.count == 2 && aspect[0] > 0 && aspect[1] >= aspect[0] && count > 0
+                    && knots > 0 && knotSpread >= 0 && grainSpread > 0
+            }
+        }
+
+        public init(
+            radius: Float, width: Float, share: Float = 1, innerWidth: Float? = nil, young: Float? = nil,
+            thickness: Float? = nil, threads: Int? = nil, sheet: Float? = nil, cotton: Float? = nil,
+            clouds: Clouds? = nil
+        ) {
             self.radius = radius
             self.width = width
             self.share = share
+            self.innerWidth = innerWidth
+            self.young = young
+            self.thickness = thickness
+            self.threads = threads
+            self.sheet = sheet
+            self.cotton = cotton
+            self.clouds = clouds
         }
 
-        private enum CodingKeys: String, CodingKey { case radius, width, share }
+        /// The spreads inside and outside the radius.
+        public var widths: (inner: Float, outer: Float) { (innerWidth ?? width, width) }
+
+        private enum CodingKeys: String, CodingKey {
+            case radius, width, share, innerWidth, young, thickness, threads, sheet, cotton, clouds
+        }
 
         public init(from decoder: any Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             radius = try values.decode(Float.self, forKey: .radius)
             width = try values.decode(Float.self, forKey: .width)
             share = try values.decodeIfPresent(Float.self, forKey: .share) ?? 1
+            innerWidth = try values.decodeIfPresent(Float.self, forKey: .innerWidth)
+            young = try values.decodeIfPresent(Float.self, forKey: .young)
+            thickness = try values.decodeIfPresent(Float.self, forKey: .thickness)
+            threads = try values.decodeIfPresent(Int.self, forKey: .threads)
+            sheet = try values.decodeIfPresent(Float.self, forKey: .sheet)
+            cotton = try values.decodeIfPresent(Float.self, forKey: .cotton)
+            clouds = try values.decodeIfPresent(Clouds.self, forKey: .clouds)
         }
+    }
+
+    /// Where the bulge is cut, in its scale radii.
+    public var bulgeCut: Float {
+        bulgeReach.flatMap { $0 > 0 ? min(max($0, 2), 40) : nil } ?? DiskSampler.bulgeTruncation
+    }
+
+    /// Where a bulge given a reach begins to fade, as a share of its cut: none of it is left at
+    /// the cut, so it has no edge. A bulge without a reach is cut sharp.
+    public var bulgeFade: Float? {
+        bulgeReach.flatMap { $0 > 0 ? 0.4 : nil }
     }
 
     /// The ring as the sampler and the rotation curve read it: none unless it has a radius, a
@@ -177,7 +306,15 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
     public var drawnDustRing: DustRing? {
         guard let ring = dustRing, kind.isRotating, ring.radius > 0, ring.width > 0, ring.share > 0
         else { return nil }
-        return DustRing(radius: ring.radius, width: ring.width, share: min(ring.share, 1))
+        return DustRing(
+            radius: ring.radius, width: ring.width, share: min(ring.share, 1),
+            innerWidth: ring.innerWidth.flatMap { $0 > 0 && $0 != ring.width ? $0 : nil },
+            young: ring.young.flatMap { $0 > 0 ? min($0, 1) : nil },
+            thickness: ring.thickness.flatMap { $0 > 0 ? $0 : nil },
+            threads: ring.threads.flatMap { $0 > 0 ? min($0, 4000) : nil },
+            sheet: ring.sheet.flatMap { $0 > 0 ? min($0, 1) : nil },
+            cotton: ring.sheet.flatMap { $0 > 0 ? min(max(ring.cotton ?? 0.6, 0), 1) : nil },
+            clouds: ring.sheet.flatMap { $0 > 0 ? ring.clouds.flatMap { $0.usable ? $0 : nil } : nil })
     }
 
     public init(
@@ -261,7 +398,8 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         case armMassContrast, armStreaming, massLopsidedness, patternShare, outskirtFraction
         case armIrregularity, diskMassFraction
         case toomreQ, haloParticleRatio, haloExtent, dissipationTime, position, velocity
-        case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction, dustRing
+        case inclination, positionAngle, spin, effectiveToomreQ, dustMassFraction, dustRing, bulgeApart
+        case bulgeReach, nucleus, recentStars
     }
 
     /// Takes and scene files written before the calm disk (#167) read as they were written:
@@ -311,6 +449,10 @@ public struct GalaxyConfig: Codable, Sendable, Equatable {
         spin = try values.decode(Spin.self, forKey: .spin)
         effectiveToomreQ = try values.decodeIfPresent(Float.self, forKey: .effectiveToomreQ)
         dustMassFraction = try values.decodeIfPresent(Float.self, forKey: .dustMassFraction)
+        bulgeApart = try values.decodeIfPresent(Bool.self, forKey: .bulgeApart)
+        bulgeReach = try values.decodeIfPresent(Float.self, forKey: .bulgeReach)
+        nucleus = try values.decodeIfPresent(Float.self, forKey: .nucleus)
+        recentStars = try values.decodeIfPresent(Float.self, forKey: .recentStars)
         dustRing = try values.decodeIfPresent(DustRing.self, forKey: .dustRing)
     }
 

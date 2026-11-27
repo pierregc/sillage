@@ -1,0 +1,20 @@
+{
+ "carrier": "polar",
+ "win": 1.875,
+ "family": "ps",
+ "keys": [
+  "rel"
+ ],
+ "c": 1.5,
+ "sz0": 0.003,
+ "seed": 3,
+ "label": "B f1 in the ring's own coordinates: relative phase, lifted c 1.5, polar carrier (periodic in azimuth), profile by radius, no tip statistics (#506)",
+ "kind": "statistics",
+ "par": {
+  "rim": 8.8,
+  "inner": 0.6045
+ },
+ "command": "python3 references/sombrero/tools/screen_tile.py b references/sombrero/dust-tracks/b/f1-ring.json OUT",
+ "prof": "radius",
+ "tips": false
+}

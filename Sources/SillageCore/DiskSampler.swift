@@ -67,6 +67,13 @@ public enum DiskSampler {
         }
     }
 
+    /// What is left of a bulge's density at `radius`: all of it inside the cut at `edge`, or
+    /// with a `fade` less and less from that share of the cut to none at it.
+    static func bulgeKept(radius: Float, edge: Float, fade: Float?) -> Float {
+        guard let fade else { return radius <= edge ? 1 : 0 }
+        return 1 - smoothstep(edge * fade, edge, radius)
+    }
+
     /// Tracer density, up to a constant. Only ratios are used.
     static func density(_ potential: GalaxyPotential, radius: Float) -> Float {
         let a = potential.scaleRadius
@@ -222,7 +229,7 @@ public enum DiskSampler {
         // The mass the tail carried is laid down inside rather than lost, and the dispersion
         // below is solved over the same range, so the sphere is in equilibrium as it stands
         // and not as an untruncated one would have been.
-        let edge = scale * bulgeTruncation
+        let edge = scale * config.bulgeCut
         let shape = GalaxyPotential(profile: .hernquist, mass: 1, scaleRadius: scale)
         let limit = min(enclosedFraction(shape, radius: edge), 0.999)
         let flattening = min(max(config.bulgeFlattening, 0.05), 1)
@@ -247,18 +254,38 @@ public enum DiskSampler {
         // In tracer mode the particles move in the rigid analytic potential and nothing else,
         // so that is what the bulge must be balanced against.
         let equilibrium = DiskEquilibrium(config: config, selfGravitating: selfGravitating)
+        let fade = config.bulgeFade
+        // Uncut without a fade: the integral's last sample can land a rounding past the edge.
         let dispersion = jeansDispersion(
-            density: { density(shape, radius: $0) },
+            density: { radius in
+                fade == nil
+                    ? density(shape, radius: radius)
+                    : density(shape, radius: radius) * bulgeKept(radius: radius, edge: edge, fade: fade)
+            },
             circularSpeed: { equilibrium.circularSpeed(atRadius: $0) },
             inner: scale * 0.005, edge: edge)
+        let nucleus = min(max(config.nucleus ?? 0, 0), 0.05)
         for _ in 0..<count {
-            let radius = inverseHernquistRadius(generator.uniform() * limit, scale: scale)
+            var radius = inverseHernquistRadius(generator.uniform() * limit, scale: scale)
+            if fade != nil {
+                var tries = 0
+                while tries < 64, generator.uniform() >= bulgeKept(radius: radius, edge: edge, fade: fade) {
+                    radius = inverseHernquistRadius(generator.uniform() * limit, scale: scale)
+                    tries += 1
+                }
+            }
+            // A nucleus is a cluster of old stars at the bottom of the well, compact and cold,
+            // and drawn as stars: a bulge's wide kernels would spread it into the glow.
+            let central = nucleus > 0 && generator.uniform() < nucleus
+            if central {
+                radius = inversePlummerRadius(generator.uniform() * 0.9, scale: scale * 0.02)
+            }
             // Flattened along the disk's own axis, which is what makes a bulge read as part
             // of the galaxy rather than as a sphere dropped into it.
             var local = randomDirection(&generator) * radius
             local.z *= flattening
 
-            let sigma = dispersion(radius) * cooling
+            let sigma = dispersion(radius) * cooling * (central ? 0.3 : 1)
             let motion = SIMD3<Float>(generator.normal(), generator.normal(), generator.normal())
             // Streaming about the disk's own axis, falling to nothing on it, where there is
             // no sense of going round.
@@ -279,12 +306,13 @@ public enum DiskSampler {
                 galaxy: galaxyIndex,
                 radius: radius,
                 population: 0,
+                // The light of the compact bright minority, which a look's `glint` takes back.
                 luminosity: (0.45 + 1.5 * generator.uniform() * generator.uniform())
-                    * bulgeGrain,
+                    * bulgeGrain * (central ? 14 : 1),
                 formation: StarFormation.oldFormation(roll: generator.uniform()),
-                component: .bulge,
+                component: central ? .star : .bulge,
                 mass: particleMass,
-                kernelScale: 1.35
+                kernelScale: central ? 0.75 : 1.35
             )
         }
     }
@@ -408,14 +436,19 @@ public enum DiskSampler {
         phaseOffset: Float = 0,
         scaleMultiplier: Float = 1,
         shape: SpiralPattern.Shape,
-        ring: (radius: Float, spread: Float)? = nil,
+        ring: (radius: Float, spread: Float, inner: Float?)? = nil,
         using generator: inout SeededGenerator
     ) -> (radius: Float, phi: Float, armProximity: Float) {
         var radius: Float = 0
         var phi: Float = 0
         var density: Float = 1
         for _ in 0..<32 {
-            if let ring {
+            if let ring, let inner = ring.inner {
+                // Two half bells of one height: the side is drawn by its share of the area.
+                let inside = generator.uniform() * (inner + ring.spread) < inner
+                let step = abs(generator.normal())
+                radius = inside ? ring.radius - step * inner : ring.radius + step * ring.spread
+            } else if let ring {
                 radius = ring.radius + generator.normal() * ring.spread
             } else {
                 radius =
@@ -477,6 +510,117 @@ public enum DiskSampler {
         return octave(at) * 0.55 + octave(at * 2.9 + 13.1) * 0.30 + octave(at * 7.3 + 41.9) * 0.15
     }
 
+    /// Pitch of the trailing spirals a ring's sheet draws its clouds out along, as a tangent.
+    static let sheetPitch: Float = 0.22
+    /// One standard deviation of the sheet's cloud field before it is scaled.
+    static let sheetSpread: Float = 0.076
+
+    /// A sheet's cloud field at a place in the plane, in standard deviations about its mean:
+    /// value noise at several scales, hashed and so never repeating. Large clouds and the fibres
+    /// inside them are read along trailing spirals that a slower noise bends, so the lanes cross
+    /// from one radius to the next and never close into circles; puffs with no direction lie
+    /// over them, or the sheet is combed hair.
+    static func sheetCloud(radius: Float, phi: Float, ring: Float, spin: Float, seed: Float) -> Float {
+        let wound = log(max(radius, 1e-3) / max(ring, 1e-3))
+        let straight = spin * phi + wound / sheetPitch
+        let shift = SIMD3<Float>(seed, -seed, seed * 0.5)
+        let bend =
+            grain(SIMD3<Float>(2 * cos(straight), 2 * sin(straight), 6 * wound) + shift) - 0.5
+        let turn = straight + 2.4 * bend
+        let at = SIMD3<Float>(10 * cos(turn), 10 * sin(turn), 33 * wound) + shift
+        let fine = grain(at)
+        let wide = grain(at * 0.22 + SIMD3<Float>(17.3, 5.1, -9.7))
+        let puff = grain(
+            SIMD3<Float>(radius * cos(phi), radius * sin(phi), seed) * 6 + SIMD3<Float>(3.3, 9.1, 0))
+        return (0.25 * fine + 0.45 * wide + 0.3 * puff - 0.5) / sheetSpread
+    }
+
+    /// How much of a sheet a place keeps, 0 to 1, for a cloud field `cloud` there: the clouds
+    /// stand as a lognormal about the mean, and inside the ring only the densest are left, a
+    /// sheet in wisps by two and a half inner widths in.
+    static func sheetKept(cloud: Float, radius: Float, ring: GalaxyConfig.DustRing, cotton: Float) -> Float {
+        let dense = exp(1.2 * cotton * (min(cloud, 2) - 2))
+        let inner = ring.widths.inner
+        let floor = -2.5 + 3.3 * (1 - smoothstep(ring.radius - 2.5 * inner, ring.radius - inner, radius))
+        let gaps = smoothstep(floor - 0.3, floor + 0.3, cloud)
+        return dense * (1 + min(2 * cotton, 1) * (gaps - 1))
+    }
+
+    /// A ring's clouds (#506): each a centre drawn from the rings, a length along the rotation
+    /// and a width across, and four knots inside it of uneven weight, so no two are alike.
+    struct RingClouds {
+        struct Cloud {
+            var radius: Float
+            var phi: Float
+            var along: Float
+            var across: Float
+            var knots: [SIMD2<Float>]
+        }
+        var clouds: [Cloud]
+        /// Running sum of the clouds' weights (their areas), to pick one by weight.
+        var total: [Float]
+    }
+
+    static func ringClouds(_ spec: GalaxyConfig.DustRing.Clouds, seed: UInt64) -> RingClouds {
+        var generator = SeededGenerator(seed: seed)
+        var clouds: [RingClouds.Cloud] = []
+        var total: [Float] = []
+        var sum: Float = 0
+        let (low, high) = (spec.length[0], spec.length[1])
+        for _ in 0..<spec.count {
+            let radius = ringsRadius(spec.rings, using: &generator)
+            // dN/dL as L^-slope between the two lengths, by its inverse distribution.
+            let u = generator.uniform()
+            let length: Float
+            if abs(spec.slope - 1) < 1e-3 {
+                length = low * pow(high / low, u)
+            } else {
+                let a = 1 - spec.slope
+                length = pow(pow(low, a) + u * (pow(high, a) - pow(low, a)), 1 / a)
+            }
+            let aspect = spec.aspect[0] + (spec.aspect[1] - spec.aspect[0]) * generator.uniform()
+            let along = length
+            let across = length / aspect
+            // Knots of uneven weight: each drawn as often as a log-normal of spread one says.
+            var knots: [SIMD2<Float>] = []
+            for _ in 0..<spec.knots {
+                let knot = SIMD2(
+                    generator.normal() * along * spec.knotSpread,
+                    generator.normal() * across * spec.knotSpread)
+                let copies = max(1, Int(exp(generator.normal()).rounded()))
+                knots += Array(repeating: knot, count: min(copies, 8))
+            }
+            clouds.append(
+                .init(
+                    radius: radius, phi: generator.uniform() * 2 * .pi, along: along * spec.grainSpread,
+                    across: across * spec.grainSpread, knots: knots))
+            sum += along * across
+            total.append(sum)
+        }
+        return RingClouds(clouds: clouds, total: total)
+    }
+
+    /// A radius drawn from a sum of Gaussian rings, each [radius, spread, peak height].
+    static func ringsRadius(_ rings: [[Float]], using generator: inout SeededGenerator) -> Float {
+        let weights = rings.map { $0[1] * $0[2] * $0[0] }
+        let all = weights.reduce(0, +)
+        var pick = generator.uniform() * all
+        var chosen = rings[rings.count - 1]
+        for (ring, weight) in zip(rings, weights) {
+            if pick < weight {
+                chosen = ring
+                break
+            }
+            pick -= weight
+        }
+        return max(chosen[0] + generator.normal() * chosen[1], 0.1)
+    }
+
+    /// A sheet's scale height against its ring's: thinner inside than at the rim.
+    static func sheetFlare(radius: Float, ring: GalaxyConfig.DustRing) -> Float {
+        0.35 + 0.65 * smoothstep(ring.radius - 2 * ring.widths.inner, ring.radius, radius)
+    }
+
     private struct Clump {
         var radius: Float
         var phi: Float
@@ -484,6 +628,15 @@ public enum DiskSampler {
         /// Identifies this one to the noise that warps it, so a strand meanders the same way
         /// along its whole length instead of every grain wandering on its own.
         var seed: Float = 0
+        /// A ring's long thread (`DustRing.threads`): half its length in radians, 0 for a
+        /// strand; its radius' change over a radian, as a share; how far it weaves, in kpc; how
+        /// many radians its lift turns through over a radian of its length; and whether it is a
+        /// short one that crosses from lane to lane.
+        var arc: Float = 0
+        var drift: Float = 0
+        var weave: Float = 0
+        var ripple: Float = 0
+        var spur = false
     }
 
     /// Clouds in a disk are not round: differential rotation shears them into arcs within a
@@ -613,12 +766,50 @@ public enum DiskSampler {
         // A ring's strands come first in the list, as many as its share of the dust, shorter
         // across the ring when it is narrow so that the grains' spread is the width asked.
         let ring = config.drawnDustRing
-        let ringStrand = ring.map { min(strandLength, $0.width * 0.7) } ?? strandLength
+        let ringClouds = ring?.clouds.map {
+            Self.ringClouds($0, seed: UInt64(galaxyIndex) &* 0x9E37_79B9 &+ 506)
+        }
+        let ringStrand = ring.map { min(strandLength, min($0.width, $0.widths.inner) * 0.7) } ?? strandLength
         let ringCentres = ring.map { ($0.width * $0.width - ringStrand * ringStrand).squareRoot() } ?? 0
+        let ringInnerCentres = ring?.innerWidth.map { ($0 * $0 - ringStrand * ringStrand).squareRoot() }
         let ringFilaments = ring.map { Int((700 * $0.share).rounded()) } ?? 0
+        let ringYoung = ringFilaments > 0 ? ring?.young ?? 0 : 0
+        // A ring drawn in threads has as many as it asks for in place of its strands.
+        let ringThreads = ringFilaments > 0 ? ring?.threads : nil
+        let ringCount = ringThreads ?? ringFilaments
         var filaments: [Clump] = []
-        for index in 0..<700 {
-            let inRing = index < ringFilaments
+        /// The share of a threaded ring's grains that its threads up to each one hold.
+        var threadShares: [Float] = []
+        for index in 0..<(ringCount + 700 - ringFilaments) {
+            let inRing = index < ringCount
+            if inRing, let ring, ringThreads != nil {
+                let placed = samplePlanePosition(
+                    config, arms: arms, contrast: 0, windRate: windRate, minimumRadius: 0.03,
+                    scaleMultiplier: outskirtScaleMultiplier, shape: shape,
+                    ring: (ring.radius, ring.width, ring.innerWidth), using: &generator)
+                let u = generator.uniform()
+                let length = generator.uniform()
+                // A third are spurs: short, steep and trailing, they cross from one lane to the
+                // next, and without them long threads at their own radii read as nested hoops.
+                let spur = generator.uniform() < 0.35
+                let steep = 0.25 + 0.6 * generator.uniform()
+                let bend = generator.normal() * 0.04
+                let weave = ring.widths.inner * (0.12 + 0.35 * generator.uniform())
+                let turns = (20 + 35 * generator.uniform()) * (generator.uniform() < 0.5 ? -1 : 1)
+                let heavy = generator.uniform()
+                let arc = spur ? 0.06 + 0.2 * length : 0.3 + 0.9 * length * length
+                filaments.append(
+                    Clump(
+                        radius: placed.radius, phi: placed.phi,
+                        spread: scale * (0.002 + 0.010 * u * u),
+                        seed: generator.uniform() * 900,
+                        arc: arc, drift: spur ? -spin * steep : bend, weave: spur ? weave * 0.3 : weave,
+                        ripple: turns, spur: spur))
+                // A few threads are heavy lanes and most are wisps.
+                threadShares.append(
+                    (threadShares.last ?? 0) + arc * (0.25 + 1.5 * heavy * heavy) * (spur ? 0.6 : 1))
+                continue
+            }
             // Over a scale length and a bit more than the stars': a gas disk is the more
             // extended of the two, and drawn on the stellar scale the filaments crowded into
             // the middle third of the picture.
@@ -626,7 +817,7 @@ public enum DiskSampler {
                 config, arms: arms, contrast: min(strength * 1.45, 0.95), windRate: windRate,
                 minimumRadius: inRing ? 0.03 : bulgeRadius * 0.9,
                 scaleMultiplier: outskirtScaleMultiplier, shape: shape,
-                ring: inRing ? ring.map { ($0.radius, ringCentres) } : nil,
+                ring: inRing ? ring.map { ($0.radius, ringCentres, ringInnerCentres) } : nil,
                 using: &generator)
             let u = generator.uniform()
             filaments.append(
@@ -660,6 +851,13 @@ public enum DiskSampler {
             /// How far this grain's strand is warped out of the plane where it sits.
             var strandLift: Float = 0
             var ringGrain = false
+            var threaded = false
+            /// A grain of a ring's sheet, and its layer's height where it stands.
+            var sheeted = false
+            var sheetLayer: Float = 0
+            /// A threaded grain's lift is a wave that runs along its thread: what its swing
+            /// through the plane is worth here, in kpc, a quarter turn ahead of its lift.
+            var liftSwing: Float = 0
 
             // Drawn whether or not it is used, so that turning a clump down does not shift
             // every later draw in the galaxy and make two samplings incomparable.
@@ -671,17 +869,109 @@ public enum DiskSampler {
             // A clump inside the bulge is no home for gas or for young stars, for the same
             // reason as below.
             let usable = component == .star || (clump?.radius ?? 0) > bulgeRadius * 0.9
-            if component == .dust, generator.uniform() < 0.93, !filaments.isEmpty {
-                let which = Int(generator.uniform() * Float(filaments.count)) % filaments.count
+            // Young stars a ring's gas makes stand on its strands, as its grains do.
+            let born = component == .hiiRegion && ringYoung > 0 && generator.uniform() < ringYoung
+            if !born, component == .dust, let ring, let sheet = ring.sheet,
+                generator.uniform() < ring.share * sheet
+            {
+                sheeted = true
+            }
+            if sheeted, let ring, let clouds = ring.clouds, let list = ringClouds {
+                // Clouds along concentric rings (#506): a grain in a cloud lands round one of its
+                // knots, longer along the rotation than across it; the rest are smooth over the
+                // rings. Each in a thin layer at its own phase of the swing, so no ripple runs
+                // through the layer and seen edge on it has no strata.
+                if generator.uniform() < clouds.share {
+                    let pick = generator.uniform() * (list.total.last ?? 1)
+                    var lo = 0
+                    var hi = list.total.count - 1
+                    while lo < hi {
+                        let mid = (lo + hi) / 2
+                        if list.total[mid] < pick { lo = mid + 1 } else { hi = mid }
+                    }
+                    let cloud = list.clouds[lo]
+                    let knot = cloud.knots[
+                        Int(generator.uniform() * Float(cloud.knots.count)) % cloud.knots.count]
+                    let along = knot.x + generator.normal() * cloud.along
+                    let across = knot.y + generator.normal() * cloud.across
+                    radius = max(cloud.radius + across, 0.1)
+                    phi = cloud.phi + along / cloud.radius
+                } else {
+                    radius = Self.ringsRadius(clouds.rings, using: &generator)
+                    phi = generator.uniform() * 2 * .pi
+                }
+                sheetLayer =
+                    (ring.thickness ?? config.diskThickness * 0.45) * sheetFlare(radius: radius, ring: ring)
+                ringGrain = true
+                proximity = 1
+            } else if sheeted, let ring {
+                radius = ring.radius
+                phi = 0
+                let cotton = ring.cotton ?? 0.6
+                for _ in 0..<64 {
+                    let placed = samplePlanePosition(
+                        config, arms: arms, contrast: 0, windRate: windRate, minimumRadius: 0.03,
+                        scaleMultiplier: outskirtScaleMultiplier, shape: shape,
+                        ring: (ring.radius, ring.width, ring.innerWidth), using: &generator)
+                    radius = placed.radius
+                    phi = placed.phi
+                    let cloud = sheetCloud(
+                        radius: radius, phi: phi, ring: ring.radius, spin: spin,
+                        seed: Float(galaxyIndex) * 7.7)
+                    let kept = sheetKept(cloud: cloud, radius: radius, ring: ring, cotton: cotton)
+                    if generator.uniform() < kept { break }
+                }
+                // The layer is rippled, unevenly, each grain launched at its own phase of the
+                // swing as a thread's lift is.
+                sheetLayer =
+                    (ring.thickness ?? config.diskThickness * 0.45) * sheetFlare(radius: radius, ring: ring)
+                let wound = log(radius / ring.radius)
+                let turn = spin * phi + wound / sheetPitch
+                let slow = SIMD3<Float>(3 * cos(turn), 3 * sin(turn), 9 * wound)
+                let phase =
+                    25 * grain(slow + SIMD3<Float>(4.2, 8.9, 1.3))
+                    + 9 * grain(slow * 3.7 + SIMD3<Float>(1.1, 6.4, 2.2))
+                let swell = sheetLayer * (0.1 + 1.1 * grain(slow * 1.9 + SIMD3<Float>(7.7, 0.3, 5.5)))
+                strandLift = swell * cos(phase)
+                liftSwing = swell * sin(phase)
+                ringGrain = true
+                proximity = 1
+            } else if born || (component == .dust && generator.uniform() < 0.93 && !filaments.isEmpty) {
+                let pool = born ? ringCount : filaments.count
+                let pick = generator.uniform()
+                var which = Int(pick * Float(pool)) % pool
+                if ringThreads != nil, let ring {
+                    // The ring keeps its share of the grains however many threads it has, and
+                    // each thread its own share of those.
+                    let rest = filaments.count - ringCount
+                    let share = born ? 1 : ring.share
+                    if pick < share || rest == 0 {
+                        let total = threadShares.last ?? 1
+                        func thread(_ roll: Float) -> Int {
+                            min(threadShares.firstIndex { $0 >= roll * total } ?? 0, ringCount - 1)
+                        }
+                        which = thread(min(pick / share, 1))
+                        // Stars are born on the long lanes of the rim, not on the spurs.
+                        var tries = 0
+                        while born, tries < 8, filaments[which].spur || filaments[which].radius < ring.radius
+                        {
+                            which = thread(generator.uniform())
+                            tries += 1
+                        }
+                    } else {
+                        which = ringCount + Int((pick - share) / (1 - share) * Float(rest)) % rest
+                    }
+                }
                 let strand = filaments[which]
-                ringGrain = which < ringFilaments
+                ringGrain = which < ringCount
+                threaded = ringGrain && strand.arc > 0
                 let reach = ringGrain ? ringStrand : strandLength
                 // A strand runs *along the arm*, which means its radius and its angle have to
                 // change together, at the pattern's own pitch. Stretched azimuthally alone —
                 // which is what shearing a round clump gives — a strand is a segment of a
                 // circle, and a disk full of those reads as a set of concentric rings however
                 // thin they are. That was two attempts.
-                let travel = generator.normal() * reach
+                let travel = threaded ? 0 : generator.normal() * reach
                 radius = max(strand.radius + travel, 0.03)
                 let pitch = windRate * log(radius / max(strand.radius, 1e-3))
                 // And a strand is not a clean arc either. The pitch alone gives a perfect
@@ -704,6 +994,44 @@ public enum DiskSampler {
                 strandLift =
                     (SpiralPattern.fractalNoise(strand.seed * 5.7 + alongStrand * 2.3) - 0.5)
                     * config.diskThickness * 1.6
+                if ringGrain || born, let layer = ring?.thickness {
+                    strandLift *= layer / (config.diskThickness * 0.45)
+                }
+                if threaded {
+                    // A thread runs along the ring: its angle is where a grain is on it, and
+                    // its radius and its height wander slowly with that angle, so two threads
+                    // drawn at different radii cross and part again. The young stars a ring
+                    // makes stand in a few knots along it rather than all the way.
+                    var place =
+                        strand.arc
+                        * (0.7 * (2 * generator.uniform() - 1) + 0.3 * (2 * generator.uniform() - 1))
+                    if born {
+                        let at = (strand.seed * 0.618).truncatingRemainder(dividingBy: 1)
+                        place = strand.arc * 0.9 * (2 * at - 1) + generator.normal() * 0.004
+                    }
+                    // A slow wander and a kink on top of it, as a strand has.
+                    let wander =
+                        (SpiralPattern.fractalNoise(strand.seed + place * 2.2) - 0.5)
+                        + 0.18 * (SpiralPattern.fractalNoise(strand.seed * 3.1 + place * 6.3) - 0.5)
+                    radius = max(
+                        strand.radius * (1 + strand.drift * place) + 2 * strand.weave * wander
+                            + generator.normal() * strand.spread, 0.03)
+                    phi = strand.phi + place
+                    // Lifted as a wave that runs along the thread, each grain launched at its
+                    // own phase of the swing: lifted and let go together, the threads would all
+                    // fall through the plane at once a quarter swing later.
+                    // Two waves of different lengths going opposite ways, so it does not read
+                    // as a sine.
+                    let layer = ring?.thickness ?? config.diskThickness * 0.45
+                    let height =
+                        layer * (0.4 + 2.4 * SpiralPattern.fractalNoise(strand.seed * 2.3 + place * 1.9))
+                    let phase =
+                        strand.seed * 7 + strand.ripple * place
+                        + 4 * (SpiralPattern.fractalNoise(strand.seed * 5.7 + place * 3.1) - 0.5)
+                    let counter = strand.seed * 13 - 0.37 * strand.ripple * place
+                    strandLift = height * (cos(phase) + 0.7 * cos(counter)) / 1.22
+                    liftSwing = height * (sin(phase) + 0.7 * sin(counter)) / 1.22
+                }
                 proximity = 1
             } else if outskirt {
                 // Drawn from a longer exponential and allowed past the truncation, so the
@@ -718,7 +1046,7 @@ public enum DiskSampler {
                 let placed = samplePlanePosition(
                     config, arms: arms, contrast: min(strength * 1.4, 0.95), windRate: windRate,
                     minimumRadius: 0.03, phaseOffset: -0.85 * spin, shape: shape,
-                    ring: (ring.radius, ring.width), using: &generator)
+                    ring: (ring.radius, ring.width, ring.innerWidth), using: &generator)
                 crestShift = 0.85 * spin / Float(max(arms, 1))
                 radius = placed.radius
                 phi = placed.phi
@@ -755,7 +1083,13 @@ public enum DiskSampler {
                 proximity = placed.armProximity
             }
 
-            let thickness = component == .dust ? config.diskThickness * 0.45 : config.diskThickness
+            // A thread is thin and the layer is its weave: half the layer's height is its own.
+            let ringLayer =
+                threaded
+                ? (ring?.thickness ?? config.diskThickness * 0.45) * 0.5
+                : (sheeted ? sheetLayer * 0.6 : (ringGrain ? ring?.thickness : nil))
+            let thickness =
+                ringLayer ?? (component == .dust ? config.diskThickness * 0.45 : config.diskThickness)
             // A spheroid flattened to a third, which is what a thick disk and inner halo
             // together look like; the thin components keep their sech-squared layer.
             let height =
@@ -801,6 +1135,16 @@ public enum DiskSampler {
                         + SIMD3<Float>(
                             generator.normal(), generator.normal(), generator.normal())
                         * dispersion
+                } else if threaded || sheeted {
+                    // A thread is cold gas: on a circle at the speed that holds it there, with
+                    // none of the stars' random motion in the plane, which would smear a thread
+                    // tens of parsecs across in a few megayears.
+                    let swing = equilibrium.verticalFrequency(atRadius: radius)
+                    localVelocity =
+                        along * (equilibrium.circularSpeed(atRadius: radius) * spin)
+                        + SIMD3<Float>(0, 0, 1)
+                        * (swing
+                            * (generator.normal() * (ringLayer ?? 0) * 0.9 - liftSwing))
                 } else {
                     localVelocity =
                         outward
@@ -810,7 +1154,10 @@ public enum DiskSampler {
                             + generator.normal()
                             * equilibrium.azimuthalDispersion(atRadius: radius))
                         + SIMD3<Float>(0, 0, 1)
-                        * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius))
+                        * (generator.normal() * equilibrium.verticalDispersion(atRadius: radius)
+                            // Held by the stars and the spheroid, not by itself: at their
+                            // frequency a layer's motion goes as its height.
+                            * (ringLayer.map { $0 / max(config.diskThickness, 1e-3) } ?? 1))
                     if streamingScale > 0 {
                         let extent = radius / scale
                         let lindblad = resonances.lindblad
@@ -891,7 +1238,8 @@ public enum DiskSampler {
                 edge: edge / max(config.diskTruncation, 1e-3),
                 // No arm reaches inside the bulge, so nothing young either: proximity there
                 // is 0.5 by default and drew a fifth of the core as arm stars.
-                armProximity: proximity * (1 - bulgeWeight), roll: generator.uniform())
+                armProximity: proximity * (1 - bulgeWeight), roll: generator.uniform(),
+                recent: config.recentStars ?? 1)
             switch component {
             case .hiiRegion:
                 population = 1

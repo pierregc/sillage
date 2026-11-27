@@ -540,8 +540,14 @@ public final class Flight {
             from: camera(atSeconds: from).camera, to: camera(atSeconds: to).camera, frame: frame,
             height: height)
         guard count > 0 else { return [camera(atSeconds: seconds).camera] }
+        // Streaks shorten as the near field ends, so none snaps to a point at its edge.
+        let open = Double(InsideBlur.within(frame))
+        var (start, end) = (from, to)
+        if open < 1 {
+            (start, end) = (seconds - (seconds - from) * open, seconds + (to - seconds) * open)
+        }
         return (0...count).map { index in
-            camera(atSeconds: from + (to - from) * Double(index) / Double(count)).camera
+            camera(atSeconds: start + (end - start) * Double(index) / Double(count)).camera
         }
     }
 

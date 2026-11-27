@@ -1,4 +1,5 @@
 import SillageCore
+
 #if canImport(simd)
     import simd
 #else
@@ -41,10 +42,13 @@ public struct SplatUniforms: Sendable {
     public var bulgeWidth: Float = 1
     public var youngWidth: Float = 1
     public var knotWidth: Float = 1
+    public var dustWidth: Float = 1
 
     /// Whether some population is drawn at another width than the tree's, which Metal draws
     /// from a library of its own.
-    public var widens: Bool { oldWidth != 1 || bulgeWidth != 1 || youngWidth != 1 || knotWidth != 1 }
+    public var widens: Bool {
+        oldWidth != 1 || bulgeWidth != 1 || youngWidth != 1 || knotWidth != 1 || dustWidth != 1
+    }
 }
 
 /// The passes of one frame that draw particles and what they are given, worked out once for
@@ -112,9 +116,13 @@ public struct FramePlan: Sendable {
         )
     }
 
-    public static func carrierSize(_ settings: RenderSettings) -> (width: Int, height: Int) {
+    /// `screened`: at the frame's own resolution, as a dust screen's carrier is drawn (#506).
+    public static func carrierSize(_ settings: RenderSettings, screened: Bool = false) -> (
+        width: Int, height: Int
+    ) {
         let size = accumulationSize(settings)
-        return (max(size.width / DustWeb.carrierCoarse, 1), max(size.height / DustWeb.carrierCoarse, 1))
+        let coarse = screened ? 1 : DustWeb.carrierCoarse
+        return (max(size.width / coarse, 1), max(size.height / coarse, 1))
     }
 
     /// `laceScale` is one over the baked lace's mean, nil when the frame draws no web: the
@@ -192,7 +200,8 @@ public struct FramePlan: Sendable {
             pass: 0, mapped: mapped ? 1 : 0, holeShadow: settings.holeShadow,
             columnSmoothing: settings.columnSmoothing, columnCell: Float(Self.columnCell),
             glint: settings.glint, oldWidth: settings.oldWidth, bulgeWidth: settings.bulgeWidth,
-            youngWidth: settings.youngWidth, knotWidth: settings.knotWidth)
+            youngWidth: settings.youngWidth, knotWidth: settings.knotWidth,
+            dustWidth: settings.dustWidth)
 
         // Its own passes, so a look without the web draws what it always drew.
         let webbed = Self.drawsWeb(settings, stages: stages) && laceScale != nil
