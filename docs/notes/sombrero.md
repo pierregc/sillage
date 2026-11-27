@@ -68,7 +68,8 @@ close passes early.
 
 ## The take, the look and the flight
 
-8 M visible and 12 M of halo, recorded from 0 Myr with no settle to 450 Myr (lib/sombrero-8m-v6
+Scene v6, before the dust work; the film's own are under [the film](#the-film-509). 8 M visible
+and 12 M of halo, recorded from 0 Myr with no settle to 450 Myr (lib/sombrero-8m-v6
 on the Mac, 58 minutes, 28.8 GB). The flight (`sombrero.flight.json`, written by
 `tools/film_flight.py`) flies its close passes between 12 and 18 Myr, while the dust layer is still
 0.025 kpc thin, and lets time run fast only on the way out, seen from far. Look
@@ -128,19 +129,31 @@ the above.
 - Some threads seen edge on show their lift wave as a regular zigzag.
 - By 200 Myr the threads wind into near circles, faint in the far views.
 
-## Open work (24/11)
+## The film (#509)
 
-- **The dust lane**: a continuous cottony sheet in place of the threads, tuned on a bench before any
-  take. The plan, the bench and the agents' split: [the dust bench](sombrero-dust-bench.md).
-- The sampler fields `dustRing.sheet` and `cotton`, announced by the coordinator on
-  `claude/project-thread-yxfc71`, not yet pushed when this was written.
-- `look.dustWidth` (PR #483, commit 0ff19be) widens the dust grains' kernels; off by default and
-  without effect while `dustWeb` is 1. PR #483's body does not mention it yet.
-- Scene v6 still has `starFormingFraction` and `dustRing.young` above zero; the next scene sets both
-  to 0 (checked at 2 M: nothing lights in the lane).
-- After the dust: a new 8 M take, the photo at Hubble's framing, the flight stills, the 4K film (the
-  v6 export was stopped on 24/11, partial file deleted; take lib/sombrero-8m-v6 kept).
-- Not started: the core spindle, finer fibres at the rim, the general tools moved to `scripts/`.
+The dust lane became a sheet of grains with a dust screen of dabs from inside (#506, #508; the
+bench and the tracks that led there are in [the dust bench](sombrero-dust-bench.md) and the
+`sombrero-dust-*` notes). The film is 107.7 s at 30 fps in 4K, 3 232 frames, drawn on the Mac in
+about 37 hours of GPU from a 20 M take of `scene-screen.json` recorded to 170 Myr (54 minutes,
+27.8 GB), with the look `film/sombrero-509c.look.json` and the flight `film/film_rc.py` writes,
+one key a frame (`DEPTH=0.412` for this take). Its inside block comes from #511's last flight and
+names the screen's tile `b1z`, which `tools/screen_tile.py bz dust-tracks/b/f1-ring.json` makes;
+both live in the working folder, not in git.
+
+`film/film_rc.sh film` with `RES=4k` draws it in pieces, each a ProRes export under the GPU lock:
+`a` (0 to 16 s), `b1` to `b4` (25 to 107.7 s, each drawn a second past its seam and crossfaded over
+the next) and `wide`, the freeze drawn 1.55 times wider. `assemble` holds a's last frame over the
+9 s split screen (16 to 25 s) and `film/split.py` sets Hubble's picture and the captions beside it,
+as a ProRes 422 HQ master when its output is a `.mov`; the delivered file is HEVC 10-bit from it.
+
+Each piece runs a frozen copy of the engine (`BIN`, passed to the wrapper as `SR_BIN`), so a
+rebuild never replaces a running binary. The last copy is the branch at 6b895a7, the inside blur's
+streaks shortened near the edge of the near field instead of snapping to points there. Every piece
+was checked frame to frame for jumps: b2 was drawn again whole on the last copy, and two seconds of
+b3 (from 78 s) and of b4 (from 93.7 s) were drawn again on it and spliced in. Freeze one copy before
+the first 4K piece: pieces from different copies are what cost the redo.
+
+Not done: the core spindle, finer fibres at the rim, the general tools moved to `scripts/`.
 
 ## Figures and costs
 
@@ -151,6 +164,7 @@ Against Hubble at the frame's figures (`tools/measure.py`, values 0 to 1), v6 at
 lane 0.95 (0.97).
 
 On an M4 Max: a 2 M check to 60 Myr, 2 minutes; 2 M to 450 Myr, 12 to 15 minutes; 8 M to 30 Myr,
-4 minutes; 8 M to 450 Myr, 58 minutes and 28.8 GB; a 4K flight key, about 40 seconds; the 4K film (100 s,
-3 001 frames, HEVC), 5 to 8 seconds a frame, the close passes drawing up to 100 M point stars a
-frame.
+4 minutes; 8 M to 450 Myr, 58 minutes and 28.8 GB; a 4K flight key, about 40 seconds; the v6 film
+at 8 M (100 s, 3 001 frames, HEVC), 5 to 8 seconds a frame, the close passes drawing up to 100 M
+point stars a frame. The film at 20 M, in ProRes 4K: 6 seconds a frame far off (piece a), 13 to 52
+from inside the disk (b1 to b4).
