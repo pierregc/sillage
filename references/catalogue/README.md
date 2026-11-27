@@ -26,3 +26,5 @@ Twenty candidates, chosen in [Twenty galaxies to reproduce](../../docs/notes/twe
 | `images/opo0221a.jpg` | Hoag's Object | NASA/ESA and The Hubble Heritage Team (STScI/AURA) | <https://esahubble.org/images/opo0221a/> |
 
 `contact-sheet.jpg` puts the twenty side by side, with the same credits.
+
+The Antennae also have a wide ground picture, for the whole system with both tails: DESI Legacy Imaging Surveys DR10 colour cutout, credit **Legacy Surveys / D. Lang (Perimeter Institute)**, CC BY 4.0, <https://www.legacysurvey.org/viewer>. It and Hubble's full-size picture are described in [`../antennae/README.md`](../antennae/README.md).
