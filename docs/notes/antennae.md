@@ -169,3 +169,87 @@ previews) before choosing.
   since the first passage are measured on their own runs, so the moment is found by the match,
   not set.
 - The look fields (arms, dust strands, clumps) are not in either paper.
+
+## The orbit's clock in live halos (#524)
+
+Both scenes as written by #523, both readings of the node, explored at 200 k as whole stories
+(`--story-cap 3000`) and run at 500 k with `--sticky-gas on`, then the adjustments, one change a
+run. Each run costs about four minutes on the M4 Max (explore 30 to 80 s, hires 2 to 4 min).
+`tools/clock.py` reads every pericentre, the merger (the separation stays under 3 kpc) and the
+settling (the extent within 5 % of its final value from then on) off `curves-hires.csv`.
+
+| run | change | 1st passage | between the passages | merger after the 1st | settled | window match | free match |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| Karl, descending | as written | 202 (8.8 kpc) | 820 | 986 | 1348 | 0.563 at 1067 | 0.550 at 197 |
+| Karl, ascending | node | 203 (9.2 kpc) | 836 | 1004 | 1372 | 0.549 at 1096 | 0.550 at 159 |
+| Karl | `haloExtent` 20 | 202 | 893 | 1060 | 1312 | | |
+| Karl | eccentricity 0.9 | 202 | 377 | 499 | 759 | | |
+| **Karl** | **eccentricity 0.95** | 202 (8.6 kpc) | **533** | 672 | 929 | **0.572 at 779** | 0.566 at 798 |
+| Privon, descending | as written | 201 (3.7 kpc) | 150 | 165 | 659 | 0.442 at 241 | 0.578 at 440 |
+| Privon, ascending | node | 201 (4.0 kpc) | 153 | 168 | 814 | 0.469 at 352 | 0.562 at 412 |
+| Privon | `haloExtent` 6 | 200 | 134 | 146 | 662 | | |
+| Privon | `haloExtent` 20 | 200 | 149 | 162 | 584 | | |
+| Privon | eccentricity 1.05 | 200 | 210 | 228 | 636 | | |
+| Privon | eccentricity 1.2 | 200 | 1655 | 1693 | 2216 | | |
+| **Privon** | **eccentricity 1.1** | 200 (3.9 kpc) | **334** | 358 | 753 | 0.458 at 364 | 0.559 at 612 |
+
+Times in Myr of the run. The papers: Karl 560 Myr between the passages, the picture 40 after the
+second and about 90 before the merger; Privon the picture 260 after the first, 70 before the
+merger (330 after the first).
+
+- **As written, both clocks are far off, in opposite directions.** Karl's pair swings out to
+  64 kpc and comes back 820 Myr later; Privon's falls together within 165 Myr. The node
+  changes neither clock by more than 2 %, nor the scores by more than 0.03.
+- **The halos' extent is not the lever.** Karl's halo cut at 20 scale radii instead of 12 (the
+  mass Karl holds past 257 kpc) slows the return by 9 %; Privon's at 6 or 20 moves its merger
+  by 10 %. The eccentricity is: Karl at 0.95 gives 533 Myr between the passages (the paper's
+  560), Privon at 1.1 a merger 358 Myr after the first passage (the paper's 330). Neither paper
+  is strictly parabolic in live halos: Karl's GADGET halos run on past the virial radius and
+  bind the orbit more than Sillage's cut halo, and Privon's Identikit orbit is parabolic for two
+  point masses, while his halos pass closer and earlier.
+- **Karl's clock holds the match.** At 0.95 the window match lands 43 Myr after the second
+  passage, the paper's 40, and the free match over the whole take also chooses a moment after
+  the second passage (798 Myr), not the plain disks before the first: the trap of the NGC 2207
+  note does not catch it. Its view, (21, 86, -109), is 24 degrees from the paper's sky guess.
+- **Privon's free match prefers the merged remnant.** Every Privon free match picks a moment after
+  the merger, one body with two tails; inside the window it scores 0.44 to 0.47, the two bodies
+  with short tails.
+- **The future.** Karl at 0.95 merges 95 Myr after the paper's moment and settles 150 Myr after it
+  (929 Myr, 31 kpc across), the tails still falling back; the take ends 294 Myr after the paper's
+  moment. #526 records up to the settling, 929 Myr.
+
+### The tails
+
+`tools/tails.py` bins the take's stars on the wide map's grid from the match's view and scale and
+reads the two tips the same way on both (the bins 1.6 decades under the 99.5th percentile, joined
+to a nucleus; the farthest 1 % of them north and south of the nuclei). The picture: north tip 48
+kpc at position angle 34, south tip 67 kpc at 218 (from the nuclei's middle).
+
+| run | moment | north tip | south tip |
+| --- | --- | --- | --- |
+| Karl 0.95, window | 779 | 11 kpc at 298 | 28 kpc at 160 |
+| Karl 0.95, free | 798 | 30 kpc at 44 | 16 kpc at 250 |
+| Privon 1.1, window | 364 | 27 kpc at 35 | 45 kpc at 190 |
+| Privon 1.1, free | 612 | 24 kpc at 43 | 23 kpc at 228 |
+
+Karl's tails are long (99 % of each galaxy's stars within 114 and 99 kpc of the middle) but
+spread thin, so above the picture's threshold they read short; Privon's point the right way and
+are bright but short, from disks of 1.64 kpc. The figures are rough: the picture's tone curve is
+not the binned count's.
+
+### The choice: Karl at eccentricity 0.95, descending node
+
+Pierre left the choice to the night (2026-11-27). The sheet (`sheet-524-models.jpg` on the
+`assets/antennae` branch) shows each model at its matched moment from its matched view beside
+the wide picture, then a strip from the paper's view: the approach, both passages, the merger,
+the settled remnant.
+
+- Karl draws the Antennae's two long thin curved tails; Privon draws two compact bodies with
+  short ones, and its Antennae-like tails only after the merger.
+- Karl's clock matches its paper with one change, and its match falls at the paper's moment.
+- What is wrong with Karl: the heart is too big, about 30 kpc against the picture's 12, from
+  disks of 6.3 and 4.1 kpc in scale length, and the tails curve too wide. #525 varies round it;
+  the disks' size and truncation are the first levers.
+
+Scripts: `tools/clock.py`, `tools/tails.py`, `tools/view2key.py` and `tools/photokey.sh` (a still
+from a match, cropped to the panel), `tools/sheet.py`.
